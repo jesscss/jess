@@ -1,5 +1,5 @@
 # Project Liss
-Live Style Sheets (or Light Invisible Style Sheets?)
+Light Invisible Style Sheets
 
 Right now, this work is experimental and is a work-in-progress
 
