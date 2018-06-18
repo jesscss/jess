@@ -24,7 +24,7 @@ One of the biggest needs is a declarative / cross-framework design language that
 
 ## Language
 The Jess language format should conform to these specs:
-1. Unlike Less/Sass, it should be CSS compliant as much as possible. That is, the syntax should more closely match parseable, supported CSS.
+1. It should be CSS compliant as much as possible (except nesting?). That is, the syntax should more closely match parseable, supported CSS.
 2. The file format should be something like `.jess.css`, so that code-coloring just works by default (but there may be Jess-specific constructs that could be added to the format.)
 3. There should be a declarative way to refer to the browser runtime environment (live queries). But it should be done in such a way that the majority of code could be static. In fact, Jess should allow completely static output. In other words, "Live" should be a kind of feature polyfill based on what features are used. (Maybe even to the extent that no "live" queries and no JS-bindable properties produces only CSS output, not CSS/JS? Not sure.) Long and short, the runtime should make itself as minimal and invisible as possible. If you don't use container queries in your style sheets, the `ResizeObserver` polyfill shouldn't be in the bundle, etc.
 
