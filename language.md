@@ -27,7 +27,7 @@ TBD
 .foo {
   background: red;
   :query(width > 300px) {
-    /** @set updates in-scope var, @define can override a new var for local scope */
+    /** @set updates in-scope var, @define creates (or overrides) a new var for local scope */
     @set { foo-match: 1; }
     background: blue;
   }
