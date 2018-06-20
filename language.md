@@ -35,8 +35,26 @@ Child components must be explicit using the explicit descendent combinator `>>`
 }
 ```
 
-## Exporting Vars
+### Exporting Props/Vars
+Using the above example:
+```css
+@define { tablet: 640; }
+.foo {
+  @define { val: 3; }
+  width: [[10px * val]];
+}
+@media (min-width: [[tablet]]px) {
+  // some other stuff
+}
+```
+```jsx
+import styles from `style.jess.css`
 
+console.log(styles.get('[tablet]')) // 640
+console.log(styles.foo.get('[val]')) // 3
+console.log(styles.foo.get('width')) // 60px
+console.log(styles.foo.getRaw('width')) // '[[10px * val]]'
+```
 
 ## Element Queries
 
@@ -56,7 +74,7 @@ Child components must be explicit using the explicit descendent combinator `>>`
 /** Set properties based on query matches elsewhere */
 .bar {
   color: white;
-  :when(foo-match = 1) {
+  :q([[foo-match]] = 1) {
     color: yellow;
   }
 }
