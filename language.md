@@ -44,16 +44,16 @@ Using the above example:
   width: [[10px * val]];
 }
 @media (min-width: [[tablet]]px) {
-  // some other stuff
+  /* some other stuff */
 }
 ```
 ```jsx
 import styles from `style.jess.css`
 
-console.log(styles.get('[tablet]')) // 640
-console.log(styles.foo.get('[val]')) // 3
-console.log(styles.foo.get('width')) // 60px
-console.log(styles.foo.getRaw('width')) // '[[10px * val]]'
+console.log(styles.get('[tablet]'))     /* 640              */
+console.log(styles.foo.get('[val]'))    /* 3                */
+console.log(styles.foo.get('width'))    /* 60px             */
+console.log(styles.foo.getRaw('width')) /* '[[10px * val]]' */
 ```
 
 ## Element Queries
