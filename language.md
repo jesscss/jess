@@ -91,8 +91,13 @@ body:q(scrollY?) {
    @set { scroll: [[scrollY]] }
 }
 
-div:q(visible > 50%) {
+.my-class:q(visible > 50%) {
   transform: translateY(-[[scroll / 2]]);
 }
 ```
 
+Maybe something like:
+```jsx
+// React
+<div ref={node => styles.bind(node, '.my-class'} />
+```
