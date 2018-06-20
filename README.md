@@ -1,3 +1,5 @@
+<p style="text-align: center"><img width="184" src="https://github.com/matthew-dean/jess/raw/master/simple-hawk-drawing-1.jpg"></p>
+
 # Project Jess
 Just Efficient Style Sheets (? or some other backronym?)
 
