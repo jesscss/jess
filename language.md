@@ -15,6 +15,7 @@ import styles from `style.jess.css`
 
 // Maybe <div className={styles.sel('.my-component-modifier')} /> is better?
 // CSS modules forced camelCasing is not CSS-friendly 
+// <div className={styles('.my-component-modifier').name /> ?
 ```
 Child components must be explicit using the explicit descendent combinator `>>`
 
