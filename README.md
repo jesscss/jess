@@ -5,11 +5,11 @@ Just Efficient Style Sheets (? or some other backronym?)
 
 Right now, this work is experimental and is a work-in-progress
 
-## The Theory
-Frameworks like Svelte compile HTML-like syntax into framework-less runtime libs.
+## The Elevator Pitch
+"Just like React updates the DOM, Jess updates the CSS OM."
 
-## Application
-Jess would do the same for CSS by compiling a CSS-like language into a framework-less runtime that _creates_ CSS, rather than outputting only CSS.
+## The Theory
+Frameworks like Svelte compile HTML-like syntax into framework-less runtime libs. Jess would do the same for CSS by compiling a CSS-like language into a framework-less runtime that _creates_ CSS, rather than outputting only CSS.
 
 ## The Need
 One of the biggest needs is a declarative / cross-framework design language that handles things like:
