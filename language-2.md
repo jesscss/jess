@@ -23,11 +23,13 @@ import {shade} from 'jess/func/colors';
 const def = new CSS((isSmall = false) => {
   return memo(isSmall, () => {
     return { 
+      // Class name + hash of transpiled styles
       css: `.box-237235 {
         height: var(--box-237235-1);
         color: #45F328;
         }`,
       vars: [
+        // Will be injected at :root for quick updates
         ['--box-237235-1', isSmall ? '30px' : '100px']
       ]
      }
