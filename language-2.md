@@ -25,7 +25,7 @@ const def = new CSS((isSmall = false) => {
       css: `.box-237235 {
         height: var(--box-237235-isSmall);
         }`,
-      vars: [['--box-237235-isSmall', isSmall ? '30px : '100px']]
+      vars: [['--box-237235-isSmall', isSmall ? '30px' : '100px']]
      }
   })
 });
