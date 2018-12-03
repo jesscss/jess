@@ -2,7 +2,7 @@
 ```less
 // component.jess
 ${
-  import {Colors} from 'variables.jess';
+  import {Colors} from 'variables';
   import {shade} from 'jess/func/colors';
 }
 
@@ -10,22 +10,26 @@ ${
 
 .box {
   height: ${isSmall ? '30px' : '100px'};
+  color: ${shade(Colors.brand, 0.5)};
 }
 
 ```
 Above transpiles to:
 ```js
 import {CSS} from 'jess';
-import {Colors} from 'variables.jess';
+import {Colors} from 'variables';
 import {shade} from 'jess/func/colors';
 
 const def = new CSS((isSmall = false) => {
   return memo(isSmall, () => {
     return { 
       css: `.box-237235 {
-        height: var(--box-237235-isSmall);
+        height: var(--box-237235-1);
+        color: #45F328;
         }`,
-      vars: [['--box-237235-isSmall', isSmall ? '30px' : '100px']]
+      vars: [
+        ['--box-237235-1', isSmall ? '30px' : '100px']
+      ]
      }
   })
 });
