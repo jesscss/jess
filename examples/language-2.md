@@ -29,11 +29,10 @@ const def = new CSS(({ isSmall: false }) => {
     vars: [
       // Will be injected at :root for quick updates
       ['--box-237235-1', isSmall ? '30px' : '100px']
-    ]
+    ],
+    box: 'box-237235'
    }
 });
-
-def.box = 'box-237235';
 
 export default def;
 ```
