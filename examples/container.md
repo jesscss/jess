@@ -72,7 +72,7 @@ static
 ```html
 <style>
 .box {
-  width: var(--box-1);
+  width: var(--box-1, 50px);
 }
 .box-var1 {
   --box-1: 50px;
