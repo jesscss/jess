@@ -69,7 +69,8 @@ class component extends React.Component {
 }
 ```
 static
-```css
+```html
+<style>
 .box {
   width: var(--box-1);
 }
@@ -82,4 +83,7 @@ static
 .box-var3 {
   --box-1: 200px;
 }
+</style>
+
+<div class="box box-var1"></div>
 ```
