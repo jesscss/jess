@@ -44,7 +44,7 @@ const component = props => {
 static
 ```css
 .box {
-  display: var(--box-1);
+  display: var(--box-1, block);
 }
 .box-block {
   --box-1: block;
