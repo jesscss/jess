@@ -31,7 +31,9 @@ const def = new CSS(({ isSmall: false }) => {
         height: var(--box-1, 30px);  // evaluated values
         color: var(--box-2, #45F328);
         }`,
-      // dynamic <style>, inject at :root?
+      // dynamic <style> - attach to individual classes also attached to element,
+      // See: https://lisilinhart.info/posts/css-variables-performance/
+      // How to handle this (where to put it?) for custom elements? 
       ['--box-1', () => isSmall ? '30px' : '100px'],
       [`--box-2`, () => shade(Colors.brand, 0.5)]
     ],
