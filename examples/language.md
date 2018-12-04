@@ -163,3 +163,72 @@ The above would output, as expected:
   width: 100px;
 }
 ```
+
+Want to add color functions?
+
+```less
+@{
+  import {mix} from 'third-party'
+  import {Colors} from './constants'
+}
+
+.box {
+  background: ${mix(Colors.theme, '#000000', 0.5)};
+}
+```
+This will evaluate at compile time, and you'll end up with something like:
+```css
+.box {
+  background: #ec0233;
+}
+```
+
+### State variables
+
+So far, all the examples have demonstrated how to create essentially static CSS. The JavaScript is evaluated at compile-time, and either used as a `.css` in a `<link>` tag or as `<style>` HTML injected with your component.
+
+Jess has one more special construct which is a `$$` JavaScript statement. What it is is an exposed state property used to create dynamic styling. This makes Jess more powerful than straight CSS modules.
+
+```less
+// main.jess
+
+// state variable
+$$color = 'red'
+
+.box {
+  background: white;
+  color: ${color};
+}
+```
+
+In your component:
+```jsx
+import styles from './main.jess'
+
+const MyComponent = props => {
+  const style = styles({color: props.color})
+  <div className={style.box} />
+}
+
+export default MyComponent
+```
+
+In order to keep things efficient, Jess will split styles that are dynamic. Meaning, the output will eventually look something like:
+```html
+<style>
+  .box {
+    background: white;
+    color: var(--box-1, red);
+  }
+</style>
+
+<!-- only this style tag will get updated on state changes, for a limited render tree update -->
+<style>
+  .box-variant-1 {
+    --box-1: red;
+  }
+</style>
+
+<div class="box box-variant-1" />
+
+```
