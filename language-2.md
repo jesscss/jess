@@ -6,7 +6,7 @@ ${
   import {shade} from 'jess/func/colors';
 }
 
-@var (isSmall: false);
+$$isSmall: false;  // externally bound variable
 
 .box {
   height: ${isSmall ? '30px' : '100px'};
@@ -19,7 +19,7 @@ Above transpiles to:
 import {CSS} from 'jess';
 
 // Memoized on isSmall
-const def = new CSS((isSmall = false) => {
+const def = new CSS(({ isSmall: false }) => {
   return { 
     // Class name + hash of transpiled styles
     css: `.box-237235 {
@@ -42,6 +42,6 @@ export default def;
 import styles from './component.jess'
 
 const component = ({isSmall}) => {
-  <div className={styles(isSmall).box}
+  <div className={styles({isSmall}).box}
 }
 ```
