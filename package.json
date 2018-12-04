@@ -1,0 +1,40 @@
+{
+  "name": "jess",
+  "version": "0.0.1",
+  "description": "JavaScript Evaluated Style Sheets",
+  "main": "dist/jess.cjs.js",
+  "module": "dist/jess.esm.js",
+  "browser": "dist/jess.umd.js",
+  "dependencies": {
+    "autoprefixer": "^9.4.0",
+    "postcss": "^7.0.6",
+    "postcss-nested": "^4.1.0"
+  },
+  "devDependencies": {
+    "babel-preset-env": "^1.6.0",
+    "rollup": "^0.46.0",
+    "rollup-plugin-babel": "^2.7.1",
+    "rollup-plugin-commonjs": "^8.0.2",
+    "rollup-plugin-node-resolve": "^3.0.0"
+  },
+  "scripts": {
+    "prepublish": "npm run build",
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
+    "test": "node test/test.js",
+    "pretest": "npm run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/matthew-dean/jess.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/matthew-dean/jess/issues"
+  },
+  "homepage": "https://github.com/matthew-dean/jess#readme"
+}

@@ -1,0 +1,14 @@
+@{
+  import {CSS} from '../..'
+  import {button} from './button.jess'
+  import {mixin} from './mixins.jess'
+
+  export default CSS(['isSmart'])
+}
+
+.main {
+  ${button} {
+    color: red;
+    ${mixin(5)}
+  }
+}
