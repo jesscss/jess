@@ -1,7 +1,7 @@
 
 ```less
 // component.jess
-${
+@{
   import {Colors} from 'variables';
   import {shade} from 'jess/func/colors';
 }
