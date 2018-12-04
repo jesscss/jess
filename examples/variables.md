@@ -51,6 +51,7 @@ import {CSS} from 'jess'
 const def = () => {
   return CSS({t: `.box {\n  color: red;\n}`});
 }
+def.box = 'box'
 
 export default def
 ```
