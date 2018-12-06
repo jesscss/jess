@@ -32,11 +32,11 @@ export default def
 So far, so good. It looks something like a CSS module. Big deal.
 
 However, the Jess file itself allows you to import other modules. Unlike Sass and Less,
-these can be any other JS module, or another Jess file. This is done using the `@{}` preamble block.
+these can be any other JS module, or another Jess file, using `@import` for either.
 
-### JS all up in your CSS
+### Imports
 
-Here's an example of a preamble:
+Here's an example:
 
 ```less
 @import {Colors} from './constants.js';
@@ -51,55 +51,62 @@ This means you can use `${}` tags to evaluate any JS to output a string.
 }
 ```
 
-There are two more ways to use JavaScript in your Jess file.
-
-When you prepend a line with `$`, you can use literally any JS. That means declaring vars, for loops, if statements, etc.
-The `$` will "stop" evaluating as JS at the end of the line, unless that line starts a block,
-in which case it will evaluate the line of the matching closing block. This is best done by example.
+For convenience, you can declare JavaScript variables inline with `@var`.
 
 ```less
-@var type: 'inline';
+@var blockType: 'inline';
 
 .box {
-  display: ${type === 'inline' ? 'inline' : 'block'};
+  display: ${blockType === 'inline' ? 'inline' : 'block'};
 }
 ```
 In simplified terms, this will return what you would expect, a template string that looks like:
 ```js
-let type = 'inline'
+let blockType = 'inline'
 t = `.box {
-  display: ${type === 'inline' ? 'inline' : 'block'};                 
+  display: ${blockType === 'inline' ? 'inline' : 'block'};                 
 }`
 return t
 ```
 _Note: this isn't what the "final" `<style>` tag will look like returned to your component or stylesheet,
 as Jess will do a number of other optimizations to create efficient style injection. See: Advanced (TODO)_
 
-### Matching JS blocks
+By the way, you could also just import this variable from JavaScript. Unlike Less / Sass, variable values are not special types.
+```js
+// variables.js
+export let blockType = 'inline'
+```
+```less
+// main.jess
+@import {blockType} from 'variables.js';
 
-The JS matching is smart enough that any opening `{` `(` `[` will look for block ends, meaning you can also do something like:
+.box {
+  display: ${blockType === 'inline' ? 'inline' : 'block'};
+}
+```
+
+### Wrapping CSS in JS expressions
+
+While you're in a `${}` JavaScript expression, you can "switch" back into CSS mode with backticks, and use that as part of the returned expression. (This is also useful for determining code coloring / hinting in IDEs.)
 
 ```less
 @var arr: ['50px', '100px', '200px'];
 
-// Call a function with each argument following added to JS function call?
-${arr.forEach((value, index) => {css`
+${arr.forEach((value, index) => `
   .col-${index} {
     width: ${value};
   }
-`})
+`)}
 ```
-
+This will get translated to a CSS-building function.
 ```js
 let arr = ['50px', '100px', '200px'];
 
-t = ''
-arr.forEach((value, index) => {
-t += `
+arr.forEach((value, index) => css`
   .col-${index} {
     width: ${value};
   }
-`})
+`)
 ```
 
 
@@ -123,11 +130,13 @@ For example, need a mixin? Just use a function.
 
 ```js
 // functions.js
+import {css} from 'jest';
+
 export function square(size) {
   return css`
     width: ${size}px;
     height: ${size}px;
-  `;
+  `
 }
 ```
 
@@ -136,32 +145,6 @@ export function square(size) {
 
 .box {
   ${square(50)}
-}
-```
-
-Need more logic in your mixin? Just add some `if` statements.
-```less
-@function shape(size) {
-  height: ${size}px;
-  width: ${if(size < 100, size, size * 2)};
-}
-
-.box-1 {
-  ${shape(50)}
-}
-.box-2 {
-  ${shape(100)}
-}
-```
-The above would output, as expected:
-```css
-.box-1 {
-  height: 50px;
-  width: 50px;
-}
-.box-2 {
-  height: 50px;
-  width: 100px;
 }
 ```
 
@@ -186,13 +169,13 @@ This will evaluate at compile time, and you'll end up with something like:
 
 So far, all the examples have demonstrated how to create essentially static CSS. The JavaScript is evaluated at compile-time, and either used as a `.css` in a `<link>` tag or as `<style>` HTML injected with your component.
 
-Jess has one more special construct which is a `$$` JavaScript statement. What it is is an exposed state property used to create dynamic styling. This makes Jess more powerful than straight CSS modules.
+Jess has one more syntax variant for variables which is a `@public` at-rule. What it is is an exposed state property used to create dynamic styling. This makes Jess more powerful than straight CSS modules.
 
 ```less
 // main.jess
 
 // state variable
-$$color: red;
+@public color: 'red';
 
 .box {
   background: white;
