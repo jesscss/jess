@@ -139,7 +139,7 @@ To make migration / code compatibility easier, like Less and Sass, Jess supports
 }
 ```
 Similarly, `@media` and `@supports` rules will bubble.
-```
+```less
 .button {
   padding: 20px;
   @media (min-width: 800px) {
@@ -279,7 +279,7 @@ Because you have the entire power of JavaScript at your disposal, you don't need
 
 ```js
 // functions.js
-import {css} from 'jest';
+import {css} from 'jess';
 
 export function square(size) {
   return css`
