@@ -87,11 +87,11 @@ The JS matching is smart enough that any opening `{` `(` `[` will look for block
 $arr: 50px, 100px, 200px;
 
 // Call a function with each argument following added to JS function call?
-@call each(arr), value, index {
+${arr.forEach((value, index) => {`
   .col-${index} {
     width: ${value};
   }
-}
+`})
 ```
 
 ```js
