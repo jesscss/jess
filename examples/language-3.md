@@ -58,19 +58,17 @@ The `$` will "stop" evaluating as JS at the end of the line, unless that line st
 in which case it will evaluate the line of the matching closing block. This is best done by example.
 
 ```less
-@import {if} from 'jess/functions';
-
-$type: inline;
+@var type: 'inline';
 
 .box {
-  display: ${if(type === 'inline', 'inline', 'block')};
+  display: ${type === 'inline' ? 'inline' : 'block'};
 }
 ```
 In simplified terms, this will return what you would expect, a template string that looks like:
 ```js
 let type = 'inline'
 t = `.box {
-  display: ${if(type === 'inline', 'inline', 'block')};                 
+  display: ${type === 'inline' ? 'inline' : 'block'};                 
 }`
 return t
 ```
@@ -82,12 +80,10 @@ as Jess will do a number of other optimizations to create efficient style inject
 The JS matching is smart enough that any opening `{` `(` `[` will look for block ends, meaning you can also do something like:
 
 ```less
-@import {each} from 'functions'
-
-$arr: 50px, 100px, 200px;
+@var arr: ['50px', '100px', '200px'];
 
 // Call a function with each argument following added to JS function call?
-${arr.forEach((value, index) => {`
+${arr.forEach((value, index) => {css`
   .col-${index} {
     width: ${value};
   }
@@ -98,13 +94,12 @@ ${arr.forEach((value, index) => {`
 let arr = ['50px', '100px', '200px'];
 
 t = ''
-each(arr, (value, index) => {
+arr.forEach((value, index) => {
 t += `
   .col-${index} {
     width: ${value};
   }
-`
-})
+`})
 ```
 
 
@@ -126,29 +121,24 @@ When all is said and done, you would end up with styles like:
 Because you have the entire power of JavaScript at your disposal, nothing else really needs to be added into the language.
 For example, need a mixin? Just use a function.
 
-```less
-@function square(size) {
-  width: ${size}px;
-  height: ${size}px;
-}
-
-.box {
-  ${square(50)}
-}
-```
-
 ```js
-function square(size) {
-t += `
-  width: ${size}px;
-  height: ${size}px;
-`
+// functions.js
+export function square(size) {
+  return css`
+    width: ${size}px;
+    height: ${size}px;
+  `;
 }
+```
+
+```less
+@import {square} from './functions.js';
 
 .box {
   ${square(50)}
 }
 ```
+
 Need more logic in your mixin? Just add some `if` statements.
 ```less
 @function shape(size) {
