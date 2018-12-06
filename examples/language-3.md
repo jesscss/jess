@@ -1,6 +1,4 @@
-THIS IS ME JUST FUCKIN AROUND, IGNORE
-
-
+WIP - STILL PLAYING WITH SYNTAX
 
 
 First, like Less or Sass, a valid `.css` file is a valid `.jess` file.
@@ -42,7 +40,7 @@ Here's an example:
 @import {Colors} from './constants.js';
 ```
 How would you use that? You can imagine the rest of the file as a JS template block, wrapped in ``` `` ``` characters.
-This means you can use `${}` tags to evaluate any JS to output a string.
+This means you can use `${}` tags in your styles to evaluate a JS expression and output a string.
 ```less
 @import {Colors} from './constants.js';
 
@@ -54,7 +52,7 @@ This means you can use `${}` tags to evaluate any JS to output a string.
 For convenience, you can declare JavaScript variables inline with `@var`.
 
 ```less
-@var blockType: 'inline';
+@var {blockType: 'inline'}
 
 .box {
   display: ${blockType === 'inline' ? 'inline' : 'block'};
@@ -63,34 +61,20 @@ For convenience, you can declare JavaScript variables inline with `@var`.
 In simplified terms, this will return what you would expect, a template string that looks like:
 ```js
 let blockType = 'inline'
-t = `.box {
-  display: ${blockType === 'inline' ? 'inline' : 'block'};                 
+
+return css`.box {
+  display: ${String(blockType === 'inline' ? 'inline' : 'block')};                 
 }`
-return t
 ```
 _Note: this isn't what the "final" `<style>` tag will look like returned to your component or stylesheet,
 as Jess will do a number of other optimizations to create efficient style injection. See: Advanced (TODO)_
-
-By the way, you could also just import this variable from JavaScript. Unlike Less / Sass, variable values are not special types.
-```js
-// variables.js
-export let blockType = 'inline'
-```
-```less
-// main.jess
-@import {blockType} from 'variables.js';
-
-.box {
-  display: ${blockType === 'inline' ? 'inline' : 'block'};
-}
-```
 
 ### Wrapping CSS in JS expressions
 
 While you're in a `${}` JavaScript expression, you can "switch" back into CSS mode with backticks, and use that as part of the returned expression. (This is also useful for determining code coloring / hinting in IDEs.)
 
 ```less
-@var arr: ['50px', '100px', '200px'];
+@var {arr: ['50px', '100px', '200px']}
 
 ${arr.forEach((value, index) => `
   .col-${index} {
@@ -151,7 +135,7 @@ export function square(size) {
 Want to add color functions?
 
 ```less
-@import {mix} from 'third-party';
+@import {mix} from 'jess/color';
 @import {Colors} from './constants';
 
 .box {
