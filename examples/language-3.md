@@ -37,22 +37,22 @@ these can be any other JS module, or another Jess file, using `@import` for eith
 Here's an example:
 
 ```less
-@import {Colors} from './constants.js';
+@import {colors} from './constants.js';
 ```
 How would you use that? You can imagine the rest of the file as a JS template block, wrapped in ``` `` ``` characters.
 This means you can use `${}` tags in your styles to evaluate a JS expression and output a string.
 ```less
-@import {Colors} from './constants.js';
+@import {colors} from './constants.js';
 
 .box {
-  color: ${Colors.foreground};
+  color: ${colors.foreground};
 }
 ```
 
 For convenience, you can declare JavaScript variables inline with `@var`.
 
 ```less
-@var {blockType: 'inline'}
+@var blockType: 'inline';
 
 .box {
   display: ${blockType === 'inline' ? 'inline' : 'block'};
@@ -60,6 +60,7 @@ For convenience, you can declare JavaScript variables inline with `@var`.
 ```
 In simplified terms, this will return what you would expect, a template string that looks like:
 ```js
+// this is an oversimplification of output code, but demonstrates the 1-to-1 relationship with JS
 let blockType = 'inline'
 
 return css`.box {
@@ -74,23 +75,29 @@ as Jess will do a number of other optimizations to create efficient style inject
 While you're in a `${}` JavaScript expression, you can "switch" back into CSS mode with backticks, and use that as part of the returned expression. (This is also useful for determining code coloring / hinting in IDEs.)
 
 ```less
-@var {arr: ['50px', '100px', '200px']}
+// Probably would add an each helper to map and join
+// @import {each} from 'jess/helpers';
 
-${arr.forEach((value, index) => `
+@var arr: ['50px', '100px', '200px'];
+
+${arr.map((value, index) => `
   .col-${index} {
     width: ${value};
   }
-`)}
+`).join('\n')}
 ```
-This will get translated to a CSS-building function.
+This will get translated pretty straightforwardly.
 ```js
 let arr = ['50px', '100px', '200px'];
+let t = ''
 
-arr.forEach((value, index) => css`
+t += arr.map((value, index) => `
   .col-${index} {
     width: ${value};
   }
-`)
+`).join('\n')
+
+return t
 ```
 
 
@@ -139,7 +146,7 @@ Want to add color functions?
 @import {Colors} from './constants';
 
 .box {
-  background: ${mix(Colors.theme, '#000000', 0.5)};
+  background: ${mix(Colors.theme, `#000000`, 0.5)};
 }
 ```
 This will evaluate at compile time, and you'll end up with something like:
@@ -148,6 +155,8 @@ This will evaluate at compile time, and you'll end up with something like:
   background: #ec0233;
 }
 ```
+Sass control blocks like `@each`, `@for`, and `@if` are not needed, because all of those constructs exist in CSS, and you can 
+
 
 ### State variables
 
@@ -198,3 +207,69 @@ In order to keep things efficient, Jess will split styles that are dynamic. Mean
 <div class="box box-variant-1" />
 
 ```
+
+### Importing from other Jess files
+
+`@var` and `@public` are available as exports on Jess-compiled files. So why is one marked public? _(Should it be marked `@interface` or `@state`?)_ Basically, `@var`s are a way to mark values that are safe for static compile-time evaluation. That means that anything depending on a `@var` variable will not change, and the CSS can be statically exported.
+
+Conversely, as noted above, `@public` variables expose an interface in the JS module that means that anything evaluated using it must also export a function (and any dependencies) in a bundle so that it can be re-computed in the future.
+
+```less
+// theme.jess
+@import {mix} from 'jess/color';
+
+// This is just a regular JS object
+@var {
+  colors: {
+    background: `#000`,
+    foreground: `#FFF`,
+    halfway: mix(colors.background, colors.foreground, 0.5)
+  }
+}
+```
+```less
+@import {colors} from './theme.jess';
+
+.box {
+  color: ${colors.foreground};
+}
+```
+Jess files can use the same JS API to change evaluation of an instance of the underlying module. Because they're marked with `@var`, the resulting output is still static at compile-time.
+
+```
+// main.jess
+
+@import styles from './theme.jess';
+
+@var {colors: styles({colors: {background: `#F00`}}).colors}
+
+.box {
+  color: ${colors.halfway};
+}
+```
+Output is:
+```
+.box {
+  color: #fffefe;
+}
+```
+
+If, however, the colors were marked with public, the output would be more like:
+```
+.box {
+  color: var(--box-color, #fffefe);
+}
+
+// this would be marked for dynamic updates
+.box {
+  --box-color: #fffefe;
+}
+```
+With a JS object that would have...
+```js
+import {mix} from 'jess/functions';
+// ...
+['--box-color', () => mix(colors.background, colors.foreground, 0.5)]
+// ... does stuff
+```
+... as part of the bundle.
