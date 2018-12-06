@@ -75,31 +75,42 @@ as Jess will do a number of other optimizations to create efficient style inject
 While you're in a `${}` JavaScript expression, you can "switch" back into CSS mode with backticks, and use that as part of the returned expression. (This is also useful for determining code coloring / hinting in IDEs.)
 
 ```less
-// Probably would add an each helper to map and join
-// @import {each} from 'jess/helpers';
+@import {each} from 'jess/helpers';
 
 @var arr: ['50px', '100px', '200px'];
 
-${arr.map((value, index) => `
+${each(arr, (value, index) => `
   .col-${index} {
     width: ${value};
   }
-`).join('\n')}
+`)}
 ```
 This will get translated pretty straightforwardly.
 ```js
-let arr = ['50px', '100px', '200px'];
-let t = ''
+import {each} from 'jess/helpers';
 
-t += arr.map((value, index) => `
+let arr = ['50px', '100px', '200px'];
+
+each(arr, (value, index) => `
   .col-${index} {
     width: ${value};
   }
-`).join('\n')
-
-return t
+`)
 ```
+The `each` helper is pretty simple:
+```js
+import {CSSBuilder} from 'jess'
 
+// for CSS blocks you need to concat and return
+let css = new CSSBuilder()
+
+export const each = (arr, func) => {
+  arr.forEach((value, index) => {
+    css(func(value, index))
+  })
+  return css
+}
+```
 
 When all is said and done, you would end up with styles like:
 ```css
