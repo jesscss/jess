@@ -155,7 +155,7 @@ This will evaluate at compile time, and you'll end up with something like:
   background: #ec0233;
 }
 ```
-Sass control blocks like `@each`, `@for`, and `@if` are not needed, because all of those constructs exist in CSS, and you can 
+Sass control blocks like `@each`, `@for`, and `@if` are not needed, because all of those constructs exist in JavaScript, and you can add additional helper functions that you pass blocks of declarations to.
 
 
 ### State variables
