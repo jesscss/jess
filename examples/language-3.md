@@ -127,8 +127,155 @@ When all is said and done, you would end up with styles like:
 
 ### Migrating from Sass / Less
 
-Because you have the entire power of JavaScript at your disposal, nothing else really needs to be added into the language.
-For example, need a mixin? Just use a function.
+#### Nesting
+
+To make migration / code compatibility easier, like Less and Sass, Jess supports basic CSS + Nesting.
+```less
+.button {
+  color: red;
+  &:hover {
+    color: blue;
+  }
+}
+```
+Similarly, `@media` and `@supports` rules will bubble.
+```
+.button {
+  padding: 20px;
+  @media (min-width: 800px) {
+    padding: 40px;
+  }
+}
+```
+
+#### Variables
+
+Variables are just JavaScript, because they're referenced in JS expressions.
+
+```less
+// Less variable
+@color-brand: #AAAAFC;
+
+// Sass variable
+@color-brand: #AAAAFC;
+
+// Jess variable
+@var colorBrand: `#AAAAFC`;
+```
+Unlike Sass / Less, Jess variables don't "leak" across imports. Jess imports follow the rules of ES6 imports, which has the benefit of meaning that evaluation is much faster, IDEs can implement code-completion on variables, and there are fewer side effects.
+
+If you want a variable from another `.jess` stylesheet, you need to `@import` it. _(Note: only variables in the root of the stylesheet are exported.)_
+
+```less
+@import {colorBrand} from './variables.jess';
+
+// ...
+color: ${colorBrand};
+```
+#### Maps
+
+Variables are written in the form of JS objects. Meaning:
+```less
+@var colorBrand: '#AAAAFC`;
+```
+...is the same as...
+```less
+@var {colorBrand: '#AAAAFC`}
+```
+The root `{}` around variable declarations are ommittable as syntactic sugar.
+
+What this means is that you can declare groups of variables, or create map-like structures.
+```less
+// everything after `@var` is evaluated as JavaScript until a closing outer `}` or `;`
+@var {
+  colors: {
+    background: `#000`,
+    foreground: `#FFF`
+  }
+}
+
+.box {
+  color: ${colors.foreground};
+}
+```
+For faster processing, Jess variables must be at the root of the stylesheet, and will have a value per evaluation of the stylesheet.
+
+#### Public Variables
+
+Instead of declaring variables with `@var`, you can use `@public`, as in:
+```
+@public boxSize: `20px`;
+```
+What's the difference? Basically, `@var`s are a way to mark values that are safe for static compile-time evaluation. That means that anything depending on a `@var` variable will not change, and the CSS can be statically exported. This changes the export of the Jess module. `@public` variables expose an interface in the JS module that means that anything evaluated using it must also export a function (and any dependencies) in a bundle so that it can be re-computed in the future.
+
+Here's an example to illustrate, first using `@var`.
+
+```less
+// theme.jess
+@import {mix} from 'jess/color';
+
+@var {
+  colors: {
+    background: `#000`,
+    foreground: `#FFF`,
+    halfway: mix(colors.background, colors.foreground, 0.5)
+  }
+}
+```
+```less
+@import {colors} from './theme.jess';
+
+.box {
+  color: ${colors.foreground};
+}
+```
+Jess files can use the Jess styles API to change evaluation of an instance of the underlying module. Because they're marked with `@var`, the resulting output is still static at compile-time.
+
+```less
+// main.jess
+
+@import styles from './theme.jess';
+
+@var {colors: styles({colors: {background: `#F00`}}).colors}
+
+.box {
+  color: ${colors.halfway};
+}
+```
+Output is:
+```less
+.box {
+  color: #fffefe;
+}
+```
+
+If, however, the colors were marked with `@public`, the output would be more like:
+```less
+.box {
+  color: var(--box-color, #fffefe);
+}
+
+// this would be marked for dynamic updates
+.box {
+  --box-color: #fffefe;
+}
+```
+With a JS object that would have...
+```js
+import {mix} from 'jess/functions';
+// ...
+['--box-color', () => mix(colors.background, colors.foreground, 0.5)]
+// ... does stuff
+```
+... as part of the JavaScript bundle.
+
+#### Rules for JS expressions
+
+An `${}` expression can appear almost anywhere, but only declaration values can have JS expressions that refer to `@public` variables. This is because the CSS must be able to be parsed at compile-time for static analysis of class names and values that will change, and to flatten any nested rules.
+
+#### Mixins
+
+Because you have the entire power of JavaScript at your disposal, you don't need mixins or Sass's `@function` constructs. Just write a JS function.
 
 ```js
 // functions.js
@@ -166,14 +313,14 @@ This will evaluate at compile time, and you'll end up with something like:
   background: #ec0233;
 }
 ```
-Sass control blocks like `@each`, `@for`, and `@if` are not needed, because all of those constructs exist in JavaScript, and you can add additional helper functions that you pass blocks of declarations to.
+Sass control blocks like `@each`, `@for`, and `@if` are not needed, because all of those constructs exist in JavaScript. For convenience, though, Jess has `each`, `for`, and `if` helpers.
 
 
-### State variables
+### Using Jess in components
 
 So far, all the examples have demonstrated how to create essentially static CSS. The JavaScript is evaluated at compile-time, and either used as a `.css` in a `<link>` tag or as `<style>` HTML injected with your component.
 
-Jess has one more syntax variant for variables which is a `@public` at-rule. What it is is an exposed state property used to create dynamic styling. This makes Jess more powerful than straight CSS modules.
+When you're expose a `@public` variable, what it is is a kind of state property used to create dynamic styling. This makes Jess more powerful than straight CSS modules.
 
 ```less
 // main.jess
@@ -218,69 +365,3 @@ In order to keep things efficient, Jess will split styles that are dynamic. Mean
 <div class="box box-variant-1" />
 
 ```
-
-### Importing from other Jess files
-
-`@var` and `@public` are available as exports on Jess-compiled files. So why is one marked public? _(Should it be marked `@interface` or `@state`?)_ Basically, `@var`s are a way to mark values that are safe for static compile-time evaluation. That means that anything depending on a `@var` variable will not change, and the CSS can be statically exported.
-
-Conversely, as noted above, `@public` variables expose an interface in the JS module that means that anything evaluated using it must also export a function (and any dependencies) in a bundle so that it can be re-computed in the future.
-
-```less
-// theme.jess
-@import {mix} from 'jess/color';
-
-// This is just a regular JS object
-@var {
-  colors: {
-    background: `#000`,
-    foreground: `#FFF`,
-    halfway: mix(colors.background, colors.foreground, 0.5)
-  }
-}
-```
-```less
-@import {colors} from './theme.jess';
-
-.box {
-  color: ${colors.foreground};
-}
-```
-Jess files can use the same JS API to change evaluation of an instance of the underlying module. Because they're marked with `@var`, the resulting output is still static at compile-time.
-
-```less
-// main.jess
-
-@import styles from './theme.jess';
-
-@var {colors: styles({colors: {background: `#F00`}}).colors}
-
-.box {
-  color: ${colors.halfway};
-}
-```
-Output is:
-```less
-.box {
-  color: #fffefe;
-}
-```
-
-If, however, the colors were marked with public, the output would be more like:
-```less
-.box {
-  color: var(--box-color, #fffefe);
-}
-
-// this would be marked for dynamic updates
-.box {
-  --box-color: #fffefe;
-}
-```
-With a JS object that would have...
-```js
-import {mix} from 'jess/functions';
-// ...
-['--box-color', () => mix(colors.background, colors.foreground, 0.5)]
-// ... does stuff
-```
-... as part of the bundle.
