@@ -236,7 +236,7 @@ Conversely, as noted above, `@public` variables expose an interface in the JS mo
 ```
 Jess files can use the same JS API to change evaluation of an instance of the underlying module. Because they're marked with `@var`, the resulting output is still static at compile-time.
 
-```
+```less
 // main.jess
 
 @import styles from './theme.jess';
@@ -248,14 +248,14 @@ Jess files can use the same JS API to change evaluation of an instance of the un
 }
 ```
 Output is:
-```
+```less
 .box {
   color: #fffefe;
 }
 ```
 
 If, however, the colors were marked with public, the output would be more like:
-```
+```less
 .box {
   color: var(--box-color, #fffefe);
 }
