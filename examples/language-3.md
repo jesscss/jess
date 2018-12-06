@@ -164,7 +164,7 @@ Variables are just JavaScript, because they're referenced in JS expressions.
 ```
 Unlike Sass / Less, Jess variables don't "leak" across imports. Jess imports follow the rules of ES6 imports, which has the benefit of meaning that evaluation is much faster, IDEs can implement code-completion on variables, and there are fewer side effects.
 
-If you want a variable from another `.jess` stylesheet, you need to `@import` it. _(Note: only variables in the root of the stylesheet are exported.)_
+If you want a variable from another `.jess` stylesheet, you need to `@import` it.
 
 ```less
 @import {colorBrand} from './variables.jess';
