@@ -193,7 +193,7 @@ What this means is that you can declare groups of variables, or create map-like 
 ```
 For faster processing, Jess variables must be at the root of the stylesheet, and will have a value per evaluation of the stylesheet.
 
-#### Public Variables
+#### Dynamic Variables
 
 Instead of declaring variables with `@set`, you can use `@dynamic`, as in:
 ```
