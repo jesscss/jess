@@ -1,6 +1,3 @@
-WIP - STILL PLAYING WITH SYNTAX
-
-
 First, like Less or Sass, a valid `.css` file is a valid `.jess` file.
 ```less
 // box.jess
@@ -52,7 +49,7 @@ This means you can use `${}` tags in your styles to evaluate a JS expression and
 For convenience, you can declare JavaScript variables inline with `@var`.
 
 ```less
-@var blockType: 'inline';
+@var {blockType: 'inline'}
 
 .box {
   display: ${blockType === 'inline' ? 'inline' : 'block'};
@@ -77,7 +74,7 @@ While you're in a `${}` JavaScript expression, you can "switch" back into CSS mo
 ```less
 @import {each} from 'jess/helpers';
 
-@var arr: ['50px', '100px', '200px'];
+@var {arr: ['50px', '100px', '200px']}
 
 ${each(arr, (value, index) => `
   .col-${index} {
@@ -89,6 +86,7 @@ This will get translated pretty straightforwardly.
 ```js
 import {each} from 'jess/helpers';
 
+// TODO rewrite
 let arr = ['50px', '100px', '200px'];
 
 each(arr, (value, index) => `
@@ -160,7 +158,7 @@ Variables are just JavaScript, because they're referenced in JS expressions.
 @color-brand: #AAAAFC;
 
 // Jess variable
-@var colorBrand: `#AAAAFC`;
+@var {colorBrand: `#AAAAFC`}
 ```
 Unlike Sass / Less, Jess variables don't "leak" across imports. Jess imports follow the rules of ES6 imports, which has the benefit of meaning that evaluation is much faster, IDEs can implement code-completion on variables, and there are fewer side effects.
 
@@ -174,15 +172,10 @@ color: ${colorBrand};
 ```
 #### Maps
 
-Variables are written in the form of JS objects. Meaning:
-```less
-@var colorBrand: '#AAAAFC`;
-```
-...is the same as...
+Variables are written in JS object syntax. As in:
 ```less
 @var {colorBrand: '#AAAAFC`}
 ```
-The root `{}` around variable declarations are ommittable as syntactic sugar.
 
 What this means is that you can declare groups of variables, or create map-like structures.
 ```less
@@ -204,7 +197,7 @@ For faster processing, Jess variables must be at the root of the stylesheet, and
 
 Instead of declaring variables with `@var`, you can use `@public`, as in:
 ```
-@public boxSize: `20px`;
+@public {boxSize: `20px`}
 ```
 What's the difference? Basically, `@var`s are a way to mark values that are safe for static compile-time evaluation. That means that anything depending on a `@var` variable will not change, and the CSS can be statically exported. This changes the export of the Jess module. `@public` variables expose an interface in the JS module that means that anything evaluated using it must also export a function (and any dependencies) in a bundle so that it can be re-computed in the future.
 
@@ -326,7 +319,7 @@ When you're expose a `@public` variable, what it is is a kind of state property 
 // main.jess
 
 // state variable
-@public color: 'red';
+@public {color: 'red'}
 
 .box {
   background: white;
