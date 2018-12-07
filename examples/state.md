@@ -1,18 +1,15 @@
 
 *state.jess*
 ```less
-$$state = 'block'
+@state {state: 'block'}
 
 .box {
-  $if (state === 'block') {
-    display: block;
-  } else {
-    display: inline;
-  }
+  display: ${state};
 }
 ```
 Interpreted as:
 ```js
+// TODO update with above example
 import {CSS} from 'jess'
 
 export let state = 'block'
