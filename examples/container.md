@@ -1,16 +1,12 @@
 
 *container.jess*
 ```less
-$$containerWidth = 9999
+@import {if} from 'jess/helpers';
+
+@var { containerWidth: 9999 }
 
 .box {
-  $if (containerWidth < 600) {
-    width: 50px;
-  } else if (containerWidth < 900) {
-    width: 100px;
-  } else if (containerWidth < 1200) {
-    width: 200px;
-  }
+  width: ${if(containerWidth < 1200, if(containerWidth < 600, '50px', '100px'), '200px')};
 }
 ```
 Interpreted as:
@@ -23,15 +19,9 @@ const def = config => {
   // config setup
   return CSS({t: () => {
     let t = ''
-    t += '.box {'
-    if (containerWidth < 600) {
-      t += 'width: 50px;'
-    } else if (containerWidth < 900) {
-      t += 'width: 100px;'
-    } else if (containerWidth < 1200) {
-      t += 'width: 200px;'
-    }
-    t += '}'
+    t += '.box { width: '
+    t += if(containerWidth < 1200, if(containerWidth < 600, '50px', '100px'), '200px')
+    t += ';}'
     return t
   }});
 }
