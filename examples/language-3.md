@@ -46,10 +46,10 @@ This means you can use `${}` tags in your styles to evaluate a JS expression and
 }
 ```
 
-For convenience, you can declare JavaScript variables inline with `@var`.
+For convenience, you can declare JavaScript variables inline with `@set`.
 
 ```less
-@var {blockType: 'inline'}
+@set {blockType: 'inline'}
 
 .box {
   display: ${blockType === 'inline' ? 'inline' : 'block'};
@@ -74,7 +74,7 @@ While you're in a `${}` JavaScript expression, you can "switch" back into CSS mo
 ```less
 @import {each} from 'jess/helpers';
 
-@var {arr: ['50px', '100px', '200px']}
+@set {arr: ['50px', '100px', '200px']}
 
 ${each(arr, (value, index) => `
   .col-${index} {
@@ -158,7 +158,7 @@ Variables are just JavaScript, because they're referenced in JS expressions.
 @color-brand: #AAAAFC;
 
 // Jess variable
-@var {colorBrand: `#AAAAFC`}
+@set {colorBrand: `#AAAAFC`}
 ```
 Unlike Sass / Less, Jess variables don't "leak" across imports. Jess imports follow the rules of ES6 imports, which has the benefit of meaning that evaluation is much faster, IDEs can implement code-completion on variables, and there are fewer side effects.
 
@@ -174,13 +174,13 @@ color: ${colorBrand};
 
 Variables are written in JS object syntax. As in:
 ```less
-@var {colorBrand: '#AAAAFC`}
+@set {colorBrand: '#AAAAFC`}
 ```
 
 What this means is that you can declare groups of variables, or create map-like structures.
 ```less
-// everything after `@var` is evaluated as JavaScript until a closing outer `}` or `;`
-@var {
+// everything after `@set` is evaluated as JavaScript until a closing outer `}`
+@set {
   colors: {
     background: `#000`,
     foreground: `#FFF`
@@ -195,19 +195,19 @@ For faster processing, Jess variables must be at the root of the stylesheet, and
 
 #### Public Variables
 
-Instead of declaring variables with `@var`, you can use `@public`, as in:
+Instead of declaring variables with `@set`, you can use `@dynamic`, as in:
 ```
-@public {boxSize: `20px`}
+@dynamic {boxSize: `20px`}
 ```
-What's the difference? Basically, `@var`s are a way to mark values that are safe for static compile-time evaluation. That means that anything depending on a `@var` variable will not change, and the CSS can be statically exported. This changes the export of the Jess module. `@public` variables expose an interface in the JS module that means that anything evaluated using it must also export a function (and any dependencies) in a bundle so that it can be re-computed in the future.
+What's the difference? Basically, `@set`s are a way to mark values that are safe for static compile-time evaluation. That means that anything depending on a `@set` variable will not change, and the CSS can be statically exported. This changes the export of the Jess module. `@dynamic` variables means that anything evaluated using it must also export a function (and any dependencies) in a bundle so that it can be re-computed in the future.
 
-Here's an example to illustrate, first using `@var`.
+Here's an example to illustrate, first using `@set`.
 
 ```less
 // theme.jess
 @import {mix} from 'jess/color';
 
-@var {
+@set {
   colors: {
     background: `#000`,
     foreground: `#FFF`,
@@ -222,14 +222,14 @@ Here's an example to illustrate, first using `@var`.
   color: ${colors.foreground};
 }
 ```
-Jess files can use the Jess styles API to change evaluation of an instance of the underlying module. Because they're marked with `@var`, the resulting output is still static at compile-time.
+Jess files can use the Jess styles API to change evaluation of an instance of the underlying module. Because they're marked with `@set`, the resulting output is still static at compile-time.
 
 ```less
 // main.jess
 
 @import styles from './theme.jess';
 
-@var {colors: styles({colors: {background: `#F00`}}).colors}
+@set {colors: styles({colors: {background: `#F00`}}).colors}
 
 .box {
   color: ${colors.halfway};
@@ -242,7 +242,7 @@ Output is:
 }
 ```
 
-If, however, the colors were marked with `@public`, the output would be more like:
+If, however, the colors were marked with `@dynamic`, the output would be more like:
 ```less
 .box {
   color: var(--box-color, #fffefe);
@@ -262,9 +262,31 @@ import {mix} from 'jess/functions';
 ```
 ... as part of the JavaScript bundle.
 
+#### Variables from JavaScript modules
+
+Any values imported from other JS modules are considered to be "set" and will be evaluated at compile-time only. As in, if we have this JS file:
+```js
+// colors.js
+export let someColor = '#AAA';
+```
+... and then import it...
+```
+@import {someColor} from './colors.js';
+
+.box {
+  color: ${someColor};
+}
+```
+Output is static:
+```
+.box {
+  color: #AAA;
+}
+```
+
 #### Rules for JS expressions
 
-An `${}` expression can appear almost anywhere, but only declaration values can have JS expressions that refer to `@public` variables. This is because the CSS must be able to be parsed at compile-time for static analysis of class names and values that will change, and to flatten any nested rules.
+An `${}` expression can appear almost anywhere, but only declaration values can have JS expressions that refer to `@dynamic` variables. This is because the CSS must be able to be parsed at compile-time for static analysis of class names and values that will change, and to flatten any nested rules.
 
 #### Mixins
 
@@ -313,13 +335,13 @@ Sass control blocks like `@each`, `@for`, and `@if` are not needed, because all 
 
 So far, all the examples have demonstrated how to create essentially static CSS. The JavaScript is evaluated at compile-time, and either used as a `.css` in a `<link>` tag or as `<style>` HTML injected with your component.
 
-When you're expose a `@public` variable, what it is is a kind of state property used to create dynamic styling. This makes Jess more powerful than straight CSS modules.
+When you're expose a `@dynamic` variable, what it is is a kind of state property used to create dynamic styling. This makes Jess more powerful than straight CSS modules.
 
 ```less
 // main.jess
 
 // state variable
-@public {color: 'red'}
+@dynamic {color: 'red'}
 
 .box {
   background: white;
