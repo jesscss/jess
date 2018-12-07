@@ -1,21 +1,15 @@
 
 *variables.jess*
 ```less
-$$colorTheme = 'red';
+@var {colorTheme: 'red'}
 ```
 Interpreted as:
 ```js
+// TODO update
 import {CSS} from 'jess'
-export let colorTheme = 'red'
 
-const def = config => {    
-  for (let p of config) {
-    switch(p) {
-      case 'colorTheme':
-        colorTheme = String(config[p])
-        break;
-    }
-  }
+const def = config => {
+  const {colorTheme = 'red'} = config
   return CSS({t: ''});
 }
 
@@ -25,9 +19,7 @@ export default def
 
 *main.jess*
 ```less
-@{
-  import {colorTheme} from './variables.jess'
-}
+@import {colorTheme} from './variables.jess'
 
 .box {
   color: ${colorTheme};
