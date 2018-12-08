@@ -3,40 +3,33 @@
   const createToken = chevrotain.createToken;
   const Lexer = chevrotain.Lexer;
 
-  const PreambleStart = createToken({name: "PreambleStart", pattern: /\s*@{/});
-  const JSLineStart = createToken({name: "JSLineStart", pattern: /\s*\$[^\{]/});
-  const JSInlineStart = createToken({name: "JSInlineStart", pattern: /\${/});
+  const Imprt = createToken({name: "Imprt", pattern: /\@import[^;]+;/i});
+  const Set = createToken({name: "Set", pattern: /\@set\s*{/i});
+  const Dynamic = createToken({name: "Dynamic", pattern: /\@dynamic\s*{/i});
+  
+  const JSExpr = createToken({name: "JSExpr", pattern: /\${/});
   
   const LCurly = createToken({name: "LCurly", pattern: /{/});
   const RCurly = createToken({name: "RCurly", pattern: /}/});
-  const LSquare = createToken({name: "LSquare", pattern: /\[/});
-  const RSquare = createToken({name: "RSquare", pattern: /]/});
-  const LParen = createToken({name: "LParen", pattern: /\(/});
-  const RParen = createToken({name: "RParen", pattern: /\)/});
-  const AnythingButBlock = createToken(
-    {name: "AnythingButBlock", pattern: /[^{\[\(}\)\]\n\r\$]+/}
+  const At = createToken({name: "At", pattern: /@/});
+  const Misc = createToken(
+    {name: "Misc", pattern: /[^{}@$'"`]+/}
   );
-  
-  const WhiteSpace = createToken({
-    name: "WhiteSpace",
-    pattern: /[ \t]+/
-  })
-  
-  const LineTerminator = createToken({
-    name: "LineTerminator",
-    pattern: /\n\r|\r|\n/
-  })
- 
 
+  const StringLiteral = createToken({
+    name: "StringLiteral",
+    pattern: /(["'`])(?:\\.|[^\\\n\r])*?\1/
+  });
+ 
   const jessTokens = [
-    WhiteSpace, LineTerminator, PreambleStart, JSLineStart,
-    JSInlineStart, RCurly, LCurly,
-    LSquare, RSquare, LParen, RParen, AnythingButBlock
+    Imprt, Dynamic, Set, JSExpr,
+    RCurly, LCurly, StringLiteral,
+    Misc, At
   ];
 
   const JessLexer = new Lexer(jessTokens, {
     // Less position info tracked, reduces verbosity of the playground output.
-    positionTracking: "onlyStart"
+    // positionTracking: "onlyStart"
   });
 
 
@@ -53,68 +46,54 @@
 
       $.RULE("stylesheet", () => {
         $.MANY(() => $.OR([
-          {ALT: () => $.SUBRULE($.preamble)},
-          {ALT: () => {
-            $.CONSUME(JSLineStart)
-            $.SUBRULE($.jsblock)
-          }},
-          {ALT: () => $.CONSUME(WhiteSpace)},
-          {ALT: () => $.CONSUME(LineTerminator)},
-          {ALT: () => {
-            $.CONSUME(AnythingButBlock)
-            $.SUBRULE($.block)
-          }}
+          {ALT: () => $.CONSUME(Imprt)},
+          {ALT: () => $.SUBRULE($.set)},
+          {ALT: () => $.SUBRULE($.blockOptions)}
         ]));
-      }); 
-
-      $.RULE("preamble", () => {
-        $.CONSUME(PreambleStart);
-        $.SUBRULE($.block);
-        $.CONSUME(RCurly);
       });
+      
+      $.RULE("set", () => {
+      	$.CONSUME(Set)
+        $.SUBRULE($.block)
+        $.CONSUME(RCurly)
+      })
       
       $.RULE("jsblock", () => {
       	$.MANY(() => $.OR([
-          {ALT: () => $.CONSUME(AnythingButBlock)},
-          {ALT: () => $.CONSUME(WhiteSpace)},
-          {ALT: () => $.SUBRULE($.curly)},
-          {ALT: () => $.SUBRULE($.paren)},
-          {ALT: () => $.SUBRULE($.square)}
+          {ALT: () => $.CONSUME(Misc)},
+          {ALT: () => $.SUBRULE($.curly)}
         ]));
       });
       
       $.RULE("block", () => {
-      	$.MANY(() => $.OR([
-          {ALT: () => $.CONSUME(AnythingButBlock)},
-          {ALT: () => $.CONSUME(LineTerminator)},
-          {ALT: () => $.CONSUME(WhiteSpace)},
-          {ALT: () => {
-            $.CONSUME(JSInlineStart)
-            $.SUBRULE($.block)
-        	$.CONSUME(RCurly)
-          }},
-          {ALT: () => $.SUBRULE($.curly)},
-          {ALT: () => $.SUBRULE($.paren)},
-          {ALT: () => $.SUBRULE($.square)}
-        ]));
+      	$.MANY(() => $.SUBRULE($.blockOptions))
+      })
+      
+      $.RULE("blockOptions", () => {
+        $.OR([
+          {ALT: () => $.CONSUME(Misc)},
+          {ALT: () => $.CONSUME(StringLiteral)},
+          {ALT: () => $.SUBRULE($.miscat)},
+          {ALT: () => $.SUBRULE($.expression)},
+          {ALT: () => $.SUBRULE($.curly)}
+        ]);
       });
+      
+      $.RULE("expression", () => {
+        $.CONSUME(JSExpr)
+        $.SUBRULE($.block)
+        $.CONSUME(RCurly)      
+      })
+      
+      $.RULE("miscat", () => {
+      	$.CONSUME(At)
+        $.SUBRULE($.block)
+      })
       
       $.RULE("curly", () => {
       	$.CONSUME(LCurly);
         $.SUBRULE($.block);
         $.CONSUME(RCurly);
-      });
-      
-      $.RULE("paren", () => {
-      	$.CONSUME(LParen);
-        $.SUBRULE($.block);
-        $.CONSUME(RParen);
-      });
-      
-      $.RULE("square", () => {
-      	$.CONSUME(LSquare);
-        $.SUBRULE($.block);
-        $.CONSUME(RSquare);
       });
 
       // very important to call this after all the rules have been setup.

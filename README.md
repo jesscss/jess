@@ -1,9 +1,9 @@
 <p style="text-align: center"><img width="184" src="https://github.com/matthew-dean/jess/raw/master/simple-hawk-drawing-1.jpg"></p>
 
 # Project Jess
-Just Efficient Style Sheets (? or some other backronym?)
+JavaScript Evaluated Style Sheets
 
-Right now, this work is experimental and is a work-in-progress
+Why is the logo a hawk? A jess is defined as _a short leather strap that is fastened around each leg of a hawk, usually also having a ring or swivel to which a leash may be attached_.
 
 ## The Elevator Pitch
 "Just like React updates the DOM, Jess updates the CSS OM."

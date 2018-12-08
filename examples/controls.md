@@ -1,14 +1,17 @@
 
 *loop.jess*
 ```less
-$for (let i=1; i<6; i++) {
+@import {for} from 'jess/helpers';
+
+${for(1, 6, (i) => `
   .col-${i} {
     width: ${10*i}px;
   }
-}
+`)}
 ```
 Interpreted as:
 ```js
+// TODO rewrite
 import {CSS} from 'jess'
 
 const def = () => {    
