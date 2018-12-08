@@ -83,7 +83,7 @@ const def = config => {
 			const test = func.call(_CONTEXT)
 			if (test[1] === true) {
 				let cssVar = `--var-${hash}-${i}`
-				CSSVars.push(cssVar, function() { return func.call(_CONTEXT) })
+				CSSVars.push(cssVar, function() { return func.call(_CONTEXT)[0] })
 				return `var(${cssVar}, ${test[0]})`
 			}
 			return test[0]
