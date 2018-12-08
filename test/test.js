@@ -1,53 +1,61 @@
-const assert = require('assert');
-const howLongTillLunch = require('..');
+/**
 
-function MockDate () {
-	this.date = 0;
-	this.hours = 0;
-	this.minutes = 0;
-	this.seconds = 0;
-	this.milliseconds = 0;
-};
+@fixed something = 'value';
+@fixed colors = {foreground: 'red'};
 
-Object.assign(MockDate.prototype, {
-	getDate () { return this.date; },
-	setDate (date) { this.date = date; },
-	setHours (h) { this.hours = h; },
-	setMinutes (m) { this.minutes = m; },
-	setSeconds (s) { this.seconds = s; },
-	setMilliseconds (ms) { this.milliseconds = ms; },
-	valueOf () {
-		return (
-			this.milliseconds +
-			this.seconds * 1e3 +
-			this.minutes * 1e3 * 60 +
-			this.hours * 1e3 * 60 * 60 +
-			this.date * 1e3 * 60 * 60 * 24
-		);
-	}
-});
+.box {
+	foo: ${something};
+}
+ */
 
-const now = new MockDate();
-MockDate.now = () => now.valueOf();
+const DeepProxy = require('proxy-deep')
 
-global.Date = MockDate;
+const root = (typeof self === 'object' && self.self === self && self) ||
+	(typeof global === 'object' && global.global === global && global) ||
+	this
 
-function test(hours, minutes, seconds, expected) {
-	now.setHours(hours);
-	now.setMinutes(minutes);
-	now.setSeconds(seconds);
+// let builtins
+// (() => {
+// 	const {JSON, Object, Function, Array, String, Boolean, Number, Date, RegExp} = root
+// 	builtins = {JSON, Object, Function, Array, String, Boolean, Number, Date, RegExp}
+// })()
 
-	assert.equal(howLongTillLunch(...lunchtime), expected);
-	console.log(`\u001B[32m✓\u001B[39m ${expected}`);
+/** https://stackoverflow.com/questions/2051678/getting-all-variables-in-scope */
+
+const pathsAccessed = []
+
+const store = target => {
+	return new DeepProxy(target, {
+		has(target, prop) { return true },
+		get(target, path, receiver) {
+			const val = Reflect.get(target, path, receiver) || Reflect.get(root, path, receiver)
+			if (typeof val === 'object' && val !== null) {
+				return this.nest(val)
+			} else {
+				if (typeof path === 'string') {
+					pathsAccessed.push(this.path.concat(path))
+				}
+				return val !== undefined ? val : ''
+			}
+		}
+	})
 }
 
-let lunchtime = [ 12, 30 ];
-test(11, 30, 0, '1 hour');
-test(10, 30, 0, '2 hours');
-test(12, 25, 0, '5 minutes');
-test(12, 29, 15, '45 seconds');
-test(13, 30, 0, '23 hours');
+const vars = {}
 
-// some of us like an early lunch
-lunchtime = [ 11, 0 ];
-test(10, 30, 0, '30 minutes');
+const def = config => {
+	const eval = () => {
+		with(store(vars)) {
+			var something = 'value'
+			var colors = {foreground: {a: 'red'}}
+			return `
+				.box {
+					foo: ${something} ${1 + 1};
+				}
+			`
+		}
+	}
+	return eval()
+}
+
+console.log(def(), pathsAccessed)
