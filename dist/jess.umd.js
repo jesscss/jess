@@ -1,36 +1,21 @@
 (function (global, factory) {
-	typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
-	typeof define === 'function' && define.amd ? define(factory) :
-	(global.howLongUntilLunch = factory());
-}(this, (function () { 'use strict';
+	typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
+	typeof define === 'function' && define.amd ? define(['exports'], factory) :
+	(factory((global.howLongUntilLunch = {})));
+}(this, (function (exports) { 'use strict';
 
-function getNextLunchtime(hours, minutes) {
-	var lunchtime = new Date();
+var postcss = require('postcss');
+var postcssNested = require('postcss-nested');
+var autoprefixer = require('autoprefixer');
 
-	lunchtime.setHours(hours);
-	lunchtime.setMinutes(minutes);
-	lunchtime.setSeconds(0);
-	lunchtime.setMilliseconds(0);
-
-	// if we've already had lunch today, start planning
-	// tomorrow's lunch
-	if (lunchtime < Date.now()) lunchtime.setDate(lunchtime.getDate() + 1);
-
-	return lunchtime;
+function compile(source) {
+	postcss([postcssNested, autoprefixer]).process(source).then(function (result) {
+		console.log(result.css);
+	});
 }
 
-function millisecondsUntil(date) {
-	return date - Date.now();
-}
+exports.compile = compile;
 
-function howLongUntilLunch() {
-	var hours = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 12;
-	var minutes = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 30;
-
-	var millisecondsUntilLunchTime = millisecondsUntil(getNextLunchtime(hours, minutes));
-	return ms(millisecondsUntilLunchTime, { long: true });
-}
-
-return howLongUntilLunch;
+Object.defineProperty(exports, '__esModule', { value: true });
 
 })));
