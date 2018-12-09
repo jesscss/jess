@@ -49,7 +49,7 @@ This means you can use `${}` tags in your styles to evaluate a JS expression and
 For convenience, you can declare JavaScript variables inline with `@set`.
 
 ```less
-@set {blockType: 'inline'}
+@set blockType = 'inline';
 
 .box {
   display: ${blockType === 'inline' ? 'inline' : 'block'};
@@ -60,54 +60,76 @@ In simplified terms, this will return what you would expect, a template string t
 // this is an oversimplification of output code, but demonstrates the 1-to-1 relationship with JS
 let blockType = 'inline'
 
-return css`.box {
-  display: ${String(blockType === 'inline' ? 'inline' : 'block')};                 
+return `.box {
+  display: ${blockType === 'inline' ? 'inline' : 'block'};                 
 }`
 ```
 _Note: this isn't what the "final" `<style>` tag will look like returned to your component or stylesheet,
 as Jess will do a number of other optimizations to create efficient style injection. See: Advanced (TODO)_
 
-### Wrapping CSS in JS expressions
+### Functions in Jess
 
-While you're in a `${}` JavaScript expression, you can "switch" back into CSS mode with backticks, and use that as part of the returned expression. (This is also useful for determining code coloring / hinting in IDEs.)
+Jess offers a convenient `@function` wrapper in the form of:
+
+```less
+@function block(val) {
+  .box {
+    foo: ${val};
+  }
+}
+```
+This is the same as writing:
+```js
+export function block(val) {
+  return `  .box {
+    foo: ${val};
+  }`
+}
+```
+Technically, `@function` isn't needed. But it exists in Jess to make integration with IDEs easier, and to reduce lengthy expressions.
+
+For example, you could have an expression as complex as the following:
+
+```less
+@set arr = ['50px', '100px', '200px']
+
+${arr.map((value, index) => `
+  .col-${index + 1} {
+    width: ${value};
+  }
+`).join('\n')}
+```
+However, this just looks a bit nicer.
 
 ```less
 @import {each} from 'jess/helpers';
 
-@set {arr: ['50px', '100px', '200px']}
+@set arr = ['50px', '100px', '200px'];
 
-${each(arr, (value, index) => `
-  .col-${index} {
+@function makeColumns(value, index) {
+  .col-${index + 1} {
     width: ${value};
   }
-`)}
+}
+
+${each(arr, makeColumns)}
 ```
-This will get translated pretty straightforwardly.
+It's really your preference how you want to write templating functions.
+
+However you do it, the output is fairly predictable. It will evaluate pretty much like:
 ```js
 import {each} from 'jess/helpers';
 
-// TODO rewrite
 let arr = ['50px', '100px', '200px'];
 
-each(arr, (value, index) => `
-  .col-${index} {
+function makeColumns(value, index) {
+  return `.col-${index + 1} {
     width: ${value};
-  }
-`)
-```
-The `each` helper is pretty simple:
-```js
-import {CSSBuilder} from 'jess'
-
-// for CSS blocks you need to concat and return
-let css = new CSSBuilder()
-
-export const each = (arr, func) => {
-  arr.forEach((value, index) => {
-    css(func(value, index))
-  })
-  return css
+  }`
 }
+return `
+  ${each(arr, makeColumns)}
+`
 ```
 
 When all is said and done, you would end up with styles like:
@@ -195,11 +217,11 @@ For faster processing, Jess variables must be at the root of the stylesheet, and
 
 #### Dynamic Variables
 
-Instead of declaring variables with `@set`, you can use `@dynamic`, as in:
+Instead of declaring variables with `@set`, you can use `@var`, as in:
 ```
-@dynamic {boxSize: `20px`}
+@var boxSize = `20px`;
 ```
-What's the difference? Basically, `@set`s are a way to mark values that are safe for static compile-time evaluation. That means that anything depending on a `@set` variable will not change, and the CSS can be statically exported. This changes the export of the Jess module. `@dynamic` variables means that anything evaluated using it must also export a function (and any dependencies) in a bundle so that it can be re-computed in the future.
+What's the difference? Basically, `@set`s are a way to mark values that are safe for static compile-time evaluation. That means that anything depending on a `@set` variable will not change, and the CSS can be statically exported. This changes the export of the Jess module. `@var` variables means that anything evaluated using it must also export a function (and any dependencies) in a bundle so that it can be re-computed in the future.
 
 Here's an example to illustrate, first using `@set`.
 
@@ -207,8 +229,7 @@ Here's an example to illustrate, first using `@set`.
 // theme.jess
 @import {mix} from 'jess/color';
 
-@set {
-  colors: {
+@set colors: {
     background: `#000`,
     foreground: `#FFF`,
     halfway: mix(colors.background, colors.foreground, 0.5)
