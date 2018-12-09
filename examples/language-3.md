@@ -1,3 +1,18 @@
+### The Reason for Jess
+
+Less and Sass are powerful tools to create styles. Then came reactive front-end component development. We wanted modules, and we wanted scoped CSS. So we created CSS modules. But what about dynamic modules? So we tried to put CSS in JavaScript.
+
+But what if your stylesheets:
+
+1. Could be in stylesheets, like CSS, Less, and Sass.
+2. Could be JS modules, like CSS modules.
+3. Could be completely dynamic when it needed to be, like CSS-in-JS, or Less in the browser.
+
+Instead of having a whole programming language just for your stylesheet, like the Sass language, why not use a programming language we're already using for everything else, that's designed to compile quickly and efficiently? Why not just use JavaScript?
+
+Instead of putting CSS in your JavaScript, why not put JavaScript in your CSS?
+
+
 First, like Less or Sass, a valid `.css` file is a valid `.jess` file.
 ```less
 // box.jess
@@ -36,8 +51,12 @@ Here's an example:
 ```less
 @import {colors} from './constants.js';
 ```
-How would you use that? You can imagine the rest of the file as a JS template block, wrapped in ``` `` ``` characters.
-This means you can use `${}` tags in your styles to evaluate a JS expression and output a string.
+How would you use that? You can imagine the rest of the file as a JS template block, wrapped in ``` `` ``` characters. You could think of it like Styled Components or Emotion, but in a dedicated stylesheet, and just a bit easier to work with.
+
+Because your `.jess` file is essentially like a template file, you can use `${}` tags in your styles to evaluate a JS expression and output a string.
+
+For instance:
+
 ```less
 @import {colors} from './constants.js';
 
@@ -88,7 +107,7 @@ export function block(val) {
 ```
 Technically, `@function` isn't needed. But it exists in Jess to make integration with IDEs easier, and to reduce lengthy expressions.
 
-For example, you could have an expression as complex as the following:
+For example, because we're working with pure JavaScript, you could have an expression as complex as the following:
 
 ```less
 @set arr = ['50px', '100px', '200px']
@@ -179,8 +198,8 @@ Variables are just JavaScript, because they're referenced in JS expressions.
 // Sass variable
 @color-brand: #AAAAFC;
 
-// Jess variable
-@set {colorBrand: `#AAAAFC`}
+// Jess variable. It looks like JavaScript, because it is!
+@set colorBrand = `#AAAAFC`;
 ```
 Unlike Sass / Less, Jess variables don't "leak" across imports. Jess imports follow the rules of ES6 imports, which has the benefit of meaning that evaluation is much faster, IDEs can implement code-completion on variables, and there are fewer side effects.
 
@@ -194,20 +213,18 @@ color: ${colorBrand};
 ```
 #### Maps
 
-Variables are written in JS object syntax. As in:
+Variables are written as simple assignments, like:
 ```less
-@set {colorBrand: '#AAAAFC`}
+@set colorBrand = `#AAAAFC`;
 ```
 
-What this means is that you can declare groups of variables, or create map-like structures.
+Because it's just JavaScript, you don't need any special "map" construct. Just use a plain object.
 ```less
-// everything after `@set` is evaluated as JavaScript until a closing outer `}`
-@set {
-  colors: {
-    background: `#000`,
-    foreground: `#FFF`
-  }
-}
+// everything after the assignment is evaluated as JavaScript until a closing outer semi-colon
+@set colors = {
+  background: `#000`,
+  foreground: `#FFF`
+};
 
 .box {
   color: ${colors.foreground};
@@ -218,10 +235,12 @@ For faster processing, Jess variables must be at the root of the stylesheet, and
 #### Dynamic Variables
 
 Instead of declaring variables with `@set`, you can use `@var`, as in:
-```
+```less
 @var boxSize = `20px`;
 ```
 What's the difference? Basically, `@set`s are a way to mark values that are safe for static compile-time evaluation. That means that anything depending on a `@set` variable will not change, and the CSS can be statically exported. This changes the export of the Jess module. `@var` variables means that anything evaluated using it must also export a function (and any dependencies) in a bundle so that it can be re-computed in the future.
+
+In your output, any `${}` expression that references a `@var` will get turned into a CSS `var()`.
 
 Here's an example to illustrate, first using `@set`.
 
@@ -229,12 +248,11 @@ Here's an example to illustrate, first using `@set`.
 // theme.jess
 @import {mix} from 'jess/color';
 
-@set colors: {
-    background: `#000`,
-    foreground: `#FFF`,
-    halfway: mix(colors.background, colors.foreground, 0.5)
-  }
-}
+@set colors = {
+  background: `#000`,
+  foreground: `#FFF`,
+  halfway: mix(colors.background, colors.foreground, 0.5)
+};
 ```
 ```less
 @import {colors} from './theme.jess';
@@ -247,10 +265,9 @@ Jess files can use the Jess styles API to change evaluation of an instance of th
 
 ```less
 // main.jess
-
 @import styles from './theme.jess';
 
-@set {colors: styles({colors: {background: `#F00`}}).colors}
+@set colors = styles({colors: {background: `#F00`}}).colors;
 
 .box {
   color: ${colors.halfway};
@@ -263,7 +280,7 @@ Output is:
 }
 ```
 
-If, however, the colors were marked with `@dynamic`, the output would be more like:
+If, however, the colors were marked with `@var`, the output would be more like:
 ```less
 .box {
   color: var(--box-color, #fffefe);
@@ -291,7 +308,7 @@ Any values imported from other JS modules are considered to be "set" and will be
 export let someColor = '#AAA';
 ```
 ... and then import it...
-```
+```less
 @import {someColor} from './colors.js';
 
 .box {
@@ -299,7 +316,7 @@ export let someColor = '#AAA';
 }
 ```
 Output is static:
-```
+```less
 .box {
   color: #AAA;
 }
@@ -307,40 +324,51 @@ Output is static:
 
 #### Rules for JS expressions
 
-An `${}` expression can appear almost anywhere, but only declaration values can have JS expressions that refer to `@dynamic` variables. This is because the CSS must be able to be parsed at compile-time for static analysis of class names and values that will change, and to flatten any nested rules.
+An `${}` expression can appear almost anywhere, but only declaration values can have JS expressions that refer to `@var` variables. This is because the CSS must be able to be parsed at compile-time for static analysis of class names and values that will change, and to flatten any nested rules.
 
-#### Mixins
+#### Mixins / Functions
 
-Because you have the entire power of JavaScript at your disposal, you don't need mixins or Sass's `@function` constructs. Just write a JS function.
-
-```js
-// functions.js
-import {css} from 'jess';
-
-export function square(size) {
-  return css`
-    width: ${size}px;
-    height: ${size}px;
-  `
-}
-```
+As noted, functions essentially substitute for Less/Sass "mixins".
 
 ```less
-@import {square} from './functions.js';
+// functions.js
+
+@function square(size) {
+  width: ${size}px;
+  height: ${size}px;
+}
 
 .box {
   ${square(50)}
 }
 ```
-
-Want to add color functions?
+If you want to export a single value, just write some JavaScript!
+```js
+// calcPercent.js
+export function calcPercent(target, container) {
+  return `${(target / container) * 100}%`;
+}
+```
 
 ```less
-@import {mix} from 'jess/color';
-@import {Colors} from './constants';
+@import {calcPercent} from './calcPercent.js';
+
+.my-module {
+  width: ${calcPercent(650, 1000)};
+}
+```
+
+Want to add color functions? You don't need Jess to do it for you. You don't need special Jess plugins of any kind. Try any number of JavaScript NPM modules, such as:
+```
+npm install color
+```
+
+```less
+@import {Color} from 'color';
+@import {Colors} from './constants.js';
 
 .box {
-  background: ${mix(Colors.theme, `#000000`, 0.5)};
+  background: ${Color(Colors.theme).mix(Color(`#000000`), 0.5)};
 }
 ```
 This will evaluate at compile time, and you'll end up with something like:
@@ -356,13 +384,13 @@ Sass control blocks like `@each`, `@for`, and `@if` are not needed, because all 
 
 So far, all the examples have demonstrated how to create essentially static CSS. The JavaScript is evaluated at compile-time, and either used as a `.css` in a `<link>` tag or as `<style>` HTML injected with your component.
 
-When you're expose a `@dynamic` variable, what it is is a kind of state property used to create dynamic styling. This makes Jess more powerful than straight CSS modules.
+When you're expose a `@var` variable, what it is is a kind of state property used to create dynamic styling. This makes Jess more powerful than straight CSS modules.
 
 ```less
 // main.jess
 
 // state variable
-@dynamic {color: 'red'}
+@var color = 'red';
 
 .box {
   background: white;

@@ -46,23 +46,37 @@ const store = obj => {
 	})
 }
 
+const output = `
+import {something} from './constants.js'
+
+export const def = config => {
+	return {
+		css: '.box { foo: value var(--var-j0sf5m-3, red);} @media (min-width: 250px) {.box { foo: var(--var-j0sf5m-6, foo)} }'
+		, var: [ '--var-j0sf5m-3', [Function], '--var-j0sf5m-6', [Function] ]
+	}
+}
+
+`
+
 const def = config => {
 	const eval = () => {
 
-		const hash = Math.random().toString(36).substr(2, 9)
+		const hash = Math.random().toString(36).substr(2, 6)
 		const _VARS = {
 			_DYNAMIC: [],
 			_DYNAMIC_ACCESSED: false
 		}
 
 		const template = [
-			'.box {\n  .foo: ',
+			'.box {\n  foo: ',
 			'${something}',
 			' ',
 			'${colors.foreground.a}',
-			' ',
+			';\n',
+			'@media (min-width: 250px) { foo: ',
 			'${blah}',
-			';\n}'
+			' }',
+			'}'
 		]
 
 		// vars 0 = fixed, 1 = dynamic
@@ -80,6 +94,7 @@ const def = config => {
 				"let val; with(this) { val = `" + fragment + "`}" +
 				"return [val, this._DYNAMIC_ACCESSED]"
 			)
+			console.log(func.toString())
 			const test = func.call(_CONTEXT)
 			if (test[1] === true) {
 				let cssVar = `--var-${hash}-${i}`
@@ -94,4 +109,12 @@ const def = config => {
 	return eval()
 }
 
-console.log(def())
+const postcss = require('postcss')
+const postcssNested = require('postcss-nested')
+const autoprefixer = require('autoprefixer')
+
+postcss([postcssNested, autoprefixer])
+	.process(def())
+	.then(result => {
+		console.log(result.css)
+	})
