@@ -145,12 +145,12 @@ export function makeColumns(i, infix) {
 export function eachBreakpoint(breakpoint) {
   const infix = breakpointInfix(breakpoint, breakpoints);
   
-  return `${
-    for(1, columns, i => { makeColumns(i, infix) })}
+  return `
+    ${for(1, columns, i => { makeColumns(i, infix) })}
   
-    extend(`.col${infix}`, '.grid-column')},
-    extend(`.col${infix}-auto`, '.grid-column')} { }
-   }`
+    ${extend(`.col${infix}`, '.grid-column')},
+    ${extend(`.col${infix}-auto`, '.grid-column')} { }
+   `
 }
 ```
 
