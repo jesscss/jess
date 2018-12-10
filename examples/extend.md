@@ -119,8 +119,9 @@ $breakpoints:
 }
 ```
 
+Jess's pattern encourages you to organize your exports/imports, and to separate complex functions / patterns from your styles.
 ```less
-@import {extend, for, each} from 'jess/helpers';
+// variables.jess
 
 @const gutter = 30;
 @const breakpoints = {
@@ -128,25 +129,39 @@ $breakpoints:
   md: 800,
   lg: 1000
 };
+```
 
-@function gridColumn() {
+```js
+// functions.js
+
+import {$} from 'jess'
+import {extend, for, each, detached} from 'jess/helpers'
+import {breakPoints} from './variables.jess'
+
+export function makeColumns(i, infix) {
+  return extend(`.col${infix}-${i}`, '.grid-column')
+}
+
+export function eachBreakpoint(breakpoint) {
+  const infix = breakpointInfix(breakpoint, breakpoints);
+  
+  return `${
+    for(1, columns, i => { makeColumns(i, infix) })}
+  
+    extend(`.col${infix}`, '.grid-column')},
+    extend(`.col${infix}-auto`, '.grid-column')} { }
+   }`
+}
+```
+
+```less
+@import {eachBreakpoint} from 'functions.js';
+
+.grid-column
   position: relative;
   width: 100%;
   padding-right: ${gutter / 2}px;
   padding-left: ${gutter / 2}px;
-}
-
-@function eachFor(i, infix) {
-  ${extend(`.col${infix}-${i}`, gridColumn)} { }
-}
-
-@function eachBreakpoint(breakpoint) {
-  @const infix = breakpointInfix(breakpoint, breakpoints);
-  
-  ${for(1, columns, i => { eachFor(i, infix) })}
-  
-  ${extend(`.col${infix}`, gridColumn)},
-  ${extend(`.col${infix}-auto`, gridColumn)} { }
 }
 
 ${each(mapKeys(breakpoints), eachBreakpoint}
