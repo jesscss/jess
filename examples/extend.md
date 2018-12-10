@@ -119,7 +119,7 @@ $breakpoints:
 }
 ```
 
-```jess
+```less
 @import {extend, for, each} from 'jess/helpers';
 
 @set gutter = 30;
