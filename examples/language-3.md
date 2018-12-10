@@ -53,7 +53,7 @@ Here's an example:
 ```
 How would you use that? You can imagine the rest of the file as a JS template block, wrapped in ``` `` ``` characters. You could think of it like Styled Components or Emotion, but in a dedicated stylesheet, and just a bit easier to work with.
 
-Because your `.jess` file is essentially like a template file, you can use `${}` tags in your styles to evaluate a JS expression and output a string.
+Because your `.jess` file is essentially like a template file, you can use `${}` expressions in your styles to evaluate a JS expression and output a string.
 
 For instance:
 
@@ -64,6 +64,8 @@ For instance:
   color: ${colors.foreground};
 }
 ```
+
+### Variables
 
 For convenience, you can declare JavaScript variables inline with `@const`.
 
@@ -86,151 +88,9 @@ return `.box {
 _Note: this isn't what the "final" `<style>` tag will look like returned to your component or stylesheet,
 as Jess will do a number of other optimizations to create efficient style injection. See: Advanced (TODO)_
 
-### Functions in Jess
+#### Rules for Jess variables
 
-Jess offers a convenient `@function` wrapper in the form of:
-
-```less
-@function block(val) {
-  .box {
-    foo: ${val};
-  }
-}
-```
-This is the same as writing:
-```js
-export function block(val) {
-  return `  .box {
-    foo: ${val};
-  }`
-}
-```
-Technically, `@function` isn't needed. But it exists in Jess to make integration with IDEs easier, and to reduce lengthy expressions.
-
-For example, because we're working with pure JavaScript, you could have an expression as complex as the following:
-
-```less
-@const arr = ['50px', '100px', '200px']
-
-${arr.map((value, index) => `
-  .col-${index + 1} {
-    width: ${value};
-  }
-`).join('\n')}
-```
-However, this just looks a bit nicer.
-
-```less
-@import {each} from 'jess/helpers';
-
-@const arr = ['50px', '100px', '200px'];
-
-@function makeColumns(value, index) {
-  .col-${index + 1} {
-    width: ${value};
-  }
-}
-
-${each(arr, makeColumns)}
-```
-It's really your preference how you want to write templating functions.
-
-However you do it, the output is fairly predictable. It will evaluate pretty much like:
-```js
-import {each} from 'jess/helpers';
-
-const arr = ['50px', '100px', '200px'];
-
-function makeColumns(value, index) {
-  return `.col-${index + 1} {
-    width: ${value};
-  }`
-}
-return `
-  ${each(arr, makeColumns)}
-`
-```
-
-When all is said and done, you would end up with styles like:
-```css
-.col-1 {
-  width: 50px;
-}
-.col-2 {
-  width: 100px;
-}
-.col-3 {
-  width: 200px;
-}
-```
-
-### Migrating from Sass / Less
-
-#### Nesting
-
-To make migration / code compatibility easier, like Less and Sass, Jess supports basic CSS + Nesting.
-```less
-.button {
-  color: red;
-  &:hover {
-    color: blue;
-  }
-}
-```
-Similarly, `@media` and `@supports` rules will bubble.
-```less
-.button {
-  padding: 20px;
-  @media (min-width: 800px) {
-    padding: 40px;
-  }
-}
-```
-
-#### Variables
-
-Variables are just JavaScript, because they're referenced in JS expressions.
-
-```less
-// Less variable
-@color-brand: #AAAAFC;
-
-// Sass variable
-@color-brand: #AAAAFC;
-
-// Jess variable. It looks like JavaScript, because it is!
-@const colorBrand = `#AAAAFC`;
-```
-Unlike Sass / Less, Jess variables don't "leak" across imports. Jess imports follow the rules of ES6 imports, which has the benefit of meaning that evaluation is much faster, IDEs can implement code-completion on variables, and there are fewer side effects.
-
-If you want a variable from another `.jess` stylesheet, you need to `@import` it.
-
-```less
-@import {colorBrand} from './variables.jess';
-
-// ...
-color: ${colorBrand};
-```
-#### Maps
-
-Variables are written as simple assignments, like:
-```less
-@const colorBrand = `#AAAAFC`;
-```
-
-Because it's just JavaScript, you don't need any special "map" construct. Just use a plain object.
-```less
-// everything after the assignment is evaluated as JavaScript until a closing outer semi-colon
-@const colors = {
-  background: `#000`,
-  foreground: `#FFF`
-};
-
-.box {
-  color: ${colors.foreground};
-}
-```
-For faster processing, Jess variables must be at the root of the stylesheet, and will have a value per evaluation of the stylesheet.
+Variables declared in Jess must be a literal type; that is, a string, number, boolean, array, or plain object. You can't assign to function definitions, or special collection types like `Map` or `Set`.
 
 #### Dynamic Variables
 
@@ -302,6 +162,10 @@ import {mix} from 'jess/functions';
 ```
 ... as part of the JavaScript bundle.
 
+#### Variable Rules for JS expressions
+
+An `${}` expression can appear almost anywhere, but only declaration values can have JS expressions that refer to `@var` variables. This is because the CSS must be able to be parsed at compile-time for static analysis of class names and values that will change, and to flatten any nested rules.
+
 #### What about `@let`?
 
 Jess doesn't support `@let`. Why? Because values need to be static per evaluation of the style sheet, and the value shouldn't change within that scope. You can still, of course, use `let` within expressions that have callbacks to functions.
@@ -335,34 +199,167 @@ Output is static at compile-time:
 }
 ```
 
-#### Rules for JS expressions
+### Writing CSS in JS expressions
 
-An `${}` expression can appear almost anywhere, but only declaration values can have JS expressions that refer to `@var` variables. This is because the CSS must be able to be parsed at compile-time for static analysis of class names and values that will change, and to flatten any nested rules.
+For convenience, Jess exposes a `$` template literal function in the main module and within `.jess` files.
+
+You can use `$` just before a template literal to indicate to linters / IDEs that the return value is itself parseable as Jess (CSS with expressions). This is similar to the `css` tagged template literal in some CSS-in-JS solutions.
+
+For example, and IDE could auto-fill suggestions here:
+```less
+.box {
+  display: ${someValue ? $` // IDE should show values for "display" at this cursor position.
+```
+Technically, `$` isn't needed. But it exists in Jess to make integration with IDEs easier, and to reduce lengthy expressions.
+
+Here's an example of a tagged literal inside a more complex expression.
+
+```less
+@const arr = ['50px', '100px', '200px']
+
+${arr.map((value, index) => $`
+  .col-${index + 1} {
+    width: ${value};
+  }
+`).join('\n')}
+```
+It's really your preference how you want to write templating functions.
+
+With the above, you would end up with styles like:
+```css
+.col-1 {
+  width: 50px;
+}
+.col-2 {
+  width: 100px;
+}
+.col-3 {
+  width: 200px;
+}
+```
+
+You can also use `$` in your JavaScript modules, such as:
+```
+// columns.js
+import {$} from 'jess'
+
+export const gridColumns = gutter => {
+  return $`
+    position: relative;
+    width: 100%;
+    padding-right: ${gutter / 2}px;
+    padding-left: ${gutter / 2}px;
+  `
+}
+```
+```less
+@import {gridColumns} from './columns.js'; 
+
+.col-1 {
+  ${gridColumns(20};
+}
+```
+
+### Migrating from Sass / Less
+
+#### Nesting
+
+To make migration / code compatibility easier, like Less and Sass, Jess supports basic CSS + Nesting.
+```less
+.button {
+  color: red;
+  &:hover {
+    color: blue;
+  }
+}
+```
+Similarly, `@media` and `@supports` rules will bubble.
+```less
+.button {
+  padding: 20px;
+  @media (min-width: 800px) {
+    padding: 40px;
+  }
+}
+```
+
+#### Variables
+
+Variables are just JavaScript, because they're referenced in JS expressions.
+
+```less
+// Less variable
+@color-brand: #AAAAFC;
+
+// Sass variable
+@color-brand: #AAAAFC;
+
+// Jess variable. It looks like JavaScript, because it is!
+@const colorBrand = `#AAAAFC`;
+```
+Unlike Sass / Less, Jess variables don't "leak" across imports. Jess imports follow the rules of ES6 imports, which has the benefit of meaning that evaluation is much faster, IDEs can implement code-completion on variables, and there are fewer side effects.
+
+If you want a variable from another `.jess` stylesheet, you need to `@import` it.
+
+```less
+@import {colorBrand} from './variables.jess';
+
+// ...
+color: ${colorBrand};
+```
+#### Maps
+
+Variables are written as simple assignments, like:
+```less
+@const colorBrand = `#AAAAFC`;
+```
+
+Because it's just JavaScript, you don't need any special "map" construct. Just use a plain object.
+```less
+// everything after the assignment is evaluated as JavaScript until a closing outer semi-colon
+@const colors = {
+  background: `#000`,
+  foreground: `#FFF`
+};
+
+.box {
+  color: ${colors.foreground};
+}
+```
+For faster processing, Jess variables must be at the root of the stylesheet, and will have a value per evaluation of the stylesheet.
+
 
 #### Mixins / Functions
 
-As noted, functions essentially substitute for Less/Sass "mixins".
+You can easily define the equivalent of a "mixin" by writing a normal function.
 
-```less
+```js
 // functions.js
 
-@function square(size) {
-  width: ${size}px;
-  height: ${size}px;
+import {$} from 'jess'
+
+export function square(size) {
+  return $`
+    width: ${size}px;
+    height: ${size}px;
+  `
 }
+```
+
+```less
+@import {square} from './functions.js';
 
 .box {
   ${square(50)}
 }
 ```
-If you want to export a single value, just write some JavaScript!
+Exporting a single value is just as easy! Note that this effectively replaces what takes two separate syntactic constructs in Sass.
 ```js
 // calcPercent.js
 export function calcPercent(target, container) {
   return `${(target / container) * 100}%`;
 }
 ```
-
 ```less
 @import {calcPercent} from './calcPercent.js';
 
