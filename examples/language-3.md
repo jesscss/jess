@@ -65,10 +65,10 @@ For instance:
 }
 ```
 
-For convenience, you can declare JavaScript variables inline with `@set`.
+For convenience, you can declare JavaScript variables inline with `@const`.
 
 ```less
-@set blockType = 'inline';
+@const blockType = 'inline';
 
 .box {
   display: ${blockType === 'inline' ? 'inline' : 'block'};
@@ -77,7 +77,7 @@ For convenience, you can declare JavaScript variables inline with `@set`.
 In simplified terms, this will return what you would expect, a template string that looks like:
 ```js
 // this is an oversimplification of output code, but demonstrates the 1-to-1 relationship with JS
-let blockType = 'inline'
+const blockType = 'inline'
 
 return `.box {
   display: ${blockType === 'inline' ? 'inline' : 'block'};                 
@@ -110,7 +110,7 @@ Technically, `@function` isn't needed. But it exists in Jess to make integration
 For example, because we're working with pure JavaScript, you could have an expression as complex as the following:
 
 ```less
-@set arr = ['50px', '100px', '200px']
+@const arr = ['50px', '100px', '200px']
 
 ${arr.map((value, index) => `
   .col-${index + 1} {
@@ -123,7 +123,7 @@ However, this just looks a bit nicer.
 ```less
 @import {each} from 'jess/helpers';
 
-@set arr = ['50px', '100px', '200px'];
+@const arr = ['50px', '100px', '200px'];
 
 @function makeColumns(value, index) {
   .col-${index + 1} {
@@ -139,7 +139,7 @@ However you do it, the output is fairly predictable. It will evaluate pretty muc
 ```js
 import {each} from 'jess/helpers';
 
-let arr = ['50px', '100px', '200px'];
+const arr = ['50px', '100px', '200px'];
 
 function makeColumns(value, index) {
   return `.col-${index + 1} {
@@ -199,7 +199,7 @@ Variables are just JavaScript, because they're referenced in JS expressions.
 @color-brand: #AAAAFC;
 
 // Jess variable. It looks like JavaScript, because it is!
-@set colorBrand = `#AAAAFC`;
+@const colorBrand = `#AAAAFC`;
 ```
 Unlike Sass / Less, Jess variables don't "leak" across imports. Jess imports follow the rules of ES6 imports, which has the benefit of meaning that evaluation is much faster, IDEs can implement code-completion on variables, and there are fewer side effects.
 
@@ -215,13 +215,13 @@ color: ${colorBrand};
 
 Variables are written as simple assignments, like:
 ```less
-@set colorBrand = `#AAAAFC`;
+@const colorBrand = `#AAAAFC`;
 ```
 
 Because it's just JavaScript, you don't need any special "map" construct. Just use a plain object.
 ```less
 // everything after the assignment is evaluated as JavaScript until a closing outer semi-colon
-@set colors = {
+@const colors = {
   background: `#000`,
   foreground: `#FFF`
 };
@@ -234,21 +234,23 @@ For faster processing, Jess variables must be at the root of the stylesheet, and
 
 #### Dynamic Variables
 
-Instead of declaring variables with `@set`, you can use `@var`, as in:
+Instead of declaring variables with `@const`, you can use `@var`, as in:
 ```less
 @var boxSize = `20px`;
 ```
-What's the difference? Basically, `@set`s are a way to mark values that are safe for static compile-time evaluation. That means that anything depending on a `@set` variable will not change, and the CSS can be statically exported. This changes the export of the Jess module. `@var` variables means that anything evaluated using it must also export a function (and any dependencies) in a bundle so that it can be re-computed in the future.
+However, in Jess, using `@var` changes behavior in an important way in the way Jess compiles. 
 
-In your output, any `${}` expression that references a `@var` will get turned into a CSS `var()`.
+When you use `@const`s, it's a way to mark values that are safe for static compile-time evaluation. That means that anything depending on a `@const` variable will not change, and the CSS can be statically exported. This changes the export of the Jess module. `@var` variables, however, means that anything evaluated using it must also export a function (and any dependencies) in a bundle so that it can be re-computed in the future.
 
-Here's an example to illustrate, first using `@set`.
+In your output, any `${}` expression that internally references a `@var` will get turned into a CSS `var()`.
+
+Here's an example to illustrate, first using `@const`.
 
 ```less
 // theme.jess
 @import {mix} from 'jess/color';
 
-@set colors = {
+@const colors = {
   background: `#000`,
   foreground: `#FFF`,
   halfway: mix(colors.background, colors.foreground, 0.5)
@@ -261,13 +263,13 @@ Here's an example to illustrate, first using `@set`.
   color: ${colors.foreground};
 }
 ```
-Jess files can use the Jess styles API to change evaluation of an instance of the underlying module. Because they're marked with `@set`, the resulting output is still static at compile-time.
+Jess files can use the Jess styles API to change evaluation of an instance of the underlying module. Because they're marked with `@const`, the resulting output is still static at compile-time.
 
 ```less
 // main.jess
 @import styles from './theme.jess';
 
-@set colors = styles({colors: {background: `#F00`}}).colors;
+@const colors = styles({colors: {background: `#F00`}}).colors;
 
 .box {
   color: ${colors.halfway};
@@ -300,9 +302,20 @@ import {mix} from 'jess/functions';
 ```
 ... as part of the JavaScript bundle.
 
+#### What about `@let`?
+
+Jess doesn't support `@let`. Why? Because values need to be static per evaluation of the style sheet, and the value shouldn't change within that scope. You can still, of course, use `let` within expressions that have callbacks to functions.
+
+```less
+${arr.map(item => {
+  let type = item.type
+  return item.type.toString()
+}).join('\n')}
+```
+
 #### Variables from JavaScript modules
 
-Any values imported from other JS modules are considered to be "set" and will be evaluated at compile-time only. As in, if we have this JS file:
+Any values imported from other JS modules are considered to be `const` and will be evaluated at compile-time only. As in, if we have this JS file:
 ```js
 // colors.js
 export let someColor = '#AAA';
@@ -315,7 +328,7 @@ export let someColor = '#AAA';
   color: ${someColor};
 }
 ```
-Output is static:
+Output is static at compile-time:
 ```less
 .box {
   color: #AAA;
