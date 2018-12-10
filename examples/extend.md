@@ -122,8 +122,8 @@ $breakpoints:
 ```less
 @import {extend, for, each} from 'jess/helpers';
 
-@set gutter = 30;
-@set breakpoints = {
+@const gutter = 30;
+@const breakpoints = {
   sm: 600,
   md: 800,
   lg: 1000
@@ -141,7 +141,7 @@ $breakpoints:
 }
 
 @function eachBreakpoint(breakpoint) {
-  @set infix = breakpointInfix(breakpoint, breakpoints);
+  @const infix = breakpointInfix(breakpoint, breakpoints);
   
   ${for(1, columns, i => { eachFor(i, infix) })}
   
