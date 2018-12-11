@@ -1,4 +1,5 @@
 {
+  "plugins": ["transform-async-to-promises"],
   "presets": [
     ["env", {
       "targets": {

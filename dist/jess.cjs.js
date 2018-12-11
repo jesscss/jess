@@ -1,15 +1,27 @@
 'use strict';
 
-Object.defineProperty(exports, '__esModule', { value: true });
+var _require = require('vm2');
+var NodeVM = _require.NodeVM;
+var VMScript = _require.VMScript;
 
-var postcss = require('postcss');
-var postcssNested = require('postcss-nested');
-var autoprefixer = require('autoprefixer');
+var vm = new NodeVM({
+  console: 'inherit',
+  sandbox: {},
+  require: {
+    external: true,
+    builtin: ['path']
+  }
+});
 
-function compile(source) {
-	postcss([postcssNested, autoprefixer]).process(source).then(function (result) {
-		console.log(result.css);
-	});
-}
+var vmSandbox = new VMScript('\n  require = require(\'esm\')(module)\n  module.exports = require(\'./vm.js\')\n');
 
-exports.compile = compile;
+var index = vm.run(vmSandbox, __dirname);
+
+// const postcss = require('postcss')
+// const postcssNested = require('postcss-nested')
+// const autoprefixer = require('autoprefixer')
+
+// const result = await postcss([postcssNested, autoprefixer])
+// .process(output.join(''))
+
+module.exports = index;

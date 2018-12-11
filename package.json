@@ -2,16 +2,19 @@
   "name": "jess",
   "version": "0.0.1",
   "description": "JavaScript Evaluated Style Sheets",
-  "main": "dist/jess.cjs.js",
-  "module": "dist/jess.esm.js",
-  "browser": "dist/jess.umd.js",
+  "main": "src/index.js",
+  "module": "src/module.js",
   "dependencies": {
     "autoprefixer": "^9.4.0",
+    "es6-module-jstransform": "^0.1.4",
+    "esm": "^3.0.84",
     "postcss": "^7.0.6",
     "postcss-nested": "^4.1.0",
-    "proxy-deep": "^2.1.1"
+    "proxy-deep": "^2.1.1",
+    "vm2": "^3.6.4"
   },
   "devDependencies": {
+    "babel-plugin-transform-async-to-promises": "^0.8.2",
     "babel-preset-env": "^1.6.0",
     "rollup": "^0.46.0",
     "rollup-plugin-babel": "^2.7.1",
@@ -22,8 +25,7 @@
     "prepublish": "npm run build",
     "build": "rollup -c",
     "dev": "rollup -c -w",
-    "test": "node test/test.js",
-    "pretest": "npm run build"
+    "test": "node test/test.js"
   },
   "files": [
     "dist"

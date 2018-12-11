@@ -1,11 +1,25 @@
-var postcss = require('postcss');
-var postcssNested = require('postcss-nested');
-var autoprefixer = require('autoprefixer');
+var _require = require('vm2');
+var NodeVM = _require.NodeVM;
+var VMScript = _require.VMScript;
 
-function compile(source) {
-	postcss([postcssNested, autoprefixer]).process(source).then(function (result) {
-		console.log(result.css);
-	});
-}
+var vm = new NodeVM({
+  console: 'inherit',
+  sandbox: {},
+  require: {
+    external: true,
+    builtin: ['path']
+  }
+});
 
-export { compile };
+var vmSandbox = new VMScript('\n  require = require(\'esm\')(module)\n  module.exports = require(\'./vm.js\')\n');
+
+var index = vm.run(vmSandbox, __dirname);
+
+// const postcss = require('postcss')
+// const postcssNested = require('postcss-nested')
+// const autoprefixer = require('autoprefixer')
+
+// const result = await postcss([postcssNested, autoprefixer])
+// .process(output.join(''))
+
+export default index;

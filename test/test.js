@@ -10,111 +10,73 @@
 	foo: ${something};
 }
  */
+const jess = require('../')
 
-const DeepProxy = require('proxy-deep')
+const otherStylesheet = `
+import {Color} from 'color'
 
-const root = (typeof self === 'object' && self.self === self && self) ||
-	(typeof global === 'object' && global.global === global && global) ||
-	this
-
-// let builtins
-// (() => {
-// 	const {JSON, Object, Function, Array, String, Boolean, Number, Date, RegExp} = root
-// 	builtins = {JSON, Object, Function, Array, String, Boolean, Number, Date, RegExp}
-// })()
-
-const store = obj => {
-	return new DeepProxy(obj, {
-		get(target, path, receiver) {
-			const val = Reflect.get(target, path, receiver)
-
-			if (typeof val === 'object' && val !== null) {
-				return this.nest(val)
-			} else {
-				let fullPath = this.path.concat(path)
-				if (val !== undefined) {
-					if (obj._DYNAMIC.indexOf(fullPath[0]) > -1) {
-						obj._DYNAMIC_ACCESSED = true
-					} else {
-						obj._DYNAMIC_ACCESSED = false
-					}
-					return val
-				}
-				return ''
-			}
+export default (config) => {
+	const {
+		theme = {
+			foreground: '#FFF',
+			accent: 'red',
+			mix: Color(theme.foreground, '#CCC')
 		}
-	})
-}
+	} = config
 
-const output = `
-import {something} from './constants.js'
-
-export const def = config => {
 	return {
-		css: '.box { foo: value var(--var-j0sf5m-3, red);} @media (min-width: 250px) {.box { foo: var(--var-j0sf5m-6, foo)} }'
-		, var: [ '--var-j0sf5m-3', [Function], '--var-j0sf5m-6', [Function] ]
+		theme
+	}
+}
+`
+
+const eventualOutput = `
+import styles from './otherStylesheet.jess'
+
+export default (config) => {
+	const {
+		something = 'value'
+		, colors = {foreground: {a: 'red'}}  // was styles().theme.accent
+		, blah = 'foo'
+	} = config
+
+	const vars = {
+		'--var-j0sf5m-3': function() { try { return colors.foreground.a } catch() { return '' } }
+		, '--var-j0sf5m-6': function() { try { return blah } catch() { return '' } }
+	}
+
+	return {
+		staticCss: '.box { foo: value var(--var-j0sf5m-3, red);} @media (min-width: 250px) {.box { foo: var(--var-j0sf5m-6, foo)} }'
+		, cssVariables: [ '--var-j0sf5m-3', vars['--var-j0sf5m-3'], '--var-j0sf5m-6', vars['--var-j0sf5m-6'] ]
+		, box: 'box',
+		, something
+		, colors
+		, blah
 	}
 }
 
 `
+const imports = [
+	'import {val} from \'./export\''
+]
 
-const def = config => {
-	const eval = () => {
+const vars = [
+	['something', '\'value\''],
+	['colors', '{foreground: {a: \'red\'}}', 1],
+	['blah', '\'foo\'', 1],
+	['blah2', 'val()']
+]
 
-		const hash = Math.random().toString(36).substr(2, 6)
-		const _VARS = {
-			_DYNAMIC: [],
-			_DYNAMIC_ACCESSED: false
-		}
+const template = [
+	'.box {\n  foo: ',
+	'${something}',
+	' ',
+	'${colors.foreground.a}',
+	';\n',
+	'@media (min-width: 250px) { foo: ',
+	'${blah} ${blah2}',
+	' }',
+	'}'
+]
 
-		const template = [
-			'.box {\n  foo: ',
-			'${something}',
-			' ',
-			'${colors.foreground.a}',
-			';\n',
-			'@media (min-width: 250px) { foo: ',
-			'${blah}',
-			' }',
-			'}'
-		]
-
-		// vars 0 = fixed, 1 = dynamic
-		_VARS.something = 'value'
-		_VARS.colors = {foreground: {a: 'red'}}
-		_VARS.blah = 'foo'
-		_VARS._DYNAMIC = ['blah', 'colors']
-
-		const _CONTEXT = store(_VARS)
-
-		const CSSVars = []
-
-		const output = template.map((fragment, i) => {
-			const func = new Function(
-				"let val; with(this) { val = `" + fragment + "`}" +
-				"return [val, this._DYNAMIC_ACCESSED]"
-			)
-			console.log(func.toString())
-			const test = func.call(_CONTEXT)
-			if (test[1] === true) {
-				let cssVar = `--var-${hash}-${i}`
-				CSSVars.push(cssVar, function() { return func.call(_CONTEXT)[0] })
-				return `var(${cssVar}, ${test[0]})`
-			}
-			return test[0]
-		})
-		console.log(CSSVars)
-		return output.join('')
-	}
-	return eval()
-}
-
-const postcss = require('postcss')
-const postcssNested = require('postcss-nested')
-const autoprefixer = require('autoprefixer')
-
-postcss([postcssNested, autoprefixer])
-	.process(def())
-	.then(result => {
-		console.log(result.css)
-	})
+var results = jess.compile(__filename, imports, vars, template)

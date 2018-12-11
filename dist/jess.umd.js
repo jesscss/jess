@@ -1,21 +1,33 @@
 (function (global, factory) {
-	typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
-	typeof define === 'function' && define.amd ? define(['exports'], factory) :
-	(factory((global.howLongUntilLunch = {})));
-}(this, (function (exports) { 'use strict';
+	typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
+	typeof define === 'function' && define.amd ? define(factory) :
+	(global.jess = factory());
+}(this, (function () { 'use strict';
 
-var postcss = require('postcss');
-var postcssNested = require('postcss-nested');
-var autoprefixer = require('autoprefixer');
+var _require = require('vm2');
+var NodeVM = _require.NodeVM;
+var VMScript = _require.VMScript;
 
-function compile(source) {
-	postcss([postcssNested, autoprefixer]).process(source).then(function (result) {
-		console.log(result.css);
-	});
-}
+var vm = new NodeVM({
+  console: 'inherit',
+  sandbox: {},
+  require: {
+    external: true,
+    builtin: ['path']
+  }
+});
 
-exports.compile = compile;
+var vmSandbox = new VMScript('\n  require = require(\'esm\')(module)\n  module.exports = require(\'./vm.js\')\n');
 
-Object.defineProperty(exports, '__esModule', { value: true });
+var index = vm.run(vmSandbox, __dirname);
+
+// const postcss = require('postcss')
+// const postcssNested = require('postcss-nested')
+// const autoprefixer = require('autoprefixer')
+
+// const result = await postcss([postcssNested, autoprefixer])
+// .process(output.join(''))
+
+return index;
 
 })));
