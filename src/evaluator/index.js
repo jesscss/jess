@@ -1,19 +1,21 @@
-const {NodeVM, VMScript} = require('vm2')
+// const {NodeVM, VMScript} = require('vm2')
 
-const vm = new NodeVM({
-  console: 'inherit',
-  sandbox: {},
-  require: {
-    external: true,
-    builtin: ['path']
-  }
-})
+// const vm = new NodeVM({
+//   console: 'inherit',
+//   sandbox: {},
+//   require: {
+//     external: true,
+//     builtin: ['path'],
+//     context: 'sandbox'
+//   }
+// })
 
-var vmPath = require.resolve('./vm.js')
+// var vmPath = require.resolve('./esm.js')
 
-let vmSandbox = new VMScript(`
-  require = require('esm')(module)
-  module.exports = require('${vmPath}')
-`)
+// let vmSandbox = new VMScript(`
+//   module.exports = require('${vmPath}')
+// `)
 
-export const evaluator = vm.run(vmSandbox, __filename)
+// export const evaluator = vm.run(vmSandbox, __filename)
+
+export const evaluator = require('./eval')

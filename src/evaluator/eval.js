@@ -5,8 +5,11 @@ const path = require('path')
 
 const store = obj => {
 	return new DeepProxy(obj, {
-		get(target, path, receiver) {
-      const val = Reflect.get(target, path, receiver)
+    has() {
+      return true
+    },
+ 		get(target, path, receiver) {
+      const val = target[path]
 
 			if (typeof val === 'object' && val !== null) {
 				return this.nest(val)
@@ -26,21 +29,12 @@ const store = obj => {
 	})
 }
 
-function evaluate (filePath, imports, vars, template) {
-  const variableExports = []
-  const CSSVars = []
-  const errors = []
-  const hash = Math.random().toString(36).substr(2, 6)
+const root = (typeof self === 'object' && self.self === self && self) ||
+	(typeof global === 'object' && global.global === global && global) ||
+	this
 
-  const _SCOPE = {
-    _IMPORTS: [],
-    _VARS: vars,
-    _DYNAMIC: [],
-    _DYNAMIC_ACCESSED: false
-  }
-
-  const dirname = path.dirname(filePath)
-  const requireRelative = function(id) {
+const requireRelative = function (dirname) {
+  return function(id) {
     var str = id.substr(0, 2);
     if (str === '..' || str === './') {
       return require(path.join(dirname, id));
@@ -49,6 +43,32 @@ function evaluate (filePath, imports, vars, template) {
       return require(id);
     }
   }
+}
+
+function evaluate (filePath, imports, vars, template) {
+  const variableExports = []
+  const CSSVars = []
+  const errors = []
+  const hash = Math.random().toString(36).substr(2, 6)
+
+  const _SCOPE = {
+    JSON: root.JSON,
+    Object: root.Object,
+    Array: root.Array,
+    String: root.String,
+    Boolean: root.Boolean,
+    Number: root.Number,
+    Date: root.Date,
+    RegExp: root.RegExp,
+    Math: root.Math,
+    _IMPORTS: [],
+    _VARS: vars,
+    _DYNAMIC: [],
+    _DYNAMIC_ACCESSED: false
+  }
+
+  const dirname = path.dirname(filePath)
+  _SCOPE.require = requireRelative(dirname)
 
   imports.forEach(imp => {
     _SCOPE._IMPORTS.push(transform(imp).code)
@@ -57,11 +77,12 @@ function evaluate (filePath, imports, vars, template) {
   const _CONTEXT = store(_SCOPE)
 
   const evaluator = fragment => {
-    let functionBody = _SCOPE._IMPORTS.join('\n') +
-    "\nlet _RETURN_VALUE; with(this) { _RETURN_VALUE = " + fragment + " }" +
-      "return [_RETURN_VALUE, this._DYNAMIC_ACCESSED]"
+    let functionBody = 'with(this) {\n' 
+    + _SCOPE._IMPORTS.join('\n') +
+    "\nlet _RETURN_VALUE; _RETURN_VALUE = " + fragment + "\n" +
+      "return [_RETURN_VALUE, this._DYNAMIC_ACCESSED] }"
     try {
-      return new Function("require", functionBody).call(_CONTEXT, requireRelative)
+      return new Function(functionBody).call(_CONTEXT)
     } catch(e) {
       errors.push([e, fragment])
     }
@@ -72,29 +93,31 @@ function evaluate (filePath, imports, vars, template) {
     const varStringValue = item[1]
 
     const test = evaluator(varStringValue)
-    const evalValue = test[0]
+    const evalValue = test && test[0]
 
     _SCOPE[varName] = evalValue
+    
     if (item[2] === 1) {
       _SCOPE._DYNAMIC.push(varName)
       variableExports.push([varName, varStringValue])
     } else {
-      variableExports.push([varName, JSON.stringify(test[0])])
+      variableExports.push([varName, JSON.stringify(test ? test[0] : '')])
     }
   })
 
   const output = template.map((fragment, i) => {
     const test = evaluator('`' + fragment.replace('`', '\`') + '`')
-    if (test[1] === true) {
+    if (test && test[1] === true) {
       let cssVar = `--var-${hash}-${i}`
       CSSVars.push([cssVar, fragment])
       return `var(${cssVar}, ${test[0]})`
     }
-    return test[0]
+    return test ? test[0] : ''
   }).join('')
 
   return {
     output,
+    errors,
     CSSVars,
     variableExports
   }

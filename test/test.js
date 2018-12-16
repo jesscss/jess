@@ -63,8 +63,8 @@ const imports = [
 const vars = [
 	['something', '\'value\''],
 	['colors', '{foreground: {a: \'red\'}}', 1],
-	['blah', '\'foo\'', 1],
-	['blah2', 'val()']
+	['blah', 'val()', 1],
+	['blah2', "process.env['HOME']"]
 ]
 
 const template = [
@@ -74,7 +74,9 @@ const template = [
 	'${colors.foreground.a}',
 	';\n',
 	'@media (min-width: 250px) { foo: ',
-	'${blah} ${blah2}',
+	'${blah}',
+	' ',
+	'${blah2}',
 	' }',
 	'}'
 ]
