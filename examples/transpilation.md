@@ -17,33 +17,24 @@ $blah: #555;
 ```
 
 ```js
-import {
-  $,
-  addRules,
-  addRule,
-  addFunction,
-  callFunction
-} from 'jess';
+import {$} from 'jess';
 
 import * as _Variables from './variables.scss';
 
-const $ = {}
+$.set('blah', '#555');
 
-$['blah'] = '#555';
-
-addFunction('some-mixin', (args) => {
-  let $ = {...$, ...args}
-  addRule('bar', e($, ($) => $['val']))
+$.addFunction('some-mixin', ($, args) => {
+  $.addRule('bar', $.e($ => $.get('val')))
 })
 
 // Send root vars to imports
 const Variables = _Variables.styles({$blah})
 
-addRules('.box', () => {
-  addRule('color', e($, ($) => $['blah']))
-  callFunction('some-mixin', {['val']: 'bar'})
-  addRules('.sub', () => {
-    addRule('foo', 'bar') 
+$.addRules('.box', $ => {
+  $.addRule('color', $.e($ => $.get('blah'))
+  $.callFunction('some-mixin', {['val']: 'bar'})
+  $.addRules('.sub', $ => {
+    $.addRule('foo', 'bar') 
   })
 })
 ```
