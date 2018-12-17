@@ -110,6 +110,8 @@ val: @dimension * 2;
 ```
 
 ```js
-$.set('dimension', '30px')
-$.addRule('val', $.e($ => `${$.get('dimension') * 2}`)
+// value is Array [30] with prop unit = 'px'
+$.set('dimension', [30, 'px'])
+// evaluator will collect units and check for unit on return
+$.addRule('val', $.e($ => $.get('dimension') * 2))
 ```
