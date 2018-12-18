@@ -72,7 +72,7 @@ export const styles = config => {
   $.set('blah', '#555');
   
   // Send root vars to imports
-  $ = Variables.styles({$})
+  Variables.styles({$})
 
   // will register as '.some-mixin` and 'some-mixin' as fallback
   $.function('.some-mixin', ['val'], $ => {
@@ -206,4 +206,19 @@ $.function('.mixin', [], $ => {
     }
   ]
 }
+
+```
+```less
+.mixin();
+
+.mixin() {
+  .box {
+    foo: bar;
+  }
+}
+```
+```js
+// ?
+$.call('.mixin')
+$.function('.mixin'...) 
 ```
