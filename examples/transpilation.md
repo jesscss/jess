@@ -101,6 +101,16 @@ val: #ns.mixin[foo];
 ```
 
 ```js
+$.config({
+  rulesToMaps: true
+})
+
+$.addRules('#ns', $ => {
+  $.addRules('.mixin', $ => {
+    $.addRule('foo', 'bar')
+  })
+})
+
 $.addRule('val', $.e($ => $.get(['#ns', '.mixin', 'foo'])))
 ```
 
@@ -110,8 +120,40 @@ val: @dimension * 2;
 ```
 
 ```js
-// value is Array [30] with prop unit = 'px'
+// last unit appended to string
+$.config({lastUnit: true})
+// value is object with valueOf 30
 $.set('dimension', [30, 'px'])
 // evaluator will collect units and check for unit on return
 $.addRule('val', $.e($ => $.get('dimension') * 2))
+```
+
+```scss
+@for $i from 1 through $grid-columns {
+  .grid-#{$i} { @include grid-base($i); @extend .grid-block; }
+}
+@for $i from 1 to $grid-columns {
+  .grid-prefix-#{$i} { @include grid-prefix($i); }
+}
+@for $i from 1 to $grid-columns {
+  .grid-suffix-#{$i} { @include grid-suffix($i); }
+}
+@for $i from 1 to $grid-columns {
+  .grid-push-#{$i} { @include grid-push($i); }
+}
+@for $i from 1 to $grid-columns {
+  .grid-pull-#{$i} { @include grid-pull($i); }
+}
+```
+
+```js
+$.control($ => {
+  $.set('i', 1)
+  for(let _i = $.get('i'); i < $.get('grid-columns'); i++) {
+    $.addRules(`.grid-${_i}`, $ => {
+      $.call('grid-base', {0: _i})
+      $.extend('.grid-block')
+    })
+  }
+})
 ```
