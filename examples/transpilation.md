@@ -65,7 +65,8 @@ export const styles = ({$}) => {
 import * as Variables from './variables.scss';
 
 // $ is a scope builder
-export const styles = ({$}) => {
+export const styles = config => {
+  let {$, ...rest} = config
   // variables are stripped of $ or @
   // $.set calls are hoisted to top of block for Less transpilation
   $.set('blah', '#555');
@@ -87,7 +88,7 @@ export const styles = ({$}) => {
     })
   })
 
-  return $
+  return {$, ...rest}
 }
 ```
 
