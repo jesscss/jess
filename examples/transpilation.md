@@ -186,3 +186,24 @@ $.function('.mixin', [], $ => {
 
 }, $ => $.default())
 ```
+```less
+.mixin(@a) when (@a = 1) {
+}
+```
+```js
+// Test args, test guards, then execute
+{
+  ['.mixin']: [
+    {
+      args: {
+        ['a']: undefined
+      },
+      guard($) {
+        return $.get('a') == 1
+      },
+      function($) {
+      },
+    }
+  ]
+}
+```
