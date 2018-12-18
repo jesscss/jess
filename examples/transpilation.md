@@ -75,16 +75,16 @@ export const styles = config => {
   $ = Variables.styles({$})
 
   // will register as '.some-mixin` and 'some-mixin' as fallback
-  $.function('.some-mixin', $ => {
-    $.addRule('bar', $.e($ => $.get('val')))
+  $.function('.some-mixin', ['val'], $ => {
+    $.declaration('bar', $.e($ => $.get('val')))
   })
 
   // Rules will be added as function call for Less
-  $.addRules('.box', $ => {
-    $.addRule('color', $.e($ => $.get('blah'))
+  $.rules('.box', $ => {
+    $.declaration('color', $.e($ => $.get('blah'))
     $.call('.some-mixin', {['val']: 'bar'})
-    $.addRules('.sub', $ => {
-      $.addRule('foo', 'bar') 
+    $.rules('.sub', $ => {
+      $.declaration('foo', 'bar') 
     })
   })
 
@@ -106,13 +106,13 @@ $.config({
   rulesToMaps: true
 })
 
-$.addRules('#ns', $ => {
-  $.addRules('.mixin', $ => {
-    $.addRule('foo', 'bar')
+$.rules('#ns', $ => {
+  $.rules('.mixin', $ => {
+    $.declaration('foo', 'bar')
   })
 })
 
-$.addRule('val', $.e($ => $.get(['#ns', '.mixin', 'foo'])))
+$.declaration('val', $.e($ => $.get(['#ns', '.mixin', 'foo'])))
 ```
 
 ```less
@@ -126,7 +126,7 @@ $.config({lastUnit: true})
 // value is object with valueOf 30
 $.set('dimension', [30, 'px'])
 // evaluator will collect units and check for unit on return
-$.addRule('val', $.e($ => $.get('dimension') * 2))
+$.declaration('val', $.e($ => $.get('dimension') * 2))
 ```
 
 ```scss
@@ -151,10 +151,38 @@ $.addRule('val', $.e($ => $.get('dimension') * 2))
 $.control($ => {
   $.set('i', 1)
   for(let _i = $.get('i'); i < $.get('grid-columns'); i++) {
-    $.addRules(`.grid-${_i}`, $ => {
+    $.rules(`.grid-${_i}`, $ => {
       $.call('grid-base', {0: _i})
       $.extend('.grid-block')
     })
   }
 })
+```
+
+```less
+.mixin() when (@a = 1) {
+
+}
+.mixin() when (@a = 2) {
+
+}
+.mixin() when (default()) {
+
+}
+```
+
+```js
+$.config({functionOverloading: true})
+
+$.function('.mixin', [], $ => {
+
+}, $ => $.get('a') == 1)
+
+$.function('.mixin', [], $ => {
+
+}, $ => $.get('a') == 2)
+
+$.function('.mixin', [], $ => {
+
+}, $ => $.default())
 ```
