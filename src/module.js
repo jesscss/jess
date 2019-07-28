@@ -3,6 +3,9 @@ const postcssNested = require('postcss-nested')
 const autoprefixer = require('autoprefixer')
 
 import {evaluator} from './evaluator/index.js'
+import parse from './parser';
+
+export {parse};
 
 export const compile = (filePath, imports, vars, template) => {
   const result = evaluator(filePath, imports, vars, template)

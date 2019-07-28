@@ -1,3 +1,1 @@
-$export const mixin = radius => {
-  border-radius: ${radius}px;
-}
+@const radius: 5px;

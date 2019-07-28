@@ -64,7 +64,8 @@ const vars = [
 	['something', '\'value\''],
 	['colors', '{foreground: {a: \'red\'}}', 1],
 	['blah', 'val()', 1],
-	['blah2', "process.env['HOME']"]
+	['blah2', "process.env['HOME']"],
+	['math', "Math.round(1.1)"]
 ]
 
 const template = [

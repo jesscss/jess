@@ -1,14 +1,9 @@
-@{
-  import {CSS} from '../..'
-  import {button} from './button.jess'
-  import {mixin} from './mixins.jess'
-
-  export default CSS(['isSmart'])
-}
+@import {button} from './button.jess'
+@import {radius} from './constants.jess';
 
 .main {
   ${button} {
     color: red;
-    ${mixin(5)}
+    border-radius: <radius>;
   }
 }

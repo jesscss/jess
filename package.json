@@ -16,6 +16,7 @@
   "devDependencies": {
     "babel-plugin-transform-async-to-promises": "^0.8.2",
     "babel-preset-env": "^1.6.0",
+    "chevrotain": "^4.8.1",
     "rollup": "^0.46.0",
     "rollup-plugin-babel": "^2.7.1",
     "rollup-plugin-commonjs": "^8.0.2",
@@ -25,6 +26,7 @@
     "prepublish": "npm run build",
     "build": "rollup -c",
     "dev": "rollup -c -w",
+    "parse": "node test/parse.js",
     "test": "node test/test.js"
   },
   "files": [

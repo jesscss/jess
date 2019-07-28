@@ -1,5 +1,5 @@
-$let color = 'red'
+@const color: red;
 
 .box {
-  color: ${color};
+  color: <color>;
 }
