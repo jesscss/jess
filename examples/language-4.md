@@ -286,7 +286,7 @@ Similarly, `@media` and `@supports` rules will bubble.
 
 #### Variables
 
-Variables are just JavaScript, because they're referenced in JS expressions.
+Variables are very similar to Less / Sass, with the only difference in Jess being they need to follow JS identifier rules.
 
 ```less
 // Less variable
@@ -295,25 +295,6 @@ Variables are just JavaScript, because they're referenced in JS expressions.
 // Sass variable
 @color-brand: #AAAAFC;
 
-// Jess variable.
-@const color-brand: #AAAAFC;
-```
-WAIT A MINUTE. The above variable isn't camel-case, so how is it referenced in JavaScript?
-
-Simple:
-```less
-.box {
-  color: ${<color-brand>};
-}
-```
-Note that you can also write simple CSS references in plain `<>` brackets, like:
-```less
-.box {
-  color: <color-brand>;
-}
-```
-However, for convenience and ease of integration into JS, you're probably better off writing variables in a JS-compatible way.
-```less
 // Jess variable.
 @const colorBrand: #AAAAFC;
 ```
@@ -326,7 +307,7 @@ If you want a variable from another `.jess` stylesheet, you need to `@import` it
 @import { colorBrand } from './variables.jess';
 
 // ...
-color: <colorBrand>; // or ${colorBrand}
+color: ${colorBrand};
 ```
 #### Maps
 

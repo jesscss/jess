@@ -42,11 +42,15 @@ class JessParser extends Parser {
     const $ = this;
 
     $.RULE("stylesheet", () => {
-      $.MANY(() => $.OR([
+      $.MANY(() => $.SUBRULE($.rule, { LABEL: 'rules' }));
+    });
+
+    $.RULE('rule', () => {
+      $.OR([
         {ALT: () => $.CONSUME(Imprt)},
         {ALT: () => $.SUBRULE($.variable)},
         {ALT: () => $.SUBRULE($.blockOptions)}
-      ]));
+      ]);
     });
     
     $.RULE("variable", () => {
@@ -116,8 +120,17 @@ class jessInterpreter extends BaseCstVisitor {
     this.validateVisitor();
   }
   stylesheet(ctx) {
+    const arr = [];
+    if (ctx.rules) {
+      ctx.rules.forEach((rule) => {
+        arr.push(this.visit(rule));
+      });
+    }
+    return arr;
+  }
+  rule(ctx) {
     console.log(ctx);
-    return '';
+    return ctx;
   }
   variable(ctx) {
     return '';
@@ -154,10 +167,10 @@ export default (text) => {
 
   // 3. Perform semantics using a CstVisitor.
   // Note that separation of concerns between the syntactic analysis (parsing) and the semantics.
-  // const value = interpreter.visit(cst);
+  const value = interpreter.visit(cst);
 
   return {
-    value: cst,
+    value: value,
     lexResult: lexResult,
     parseErrors: parser.errors
   };
