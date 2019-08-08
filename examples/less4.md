@@ -191,3 +191,14 @@ Instead, import a mixin, and call it within your `@media` block.
 ```
 
 If you want to dynamically change imports at build time, it should be part of a Less plugin that changes how files are resolved.
+
+16. Less functions
+
+```ts
+import {Color, IColor} from 'less/tree/color';
+
+export let fadeout = (color, percent): IColor => {
+  return Color();
+}
+fadeout.evalVars = false;
+```
