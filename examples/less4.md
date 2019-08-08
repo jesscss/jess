@@ -97,6 +97,16 @@ func();
 @import {func} from 'blah.js';
 ```
 
+As such, Less functions must be imported to a) reduce CSS conflict, b) utilize tree-shaking during export.
+```less
+@import {fadeout} from 'less/functions';
+
+.blah {
+  color: fadeout(#000, 10%);
+}
+```
+
+
 8. Stylesheets are never parsed in the browser; instead, a `.css` file with an optional `.js` module
 is exported which supports dynamic evaluation. This will result in much smaller and more efficient bundles.
 
