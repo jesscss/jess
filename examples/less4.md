@@ -216,7 +216,7 @@ If you want to dynamically change imports at build time, it should be part of a 
 
 ### Because imports have no global side effects, and can't be within rulesets, import options are removed
 ```less
-@import (multiple) 'something.less';
+@import (multiple) 'something.less'; // error in Less 4.x
 ```
 
 ### Less functions
