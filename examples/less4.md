@@ -214,6 +214,11 @@ Instead, import a mixin, and call it within your `@media` block.
 
 If you want to dynamically change imports at build time, it should be part of a Less plugin that changes how files are resolved.
 
+### Because imports have no global side effects, and can't be within rulesets, import options are removed
+```less
+@import (multiple) 'something.less';
+```
+
 ### Less functions
 
 ```ts
