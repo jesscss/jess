@@ -57,7 +57,7 @@ Instead, just pass vars to mixins for predictable output:
   .foo {a: b;}
 }
 
-// Less 3
+// Less 3 turns this into the string ".bar.one, .two, .three", and then re-parses
 .bar.one .foo,
 .two .foo,
 .three .foo {
