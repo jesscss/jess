@@ -28,7 +28,7 @@ Changes from Less v1-3 to Less4
 ```
 
 3. Selectors aren't re-parsed. Instead, lists have merging rules.
-```
+```less
 @selectors: .one, .two, .three;
 
 .bar@{selectors} {
