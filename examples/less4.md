@@ -1,6 +1,6 @@
 Changes from Less v1-3 to Less4
 
-1. Imports don't have global side effects.
+### Imports don't have global side effects.
 ```less
 // main.less
 @import 'mixins.less';
@@ -15,7 +15,7 @@ Changes from Less v1-3 to Less4
 .mixinCall();
 ```
 
-2. Mixins don't leak variables
+### Mixins don't leak variables
 ```less
 .mixin() {
   @my-var: foo;
@@ -27,7 +27,29 @@ Changes from Less v1-3 to Less4
 }
 ```
 
-3. Selectors aren't re-parsed. Instead, lists have merging rules.
+### Variables within a scope also aren't leaked to mixins, meaning mixins don't have side effects and can be statically analyzed, unlike Less 3.x
+```less
+.mixin() {
+  color: @foo;
+}
+
+.box {
+  @foo: black;
+  .mixin();  // works in Less 3.x, error in Less 4.x
+}
+```
+Instead, just pass vars to mixins for predictable output:
+```less
+.mixin(@foo) {
+  color: @foo;
+}
+.box {
+  @foo: black;
+  .mixin(@foo);
+}
+```
+
+### Selectors are never re-parsed. Instead, lists have merging rules that match `&` behavior
 ```less
 @selectors: .one, .two, .three;
 
@@ -52,7 +74,7 @@ Changes from Less v1-3 to Less4
 }
 ```
 
-4. Rules are not mixins. Mixins must be explicit.
+### Rules are not mixins. Mixins must be explicit.
 ```less
 .bar {}
 
@@ -61,7 +83,7 @@ Changes from Less v1-3 to Less4
 }
 ```
 
-5. Mixin calls require `()`
+### Mixin calls require `()`
 ```less
 .bar() {}
 
@@ -70,7 +92,7 @@ Changes from Less v1-3 to Less4
 }
 ```
 
-6. To reduce developer confusion, maps can access mixins, not rules
+### To reduce developer confusion, maps can access mixins, not rules
 ```less
 .rules {
   color: black;
@@ -86,7 +108,7 @@ Changes from Less v1-3 to Less4
 }
 ```
 
-7. `@plugin` is removed for import calls.
+### `@plugin` is removed for import calls.
 ```less
 // less 3
 @plugin 'blah.js';  // dumped imports here
@@ -106,8 +128,7 @@ As such, Less functions must be imported to a) reduce CSS conflict, b) utilize t
 }
 ```
 
-
-8. Stylesheets are never parsed in the browser; instead, a `.css` file with an optional `.js` module
+### Stylesheets are never parsed in the browser; instead, a `.css` file with an optional `.js` module
 is exported which supports dynamic evaluation. This will result in much smaller and more efficient bundles.
 
 ```html
@@ -115,15 +136,15 @@ is exported which supports dynamic evaluation. This will result in much smaller 
 <script type="module" src="compiled.js"></script>
 ```
 
-9. Less plugins are strictly at compile-time (not in the browser), used to add file resolvers or module importers.
+### Less plugins are strictly at compile-time (not in the browser), used to add file resolvers or module importers.
 
-10. Less exports a JS module, not a CSS file, and so can be used in place of CSS modules or CSS-in-JS.
+### Less exports a JS module, not a CSS file, and so can be used in place of CSS modules or CSS-in-JS.
 
 The JS module maps mixins/vars to exports, and props to camelCase.
 
-11. `@{var}` is deprecated in favor of an evaluator `#{@var}` which can have an expression.
+### `@{var}` is deprecated in favor of an evaluator `#{@var}` which can have an expression.
 
-12. Less exports are (can be?) in the form of `var()` with a default variable.
+### Less exports are (can be?) in the form of `var()` with a default variable.
 ```less
 @color: #666;
 
@@ -138,7 +159,8 @@ The JS module maps mixins/vars to exports, and props to camelCase.
 }
 ```
 
-13. Technically, the Less parser until now has allowed "partial" rulesets, such as props in the root.
+### Technically, the Less parser until now has allowed "partial" rulesets, such as props in the root.
+
 For instance, this is valid in Less 3.
 ```less
 .box {
@@ -158,7 +180,7 @@ Many Less linters (such as in IDEs) don't realize this, and mark this as invalid
 prop1: value;  // error
 ```
 
-14. Aligning closer with browser `import` semantics, imports may not be within a rule, but must appear at the root. This allows for cleaner code, JS module integration, and static analysis.
+### Aligning closer with browser `import` semantics, imports may not be within a rule, but must appear at the root. This allows for cleaner code, JS module integration, and static analysis.
 
 ```less
 // valid in Less 3.x
@@ -184,7 +206,7 @@ Instead, import a mixin, and call it within your `@media` block.
 }
 ```
 
-15. Along the same reasoning as above, import calls may not be dynamic. 
+### Along the same reasoning as above, import calls may not be dynamic. 
 ```less
 @url: 'rules.less';
 @import @{url}; // error in Less 4.x
@@ -192,7 +214,7 @@ Instead, import a mixin, and call it within your `@media` block.
 
 If you want to dynamically change imports at build time, it should be part of a Less plugin that changes how files are resolved.
 
-16. Less functions
+### Less functions
 
 ```ts
 import {Color, IColor} from 'less/tree/color';
