@@ -122,3 +122,18 @@ is exported which supports dynamic evaluation. This will result in much smaller 
 The JS module maps mixins/vars to exports, and props to camelCase.
 
 11. `@{var}` is deprecated in favor of an evaluator `#{@var}` which can have an expression.
+
+12. Less exports are (can be?) in the form of `var()` with a default variable.
+```less
+@color: #666;
+
+.foo {
+  color: @color;
+}
+
+// exports
+
+.foo {
+  color: var(--foo-color-0, #666);
+}
+```
