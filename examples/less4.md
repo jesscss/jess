@@ -98,9 +98,17 @@ func();
 ```
 
 8. Stylesheets are never parsed in the browser; instead, a `.css` file with an optional `.js` module
-is exported which supports dynamic evaluation.
+is exported which supports dynamic evaluation. This will result in much smaller and more efficient bundles.
 
 ```html
 <link rel="stylesheet" type="text/css" href="compiled.css">
 <script type="module" src="compiled.js"></script>
 ```
+
+9. Less plugins are strictly at compile-time (not in the browser), used to add file resolvers or module importers.
+
+10. Less exports a JS module, not a CSS file, and so can be used in place of CSS modules or CSS-in-JS.
+
+The JS module maps mixins/vars to exports, and props to camelCase.
+
+11. `@{var}` is deprecated in favor of an evaluator `#{@var}` which can have an expression.
