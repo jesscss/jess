@@ -137,3 +137,57 @@ The JS module maps mixins/vars to exports, and props to camelCase.
   color: var(--foo-color-0, #666);
 }
 ```
+
+13. Technically, the Less parser until now has allowed "partial" rulesets, such as props in the root.
+For instance, this is valid in Less 3.
+```less
+.box {
+  @import 'rules.less';
+}
+
+// rules.less
+
+prop1: value;
+prop2: value;
+```
+Many Less linters (such as in IDEs) don't realize this, and mark this as invalid code. However, it's also just plain messy. In Less 4, Less stylesheets must contain well-formed rulesets.
+
+```less
+// rules.less
+
+prop1: value;  // error
+```
+
+14. Aligning closer with browser `import` semantics, imports may not be within a rule, but must appear at the root. This allows for cleaner code, JS module integration, and static analysis.
+
+```less
+// valid in Less 3.x
+
+@media (min-width: 640px) {
+  @import '640-rules.less';
+}
+
+// Less 4.x
+@media (min-width: 640px) {
+  @import '640-rules.less';  // error
+}
+
+```
+
+Instead, import a mixin, and call it within your `@media` block.
+
+```less
+@import 'rules.less';
+
+@media (min-width: 640px) {
+  .rules(640);
+}
+```
+
+15. Along the same reasoning as above, import calls may not be dynamic. 
+```less
+@url: 'rules.less';
+@import @{url}; // error in Less 4.x
+```
+
+If you want to dynamically change imports at build time, it should be part of a Less plugin that changes how files are resolved.
