@@ -116,12 +116,12 @@ Instead, just pass vars to mixins for predictable output:
 func();
 
 // less 4
-@import {func} from 'blah.js';
+@import (func) from 'blah.js';
 ```
 
 As such, Less functions must be imported to a) reduce CSS conflict, b) utilize tree-shaking during export.
 ```less
-@import {fadeout} from 'less/functions';
+@import (fadeout) from 'less/functions';
 
 .blah {
   color: fadeout(#000, 10%);
@@ -214,7 +214,7 @@ Instead, import a mixin, and call it within your `@media` block.
 
 If you want to dynamically change imports at build time, it should be part of a Less plugin that changes how files are resolved.
 
-### Because imports have no global side effects, and can't be within rulesets, import options are removed
+### Because imports have no global side effects, and can't be within rulesets, import options are removed (?)
 ```less
 @import (multiple) 'something.less'; // error in Less 4.x
 ```
@@ -228,4 +228,69 @@ export let fadeout = (color, percent): IColor => {
   return Color();
 }
 fadeout.evalVars = false;
+```
+
+### Less API changes
+
+Less tree nodes would become 1st-class JS citizens, meaning that every node would implement (or inherit) `.valueOf()` and `.toString()`.
+
+For instance:
+```js
+class Dimension extends Node {
+  constructor(value, unit) {
+    this.value = value;
+    this.unit = unit;
+  }
+  // Probably would be abstrated into Node by default
+  valueOf() {
+    return this.value;
+  }
+  toString() {
+    return `${this.value}${this.unit}`;
+  }
+}
+
+let val = new Dimension(3, 'px');
+console.log(val + 7);  // 10
+console.log(val + ''); // 3px
+```
+Also, every node would optionally implement a `children` property, vs an arbitrary named property like `rules` or `values`. This will not only simplify code within Less (that seeks a different property name based on node type), but can also be abstrated in `valueOf` and `toString` calls to aggregate those values into array primitives or space-separated string sequences for export.
+
+### Interoperability with JS
+
+Less 4 can just import from JS
+```js
+// rules.js
+export const rule = {
+  backgroundColor: 'black' // note that this would be an anonymous value, so is not parsed as a color
+};
+```
+```less
+@import (rule) from 'rules.js';
+
+.box {
+  rule();
+}
+```
+Would produce:
+```
+.box {
+  background-color: black;
+}
+```
+With a Rollup / Wepback plugin, Less 4 stylesheets can also be imported into JS
+
+```less
+// rules.less
+.rules() {
+  background-color: black;
+}
+```
+```jsx
+import React from 'react';
+import styles from 'rules.less';
+
+export const Component = (props) => {
+  return <div style={styles.rules()} />;
+};
 ```
