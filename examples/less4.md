@@ -92,7 +92,16 @@ Instead, just pass vars to mixins for predictable output:
 }
 ```
 
-### To reduce developer confusion, maps can access mixins, not rules
+To make this change clear, however, mixins and rules with the same name will throw an error.
+
+```less
+.bar {}
+.bar() {} // name conflict error in Less 4
+```
+
+### ~To reduce developer confusion, maps can access mixins, not rules~
+
+(Probably not necessary)
 ```less
 .rules {
   color: black;
@@ -314,3 +323,26 @@ export const Component = (props) => {
 </style>
 <div class="rules-foo123"></div>
 ```
+Also, in a browser environment (or SSR), accessing the `styles` of a Less stylesheet (during import) will immediately attach (unless already attached) all raw CSS to the page (or be added to the raw CSS export in pre-compile).
+
+```less
+// main.less
+.plain-ruleset {
+  color: blue;
+}
+```
+
+```js
+import styles from 'main.less'
+```
+Outputs:
+```html
+<head>
+  <style>
+    .plain-ruleset {
+      color: blue;
+    }
+  </style>
+</head>
+```
+This alleviates the need for concepts like the `:global` pseudo-selector in CSS modules.
