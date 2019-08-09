@@ -334,6 +334,8 @@ Also, in a browser environment (or SSR), accessing the `styles` of a Less styles
 
 ```js
 import styles from 'main.less'
+
+// or require something like `styles()` ?
 ```
 Outputs:
 ```html
