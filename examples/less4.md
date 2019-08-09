@@ -241,7 +241,7 @@ fadeout.evalVars = false;
 
 ### Less API changes
 
-Less tree nodes would become 1st-class JS citizens, meaning that every node would implement (or inherit) `.valueOf()` and `.toString()`.
+Less tree nodes would become 1st-class JS citizens, meaning that every node would implement (or inherit) `.valueOf()`, `.toString()`, and `toJSON()`.  (`toJSON()` is used not just for interoperability, but also for memoization of function/mixin values to determine object equality in passed-in parameters)
 
 For instance:
 ```js
@@ -256,6 +256,12 @@ class Dimension extends Node {
   }
   toString() {
     return `${this.value}${this.unit}`;
+  }
+  toPlainObject() {
+    return {value:this.value,unit:this.unit};
+  }
+  toJSON() {
+    return JSON.stringify(this.toPlainObject())
   }
 }
 
