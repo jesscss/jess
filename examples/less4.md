@@ -294,3 +294,23 @@ export const Component = (props) => {
   return <div style={styles.rules()} />;
 };
 ```
+
+When a mixin's `toString()` is called in a browser runtime-like environment, it will create a CSS class name based on a memoization of the function. In other words, the `<style>` innerHTML will not be re-written if the params to the mixin are the same.
+
+```jsx
+import React from 'react';
+import styles from 'rules.less';
+
+export const Component = (props) => {
+  return <div className={styles.rules()} />;
+};
+```
+
+```html
+<style>
+  .rules-foo123 {
+    background-color: black;
+  }
+</style>
+<div class="rules-foo123"></div>
+```
