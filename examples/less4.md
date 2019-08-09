@@ -334,8 +334,10 @@ Also, in a browser environment (or SSR), accessing the `styles` of a Less styles
 
 ```js
 import styles from 'main.less'
+styles();
 
-// or require something like `styles()` ?
+// would also fire the function if styles.prop is accessed the first time,
+// because styles is a Proxy object to a function
 ```
 Outputs:
 ```html
