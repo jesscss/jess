@@ -234,7 +234,7 @@ If you want to dynamically change imports at build time, it should be part of a 
 import {Color, IColor} from 'less/tree/color';
 
 export let fadeout = (color, percent): IColor => {
-  return Color();
+  return Color(); //...
 }
 fadeout.evalVars = false;
 ```
@@ -269,7 +269,7 @@ let val = new Dimension(3, 'px');
 console.log(val + 7);  // 10
 console.log(val + ''); // 3px
 ```
-Also, every node would optionally implement a `children` property, vs an arbitrary named property like `rules` or `values`. This will not only simplify code within Less (that seeks a different property name based on node type), but can also be abstrated in `valueOf` and `toString` calls to aggregate those values into array primitives or space-separated string sequences for export.
+Also, every node would optionally implement a `children` property (or directly attach props in the case of rules?), vs an arbitrary named property like `rules` or `values`. This will not only simplify code within Less (that seeks a different property name based on node type), but can also be abstrated in `valueOf` and `toString` calls to aggregate those values into array primitives or space-separated string sequences for export.
 
 ### Interoperability with JS
 
@@ -309,6 +309,7 @@ export const Component = (props) => {
   return <div style={styles.rules()} />;
 };
 ```
+TODO: Rewrite - this probably wouldn't work. I think what's needed is some kind of `$id` selector, for a scoped-identifier that generates a class name and can be used in other selectors.
 
 When a mixin's `toString()` is called in a browser runtime-like environment, it will create a CSS class name based on a memoization of the function. In other words, the `<style>` innerHTML will not be re-written if the params to the mixin are the same.
 
