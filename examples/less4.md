@@ -225,7 +225,7 @@ The idea I have now is this could be done like this:
 2. At browser runtime, Less essentially "hydrates" the Stylesheet (similar to Vue / React hydration), by evaluating the `.js` bundle, and checking that against the stylesheets on the page to make sure that they correspond in value. The link or style block is then marked as hydrated.
 3. If we modify any vars or call mixins with different values, the Less compiler should know, because of the way it compiled, _exactly_ what rules now need to be re-evaluated. Because we've removed side-effects (documented above in the document), each rule path or mixin call should have a completely clear, linear dependency chain. Unlike PostCSS, Less nodes can not be modified globally. A mixin / function may only create a node or not. (This would need to be verified in tests that don't yet exist.)
 4. Less would maintain a "virtual CSSOM" for each Stylesheet. When the Less tree is re-evaluated, it would perform a diff to be able to tell which rules need to be added / removed / changed.
-5. Less would then dispatch `insertRule()` and/or `deleteRule()` to modify the stylesheet as needed.
+5. Less would then dispatch `insertRule()` and/or `deleteRule()` to modify the stylesheet as needed (or create a new stylesheet, depending on the size of the diff?)
 
 Essentially (ideally), you would have a very, very tiny Less bundle with a built-in CSSOM manager, responsibily for only updating parts of CSS as needed.
 
