@@ -180,6 +180,16 @@ If you want to dynamically change imports at build time, it should be part of a 
 @import (multiple) 'something.less'; // error in Less 4.x
 ```
 
+#### @import (reference)
+This would not be needed, because you can just import what you need, vs dumping all raw CSS in the current scope/output.
+```less
+// Less 3.x
+@import (reference) 'mixins.less';
+
+//Less 4.x
+@import (.mixin) from 'mixins.less';
+```
+
 ### `@plugin` is removed for import calls.
 ```less
 // less 3
