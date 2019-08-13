@@ -402,4 +402,4 @@ export const Component = (props) => {
   return <div className={styles.$rules} />;
 };
 ```
-Somehow this should be made easier and more automatic than CSS modules. The need for `:global` in CSS modules is unruly. We should be able to define module-scoped classes directly.
+I still don't like the CSS modules convention. With the approach documented so far, it should be clear when I'm returning a ruleset vs when I'm returning just the name of the class. In short, somehow this should be made easier and more automatic than CSS modules. The need for `:global` in CSS modules is unruly. We should be able to define module-scoped classes directly, in the form of identifying which identifiers are which.
