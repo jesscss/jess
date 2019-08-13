@@ -1,6 +1,9 @@
 Changes from Less v1-3 to Less4
 
 ### Imports don't have global side effects.
+
+_TODO: need to test/iterate to see if this makes evaluation harder._
+
 ```less
 // main.less
 @import 'mixins.less';
