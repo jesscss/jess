@@ -380,7 +380,7 @@ Outputs:
 ```
 This alleviates the need for concepts like the `:global` pseudo-selector in CSS modules.
 
-#### Idea 2
+##### Idea 2
 Use an `$id` selector that creates a module-scoped ID, and can be passed around / modified like other selectors.
 
 _NOTE: this conflicts with the property accessor.... but it allows it to be accessible directly from JS...?_
@@ -402,3 +402,4 @@ export const Component = (props) => {
   return <div className={styles.$rules} />;
 };
 ```
+Somehow this should be made easier and more automatic than CSS modules. The need for `:global` in CSS modules is unruly. We should be able to define module-scoped classes directly.
