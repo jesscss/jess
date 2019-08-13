@@ -328,8 +328,9 @@ export const Component = (props) => {
   return <div style={styles.rules()} />;
 };
 ```
-TODO: Rewrite - this probably wouldn't work. I think what's needed is some kind of `$id` selector, for a scoped-identifier that generates a class name and can be used in other selectors.
+#### TODO: Rewrite - this probably wouldn't work. I think what's needed is some kind of `$id` selector, for a scoped-identifier that generates a class name and can be used in other selectors.
 
+##### Idea 1 (not great)
 When a mixin's `toString()` is called in a browser runtime-like environment, it will create a CSS class name based on a memoization of the function. In other words, the `<style>` innerHTML will not be re-written if the params to the mixin are the same.
 
 ```jsx
@@ -350,6 +351,8 @@ export const Component = (props) => {
 <div class="rules-foo123"></div>
 ```
 Also, in a browser environment (or SSR), accessing the `styles` of a Less stylesheet (during import) will immediately attach (unless already attached) all raw CSS to the page (or be added to the raw CSS export in pre-compile).
+
+_NOTE: A smarter, more dev-friendly way would be something like `.attach()` or `.hydrate()`. Look at JSS's API._
 
 ```less
 // main.less
@@ -376,3 +379,26 @@ Outputs:
 </head>
 ```
 This alleviates the need for concepts like the `:global` pseudo-selector in CSS modules.
+
+#### Idea 2
+Use an `$id` selector that creates a module-scoped ID, and can be passed around / modified like other selectors.
+
+_NOTE: this conflicts with the property accessor.... but it allows it to be accessible directly from JS...?_
+
+```less
+$rules {
+  background-color: black;
+  &:hover {
+    background-color: blue;
+  }
+}
+```
+
+```js
+import React from 'react';
+import styles from 'rules.less';
+
+export const Component = (props) => {
+  return <div className={styles.$rules} />;
+};
+```
