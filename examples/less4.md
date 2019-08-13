@@ -82,6 +82,12 @@ Instead, just pass vars to mixins for predictable output:
   .bar();  // not found
 }
 ```
+To make this change clear, however, mixins and rules with the same name will throw an error.
+
+```less
+.bar {}
+.bar() {} // name conflict error in Less 4
+```
 
 ### Mixin calls require `()`
 ```less
@@ -90,13 +96,6 @@ Instead, just pass vars to mixins for predictable output:
 .foo {
   .bar;  // error
 }
-```
-
-To make this change clear, however, mixins and rules with the same name will throw an error.
-
-```less
-.bar {}
-.bar() {} // name conflict error in Less 4
 ```
 
 ### ~To reduce developer confusion, maps can access mixins, not rules~
@@ -117,56 +116,6 @@ To make this change clear, however, mixins and rules with the same name will thr
 }
 ```
 
-### `@plugin` is removed for import calls.
-```less
-// less 3
-@plugin 'blah.js';  // dumped imports here
-
-func();
-
-// less 4
-@import (func) from 'blah.js';
-```
-
-As such, Less functions must be imported to a) reduce CSS conflict, b) utilize tree-shaking during export.
-```less
-@import (fadeout) from 'less/functions';
-
-.blah {
-  color: fadeout(#000, 10%);
-}
-```
-
-### Stylesheets are never parsed in the browser; instead, a `.css` file with an optional `.js` module
-is exported which supports dynamic evaluation. This will result in much smaller and more efficient bundles.
-
-```html
-<link rel="stylesheet" type="text/css" href="compiled.css">
-<script type="module" src="compiled.js"></script>
-```
-
-### Less plugins are strictly at compile-time (not in the browser), used to add file resolvers or module importers.
-
-### Less exports a JS module, not a CSS file, and so can be used in place of CSS modules or CSS-in-JS.
-
-The JS module maps mixins/vars to exports, and props to camelCase.
-
-### `@{var}` is deprecated in favor of an evaluator `#{@var}` which can have an expression.
-
-### Less exports are (can be?) in the form of `var()` with a default variable.
-```less
-@color: #666;
-
-.foo {
-  color: @color;
-}
-
-// exports
-
-.foo {
-  color: var(--foo-color-0, #666);
-}
-```
 
 ### Technically, the Less parser until now has allowed "partial" rulesets, such as props in the root.
 
@@ -227,6 +176,76 @@ If you want to dynamically change imports at build time, it should be part of a 
 ```less
 @import (multiple) 'something.less'; // error in Less 4.x
 ```
+
+### `@plugin` is removed for import calls.
+```less
+// less 3
+@plugin 'blah.js';  // dumped imports here
+
+func();
+
+// less 4
+@import (func) from 'blah.js';
+```
+
+As such, Less functions must be imported* to a) reduce CSS conflict, b) utilize tree-shaking during export.
+
+_* I'm thinking for back-compat, there could instead be a default option to import Less functions, as needed. It could still utilize tree-shaking semantics in an exported module._
+```less
+@import (fadeout) from 'less/functions';
+
+.blah {
+  color: fadeout(#000, 10%);
+}
+```
+
+### Stylesheets are never parsed in the browser
+Instead, a `.css` file with an optional `.js` module is exported which supports dynamic evaluation. This will result in much smaller and more efficient bundles.
+
+```html
+<link rel="stylesheet" type="text/css" href="compiled.css">
+<script type="module" src="compiled.js"></script>
+```
+
+* Less plugins are strictly at compile-time (not in the browser), used to add file resolvers or module importers.
+* Less exports a JS module, not a CSS file, and so can be used in place of CSS modules or CSS-in-JS.
+
+The JS module maps mixins/vars to exports, and props to camelCase.
+
+Possibly:
+* `@{var}` is deprecated in favor of an evaluator `#{@var}` which can have an expression. This allows a little more expressiveness in interpolation, as well as making `@{var}` look less odd, since the identifier is actually `@var`, not `var`.
+
+### Live variable modification
+
+This part needs research / testing, but essentially, Less would "manage" the inserted styles vs a giant innerHTML dump, to reduce style recalculation in the browser.
+
+The idea I have now is this could be done like this:
+
+1. At compile-time, Less produces a `.css` file and a corresponding `.js` bundle that produced it. The CSS file can be used as-is (!), OR the `.js` file can be used without it.
+2. At browser runtime, Less essentially "hydrates" the Stylesheet (similar to Vue / React hydration), by evaluating the `.js` bundle, and checking that against the stylesheets on the page to make sure that they correspond in value. The link or style block is then marked as hydrated.
+3. If we modify any vars or call mixins with different values, the Less compiler should know, because of the way it compiled, _exactly_ what rules now need to be re-evaluated. Because we've removed side-effects (documented above in the document), each rule path or mixin call should have a completely clear, linear dependency chain. Unlike PostCSS, Less nodes can not be modified globally. A mixin / function may only create a node or not. (This would need to be verified in tests that don't yet exist.)
+4. Less would maintain a "virtual CSSOM" for each Stylesheet. When the Less tree is re-evaluated, it would perform a diff to be able to tell which rules need to be added / removed / changed.
+5. Less would then dispatch `insertRule()` and/or `deleteRule()` to modify the stylesheet as needed.
+
+Essentially (ideally), you would have a very, very tiny Less bundle with a built-in CSSOM manager, responsibily for only updating parts of CSS as needed.
+
+_TODO: the user would need to indicate in some way if mixin vars / var changes should produce global class values, or should just produce an inline style object for a particlar element._
+
+One option: Less exports could be in the form of `var()` with a default variable.
+```less
+@color: #666;
+
+.foo {
+  color: @color;
+}
+
+// exports
+
+.foo {
+  color: var(--foo-color-0, #666);
+}
+```
+_This may not be efficient....There are performance tests that show the further away a custom property is from a var() reference, the longer the style recalculation. Instead, Less should either produce classes (some of which could be dynamic) or an inline style, as requested by the user._
 
 ### Less functions
 
