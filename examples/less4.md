@@ -1,21 +1,48 @@
 Changes from Less v1-3 to Less4
 
-### Imports don't have global side effects.
-
-_TODO: need to test/iterate to see if this makes evaluation harder._
+### Imports can import individual rules, which then don't leak to other files
 
 ```less
 // main.less
-@import 'mixins.less';
-@import 'stuff.less';
+@import [.mixinCall] from 'mixins';
+@import 'stuff';
 
 // stuff.less
 .mixinCall();  // .mixinCall is undefined
 
 
 // fixed stuff.less
-@import 'main.less';
+@import [.mixinCall] 'mixins'; // or @import * from 'mixins';
 .mixinCall();
+```
+
+### Imports can import all rules, but not leak to other imports
+```less
+// main.less
+@import * from 'mixins';
+@import 'stuff';
+
+.mixinCall();  // works
+
+// stuff.less
+.mixinCall();  // .mixinCall is undefined
+```
+
+### Theming can be done by calling with a ruleset
+```less
+// my-theme.less
+@import * as .theme from 'theme';
+
+@my-theme: .theme({
+  @color: blue;
+});
+
+// main.less
+@import * from 'my-theme';
+
+.foo {
+  color: @my-theme[@color];
+}
 ```
 
 ### Mixins don't leak variables
@@ -77,45 +104,12 @@ Instead, just pass vars to mixins for predictable output:
 }
 ```
 
-### Rules are not mixins. Mixins must be explicit.
-```less
-.bar {}
-
-.foo {
-  .bar();  // not found
-}
-```
-To make this change clear, however, mixins and rules with the same name will throw an error.
-
-```less
-.bar {}
-.bar() {} // name conflict error in Less 4
-```
-
 ### Mixin calls require `()`
 ```less
 .bar() {}
 
 .foo {
   .bar;  // error
-}
-```
-
-### ~To reduce developer confusion, maps can access mixins, not rules~
-
-(Probably not necessary)
-```less
-.rules {
-  color: black;
-}
-
-.collection() {
-  @main-color: white;
-}
-
-.foo {
-  color: .collection[@main-color];
-  background-color: .rules[color];  // error
 }
 ```
 
@@ -141,53 +135,14 @@ Many Less linters (such as in IDEs) don't realize this, and mark this as invalid
 prop1: value;  // error
 ```
 
-### Aligning closer with browser `import` semantics, imports may not be within a rule, but must appear at the root. This allows for cleaner code, JS module integration, and static analysis.
-
-```less
-// valid in Less 3.x
-
-@media (min-width: 640px) {
-  @import '640-rules.less';
-}
-
-// Less 4.x
-@media (min-width: 640px) {
-  @import '640-rules.less';  // error
-}
-
-```
-
-Instead, import a mixin, and call it within your `@media` block.
-
-```less
-@import 'rules.less';
-
-@media (min-width: 640px) {
-  .rules(640);
-}
-```
-
-### Along the same reasoning as above, import calls may not be dynamic. 
-```less
-@url: 'rules.less';
-@import @{url}; // error in Less 4.x
-```
-
-If you want to dynamically change imports at build time, it should be part of a Less plugin that changes how files are resolved.
-
-### Because imports have no global side effects, and can't be within rulesets, import options are removed (?)
-```less
-@import (multiple) 'something.less'; // error in Less 4.x
-```
-
 #### @import (reference)
-This would not be needed, because you can just import what you need, vs dumping all raw CSS in the current scope/output.
+Deprecated. Instead use the `*`.
 ```less
 // Less 3.x
 @import (reference) 'mixins.less';
 
 //Less 4.x
-@import (.mixin) from 'mixins.less';
+@import * from 'mixins.less';
 ```
 
 ### `@plugin` is removed for import calls.
@@ -198,14 +153,14 @@ This would not be needed, because you can just import what you need, vs dumping 
 func();
 
 // less 4
-@import (func) from 'blah.js';
+@import 'blah.js';
 ```
 
 As such, Less functions must be imported* to a) reduce CSS conflict, b) utilize tree-shaking during export.
 
 _* I'm thinking for back-compat, there could instead be a default option to import Less functions, as needed. It could still utilize tree-shaking semantics in an exported module._
 ```less
-@import (fadeout) from 'less/functions';
+@import [fadeout] from 'less/functions';
 
 .blah {
   color: fadeout(#000, 10%);
