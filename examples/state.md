@@ -1,10 +1,10 @@
 
 *state.jess*
 ```less
-@state {state: 'block'}
+@let state: block;
 
 .box {
-  display: ${state};
+  display: $state;
 }
 ```
 Interpreted as:

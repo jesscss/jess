@@ -3,10 +3,10 @@
 ```less
 @import {if} from 'jess/helpers';
 
-@var { containerWidth: 9999 }
+@let contain: 640;
 
 .box {
-  width: ${if(containerWidth < 1200, if(containerWidth < 600, '50px', '100px'), '200px')};
+  width: $[if(contain < 640, <100px>, <200px>)];
 }
 ```
 Interpreted as:
@@ -20,7 +20,7 @@ const def = config => {
   return CSS({t: () => {
     let t = ''
     t += '.box { width: '
-    t += if(containerWidth < 1200, if(containerWidth < 600, '50px', '100px'), '200px')
+    t += if(containerWidth < 640, { value: 100, unit: 'px' }, { value: 200, unit: 'px' })
     t += ';}'
     return t
   }});
@@ -31,7 +31,7 @@ export default def
 *component.jsx*
 ```jsx
 import React from 'react'
-import styles from './container.jess'
+import css from './container.jess'
 
 class component extends React.Component {
   constructor(props) {
@@ -53,9 +53,10 @@ class component extends React.Component {
     this.observer.disconnect()
   }
   
-  render = () => (
-    <div ref={this.container} className={styles({this.state.containerWidth}).box} />
-  )
+  render = () => {
+    const styles = css({ contain: this.state.containerWidth })
+    return <div ref={this.container} className={styles.box} />
+  }
 }
 ```
 static

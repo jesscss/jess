@@ -1,7 +1,7 @@
 
 *variables.jess*
 ```less
-@var {colorTheme: 'red'}
+@let colorTheme: red;
 ```
 Interpreted as:
 ```js
@@ -9,7 +9,7 @@ Interpreted as:
 import {CSS} from 'jess'
 
 const def = config => {
-  const {colorTheme = 'red'} = config
+  const {colorTheme = { color: 'red' } = config
   return CSS({t: ''});
 }
 
@@ -22,7 +22,7 @@ export default def
 @import {colorTheme} from './variables.jess'
 
 .box {
-  color: ${colorTheme};
+  color: $colorTheme;
 }
 ```
 interpreted as:
