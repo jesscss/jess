@@ -2,8 +2,8 @@
 @import {radius} from './constants.jess';
 
 .main {
-  @nest &(button) {
+  @nest &$button {
     color: red;
-    border-radius: (radius);
+    border-radius: $radius;
   }
 }

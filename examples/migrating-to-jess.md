@@ -10,7 +10,7 @@ $color: red;
 ```
 **Jess**
 ```less
-@var {color: `red`}
+@let color: red;
 ```
 
 ### Variable Reference
@@ -25,7 +25,7 @@ color: $color;
 ```
 **Jess**
 ```less
-color ${color};
+color: $color;
 ```
 
 ### Math
@@ -40,7 +40,7 @@ width: ($width * 2);
 ```
 **Jess**
 ```less
-width: ${width * 2};
+width: $width.multiply(2);
 ```
 
 ### Mixins
@@ -50,7 +50,9 @@ width: ${width * 2};
 .mixin(@size) {
   width: @size * 1px;
 }
-.mixin(50);
+.box {
+  .mixin(50);
+}
 ```
 **Sass**
 ```sass
@@ -58,14 +60,17 @@ width: ${width * 2};
   width: $size * 1px;
 }
 
-@include mixin(50);
-```
-**Jess**
-```js
-function mixin(size) {
-  return css`width: ${size}px;`
+.box {
+  @include mixin(50);
 }
 ```
+**Jess**
 ```less
-${mixin(50)}
+@mixin mixin(size) {
+  @let px: 1px;
+  width: $size.multiply(px);
+}
+.box {
+  @include mixin(50);
+}
 ```

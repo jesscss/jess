@@ -14,15 +14,14 @@ Frameworks like Svelte compile HTML-like syntax into framework-less runtime libs
 ## The Need
 One of the biggest needs is a declarative / cross-framework design language that handles things like:
 1. Changing styles due to position (using an IntersectionObserver polyfill)
-2. Changing styles due to available with (called element or container queries - polyfilled with ResizeObserver)
+2. Changing styles due to available width (called element or container queries - polyfilled with ResizeObserver)
 3. Generating/inserting only used styles based on used components.
 4. Generating local (non-global) styles
 
 ## Design
 1. The Jess compiler would output a combination of runtime-ready, polyfillable CSS and a JS model of that CSS with all of the dynamic pieces. Think of this as Vue/React SSR where a "first-paint" version of HTML is created that can be "hydrated".
 2. The Jess compiler would either include or have an implementation of the Typed CSS OM as a polyfill, and would directly interact with that to do the most efficient updates to styles as possible. Right now, even Less, which runs in the browser and can have variables changed on-the-fly.
-3. Like CSS Modules, the CSS/JavaScript runtime should be language independent, so that, in theory, a language like Less or Sass could construct a compiler to X output format for faster live variable updates. So this project should be split out and Jess should either refer to the language or the runtime (undecided).
-4. The runtime format should become a replacement for CSS Modules and solve local / component scoping, but in a more powerful way.
+3. The runtime format should become a replacement for CSS Modules and solve local / component scoping, but in a more powerful way.
 
 ## Language
 The Jess language format should conform to these specs:

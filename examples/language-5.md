@@ -63,6 +63,20 @@ For instance:
   color: $[colors.foreground];
 }
 ```
+```js
+import * as J from 'jess';
+import {colors} from './constants.js';
+
+export default J.rules($ => {
+  J.rule({
+    sel: [J.sel('.box')],
+    rules($) {
+      $.add('color', [colors.foreground])
+    }
+  })
+}
+```
+
 
 _Define rules?_
 

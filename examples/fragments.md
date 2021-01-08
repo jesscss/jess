@@ -2,8 +2,8 @@
 @import {stylesheet as fragment} from './fragment.jess';
 @import {stylesheet as fragment2} from './fragment2.jess';
 
-@include $fragment();
-@include $fragment2();
+@include fragment();
+@include fragment2();
 
 ```
 or
