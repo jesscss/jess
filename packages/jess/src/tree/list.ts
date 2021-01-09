@@ -1,4 +1,5 @@
 import { Node } from '.'
+import type { NodeMap, ILocationInfo, Primitive } from './node'
 
 /**
  * A list of expressions
@@ -7,12 +8,15 @@ import { Node } from '.'
  * or .sel, #id.class, [attr]
  */
 export class List extends Node {
-  value: Node[]
+  value: Primitive[]
   
   toString() {
     return this.value.join(', ')
   }
+
+  toModule() { return '' }
 }
 
 export const list =
-  (...args: ConstructorParameters<typeof List>) => new List(...args)
+  (value: Primitive[] | NodeMap, location?: ILocationInfo) =>
+    new List(value, location)

@@ -135,10 +135,21 @@ export abstract class Node {
   }
 
   toString(): string {
-    return this.value?.toString()
+    if (Array.isArray(this.value)) {
+      return this.value.join('')
+    }
+    return this.value.toString()
   }
 
   valueOf() {
     return this.value
+  }
+
+  /** Generate a .ts module and .ts.map */
+  abstract toModule(context?: Context): string
+
+  /** Generate a .css file and .css.map */
+  toCSS(context?: Context) {
+    return `${this}`
   }
 }

@@ -38,6 +38,8 @@ export class Num extends Node {
     const { value, unit } = this
     return `${value}${unit || ''}`
   }
+
+  toModule() { return '' }
 }
 
 export const num =

@@ -1,4 +1,6 @@
-import { Node, Element } from '.'
+import { Expression, Str } from '.'
+import type { Node, NodeMap, ILocationInfo } from './node'
+import type { Context } from '../context'
 
 /**
  * @example
@@ -7,21 +9,26 @@ import { Node, Element } from '.'
  * Stored as:
  * [Element, '>', Element, Element]
  */
-export class Selector extends Node {
-  value: (Node | string)[]
-
+export class Selector extends Expression {
   toString() {
     let out = ''
     this.value.forEach(node => {
-      if (node.constructor === String) {
-        out += node === ' ' ? node : ` ${node} `
+      if (node instanceof Str) {
+        const val = node.value
+        out += val === ' ' ? val : ` ${val} `
       } else {
         out += node.toString()
       }
     })
     return out
   }
+
+  toModule(context: Context) {
+    const nodes = this.value.map(node => node.toModule(context))
+    return `J.sel([${nodes.join(', ')}])`
+  }
 }
 
 export const sel =
-  (...args: ConstructorParameters<typeof Selector>) => new Selector(...args)
+  (value: (string | Node)[] | NodeMap, location?: ILocationInfo) =>
+    new Selector(value, location)

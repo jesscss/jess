@@ -1,6 +1,6 @@
 import { expect } from 'chai'
 import 'mocha'
-import { el } from '..'
+import { el, js } from '..'
 
 describe('Element', () => {
   it('should identify a class', () => {
@@ -22,5 +22,12 @@ describe('Element', () => {
   it('should identify an ident', () => {
     const rule = el('foo')
     expect(rule.isIdent).to.eq(true)
+  })
+  it('should serialize a module', () => {
+    let rule = el('foo')
+    expect(rule.toModule()).to.eq('J.el("foo")')
+    
+    rule = el(js('colorBrand'))
+    expect(rule.toModule()).to.eq('J.el(colorBrand)')
   })
 })
