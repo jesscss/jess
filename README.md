@@ -1,5 +1,6 @@
 <p style="text-align: center"><img width="184" src="https://github.com/matthew-dean/jess/raw/master/simple-hawk-drawing-1.jpg"></p>
 
+_Note: this project is very much a WIP!_
 # Project Jess
 JavaScript Evaluated Style Sheets
 
