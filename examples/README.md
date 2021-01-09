@@ -25,7 +25,8 @@ First, like Less or Sass, a valid `.css` file is a valid `.jess` file.
 However, unlike Less/Sass, this doesn't immediately transpile to CSS. Instead, it transpiles to an intermediate JS module, which you can use like:
 ```jsx
 import styles from 'box.jess'
-const css = styles()
+// The module flag can alternatively be set by a global config file
+const css = styles({ module: true })
 
 function myComponent() {
   return <div className={css.box}>foo</div>
@@ -56,24 +57,8 @@ For instance:
   color: $[colors.foreground];
 }
 ```
-```js
-import * as J from 'jess';
-import {colors} from './constants.js';
 
-export default J.rules($ => {
-  J.rule({
-    sel: [J.sel('.box')],
-    rules($) {
-      $.add('color', [colors.foreground])
-    }
-  })
-}
-```
-
-
-_Define rules?_
-
-If your JS expression is continuous, you can use the `$` without `[]`, as in:
+If your JS expression is continuous (not separated by spaces and not within matching blocks), you can use the `$` without `[]`, as in:
 ```less
 @import {colors} from './constants.js';
 
@@ -82,67 +67,67 @@ If your JS expression is continuous, you can use the `$` without `[]`, as in:
 }
 ```
 
-### Variables
-
-In Jess, you can also declare variables inline with `@const` (and `@let`, which will be explained later). But those variables will have the following special properties:
-
-1. They are immutable (even `@let`) per stylesheet evaluation.
-2. By default, they evaluate the assigned value as a CSS value (but can be assigned JS expressions).
-3. Root variables will be auto-exported from the generated module.
-4. They have a single value per scope evaluation.
-5. They are hoisted to the top of the scope block.
-
-Let's see a basic example.
-
+To clarify, the following JS expression is continuous because of matching parens:
 ```less
-@let blockType: inline;
-```
-Any variable declared in a Jess file is a CSS value that can be implicitly converted to a string or value. It's still just a JS object.
-
-```js
-export const chooseFloat = (block) => {
-  return block == 'inline' ? 'left' : 'right';
-};
-```
-```less
-@import { chooseFloat } from 'mixin.js';
-@let blockType: inline;
+@import { myColor } from './colors.jess';
+@import { Color } from './util.js';
 
 .box {
-  display: $chooseFloat(blockType);
+  color: $Color.mix(myColor, 0.5);
 }
 ```
-In simplified terms, this will return what you would expect, a template string that looks like:
-```js
-// this is an oversimplification of output code, but demonstrates the 1-to-1 relationship with JS
-const blockType = Jess.Keyword('inline')
 
-return `.box {
-  display: ${blockType == 'inline' ? 'inline' : 'block'};                 
-}`
-```
-_Note: this isn't what the "final" `<style>` tag will look like returned to your component or stylesheet,
-as Jess will do a number of other optimizations to create efficient style injection. See: Advanced (TODO)_
+### Jess Variables
 
-#### Rules for Jess variables
+Jess variables are declared using the `@let` at-rule. Like Less or Sass, the value of a Jess variable can look like a CSS value.
 
-Variables declared in Jess must be a literal JS type (a string, number, boolean, array, or plain object), or a CSS type (keyword, space-separated list, comma-separated list, dimension, color). You can't assign variables to function definitions, or special collection types like `Map` or `Set`.
-
-#### Evaluating JS in Jess values
-
-You can use a `$` or `$[]` expression to evaluate to a value in Jess. As in:
+For the most part, it's very similar to what you're used to in Less / Sass, with the only difference in Jess being variable names need to follow JS identifier rules (because they need to be callable, valid JS exports).
 
 ```less
-@let blockType: $['inline'];
+@let color: #333;
+@let myBorder: 1px solid black;
+```
+It can be pretty much any JS value as well, as long as it can be stringified with a `.toString()` method
+```less
+@let foo: $myValue;
+@let bar: $['string value'];
+```
+And, of course, like Less or Sass, you can inter-mix JS and CSS values:
+```less
+@let myBorder: 1px solid $myColor;
 ```
 
-#### Evaluating CSS in JS expressions
+#### Evaluating CSS in JS functions
 
-For convenience, you can use `<>` to evaluate something as a simple CSS value in a JS expression. For example:
+You can "send" a CSS value to a TS/JS function in one of two ways.
 
+1. you can assign your CSS values to Jess variables.
+
+```less
+@import { mix } from './color-functions.ts';
+
+.box {
+  @let color1: #FF0;
+  @let color2: #3F0;
+  background-color: $mix(color1, color2, 0.5);
+}
+```
+2. For convenience, however, like Less you can call functions in a CSS context, and it will be forwarded to the function within the current scope, as in:
+```less
+@import { mix } from './color-functions.ts';
+
+.box {
+  background-color: mix(#FF0, #3F0, 0.5);
+}
+```
+Note, though, that in the first example, the last argument will be a primitive JavaScript `Number`, and in the second example, as the arguments are being parsed in Jess, it will be a `Dimension` with a `value` property set to 0.5.
+
+_NOTE: Also like Less, functions that are not defined in the current scope will output a CSS function, as you would expect._
+
+As in, the following output will be like its input.
 ```less
 .box {
-  background-color: $mix(<#FF0>, <#3F0>, 0.5);
+  color: rgb(1, 1, 1);
 }
 ```
 
@@ -150,29 +135,12 @@ For convenience, you can use `<>` to evaluate something as a simple CSS value in
 
 _To be explained in detail elsewhere_
 
-Anything that references a Jess expression can be re-computed / updated
-in the browser at runtime. Meaning: Jess will create static CSS and JS
-as output.
+TL;DR version is -- a `.jess` file can/will output:
 
+1. A `.css` file with a `.css.map` source map
+2. A `.js` module with a `.js.map` source map
 
-
-```less
-// theme.jess
-@import { mix } from 'jess/color';
-
-@let colors {
-  background: #000;
-  foreground: #FFF;
-  halfway: $mix(colors.background, colors.foreground, 0.5);
-}
-```
-```less
-@import { colors } from './theme.jess';
-
-.box {
-  color: $colors.halfway;
-}
-```
+This means that a `.jess` file is, unlike Sass / Less, tree shake-able. The Jess Rollup or Webpack plugin will do this automatically, and bundle your `.js` module, as well as output static `.css` for your assets, for a rapid first paint.
 
 ### Theming
 
@@ -182,7 +150,7 @@ as output.
 
 @let themeColor: blue;
 @let colors {
-  darkTheme: $mix(themeColor, <white>, <50%>);
+  darkTheme: mix(themeColor, white, 50%);
 }
 
 // main.jess
@@ -204,20 +172,9 @@ Output is:
 }
 ```
 
-_TODO: Rewrite to show classes are regenerated_
-
-```js
-import {mix} from 'jess/functions';
-// ...
-['--box-color', () => mix(colors.background, colors.foreground, 0.5)]
-// ... does stuff
-```
-... as part of the JavaScript bundle.
-
-
 #### Creating a custom theme
 
-You can simplify the above and create a custom theme by passing new values into the theme stylesheet, like:
+You can create a custom theme by passing new values into the theme stylesheet, like:
 ```less
 // my-theme.jess
 @import css from 'library/theme.jess';
@@ -234,67 +191,7 @@ You can simplify the above and create a custom theme by passing new values into 
 }
 ```
 
-#### Variable Rules for JS expressions
-
-_TODO: eliminate so that anything can be regenerated_
-
-An `$[]` expression can appear almost anywhere, but only declaration values can have JS expressions that refer to `@let` variables. This is because the CSS must be able to be parsed at compile-time for static analysis of class names and values that will change, and to flatten any nested rules.
-
-#### Variables from JavaScript modules
-
-Any values imported from other JS modules are considered to be `const` and will be evaluated at compile-time only. As in, if we have this JS file:
-```js
-// colors.js
-export let someColor = '#AAA';
-```
-... and then import it...
-```less
-@import {someColor} from './colors.js';
-
-.box {
-  color: $someColor;
-}
-```
-Output is static at compile-time:
-```less
-.box {
-  color: #AAA;
-}
-```
-
-#### Lists
-
-You can define list values like so:
-
-```less
-@let list: 50px, 100px, 200px;
-```
-
-...Which you could use like...
-```less
-@each list (value, index) { 
-  .col-$[index + 1] {
-    width: $value;
-  }
-}
-```
-It's really your preference how you want to write templating functions.
-
-With the above, you would end up with styles like:
-```css
-.col-1 {
-  width: 50px;
-}
-.col-2 {
-  width: 100px;
-}
-.col-3 {
-  width: 200px;
-}
-```
-
 ### Migrating from Sass / Less
-
 #### Nesting
 
 To make migration / code compatibility easier, like Less and Sass, Jess supports basic CSS + Nesting.
@@ -306,73 +203,25 @@ To make migration / code compatibility easier, like Less and Sass, Jess supports
   }
 }
 ```
-But, you may want to separate these styles out to support platforms like React Native. As in:
+However, for unambiguous parsing, Jess supports the `@nest` CSS nesting proposal. That is, an ampersand `&` that doesn't appear at the start of the rule must start instead with `@nest`
 ```less
-@let hover: false;
-@let button {
-  color: $[hover ? <red> : <blue>];
-}
-```
-
-```less
-@let screenWidth: 640;
-
 .button {
-  padding: $[screenWidth < 800 ? <20px> : <40px>];
+  @nest #ad & {
+    color: black;
+  }
 }
 ```
-
-#### Variables
-
-Variables are very similar to Less / Sass, with the only difference in Jess being they need to follow JS identifier rules (because they need to be parseable, valid JS exports)
-
+The above will output:
 ```less
-// Less variable
-@color-brand: #AAAAFC;
-
-// Sass variable
-$color-brand: #AAAAFC;
-
-// Jess variable.
-@let colorBrand: #AAAAFC;
-```
-
-Unlike Sass / Less, Jess variables don't "leak" across imports. Jess imports follow the rules of ES6 imports, which has the benefit of meaning that evaluation is much faster, IDEs can implement code-completion on variables, and there are fewer side effects.
-
-If you want a variable from another `.jess` stylesheet, you need to `@import` it.
-
-```less
-@import { colorBrand } from './variables.jess';
-
-// ...
-color: $colorBrand;
-```
-#### Maps
-
-You can write "maps" similar to the way you would write rulesets, and similar to the "detached rulesets" feature in Less.
-
-```less
-@let colors {
-  background: #000;
-  foreground: #FFF;
+#ad .button {
+  color: black;
 }
 ```
+If `@nest` or a proposal like it is adopted, then the flag will be added to preserve the `@nest` rule.
 
-This is the same as writing:
-```less
-@let colors: $[{
-  background: <#000>,
-  foreground: <#FFF>,
-}];
-```
-To break down the above assignment, the outer `$[]` is a JS expression, and it contains a plain JS object surrounded with `{}`. Because it's in a JS context, the CSS values are surrounded with `<>`.
+#### Media bubbling
 
-Either way, it may be referenced like this:
-```less
-.box {
-  color: $colors.foreground;
-}
-```
+Nested `@media` bubbling is not yet supported.
 
 #### Mixins / Functions
 
@@ -380,9 +229,11 @@ You can easily define the equivalent of a "mixin" by writing a normal function.
 
 ```js
 // functions.js
+import { dim } from 'jess/tree'
+
 export const square = (size) => ({
-  width: {value: size, unit: 'px'},
-  height: {value: size, unit: 'px'}
+  width: dim({value: size, unit: 'px'}),
+  height: dim({value: size, unit: 'px'})
 })
 ```
 
@@ -406,6 +257,7 @@ However, for syntactic convenience, you can write:
 ```
 Note that the above mixin is essentially the same as the JS export! In fact, you could have done:
 ```less
+// Notice the import is from a `.jess` file instead of a `.js` file
 @import {square} from './mixins.jess';
 
 .box {
@@ -417,9 +269,13 @@ Note that the above mixin is essentially the same as the JS export! In fact, you
 
 You can just use JS functions!
 ```js
+import { dim } from 'jess/tree'
 // calcPercent.js
 export function calcPercent(target, container) {
-  return {value: (target / container) * 100, unit: '%'};
+  return dim({
+    value: (target / container) * 100,
+    unit: '%'
+  });
 }
 ```
 ```less
@@ -429,97 +285,25 @@ export function calcPercent(target, container) {
   width: $calcPercent(650, 1000);
 }
 ```
+#### Rule mixins
 
-Want to add color functions? You don't need Jess to do it for you. You don't need special Jess plugins of any kind. Try any number of JavaScript NPM modules, such as:
-```
-npm install color
-```
-
+Because Jess avoids syntactic ambiguity that affect other languages, mixins that return qualified rules are declared differently.
 ```less
-@import { Color } from 'color';
-@import { Theme } from './constants.js';
-
-.box {
-  background: $Color(Theme.main).mix(Color(<#000000>), 0.5);
-}
-```
-This will evaluate at compile time, and you'll end up with something like:
-```css
-.box {
-  background: #ec0233;
-}
-```
-_TODO: REWRITE_
-
-For convenience, Jess has `each`, `for`, and `if` helpers. For example:
-
-```less
-@let list: 50px, 100px, 200px;
-
-@each list (value, index) {
-  .col-$[index + 1] {
-    width: $value;
+@rule addHover () {
+  &:hover {
+    background: lightblue;
   }
 }
 ```
 
-### Using Jess in components
+### React-like style binding
 
-So far, all the examples have demonstrated how to create essentially static CSS. The JavaScript is evaluated at compile-time, and either used as a `.css` in a `<link>` tag or as `<style>` HTML injected with your component.
-
-When you're expose a `@let` variable, what it is is a kind of state property used to create dynamic styling. This makes Jess more powerful than straight CSS modules.
-
-```less
-// main.jess
-
-// state variable
-@let color: red;
-
-@let box {
-  background: white;
-  color: $color;
-}
-```
-
-In your component:
+You can use mixins to bind to the style property on a component. Like:
 ```jsx
-import styles from './main.jess'
+import styles, { myMixin } from 'component.jess'
+const css = styles()
 
-const MyComponent = props => {
-  const style = styles({color: props.color})
-  <div className={style.box} />
-}
-
-export default MyComponent
-```
-Using in React Native:
-
-In React Native, you would use the export like this:
-```jsx
-import styles from './main.jess'
-
-const MyComponent = props => {
-  const style = styles({color: props.color})
-  <View style={style.box} />
-}
-
-export default MyComponent
-```
-### Hang on, what did I just see
-
-Yeah dude, the export is an object with a `.toString()` method that outputs a class name. But it really is otherwise a plain style object with camel-case properties.
-
-
-### Dynamic style updates
-
-_TODO: Rewrite -- class names should be dynamic_
-
-Without getting into specifics, Jess will create a diff between updated styles and patch your local
-browser styles.
-
-```
-.box {
-  background: black;
-  color: white;
+export const myComponent = props => {
+  return <div className={css.box} style={myMixin(props.something)}>foo</div>
 }
 ```

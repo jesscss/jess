@@ -8,7 +8,7 @@ import {
 /**
  * A number or dimension
  */
-export class Num extends Node {
+export class Dimension extends Node {
   value: number
   unit: string
 
@@ -26,7 +26,7 @@ export class Num extends Node {
     const regex = /([0-9]*(?:\.[0-9]+)?)([a-z]*)/
     const found = (<string>value).match(regex)
     if (!found) {
-      throw { message: 'Not a valid unit.' }
+      throw { message: 'Not a valid dimension.' }
     }
     super({
       value: parseFloat(found[1]),
@@ -42,5 +42,5 @@ export class Num extends Node {
   toModule() { return '' }
 }
 
-export const num =
-  (...args: ConstructorParameters<typeof Num>) => new Num(...args)
+export const dim =
+  (...args: ConstructorParameters<typeof Dimension>) => new Dimension(...args)
