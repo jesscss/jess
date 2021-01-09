@@ -1,6 +1,7 @@
 
 import * as Jess from 'jess'
 const J = Jess.tree
+import { area } from './imports/compute'
 
 export default (__VARS) => {
   const __CONTEXT = new Jess.Context
@@ -16,8 +17,8 @@ export default (__VARS) => {
       rules: (() => {
         const __OUT = []
         __OUT.push(J.decl({
-          name: 'foo',
-          value: J.str('bar')
+          name: "foo",
+          value: J.js(`${area(5)}`)
         }))
         return __OUT
       })()

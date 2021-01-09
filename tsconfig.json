@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "composite": true,
+    "allowJs": true,
     "outDir": "./dist",
     "rootDir": ".",
     "declaration": true,
@@ -11,8 +12,8 @@
     "lib": ["es6"],
     "baseUrl": "./packages",
     "paths": {
-      "jess": ["jess/lib"],
-      "@less/*": ["*/src"]
+      "jess": ["jess/dist"],
+      "@jess/*": ["*/src"]
     }
   },
   "exclude": ["node_modules", "dist"]
