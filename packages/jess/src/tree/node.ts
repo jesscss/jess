@@ -34,6 +34,7 @@ export abstract class Node {
 
   _nodeKeys: string[]
 
+  value: NodeValue
   /** We'll put arbitrary props on the node */
   [k: string]: unknown
 
@@ -135,5 +136,9 @@ export abstract class Node {
 
   toString(): string {
     return this.value?.toString()
+  }
+
+  valueOf() {
+    return this.value
   }
 }
