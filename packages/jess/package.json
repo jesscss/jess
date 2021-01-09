@@ -1,6 +1,6 @@
 {
   "name": "jess",
-  "version": "0.0.1-alpha.1",
+  "version": "1.0.0-alpha.0",
   "description": "JavaScript Enhanced Style Sheets",
   "main": "dist/index",
   "types": "dist/index",
@@ -8,9 +8,8 @@
     "dist"
   ],
   "dependencies": {
-    "@jess/parser": "0.0.1-alpha.1"
+    "@jess/parser": "^1.0.0-alpha.0"
   },
-  "devDependencies": {},
   "scripts": {
     "ci": "yarn build && yarn test",
     "prepublishOnly": "yarn build",
