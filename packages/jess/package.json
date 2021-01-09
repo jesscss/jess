@@ -1,0 +1,23 @@
+{
+  "name": "jess",
+  "version": "0.0.1-alpha.1",
+  "description": "JavaScript Enhanced Style Sheets",
+  "main": "dist/index",
+  "types": "dist/index",
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@jess/parser": "0.0.1-alpha.1"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "ci": "yarn build && yarn test",
+    "prepublishOnly": "yarn build",
+    "build": "yarn clean && yarn compile",
+    "clean": "shx rm -rf ./dist tsconfig.tsbuildinfo",
+    "compile": "tsc -b tsconfig.json",
+    "dev": "tsc -b tsconfig.json -w",
+    "test": "ts-mocha test/**/*.ts"
+  }
+}

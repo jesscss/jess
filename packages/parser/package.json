@@ -1,0 +1,25 @@
+{
+  "name": "@jess/parser",
+  "publishConfig": {
+    "access": "public"
+  },
+  "version": "0.0.1-alpha.1",
+  "main": "dist/index",
+  "types": "dist/index",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "ci": "echo \"FIX ME!!! npm-run-all build test\"",
+    "prepublishOnly": "npm run build",
+    "build": "npm-run-all clean compile",
+    "clean": "shx rm -rf ./dist tsconfig.tsbuildinfo",
+    "compile": "tsc -b tsconfig.json",
+    "test": "ts-mocha test/**/*.ts"
+  },
+  "author": "Matthew Dean",
+  "dependencies": {
+    "@less/css-parser": "^5.0.0-dev.2",
+    "chevrotain": "^7.1.0"
+  }
+}
