@@ -8,7 +8,7 @@ But what if your stylesheets:
 2. Could be JS modules, like CSS modules.
 3. Could be completely dynamic when it needed to be, like CSS-in-JS, or Less in the browser.
 
-Instead of having a whole programming language just for your stylesheet, like the Sass language, why not use a programming language we're already using for everything else, that's designed to compile quickly and efficiently? Why not just use JavaScript?
+Instead of having a whole programming language just for your stylesheet, like Sass, why not just use JavaScript where you need it?
 
 Instead of putting CSS in your JavaScript, why not put JavaScript in your CSS?
 
@@ -22,21 +22,14 @@ First, like Less or Sass, a valid `.css` file is a valid `.jess` file.
 }
 ```
 
-However, unlike Less/Sass, this doesn't immediately transpile to CSS. Instead, it transpiles to an intermediate JS module,
-which will look something like:
-```js
-const def = () => {
-  return {
-    css: [`
-      .box {
-        color: red;
-      }
-    `],
-    box: 'box'
-  }
-}
+However, unlike Less/Sass, this doesn't immediately transpile to CSS. Instead, it transpiles to an intermediate JS module, which you can use like:
+```jsx
+import styles from 'box.jess'
+const css = styles()
 
-export default def
+function myComponent() {
+  return <div className={css.box}>foo</div>
+}
 ```
 
 So far, so good. It looks something like a CSS module. Big deal.
@@ -196,7 +189,7 @@ as output.
 @import css from 'library/theme.jess';
 
 @let theme {
-  themeColor: red
+  themeColor: red;
 }
 @let colors: $css(theme).colors;
 
