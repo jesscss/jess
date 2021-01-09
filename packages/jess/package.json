@@ -18,5 +18,11 @@
     "compile": "tsc -b tsconfig.json",
     "dev": "tsc -b tsconfig.json -w",
     "test": "ts-mocha test/**/*.ts"
-  }
+  },
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/matthew-dean/jess/issues"
+  },
+  "homepage": "https://github.com/matthew-dean/jess#readme"
 }
