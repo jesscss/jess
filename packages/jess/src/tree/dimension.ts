@@ -37,13 +37,15 @@ export class Dimension extends Node {
   }
 
   toString() {
-    const { value, unit } = this
+    const precision = 100000000
+    let { value, unit } = this
+    value = Math.round(value * precision) / precision
     return `${value}${unit || ''}`
   }
 
   toModule(context: Context) {
     const pre = context.pre
-    let out = `J.decl({\n`
+    let out = `J.num({\n`
     out += `  ${pre}value: ${this.value}\n`
     out += `  ${pre}unit: "${this.unit}"\n`
     out += `${pre}})\n`

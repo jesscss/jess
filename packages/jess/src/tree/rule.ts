@@ -22,7 +22,7 @@ export class Rule extends Node {
       rule.sels = this.sels.eval(context)
       
       context.frames.unshift(rule)
-      rule.rules = this.value.map(rule => rule.eval(context))
+      rule.value = this.value.map(rule => rule.eval(context))
       context.frames.shift()
 
       rule.evaluated = true

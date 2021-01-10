@@ -24,6 +24,6 @@ describe('Dimension', () => {
   })
   it('should serialize to a module', () => {
     const rule = dimension('10px')
-    expect(rule.toModule(context)).to.eq('J.decl({\n  value: 10\n  unit: "px"\n})\n')
+    expect(rule.toModule(context)).to.eq('J.num({\n  value: 10\n  unit: "px"\n})\n')
   })
 })

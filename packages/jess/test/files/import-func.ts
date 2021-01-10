@@ -18,7 +18,7 @@ export default (__VARS?) => {
         const __OUT = []
         __OUT.push(J.decl({
           name: "foo",
-          value: J.js(`${area(5)}`)
+          value: J.cast(area(5))
         }))
         return __OUT
       })()

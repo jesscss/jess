@@ -11,16 +11,16 @@ import type { Context } from '../context'
 export class Cast extends Node {
   value: any
 
-  eval() {
+  eval(context: Context) {
     const value = this.value
     if (value === undefined || value === null) {
       return new Nil
     }
     if (value instanceof Node) {
-      return value
+      return value.eval(context)
     }
     if (Array.isArray(value)) {
-      return new Expression(value)
+      return new Expression(value).eval(context)
     }
     if (value.constructor === Number) {
       return new Dimension(<number>value)
@@ -32,5 +32,5 @@ export class Cast extends Node {
 }
 
 export const cast =
-  (value: string, location?: ILocationInfo) =>
+  (value: any, location?: ILocationInfo) =>
     new Cast(value, location)
