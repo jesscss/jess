@@ -117,7 +117,7 @@ export abstract class Node {
     return newNode
   }
 
-  eval(context: Context) {
+  eval(context: Context): Node {
     if (!this.evaluated) {
       const node = this.clone()
       node.processNodes(n => n.eval(context))
@@ -149,7 +149,7 @@ export abstract class Node {
   abstract toModule(context?: Context): string
 
   /** Generate a .css file and .css.map */
-  toCSS(context?: Context) {
-    return `${this}`
+  toCSS(context: Context) {
+    return this.toString().split('\n').join(`${context.pre}\n`)
   }
 }

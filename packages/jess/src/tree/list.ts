@@ -1,5 +1,6 @@
 import { Node } from '.'
 import type { NodeMap, ILocationInfo, Primitive } from './node'
+import type { Context } from '../context'
 
 /**
  * A list of expressions
@@ -14,7 +15,20 @@ export class List extends Node {
     return this.value.join(', ')
   }
 
-  toModule() { return '' }
+  toModule(context: Context) {
+    let out = `J.list([\n`
+    context.indent++
+    let pre = context.pre
+    out += this.value.map(node => 
+      node instanceof Node ?
+        `${pre}${node.toModule(context)}` :
+        `${pre}${JSON.stringify(node)}`
+    ).join(',\n')
+    context.indent--
+    pre = context.pre
+    out += `\n${pre}])`
+    return out
+  }
 }
 
 export const list =

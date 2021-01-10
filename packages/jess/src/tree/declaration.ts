@@ -1,5 +1,6 @@
 import { Node, Str } from '.'
 import type { ILocationInfo, NodeMap } from './node'
+import type { Context } from '../context'
 
 export type DeclarationValue = NodeMap & {
   name: Node | string
@@ -28,8 +29,17 @@ export class Declaration extends Node {
     return `${this.name}: ${this.value};`
   }
 
-  toModule() {
-    return `J.decl({ name: ${this.name.toModule()}, value: ${this.value.toModule() }})`
+  toCSS(context: Context) {
+    return `${context.pre}${this.toString()}`
+  }
+
+  toModule(context: Context) {
+    let pre = context.pre
+    let out = `J.decl({\n`
+    out += `  ${pre}name: ${this.name.toModule(context)}\n`
+    out += `  ${pre}value: ${this.value.toModule(context)}\n`
+    out += `${pre}})`
+    return out
   }
 }
 

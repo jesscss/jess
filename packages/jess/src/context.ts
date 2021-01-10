@@ -39,16 +39,19 @@ export class Context {
    */
   exports: Set<string>
 
+  isRoot: boolean
+
   constructor(opts?: ContextOptions) {
     this.opts = opts || {}
     this.id = generateId()
     this.frames = []
     this.exports = new Set()
     this.indent = 0
+    this.isRoot = true
   }
 
   get pre() {
-    return Array(this.indent).join('  ')
+    return Array(this.indent + 1).join('  ')
   }
 
   /** Hash a CSS class name or not depending on the module setting */
@@ -67,9 +70,5 @@ export class Context {
     }
     this.classMap[name] = mapVal
     return `.${mapVal}`
-  }
-
-  get isRoot() {
-    return this.frames.length === 0
   }
 }

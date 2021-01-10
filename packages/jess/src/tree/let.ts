@@ -36,7 +36,7 @@ export class Let extends Node {
   toModule(context: Context) {
     const name = this.name
     context.exports.add(name)
-    let out = context.pre
+    let out = ''
     if (context.isRoot) {
       out += 'export '
     }

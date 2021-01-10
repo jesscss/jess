@@ -1,4 +1,4 @@
-import { Node, Str } from '.'
+import { Node, Str, Nil } from '.'
 import { ILocationInfo, isNodeMap, NodeMap } from './node'
 import type { Context } from '../context'
 
@@ -20,6 +20,15 @@ export class Expression extends Node {
     super({
       value: values
     }, location)
+  }
+
+  eval(context: Context): Node {
+    const node = <Expression>super.eval(context)
+    node.value = node.value.filter(n => n && !(n instanceof Nil))
+    if (node.value.length === 1) {
+      return node.value[0]
+    }
+    return node
   }
 
   toModule(context?: Context) {

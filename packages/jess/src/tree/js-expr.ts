@@ -1,8 +1,10 @@
 import { Node } from '.'
 import type { ILocationInfo } from './node'
+import type { Context } from '../context' 
 
 /**
  * A JS expression
+ * (compile-time node)
  * 
  * @example
  * $variable
@@ -15,8 +17,8 @@ export class JsExpr extends Node {
     return '[[JS]]'
   }
 
-  toModule() {
-    return this.value
+  toModule(context?: Context) {
+    return `J.cast(${this.value})`
   }
 }
 

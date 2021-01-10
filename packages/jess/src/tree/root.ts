@@ -1,7 +1,7 @@
 import { Node, NodeMap, ILocationInfo } from './node'
 
 /**
- * Contains a list of rules
+ * The root node. Contains a collection of nodes
  */
 export class Root extends Node {
   value: Node[]

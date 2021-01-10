@@ -28,6 +28,6 @@ describe('Element', () => {
     expect(rule.toModule()).to.eq('J.el("foo")')
     
     rule = el(js('colorBrand'))
-    expect(rule.toModule()).to.eq('J.el(colorBrand)')
+    expect(rule.toModule()).to.eq('J.el(J.cast(colorBrand))')
   })
 })

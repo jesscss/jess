@@ -13,15 +13,15 @@ export class Collection extends Node {
     ).join('\n') + `}`
   }
   
-  toCSS(context?: Context) {
-    const pre = context.pre
-    context.indent++
-    let out = `{\n` + this.value.map(node => 
-      `  ${pre}${node.name}: ${node.value.toCSS(context)};`
-    ).join('\n') + `${pre}}`
-    context.indent--
-    return out
-  }
+  // toCSS(context?: Context) {
+  //   const pre = context.pre
+  //   context.indent++
+  //   let out = `{\n` + this.value.map(node => 
+  //     `  ${pre}${node.name}: ${node.value.toCSS(context)};`
+  //   ).join('\n') + `${pre}}`
+  //   context.indent--
+  //   return out
+  // }
 
   toModule(context?: Context) {
     const pre = context.pre

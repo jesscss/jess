@@ -5,6 +5,8 @@ import {
   NodeMap
 } from '.'
 
+import type { Context } from '../context'
+
 /**
  * A number or dimension
  */
@@ -39,8 +41,18 @@ export class Dimension extends Node {
     return `${value}${unit || ''}`
   }
 
-  toModule() { return '' }
+  toModule(context: Context) {
+    const pre = context.pre
+    let out = `J.decl({\n`
+    out += `  ${pre}value: ${this.value}\n`
+    out += `  ${pre}unit: "${this.unit}"\n`
+    out += `${pre}})\n`
+    return out
+  }
 }
 
-export const dim =
+export const dimension =
   (...args: ConstructorParameters<typeof Dimension>) => new Dimension(...args)
+
+/** alias */
+export const num = dimension
