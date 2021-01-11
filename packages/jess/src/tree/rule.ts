@@ -1,4 +1,4 @@
-import { Node, NodeMap, ILocationInfo, Let, Nil } from '.'
+import { Node, NodeMap, ILocationInfo, Js, Nil } from '.'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
 import { sel } from './selector'
@@ -64,7 +64,7 @@ export class Rule extends Node {
     out.add(`  ${pre}const __OUT = []\n`)
     this.value.forEach((node, i) => { 
       out.add(`  ${pre}`)
-      if (node instanceof Let) {
+      if (node instanceof Js) {
         node.toModule(context, out)
         out.add('\n')
       } else {

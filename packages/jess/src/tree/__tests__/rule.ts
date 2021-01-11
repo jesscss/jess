@@ -1,6 +1,6 @@
 import { expect } from 'chai'
 import 'mocha'
-import { rule, list, sel, el, decl, js, set, spaced, str } from '..'
+import { rule, list, sel, el, decl, js, set, spaced, anon } from '..'
 import { Context } from '../../context'
 import { OutputCollector } from '../../output'
 
@@ -17,7 +17,7 @@ describe('Rule', () => {
       sels: list([sel([el('foo')])]),
       value: [
         decl({ name: 'border', value: spaced(['1px', 'solid', 'black']) }),
-        decl({ name: 'color', value: str('#eee') })
+        decl({ name: 'color', value: anon('#eee') })
       ]
     })
     expect(`${node}`).to.eq('foo {\n  border: 1px solid black;\n  color: #eee;\n}\n')

@@ -1,6 +1,6 @@
 import { expect } from 'chai'
 import 'mocha'
-import { set, expr, coll, decl, str } from '..'
+import { set, expr, coll, decl, anon } from '..'
 import { Context } from '../../context'
 import { OutputCollector } from '../../output'
 
@@ -29,11 +29,11 @@ describe('Let', () => {
       value: coll([
         decl({
           name: 'dark',
-          value: str('#222')
+          value: anon('#222')
         }),
         decl({
           name: 'light',
-          value: str('#eee')
+          value: anon('#eee')
         })
       ])
     }) 

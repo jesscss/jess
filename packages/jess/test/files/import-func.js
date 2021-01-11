@@ -1,11 +1,16 @@
 
 import * as Jess from '../../src'
 const J = Jess.tree
-import { area } from './imports/compute'
+const __CONTEXT = new Jess.Context
 
-export default (__VARS?) => {
-  const __CONTEXT = new Jess.Context
-  /** @todo - Assign __VARS to let vars */
+/** My nodes */
+import { area } from './imports/compute'
+export let something = 1
+
+export default (__VARS = {}) => {
+  const { module, ...rest } = __VARS
+
+  something = rest.something !== undefined ? rest.something : something
 
   const __TREE = J.root((() => {
     const __OUT = []

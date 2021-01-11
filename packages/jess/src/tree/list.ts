@@ -9,8 +9,8 @@ import { OutputCollector } from '../output'
  * i.e. one, two, three
  * or .sel, #id.class, [attr]
  */
-export class List extends Node {
-  value: Primitive[]
+export class List<T extends Primitive = Primitive> extends Node {
+  value: T[]
   
   toCSS(context: Context, out: OutputCollector) {
     out.add('', this.location)

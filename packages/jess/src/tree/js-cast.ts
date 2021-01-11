@@ -1,4 +1,4 @@
-import { Node, Nil, Str, Dimension, Expression } from '.'
+import { Node, Nil, Anonymous, Dimension, Expression } from '.'
 import type { ILocationInfo } from './node'
 import type { Context } from '../context'
 /**
@@ -25,7 +25,7 @@ export class Cast extends Node {
     if (value.constructor === Number) {
       return new Dimension(<number>value)
     }
-    return new Str(value)
+    return new Anonymous(value)
   }
 
   toModule() { return '' }

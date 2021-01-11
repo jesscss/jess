@@ -4,10 +4,10 @@ import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
 /**
- * References a string value that needs to
+ * References an anonymous value that needs to
  * be escaped for module output 
  */
-export class Str extends Node {
+export class Anonymous extends Node {
   value: string
 
   toModule(context: Context, out: OutputCollector) {
@@ -15,6 +15,6 @@ export class Str extends Node {
   }
 }
 
-export const str =
+export const anon =
   (value: string, location?: ILocationInfo) =>
-    new Str(value, location)
+    new Anonymous(value, location)

@@ -1,4 +1,4 @@
-import { Expression, Str } from '.'
+import { Expression, Anonymous } from '.'
 import type { Node, NodeMap, ILocationInfo } from './node'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
@@ -13,7 +13,7 @@ import { OutputCollector } from '../output'
 export class Selector extends Expression {
   toCSS(context: Context, out: OutputCollector) {
     this.value.forEach(node => {
-      if (node instanceof Str) {
+      if (node instanceof Anonymous) {
         const val = node.value
         out.add(val === ' ' ? val : ` ${val} `, this.location)
       } else {

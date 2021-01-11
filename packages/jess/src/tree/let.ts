@@ -1,4 +1,4 @@
-import { Node, Collection } from '.'
+import { Node, Collection, Js } from '.'
 import type { ILocationInfo, NodeMap } from './node'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
@@ -15,7 +15,7 @@ export type LetValue = NodeMap & {
  * The lower-case API variant for this is `set()`,
  * see the note below.
  */
-export class Let extends Node {
+export class Let extends Js {
   name: string
   value: Node
 
@@ -29,9 +29,9 @@ export class Let extends Node {
   toString() {
     const { name, value } = this
     if (value instanceof Collection) {
-      return `@let ${this.name} ${this.value}`
+      return `@let ${name} ${value}`
     }
-    return `@let ${this.name}: ${this.value};`
+    return `@let ${name}: ${value};`
   }
 
   toModule(context: Context, out: OutputCollector) {

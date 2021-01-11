@@ -1,4 +1,4 @@
-import { Node, Str } from '.'
+import { Node, Anonymous } from '.'
 import type { ILocationInfo, NodeMap } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
@@ -21,7 +21,7 @@ export class Declaration extends Node {
   ) {
     const name = value.name
     if (name.constructor === String) {
-      value.name = new Str(name)
+      value.name = new Anonymous(name)
     }
     super(value, location)
   }

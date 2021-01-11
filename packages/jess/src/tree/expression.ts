@@ -1,4 +1,4 @@
-import { Node, Str, Nil } from '.'
+import { Node, Anonymous, Nil } from '.'
 import { ILocationInfo, isNodeMap, NodeMap } from './node'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
@@ -17,7 +17,7 @@ export class Expression extends Node {
       super(value, location)
       return
     }
-    const values = value.map(v => v.constructor === String ? new Str(v) : v)
+    const values = value.map(v => v.constructor === String ? new Anonymous(v) : v)
     super({
       value: values
     }, location)

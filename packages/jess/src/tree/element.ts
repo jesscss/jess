@@ -1,14 +1,14 @@
-import { Node, Str } from '.'
+import { Node, Anonymous } from '.'
 import type { JsExpr } from './js-expr'
 import type { Context } from '../context'
 import { ILocationInfo, isNodeMap, NodeMap } from './node'
 import { OutputCollector } from '../output'
 
 export class Element extends Node {
-  value: Str | JsExpr
+  value: Anonymous | JsExpr
 
   constructor(
-    value: string | Str | JsExpr | NodeMap,
+    value: string | Anonymous | JsExpr | NodeMap,
     location?: ILocationInfo
   ) {
     if (isNodeMap(value)) {
@@ -16,7 +16,7 @@ export class Element extends Node {
       return
     }
     super({
-      value: value.constructor === String ? new Str(value) : value
+      value: value.constructor === String ? new Anonymous(value) : value
     })
   }
   
