@@ -6,7 +6,9 @@ import type { Context } from './context'
  */
 export const render = (root: Node, context: Context) => {
   const evaldRoot = root.eval(context)
-  return {
-    __CSS: evaldRoot.toCSS(context)
+  const result = {
+    __CSS: evaldRoot.toCSS(context),
+    ...Array.from(context.exports)
   }
+  return result
 }

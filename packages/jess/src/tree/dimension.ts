@@ -6,6 +6,7 @@ import {
 } from '.'
 
 import type { Context } from '../context'
+import type { OutputCollector } from '../output'
 
 /**
  * A number or dimension
@@ -43,13 +44,17 @@ export class Dimension extends Node {
     return `${value}${unit || ''}`
   }
 
-  toModule(context: Context) {
+  toCSS(context: Context, out: OutputCollector) {
+    out.add(this.toString(), this.location)
+  }
+
+  toModule(context: Context, out: OutputCollector) {
     const pre = context.pre
-    let out = `J.num({\n`
-    out += `  ${pre}value: ${this.value}\n`
-    out += `  ${pre}unit: "${this.unit}"\n`
-    out += `${pre}})\n`
-    return out
+    out.add(`J.num({\n`
+      + `  ${pre}value: ${this.value}\n`
+      + `  ${pre}unit: "${this.unit}"\n`
+      + `${pre}})\n`
+    , this.location)
   }
 }
 

@@ -1,6 +1,7 @@
 import { Node, Collection } from '.'
 import type { ILocationInfo, NodeMap } from './node'
 import type { Context } from '../context'
+import { OutputCollector } from '../output'
 
 export type LetValue = NodeMap & {
   name: string
@@ -33,15 +34,14 @@ export class Let extends Node {
     return `@let ${this.name}: ${this.value};`
   }
 
-  toModule(context: Context) {
+  toModule(context: Context, out: OutputCollector) {
     const name = this.name
     context.exports.add(name)
-    let out = ''
     if (context.isRoot) {
-      out += 'export '
+      out.add('export ', this.location)
     }
-    out += `let ${name} = ${this.value.toModule(context)}`
-    return out
+    out.add(`let ${name} = `)
+    this.value.toModule(context, out)
   }
 }
 

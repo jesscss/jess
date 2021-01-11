@@ -1,6 +1,7 @@
 import { Node, Str } from '.'
 import type { ILocationInfo, NodeMap } from './node'
 import type { Context } from '../context'
+import type { OutputCollector } from '../output'
 
 export type DeclarationValue = NodeMap & {
   name: Node | string
@@ -25,21 +26,24 @@ export class Declaration extends Node {
     super(value, location)
   }
 
-  toString() {
-    return `${this.name}: ${this.value};`
+  toCSS(context: Context, out: OutputCollector) {
+    const loc = this.location
+    out.add(context.pre, loc)
+    this.name.toCSS(context, out)
+    out.add(':', loc)
+    this.value.toCSS(context, out)
+    out.add(';', loc)
   }
 
-  toCSS(context: Context) {
-    return `${context.pre}${this.toString()}`
-  }
-
-  toModule(context: Context) {
+  toModule(context: Context, out: OutputCollector) {
     let pre = context.pre
-    let out = `J.decl({\n`
-    out += `  ${pre}name: ${this.name.toModule(context)}\n`
-    out += `  ${pre}value: ${this.value.toModule(context)}\n`
-    out += `${pre}})`
-    return out
+    const loc = this.location
+    out.add(`J.decl({\n`, loc)
+    out.add(`  ${pre}name:`)
+    this.name.toModule(context, out)
+    out.add(`\n${pre}value:`)
+    this.value.toModule(context, out)
+    out.add(`\n${pre}})`)
   }
 }
 

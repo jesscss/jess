@@ -1,6 +1,7 @@
 import { Node } from '.'
 import type { ILocationInfo } from './node'
 import type { Context } from '../context' 
+import { OutputCollector } from '../output'
 
 /**
  * A JS expression
@@ -13,12 +14,12 @@ import type { Context } from '../context'
 export class JsExpr extends Node {
   value: string
 
-  toString() {
-    return '[[JS]]'
+  toCSS(context: Context, out: OutputCollector) {
+    out.add('[[JS]]', this.location)
   }
 
-  toModule(context?: Context) {
-    return `J.cast(${this.value})`
+  toModule(context: Context, out: OutputCollector) {
+    out.add(`J.cast(${this.value})`, this.location)
   }
 }
 

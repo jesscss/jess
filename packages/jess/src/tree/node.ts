@@ -1,5 +1,6 @@
-import type { Context } from '../context'
+import { Context } from '../context'
 import type { Visitor } from '../visitor'
+import { OutputCollector } from '../output'
 
 export type Primitive = string | number | Node
 export type NodeValue = Primitive | Primitive[]
@@ -23,8 +24,8 @@ export type IFileInfo = {
 }
 
 export const isNodeMap = (val: NodeValue | NodeMap): val is NodeMap => {
-  return val && typeof val === 'object' && val.constructor === Object;
-};
+  return val && typeof val === 'object' && val.constructor === Object
+}
 
 export abstract class Node {
   location: ILocationInfo
@@ -135,10 +136,9 @@ export abstract class Node {
   }
 
   toString(): string {
-    if (Array.isArray(this.value)) {
-      return this.value.join('')
-    }
-    return this.value.toString()
+    const out = new OutputCollector
+    this.toCSS(new Context, out)
+    return out.toString()
   }
 
   valueOf() {
@@ -146,10 +146,25 @@ export abstract class Node {
   }
 
   /** Generate a .ts module and .ts.map */
-  abstract toModule(context?: Context): string
+  abstract toModule(context: Context, out: OutputCollector): void
 
   /** Generate a .css file and .css.map */
-  toCSS(context: Context) {
-    return this.toString().split('\n').join(`${context.pre}\n`)
+  toCSS(context: Context, out: OutputCollector): void {
+    const value = this.value
+    if (Array.isArray(value)) {
+      value.forEach(n => {
+        if (n instanceof Node) {
+          n.toCSS(context, out)
+        } else {
+          out.add(n.toString(), this.location)
+        }
+      })
+    } else {
+      if (value instanceof Node) {
+        value.toCSS(context, out)
+      } else {
+        out.add(value.toString(), this.location)
+      }
+    }
   }
 }

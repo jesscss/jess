@@ -1,4 +1,4 @@
-import { Node, NodeMap, ILocationInfo, Let } from '.'
+import { Node, NodeMap, ILocationInfo, Let, Nil } from '.'
 import type { Context } from '../context'
 
 type RuleValue = NodeMap & {
@@ -22,7 +22,9 @@ export class Rule extends Node {
       rule.sels = this.sels.eval(context)
       
       context.frames.unshift(rule)
-      rule.value = this.value.map(rule => rule.eval(context))
+      rule.value = this.value
+        .map(rule => rule.eval(context))
+        .filter(n => n && !(n instanceof Nil))
       context.frames.shift()
 
       rule.evaluated = true

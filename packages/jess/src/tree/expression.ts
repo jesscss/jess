@@ -1,6 +1,7 @@
 import { Node, Str, Nil } from '.'
 import { ILocationInfo, isNodeMap, NodeMap } from './node'
 import type { Context } from '../context'
+import { OutputCollector } from '../output'
 
 /**
  * A continuous collection of nodes
@@ -31,9 +32,17 @@ export class Expression extends Node {
     return node
   }
 
-  toModule(context?: Context) {
-    const nodes = this.value.map(node => node.toModule(context))
-    return `J.expr([${nodes.join(', ')}])`
+  toModule(context: Context, out: OutputCollector) {
+    const loc = this.location
+    out.add(`J.expr([`, loc)
+    const length = this.value.length - 1
+    this.value.forEach((n, i) => {
+      n.toModule(context, out)
+      if (i < length) {
+        out.add(', ', loc)
+      }
+    })
+    out.add(`])`)
   }
 }
 

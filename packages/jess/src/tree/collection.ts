@@ -1,6 +1,7 @@
 import { Declaration } from './declaration'
 import { Node, NodeMap, ILocationInfo } from './node'
 import type { Context } from '../context'
+import type { OutputCollector } from '../output'
 /**
  * Assigned to by a @let statement
  */
@@ -23,14 +24,20 @@ export class Collection extends Node {
   //   return out
   // }
 
-  toModule(context?: Context) {
+  toModule(context: Context, out: OutputCollector) {
     const pre = context.pre
     context.indent++
-    let out = `{\n` + this.value.map(node =>
-      `  ${pre}${JSON.stringify(node.name.toString())}: ${node.value.toModule()}`
-    ).join(',\n') + `${pre}}`
+    out.add(`{\n`, this.location)
+    const length = this.value.length -1
+    this.value.forEach((node, i) => {
+      out.add(`  ${pre}${JSON.stringify(node.name.toString())}: `)
+      node.value.toModule(context, out)
+      if (i < length) {
+        out.add(',\n')
+      }
+    })
+    out.add(`${pre}}`)
     context.indent--
-    return out
   }
 }
 

@@ -2,6 +2,7 @@ import { Node, Str } from '.'
 import type { JsExpr } from './js-expr'
 import type { Context } from '../context'
 import { ILocationInfo, isNodeMap, NodeMap } from './node'
+import { OutputCollector } from '../output'
 
 export class Element extends Node {
   value: Str | JsExpr
@@ -36,15 +37,18 @@ export class Element extends Node {
     return /^[a-z]/.test(this.value.value)
   }
 
-  toCSS(context: Context) {
+  toCSS(context: Context, out: OutputCollector) {
     if (this.isClass) {
-      return context.hashClass(this.value.value)
+      out.add(context.hashClass(this.value.value), this.location)
     }
-    return this.value.value
+    out.add(this.value.value, this.location)
   }
 
-  toModule() {
-    return `J.el(${this.value.toModule()})`
+  toModule(context: Context, out: OutputCollector) {
+    const loc = this.location
+    out.add(`J.el(`, loc)
+    this.value.toModule(context, out)
+    out.add(')')
   }
 }
 
