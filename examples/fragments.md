@@ -6,7 +6,7 @@
 @include fragment2();
 
 ```
-or
+_TODO: future syntactic sugar for above_
 ```less
 // Passes vars for global theming? hmm...
 @include './fragment.jess';

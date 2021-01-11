@@ -4,7 +4,7 @@ import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
 /**
- * References an anonymous value that needs to
+ * A generic value that needs to
  * be escaped for module output 
  */
 export class Anonymous extends Node {
