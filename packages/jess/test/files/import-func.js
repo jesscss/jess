@@ -10,7 +10,7 @@ export let something = 1
 export default (__VARS = {}) => {
   const { module, ...rest } = __VARS
 
-  something = rest.something !== undefined ? rest.something : something
+  let something = Jess.assign(something, rest.something)
 
   const __TREE = J.root((() => {
     const __OUT = []

@@ -1,4 +1,4 @@
-import { Node, Collection, Js } from '.'
+import { Node, Collection, JsNode } from '.'
 import type { ILocationInfo, NodeMap } from './node'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
@@ -15,7 +15,7 @@ export type LetValue = NodeMap & {
  * The lower-case API variant for this is `set()`,
  * see the note below.
  */
-export class Let extends Js {
+export class Let extends JsNode {
   name: string
   value: Node
 

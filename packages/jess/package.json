@@ -8,7 +8,8 @@
     "dist"
   ],
   "dependencies": {
-    "@jess/parser": "^1.0.0-alpha.0"
+    "@jess/parser": "^1.0.0-alpha.0",
+    "lodash": "^4.17.20"
   },
   "scripts": {
     "ci": "yarn build && yarn test",
@@ -24,5 +25,8 @@
   "bugs": {
     "url": "https://github.com/matthew-dean/jess/issues"
   },
-  "homepage": "https://github.com/matthew-dean/jess#readme"
+  "homepage": "https://github.com/matthew-dean/jess#readme",
+  "devDependencies": {
+    "@types/lodash": "^4.14.167"
+  }
 }
