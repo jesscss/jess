@@ -28,9 +28,8 @@ export class Declaration extends Node {
 
   toCSS(context: Context, out: OutputCollector) {
     const loc = this.location
-    out.add(context.pre, loc)
     this.name.toCSS(context, out)
-    out.add(':', loc)
+    out.add(': ', loc)
     this.value.toCSS(context, out)
     out.add(';', loc)
   }
@@ -39,9 +38,9 @@ export class Declaration extends Node {
     let pre = context.pre
     const loc = this.location
     out.add(`J.decl({\n`, loc)
-    out.add(`  ${pre}name:`)
+    out.add(`  ${pre}name: `)
     this.name.toModule(context, out)
-    out.add(`\n${pre}value:`)
+    out.add(`\n  ${pre}value: `)
     this.value.toModule(context, out)
     out.add(`\n${pre}})`)
   }

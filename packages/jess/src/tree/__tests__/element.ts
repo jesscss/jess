@@ -1,8 +1,17 @@
 import { expect } from 'chai'
 import 'mocha'
 import { el, js } from '..'
+import { Context } from '../../context'
+import { OutputCollector } from '../../output'
+
+let context: Context
+let out: OutputCollector
 
 describe('Element', () => {
+  beforeEach(() => {
+    context = new Context
+    out = new OutputCollector
+  })
   it('should identify a class', () => {
     const rule = el('.foo')
     expect(rule.isClass).to.eq(true)
@@ -25,9 +34,12 @@ describe('Element', () => {
   })
   it('should serialize a module', () => {
     let rule = el('foo')
-    expect(rule.toModule()).to.eq('J.el("foo")')
+    rule.toModule(context, out)
+    expect(out.toString()).to.eq('J.el("foo")')
     
     rule = el(js('colorBrand'))
-    expect(rule.toModule()).to.eq('J.el(J.cast(colorBrand))')
+    out = new OutputCollector
+    rule.toModule(context, out)
+    expect(out.toString()).to.eq('J.el(J.cast(colorBrand))')
   })
 })

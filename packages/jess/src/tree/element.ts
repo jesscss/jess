@@ -40,8 +40,9 @@ export class Element extends Node {
   toCSS(context: Context, out: OutputCollector) {
     if (this.isClass) {
       out.add(context.hashClass(this.value.value), this.location)
+    } else {
+      out.add(this.value.value, this.location)
     }
-    out.add(this.value.value, this.location)
   }
 
   toModule(context: Context, out: OutputCollector) {

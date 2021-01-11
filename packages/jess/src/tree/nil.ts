@@ -15,6 +15,7 @@ export class Nil extends Node {
   }
   eval() { return this }
   toString() { return '' }
+  toCSS() { return '' }
   toModule() { return '' }
 }
 

@@ -17,7 +17,7 @@ export class List extends Node {
     const length = this.value.length - 1
     this.value.forEach((node, i) => {
       if (node instanceof Node) {
-        node.toModule(context, out)
+        node.toCSS(context, out)
       } else {
         out.add(node.toString())
       }
@@ -31,7 +31,7 @@ export class List extends Node {
     out.add(`J.list([\n`, this.location)
     context.indent++
     let pre = context.pre
-    const length = this.value.length
+    const length = this.value.length - 1
     this.value.forEach((node, i) => {
       out.add(pre)
       if (node instanceof Node) {

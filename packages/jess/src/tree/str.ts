@@ -1,5 +1,7 @@
 import { Node } from '.'
 import type { ILocationInfo } from './node'
+import type { Context } from '../context'
+import type { OutputCollector } from '../output'
 
 /**
  * References a string value that needs to
@@ -8,8 +10,8 @@ import type { ILocationInfo } from './node'
 export class Str extends Node {
   value: string
 
-  toModule() {
-    return JSON.stringify(this.value)
+  toModule(context: Context, out: OutputCollector) {
+    out.add(JSON.stringify(this.value), this.location)
   }
 }
 

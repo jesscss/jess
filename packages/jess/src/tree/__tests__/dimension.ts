@@ -2,12 +2,15 @@ import { expect } from 'chai'
 import 'mocha'
 import { dimension } from '..'
 import { Context } from '../../context'
+import { OutputCollector } from '../../output'
 
 let context: Context
+let out: OutputCollector
 
 describe('Dimension', () => {
   beforeEach(() => {
-    context = new Context()
+    context = new Context
+    out = new OutputCollector
   })
   it('should make a dimension from a string', () => {
     const rule = dimension('10px')
@@ -24,6 +27,7 @@ describe('Dimension', () => {
   })
   it('should serialize to a module', () => {
     const rule = dimension('10px')
-    expect(rule.toModule(context)).to.eq('J.num({\n  value: 10\n  unit: "px"\n})\n')
+    rule.toModule(context, out)
+    expect(out.toString()).to.eq('J.num({\n  value: 10\n  unit: "px"\n})\n')
   })
 })

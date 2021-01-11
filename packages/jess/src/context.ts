@@ -48,6 +48,7 @@ export class Context {
     this.exports = new Set()
     this.indent = 0
     this.isRoot = true
+    this.classMap = {}
   }
 
   get pre() {

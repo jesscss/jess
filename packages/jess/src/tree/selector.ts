@@ -1,6 +1,7 @@
 import { Expression, Str } from '.'
 import type { Node, NodeMap, ILocationInfo } from './node'
 import type { Context } from '../context'
+import { OutputCollector } from '../output'
 
 /**
  * @example
@@ -10,22 +11,27 @@ import type { Context } from '../context'
  * [Element, '>', Element, Element]
  */
 export class Selector extends Expression {
-  toString() {
-    let out = ''
+  toCSS(context: Context, out: OutputCollector) {
     this.value.forEach(node => {
       if (node instanceof Str) {
         const val = node.value
-        out += val === ' ' ? val : ` ${val} `
+        out.add(val === ' ' ? val : ` ${val} `, this.location)
       } else {
-        out += node.toString()
+        node.toCSS(context, out)
       }
     })
-    return out
   }
 
-  toModule(context: Context) {
-    const nodes = this.value.map(node => node.toModule(context))
-    return `J.sel([${nodes.join(', ')}])`
+  toModule(context: Context, out: OutputCollector) {
+    out.add(`J.sel([`, this.location)
+    const length = this.value.length - 1
+    this.value.forEach((node, i) => {
+      node.toModule(context, out)
+      if (i < length) {
+        out.add(', ')
+      }
+    })
+    out.add(`])`)
   }
 }
 

@@ -2,12 +2,15 @@ import { expect } from 'chai'
 import 'mocha'
 import { list, spaced, num } from '..'
 import { Context } from '../../context'
+import { OutputCollector } from '../../output'
 
 let context: Context
+let out: OutputCollector
 
 describe('List', () => {
   beforeEach(() => {
-    context = new Context()
+    context = new Context
+    out = new OutputCollector
   })
   it('should serialize to a list', () => {
     const rule = list([spaced([num(1), '2', '3']), 'four'])
@@ -15,6 +18,7 @@ describe('List', () => {
   })
   it('should serialize to a module', () => {
     const rule = list([spaced(['1', '2', '3']), 'four'])
-    expect(rule.toModule(context)).to.eq('J.list([\n  J.spaced(["1", "2", "3"]),\n  "four"\n])')
+    rule.toModule(context, out)
+    expect(out.toString()).to.eq('J.list([\n  J.spaced(["1", "2", "3"]),\n  "four"\n])')
   })
 })

@@ -151,19 +151,20 @@ export abstract class Node {
   /** Generate a .css file and .css.map */
   toCSS(context: Context, out: OutputCollector): void {
     const value = this.value
+    const loc = this.location
     if (Array.isArray(value)) {
       value.forEach(n => {
         if (n instanceof Node) {
           n.toCSS(context, out)
         } else {
-          out.add(n.toString(), this.location)
+          out.add(n.toString(), loc)
         }
       })
     } else {
       if (value instanceof Node) {
         value.toCSS(context, out)
       } else {
-        out.add(value.toString(), this.location)
+        out.add(value.toString(), loc)
       }
     }
   }
