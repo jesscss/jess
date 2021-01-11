@@ -237,6 +237,7 @@ export const square = (size) => ({
 })
 ```
 
+_TODO_
 ```less
 @import {square} from './functions.js';
 
@@ -255,7 +256,7 @@ However, for syntactic convenience, you can write:
   @include square(50);
 }
 ```
-Note that the above mixin is essentially the same as the JS export! In fact, you could have done:
+The mixin is similar to the JS export. In fact, you could have done:
 ```less
 // Notice the import is from a `.jess` file instead of a `.js` file
 @import {square} from './mixins.jess';
@@ -285,13 +286,16 @@ export function calcPercent(target, container) {
   width: $calcPercent(650, 1000);
 }
 ```
-#### Rule mixins
+#### Mixins with rules
 
-Because Jess avoids syntactic ambiguity that affect other languages, mixins that return qualified rules are declared differently.
+Mixins, by default, are returning declarations. If you want to nest selectors, you just need to follow Jess's rules for nesting.
 ```less
-@rule addHover () {
+@mixin addHover () {
   &:hover {
     background: lightblue;
+  }
+  @nest something & {
+    foo: bar;
   }
 }
 ```

@@ -19,7 +19,7 @@ export class JsExpr extends Node {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    out.add(`J.cast(${this.value})`, this.location)
+    out.add(`_J.cast(${this.value})`, this.location)
   }
 }
 

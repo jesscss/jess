@@ -47,7 +47,7 @@ export class Element extends Node {
 
   toModule(context: Context, out: OutputCollector) {
     const loc = this.location
-    out.add(`J.el(`, loc)
+    out.add(`_J.el(`, loc)
     this.value.toModule(context, out)
     out.add(')')
   }

@@ -45,7 +45,7 @@ export class Ruleset extends Node {
     let isRoot = context.isRoot
     context.isRoot = false
 
-    out.add(`J.ruleset(\n`, this.location)
+    out.add(`_J.ruleset(\n`, this.location)
     context.indent++
     let pre = context.pre
     out.add(`${pre}(() => {\n`)

@@ -20,7 +20,7 @@ describe('Let', () => {
     }) 
     expect(`${rule}`).to.eq('@let brandColor: #eee;')
     rule.toModule(context, out)
-    expect(out.toString()).to.eq('export let brandColor = J.expr(["#eee"])')
+    expect(out.toString()).to.eq('export let brandColor = _J.expr(["#eee"])\nlet __BK_brandColor = brandColor')
   })
 
   it('should serialize a @let collection', () => {
@@ -42,7 +42,7 @@ describe('Let', () => {
     )
     rule.toModule(context, out)
     expect(out.toString()).to.eq(
-      'export let brand = {\n  "dark": "#222",\n  "light": "#eee"}'
+      'export let brand = {\n  "dark": "#222",\n  "light": "#eee"}\nlet __BK_brand = brand'
     )
   })
 })

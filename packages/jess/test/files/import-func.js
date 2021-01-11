@@ -1,34 +1,38 @@
 
-import * as Jess from '../../src'
-const J = Jess.tree
-const __CONTEXT = new Jess.Context
+import * as _JESS from '../../src'
+const _J = _JESS.tree
+const __CONTEXT = new _JESS.Context
 
 /** My nodes */
 import { area } from './imports/compute'
 export let something = 1
+let __BK_something = something
 
-export default (__VARS = {}) => {
+export default (__VARS = {}, __RETURN_NODE) => {
   const { module, ...rest } = __VARS
 
-  let something = Jess.assign(something, rest.something)
+  let something = _JESS.assign(__BK_something, rest.something)
 
-  const __TREE = J.root((() => {
+  const __TREE = _J.root((() => {
     const __OUT = []
-    __OUT.push(J.rule({
+    __OUT.push(_J.rule({
       sels: 
-        J.list([
-          J.sel([J.el(".box")])
+        _J.list([
+          _J.sel([_J.el(".box")])
         ]),
       value: (() => {
         const __OUT = []
-        __OUT.push(J.decl({
+        __OUT.push(_J.decl({
           name: "foo",
-          value: J.cast(area(5))
+          value: _J.cast(area(5))
         }))
         return __OUT
       })()
     }))
     return __OUT
   })())
-  return Jess.render(__TREE, __CONTEXT)
+  if (__RETURN_NODE) {
+    return __TREE
+  }
+  return _JESS.render(__TREE, __CONTEXT)
 }

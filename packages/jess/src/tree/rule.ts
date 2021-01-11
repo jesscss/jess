@@ -54,7 +54,7 @@ export class Rule extends Node {
   toModule(context: Context, out: OutputCollector) {
     let isRoot = context.isRoot
     context.isRoot = false
-    out.add(`J.rule({\n`, this.location)
+    out.add(`_J.rule({\n`, this.location)
     context.indent++
     let pre = context.pre
     out.add(`${pre}sels: `)

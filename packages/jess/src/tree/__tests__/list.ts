@@ -19,6 +19,6 @@ describe('List', () => {
   it('should serialize to a module', () => {
     const rule = list([spaced(['1', '2', '3']), 'four'])
     rule.toModule(context, out)
-    expect(out.toString()).to.eq('J.list([\n  J.spaced(["1", "2", "3"]),\n  "four"\n])')
+    expect(out.toString()).to.eq('_J.list([\n  _J.spaced(["1", "2", "3"]),\n  "four"\n])')
   })
 })

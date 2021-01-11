@@ -23,7 +23,7 @@ export class Selector extends Expression {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    out.add(`J.sel([`, this.location)
+    out.add(`_J.sel([`, this.location)
     const length = this.value.length - 1
     this.value.forEach((node, i) => {
       node.toModule(context, out)

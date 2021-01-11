@@ -23,6 +23,11 @@ export class Let extends JsNode {
     value: LetValue,
     location?: ILocationInfo
   ) {
+    const name = value.name
+    /** @todo - check for dash-case or double-underscore */
+    if (!name) {
+      throw { message: 'Identifier required' }
+    }
     super(value, location)
   }
 
@@ -42,6 +47,9 @@ export class Let extends JsNode {
     }
     out.add(`let ${name} = `)
     this.value.toModule(context, out)
+    if (context.isRoot) {
+      out.add(`\nlet __BK_${name} = ${name}`)
+    }
   }
 }
 

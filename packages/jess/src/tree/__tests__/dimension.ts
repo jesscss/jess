@@ -28,6 +28,6 @@ describe('Dimension', () => {
   it('should serialize to a module', () => {
     const rule = dimension('10px')
     rule.toModule(context, out)
-    expect(out.toString()).to.eq('J.num({\n  value: 10\n  unit: "px"\n})\n')
+    expect(out.toString()).to.eq('_J.num({\n  value: 10\n  unit: "px"\n})\n')
   })
 })

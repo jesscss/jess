@@ -35,11 +35,11 @@ describe('Element', () => {
   it('should serialize a module', () => {
     let rule = el('foo')
     rule.toModule(context, out)
-    expect(out.toString()).to.eq('J.el("foo")')
+    expect(out.toString()).to.eq('_J.el("foo")')
     
     rule = el(js('colorBrand'))
     out = new OutputCollector
     rule.toModule(context, out)
-    expect(out.toString()).to.eq('J.el(J.cast(colorBrand))')
+    expect(out.toString()).to.eq('_J.el(_J.cast(colorBrand))')
   })
 })

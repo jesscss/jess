@@ -21,7 +21,7 @@ export class Spaced extends Expression {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    out.add(`J.spaced([`, this.location)
+    out.add(`_J.spaced([`, this.location)
     const length = this.value.length - 1
     this.value.forEach((node, i) => {
       node.toModule(context, out)
