@@ -5,6 +5,12 @@ import { OutputCollector } from '../output'
 
 /**
  * A space-separated expression
+ * 
+ * @todo - In Less, we had an issue of later wanting to
+ * explicitly store white-space & comments (especially b/c
+ * without it, it makes variable merging in selectors
+ * complicated). Should we do that instead of extending
+ * Expression?
  */
 export class Spaced extends Expression {
   value: Node[]

@@ -42,8 +42,8 @@ export class Ruleset extends Node {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    let isRoot = context.isRoot
-    context.isRoot = false
+    const rootLevel = context.rootLevel
+    context.rootLevel = 2
 
     out.add(`_J.ruleset(\n`, this.location)
     context.indent++
@@ -62,12 +62,12 @@ export class Ruleset extends Node {
         out.add(`)\n`)
       }
     })
-    out.add(`  ${pre}return __OUT\n${pre})()`)
+    out.add(`  ${pre}return __OUT\n${pre}})()`)
     context.indent -= 2
     pre = context.pre
     out.add(`\n${pre})`)
 
-    context.isRoot = isRoot
+    context.rootLevel = rootLevel
   }
 }
 

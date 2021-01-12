@@ -39,7 +39,7 @@ export class Context {
    */
   exports: Set<string>
 
-  isRoot: boolean
+  rootLevel: number
 
   constructor(opts?: ContextOptions) {
     this.opts = opts || {}
@@ -47,7 +47,7 @@ export class Context {
     this.frames = []
     this.exports = new Set()
     this.indent = 0
-    this.isRoot = true
+    this.rootLevel = 0
     this.classMap = {}
   }
 

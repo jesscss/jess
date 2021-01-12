@@ -7,7 +7,7 @@ import { OutputCollector } from '../../output'
 let context: Context
 let out: OutputCollector
 
-describe('Let', () => {
+describe('Mixin', () => {
   beforeEach(() => {
     context = new Context
     out = new OutputCollector
@@ -22,6 +22,6 @@ describe('Let', () => {
       ])
     })
     rule.toModule(context, out)
-    expect(out.toString()).to.eq('export let myMixin = () => _J.ruleset(\n  (() => {\n    const __OUT = []\n    __OUT.push(_J.decl({\n      name: "color"\n      value: "black"\n    }))\n    __OUT.push(_J.decl({\n      name: "background-color"\n      value: "white"\n    }))\n    return __OUT\n  )()\n)\nlet __BK_myMixin = myMixin')
+    expect(out.toString()).to.eq('export let myMixin = () => _J.ruleset(\n  (() => {\n    const __OUT = []\n    __OUT.push(_J.decl({\n      name: "color"\n      value: "black"\n    }))\n    __OUT.push(_J.decl({\n      name: "background-color"\n      value: "white"\n    }))\n    return __OUT\n  })()\n)\nlet __BK_myMixin = myMixin')
   })
 })

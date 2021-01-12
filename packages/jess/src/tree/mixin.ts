@@ -36,7 +36,7 @@ export class Mixin extends JsNode {
   toModule(context: Context, out: OutputCollector) {
     const { name, args, value } = this
     context.exports.add(name)
-    if (context.isRoot) {
+    if (context.rootLevel === 0) {
       out.add('export ', this.location)
     }
     out.add(`let ${name} = (`)
@@ -57,7 +57,7 @@ export class Mixin extends JsNode {
       })
     }
     out.add(') => ')
-    if (context.isRoot) {
+    if (context.rootLevel === 0) {
       value.toModule(context, out)
     } else {
       out.add(`${backupName}(`)
@@ -76,7 +76,7 @@ export class Mixin extends JsNode {
       }
       out.add(`)`)
     }
-    if (context.isRoot) {
+    if (context.rootLevel === 0) {
       out.add(`\nlet __BK_${name} = ${name}`)
     }
   }

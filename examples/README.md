@@ -97,6 +97,25 @@ And, of course, like Less or Sass, you can inter-mix JS and CSS values:
 @let myBorder: 1px solid $myColor;
 ```
 
+#### Collections and Maps
+
+You can create a collection/map like this:
+```less
+@let theme {
+  colors {
+    primary: blue;
+    secondary: green;
+  }
+  other: value;
+}
+```
+This can be referenced like a JS object (which it is), like this:
+```less
+.box {
+  color: $theme.colors.primary;
+}
+```
+
 #### Evaluating CSS in JS functions
 
 You can "send" a CSS value to a TS/JS function in one of two ways.
@@ -124,7 +143,7 @@ Note, though, that in the first example, the last argument will be a primitive J
 
 _NOTE: Also like Less, functions that are not defined in the current scope will output a CSS function, as you would expect._
 
-As in, the following output will be like its input.
+As in, the following's output will be like its input.
 ```less
 .box {
   color: rgb(1, 1, 1);
@@ -181,7 +200,9 @@ You can create a custom theme by passing new values into the theme stylesheet, l
 @import * as colors from './colors.jess';
 @import * as otherVars from './vars.jess';
 
-@let theme: $css({...colors, ...otherVars});
+@let theme: $css({
+  colors: something
+}).theme;
 
 // main.jess
 @import { theme } from './my-theme.jess';

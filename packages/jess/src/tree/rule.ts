@@ -52,8 +52,6 @@ export class Rule extends Node {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    let isRoot = context.isRoot
-    context.isRoot = false
     out.add(`_J.rule({\n`, this.location)
     context.indent++
     let pre = context.pre
@@ -62,7 +60,6 @@ export class Rule extends Node {
     out.add(`,\n${pre}value: `)
     this.value.toModule(context, out)
     context.indent--
-    context.isRoot = isRoot
   }
 }
 
