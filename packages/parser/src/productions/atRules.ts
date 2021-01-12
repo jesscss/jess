@@ -1,8 +1,7 @@
 import { CstChild, CstNode } from '@less/css-parser'
-import { Declaration } from 'css-parser/src/productions/declarations'
-import type { LessParser } from '../jessParser'
+import type { JessParser } from '../jessParser'
 
-export default function (this: LessParser, $: LessParser) {
+export default function (this: JessParser, $: JessParser) {
   $.atImport = $.OVERRIDE_RULE('atImport', () => {
     const atRuleChildren: CstChild[] = [
       $.CONSUME($.T.AtImport)

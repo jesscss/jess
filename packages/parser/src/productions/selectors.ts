@@ -1,7 +1,7 @@
 import { CstChild, CstNode } from '@less/css-parser'
-import type { LessParser } from '../jessParser'
+import type { JessParser } from '../jessParser'
 
-export default function(this: LessParser, $: LessParser) {
+export default function(this: JessParser, $: JessParser) {
   $.selectorList = $.OVERRIDE_RULE('selectorList', () => {
     const children: CstChild[] = [
       $.SUBRULE($.complexSelector)

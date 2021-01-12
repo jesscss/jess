@@ -1,6 +1,6 @@
-import type { LessParser } from '../jessParser'
+import type { JessParser } from '../jessParser'
 
-export default function(this: LessParser, $: LessParser) {
+export default function(this: JessParser, $: JessParser) {
   const resetState = () => {
     $.hasExtend = false
   }

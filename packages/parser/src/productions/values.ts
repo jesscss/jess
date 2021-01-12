@@ -1,8 +1,8 @@
-import { LessParser } from '../jessParser'
+import { JessParser } from '../jessParser'
 import { EMPTY_ALT } from 'chevrotain'
-import { CstChild, IToken, CstNode } from '@less/css-parser'
+import { CstChild, IToken, CstNode } from '@jesscss/css-parser'
 
-export default function (this: LessParser, $: LessParser) {
+export default function (this: JessParser, $: JessParser) {
   const compareGate = () => $.inCompareBlock
 
   /**

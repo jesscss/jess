@@ -1,7 +1,7 @@
 import { EMPTY_ALT } from 'chevrotain'
-import type { LessParser } from '../jessParser'
+import type { JessParser } from '../jessParser'
 
-export default function(this: LessParser, $: LessParser) {
+export default function(this: JessParser, $: JessParser) {
   $.rule = $.OVERRIDE_RULE('rule', () => {
     const children = [$._(0)]
     const rule = $.OR([

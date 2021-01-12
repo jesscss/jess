@@ -1,22 +1,22 @@
 import { IToken, Lexer } from 'chevrotain'
-import { Tokens, Fragments } from './lessTokens'
-import { createLexer, IParseResult } from '@less/css-parser'
-import { LessParser } from './lessParser'
+import { Tokens, Fragments } from './jessTokens'
+import { createLexer, IParseResult } from '@jesscss/css-parser'
+import { JessParser } from './jessParser'
 
-export * from './lessParser'
-export * from './lessTokens'
+export * from './jessParser'
+export * from './jessTokens'
 
 export class Parser {
   lexer: Lexer
-  parser: LessParser
+  parser: JessParser
 
   constructor() {
     const { lexer, tokens, T } = createLexer(Fragments, Tokens)
     this.lexer = lexer
-    this.parser = new LessParser(tokens, T)
+    this.parser = new JessParser(tokens, T)
   }
 
-  parse(text: string): IParseResult<LessParser> {
+  parse(text: string): IParseResult<JessParser> {
     const parser = this.parser
     const lexerResult = this.lexer.tokenize(text)
     const lexedTokens: IToken[] = lexerResult.tokens

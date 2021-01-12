@@ -4,7 +4,7 @@ import {
   rawTokenConfig,
   LexerType,
   groupCapture
-} from '@less/css-parser'
+} from '@jesscss/css-parser'
 
 interface IMerges {
   [key: string]: rawTokenConfig[]
@@ -13,31 +13,47 @@ interface IMerges {
 export const Fragments = [...CSSFragments]
 export let Tokens = [...CSSTokens]
 
-// Fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*'])
+Fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*'])
 // Fragments.push(['interpolated', '[@$]\\{({{ident}})\\}'])
 
-// Fragments.forEach(fragment => {
-//   if (fragment[0].indexOf('wsorcomment') !== -1) {
-//     fragment[1] = '(?:({{ws}})|({{comment}})|({{lineComment}}))'
-//   }
-// })
+Fragments.forEach(fragment => {
+  if (fragment[0].indexOf('wsorcomment') !== -1) {
+    fragment[1] = '(?:({{ws}})|({{comment}})|({{lineComment}}))'
+  }
+})
 
 /** Keyed by what to insert after */
 const merges: IMerges = {
   Assign: [
     { name: 'Ampersand', pattern: /&/, categories: ['Selector'] },
+    { name: 'Ellipsis', pattern: /\.\.\./ }
+  ],
+  Ident: [
+    {
+      name: 'JsIdent',
+      pattern: /[a-zA-Z_]+/,
+      categories: ['Ident']
+    }
   ],
   PlainIdent: [
-  
-  ],
-  PlainFunction: [
-
+    /** For import statements */
+    {
+      name: 'From',
+      pattern: /from\(/,
+      longer_alt: 'PlainIdent',
+      categories: ['Ident']
+    },
+    {
+      name: 'As',
+      pattern: /as\(/,
+      longer_alt: 'PlainIdent',
+      categories: ['Ident']
+    },
   ],
   Uri: [
     {
-      name: 'JavaScript',
+      name: 'JSStringLiteral',
       pattern: /`[^`]*`/,
-      group: LexerType.SKIPPED,
       line_breaks: true
     }
   ]

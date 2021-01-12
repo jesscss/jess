@@ -1,7 +1,7 @@
 import { CstChild } from '@less/css-parser'
-import type { LessParser } from '../jessParser'
+import type { JessParser } from '../jessParser'
 
-export default function(this: LessParser, $: LessParser) {
+export default function(this: JessParser, $: JessParser) {
   $.identOrInterpolated = $.RULE('identOrInterpolated', () => {
     const children: CstChild[] = []
     $.AT_LEAST_ONE(() => {

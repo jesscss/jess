@@ -1,5 +1,5 @@
 import { TokenType, IParserConfig } from 'chevrotain'
-import { TokenMap, CssParser, Rule } from '@less/css-parser'
+import { TokenMap, CssParser, Rule } from '@jesscss/css-parser'
 import root from './productions/root'
 import atRules from './productions/atRules'
 import blocks from './productions/blocks'
@@ -9,13 +9,8 @@ import selectors from './productions/selectors'
 import interpolation from './productions/interpolation'
 import values from './productions/values'
 
-export class LessParser extends CssParser {
+export class JessParser extends CssParser {
   T: TokenMap
-  inCompareBlock: boolean = false
-  isMixinDefinition: boolean = false
-  isSemiColonSeparated: boolean = false
-  isVariableCall: boolean = false
-  hasExtend: boolean = false
 
   identOrInterpolated: Rule
 
@@ -32,19 +27,11 @@ export class LessParser extends CssParser {
   functionArg: Rule
 
   /** mixins */
-  testMixin: Rule
   mixin: Rule
   mixinName: Rule
   mixinStart: Rule
   mixinArgs: Rule
   mixinArg: Rule
-  anonMixin: Rule
-
-  /** guards */
-  guard: Rule
-  guardExpression: Rule
-  guardOr: Rule
-  guardAnd: Rule
 
   constructor(
     tokens: TokenType[],
@@ -66,7 +53,7 @@ export class LessParser extends CssParser {
     selectors.call($, $)
     values.call($, $)
 
-    if ($.constructor === LessParser) {
+    if ($.constructor === JessParser) {
       $.performSelfAnalysis()
     }
   }

@@ -1,9 +1,8 @@
 import { CstChild, CstNode } from '@less/css-parser'
 import { EMPTY_ALT, IToken } from 'chevrotain'
-import { Declaration } from 'css-parser/src/productions/declarations'
-import type { LessParser } from '../jessParser'
+import type { JessParser } from '../jessParser'
 
-export default function(this: LessParser, $: LessParser) {
+export default function(this: JessParser, $: JessParser) {
   /**
    * .mixin .foo la (@foo: bar, blah, ...;)
    */
@@ -157,7 +156,7 @@ export default function(this: LessParser, $: LessParser) {
         let exprList: CstNode[] = []
 
         if (value.name === 'declaration') {
-          expr = (<Declaration>value).children[4]
+          expr = (<any>value).children[4]
         } else {
           expr = value
         }
@@ -267,7 +266,7 @@ export default function(this: LessParser, $: LessParser) {
     let chunk = value
 
     if (isDeclaration) {
-      chunk = <Declaration>{
+      chunk = {
         name: 'declaration',
         children: [
           varName,

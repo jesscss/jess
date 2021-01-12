@@ -1,7 +1,7 @@
-import { CstChild } from '@less/css-parser'
-import type { LessParser } from '../jessParser'
+import { CstChild } from '@jesscss/css-parser'
+import type { JessParser } from '../jessParser'
 
-export default function(this: LessParser, $: LessParser) {
+export default function(this: JessParser, $: JessParser) {
   /** "color" in "color: red" */
   $.property = $.OVERRIDE_RULE('property', () => {
     const children: CstChild[] = []
