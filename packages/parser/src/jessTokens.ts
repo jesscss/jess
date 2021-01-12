@@ -50,6 +50,10 @@ const merges: IMerges = {
       categories: ['Ident']
     },
   ],
+  /** 
+   * @todo - allow JS expressions within string literals
+   * Result will be a CSS string literal with a J.call() in it
+  */
   Uri: [
     {
       name: 'JSStringLiteral',
