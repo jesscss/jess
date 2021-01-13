@@ -34,7 +34,7 @@ describe('can parse any rule', () => {
 
   it('mixin definition', () => {
     let lexerResult = jessParser.lexer.tokenize(
-      `@mixin mixin (a: white, // test
+      `@mixin ioco (a: white, // test
             b: 1px // line
           ) // comments {
       {

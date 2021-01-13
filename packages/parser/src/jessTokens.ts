@@ -15,7 +15,8 @@ export let Tokens = [...CSSTokens]
 
 Fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*'])
 Fragments.push(['jsident', '[_a-zA-Z]\\w*'])
-// Fragments.push(['interpolated', '[@$]\\{({{ident}})\\}'])
+/** Not sure we need all these back-slashes for ` marks */
+Fragments.push(['string3', "\\`(\\\\`|[^\\n\\r\\f\\`]|{{newline}}|{{escape}})*\\`"])
 
 Fragments.forEach(fragment => {
   if (fragment[0].indexOf('wsorcomment') !== -1) {
@@ -65,21 +66,26 @@ const merges: IMerges = {
     /** Almost like a CSS identifier but no dashes */
     {
       name: 'JsIdent',
+      pattern: LexerType.NA
+    },
+    {
+      name: 'JsIdentMatch',
       pattern: '{{jsident}}',
-      categories: ['Ident']
+      categories: ['Ident', 'JsIdent'],
+      longer_alt: 'PlainIdent'
     },
     /** For import statements */
     {
       name: 'From',
       pattern: /from/,
-      longer_alt: 'PlainIdent',
-      categories: ['Ident']
+      longer_alt: 'JsIdentMatch',
+      categories: ['Ident', 'JsIdent']
     },
     {
       name: 'As',
       pattern: /as/,
-      longer_alt: 'PlainIdent',
-      categories: ['Ident']
+      longer_alt: 'JsIdentMatch',
+      categories: ['Ident', 'JsIdent']
     }
   ],
   PlainFunction: [
@@ -127,23 +133,21 @@ for (let i = 0; i < tokenLength; i++) {
   let alterations = true
 
   switch (name) {
-    // Removed in Less v5
-    // case 'Divide':
-    //   copyToken()
-    //   token.pattern = /\.?\//
-    //   break
-    // case 'StringLiteral':
-    //   copyToken()
-    //   token.pattern = '~?{{string1}}|~?{{string2}}'
-    //   break
-    // case 'CustomProperty':
-    //   copyToken()
-    //   token.pattern = '--(?:{{nmstart}}{{nmchar}}*)?'
-    //   break
-    // case 'AtKeyword':
-    //   copyToken()
-    //   token.categories = categories.concat(['VarOrProp'])
-    //   break
+    /** Escape quotes like Less? */
+    case 'StringLiteral':
+      copyToken()
+      token.pattern = '~?(?:{{string1}}|{{string2}}|{{string3}})'
+      break
+    /** We need to identify these as JS identifiers */
+    case 'AttrFlag':
+    case 'And':
+    case 'Or':
+    case 'Not':
+    case 'Only':
+      copyToken()
+      token.longer_alt = 'JsIdentMatch'
+      token.categories = categories.concat(['JsIdent'])
+      break
     default:
       alterations = false
   }

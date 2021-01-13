@@ -31,11 +31,14 @@ export interface rawTokenConfig
 
 interface ILexer {
   T: TokenMap
-  lexer: Lexer
   tokens: TokenType[]
 }
 
-export const createLexer = (rawFragments: string[][], rawTokens: rawTokenConfig[]): ILexer => {
+/**
+ * Builds proper tokens from a raw token definition.
+ * This allows us to extend / modify tokens before creating them
+ */
+export const createTokens = (rawFragments: string[][], rawTokens: rawTokenConfig[]): ILexer => {
   const fragments: {
     [key: string]: RegExp
   } = {}
@@ -96,18 +99,7 @@ export const createLexer = (rawFragments: string[][], rawTokens: rawTokenConfig[
     tokens.unshift(token)
   })
 
-  // Lexer initialization time can be reduced (~30%) by explicitly providing the line_break option for all Tokens
-  // https://sap.github.io/chevrotain/documentation/6_5_0/interfaces/itokenconfig.html#line_breaks
-  const lexer = new Lexer(tokens, {
-    ensureOptimizations: true,
-    // traceInitPerf: true,
-    // Always run the validations during testing (dev flows).
-    // And avoid validation during productive flows to reduce the Lexer's startup time.
-    skipValidations: process.env['LESS_TESTING_MODE'] !== 'true'
-  })
-
   return {
-    lexer,
     tokens,
     T
   }

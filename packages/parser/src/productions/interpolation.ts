@@ -32,21 +32,21 @@ export default function(this: JessParser, $: JessParser) {
             { ALT: () => $.CONSUME($.T.JsFunction) },
             { ALT: () => $.CONSUME($.T.LParen) }
           ])
-          $.SUBRULE($.jsTokens)
+          $.MANY(() => $.SUBRULE($.jsTokens))
           $.CONSUME($.T.RParen)
         }
       },
       {
         ALT: () => {
           $.CONSUME($.T.LSquare)
-          $.SUBRULE2($.jsTokens)
+          $.MANY2(() => $.SUBRULE2($.jsTokens))
           $.CONSUME($.T.RSquare)
         }
       },
       {
         ALT: () => {
           $.CONSUME($.T.LCurly)
-          $.SUBRULE3($.jsTokens)
+          $.MANY3(() => $.SUBRULE3($.jsTokens))
           $.CONSUME($.T.RCurly)
         }
       }
@@ -61,6 +61,7 @@ export default function(this: JessParser, $: JessParser) {
   $.jsTokens = $.RULE('jsTokens', () => {
     $.OR([
       { ALT: () => $.SUBRULE($.jsValue) },
+      { ALT: () => $.CONSUME($.T.WS) },
       { ALT: () => $.CONSUME($.T.Colon) },
       { ALT: () => $.CONSUME($.T.Comma) },
       { ALT: () => $.CONSUME($.T.SemiColon) },

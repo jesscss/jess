@@ -20,7 +20,3 @@ $[value].class {}
   ] four;
   four: $url("???");
 }
-
-@let quote: `something${
-  foo // `
-}`;
