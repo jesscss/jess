@@ -1,188 +1,124 @@
-import { CstChild, CstNode } from '@less/css-parser'
+import { CstChild, CstNode } from '@jesscss/css-parser'
 import type { JessParser } from '../jessParser'
 
 export default function (this: JessParser, $: JessParser) {
+  $.knownAtRule = $.OVERRIDE_RULE('knownAtRule',
+    () => $.OR([
+      { ALT: () => $.SUBRULE($.mixin) },
+      { ALT: () => $.SUBRULE($.rulesMixin) },
+      
+      /** In the mixin section */
+      { ALT: () => $.SUBRULE($.atInclude) },
+
+      { ALT: () => $.SUBRULE($.atLet) },
+      { ALT: () => $.SUBRULE($.atImport) },
+      { ALT: () => $.SUBRULE($.atMedia) },
+      { ALT: () => $.SUBRULE($.atSupports) },
+      { ALT: () => $.SUBRULE($.atNested) },
+      { ALT: () => $.SUBRULE($.atNonNested) }
+    ])
+  )
+
   $.atImport = $.OVERRIDE_RULE('atImport', () => {
-    const atRuleChildren: CstChild[] = [
+    const atRule: CstChild[] = [
       $.CONSUME($.T.AtImport)
     ]
+    const prelude = []
+    $.OPTION(() => prelude.push($.CONSUME($.T.WS)))
 
-    const preludeChildren = [$._()]
-    $.OPTION(() => {
-      const L = $.CONSUME($.T.LParen)
-      const listChildren: CstChild[] = [{
-        name: 'expression',
-        children: [
-          $._(1),
-          $.CONSUME($.T.Ident),
-          $._(2)
-        ]
-      }]
-
-      $.MANY(() => {
-        listChildren.push(
-          $.CONSUME($.T.Comma),
-          {
-            name: 'expression',
-            children: [
-              $._(3),
-              $.CONSUME2($.T.Ident),
-              $._(4)
-            ]
-          }
+    $.OR([
+      { ALT: () => {
+        prelude.push(
+          $.SUBRULE($.atImportCss)
         )
-      }),
-      preludeChildren.push(
-        {
-          name: 'block',
-          children: [
-            L,
-            {
-              name: 'expressionList',
-              children: listChildren
-            },
-            $.CONSUME($.T.RParen)
-          ]
-        },
-        $._(5)
-      )
-    })
+        $.OPTION2(() => prelude.push($.CONSUME2($.T.WS)))
+        $.OPTION3(() => $.SUBRULE($.mediaQueryList))
+      }},
+      { ALT: () => {
+        prelude.push(
+          $.SUBRULE($.atImportJs)
+        )
+      }}
+    ])
 
-    preludeChildren.push(
-      $.OR([
-        { ALT: () => $.CONSUME($.T.StringLiteral) },
-        { ALT: () => $.CONSUME($.T.Uri) }
-      ]),
-      $._(6)
-    )
-    preludeChildren.push(
-      $.OPTION2(() => $.SUBRULE($.mediaQueryList))
-    )
-    atRuleChildren.push(
+    $.OPTION4(() => prelude.push($.CONSUME3($.T.WS)))
+
+    atRule.push(
       {
         name: 'prelude',
-        children: preludeChildren
+        children: prelude
       },
-      $.OPTION3(() => $.CONSUME($.T.SemiColon))
+      $.OPTION5(() => $.CONSUME($.T.SemiColon))
     )
     return {
       name: 'atRule',
-      children: atRuleChildren
+      children: atRule
     }
   })
 
-  $.mediaFeature = $.OVERRIDE_RULE('mediaFeature',
-    (afterAnd: boolean) => ({
-      name: 'mediaFeature',
-      children: [
-        $.OR([
-          {
-            GATE: () => !afterAnd,
-            ALT: () => $.CONSUME($.T.PlainIdent)
-          },
-          { ALT: () => $.SUBRULE($.variable) },
-          {
-            ALT: () => ({
-              name: 'block',
-              children: [
-                $.CONSUME($.T.LParen),
-                $.SUBRULE($.expression),
-                $.CONSUME($.T.RParen)
-              ]
-            })
-          }
-        ]),
-        $._()
-      ]
-    })
+  $.atImportCss = $.RULE('atImportCss',
+    () => $.OR([
+      { ALT: () => $.CONSUME($.T.StringLiteral) },
+      { ALT: () => $.CONSUME($.T.Uri) }
+    ])
   )
 
-  $.unknownAtRule = $.OVERRIDE_RULE('unknownAtRule', () => {
-    const name = $.CONSUME($.T.AtKeyword)
-    const ws = $._(0)
-    return $.OR({
-      /**
-       * A prelude could have a colon too, so the last two rules are
-       * ambiguous, but any unknown at-rule in the form of `@rule:`
-       * is assumed to be a variable assignment
-       */
-      IGNORE_AMBIGUITIES: true,
-      DEF: [
-        {
-          GATE: () => !ws,
-          /** Variable call */
+  $.atImportJs = $.RULE('atImportJs',
+    () => {
+      $.OR([
+        { 
           ALT: () => {
-            return {
-              name: 'variableCall',
-              children: [
-                name,
-                $.CONSUME($.T.LParen),
-                $.CONSUME($.T.RParen)
-              ]
-            }
-          }
-        },
-        {
-          /** Variable assignment */
-          ALT: () => {
-            const children: CstChild[] = [
-              name,
-              ws,
-              $.CONSUME($.T.Colon),
-              $._(1)
-            ]
-            $.OR2([
-              {
-                ALT: () => {
-                  children.push(
-                    $.SUBRULE($.curlyBlock),
-                    undefined
-                  )
-                }
-              },
-              {
-                ALT: () => {
-                  children.push(
-                    $.SUBRULE($.expressionList),
-                    $.OPTION(() => ({
-                      name: 'important',
-                      children: [
-                        $.CONSUME($.T.Important),
-                        $._(2)
-                      ]
-                    }))
-                  )
-                }
-              }
-            ])
-            children.push($.OPTION2(() => $.CONSUME($.T.SemiColon)))
-            return {
-              name: 'declaration',
-              children
-            }
+            $.CONSUME($.T.Star)
+            $._()
+            $.CONSUME($.T.As)
+            $._(1)
+            $.CONSUME($.T.JsIdent)
           }
         },
         {
           ALT: () => {
-            const prelude: CstNode = $.SUBRULE($.customPrelude)
-            prelude.children?.unshift(ws)
-
-            return {
-              name: 'atRule',
-              children: [
-                name,
-                prelude,
-                $.OR3([
-                  { ALT: () => $.SUBRULE2($.curlyBlock) },
-                  { ALT: () =>
-                    $.OPTION3(() => $.CONSUME2($.T.SemiColon))
-                  }
-                ])
-              ]
-            }
+            $.CONSUME2($.T.JsIdent)
+            $._(2)
+            $.OPTION(() => {
+              $.CONSUME($.T.Comma)
+              $._(3)
+              $.SUBRULE($.atImportJsBlock)
+            })
+          }
+        },
+        {
+          ALT: () => {
+            $.SUBRULE2($.atImportJsBlock)
           }
         }
-      ]
+      ])
+      $._(4)
+      $.CONSUME($.T.From)
+      $._(5)
+      $.CONSUME($.T.StringLiteral)
+    }
+  )
+
+  $.atImportJsBlock = $.RULE('atImportJsBlock', () => {
+    $.CONSUME($.T.LCurly)
+    $._()
+    $.SUBRULE($.atImportJsArg)
+    $.MANY(() => {
+      $.CONSUME($.T.Comma)
+      $._(1)
+      $.SUBRULE2($.atImportJsArg)
+    })
+    $.CONSUME($.T.RCurly)
+  })
+
+  $.atImportJsArg = $.RULE('atImportJsArg', () => {
+    $.CONSUME($.T.JsIdent)
+    $._()
+    $.OPTION(() => {
+      $.CONSUME($.T.As)
+      $._(1)
+      $.CONSUME2($.T.JsIdent)
+      $._(2)
     })
   })
 }

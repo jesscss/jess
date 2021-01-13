@@ -790,13 +790,10 @@
     npmlog "^4.1.2"
     write-file-atomic "^2.3.0"
 
-"@less/css-parser@^5.0.0-dev.2":
-  version "5.0.0-dev.2"
-  resolved "https://registry.yarnpkg.com/@less/css-parser/-/css-parser-5.0.0-dev.2.tgz#55b193d8d452435853c767d601d51fa92a889f33"
-  integrity sha512-2rCBg4pRSLZYRWFA/HD1a1hmmBlTbjIuLHyw/NoXIpRSqs5KtIqyevQYbbi4i9MrDwBfrYzJsxHSpl6h8BxbQA==
-  dependencies:
-    chevrotain "^7.1.0"
-    xregexp "^4.2.4"
+"@less/test-data@^4.1.0":
+  version "4.1.0"
+  resolved "https://registry.yarnpkg.com/@less/test-data/-/test-data-4.1.0.tgz#4b2be947cff49cb4e4bbb24c586387d997d998a2"
+  integrity sha512-KX7O5DByhQU8GxGsA+NHo1d6qEKxj12nCdNL47enZa6bU09dLBffv+G7h04JGRUQ0JTEVANS7dKd62eI83RgRA==
 
 "@mrmlnc/readdir-enhanced@^2.2.1":
   version "2.2.1"

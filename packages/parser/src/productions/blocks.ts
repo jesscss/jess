@@ -1,62 +1,61 @@
+import { EMPTY_ALT } from 'chevrotain'
 import type { JessParser } from '../jessParser'
 
 export default function(this: JessParser, $: JessParser) {
-  const resetState = () => {
-    $.hasExtend = false
-  }
-
-  $.qualifiedRule = $.OVERRIDE_RULE('qualifiedRule', () => {
-    const sel = $.SUBRULE($.selectorList)
-    const hasExtend = $.hasExtend
-    resetState()
-
-    return {
+  $.qualifiedRule = $.OVERRIDE_RULE('qualifiedRule',
+    () => ({
       name: 'qualifiedRule',
       children: [
-        sel,
-        $.OR([
-          {
-            GATE: () => hasExtend,
-            ALT: () => $.OR2([
-              { ALT: () => $.SUBRULE($.curlyBlock) },
-              { ALT: () => $.CONSUME($.T.SemiColon) }
-            ])
-          },
-          {
-            ALT: () => $.SUBRULE2($.curlyBlock)
-          }
-        ])
-      ]
-    }
-  })
-
-  $.testQualifiedRule = $.OVERRIDE_RULE('testQualifiedRule', () => {
-    $.OR({
-      IGNORE_AMBIGUITIES: true,
-      DEF: [
-        { ALT: () => $.CONSUME($.T.DotName) },
-        { ALT: () => $.CONSUME($.T.HashName) },
-        { ALT: () => $.CONSUME($.T.Colon) },
-        { ALT: () => $.CONSUME($.T.Ampersand) },
-        {
-          ALT: () => {
-            $.SUBRULE($.testQualifiedRuleExpression)
-            $.OR2([
-              { ALT: () => $.CONSUME($.T.LCurly) },
-              { ALT: () => $.CONSUME($.T.Extend) },
-              { ALT: () => {
-                $.CONSUME($.T.When)
-                $._()
-                $.OPTION(() => {
-                  $.CONSUME($.T.Not)
-                  $._(1)
-                })
-                $.CONSUME($.T.LParen)
-              }}
-            ])
-          }
-        }
+        $.SUBRULE($.selectorList),
+        $.SUBRULE($.rulePrimary)
       ]
     })
+  )
+  
+  $.rulePrimary = $.RULE('rulePrimary', () => {
+    $.CONSUME($.T.LCurly)
+    $._()
+    $.MANY(() => {
+      $.OR([
+        /** 
+         * @todo When we do @media bubbling, set a state
+         * variable that these are now "inner" atRules,
+         * some of which should instead parse rulePrimary
+         * children
+         * 
+         * e.g.  $.isNested = true 
+         */
+        { ALT: () => $.SUBRULE($.atRule) },
+        { ALT: () => $.SUBRULE($.customDeclaration) },
+        { ALT: () => $.SUBRULE($.declaration) },
+        { ALT: () => $.SUBRULE($.nested) },
+        { ALT: () => EMPTY_ALT }
+      ])
+      $._(1)
+    })
+    $.CONSUME($.T.RCurly)
   })
+
+  /**
+   *     `@nest .sel, #sel { }`
+   * or  `&.sel
+   */
+  $.nested = $.RULE('nested', () => {
+    $.OR([
+      {
+        ALT: () => {
+          $.CONSUME($.T.Ampersand)
+          $.OPTION(() => $.SUBRULE($.selectorList))
+        }
+      },
+      {
+        ALT: () => {
+          $.CONSUME($.T.AtNest)
+          $.SUBRULE2($.selectorList)
+        }
+      },
+    ])
+    $.SUBRULE($.rulePrimary)
+  })
+
 }

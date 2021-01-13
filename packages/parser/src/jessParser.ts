@@ -8,30 +8,34 @@ import mixin from './productions/mixin'
 import selectors from './productions/selectors'
 import interpolation from './productions/interpolation'
 import values from './productions/values'
+import variables from './productions/variables'
 
 export class JessParser extends CssParser {
   T: TokenMap
 
-  identOrInterpolated: Rule
+  atImportCss: Rule
+  atImportJs: Rule
+  atImportJsBlock: Rule
+  atImportJsArg: Rule
 
-  /** values */
-  addition: Rule
-  multiplication: Rule
-  compare: Rule
-  variable: Rule
-  valueBlock: Rule
+  /** JS Stuff */
+  atLet: Rule
+  atLetValue: Rule
+  jsCollection: Rule
+  jsExpression: Rule
+  jsValue: Rule
+  jsTokens: Rule
 
-  /** functions */
-  function: Rule
-  functionArgs: Rule
-  functionArg: Rule
-
-  /** mixins */
+  /** Mixins */
+  rulesMixin: Rule
   mixin: Rule
-  mixinName: Rule
-  mixinStart: Rule
+  mixinPrelude: Rule
   mixinArgs: Rule
   mixinArg: Rule
+  atInclude: Rule
+
+  rulePrimary: Rule
+  nested: Rule
 
   constructor(
     tokens: TokenType[],
@@ -52,18 +56,10 @@ export class JessParser extends CssParser {
     mixin.call($, $)
     selectors.call($, $)
     values.call($, $)
+    variables.call($, $)
 
     if ($.constructor === JessParser) {
       $.performSelfAnalysis()
     }
-  }
-
-  // https://sap.github.io/chevrotain/documentation/6_1_0/classes/baseparser.html#reset
-  reset() {
-    super.reset()
-    this.inCompareBlock = false
-    this.isMixinDefinition = false
-    this.isSemiColonSeparated = false
-    this.isVariableCall = false
   }
 }

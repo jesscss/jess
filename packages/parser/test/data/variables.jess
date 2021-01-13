@@ -1,0 +1,26 @@
+@let value: something;
+
+@let collection {
+  foo {
+    bar {
+      deeper: collection;
+    }
+  }
+  sibling: declaration;
+}
+
+$[value].class {}
+.class$something {}
+
+.box {
+  one: $collection.foo.bar.deeper;
+  two: $some(call, with, args).foo[ ident ].stuff;
+  three: $[
+    var // ]
+  ] four;
+  four: $url("???");
+}
+
+@let quote: `something${
+  foo // `
+}`;

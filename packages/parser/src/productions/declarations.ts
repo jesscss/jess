@@ -11,7 +11,7 @@ export default function(this: JessParser, $: JessParser) {
     $.AT_LEAST_ONE(
       () => children.push($.OR2([
         { ALT: () => $.CONSUME($.T.Ident) },
-        { ALT: () => $.CONSUME($.T.InterpolatedIdent) },
+        { ALT: () => $.SUBRULE($.jsExpression) },
         /** Isolated dashes */
         { ALT: () => $.CONSUME($.T.Minus) }
       ]))
@@ -29,7 +29,7 @@ export default function(this: JessParser, $: JessParser) {
     $.MANY(
       () => children.push($.OR([
         { ALT: () => $.CONSUME($.T.Ident) },
-        { ALT: () => $.CONSUME($.T.InterpolatedIdent) },
+        { ALT: () => $.SUBRULE($.jsExpression) },
         /** Isolated dashes */
         { ALT: () => $.CONSUME($.T.Minus) }
       ]))

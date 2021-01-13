@@ -14,6 +14,7 @@ export const Fragments = [...CSSFragments]
 export let Tokens = [...CSSTokens]
 
 Fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*'])
+Fragments.push(['jsident', '[_a-zA-Z]\\w*'])
 // Fragments.push(['interpolated', '[@$]\\{({{ident}})\\}'])
 
 Fragments.forEach(fragment => {
@@ -28,27 +29,79 @@ const merges: IMerges = {
     { name: 'Ampersand', pattern: /&/, categories: ['Selector'] },
     { name: 'Ellipsis', pattern: /\.\.\./ }
   ],
-  Ident: [
+  AtImport: [
     {
-      name: 'JsIdent',
-      pattern: /[a-zA-Z_]+/,
-      categories: ['Ident']
+      name: 'AtMixin',
+      pattern: /@mixin/,
+      longer_alt: 'AtKeyword',
+      categories: ['BlockMarker', 'AtName']
+    },
+    {
+      name: 'AtRules',
+      pattern: /@rules/,
+      longer_alt: 'AtKeyword',
+      categories: ['BlockMarker', 'AtName']
+    },
+    {
+      name: 'AtLet',
+      pattern: /@let/,
+      longer_alt: 'AtKeyword',
+      categories: ['BlockMarker', 'AtName']
+    },
+    {
+      name: 'AtInclude',
+      pattern: /@include/,
+      longer_alt: 'AtKeyword',
+      categories: ['BlockMarker', 'AtName']
+    },
+    {
+      name: 'AtNest',
+      pattern: /@nest/,
+      longer_alt: 'AtKeyword',
+      categories: ['BlockMarker', 'AtName']
     }
   ],
   PlainIdent: [
+    /** Almost like a CSS identifier but no dashes */
+    {
+      name: 'JsIdent',
+      pattern: '{{jsident}}',
+      categories: ['Ident']
+    },
     /** For import statements */
     {
       name: 'From',
-      pattern: /from\(/,
+      pattern: /from/,
       longer_alt: 'PlainIdent',
       categories: ['Ident']
     },
     {
       name: 'As',
-      pattern: /as\(/,
+      pattern: /as/,
       longer_alt: 'PlainIdent',
       categories: ['Ident']
-    },
+    }
+  ],
+  PlainFunction: [
+    {
+      name: 'JsFunction',
+      pattern: '{{jsident}}\\(',
+      categories: ['BlockMarker', 'Function']
+    }
+  ],
+  Tilde: [
+    {
+      name: 'JsStart',
+      pattern: /\$/,
+      categories: ['BlockMarker']
+    }
+  ],
+  HashName: [
+    /** We'll have to change class name parsing */
+    {
+      name: 'Dot',
+      pattern: /\./
+    }
   ],
   /** 
    * @todo - allow JS expressions within string literals
@@ -79,18 +132,18 @@ for (let i = 0; i < tokenLength; i++) {
     //   copyToken()
     //   token.pattern = /\.?\//
     //   break
-    case 'StringLiteral':
-      copyToken()
-      token.pattern = '~?{{string1}}|~?{{string2}}'
-      break
-    case 'CustomProperty':
-      copyToken()
-      token.pattern = '--(?:{{nmstart}}{{nmchar}}*)?'
-      break
-    case 'AtKeyword':
-      copyToken()
-      token.categories = categories.concat(['VarOrProp'])
-      break
+    // case 'StringLiteral':
+    //   copyToken()
+    //   token.pattern = '~?{{string1}}|~?{{string2}}'
+    //   break
+    // case 'CustomProperty':
+    //   copyToken()
+    //   token.pattern = '--(?:{{nmstart}}{{nmchar}}*)?'
+    //   break
+    // case 'AtKeyword':
+    //   copyToken()
+    //   token.categories = categories.concat(['VarOrProp'])
+    //   break
     default:
       alterations = false
   }

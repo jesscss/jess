@@ -6,7 +6,7 @@ import 'mocha'
 import { Parser } from '../src'
 import { stringify } from '@jesscss/css-parser'
 
-const testData = path.dirname(require.resolve('@less/test-data'))
+const testData = path.dirname(path.resolve('./data'))
 
 const jessParser = new Parser()
 const parser = jessParser.parser
@@ -34,10 +34,11 @@ describe('can parse any rule', () => {
 
   it('mixin definition', () => {
     let lexerResult = jessParser.lexer.tokenize(
-      `@mixin myMixin (@a: white, // test
-            @b: 1px // line
+      `@mixin mixin (a: white, // test
+            b: 1px // line
           ) // comments {
-        color: @b;
+      {
+        color: $b;
       }`
     )
     let lexedTokens = lexerResult.tokens
@@ -47,7 +48,7 @@ describe('can parse any rule', () => {
 
     /** Collections */
     lexerResult = jessParser.lexer.tokenize(
-      `@mixin mixin-definition(@a: {}, @b: {default: works;}) {
+      `@mixin someMixin (a: {}, b: {default: works;}) {
         @let a: $a;
         @let b: $b;
       }`
@@ -59,13 +60,24 @@ describe('can parse any rule', () => {
     parser.input = lexedTokens
     parser.root()
     expect(parser.errors.length).to.equal(0)
+
+    lexerResult = jessParser.lexer.tokenize(
+      `@mixin someMixin {
+        one: 1;
+        two: 2;
+      }`
+    )
+    lexedTokens = lexerResult.tokens
+    parser.input = lexedTokens
+    parser.root()
+    expect(parser.errors.length).to.equal(0)
   })
 
   it('include', () => {
     let lexerResult = jessParser.lexer.tokenize(`@include mixin(0px);`)
     let lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
-    parser.include()
+    parser.atInclude()
     expect(parser.errors.length).to.equal(0)
 
     lexerResult = jessParser.lexer.tokenize(
@@ -74,7 +86,7 @@ describe('can parse any rule', () => {
       });`)
     lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
-    parser.include()
+    parser.atInclude()
 
     expect(parser.errors.length).to.equal(0)
 
@@ -94,56 +106,23 @@ describe('can parse any rule', () => {
       }`)
     let lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
-    parser.unknownAtRule()
+    parser.root()
     expect(parser.errors.length).to.equal(0)
   })
 })
 
-describe('can parse all Less stylesheets', () => {
-  const files = glob.sync(path.join(testData, 'less/**/*.less'))
+describe('can parse all Jess stylesheets', () => {
+  const files = glob.sync(path.join(testData, '**/*.jess'))
   files
     .map(value => path.relative(testData, value))
-    .filter(value => [
-      'less/_main/import/invalid-css.less'
-    ].indexOf(value) === -1)
     .sort()
     .forEach(file => {
-      // if (file.indexOf('namespacing-') > -1) {
       it(`${file}`, () => {
         const result = fs.readFileSync(path.join(testData, file))
         const contents = result.toString()
         const { cst, lexerResult } = jessParser.parse(contents)
         expect(lexerResult.errors.length).to.equal(0)
-        if (parser.errors.length > 0) {
-          console.log(parser.errors)
-        }
         expect(parser.errors.length).to.equal(0)
-        
-        /** JavaScript tokens are skipped */
-        if (!([
-          'less/_main/javascript.less',
-          'less/no-js-errors/no-js-errors.less'
-        ].includes(file))) {
-          const output = stringify(cst)
-          expect(output).to.equal(contents)
-        }
       })
-      // }
     })
-})
-
-// Skipped until we fix these flows
-describe.skip('should throw parsing errors', () => {
-  const files = glob.sync(
-    path.relative(process.cwd(), path.join(testData, 'errors/parse/**/*.less'))
-  )
-  files.sort()
-  files.forEach(file => {
-    it(`${file}`, () => {
-      const result = fs.readFileSync(file)
-      const { cst, lexerResult, parser } = jessParser.parse(result.toString())
-      expect(lexerResult.errors.length).to.equal(0)
-      expect(parser.errors.length).to.equal(1)
-    })
-  })
 })

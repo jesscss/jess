@@ -49,7 +49,16 @@ const invalidCSSOutput = [
   'css/_main/import-reference.css',
 
   /** intentionally invalid property name */
-  'css/_main/property-name-interp.css'
+  'css/_main/property-name-interp.css',
+
+  /** invalid attribute selector */
+  'css/_main/css-3.css',
+
+  /** Invalid class selector .123 */
+  'css/_main/mixins-interpolated.css',
+
+  /** invalid attribute selector */
+  'css/_main/selectors.css'
 ]
 
 describe('can parse Less CSS output', () => {

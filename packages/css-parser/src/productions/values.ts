@@ -114,7 +114,6 @@ export default function(this: CssParser, $: CssParser) {
   $.anyToken = $.RULE('anyToken', () =>
     $.OR([
       { ALT: () => $.CONSUME($.T.Value) },
-      { ALT: () => $.CONSUME($.T.Important) },
       /** Can be in a var() function */
       { ALT: () => $.CONSUME($.T.CustomProperty) },
       { ALT: () => $.CONSUME($.T.Colon) },
@@ -129,7 +128,8 @@ export default function(this: CssParser, $: CssParser) {
   $.extraTokens = $.RULE('extraTokens', () =>
     $.OR([
       { ALT: () => $.CONSUME($.T.AtName) },
-      { ALT: () => $.CONSUME($.T.Comma) }
+      { ALT: () => $.CONSUME($.T.Comma) },
+      { ALT: () => $.CONSUME($.T.Important) }
     ])
   )
 }

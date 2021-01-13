@@ -1,18 +1,76 @@
-import { CstChild } from '@less/css-parser'
+import { CstChild } from '@jesscss/css-parser'
 import type { JessParser } from '../jessParser'
 
 export default function(this: JessParser, $: JessParser) {
-  $.identOrInterpolated = $.RULE('identOrInterpolated', () => {
-    const children: CstChild[] = []
-    $.AT_LEAST_ONE(() => {
-      children.push($.OR([
-        { ALT: () => $.CONSUME($.T.Ident) },
-        { ALT: () => $.CONSUME($.T.InterpolatedIdent) }
-      ]))
+  $.jsExpression = $.RULE('jsExpression', () => {
+    $.CONSUME($.T.JsStart)
+    $.SUBRULE($.jsValue)
+    $.MANY(() => {
+      $.OPTION(() => {
+        $.CONSUME($.T.Dot)
+      })
+      $.SUBRULE2($.jsValue)
     })
-    return {
-      name: 'identOrInterpolated',
-      children
-    }
+  })
+
+  $.jsValue = $.RULE('jsValue', () => {
+    $.OR([
+      { ALT: () => {
+          $.CONSUME($.T.JsIdent)
+      }},
+      { ALT: () => {
+        $.CONSUME($.T.StringLiteral)
+      }},
+      /** I guess this can happen? */
+      { ALT: () => {
+          $.CONSUME($.T.UriString)
+      }},
+      // Look for matching blocks
+      {
+        ALT: () => {
+          $.OR2([
+            { ALT: () => $.CONSUME($.T.JsFunction) },
+            { ALT: () => $.CONSUME($.T.LParen) }
+          ])
+          $.SUBRULE($.jsTokens)
+          $.CONSUME($.T.RParen)
+        }
+      },
+      {
+        ALT: () => {
+          $.CONSUME($.T.LSquare)
+          $.SUBRULE2($.jsTokens)
+          $.CONSUME($.T.RSquare)
+        }
+      },
+      {
+        ALT: () => {
+          $.CONSUME($.T.LCurly)
+          $.SUBRULE3($.jsTokens)
+          $.CONSUME($.T.RCurly)
+        }
+      }
+    ])
+  })
+
+  /**
+   * For now, we'll just tokenize as CSS tokens, instead of specially
+   * parsing JS. This will not check that the JS is valid! Something
+   * else should do that?
+   */
+  $.jsTokens = $.RULE('jsTokens', () => {
+    $.OR([
+      { ALT: () => $.SUBRULE($.jsValue) },
+      { ALT: () => $.CONSUME($.T.Colon) },
+      { ALT: () => $.CONSUME($.T.Comma) },
+      { ALT: () => $.CONSUME($.T.SemiColon) },
+      /** =, >, <, <=, => */
+      { ALT: () => $.CONSUME($.T.CompareOperator) },
+      { ALT: () => $.CONSUME($.T.AdditionOperator) },
+      { ALT: () => $.CONSUME($.T.MultiplicationOperator) },
+      { ALT: () => $.CONSUME($.T.Ellipsis) },
+      /** Try not to put these in your identifiers, it's confusing */
+      { ALT: () => $.CONSUME($.T.JsStart) },
+    ])
   })
 }

@@ -7,7 +7,43 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "Jess Tests",
+      "name": "CSS Parsing Tests",
+      "cwd": "${workspaceFolder}/packages/css-parser",
+      "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
+      "args": [
+        "-r",
+        "ts-node/register",
+        "-u",
+        "bdd",
+        "--timeout",
+        "999999",
+        "--colors",
+        "${workspaceFolder}/packages/css-parser/test/**/*.ts"
+      ],
+      "internalConsoleOptions": "openOnSessionStart"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Jess Parsing Tests",
+      "cwd": "${workspaceFolder}/packages/parser",
+      "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
+      "args": [
+        "-r",
+        "ts-node/register",
+        "-u",
+        "bdd",
+        "--timeout",
+        "999999",
+        "--colors",
+        "${workspaceFolder}/packages/parser/test/**/*.ts"
+      ],
+      "internalConsoleOptions": "openOnSessionStart"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Main (jess) Tests",
       "cwd": "${workspaceFolder}/packages/jess",
       "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
       "args": [

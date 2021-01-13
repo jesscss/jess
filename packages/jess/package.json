@@ -8,7 +8,7 @@
     "dist"
   ],
   "dependencies": {
-    "@jesscss/parser": "^1.0.0-alpha.0",
+    "@jesscss/parser": "^1.0.1-alpha.1",
     "lodash": "^4.17.20"
   },
   "scripts": {
