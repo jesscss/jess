@@ -17,13 +17,25 @@ export default function(this: CssParser, $: CssParser) {
   /**
    * Test for qualified rule start.
    * 
-   * In order to detect specific errors, we backtrack this very permissive rule,
-   * which allows almost anything, because we're just determining if this is
-   * _intended_ to be a qualified rule, not if it's a valid one.
+   * To allow nesting, we want to test, as quickly as possible, if this
+   * is intended to be a qualified rule
    */
   $.testQualifiedRule = $.RULE('testQualifiedRule', () => {
-    $.SUBRULE($.testQualifiedRuleExpression)
-    $.CONSUME($.T.LCurly)
+    $.OR({
+      IGNORE_AMBIGUITIES: true,
+      DEF: [
+        { ALT: () => $.CONSUME($.T.DotName) },
+        { ALT: () => $.CONSUME($.T.HashName) },
+        { ALT: () => $.CONSUME($.T.Colon) },
+        { ALT: () => $.CONSUME($.T.LSquare) },
+        {
+          ALT: () => {
+            $.SUBRULE($.testQualifiedRuleExpression)
+            $.CONSUME($.T.LCurly)
+          }
+        }
+      ]
+    })
   })
 
   $.testQualifiedRuleExpression = $.RULE('testQualifiedRuleExpression', () => {

@@ -6,8 +6,6 @@ import 'mocha'
 import { Parser } from '../src'
 import { stringify } from '@jesscss/css-parser'
 
-const testData = path.dirname(path.resolve('./data'))
-
 const jessParser = new Parser()
 const parser = jessParser.parser
 
@@ -112,9 +110,49 @@ describe('can parse any rule', () => {
 })
 
 describe('can parse all Jess stylesheets', () => {
+  const testData = path.dirname(path.resolve('./data'))
   const files = glob.sync(path.join(testData, '**/*.jess'))
   files
     .map(value => path.relative(testData, value))
+    .sort()
+    .forEach(file => {
+      it(`${file}`, () => {
+        const result = fs.readFileSync(path.join(testData, file))
+        const contents = result.toString()
+        const { cst, lexerResult } = jessParser.parse(contents)
+        expect(lexerResult.errors.length).to.equal(0)
+        expect(parser.errors.length).to.equal(0)
+      })
+    })
+})
+
+const invalidCSSOutput = [
+  /** Contains a less unquoted string in root */
+  'css/_main/css-escapes.css',
+  
+  /** Intentionally produces invalid CSS */
+  'css/_main/import-inline.css',
+  'css/_main/import-reference.css',
+
+  /** intentionally invalid property name */
+  'css/_main/property-name-interp.css',
+
+  /** invalid attribute selector */
+  'css/_main/css-3.css',
+
+  /** Invalid class selector .123 */
+  'css/_main/mixins-interpolated.css',
+
+  /** invalid attribute selector */
+  'css/_main/selectors.css'
+]
+
+describe('can parse all Less CSS output', () => {
+  const testData = path.dirname(require.resolve('@less/test-data'))
+  const files = glob.sync(path.join(testData, 'css/_main/*.css'))
+  files
+    .map(value => path.relative(testData, value))
+    .filter(value => invalidCSSOutput.indexOf(value) === -1)
     .sort()
     .forEach(file => {
       it(`${file}`, () => {

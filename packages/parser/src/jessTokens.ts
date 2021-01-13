@@ -38,12 +38,6 @@ const merges: IMerges = {
       categories: ['BlockMarker', 'AtName']
     },
     {
-      name: 'AtRules',
-      pattern: /@rules/,
-      longer_alt: 'AtKeyword',
-      categories: ['BlockMarker', 'AtName']
-    },
-    {
       name: 'AtLet',
       pattern: /@let/,
       longer_alt: 'AtKeyword',
@@ -63,28 +57,29 @@ const merges: IMerges = {
     }
   ],
   PlainIdent: [
-    /** Almost like a CSS identifier but no dashes */
     {
       name: 'JsIdent',
       pattern: LexerType.NA
-    },
-    {
-      name: 'JsIdentMatch',
-      pattern: '{{jsident}}',
-      categories: ['Ident', 'JsIdent'],
-      longer_alt: 'PlainIdent'
-    },
+    }
+  ],
+  DashIdent: [
+    // {
+    //   name: 'JsIdentMatch',
+    //   pattern: '{{jsident}}',
+    //   categories: ['Ident', 'JsIdent', 'PropertyName', 'Selector'],
+    //   longer_alt: 'PlainIdent'
+    // },
     /** For import statements */
     {
       name: 'From',
       pattern: /from/,
-      longer_alt: 'JsIdentMatch',
+      longer_alt: 'DashIdent',
       categories: ['Ident', 'JsIdent']
     },
     {
       name: 'As',
       pattern: /as/,
-      longer_alt: 'JsIdentMatch',
+      longer_alt: 'DashIdent',
       categories: ['Ident', 'JsIdent']
     }
   ],
@@ -139,13 +134,17 @@ for (let i = 0; i < tokenLength; i++) {
       token.pattern = '~?(?:{{string1}}|{{string2}}|{{string3}})'
       break
     /** We need to identify these as JS identifiers */
+    case 'NonDashIdent':
+      copyToken()
+      token.categories = categories.concat(['JsIdent'])
+      break
     case 'AttrFlag':
     case 'And':
     case 'Or':
     case 'Not':
     case 'Only':
       copyToken()
-      token.longer_alt = 'JsIdentMatch'
+      token.longer_alt = 'DashIdent'
       token.categories = categories.concat(['JsIdent'])
       break
     default:

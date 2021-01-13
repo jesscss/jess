@@ -5,7 +5,6 @@ export default function (this: JessParser, $: JessParser) {
   $.knownAtRule = $.OVERRIDE_RULE('knownAtRule',
     () => $.OR([
       { ALT: () => $.SUBRULE($.mixin) },
-      { ALT: () => $.SUBRULE($.rulesMixin) },
       
       /** In the mixin section */
       { ALT: () => $.SUBRULE($.atInclude) },

@@ -23,7 +23,10 @@ export const Fragments: [string, string][] = [
   ['nonascii', '[\\u0240-\\uffff]'],
   ['nmstart', '[_a-zA-Z]|{{nonascii}}|{{escape}}'],
   ['nmchar', '[_a-zA-Z0-9-]|{{nonascii}}|{{escape}}'],
+  ['nmnodash', '[_a-zA-Z0-9]|{{nonascii}}|{{escape}}'],
   ['ident', '-?{{nmstart}}{{nmchar}}*'],
+  ['dashident', '-?{{nmstart}}{{nmnodash}}*-{{nmchar}}*'],
+  ['nondashident', '{{nmstart}}{{nmnodash}}*'],
 
   /** Reference: https://www.w3.org/TR/css-syntax-3/#consume-url-token */
   ['url', '(?:[^(\'"]|{{escape}})*'],
@@ -132,18 +135,29 @@ export const Tokens: rawTokenConfig[] = [
   { name: 'AttrMatch', pattern: /[*~|^$]=/, categories: ['AttrMatchOperator'] },
   { name: 'Ident', pattern: LexerType.NA },
   { name: 'PropertyName', pattern: LexerType.NA },
-  { name: 'PlainIdent', pattern: '{{ident}}', categories: ['Ident', 'PropertyName', 'Selector'] },
+  { name: 'PlainIdent', pattern: LexerType.NA },
+  {
+    name: 'DashIdent',
+    pattern: '{{ident}}',
+    categories: ['Ident', 'PlainIdent', 'PropertyName', 'Selector']
+  },
+  {
+    name: 'NonDashIdent',
+    pattern: '{{nondashident}}',
+    categories: ['Ident', 'PlainIdent', 'PropertyName', 'Selector'],
+    longer_alt: 'DashIdent'
+  },
   { name: 'CustomProperty', pattern: '--{{ident}}', categories: ['BlockMarker', 'PropertyName'] },
   { name: 'CDOToken', pattern: /<!--/, group: LexerType.SKIPPED },
   { name: 'CDCToken', pattern: /-->/, group: LexerType.SKIPPED },
   /** Ignore BOM */
   { name: 'UnicodeBOM', pattern: /\uFFFE/, group: LexerType.SKIPPED },
-  { name: 'AttrFlag', pattern: /[is]/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+  { name: 'AttrFlag', pattern: /[is]/, longer_alt: 'NonDashIdent', categories: ['Ident'] },
   { name: 'PlainFunction', pattern: '{{ident}}\\(', categories: ['BlockMarker', 'Function'] },
-  { name: 'And', pattern: /and/, longer_alt: 'PlainIdent', categories: ['Ident'] },
-  { name: 'Or', pattern: /or/, longer_alt: 'PlainIdent', categories: ['Ident'] },
-  { name: 'Not', pattern: /not/, longer_alt: 'PlainIdent', categories: ['Ident'] },
-  { name: 'Only', pattern: /only/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+  { name: 'And', pattern: /and/, longer_alt: 'NonDashIdent', categories: ['Ident'] },
+  { name: 'Or', pattern: /or/, longer_alt: 'NonDashIdent', categories: ['Ident'] },
+  { name: 'Not', pattern: /not/, longer_alt: 'NonDashIdent', categories: ['Ident'] },
+  { name: 'Only', pattern: /only/, longer_alt: 'NonDashIdent', categories: ['Ident'] },
   { name: 'AtKeyword', pattern: '@{{ident}}', categories: ['BlockMarker', 'AtName'] },
   { name: 'Uri', pattern: LexerType.NA },
   {

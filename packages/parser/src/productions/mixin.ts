@@ -11,7 +11,7 @@ export default function (this: JessParser, $: JessParser) {
           name: 'prelude',
           children: $.SUBRULE($.mixinPrelude)
         },
-        $.SUBRULE($.rulePrimary)
+        $.SUBRULE($.curlyBlock)
       ]
     })
   )
@@ -41,23 +41,6 @@ export default function (this: JessParser, $: JessParser) {
 
     return prelude
   })
-
-  /**
-   * Pretty identical to mixin, except for rule parsing
-   */
-  $.rulesMixin = $.RULE('rulesMixin',
-    () => ({
-      name: 'atRule',
-      children: [
-        $.CONSUME($.T.AtRules),
-        {
-          name: 'prelude',
-          children: $.SUBRULE($.mixinPrelude)
-        },
-        $.SUBRULE($.curlyBlock)
-      ]
-    })
-  )
 
   $.mixinArgs = $.RULE('mixinArgs', () => {
     $._()

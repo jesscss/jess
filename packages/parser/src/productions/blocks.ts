@@ -2,60 +2,46 @@ import { EMPTY_ALT } from 'chevrotain'
 import type { JessParser } from '../jessParser'
 
 export default function(this: JessParser, $: JessParser) {
-  $.qualifiedRule = $.OVERRIDE_RULE('qualifiedRule',
-    () => ({
-      name: 'qualifiedRule',
-      children: [
-        $.SUBRULE($.selectorList),
-        $.SUBRULE($.rulePrimary)
+  $.testQualifiedRule = $.OVERRIDE_RULE('testQualifiedRule', () => {
+    $.OR({
+      IGNORE_AMBIGUITIES: true,
+      DEF: [
+        { ALT: () => $.CONSUME($.T.Dot) },
+        { ALT: () => $.CONSUME($.T.HashName) },
+        { ALT: () => $.CONSUME($.T.Colon) },
+        { ALT: () => $.CONSUME($.T.LSquare) },
+        {
+          ALT: () => {
+            $.SUBRULE($.testQualifiedRuleExpression)
+            $.CONSUME($.T.LCurly)
+          }
+        }
       ]
     })
-  )
-  
-  $.rulePrimary = $.RULE('rulePrimary', () => {
-    $.CONSUME($.T.LCurly)
-    $._()
+  })
+
+  $.testQualifiedRuleExpression = $.OVERRIDE_RULE('testQualifiedRuleExpression', () => {
     $.MANY(() => {
       $.OR([
-        /** 
-         * @todo When we do @media bubbling, set a state
-         * variable that these are now "inner" atRules,
-         * some of which should instead parse rulePrimary
-         * children
-         * 
-         * e.g.  $.isNested = true 
-         */
-        { ALT: () => $.SUBRULE($.atRule) },
-        { ALT: () => $.SUBRULE($.customDeclaration) },
-        { ALT: () => $.SUBRULE($.declaration) },
-        { ALT: () => $.SUBRULE($.nested) },
-        { ALT: () => EMPTY_ALT }
+        { ALT: () => $.CONSUME($.T.Value) },
+        { ALT: () => $.SUBRULE($.jsExpression) },
+        { ALT: () => $.CONSUME($.T.Comma) },
+        { ALT: () => $.CONSUME($.T.Colon) },
+        { ALT: () => $.CONSUME($.T.WS) },
+        { ALT: () => {
+          $.OR2([
+            { ALT: () => $.CONSUME($.T.Function) },
+            { ALT: () => $.CONSUME($.T.LParen) }
+          ])
+          $.SUBRULE($.testQualifiedRuleExpression)
+          $.CONSUME($.T.RParen)
+        }},
+        { ALT: () => {
+          $.CONSUME($.T.LSquare)
+          $.SUBRULE2($.testQualifiedRuleExpression)
+          $.CONSUME($.T.RSquare)
+        }}
       ])
-      $._(1)
     })
-    $.CONSUME($.T.RCurly)
   })
-
-  /**
-   *     `@nest .sel, #sel { }`
-   * or  `&.sel
-   */
-  $.nested = $.RULE('nested', () => {
-    $.OR([
-      {
-        ALT: () => {
-          $.CONSUME($.T.Ampersand)
-          $.OPTION(() => $.SUBRULE($.selectorList))
-        }
-      },
-      {
-        ALT: () => {
-          $.CONSUME($.T.AtNest)
-          $.SUBRULE2($.selectorList)
-        }
-      },
-    ])
-    $.SUBRULE($.rulePrimary)
-  })
-
 }
