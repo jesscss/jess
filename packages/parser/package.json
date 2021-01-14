@@ -1,0 +1,26 @@
+{
+  "name": "@jesscss/parser",
+  "publishConfig": {
+    "access": "public"
+  },
+  "version": "1.0.1-alpha.1",
+  "main": "dist/index",
+  "types": "dist/index",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "ci": "yarn build && yarn test",
+    "prepublishOnly": "npm run build",
+    "build": "yarn clean && yarn compile",
+    "clean": "shx rm -rf ./dist tsconfig.tsbuildinfo",
+    "compile": "tsc -b tsconfig.json",
+    "test": "ts-mocha test/**/*.ts"
+  },
+  "author": "Matthew Dean",
+  "license": "MIT",
+  "dependencies": {
+    "@jesscss/css-parser": "^1.0.1-alpha.1",
+    "chevrotain": "^7.1.0"
+  }
+}

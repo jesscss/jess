@@ -1,0 +1,32 @@
+{
+  "name": "jess",
+  "version": "1.0.1-alpha.1",
+  "description": "JavaScript Enhanced Style Sheets",
+  "main": "dist/index",
+  "types": "dist/index",
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@jesscss/parser": "^1.0.1-alpha.1",
+    "lodash": "^4.17.20"
+  },
+  "scripts": {
+    "ci": "yarn build && yarn test",
+    "prepublishOnly": "yarn build",
+    "build": "yarn clean && yarn compile",
+    "clean": "shx rm -rf ./dist tsconfig.tsbuildinfo",
+    "compile": "tsc -b tsconfig.json",
+    "dev": "tsc -b tsconfig.json -w",
+    "test": "ts-mocha --recursive test/index.ts \"src/**/__tests__/*.ts\""
+  },
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/matthew-dean/jess/issues"
+  },
+  "homepage": "https://github.com/matthew-dean/jess#readme",
+  "devDependencies": {
+    "@types/lodash": "^4.14.167"
+  }
+}

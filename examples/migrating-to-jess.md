@@ -5,7 +5,7 @@
 @color: red;
 ```
 **Sass**
-```sass
+```scss
 $color: red;
 ```
 **Jess**
@@ -20,11 +20,11 @@ $color: red;
 color: @color;
 ```
 **Sass**
-```sass
+```scss
 color: $color;
 ```
 **Jess**
-```less
+```scss
 color: $color;
 ```
 
@@ -35,12 +35,13 @@ color: $color;
 width: (@width * 2);
 ```
 **Sass**
-```sass
+```scss
 width: ($width * 2);
 ```
 **Jess**
-```less
-width: $width.multiply(2);
+```scss
+@import { multiply } from 'jess/functions/math';
+width: $multiply(width, 2);
 ```
 
 ### Mixins
@@ -48,16 +49,16 @@ width: $width.multiply(2);
 **Less**
 ```less
 .mixin(@size) {
-  width: @size * 1px;
+  width: @size * 2px;
 }
 .box {
   .mixin(50);
 }
 ```
 **Sass**
-```sass
+```scss
 @mixin mixin($size) {
-  width: $size * 1px;
+  width: $size * 2px;
 }
 
 .box {
@@ -66,9 +67,10 @@ width: $width.multiply(2);
 ```
 **Jess**
 ```less
+@import { multiply } from 'jess/functions/math';
+
 @mixin mixin(size) {
-  @let px: 1px;
-  width: $size.multiply(px);
+  width: multiply($size, 1px);
 }
 .box {
   @include mixin(50);

@@ -1,0 +1,8 @@
+@import url("someurl.css");
+@import "someurl.css";
+
+@import foo from "something.jess";
+@import * as foo from "something.jess";
+@import foo, { named } from "something.jess";
+@import foo, { named, zecond } from "something.jess";
+@import foo, { named as other } from "something.jess";

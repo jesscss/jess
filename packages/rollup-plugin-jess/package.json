@@ -1,0 +1,8 @@
+{
+  "name": "rollup-plugin-jess",
+  "version": "1.0.1-alpha.1",
+  "description": "Rollup plugin for Jess",
+  "main": "dist/index",
+  "author": "Matthew Dean",
+  "license": "MIT"
+}
