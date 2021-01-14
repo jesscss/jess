@@ -41,6 +41,9 @@ export class Context {
 
   rootLevel: number
 
+  /** In a custom declaration's value */
+  inCustom: boolean
+
   constructor(opts?: ContextOptions) {
     this.opts = opts || {}
     this.id = generateId()

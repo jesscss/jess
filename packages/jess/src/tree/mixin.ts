@@ -26,7 +26,7 @@ export class Mixin extends JsNode {
     location?: ILocationInfo
   ) {
     const name = value.name
-    /** @todo - check for dash-case or double-underscore */
+    /** @todo - disallow JS reserved words */
     if (!name) {
       throw { message: 'Identifier required' }
     }

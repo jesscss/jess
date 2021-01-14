@@ -11,13 +11,9 @@ export class OutputCollector {
   add(str: string, originalLocation?: ILocationInfo) {
     this.strings.push(str)
     /**
-     * @todo - calculate output line/column for sourcemaps
-     * I'm honestly not sure how to do this yet.
-     * 
-     * @note
-     * Original location may be pushed more than once, so
-     * we should calculate original source line/column based 
-     * on locations pushed?? 
+     * @todo
+     * @see https://hacks.mozilla.org/2013/05/compiling-to-javascript-and-debugging-with-source-maps/
+     * @see https://github.com/mozilla/source-map
      */
     if (originalLocation) {
       this.map.push(originalLocation)
