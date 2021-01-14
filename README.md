@@ -3,7 +3,7 @@ _NOTE: Everything here is a WIP. Don't consume it yet, but ask about contributin
 
 JavaScript Enhanced Style Sheets
 
-This is the monorepo for Jess. See the readme.
+This is the monorepo for Jess. [See the readme](examples/README.md)
 
 To set up, run:
 ```
