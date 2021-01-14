@@ -20,7 +20,7 @@
     "test": "ts-mocha test/**/*.ts"
   },
   "author": "Matthew Dean",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "dependencies": {
     "chevrotain": "^7.1.0",
     "xregexp": "^4.2.4"

@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.json",
   "references": [
-    { "path" : "../css-parser" }
+    { "path" : "../jess" }
   ],
   "compilerOptions": {
     "outDir": "./dist",
