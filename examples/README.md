@@ -1,3 +1,27 @@
+### The Quick and Dirty
+
+TL;DR --
+
+Be able to do this...
+```jsx
+import styles, { myMixin } from 'component.jess'
+const css = styles()
+
+export const myComponent = props => {
+  return <div className={css.box} style={myMixin(props.something)}>foo</div>
+}
+```
+...with this...
+```less
+@mixin myMixin(something) {
+  width: $something;
+  color: white;
+}
+.box {
+  display: flex;
+  align-items: center;
+}
+```
 ### The Reason for Jess
 
 Less and Sass are powerful tools to create styles. Then came reactive front-end component development. We wanted modules, and we wanted scoped CSS. So we created CSS modules. But what about dynamic modules? So we tried to put CSS in JavaScript.
@@ -16,7 +40,6 @@ Instead of putting CSS in your JavaScript, why not put JavaScript in your CSS?
 First, like Less or Sass, a valid `.css` file is a valid `.jess` file.
 ```less
 // box.jess
-
 .box {
   color: red;
 }
@@ -26,7 +49,10 @@ However, unlike Less/Sass, this doesn't immediately transpile to CSS. Instead, i
 ```jsx
 import styles from 'box.jess'
 
-// Note: this is set to true by default -- the Jess CLI
+// Note: this is set to true by default
+// -- the Jess CLI sets this to false when
+//    compiling to bundles and not importing
+//    into modules
 const css = styles({ module: true })
 
 function myComponent() {
