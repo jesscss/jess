@@ -13,9 +13,3 @@
 @include domeMixin();
 @include domeMixin(1);
 @include domeMixin(1, 2);
-
-@rules someRules() {
-  .foo {
-    bar: foo;
-  }
-}

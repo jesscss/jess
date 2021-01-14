@@ -6,7 +6,7 @@
 @let contain: 640;
 
 .box {
-  width: $[if(contain < 640, <100px>, <200px>)];
+  width: $if(contain < 640, 100, 200)px;
 }
 ```
 Interpreted as:

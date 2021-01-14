@@ -6,7 +6,7 @@
     display: flex;
   }
 
-  @nest .foo & {
+  .foo & {
     background: white;
   }
 }

@@ -9,14 +9,14 @@
   sibling: declaration;
 }
 
-$[value].class {}
+$value.class {}
 .class$something {}
 
 .box {
   one: $collection.foo.bar.deeper;
   two: $some(call, with, args).foo[ ident ].stuff;
-  three: $[
-    var // ]
-  ] four;
+  three: $(
+    var // )
+  ) four;
   four: $url("???");
 }

@@ -71,22 +71,25 @@ Here's an example:
 ```less
 @import {colors} from './constants.js';
 ```
-How would you use that? You can reference JS expressions with `$[]` _Should this be `${}`? I wanted to avoid a glut of curly braces._
+How would you use that? You can reference JS expressions with `$`
 
-```less
-@import {colors} from './constants.js';
-
-.box {
-  color: $[colors.foreground];
-}
-```
-
-If your JS expression is continuous (not separated by spaces and not within matching blocks), you can use the `$` without `[]`, as in:
 ```less
 @import {colors} from './constants.js';
 
 .box {
   color: $colors.foreground;
+}
+```
+
+`$` treats everything as JavaScript until it hits something it can detect as the end of the expression, like white-space, a semi-colon, or an independently-parseable token.
+
+If you need to, you can wrap your JS expression in parens, like:
+
+```less
+@import { WIDTH } from './constants.js';
+
+.box {
+  width: $(WIDTH + 10)px;
 }
 ```
 
@@ -113,7 +116,7 @@ For the most part, it's very similar to what you're used to in Less / Sass, with
 It can be pretty much any JS value as well, as long as it can be stringified with a `.toString()` method
 ```less
 @let foo: $myValue;
-@let bar: $['string value'];
+@let bar: $'keyword';
 ```
 And, of course, like Less or Sass, you can inter-mix JS and CSS values:
 ```less
@@ -232,7 +235,7 @@ You can create a custom theme by passing new values into the theme stylesheet, l
 @import { theme } from './my-theme.jess';
 
 .box {
-  color: $[theme.color]; // or $theme.color
+  color: $(theme.color); // or $theme.color
 }
 ```
 
