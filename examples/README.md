@@ -25,7 +25,8 @@ First, like Less or Sass, a valid `.css` file is a valid `.jess` file.
 However, unlike Less/Sass, this doesn't immediately transpile to CSS. Instead, it transpiles to an intermediate JS module, which you can use like:
 ```jsx
 import styles from 'box.jess'
-// The module flag can alternatively be set by a global config file
+
+// Note: this is set to true by default -- the Jess CLI
 const css = styles({ module: true })
 
 function myComponent() {
@@ -44,11 +45,7 @@ Here's an example:
 ```less
 @import {colors} from './constants.js';
 ```
-How would you use that? You can imagine the rest of the file as a JS template block, wrapped in ``` `` ``` characters. You could think of it like Styled Components or Emotion, but in a dedicated stylesheet, and just a bit easier to work with.
-
-Because your `.jess` file is essentially like a template file, you can use `$[]` expressions in your styles to evaluate a JS expression and output a string.
-
-For instance:
+How would you use that? You can reference JS expressions with `$[]` _Should this be `${}`? I wanted to avoid a glut of curly braces._
 
 ```less
 @import {colors} from './constants.js';
@@ -200,9 +197,10 @@ You can create a custom theme by passing new values into the theme stylesheet, l
 @import * as colors from './colors.jess';
 @import * as otherVars from './vars.jess';
 
-@let theme: $css({
+@let config {
   colors: something
-}).theme;
+}
+@let theme: $css(config).theme;
 
 // main.jess
 @import { theme } from './my-theme.jess';
@@ -224,21 +222,6 @@ To make migration / code compatibility easier, like Less and Sass, Jess supports
   }
 }
 ```
-However, for unambiguous parsing, Jess supports the `@nest` CSS nesting proposal. That is, an ampersand `&` that doesn't appear at the start of the rule must start instead with `@nest`
-```less
-.button {
-  @nest #ad & {
-    color: black;
-  }
-}
-```
-The above will output:
-```less
-#ad .button {
-  color: black;
-}
-```
-If `@nest` or a proposal like it is adopted, then the flag will be added to preserve the `@nest` rule.
 
 #### Media bubbling
 
@@ -248,13 +231,15 @@ Nested `@media` bubbling is not yet supported.
 
 You can easily define the equivalent of a "mixin" by writing a normal function.
 
+_Todo: there's some work on the include side to make this possible._
+
 ```js
 // functions.js
-import { dim } from 'jess/tree'
+import { dimension } from 'jess/tree'
 
 export const square = (size) => ({
-  width: dim({value: size, unit: 'px'}),
-  height: dim({value: size, unit: 'px'})
+  width: dimension({value: size, unit: 'px'}),
+  height: dimension({value: size, unit: 'px'})
 })
 ```
 
@@ -291,35 +276,23 @@ The mixin is similar to the JS export. In fact, you could have done:
 
 You can just use JS functions!
 ```js
-import { dim } from 'jess/tree'
+import { dimension } from 'jess/tree'
 // calcPercent.js
 export function calcPercent(target, container) {
-  return dim({
+  return dimension({
     value: (target / container) * 100,
     unit: '%'
   });
 }
 ```
 ```less
-@import {calcPercent} from './calcPercent.js';
+@import { calcPercent } from './calcPercent.js';
 
 .my-module {
   width: $calcPercent(650, 1000);
 }
 ```
-#### Mixins with rules
 
-Mixins, by default, are returning declarations. If you want to nest selectors, you just need to follow Jess's rules for nesting.
-```less
-@mixin addHover () {
-  &:hover {
-    background: lightblue;
-  }
-  @nest something & {
-    foo: bar;
-  }
-}
-```
 
 ### React-like style binding
 

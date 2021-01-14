@@ -1,6 +1,6 @@
 <p style="text-align: center"><img width="184" src="https://github.com/matthew-dean/jess/raw/master/simple-hawk-drawing-1.jpg"></p>
 
-_Note: this project is very much a WIP!_
+_Note: this project is very much a WIP! DON'T USE YET!_
 # Project Jess
 JavaScript Evaluated Style Sheets
 
@@ -20,6 +20,7 @@ One of the biggest needs is a declarative / cross-framework design language that
 4. Generating local (non-global) styles
 
 ## Design
+_TODO: Rewrite_
 1. The Jess compiler would output a combination of runtime-ready, polyfillable CSS and a JS model of that CSS with all of the dynamic pieces. Think of this as Vue/React SSR where a "first-paint" version of HTML is created that can be "hydrated". Not sure how much this is possible -- will require testing.
 2. The Jess compiler would either include or have an implementation of the Typed CSS OM as a polyfill, and would directly interact with that to do the most efficient updates to styles as possible. Right now, even Less, which runs in the browser and can have variables changed on-the-fly.
 3. The runtime format should become a replacement for CSS Modules and solve local / component scoping, but in a more powerful way.
