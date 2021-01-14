@@ -1,0 +1,11 @@
+{
+  "name": "@jesscss/attach-css",
+  "publishConfig": {
+    "access": "public"
+  },
+  "version": "1.0.1-alpha.1",
+  "description": "CSS differ / attacher",
+  "main": "dist/index",
+  "author": "Matthew Dean",
+  "license": "MIT"
+}
