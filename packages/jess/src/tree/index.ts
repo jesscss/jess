@@ -9,6 +9,7 @@
 export * from './node'
 
 export * from './anonymous'
+export * from './call'
 export * from './collection'
 export * from './declaration'
 export * from './element'

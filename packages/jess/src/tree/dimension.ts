@@ -52,8 +52,8 @@ export class Dimension extends Node {
     const pre = context.pre
     out.add(`_J.num({\n`
       + `  ${pre}value: ${this.value}\n`
-      + `  ${pre}unit: "${this.unit}"\n`
-      + `${pre}})\n`
+      + `  ${pre}unit: "${this.unit ?? ''}"\n`
+      + `${pre}})`
     , this.location)
   }
 }

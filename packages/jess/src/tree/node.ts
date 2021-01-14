@@ -3,7 +3,8 @@ import type { Visitor } from '../visitor'
 import { OutputCollector } from '../output'
 
 export type Primitive = string | number | Node
-export type NodeValue = Primitive | Primitive[]
+/** Function is used by the Call node */
+export type NodeValue = Function | Primitive | Primitive[]
 export type NodeMap = {
   value?: NodeValue
   [k: string]: NodeValue
