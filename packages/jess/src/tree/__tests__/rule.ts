@@ -31,6 +31,6 @@ describe('Rule', () => {
       ]
     })
     node.toModule(context, out)
-    expect(out.toString()).to.eq('_J.rule({\n  sels: _J.list([\n    _J.sel([_J.el("foo")])\n  ]),\n  value: _J.ruleset(\n    (() => {\n      const __OUT = []\n      let brandColor = _J.cast(area(5))\n      __OUT.push(_J.decl({\n        name: "color"\n        value: _J.cast(brandColor)\n      }))\n      return __OUT\n    })()\n  )')
+    expect(out.toString()).to.eq('$J.rule({\n  sels: $J.list([\n    $J.sel([$J.el("foo")])\n  ]),\n  value: $J.ruleset(\n    (() => {\n      const $OUT = []\n      let brandColor = $J.cast(area(5))\n      $OUT.push($J.decl({\n        name: "color"\n        value: $J.cast(brandColor)\n      }))\n      return $OUT\n    })()\n  )')
   })
 })

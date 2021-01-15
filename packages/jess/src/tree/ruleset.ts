@@ -57,24 +57,24 @@ export class Ruleset extends Node {
     const rootLevel = context.rootLevel
     context.rootLevel = 2
 
-    out.add(`_J.ruleset(\n`, this.location)
+    out.add(`$J.ruleset(\n`, this.location)
     context.indent++
     let pre = context.pre
     out.add(`${pre}(() => {\n`)
     context.indent++
-    out.add(`  ${pre}const __OUT = []\n`)
+    out.add(`  ${pre}const $OUT = []\n`)
     this.value.forEach((node, i) => { 
       out.add(`  ${pre}`)
       if (node instanceof JsNode) {
         node.toModule(context, out)
         out.add('\n')
       } else {
-        out.add(`__OUT.push(`)
+        out.add(`$OUT.push(`)
         node.toModule(context, out)
         out.add(`)\n`)
       }
     })
-    out.add(`  ${pre}return __OUT\n${pre}})()`)
+    out.add(`  ${pre}return $OUT\n${pre}})()`)
     context.indent -= 2
     pre = context.pre
     out.add(`\n${pre})`)

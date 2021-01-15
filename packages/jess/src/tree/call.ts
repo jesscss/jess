@@ -39,7 +39,7 @@ export class Call extends Node {
 
   toModule(context: Context, out: OutputCollector) {
     const name = this.name
-    out.add(`_J.call({\n`, this.location)
+    out.add(`$J.call({\n`, this.location)
     context.indent++
     let pre = context.pre
     out.add(`${pre}name: ${JSON.stringify(name)},\n`)

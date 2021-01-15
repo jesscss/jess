@@ -37,7 +37,7 @@ export class Declaration extends Node {
   toModule(context: Context, out: OutputCollector) {
     let pre = context.pre
     const loc = this.location
-    out.add(`_J.decl({\n`, loc)
+    out.add(`$J.decl({\n`, loc)
     out.add(`  ${pre}name: `)
     this.name.toModule(context, out)
     out.add(`\n  ${pre}value: `)

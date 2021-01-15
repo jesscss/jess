@@ -30,7 +30,7 @@ export class Spaced extends Expression {
 
   toModule(context: Context, out: OutputCollector) {
     const loc = this.location
-    out.add(`_J.spaced([`, loc)
+    out.add(`$J.spaced([`, loc)
     const length = this.value.length - 1
     this.value.forEach((n, i) => {
       if (i % 2 === 0) {

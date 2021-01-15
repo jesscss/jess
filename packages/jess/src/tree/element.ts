@@ -37,6 +37,12 @@ export class Element extends Node {
     return /^[a-z]/.test(this.value.value)
   }
 
+  eval(context: Context) {
+    const node = <Element>super.eval(context)
+    context.hashClass(node.value.value)
+    return node
+  }
+
   toCSS(context: Context, out: OutputCollector) {
     if (this.isClass) {
       out.add(context.hashClass(this.value.value), this.location)
@@ -47,7 +53,7 @@ export class Element extends Node {
 
   toModule(context: Context, out: OutputCollector) {
     const loc = this.location
-    out.add(`_J.el(`, loc)
+    out.add(`$J.el(`, loc)
     this.value.toModule(context, out)
     out.add(')')
   }

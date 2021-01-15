@@ -10,11 +10,12 @@ let out: OutputCollector
 describe('Root', () => {
   beforeEach(() => {
     context = new Context
+    context.id = 'testing'
     out = new OutputCollector
   })
   it('should serialize to a module', () => {
     const node = root([])
     node.toModule(context, out)
-    expect(out.toString()).to.eq('import * as _JESS from \'jess\'\nconst _J = _JESS.tree\nconst __CONTEXT = new _JESS.Context\nexport default (__VARS = {}, __RETURN_NODE) => {\n  const { module, ...rest } = __VARS\n  const __TREE = _J.root((() => {\n    const __OUT = []\n    return __OUT\n  })()\n  if (__RETURN_NODE) {\n    return __TREE\n  }\n  return _JESS.render(__TREE, __CONTEXT)\n}')
+    expect(out.toString()).to.eq('import * as $JESS from \'jess\'\nconst $J = $JESS.tree\nconst $CONTEXT = new $JESS.Context\n$CONTEXT.id = \'testing\'\nfunction $DEFAULT ($VARS = {}, $RETURN_NODE) {\n  const $TREE = $J.root((() => {\n    const $OUT = []\n    return $OUT\n  })()\n  if ($RETURN_NODE) {\n    return $TREE\n  }\n  return $JESS.render($TREE, $CONTEXT)\n}\nexport default $DEFAULT')
   })
 })

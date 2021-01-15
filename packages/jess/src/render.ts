@@ -9,7 +9,7 @@ export const render = (root: Node, context: Context) => {
   const out = new OutputCollector
   evaldRoot.toCSS(context, out)
   const result = {
-    __CSS: out.toString(),
+    $CSS: out.toString(),
     ...context.classMap
   }
   return result

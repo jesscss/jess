@@ -27,7 +27,7 @@ export class Ampersand extends Node {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    out.add(`_J.amp()`, this.location)
+    out.add(`$J.amp()`, this.location)
   }
 }
 

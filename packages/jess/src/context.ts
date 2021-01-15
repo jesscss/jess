@@ -46,13 +46,13 @@ export class Context {
   inCustom: boolean
 
   constructor(opts?: ContextOptions) {
-    this.opts = opts || {}
+    this.opts = opts || Object.create(null)
     this.id = generateId()
     this.frames = []
     this.exports = new Set()
     this.indent = 0
     this.rootLevel = 0
-    this.classMap = {}
+    this.classMap = Object.create(null)
     this.rootRules = []
   }
 

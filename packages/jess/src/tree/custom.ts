@@ -35,7 +35,7 @@ export class CustomDeclaration extends Declaration {
   toModule(context: Context, out: OutputCollector) {
     let pre = context.pre
     const loc = this.location
-    out.add(`_J.custom({\n`, loc)
+    out.add(`$J.custom({\n`, loc)
     out.add(`  ${pre}name: `)
     this.name.toModule(context, out)
     out.add(`\n  ${pre}value: `)

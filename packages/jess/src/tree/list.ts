@@ -28,7 +28,7 @@ export class List<T extends Primitive = Primitive> extends Node {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    out.add(`_J.list([\n`, this.location)
+    out.add(`$J.list([\n`, this.location)
     context.indent++
     let pre = context.pre
     const length = this.value.length - 1

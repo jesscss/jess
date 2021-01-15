@@ -34,7 +34,7 @@ export class Expression extends Node {
 
   toModule(context: Context, out: OutputCollector) {
     const loc = this.location
-    out.add(`_J.expr([`, loc)
+    out.add(`$J.expr([`, loc)
     const length = this.value.length - 1
     this.value.forEach((n, i) => {
       n.toModule(context, out)

@@ -29,6 +29,6 @@ describe('Ampersand', () => {
   it('should serialize to a module', () => {
     const node = expr([amp()])
     node.toModule(context, out)
-    expect(out.toString()).to.eq('_J.expr([_J.amp()])')
+    expect(out.toString()).to.eq('$J.expr([$J.amp()])')
   })
 })

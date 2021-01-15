@@ -42,7 +42,7 @@ export class Let extends JsNode {
   toModule(context: Context, out: OutputCollector) {
     const name = this.name
     if (context.rootLevel === 1) {
-        out.add(`let ${name} = _JESS.assign(__BK_${name}, rest.${name})`)
+        out.add(`let ${name} = $JESS.assign($BK_${name}, rest.${name})`)
     } else {
       if (context.rootLevel === 0) {
         context.exports.add(name)
@@ -51,7 +51,7 @@ export class Let extends JsNode {
       out.add(`let ${name} = `)
       this.value.toModule(context, out)
       if (context.rootLevel === 0) {
-        out.add(`\nlet __BK_${name} = ${name}`)
+        out.add(`\nlet $BK_${name} = ${name}`)
       }
     }
   }

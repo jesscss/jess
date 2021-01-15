@@ -40,7 +40,7 @@ export class Mixin extends JsNode {
       out.add('export ', this.location)
     }
     out.add(`let ${name} = (`)
-    const backupName = `__BK_${name}`
+    const backupName = `$BK_${name}`
     if (args) {
       const length = args.value.length - 1
       args.value.forEach((node, i) => {
@@ -77,7 +77,7 @@ export class Mixin extends JsNode {
       out.add(`)`)
     }
     if (context.rootLevel === 0) {
-      out.add(`\nlet __BK_${name} = ${name}`)
+      out.add(`\nlet $BK_${name} = ${name}`)
     }
   }
 }
