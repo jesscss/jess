@@ -2,10 +2,10 @@
   "name": "jess",
   "version": "1.0.1-alpha.1",
   "description": "JavaScript Enhanced Style Sheets",
-  "main": "dist/index",
-  "types": "dist/index",
+  "main": "lib/index",
+  "types": "lib/index",
   "files": [
-    "dist"
+    "lib"
   ],
   "dependencies": {
     "@jesscss/parser": "^1.0.1-alpha.1",
@@ -15,7 +15,7 @@
     "ci": "yarn build && yarn test",
     "prepublishOnly": "yarn build",
     "build": "yarn clean && yarn compile",
-    "clean": "shx rm -rf ./dist tsconfig.tsbuildinfo",
+    "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
     "compile": "tsc -b tsconfig.json",
     "dev": "tsc -b tsconfig.json -w",
     "test": "ts-mocha --recursive test/index.ts \"src/**/__tests__/*.ts\""

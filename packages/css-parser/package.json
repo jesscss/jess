@@ -5,16 +5,16 @@
   },
   "version": "1.0.1-alpha.1",
   "description": "",
-  "main": "dist/index",
-  "types": "dist/index",
+  "main": "lib/index",
+  "types": "lib/index",
   "files": [
-    "dist"
+    "lib"
   ],
   "scripts": {
     "ci": "yarn build && yarn test",
     "prepublishOnly": "yarn build",
     "build": "yarn clean && yarn compile",
-    "clean": "shx rm -rf ./dist tsconfig.tsbuildinfo",
+    "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
     "compile": "tsc -b tsconfig.json",
     "dev": "tsc -b tsconfig.json -w",
     "test": "ts-mocha test/**/*.ts"

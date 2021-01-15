@@ -8,7 +8,7 @@
     "ci": "yarn build && yarn test",
     "prepublishOnly": "yarn build",
     "build": "yarn clean && yarn compile",
-    "clean": "shx rm -rf ./dist tsconfig.tsbuildinfo",
+    "clean": "shx rm -rf ./dist ./lib tsconfig.tsbuildinfo",
     "compile": "tsc -b tsconfig.json",
     "dev": "tsc -b tsconfig.json -w",
     "test": "mocha test/bootstrap.js --recursive test/*.spec.js"
