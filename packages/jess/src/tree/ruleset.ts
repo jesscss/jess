@@ -1,6 +1,7 @@
 import { Node, NodeMap, ILocationInfo, JsNode, Nil } from '.'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
+import { Rule } from './rule'
 
 /**
  * A set of nodes (usually declarations)
@@ -17,10 +18,19 @@ export class Ruleset extends Node {
     if (!this.evaluated) {
       const rule = this.clone()
 
-      rule.value = this.value
-        .map(rule => rule.eval(context))
-        .filter(n => n && !(n instanceof Nil))
-
+      const rules: Node[] = []
+      this.value.forEach(rule => {
+        rule = rule.eval(context)
+        if (rule && !(rule instanceof Nil)) {
+          /** @todo - at-rules */
+          if (rule instanceof Rule) {
+            context.rootRules.push(rule)
+          } else {
+            rules.push(rule)
+          }
+        }
+      })
+      rule.value = rules
       rule.evaluated = true
       return rule
     }
@@ -31,14 +41,16 @@ export class Ruleset extends Node {
     const value = this.value
     out.add('{\n')
     context.indent++
-    const pre = context.pre
+    let pre = context.pre
+
     value.forEach(v => {
       out.add(pre)
       v.toCSS(context, out)
       out.add('\n')
     })
     context.indent--
-    out.add('}\n')
+    pre = context.pre
+    out.add(`${pre}}\n`)
   }
 
   toModule(context: Context, out: OutputCollector) {

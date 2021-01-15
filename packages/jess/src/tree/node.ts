@@ -45,7 +45,7 @@ export abstract class Node {
     location?: ILocationInfo,
     fileInfo?: IFileInfo
   ) {
-    if (!value) {
+    if (value === undefined) {
       throw { message: 'Node requires a value.' }
     }
     let nodes: NodeMap

@@ -10,8 +10,17 @@ export class Root extends Node {
   value: Node[]
 
   eval(context: Context) {
-    const node = <Root>super.eval(context)
-    node.value = node.value.filter(n => n && !(n instanceof Nil))
+    const node = this.clone()
+    const rules: Node[] = []
+    this.value.forEach(rule => {
+      rule = rule.eval(context)
+      if (rule && !(rule instanceof Nil)) {
+        rules.push(rule)
+      }
+      context.rootRules.forEach(rule => rules.push(rule))
+      context.rootRules = []
+    })
+    node.value = rules
     return node
   }
 

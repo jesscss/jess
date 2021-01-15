@@ -40,6 +40,7 @@ export class Context {
   exports: Set<string>
 
   rootLevel: number
+  rootRules: Node[]
 
   /** In a custom declaration's value */
   inCustom: boolean
@@ -52,6 +53,7 @@ export class Context {
     this.indent = 0
     this.rootLevel = 0
     this.classMap = {}
+    this.rootRules = []
   }
 
   get pre() {

@@ -1,4 +1,4 @@
-import { Expression, Anonymous } from '.'
+import { Expression, Anonymous, Combinator, isNodeMap } from '.'
 import type { Node, NodeMap, ILocationInfo } from './node'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
@@ -9,17 +9,28 @@ import { OutputCollector } from '../output'
  * 
  * Stored as:
  * [Element, '>', Element, Element]
+ * 
+ * @todo
+ * Push an ampersand at the beginning of selector expressions
+ * if there isn't one
  */
 export class Selector extends Expression {
+  constructor(
+    value: (string | Node)[] | NodeMap,
+    location?: ILocationInfo
+  ) {
+    if (isNodeMap(value)) {
+      super(value, location)
+      return
+    }
+    const values = value.map(v => v.constructor === String ? new Combinator(v) : v)
+    super({
+      value: values
+    }, location)
+  }
+
   toCSS(context: Context, out: OutputCollector) {
-    this.value.forEach(node => {
-      if (node instanceof Anonymous) {
-        const val = node.value
-        out.add(val === ' ' ? val : ` ${val} `, this.location)
-      } else {
-        node.toCSS(context, out)
-      }
-    })
+    this.value.forEach(node => node.toCSS(context, out))
   }
 
   toModule(context: Context, out: OutputCollector) {

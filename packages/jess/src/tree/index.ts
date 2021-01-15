@@ -8,9 +8,11 @@
 /** Base class - keep this on top */
 export * from './node'
 
+export * from './ampersand'
 export * from './anonymous'
 export * from './call'
 export * from './collection'
+export * from './combinator'
 export * from './declaration'
 export * from './element'
 export * from './expression'
