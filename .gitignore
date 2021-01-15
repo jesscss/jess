@@ -54,5 +54,5 @@ typings/
 .env
 
 # build artifacts
-dist
+lib
 tsconfig.tsbuildinfo
