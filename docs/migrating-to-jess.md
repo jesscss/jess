@@ -76,3 +76,43 @@ width: $multiply(width, 2);
   @include mixin(50);
 }
 ```
+
+
+### Each
+
+**Sass**
+```scss
+@each $size in $sizes {
+  .icon-#{$size} {
+    font-size: $size;
+    height: $size;
+    width: $size;
+  }
+}
+```
+
+**Less**
+```less
+each(@sizes, #(@size) {
+  .icon-@{size} {
+    font-size: @size;
+    height: @size;
+    width: @size;
+  }
+})
+```
+
+**Jess**
+
+```less
+@import { each } from 'jess/functions';
+
+@mixin size(size) {
+  .icon-$(size) {
+    font-size: $size;
+    height: $size;
+    width: $size;
+  }
+}
+@include each($sizes, $size);
+```

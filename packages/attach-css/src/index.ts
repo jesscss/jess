@@ -50,7 +50,7 @@ export function init({ searchStart, searchEnd }) {
  * 
  * @todo
  * This is prime for lots of optimization. For Alpha, we just always
- * generate or replace a style block.
+ * generate or replace a style block without diffing.
  */
 export function updateSheet(styleContents: string, id: string) {
   let previousSheet: {

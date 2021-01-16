@@ -26,10 +26,10 @@ _Third Note: If we're not in a browser, this package / function should do nothin
 
 In Jess, we mark the first and last line with:
 ```less
-#__jess_start { content: "identifier" }
+#__jess_start { content: "identifier"; }
 ```
 ```less
-#__jess_end { content: "identifier" }
+#__jess_end { content: "identifier"; }
 ```
 
 _TODO: because we need to normalize the start, then either `@charset` should be disallowed, or it should be removed._

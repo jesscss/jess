@@ -31,7 +31,7 @@ export default function (this: JessParser, $: JessParser) {
         })
       }},
       { ALT: () => {
-        prelude.push($.CONSUME($.T.JsFunction))
+        prelude.push($.CONSUME($.T.Function))
         prelude.push($.SUBRULE2($.mixinArgs))
         prelude.push($.CONSUME2($.T.RParen))
       }}

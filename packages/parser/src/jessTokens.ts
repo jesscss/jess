@@ -48,46 +48,20 @@ const merges: IMerges = {
       pattern: /@include/,
       longer_alt: 'AtKeyword',
       categories: ['BlockMarker', 'AtName']
-    },
-    {
-      name: 'AtNest',
-      pattern: /@nest/,
-      longer_alt: 'AtKeyword',
-      categories: ['BlockMarker', 'AtName']
-    }
-  ],
-  PlainIdent: [
-    {
-      name: 'JsIdent',
-      pattern: LexerType.NA
     }
   ],
   DashIdent: [
-    // {
-    //   name: 'JsIdentMatch',
-    //   pattern: '{{jsident}}',
-    //   categories: ['Ident', 'JsIdent', 'PropertyName', 'Selector'],
-    //   longer_alt: 'PlainIdent'
-    // },
-    /** For import statements */
     {
       name: 'From',
       pattern: /from/,
-      longer_alt: 'DashIdent',
-      categories: ['Ident', 'JsIdent']
+      longer_alt: 'PlainIdent',
+      categories: ['Ident']
     },
     {
       name: 'As',
       pattern: /as/,
       longer_alt: 'DashIdent',
-      categories: ['Ident', 'JsIdent']
-    }
-  ],
-  PlainFunction: [
-    {
-      name: 'JsFunction',
-      pattern: '{{jsident}}\\(',
-      categories: ['BlockMarker', 'Function']
+      categories: ['Ident']
     }
   ],
   Tilde: [

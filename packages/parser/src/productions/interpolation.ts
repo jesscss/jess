@@ -29,7 +29,7 @@ export default function(this: JessParser, $: JessParser) {
       {
         ALT: () => {
           $.OR2([
-            { ALT: () => $.CONSUME($.T.JsFunction) },
+            { ALT: () => $.CONSUME($.T.Function) },
             { ALT: () => $.CONSUME($.T.LParen) }
           ])
           $.MANY(() => $.SUBRULE($.jsTokens))
