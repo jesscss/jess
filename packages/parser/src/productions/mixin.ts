@@ -22,7 +22,8 @@ export default function (this: JessParser, $: JessParser) {
     $.OPTION(() => prelude.push($.CONSUME($.T.WS)))
     $.OR([
       { ALT: () => {
-        prelude.push($.CONSUME($.T.JsIdent))
+        /** JS ident */
+        prelude.push($.CONSUME($.T.PlainIdent))
         $.OPTION2(() => prelude.push($.CONSUME2($.T.WS)))
         $.OPTION3(() => {
           prelude.push($.CONSUME($.T.LParen))
@@ -55,7 +56,8 @@ export default function (this: JessParser, $: JessParser) {
   })
 
   $.mixinArg = $.RULE('mixinArg', () => {
-    $.CONSUME($.T.JsIdent)
+    /** JS ident */
+    $.CONSUME($.T.PlainIdent)
     $._()
     $.OPTION(() => {
       $.CONSUME($.T.Colon)
@@ -67,7 +69,8 @@ export default function (this: JessParser, $: JessParser) {
   $.atInclude = $.RULE('atInclude', () => {
     $.CONSUME($.T.AtInclude)
     $._()
-    $.CONSUME($.T.JsFunction)
+    /** JS function */
+    $.CONSUME($.T.Function)
     $.SUBRULE($.expressionList)
     $.CONSUME($.T.RParen)
     $.OPTION(() => $.CONSUME($.T.SemiColon))

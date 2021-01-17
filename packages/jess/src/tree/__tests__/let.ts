@@ -1,6 +1,6 @@
 import { expect } from 'chai'
 import 'mocha'
-import { set, expr, coll, decl, anon } from '..'
+import { set, expr, coll, keyval, anon } from '..'
 import { Context } from '../../context'
 import { OutputCollector } from '../../output'
 
@@ -14,31 +14,33 @@ describe('Let', () => {
   })
 
   it('should serialize a @let', () => {
-    let rule = set({
+    let rule = set(keyval({
       name: 'brandColor',
       value: expr(['#eee'])
-    }) 
+    })) 
     expect(`${rule}`).to.eq('@let brandColor: #eee;')
     rule.toModule(context, out)
     expect(out.toString()).to.eq('export let brandColor = $J.expr(["#eee"])\nlet $BK_brandColor = brandColor')
   })
 
   it('should serialize a @let collection', () => {
-    let rule = set({
-      name: 'brand',
-      value: coll([
-        decl({
-          name: 'dark',
-          value: anon('#222')
-        }),
-        decl({
-          name: 'light',
-          value: anon('#eee')
-        })
-      ])
-    }) 
+    let rule = set(
+      keyval({
+        name: 'brand', 
+        value: coll([
+          keyval({
+            name: 'dark',
+            value: anon('#222')
+          }),
+          keyval({
+            name: 'light',
+            value: anon('#eee')
+          })
+        ])
+      })
+    )
     expect(`${rule}`).to.eq(
-      '@let brand {\n  dark: #222;\n  light: #eee;}'
+      '@let brand {\n  dark: #222;\n  light: #eee;\n}'
     )
     rule.toModule(context, out)
     expect(out.toString()).to.eq(

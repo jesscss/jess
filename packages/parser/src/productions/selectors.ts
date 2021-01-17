@@ -5,11 +5,12 @@ export default function(this: JessParser, $: JessParser) {
   $.nameSelector = $.OVERRIDE_RULE('nameSelector', () => {
     $.OR([
       { ALT: () => $.CONSUME($.T.Selector) },
+      { ALT: () => $.CONSUME($.T.Ident) },
       { ALT: () => $.SUBRULE($.jsExpression) },
       /** We added dot tokens for JS, so we need to match a class name */
       { ALT: () => {
         $.CONSUME($.T.Dot)
-        $.CONSUME($.T.Ident)
+        $.CONSUME2($.T.Ident)
       }}
     ])
   })

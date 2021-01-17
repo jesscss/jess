@@ -1,28 +1,29 @@
-import { Declaration } from './declaration'
+import { JsKeyValue } from '.'
 import { Node, NodeMap, ILocationInfo } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 /**
  * Assigned to by a @let statement
  */
-export class Collection extends Node {
-  value: Declaration[]
-
-  toString() {
-    return `{\n` + this.value.map(node =>
-      `  ${node.name}: ${node.value};`
-    ).join('\n') + `}`
-  }
+export class JsCollection extends Node {
+  value: JsKeyValue[]
   
-  // toCSS(context?: Context) {
-  //   const pre = context.pre
-  //   context.indent++
-  //   let out = `{\n` + this.value.map(node => 
-  //     `  ${pre}${node.name}: ${node.value.toCSS(context)};`
-  //   ).join('\n') + `${pre}}`
-  //   context.indent--
-  //   return out
-  // }
+  toCSS(context: Context, out: OutputCollector) {
+    let pre = context.pre
+    context.indent++
+    out.add(`{\n`, this.location)
+    const length = this.value.length
+    this.value.forEach((decl, i) => {
+      out.add(`${pre}  `)
+      decl.toCSS(context, out)
+      if (i < length) {
+        out.add('\n')
+      }
+    })
+    context.indent--
+    out.add(`${pre}}`)
+    return out
+  }
 
   toModule(context: Context, out: OutputCollector) {
     const pre = context.pre
@@ -42,5 +43,5 @@ export class Collection extends Node {
 }
 
 export const coll =
-  (value: Declaration[] | NodeMap, location?: ILocationInfo) =>
-    new Collection(value, location)
+  (value: JsKeyValue[] | NodeMap, location?: ILocationInfo) =>
+    new JsCollection(value, location)

@@ -241,5 +241,10 @@ export default function(this: CssParser, $: CssParser) {
 
   /** Separated out for Less overriding */
   $.attrIdent = $.RULE('attrIdent', () => $.CONSUME($.T.Ident))
-  $.nameSelector = $.RULE('nameSelector', () => $.CONSUME($.T.Selector))
+  $.nameSelector = $.RULE('nameSelector', 
+    () => $.OR([
+      { ALT: () => $.CONSUME($.T.Selector) },
+      { ALT: () => $.CONSUME($.T.Ident) }
+    ])
+  )
 }

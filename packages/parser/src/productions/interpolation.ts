@@ -16,7 +16,10 @@ export default function(this: JessParser, $: JessParser) {
   $.jsValue = $.RULE('jsValue', () => {
     $.OR([
       { ALT: () => {
-          $.CONSUME($.T.JsIdent)
+          /** 
+           * JS ident 
+           */
+          $.CONSUME($.T.PlainIdent)
       }},
       { ALT: () => {
         $.CONSUME($.T.StringLiteral)

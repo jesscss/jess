@@ -71,12 +71,14 @@ export default function (this: JessParser, $: JessParser) {
             $._()
             $.CONSUME($.T.As)
             $._(1)
-            $.CONSUME($.T.JsIdent)
+            /** JS ident */
+            $.CONSUME($.T.Ident)
           }
         },
         {
           ALT: () => {
-            $.CONSUME2($.T.JsIdent)
+             /** JS ident */
+            $.CONSUME2($.T.Ident)
             $._(2)
             $.OPTION(() => {
               $.CONSUME($.T.Comma)
@@ -111,12 +113,14 @@ export default function (this: JessParser, $: JessParser) {
   })
 
   $.atImportJsArg = $.RULE('atImportJsArg', () => {
-    $.CONSUME($.T.JsIdent)
+     /** JS ident */
+    $.CONSUME($.T.PlainIdent)
     $._()
     $.OPTION(() => {
       $.CONSUME($.T.As)
       $._(1)
-      $.CONSUME2($.T.JsIdent)
+       /** JS ident */
+      $.CONSUME2($.T.PlainIdent)
       $._(2)
     })
   })

@@ -11,7 +11,8 @@ export default function (this: JessParser, $: JessParser) {
   })
 
   $.atLetValue = $.RULE('atLetValue', () => {
-    $.CONSUME($.T.JsIdent)
+    /** JS ident */
+    $.CONSUME($.T.PlainIdent)
     $._(1)
     $.OR([
       {

@@ -39,7 +39,7 @@ export class Expression extends Node {
     this.value.forEach((n, i) => {
       n.toModule(context, out)
       if (i < length) {
-        out.add(', ', loc)
+        out.add(', ')
       }
     })
     out.add(`])`)

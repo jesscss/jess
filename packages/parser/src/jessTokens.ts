@@ -14,7 +14,7 @@ export const Fragments = [...CSSFragments]
 export let Tokens = [...CSSTokens]
 
 Fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*'])
-Fragments.push(['jsident', '[_a-zA-Z]\\w*'])
+// Fragments.push(['jsident', '[_a-zA-Z]\\w*'])
 /** Not sure we need all these back-slashes for ` marks */
 Fragments.push(['string3', "\\`(\\\\`|[^\\n\\r\\f\\`]|{{newline}}|{{escape}})*\\`"])
 
@@ -50,7 +50,7 @@ const merges: IMerges = {
       categories: ['BlockMarker', 'AtName']
     }
   ],
-  DashIdent: [
+  PlainFunction: [
     {
       name: 'From',
       pattern: /from/,
@@ -60,7 +60,7 @@ const merges: IMerges = {
     {
       name: 'As',
       pattern: /as/,
-      longer_alt: 'DashIdent',
+      longer_alt: 'PlainIdent',
       categories: ['Ident']
     }
   ],
@@ -82,13 +82,13 @@ const merges: IMerges = {
    * @todo - allow JS expressions within string literals
    * Result will be a CSS string literal with a J.call() in it
   */
-  Uri: [
-    {
-      name: 'JSStringLiteral',
-      pattern: /`[^`]*`/,
-      line_breaks: true
-    }
-  ]
+  // Uri: [
+  //   {
+  //     name: 'JSStringLiteral',
+  //     pattern: '{{string3}}',
+  //     line_breaks: true
+  //   }
+  // ]
 }
 
 let tokenLength = Tokens.length
@@ -102,24 +102,9 @@ for (let i = 0; i < tokenLength; i++) {
   let alterations = true
 
   switch (name) {
-    /** Escape quotes like Less? */
     case 'StringLiteral':
       copyToken()
       token.pattern = '~?(?:{{string1}}|{{string2}}|{{string3}})'
-      break
-    /** We need to identify these as JS identifiers */
-    case 'NonDashIdent':
-      copyToken()
-      token.categories = categories.concat(['JsIdent'])
-      break
-    case 'AttrFlag':
-    case 'And':
-    case 'Or':
-    case 'Not':
-    case 'Only':
-      copyToken()
-      token.longer_alt = 'DashIdent'
-      token.categories = categories.concat(['JsIdent'])
       break
     default:
       alterations = false

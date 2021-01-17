@@ -5,20 +5,21 @@
  * and that module will create AST nodes to create CSS.
  */
 
-/** Base class - keep this on top */
+/** Base classes - keep these on top */
 export * from './node'
+export * from './js-node'
 
 export * from './ampersand'
 export * from './anonymous'
 export * from './call'
-export * from './collection'
 export * from './combinator'
 export * from './declaration'
 export * from './element'
 export * from './expression'
 export * from './js-cast'
+export * from './js-collection'
+export * from './js-key-value'
 export * from './js-expr'
-export * from './js-node'
 export * from './let'
 export * from './list'
 export * from './mixin'

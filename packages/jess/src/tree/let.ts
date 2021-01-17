@@ -1,12 +1,7 @@
-import { Node, Collection, JsNode } from '.'
-import type { ILocationInfo, NodeMap } from './node'
+import { JsKeyValue, JsNode, NodeMap } from '.'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
-
-export type LetValue = NodeMap & {
-  name: string
-  value: Node
-}
+import { ILocationInfo, Node } from './node'
 
 /**
  * @let
@@ -16,31 +11,15 @@ export type LetValue = NodeMap & {
  * see the note below.
  */
 export class Let extends JsNode {
-  name: string
-  value: Node
+  value: JsKeyValue
 
-  constructor(
-    value: LetValue,
-    location?: ILocationInfo
-  ) {
-    const name = value.name
-    /** @todo - disallow JS reserved words */
-    if (!name) {
-      throw { message: 'Identifier required' }
-    }
-    super(value, location)
-  }
-
-  toString() {
-    const { name, value } = this
-    if (value instanceof Collection) {
-      return `@let ${name} ${value}`
-    }
-    return `@let ${name}: ${value};`
+  toCSS(context: Context, out: OutputCollector) {
+    out.add('@let ', this.location)
+    this.value.toCSS(context, out)
   }
 
   toModule(context: Context, out: OutputCollector) {
-    const name = this.name
+    const name = this.value.name
     if (context.rootLevel === 1) {
         out.add(`let ${name} = $JESS.assign($BK_${name}, rest.${name})`)
     } else {
@@ -49,7 +28,7 @@ export class Let extends JsNode {
         out.add('export ', this.location)
       }
       out.add(`let ${name} = `)
-      this.value.toModule(context, out)
+      this.value.value.toModule(context, out)
       if (context.rootLevel === 0) {
         out.add(`\nlet $BK_${name} = ${name}`)
       }
@@ -58,9 +37,9 @@ export class Let extends JsNode {
 }
 
 /**
- * `let` is a reserved word, so we'll use lower-case
- * "set" (even though Set is a JS thing)
+ * `let` is a reserved word, so we'll use `set`
+ * for lower-case API
  */
 export const set =
-  (...args: ConstructorParameters<typeof Let>) =>
-    new Let(...args)
+  (value: JsKeyValue | NodeMap, location?: ILocationInfo) =>
+    new Let(value, location)

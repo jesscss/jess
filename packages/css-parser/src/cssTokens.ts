@@ -132,7 +132,7 @@ export const Tokens: rawTokenConfig[] = [
   { name: 'AttrMatch', pattern: /[*~|^$]=/, categories: ['AttrMatchOperator'] },
   { name: 'Ident', pattern: LexerType.NA },
   { name: 'PropertyName', pattern: LexerType.NA },
-  { name: 'PlainIdent', pattern: '{{ident}}', categories: ['Ident', 'PropertyName', 'Selector'] },
+  { name: 'PlainIdent', pattern: '{{ident}}', categories: ['Ident', 'PropertyName'] },
   { name: 'CustomProperty', pattern: '--{{ident}}', categories: ['BlockMarker', 'PropertyName'] },
   { name: 'CDOToken', pattern: /<!--/, group: LexerType.SKIPPED },
   { name: 'CDCToken', pattern: /-->/, group: LexerType.SKIPPED },

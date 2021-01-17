@@ -1,6 +1,6 @@
 import { expect } from 'chai'
 import 'mocha'
-import { rule, list, sel, el, decl, js, set, spaced, anon } from '..'
+import { rule, list, sel, el, decl, js, set, spaced, anon, keyval } from '..'
 import { Context } from '../../context'
 import { OutputCollector } from '../../output'
 
@@ -26,7 +26,7 @@ describe('Rule', () => {
     const node = rule({
       sels: list([sel([el('foo')])]),
       value: [
-        set({ name: 'brandColor', value: js('area(5)') }),
+        set(keyval({ name: 'brandColor', value: js('area(5)') })),
         decl({ name: 'color', value: js('brandColor') })
       ]
     })
