@@ -122,6 +122,9 @@ describe('can parse all Jess stylesheets', () => {
         const { cst, lexerResult } = jessParser.parse(contents)
         expect(lexerResult.errors.length).to.equal(0)
         expect(parser.errors.length).to.equal(0)
+
+        const output = stringify(cst)
+        expect(output).to.equal(contents)
       })
     })
 })

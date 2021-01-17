@@ -11,7 +11,7 @@ let __BK_something = something
 export default (__VARS = {}, __RETURN_NODE) => {
   const { module, ...rest } = __VARS
 
-  let something = _JESS.assign(__BK_something, rest.something)
+  let something = _JESS.merge(__BK_something, rest.something)
 
   const __TREE = _J.root((() => {
     const __OUT = []

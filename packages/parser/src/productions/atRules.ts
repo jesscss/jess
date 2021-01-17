@@ -31,7 +31,7 @@ export default function (this: JessParser, $: JessParser) {
           $.SUBRULE($.atImportCss)
         )
         $.OPTION2(() => prelude.push($.CONSUME2($.T.WS)))
-        $.OPTION3(() => $.SUBRULE($.mediaQueryList))
+        $.OPTION3(() => prelude.push($.SUBRULE($.mediaQueryList)))
       }},
       { ALT: () => {
         prelude.push(
@@ -62,66 +62,107 @@ export default function (this: JessParser, $: JessParser) {
     ])
   )
 
+  /**
+   * @todo - for now, just capture the stream of tokens
+   * In the future, this should be more structured to do
+   * some static analysis at the AST phase.
+   */
   $.atImportJs = $.RULE('atImportJs',
     () => {
+      const children: CstChild[] = []
       $.OR([
         { 
           ALT: () => {
-            $.CONSUME($.T.Star)
-            $._()
-            $.CONSUME($.T.As)
-            $._(1)
-            /** JS ident */
-            $.CONSUME($.T.Ident)
+            children.push(
+              $.CONSUME($.T.Star),
+              $._(),
+              $.CONSUME($.T.As),
+              $._(1),
+              /** JS ident */
+              $.CONSUME($.T.Ident),
+            )
           }
         },
         {
           ALT: () => {
              /** JS ident */
-            $.CONSUME2($.T.Ident)
-            $._(2)
+            children.push(
+              $.CONSUME2($.T.Ident),
+              $._(2)
+            )
             $.OPTION(() => {
-              $.CONSUME($.T.Comma)
-              $._(3)
-              $.SUBRULE($.atImportJsBlock)
+              children.push(
+                $.CONSUME($.T.Comma),
+                $._(3),
+                $.SUBRULE($.atImportJsBlock)
+              )
             })
           }
         },
         {
           ALT: () => {
-            $.SUBRULE2($.atImportJsBlock)
+            children.push($.SUBRULE2($.atImportJsBlock))
           }
         }
       ])
-      $._(4)
-      $.CONSUME($.T.From)
-      $._(5)
-      $.CONSUME($.T.StringLiteral)
+      children.push(
+        $._(4),
+        $.CONSUME($.T.From),
+        $._(5),
+        $.CONSUME($.T.StringLiteral)
+      )
+      return {
+        name: 'atImportJs',
+        children
+      }
     }
   )
 
   $.atImportJsBlock = $.RULE('atImportJsBlock', () => {
-    $.CONSUME($.T.LCurly)
-    $._()
-    $.SUBRULE($.atImportJsArg)
+    const children: CstChild[] = [
+      $.CONSUME($.T.LCurly),
+      $._(),
+      $.SUBRULE($.atImportJsArg)
+    ]
+    
     $.MANY(() => {
-      $.CONSUME($.T.Comma)
-      $._(1)
-      $.SUBRULE2($.atImportJsArg)
+      children.push(
+        {
+          name: 'delimiter',
+          children: [
+            $.CONSUME($.T.Comma),
+            $._(1)
+          ]
+        },
+        $.SUBRULE2($.atImportJsArg)
+      )
     })
-    $.CONSUME($.T.RCurly)
+    children.push($.CONSUME($.T.RCurly))
+    
+    return {
+      name: 'atImportJsBlock',
+      children
+    }
   })
 
   $.atImportJsArg = $.RULE('atImportJsArg', () => {
-     /** JS ident */
-    $.CONSUME($.T.PlainIdent)
-    $._()
+    /** JS ident */
+    const children: CstChild[] = [
+      $.CONSUME($.T.PlainIdent),
+      $._()
+    ]
     $.OPTION(() => {
-      $.CONSUME($.T.As)
-      $._(1)
-       /** JS ident */
-      $.CONSUME2($.T.PlainIdent)
-      $._(2)
+      children.push(
+        $.CONSUME($.T.As),
+        $._(1),
+        /** JS ident */
+        $.CONSUME2($.T.PlainIdent),
+        $._(2)
+      )
     })
+    return {
+      name: 'atImportJsArg',
+      children
+    }
   })
 }

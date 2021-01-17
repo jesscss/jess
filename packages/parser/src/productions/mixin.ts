@@ -44,35 +44,62 @@ export default function (this: JessParser, $: JessParser) {
   })
 
   $.mixinArgs = $.RULE('mixinArgs', () => {
-    $._()
+    const children: CstChild[] = [
+      $._()
+    ]
     $.OPTION(() => {
-      $.SUBRULE($.mixinArg)
+      children.push($.SUBRULE($.mixinArg))
       $.MANY(() => {
-        $.CONSUME($.T.Comma)
-        $._(1)
-        $.SUBRULE2($.mixinArg)
+        children.push(
+          {
+            name: 'delimiter',
+            children: [
+              $.CONSUME($.T.Comma),
+              $._(1)
+            ]
+          },
+          $.SUBRULE2($.mixinArg)
+        )
       })
     })
+    return {
+      name: 'mixinArgs',
+      children
+    }
   })
 
   $.mixinArg = $.RULE('mixinArg', () => {
-    /** JS ident */
-    $.CONSUME($.T.PlainIdent)
-    $._()
+    const children: CstChild[] = [
+      /** JS ident */
+      $.CONSUME($.T.PlainIdent),
+      $._()
+    ]
+
     $.OPTION(() => {
-      $.CONSUME($.T.Colon)
-      $._(1)
-      $.SUBRULE($.expression)
+      children.push(
+        $.CONSUME($.T.Colon),
+        $._(1),
+        $.SUBRULE($.expression),
+      )
     })
+    return {
+      name: 'mixinArg',
+      children
+    }
   })
 
-  $.atInclude = $.RULE('atInclude', () => {
-    $.CONSUME($.T.AtInclude)
-    $._()
-    /** JS function */
-    $.CONSUME($.T.Function)
-    $.SUBRULE($.expressionList)
-    $.CONSUME($.T.RParen)
-    $.OPTION(() => $.CONSUME($.T.SemiColon))
-  })
+  $.atInclude = $.RULE('atInclude',
+    () => ({
+      name: 'atInclude',
+      children: [
+        $.CONSUME($.T.AtInclude),
+        $._(),
+        /** JS function */
+        $.CONSUME($.T.Function),
+        $.SUBRULE($.expressionList),
+        $.CONSUME($.T.RParen),
+        $.OPTION(() => $.CONSUME($.T.SemiColon))
+      ]
+    })
+  )
 }

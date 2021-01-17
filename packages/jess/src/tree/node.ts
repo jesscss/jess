@@ -10,14 +10,14 @@ export type NodeMap = {
   [k: string]: NodeValue
 }
 
-export type ILocationInfo = {
-  startOffset?: number
-  startLine?: number
-  startColumn?: number
-  endOffset?: number
-  endLine?: number
-  endColumn?: number
-}
+export type ILocationInfo = [
+  startOffset?: number,
+  startLine?: number,
+  startColumn?: number,
+  endOffset?: number,
+  endLine?: number,
+  endColumn?: number,
+]
 
 export type IFileInfo = {
   filename?: string
@@ -65,7 +65,7 @@ export abstract class Node {
       this[key] = value
     })
 
-    this.location = location || {}
+    this.location = location || []
     this.fileInfo = fileInfo || {}
   }
 
