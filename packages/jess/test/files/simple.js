@@ -23,5 +23,5 @@ export default (__VARS) => {
       })()
     })
   ])
-  return Jess.render(__TREE, __CONTEXT)
+  return Jess.renderCss(__TREE, __CONTEXT)
 }

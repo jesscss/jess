@@ -4,9 +4,9 @@ import { OutputCollector } from './output'
 
 
 /**
- * Given a root node and context, we can render
+ * Given a root node (usually from a module) render to CSS
  */
-export const renderModule = (root: Node, context: Context) => {
+export const renderCss = (root: Node, context: Context) => {
   const evaldRoot = root.eval(context)
   const out = new OutputCollector
   evaldRoot.toCSS(context, out)

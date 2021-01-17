@@ -34,5 +34,5 @@ export default (__VARS = {}, __RETURN_NODE) => {
   if (__RETURN_NODE) {
     return __TREE
   }
-  return _JESS.render(__TREE, __CONTEXT)
+  return _JESS.renderCss(__TREE, __CONTEXT)
 }

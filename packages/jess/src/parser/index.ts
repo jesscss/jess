@@ -1,8 +1,8 @@
-import { Context } from '../context'
 import { IFileInfo, Node } from '../tree'
 import { Parser as CstParser } from '@jesscss/parser'
-import { ICstVisitor } from 'chevrotain'
-import CstVisitor from './cst-visitor'
+import { CstVisitor } from './cst-visitor'
+
+const cstParser = new CstParser()
 
 /**
  * This is an abstraction between the Jess CST parser
@@ -10,45 +10,28 @@ import CstVisitor from './cst-visitor'
  * the @jesscss/parser package, and, if successful, builds an
  * AST out of the returned CST.
  */
-export class AstParser {
-  context: Context
-  fileInfo: IFileInfo
-  static cstParser: CstParser
-  static cstVisitor: ICstVisitor<any, any>
-
-  /** Are these constructor vars necessary? */
-  constructor(context?: Context, fileInfo?: IFileInfo) {
-    this.fileInfo = fileInfo
-
-    if (!AstParser.cstParser) {
-      const parser = new CstParser()
-      AstParser.cstParser = parser
+export const parse = async (input: string, fileInfo: IFileInfo = {}) => {
+  const { cst, lexerResult, parser } = cstParser.parse(input)
+  if (lexerResult.errors.length > 0) {
+    throw {
+      fileInfo,
+      errors: lexerResult.errors
+    }
+  }
+  if (parser.errors.length > 0) {
+    throw {
+      fileInfo,
+      errors: parser.errors
     }
   }
 
-  async parse(input: string) {
-    const { cst, lexerResult, parser } = AstParser.cstParser.parse(input)
-    if (lexerResult.errors.length > 0) {
-      throw {
-        fileInfo: this.fileInfo,
-        errors: lexerResult.errors
-      }
-    }
-    if (parser.errors.length > 0) {
-      throw {
-        fileInfo: this.fileInfo,
-        errors: parser.errors
-      }
-    }
-
-    try {
-      const node = CstVisitor.visit(cst)
-      return node
-    } catch (e) {
-      throw {
-        fileInfo: this.fileInfo,
-        errors: [e]
-      }
+  try {
+    const node: Node = new CstVisitor(parser).visit(cst)
+    return node
+  } catch (e) {
+    throw {
+      fileInfo,
+      errors: [e]
     }
   }
 }
