@@ -64,7 +64,8 @@ export default function(this: CssParser, $: CssParser) {
             {
               name: 'combinator',
               children: [
-                $.CONSUME($.T.Combinator),
+                undefined,
+                $.CONSUME($.T.Combinator),  // Keep actual combinator in the center position
                 $.OPTION(() => $.CONSUME($.T.WS))
               ]
             },
@@ -93,7 +94,7 @@ export default function(this: CssParser, $: CssParser) {
               return [
                 {
                   name: 'combinator',
-                  children
+                  children: children.length === 1 ? [undefined, children[0]] : children
                 },
                 sel
               ]

@@ -26,7 +26,7 @@ export class Dimension extends Node {
       super({ value }, location)
       return
     }
-    const regex = /([0-9]*(?:\.[0-9]+)?)([a-z]*)/
+    const regex = /([-+]?[0-9]*(?:\.[0-9]+)?)(%|[a-z]*)/
     const found = (<string>value).match(regex)
     if (!found) {
       throw { message: 'Not a valid dimension.' }

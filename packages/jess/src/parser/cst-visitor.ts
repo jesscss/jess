@@ -9,13 +9,16 @@ import {
   Root,
   Rule,
   List,
+  Element,
   Ruleset,
   Declaration,
   Expression,
   NodeMap,
   WS,
   Dimension,
-  ILocationInfo
+  ILocationInfo,
+  Selector,
+  Combinator
 } from '../tree'
 
 export class CstVisitor {
@@ -26,7 +29,7 @@ export class CstVisitor {
     this.parser = parser
   }
 
-  visit(ctx: CstChild): any {
+  visit(ctx: CstChild, Clazz?: any): any {
     if (!ctx) {
       return
     }
@@ -51,25 +54,29 @@ export class CstVisitor {
         endOffset
       ]
 
-      let Clazz: any
       if (tokenMatcher(ctx, tokens.Dimension) || tokenMatcher(ctx, tokens.Number)) {
         return new Dimension(image, loc)
       }
 
       /** @todo - make more Node types eventually? */
-      if (tokenMatcher(ctx, tokens.WS)) {
-        Clazz = WS
-      } else {
-        Clazz = Anonymous
+      if (!Clazz) {
+        if (tokenMatcher(ctx, tokens.WS)) {
+          Clazz = WS
+        } else {
+          Clazz = Anonymous
+        }
       }
 
       return new Clazz(image, loc)
     }
     const visit = this[ctx.name]
-    return visit ? visit.call(this, ctx) : {}
+    if (!visit) {
+      throw { message: `CST '${ctx.name}' is not valid.` }
+    }
+    return visit.call(this, ctx)
   }
 
-  visitArray(coll: CstChild[]) {
+  visitArray(coll: CstChild[]): any[] {
     return coll.map(node => this.visit(node)).filter(node => node)
   }
 
@@ -81,10 +88,13 @@ export class CstVisitor {
 
   rule({ children, location }: CstNode): Node {
     let [pre, rule] = children
-    // const ws = processWS(<IToken>pre)
     const ws = this.visit(pre)
     const node = this.visit(rule)
     return node
+  }
+
+  atRule({ children, location }: CstNode) {
+    return {}
   }
 
   qualifiedRule({ children, location }: CstNode) {
@@ -102,12 +112,25 @@ export class CstVisitor {
   }
 
   complexSelector({ children, location }: CstNode) {
-    const [ selectors, extend ] = children
-    return {}
+    const compound = this.visit(children[0])
+    const combinator = this.visit(children[1])
+
+    return new Selector([...compound, ...combinator], getLocation(location))
   }
 
-  compoundSelector({ children, location }: any) {
-    return children
+  compoundSelector({ children }: CstNode) {
+    return children.map(child => this.visit(child, Element))
+  }
+
+  combinatorSelector({ children }: CstNode) {
+    /** Discard trailing WS */
+    if (children.length === 1) {
+      return []
+    }
+    return [
+      this.visit((<CstNode>children[0]).children[1], Combinator),
+      ...this.visit(children[1])
+    ]
   }
 
   curlyBlock({ children, location}: CstNode) {
@@ -140,8 +163,32 @@ export class CstVisitor {
     return new Call({ name, value }, getLocation(location))
   }
 
+  block({ children, location }: CstNode) {
+    return new Expression(this.visitArray(children), getLocation(location))
+  }
+
   expression({ children, location }: CstNode) {
     const value = this.visitArray(children)
+    if (value[0] instanceof WS) {
+      value.shift()
+    }
+    if (value[value.length - 1] instanceof WS) {
+      value.pop()
+    }
+    if (value.length === 1) {
+      return value[0]
+    }
     return new Expression(value, getLocation(location))
+  }
+
+  expressionList({ children, location }: CstNode) {
+    const list = children.filter((val, i) => {
+      return i % 2 === 0
+    }).map(node => this.visit(node))
+
+    if (list.length === 1) {
+      return list[0]
+    }
+    return new List(list, getLocation(location))
   }
 }

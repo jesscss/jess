@@ -1,6 +1,7 @@
 import { Node, List, Cast } from '.'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
+import { JsReservedWords } from './js-key-value'
 
 /**
  * A function call
@@ -46,7 +47,15 @@ export class Call extends Node {
     out.add(`${pre}value: `)
     this.value.toModule(context, out)
     out.add(`,\n`)
-    out.add(`${pre}ref: () => ${name},\n`)
+    
+    /**
+     * @todo - in the future, get a list of imported and defined JS idents
+     * to determine this part of output. For Alpha, we do a try / catch
+     * on the name to determine if it's a JS function call.
+     */
+    if (!(JsReservedWords.includes(name)) && !(name.includes('-'))) {
+      out.add(`${pre}ref: () => ${name},\n`)
+    }
     context.indent--
     pre = context.pre
     out.add(`${pre}})\n`)
