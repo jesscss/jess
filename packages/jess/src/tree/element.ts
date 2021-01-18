@@ -1,7 +1,7 @@
 import { Node, Anonymous } from '.'
 import type { JsExpr } from './js-expr'
 import type { Context } from '../context'
-import { ILocationInfo, isNodeMap, NodeMap } from './node'
+import { LocationInfo, isNodeMap, NodeMap } from './node'
 import { OutputCollector } from '../output'
 
 export class Element extends Node {
@@ -9,7 +9,7 @@ export class Element extends Node {
 
   constructor(
     value: string | Anonymous | JsExpr | NodeMap,
-    location?: ILocationInfo
+    location?: LocationInfo
   ) {
     if (isNodeMap(value)) {
       super(value, location)

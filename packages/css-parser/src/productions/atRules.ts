@@ -56,13 +56,10 @@ export default function (this: CssParser, $: CssParser) {
             ]),
             $._(1),
             /** @todo - add tests for media query post-import */
-            $.MANY_SEP({
-              SEP: $.T.Comma,
-              DEF: () => $.SUBRULE($.mediaQuery)
-            })
+            $.OPTION(() => $.SUBRULE($.mediaQueryList))
           ]
         },
-        $.OPTION(() => $.CONSUME($.T.SemiColon))
+        $.OPTION2(() => $.CONSUME($.T.SemiColon))
       ]
     })
   )

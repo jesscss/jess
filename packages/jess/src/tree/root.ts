@@ -1,4 +1,4 @@
-import { Node, NodeMap, ILocationInfo, Nil } from '.'
+import { Node, NodeMap, LocationInfo, Nil } from '.'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 import { JsNode } from './js-node'
@@ -87,5 +87,5 @@ export class Root extends Node {
 }
 
 export const root =
-  (value: Node[] | NodeMap, location?: ILocationInfo) =>
+  (value: Node[] | NodeMap, location?: LocationInfo) =>
     new Root(value, location)

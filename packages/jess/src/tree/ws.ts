@@ -1,4 +1,4 @@
-import { Node, NodeMap, ILocationInfo } from '.'
+import { Node, NodeMap, LocationInfo } from '.'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 import { isNodeMap } from './node'
@@ -11,7 +11,7 @@ export class WS extends Node {
 
   constructor(
     value?: string | NodeMap,
-    location?: ILocationInfo
+    location?: LocationInfo
   ) {
     if (!value) {
       super({ value: ' ' })
@@ -33,5 +33,5 @@ export class WS extends Node {
 }
 
 export const ws =
-  (value?: string | NodeMap, location?: ILocationInfo) =>
+  (value?: string | NodeMap, location?: LocationInfo) =>
     new WS(value, location)

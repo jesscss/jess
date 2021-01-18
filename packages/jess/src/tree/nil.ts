@@ -1,4 +1,4 @@
-import { ILocationInfo, Node } from './node'
+import { LocationInfo, Node } from './node'
 
 /**
  * A Node type that outputs nothing.
@@ -9,7 +9,7 @@ export class Nil extends Node {
   value: any
   constructor(
     value?: any,
-    location?: ILocationInfo
+    location?: LocationInfo
   ) {
     super('', location)
   }
@@ -20,5 +20,5 @@ export class Nil extends Node {
 }
 
 export const nil =
-  (value?: any, location?: ILocationInfo) =>
+  (value?: any, location?: LocationInfo) =>
     new Nil(value, location)

@@ -8,8 +8,10 @@ const testData = path.dirname(require.resolve('@less/test-data'))
 
 import { parse } from '..'
 import { Context } from '../../context'
+import { OutputCollector } from '../../output'
 
-const context = new Context()
+let context: Context
+let out: OutputCollector
 
 const serialize = (str: string) => {
   return async () => {
@@ -19,6 +21,11 @@ const serialize = (str: string) => {
 }
 
 describe('CST-to-AST', () => {
+  beforeEach(() => {
+    context = new Context
+    context.id = 'testing'
+    out = new OutputCollector
+  })
   // it(`rule #1`, async () => {
   //   const node = await parse(`.box { a: b; }`)
   //   expect(node.toString()).to.eq('.box {\n  a: b;\n}\n')
@@ -59,10 +66,17 @@ describe('CST-to-AST', () => {
   //   expect(node.toString()).to.eq('a {\n  b: rgb(0 1 2 / 50%);\n}\n')
   // })
 
-  it(`rule #9`, async () => {
-    const node = await parse(`@import url("something.css");`)
-    expect(node.toString()).to.eq('a {\n  b: rgb(0 1 2 / 50%);\n}\n')
-  })
+  // it(`rule #9`, async () => {
+  //   const node = await parse(`@import url("something.css");`)
+  //   expect(node.toString()).to.eq(`@import url("something.css");`)
+  // })
+
+  // it(`rule #10`, async () => {
+  //   const node = await parse(`@import foo from 'foo.ts';`)
+  //   node.toModule(context, out)
+  //   expect(out.toString()).to.eq('import * as $JESS from \'jess\'\nconst $J = $JESS.tree\nconst $CONTEXT = new $JESS.Context\n$CONTEXT.id = \'testing\'\nimport foo from \'foo.ts\'\nfunction $DEFAULT ($VARS = {}, $RETURN_NODE) {\n  \n  const $TREE = $J.root((() => {\n    const $OUT = []\n    return $OUT\n  })()\n  if ($RETURN_NODE) {\n    return $TREE\n  }\n  return $JESS.render($TREE, $CONTEXT)\n}\nexport default $DEFAULT')
+  // })
+
 })
 
 const invalidCSSOutput = [
@@ -86,7 +100,7 @@ const invalidCSSOutput = [
   'css/_main/selectors.css'
 ]
 
-describe.skip('can turn CSS into an AST', () => {
+describe('can turn CSS into an AST', () => {
   glob.sync(path.join(testData, 'css/_main/*.css'))
     .map(value => path.relative(testData, value))
     .filter(value => invalidCSSOutput.indexOf(value) === -1)
@@ -95,7 +109,6 @@ describe.skip('can turn CSS into an AST', () => {
       it(`${file}`, async () => {
         const result = fs.readFileSync(path.join(testData, file))
         const node = await parse(result.toString())
-        console.log(node.toString())
       })
     })
 })

@@ -1,5 +1,5 @@
 import { Node } from '.'
-import type { ILocationInfo } from './node'
+import type { LocationInfo } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
@@ -16,5 +16,5 @@ export class Anonymous extends Node {
 }
 
 export const anon =
-  (value: string, location?: ILocationInfo) =>
+  (value: string, location?: LocationInfo) =>
     new Anonymous(value, location)

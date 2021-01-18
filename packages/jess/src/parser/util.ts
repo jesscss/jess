@@ -1,11 +1,11 @@
-import { Node, ILocationInfo, Expression, WS } from '../tree'
-import { CstNode, IToken } from '@jesscss/css-parser'
-
+import { Node, LocationInfo, Expression, WS, coll } from '../tree'
+import { CstNode, CstChild, IToken } from '@jesscss/css-parser'
+import type { BaseTokenType } from './cst-visitor'
 
 /**
  * Convert a location object to a location array
  */
-export const getLocation = (loc: CstNode['location']): ILocationInfo => {
+export const getLocation = (loc: CstNode['location']): LocationInfo => {
   const {
     startLine,
     startColumn,
@@ -87,25 +87,37 @@ export const getLocation = (loc: CstNode['location']): ILocationInfo => {
 //   return new Expression({ nodes: <Node[]>nodes })
 // }
 
-// export function collapseTokens(tokens: IToken[]): ILocationInfo & { image: string } {
-//   let image: string = ''
-//   const { startLine, startColumn, startOffset } = tokens[0]
-//   const { endLine, endColumn, endOffset } = tokens[tokens.length - 1]
+export function collapseTokens(tokens: IToken[]): BaseTokenType {
+  let image: string = ''
+  const { startLine, startColumn, startOffset } = tokens[0]
+  const { endLine, endColumn, endOffset } = tokens[tokens.length - 1]
 
-//   tokens.forEach(token => {
-//     image += token.image
-//   })
+  tokens.forEach(token => {
+    image += token.image
+  })
 
-//   return {
-//     image,
-//     startLine,
-//     startColumn,
-//     startOffset,
-//     endLine,
-//     endColumn,
-//     endOffset
-//   }
-// }
+  return {
+    image,
+    startLine,
+    startColumn,
+    startOffset,
+    endLine,
+    endColumn,
+    endOffset
+  }
+}
+
+export function collectTokens(nodes: CstChild[], out: IToken[]) {
+  nodes.forEach(node => {
+    if (node) {
+      if (isToken(node)) {
+        out.push(node)
+      } else {
+        collectTokens(node.children, out)
+      }
+    }
+  })
+}
 
 // export function flatten(arr: any[]): any[] {
 //   return arr.reduce(function (flat, toFlatten) {
@@ -113,7 +125,7 @@ export const getLocation = (loc: CstNode['location']): ILocationInfo => {
 //   }, [])
 // }
 
-// export function spanNodes(node: Node | Node[]): { nodes: Node[]; location: ILocationInfo } {
+// export function spanNodes(node: Node | Node[]): { nodes: Node[]; location: LocationInfo } {
 //   const nodes = Array.isArray(node) ? node : [node]
 //   const { startLine, startColumn, startOffset } = nodes[0]
 //   const { endLine, endColumn, endOffset } = nodes[nodes.length - 1]

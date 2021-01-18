@@ -1,4 +1,4 @@
-import { IFileInfo, Node } from '../tree'
+import { FileInfo, Node } from '../tree'
 import { Parser as CstParser } from '@jesscss/parser'
 import { CstVisitor } from './cst-visitor'
 
@@ -10,7 +10,7 @@ const cstParser = new CstParser()
  * the @jesscss/parser package, and, if successful, builds an
  * AST out of the returned CST.
  */
-export const parse = async (input: string, fileInfo: IFileInfo = {}) => {
+export const parse = async (input: string, fileInfo: FileInfo = {}) => {
   const { cst, lexerResult, parser } = cstParser.parse(input)
   if (lexerResult.errors.length > 0) {
     throw {

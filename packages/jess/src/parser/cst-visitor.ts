@@ -1,5 +1,5 @@
 import { CstChild, CstNode, IToken } from '@jesscss/css-parser'
-import { isToken, getLocation } from './util'
+import { isToken, getLocation, collectTokens, collapseTokens } from './util'
 import { tokenMatcher } from 'chevrotain'
 import type { JessParser } from '@jess/parser'
 import {
@@ -16,10 +16,18 @@ import {
   NodeMap,
   WS,
   Dimension,
-  ILocationInfo,
+  LocationInfo,
   Selector,
-  Combinator
+  Combinator,
+  AtRule
 } from '../tree'
+import { JsImport } from '../tree/js-import'
+
+export type BaseTokenType = Pick<
+  IToken,
+  'image' | 'startLine' | 'startColumn' | 'startOffset' |
+  'endLine' | 'endColumn' | 'endOffset'
+>
 
 export class CstVisitor {
   [k: string]: any
@@ -29,7 +37,7 @@ export class CstVisitor {
     this.parser = parser
   }
 
-  visit(ctx: CstChild, Clazz?: any): any {
+  visit(ctx: CstNode | BaseTokenType, Clazz?: any): any {
     if (!ctx) {
       return
     }
@@ -45,7 +53,7 @@ export class CstVisitor {
         endOffset
       } = ctx
 
-      const loc: ILocationInfo = [
+      const loc: LocationInfo = [
         startLine,
         startColumn,
         startOffset,
@@ -69,9 +77,9 @@ export class CstVisitor {
 
       return new Clazz(image, loc)
     }
-    const visit = this[ctx.name]
+    const visit = this[(<CstNode>ctx).name]
     if (!visit) {
-      throw { message: `CST '${ctx.name}' is not valid.` }
+      throw { message: `CST '${(<CstNode>ctx).name}' is not valid.` }
     }
     return visit.call(this, ctx)
   }
@@ -94,7 +102,35 @@ export class CstVisitor {
   }
 
   atRule({ children, location }: CstNode) {
-    return {}
+    const name: string = (<IToken>children[0]).image
+    const prelude = (<CstNode>children[1])
+    const value: Node = this.visit(prelude)
+    if ((<CstNode>prelude.children[1]).name === 'atImportJs') {
+      return new JsImport(value.value)
+    }
+    let rulesChild = children[2]
+    let rules: Node
+    if ('image' in rulesChild) {
+      rules = undefined
+    } else {
+      rules = this.visit(rulesChild)
+    }
+    return new AtRule({ name, value, rules }, getLocation(location))
+  }
+
+  prelude({ children, location}: CstNode) {
+    /**
+     * For now, just collapse the prelude to a single anonymous node
+     */
+    const tokens: IToken[] = []
+    collectTokens(children, tokens)
+    return this.visit(collapseTokens(tokens))
+  }
+
+  customPrelude({ children, location }: CstNode) {
+    const tokens: IToken[] = []
+    collectTokens(children, tokens)
+    return this.visit(collapseTokens(tokens))
   }
 
   qualifiedRule({ children, location }: CstNode) {

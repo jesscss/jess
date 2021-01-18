@@ -1,5 +1,5 @@
 import { Node, Nil } from '.'
-import { ILocationInfo, NodeMap } from './node'
+import { LocationInfo, NodeMap } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
@@ -11,7 +11,7 @@ export class Ampersand extends Node {
 
   constructor(
     value?: string | NodeMap,
-    location?: ILocationInfo
+    location?: LocationInfo
   ) {
     value = value || '&'
     super(value, location)
@@ -32,5 +32,5 @@ export class Ampersand extends Node {
 }
 
 export const amp =
-  (value?: string | NodeMap, location?: ILocationInfo) =>
+  (value?: string | NodeMap, location?: LocationInfo) =>
     new Ampersand(value, location)

@@ -1,5 +1,5 @@
 import { Node, Anonymous } from '.'
-import type { ILocationInfo, NodeMap } from './node'
+import type { LocationInfo, NodeMap } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
@@ -17,7 +17,7 @@ export class Declaration extends Node {
 
   constructor(
     value: DeclarationValue,
-    location?: ILocationInfo
+    location?: LocationInfo
   ) {
     const name = value.name
     if (name.constructor === String) {
@@ -47,5 +47,5 @@ export class Declaration extends Node {
 }
 
 export const decl =
-  (value: DeclarationValue, location?: ILocationInfo) =>
+  (value: DeclarationValue, location?: LocationInfo) =>
     new Declaration(value, location)

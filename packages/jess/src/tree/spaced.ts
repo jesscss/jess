@@ -1,5 +1,5 @@
 import { Expression, WS, isNodeMap } from '.'
-import type { ILocationInfo, Node, NodeMap } from './node'
+import type { LocationInfo, Node, NodeMap } from './node'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
 
@@ -12,7 +12,7 @@ export class Spaced extends Expression {
 
   constructor(
     value: (string | Node)[] | NodeMap,
-    location?: ILocationInfo  
+    location?: LocationInfo  
   ) {
     if (isNodeMap(value)) {
       super(value, location)

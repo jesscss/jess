@@ -1,5 +1,5 @@
 import { JsNode, List, Anonymous, Declaration, Ruleset } from '.'
-import type { ILocationInfo, NodeMap } from './node'
+import type { LocationInfo, NodeMap } from './node'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
 
@@ -23,7 +23,7 @@ export class Mixin extends JsNode {
 
   constructor(
     value: MixinValue,
-    location?: ILocationInfo
+    location?: LocationInfo
   ) {
     const name = value.name
     /** @todo - disallow JS reserved words */

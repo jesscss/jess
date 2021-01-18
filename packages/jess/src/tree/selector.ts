@@ -1,5 +1,5 @@
 import { Expression, Anonymous, Combinator, isNodeMap } from '.'
-import type { Node, NodeMap, ILocationInfo } from './node'
+import type { Node, NodeMap, LocationInfo } from './node'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
 
@@ -17,7 +17,7 @@ import { OutputCollector } from '../output'
 export class Selector extends Expression {
   constructor(
     value: (string | Node)[] | NodeMap,
-    location?: ILocationInfo
+    location?: LocationInfo
   ) {
     if (isNodeMap(value)) {
       super(value, location)
@@ -47,5 +47,5 @@ export class Selector extends Expression {
 }
 
 export const sel =
-  (value: (string | Node)[] | NodeMap, location?: ILocationInfo) =>
+  (value: (string | Node)[] | NodeMap, location?: LocationInfo) =>
     new Selector(value, location)

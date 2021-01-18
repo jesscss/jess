@@ -1,6 +1,6 @@
 import {
   Node,
-  ILocationInfo,
+  LocationInfo,
   isNodeMap,
   NodeMap
 } from '.'
@@ -17,7 +17,7 @@ export class Dimension extends Node {
 
   constructor(
     value: number | string | NodeMap,
-    location?: ILocationInfo
+    location?: LocationInfo
   ) {
     if (isNodeMap(value)) {
       super(value, location)

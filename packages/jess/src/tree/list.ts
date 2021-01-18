@@ -1,5 +1,5 @@
 import { Node } from '.'
-import type { NodeMap, ILocationInfo, Primitive } from './node'
+import type { NodeMap, LocationInfo, Primitive } from './node'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
 
@@ -51,5 +51,5 @@ export class List<T extends Primitive = Primitive> extends Node {
 }
 
 export const list =
-  (value: Primitive[] | NodeMap, location?: ILocationInfo) =>
+  (value: Primitive[] | NodeMap, location?: LocationInfo) =>
     new List(value, location)

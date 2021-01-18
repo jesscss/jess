@@ -1,7 +1,7 @@
 import { JsKeyValue, JsNode, NodeMap } from '.'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
-import { ILocationInfo, Node } from './node'
+import { LocationInfo, Node } from './node'
 
 /**
  * @let
@@ -41,5 +41,5 @@ export class Let extends JsNode {
  * for lower-case API
  */
 export const set =
-  (value: JsKeyValue | NodeMap, location?: ILocationInfo) =>
+  (value: JsKeyValue | NodeMap, location?: LocationInfo) =>
     new Let(value, location)

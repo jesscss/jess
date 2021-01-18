@@ -1,4 +1,4 @@
-import { Node, NodeMap, ILocationInfo, Ruleset } from '.'
+import { Node, NodeMap, LocationInfo, Ruleset } from '.'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
 
@@ -19,7 +19,7 @@ export class Rule extends Node {
 
   constructor(
     value: RuleValue,
-    location?: ILocationInfo
+    location?: LocationInfo
   ) {
     const val = value.value
     if (Array.isArray(val)) {
@@ -64,5 +64,5 @@ export class Rule extends Node {
 }
 
 export const rule =
-  (value: RuleValue, location?: ILocationInfo) =>
+  (value: RuleValue, location?: LocationInfo) =>
     new Rule(value, location)

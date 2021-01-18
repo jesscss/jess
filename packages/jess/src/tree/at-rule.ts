@@ -1,5 +1,5 @@
 import { Node, Ruleset } from '.'
-import type { ILocationInfo } from './node'
+import type { LocationInfo } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
@@ -19,7 +19,8 @@ export class AtRule extends Node {
   rules: Ruleset
 
   toCSS(context: Context, out: OutputCollector) {
-    out.add(`${this.name} `, this.location)
+    out.add(`${this.name}`, this.location)
+    /** Prelude expression includes white space */
     this.value.toCSS(context, out)
     if (this.rules) {
       this.rules.toCSS(context, out)
@@ -44,5 +45,5 @@ export class AtRule extends Node {
 }
 
 export const atrule =
-  (value: AtRuleValue, location?: ILocationInfo) =>
+  (value: AtRuleValue, location?: LocationInfo) =>
     new AtRule(value, location)
