@@ -21,7 +21,8 @@ import {
   Selector,
   Combinator,
   AtRule,
-  JsCollection
+  JsCollection,
+  JsExpr
 } from '../tree'
 import { JsImport } from '../tree/js-import'
 
@@ -140,6 +141,12 @@ export class CstVisitor {
     return this.visit(children[0])
   }
 
+  /** @note - for now, just collect as one string */
+  jsExpression({ children, location }: CstNode) {
+    children.shift()
+    const value = collapseTokens(collectTokens(children))
+    return new JsExpr(value.image, getLocation(location))
+  }
 
   prelude({ children }: CstNode) {
     /**
