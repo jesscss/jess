@@ -14,6 +14,7 @@ export type DeclarationValue = NodeMap & {
 export class Declaration extends Node {
   name: Node
   value: Node
+  important: Node
 
   constructor(
     value: DeclarationValue,
@@ -27,11 +28,14 @@ export class Declaration extends Node {
   }
 
   toCSS(context: Context, out: OutputCollector) {
-    const loc = this.location
     this.name.toCSS(context, out)
-    out.add(': ', loc)
+    out.add(': ')
     this.value.toCSS(context, out)
-    out.add(';', loc)
+    if (this.important) {
+      out.add(' ')
+      this.important.toCSS(context, out)
+    }
+    out.add(';')
   }
 
   toModule(context: Context, out: OutputCollector) {
@@ -42,6 +46,10 @@ export class Declaration extends Node {
     this.name.toModule(context, out)
     out.add(`\n  ${pre}value: `)
     this.value.toModule(context, out)
+    if (this.important) {
+      out.add(`\n  ${pre}important: `)
+      this.important.toModule(context, out)
+    }
     out.add(`\n${pre}})`)
   }
 }

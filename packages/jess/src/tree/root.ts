@@ -24,8 +24,11 @@ export class Root extends Node {
     return node
   }
 
-  toCSS(context: Context, output: OutputCollector) {
-    this.value.forEach(v => v.toCSS(context, output))
+  toCSS(context: Context, out: OutputCollector) {
+    this.value.forEach(v => {
+      v.toCSS(context, out)
+      out.add('\n')
+    })
   }
 
   toModule(context: Context, out: OutputCollector) {

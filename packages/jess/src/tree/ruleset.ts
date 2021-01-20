@@ -50,7 +50,7 @@ export class Ruleset extends Node {
     })
     context.indent--
     pre = context.pre
-    out.add(`${pre}}\n`)
+    out.add(`${pre}}`)
   }
 
   toModule(context: Context, out: OutputCollector) {

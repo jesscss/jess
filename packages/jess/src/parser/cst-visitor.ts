@@ -1,5 +1,5 @@
 import { CstChild, CstNode, IToken } from '@jesscss/css-parser'
-import { isToken, getLocation, collectTokens, collapseTokens } from './util'
+import { isToken, getLocation, collectTokens, collapseTokens, flatten } from './util'
 import { tokenMatcher } from 'chevrotain'
 import type { JessParser } from '@jess/parser'
 import {
@@ -105,7 +105,7 @@ export class CstVisitor {
     const name: string = (<IToken>children[0]).image
     const prelude = (<CstNode>children[1])
     const value: Node = this.visit(prelude)
-    if ((<CstNode>prelude.children[1]).name === 'atImportJs') {
+    if ((<CstNode>prelude.children[1])?.name === 'atImportJs') {
       return new JsImport(value.value)
     }
     let rulesChild = children[2]
@@ -118,7 +118,7 @@ export class CstVisitor {
     return new AtRule({ name, value, rules }, getLocation(location))
   }
 
-  prelude({ children, location}: CstNode) {
+  prelude({ children }: CstNode) {
     /**
      * For now, just collapse the prelude to a single anonymous node
      */
@@ -127,10 +127,15 @@ export class CstVisitor {
     return this.visit(collapseTokens(tokens))
   }
 
-  customPrelude({ children, location }: CstNode) {
+  customPrelude({ children }: CstNode) {
     const tokens: IToken[] = []
     collectTokens(children, tokens)
     return this.visit(collapseTokens(tokens))
+  }
+
+  customValue({ children }: CstNode) {
+    const value = collapseTokens(collectTokens(children))
+    return new Anonymous(value.image)
   }
 
   qualifiedRule({ children, location }: CstNode) {
@@ -148,8 +153,9 @@ export class CstVisitor {
   }
 
   complexSelector({ children, location }: CstNode) {
-    const compound = this.visit(children[0])
-    const combinator = this.visit(children[1])
+    const [initial, ...combinators] = children
+    const compound = this.visit(initial)
+    const combinator = flatten(this.visitArray(combinators))
 
     return new Selector([...compound, ...combinator], getLocation(location))
   }
@@ -169,6 +175,16 @@ export class CstVisitor {
     ]
   }
 
+  pseudoSelector({ children }: CstNode) {    
+    const selector = collapseTokens(collectTokens(children))
+    return new Element(selector.image)
+  }
+
+  attrSelector({ children }: CstNode) {
+    const selector = collapseTokens(collectTokens(children))
+    return new Element(selector.image)
+  }
+
   curlyBlock({ children, location}: CstNode) {
     const rules = this.visit(children[1])
     return new Ruleset(rules, getLocation(location))
@@ -181,7 +197,9 @@ export class CstVisitor {
   declaration({ children, location }: CstNode) {
     const name = this.visit(children[0])
     const value = this.visit(children[4])
-    return new Declaration({ name, value }, getLocation(location))
+    const important = children[5] && this.visit((<CstNode>children[5]).children[0])
+
+    return new Declaration({ name, value, important }, getLocation(location))
   }
 
   /**

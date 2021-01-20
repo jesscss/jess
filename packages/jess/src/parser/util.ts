@@ -5,7 +5,10 @@ import type { BaseTokenType } from './cst-visitor'
 /**
  * Convert a location object to a location array
  */
-export const getLocation = (loc: CstNode['location']): LocationInfo => {
+export const getLocation = (loc?: CstNode['location']): LocationInfo => {
+  if (!loc) {
+    return
+  }
   const {
     startLine,
     startColumn,
@@ -88,6 +91,7 @@ export const getLocation = (loc: CstNode['location']): LocationInfo => {
 // }
 
 export function collapseTokens(tokens: IToken[]): BaseTokenType {
+  tokens = tokens.filter(tok => !!tok)
   let image: string = ''
   const { startLine, startColumn, startOffset } = tokens[0]
   const { endLine, endColumn, endOffset } = tokens[tokens.length - 1]
@@ -107,23 +111,25 @@ export function collapseTokens(tokens: IToken[]): BaseTokenType {
   }
 }
 
-export function collectTokens(nodes: CstChild[], out: IToken[]) {
+export function collectTokens(nodes: CstChild[], out?: IToken[]) {
+  out = out || []
   nodes.forEach(node => {
     if (node) {
       if (isToken(node)) {
         out.push(node)
       } else {
-        collectTokens(node.children, out)
+        return collectTokens(node.children, out)
       }
     }
   })
+  return out
 }
 
-// export function flatten(arr: any[]): any[] {
-//   return arr.reduce(function (flat, toFlatten) {
-//     return flat.concat(Array.isArray(toFlatten) ? flatten(toFlatten) : toFlatten)
-//   }, [])
-// }
+export function flatten(arr: any[]): any[] {
+  return arr.reduce(function (flat, toFlatten) {
+    return flat.concat(Array.isArray(toFlatten) ? flatten(toFlatten) : toFlatten)
+  }, [])
+}
 
 // export function spanNodes(node: Node | Node[]): { nodes: Node[]; location: LocationInfo } {
 //   const nodes = Array.isArray(node) ? node : [node]

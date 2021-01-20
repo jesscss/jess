@@ -1,4 +1,4 @@
-import { Expression, Anonymous, Combinator, isNodeMap } from '.'
+import { Expression, Combinator, isNodeMap } from '.'
 import type { Node, NodeMap, LocationInfo } from './node'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
@@ -15,6 +15,7 @@ import { OutputCollector } from '../output'
  * if there isn't one
  */
 export class Selector extends Expression {
+  
   constructor(
     value: (string | Node)[] | NodeMap,
     location?: LocationInfo

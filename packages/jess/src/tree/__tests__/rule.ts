@@ -20,7 +20,7 @@ describe('Rule', () => {
         decl({ name: 'color', value: anon('#eee') })
       ]
     })
-    expect(`${node}`).to.eq('foo {\n  border: 1px solid black;\n  color: #eee;\n}\n')
+    expect(`${node}`).to.eq('foo {\n  border: 1px solid black;\n  color: #eee;\n}')
   })
   it('should serialize to a module', () => {
     const node = rule({
