@@ -13,13 +13,15 @@ import {
   Ruleset,
   Declaration,
   Expression,
-  NodeMap,
+  Let,
+  JsKeyValue,
   WS,
   Dimension,
   LocationInfo,
   Selector,
   Combinator,
-  AtRule
+  AtRule,
+  JsCollection
 } from '../tree'
 import { JsImport } from '../tree/js-import'
 
@@ -117,6 +119,27 @@ export class CstVisitor {
     }
     return new AtRule({ name, value, rules }, getLocation(location))
   }
+
+  atLet({ children, location }: CstNode) {
+    return new Let(this.visit(children[2]), getLocation(location))
+  }
+
+  atLetValue({ children }: CstNode) {
+    return new JsKeyValue({
+      name: (<IToken>(<CstNode>children[0]).children[0]).image,
+      value: this.visit((<CstNode>children[1]).children[0])
+    })
+  }
+
+  jsCollection({ children }: CstNode) {
+    const nodes = this.visitArray((<CstNode>children[2]).children)
+    return new JsCollection(nodes)
+  }
+
+  jsCollectionNode({ children }: CstNode) {
+    return this.visit(children[0])
+  }
+
 
   prelude({ children }: CstNode) {
     /**

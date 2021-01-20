@@ -34,8 +34,9 @@ export class JsCollection extends Node {
       out.add(`  ${pre}${JSON.stringify(node.name.toString())}: `)
       node.value.toModule(context, out)
       if (i < length) {
-        out.add(',\n')
+        out.add(',')
       }
+      out.add('\n')
     })
     out.add(`${pre}}`)
     context.indent--

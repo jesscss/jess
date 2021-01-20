@@ -25,87 +25,68 @@ describe('CST-to-AST', () => {
     context.id = 'testing'
     out = new OutputCollector
   })
-  it(`rule #1`, async () => {
-    const node = await parse(`.box { a: b; }`)
-    expect(node.toString()).to.eq('.box {\n  a: b;\n}\n')
-  })
 
-  it(`rule #2`, async () => {
-    const node = await parse(`.box> #foo.bar { a: b; }`)
-    expect(node.toString()).to.eq('.box > #foo.bar {\n  a: b;\n}\n')
-  })
+  // it(`rule #1`, async () => {
+  //   const node = await parse(`.box> #foo.bar { a: b; }`)
+  //   expect(node.toString()).to.eq('.box > #foo.bar {\n  a: b;\n}\n')
+  // })
 
-  it(`rule #3`, async () => {
-    const node = await parse(`.box  > #foo.bar { a: b; }`)
-    expect(node.toString()).to.eq('.box > #foo.bar {\n  a: b;\n}\n')
-  })
+  // it(`rule #2`, async () => {
+  //   const node = await parse(`@import url("something.css");`)
+  //   expect(node.toString()).to.eq(`@import url("something.css");\n`)
+  // })
 
-  it(`rule #4`, async () => {
-    const node = await parse(`a { b: -1px; }`)
-    expect(node.toString()).to.eq('a {\n  b: -1px;\n}\n')
-  })
+  // it(`rule #3`, async () => {
+  //   const node = await parse(`@import foo from 'foo.ts';`)
+  //   node.toModule(context, out)
+  //   expect(out.toString()).to.eq('import * as $JESS from \'jess\'\nconst $J = $JESS.tree\nconst $CONTEXT = new $JESS.Context\n$CONTEXT.id = \'testing\'\nimport foo from \'foo.ts\'\nfunction $DEFAULT ($VARS = {}, $RETURN_NODE) {\n  \n  const $TREE = $J.root((() => {\n    const $OUT = []\n    return $OUT\n  })()\n  if ($RETURN_NODE) {\n    return $TREE\n  }\n  return $JESS.render($TREE, $CONTEXT)\n}\nexport default $DEFAULT')
+  //   out = new OutputCollector
+  //   node.value[0].toModule(context, out)
+  //   expect(out.toString()).to.eq('import foo from \'foo.ts\'')
+  // })
 
-  it(`rule #5`, async () => {
-    const node = await parse(`a { b: calc(-1px); }`)
-    expect(node.toString()).to.eq('a {\n  b: calc(-1px);\n}\n')
-  })
+  // it(`rule #4`, async () => {
+  //   const node = await parse(`@import foo, { bar } from 'foo.ts';`)
+  //   node.value[0].toModule(context, out)
+  //   expect(out.toString()).to.eq('import foo, { bar } from \'foo.ts\'')
+  // })
+
+  // it(`rule #5`, async () => {
+  //   const node = await parse(`@import * as foo from 'foo.ts';`)
+  //   node.value[0].toModule(context, out)
+  //   expect(out.toString()).to.eq('import * as foo from \'foo.ts\'')
+  // })
+
+  // it(`rule #6`, async () => {
+  //   const node = await parse(`@import { default as foo, bar } from 'foo.ts';`)
+  //   node.value[0].toModule(context, out)
+  //   expect(out.toString()).to.eq('import { default as foo, bar } from \'foo.ts\'')
+  // })
 
   it(`rule #6`, async () => {
-    const node = await parse(`a { b: calc((-1px)); }`)
-    expect(node.toString()).to.eq('a {\n  b: calc((-1px));\n}\n')
+    const node = await parse(`@let foo: 1;`)
+    node.value[0].toModule(context, out)
+    expect(out.toString()).to.eq('export let foo = $J.num({\n  value: 1\n  unit: ""\n})\nlet $BK_foo = foo')
   })
 
   it(`rule #7`, async () => {
-    const node = await parse(`a { b: rgb(1, 2, 3); }`)
-    expect(node.toString()).to.eq('a {\n  b: rgb(1, 2, 3);\n}\n')
+    const node = await parse(`@let foo { color: #FFF }`)
+    node.value[0].toModule(context, out)
+    expect(out.toString()).to.eq('export let foo = {\n  "color": "#FFF"\n}\nlet $BK_foo = foo')
   })
 
   it(`rule #8`, async () => {
-    const node = await parse(`a { b: rgb(0 1 2 / 50%); }`)
-    expect(node.toString()).to.eq('a {\n  b: rgb(0 1 2 / 50%);\n}\n')
+    const node = await parse(`@let foo { color: #FFF; nested {} }`)
+    node.value[0].toModule(context, out)
+    expect(out.toString()).to.eq('export let foo = {\n  "color": "#FFF",\n  "nested": {\n  }\n}\nlet $BK_foo = foo')
   })
 
   it(`rule #9`, async () => {
-    const node = await parse(`@import url("something.css");`)
-    expect(node.toString()).to.eq(`@import url("something.css");\n`)
+    const node = await parse(`@let foo { color: #FFF; nested { color: black } }`)
+    node.value[0].toModule(context, out)
+    expect(out.toString()).to.eq('export let foo = {\n  "color": "#FFF",\n  "nested": {\n    "color": "black"\n  }\n}\nlet $BK_foo = foo')
   })
-
-  it(`rule #10`, async () => {
-    const node = await parse(`@import foo from 'foo.ts';`)
-    node.toModule(context, out)
-    expect(out.toString()).to.eq('import * as $JESS from \'jess\'\nconst $J = $JESS.tree\nconst $CONTEXT = new $JESS.Context\n$CONTEXT.id = \'testing\'\nimport foo from \'foo.ts\'\nfunction $DEFAULT ($VARS = {}, $RETURN_NODE) {\n  \n  const $TREE = $J.root((() => {\n    const $OUT = []\n    return $OUT\n  })()\n  if ($RETURN_NODE) {\n    return $TREE\n  }\n  return $JESS.render($TREE, $CONTEXT)\n}\nexport default $DEFAULT')
-  })
-
-  it(`rule #11`, async () => {
-    const node = await parse(`.one > .two > .three {}`)
-    expect(node.toString()).to.eq(`.one > .two > .three {\n}\n`)
-  })
-
-  it(`rule #12`, async () => {
-    const node = await parse(`.one.two > .three.four > .five {}`)
-    expect(node.toString()).to.eq(`.one.two > .three.four > .five {\n}\n`)
-  })
-
-  it(`rule #13`, async () => {
-    const node = await parse(`:psuedo(1, 2) {}`)
-    expect(node.toString()).to.eq(`:psuedo(1, 2) {\n}\n`)
-  })
-
-  it(`rule #14`, async () => {
-    const node = await parse(`[foo~="bar"] {}`)
-    expect(node.toString()).to.eq(`[foo~="bar"] {\n}\n`)
-  })
-
-  it(`rule #14`, async () => {
-    const node = await parse(`[foo~="bar"] {}`)
-    expect(node.toString()).to.eq(`[foo~="bar"] {\n}\n`)
-  })
-
-  it(`rule #14`, async () => {
-    const node = await parse(`a { b: foo !important }`)
-    expect(node.toString()).to.eq(`a {\n  b: foo !important;\n}\n`)
-  })
-
+  
   it(`rule #15`, async () => {
     const node = await parse(
       `@supports (property: value) {

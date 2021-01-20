@@ -44,7 +44,7 @@ describe('Let', () => {
     )
     rule.toModule(context, out)
     expect(out.toString()).to.eq(
-      'export let brand = {\n  "dark": "#222",\n  "light": "#eee"}\nlet $BK_brand = brand'
+      'export let brand = {\n  "dark": "#222",\n  "light": "#eee"\n}\nlet $BK_brand = brand'
     )
   })
 })

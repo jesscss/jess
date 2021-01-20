@@ -9,6 +9,11 @@ import { LocationInfo, Node } from './node'
  * @note
  * The lower-case API variant for this is `set()`,
  * see the note below.
+ * 
+ * @todo
+ * Check that we're not redefining vars? To do that, we'd have to
+ * address the todo in js-import to get a true list of scoped vars.
+ * For now, JS will simply throw an eval error.
  */
 export class Let extends JsNode {
   value: JsKeyValue
