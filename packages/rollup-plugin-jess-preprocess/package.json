@@ -7,5 +7,8 @@
   "description": "The internal Rollup plugin for Jess",
   "main": "lib/index",
   "author": "Matthew Dean",
-  "license": "MIT"
+  "license": "MIT",
+  "peerDependencies": {
+    "rollup": "^2.36.2"
+  }
 }
