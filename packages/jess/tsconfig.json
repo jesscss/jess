@@ -2,7 +2,8 @@
   "extends": "../../tsconfig.json",
   "references": [
     { "path" : "../css-parser" },
-    { "path" : "../parser" }
+    { "path" : "../parser" },
+    { "path" : "../patch-css" }
   ],
   "compilerOptions": {
     "composite": true,
