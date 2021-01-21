@@ -73,6 +73,8 @@ export class Rule extends Node {
     out.add(`,\n${pre}value: `)
     this.value.toModule(context, out)
     context.indent--
+    pre = context.pre
+    out.add(`${pre}},${JSON.stringify(this.location)})`)
   }
 }
 

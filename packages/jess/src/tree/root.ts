@@ -73,7 +73,7 @@ export class Root extends Node {
     })
     context.indent--
     pre = context.pre
-    out.add(`  ${pre}return $OUT\n${pre}})()\n`)
+    out.add(`  ${pre}return $OUT\n${pre}})(),${JSON.stringify(this.location)})\n`)
     out.add(`${pre}if ($RETURN_NODE) {\n`)
     out.add(`${pre}  return $TREE\n`)
     out.add(`${pre}}\n`)

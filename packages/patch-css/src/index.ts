@@ -3,8 +3,8 @@ export let isBrowser = new Function('try { return this===window } catch(e) { ret
 
 let sheetLength: number
 
-let _searchStart: string = '#__jess_start'
-let _searchEnd: string = '#__jess_end'
+let _searchStart: string = '#__start'
+let _searchEnd: string = '#__end'
 
 
 const sheetMap: Map<Element | ProcessingInstruction, string> = new Map()
@@ -93,9 +93,16 @@ export function updateSheet(styleContents: string, id: string) {
     })
   }
 
+  /**
+   * @note In the future, we can pre-emptively create
+   * a stylesheet with media=patch in order to do
+   * proper diffing, and see if this stylesheet
+   * update is actually needed. (The browser will
+   * parse styles but not apply them.)
+   */
   const createStyleElement = (text: string) => {
     const style = document.createElement('style')
-    style.setAttribute('media', 'all,jess')
+    style.setAttribute('media', 'all,patch')
     style.setAttribute('id', id)
     style.innerHTML = text
     return style

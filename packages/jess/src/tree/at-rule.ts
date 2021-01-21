@@ -40,7 +40,7 @@ export class AtRule extends Node {
       out.add(`,\n${pre}  rules: ${rules.toModule(context, out)}`)
     }
     context.indent--
-    out.add(`,\n${pre}})\n`)
+    out.add(`,\n${pre}},${JSON.stringify(this.location)})`)
   }
 }
 
