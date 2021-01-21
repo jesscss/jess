@@ -24,3 +24,7 @@ $value.class {}
   ) four;
   four: $url("???");
 }
+
+.box {
+  area: $area(5);
+}

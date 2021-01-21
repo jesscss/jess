@@ -9,7 +9,7 @@ let out: OutputCollector
 
 describe('Let', () => {
   beforeEach(() => {
-    context = new Context
+    context = new Context({ global: true })
     out = new OutputCollector
   })
 

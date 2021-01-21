@@ -21,7 +21,7 @@ const serialize = async (str: string, expectStr?: string) => {
 
 describe('CST-to-AST', () => {
   beforeEach(() => {
-    context = new Context
+    context = new Context({ global: true })
     context.id = 'testing'
     out = new OutputCollector
   })
@@ -63,79 +63,79 @@ describe('CST-to-AST', () => {
     expect(out.toString()).to.eq('import { default as foo, bar } from \'foo.ts\'')
   })
 
-  it(`rule #6`, async () => {
+  it(`rule #7`, async () => {
     const node = await parse(`@let foo: 1;`)
     node.value[0].toModule(context, out)
     expect(out.toString()).to.eq('export let foo = $J.num({\n  value: 1\n  unit: ""\n})\nlet $BK_foo = foo')
   })
 
-  it(`rule #7`, async () => {
+  it(`rule #8`, async () => {
     const node = await parse(`@let foo { color: #FFF }`)
     node.value[0].toModule(context, out)
     expect(out.toString()).to.eq('export let foo = {\n  "color": "#FFF"\n}\nlet $BK_foo = foo')
   })
 
-  it(`rule #8`, async () => {
+  it(`rule #9`, async () => {
     const node = await parse(`@let foo { color: #FFF; nested {} }`)
     node.value[0].toModule(context, out)
     expect(out.toString()).to.eq('export let foo = {\n  "color": "#FFF",\n  "nested": {\n  }\n}\nlet $BK_foo = foo')
   })
 
-  it(`rule #9`, async () => {
+  it(`rule #10`, async () => {
     const node = await parse(`@let foo { color: #FFF; nested { color: black } }`)
     node.value[0].toModule(context, out)
     expect(out.toString()).to.eq('export let foo = {\n  "color": "#FFF",\n  "nested": {\n    "color": "black"\n  }\n}\nlet $BK_foo = foo')
   })
 
-  it(`rule #10`, async () => {
+  it(`rule #11`, async () => {
     const node = await parse(`@let foo: $value.foo`)
     node.value[0].toModule(context, out)
     expect(out.toString()).to.eq('export let foo = $J.cast(value.foo)\nlet $BK_foo = foo')
   })
 
-  it(`rule #11`, async () => {
+  it(`rule #12`, async () => {
     const node = await parse(`@let foo: $value.foo #FFF`)
     node.value[0].toModule(context, out)
     expect(out.toString()).to.eq('export let foo = $J.expr([$J.cast(value.foo), " ", "#FFF"])\nlet $BK_foo = foo')
   })
 
-  it(`rule #12`, async () => {
+  it(`rule #13`, async () => {
     const node = await parse(`@let foo: $(value.foo && value.bar)`)
     node.value[0].toModule(context, out)
     expect(out.toString()).to.eq('export let foo = $J.cast((value.foo && value.bar))\nlet $BK_foo = foo')
   })
 
-  it(`rule #13`, async () => {
+  it(`rule #14`, async () => {
     const node = await parse(`@mixin foo {}`)
     node.value[0].toModule(context, out)
     expect(out.toString()).to.eq('export let foo = () => $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)\nlet $BK_foo = foo')
   })
 
-  it(`rule #13`, async () => {
+  it(`rule #15`, async () => {
     const node = await parse(`@mixin foo() {}`)
     node.value[0].toModule(context, out)
     expect(out.toString()).to.eq('export let foo = () => $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)\nlet $BK_foo = foo')
   })
 
-  it(`rule #14`, async () => {
+  it(`rule #16`, async () => {
     const node = await parse(`@mixin foo(bar, foo: 1px) {}`)
     node.value[0].toModule(context, out)
     expect(out.toString()).to.eq('export let foo = (bar, foo = $J.num({\n  value: 1\n  unit: "px"\n})) => $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)\nlet $BK_foo = foo')
   })
 
-  it(`rule #15`, async () => {
+  it(`rule #17`, async () => {
     const node = await parse(`@include each($list, $mixin);`)
     node.value[0].toModule(context, out)
     expect(out.toString()).to.eq('$J.call({\n  name: "each",\n  value: $J.list([\n    $J.cast(list),\n    $J.cast(mixin)\n  ]),\n  ref: () => each,\n})\n')
   })
 
-  it(`rule #16`, async () => {
+  it(`rule #18`, async () => {
     const node = await parse(`@include $each(list, mixin);`)
     node.value[0].toModule(context, out)
     expect(out.toString()).to.eq('$J.cast(each(list, mixin))')
   })
   
-  it(`rule #17`, async () => {
+  it(`rule #19`, async () => {
     const node = await parse(
       `@supports (property: value) {
         @media (max-size: 2px) {

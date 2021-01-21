@@ -111,6 +111,7 @@ export default function(this: JessParser, $: JessParser) {
       { ALT: () => $.CONSUME($.T.Pipe) },
       { ALT: () => $.CONSUME($.T.Comma) },
       { ALT: () => $.CONSUME($.T.SemiColon) },
+      { ALT: () => $.CONSUME($.T.Number) },
       /** =, >, <, <=, => */
       { ALT: () => $.CONSUME($.T.CompareOperator) },
       { ALT: () => $.CONSUME($.T.AdditionOperator) },

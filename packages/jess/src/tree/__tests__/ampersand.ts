@@ -8,7 +8,7 @@ let context: Context
 let out: OutputCollector
 describe('Ampersand', () => {
   beforeEach(() => {
-    context = new Context
+    context = new Context({ global: true })
     out = new OutputCollector
   })
   it('should inherit selectors', () => {

@@ -1,4 +1,4 @@
-# rollup-plugin-jess-preprocess
+# plugin/rollup.ts
 
 To evaluate Jess stylesheets, Jess does the following:
 1. converts `.jess` files to modules (`.js` and `.js.map`)

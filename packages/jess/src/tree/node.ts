@@ -138,7 +138,7 @@ export abstract class Node {
 
   toString(): string {
     const out = new OutputCollector
-    this.toCSS(new Context, out)
+    this.toCSS(new Context({ global: true }), out)
     return out.toString()
   }
 
