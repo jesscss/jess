@@ -1,0 +1,11 @@
+{
+  "name": "@jesscss/rollup-plugin-jess-preprocess",
+  "publishConfig": {
+    "access": "public"
+  },
+  "version": "1.0.1-alpha.1",
+  "description": "The internal Rollup plugin for Jess",
+  "main": "lib/index",
+  "author": "Matthew Dean",
+  "license": "MIT"
+}

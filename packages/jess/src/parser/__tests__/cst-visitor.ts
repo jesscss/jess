@@ -104,8 +104,38 @@ describe('CST-to-AST', () => {
     node.value[0].toModule(context, out)
     expect(out.toString()).to.eq('export let foo = $J.cast((value.foo && value.bar))\nlet $BK_foo = foo')
   })
-  
+
   it(`rule #13`, async () => {
+    const node = await parse(`@mixin foo {}`)
+    node.value[0].toModule(context, out)
+    expect(out.toString()).to.eq('export let foo = () => $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)\nlet $BK_foo = foo')
+  })
+
+  it(`rule #13`, async () => {
+    const node = await parse(`@mixin foo() {}`)
+    node.value[0].toModule(context, out)
+    expect(out.toString()).to.eq('export let foo = () => $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)\nlet $BK_foo = foo')
+  })
+
+  it(`rule #14`, async () => {
+    const node = await parse(`@mixin foo(bar, foo: 1px) {}`)
+    node.value[0].toModule(context, out)
+    expect(out.toString()).to.eq('export let foo = (bar, foo = $J.num({\n  value: 1\n  unit: "px"\n})) => $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)\nlet $BK_foo = foo')
+  })
+
+  it(`rule #15`, async () => {
+    const node = await parse(`@include each($list, $mixin);`)
+    node.value[0].toModule(context, out)
+    expect(out.toString()).to.eq('$J.call({\n  name: "each",\n  value: $J.list([\n    $J.cast(list),\n    $J.cast(mixin)\n  ]),\n  ref: () => each,\n})\n')
+  })
+
+  it(`rule #16`, async () => {
+    const node = await parse(`@include $each(list, mixin);`)
+    node.value[0].toModule(context, out)
+    expect(out.toString()).to.eq('$J.cast(each(list, mixin))')
+  })
+  
+  it(`rule #17`, async () => {
     const node = await parse(
       `@supports (property: value) {
         @media (max-size: 2px) {

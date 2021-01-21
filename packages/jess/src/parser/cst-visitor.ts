@@ -22,7 +22,8 @@ import {
   Combinator,
   AtRule,
   JsCollection,
-  JsExpr
+  JsExpr,
+  Mixin
 } from '../tree'
 import { JsImport } from '../tree/js-import'
 
@@ -105,20 +106,47 @@ export class CstVisitor {
   }
 
   atRule({ children, location }: CstNode) {
-    const name: string = (<IToken>children[0]).image
+    let name: string = (<IToken>children[0]).image
     const prelude = (<CstNode>children[1])
-    const value: Node = this.visit(prelude)
-    if ((<CstNode>prelude.children[1])?.name === 'atImportJs') {
-      return new JsImport(value.value)
-    }
-    let rulesChild = children[2]
-    let rules: Node
-    if ('image' in rulesChild) {
-      rules = undefined
+    if (name === '@mixin') {
+      name = (<IToken>prelude.children[1]).image.replace(/\($/, '')
+      const args = this.visit(prelude.children[4])
+      const value = this.visit(children[2])
+      return new Mixin({ name, args, value })
     } else {
-      rules = this.visit(rulesChild)
+      const value: Node = this.visit(prelude)
+      if ((<CstNode>prelude.children[1])?.name === 'atImportJs') {
+        return new JsImport(value.value)
+      }
+      let rulesChild = children[2]
+      let rules: Node
+      if ('image' in rulesChild) {
+        rules = undefined
+      } else {
+        rules = this.visit(rulesChild)
+      }
+      return new AtRule({ name, value, rules }, getLocation(location))
     }
-    return new AtRule({ name, value, rules }, getLocation(location))
+  }
+
+  mixinArgs({ children }: CstNode) {
+    const args = children
+      .filter(child => child !== undefined && (<CstNode>child).name === 'mixinArg')
+      .map(arg => this.visit(arg))
+    return new List(args)
+  }
+
+  mixinArg({ children }: CstNode) {
+    const value = children[4]
+    if (value) {
+      const name = (<IToken>children[0]).image
+      return new Declaration({ name, value: this.visit(value) })
+    }
+    return this.visit(children[0])
+  }
+
+  atInclude({ children }: CstNode) {
+    return this.visit(children[2])
   }
 
   atLet({ children, location }: CstNode) {
