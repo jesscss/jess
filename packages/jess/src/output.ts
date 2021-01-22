@@ -1,4 +1,4 @@
-import type { ILocationInfo } from './tree'
+import type { LocationInfo } from './tree'
 
 export class OutputCollector {
   strings: string[] = []
@@ -8,7 +8,7 @@ export class OutputCollector {
   line: number = 0
   column: number = 0
 
-  add(str: string, originalLocation?: ILocationInfo) {
+  add(str: string, originalLocation?: LocationInfo) {
     this.strings.push(str)
     /**
      * @todo

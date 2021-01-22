@@ -1,6 +1,6 @@
-# attach-css
+# patch-css
 
-Conditionally attach a `<style>` tag if it differs from what's in the current stack of stylesheets. This currently seems to be the best way to "hydrate" and update stylesheets based on input.
+Conditionally attach a `<style>` tag if it differs from what's in the current stack of stylesheets. This currently seems to be the best way to "hydrate" and patch stylesheets based on input.
 
 This package will do the following:
 
@@ -24,12 +24,12 @@ _Second Note: If the input CSS has a generic first / last line, it's likely the 
 
 _Third Note: If we're not in a browser, this package / function should do nothing when called!_
 
-In Jess, we mark the first and last line with:
+We mark the first and last line with:
 ```less
-#__jess_start { content: "identifier"; }
+#__start { content: "identifier"; }
 ```
 ```less
-#__jess_end { content: "identifier"; }
+#__end { content: "identifier"; }
 ```
 
 _TODO: because we need to normalize the start, then either `@charset` should be disallowed, or it should be removed._

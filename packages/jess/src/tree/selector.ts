@@ -1,5 +1,5 @@
-import { Expression, Anonymous, Combinator, isNodeMap } from '.'
-import type { Node, NodeMap, ILocationInfo } from './node'
+import { Expression, Combinator, isNodeMap } from '.'
+import type { Node, NodeMap, LocationInfo } from './node'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
 
@@ -8,16 +8,17 @@ import { OutputCollector } from '../output'
  * #id > .class.class
  * 
  * Stored as:
- * [Element, '>', Element, Element]
+ * [Element, Combinator, Element, Element]
  * 
  * @todo
  * Push an ampersand at the beginning of selector expressions
  * if there isn't one
  */
 export class Selector extends Expression {
+  
   constructor(
     value: (string | Node)[] | NodeMap,
-    location?: ILocationInfo
+    location?: LocationInfo
   ) {
     if (isNodeMap(value)) {
       super(value, location)
@@ -28,6 +29,11 @@ export class Selector extends Expression {
       value: values
     }, location)
   }
+
+  // eval(context: Context) {
+
+  //   return this
+  // }
 
   toCSS(context: Context, out: OutputCollector) {
     this.value.forEach(node => node.toCSS(context, out))
@@ -47,5 +53,5 @@ export class Selector extends Expression {
 }
 
 export const sel =
-  (value: (string | Node)[] | NodeMap, location?: ILocationInfo) =>
+  (value: (string | Node)[] | NodeMap, location?: LocationInfo) =>
     new Selector(value, location)

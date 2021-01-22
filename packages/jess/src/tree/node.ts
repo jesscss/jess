@@ -10,7 +10,7 @@ export type NodeMap = {
   [k: string]: NodeValue
 }
 
-export type ILocationInfo = [
+export type LocationInfo = [
   startOffset?: number,
   startLine?: number,
   startColumn?: number,
@@ -19,7 +19,7 @@ export type ILocationInfo = [
   endColumn?: number,
 ]
 
-export type IFileInfo = {
+export type FileInfo = {
   filename?: string
   rootpath?: string
 }
@@ -29,8 +29,8 @@ export const isNodeMap = (val: NodeValue | NodeMap): val is NodeMap => {
 }
 
 export abstract class Node {
-  location: ILocationInfo
-  fileInfo: IFileInfo
+  location: LocationInfo
+  fileInfo: FileInfo
 
   evaluated: boolean
 
@@ -42,8 +42,8 @@ export abstract class Node {
 
   constructor(
     value: NodeValue | NodeMap,
-    location?: ILocationInfo,
-    fileInfo?: IFileInfo
+    location?: LocationInfo,
+    fileInfo?: FileInfo
   ) {
     if (value === undefined) {
       throw { message: 'Node requires a value.' }
@@ -138,7 +138,7 @@ export abstract class Node {
 
   toString(): string {
     const out = new OutputCollector
-    this.toCSS(new Context, out)
+    this.toCSS(new Context({ global: true }), out)
     return out.toString()
   }
 

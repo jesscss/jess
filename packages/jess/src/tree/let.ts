@@ -1,7 +1,7 @@
 import { JsKeyValue, JsNode, NodeMap } from '.'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
-import { ILocationInfo, Node } from './node'
+import { LocationInfo, Node } from './node'
 
 /**
  * @let
@@ -9,6 +9,11 @@ import { ILocationInfo, Node } from './node'
  * @note
  * The lower-case API variant for this is `set()`,
  * see the note below.
+ * 
+ * @todo
+ * Check that we're not redefining vars? To do that, we'd have to
+ * address the todo in js-import to get a true list of scoped vars.
+ * For now, JS will simply throw an eval error.
  */
 export class Let extends JsNode {
   value: JsKeyValue
@@ -41,5 +46,5 @@ export class Let extends JsNode {
  * for lower-case API
  */
 export const set =
-  (value: JsKeyValue | NodeMap, location?: ILocationInfo) =>
+  (value: JsKeyValue | NodeMap, location?: LocationInfo) =>
     new Let(value, location)

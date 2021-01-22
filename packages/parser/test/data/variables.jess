@@ -12,6 +12,10 @@
 $value.class {}
 .class$something {}
 
+@let foo: $(value.foo && value.bar);
+@let bar: $(value.foo || value.bar);
+@let compare: $(foo > bar);
+
 .box {
   one: $collection.foo.bar.deeper;
   two: $some(call, with, args).foo[ ident ].stuff;
@@ -19,4 +23,8 @@ $value.class {}
     var // )
   ) four;
   four: $url("???");
+}
+
+.box {
+  area: $area(5);
 }

@@ -1,13 +1,11 @@
 
-import typescript from '@rollup/plugin-typescript'
+import sucrase from '@rollup/plugin-sucrase'
 
 export default {
   input: './src/index.ts',
   plugins: [
-    typescript({
-      outDir: './dist',
-      lib: ['es5', 'es6', 'dom'],
-      target: 'es5'
+    sucrase({
+      transforms: ['typescript']
     })
   ],
   output: {

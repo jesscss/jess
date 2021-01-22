@@ -1,6 +1,7 @@
-import { Node, NodeMap, ILocationInfo, Ruleset } from '.'
+import { Node, NodeMap, LocationInfo, Ruleset } from '.'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
+import { List } from './list'
 
 type RuleValue = NodeMap & {
   sels: Node
@@ -19,7 +20,7 @@ export class Rule extends Node {
 
   constructor(
     value: RuleValue,
-    location?: ILocationInfo
+    location?: LocationInfo
   ) {
     const val = value.value
     if (Array.isArray(val)) {
@@ -46,7 +47,19 @@ export class Rule extends Node {
 
   toCSS(context: Context, out: OutputCollector) {
     const { sels, value } = this
-    sels.toCSS(context, out)
+    /** A selector list gets output to multiple lines */
+    if (sels instanceof List) {
+      const length = sels.value.length - 1
+      const pre = context.pre
+      sels.value.forEach((sel, i) => {
+        (<Node>sel).toCSS(context, out)
+        if (i < length) {
+          out.add(`,\n${pre}`)
+        }
+      })
+    } else {
+      sels.toCSS(context, out)
+    }
     out.add(' ')
     value.toCSS(context, out)
   }
@@ -60,9 +73,10 @@ export class Rule extends Node {
     out.add(`,\n${pre}value: `)
     this.value.toModule(context, out)
     context.indent--
+    out.add(`},${JSON.stringify(this.location)})`)
   }
 }
 
 export const rule =
-  (value: RuleValue, location?: ILocationInfo) =>
+  (value: RuleValue, location?: LocationInfo) =>
     new Rule(value, location)

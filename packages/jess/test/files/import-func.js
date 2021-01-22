@@ -1,38 +1,34 @@
+import * as $JESS from 'jess'
+const $J = $JESS.tree
+const $CONTEXT = new $JESS.Context
+$CONTEXT.id = '1fef6088'
+import { area } from './imports/compute.ts'
 
-import * as _JESS from '../../src'
-const _J = _JESS.tree
-const __CONTEXT = new _JESS.Context
 
-/** My nodes */
-import { area } from './imports/compute'
-export let something = 1
-let __BK_something = something
-
-export default (__VARS = {}, __RETURN_NODE) => {
-  const { module, ...rest } = __VARS
-
-  let something = _JESS.merge(__BK_something, rest.something)
-
-  const __TREE = _J.root((() => {
-    const __OUT = []
-    __OUT.push(_J.rule({
-      sels: 
-        _J.list([
-          _J.sel([_J.el(".box")])
-        ]),
-      value: (() => {
-        const __OUT = []
-        __OUT.push(_J.decl({
-          name: "foo",
-          value: _J.cast(area(5))
-        }))
-        return __OUT
-      })()
-    }))
-    return __OUT
-  })())
-  if (__RETURN_NODE) {
-    return __TREE
+function $DEFAULT ($VARS = {}, $RETURN_NODE) {
+  
+  const $TREE = $J.root((() => {
+    const $OUT = []
+    $OUT.push($J.rule({
+      sels: $J.list([
+        $J.sel([$J.el($J.anon(".box"))])
+      ]),
+      value: $J.ruleset(
+        (() => {
+          const $OUT = []
+          $OUT.push($J.decl({
+            name: $J.expr([$J.anon("area")]),
+            value: $J.cast(area(5))
+          }))
+          return $OUT
+        })()
+      )},[3,1,46,5,1,71]))
+    return $OUT
+  })(),[1,1,0,5,1,71])
+  if ($RETURN_NODE) {
+    return $TREE
   }
-  return _JESS.render(__TREE, __CONTEXT)
+  return $JESS.renderCss($TREE, $CONTEXT)
 }
+$DEFAULT["box"] = "box"
+export default $DEFAULT

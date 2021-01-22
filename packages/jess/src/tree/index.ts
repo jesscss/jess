@@ -9,6 +9,7 @@
 export * from './node'
 export * from './js-node'
 
+export * from './at-rule'
 export * from './ampersand'
 export * from './anonymous'
 export * from './call'

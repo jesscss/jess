@@ -1,5 +1,5 @@
 import { Node, Anonymous, Nil } from '.'
-import { ILocationInfo, isNodeMap, NodeMap } from './node'
+import { LocationInfo, isNodeMap, NodeMap } from './node'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
 
@@ -11,7 +11,7 @@ export class Expression extends Node {
 
   constructor(
     value: (string | Node)[] | NodeMap,
-    location?: ILocationInfo
+    location?: LocationInfo
   ) {
     if (isNodeMap(value)) {
       super(value, location)

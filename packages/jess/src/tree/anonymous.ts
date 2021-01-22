@@ -1,5 +1,5 @@
 import { Node } from '.'
-import type { ILocationInfo } from './node'
+import type { LocationInfo } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
@@ -11,10 +11,10 @@ export class Anonymous extends Node {
   value: string
 
   toModule(context: Context, out: OutputCollector) {
-    out.add(JSON.stringify(this.value), this.location)
+    out.add(`$J.anon(${JSON.stringify(this.value)})`, this.location)
   }
 }
 
 export const anon =
-  (value: string, location?: ILocationInfo) =>
+  (value: string, location?: LocationInfo) =>
     new Anonymous(value, location)

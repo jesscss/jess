@@ -1,4 +1,4 @@
-import { Node, NodeMap, ILocationInfo, JsNode, Nil } from '.'
+import { Node, NodeMap, LocationInfo, JsNode, Nil } from '.'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
 import { Rule } from './rule'
@@ -50,7 +50,7 @@ export class Ruleset extends Node {
     })
     context.indent--
     pre = context.pre
-    out.add(`${pre}}\n`)
+    out.add(`${pre}}`)
   }
 
   toModule(context: Context, out: OutputCollector) {
@@ -84,5 +84,5 @@ export class Ruleset extends Node {
 }
 
 export const ruleset =
-  (value: Node[] | NodeMap, location?: ILocationInfo) =>
+  (value: Node[] | NodeMap, location?: LocationInfo) =>
     new Ruleset(value, location)

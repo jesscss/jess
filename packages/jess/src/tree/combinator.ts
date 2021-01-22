@@ -1,4 +1,4 @@
-import { Anonymous, ILocationInfo, NodeMap } from '.'
+import { Anonymous, LocationInfo, NodeMap } from '.'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
@@ -13,5 +13,5 @@ export class Combinator extends Anonymous {
 }
 
 export const co =
-  (value?: string | NodeMap, location?: ILocationInfo) =>
+  (value?: string | NodeMap, location?: LocationInfo) =>
     new Combinator(value, location)

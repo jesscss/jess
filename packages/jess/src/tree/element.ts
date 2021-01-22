@@ -1,7 +1,7 @@
-import { Node, Anonymous } from '.'
+import { Node, Anonymous, Expression, List } from '.'
 import type { JsExpr } from './js-expr'
 import type { Context } from '../context'
-import { ILocationInfo, isNodeMap, NodeMap } from './node'
+import { LocationInfo, isNodeMap, NodeMap } from './node'
 import { OutputCollector } from '../output'
 
 export class Element extends Node {
@@ -9,7 +9,7 @@ export class Element extends Node {
 
   constructor(
     value: string | Anonymous | JsExpr | NodeMap,
-    location?: ILocationInfo
+    location?: LocationInfo
   ) {
     if (isNodeMap(value)) {
       super(value, location)
@@ -39,6 +39,11 @@ export class Element extends Node {
 
   eval(context: Context) {
     const node = <Element>super.eval(context)
+    const value = node.value
+    // Bubble expressions and lists up to Selectors
+    if (value instanceof Expression || value instanceof List) {
+      return value
+    }
     context.hashClass(node.value.value)
     return node
   }

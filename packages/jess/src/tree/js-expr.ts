@@ -1,5 +1,5 @@
 import { Node } from '.'
-import type { ILocationInfo } from './node'
+import type { LocationInfo } from './node'
 import type { Context } from '../context' 
 import { OutputCollector } from '../output'
 
@@ -24,5 +24,5 @@ export class JsExpr extends Node {
 }
 
 export const js =
-  (value: string, location?: ILocationInfo) =>
+  (value: string, location?: LocationInfo) =>
     new JsExpr(value, location)

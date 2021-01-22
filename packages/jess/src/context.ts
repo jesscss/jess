@@ -1,7 +1,8 @@
 import type { Node } from './tree'
+import config from './config'
 
 export type ContextOptions = {
-  module?: boolean
+  global?: boolean
   [k: string]: string | number | boolean
 }
 
@@ -12,7 +13,6 @@ export const generateId = (length = 8) => {
   for (let i = 0; i < length; i++) {
       str += idChars[Math.floor(Math.random() * idChars.length)]
   }
-
   return str
 }
 
@@ -46,7 +46,10 @@ export class Context {
   inCustom: boolean
 
   constructor(opts?: ContextOptions) {
-    this.opts = opts || Object.create(null)
+    this.opts = {
+      ...config.options,
+      ...(opts || {})
+    }
     this.id = generateId()
     this.frames = []
     this.exports = new Set()
@@ -60,7 +63,7 @@ export class Context {
     return Array(this.indent + 1).join('  ')
   }
 
-  /** Hash a CSS class name or not depending on the module setting */
+  /** Hash a CSS class name or not depending on the `global` setting */
   hashClass(name: string) {
     /** Remove dot for mapping */
     name = name.slice(1)
@@ -69,7 +72,7 @@ export class Context {
       return `.${lookup}`
     }
     let mapVal: string
-    if (this.opts.module) {
+    if (!this.opts.global) {
       mapVal = `${name}_${this.id}`
     } else {
       mapVal = name

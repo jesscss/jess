@@ -1,5 +1,5 @@
 import { Node, Nil, Anonymous, Dimension, Expression } from '.'
-import type { ILocationInfo } from './node'
+import type { LocationInfo } from './node'
 import type { Context } from '../context'
 /**
  * Casts the result of a JS expression
@@ -32,5 +32,5 @@ export class Cast extends Node {
 }
 
 export const cast =
-  (value: any, location?: ILocationInfo) =>
+  (value: any, location?: LocationInfo) =>
     new Cast(value, location)

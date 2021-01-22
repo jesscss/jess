@@ -1,4 +1,4 @@
-import { Node, NodeMap, ILocationInfo, Nil } from '.'
+import { Node, NodeMap, LocationInfo, Nil } from '.'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 import { JsNode } from './js-node'
@@ -24,8 +24,11 @@ export class Root extends Node {
     return node
   }
 
-  toCSS(context: Context, output: OutputCollector) {
-    this.value.forEach(v => v.toCSS(context, output))
+  toCSS(context: Context, out: OutputCollector) {
+    this.value.forEach(v => {
+      v.toCSS(context, out)
+      out.add('\n')
+    })
   }
 
   toModule(context: Context, out: OutputCollector) {
@@ -70,11 +73,11 @@ export class Root extends Node {
     })
     context.indent--
     pre = context.pre
-    out.add(`  ${pre}return $OUT\n${pre}})()\n`)
+    out.add(`  ${pre}return $OUT\n${pre}})(),${JSON.stringify(this.location)})\n`)
     out.add(`${pre}if ($RETURN_NODE) {\n`)
     out.add(`${pre}  return $TREE\n`)
     out.add(`${pre}}\n`)
-    out.add(`${pre}return $JESS.render($TREE, $CONTEXT)\n`)
+    out.add(`${pre}return $JESS.renderCss($TREE, $CONTEXT)\n`)
     out.add('}\n')
     const classMap = context.classMap
     for (let prop in classMap) {
@@ -87,5 +90,5 @@ export class Root extends Node {
 }
 
 export const root =
-  (value: Node[] | NodeMap, location?: ILocationInfo) =>
+  (value: Node[] | NodeMap, location?: LocationInfo) =>
     new Root(value, location)

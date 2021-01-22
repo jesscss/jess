@@ -1,5 +1,5 @@
 import { Node, JsNode, JsCollection } from '.'
-import { ILocationInfo } from './node'
+import { LocationInfo } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
@@ -54,7 +54,7 @@ export class JsKeyValue extends JsNode {
 
   constructor(
     value: JsKeyValueValue,
-    location?: ILocationInfo
+    location?: LocationInfo
   ) {
     const name = value.name
     if (name.includes('-')) {
@@ -91,5 +91,5 @@ export class JsKeyValue extends JsNode {
 }
 
 export const keyval =
-  (value: JsKeyValueValue, location?: ILocationInfo) =>
+  (value: JsKeyValueValue, location?: LocationInfo) =>
     new JsKeyValue(value, location)

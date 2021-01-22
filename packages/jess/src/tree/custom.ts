@@ -1,5 +1,5 @@
 import { Declaration, DeclarationValue } from '.'
-import type { ILocationInfo, NodeMap } from './node'
+import type { LocationInfo, NodeMap } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
@@ -45,5 +45,5 @@ export class CustomDeclaration extends Declaration {
 }
 
 export const custom =
-  (value: DeclarationValue, location?: ILocationInfo) =>
+  (value: DeclarationValue, location?: LocationInfo) =>
     new CustomDeclaration(value, location)

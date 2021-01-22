@@ -1,5 +1,5 @@
 import { Node, Anonymous } from '.'
-import type { ILocationInfo, NodeMap } from './node'
+import type { LocationInfo, NodeMap } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
@@ -14,10 +14,11 @@ export type DeclarationValue = NodeMap & {
 export class Declaration extends Node {
   name: Node
   value: Node
+  important: Node
 
   constructor(
     value: DeclarationValue,
-    location?: ILocationInfo
+    location?: LocationInfo
   ) {
     const name = value.name
     if (name.constructor === String) {
@@ -27,11 +28,14 @@ export class Declaration extends Node {
   }
 
   toCSS(context: Context, out: OutputCollector) {
-    const loc = this.location
     this.name.toCSS(context, out)
-    out.add(': ', loc)
+    out.add(': ')
     this.value.toCSS(context, out)
-    out.add(';', loc)
+    if (this.important) {
+      out.add(' ')
+      this.important.toCSS(context, out)
+    }
+    out.add(';')
   }
 
   toModule(context: Context, out: OutputCollector) {
@@ -40,12 +44,16 @@ export class Declaration extends Node {
     out.add(`$J.decl({\n`, loc)
     out.add(`  ${pre}name: `)
     this.name.toModule(context, out)
-    out.add(`\n  ${pre}value: `)
+    out.add(`,\n  ${pre}value: `)
     this.value.toModule(context, out)
+    if (this.important) {
+      out.add(`\n  ${pre}important: `)
+      this.important.toModule(context, out)
+    }
     out.add(`\n${pre}})`)
   }
 }
 
 export const decl =
-  (value: DeclarationValue, location?: ILocationInfo) =>
+  (value: DeclarationValue, location?: LocationInfo) =>
     new Declaration(value, location)

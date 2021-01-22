@@ -1,6 +1,6 @@
 import {
   Node,
-  ILocationInfo,
+  LocationInfo,
   isNodeMap,
   NodeMap
 } from '.'
@@ -17,7 +17,7 @@ export class Dimension extends Node {
 
   constructor(
     value: number | string | NodeMap,
-    location?: ILocationInfo
+    location?: LocationInfo
   ) {
     if (isNodeMap(value)) {
       super(value, location)
@@ -26,7 +26,7 @@ export class Dimension extends Node {
       super({ value }, location)
       return
     }
-    const regex = /([0-9]*(?:\.[0-9]+)?)([a-z]*)/
+    const regex = /([-+]?[0-9]*(?:\.[0-9]+)?)(%|[a-z]*)/
     const found = (<string>value).match(regex)
     if (!found) {
       throw { message: 'Not a valid dimension.' }

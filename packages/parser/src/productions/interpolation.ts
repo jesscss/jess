@@ -105,9 +105,13 @@ export default function(this: JessParser, $: JessParser) {
     () => $.OR([
       { ALT: () => $.SUBRULE($.jsValue) },
       { ALT: () => $.CONSUME($.T.WS) },
+      { ALT: () => $.CONSUME($.T.Dot) },
       { ALT: () => $.CONSUME($.T.Colon) },
+      { ALT: () => $.CONSUME($.T.Ampersand) },
+      { ALT: () => $.CONSUME($.T.Pipe) },
       { ALT: () => $.CONSUME($.T.Comma) },
       { ALT: () => $.CONSUME($.T.SemiColon) },
+      { ALT: () => $.CONSUME($.T.Number) },
       /** =, >, <, <=, => */
       { ALT: () => $.CONSUME($.T.CompareOperator) },
       { ALT: () => $.CONSUME($.T.AdditionOperator) },

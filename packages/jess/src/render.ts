@@ -1,18 +1,25 @@
-import type { Node } from './tree'
-import type { Context } from './context'
-import { OutputCollector } from './output'
-
+import rollup from 'rollup'
+import commonJs from '@rollup/plugin-commonjs'
+import nodeResolve from '@rollup/plugin-node-resolve'
+import sucrase from '@rollup/plugin-sucrase'
+import jess from './plugin/rollup'
 
 /**
- * Given a root node and context, we can render
+ * @todo - add options
  */
-export const renderModule = (root: Node, context: Context) => {
-  const evaldRoot = root.eval(context)
-  const out = new OutputCollector
-  evaldRoot.toCSS(context, out)
-  const result = {
-    $CSS: out.toString(),
-    ...context.classMap
-  }
-  return result
+export const render = async (filePath: string, opts = {}) => {
+  const bundle = rollup.rollup({
+    input: filePath,
+    plugins: [
+      nodeResolve({
+        extensions: ['.js', '.ts']
+      }),
+      commonJs(),
+      sucrase({
+        exclude: ['node_modules/**'],
+        transforms: ['typescript']
+      }),
+      jess()
+    ]
+  })
 }

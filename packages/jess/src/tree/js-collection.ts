@@ -1,5 +1,5 @@
 import { JsKeyValue } from '.'
-import { Node, NodeMap, ILocationInfo } from './node'
+import { Node, NodeMap, LocationInfo } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 /**
@@ -34,8 +34,9 @@ export class JsCollection extends Node {
       out.add(`  ${pre}${JSON.stringify(node.name.toString())}: `)
       node.value.toModule(context, out)
       if (i < length) {
-        out.add(',\n')
+        out.add(',')
       }
+      out.add('\n')
     })
     out.add(`${pre}}`)
     context.indent--
@@ -43,5 +44,5 @@ export class JsCollection extends Node {
 }
 
 export const coll =
-  (value: JsKeyValue[] | NodeMap, location?: ILocationInfo) =>
+  (value: JsKeyValue[] | NodeMap, location?: LocationInfo) =>
     new JsCollection(value, location)

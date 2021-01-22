@@ -77,30 +77,40 @@ export default function(this: CssParser, $: CssParser) {
    * It would be great if CSS formalized this distinction, but for now,
    * this seems safe.
    */
-  $.block = $.RULE('block', () => {
-    return {
-      name: 'block',
-      children: $.OR([
-        {
-          ALT: () => [
-            $.OR2([
-              { ALT: () => $.CONSUME($.T.LParen) },
-              { ALT: () => $.CONSUME($.T.Function) }
-            ]),
+  $.block = $.RULE('block',
+    () => $.OR([
+      {
+        ALT: () => ({
+          name: 'function',
+          children: [
+            $.CONSUME($.T.Function),
             $.SUBRULE($.expressionList),
             $.CONSUME($.T.RParen)
           ]
-        },
-        {
-          ALT: () => [
-            $.CONSUME($.T.LSquare),
+        })
+      },
+      {
+        ALT: () => ({
+          name: 'block',
+          children: [
+            $.CONSUME($.T.LParen),
             $.SUBRULE2($.expressionList),
+            $.CONSUME2($.T.RParen)
+          ]
+        })
+      },
+      {
+        ALT: () => ({
+          name: 'block',
+          children: [
+            $.CONSUME($.T.LSquare),
+            $.SUBRULE3($.expressionList),
             $.CONSUME($.T.RSquare)
           ]
-        }
-      ])
-    }
-  })
+        })
+      }
+    ])
+  )
 
   $.curlyBlock = $.RULE('curlyBlock',
     () => ({

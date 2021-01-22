@@ -17,24 +17,31 @@ export default function (this: JessParser, $: JessParser) {
   )
 
   $.mixinPrelude = $.RULE('mixinPrelude', () => {
-    const prelude = []
+    const prelude = [$._()]
     /** @todo - identify these pieces better */
-    $.OPTION(() => prelude.push($.CONSUME($.T.WS)))
     $.OR([
       { ALT: () => {
         /** JS ident */
-        prelude.push($.CONSUME($.T.PlainIdent))
-        $.OPTION2(() => prelude.push($.CONSUME2($.T.WS)))
+        prelude.push(
+          $.CONSUME($.T.PlainIdent),
+          $._(1)
+        )
         $.OPTION3(() => {
-          prelude.push($.CONSUME($.T.LParen))
-          prelude.push($.SUBRULE($.mixinArgs))
-          prelude.push($.CONSUME($.T.RParen))
+          prelude.push(
+            $.CONSUME($.T.LParen),
+            $.SUBRULE($.mixinArgs),
+            $.CONSUME($.T.RParen)
+          )
         })
       }},
       { ALT: () => {
-        prelude.push($.CONSUME($.T.Function))
-        prelude.push($.SUBRULE2($.mixinArgs))
-        prelude.push($.CONSUME2($.T.RParen))
+        prelude.push(
+          $.CONSUME($.T.Function),
+          undefined,
+          undefined,
+          $.SUBRULE2($.mixinArgs),
+          $.CONSUME2($.T.RParen)
+        )
       }}
     ])
 
@@ -95,9 +102,22 @@ export default function (this: JessParser, $: JessParser) {
         $.CONSUME($.T.AtInclude),
         $._(),
         /** JS function */
-        $.CONSUME($.T.Function),
-        $.SUBRULE($.expressionList),
-        $.CONSUME($.T.RParen),
+        $.OR([
+          {
+            ALT: () => ({
+              name: 'function',
+              children: [
+                $.CONSUME($.T.Function),
+                $.SUBRULE($.expressionList),
+                $.CONSUME($.T.RParen)
+              ]
+            })
+          },
+          {
+            ALT: () => $.SUBRULE($.jsExpression)
+          }
+        ]),
+
         $.OPTION(() => $.CONSUME($.T.SemiColon))
       ]
     })

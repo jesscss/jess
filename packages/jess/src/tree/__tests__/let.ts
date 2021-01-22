@@ -9,7 +9,7 @@ let out: OutputCollector
 
 describe('Let', () => {
   beforeEach(() => {
-    context = new Context
+    context = new Context({ global: true })
     out = new OutputCollector
   })
 
@@ -20,7 +20,7 @@ describe('Let', () => {
     })) 
     expect(`${rule}`).to.eq('@let brandColor: #eee;')
     rule.toModule(context, out)
-    expect(out.toString()).to.eq('export let brandColor = $J.expr(["#eee"])\nlet $BK_brandColor = brandColor')
+    expect(out.toString()).to.eq('export let brandColor = $J.expr([$J.anon("#eee")])\nlet $BK_brandColor = brandColor')
   })
 
   it('should serialize a @let collection', () => {
@@ -44,7 +44,7 @@ describe('Let', () => {
     )
     rule.toModule(context, out)
     expect(out.toString()).to.eq(
-      'export let brand = {\n  "dark": "#222",\n  "light": "#eee"}\nlet $BK_brand = brand'
+      'export let brand = {\n  "dark": $J.anon("#222"),\n  "light": $J.anon("#eee")\n}\nlet $BK_brand = brand'
     )
   })
 })
