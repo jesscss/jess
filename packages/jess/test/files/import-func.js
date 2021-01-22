@@ -11,13 +11,13 @@ function $DEFAULT ($VARS = {}, $RETURN_NODE) {
     const $OUT = []
     $OUT.push($J.rule({
       sels: $J.list([
-        $J.sel([$J.el(".box")])
+        $J.sel([$J.el($J.anon(".box"))])
       ]),
       value: $J.ruleset(
         (() => {
           const $OUT = []
           $OUT.push($J.decl({
-            name: $J.expr(["area"]),
+            name: $J.expr([$J.anon("area")]),
             value: $J.cast(area(5))
           }))
           return $OUT
@@ -28,7 +28,7 @@ function $DEFAULT ($VARS = {}, $RETURN_NODE) {
   if ($RETURN_NODE) {
     return $TREE
   }
-  return $JESS.render($TREE, $CONTEXT)
+  return $JESS.renderCss($TREE, $CONTEXT)
 }
-$DEFAULT["box"] = "box_1fef6088"
+$DEFAULT["box"] = "box"
 export default $DEFAULT

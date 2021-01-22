@@ -8,7 +8,7 @@ import { OutputCollector } from '../output'
  * #id > .class.class
  * 
  * Stored as:
- * [Element, '>', Element, Element]
+ * [Element, Combinator, Element, Element]
  * 
  * @todo
  * Push an ampersand at the beginning of selector expressions
@@ -29,6 +29,11 @@ export class Selector extends Expression {
       value: values
     }, location)
   }
+
+  // eval(context: Context) {
+
+  //   return this
+  // }
 
   toCSS(context: Context, out: OutputCollector) {
     this.value.forEach(node => node.toCSS(context, out))

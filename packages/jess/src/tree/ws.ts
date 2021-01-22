@@ -28,7 +28,7 @@ export class WS extends Node {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    out.add(JSON.stringify(this.value))
+    out.add(`$J.ws()`)
   }
 }
 

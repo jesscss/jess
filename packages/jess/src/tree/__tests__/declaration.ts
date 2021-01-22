@@ -18,6 +18,6 @@ describe('Declaration', () => {
   it('should serialize to a module', () => {
     const rule = decl({ name: expr(['color']), value: spaced(['#eee']) })
     rule.toModule(context, out)
-    expect(out.toString()).to.eq('$J.decl({\n  name: $J.expr(["color"])\n  value: $J.spaced(["#eee"])\n})')
+    expect(out.toString()).to.eq('$J.decl({\n  name: $J.expr([$J.anon("color")]),\n  value: $J.spaced([$J.anon("#eee")])\n})')
   })
 })

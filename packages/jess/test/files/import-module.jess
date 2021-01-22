@@ -1,6 +1,0 @@
-@import styles from './other.jess';
-
-// In module mode, each file has scoped classes
-.parent $(styles.box) {
-   
-}

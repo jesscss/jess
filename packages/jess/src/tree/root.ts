@@ -77,7 +77,7 @@ export class Root extends Node {
     out.add(`${pre}if ($RETURN_NODE) {\n`)
     out.add(`${pre}  return $TREE\n`)
     out.add(`${pre}}\n`)
-    out.add(`${pre}return $JESS.render($TREE, $CONTEXT)\n`)
+    out.add(`${pre}return $JESS.renderCss($TREE, $CONTEXT)\n`)
     out.add('}\n')
     const classMap = context.classMap
     for (let prop in classMap) {

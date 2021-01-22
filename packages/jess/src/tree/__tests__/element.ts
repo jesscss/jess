@@ -35,7 +35,7 @@ describe('Element', () => {
   it('should serialize a module', () => {
     let rule = el('foo')
     rule.toModule(context, out)
-    expect(out.toString()).to.eq('$J.el("foo")')
+    expect(out.toString()).to.eq('$J.el($J.anon("foo"))')
     
     rule = el(js('colorBrand'))
     out = new OutputCollector

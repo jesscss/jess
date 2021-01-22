@@ -1,4 +1,5 @@
 import type { Node } from './tree'
+import config from './config'
 
 export type ContextOptions = {
   global?: boolean
@@ -45,7 +46,10 @@ export class Context {
   inCustom: boolean
 
   constructor(opts?: ContextOptions) {
-    this.opts = opts || Object.create(null)
+    this.opts = {
+      ...config.options,
+      ...(opts || {})
+    }
     this.id = generateId()
     this.frames = []
     this.exports = new Set()

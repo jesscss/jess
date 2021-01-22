@@ -23,7 +23,8 @@ import {
   AtRule,
   JsCollection,
   JsExpr,
-  Mixin
+  Mixin,
+  Ampersand
 } from '../tree'
 import { JsImport } from '../tree/js-import'
 
@@ -49,22 +50,26 @@ export class CstVisitor {
       const tokens = this.parser.T
       const {
         image,
+        startOffset,
         startLine,
         startColumn,
-        startOffset,
+        endOffset,
         endLine,
-        endColumn,
-        endOffset
+        endColumn
       } = ctx
 
       const loc: LocationInfo = [
+        startOffset,
         startLine,
         startColumn,
-        startOffset,
+        endOffset,
         endLine,
-        endColumn,
-        endOffset
+        endColumn
       ]
+
+      if (image === '&') {
+        return new Ampersand
+      }
 
       if (tokenMatcher(ctx, tokens.Dimension) || tokenMatcher(ctx, tokens.Number)) {
         return new Dimension(image, loc)

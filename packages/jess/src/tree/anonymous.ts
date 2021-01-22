@@ -11,7 +11,7 @@ export class Anonymous extends Node {
   value: string
 
   toModule(context: Context, out: OutputCollector) {
-    out.add(JSON.stringify(this.value), this.location)
+    out.add(`$J.anon(${JSON.stringify(this.value)})`, this.location)
   }
 }
 
