@@ -25,6 +25,8 @@ export class Ruleset extends Node {
           /** @todo - at-rules */
           if (rule instanceof Rule) {
             context.rootRules.push(rule)
+          } else if (rule instanceof Ruleset) {
+            rules.push(...rule.value)
           } else {
             rules.push(rule)
           }
@@ -44,7 +46,6 @@ export class Ruleset extends Node {
     out.add('{\n')
     context.indent++
     let pre = context.pre
-
     value.forEach(v => {
       out.add(pre)
       v.toCSS(context, out)

@@ -36,6 +36,6 @@
   },
   "homepage": "https://github.com/matthew-dean/jess#readme",
   "devDependencies": {
-    "@types/lodash": "^4.14.167"
+    "@types/lodash": "^4.14.168"
   }
 }

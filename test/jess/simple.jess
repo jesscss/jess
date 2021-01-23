@@ -1,5 +1,0 @@
-@let color: red;
-
-.box {
-  color: $color;
-}

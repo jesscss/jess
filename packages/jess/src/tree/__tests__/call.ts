@@ -8,7 +8,7 @@ let context: Context
 let out: OutputCollector
 describe('Declaration', () => {
   beforeEach(() => {
-    context = new Context({ global: true })
+    context = new Context
     out = new OutputCollector
   })
   it('should serialize to CSS', () => {
