@@ -15,6 +15,7 @@ export class List<T extends Primitive = Primitive> extends Node {
   toCSS(context: Context, out: OutputCollector) {
     out.add('', this.location)
     const length = this.value.length - 1
+    const pre = context.pre
     this.value.forEach((node, i) => {
       if (node instanceof Node) {
         node.toCSS(context, out)
@@ -22,7 +23,11 @@ export class List<T extends Primitive = Primitive> extends Node {
         out.add(node.toString())
       }
       if (i < length) {
-        out.add(', ')
+        if (context.inSelector) {
+          out.add(`,\n${pre}`)
+        } else {
+          out.add(', ')
+        }
       }
     })
   }

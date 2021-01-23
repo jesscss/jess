@@ -1,4 +1,4 @@
-import { Expression, Combinator, isNodeMap } from '.'
+import { Expression, Combinator, isNodeMap, Ampersand, Nil, WS } from '.'
 import type { Node, NodeMap, LocationInfo } from './node'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
@@ -30,10 +30,39 @@ export class Selector extends Expression {
     }, location)
   }
 
-  // eval(context: Context) {
+  eval(context: Context) {
+    let selector: Selector = this.clone()
+    let elements = [...selector.value]
+    selector.value = elements
+    
+    const hasAmp = elements.find(el => el instanceof Ampersand)
+    /**
+     * Try to evaluate all selectors as if they are prepended by `&`
+     */
+    if (!hasAmp) {
+      if (elements[0] instanceof Combinator) {
+        elements.unshift(new Ampersand())
+      } else {
+        elements.unshift(new Ampersand(), new Combinator(' '))
+      }
+    }
 
-  //   return this
-  // }
+    selector = super.eval.call(selector, context)
+    elements = selector.value
+
+    for(let i = 0; i < elements.length; i++) {
+      let value = elements[0]
+      if (
+        value instanceof Combinator ||
+        value instanceof WS
+      ) {
+        elements.shift()
+      } else {
+        break
+      }
+    }
+    return selector
+  }
 
   toCSS(context: Context, out: OutputCollector) {
     this.value.forEach(node => node.toCSS(context, out))

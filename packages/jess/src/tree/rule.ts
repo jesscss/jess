@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 import { Node, NodeMap, LocationInfo, Ruleset } from '.'
+=======
+import { Node, NodeMap, LocationInfo, Ruleset, List, Nil } from '.'
+>>>>>>> dev
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
 import { List } from './list'
@@ -40,6 +44,11 @@ export class Rule extends Node {
       context.frames.shift()
 
       rule.evaluated = true
+
+      /** Remove emptied rules */
+      if (this.value.value.length !== 0 && rule.value.value.length === 0) {
+        return new Nil()
+      }
       return rule
     }
     return this
@@ -47,19 +56,9 @@ export class Rule extends Node {
 
   toCSS(context: Context, out: OutputCollector) {
     const { sels, value } = this
-    /** A selector list gets output to multiple lines */
-    if (sels instanceof List) {
-      const length = sels.value.length - 1
-      const pre = context.pre
-      sels.value.forEach((sel, i) => {
-        (<Node>sel).toCSS(context, out)
-        if (i < length) {
-          out.add(`,\n${pre}`)
-        }
-      })
-    } else {
-      sels.toCSS(context, out)
-    }
+    context.inSelector = true
+    sels.toCSS(context, out)
+    context.inSelector = false
     out.add(' ')
     value.toCSS(context, out)
   }

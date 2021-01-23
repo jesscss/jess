@@ -47,6 +47,10 @@ export const JsReservedWords = [
 /**
  * Either the left-hand side of a @let assignment,
  * or the key (prop) in a collection.
+ * 
+ * @todo - technically we don't need to limit
+ * reserved words in object properties, just
+ * initial @let identifiers
  */
 export class JsKeyValue extends JsNode {
   name: string

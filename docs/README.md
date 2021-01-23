@@ -49,14 +49,8 @@ However, unlike Less/Sass, this doesn't immediately transpile to CSS. Instead, i
 ```jsx
 import styles from 'box.jess'
 
-// Note: this is set to true by default
-// -- the Jess CLI sets this to false when
-//    compiling to bundles and not importing
-//    into modules
-const css = styles({ module: true })
-
 function myComponent() {
-  return <div className={css.box}>foo</div>
+  return <div className={styles.box}>foo</div>
 }
 ```
 
