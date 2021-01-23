@@ -1,4 +1,4 @@
-import { Node, Ruleset } from '.'
+import { Node, Ruleset, Rule, Ampersand, List } from '.'
 import type { LocationInfo } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
@@ -17,6 +17,25 @@ export class AtRule extends Node {
   name: string
   value: Node
   rules: Ruleset
+
+  eval(context: Context) {
+    const node = <AtRule>super.eval(context)
+    /** Don't let rooted rules bubble past an at-rule */
+    if (node.rules) {
+      let rules = node.rules.value
+      /** Wrap sub-rules of a media query like Less */
+      if (context.frames.length !== 0) {
+        const rule = new Rule({ sels: new List([new Ampersand()]), value: rules })
+          .inherit(this)
+          .eval(context)
+        rules = [rule]
+        node.rules.value = rules
+      }
+      context.rootRules.forEach(rule => rules.push(rule))
+      context.rootRules = []
+    }
+    return node
+  }
 
   toCSS(context: Context, out: OutputCollector) {
     out.add(`${this.name}`, this.location)

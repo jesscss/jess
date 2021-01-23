@@ -185,7 +185,7 @@ This means that a `.jess` file is, unlike Sass / Less, tree shake-able. The Jess
 
 ```less
 // library/theme.jess
-@import { mix } from 'jess/functions';
+@import mix from '@jesscss/functions/mix';
 
 @let themeColor: blue;
 @let colors {
@@ -248,13 +248,28 @@ To make migration / code compatibility easier, like Less and Sass, Jess supports
 
 #### Media bubbling
 
-Nested `@media` bubbling is not yet supported.
+```less
+a {
+  color: blue;
+  @media all { 
+    color: rebeccapurple;
+  }
+}
+```
+```less
+a {
+  color: blue;
+}
+@media all {
+  a {
+    color: rebeccapurple;
+  }
+}
+```
 
 #### Mixins / Functions
 
 You can easily define the equivalent of a "mixin" by writing a normal function.
-
-_Todo: there's some work on the include side to make this possible._
 
 ```js
 // functions.js
