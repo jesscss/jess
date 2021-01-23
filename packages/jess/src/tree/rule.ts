@@ -1,11 +1,6 @@
-<<<<<<< HEAD
-import { Node, NodeMap, LocationInfo, Ruleset } from '.'
-=======
 import { Node, NodeMap, LocationInfo, Ruleset, List, Nil } from '.'
->>>>>>> dev
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
-import { List } from './list'
 
 type RuleValue = NodeMap & {
   sels: Node
