@@ -150,12 +150,43 @@ describe('CST-to-AST', () => {
   //   expect(node.toString()).to.eq('@supports (property: value) {\n  @media (max-size: 2px) {\n    @supports (whatever: something) {\n      .inner {\n        property: value;\n      }\n    }\n  }\n}\n')
   // })
 
-  it(`rule #20`, async () => {
-    const node = await parse(
-      `&:hover {}`
-    )
-    node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('$J.rule({\n  sels: $J.list([\n    $J.sel([$J.amp(), $J.el($J.anon(":hover"))])\n  ]),\n  value: $J.ruleset(\n    (() => {\n      const $OUT = []\n      return $OUT\n    })()\n  )},[1,1,0,1,10,9])')
+  // it(`rule #20`, async () => {
+  //   let node = await parse(
+  //     `&:hover {}`
+  //   )
+  //   node.value[0].toModule(context, out)
+  //   expect(out.toString()).to.eq('$J.rule({\n  sels: $J.list([\n    $J.sel([$J.amp(), $J.el($J.anon(":hover"))])\n  ]),\n  value: $J.ruleset(\n    (() => {\n      const $OUT = []\n      return $OUT\n    })()\n  )},[1,1,0,1,10,9])')
+    
+  //   node = node.eval(context)
+  //   expect(node.value[0].toString()).to.eq(':hover {\n}')
+  // })
+
+  // it(`rule #21`, async () => {
+  //   let node = await parse(
+  //     `
+  //     a, b {
+  //       &:hover {
+  //         background: blue;
+  //       }
+  //     }
+  //     `
+  //   )  
+  //   node = node.eval(context)
+  //   expect(node.toString()).to.eq('a:hover, b:hover {\n  background: blue;\n}\n')
+  // })
+
+  it(`rule #22`, async () => {
+    let node = await parse(
+      `
+      a, b {
+        + c {
+          background: blue;
+        }
+      }
+      `
+    )  
+    node = node.eval(context)
+    expect(node.toString()).to.eq('a + c, b + c {\n  background: blue;\n}\n')
   })
 })
 

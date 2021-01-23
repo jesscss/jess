@@ -2,6 +2,8 @@ import { Node, Anonymous, Nil } from '.'
 import { LocationInfo, isNodeMap, NodeMap } from './node'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
+import { List } from './list'
+import combinate from 'combinate'
 
 /**
  * A continuous collection of nodes
@@ -26,6 +28,33 @@ export class Expression extends Node {
   eval(context: Context): Node {
     const node = <Expression>super.eval(context)
     node.value = node.value.filter(n => n && !(n instanceof Nil))
+
+    let lists: { [pos: number]: Node[] }
+
+    node.value.forEach((n, i) => {
+      if (n instanceof List) {
+        if(!lists) {
+          lists = {}
+        }
+        lists[i] = n.value
+      }
+    })
+
+    if (lists) {
+      const combinations = combinate(lists)
+      const returnList = new List([]).inherit(this)
+      
+      combinations.forEach(combo => {
+        const expr = [...node.value]
+        for (let pos in combo) {
+          expr[pos] = combo[pos]
+        }
+        returnList.value.push(new Expression(expr))
+      })
+      return returnList
+    }
+
+
     if (node.value.length === 1) {
       return node.value[0]
     }

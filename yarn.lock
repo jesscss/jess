@@ -4567,6 +4567,11 @@ columnify@^1.5.4:
     strip-ansi "^3.0.0"
     wcwidth "^1.0.0"
 
+combinate@^1.1.2:
+  version "1.1.2"
+  resolved "https://registry.yarnpkg.com/combinate/-/combinate-1.1.2.tgz#726a57f54111b7a2fc50bb9da6e33bb274dae4f5"
+  integrity sha512-ZCYL7mF0Sq27f2QvAXIz/NlO9NFRKHPZvOdMQXH5/ec5oiqqWPbEkj6wAWGz17MC+4uVS/Z/PBBJvsg04xqJ+g==
+
 combined-stream@^1.0.6, combined-stream@~1.0.6:
   version "1.0.8"
   resolved "https://registry.yarnpkg.com/combined-stream/-/combined-stream-1.0.8.tgz#c3d45a8b34fd730631a110a8a2520682b31d5a7f"

@@ -1,7 +1,31 @@
-import { CstChild, CstNode, IToken } from '@jesscss/css-parser'
+import { CstNode, IToken } from '@jesscss/css-parser'
 import type { JessParser } from '../jessParser'
 
 export default function(this: JessParser, $: JessParser) {
+  /** Borrowed from the Less parser */
+  $.complexSelector = $.OVERRIDE_RULE('complexSelector', () => {
+    const children: CstNode[] = []
+    $.OR([
+      { ALT: () => {
+        children.push(
+          $.SUBRULE($.compoundSelector)
+        )
+        $.MANY(() => children.push($.SUBRULE($.combinatorSelector)))
+      }},
+      {
+        ALT: () => $.AT_LEAST_ONE(
+          () => children.push($.SUBRULE2($.combinatorSelector))
+        )
+      }
+    ])
+    children.push($._())
+    return {
+      name: 'complexSelector',
+      children
+    }
+  })
+
+
   $.nameSelector = $.OVERRIDE_RULE('nameSelector',
     () => $.OR([
       { ALT: () => $.CONSUME($.T.Selector) },

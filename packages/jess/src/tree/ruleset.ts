@@ -30,8 +30,10 @@ export class Ruleset extends Node {
           }
         }
       })
+
       rule.value = rules
       rule.evaluated = true
+
       return rule
     }
     return this

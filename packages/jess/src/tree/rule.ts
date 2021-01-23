@@ -1,7 +1,6 @@
-import { Node, NodeMap, LocationInfo, Ruleset } from '.'
+import { Node, NodeMap, LocationInfo, Ruleset, List, Nil } from '.'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
-import { List } from './list'
 
 type RuleValue = NodeMap & {
   sels: Node
@@ -40,6 +39,11 @@ export class Rule extends Node {
       context.frames.shift()
 
       rule.evaluated = true
+
+      /** Remove emptied rules */
+      if (this.value.value.length !== 0 && rule.value.value.length === 0) {
+        return new Nil()
+      }
       return rule
     }
     return this
