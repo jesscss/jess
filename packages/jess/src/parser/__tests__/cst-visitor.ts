@@ -186,7 +186,35 @@ describe('CST-to-AST', () => {
       `
     )  
     node = node.eval(context)
-    expect(node.toString()).to.eq('a + c, b + c {\n  background: blue;\n}\n')
+    expect(node.toString()).to.eq('a + c,\nb + c {\n  background: blue;\n}\n')
+  })
+
+  it(`rule #23`, async () => {
+    let node = await parse(
+      `
+      a, b, c {
+        [foo]& {
+          background: blue;
+        }
+      }
+      `
+    )  
+    node = node.eval(context)
+    expect(node.toString()).to.eq('[foo]a,\n[foo]b,\n[foo]c {\n  background: blue;\n}\n')
+  })
+
+  it(`rule #24`, async () => {
+    let node = await parse(
+      `
+      a, b {
+        & + & {
+          background: blue;
+        }
+      }
+      `
+    )  
+    node = node.eval(context)
+    expect(node.toString()).to.eq('a + a,\nb + a,\na + b,\nb + b {\n  background: blue;\n}\n')
   })
 })
 

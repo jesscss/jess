@@ -45,6 +45,9 @@ export class Context {
   /** In a custom declaration's value */
   inCustom: boolean
 
+  /** In a selector */
+  inSelector: boolean
+
   constructor(opts?: ContextOptions) {
     this.opts = {
       ...config.options,
