@@ -246,7 +246,7 @@ To make migration / code compatibility easier, like Less and Sass, Jess supports
 }
 ```
 
-#### Media bubbling
+#### At-Rule bubbling
 
 ```less
 a {
