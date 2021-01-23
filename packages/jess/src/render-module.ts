@@ -14,16 +14,20 @@ const hashCode = (str: string) => {
   return hash
 }
 
-export const renderModule = async (filePath: string) => {
-  const readPath = path.resolve(process.cwd(), filePath)
+/**
+ * Used by the Rollup pre-processor
+ * 
+ * @param {string} contents - Full file contents
+ * @param {string} filePath - absolute path to file
+ */
+export const renderModule = async (contents: string, filePath: string) => {
   try {
-    const contents = await fs.promises.readFile(readPath)
-    const root = await parse(contents.toString(), {
+    const root = await parse(contents, {
       filename: filePath,
       rootpath: process.cwd()
     })
     const context = new Context
-    context.id = hashCode(readPath).toString(16)
+    context.id = hashCode(filePath).toString(16)
     const out = new OutputCollector
     /** 
      * We evaluate the tree but don't return it.

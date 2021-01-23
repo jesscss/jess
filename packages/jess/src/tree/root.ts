@@ -1,7 +1,6 @@
-import { Node, NodeMap, LocationInfo, Nil } from '.'
+import { Node, NodeMap, LocationInfo, Nil, Ruleset, JsNode } from '.'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
-import { JsNode } from './js-node'
 
 /**
  * The root node. Contains a collection of nodes
@@ -16,6 +15,9 @@ export class Root extends Node {
       rule = rule.eval(context)
       if (rule && !(rule instanceof Nil)) {
         rules.push(rule)
+      }
+      if (rule instanceof Ruleset) {
+        rules.push(...rule.value)
       }
       context.rootRules.forEach(rule => rules.push(rule))
       context.rootRules = []
