@@ -1,7 +1,5 @@
 import { Context } from './context'
 import { OutputCollector } from './output'
-import * as fs from 'fs'
-import * as path from 'path'
 import { parse } from './parser'
 
 const hashCode = (str: string) => {

@@ -10,7 +10,7 @@
     "dist": "rollup -c",
     "build": "yarn clean && yarn compile",
     "clean": "shx rm -rf ./dist ./lib tsconfig.tsbuildinfo",
-    "compile": "tsc -b tsconfig.json",
+    "compile": "tsc -b tsconfig.json && yarn dist",
     "dev": "tsc -b tsconfig.json -w",
     "serve": "lite-server --baseDir=\"test\"",
     "test": "mocha test/bootstrap.js --recursive test/**/*.spec.js"

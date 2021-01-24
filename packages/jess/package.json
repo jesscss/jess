@@ -12,7 +12,6 @@
     "node": ">=10"
   },
   "dependencies": {
-    "@endemolshinegroup/cosmiconfig-typescript-loader": "^3.0.2",
     "@jesscss/parser": "^1.0.2-alpha.0",
     "@rollup/plugin-commonjs": "^17.0.0",
     "@rollup/plugin-node-resolve": "^11.1.0",
@@ -23,8 +22,6 @@
     "cosmiconfig": "^7.0.0",
     "lodash": "^4.17.20",
     "rollup": "^2.36.2",
-    "tslib": "^2.1.0",
-    "typescript": "^4.0.3",
     "yargs": "^16.2.0"
   },
   "scripts": {
@@ -39,9 +36,9 @@
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/matthew-dean/jess/issues"
+    "url": "https://github.com/jesscss/jess/issues"
   },
-  "homepage": "https://github.com/matthew-dean/jess#readme",
+  "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
     "@types/lodash": "^4.14.168"
   }
