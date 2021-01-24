@@ -1,6 +1,6 @@
 {
   "name": "jess",
-  "version": "1.0.1-alpha.1",
+  "version": "1.0.2-alpha.0",
   "description": "JavaScript Enhanced Style Sheets",
   "main": "lib/index",
   "types": "lib/index",
@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@endemolshinegroup/cosmiconfig-typescript-loader": "^3.0.2",
-    "@jesscss/parser": "^1.0.1-alpha.1",
+    "@jesscss/parser": "^1.0.2-alpha.0",
     "@rollup/plugin-commonjs": "^17.0.0",
     "@rollup/plugin-node-resolve": "^11.1.0",
     "@rollup/plugin-sucrase": "^3.1.0",
