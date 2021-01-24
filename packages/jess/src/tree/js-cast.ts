@@ -2,6 +2,7 @@ import { Node, Nil, Anonymous, Dimension, List, Ruleset, Declaration } from '.'
 import type { LocationInfo } from './node'
 import type { Context } from '../context'
 import isPlainObject from 'lodash/isPlainObject'
+import type { OutputCollector } from '../output'
 
 /**
  * Casts the result of a JS expression
@@ -12,6 +13,17 @@ import isPlainObject from 'lodash/isPlainObject'
  */
 export class Cast extends Node {
   value: any
+
+  constructor(
+    value: any,
+    location?: LocationInfo
+  ) {
+    /** 
+     * Objects passed to super are assumed to be
+     * Node maps, so we'll assign this manually
+     */
+    super({ value }, location)
+  }
 
   cast(value: any): Node {
     if (value === undefined || value === null) {
@@ -31,14 +43,22 @@ export class Cast extends Node {
 
   eval(context: Context) {
     const value = this.value
+    /** Pass through objects, we'll deal with them later */
     if (isPlainObject(value)) {
-      const rules: Node[] = []
-      for (let name in value) {
-        rules.push(new Declaration({ name, value: this.cast(value[name]) }))
-      }
-      return new Ruleset(rules)
+      return value
     }
     return this.cast(value).eval(context)
+  }
+
+  toCSS(context: Context, out: OutputCollector) {
+    const value = this.value
+    if (value !== undefined) {
+      if (value instanceof Node) {
+        value.toCSS(context, out)
+      } else {
+        out.add(value.toString())
+      }
+    }
   }
 
   toModule() { return '' }

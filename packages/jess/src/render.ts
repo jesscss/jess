@@ -38,6 +38,7 @@ export const render = async (filePath: string, config = {}) => {
   })
 
   const runtimeFile = filePath.replace(/\.jess$/, '__.js')
+  const codeFile = filePath.replace(/\.jess$/, '__code.js')
   const { output } = await bundle.generate({
     format: 'es',
     file: runtimeFile
@@ -46,7 +47,7 @@ export const render = async (filePath: string, config = {}) => {
   const code = (<any>output[1]).source
   fs.writeFileSync(runtimeFile, runtime)
   const css = require(runtimeFile).default(opts.vars)
-  // fs.unlinkSync(runtimeFile)
+  fs.unlinkSync(runtimeFile)
   
   return {
     ...css,
