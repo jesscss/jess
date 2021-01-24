@@ -44,7 +44,9 @@ export class Element extends Node {
     if (value instanceof Expression || value instanceof List) {
       return value
     }
-    context.hashClass(node.value.value)
+    if (node.isClass) {
+      context.hashClass(node.value.value)
+    }
     return node
   }
 

@@ -40,7 +40,10 @@ export class AtRule extends Node {
   toCSS(context: Context, out: OutputCollector) {
     out.add(`${this.name}`, this.location)
     /** Prelude expression includes white space */
-    this.value.toCSS(context, out)
+    const value = this.value
+    if (value) {
+      value.toCSS(context, out)
+    }
     if (this.rules) {
       this.rules.toCSS(context, out)
     } else {
@@ -52,14 +55,19 @@ export class AtRule extends Node {
     out.add(`$J.atrule({\n`, this.location)
     let pre = context.pre
     context.indent++
-    out.add(`${pre}  name: ${JSON.stringify(this.name)},\n`)
-    out.add(`${pre}  value: ${this.value.toModule(context, out)}`)
+    out.add(`${pre}  name: ${JSON.stringify(this.name)}`)
+    const value = this.value
+    if (value) {
+      out.add(`,\n${pre}  value: `)
+      value.toModule(context, out)
+    }
     const rules = this.rules
     if (rules) {
-      out.add(`,\n${pre}  rules: ${rules.toModule(context, out)}`)
+      out.add(`,\n${pre}  rules: `)
+      rules.toModule(context, out)
     }
     context.indent--
-    out.add(`,\n${pre}},${JSON.stringify(this.location)})`)
+    out.add(`\n${pre}},${JSON.stringify(this.location)})`)
   }
 }
 

@@ -1,11 +1,11 @@
-import { JsNode, List, Anonymous, Declaration, Ruleset } from '.'
-import type { LocationInfo, NodeMap } from './node'
+import { JsNode, List, JsKeyValue, Ruleset, JsIdent } from '.'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
+import { LocationInfo } from './node'
 
-export type MixinValue = NodeMap & {
-  name: string
-  args?: List<Anonymous | Declaration>
+export type MixinValue = {
+  name: JsIdent
+  args?: List<JsIdent | JsKeyValue>
   value: Ruleset
 }
 
@@ -17,37 +17,26 @@ export type MixinValue = NodeMap & {
  * }
  */
 export class Mixin extends JsNode {
-  name: string
-  args: List<Anonymous | Declaration>
+  name: JsIdent
+  args: List<JsIdent | JsKeyValue>
   value: Ruleset
-
-  constructor(
-    value: MixinValue,
-    location?: LocationInfo
-  ) {
-    const name = value.name
-    /** @todo - disallow JS reserved words */
-    if (!name) {
-      throw { message: 'Identifier required' }
-    }
-    super(value, location)
-  }
 
   toModule(context: Context, out: OutputCollector) {
     const { name, args, value } = this
-    context.exports.add(name)
+    const nm = name.value
+    context.exports.add(nm)
     if (context.rootLevel === 0) {
       out.add('export ', this.location)
     }
-    out.add(`let ${name} = (`)
-    const backupName = `$BK_${name}`
+    out.add(`let ${nm} = (`)
+    const backupName = `$BK_${nm}`
     if (args) {
       const length = args.value.length - 1
       args.value.forEach((node, i) => {
-        if (node instanceof Anonymous) {
+        if (node instanceof JsIdent) {
           out.add(node.value)
         } else {
-          out.add(node.name.toString())
+          out.add(node.name.value)
           out.add(' = ')
           node.value.toModule(context, out)
         }
@@ -64,10 +53,10 @@ export class Mixin extends JsNode {
       if (args) {
         const length = args.value.length - 1
         args.value.forEach((node, i) => {
-          if (node instanceof Anonymous) {
+          if (node instanceof JsIdent) {
             out.add(node.value)
           } else {
-            out.add(node.name.toString())
+            out.add(node.name.value)
           }
           if (i < length) {
             out.add(', ')
@@ -77,11 +66,11 @@ export class Mixin extends JsNode {
       out.add(`)`)
     }
     if (context.rootLevel === 0) {
-      out.add(`\nlet $BK_${name} = ${name}`)
+      out.add(`\nlet $BK_${nm} = ${nm}`)
     }
   }
 }
 
 export const mixin =
-  (...args: ConstructorParameters<typeof Mixin>) =>
-    new Mixin(...args)
+  (value: MixinValue, location?: LocationInfo) =>
+    new Mixin(value, location)

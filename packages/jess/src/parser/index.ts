@@ -14,12 +14,14 @@ export const parse = async (input: string, fileInfo: FileInfo = {}) => {
   const { cst, lexerResult, parser } = cstParser.parse(input)
   if (lexerResult.errors.length > 0) {
     throw {
+      ...lexerResult.errors[0],
       fileInfo,
       errors: lexerResult.errors
     }
   }
   if (parser.errors.length > 0) {
     throw {
+      ...parser.errors[0],
       fileInfo,
       errors: parser.errors
     }
@@ -30,6 +32,8 @@ export const parse = async (input: string, fileInfo: FileInfo = {}) => {
     return node
   } catch (e) {
     throw {
+      message: e.message,
+      stack: e.stack,
       fileInfo,
       errors: [e]
     }

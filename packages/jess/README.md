@@ -4,7 +4,13 @@ _Note: This project is in alpha. Expect (and report) bugs!_
 # Jess
 JavaScript Evaluated Style Sheets, from the people who brought you Less.
 
-_Why is the logo a hawk? A "jess" is defined as "a short leather strap that is fastened around each leg of a hawk"_.
+## Why Jess?
+
+Jess looks / functions more like the languages you're used to — CSS and JavaScript — and integrates smoothly with both. Sass / Less are mini-programming languages, which have to manage things like variable scope. Jess is just JavaScript, and Jess variables and mixins are just JavaScript variables and functions, respectively. That means you can export Jess into JavaScript, and you can import JavaScript into Jess. (You can do a lot more than that, but that's the basic premise.)
+
+### P.S. Why is the logo a hawk?
+
+_A "jess" is defined as "a short leather strap that is fastened around each leg of a hawk"_.
 
 ## Usage
 ```
@@ -66,9 +72,10 @@ jess file.jess
 _In progress, requires the (unfinished) Rollup or Webpack plugin._
 ```jsx
 import styles, { square } from './styles.jess'
+const css = styles()
 
 export const myComponent = props => {
-  return <div className={styles.box} style={square(props.size).obj()}>Component</div>
+  return <div className={css.box} style={square(props.size).obj()}>Component</div>
 }
 ```
 

@@ -41,10 +41,6 @@ export const renderModule = async (contents: string, filePath: string) => {
     /**
      * @todo - format errors a la eslint
      */
-    if (e.errors) {
-      e.errors.forEach(err => {
-        console.error(err.message)
-      })
-    }
+    throw e
   }
 }

@@ -1,6 +1,6 @@
 import { expect } from 'chai'
 import 'mocha'
-import { mixin, expr, coll, decl, anon, ruleset } from '..'
+import { mixin, expr, coll, decl, anon, ruleset, ident } from '..'
 import { Context } from '../../context'
 import { OutputCollector } from '../../output'
 
@@ -15,7 +15,7 @@ describe('Mixin', () => {
 
   it('should serialize to a module', () => {
     let rule = mixin({
-      name: 'myMixin',
+      name: ident('myMixin'),
       value: ruleset([
         decl({ name: 'color', value: anon('black')}),
         decl({ name: 'background-color', value: anon('white')})

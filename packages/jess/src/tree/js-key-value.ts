@@ -1,48 +1,13 @@
-import { Node, JsNode, JsCollection } from '.'
+import { Node, JsNode, JsCollection, JsIdent } from '.'
 import { LocationInfo } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
 
 export type JsKeyValueValue = {
-  name: string
+  name: JsIdent | string
   value: Node
 }
-
-export const JsReservedWords = [
-  'abstract', 'arguments',
-  'await', 'boolean',
-  'break', 'byte',
-  'case', 'catch',
-  'char', 'class',
-  'const', 'continue',
-  'debugger', 'default', 
-  'delete', 'do',
-  'double', 'else',
-  'enum', 'eval',
-  'export', 'extends',
-  'false', 'final',
-  'finally', 'float', 
-  'for', 'function',
-  'goto', 'if',
-  'implements', 'import',
-  'in', 'instanceof',
-  'int', 'interface',
-  'let', 'long', 
-  'native', 'new',
-  'null', 'package',
-  'private', 'protected',
-  'public', 'return',
-  'short', 'static',
-  'super', 'switch',
-  'synchronized', 'this',
-  'throw', 'throws',
-  'transient', 'true',
-  'try', 'typeof',
-  'var', 'void',
-  'volatile', 'while',
-  'with', 'yield'
-]
 
 /**
  * Either the left-hand side of a @let assignment,
@@ -53,30 +18,23 @@ export const JsReservedWords = [
  * initial @let identifiers
  */
 export class JsKeyValue extends JsNode {
-  name: string
+  name: JsIdent
   value: Node
 
   constructor(
-    value: JsKeyValueValue,
+    val: JsKeyValueValue,
     location?: LocationInfo
   ) {
-    const name = value.name
-    if (name.includes('-')) {
-      throw {
-        message: 'Dashes are not allowed in JS identifiers.'
-      }
+    let { name, value } = val
+    if (name.constructor === String) {
+      name = new JsIdent(name)
     }
-    if (JsReservedWords.includes(name)) {
-      throw {
-        message: `'${name}' is a reserved word.`
-      }
-    }
-    super(value, location)
+    super({ name, value }, location)
   }
 
   toCSS(context: Context, out: OutputCollector) {
     const value = this.value
-    out.add(this.name, this.location)
+    out.add(this.name.value, this.location)
     if (!(value instanceof JsCollection)) {
       out.add(':')
     }
@@ -88,7 +46,7 @@ export class JsKeyValue extends JsNode {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    out.add(`${this.name}: `, this.location)
+    out.add(`${this.name.value}: `, this.location)
     this.value.toModule(context, out)
   }
 
