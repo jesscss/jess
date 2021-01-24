@@ -18,7 +18,9 @@ export class Call extends Node {
       ref = this.ref()
     } catch(e) {
       /** We didn't find it, so output as CSS */
-      return this
+      const call = this.clone()
+      call.value = call.value.eval(context)
+      return call
     }
     const value = this.value
     let args: Node[]
@@ -27,7 +29,12 @@ export class Call extends Node {
     } else {
       args = [value]
     }
-    const returnVal = ref.call(context, ...args)
+    /**
+     * @todo
+     * Like Less, allow late evaluation?
+     */
+    args = args.map(arg => arg.eval(context))
+    const returnVal = ref.hasOwnProperty('$IS_NODE') ? ref.call(context, args[0], true) : ref.call(context, ...args)
     const node = new Cast(returnVal)
     return node.eval(context)
   }

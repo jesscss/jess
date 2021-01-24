@@ -1,7 +1,7 @@
-import { Node, NodeMap, LocationInfo, Nil } from '.'
+import { Node, NodeMap, LocationInfo, Nil, Ruleset, JsNode } from '.'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
-import { JsNode } from './js-node'
+import { Rule } from './rule'
 
 /**
  * The root node. Contains a collection of nodes
@@ -14,9 +14,15 @@ export class Root extends Node {
     const rules: Node[] = []
     this.value.forEach(rule => {
       rule = rule.eval(context)
-      if (rule && !(rule instanceof Nil)) {
-        rules.push(rule)
+      if (rule) {
+        if (rule instanceof Ruleset) {
+          rules.push(...rule.value)
+        }
+        else if(!(rule instanceof Nil)) {
+          rules.push(rule)
+        }
       }
+
       context.rootRules.forEach(rule => rules.push(rule))
       context.rootRules = []
     })
@@ -27,7 +33,10 @@ export class Root extends Node {
   toCSS(context: Context, out: OutputCollector) {
     this.value.forEach(v => {
       v.toCSS(context, out)
-      out.add('\n')
+      /** Another root will add its own line breaks */
+      if (!(v instanceof Root)) {
+        out.add('\n')
+      }
     })
   }
 
@@ -79,6 +88,7 @@ export class Root extends Node {
     out.add(`${pre}}\n`)
     out.add(`${pre}return $JESS.renderCss($TREE, $CONTEXT)\n`)
     out.add('}\n')
+    out.add(`$DEFAULT.$IS_NODE = true\n`)
     const classMap = context.classMap
     for (let prop in classMap) {
       out.add(`$DEFAULT["${prop}"] = "${classMap[prop]}"\n`)

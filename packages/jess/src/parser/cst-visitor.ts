@@ -24,7 +24,8 @@ import {
   JsCollection,
   JsExpr,
   Mixin,
-  Ampersand
+  Ampersand,
+  Include
 } from '../tree'
 import { JsImport } from '../tree/js-import'
 
@@ -151,7 +152,7 @@ export class CstVisitor {
   }
 
   atInclude({ children }: CstNode) {
-    return this.visit(children[2])
+    return new Include(this.visit(children[2]))
   }
 
   atLet({ children, location }: CstNode) {

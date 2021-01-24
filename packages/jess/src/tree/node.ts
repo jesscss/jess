@@ -146,7 +146,10 @@ export abstract class Node {
     return this.value
   }
 
-  /** Generate a .ts module and .ts.map */
+  /** 
+   * Generate a .ts module and .ts.map
+   * @todo - Should we generate an ESTree AST to avoid re-parsing in Rollup?
+   */
   abstract toModule(context: Context, out: OutputCollector): void
 
   /** Generate a .css file and .css.map */

@@ -9,7 +9,7 @@ let out: OutputCollector
 
 describe('Mixin', () => {
   beforeEach(() => {
-    context = new Context({ global: true })
+    context = new Context
     out = new OutputCollector
   })
 

@@ -40,7 +40,7 @@ width: ($width * 2);
 ```
 **Jess**
 ```scss
-@import { multiply } from 'jess/functions/math';
+@import multiply from '@jesscss/functions/multiply';
 width: $multiply(width, 2);
 ```
 
@@ -67,7 +67,7 @@ width: $multiply(width, 2);
 ```
 **Jess**
 ```less
-@import { multiply } from 'jess/functions/math';
+@import multiply from '@jesscss/functions/multiply';
 
 @mixin mixin(size) {
   width: multiply($size, 1px);
@@ -105,7 +105,7 @@ each(@sizes, #(@size) {
 **Jess**
 
 ```less
-@import { each } from 'jess/functions';
+@import each from '@jesscss/functions/each';
 
 @mixin size(size) {
   .icon-$(size) {

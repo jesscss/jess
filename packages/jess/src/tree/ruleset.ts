@@ -1,7 +1,6 @@
-import { Node, NodeMap, LocationInfo, JsNode, Nil } from '.'
+import { Node, NodeMap, LocationInfo, JsNode, Nil, Rule, AtRule } from '.'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
-import { Rule } from './rule'
 
 /**
  * A set of nodes (usually declarations)
@@ -22,9 +21,10 @@ export class Ruleset extends Node {
       this.value.forEach(rule => {
         rule = rule.eval(context)
         if (rule && !(rule instanceof Nil)) {
-          /** @todo - at-rules */
-          if (rule instanceof Rule) {
+          if (rule instanceof Rule || rule instanceof AtRule) {
             context.rootRules.push(rule)
+          } else if (rule instanceof Ruleset) {
+            rules.push(...rule.value)
           } else {
             rules.push(rule)
           }
@@ -44,7 +44,6 @@ export class Ruleset extends Node {
     out.add('{\n')
     context.indent++
     let pre = context.pre
-
     value.forEach(v => {
       out.add(pre)
       v.toCSS(context, out)

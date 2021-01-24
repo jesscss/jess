@@ -9,7 +9,7 @@ let out: OutputCollector
 
 describe('List', () => {
   beforeEach(() => {
-    context = new Context({ global: true })
+    context = new Context
     out = new OutputCollector
   })
   it('should serialize to a list', () => {

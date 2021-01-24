@@ -26,7 +26,7 @@ export class Let extends JsNode {
   toModule(context: Context, out: OutputCollector) {
     const name = this.value.name
     if (context.rootLevel === 1) {
-        out.add(`let ${name} = $JESS.merge($BK_${name}, rest.${name})`)
+        out.add(`let ${name} = $JESS.merge($BK_${name}, $VARS.${name})`)
     } else {
       if (context.rootLevel === 0) {
         context.exports.add(name)

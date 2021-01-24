@@ -9,7 +9,7 @@ let out: OutputCollector
 
 describe('Element', () => {
   beforeEach(() => {
-    context = new Context({ global: true })
+    context = new Context
     out = new OutputCollector
   })
   it('should identify a class', () => {

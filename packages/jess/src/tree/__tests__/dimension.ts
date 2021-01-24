@@ -9,7 +9,7 @@ let out: OutputCollector
 
 describe('Dimension', () => {
   beforeEach(() => {
-    context = new Context({ global: true })
+    context = new Context
     out = new OutputCollector
   })
   it('should make a dimension from a string', () => {

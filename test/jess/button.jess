@@ -1,5 +1,0 @@
-@let button: '.button';
-
-$button {
-  foo: bar;
-}
