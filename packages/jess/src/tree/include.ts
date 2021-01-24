@@ -1,4 +1,4 @@
-import { Node, Declaration, Ruleset, Cast, LocationInfo } from '.'
+import { Node, Declaration, Ruleset, Cast, LocationInfo, Root } from '.'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 import isPlainObject from 'lodash/isPlainObject'
@@ -7,7 +7,13 @@ export class Include extends Node {
   value: Node
 
   eval(context: Context) {
-    const value: Node | object = this.value.eval(context)
+    let value = this.value.eval(context)
+    /**
+     * Include Roots as plain Rulesets
+     */
+    if (value instanceof Root) {
+      return new Ruleset(value.value).eval(context)
+    }
 
     /** Convert included objects into declaration sets */
     if (isPlainObject(value)) {
@@ -21,7 +27,7 @@ export class Include extends Node {
       return new Ruleset(rules)
     }
     
-    return <Node>value
+    return value
   }
 
   toModule(context: Context, out: OutputCollector) {

@@ -14,15 +14,10 @@ describe('Output files', () => {
     .forEach(file => {
       it(`${file}`, async () => {
         const jessFile = path.join(testData, file)
-        const jsFile = jessFile.replace(/\.jess$/, '.js')
         const cssFile = jessFile.replace(/\.jess$/, '.css')
 
         /** @todo - replace with render, which uses Rollup */
         const output = await render(jessFile)
-        const referenceModule = await fs.promises.readFile(jsFile)
-
-        expect(output.$JS).to.equal(referenceModule.toString())
-
         let referenceCss = (await fs.promises.readFile(cssFile)).toString()
         expect(output.$CSS).to.equal(referenceCss.toString())
       })
