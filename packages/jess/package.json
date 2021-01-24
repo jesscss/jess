@@ -4,9 +4,13 @@
   "description": "JavaScript Enhanced Style Sheets",
   "main": "lib/index",
   "types": "lib/index",
+  "bin": "./bin/cli.js",
   "files": [
     "lib"
   ],
+  "engines": {
+    "node": ">=10"
+  },
   "dependencies": {
     "@endemolshinegroup/cosmiconfig-typescript-loader": "^3.0.2",
     "@jesscss/parser": "^1.0.1-alpha.1",
@@ -14,12 +18,14 @@
     "@rollup/plugin-node-resolve": "^11.1.0",
     "@rollup/plugin-sucrase": "^3.1.0",
     "@rollup/plugin-virtual": "^2.0.3",
+    "chalk": "^4.1.0",
     "combinate": "^1.1.2",
     "cosmiconfig": "^7.0.0",
     "lodash": "^4.17.20",
     "rollup": "^2.36.2",
     "tslib": "^2.1.0",
-    "typescript": "^4.0.3"
+    "typescript": "^4.0.3",
+    "yargs": "^16.2.0"
   },
   "scripts": {
     "ci": "yarn build && yarn test",

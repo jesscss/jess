@@ -34,15 +34,20 @@ export const render = async (filePath: string, config = {}) => {
         transforms: ['typescript']
       })
     ],
-    external: /node_modules/
+    external: [
+      /node_modules/,
+      'jess'
+    ]
   })
 
-  const runtimeFile = filePath.replace(/\.jess$/, '__.js')
-  const codeFile = filePath.replace(/\.jess$/, '__code.js')
+  let runtimeFile = filePath.replace(/\.jess$/, '__.js')
   const { output } = await bundle.generate({
-    format: 'es',
-    file: runtimeFile
+    format: 'cjs',
+    file: runtimeFile,
+    exports: 'named'
   })
+  runtimeFile = path.resolve(process.cwd(), runtimeFile)
+
   const runtime = output[0].code
   const code = (<any>output[1]).source
   fs.writeFileSync(runtimeFile, runtime)
