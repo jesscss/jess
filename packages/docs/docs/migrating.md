@@ -122,10 +122,12 @@ each(@sizes, #(@size) {
 
 **Jess**
 
-_Note: not available in alpha, but will work like the following:_
+_Note: not available yet in alpha, but will work like the following:_
 
 ```less
 @import { each } from '@jesscss/fns';
+
+@let sizes: 24px, 32px, 40px;
 
 @mixin size(size) {
   .icon-$(size) {
