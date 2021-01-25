@@ -12,28 +12,27 @@ const features = [
     imageUrl: 'img/undraw_docusaurus_mountain.svg',
     description: (
       <>
-        Docusaurus was designed from the ground up to be easily installed and
-        used to get your website up and running quickly.
+        Do you know CSS? Do you know JavaScript? Then you can use Jess.
       </>
     ),
   },
   {
-    title: 'Focus on What Matters',
+    title: 'The Right Place for Everything',
     imageUrl: 'img/undraw_docusaurus_tree.svg',
     description: (
       <>
-        Docusaurus lets you focus on your docs, and we&apos;ll do the chores. Go
-        ahead and move your docs into the <code>docs</code> directory.
+        Styles go in stylesheets. Functions go in scripts. But there's no reason they
+        can't be friends.
       </>
     ),
   },
   {
-    title: 'Powered by React',
+    title: 'Powered by JavaScript',
     imageUrl: 'img/undraw_docusaurus_react.svg',
     description: (
       <>
-        Extend or customize your website layout by reusing React. Docusaurus can
-        be extended while reusing the same header and footer.
+        Rather than creating a new interpreted language like Sass or Less, Jess allows you to
+        use JavaScript where you need it.
       </>
     ),
   },
