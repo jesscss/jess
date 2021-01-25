@@ -23,7 +23,13 @@ export class Root extends Node {
         }
       }
 
-      context.rootRules.forEach(rule => rules.push(rule))
+      /**
+       * Inner-most rules get pushed first because
+       * of cascading evaluation, so we need to sort them.
+       */
+      context.rootRules
+        .sort((a: Node, b: Node) => a.location[0] - b.location[0])
+        .forEach(rule => rules.push(rule))
       context.rootRules = []
     })
     node.value = rules
