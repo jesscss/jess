@@ -55,6 +55,7 @@ export class Declaration extends Node {
     out.add(`\n${pre}})`)
   }
 }
+Declaration.prototype.allowRuleRoot = true
 
 export const decl =
   (value: DeclarationValue, location?: LocationInfo) =>

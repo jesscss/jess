@@ -247,6 +247,30 @@ describe('CST-to-AST', () => {
     node = node.eval(context)
     expect(node.toString()).to.eq('a {\n  color: blue;\n}\n@media all {\n  a {\n    color: rebeccapurple;\n  }\n}\n')
   })
+
+  it(`rule #26`, async () => {
+    let node = await parse(
+      `
+      a {
+        b {
+          one: 1;
+          &:hover {
+            two: 2;
+          }
+        }
+        c {
+          three: 3;
+          d {
+            four: 4;
+          }
+          five: 5;
+        }
+      }
+      `
+    )  
+    node = node.eval(context)
+    expect(node.toString()).to.eq('a b {\n  one: 1;\n}\na b:hover {\n  two: 2;\n}\na c {\n  three: 3;\n  five: 5;\n}\na c d {\n  four: 4;\n}\n')
+  })
 })
 
 /**

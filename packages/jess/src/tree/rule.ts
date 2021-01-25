@@ -70,6 +70,7 @@ export class Rule extends Node {
     out.add(`},${JSON.stringify(this.location)})`)
   }
 }
+Rule.prototype.allowRoot = true
 
 export const rule =
   (value: RuleValue, location?: LocationInfo) =>

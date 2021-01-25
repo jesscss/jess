@@ -7,7 +7,7 @@
   "source": "@site/docs/mdx.md",
   "slug": "/mdx",
   "permalink": "/docs/mdx",
-  "editUrl": "https://github.com/facebook/docusaurus/edit/master/website/docs/mdx.md",
+  "editUrl": "https://github.com/jesscss/jess/packages/docs/docs/mdx.md",
   "version": "current",
   "sidebar": "someSidebar",
   "previous": {

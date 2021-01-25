@@ -62,7 +62,7 @@
               "source": "@site/docs/doc1.md",
               "slug": "/",
               "permalink": "/docs/",
-              "editUrl": "https://github.com/facebook/docusaurus/edit/master/website/docs/doc1.md",
+              "editUrl": "https://github.com/jesscss/jess/packages/docs/docs/doc1.md",
               "version": "current",
               "sidebar_label": "Style Guide",
               "sidebar": "someSidebar",
@@ -80,7 +80,7 @@
               "source": "@site/docs/doc2.md",
               "slug": "/doc2",
               "permalink": "/docs/doc2",
-              "editUrl": "https://github.com/facebook/docusaurus/edit/master/website/docs/doc2.md",
+              "editUrl": "https://github.com/jesscss/jess/packages/docs/docs/doc2.md",
               "version": "current",
               "sidebar": "someSidebar",
               "previous": {
@@ -101,7 +101,7 @@
               "source": "@site/docs/doc3.md",
               "slug": "/doc3",
               "permalink": "/docs/doc3",
-              "editUrl": "https://github.com/facebook/docusaurus/edit/master/website/docs/doc3.md",
+              "editUrl": "https://github.com/jesscss/jess/packages/docs/docs/doc3.md",
               "version": "current",
               "sidebar": "someSidebar",
               "previous": {
@@ -122,7 +122,7 @@
               "source": "@site/docs/mdx.md",
               "slug": "/mdx",
               "permalink": "/docs/mdx",
-              "editUrl": "https://github.com/facebook/docusaurus/edit/master/website/docs/mdx.md",
+              "editUrl": "https://github.com/jesscss/jess/packages/docs/docs/mdx.md",
               "version": "current",
               "sidebar": "someSidebar",
               "previous": {
@@ -142,7 +142,7 @@
           "id": "welcome",
           "metadata": {
             "permalink": "/blog/welcome",
-            "editUrl": "https://github.com/facebook/docusaurus/edit/master/website/blog/blog/2019-05-30-welcome.md",
+            "editUrl": "https://github.com/jesscss/jess/packages/docs/blog/blog/2019-05-30-welcome.md",
             "source": "@site/blog/2019-05-30-welcome.md",
             "description": "Blog features are powered by the blog plugin. Simply add files to the blog directory. It supports tags as well!",
             "date": "2019-05-30T00:00:00.000Z",
@@ -173,7 +173,7 @@
           "id": "hello-world",
           "metadata": {
             "permalink": "/blog/hello-world",
-            "editUrl": "https://github.com/facebook/docusaurus/edit/master/website/blog/blog/2019-05-29-hello-world.md",
+            "editUrl": "https://github.com/jesscss/jess/packages/docs/blog/blog/2019-05-29-hello-world.md",
             "source": "@site/blog/2019-05-29-hello-world.md",
             "description": "Welcome to this blog. This blog is created with Docusaurus 2 alpha.",
             "date": "2019-05-29T00:00:00.000Z",
@@ -204,7 +204,7 @@
           "id": "hola",
           "metadata": {
             "permalink": "/blog/hola",
-            "editUrl": "https://github.com/facebook/docusaurus/edit/master/website/blog/blog/2019-05-28-hola.md",
+            "editUrl": "https://github.com/jesscss/jess/packages/docs/blog/blog/2019-05-28-hola.md",
             "source": "@site/blog/2019-05-28-hola.md",
             "description": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque elementum dignissim ultricies. Fusce rhoncus ipsum tempor eros aliquam consequat. Lorem ipsum dolor sit amet",
             "date": "2019-05-28T00:00:00.000Z",

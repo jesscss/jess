@@ -27,6 +27,7 @@
   "scripts": {
     "ci": "yarn build && yarn test",
     "prepublishOnly": "yarn build",
+    "benchmark": "node bin/cli.js benchmark/benchmark.jess",
     "build": "yarn clean && yarn compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
     "compile": "tsc -b tsconfig.json",

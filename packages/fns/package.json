@@ -1,0 +1,23 @@
+{
+  "name": "@jesscss/fns",
+  "publishConfig": {
+    "access": "public"
+  },
+  "version": "1.0.2-alpha.0",
+  "description": "Rollup plugin for Jess",
+  "main": "lib/index",
+  "types": "lib/index",
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "ci": "yarn build && yarn test",
+    "prepublishOnly": "npm run build",
+    "build": "yarn clean && yarn compile",
+    "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
+    "compile": "tsc -b tsconfig.json",
+    "test": "ts-mocha test/**/*.ts"
+  },
+  "author": "Matthew Dean",
+  "license": "MIT"
+}

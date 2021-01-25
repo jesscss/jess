@@ -336,7 +336,7 @@ body {
 
 @mixin nestedRuleset (width: 200px) {
   width: $width;
-  .column { margin: @width; }
+  .column { margin: $width; }
 }
 .content {
   @include nestedRuleset(600px);
@@ -480,7 +480,8 @@ body {
 }
 .mixin { border: 1px solid black; }
 .mixout { border-color: orange; }
-.borders { border-style: dashed; }
+@mixin borders { border-style: dashed; }
+.borders { @include borders(); }
 
 #namespace {
   .borders {

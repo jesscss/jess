@@ -1,7 +1,7 @@
 export default {
   "title": "Jess",
   "tagline": "JavaScript Enhanced Style Sheets",
-  "url": "https://jesscss/github.io",
+  "url": "https://jesscss.github.io",
   "baseUrl": "/",
   "onBrokenLinks": "throw",
   "onBrokenMarkdownLinks": "warn",
@@ -23,12 +23,7 @@ export default {
           "position": "left"
         },
         {
-          "to": "blog",
-          "label": "Blog",
-          "position": "left"
-        },
-        {
-          "href": "https://github.com/facebook/docusaurus",
+          "href": "https://github.com/jesscss/jess",
           "label": "GitHub",
           "position": "right"
         }
@@ -56,15 +51,15 @@ export default {
           "items": [
             {
               "label": "Stack Overflow",
-              "href": "https://stackoverflow.com/questions/tagged/docusaurus"
+              "href": "https://stackoverflow.com/questions/tagged/jess"
             },
             {
-              "label": "Discord",
-              "href": "https://discordapp.com/invite/docusaurus"
+              "label": "Gitter",
+              "href": "https://gitter.im/jesscss/community"
             },
             {
               "label": "Twitter",
-              "href": "https://twitter.com/docusaurus"
+              "href": "https://twitter.com/cssjess"
             }
           ]
         },
@@ -82,7 +77,7 @@ export default {
           ]
         }
       ],
-      "copyright": "Copyright © 2021 My Project, Inc. Built with Docusaurus."
+      "copyright": "Copyright © 2021 Jess. Built with Docusaurus."
     },
     "colorMode": {
       "defaultMode": "light",
@@ -110,11 +105,11 @@ export default {
       {
         "docs": {
           "sidebarPath": "/Users/matthew/git/oss/jess/packages/docs/sidebars.js",
-          "editUrl": "https://github.com/facebook/docusaurus/edit/master/website/"
+          "editUrl": "https://github.com/jesscss/jess/packages/docs/"
         },
         "blog": {
           "showReadingTime": true,
-          "editUrl": "https://github.com/facebook/docusaurus/edit/master/website/blog/"
+          "editUrl": "https://github.com/jesscss/jess/packages/docs/blog/"
         },
         "theme": {
           "customCss": "/Users/matthew/git/oss/jess/packages/docs/src/css/custom.css"

@@ -40,11 +40,11 @@ export const render = async (filePath: string, config = {}) => {
       //   extensions: ['.js', '.ts']
       // }),
       // commonJs(),
-      jess(),
-      sucrase({
-        exclude: ['node_modules/**'],
-        transforms: ['typescript']
-      })
+      jess()
+      // sucrase({
+      //   exclude: ['node_modules/**'],
+      //   transforms: ['typescript']
+      // })
     ],
     external: [
       /node_modules/,
