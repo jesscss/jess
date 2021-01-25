@@ -83,6 +83,7 @@ export class Ruleset extends Node {
     context.rootLevel = rootLevel
   }
 }
+Ruleset.prototype.allowRuleRoot = true
 
 export const ruleset =
   (value: Node[] | NodeMap, location?: LocationInfo) =>

@@ -33,7 +33,8 @@ export abstract class Node {
   fileInfo: FileInfo
 
   evaluated: boolean
-
+  allowRoot: boolean
+  allowRuleRoot: boolean
   _nodeKeys: string[]
 
   value: NodeValue

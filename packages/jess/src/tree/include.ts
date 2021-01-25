@@ -1,4 +1,4 @@
-import { Node, Declaration, Ruleset, Cast, LocationInfo, Root } from '.'
+import { Node, Declaration, Ruleset, Cast, LocationInfo, Root, Call } from '.'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 import isPlainObject from 'lodash/isPlainObject'
@@ -26,7 +26,13 @@ export class Include extends Node {
       }
       return new Ruleset(rules)
     }
-    
+    if (!value.allowRoot && !value.allowRuleRoot) {
+      let message = '@include returned an invalid node.'
+      if (value instanceof Call && this.value instanceof Call) {
+        message += ` Unknown function "${value.name}"`
+      }
+      throw { message }
+    }
     return value
   }
 

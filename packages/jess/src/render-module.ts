@@ -27,12 +27,6 @@ export const renderModule = async (contents: string, filePath: string) => {
     const context = new Context
     context.id = hashCode(filePath).toString(16)
     const out = new OutputCollector
-    /** 
-     * We evaluate the tree but don't return it.
-     * We just want to attach eval'd classes to
-     * the default function. 
-     */
-    root.eval(context)
     root.toModule(context, out)
     return {
       code: out.toString()

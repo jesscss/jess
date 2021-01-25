@@ -72,6 +72,7 @@ export class AtRule extends Node {
     out.add(`\n${pre}},${JSON.stringify(this.location)})`)
   }
 }
+AtRule.prototype.allowRoot = true
 
 export const atrule =
   (value: AtRuleValue, location?: LocationInfo) =>
