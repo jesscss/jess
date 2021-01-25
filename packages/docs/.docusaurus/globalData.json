@@ -16,10 +16,6 @@
               "sidebar": "someSidebar"
             },
             {
-              "id": "doc2",
-              "path": "/docs/doc2"
-            },
-            {
               "id": "install",
               "path": "/docs/install",
               "sidebar": "someSidebar"
