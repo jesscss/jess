@@ -93,6 +93,9 @@ export const getLocation = (loc?: CstNode['location']): LocationInfo => {
 export function collapseTokens(tokens: IToken[]): BaseTokenType {
   tokens = tokens.filter(tok => !!tok)
   let image: string = ''
+  if (!tokens[0]) {
+    return
+  }
   const { startLine, startColumn, startOffset } = tokens[0]
   const { endLine, endColumn, endOffset } = tokens[tokens.length - 1]
 

@@ -89,10 +89,6 @@ export class Root extends Node {
     out.add(`${pre}return $JESS.renderCss($TREE, $CONTEXT)\n`)
     out.add('}\n')
     out.add(`$DEFAULT.$IS_NODE = true\n`)
-    const classMap = context.classMap
-    for (let prop in classMap) {
-      out.add(`$DEFAULT["${prop}"] = "${classMap[prop]}"\n`)
-    }
     out.add('export default $DEFAULT')
     context.indent = 0
     context.rootLevel = 0

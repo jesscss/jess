@@ -6,7 +6,7 @@ import { OutputCollector } from '../../output'
 
 let context: Context
 let out: OutputCollector
-describe('Declaration', () => {
+describe('Call', () => {
   beforeEach(() => {
     context = new Context
     out = new OutputCollector
@@ -24,6 +24,6 @@ describe('Declaration', () => {
       value: list([num(100), num(100), num(100)])
     })
     rule.toModule(context, out)
-    expect(out.toString()).to.eq('$J.call({\n  name: "rgb",\n  value: $J.list([\n    $J.num({\n      value: 100\n      unit: ""\n    }),\n    $J.num({\n      value: 100\n      unit: ""\n    }),\n    $J.num({\n      value: 100\n      unit: ""\n    })\n  ]),\n  ref: () => rgb,\n})\n')
+    expect(out.toString()).to.eq('$J.call({\n  name: "rgb",\n  value: $J.list([\n    $J.num({\n      value: 100,\n      unit: ""\n    }),\n    $J.num({\n      value: 100,\n      unit: ""\n    }),\n    $J.num({\n      value: 100,\n      unit: ""\n    })\n  ]),\n  ref: () => rgb,\n})')
   })
 })

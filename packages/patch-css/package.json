@@ -1,6 +1,6 @@
 {
   "name": "@jesscss/patch-css",
-  "version": "1.0.1-alpha.1",
+  "version": "1.0.3-alpha.1",
   "publishConfig": {
     "access": "public"
   },
@@ -10,7 +10,7 @@
     "dist": "rollup -c",
     "build": "yarn clean && yarn compile",
     "clean": "shx rm -rf ./dist ./lib tsconfig.tsbuildinfo",
-    "compile": "tsc -b tsconfig.json",
+    "compile": "tsc -b tsconfig.json && yarn dist",
     "dev": "tsc -b tsconfig.json -w",
     "serve": "lite-server --baseDir=\"test\"",
     "test": "mocha test/bootstrap.js --recursive test/**/*.spec.js"
@@ -18,6 +18,5 @@
   "description": "CSS differ / attacher",
   "main": "lib/index",
   "author": "Matthew Dean",
-  "license": "MIT",
-  "devDependencies": {}
+  "license": "MIT"
 }

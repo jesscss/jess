@@ -51,7 +51,7 @@ export class Dimension extends Node {
   toModule(context: Context, out: OutputCollector) {
     const pre = context.pre
     out.add(`$J.num({\n`
-      + `  ${pre}value: ${this.value}\n`
+      + `  ${pre}value: ${this.value},\n`
       + `  ${pre}unit: "${this.unit ?? ''}"\n`
       + `${pre}})`
     , this.location)

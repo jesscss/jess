@@ -1,7 +1,7 @@
 import { Node, List, Cast } from '.'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
-import { JsReservedWords } from './js-key-value'
+import { JsReservedWords } from './js-ident'
 
 /**
  * A function call
@@ -22,6 +22,12 @@ export class Call extends Node {
       call.value = call.value.eval(context)
       return call
     }
+    if (!ref) {
+      const call = this.clone()
+      call.value = call.value.eval(context)
+      return call
+    }
+
     const value = this.value
     let args: Node[]
     if (value instanceof List) {
@@ -65,7 +71,7 @@ export class Call extends Node {
     }
     context.indent--
     pre = context.pre
-    out.add(`${pre}})\n`)
+    out.add(`${pre}})`)
   }
 }
 

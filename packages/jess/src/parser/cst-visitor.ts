@@ -25,7 +25,8 @@ import {
   JsExpr,
   Mixin,
   Ampersand,
-  Include
+  Include,
+  JsIdent
 } from '../tree'
 import { JsImport } from '../tree/js-import'
 
@@ -118,7 +119,7 @@ export class CstVisitor {
       name = (<IToken>prelude.children[1]).image.replace(/\($/, '')
       const args = this.visit(prelude.children[4])
       const value = this.visit(children[2])
-      return new Mixin({ name, args, value })
+      return new Mixin({ name: new JsIdent(name), args, value })
     } else {
       const value: Node = this.visit(prelude)
       if ((<CstNode>prelude.children[1])?.name === 'atImportJs') {
@@ -145,10 +146,10 @@ export class CstVisitor {
   mixinArg({ children }: CstNode) {
     const value = children[4]
     if (value) {
-      const name = (<IToken>children[0]).image
-      return new Declaration({ name, value: this.visit(value) })
+      const name = this.visit((<IToken>children[0]), JsIdent)
+      return new JsKeyValue({ name, value: this.visit(value) })
     }
-    return this.visit(children[0])
+    return this.visit(children[0], JsIdent)
   }
 
   atInclude({ children }: CstNode) {
@@ -160,8 +161,9 @@ export class CstVisitor {
   }
 
   atLetValue({ children }: CstNode) {
+    const name = (<IToken>(<CstNode>children[0]).children[0]).image
     return new JsKeyValue({
-      name: (<IToken>(<CstNode>children[0]).children[0]).image,
+      name: new JsIdent(name),
       value: this.visit((<CstNode>children[1]).children[0])
     })
   }
