@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.json",
+  "references": [{ "path": "../css-parser" }],
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "./lib",
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "lib"]
+}

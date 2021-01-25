@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "allowJs": true,
+    "outDir": "./lib",
+    "rootDir": ".",
+    "declaration": true,
+    "esModuleInterop": true,
+    "module": "commonjs",
+    "target": "es6",
+    "lib": ["es6"],
+    "baseUrl": "./packages",
+    "paths": {
+      "jess": ["jess/lib"],
+      "@jess/*": ["*/src"]
+    }
+  },
+  "exclude": ["node_modules", "lib"]
+}

@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.json",
+  "references": [
+    { "path" : "../css-parser" },
+    { "path" : "../parser" },
+    { "path" : "../patch-css" }
+  ],
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "./lib",
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "lib"]
+}

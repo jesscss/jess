@@ -1,0 +1,8 @@
+{
+  "name": "jess-loader",
+  "version": "1.0.2-alpha.0",
+  "description": "Official Webpack loader for Jess",
+  "main": "lib/index",
+  "author": "Matthew Dean",
+  "license": "MIT"
+}
