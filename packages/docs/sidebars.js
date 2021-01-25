@@ -1,6 +1,6 @@
 module.exports = {
   someSidebar: {
-    "Getting Started": ['about', 'install', 'migrating', 'style'],
-    Features: ['js', 'variables', 'mixins'],
+    "Getting Started": ['about', 'install', 'config', 'migrating', 'style'],
+    Features: ['js', 'variables', 'mixins', 'imports'],
   },
 };
