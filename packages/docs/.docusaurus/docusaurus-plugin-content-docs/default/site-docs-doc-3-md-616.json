@@ -7,7 +7,7 @@
   "source": "@site/docs/doc3.md",
   "slug": "/doc3",
   "permalink": "/docs/doc3",
-  "editUrl": "https://github.com/facebook/docusaurus/edit/master/website/docs/doc3.md",
+  "editUrl": "https://github.com/jesscss/jess/packages/docs/docs/doc3.md",
   "version": "current",
   "sidebar": "someSidebar",
   "previous": {
