@@ -8,6 +8,7 @@
     "build": "docusaurus build",
     "swizzle": "docusaurus swizzle",
     "deploy": "docusaurus deploy",
+    "deploy:matthew": "GIT_USER=matthew-dean USE_SSH=true yarn deploy",
     "serve": "docusaurus serve",
     "clear": "docusaurus clear"
   },
