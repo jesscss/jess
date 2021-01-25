@@ -7,15 +7,6 @@
   "source": "@site/docs/doc3.md",
   "slug": "/doc3",
   "permalink": "/docs/doc3",
-  "editUrl": "https://github.com/jesscss/jess/packages/docs/docs/doc3.md",
-  "version": "current",
-  "sidebar": "someSidebar",
-  "previous": {
-    "title": "Document Number 2",
-    "permalink": "/docs/doc2"
-  },
-  "next": {
-    "title": "Powered by MDX",
-    "permalink": "/docs/mdx"
-  }
+  "editUrl": "https://github.com/jesscss/jess/tree/master/packages/docs/docs/doc3.md",
+  "version": "current"
 }

@@ -7,7 +7,7 @@ module.exports = {
   onBrokenMarkdownLinks: 'warn',
   favicon: 'img/favicon.ico',
   organizationName: 'jesscss', // Usually your GitHub org/user name.
-  projectName: 'jess', // Usually your repo name.
+  projectName: 'jesscss.github.io', // Usually your repo name.
   themeConfig: {
     navbar: {
       title: 'Jess',
@@ -88,13 +88,13 @@ module.exports = {
           sidebarPath: require.resolve('./sidebars.js'),
           // Please change this to your repo.
           editUrl:
-            'https://github.com/jesscss/jess/packages/docs/',
+            'https://github.com/jesscss/jess/tree/master/packages/docs/',
         },
         blog: {
           showReadingTime: true,
           // Please change this to your repo.
           editUrl:
-            'https://github.com/jesscss/jess/packages/docs/blog/',
+            'https://github.com/jesscss/jess/tree/master/packages/docs/',
         },
         theme: {
           customCss: require.resolve('./src/css/custom.css'),

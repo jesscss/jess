@@ -7,7 +7,7 @@ export default {
   "onBrokenMarkdownLinks": "warn",
   "favicon": "img/favicon.ico",
   "organizationName": "jesscss",
-  "projectName": "jess",
+  "projectName": "jesscss.github.io",
   "themeConfig": {
     "navbar": {
       "title": "Jess",
@@ -105,11 +105,11 @@ export default {
       {
         "docs": {
           "sidebarPath": "/Users/matthew/git/oss/jess/packages/docs/sidebars.js",
-          "editUrl": "https://github.com/jesscss/jess/packages/docs/"
+          "editUrl": "https://github.com/jesscss/jess/tree/master/packages/docs/"
         },
         "blog": {
           "showReadingTime": true,
-          "editUrl": "https://github.com/jesscss/jess/packages/docs/blog/"
+          "editUrl": "https://github.com/jesscss/jess/tree/master/packages/docs/"
         },
         "theme": {
           "customCss": "/Users/matthew/git/oss/jess/packages/docs/src/css/custom.css"

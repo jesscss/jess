@@ -8,26 +8,45 @@
           "label": "Next",
           "isLast": true,
           "path": "/docs",
-          "mainDocId": "doc1",
+          "mainDocId": "about",
           "docs": [
             {
-              "id": "doc1",
+              "id": "about",
               "path": "/docs/",
               "sidebar": "someSidebar"
             },
             {
               "id": "doc2",
-              "path": "/docs/doc2",
+              "path": "/docs/doc2"
+            },
+            {
+              "id": "install",
+              "path": "/docs/install",
               "sidebar": "someSidebar"
             },
             {
-              "id": "doc3",
-              "path": "/docs/doc3",
+              "id": "js",
+              "path": "/docs/js",
               "sidebar": "someSidebar"
             },
             {
-              "id": "mdx",
-              "path": "/docs/mdx",
+              "id": "migrating",
+              "path": "/docs/migrating",
+              "sidebar": "someSidebar"
+            },
+            {
+              "id": "mixins",
+              "path": "/docs/mixins",
+              "sidebar": "someSidebar"
+            },
+            {
+              "id": "style",
+              "path": "/docs/style",
+              "sidebar": "someSidebar"
+            },
+            {
+              "id": "variables",
+              "path": "/docs/variables",
               "sidebar": "someSidebar"
             }
           ]

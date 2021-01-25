@@ -1,0 +1,21 @@
+{
+  "unversionedId": "variables",
+  "id": "variables",
+  "isDocsHomePage": false,
+  "title": "Variables",
+  "description": "In Jess, you can declare variables using the @let at-rule.",
+  "source": "@site/docs/variables.md",
+  "slug": "/variables",
+  "permalink": "/docs/variables",
+  "editUrl": "https://github.com/jesscss/jess/tree/master/packages/docs/docs/variables.md",
+  "version": "current",
+  "sidebar": "someSidebar",
+  "previous": {
+    "title": "JS-in-CSS",
+    "permalink": "/docs/js"
+  },
+  "next": {
+    "title": "Mixins",
+    "permalink": "/docs/mixins"
+  }
+}

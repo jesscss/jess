@@ -1,0 +1,21 @@
+{
+  "unversionedId": "js",
+  "id": "js",
+  "isDocsHomePage": false,
+  "title": "JS-in-CSS",
+  "description": "Jess allows you to insert JavaScript expressions with the use of the $ symbol. Think of it like ${} in a template tag (although a bit more sophisticated).",
+  "source": "@site/docs/js.md",
+  "slug": "/js",
+  "permalink": "/docs/js",
+  "editUrl": "https://github.com/jesscss/jess/tree/master/packages/docs/docs/js.md",
+  "version": "current",
+  "sidebar": "someSidebar",
+  "previous": {
+    "title": "Docs Style Guide",
+    "permalink": "/docs/style"
+  },
+  "next": {
+    "title": "Variables",
+    "permalink": "/docs/variables"
+  }
+}

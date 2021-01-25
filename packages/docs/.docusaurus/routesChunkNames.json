@@ -110,24 +110,40 @@
     "sidebar": "sidebar---blogbf-2-0f3",
     "content": "content---blog-welcome-286-e55"
   },
-  "/docs-96b": {
+  "/docs-2f5": {
     "component": "component---theme-doc-page-1-be-9be",
     "versionMetadata": "versionMetadata---docs-935-398"
   },
-  "/docs/-87d": {
+  "/docs/-6d6": {
     "component": "component---theme-doc-item-178-a40",
-    "content": "content---docs-b-2-f-393"
+    "content": "content---docs-3-d-8-da8"
   },
   "/docs/doc2-fd3": {
     "component": "component---theme-doc-item-178-a40",
     "content": "content---docs-doc-2-df-3-eaa"
   },
-  "/docs/doc3-e02": {
+  "/docs/install-7fe": {
     "component": "component---theme-doc-item-178-a40",
-    "content": "content---docs-doc-3616-40c"
+    "content": "content---docs-doc-2-c-4-d-1b7"
   },
-  "/docs/mdx-955": {
+  "/docs/js-7fd": {
     "component": "component---theme-doc-item-178-a40",
-    "content": "content---docs-mdxce-3-7d1"
+    "content": "content---docs-js-6-b-4-056"
+  },
+  "/docs/migrating-57a": {
+    "component": "component---theme-doc-item-178-a40",
+    "content": "content---docs-migratingf-27-fa0"
+  },
+  "/docs/mixins-f31": {
+    "component": "component---theme-doc-item-178-a40",
+    "content": "content---docs-variables-7-bb-704"
+  },
+  "/docs/style-dbe": {
+    "component": "component---theme-doc-item-178-a40",
+    "content": "content---docs-c-47-4ef"
+  },
+  "/docs/variables-6c8": {
+    "component": "component---theme-doc-item-178-a40",
+    "content": "content---docs-mdx-209-605"
   }
 }

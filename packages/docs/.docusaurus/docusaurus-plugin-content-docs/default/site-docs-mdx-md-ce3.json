@@ -7,11 +7,11 @@
   "source": "@site/docs/mdx.md",
   "slug": "/mdx",
   "permalink": "/docs/mdx",
-  "editUrl": "https://github.com/jesscss/jess/packages/docs/docs/mdx.md",
+  "editUrl": "https://github.com/jesscss/jess/tree/master/packages/docs/docs/mdx.md",
   "version": "current",
   "sidebar": "someSidebar",
   "previous": {
-    "title": "This is Document Number 3",
-    "permalink": "/docs/doc3"
+    "title": "Docs Style Guide",
+    "permalink": "/docs/style"
   }
 }

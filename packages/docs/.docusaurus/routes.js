@@ -89,12 +89,12 @@ export default [
 },
 {
   path: '/docs',
-  component: ComponentCreator('/docs','96b'),
+  component: ComponentCreator('/docs','2f5'),
   
   routes: [
 {
   path: '/docs/',
-  component: ComponentCreator('/docs/','87d'),
+  component: ComponentCreator('/docs/','6d6'),
   exact: true,
 },
 {
@@ -103,13 +103,33 @@ export default [
   exact: true,
 },
 {
-  path: '/docs/doc3',
-  component: ComponentCreator('/docs/doc3','e02'),
+  path: '/docs/install',
+  component: ComponentCreator('/docs/install','7fe'),
   exact: true,
 },
 {
-  path: '/docs/mdx',
-  component: ComponentCreator('/docs/mdx','955'),
+  path: '/docs/js',
+  component: ComponentCreator('/docs/js','7fd'),
+  exact: true,
+},
+{
+  path: '/docs/migrating',
+  component: ComponentCreator('/docs/migrating','57a'),
+  exact: true,
+},
+{
+  path: '/docs/mixins',
+  component: ComponentCreator('/docs/mixins','f31'),
+  exact: true,
+},
+{
+  path: '/docs/style',
+  component: ComponentCreator('/docs/style','dbe'),
+  exact: true,
+},
+{
+  path: '/docs/variables',
+  component: ComponentCreator('/docs/variables','6c8'),
   exact: true,
 },
 ]

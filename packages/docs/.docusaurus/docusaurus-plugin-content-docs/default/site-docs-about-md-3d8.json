@@ -1,0 +1,17 @@
+{
+  "unversionedId": "about",
+  "id": "about",
+  "isDocsHomePage": false,
+  "title": "About Jess",
+  "description": "Jess is a CSS pre-processing language like Less and Sass. In fact, Jess started as a re-write of Less from the ground-up, but evolved into a new language.",
+  "source": "@site/docs/about.md",
+  "slug": "/",
+  "permalink": "/docs/",
+  "editUrl": "https://github.com/jesscss/jess/tree/master/packages/docs/docs/about.md",
+  "version": "current",
+  "sidebar": "someSidebar",
+  "next": {
+    "title": "Installation",
+    "permalink": "/docs/install"
+  }
+}

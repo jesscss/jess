@@ -11,25 +11,29 @@
           "sidebarFilePath": "/Users/matthew/git/oss/jess/packages/docs/sidebars.js",
           "docsDirPath": "/Users/matthew/git/oss/jess/packages/docs/docs",
           "docsDirPathLocalized": "/Users/matthew/git/oss/jess/packages/docs/i18n/en/docusaurus-plugin-content-docs/current",
-          "mainDocId": "doc1",
+          "mainDocId": "about",
           "sidebars": {
             "someSidebar": [
               {
                 "collapsed": true,
                 "type": "category",
-                "label": "Docusaurus",
+                "label": "Getting Started",
                 "items": [
                   {
                     "type": "doc",
-                    "id": "doc1"
+                    "id": "about"
                   },
                   {
                     "type": "doc",
-                    "id": "doc2"
+                    "id": "install"
                   },
                   {
                     "type": "doc",
-                    "id": "doc3"
+                    "id": "migrating"
+                  },
+                  {
+                    "type": "doc",
+                    "id": "style"
                   }
                 ]
               },
@@ -40,7 +44,15 @@
                 "items": [
                   {
                     "type": "doc",
-                    "id": "mdx"
+                    "id": "js"
+                  },
+                  {
+                    "type": "doc",
+                    "id": "variables"
+                  },
+                  {
+                    "type": "doc",
+                    "id": "mixins"
                   }
                 ]
               }
@@ -48,27 +60,29 @@
           },
           "permalinkToSidebar": {
             "/docs/": "someSidebar",
-            "/docs/doc2": "someSidebar",
-            "/docs/doc3": "someSidebar",
-            "/docs/mdx": "someSidebar"
+            "/docs/install": "someSidebar",
+            "/docs/js": "someSidebar",
+            "/docs/migrating": "someSidebar",
+            "/docs/mixins": "someSidebar",
+            "/docs/style": "someSidebar",
+            "/docs/variables": "someSidebar"
           },
           "docs": [
             {
-              "unversionedId": "doc1",
-              "id": "doc1",
+              "unversionedId": "about",
+              "id": "about",
               "isDocsHomePage": false,
-              "title": "Style Guide",
-              "description": "You can write content using GitHub-flavored Markdown syntax.",
-              "source": "@site/docs/doc1.md",
+              "title": "About Jess",
+              "description": "Jess is a CSS pre-processing language like Less and Sass. In fact, Jess started as a re-write of Less from the ground-up, but evolved into a new language.",
+              "source": "@site/docs/about.md",
               "slug": "/",
               "permalink": "/docs/",
-              "editUrl": "https://github.com/jesscss/jess/packages/docs/docs/doc1.md",
+              "editUrl": "https://github.com/jesscss/jess/tree/master/packages/docs/docs/about.md",
               "version": "current",
-              "sidebar_label": "Style Guide",
               "sidebar": "someSidebar",
               "next": {
-                "title": "Document Number 2",
-                "permalink": "/docs/doc2"
+                "title": "Installation",
+                "permalink": "/docs/install"
               }
             },
             {
@@ -80,54 +94,130 @@
               "source": "@site/docs/doc2.md",
               "slug": "/doc2",
               "permalink": "/docs/doc2",
-              "editUrl": "https://github.com/jesscss/jess/packages/docs/docs/doc2.md",
+              "editUrl": "https://github.com/jesscss/jess/tree/master/packages/docs/docs/doc2.md",
+              "version": "current"
+            },
+            {
+              "unversionedId": "install",
+              "id": "install",
+              "isDocsHomePage": false,
+              "title": "Installation",
+              "description": "The simplest way to use the Jess compiler is like this:",
+              "source": "@site/docs/install.md",
+              "slug": "/install",
+              "permalink": "/docs/install",
+              "editUrl": "https://github.com/jesscss/jess/tree/master/packages/docs/docs/install.md",
               "version": "current",
               "sidebar": "someSidebar",
               "previous": {
-                "title": "Style Guide",
+                "title": "About Jess",
                 "permalink": "/docs/"
               },
               "next": {
-                "title": "This is Document Number 3",
-                "permalink": "/docs/doc3"
+                "title": "Migrating to Jess",
+                "permalink": "/docs/migrating"
               }
             },
             {
-              "unversionedId": "doc3",
-              "id": "doc3",
+              "unversionedId": "js",
+              "id": "js",
               "isDocsHomePage": false,
-              "title": "This is Document Number 3",
-              "description": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. In ac euismod odio, eu consequat dui. Nullam molestie consectetur risus id imperdiet. Proin sodales ornare turpis, non mollis massa ultricies id. Nam at nibh scelerisque, feugiat ante non, dapibus tortor. Vivamus volutpat diam quis tellus elementum bibendum. Praesent semper gravida velit quis aliquam. Etiam in cursus neque. Nam lectus ligula, malesuada et mauris a, bibendum faucibus mi. Phasellus ut interdum felis. Phasellus in odio pulvinar, porttitor urna eget, fringilla lectus. Aliquam sollicitudin est eros. Mauris consectetur quam vitae mauris interdum hendrerit. Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
-              "source": "@site/docs/doc3.md",
-              "slug": "/doc3",
-              "permalink": "/docs/doc3",
-              "editUrl": "https://github.com/jesscss/jess/packages/docs/docs/doc3.md",
+              "title": "JS-in-CSS",
+              "description": "Jess allows you to insert JavaScript expressions with the use of the $ symbol. Think of it like ${} in a template tag (although a bit more sophisticated).",
+              "source": "@site/docs/js.md",
+              "slug": "/js",
+              "permalink": "/docs/js",
+              "editUrl": "https://github.com/jesscss/jess/tree/master/packages/docs/docs/js.md",
               "version": "current",
               "sidebar": "someSidebar",
               "previous": {
-                "title": "Document Number 2",
-                "permalink": "/docs/doc2"
+                "title": "Docs Style Guide",
+                "permalink": "/docs/style"
               },
               "next": {
-                "title": "Powered by MDX",
-                "permalink": "/docs/mdx"
+                "title": "Variables",
+                "permalink": "/docs/variables"
               }
             },
             {
-              "unversionedId": "mdx",
-              "id": "mdx",
+              "unversionedId": "migrating",
+              "id": "migrating",
               "isDocsHomePage": false,
-              "title": "Powered by MDX",
-              "description": "You can write JSX and use React components within your Markdown thanks to MDX.",
-              "source": "@site/docs/mdx.md",
-              "slug": "/mdx",
-              "permalink": "/docs/mdx",
-              "editUrl": "https://github.com/jesscss/jess/packages/docs/docs/mdx.md",
+              "title": "Migrating to Jess",
+              "description": "Variable Declaration",
+              "source": "@site/docs/migrating.md",
+              "slug": "/migrating",
+              "permalink": "/docs/migrating",
+              "editUrl": "https://github.com/jesscss/jess/tree/master/packages/docs/docs/migrating.md",
               "version": "current",
               "sidebar": "someSidebar",
               "previous": {
-                "title": "This is Document Number 3",
-                "permalink": "/docs/doc3"
+                "title": "Installation",
+                "permalink": "/docs/install"
+              },
+              "next": {
+                "title": "Docs Style Guide",
+                "permalink": "/docs/style"
+              }
+            },
+            {
+              "unversionedId": "mixins",
+              "id": "mixins",
+              "isDocsHomePage": false,
+              "title": "Mixins",
+              "description": "Mixins are JavaScript functions that return a set of rules.",
+              "source": "@site/docs/mixins.md",
+              "slug": "/mixins",
+              "permalink": "/docs/mixins",
+              "editUrl": "https://github.com/jesscss/jess/tree/master/packages/docs/docs/mixins.md",
+              "version": "current",
+              "sidebar": "someSidebar",
+              "previous": {
+                "title": "Variables",
+                "permalink": "/docs/variables"
+              }
+            },
+            {
+              "unversionedId": "style",
+              "id": "style",
+              "isDocsHomePage": false,
+              "title": "Docs Style Guide",
+              "description": "You can write content using GitHub-flavored Markdown syntax.",
+              "source": "@site/docs/doc-style.md",
+              "slug": "/style",
+              "permalink": "/docs/style",
+              "editUrl": "https://github.com/jesscss/jess/tree/master/packages/docs/docs/doc-style.md",
+              "version": "current",
+              "sidebar_label": "Docs Style Guide",
+              "sidebar": "someSidebar",
+              "previous": {
+                "title": "Migrating to Jess",
+                "permalink": "/docs/migrating"
+              },
+              "next": {
+                "title": "JS-in-CSS",
+                "permalink": "/docs/js"
+              }
+            },
+            {
+              "unversionedId": "variables",
+              "id": "variables",
+              "isDocsHomePage": false,
+              "title": "Variables",
+              "description": "In Jess, you can declare variables using the @let at-rule.",
+              "source": "@site/docs/variables.md",
+              "slug": "/variables",
+              "permalink": "/docs/variables",
+              "editUrl": "https://github.com/jesscss/jess/tree/master/packages/docs/docs/variables.md",
+              "version": "current",
+              "sidebar": "someSidebar",
+              "previous": {
+                "title": "JS-in-CSS",
+                "permalink": "/docs/js"
+              },
+              "next": {
+                "title": "Mixins",
+                "permalink": "/docs/mixins"
               }
             }
           ]
@@ -142,7 +232,7 @@
           "id": "welcome",
           "metadata": {
             "permalink": "/blog/welcome",
-            "editUrl": "https://github.com/jesscss/jess/packages/docs/blog/blog/2019-05-30-welcome.md",
+            "editUrl": "https://github.com/jesscss/jess/tree/master/packages/docs/blog/2019-05-30-welcome.md",
             "source": "@site/blog/2019-05-30-welcome.md",
             "description": "Blog features are powered by the blog plugin. Simply add files to the blog directory. It supports tags as well!",
             "date": "2019-05-30T00:00:00.000Z",
@@ -173,7 +263,7 @@
           "id": "hello-world",
           "metadata": {
             "permalink": "/blog/hello-world",
-            "editUrl": "https://github.com/jesscss/jess/packages/docs/blog/blog/2019-05-29-hello-world.md",
+            "editUrl": "https://github.com/jesscss/jess/tree/master/packages/docs/blog/2019-05-29-hello-world.md",
             "source": "@site/blog/2019-05-29-hello-world.md",
             "description": "Welcome to this blog. This blog is created with Docusaurus 2 alpha.",
             "date": "2019-05-29T00:00:00.000Z",
@@ -204,7 +294,7 @@
           "id": "hola",
           "metadata": {
             "permalink": "/blog/hola",
-            "editUrl": "https://github.com/jesscss/jess/packages/docs/blog/blog/2019-05-28-hola.md",
+            "editUrl": "https://github.com/jesscss/jess/tree/master/packages/docs/blog/2019-05-28-hola.md",
             "source": "@site/blog/2019-05-28-hola.md",
             "description": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque elementum dignissim ultricies. Fusce rhoncus ipsum tempor eros aliquam consequat. Lorem ipsum dolor sit amet",
             "date": "2019-05-28T00:00:00.000Z",

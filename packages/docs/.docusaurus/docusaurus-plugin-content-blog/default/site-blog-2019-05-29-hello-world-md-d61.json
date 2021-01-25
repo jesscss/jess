@@ -1,6 +1,6 @@
 {
   "permalink": "/blog/hello-world",
-  "editUrl": "https://github.com/jesscss/jess/packages/docs/blog/blog/2019-05-29-hello-world.md",
+  "editUrl": "https://github.com/jesscss/jess/tree/master/packages/docs/blog/2019-05-29-hello-world.md",
   "source": "@site/blog/2019-05-29-hello-world.md",
   "description": "Welcome to this blog. This blog is created with Docusaurus 2 alpha.",
   "date": "2019-05-29T00:00:00.000Z",
