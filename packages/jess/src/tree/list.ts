@@ -11,6 +11,10 @@ import { OutputCollector } from '../output'
  */
 export class List<T extends Primitive = Primitive> extends Node {
   value: T[]
+
+  toArray() {
+    return this.value
+  }
   
   toCSS(context: Context, out: OutputCollector) {
     out.add('', this.location)

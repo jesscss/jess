@@ -1,4 +1,4 @@
-import { Node, Anonymous, Nil } from '.'
+import { Node, Anonymous, Nil, WS } from '.'
 import { LocationInfo, isNodeMap, NodeMap } from './node'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
@@ -10,6 +10,10 @@ import combinate from 'combinate'
  */
 export class Expression extends Node {
   value: Node[]
+
+  toArray() {
+    return this.value.filter(node => node && !(node instanceof WS))
+  }
 
   constructor(
     value: (string | Node)[] | NodeMap,
