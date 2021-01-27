@@ -1,6 +1,7 @@
 ---
 id: install
 title: Installation
+slug: /
 ---
 
 The simplest way to use the Jess compiler is like this:

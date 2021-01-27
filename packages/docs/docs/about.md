@@ -1,7 +1,6 @@
 ---
 id: about
 title: About Jess
-slug: /
 ---
 
 :::caution
