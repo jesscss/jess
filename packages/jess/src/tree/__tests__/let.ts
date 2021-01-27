@@ -16,7 +16,7 @@ describe('Let', () => {
   it('should serialize a @let', () => {
     let rule = set(keyval({
       name: 'brandColor',
-      value: expr(['#eee'])
+      value: expr([anon('#eee')])
     })) 
     expect(`${rule}`).to.eq('@let brandColor: #eee;')
     rule.toModule(context, out)

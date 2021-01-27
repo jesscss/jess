@@ -1,6 +1,6 @@
 import { expect } from 'chai'
 import 'mocha'
-import { list, spaced, num } from '..'
+import { list, spaced, num, anon } from '..'
 import { Context } from '../../context'
 import { OutputCollector } from '../../output'
 

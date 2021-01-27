@@ -1,33 +1,36 @@
-import { Node, Anonymous, Nil } from '.'
+import { Node, Anonymous, Nil, List } from '.'
 import { LocationInfo, isNodeMap, NodeMap } from './node'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
-import { List } from './list'
 import combinate from 'combinate'
+import { cast } from './util'
 
 /**
  * A continuous collection of nodes
  */
 export class Expression extends Node {
-  value: Node[]
+  value: any[]
 
   constructor(
-    value: (string | Node)[] | NodeMap,
+    value: any[] | NodeMap,
     location?: LocationInfo
   ) {
     if (isNodeMap(value)) {
       super(value, location)
       return
     }
-    const values = value.map(v => v.constructor === String ? new Anonymous(v) : v)
+    const values = value.map(v => v.constructor === String ? new Anonymous(<string>v) : v)
     super({
       value: values
     }, location)
   }
 
   eval(context: Context): Node {
-    const node = <Expression>super.eval(context)
-    node.value = node.value.filter(n => n && !(n instanceof Nil))
+    const node = this.clone()
+    /** Convert all values to Nodes */
+    node.value = node.value
+      .map(n => cast(n).eval(context))
+      .filter(n => n && !(n instanceof Nil))
 
     let lists: { [pos: number]: Node[] }
 
@@ -59,6 +62,13 @@ export class Expression extends Node {
       return node.value[0]
     }
     return node
+  }
+
+  toCSS(context: Context, out: OutputCollector): void {
+    this.value.forEach(n => {
+      const val = cast(n)
+      val.toCSS(context, out)
+    })
   }
 
   toModule(context: Context, out: OutputCollector) {

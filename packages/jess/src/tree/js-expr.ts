@@ -9,7 +9,7 @@ import { OutputCollector } from '../output'
  * 
  * @example
  * $variable
- * $[func(arg1, arg2)]
+ * $(func(arg1, arg2))
  */
 export class JsExpr extends Node {
   value: string
@@ -19,7 +19,7 @@ export class JsExpr extends Node {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    out.add(`$J.cast(${this.value})`, this.location)
+    out.add(this.value, this.location)
   }
 }
 

@@ -32,7 +32,7 @@ describe('Rule', () => {
     })
     node.toModule(context, out)
     expect(out.toString()).to.eq(
-      '$J.rule({\n  sels: $J.list([\n    $J.sel([$J.el($J.anon("foo"))])\n  ]),\n  value: $J.ruleset(\n    (() => {\n      const $OUT = []\n      let brandColor = $J.cast(area(5))\n      $OUT.push($J.decl({\n        name: $J.anon("color"),\n        value: $J.cast(brandColor)\n      }))\n      return $OUT\n    })()\n  )},[])'
+      '$J.rule({\n  sels: $J.list([\n    $J.sel([$J.el($J.anon("foo"))])\n  ]),\n  value: $J.ruleset(\n    (() => {\n      const $OUT = []\n      let brandColor = area(5)\n      $OUT.push($J.decl({\n        name: $J.anon("color"),\n        value: brandColor\n      }))\n      return $OUT\n    })()\n  )},[])'
     )
   })
 })

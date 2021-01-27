@@ -25,7 +25,10 @@ export type FileInfo = {
 }
 
 export const isNodeMap = (val: NodeValue | NodeMap): val is NodeMap => {
-  return val && typeof val === 'object' && val.constructor === Object
+  return val
+    && typeof val === 'object'
+    && val.constructor === Object
+    && val.hasOwnProperty('value')
 }
 
 export abstract class Node {

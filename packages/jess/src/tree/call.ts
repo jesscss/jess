@@ -1,7 +1,8 @@
-import { Node, List, Cast } from '.'
+import { Node, List } from '.'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 import { JsReservedWords } from './js-ident'
+import { cast } from './util'
 
 /**
  * A function call
@@ -41,7 +42,7 @@ export class Call extends Node {
      */
     args = args.map(arg => arg.eval(context))
     const returnVal = ref.hasOwnProperty('$IS_NODE') ? ref.call(context, args[0], true) : ref.call(context, ...args)
-    const node = new Cast(returnVal)
+    const node = cast(returnVal)
     return node.eval(context)
   }
 
