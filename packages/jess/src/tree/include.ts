@@ -27,14 +27,14 @@ export class Include extends Node {
       return new Ruleset(rules)
     }
 
+    value = cast(value).eval(context)
+
     /**
      * Include Roots as plain Rulesets
      */
     if (value instanceof Root) {
       return new Ruleset(value.value).eval(context)
     }
-
-    value = cast(value).eval(context)
     
     if (!value.allowRoot && !value.allowRuleRoot) {
       let message = '@include returned an invalid node.'
