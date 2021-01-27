@@ -23,6 +23,8 @@ $value.class {}
     var // )
   ) four;
   four: $url("???");
+  width: $(20)px;
+  width: $(1 + 1)px;
 }
 
 .box {

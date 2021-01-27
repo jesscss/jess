@@ -4,15 +4,48 @@ import type { JessParser } from '../jessParser'
 export default function(this: JessParser, $: JessParser) {
   $.jsExpression = $.RULE('jsExpression', () => {
     const children: CstChild[] = [
-      $.CONSUME($.T.JsStart),
-      $.SUBRULE($.jsValue)
+      $.CONSUME($.T.JsStart)
     ]
-    $.MANY(() => {
-      $.OPTION(() => {
-        children.push($.CONSUME($.T.Dot))
-      })
-      children.push($.SUBRULE2($.jsValue))
+    /**
+     * If we follow `$` with parens, then we only allow
+     * one paren block.
+     */
+    $.OR({
+      IGNORE_AMBIGUITIES: true,
+      DEF: [
+        {
+          ALT: () => {
+            const blockChildren: CstChild[] = []
+            const start = $.CONSUME($.T.LParen)
+            $.MANY(() => blockChildren.push($.SUBRULE2($.jsTokens)))
+            
+            children.push({
+              name: 'jsBlock',
+              children: [
+                start,
+                {
+                  name: 'jsBlockTokens',
+                  children: blockChildren
+                },
+                $.CONSUME($.T.RParen)
+              ]
+            })
+          }
+        },
+        {
+          ALT: () => {
+            children.push($.SUBRULE($.jsValue))
+            $.MANY2(() => {
+              $.OPTION(() => {
+                children.push($.CONSUME($.T.Dot))
+              })
+              children.push($.SUBRULE2($.jsValue))
+            })
+          }
+        }
+      ]
     })
+    
     return {
       name: 'jsExpression',
       children
