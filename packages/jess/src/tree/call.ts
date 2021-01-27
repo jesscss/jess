@@ -42,8 +42,7 @@ export class Call extends Node {
      */
     args = args.map(arg => cast(arg).eval(context))
     const returnVal = ref.hasOwnProperty('$IS_NODE') ? ref.call(context, args[0], true) : ref.call(context, ...args)
-    const node = cast(returnVal)
-    return node.eval(context)
+    return returnVal instanceof Node ? returnVal.eval(context) : returnVal
   }
 
   toCSS(context: Context, out: OutputCollector) {
