@@ -1,11 +1,11 @@
 # Jess
 _NOTE: Everything here is a WIP. Star this repo for later updates!_
 
-[Ask questions in the Jess Gitter community!](https://gitter.im/jesscss/community)
+[![Ask questions in the Jess Gitter community!](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/jesscss/community)
 
 ### The New CSS Pre-Processing Hotness
 
-This is the monorepo for Jess, a new, modern CSS pre-processor from the people who brought you Less. [See the explainer.](docs/README.md)
+This is the monorepo for Jess, a new, modern CSS pre-processor from the people who brought you Less. [See the docs.](https://jesscss.github.io)
 
 ```less
 @import { width } from './values.ts';
