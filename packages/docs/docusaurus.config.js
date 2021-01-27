@@ -55,7 +55,7 @@ module.exports = {
             },
             {
               label: 'Stack Overflow',
-              href: 'https://stackoverflow.com/questions/tagged/jess',
+              href: 'https://stackoverflow.com/questions/tagged/jesscss',
             }
           ],
         },
