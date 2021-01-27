@@ -4,7 +4,7 @@
     "access": "public"
   },
   "description": "",
-  "version": "1.0.2-alpha.0",
+  "version": "1.0.3-alpha.2",
   "main": "lib/index",
   "types": "lib/index",
   "files": [
@@ -21,7 +21,7 @@
   "author": "Matthew Dean",
   "license": "MIT",
   "dependencies": {
-    "@jesscss/css-parser": "^1.0.2-alpha.0",
+    "@jesscss/css-parser": "^1.0.3-alpha.2",
     "chevrotain": "^7.1.0"
   },
   "devDependencies": {
