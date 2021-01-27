@@ -1,6 +1,6 @@
 {
   "name": "jess-docs",
-  "version": "1.0.3-alpha.2",
+  "version": "1.0.3-alpha.4",
   "private": true,
   "scripts": {
     "docusaurus": "docusaurus",
