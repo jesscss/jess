@@ -3,12 +3,6 @@ id: about
 title: About Jess
 ---
 
-:::caution
-
-Jess is in early alpha, so features and syntax are likely to change!
-
-:::
-
 Jess is a CSS pre-processing language like Less and Sass. In fact, Jess started as a re-write of Less from the ground-up, but evolved into a new language.
 
 ### What makes Jess different from Less?

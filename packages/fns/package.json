@@ -19,5 +19,9 @@
     "test": "ts-mocha test/**/*.ts"
   },
   "author": "Matthew Dean",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "jess": "^1.0.3-alpha.1",
+    "lodash": "^4.17.20"
+  }
 }
