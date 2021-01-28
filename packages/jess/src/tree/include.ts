@@ -1,18 +1,18 @@
-import { Node, Declaration, Ruleset, Cast, LocationInfo, Root, Call } from '.'
+import { Node, Declaration, Ruleset, LocationInfo, Root, Call } from '.'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 import isPlainObject from 'lodash/isPlainObject'
+import { cast } from './util'
 
 export class Include extends Node {
-  value: Node
+  value: any
 
   eval(context: Context) {
-    let value = this.value.eval(context)
-    /**
-     * Include Roots as plain Rulesets
-     */
-    if (value instanceof Root) {
-      return new Ruleset(value.value).eval(context)
+    let value = this.value
+    if (value === undefined || value === null) {
+      throw {
+        message: '@include value is null or undefined.'
+      }
     }
 
     /** Convert included objects into declaration sets */
@@ -21,11 +21,21 @@ export class Include extends Node {
       for (let name in value) {
         rules.push(new Declaration({
           name,
-          value: new Cast(value[name]).eval(context)
+          value: cast((value[name])).eval(context)
         }))
       }
       return new Ruleset(rules)
     }
+
+    value = cast(value).eval(context)
+
+    /**
+     * Include Roots as plain Rulesets
+     */
+    if (value instanceof Root) {
+      return new Ruleset(value.value).eval(context)
+    }
+    
     if (!value.allowRoot && !value.allowRuleRoot) {
       let message = '@include returned an invalid node.'
       if (value instanceof Call && this.value instanceof Call) {
@@ -44,5 +54,5 @@ export class Include extends Node {
 }
 
 export const include =
-  (value: Node, location?: LocationInfo) =>
+  (value: any, location?: LocationInfo) =>
     new Include(value, location)

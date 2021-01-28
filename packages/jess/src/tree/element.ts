@@ -3,12 +3,13 @@ import type { JsExpr } from './js-expr'
 import type { Context } from '../context'
 import { LocationInfo, isNodeMap, NodeMap } from './node'
 import { OutputCollector } from '../output'
+import { cast } from './util'
 
 export class Element extends Node {
-  value: Anonymous | JsExpr
+  value: any
 
   constructor(
-    value: string | Anonymous | JsExpr | NodeMap,
+    value: any,
     location?: LocationInfo
   ) {
     if (isNodeMap(value)) {
@@ -16,7 +17,7 @@ export class Element extends Node {
       return
     }
     super({
-      value: value.constructor === String ? new Anonymous(value) : value
+      value: value.constructor === String ? new Anonymous(<string>value) : value
     })
   }
   
@@ -38,8 +39,9 @@ export class Element extends Node {
   }
 
   eval(context: Context) {
-    const node = <Element>super.eval(context)
-    const value = node.value
+    const node = this.clone()
+    const value = cast(node.value).eval(context)
+    node.value = value
     // Bubble expressions and lists up to Selectors
     if (value instanceof Expression || value instanceof List) {
       return value

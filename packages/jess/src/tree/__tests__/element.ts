@@ -40,6 +40,6 @@ describe('Element', () => {
     rule = el(js('colorBrand'))
     out = new OutputCollector
     rule.toModule(context, out)
-    expect(out.toString()).to.eq('$J.el($J.cast(colorBrand))')
+    expect(out.toString()).to.eq('$J.el(colorBrand)')
   })
 })

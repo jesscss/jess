@@ -2,6 +2,7 @@ import { Node } from '.'
 import type { NodeMap, LocationInfo, Primitive } from './node'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
+import { cast } from './util'
 
 /**
  * A list of expressions
@@ -21,11 +22,9 @@ export class List<T extends Primitive = Primitive> extends Node {
     const length = this.value.length - 1
     const pre = context.pre
     this.value.forEach((node, i) => {
-      if (node instanceof Node) {
-        node.toCSS(context, out)
-      } else {
-        out.add(node.toString())
-      }
+      const val = cast(node)
+      val.toCSS(context, out)
+      
       if (i < length) {
         if (context.inSelector) {
           out.add(`,\n${pre}`)

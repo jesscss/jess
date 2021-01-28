@@ -1,11 +1,11 @@
-import { Node, Anonymous } from '.'
+import { Node, Anonymous, cast } from '.'
 import type { LocationInfo, NodeMap } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
 export type DeclarationValue = NodeMap & {
   name: Node | string
-  value: Node
+  value: any
 }
 
 /**
@@ -13,8 +13,8 @@ export type DeclarationValue = NodeMap & {
  */
 export class Declaration extends Node {
   name: Node
-  value: Node
-  important: Node
+  value: any
+  important: Anonymous
 
   constructor(
     value: DeclarationValue,
@@ -27,10 +27,20 @@ export class Declaration extends Node {
     super(value, location)
   }
 
+  eval(context: Context) {
+    const node = this.clone()
+    node.name = this.name.eval(context)
+    node.value = cast(this.value).eval(context)
+    if (node.important) {
+      node.important = new Anonymous(this.important.value)
+    }
+    return node
+  }
+
   toCSS(context: Context, out: OutputCollector) {
     this.name.toCSS(context, out)
     out.add(': ')
-    this.value.toCSS(context, out)
+    cast(this.value).toCSS(context, out)
     if (this.important) {
       out.add(' ')
       this.important.toCSS(context, out)

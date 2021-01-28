@@ -1,6 +1,6 @@
 {
   "name": "@jesscss/patch-css",
-  "version": "1.0.3-alpha.1",
+  "version": "1.0.3-alpha.4",
   "publishConfig": {
     "access": "public"
   },

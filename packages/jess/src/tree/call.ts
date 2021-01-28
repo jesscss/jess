@@ -1,7 +1,8 @@
-import { Node, List, Cast } from '.'
+import { Node, List } from '.'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 import { JsReservedWords } from './js-ident'
+import { cast } from './util'
 
 /**
  * A function call
@@ -39,10 +40,9 @@ export class Call extends Node {
      * @todo
      * Like Less, allow late evaluation?
      */
-    args = args.map(arg => arg.eval(context))
+    args = args.map(arg => cast(arg).eval(context))
     const returnVal = ref.hasOwnProperty('$IS_NODE') ? ref.call(context, args[0], true) : ref.call(context, ...args)
-    const node = new Cast(returnVal)
-    return node.eval(context)
+    return returnVal instanceof Node ? returnVal.eval(context) : returnVal
   }
 
   toCSS(context: Context, out: OutputCollector) {

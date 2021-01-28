@@ -1,6 +1,6 @@
 {
   "name": "jess-docs",
-  "version": "1.0.2-alpha.0",
+  "version": "1.0.3-alpha.5",
   "private": true,
   "scripts": {
     "docusaurus": "docusaurus",
@@ -8,6 +8,7 @@
     "build": "docusaurus build",
     "swizzle": "docusaurus swizzle",
     "deploy": "docusaurus deploy",
+    "deploy:matthew": "GIT_USER=matthew-dean USE_SSH=true yarn deploy",
     "serve": "docusaurus serve",
     "clear": "docusaurus clear"
   },

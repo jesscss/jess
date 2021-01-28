@@ -37,3 +37,34 @@ You can import / mixin entire stylesheets using the default export.
 @import nav from './nav.jess';
 @include nav();
 ```
+
+## Importing into JS Components
+
+:::caution
+
+This requires the Rollup or Webpack plugin, which are not ready yet! So this part of the API is currently the least stable and needs the most input!
+
+:::
+
+### Using with React
+
+The idea is you will be able to do this:
+```jsx
+import styles, { myMixin } from 'component.jess'
+const css = styles()
+
+export const myComponent = props => {
+  return <div className={css.box} style={myMixin(props.something).obj()}>foo</div>
+}
+```
+...with this...
+```scss
+@mixin myMixin(something) {
+  width: $something;
+  color: white;
+}
+.box {
+  display: flex;
+  align-items: center;
+}
+```

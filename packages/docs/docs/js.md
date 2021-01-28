@@ -5,7 +5,7 @@ title: JS-in-CSS
 
 Jess allows you to insert JavaScript expressions with the use of the `$` symbol. Think of it like `${}` in a template tag (although a bit more sophisticated).
 
-As long as the JavaScript statement is continuous (no spaces outside of parens), then it will be treated as a JS expression.
+As long as the JavaScript statement is continuous (no spaces outside of parens), then it will be treated as a JS expression. The exception is that an initial `$(` will match a final `)` as the end of the expression.
 
 A very simple example would be:
 

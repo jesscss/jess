@@ -1,6 +1,6 @@
 import { expect } from 'chai'
 import 'mocha'
-import { include, rule, sel, el, cast } from '..'
+import { include, rule, sel, el } from '..'
 import { Context } from '../../context'
 import { OutputCollector } from '../../output'
 
@@ -21,7 +21,7 @@ describe('Include', () => {
     const node = rule({
       sels: el('.rule'),
       value: [
-        include(cast(obj))
+        include(obj)
       ]
     })
     const result = node.eval(context)

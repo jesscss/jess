@@ -37,7 +37,7 @@ module.exports = {
           title: 'Docs',
           items: [
             {
-              label: 'Style Guide',
+              label: 'About Jess',
               to: 'docs/',
             }
           ],
@@ -46,10 +46,6 @@ module.exports = {
           title: 'Community',
           items: [
             {
-              label: 'Stack Overflow',
-              href: 'https://stackoverflow.com/questions/tagged/jess',
-            },
-            {
               label: 'Gitter',
               href: 'https://gitter.im/jesscss/community',
             },
@@ -57,6 +53,10 @@ module.exports = {
               label: 'Twitter',
               href: 'https://twitter.com/cssjess',
             },
+            {
+              label: 'Stack Overflow',
+              href: 'https://stackoverflow.com/questions/tagged/jesscss',
+            }
           ],
         },
         {

@@ -2,7 +2,7 @@ import isPlainObject from 'lodash/isPlainObject'
 import { default as lodashMerge } from 'lodash/merge'
 
 /**
- * Like lodash merge except for non-objects
+ * Use lodash merge for objects, return plain value otherwise
  */
 export const merge = (value: any, incomingValue: any) => {
   if (incomingValue === undefined) {

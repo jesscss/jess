@@ -4,7 +4,9 @@ title: Docs Style Guide
 sidebar_label: Docs Style Guide
 ---
 
-You can write content using [GitHub-flavored Markdown syntax](https://github.github.com/gfm/).
+You can contribute to this documentation using [GitHub-flavored Markdown syntax](https://github.github.com/gfm/).
+
+Below are examples of types of styles you can use in documentation. See [the markdown file](https://github.com/jesscss/jess/blob/master/packages/docs/docs/doc-style.md) for reference of how these styles were created.
 
 ## Markdown Syntax
 

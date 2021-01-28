@@ -1,3 +1,4 @@
 .box {
-  foo: bar;
+  foo: $'bar';
+  width: $(20)px;
 }
