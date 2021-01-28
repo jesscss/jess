@@ -1,0 +1,35 @@
+@import { iif } from '@jesscss/fns';
+
+/**
+ * Like Less guards with default()
+ */
+@mixin one(value) {
+  @mixin one_1 {
+    width: 2px;
+  }
+  @let one_1_cond: $(value > 1);
+  @mixin one_2 {
+    height: 10px;
+  }
+  @let one_2_cond: $(value > 5);
+
+  @mixin def {
+    width: 4px;
+  }
+  
+  @include $iif(one_1_cond, one_1());
+  @include $iif(one_2_cond, one_2());
+  @include $iif(!one_1_cond && !one_2_cond, def());
+}
+
+.box-0 {
+  @include one($(0));
+}
+.box-2 {
+  @include one($(2));
+}
+.box-10 {
+  @include one($(10));
+  color: iif($(true), #333, #555);
+  background-color: iif($(false), #333, #555);
+}

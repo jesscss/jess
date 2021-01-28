@@ -18,6 +18,8 @@ export class Nil extends Node {
   toCSS() { return '' }
   toModule() { return '' }
 }
+Nil.prototype.allowRoot = true
+Nil.prototype.allowRuleRoot = true
 
 export const nil =
   (value?: any, location?: LocationInfo) =>

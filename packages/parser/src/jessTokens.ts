@@ -75,7 +75,13 @@ const merges: IMerges = {
     /** We'll have to change class name parsing */
     {
       name: 'Dot',
-      pattern: /\./
+      pattern: /\./,
+      longer_alt: 'Ellipsis'
+    },
+    {
+      name: 'NotMark',
+      pattern: /\!/,
+      longer_alt: 'Important'
     }
   ],
   /** 

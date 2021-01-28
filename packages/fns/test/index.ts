@@ -3,7 +3,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { expect } from 'chai'
 import 'mocha'
-import { render } from '../src/render'
+import { render } from 'jess/lib/render'
 
 describe('Output files', () => {
   const testData = path.join(__dirname, 'files')

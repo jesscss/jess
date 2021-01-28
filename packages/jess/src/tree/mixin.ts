@@ -46,7 +46,7 @@ export class Mixin extends JsNode {
       })
     }
     out.add(') => ')
-    if (context.rootLevel === 0) {
+    if (context.rootLevel !== 1) {
       value.toModule(context, out)
     } else {
       out.add(`${backupName}(`)

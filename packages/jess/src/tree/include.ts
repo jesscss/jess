@@ -3,17 +3,24 @@ import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 import isPlainObject from 'lodash/isPlainObject'
 import { cast } from './util'
+import { isNodeMap } from './node'
 
 export class Include extends Node {
   value: any
 
+  constructor(
+    value: any,
+    location?: LocationInfo
+  ) {
+    if (isNodeMap(value)) {
+      super(value, location)
+    } else {
+      super({ value }, location)
+    }
+  }
+
   eval(context: Context) {
     let value = this.value
-    if (value === undefined || value === null) {
-      throw {
-        message: '@include value is null or undefined.'
-      }
-    }
 
     /** Convert included objects into declaration sets */
     if (isPlainObject(value)) {
