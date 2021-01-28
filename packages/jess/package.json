@@ -1,6 +1,6 @@
 {
   "name": "jess",
-  "version": "1.0.3-alpha.5",
+  "version": "1.0.3-alpha.6",
   "description": "JavaScript Enhanced Style Sheets",
   "main": "lib/index",
   "types": "lib/index",
@@ -12,7 +12,7 @@
     "node": ">=10"
   },
   "dependencies": {
-    "@jesscss/parser": "^1.0.3-alpha.4",
+    "@jesscss/parser": "^1.0.3-alpha.6",
     "@rollup/plugin-commonjs": "^17.0.0",
     "@rollup/plugin-node-resolve": "^11.1.0",
     "@rollup/plugin-sucrase": "^3.1.0",
