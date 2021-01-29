@@ -1,6 +1,6 @@
 module.exports = {
   title: 'Jess',
-  tagline: 'JavaScript Enhanced Style Sheets',
+  tagline: 'Like Less or Sass, but better',
   url: 'https://jesscss.github.io',
   baseUrl: '/',
   onBrokenLinks: 'throw',

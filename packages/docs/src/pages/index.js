@@ -12,7 +12,7 @@ const features = [
     imageUrl: 'img/undraw_docusaurus_mountain.svg',
     description: (
       <>
-        Do you know CSS? Do you know JavaScript? Then you can use Jess.
+        You don't have to learn a new language to have powerful stylesheets.
       </>
     ),
   },
@@ -21,7 +21,7 @@ const features = [
     imageUrl: 'img/undraw_docusaurus_tree.svg',
     description: (
       <>
-        Styles go in stylesheets. Functions go in scripts. But there's no reason they
+        CSS goes in stylesheets. Functions go in scripts. But there's no reason they
         can't be friends.
       </>
     ),
@@ -31,8 +31,7 @@ const features = [
     imageUrl: 'img/undraw_docusaurus_react.svg',
     description: (
       <>
-        Rather than creating a new interpreted language like Sass or Less, Jess allows you to
-        use JavaScript where you need it.
+        Jess transpiles to JavaScript, and let's you use JavaScript where you need it.
       </>
     ),
   },

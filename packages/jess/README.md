@@ -6,7 +6,12 @@ JavaScript Evaluated Style Sheets, from the people who brought you Less.
 
 ## Why Jess?
 
-Jess looks / functions more like the languages you're used to — CSS and JavaScript — and integrates smoothly with both. Sass / Less are mini-programming languages, which have to manage things like variable scope. Jess is just JavaScript, and Jess variables and mixins are just JavaScript variables and functions, respectively. That means you can export Jess into JavaScript, and you can import JavaScript into Jess. (You can do a lot more than that, but that's the basic premise.)
+* Jess does what Sass and Less do, only faster (and does some things they can't).
+* Jess does what CSS-in-JS does, only it keeps your CSS in stylesheets.
+* Jess does what CSS Modules does, but more dynamically.
+* Jess does whatever JavaScript can do, because it transpiles to JavaScript under-the-hood.
+
+For more information, see [the docs](https://jesscss.github.io/docs/).
 
 ### P.S. Why is the logo a hawk?
 
