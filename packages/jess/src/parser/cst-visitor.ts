@@ -26,7 +26,8 @@ import {
   Mixin,
   Ampersand,
   Include,
-  JsIdent
+  JsIdent,
+  Color
 } from '../tree'
 import { JsImport } from '../tree/js-import'
 
@@ -79,7 +80,9 @@ export class CstVisitor {
 
       /** @todo - make more Node types eventually? */
       if (!Clazz) {
-        if (tokenMatcher(ctx, tokens.WS)) {
+        if (tokenMatcher(ctx, tokens.Color)) {
+          Clazz = Color
+        } else if (tokenMatcher(ctx, tokens.WS)) {
           Clazz = WS
         } else {
           Clazz = Anonymous

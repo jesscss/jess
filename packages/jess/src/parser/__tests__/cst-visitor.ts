@@ -74,19 +74,19 @@ describe('CST-to-AST', () => {
   it(`rule #8`, async () => {
     const node = await parse(`@let foo { color: #FFF }`)
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('export let foo = {\n  "color": $J.anon("#FFF")\n}\nlet $BK_foo = foo')
+    expect(out.toString()).to.eq('export let foo = {\n  "color": $J.color("#FFF")\n}\nlet $BK_foo = foo')
   })
 
   it(`rule #9`, async () => {
     const node = await parse(`@let foo { color: #FFF; nested {} }`)
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('export let foo = {\n  "color": $J.anon("#FFF"),\n  "nested": {\n  }\n}\nlet $BK_foo = foo')
+    expect(out.toString()).to.eq('export let foo = {\n  "color": $J.color("#FFF"),\n  "nested": {\n  }\n}\nlet $BK_foo = foo')
   })
 
   it(`rule #10`, async () => {
     const node = await parse(`@let foo { color: #FFF; nested { color: black } }`)
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('export let foo = {\n  "color": $J.anon("#FFF"),\n  "nested": {\n    "color": $J.anon("black")\n  }\n}\nlet $BK_foo = foo')
+    expect(out.toString()).to.eq('export let foo = {\n  "color": $J.color("#FFF"),\n  "nested": {\n    "color": $J.anon("black")\n  }\n}\nlet $BK_foo = foo')
   })
 
   it(`rule #11`, async () => {
@@ -98,7 +98,7 @@ describe('CST-to-AST', () => {
   it(`rule #12`, async () => {
     const node = await parse(`@let foo: $value.foo #FFF`)
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('export let foo = $J.expr([value.foo, $J.ws(), $J.anon("#FFF")])\nlet $BK_foo = foo')
+    expect(out.toString()).to.eq('export let foo = $J.expr([value.foo, $J.ws(), $J.color("#FFF")])\nlet $BK_foo = foo')
   })
 
   it(`rule #13`, async () => {

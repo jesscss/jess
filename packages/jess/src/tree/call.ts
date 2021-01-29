@@ -2,7 +2,6 @@ import { Node, List } from '.'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 import { JsReservedWords } from './js-ident'
-import { cast } from './util'
 
 /**
  * A function call
