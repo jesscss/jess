@@ -11,6 +11,8 @@ JavaScript Evaluated Style Sheets, from the people who brought you Less.
 * Jess does what CSS Modules does, but more dynamically.
 * Jess does whatever JavaScript can do, because it transpiles to JavaScript under-the-hood.
 
+You can think of Jess as a middle-ground between Less/Sass and CSS-in-JS. It keeps your styles in stylesheets, but it's equally dynamic.
+
 For more information, see [the docs](https://jesscss.github.io/docs/).
 
 ### P.S. Why is the logo a hawk?

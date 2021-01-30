@@ -1,4 +1,4 @@
 
 export * from './each'
 export * from './iif'
-export * from './rgb'
+export * from './color'

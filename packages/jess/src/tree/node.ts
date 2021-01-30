@@ -117,6 +117,15 @@ export abstract class Node {
       this.fileInfo
     )
 
+    /**
+     * Copy added properties on `this`
+     */
+    for (let prop in this) {
+      if (this.hasOwnProperty(prop) && nodeKeys.indexOf(prop) === -1) {
+        newNode[prop] = this[prop]
+      }
+    }
+
     /** Copy inheritance props */
     newNode.inherit(this)
 
@@ -144,6 +153,11 @@ export abstract class Node {
     const out = new OutputCollector
     this.toCSS(new Context({ global: true }), out)
     return out.toString()
+  }
+
+  fround(value: number) {
+    // add "epsilon" to ensure numbers like 1.000000005 (represented as 1.000000004999...) are properly rounded:
+    return Number((value + 2e-16).toFixed(8))
   }
 
   valueOf() {
