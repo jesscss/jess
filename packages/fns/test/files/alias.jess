@@ -1,0 +1,6 @@
+@import { rgb as jessRgb } from '@jesscss/fns';
+
+.color {
+  color: jessRgb(1, 2, 3);
+  background-color: rgb(255 255 255 / 0.8);
+}
