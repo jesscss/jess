@@ -18,6 +18,10 @@ module.exports = {
     ],
     Functions: [
       'functions/about',
+      'functions/color-definition',
+      'functions/color-channel',
+      'functions/color-operation',
+      'functions/color-blending',
       'functions/list',
       'functions/logical'
     ]

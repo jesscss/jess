@@ -21,7 +21,7 @@ sidebar_label: List
 
 :::note
 
-Unlike Less, keys in lists align with JavaScript, and are therefore *0-based* instead of *1-based*.
+Unlike Less, keys in lists align with JavaScript, and are therefore *0-based* instead of *1-based*. _NOTE: Is that ideal?_
 
 :::
 
