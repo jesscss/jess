@@ -1,6 +1,6 @@
 {
   "name": "jess",
-  "version": "1.0.3-alpha.6",
+  "version": "1.0.4-alpha.0",
   "description": "JavaScript Enhanced Style Sheets",
   "main": "lib/index",
   "types": "lib/index",
