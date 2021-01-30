@@ -285,8 +285,8 @@ Notice that the generated grey looks darker than the original green, even though
 Compare with using `luma` (usage is different because `luma` returns a single value, not a color):
 
 ```less
-@c: luma(hsl(90, 90%, 50%));
-color: rgb(@c, @c, @c);
+@let c: luma(hsl(90, 90%, 50%));
+color: rgb($c, $c, $c);
 ```
 
 Output: `#cacaca`
