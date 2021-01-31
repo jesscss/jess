@@ -7,12 +7,12 @@ type RGBValue = tree.Dimension | number
  */
 
 export function rgba(...values: [RGBValue, RGBValue, RGBValue, RGBValue]) {
-  const rgba = values.map(v => +v)
+  const rgba = values.map(v => Number(v))
   return new Color({ value: 'rgba', rgba })
 }
 
 export function rgb(...values: [RGBValue, RGBValue, RGBValue]) {
-  const rgb = values.map(v => +v)
+  const rgb = values.map(v => Number(v))
   rgb.push(1)
   const color = rgba(rgb[0], rgb[1], rgb[2], rgb[3])
   color.value = 'rgb'
@@ -60,7 +60,7 @@ function toHSL(color: tree.Color) {
   }
 }
 
- // Adapted from http://mjijackson.com/2008/02/rgb-to-hsl-and-rgb-to-hsv-color-model-conversion-algorithms-in-javascript
+// Adapted from http://mjijackson.com/2008/02/rgb-to-hsl-and-rgb-to-hsv-color-model-conversion-algorithms-in-javascript
 function toHSV(color: tree.Color) {
   if (!(color instanceof Color)) {
     throw new Error('Argument cannot be evaluated to a color')
@@ -108,8 +108,8 @@ export function hsla(h: RGBValue, s: RGBValue, l: RGBValue, a: RGBValue) {
   l = clamp(number(l))
   a = clamp(number(a))
 
-  m2 = l <= 0.5 ? l * (s + 1) : l + s - l * s;
-  m1 = l * 2 - m2;
+  m2 = l <= 0.5 ? l * (s + 1) : l + s - l * s
+  m1 = l * 2 - m2
 
   const rgba = [
     getHue(h + 1 / 3, m1, m2) * 255,
@@ -208,7 +208,7 @@ export function red(color: tree.Color) {
   return new Dimension(color.rgb[0])
 }
 export function green(color: tree.Color) {
-  return new Dimension(color.rgb[1]);
+  return new Dimension(color.rgb[1])
 }
 export function blue(color: tree.Color) {
   return new Dimension(color.rgb[2])
@@ -360,7 +360,7 @@ export function fade(color: tree.Color, amount: tree.Dimension) {
   return getHsla(color, hsl)
 }
 
-export function spin (color: tree.Color, amount: tree.Dimension) {
+export function spin(color: tree.Color, amount: tree.Dimension) {
   const hsl = toHSL(color)
   const hue = (hsl.h + amount.value) % 360
 
@@ -373,7 +373,7 @@ export function spin (color: tree.Color, amount: tree.Dimension) {
 // Copyright (c) 2006-2009 Hampton Catlin, Natalie Weizenbaum, and Chris Eppstein
 // http://sass-lang.com
 //
-export function mix (color1: tree.Color, color2: tree.Color, weight?: tree.Dimension) {
+export function mix(color1: tree.Color, color2: tree.Color, weight?: tree.Dimension) {
   if (!weight) {
     weight = new Dimension(50)
   }
@@ -401,7 +401,7 @@ export function greyscale(color: tree.Color) {
   return desaturate(color, new Dimension(100))
 }
 
-export function contrast (
+export function contrast(
   color: tree.Color,
   dark?: tree.Color,
   light?: tree.Color,

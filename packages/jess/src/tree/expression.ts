@@ -40,7 +40,7 @@ export class Expression extends Node {
 
     node.value.forEach((n, i) => {
       if (n instanceof List) {
-        if(!lists) {
+        if (!lists) {
           lists = {}
         }
         lists[i] = n.value
@@ -54,7 +54,9 @@ export class Expression extends Node {
       combinations.forEach(combo => {
         const expr = [...node.value]
         for (let pos in combo) {
-          expr[pos] = combo[pos]
+          if (Object.prototype.hasOwnProperty.call(combo, pos)) {
+            expr[pos] = combo[pos]
+          }
         }
         returnList.value.push(new Expression(expr))
       })

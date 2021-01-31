@@ -79,13 +79,13 @@ export default function (this: JessParser, $: JessParser) {
               $.CONSUME($.T.As),
               $._(1),
               /** JS ident */
-              $.CONSUME($.T.Ident),
+              $.CONSUME($.T.Ident)
             )
           }
         },
         {
           ALT: () => {
-             /** JS ident */
+            /** JS ident */
             children.push(
               $.CONSUME2($.T.Ident),
               $._(2)

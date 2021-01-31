@@ -26,10 +26,12 @@ export class Include extends Node {
     if (isPlainObject(value)) {
       const rules: Node[] = []
       for (let name in value) {
-        rules.push(new Declaration({
-          name,
-          value: cast((value[name])).eval(context)
-        }))
+        if (Object.prototype.hasOwnProperty.call(value, name)) {
+          rules.push(new Declaration({
+            name,
+            value: cast((value[name])).eval(context)
+          }))
+        }
       }
       return new Ruleset(rules)
     }

@@ -19,22 +19,18 @@ const hashCode = (str: string) => {
  * @param {string} filePath - absolute path to file
  */
 export const renderModule = async (contents: string, filePath: string) => {
-  try {
-    const root = await parse(contents, {
-      filename: filePath,
-      rootpath: process.cwd()
-    })
-    const context = new Context
-    context.id = hashCode(filePath).toString(16)
-    const out = new OutputCollector
-    root.toModule(context, out)
-    return {
-      code: out.toString()
-    }
-  } catch (e) {
-    /**
-     * @todo - format errors a la eslint
-     */
-    throw e
+  /**
+   * @todo - format errors a la eslint
+   */  
+  const root = await parse(contents, {
+    filename: filePath,
+    rootpath: process.cwd()
+  })
+  const context = new Context
+  context.id = hashCode(filePath).toString(16)
+  const out = new OutputCollector
+  root.toModule(context, out)
+  return {
+    code: out.toString()
   }
 }

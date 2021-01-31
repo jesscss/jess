@@ -190,7 +190,7 @@ const invalidLess = [
   'less/math/always/no-sm-operations.less',
   'less/math/parens-division/new-division.less',
   'less/math/strict/css.less',
-  'less/_main/import/invalid-css.less',
+  'less/_main/import/invalid-css.less'
 
 ]
 

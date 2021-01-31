@@ -29,7 +29,7 @@ export class JsCollection extends Node {
     const pre = context.pre
     context.indent++
     out.add(`{\n`, this.location)
-    const length = this.value.length -1
+    const length = this.value.length - 1
     this.value.forEach((node, i) => {
       out.add(`  ${pre}${JSON.stringify(node.name.toString())}: `)
       node.value.toModule(context, out)

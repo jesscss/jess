@@ -86,7 +86,7 @@ export default function (this: JessParser, $: JessParser) {
       children.push(
         $.CONSUME($.T.Colon),
         $._(1),
-        $.SUBRULE($.expression),
+        $.SUBRULE($.expression)
       )
     })
     return {

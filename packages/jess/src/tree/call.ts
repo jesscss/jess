@@ -16,7 +16,7 @@ export class Call extends Node {
     try {
       /** Try to get a function reference in the current scope */
       ref = this.ref()
-    } catch(e) {
+    } catch (e) {
       /** We didn't find it, so output as CSS */
       const call = this.clone()
       call.value = call.value.eval(context)
@@ -39,8 +39,10 @@ export class Call extends Node {
      * @todo
      * Like Less, allow late evaluation?
      */
-    args = args.map(arg => arg && arg instanceof Node ? arg.eval(context): arg)
-    const returnVal = ref.hasOwnProperty('$IS_NODE') ? ref.call(context, args[0], true) : ref.call(context, ...args)
+    args = args.map(arg => arg && arg instanceof Node ? arg.eval(context) : arg)
+    const returnVal = Object.prototype.hasOwnProperty.call(ref, '$IS_NODE')
+      ? ref.call(context, args[0], true)
+      : ref.call(context, ...args)
     return returnVal instanceof Node ? returnVal.eval(context) : returnVal
   }
 

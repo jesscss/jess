@@ -66,7 +66,7 @@ export default function (this: LessParser, $: LessParser) {
                   children: [
                     $.OR3([{
                       ALT: () => $.CONSUME($.T.Comma) },
-                      { ALT: () => $.CONSUME($.T.SemiColon)
+                    { ALT: () => $.CONSUME($.T.SemiColon)
                     }]),
                     $._(1)
                   ]
@@ -102,7 +102,7 @@ export default function (this: LessParser, $: LessParser) {
             $.OR([
               { ALT: () => $.CONSUME($.T.Comma) },
               { ALT: () => $.CONSUME($.T.SemiColon)
-            }]),
+              }]),
             $._(1)
           ]
         },
@@ -139,9 +139,9 @@ export default function (this: LessParser, $: LessParser) {
     
     let node: CstNode = $.OR([
       { ALT: () => ({
-          name: 'variable',
-          children: [$.CONSUME($.T.VarOrProp)]
-        })
+        name: 'variable',
+        children: [$.CONSUME($.T.VarOrProp)]
+      })
       },
       {
         ALT: () => {

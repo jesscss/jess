@@ -28,7 +28,7 @@ export const isNodeMap = (val: NodeValue | NodeMap): val is NodeMap => {
   return val
     && typeof val === 'object'
     && val.constructor === Object
-    && val.hasOwnProperty('value')
+    && Object.prototype.hasOwnProperty.call(val, 'value')
 }
 
 export abstract class Node {
@@ -56,12 +56,12 @@ export abstract class Node {
     let nodeKeys: string[]
     if (isNodeMap(value)) {
       nodes = value
-      nodeKeys = Object.keys(nodes);
+      nodeKeys = Object.keys(nodes)
     } else {
       nodes = { value }
-      nodeKeys = ['value'];
+      nodeKeys = ['value']
     }
-    this._nodeKeys = nodeKeys;
+    this._nodeKeys = nodeKeys
 
     /** Place all sub-node keys on `this` */
     nodeKeys.forEach(key => {
@@ -98,7 +98,7 @@ export abstract class Node {
   }
   
   accept(visitor: Visitor) {
-    this.processNodes(n => visitor.visit(n));
+    this.processNodes(n => visitor.visit(n))
   }
 
   /**
@@ -121,7 +121,7 @@ export abstract class Node {
      * Copy added properties on `this`
      */
     for (let prop in this) {
-      if (this.hasOwnProperty(prop) && nodeKeys.indexOf(prop) === -1) {
+      if (Object.prototype.hasOwnProperty.call(this, prop) && nodeKeys.indexOf(prop) === -1) {
         newNode[prop] = this[prop]
       }
     }

@@ -14,7 +14,7 @@ import forEach from 'lodash/forEach'
  * @include $each(list, iterate);
  */
 
-export function each (list: tree.List | tree.Expression | unknown, mixin: Function) {
+export function each(list: tree.List | tree.Expression | unknown, mixin: Function) {
   const { List, Expression, Ruleset } = tree
   let collection: any
   let rules = new Ruleset([])

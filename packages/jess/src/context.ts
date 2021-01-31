@@ -11,7 +11,7 @@ const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('')
 export const generateId = (length = 8) => {
   let str = ''
   for (let i = 0; i < length; i++) {
-      str += idChars[Math.floor(Math.random() * idChars.length)]
+    str += idChars[Math.floor(Math.random() * idChars.length)]
   }
   return str
 }

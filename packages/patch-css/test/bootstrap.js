@@ -9,10 +9,25 @@ const globalVariables = {
 const opts = {
   headless: false,
   timeout: 10000
-};
+}
 
+const startServer = () => new Promise((resolve) => {
+  const browserSync = require('browser-sync').create()
+  browserSync.init({
+    watch: true,
+    open: false,
+    server: '../',
+    callbacks: {
+      ready(err, bs) {
+        resolve(browserSync)
+      }
+    }
+  })
+})
+let browserSync
 // expose variables
 before (async () => {
+  browserSync = await startServer()
   global.expect = expect
   global.browser = await puppeteer.launch(opts)
 })
@@ -20,6 +35,7 @@ before (async () => {
 // close browser and reset global variables
 after (() => {
   browser.close()
+  browserSync.exit()
 
   global.browser = globalVariables.browser
   global.expect = globalVariables.expect

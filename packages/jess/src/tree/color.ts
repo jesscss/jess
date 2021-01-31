@@ -127,11 +127,11 @@ export class Color extends Node {
           colorFunction = 'rgb'
         }
       } else if (value.indexOf('hsl') === 0) {
-          if (this.alpha < 1) {
-            colorFunction = 'hsla'
-          } else {
-            colorFunction = 'hsl'
-          }
+        if (this.alpha < 1) {
+          colorFunction = 'hsla'
+        } else {
+          colorFunction = 'hsl'
+        }
       } else {
         return value
       }
@@ -147,20 +147,21 @@ export class Color extends Node {
     switch (colorFunction) {
       case 'rgba':
         args.push(clamp(alpha, 1))
-      case 'rgb':
+      case 'rgb':  // eslint-disable-line no-fallthrough
         args = this.rgb.map(function (c) {
           return clamp(Math.round(c), 255)
         }).concat(args)
         break
       case 'hsla':
         args.push(clamp(alpha, 1))
-      case 'hsl':
+      case 'hsl': { // eslint-disable-line no-fallthrough
         const color = this.toHSL()
         args = [
-            this.fround(color.h),
-            `${this.fround(color.s * 100)}%`,
-            `${this.fround(color.l * 100)}%`
+          this.fround(color.h),
+          `${this.fround(color.s * 100)}%`,
+          `${this.fround(color.l * 100)}%`
         ].concat(args)
+      }
     }
 
     if (colorFunction) {

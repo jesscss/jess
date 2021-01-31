@@ -19,7 +19,7 @@ export class AtRule extends Node {
   rules: Ruleset
 
   eval(context: Context) {
-    const node = <AtRule>super.eval(context)
+    const node = <AtRule> super.eval(context)
     /** Don't let rooted rules bubble past an at-rule */
     if (node.rules) {
       let rules = node.rules.value

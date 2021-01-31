@@ -50,7 +50,7 @@ export class Selector extends Expression {
     selector = super.eval.call(selector, context)
     elements = selector.value
 
-    for(let i = 0; i < elements.length; i++) {
+    for (let i = 0; i < elements.length; i++) {
       let value = elements[0]
       if (
         value instanceof Combinator ||

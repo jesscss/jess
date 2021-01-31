@@ -3,7 +3,7 @@ import { cosmiconfigSync } from 'cosmiconfig'
 const explorerSync = cosmiconfigSync('jess', {
   searchPlaces: [
     '.jessrc.js',
-    'jess.config.js',
+    'jess.config.js'
   ]
 })
 

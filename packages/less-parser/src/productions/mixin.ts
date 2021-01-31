@@ -175,7 +175,7 @@ export default function(this: LessParser, $: LessParser) {
 
         exprList.push(expr)
 
-        for(let i = 1; i < length - 1; i += 2) {
+        for (let i = 1; i < length - 1; i += 2) {
           /** Comma separator */
           exprList.push(group[i])
           expr = group[i + 1].children[1]

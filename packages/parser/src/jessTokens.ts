@@ -80,10 +80,10 @@ const merges: IMerges = {
     },
     {
       name: 'NotMark',
-      pattern: /\!/,
+      pattern: /!/,
       longer_alt: 'Important'
     }
-  ],
+  ]
   /** 
    * @todo - allow JS expressions within string literals
    * Result will be a CSS string literal with a J.call() in it

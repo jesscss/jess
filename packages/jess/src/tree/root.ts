@@ -18,7 +18,7 @@ export class Root extends Node {
         if (rule instanceof Ruleset) {
           rules.push(...rule.value)
         }
-        else if(!(rule instanceof Nil)) {
+        else if (!(rule instanceof Nil)) {
           rules.push(rule)
         }
       }

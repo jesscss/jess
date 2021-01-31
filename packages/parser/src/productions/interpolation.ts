@@ -57,10 +57,10 @@ export default function(this: JessParser, $: JessParser) {
       name: 'jsValue',
       children: $.OR([
         { ALT: () => [
-            /** 
+          /** 
              * JS ident 
              */
-            $.CONSUME($.T.PlainIdent)
+          $.CONSUME($.T.PlainIdent)
         ]},
         { ALT: () => [$.CONSUME($.T.StringLiteral)]},
         /** I guess this can happen? */
@@ -152,7 +152,7 @@ export default function(this: JessParser, $: JessParser) {
       { ALT: () => $.CONSUME($.T.MultiplicationOperator) },
       { ALT: () => $.CONSUME($.T.Ellipsis) },
       /** Try not to put these in your identifiers, it's confusing */
-      { ALT: () => $.CONSUME($.T.JsStart) },
+      { ALT: () => $.CONSUME($.T.JsStart) }
     ])
   )
 }
