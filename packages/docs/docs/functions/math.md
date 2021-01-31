@@ -6,7 +6,7 @@ sidebar_label: Math
 
 ### op([_Expression_])
 
-Parses math expressions and returns results, preserving node types.
+Parses math expressions and returns results, preserving node types. This is done in an external function (vs. a language feature) to keep the Jess runtime small and speedy. (You may not need to import it, if you perform all your operations in JavaScript, and don't care about preserving units.)
 
 #### Example
 ```scss
@@ -25,3 +25,10 @@ Output:
   color: #666666;
 }
 ```
+:::note
+
+Dimension nodes in Jess have a `valueOf()` method that JavaScript uses when performing math, so in the case of a `myDimension` variable set to `2px`, you can just do `$(myDimension * 3)`. This would return a value of `6`.
+
+Color math, however, gets more complicated, so you may want to use color functions or `op()` in that case.
+
+:::

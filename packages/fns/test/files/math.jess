@@ -1,7 +1,10 @@
 @import { op as _ } from '@jesscss/fns';
 
+@let myDimension: 3px;
+
 .box {
   one: _(2px * (2 + 1));
   two: _(2px * 3 * 2);
+  three: $(myDimension * 3)px;
   color: _(#333 * 2);
 }
