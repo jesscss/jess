@@ -1,5 +1,7 @@
 # patch-css
 
+_Note: WIP - Do not use_
+
 Conditionally attach a `<style>` tag if it differs from what's in the current stack of stylesheets. This currently seems to be the best way to "hydrate" and patch stylesheets based on input.
 
 This package will do the following:

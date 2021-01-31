@@ -4,6 +4,7 @@
     "access": "public"
   },
   "version": "1.0.5-alpha.0",
+  "description": "Jess CST parser",
   "main": "lib/index",
   "types": "lib/index",
   "files": [

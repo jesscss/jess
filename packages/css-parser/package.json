@@ -4,7 +4,7 @@
     "access": "public"
   },
   "version": "1.0.3-alpha.4",
-  "description": "",
+  "description": "Jess CSS base parser",
   "main": "lib/index",
   "types": "lib/index",
   "files": [

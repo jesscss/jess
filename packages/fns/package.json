@@ -4,7 +4,7 @@
     "access": "public"
   },
   "version": "1.0.5-alpha.0",
-  "description": "Rollup plugin for Jess",
+  "description": "Jess functions module",
   "main": "lib/index",
   "types": "lib/index",
   "files": [
