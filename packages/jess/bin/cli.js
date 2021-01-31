@@ -41,7 +41,7 @@ const start = async () => {
   const result = await render(inFile, { global: true })
 
   /** @todo - Write bundles and map */
-  await fs.promises.writeFile(path.resolve(process.cwd(), outFile), result.$CSS)
+  await fs.promises.writeFile(path.resolve(process.cwd(), outFile), result.$css())
 
   const endTime = new Date()
   const seconds = Math.round((endTime - startTime) / 10) / 100

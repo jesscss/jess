@@ -7,10 +7,13 @@ import { OutputCollector } from './output'
  */
 export const renderCss = (root: Node, context: Context) => {
   const evaldRoot = root.eval(context)
-  const out = new OutputCollector
-  evaldRoot.toCSS(context, out)
   const result = {
-    $CSS: out.toString(),
+    $css: () => {
+      const out = new OutputCollector
+      evaldRoot.toCSS(context, out)
+      return out.toString()
+    },
+    $root: evaldRoot,
     ...context.classMap
   }
   return result

@@ -48,9 +48,8 @@ export class Root extends Node {
 
   toModule(context: Context, out: OutputCollector) {
     out.add(
-      `import * as $JESS from 'jess'\n` +
-      `const $J = $JESS.tree\n` +
-      `const $CONTEXT = new $JESS.Context\n` +
+      `import * as $J from 'jess'\n` +
+      `const $CONTEXT = new $J.Context\n` +
       `$CONTEXT.id = '${context.id}'\n`,
       this.location
     )
@@ -92,7 +91,7 @@ export class Root extends Node {
     out.add(`${pre}if ($RETURN_NODE) {\n`)
     out.add(`${pre}  return $TREE\n`)
     out.add(`${pre}}\n`)
-    out.add(`${pre}return $JESS.renderCss($TREE, $CONTEXT)\n`)
+    out.add(`${pre}return $J.renderCss($TREE, $CONTEXT)\n`)
     out.add('}\n')
     out.add(`$DEFAULT.$IS_NODE = true\n`)
     out.add('export default $DEFAULT')

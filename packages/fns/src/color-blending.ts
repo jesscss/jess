@@ -1,10 +1,9 @@
-import { tree } from 'jess'
-const { Color } = tree
+import { Color } from 'jess'
 
 // Color Blending
 // ref: http://www.w3.org/TR/compositing-1
 
-function colorBlend(mode: Function, color1: tree.Color, color2: tree.Color) {
+function colorBlend(mode: Function, color1: Color, color2: Color) {
   // result
   const ab = color1.alpha
 

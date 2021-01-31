@@ -16,6 +16,9 @@ export const cast = (value: any): Node => {
     return value
   }
   if (isPlainObject(value)) {
+    if (Object.prototype.hasOwnProperty.call(value, '$root')) {
+      return value.$root
+    }
     return new Anonymous('[object]')
   }
   if (Array.isArray(value)) {

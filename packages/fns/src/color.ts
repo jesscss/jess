@@ -1,6 +1,6 @@
-import { tree } from 'jess'
-const { Color, Dimension } = tree
-type RGBValue = tree.Dimension | number
+import { Color, Dimension, Node } from 'jess'
+
+type RGBValue = Dimension | number
 
 /**
  * Color functions, imported from Less
@@ -52,7 +52,7 @@ function number(n: RGBValue) {
   }
 }
 
-function toHSL(color: tree.Color) {
+function toHSL(color: Color) {
   if (color instanceof Color) {
     return color.toHSL()
   } else {
@@ -61,7 +61,7 @@ function toHSL(color: tree.Color) {
 }
 
 // Adapted from http://mjijackson.com/2008/02/rgb-to-hsl-and-rgb-to-hsv-color-model-conversion-algorithms-in-javascript
-function toHSV(color: tree.Color) {
+function toHSV(color: Color) {
   if (!(color instanceof Color)) {
     throw new Error('Argument cannot be evaluated to a color')
   }
@@ -170,54 +170,54 @@ export function hsv(h: RGBValue, s: RGBValue, v: RGBValue) {
   return hsva(h, s, v, 1.0)
 }
 
-export function hue(color: tree.Color) {
+export function hue(color: Color) {
   return new Dimension(toHSL(color).h)
 }
 
-export function saturation(color: tree.Color) {
+export function saturation(color: Color) {
   return new Dimension({
     value: toHSL(color).s * 100,
     unit: '%'
   })
 }
 
-export function lightness(color: tree.Color) {
+export function lightness(color: Color) {
   return new Dimension({
     value: toHSL(color).l * 100,
     unit: '%'
   })
 }
 
-export function hsvhue(color: tree.Color) {
+export function hsvhue(color: Color) {
   return new Dimension(toHSV(color).h)
 }
 
-export function hsvsaturation(color: tree.Color) {
+export function hsvsaturation(color: Color) {
   return new Dimension({
     value: toHSV(color).s * 100,
     unit: '%'
   })
 }
-export function hsvvalue(color: tree.Color) {
+export function hsvvalue(color: Color) {
   return new Dimension({
     value: toHSV(color).v * 100,
     unit: '%'
   })
 }
-export function red(color: tree.Color) {
+export function red(color: Color) {
   return new Dimension(color.rgb[0])
 }
-export function green(color: tree.Color) {
+export function green(color: Color) {
   return new Dimension(color.rgb[1])
 }
-export function blue(color: tree.Color) {
+export function blue(color: Color) {
   return new Dimension(color.rgb[2])
 }
-export function alpha(color: tree.Color) {
+export function alpha(color: Color) {
   return new Dimension(toHSL(color).a)
 }
 
-function getLuma(color: tree.Color) {
+function getLuma(color: Color) {
   let r = color.rgb[0] / 255
   let g = color.rgb[1] / 255
   let b = color.rgb[2] / 255
@@ -229,14 +229,14 @@ function getLuma(color: tree.Color) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b
 }
 
-export function luma(color: tree.Color) {
+export function luma(color: Color) {
   return new Dimension({
     value: getLuma(color) * color.alpha * 100,
     unit: '%'
   })
 }
 
-export function luminance(color: tree.Color) {
+export function luminance(color: Color) {
   const luminance =
     (0.2126 * color.rgb[0] / 255) +
     (0.7152 * color.rgb[1] / 255) +
@@ -255,7 +255,7 @@ type HSLA = {
   a: number
 }
 
-function getHsla(origColor: tree.Color, hsl: HSLA) {
+function getHsla(origColor: Color, hsl: HSLA) {
   const color = hsla(hsl.h, hsl.s, hsl.l, hsl.a)
   if (color) {
     if (origColor.value && 
@@ -274,7 +274,7 @@ function getHsla(origColor: tree.Color, hsl: HSLA) {
  * they be abstracted / have a generator function? 
  */
 
-export function saturate(color: tree.Color, amount: tree.Dimension, method?: tree.Node) {
+export function saturate(color: Color, amount: Dimension, method?: Node) {
   const hsl = toHSL(color)
 
   if (method && method.value === 'relative') {
@@ -287,7 +287,7 @@ export function saturate(color: tree.Color, amount: tree.Dimension, method?: tre
   return getHsla(color, hsl)
 }
 
-export function desaturate(color: tree.Color, amount: tree.Dimension, method?: tree.Node) {
+export function desaturate(color: Color, amount: Dimension, method?: Node) {
   const hsl = toHSL(color)
 
   if (method && method.value === 'relative') {
@@ -300,7 +300,7 @@ export function desaturate(color: tree.Color, amount: tree.Dimension, method?: t
   return getHsla(color, hsl)
 }
 
-export function lighten(color: tree.Color, amount: tree.Dimension, method?: tree.Node) {
+export function lighten(color: Color, amount: Dimension, method?: Node) {
   const hsl = toHSL(color)
 
   if (method && method.value === 'relative') {
@@ -313,7 +313,7 @@ export function lighten(color: tree.Color, amount: tree.Dimension, method?: tree
   return getHsla(color, hsl)
 }
 
-export function darken(color: tree.Color, amount: tree.Dimension, method?: tree.Node) {
+export function darken(color: Color, amount: Dimension, method?: Node) {
   const hsl = toHSL(color)
 
   if (method && method.value === 'relative') {
@@ -326,7 +326,7 @@ export function darken(color: tree.Color, amount: tree.Dimension, method?: tree.
   return getHsla(color, hsl)
 }
 
-export function fadein(color: tree.Color, amount: tree.Dimension, method?: tree.Node) {
+export function fadein(color: Color, amount: Dimension, method?: Node) {
   const hsl = toHSL(color)
 
   if (method && method.value === 'relative') {
@@ -339,7 +339,7 @@ export function fadein(color: tree.Color, amount: tree.Dimension, method?: tree.
   return getHsla(color, hsl)
 }
 
-export function fadeout(color: tree.Color, amount: tree.Dimension, method?: tree.Node) {
+export function fadeout(color: Color, amount: Dimension, method?: Node) {
   const hsl = toHSL(color)
 
   if (method && method.value === 'relative') {
@@ -352,7 +352,7 @@ export function fadeout(color: tree.Color, amount: tree.Dimension, method?: tree
   return getHsla(color, hsl)
 }
 
-export function fade(color: tree.Color, amount: tree.Dimension) {
+export function fade(color: Color, amount: Dimension) {
   const hsl = toHSL(color)
 
   hsl.a = amount.value / 100
@@ -360,7 +360,7 @@ export function fade(color: tree.Color, amount: tree.Dimension) {
   return getHsla(color, hsl)
 }
 
-export function spin(color: tree.Color, amount: tree.Dimension) {
+export function spin(color: Color, amount: Dimension) {
   const hsl = toHSL(color)
   const hue = (hsl.h + amount.value) % 360
 
@@ -373,7 +373,7 @@ export function spin(color: tree.Color, amount: tree.Dimension) {
 // Copyright (c) 2006-2009 Hampton Catlin, Natalie Weizenbaum, and Chris Eppstein
 // http://sass-lang.com
 //
-export function mix(color1: tree.Color, color2: tree.Color, weight?: tree.Dimension) {
+export function mix(color1: Color, color2: Color, weight?: Dimension) {
   if (!weight) {
     weight = new Dimension(50)
   }
@@ -397,15 +397,15 @@ export function mix(color1: tree.Color, color2: tree.Color, weight?: tree.Dimens
   })
 }
 
-export function greyscale(color: tree.Color) {
+export function greyscale(color: Color) {
   return desaturate(color, new Dimension(100))
 }
 
 export function contrast(
-  color: tree.Color,
-  dark?: tree.Color,
-  light?: tree.Color,
-  threshold?: tree.Dimension
+  color: Color,
+  dark?: Color,
+  light?: Color,
+  threshold?: Dimension
 ) {
   if (!light) {
     light = rgba(255, 255, 255, 1.0)
@@ -432,10 +432,10 @@ export function contrast(
   }
 }
 
-export function tint(color: tree.Color, amount: tree.Dimension) {
+export function tint(color: Color, amount: Dimension) {
   return mix(rgb(255, 255, 255), color, amount)
 }
 
-export function shade(color: tree.Color, amount: tree.Dimension) {
+export function shade(color: Color, amount: Dimension) {
   return mix(rgb(0, 0, 0), color, amount)
 }

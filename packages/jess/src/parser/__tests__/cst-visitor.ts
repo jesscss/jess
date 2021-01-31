@@ -40,7 +40,7 @@ describe('CST-to-AST', () => {
     const node = await parse(`@import foo from 'foo.ts';`)
     node.toModule(context, out)
     expect(out.toString()).to.eq(
-      'import * as $JESS from \'jess\'\nconst $J = $JESS.tree\nconst $CONTEXT = new $JESS.Context\n$CONTEXT.id = \'testing\'\nimport foo from \'foo.ts\'\nfunction $DEFAULT ($VARS = {}, $RETURN_NODE) {\n  \n  const $TREE = $J.root((() => {\n    const $OUT = []\n    return $OUT\n  })(),[1,1,0,1,26,25])\n  if ($RETURN_NODE) {\n    return $TREE\n  }\n  return $JESS.renderCss($TREE, $CONTEXT)\n}\n$DEFAULT.$IS_NODE = true\nexport default $DEFAULT'
+      'import * as $J from \'jess\'\nconst $CONTEXT = new $J.Context\n$CONTEXT.id = \'testing\'\nimport foo from \'foo.ts\'\nfunction $DEFAULT ($VARS = {}, $RETURN_NODE) {\n  \n  const $TREE = $J.root((() => {\n    const $OUT = []\n    return $OUT\n  })(),[1,1,0,1,26,25])\n  if ($RETURN_NODE) {\n    return $TREE\n  }\n  return $J.renderCss($TREE, $CONTEXT)\n}\n$DEFAULT.$IS_NODE = true\nexport default $DEFAULT'
     )
     out = new OutputCollector
     node.value[0].toModule(context, out)

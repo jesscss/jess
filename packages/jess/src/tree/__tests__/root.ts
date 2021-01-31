@@ -17,7 +17,7 @@ describe('Root', () => {
     const node = root([])
     node.toModule(context, out)
     expect(out.toString()).to.eq(
-      'import * as $JESS from \'jess\'\nconst $J = $JESS.tree\nconst $CONTEXT = new $JESS.Context\n$CONTEXT.id = \'testing\'\nfunction $DEFAULT ($VARS = {}, $RETURN_NODE) {\n  const $TREE = $J.root((() => {\n    const $OUT = []\n    return $OUT\n  })(),[])\n  if ($RETURN_NODE) {\n    return $TREE\n  }\n  return $JESS.renderCss($TREE, $CONTEXT)\n}\n$DEFAULT.$IS_NODE = true\nexport default $DEFAULT'  
+      'import * as $J from \'jess\'\nconst $CONTEXT = new $J.Context\n$CONTEXT.id = \'testing\'\nfunction $DEFAULT ($VARS = {}, $RETURN_NODE) {\n  const $TREE = $J.root((() => {\n    const $OUT = []\n    return $OUT\n  })(),[])\n  if ($RETURN_NODE) {\n    return $TREE\n  }\n  return $J.renderCss($TREE, $CONTEXT)\n}\n$DEFAULT.$IS_NODE = true\nexport default $DEFAULT'  
     )
   })
 })

@@ -18,7 +18,7 @@ describe('Output files', () => {
 
         const output = await render(jessFile)
         let referenceCss = (await fs.promises.readFile(cssFile)).toString()
-        expect(output.$CSS).to.equal(referenceCss.toString())
+        expect(output.$css()).to.equal(referenceCss.toString())
       })
     })
 })

@@ -68,6 +68,6 @@ export const render = async (filePath: string, config = {}) => {
   
   return {
     ...css,
-    $JS: code
+    $js: code
   }
 }
