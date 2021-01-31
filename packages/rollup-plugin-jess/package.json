@@ -1,6 +1,6 @@
 {
   "name": "rollup-plugin-jess",
-  "version": "1.0.3-alpha.4",
+  "version": "1.0.5-alpha.0",
   "description": "Rollup plugin for Jess",
   "main": "lib/index",
   "types": "lib/index",
@@ -16,7 +16,7 @@
     "test": "ts-mocha test/**/*.ts"
   },
   "dependencies": {
-    "jess": "^1.0.4-alpha.0"
+    "jess": "^1.0.5-alpha.0"
   },
   "author": "Matthew Dean",
   "license": "MIT"
