@@ -15,6 +15,9 @@
     "compile": "tsc -b tsconfig.json",
     "test": "ts-mocha test/**/*.ts"
   },
+  "dependencies": {
+    "jess": "^1.0.4-alpha.0"
+  },
   "author": "Matthew Dean",
   "license": "MIT"
 }
