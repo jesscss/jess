@@ -3,9 +3,9 @@ id: migrating
 title: Migrating to Jess
 ---
 
-### Variable Declaration
+Here are some examples of features in Less / Sass and their equivalent syntax in Jess.
 
-Variables are declared using the `@let` at-rule.
+### Variable Declaration
 
 **Less**
 ```less
@@ -16,13 +16,13 @@ Variables are declared using the `@let` at-rule.
 $color: red;
 ```
 **Jess**
+
+Variables are declared using the `@let` at-rule. `color` must be a valid JavaScript identifier.
 ```less
 @let color: red;
 ```
 
 ### Variable Reference
-
-Jess can evaluate any continuous JavaScript expression starting with `$`.
 
 **Less**
 ```less
@@ -33,13 +33,13 @@ color: @color;
 color: $color;
 ```
 **Jess**
+
+Jess can evaluate any continuous JavaScript expression starting with `$`. Referencing ends up looking a little like Sass.
 ```scss
 color: $color;
 ```
 
 ### Math
-
-Depending on the type of value, and if you want to preserve units, you can use Jess helper functions. Otherwise, you can just perform your math in JavaScript.
 
 **Less**
 ```less
@@ -50,6 +50,9 @@ width: (@width * 2);
 width: ($width * 2);
 ```
 **Jess**
+
+Depending on the type of value, and if you want to preserve units, you can use Jess helper functions. Otherwise, you can just perform your math in JavaScript.
+
 ```scss
 width: $(width * 2);
 ```
@@ -81,6 +84,9 @@ width: op($width * 2);
 }
 ```
 **Jess**
+
+Jess mimics Sass mixin syntax, but the transpiled mixin is just a JavaScript function.
+
 ```scss
 @import { op } from '@jesscss/fns';
 
@@ -97,6 +103,8 @@ width: op($width * 2);
 
 **Sass**
 ```scss
+$sizes: 24px, 32px, 40px;
+
 @each $size in $sizes {
   .icon-#{$size} {
     font-size: $size;
@@ -108,6 +116,8 @@ width: op($width * 2);
 
 **Less**
 ```less
+@sizes: 24px, 32px, 40px;
+
 each(@sizes, #(@size) {
   .icon-@{size} {
     font-size: @size;
@@ -118,6 +128,8 @@ each(@sizes, #(@size) {
 ```
 
 **Jess**
+
+The `@jesscss/fns` module has an `each` helper to achieve the same pattern.
 
 ```less
 @import { each } from '@jesscss/fns';
