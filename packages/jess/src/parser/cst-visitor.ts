@@ -27,7 +27,9 @@ import {
   Ampersand,
   Include,
   JsIdent,
-  Color
+  Color,
+  Paren,
+  Square
 } from '../tree'
 import { JsImport } from '../tree/js-import'
 
@@ -287,7 +289,11 @@ export class CstVisitor {
   }
 
   block({ children, location }: CstNode) {
-    return new Expression(this.visitArray(children), getLocation(location))
+    const char = <IToken>children[0]
+    if (char.image === '(') {
+      return new Paren(this.visit(children[1]), getLocation(location))
+    }
+    return new Square(this.visit(children[1]), getLocation(location))
   }
 
   expression({ children, location }: CstNode) {

@@ -4,6 +4,9 @@ import { Color } from 'jess'
 // ref: http://www.w3.org/TR/compositing-1
 
 function colorBlend(mode: Function, color1: Color, color2: Color) {
+  if (!(color1 instanceof Color) || !(color2 instanceof Color)) {
+    throw { message: 'Both arguments must be colors.' }
+  }
   // result
   const ab = color1.alpha
 
