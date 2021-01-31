@@ -39,7 +39,7 @@ color: $color;
 
 ### Math
 
-Depending on the type of value, and if you want to preserve units, you can use Jess helper functions (coming soon). Otherwise, you can just perform your math in JavaScript.
+Depending on the type of value, and if you want to preserve units, you can use Jess helper functions. Otherwise, you can just perform your math in JavaScript.
 
 **Less**
 ```less
@@ -51,16 +51,13 @@ width: ($width * 2);
 ```
 **Jess**
 ```scss
-// Note: this will only work for primitive values.
-// This is just a plain JS expression!
 width: $(width * 2);
 ```
-or _(not available in alpha yet)_
+or, to preserve units in a dimension:
 ```scss
-@import { multiply } from '@jesscss/fns';
-width: $multiply(width, 2);
+@import { op } from '@jesscss/fns';
+width: op($width * 2);
 ```
-
 
 ### Mixins
 
@@ -85,10 +82,10 @@ width: $multiply(width, 2);
 ```
 **Jess**
 ```scss
-@import { multiply } from '@jesscss/fns';
+@import { op } from '@jesscss/fns';
 
 @mixin mixin(size) {
-  width: multiply($size, 2px);
+  width: op($size * 2px);
 }
 .box {
   @include mixin(50);
@@ -121,8 +118,6 @@ each(@sizes, #(@size) {
 ```
 
 **Jess**
-
-_Note: not available yet in alpha, but will work like the following:_
 
 ```less
 @import { each } from '@jesscss/fns';

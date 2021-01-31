@@ -1,3 +1,5 @@
+@import { op as _ } from '@jesscss/fns';
+
 /** See https://github.com/less/less.js/tree/master/packages/less/benchmark/benchmark.less */
 
 @let bg: #f01;
@@ -42,7 +44,7 @@ div.browse {
   }
   div.header {
     padding: 10px 10px 9px; text-align: left; background: $bg url('/images/panel_header_bg.png') repeat-x top left;
-    border-bottom: 1px solid $(bg * 0.66 + black * 0.33); line-height: 1; height: 18px;
+    border-bottom: 1px solid _($bg * 0.66 + #000 * 0.33); line-height: 1; height: 18px;
     @include border_radius_top(3); color: $light_grey;
     h3 { font-size: 16px; margin: 0; color: $white; @include text_shadow(1, 1, 0, $(bg * 0.66 + black * 0.33)); }
     span.filter {
@@ -81,7 +83,7 @@ div.browse {
           list-style: none; display: block; padding: 0; margin: 0;
           a {
             display: block; height: 18px; line-height: 18px; color: $black; font-size: 10px; text-transform: uppercase; background: transparent;
-            border-bottom: 1px solid ($light_grey * 0.66 + $white * 0.33); float: none; margin: 0; @include border_radius(0); white-space: nowrap;
+            border-bottom: 1px solid _($light_grey * 0.66 + $white * 0.33); float: none; margin: 0; @include border_radius(0); white-space: nowrap;
             :hover { background: url('/images/transparent_backgrounds/accent_colour_25.png'); color: $black; }
           }
           :last-child {
@@ -93,7 +95,7 @@ div.browse {
     span.filter.dropdown.sort { float: left; margin: 0 0 0 10px; }
     span.filter.dropdown.localisation { float: left; margin: 0 0 0 10px; }
     a.more {
-      float: right; color: $white; @include text_shadow(1, 1, 0, $bg * 0.66 + $black * 0.33); font-size: 14px; font-weight: bold;
+      float: right; color: $white; @include text_shadow(1, 1, 0, _($bg * 0.66 + $black * 0.33)); font-size: 14px; font-weight: bold;
       position: relative; top: 2px;
       :hover { text-decoration: none; }
     }
@@ -102,7 +104,7 @@ div.browse {
     margin: 0; background: $white; padding: 10px 0 0 10px; @include border_radius(3); position: relative;
     li {
       display: block; float: left; list-style: none; margin: 0 10px 10px 0; padding: 5px; position: relative;
-      background: $white; width: 130px; border: 1px solid ($light_grey * 0.33 + $white * 0.66); @include border_radius(2);
+      background: $white; width: 130px; border: 1px solid _($light_grey * 0.33 + $white * 0.66); @include border_radius(2);
       a.remove {
         position: absolute; height: 16px; width: 16px; padding: 3px; background: $accent_colour;
         @include border_radius(99); display: none; z-index: 3; top: -8px; right: -8px;

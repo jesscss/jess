@@ -23,7 +23,8 @@ module.exports = {
       'functions/color-operation',
       'functions/color-blending',
       'functions/list',
-      'functions/logical'
+      'functions/logical',
+      'functions/math'
     ]
   },
 };
