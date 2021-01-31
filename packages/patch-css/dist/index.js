@@ -20,7 +20,7 @@
    */
   function collectStylesheets() {
     sheetLength = document.styleSheets.length;
-    for(let i = 0; i < sheetLength; i++) {
+    for (let i = 0; i < sheetLength; i++) {
       const sheet = document.styleSheets[i];
       if (sheetMap.has(sheet.ownerNode)) {
         continue
@@ -34,7 +34,7 @@
           ruleText += rules[j].cssText;
         }
         sheetMap.set(sheet.ownerNode, ruleText);
-      } catch (e) {}
+      } catch (e) {} // eslint-disable-line no-empty
     }
   }
 
