@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "1.0.5-alpha.0",
+  "version": "1.0.6-alpha.0",
   "description": "Jess CST parser",
   "main": "lib/index",
   "types": "lib/index",
@@ -21,7 +21,7 @@
   "author": "Matthew Dean",
   "license": "MIT",
   "dependencies": {
-    "@jesscss/css-parser": "^1.0.3-alpha.4",
+    "@jesscss/css-parser": "^1.0.6-alpha.0",
     "chevrotain": "^7.1.0"
   }
 }
