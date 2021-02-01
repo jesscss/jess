@@ -32,3 +32,18 @@ Dimension nodes in Jess have a `valueOf()` method that JavaScript uses when perf
 Color math, however, gets more complicated, so you may want to use color functions or `op()` in that case.
 
 :::
+
+:::tip
+
+If you're performing a lot of operations using `op`, one way to give it a small footprint in your syntax is to alias it to `_` like the example below.
+
+:::
+
+```scss
+@import { op as _ } from '@jesscss/fns';
+.box {
+  one: _(2px * (2 + 1));
+  two: _(2px * 3 * 2);
+  color: _(#333 * 2);
+}
+```

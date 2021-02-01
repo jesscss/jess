@@ -14,15 +14,9 @@ module.exports = {
 
 ## options
 
-### global
+### module
 
-Determines whether class names should be global / output as-is or will be hashed per module. By default the `jess` CLI will set this option to true. The Rollup / Webpack plugins, when bundling Jess files as part of your project, will default to false.
-
-:::note
-
-_TODO: Should this instead be set by the convention of `[filename].module.jess`? This may take some refining when building / testing the Rollup / Webpack plugins._
-
-:::
+Overrides whether Jess files should be compiled as modules or not (globally). By default, any Jess file with the pattern `[filename].module.jess` or `[filename].m.jess` is treated as a module, and class names are hashed.
 
 ## rollup
 
