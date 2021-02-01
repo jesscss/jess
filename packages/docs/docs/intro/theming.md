@@ -3,7 +3,7 @@ id: theming
 title: Theming
 ---
 
-Jess is good for theming in general, but Jess is also designed to be a good platform for building theming libraries like Bootstrap, Tailwind, UIKit, etc. It's highly configurable, from either `.jess` or `.js` files, and can provide custom static CSS for a down-stream website, or be used in "live" theming for applications like white-labeling.
+Jess is good for theming in general, but Jess is also designed to be a good platform for building theming libraries like Bootstrap, Tailwind, UIKit, etc. It's highly configurable, from either `.jess` or `.js` (or `.ts` with a plugin) files, and can provide custom static CSS for a down-stream website, or be used in "live" theming for applications like white-labeling.
 
 ### Example
 
