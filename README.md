@@ -2,7 +2,7 @@
 
 <img width="192" src="https://raw.githubusercontent.com/jesscss/jess/master/packages/docs/static/img/android-chrome-192x192.png">
 
-_NOTE: Everything here is a WIP. Star this repo for later updates!_
+_Jess is now in Alpha! Star this repo for later updates!_
 
 [![Ask questions in the Jess Gitter community!](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/jesscss/community)
 
