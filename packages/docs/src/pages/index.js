@@ -31,7 +31,7 @@ const features = [
     imageUrl: 'img/undraw_docusaurus_react.svg',
     description: (
       <>
-        Jess transpiles to JavaScript, and let's you use JavaScript where you need it.
+        Jess files are stylesheets that transpile to JavaScript, and let you use JavaScript where you need it.
       </>
     ),
   },
