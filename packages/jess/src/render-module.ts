@@ -17,16 +17,16 @@ const hashCode = (str: string) => {
  * 
  * @param {string} contents - Full file contents
  * @param {string} filePath - absolute path to file
+ * 
+ * @todo - format errors a la eslint
  */
 export const renderModule = async (contents: string, filePath: string) => {
-  /**
-   * @todo - format errors a la eslint
-   */  
+  const contextOpts = /\.m(odule)?\.jess/.test(filePath) ? { module: true } : {}
   const root = await parse(contents, {
     filename: filePath,
     rootpath: process.cwd()
   })
-  const context = new Context
+  const context = new Context(contextOpts)
   context.id = hashCode(filePath).toString(16)
   const out = new OutputCollector
   root.toModule(context, out)

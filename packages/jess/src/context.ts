@@ -2,7 +2,7 @@ import type { Node } from './tree'
 import config from './config'
 
 export type ContextOptions = {
-  global?: boolean
+  module?: boolean
   [k: string]: string | number | boolean
 }
 
@@ -18,6 +18,7 @@ export const generateId = (length = 8) => {
 
 export class Context {
   opts: ContextOptions
+  originalOpts: ContextOptions
   /**
    * The file (eval) context should have the same ID at compile-time
    * as run-time, so this ID will be set in `toModule()` output
@@ -48,10 +49,11 @@ export class Context {
   /** In a selector */
   inSelector: boolean
 
-  constructor(opts?: ContextOptions) {
+  constructor(opts: ContextOptions = {}) {
+    this.originalOpts = opts
     this.opts = {
+      ...opts,
       ...config.options,
-      ...(opts || {})
     }
     this.id = generateId()
     this.frames = []
@@ -66,7 +68,7 @@ export class Context {
     return Array(this.indent + 1).join('  ')
   }
 
-  /** Hash a CSS class name or not depending on the `global` setting */
+  /** Hash a CSS class name or not depending on the `module` setting */
   hashClass(name: string) {
     /** Remove dot for mapping */
     name = name.slice(1)
@@ -75,7 +77,7 @@ export class Context {
       return `.${lookup}`
     }
     let mapVal: string
-    if (!this.opts.global) {
+    if (this.opts.module) {
       mapVal = `${name}_${this.id}`
     } else {
       mapVal = name

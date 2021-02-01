@@ -49,7 +49,7 @@ export class Root extends Node {
   toModule(context: Context, out: OutputCollector) {
     out.add(
       `import * as $J from 'jess'\n` +
-      `const $CONTEXT = new $J.Context\n` +
+      `const $CONTEXT = new $J.Context(${JSON.stringify(context.originalOpts)})\n` +
       `$CONTEXT.id = '${context.id}'\n`,
       this.location
     )
