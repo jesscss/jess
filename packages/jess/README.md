@@ -78,7 +78,7 @@ jess file.jess
 ### Exporting from Jess
 _In progress, requires the (unfinished) Rollup or Webpack plugin._
 ```jsx
-import styles, { square } from './styles.jess'
+import styles, { square } from './component.m.jess'
 
 export const myComponent = props => {
   return <div className={styles.box} style={square(props.size).obj()}>Component</div>
