@@ -81,7 +81,7 @@ _In progress, requires the (unfinished) Rollup or Webpack plugin._
 import styles, { square } from './component.m.jess'
 
 export const myComponent = props => {
-  return <div className={styles.box} style={square(props.size).obj()}>Component</div>
+  return <div className={styles.box} style={square(props.size)}>Component</div>
 }
 ```
 

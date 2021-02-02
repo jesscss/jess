@@ -21,6 +21,11 @@ export class Mixin extends JsNode {
   args: List<JsIdent | JsKeyValue>
   value: Ruleset
 
+  /**
+   * @todo -
+   * Return either a ruleset if `this` is the eval context,
+   * or return ruleset.obj() if not (for React/Vue)
+   */
   toModule(context: Context, out: OutputCollector) {
     const { name, args, value } = this
     const nm = name.value
