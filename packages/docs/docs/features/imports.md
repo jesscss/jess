@@ -53,11 +53,19 @@ The idea is you will be able to do this:
 import styles, { myMixin } from 'component.m.jess'
 
 export const myComponent = props => {
-  return <div className={styles.box} style={myMixin(props.something)}>foo</div>
+  return (
+    <div
+      style={myMixin(props.something)}
+      className={styles.box}
+    >
+      foo
+    </div>
+  )
 }
 ```
 ...with this...
 ```scss
+// component.m.jess
 @mixin myMixin(something) {
   width: $something;
   color: white;
