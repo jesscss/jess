@@ -50,11 +50,10 @@ This requires the Rollup or Webpack plugin, which are not ready yet! So this par
 
 The idea is you will be able to do this:
 ```jsx
-import styles, { myMixin } from 'component.jess'
-const css = styles()
+import styles, { myMixin } from 'component.m.jess'
 
 export const myComponent = props => {
-  return <div className={css.box} style={myMixin(props.something).obj()}>foo</div>
+  return <div className={styles.box} style={myMixin(props.something).obj()}>foo</div>
 }
 ```
 ...with this...

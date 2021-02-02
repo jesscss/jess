@@ -79,10 +79,9 @@ jess file.jess
 _In progress, requires the (unfinished) Rollup or Webpack plugin._
 ```jsx
 import styles, { square } from './styles.jess'
-const css = styles()
 
 export const myComponent = props => {
-  return <div className={css.box} style={square(props.size).obj()}>Component</div>
+  return <div className={styles.box} style={square(props.size).obj()}>Component</div>
 }
 ```
 
