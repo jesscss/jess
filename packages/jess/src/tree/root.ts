@@ -93,8 +93,10 @@ export class Root extends Node {
     out.add(`${pre}}\n`)
     out.add(`${pre}return $J.renderCss($TREE, $CONTEXT)\n`)
     out.add('}\n')
-    out.add(`$DEFAULT.$IS_NODE = true\n`)
-    out.add('export default $DEFAULT')
+    // out.add(`$DEFAULT.$IS_NODE = true\n`)
+    out.add('const $DEFAULT_PROXY = $J.proxy($DEFAULT, $CONTEXT)\n')
+    out.add('$DEFAULT_PROXY(undefined, true)\n')
+    out.add('export default $DEFAULT_PROXY')
     context.indent = 0
     context.rootLevel = 0
   }

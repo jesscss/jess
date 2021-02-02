@@ -10,17 +10,19 @@ let out: OutputCollector
 describe('Let', () => {
   beforeEach(() => {
     context = new Context
+    context.rootLevel = 1
     out = new OutputCollector
   })
 
   it('should serialize a @let', () => {
+    context.rootLevel = 2
     let rule = set(keyval({
       name: 'brandColor',
       value: expr([anon('#eee')])
     })) 
     expect(`${rule}`).to.eq('@let brandColor: #eee;')
     rule.toModule(context, out)
-    expect(out.toString()).to.eq('export let brandColor = $J.expr([$J.anon("#eee")])\nlet $BK_brandColor = brandColor')
+    expect(out.toString()).to.eq('let brandColor = $J.expr([$J.anon("#eee")])')
   })
 
   it('should serialize a @let collection', () => {
@@ -28,6 +30,15 @@ describe('Let', () => {
       keyval({
         name: 'brand', 
         value: coll([
+          keyval({
+            name: 'global',
+            value: coll([
+              keyval({
+                name: 'dark',
+                value: anon('#000')
+              })
+            ])
+          }),
           keyval({
             name: 'dark',
             value: anon('#222')
@@ -40,11 +51,11 @@ describe('Let', () => {
       })
     )
     expect(`${rule}`).to.eq(
-      '@let brand {\n  dark: #222;\n  light: #eee;\n}'
+      '@let brand {\n  global {\n    dark: #000;\n  }\n  dark: #222;\n  light: #eee;\n}'
     )
     rule.toModule(context, out)
     expect(out.toString()).to.eq(
-      'export let brand = {\n  "dark": $J.anon("#222"),\n  "light": $J.anon("#eee")\n}\nlet $BK_brand = brand'
+      'brand = {}\nbrand.global = {}\nbrand.global.dark = $J.get($VARS, \'brand.global.dark\', $J.anon("#000"))\nbrand.dark = $J.get($VARS, \'brand.dark\', $J.anon("#222"))\nbrand.light = $J.get($VARS, \'brand.light\', $J.anon("#eee"))\n'
     )
   })
 })

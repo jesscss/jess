@@ -1,4 +1,4 @@
-import { JsKeyValue, JsNode, NodeMap } from '.'
+import { JsKeyValue, JsCollection, JsNode, NodeMap } from '.'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
 import { LocationInfo, Node } from './node'
@@ -23,20 +23,35 @@ export class Let extends JsNode {
     this.value.toCSS(context, out)
   }
 
+  recurseValue(value: Node, keys: string[], context: Context, out: OutputCollector) {
+    const pre = context.pre
+    if (value instanceof JsCollection) {
+      out.add(`${keys.join('.')} = {}\n${pre}`)
+      value.value.forEach(node => {
+        this.recurseValue(node.value, [...keys, node.name.value], context, out)
+      })
+    } else {
+      out.add(`${keys.join('.')} = $J.get($VARS, '${keys.join('.')}', `)
+      value.toModule(context, out)
+      out.add(`)\n${pre}`)
+    }
+  }
+
   toModule(context: Context, out: OutputCollector) {
     const name = this.value.name.value
-    if (context.rootLevel === 1) {
-      out.add(`let ${name} = $J.merge($BK_${name}, $VARS.${name})`)
+    if (context.rootLevel === 0) {
+      out.add(`export let ${name}`, this.location)
+      context.exports.add(name)
     } else {
-      if (context.rootLevel === 0) {
-        context.exports.add(name)
-        out.add('export ', this.location)
+      if (context.rootLevel !== 1) {
+        out.add(`let `)
       }
-      out.add(`let ${name} = `)
-      this.value.value.toModule(context, out)
-      if (context.rootLevel === 0) {
-        out.add(`\nlet $BK_${name} = ${name}`)
+      if (context.rootLevel !== 1) {
+        out.add(`${name} = `)
+        this.value.value.toModule(context, out)
+        return
       }
+      this.recurseValue(this.value.value, [name], context, out)
     }
   }
 }

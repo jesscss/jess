@@ -26,30 +26,12 @@ export class Mixin extends JsNode {
     const nm = name.value
     context.exports.add(nm)
     if (context.rootLevel === 0) {
-      out.add('export ', this.location)
-    }
-    out.add(`let ${nm} = (`)
-    const backupName = `$BK_${nm}`
-    if (args) {
-      const length = args.value.length - 1
-      args.value.forEach((node, i) => {
-        if (node instanceof JsIdent) {
-          out.add(node.value)
-        } else {
-          out.add(node.name.value)
-          out.add(' = ')
-          node.value.toModule(context, out)
-        }
-        if (i < length) {
-          out.add(', ')
-        }
-      })
-    }
-    out.add(') => ')
-    if (context.rootLevel !== 1) {
-      value.toModule(context, out)
+      out.add(`export let ${nm}`, this.location)
     } else {
-      out.add(`${backupName}(`)
+      if (context.rootLevel !== 1) {
+        out.add(`let `)
+      }
+      out.add(`${nm} = (`)
       if (args) {
         const length = args.value.length - 1
         args.value.forEach((node, i) => {
@@ -57,16 +39,16 @@ export class Mixin extends JsNode {
             out.add(node.value)
           } else {
             out.add(node.name.value)
+            out.add(' = ')
+            node.value.toModule(context, out)
           }
           if (i < length) {
             out.add(', ')
           }
         })
       }
-      out.add(`)`)
-    }
-    if (context.rootLevel === 0) {
-      out.add(`\nlet $BK_${nm} = ${nm}`)
+      out.add(') => ')
+      value.toModule(context, out)
     }
   }
 }

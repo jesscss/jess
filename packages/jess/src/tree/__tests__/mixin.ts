@@ -10,6 +10,7 @@ let out: OutputCollector
 describe('Mixin', () => {
   beforeEach(() => {
     context = new Context
+    context.rootLevel = 2
     out = new OutputCollector
   })
 
@@ -23,7 +24,7 @@ describe('Mixin', () => {
     })
     rule.toModule(context, out)
     expect(out.toString()).to.eq(
-      'export let myMixin = () => $J.ruleset(\n  (() => {\n    const $OUT = []\n    $OUT.push($J.decl({\n      name: $J.anon("color"),\n      value: $J.anon("black")\n    }))\n    $OUT.push($J.decl({\n      name: $J.anon("background-color"),\n      value: $J.anon("white")\n    }))\n    return $OUT\n  })()\n)\nlet $BK_myMixin = myMixin'
+      'let myMixin = () => $J.ruleset(\n  (() => {\n    const $OUT = []\n    $OUT.push($J.decl({\n      name: $J.anon("color"),\n      value: $J.anon("black")\n    }))\n    $OUT.push($J.decl({\n      name: $J.anon("background-color"),\n      value: $J.anon("white")\n    }))\n    return $OUT\n  })()\n)'
     )
   })
 })

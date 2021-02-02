@@ -12,7 +12,7 @@ export class Call extends Node {
   ref: Function
 
   eval(context: Context) {
-    let ref: Function
+    let ref: any
     try {
       /** Try to get a function reference in the current scope */
       ref = this.ref()
@@ -40,8 +40,13 @@ export class Call extends Node {
      * Like Less, allow late evaluation?
      */
     args = args.map(arg => arg && arg instanceof Node ? arg.eval(context) : arg)
-    const returnVal = Object.prototype.hasOwnProperty.call(ref, '$IS_NODE')
-      ? ref.call(context, args[0], true)
+    /**
+     * The proxied default function returns hashed classes as props,
+     * so to not cause conflicts, Function props like `call` are aliased
+     * as `__call`
+     */
+    const returnVal = ref['$IS_PROXY'] === true
+      ? ref.__call(context, args[0], true)
       : ref.call(context, ...args)
     return returnVal instanceof Node ? returnVal.eval(context) : returnVal
   }

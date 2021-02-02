@@ -23,6 +23,7 @@ describe('CST-to-AST', () => {
   beforeEach(() => {
     context = new Context
     context.id = 'testing'
+    context.rootLevel = 2
     out = new OutputCollector
   })
 
@@ -37,24 +38,28 @@ describe('CST-to-AST', () => {
   })
 
   it(`rule #3`, async () => {
+    context.rootLevel = 0
     const node = await parse(`@import foo from 'foo.ts';`)
     node.value[0].toModule(context, out)
     expect(out.toString()).to.eq('import foo from \'foo.ts\'')
   })
 
   it(`rule #4`, async () => {
+    context.rootLevel = 0
     const node = await parse(`@import foo, { bar } from 'foo.ts';`)
     node.value[0].toModule(context, out)
     expect(out.toString()).to.eq('import foo, { bar } from \'foo.ts\'')
   })
 
   it(`rule #5`, async () => {
+    context.rootLevel = 0
     const node = await parse(`@import * as foo from 'foo.ts';`)
     node.value[0].toModule(context, out)
     expect(out.toString()).to.eq('import * as foo from \'foo.ts\'')
   })
 
   it(`rule #6`, async () => {
+    context.rootLevel = 0
     const node = await parse(`@import { default as foo, bar } from 'foo.ts';`)
     node.value[0].toModule(context, out)
     expect(out.toString()).to.eq('import { default as foo, bar } from \'foo.ts\'')
@@ -63,61 +68,61 @@ describe('CST-to-AST', () => {
   it(`rule #7`, async () => {
     const node = await parse(`@let foo: 1;`)
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('export let foo = $J.num({\n  value: 1,\n  unit: ""\n})\nlet $BK_foo = foo')
+    expect(out.toString()).to.eq('let foo = $J.num({\n  value: 1,\n  unit: ""\n})')
   })
 
   it(`rule #8`, async () => {
     const node = await parse(`@let foo { color: #FFF }`)
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('export let foo = {\n  "color": $J.color("#FFF")\n}\nlet $BK_foo = foo')
+    expect(out.toString()).to.eq('let foo = {\n  "color": $J.color("#FFF")\n}')
   })
 
   it(`rule #9`, async () => {
     const node = await parse(`@let foo { color: #FFF; nested {} }`)
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('export let foo = {\n  "color": $J.color("#FFF"),\n  "nested": {\n  }\n}\nlet $BK_foo = foo')
+    expect(out.toString()).to.eq('let foo = {\n  "color": $J.color("#FFF"),\n  "nested": {\n  }\n}')
   })
 
   it(`rule #10`, async () => {
     const node = await parse(`@let foo { color: #FFF; nested { color: black } }`)
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('export let foo = {\n  "color": $J.color("#FFF"),\n  "nested": {\n    "color": $J.anon("black")\n  }\n}\nlet $BK_foo = foo')
+    expect(out.toString()).to.eq('let foo = {\n  "color": $J.color("#FFF"),\n  "nested": {\n    "color": $J.anon("black")\n  }\n}')
   })
 
   it(`rule #11`, async () => {
     const node = await parse(`@let foo: $value.foo`)
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('export let foo = value.foo\nlet $BK_foo = foo')
+    expect(out.toString()).to.eq('let foo = value.foo')
   })
 
   it(`rule #12`, async () => {
     const node = await parse(`@let foo: $value.foo #FFF`)
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('export let foo = $J.expr([value.foo, $J.ws(), $J.color("#FFF")])\nlet $BK_foo = foo')
+    expect(out.toString()).to.eq('let foo = $J.expr([value.foo, $J.ws(), $J.color("#FFF")])')
   })
 
   it(`rule #13`, async () => {
     const node = await parse(`@let foo: $(value.foo && value.bar)`)
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('export let foo = (value.foo && value.bar)\nlet $BK_foo = foo')
+    expect(out.toString()).to.eq('let foo = (value.foo && value.bar)')
   })
 
   it(`rule #14`, async () => {
     const node = await parse(`@mixin foo {}`)
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('export let foo = () => $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)\nlet $BK_foo = foo')
+    expect(out.toString()).to.eq('let foo = () => $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)')
   })
 
   it(`rule #15`, async () => {
     const node = await parse(`@mixin foo() {}`)
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('export let foo = () => $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)\nlet $BK_foo = foo')
+    expect(out.toString()).to.eq('let foo = () => $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)')
   })
 
   it(`rule #16`, async () => {
     const node = await parse(`@mixin foo(bar, foo: 1px) {}`)
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('export let foo = (bar, foo = $J.num({\n  value: 1,\n  unit: "px"\n})) => $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)\nlet $BK_foo = foo')
+    expect(out.toString()).to.eq('let foo = (bar, foo = $J.num({\n  value: 1,\n  unit: "px"\n})) => $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)')
   })
 
   it(`rule #17`, async () => {
