@@ -48,7 +48,19 @@ This requires the Rollup or Webpack plugin, which are not ready yet! So this par
 
 ### Using with React
 
-The idea is you will be able to do this:
+Given the following Jess stylesheet `component.m.jess`...
+```scss
+// component.m.jess
+@mixin myMixin(something) {
+  width: $something;
+  color: white;
+}
+.box {
+  display: flex;
+  align-items: center;
+}
+```
+...the Rollup / Webpack plugin will allow you to import like this into a React component:
 ```jsx
 import styles, { myMixin } from 'component.m.jess'
 
@@ -61,17 +73,5 @@ export const myComponent = props => {
       foo
     </div>
   )
-}
-```
-...with this...
-```scss
-// component.m.jess
-@mixin myMixin(something) {
-  width: $something;
-  color: white;
-}
-.box {
-  display: flex;
-  align-items: center;
 }
 ```
