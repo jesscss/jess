@@ -12,44 +12,92 @@ Here's an example setup for a theming library.
 #### config.jess
 
 ```scss
+@let value: red;
 @let config {
+  global {
+    borderRadius: 3px;
+  }
+  buttons {
+    borderRadius: $config.global.borderRadius;
+  }
   colors {
-    value: red;
+    value: $value;
   }
 }
 ```
-#### hello.jess
+#### buttons.jess
 ```scss
 @import { config as defaultConfig } from './config.jess';
 
 @let config: $defaultConfig;
 
-.hello {
-  foo: $config.colors.value;
+.button {
+  color: $config.colors.value;
+  border-radius: $config.buttons.borderRadius;
 }
 ```
-#### index.jess
+#### nav.jess
 ```scss
 @import { config as defaultConfig } from './config.jess';
-@import hello from './hello.jess';
 
 @let config: $defaultConfig;
 
-@include hello(${config});
+.nav {
+  color: $config.colors.value;
+}
+```
+#### library.jess
+```scss
+@import getConfig from './config.jess';
+@import buttons from './buttons.jess';
+@import nav from './nav.jess';
+
+@let settings {
+  global {
+    borderRadius: 4px;
+  }
+  colors {
+    value: blue;
+  }
+}
+/****************************************
+Stylesheets can return new values as a
+result of passing in values.
+****************************************/
+@let config: $getConfig({
+  config: settings
+}).config;
+
+/****************************************
+We pass our new `config` object to our
+stylesheets.
+****************************************/
+@include buttons(${config});
+@include nav(${config});
 ```
 :::note
 
-We pass in the config object to `hello.jess` (and all imported stylesheets) even though it imports a default configuration. This is so that, when someone imports your theming library, their configuration object will propogate through all your stylesheets.
+We pass in the config object to `buttons.jess` and `nav.jess` even though they import a default configuration. This:
+1. makes sure that Jess merges your updated values based on that key.
+2. makes your code easier to reason about (so that a `@let` is always a "default" value)
+3. allows future IDE plugins to do tricks like auto-completion of key names based on collection structure
 
-If you're just building a website (not building a consumable theme), it's sufficient to just have your `.jess` files import config without exposing a `config` variable.
+
+If you're just building a website (not building a consumable theme package), it's sufficient to just have your `.jess` files import a default configuration without exposing a `config` variable.
 
 :::
 
 #### Output
 
-Running `jess index.jess` from above will produce the following CSS:
+Running `jess library.jess` from above will produce the following CSS:
 ```css
-.hello {
-  foo: red;
+.button {
+  color: blue;
+  border-radius: 4px;
+}
+.nav {
+  color: blue;
 }
 ```
+
+[You can clone a working example of this here.](https://github.com/jesscss/theme-library-example)
