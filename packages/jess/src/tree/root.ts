@@ -91,7 +91,12 @@ export class Root extends Node {
     out.add(`${pre}if ($RETURN_NODE) {\n`)
     out.add(`${pre}  return $TREE\n`)
     out.add(`${pre}}\n`)
-    out.add(`${pre}return $J.renderCss($TREE, $CONTEXT)\n`)
+    out.add(`${pre}return {\n`)
+    out.add(`${pre}  ...$J.renderCss($TREE, $CONTEXT)`)
+    context.exports.forEach(key => {
+      out.add(`,\n${pre}  ${key}`)
+    })
+    out.add(`\n${pre}}\n`)
     out.add('}\n')
     // out.add(`$DEFAULT.$IS_NODE = true\n`)
     out.add('const $DEFAULT_PROXY = $J.proxy($DEFAULT, $CONTEXT)\n')

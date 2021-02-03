@@ -13,8 +13,7 @@ export const renderCss = (root: Node, context: Context) => {
       evaldRoot.toCSS(context, out)
       return out.toString()
     },
-    $root: evaldRoot,
-    ...context.classMap
+    $root: evaldRoot
   }
   return result
 }

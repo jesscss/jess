@@ -33,6 +33,7 @@ export const JsReservedWords = [
   'throw', 'throws',
   'transient', 'true',
   'try', 'typeof',
+  'undefined',
   'var', 'void',
   'volatile', 'while',
   'with', 'yield'
