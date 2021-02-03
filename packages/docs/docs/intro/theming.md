@@ -7,7 +7,7 @@ Jess is good for theming in general, but Jess is also designed to be a good plat
 
 ### Example
 
-Here's an example setup for a theming library.
+Here's [an example setup](https://github.com/jesscss/theme-library-example) for a theming library.
 
 #### config.jess
 
