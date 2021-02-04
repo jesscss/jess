@@ -16,7 +16,7 @@ The extension can be found here: https://marketplace.visualstudio.com/items?item
 Add this to your `settings.json` file:
 ```json
     "files.associations": {
-        "*.jess": "PostCSS"
+        "*.jess": "postcss"
     }
 ```
 
