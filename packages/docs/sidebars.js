@@ -3,6 +3,7 @@ module.exports = {
     "Getting Started": [
       'intro/install',
       'intro/config',
+      'intro/vscode',
       'intro/theming',
       'intro/migrating',
       'intro/about',
