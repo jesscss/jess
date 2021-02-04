@@ -6,21 +6,19 @@ import memoize from 'micro-memoize'
 
 /**
  * Use lodash merge for objects, return plain value otherwise
- * 
- * @todo - remove?
  */
-// export const merge = (value: any, incomingValue: any) => {
-//   if (incomingValue === undefined) {
-//     return value
-//   }
-//   if (isPlainObject(value)) {
-//     if (isPlainObject(incomingValue)) {
-//       return lodashMerge({}, value, incomingValue)
-//     }
-//     return value
-//   }
-//   return incomingValue
-// }
+export const merge = (value: any, incomingValue: any) => {
+  if (incomingValue === undefined) {
+    return value
+  }
+  if (isPlainObject(value)) {
+    if (isPlainObject(incomingValue)) {
+      return lodashMerge({}, value, incomingValue)
+    }
+    return value
+  }
+  return incomingValue
+}
 
 export const get = lodashGet
 
@@ -30,7 +28,7 @@ export const get = lodashGet
  * This is so we can get hashed classes on the export
  */
 export const proxy = (func: Function, context: Context) => {
-  const memo = memoize(func)
+  const memo = memoize(func.bind(context))
   return new Proxy(memo, {
     get(target, p) {
       let prop = p.toString()

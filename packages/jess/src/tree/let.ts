@@ -26,7 +26,11 @@ export class Let extends JsNode {
   recurseValue(value: Node, keys: string[], context: Context, out: OutputCollector) {
     const pre = context.pre
     if (value instanceof JsCollection) {
-      out.add(`${keys.join('.')} = {}\n${pre}`)
+      if (keys.length === 1) {
+        out.add(`${keys[0]} = $J.merge({}, $J.get($VARS, '${keys[0]}'))\n${pre}`)
+      } else {
+        out.add(`${keys.join('.')} = {}\n${pre}`)
+      }
       value.value.forEach(node => {
         this.recurseValue(node.value, [...keys, node.name.value], context, out)
       })
@@ -44,10 +48,7 @@ export class Let extends JsNode {
       context.exports.add(name)
     } else {
       if (context.rootLevel !== 1) {
-        out.add(`let `)
-      }
-      if (context.rootLevel !== 1) {
-        out.add(`${name} = `)
+        out.add(`let ${name} = `)
         this.value.value.toModule(context, out)
         return
       }

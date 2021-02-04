@@ -55,7 +55,7 @@ describe('Let', () => {
     )
     rule.toModule(context, out)
     expect(out.toString()).to.eq(
-      'brand = {}\nbrand.global = {}\nbrand.global.dark = $J.get($VARS, \'brand.global.dark\', $J.anon("#000"))\nbrand.dark = $J.get($VARS, \'brand.dark\', $J.anon("#222"))\nbrand.light = $J.get($VARS, \'brand.light\', $J.anon("#eee"))\n'
+      'brand = $J.merge({}, $J.get($VARS, \'brand\'))\nbrand.global = {}\nbrand.global.dark = $J.get($VARS, \'brand.global.dark\', $J.anon("#000"))\nbrand.dark = $J.get($VARS, \'brand.dark\', $J.anon("#222"))\nbrand.light = $J.get($VARS, \'brand.light\', $J.anon("#eee"))\n'
     )
   })
 })
