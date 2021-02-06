@@ -71,31 +71,44 @@ export class Root extends Node {
       out.add('\n')
     })
   
-    out.add(`${pre}const $TREE = $J.root((() => {\n`)
-    out.add(`  ${pre}const $OUT = []\n`)
-    context.indent++
-    pre = context.pre
+    if (!context.opts.dynamic && context.isRuntime) {
+      out.add(`${pre}return {\n`)
+      let i = 0
+      context.exports.forEach(key => {
+        if (i !== 0) {
+          out.add(',\n')
+        }
+        i++
+        out.add(`${pre}  ${key}`)
+      })
+      out.add(`\n${pre}}\n`)
+    } else {
+      out.add(`${pre}const $TREE = $J.root((() => {\n`)
+      out.add(`  ${pre}const $OUT = []\n`)
+      context.indent++
+      pre = context.pre
 
-    this.value.forEach(node => {
-      if (!(node instanceof JsNode)) {
-        out.add(pre)
-        out.add(`$OUT.push(`)
-        node.toModule(context, out)
-        out.add(`)\n`)
-      }
-    })
-    context.indent--
-    pre = context.pre
-    out.add(`  ${pre}return $OUT\n${pre}})(),${JSON.stringify(this.location)})\n`)
-    out.add(`${pre}if ($RETURN_NODE) {\n`)
-    out.add(`${pre}  return $TREE\n`)
-    out.add(`${pre}}\n`)
-    out.add(`${pre}return {\n`)
-    out.add(`${pre}  ...$J.renderCss($TREE, $CONTEXT)`)
-    context.exports.forEach(key => {
-      out.add(`,\n${pre}  ${key}`)
-    })
-    out.add(`\n${pre}}\n`)
+      this.value.forEach(node => {
+        if (!(node instanceof JsNode)) {
+          out.add(pre)
+          out.add(`$OUT.push(`)
+          node.toModule(context, out)
+          out.add(`)\n`)
+        }
+      })
+      context.indent--
+      pre = context.pre
+      out.add(`  ${pre}return $OUT\n${pre}})(),${JSON.stringify(this.location)})\n`)
+      out.add(`${pre}if ($RETURN_NODE) {\n`)
+      out.add(`${pre}  return $TREE\n`)
+      out.add(`${pre}}\n`)
+      out.add(`${pre}return {\n`)
+      out.add(`${pre}  ...$J.renderCss($TREE, $CONTEXT)`)
+      context.exports.forEach(key => {
+        out.add(`,\n${pre}  ${key}`)
+      })
+      out.add(`\n${pre}}\n`)
+    }
     out.add('}\n')
     // out.add(`$DEFAULT.$IS_NODE = true\n`)
     out.add('const $DEFAULT_PROXY = $J.proxy($DEFAULT, $CONTEXT)\n')

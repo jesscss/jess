@@ -59,5 +59,23 @@
       ],
       "internalConsoleOptions": "openOnSessionStart"
     },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "rollup-plugin-jess tests",
+      "cwd": "${workspaceFolder}/packages/rollup-plugin-jess",
+      "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
+      "args": [
+        "-r",
+        "ts-node/register",
+        "-u",
+        "bdd",
+        "--timeout",
+        "999999",
+        "--colors",
+        "${workspaceFolder}/packages/rollup-plugin-jess/test/*.ts"
+      ],
+      "internalConsoleOptions": "openOnSessionStart"
+    }
   ]
 }

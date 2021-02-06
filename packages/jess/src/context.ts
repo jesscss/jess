@@ -3,7 +3,7 @@ import config from './config'
 
 export type ContextOptions = {
   module?: boolean
-  runtime?: boolean
+  dynamic?: boolean
   [k: string]: string | number | boolean
 }
 

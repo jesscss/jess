@@ -10,29 +10,14 @@ import { default as defaultConfig } from './config'
 import merge from 'lodash/merge'
 
 /**
- * @todo - add options
+ * Render CSS and (optionally) a runtime module
  */
 export const render = async (filePath: string, config = {}) => {
   const opts = merge({}, defaultConfig, config)
-  /**
-   * @todo
-   * Lots to do here.
-   * We should make bundling Jess for runtime styling optional,
-   * such that importing into React or other component libraries
-   * exports static CSS (and other root `@let` and `@mixin` exports)
-   * by default.
-   * 
-   * If, however, we wish to bind / update styles at runtime, the
-   * exported bundle would include a rollup of all of Jess (and our
-   * files as modules).
-   */
+  
   const bundle = await rollup.rollup({
     input: filePath,
     plugins: [
-      /**
-       * @todo
-       * For export bundling, stub out non-run-time AST nodes
-       */
       virtual({
         './config': `export default { options: ${JSON.stringify(opts.options)}}`
       }),

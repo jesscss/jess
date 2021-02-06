@@ -8,7 +8,10 @@ import { OutputCollector } from './output'
 export const renderCss = (root: Node, context: Context) => {
   const evaldRoot = root.eval(context)
   const result = {
-    $css: () => {
+    /**
+     * @todo - patch document in browser
+     */
+    $toCSS: () => {
       const out = new OutputCollector
       evaldRoot.toCSS(context, out)
       return out.toString()

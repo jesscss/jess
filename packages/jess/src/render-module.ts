@@ -34,6 +34,8 @@ export const renderModule = async (
     filename: filePath,
     rootpath: process.cwd()
   })
+
+  /** Create compile-time module */
   let context = new Context(contextOpts)
   const contextId = hashCode(filePath).toString(16)
   context.id = contextId
@@ -43,16 +45,15 @@ export const renderModule = async (
   root.toModule(context, out)
   $js = out.toString()
 
-  if (contextOpts.runtime) {
-    out = new OutputCollector
-    context = new Context(contextOpts)
-    context.id = contextId
-    context.isRuntime = true
-    root.toModule(context, out)
-    $js_runtime = out.toString()
-  }
+  /** Create run-time module */
+  out = new OutputCollector
+  context = new Context(contextOpts)
+  context.id = contextId
+  context.isRuntime = true
+  root.toModule(context, out)
+  $js_runtime = out.toString()
 
-  /** @todo - sourcemaps */
+  /** @todo - sourcemaps for runtime */
   return {
     $js, $js_runtime
   }

@@ -69,7 +69,7 @@ export class Ruleset extends Node {
       if (node instanceof JsNode) {
         node.toModule(context, out)
         out.add('\n')
-      } else if (node instanceof Declaration && context.opts.runtime) {
+      } else if (node instanceof Declaration && context.opts.dynamic) {
         /**
          * Creates either runtime vars or var() depending on settings
          */

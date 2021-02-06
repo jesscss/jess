@@ -19,13 +19,13 @@ export default function(options: {[k: string]: any} = {}): Plugin {
       //   name: path.basename(id),
       //   source: result.$js
       // })
-      if (options.runtime) {
-        this.emitFile({
-          type: 'asset',
-          name: path.basename(id),
-          source: result.$js_runtime
-        })
-      }
+      
+      this.emitFile({
+        type: 'asset',
+        name: path.basename(id),
+        source: result.$js_runtime
+      })
+      
       return { code: result.$js }
     }
   }

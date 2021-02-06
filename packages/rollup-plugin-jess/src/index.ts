@@ -14,20 +14,20 @@ export default function(options = {}): Plugin {
       /**
        * @todo - even though the file is already read, I couldn't figure
        * out a way yet to pass that as a string to the internal Jess Rollup
-       * process in the `render` function.
+       * process in the `render` function. So, technically, this file
+       * will be read from the filesystem twice.
        */
       const result = await render(id, options)
       
       // For testing...
       // fs.writeFileSync(id.replace(/\.jess/, '__.js'), result.code)
-      // this.emitFile({
-      //   type: 'asset',
-      //   name: path.basename(id),
-      //   source: result.code
-      // })
+      this.emitFile({
+        type: 'asset',
+        name: path.basename(id.replace(/\.jess/, '.css')),
+        source: result.$toCSS()
+      })
 
-
-      return result
+      return { code: result.$js }
     }
   }
 }
