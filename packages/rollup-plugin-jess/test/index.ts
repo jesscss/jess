@@ -28,7 +28,7 @@ const buildFile = async (filePath: string) => {
 describe('test', () => {
   it('produces a bundle', async () => {
     const result = await buildFile('./test.jess')
-    fs.writeFileSync('test.js', result[0].code)
+    // fs.writeFileSync(path.resolve(__dirname, 'test.js'), result[0].code)
     // console.log(result)
   })
 })
