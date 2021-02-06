@@ -12,7 +12,7 @@ const features = [
     imageUrl: 'img/undraw_docusaurus_mountain.svg',
     description: (
       <>
-        You don't have to learn a new language to have powerful stylesheets.
+        If you know CSS and JavaScript, you can use Jess.
       </>
     ),
   },
@@ -21,17 +21,17 @@ const features = [
     imageUrl: 'img/undraw_docusaurus_tree.svg',
     description: (
       <>
-        CSS goes in stylesheets. Functions go in scripts. But there's no reason they
-        can't be friends.
+        CSS belongs in stylesheets. But there's no reason CSS and JS can't be friends.
       </>
     ),
   },
   {
-    title: 'Powered by JavaScript',
+    title: 'Component-Friendly',
     imageUrl: 'img/undraw_docusaurus_react.svg',
     description: (
       <>
-        Jess files are stylesheets that transpile to JavaScript, and let you use JavaScript where you need it.
+        Unlike Less or Sass, Jess transpiles to JavaScript,
+        and can export mixins and variables into your components.
       </>
     ),
   },

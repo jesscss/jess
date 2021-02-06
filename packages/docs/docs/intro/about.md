@@ -1,26 +1,32 @@
 ---
 id: about
 title: About Jess
+slug: /
 ---
 
-Jess is a CSS pre-processing language like Less and Sass. In fact, Jess started as a re-write of Less from the ground-up, but evolved into a new language.
+### What is Jess?
 
-### What makes Jess different from Less?
+You can think of Jess as a CSS pre-processor like Less and Sass. In fact, Jess started as a re-write of Less from the ground-up, but evolved into something much more **powerful and dynamic**.
 
-Jess can transpile directly to JavaScript; in fact, Jess's variable and mixin features are simply JavaScript variables and functions. Jess's rule scope is just JavaScript function scope.
+**Less** and **Sass** are _interpreted languages_, and run on top of another language environment. They have their own variables, scopes, and mixins which are interpreted at runtime by the host language.
 
-Because of this, Jess can import and export JavaScript functions, primitive values, and objects, making it more interoperable with modern component libraries.
+Jess takes another approach. **Jess converts to JavaScript.** Jess variables are just JavaScript variables. Jess mixins are just JavaScript functions. **Jess is JavaScript.**
 
-### Why do some of Jess's features look like Sass?
+This gives Jess a few tremendous advantages over Sass and Less, such as:
+1. Jess is fast because modern JavaScript engines are fast. Jess benchmarks at about **2x faster than Less** for the same size stylesheet.
+2. Jess can perform "live" style updates in the browser, without re-parsing stylesheets. This is similar to CSS-in-JS.
 
-Less was based on Sass when it used only indented syntax. Sass based `.scss` syntax on Less's model of "extending CSS". So Sass inspired Less, and Less inspired Sass, and both inspired Jess. (Jess also takes inspiration from CSS modules, Rollup and React, among others.)
+### Why does Jess syntax somewhat resemble Sass?
 
-A more detailed explanation: Less's mixin patterns, ultimately, function very differently from JavaScript. Less mixins can be overloaded, and JavaScript functions can't. Less mixins can have guards (evaluation conditions); JavaScript has no direct parallel. Sass mixin syntax was most compatible with programming patterns you're already familiar with in JavaScript.
+Jess believes in _paving the cowpaths_. Jess is designed to be easy to transition to from Sass or Less (depending on features). Some concepts / syntax are borrowed from Sass, and some from Less. See [the migration guide](./intro/migrating).
 
-Jess's goal is to borrow the best ideas, and lean into what web developers already know.
+### How is Jess different from CSS-in-JS?
 
-### How is Jess different from both Sass and Less?
+CSS-in-JS, for a long time, was thought to be the only way to produce "dynamic" styles, but it comes with trade-offs. Jess has these advantages over CSS-in-JS:
+1. You don't have to put your CSS in a JavaScript file.
+2. Many CSS-in-JS libraries don't produce static CSS at build-time (or take some effort to do so). Not only can Jess produce static CSS, but it can produce "patch-able" CSS, along with a module that can patch your CSS at any time. **It's kinda magic.**
+3. Many CSS-in-JS libraries give you dynamic styles at the cost of performance. Jess focuses on making CSS updates fast with minimal overhead.
 
-Jess variables and mixin names must be valid JavaScript identifiers (meaning they can't contain hyphens). They get exported from a JS module! For the same reason, you can't use JS reserved words in your identifiers.
+### Why am I not already using Jess?
 
-As noted, individual Jess files are exported as JS modules, so each file has a local scope. As such, you can't declare variables locally and then consume them in another file without directly importing.
+I mean, you [tell me](https://twitter.com/CssJess)?

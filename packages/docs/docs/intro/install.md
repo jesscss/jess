@@ -1,7 +1,6 @@
 ---
 id: install
 title: Installation
-slug: /
 ---
 
 :::caution

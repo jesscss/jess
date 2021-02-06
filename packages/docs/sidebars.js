@@ -1,12 +1,12 @@
 module.exports = {
   someSidebar: {
     "Getting Started": [
+      'intro/about',
       'intro/install',
       'intro/config',
       'intro/vscode',
       'intro/theming',
       'intro/migrating',
-      'intro/about',
       'intro/style'
     ],
     Features: [
