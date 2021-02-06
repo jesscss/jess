@@ -7,7 +7,7 @@ const globalVariables = {
 
 // puppeteer options
 const opts = {
-  headless: false,
+  // headless: false,
   timeout: 10000
 }
 
@@ -16,7 +16,10 @@ const startServer = () => new Promise((resolve) => {
   browserSync.init({
     watch: true,
     open: false,
-    server: '../',
+    server: {
+      baseDir: './',
+      directory: true
+    },
     callbacks: {
       ready(err, bs) {
         resolve(browserSync)

@@ -13,9 +13,9 @@
     "compile": "tsc -b tsconfig.json && yarn dist",
     "dev": "tsc -b tsconfig.json -w",
     "serve": "lite-server --baseDir=\"test\"",
-    "test": "mocha test/bootstrap.js --recursive test/**/*.spec.js"
+    "test": "yarn dist && mocha test/bootstrap.js --recursive test/**/*.spec.js"
   },
-  "description": "CSS differ / attacher",
+  "description": "Attach stylesheets given an id",
   "main": "lib/index",
   "author": "Matthew Dean",
   "license": "MIT"
