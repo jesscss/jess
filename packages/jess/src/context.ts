@@ -1,5 +1,4 @@
 import type { Node } from './tree'
-import config from './config'
 
 export type ContextOptions = {
   module?: boolean
@@ -56,10 +55,7 @@ export class Context {
 
   constructor(opts: ContextOptions = {}) {
     this.originalOpts = opts
-    this.opts = {
-      ...opts,
-      ...config.options,
-    }
+    this.opts = opts
     this.id = generateId()
     this.frames = []
     this.exports = new Set()

@@ -37,8 +37,8 @@ const start = async () => {
   } catch (e) {
     throw new Error(`Could not read "${inFile}"`)
   }
-  /** @todo - Allow setting of options */
-  const result = await render(inFile, { global: true })
+  /** @todo - Allow setting of options in the cli? */
+  const result = await render(inFile, {})
 
   /** @todo - Write bundles and map */
   await fs.promises.writeFile(path.resolve(process.cwd(), outFile), result.$toCSS())
