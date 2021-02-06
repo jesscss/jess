@@ -6,7 +6,20 @@
  */
 
 /** Base classes - keep these on top */
-export * from './node'
+import { Node, FileInfo, LocationInfo } from './node'
+import { Context } from '../context'
+import { OutputCollector } from '../output'
+/**
+ * We bind this here to avoid circular dependencies
+ * between Context and Node
+ */
+Node.prototype.toString = function() {
+  const out = new OutputCollector
+  this.toCSS(new Context, out)
+  return out.toString()
+}
+export { Node, FileInfo, LocationInfo }
+
 export * from './js-node'
 
 /** @todo - remove nodes from tree index that we don't need to bundle for runtime? */
@@ -37,5 +50,4 @@ export * from './root'
 export * from './selector'
 export * from './spaced'
 export * from './square'
-export * from './util'
 export * from './ws'

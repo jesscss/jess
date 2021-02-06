@@ -1,4 +1,4 @@
-import { Context } from '../context'
+import type { Context } from '../context'
 import type { Visitor } from '../visitor'
 import { OutputCollector } from '../output'
 
@@ -34,6 +34,8 @@ export const isNodeMap = (val: NodeValue | NodeMap): val is NodeMap => {
 export abstract class Node {
   location: LocationInfo
   fileInfo: FileInfo
+
+  type: string
 
   evaluated: boolean
   allowRoot: boolean
@@ -150,12 +152,6 @@ export abstract class Node {
     this.fileInfo = node.fileInfo
     this.evaluated = node.evaluated
     return this
-  }
-
-  toString(): string {
-    const out = new OutputCollector
-    this.toCSS(new Context, out)
-    return out.toString()
   }
 
   fround(value: number) {

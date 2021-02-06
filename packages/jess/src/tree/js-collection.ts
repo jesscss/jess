@@ -1,5 +1,5 @@
-import { JsKeyValue } from '.'
 import { Node, NodeMap, LocationInfo } from './node'
+import type { JsKeyValue } from './js-key-value'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 /**
@@ -42,6 +42,7 @@ export class JsCollection extends Node {
     context.indent--
   }
 }
+JsCollection.prototype.type = 'JsCollection'
 
 export const coll =
   (value: JsKeyValue[] | NodeMap, location?: LocationInfo) =>

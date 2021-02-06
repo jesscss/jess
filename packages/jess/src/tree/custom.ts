@@ -1,5 +1,5 @@
-import { Declaration, DeclarationValue } from '.'
-import type { LocationInfo, NodeMap } from './node'
+import { Declaration, DeclarationValue } from './declaration'
+import type { LocationInfo } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
@@ -43,6 +43,7 @@ export class CustomDeclaration extends Declaration {
     out.add(`\n${pre}})`)
   }
 }
+CustomDeclaration.prototype.type = 'CustomDeclaration'
 
 export const custom =
   (value: DeclarationValue, location?: LocationInfo) =>

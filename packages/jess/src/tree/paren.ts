@@ -21,6 +21,7 @@ export class Paren extends Node {
     out.add(')')
   }
 }
+Paren.prototype.type = 'Paren'
 
 export const paren =
   (value: Node | NodeMap, location?: LocationInfo) =>

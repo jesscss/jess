@@ -1,4 +1,5 @@
-import { Anonymous, LocationInfo, NodeMap } from '.'
+import { Anonymous } from './anonymous'
+import type { LocationInfo, NodeMap } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
@@ -11,6 +12,7 @@ export class Combinator extends Anonymous {
     out.add(`$J.co("${this.value}")`)
   }
 }
+Combinator.prototype.type = 'Combinator'
 
 export const co =
   (value?: string | NodeMap, location?: LocationInfo) =>

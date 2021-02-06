@@ -1,5 +1,5 @@
-import { Node, Declaration } from '.'
-import type { LocationInfo } from './node'
+import { Node, LocationInfo } from './node'
+import { Declaration } from './declaration'
 import type { Context } from '../context' 
 import { OutputCollector } from '../output'
 
@@ -38,6 +38,7 @@ export class JsExpr extends Node {
     out.add(this.getValue(), this.location)
   }
 }
+JsExpr.prototype.type = 'JsExpr'
 
 export const js =
   (value: string, location?: LocationInfo) =>

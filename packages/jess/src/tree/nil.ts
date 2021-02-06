@@ -20,6 +20,7 @@ export class Nil extends Node {
 }
 Nil.prototype.allowRoot = true
 Nil.prototype.allowRuleRoot = true
+Nil.prototype.type = 'Nil'
 
 export const nil =
   (value?: any, location?: LocationInfo) =>

@@ -1,4 +1,6 @@
-import { Node, NodeMap, LocationInfo, Ruleset, List, Nil } from '.'
+import { Node, NodeMap, LocationInfo } from './node'
+import { Ruleset } from './ruleset'
+import { Nil } from './nil'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
 
@@ -71,6 +73,7 @@ export class Rule extends Node {
   }
 }
 Rule.prototype.allowRoot = true
+Rule.prototype.type = 'Rule'
 
 export const rule =
   (value: RuleValue, location?: LocationInfo) =>

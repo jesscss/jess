@@ -1,4 +1,4 @@
-import { JsNode } from '.'
+import { JsNode } from './js-node'
 import type { LocationInfo } from './node'
 import type { Context } from '../context' 
 import { OutputCollector } from '../output'
@@ -22,6 +22,7 @@ export class JsImport extends JsNode {
     }
   }
 }
+JsImport.prototype.type = 'JsImport'
 
 export const jsimport =
   (value: string, location?: LocationInfo) =>

@@ -1,5 +1,5 @@
-import { Node, Anonymous, cast } from '.'
-import type { LocationInfo, NodeMap } from './node'
+import { Node, LocationInfo, NodeMap } from './node'
+import { Anonymous } from './anonymous'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
@@ -30,7 +30,7 @@ export class Declaration extends Node {
   eval(context: Context) {
     const node = this.clone()
     node.name = this.name.eval(context)
-    node.value = cast(this.value).eval(context)
+    node.value = context.cast(this.value).eval(context)
     if (node.important) {
       node.important = new Anonymous(this.important.value)
     }
@@ -40,7 +40,7 @@ export class Declaration extends Node {
   toCSS(context: Context, out: OutputCollector) {
     this.name.toCSS(context, out)
     out.add(': ')
-    cast(this.value).toCSS(context, out)
+    context.cast(this.value).toCSS(context, out)
     if (this.important) {
       out.add(' ')
       this.important.toCSS(context, out)
@@ -66,6 +66,7 @@ export class Declaration extends Node {
   }
 }
 Declaration.prototype.allowRuleRoot = true
+Declaration.prototype.type = 'Declaration'
 
 export const decl =
   (value: DeclarationValue, location?: LocationInfo) =>

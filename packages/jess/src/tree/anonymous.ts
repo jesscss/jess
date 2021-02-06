@@ -1,5 +1,4 @@
-import { Node } from '.'
-import type { LocationInfo } from './node'
+import { Node, LocationInfo } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
@@ -14,6 +13,7 @@ export class Anonymous extends Node {
     out.add(`$J.anon(${JSON.stringify(this.value)})`, this.location)
   }
 }
+Anonymous.prototype.type = 'Anonymous'
 
 export const anon =
   (value: string, location?: LocationInfo) =>

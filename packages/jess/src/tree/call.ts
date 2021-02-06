@@ -1,7 +1,8 @@
-import { Node, List } from '.'
+import { Node } from './node'
+import { List } from './list'
+import { JsReservedWords } from './js-ident'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
-import { JsReservedWords } from './js-ident'
 
 /**
  * A function call
@@ -80,6 +81,7 @@ export class Call extends Node {
     out.add(`${pre}})`)
   }
 }
+Call.prototype.type = 'Call'
 
 export const call =
   (...args: ConstructorParameters<typeof Call>) => new Call(...args)

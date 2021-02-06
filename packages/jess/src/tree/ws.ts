@@ -1,7 +1,6 @@
-import { Node, NodeMap, LocationInfo } from '.'
+import { Node, NodeMap, LocationInfo } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
-import { isNodeMap } from './node'
 
 /**
  * A whitespace node
@@ -31,6 +30,7 @@ export class WS extends Node {
     out.add(`$J.ws()`)
   }
 }
+WS.prototype.type = 'WS'
 
 export const ws =
   (value?: string | NodeMap, location?: LocationInfo) =>

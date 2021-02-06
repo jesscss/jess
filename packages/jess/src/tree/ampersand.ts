@@ -1,5 +1,5 @@
-import { Node, Nil } from '.'
-import { LocationInfo, NodeMap } from './node'
+import { Node, LocationInfo, NodeMap } from './node'
+import { Nil } from './nil'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
@@ -30,6 +30,7 @@ export class Ampersand extends Node {
     out.add(`$J.amp()`, this.location)
   }
 }
+Ampersand.prototype.type = 'Ampersand'
 
 export const amp =
   (value?: string | NodeMap, location?: LocationInfo) =>

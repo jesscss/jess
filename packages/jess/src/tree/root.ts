@@ -1,4 +1,7 @@
-import { Node, NodeMap, LocationInfo, Nil, Ruleset, JsNode } from '.'
+import { Node, NodeMap, LocationInfo } from './node'
+import { Ruleset } from './ruleset'
+import { JsNode } from './js-node'
+import { Nil } from './nil'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
@@ -118,6 +121,7 @@ export class Root extends Node {
     context.rootLevel = 0
   }
 }
+Root.prototype.type = 'Root'
 
 export const root =
   (value: Node[] | NodeMap, location?: LocationInfo) =>

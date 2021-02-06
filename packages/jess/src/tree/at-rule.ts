@@ -1,5 +1,8 @@
-import { Node, Ruleset, Rule, Ampersand, List } from '.'
-import type { LocationInfo } from './node'
+import { Node, LocationInfo } from './node'
+import { List } from './list'
+import { Ampersand } from './ampersand'
+import { Rule } from './rule'
+import type { Ruleset } from './ruleset'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
@@ -73,6 +76,7 @@ export class AtRule extends Node {
   }
 }
 AtRule.prototype.allowRoot = true
+AtRule.prototype.type = 'AtRule'
 
 export const atrule =
   (value: AtRuleValue, location?: LocationInfo) =>

@@ -1,4 +1,4 @@
-import { Node } from '.'
+import { Node } from './node'
 import type { JsIdent } from '.'
 
 /**

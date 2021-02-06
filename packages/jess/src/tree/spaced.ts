@@ -1,5 +1,6 @@
-import { Expression, WS, isNodeMap } from '.'
-import type { LocationInfo, Node, NodeMap } from './node'
+import { LocationInfo, Node, NodeMap, isNodeMap } from './node'
+import { Expression } from './expression'
+import { WS } from './ws'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
 
@@ -43,6 +44,7 @@ export class Spaced extends Expression {
     out.add(`])`)
   }
 }
+Spaced.prototype.type = 'Spaced'
 
 export const spaced =
   (...args: ConstructorParameters<typeof Spaced>) =>

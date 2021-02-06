@@ -1,4 +1,11 @@
-import { Node, NodeMap, LocationInfo, JsNode, Nil, Rule, AtRule, Declaration, JsExpr, Call, List } from '.'
+import { Node, NodeMap, LocationInfo } from './node'
+import { JsNode } from './js-node'
+import { Nil } from './nil'
+import { Declaration } from './declaration'
+import { JsExpr } from './js-expr'
+import { Call } from './call'
+import { List } from './list'
+
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
@@ -21,7 +28,7 @@ export class Ruleset extends Node {
       this.value.forEach(rule => {
         rule = rule.eval(context)
         if (rule && !(rule instanceof Nil)) {
-          if (rule instanceof Rule || rule instanceof AtRule) {
+          if (rule.type === 'Rule' || rule.type === 'AtRule') {
             context.rootRules.push(rule)
           } else if (rule instanceof Ruleset) {
             rules.push(...rule.value)
@@ -126,6 +133,7 @@ export class Ruleset extends Node {
   }
 }
 Ruleset.prototype.allowRuleRoot = true
+Ruleset.prototype.type = 'Ruleset'
 
 export const ruleset =
   (value: Node[] | NodeMap, location?: LocationInfo) =>

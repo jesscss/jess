@@ -1,7 +1,7 @@
-import { JsNode, LocationInfo } from '.'
+import { isNodeMap, NodeMap, LocationInfo } from './node'
+import { JsNode } from './js-node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
-import { isNodeMap, NodeMap } from './node'
 
 export const JsReservedWords = [
   'abstract', 'arguments',
@@ -72,6 +72,7 @@ export class JsIdent extends JsNode {
     out.add(this.value)
   }
 }
+JsIdent.prototype.type = 'JsIdent'
 
 export const ident =
   (value: string, location?: LocationInfo) =>

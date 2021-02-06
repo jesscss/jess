@@ -3,7 +3,7 @@ import {
   LocationInfo,
   isNodeMap,
   NodeMap
-} from '.'
+} from './node'
 
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
@@ -57,6 +57,7 @@ export class Dimension extends Node {
     , this.location)
   }
 }
+Dimension.prototype.type = 'Dimension'
 
 export const dimension =
   (...args: ConstructorParameters<typeof Dimension>) => new Dimension(...args)

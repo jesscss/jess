@@ -1,9 +1,9 @@
-import { Node, Anonymous, Expression, List } from '.'
-import type { JsExpr } from './js-expr'
+import { Anonymous } from './anonymous'
+import { List } from './list'
+import { Expression } from './expression'
 import type { Context } from '../context'
-import { LocationInfo, isNodeMap, NodeMap } from './node'
+import { Node, LocationInfo, isNodeMap } from './node'
 import { OutputCollector } from '../output'
-import { cast } from './util'
 
 export class Element extends Node {
   value: any
@@ -40,7 +40,7 @@ export class Element extends Node {
 
   eval(context: Context) {
     const node = this.clone()
-    const value = cast(node.value).eval(context)
+    const value = context.cast(node.value).eval(context)
     node.value = value
     // Bubble expressions and lists up to Selectors
     if (value instanceof Expression || value instanceof List) {
@@ -67,6 +67,7 @@ export class Element extends Node {
     out.add(')')
   }
 }
+Element.prototype.type = 'Element'
 
 export const el =
   (...args: ConstructorParameters<typeof Element>) => new Element(...args)

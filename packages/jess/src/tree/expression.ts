@@ -1,9 +1,11 @@
-import { Node, Anonymous, Nil, List, WS } from '.'
-import { LocationInfo, isNodeMap, NodeMap } from './node'
+import { Node, LocationInfo, isNodeMap, NodeMap } from './node'
+import { Anonymous } from './anonymous'
+import { Nil } from './nil'
+import { List } from './list'
+import { WS } from './ws'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
 import combinate from 'combinate'
-import { cast } from './util'
 
 /**
  * A continuous collection of nodes
@@ -32,6 +34,7 @@ export class Expression extends Node {
   eval(context: Context): Node {
     const node = this.clone()
     /** Convert all values to Nodes */
+    const cast = context.cast
     node.value = node.value
       .map(n => cast(n).eval(context))
       .filter(n => n && !(n instanceof Nil))
@@ -71,6 +74,7 @@ export class Expression extends Node {
   }
 
   toCSS(context: Context, out: OutputCollector): void {
+    const cast = context.cast
     this.value.forEach(n => {
       const val = cast(n)
       val.toCSS(context, out)
@@ -90,6 +94,7 @@ export class Expression extends Node {
     out.add(`])`)
   }
 }
+Expression.prototype.type = 'Expression'
 
 export const expr =
   (...args: ConstructorParameters<typeof Expression>) =>

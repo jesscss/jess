@@ -20,6 +20,7 @@ export class Square extends Node {
     out.add(')')
   }
 }
+Square.prototype.type = 'Square'
 
 export const square =
   (value: Node | NodeMap, location?: LocationInfo) =>

@@ -1,7 +1,6 @@
-import { Node, LocationInfo } from '.'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
-import { isNodeMap } from './node'
+import { Node, isNodeMap, LocationInfo } from './node'
 
 type RGBA = [number, number, number, number] | number[]
 
@@ -179,6 +178,7 @@ export class Color extends Node {
     out.add(`$J.color("${this.value}")`)
   }
 }
+Color.prototype.type = 'Color'
 
 export const color =
   (value?: string | { value: string, rgba?: RGBA }, location?: LocationInfo) =>

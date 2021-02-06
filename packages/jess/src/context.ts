@@ -1,4 +1,9 @@
-import type { Node } from './tree'
+import { Node } from './tree/node'
+import { Nil } from './tree/nil'
+import { List } from './tree/list'
+import { Dimension } from './tree/dimension'
+import { Anonymous } from './tree/anonymous'
+import isPlainObject from 'lodash/isPlainObject'
 
 export type ContextOptions = {
   module?: boolean
@@ -89,5 +94,34 @@ export class Context {
 
   getVar() {
     return `--v${this.id}-${this.varCounter++}`
+  }
+
+  /**
+   * Casts a primitive value to a Jess node
+   * (if not already). This is for CSS output.
+   * 
+   * @example
+   * cast(area(5))
+   */
+  cast(value: any): Node {
+    if (value === undefined || value === null) {
+      return new Nil
+    }
+    if (value instanceof Node) {
+      return value
+    }
+    if (isPlainObject(value)) {
+      if (Object.prototype.hasOwnProperty.call(value, '$root')) {
+        return value.$root
+      }
+      return new Anonymous('[object]')
+    }
+    if (Array.isArray(value)) {
+      return new List(value)
+    }
+    if (value.constructor === Number) {
+      return new Dimension(<number>value)
+    }
+    return new Anonymous(value.toString())
   }
 }

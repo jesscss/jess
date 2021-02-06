@@ -1,4 +1,8 @@
-import { Expression, Combinator, isNodeMap, Ampersand, Nil, WS } from '.'
+import { Expression } from './expression'
+import { Combinator } from './combinator'
+import { Ampersand } from './ampersand'
+import { WS } from './ws'
+import { isNodeMap } from './node'
 import type { Node, NodeMap, LocationInfo } from './node'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
@@ -80,6 +84,7 @@ export class Selector extends Expression {
     out.add(`])`)
   }
 }
+Selector.prototype.type = 'Selector'
 
 export const sel =
   (value: (string | Node)[] | NodeMap, location?: LocationInfo) =>

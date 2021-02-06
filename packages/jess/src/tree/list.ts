@@ -1,8 +1,6 @@
-import { Node } from '.'
-import type { NodeMap, LocationInfo, Primitive } from './node'
+import { NodeMap, LocationInfo, Primitive, Node } from './node'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
-import { cast } from './util'
 
 /**
  * A list of expressions
@@ -21,6 +19,7 @@ export class List<T extends Primitive = Primitive> extends Node {
     out.add('', this.location)
     const length = this.value.length - 1
     const pre = context.pre
+    const cast = context.cast
     this.value.forEach((node, i) => {
       const val = cast(node)
       val.toCSS(context, out)
@@ -57,6 +56,7 @@ export class List<T extends Primitive = Primitive> extends Node {
     return out
   }
 }
+List.prototype.type = 'List'
 
 export const list =
   (value: Primitive[] | NodeMap, location?: LocationInfo) =>

@@ -1,9 +1,11 @@
-import { Node, Declaration, Ruleset, LocationInfo, Root, Call } from '.'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 import isPlainObject from 'lodash/isPlainObject'
-import { cast } from './util'
-import { isNodeMap } from './node'
+import { Node, isNodeMap, LocationInfo } from './node'
+import { Declaration } from './declaration'
+import { Ruleset } from './ruleset'
+import { Root } from './root'
+import { Call } from './call'
 
 export class Include extends Node {
   value: any
@@ -29,14 +31,14 @@ export class Include extends Node {
         if (Object.prototype.hasOwnProperty.call(value, name)) {
           rules.push(new Declaration({
             name,
-            value: cast((value[name])).eval(context)
+            value: context.cast((value[name])).eval(context)
           }))
         }
       }
       return new Ruleset(rules)
     }
 
-    value = cast(value).eval(context)
+    value = context.cast(value).eval(context)
 
     /**
      * Include Roots as plain Rulesets
@@ -61,6 +63,7 @@ export class Include extends Node {
     out.add(')')
   }
 }
+Include.prototype.type = 'Include'
 
 export const include =
   (value: any, location?: LocationInfo) =>

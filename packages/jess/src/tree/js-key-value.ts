@@ -1,5 +1,7 @@
-import { Node, JsNode, JsCollection, JsIdent } from '.'
-import { LocationInfo } from './node'
+import { JsNode } from './js-node'
+import { JsIdent } from './js-ident'
+import { JsCollection } from './js-collection'
+import type { Node, LocationInfo } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
@@ -51,6 +53,7 @@ export class JsKeyValue extends JsNode {
   }
 
 }
+JsKeyValue.prototype.type = 'JsKeyValue'
 
 export const keyval =
   (value: JsKeyValueValue, location?: LocationInfo) =>

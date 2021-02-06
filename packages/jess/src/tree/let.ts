@@ -1,7 +1,9 @@
-import { JsKeyValue, JsCollection, JsNode, NodeMap } from '.'
+import { JsNode } from './js-node'
+import { JsKeyValue } from './js-key-value'
+import { JsCollection } from './js-collection'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
-import { LocationInfo, Node } from './node'
+import { LocationInfo, Node, NodeMap } from './node'
 
 /**
  * @let
@@ -56,6 +58,7 @@ export class Let extends JsNode {
     }
   }
 }
+Let.prototype.type = 'Let'
 
 /**
  * `let` is a reserved word, so we'll use `set`

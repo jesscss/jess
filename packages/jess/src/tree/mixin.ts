@@ -1,4 +1,8 @@
-import { JsNode, List, JsKeyValue, Ruleset, JsIdent } from '.'
+import { JsNode } from './js-node'
+import { JsIdent } from './js-ident'
+import { List } from './list'
+import type { Ruleset } from './ruleset'
+import type { JsKeyValue } from './js-key-value'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
 import { LocationInfo } from './node'
@@ -57,6 +61,7 @@ export class Mixin extends JsNode {
     }
   }
 }
+Mixin.prototype.type = 'Mixin'
 
 export const mixin =
   (value: MixinValue, location?: LocationInfo) =>
