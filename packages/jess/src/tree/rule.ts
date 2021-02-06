@@ -40,8 +40,8 @@ export class Rule extends Node {
 
       rule.evaluated = true
 
-      /** Remove emptied rules */
-      if (this.value.value.length !== 0 && rule.value.value.length === 0) {
+      /** Remove empty rules */
+      if (rule.value.value.length === 0) {
         return new Nil()
       }
       return rule

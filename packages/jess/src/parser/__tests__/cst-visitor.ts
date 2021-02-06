@@ -154,13 +154,13 @@ describe('CST-to-AST', () => {
 
   it(`rule #20`, async () => {
     let node = await parse(
-      `&:hover {}`
+      `&:hover {a:b}`
     )
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('$J.rule({\n  sels: $J.list([\n    $J.sel([$J.amp(), $J.el($J.anon(":hover"))])\n  ]),\n  value: $J.ruleset(\n    (() => {\n      const $OUT = []\n      return $OUT\n    })()\n  )},[1,1,0,1,10,9])')
+    expect(out.toString()).to.eq('$J.rule({\n  sels: $J.list([\n    $J.sel([$J.amp(), $J.el($J.anon(":hover"))])\n  ]),\n  value: $J.ruleset(\n    (() => {\n      const $OUT = []\n      $OUT.push($J.decl({\n        name: $J.expr([$J.anon("a")]),\n        value: $J.anon("b")\n      }))\n      return $OUT\n    })()\n  )},[1,1,0,1,13,12])')
     
     node = node.eval(context)
-    expect(node.value[0].toString()).to.eq(':hover {\n}')
+    expect(node.value[0].toString()).to.eq(':hover {\n  a: b;\n}')
   })
 
   it(`rule #21`, async () => {

@@ -3,7 +3,7 @@ import * as path from 'path'
 import * as fs from 'fs'
 import { renderModule } from '../render-module'
 
-export default function(options = {}): Plugin {
+export default function(options: {[k: string]: any} = {}): Plugin {
   return {
     name: 'jess',
 
@@ -11,15 +11,22 @@ export default function(options = {}): Plugin {
       if (!(/\.jess$/.test(id))) {
         return null
       }
-      const result = await renderModule(code, id)
+      const result = await renderModule(code, id, options)
       // For testing...
       // fs.writeFileSync(id.replace(/\.jess/, '__.js'), result.code)
-      this.emitFile({
-        type: 'asset',
-        name: path.basename(id),
-        source: result.code
-      })
-      return result
+      // this.emitFile({
+      //   type: 'asset',
+      //   name: path.basename(id),
+      //   source: result.$js
+      // })
+      if (options.runtime) {
+        this.emitFile({
+          type: 'asset',
+          name: path.basename(id),
+          source: result.$js_runtime
+        })
+      }
+      return { code: result.$js }
     }
   }
 }

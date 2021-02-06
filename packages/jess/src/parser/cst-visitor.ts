@@ -185,8 +185,13 @@ export class CstVisitor {
   /** @note - for now, just collect as one string */
   jsExpression({ children, location }: CstNode) {
     children.shift()
+    const firstChild = (<CstNode>children[0])
+    let post: IToken
+    if (firstChild.name === 'jsBlock' && firstChild.children[3]) {
+      post = <IToken>firstChild.children.pop()
+    }
     const value = collapseTokens(collectTokens(children))
-    return new JsExpr(value.image, getLocation(location))
+    return new JsExpr({ value: value.image, post: post?.image }, getLocation(location))
   }
 
   prelude({ children }: CstNode) {

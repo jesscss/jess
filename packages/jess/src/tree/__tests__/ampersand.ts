@@ -18,12 +18,16 @@ describe('Ampersand', () => {
         sels: list([sel([el('.one'), el('.two')])]),
         value: ruleset([
           decl({ name: 'chungus', value: expr(['foo', ' ', 'bar']) }),
-          rule({ sels: expr([amp()]), value: ruleset([]) })
+          rule({ sels: expr([amp()]), value:
+            ruleset([
+              decl({ name: 'chungus', value: expr(['bar', ' ', 'foo']) })
+            ])
+          })
         ])
       })
     ])
     node = node.eval(context)
-    expect(`${node}`).to.eq('.one.two {\n  chungus: foo bar;\n}\n.one.two {\n}\n')
+    expect(`${node}`).to.eq('.one.two {\n  chungus: foo bar;\n}\n.one.two {\n  chungus: bar foo;\n}\n')
   })
 
   it('should serialize to a module', () => {

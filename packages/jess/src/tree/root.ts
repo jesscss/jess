@@ -1,7 +1,6 @@
 import { Node, NodeMap, LocationInfo, Nil, Ruleset, JsNode } from '.'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
-import { Rule } from './rule'
 
 /**
  * The root node. Contains a collection of nodes

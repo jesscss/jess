@@ -1,6 +1,6 @@
-import { Node, NodeMap, LocationInfo, JsNode, Nil, Rule, AtRule } from '.'
+import { Node, NodeMap, LocationInfo, JsNode, Nil, Rule, AtRule, Declaration, JsExpr, Call, List } from '.'
 import type { Context } from '../context'
-import { OutputCollector } from '../output'
+import type { OutputCollector } from '../output'
 
 /**
  * A set of nodes (usually declarations)
@@ -69,6 +69,48 @@ export class Ruleset extends Node {
       if (node instanceof JsNode) {
         node.toModule(context, out)
         out.add('\n')
+      } else if (node instanceof Declaration && context.opts.runtime) {
+        /**
+         * Creates either runtime vars or var() depending on settings
+         */
+        const n = node.clone()
+        const process = (n: Node) => {
+          if (n instanceof JsExpr || n instanceof Call) {
+            if (n instanceof Call) {
+              n.processNodes(process)
+            }
+            if (context.isRuntime) {
+              context.rootRules.push(new Declaration({
+                name: context.getVar(),
+                value: n
+              }))
+              return n
+            }
+            return new Call({
+              name: 'var',
+              value: new List([
+                context.getVar(),
+                n
+              ])
+            })
+          }
+          n.processNodes(process)
+          return n
+        }
+        n.processNodes(process)
+
+        if (context.isRuntime) {
+          context.rootRules.forEach(n => {
+            out.add(`$OUT.push(`)
+            n.toModule(context, out)
+            out.add(`)\n`)
+          })
+          context.rootRules = []
+        } else {
+          out.add(`$OUT.push(`)
+          n.toModule(context, out)
+          out.add(`)\n`)
+        }
       } else {
         out.add(`$OUT.push(`)
         node.toModule(context, out)

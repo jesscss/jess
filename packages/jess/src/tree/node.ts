@@ -73,6 +73,10 @@ export abstract class Node {
     this.fileInfo = fileInfo || {}
   }
 
+  /**
+   * Mutates node children in place. Used by eval()
+   * which first makes a shallow clone before mutating.
+   */
   processNodes(func: (n: Node) => Node) {
     const keys = this._nodeKeys
     keys.forEach(key => {
@@ -86,7 +90,6 @@ export abstract class Node {
             const result = node instanceof Node ? func(node) : node
             if (result) {
               out.push(result)
-              continue
             }
           }
           this[key] = out

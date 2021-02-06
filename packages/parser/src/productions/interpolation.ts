@@ -27,7 +27,8 @@ export default function(this: JessParser, $: JessParser) {
                   name: 'jsBlockTokens',
                   children: blockChildren
                 },
-                $.CONSUME($.T.RParen)
+                $.CONSUME($.T.RParen),
+                $.OPTION(() => $.CONSUME($.T.Ident))
               ]
             })
           }
@@ -36,7 +37,7 @@ export default function(this: JessParser, $: JessParser) {
           ALT: () => {
             children.push($.SUBRULE($.jsValue))
             $.MANY2(() => {
-              $.OPTION(() => {
+              $.OPTION2(() => {
                 children.push($.CONSUME($.T.Dot))
               })
               children.push($.SUBRULE2($.jsValue))

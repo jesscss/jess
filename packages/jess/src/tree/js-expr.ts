@@ -1,4 +1,4 @@
-import { Node } from '.'
+import { Node, Declaration } from '.'
 import type { LocationInfo } from './node'
 import type { Context } from '../context' 
 import { OutputCollector } from '../output'
@@ -13,13 +13,29 @@ import { OutputCollector } from '../output'
  */
 export class JsExpr extends Node {
   value: string
+  post: string
+
+  getValue() {
+    const { value, post } = this
+    if (post) {
+      return `${value} + '${post}'`
+    }
+    return value
+  }
+
+  getVar(context: Context) {
+    context.rootRules.push(new Declaration({
+      name: context.getVar(),
+      value: this
+    }))
+  }
 
   toCSS(context: Context, out: OutputCollector) {
     out.add('[[JS]]', this.location)
   }
 
   toModule(context: Context, out: OutputCollector) {
-    out.add(this.value, this.location)
+    out.add(this.getValue(), this.location)
   }
 }
 

@@ -15,22 +15,45 @@ const hashCode = (str: string) => {
 /**
  * Used by the Rollup pre-processor
  * 
- * @param {string} contents - Full file contents
- * @param {string} filePath - absolute path to file
+ * @param contents - Full file contents
+ * @param filePath - absolute path to file
  * 
  * @todo - format errors a la eslint
  */
-export const renderModule = async (contents: string, filePath: string) => {
-  const contextOpts = /\.m(odule)?\.jess/.test(filePath) ? { module: true } : {}
+export const renderModule = async (
+  contents: string,
+  filePath: string,
+  opts: {[k: string]: any } = {}
+) => {
+  const contextOpts = /\.m(odule)?\.jess/.test(filePath)
+    ? {
+      module: true,
+      ...opts
+    } : opts
   const root = await parse(contents, {
     filename: filePath,
     rootpath: process.cwd()
   })
-  const context = new Context(contextOpts)
-  context.id = hashCode(filePath).toString(16)
-  const out = new OutputCollector
+  let context = new Context(contextOpts)
+  const contextId = hashCode(filePath).toString(16)
+  context.id = contextId
+  let out = new OutputCollector
+  let $js: string
+  let $js_runtime: string
   root.toModule(context, out)
+  $js = out.toString()
+
+  if (contextOpts.runtime) {
+    out = new OutputCollector
+    context = new Context(contextOpts)
+    context.id = contextId
+    context.isRuntime = true
+    root.toModule(context, out)
+    $js_runtime = out.toString()
+  }
+
+  /** @todo - sourcemaps */
   return {
-    code: out.toString()
+    $js, $js_runtime
   }
 }

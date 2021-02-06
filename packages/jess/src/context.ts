@@ -3,6 +3,7 @@ import config from './config'
 
 export type ContextOptions = {
   module?: boolean
+  runtime?: boolean
   [k: string]: string | number | boolean
 }
 
@@ -24,6 +25,7 @@ export class Context {
    * as run-time, so this ID will be set in `toModule()` output
    */
   id: string
+  varCounter: number = 0
   classMap: {
     [k: string]: string
   }
@@ -42,6 +44,9 @@ export class Context {
 
   rootLevel: number
   rootRules: Node[]
+
+  /** currently generating a runtime module or not */
+  isRuntime: boolean
 
   /** In a custom declaration's value */
   inCustom: boolean
@@ -84,5 +89,9 @@ export class Context {
     }
     this.classMap[name] = mapVal
     return `.${mapVal}`
+  }
+
+  getVar() {
+    return `--v${this.id}-${this.varCounter++}`
   }
 }

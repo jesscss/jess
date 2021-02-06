@@ -40,7 +40,7 @@ export const render = async (filePath: string, config = {}) => {
       //   extensions: ['.js', '.ts']
       // }),
       // commonJs(),
-      jess()
+      jess(opts.options)
       // sucrase({
       //   exclude: ['node_modules/**'],
       //   transforms: ['typescript']
@@ -52,22 +52,22 @@ export const render = async (filePath: string, config = {}) => {
     ]
   })
 
-  let runtimeFile = filePath.replace(/\.jess$/, '__.js')
+  let compilerFile = filePath.replace(/\.jess$/, '__.js')
   const { output } = await bundle.generate({
     format: 'cjs',
-    file: runtimeFile,
+    file: compilerFile,
     exports: 'named'
   })
-  runtimeFile = path.resolve(process.cwd(), runtimeFile)
+  compilerFile = path.resolve(process.cwd(), compilerFile)
 
-  const runtime = output[0].code
-  const code = (<any>output[1]).source
-  fs.writeFileSync(runtimeFile, runtime)
-  const css = require(runtimeFile).default(opts.vars)
-  fs.unlinkSync(runtimeFile)
+  const compiler = output[0].code
+
+  fs.writeFileSync(compilerFile, compiler)
+  const css = require(compilerFile).default(opts.vars)
+  fs.unlinkSync(compilerFile)
   
   return {
     ...css,
-    $js: code
+    $js: output[1] && (<any>output[1]).source
   }
 }
