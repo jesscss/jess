@@ -1,13 +1,13 @@
-# Jess
-
 <div align="center">
   <img width="144" height="144" src="https://raw.githubusercontent.com/jesscss/jess/master/packages/docs/static/img/android-chrome-192x192.png">
+
+
+  _Jess is now in Alpha! Star this repo for later updates!_
+
+  [![Ask questions in the Jess Gitter community!](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/jesscss/community)
 </div>
 
-_Jess is now in Alpha! Star this repo for later updates!_
-
-[![Ask questions in the Jess Gitter community!](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/jesscss/community)
-
+# Jess
 ### The New CSS Pre-Processing Hotness
 
 This is the monorepo for Jess, a new, modern CSS pre-processor from the people who brought you Less. [See the docs.](https://jesscss.github.io)
