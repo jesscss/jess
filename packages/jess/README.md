@@ -1,4 +1,6 @@
-<p style="text-align: center"><img width="192" src="https://raw.githubusercontent.com/jesscss/jess/master/packages/docs/static/img/android-chrome-192x192.png"></p>
+<div align="center">
+  <img width="144" height="144" src="https://raw.githubusercontent.com/jesscss/jess/master/packages/docs/static/img/android-chrome-192x192.png">
+</div>
 
 _Note: This project is in alpha. Expect (and report) bugs!_
 # Jess

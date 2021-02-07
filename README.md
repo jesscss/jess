@@ -1,6 +1,8 @@
 # Jess
 
-<img width="192" src="https://raw.githubusercontent.com/jesscss/jess/master/packages/docs/static/img/android-chrome-192x192.png">
+<div align="center">
+  <img width="144" height="144" src="https://raw.githubusercontent.com/jesscss/jess/master/packages/docs/static/img/android-chrome-192x192.png">
+</div>
 
 _Jess is now in Alpha! Star this repo for later updates!_
 
