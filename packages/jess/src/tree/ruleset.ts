@@ -6,7 +6,7 @@ import { JsExpr } from './js-expr'
 import { Call } from './call'
 import { List } from './list'
 
-import type { Context } from '../context'
+import { Context } from '../context'
 import type { OutputCollector } from '../output'
 
 /**
@@ -44,6 +44,31 @@ export class Ruleset extends Node {
       return rule
     }
     return this
+  }
+
+  /**
+   * Used for mixin calls to determine if we should return this
+   * ruleset or return an object representation (if called from JS)
+   */
+  toContext(thisContext: any) {
+    if (thisContext && thisContext instanceof Context) {
+      return this
+    }
+    return this.obj()
+  }
+
+  /**
+   * Return an object representation of a ruleset
+   */
+  obj() {
+    const value = this.value
+    const output: { [k: string]: string } = {}
+    value.forEach(n => {
+      if (n instanceof Declaration) {
+        output[n.name.toString()] = `${n.value}${n.important ? ` ${n.important}` : ''}`
+      }
+    })
+    return output
   }
 
   toCSS(context: Context, out: OutputCollector) {

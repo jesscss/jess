@@ -24,7 +24,12 @@ describe('Mixin', () => {
     })
     rule.toModule(context, out)
     expect(out.toString()).to.eq(
-      'let myMixin = () => $J.ruleset(\n  (() => {\n    const $OUT = []\n    $OUT.push($J.decl({\n      name: $J.anon("color"),\n      value: $J.anon("black")\n    }))\n    $OUT.push($J.decl({\n      name: $J.anon("background-color"),\n      value: $J.anon("white")\n    }))\n    return $OUT\n  })()\n)'
+      'let myMixin = function() { return $J.ruleset(\n  (() => {\n    const $OUT = []\n    $OUT.push($J.decl({\n      name: $J.anon("color"),\n      value: $J.anon("black")\n    }))\n    $OUT.push($J.decl({\n      name: $J.anon("background-color"),\n      value: $J.anon("white")\n    }))\n    return $OUT\n  })()\n).toContext(this) }'
     )
+    expect(rule.value.toContext(this)).to.deep.eq({
+      "color": "black",
+      "background-color": "white"
+    })
+    expect(rule.value.toContext(context)).to.eq(rule.value)
   })
 })

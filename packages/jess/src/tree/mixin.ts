@@ -40,7 +40,7 @@ export class Mixin extends JsNode {
       if (context.rootLevel !== 1) {
         out.add(`let `)
       }
-      out.add(`${nm} = (`)
+      out.add(`${nm} = function(`)
       if (args) {
         const length = args.value.length - 1
         args.value.forEach((node, i) => {
@@ -56,8 +56,9 @@ export class Mixin extends JsNode {
           }
         })
       }
-      out.add(') => ')
+      out.add(') { return ')
       value.toModule(context, out)
+      out.add('.toContext(this) }')
     }
   }
 }

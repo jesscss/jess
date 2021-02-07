@@ -23,6 +23,9 @@ export class Include extends Node {
 
   eval(context: Context) {
     let value = this.value
+    if (value instanceof Call) {
+      value = value.eval(context)
+    }
 
     /** Convert included objects into declaration sets */
     if (isPlainObject(value)) {
