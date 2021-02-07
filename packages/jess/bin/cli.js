@@ -5,6 +5,12 @@ const fs = require('fs')
 const path = require('path')
 const chalk = require('chalk')
 
+const rollup = require('rollup')
+const commonJs = require('@rollup/plugin-commonjs')
+const nodeResolve = require('@rollup/plugin-node-resolve').default
+const jess = require('rollup-plugin-jess').default
+
+
 const { hideBin } = require('yargs/helpers')
 const args =
   yargs(hideBin(process.argv))
@@ -15,6 +21,12 @@ const args =
       } else {
         return true
       }
+    })
+    .option('o', {
+      alias: 'out',
+      default: '.',
+      describe: 'Output folder',
+      type: 'string'
     })
     .example([
       ['$0 input.jess', 'Compile to input.css'],
@@ -27,7 +39,8 @@ const start = async () => {
   const startTime = new Date()
   const files = argv._
   let inFile = files[0]
-  let outFile = files[1] || files[0].replace(/\.jess/, '.css')
+  let outCss = files[1] || files[0].replace(/\.jess/, '.css')
+  let outJs = outCss.replace(/\.css/, '.js')
 
   try {
     const hasErr = await fs.promises.access(path.resolve(process.cwd(), inFile), fs.constants.R_OK)
@@ -37,11 +50,25 @@ const start = async () => {
   } catch (e) {
     throw new Error(`Could not read "${inFile}"`)
   }
+  
+  const bundle = await rollup.rollup({
+    input: inFile,
+    plugins: [
+      commonJs(),
+      nodeResolve(),
+      jess()
+    ]
+  })
+  const dir = path.resolve(process.cwd(), path.dirname(inFile), argv.o)
+
+
   /** @todo - Allow setting of options in the cli? */
-  const result = await render(inFile, {})
+  // const result = await render(inFile, {})
+  await bundle.write({ dir })
+
 
   /** @todo - Write bundles and map */
-  await fs.promises.writeFile(path.resolve(process.cwd(), outFile), result.$toCSS())
+  // await fs.promises.writeFile(path.resolve(process.cwd(), outCss), result.$toCSS())
 
   const endTime = new Date()
   const seconds = Math.round((endTime - startTime) / 10) / 100

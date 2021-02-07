@@ -20,7 +20,8 @@
     "rollup": "^2.0.0"
   },
   "devDependencies": {
-    "jess": "^1.0.8-alpha.2"
+    "jess": "^1.0.8-alpha.2",
+    "rollup": "^2.36.2"
   },
   "author": "Matthew Dean",
   "license": "MIT"

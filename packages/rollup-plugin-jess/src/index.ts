@@ -16,6 +16,11 @@ export default function(options = {}): Plugin {
        * out a way yet to pass that as a string to the internal Jess Rollup
        * process in the `render` function. So, technically, this file
        * will be read from the filesystem twice.
+       * 
+       * @todo
+       * Right now, if called, this will render into CSS (and emit)
+       * every `.jess` file it comes across. This shouldn't happen if it's
+       * imported by another Jess file, right?
        */
       const result = await render(id, options)
       
