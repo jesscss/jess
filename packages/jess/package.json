@@ -45,5 +45,13 @@
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
     "@types/lodash": "^4.14.168"
-  }
+  },
+  "keywords": [
+    "jess",
+    "less",
+    "css",
+    "preprocessor",
+    "pre-processor",
+    "css-in-js"
+  ]
 }
