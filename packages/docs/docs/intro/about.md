@@ -10,6 +10,7 @@ slug: /
 
 .container {
   width: $(width)px;
+  display: flex;
 }
 ```
 
@@ -54,6 +55,28 @@ CSS-in-JS, for a long time, was thought to be the only way to produce "dynamic" 
 1. You don't have to put your CSS in a JavaScript file.
 2. Many CSS-in-JS libraries don't produce static CSS at build-time (or take some effort to do so). Not only can Jess produce static CSS, but it can produce "patch-able" CSS, along with a module that can patch your CSS at any time. **It's kinda magic.**
 3. Many CSS-in-JS libraries give you dynamic styles at the cost of performance. Jess focuses on making CSS updates fast with minimal overhead.
+
+```less
+// I am Jess's static output
+.container {
+  width: 20px;
+  display: flex;
+}
+```
+```less
+// I am Jess's patch-able output, enabled
+// with the `dynamic` flag
+.container {
+  width: var(--v123456-0, 20px);
+  display: flex;
+}
+```
+```less
+// I was computed and added to a style-sheet at runtime
+.container {
+  --v123456-0: 40px;
+}
+```
 
 ### Why am I not already using Jess?
 
