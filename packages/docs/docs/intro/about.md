@@ -59,7 +59,7 @@ CSS-in-JS, for a long time, was thought to be the only way to produce "dynamic" 
 ```less
 // I am Jess's static output
 .container {
-  width: 20px;
+  width: 640px;
   display: flex;
 }
 ```
@@ -67,14 +67,14 @@ CSS-in-JS, for a long time, was thought to be the only way to produce "dynamic" 
 // I am Jess's patch-able output, enabled
 // with the `dynamic` flag
 .container {
-  width: var(--v123456-0, 20px);
+  width: var(--v123456-0, 640px);
   display: flex;
 }
 ```
 ```less
 // I was computed and added to a style-sheet at runtime
 .container {
-  --v123456-0: 40px;
+  --v123456-0: 800px;
 }
 ```
 
