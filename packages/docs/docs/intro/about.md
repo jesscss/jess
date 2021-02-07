@@ -36,7 +36,7 @@ This gives Jess a few tremendous advantages over Sass and Less, such as:
 
 ### Why does Jess syntax somewhat resemble Sass?
 
-Jess believes in _paving the cowpaths_. Jess is designed to be easy to transition to from Sass or Less (depending on features). Some concepts / syntax are borrowed from Sass, and some from Less. See [the migration guide](./intro/migrating).
+Jess believes in [_paving the cowpaths_](https://en.wikipedia.org/w/index.php?title=Paving_the_cowpaths&redirect=no). Jess is designed to be easy to transition to from Sass or Less (depending on features). Some concepts / syntax are borrowed from Sass, and some from Less. See [the migration guide](./intro/migrating).
 
 ```scss
 @mixin square(dimension) {
