@@ -32,7 +32,8 @@ export default (props) => (
 
 This gives Jess a few tremendous advantages over Sass and Less, such as:
 1. Jess is fast because modern JavaScript engines are fast. Jess benchmarks at about **2x faster than Less** for the same size stylesheet.
-2. Jess can perform "live" style updates in the browser, without re-parsing stylesheets. This is similar to CSS-in-JS.
+2. Jess can import from and export to ES6 modules (or anything that can be converted to a module!)
+3. Jess can perform "live" style updates in the browser, without re-parsing stylesheets. This is similar to CSS-in-JS.
 
 ### Why does Jess syntax somewhat resemble Sass?
 

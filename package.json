@@ -2,9 +2,14 @@
   "name": "@jess/root",
   "version": "1000.0.0",
   "private": true,
-  "workspaces": [
-    "packages/*"
-  ],
+  "workspaces": {
+    "packages": [
+      "packages/*"
+    ],
+    "nohoist": [
+      "**/html-minifier-terser"
+    ]
+  },
   "description": "The Jess Monorepo",
   "main": "rollup.config.js",
   "dependencies": {},
