@@ -44,8 +44,14 @@ export const render = async (filePath: string, config = {}) => {
   const compiler = output[0].code
 
   fs.writeFileSync(compilerFile, compiler)
-  const css = require(compilerFile).default(opts.vars)
-  fs.unlinkSync(compilerFile)
+  let css: any
+  try {
+    css = require(compilerFile).default(opts.vars)
+    fs.unlinkSync(compilerFile)
+  } catch (e) {
+    fs.unlinkSync(compilerFile)
+    throw e
+  }  
   
   return {
     ...css,
