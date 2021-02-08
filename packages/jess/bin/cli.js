@@ -9,6 +9,7 @@ const rollup = require('rollup')
 const commonJs = require('@rollup/plugin-commonjs')
 const nodeResolve = require('@rollup/plugin-node-resolve').default
 const jess = require('rollup-plugin-jess').default
+const terser = require('rollup-plugin-terser').terser
 
 
 const { hideBin } = require('yargs/helpers')
@@ -31,11 +32,12 @@ const args =
       alias: 'bundle',
       default: false,
       type: 'boolean',
-      describe: 'Create a runtime bundle'
+      describe: 'Create a runtime bundle module'
     })
     .example([
       ['$0 input.jess', 'Compile to input.css'],
-      ['$0 input.jess output.css', 'Customize output file']
+      ['$0 input.jess output.css', 'Customize output file'],
+      ['$0 input.jess -o dist', 'Output to the dist directory']
     ])
 
 const argv = args.argv
@@ -68,9 +70,11 @@ const start = async () => {
         jess()
       ]
     })
-    const { output } = await bundle.generate()
+    const { output } = await bundle.generate({
+      plugins: [terser()]
+    })
     const js = output[0].code
-    const jsFile = files[1].replace(/\.css/, '.js')
+    const jsFile = cssFile.replace(/\.css/, '.js')
     await fs.promises.writeFile(path.resolve(outDir, jsFile), js)
     css = output[1].source
   } else {
