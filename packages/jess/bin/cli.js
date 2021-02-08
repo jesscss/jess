@@ -24,9 +24,14 @@ const args =
     })
     .option('o', {
       alias: 'out',
-      default: '.',
       describe: 'Output folder',
       type: 'string'
+    })
+    .option('b', {
+      alias: 'bundle',
+      default: false,
+      type: 'boolean',
+      describe: 'Create a runtime bundle'
     })
     .example([
       ['$0 input.jess', 'Compile to input.css'],
@@ -38,9 +43,10 @@ const argv = args.argv
 const start = async () => {
   const startTime = new Date()
   const files = argv._
-  let inFile = files[0]
-  let outCss = files[1] || files[0].replace(/\.jess/, '.css')
-  let outJs = outCss.replace(/\.css/, '.js')
+  const inFile = files[0]
+  let cssFile = files[1] || inFile.replace(/\.jess/, '.css')
+  const outDir = path.resolve(process.cwd(), argv.o || path.dirname(cssFile))
+  cssFile = path.basename(cssFile)
 
   try {
     const hasErr = await fs.promises.access(path.resolve(process.cwd(), inFile), fs.constants.R_OK)
@@ -51,24 +57,30 @@ const start = async () => {
     throw new Error(`Could not read "${inFile}"`)
   }
   
-  const bundle = await rollup.rollup({
-    input: inFile,
-    plugins: [
-      commonJs(),
-      nodeResolve(),
-      jess()
-    ]
-  })
-  const dir = path.resolve(process.cwd(), path.dirname(inFile), argv.o)
+  let css
 
+  if (argv.b) {
+    const bundle = await rollup.rollup({
+      input: inFile,
+      plugins: [
+        commonJs(),
+        nodeResolve(),
+        jess()
+      ]
+    })
+    const { output } = await bundle.generate()
+    const js = output[0].code
+    const jsFile = files[1].replace(/\.css/, '.js')
+    await fs.promises.writeFile(path.resolve(outDir, jsFile), js)
+    css = output[1].source
+  } else {
+    /** @todo - Allow setting of options in the cli? */
+    /** @todo - Write bundles and map */
+    const result = await render(inFile, {})
+    css = result.$toCSS()
+  }
 
-  /** @todo - Allow setting of options in the cli? */
-  // const result = await render(inFile, {})
-  await bundle.write({ dir })
-
-
-  /** @todo - Write bundles and map */
-  // await fs.promises.writeFile(path.resolve(process.cwd(), outCss), result.$toCSS())
+  await fs.promises.writeFile(path.resolve(outDir, cssFile), css)
 
   const endTime = new Date()
   const seconds = Math.round((endTime - startTime) / 10) / 100

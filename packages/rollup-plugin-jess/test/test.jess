@@ -1,3 +1,5 @@
+@import styles from './other.jess';
+
 @let value: red;
 .box {
   color: $value;
