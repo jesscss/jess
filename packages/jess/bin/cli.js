@@ -5,6 +5,13 @@ const fs = require('fs')
 const path = require('path')
 const chalk = require('chalk')
 
+const rollup = require('rollup')
+const commonJs = require('@rollup/plugin-commonjs')
+const nodeResolve = require('@rollup/plugin-node-resolve').default
+const jess = require('rollup-plugin-jess').default
+const terser = require('rollup-plugin-terser').terser
+
+
 const { hideBin } = require('yargs/helpers')
 const args =
   yargs(hideBin(process.argv))
@@ -16,9 +23,21 @@ const args =
         return true
       }
     })
+    .option('o', {
+      alias: 'out',
+      describe: 'Output folder',
+      type: 'string'
+    })
+    .option('b', {
+      alias: 'bundle',
+      default: false,
+      type: 'boolean',
+      describe: 'Create a runtime bundle module'
+    })
     .example([
       ['$0 input.jess', 'Compile to input.css'],
-      ['$0 input.jess output.css', 'Customize output file']
+      ['$0 input.jess output.css', 'Customize output file'],
+      ['$0 input.jess -o dist', 'Output to the dist directory']
     ])
 
 const argv = args.argv
@@ -26,8 +45,10 @@ const argv = args.argv
 const start = async () => {
   const startTime = new Date()
   const files = argv._
-  let inFile = files[0]
-  let outFile = files[1] || files[0].replace(/\.jess/, '.css')
+  const inFile = files[0]
+  let cssFile = files[1] || inFile.replace(/\.jess/, '.css')
+  const outDir = path.resolve(process.cwd(), argv.o || path.dirname(cssFile))
+  cssFile = path.basename(cssFile)
 
   try {
     const hasErr = await fs.promises.access(path.resolve(process.cwd(), inFile), fs.constants.R_OK)
@@ -37,11 +58,33 @@ const start = async () => {
   } catch (e) {
     throw new Error(`Could not read "${inFile}"`)
   }
-  /** @todo - Allow setting of options in the cli? */
-  const result = await render(inFile, {})
+  
+  let css
 
-  /** @todo - Write bundles and map */
-  await fs.promises.writeFile(path.resolve(process.cwd(), outFile), result.$toCSS())
+  if (argv.b) {
+    const bundle = await rollup.rollup({
+      input: inFile,
+      plugins: [
+        commonJs(),
+        nodeResolve(),
+        jess()
+      ]
+    })
+    const { output } = await bundle.generate({
+      plugins: [terser()]
+    })
+    const js = output[0].code
+    const jsFile = cssFile.replace(/\.css/, '.js')
+    await fs.promises.writeFile(path.resolve(outDir, jsFile), js)
+    css = output[1].source
+  } else {
+    /** @todo - Allow setting of options in the cli? */
+    /** @todo - Write bundles and map */
+    const result = await render(inFile, {})
+    css = result.$toCSS()
+  }
+
+  await fs.promises.writeFile(path.resolve(outDir, cssFile), css)
 
   const endTime = new Date()
   const seconds = Math.round((endTime - startTime) / 10) / 100

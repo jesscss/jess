@@ -24,6 +24,8 @@
     "lodash": "^4.17.20",
     "micro-memoize": "^4.0.9",
     "rollup": "^2.36.2",
+    "rollup-plugin-jess": "^1.0.8-alpha.2",
+    "rollup-plugin-terser": "^7.0.2",
     "yargs": "^16.2.0"
   },
   "scripts": {

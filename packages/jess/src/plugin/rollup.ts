@@ -14,11 +14,6 @@ export default function(options: {[k: string]: any} = {}): Plugin {
       const result = await renderModule(code, id, options)
       // For testing...
       // fs.writeFileSync(id.replace(/\.jess/, '__.js'), result.code)
-      // this.emitFile({
-      //   type: 'asset',
-      //   name: path.basename(id),
-      //   source: result.$js
-      // })
       
       this.emitFile({
         type: 'asset',
