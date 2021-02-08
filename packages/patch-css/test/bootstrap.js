@@ -7,7 +7,7 @@ const globalVariables = {
 
 // puppeteer options
 const opts = {
-  // headless: false,
+  headless: false,
   timeout: 10000
 }
 

@@ -1,7 +1,5 @@
 # patch-css
 
-_Note: WIP - Do not use_
+A small utility module to be loaded in the head of a document, without async or defer, to attach any cached stylesheets in localStorage.
 
-Attaches or updates a stylesheet by ID.
-
-_TODO: cache stylesheet in localStorage_
+To refresh the cache, run `updateSheet` for every stylesheet.
