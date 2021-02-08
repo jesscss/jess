@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "1.0.8-alpha.2",
+  "version": "1.0.8-alpha.3",
   "description": "Jess functions module",
   "main": "lib/index",
   "types": "lib/index",
@@ -21,7 +21,7 @@
   "author": "Matthew Dean",
   "license": "MIT",
   "dependencies": {
-    "jess": "^1.0.8-alpha.2",
+    "jess": "^1.0.8-alpha.3",
     "lodash": "^4.17.20"
   }
 }
