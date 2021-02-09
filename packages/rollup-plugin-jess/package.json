@@ -1,6 +1,6 @@
 {
   "name": "rollup-plugin-jess",
-  "version": "1.0.8-alpha.4",
+  "version": "1.0.8-alpha.5",
   "description": "Rollup plugin for Jess",
   "main": "lib/index",
   "types": "lib/index",
@@ -20,7 +20,7 @@
     "rollup": "^2.0.0"
   },
   "devDependencies": {
-    "jess": "^1.0.8-alpha.4",
+    "jess": "^1.0.8-alpha.5",
     "rollup": "^2.36.2"
   },
   "author": "Matthew Dean",
