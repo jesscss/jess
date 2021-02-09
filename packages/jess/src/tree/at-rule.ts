@@ -23,10 +23,9 @@ export class AtRule extends Node {
 
   eval(context: Context) {
     const node = <AtRule> super.eval(context)
-    /** Don't let rooted rules bubble past an at-rule */
     if (node.rules) {
       let rules = node.rules.value
-      /** Wrap sub-rules of a media query like Less */
+      /** Wrap sub-rules of an at-rule like Less */
       if (context.frames.length !== 0) {
         const rule = new Rule({ sels: new List([new Ampersand()]), value: rules })
           .inherit(this)
@@ -34,10 +33,6 @@ export class AtRule extends Node {
         rules = [rule]
         node.rules.value = rules
       }
-      context.rootRules
-        .sort((a: Node, b: Node) => a.location[0] - b.location[0])
-        .forEach(rule => rules.push(rule))
-      context.rootRules = []
     }
     return node
   }

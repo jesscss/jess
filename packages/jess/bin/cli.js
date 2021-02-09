@@ -94,4 +94,5 @@ const start = async () => {
 start()
   .catch(e => {
     console.error(chalk.red(e.message))
+    throw e
   })

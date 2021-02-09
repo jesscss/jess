@@ -74,7 +74,7 @@ export abstract class Node {
     this.location = location || []
     this.fileInfo = fileInfo || {}
   }
-
+  
   /**
    * Mutates node children in place. Used by eval()
    * which first makes a shallow clone before mutating.
@@ -84,7 +84,6 @@ export abstract class Node {
     keys.forEach(key => {
       const nodeVal = this[key]
       if (nodeVal) {
-        /** Process Node arrays only */
         if (Array.isArray(nodeVal)) {
           const out = []
           for (let i = 0; i < nodeVal.length; i++) {
@@ -97,6 +96,31 @@ export abstract class Node {
           this[key] = out
         } else if (nodeVal instanceof Node) {
           this[key] = func(nodeVal)
+        }
+      }
+    })
+  }
+
+  /**
+   * Walks children nodes, and recursively calls
+   * walkNodes for each Node child
+   */
+  walkNodes(func: (n: Node) => Node) {
+    const keys = this._nodeKeys
+    keys.forEach(key => {
+      const nodeVal = this[key]
+      if (nodeVal) {
+        if (Array.isArray(nodeVal)) {
+          for (let i = 0; i < nodeVal.length; i++) {
+            const node = nodeVal[i]
+            if (node instanceof Node) {
+              func(node)
+              node.walkNodes(func)
+            }
+          }
+        } else if (nodeVal instanceof Node) {
+          func(nodeVal)
+          nodeVal.walkNodes(func)
         }
       }
     })

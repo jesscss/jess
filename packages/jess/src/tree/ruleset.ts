@@ -28,9 +28,7 @@ export class Ruleset extends Node {
       this.value.forEach(rule => {
         rule = rule.eval(context)
         if (rule && !(rule instanceof Nil)) {
-          if (rule.type === 'Rule' || rule.type === 'AtRule') {
-            context.rootRules.push(rule)
-          } else if (rule instanceof Ruleset) {
+          if (rule instanceof Ruleset) {
             rules.push(...rule.value)
           } else {
             rules.push(rule)

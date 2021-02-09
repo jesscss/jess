@@ -1,5 +1,0 @@
-@import styles from './imports/rule.jess';
-
-.nested {
-  @include styles();
-}

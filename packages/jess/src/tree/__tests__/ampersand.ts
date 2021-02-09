@@ -27,7 +27,7 @@ describe('Ampersand', () => {
       })
     ])
     node = node.eval(context)
-    expect(`${node}`).to.eq('.one.two {\n  chungus: foo bar;\n}\n.one.two {\n  chungus: bar foo;\n}\n')
+    expect(`${node}`).to.eq('.one.two {\n  chungus: foo bar;\n  .one.two {\n    chungus: bar foo;\n  }\n}\n')
   })
 
   it('should serialize to a module', () => {
