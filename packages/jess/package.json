@@ -49,11 +49,11 @@
     "@types/lodash": "^4.14.168"
   },
   "keywords": [
-    "jess",
-    "less",
     "css",
+    "less",
     "preprocessor",
     "pre-processor",
-    "css-in-js"
+    "css-in-js",
+    "front-end"
   ]
 }

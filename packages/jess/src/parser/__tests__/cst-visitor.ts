@@ -273,6 +273,18 @@ describe('CST-to-AST', () => {
     node = node.eval(context)
     expect(node.toString()).to.eq('a b {\n  one: 1;\n}\na b:hover {\n  two: 2;\n}\na c {\n  three: 3;\n  five: 5;\n}\na c d {\n  four: 4;\n}\n')
   })
+
+  it(`rule #28`, async () => {
+    let node = await parse(`& { .box { a: b; } }`)
+    node = node.eval(context)
+    expect(node.toString()).to.eq('.box {\n  a: b;\n}\n')
+  })
+
+  it(`rule #29`, async () => {
+    let node = await parse(`&, & { .box { a: b; } }`)
+    node = node.eval(context)
+    expect(node.toString()).to.eq('.box,\n.box {\n  a: b;\n}\n')
+  })
 })
 
 /**

@@ -51,6 +51,10 @@ export class Expression extends Node {
     })
 
     if (lists) {
+      /**
+       * Create new expressions of the inherited type
+       */
+      const Clazz = Object.getPrototypeOf(this).constructor
       const combinations = combinate(lists)
       const returnList = new List([]).inherit(this)
       
@@ -61,8 +65,11 @@ export class Expression extends Node {
             expr[pos] = combo[pos]
           }
         }
-        returnList.value.push(new Expression(expr))
+        returnList.value.push(new Clazz(expr))
       })
+      if (returnList.value.length === 1) {
+        return <typeof Clazz>returnList.value[0]
+      }
       return returnList
     }
 

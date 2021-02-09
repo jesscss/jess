@@ -6,6 +6,8 @@ import { isNodeMap } from './node'
 import type { Node, NodeMap, LocationInfo } from './node'
 import type { Context } from '../context'
 import { OutputCollector } from '../output'
+import { Nil } from './nil'
+import { List } from './list'
 
 /**
  * @example
@@ -52,18 +54,34 @@ export class Selector extends Expression {
     }
 
     selector = super.eval.call(selector, context)
-    elements = selector.value
-
-    for (let i = 0; i < elements.length; i++) {
-      let value = elements[0]
-      if (
-        value instanceof Combinator ||
-        value instanceof WS
-      ) {
-        elements.shift()
-      } else {
-        break
+    
+    const cleanElements = (elements: Node[]) => {
+      for (let i = 0; i < elements.length; i++) {
+        let value = elements[0]
+        if (
+          (
+            value instanceof Selector &&
+            value.value.length === 0
+          ) ||
+          value instanceof Nil ||
+          value instanceof Combinator ||
+          value instanceof WS
+        ) {
+          elements.shift()
+        } else {
+          break
+        }
       }
+    }
+
+    if (selector instanceof List) {
+      selector.value.forEach(sel => cleanElements(sel.value))
+    } else {
+      cleanElements(selector.value)
+    }
+    
+    if (elements.length === 0) {
+      return new Nil()
     }
     return selector
   }
