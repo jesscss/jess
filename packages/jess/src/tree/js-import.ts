@@ -17,7 +17,7 @@ export class JsImport extends JsNode {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    if (context.rootLevel === 0) {
+    if (context.depth === 0) {
       out.add(`import${this.value}`, this.location)
     }
   }

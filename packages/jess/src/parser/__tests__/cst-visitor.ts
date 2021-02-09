@@ -23,7 +23,7 @@ describe('CST-to-AST', () => {
   beforeEach(() => {
     context = new Context
     context.id = 'testing'
-    context.rootLevel = 2
+    context.depth = 2
     out = new OutputCollector
   })
 
@@ -38,28 +38,28 @@ describe('CST-to-AST', () => {
   })
 
   it(`rule #3`, async () => {
-    context.rootLevel = 0
+    context.depth = 0
     const node = await parse(`@import foo from 'foo.ts';`)
     node.value[0].toModule(context, out)
     expect(out.toString()).to.eq('import foo from \'foo.ts\'')
   })
 
   it(`rule #4`, async () => {
-    context.rootLevel = 0
+    context.depth = 0
     const node = await parse(`@import foo, { bar } from 'foo.ts';`)
     node.value[0].toModule(context, out)
     expect(out.toString()).to.eq('import foo, { bar } from \'foo.ts\'')
   })
 
   it(`rule #5`, async () => {
-    context.rootLevel = 0
+    context.depth = 0
     const node = await parse(`@import * as foo from 'foo.ts';`)
     node.value[0].toModule(context, out)
     expect(out.toString()).to.eq('import * as foo from \'foo.ts\'')
   })
 
   it(`rule #6`, async () => {
-    context.rootLevel = 0
+    context.depth = 0
     const node = await parse(`@import { default as foo, bar } from 'foo.ts';`)
     node.value[0].toModule(context, out)
     expect(out.toString()).to.eq('import { default as foo, bar } from \'foo.ts\'')

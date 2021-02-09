@@ -19,6 +19,7 @@ import type { OutputCollector } from '../output'
  */
 export class Ruleset extends Node {
   value: Node[]
+  rootRules: Node[] = []
 
   eval(context: Context) {
     if (!this.evaluated) {
@@ -29,9 +30,17 @@ export class Ruleset extends Node {
         rule = rule.eval(context)
         if (rule && !(rule instanceof Nil)) {
           if (rule.type === 'Rule' || rule.type === 'AtRule') {
-            context.rootRules.push(rule)
+            this.rootRules.push(rule, ...rule.collectRoots())
           } else if (rule instanceof Ruleset) {
-            rules.push(...rule.value)
+            /** Collapse a ruleset into rules */
+            rule.value.forEach(r => {
+              if (r.type === 'Rule' || r.type === 'AtRule') {
+                this.rootRules.push(r)
+              }
+              else {
+                rules.push(r)
+              }
+            })
           } else {
             rules.push(rule)
           }
@@ -87,8 +96,8 @@ export class Ruleset extends Node {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    const rootLevel = context.rootLevel
-    context.rootLevel = 2
+    const depth = context.depth
+    context.depth = 2
 
     out.add(`$J.ruleset(\n`, this.location)
     context.indent++
@@ -154,7 +163,7 @@ export class Ruleset extends Node {
     pre = context.pre
     out.add(`\n${pre})`)
 
-    context.rootLevel = rootLevel
+    context.depth = depth
   }
 }
 Ruleset.prototype.allowRuleRoot = true

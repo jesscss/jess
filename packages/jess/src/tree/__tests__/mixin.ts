@@ -10,7 +10,7 @@ let out: OutputCollector
 describe('Mixin', () => {
   beforeEach(() => {
     context = new Context
-    context.rootLevel = 2
+    context.depth = 2
     out = new OutputCollector
   })
 

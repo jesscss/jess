@@ -34,10 +34,8 @@ export class AtRule extends Node {
         rules = [rule]
         node.rules.value = rules
       }
-      context.rootRules
-        .sort((a: Node, b: Node) => a.location[0] - b.location[0])
-        .forEach(rule => rules.push(rule))
-      context.rootRules = []
+      const rootRules = this.collectRoots()
+      rootRules.forEach(rule => rules.push(rule))
     }
     return node
   }

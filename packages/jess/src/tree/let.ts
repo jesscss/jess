@@ -45,11 +45,11 @@ export class Let extends JsNode {
 
   toModule(context: Context, out: OutputCollector) {
     const name = this.value.name.value
-    if (context.rootLevel === 0) {
+    if (context.depth === 0) {
       out.add(`export let ${name}`, this.location)
       context.exports.add(name)
     } else {
-      if (context.rootLevel !== 1) {
+      if (context.depth !== 1) {
         out.add(`let ${name} = `)
         this.value.value.toModule(context, out)
         return

@@ -47,7 +47,7 @@ export class Include extends Node {
      * Include Roots as plain Rulesets
      */
     if (value instanceof Root) {
-      return new Ruleset(value.value).eval(context)
+      return new Ruleset(value.value)
     }
     
     if (!value.allowRoot && !value.allowRuleRoot) {

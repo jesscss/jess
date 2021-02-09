@@ -14,6 +14,7 @@ export class Root extends Node {
   eval(context: Context) {
     const node = this.clone()
     const rules: Node[] = []
+    context.depth++
     this.value.forEach(rule => {
       rule = rule.eval(context)
       if (rule) {
@@ -25,15 +26,10 @@ export class Root extends Node {
         }
       }
 
-      /**
-       * Inner-most rules get pushed first because
-       * of cascading evaluation, so we need to sort them.
-       */
-      context.rootRules
-        .sort((a: Node, b: Node) => a.location[0] - b.location[0])
-        .forEach(rule => rules.push(rule))
-      context.rootRules = []
+      const rootRules = this.collectRoots()
+      rootRules.forEach(rule => rules.push(rule))
     })
+    context.depth--
     node.value = rules
     return node
   }
@@ -65,7 +61,7 @@ export class Root extends Node {
       `function $DEFAULT ($VARS = {}, $RETURN_NODE) {\n`
     )
     context.indent++
-    context.rootLevel++
+    context.depth++
 
     let pre = context.pre
     jsNodes.forEach(node => {
@@ -118,7 +114,7 @@ export class Root extends Node {
     out.add('$DEFAULT_PROXY(undefined, true)\n')
     out.add('export default $DEFAULT_PROXY')
     context.indent = 0
-    context.rootLevel = 0
+    context.depth = 0
   }
 }
 Root.prototype.type = 'Root'

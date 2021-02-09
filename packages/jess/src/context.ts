@@ -46,7 +46,7 @@ export class Context {
    */
   exports: Set<string>
 
-  rootLevel: number
+  depth: number
   rootRules: Node[]
 
   /** currently generating a runtime module or not */
@@ -65,7 +65,7 @@ export class Context {
     this.frames = []
     this.exports = new Set()
     this.indent = 0
-    this.rootLevel = 0
+    this.depth = 0
     this.classMap = Object.create(null)
     this.rootRules = []
   }

@@ -34,10 +34,10 @@ export class Mixin extends JsNode {
     const { name, args, value } = this
     const nm = name.value
     context.exports.add(nm)
-    if (context.rootLevel === 0) {
+    if (context.depth === 0) {
       out.add(`export let ${nm}`, this.location)
     } else {
-      if (context.rootLevel !== 1) {
+      if (context.depth !== 1) {
         out.add(`let `)
       }
       out.add(`${nm} = function(`)

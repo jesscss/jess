@@ -10,12 +10,12 @@ let out: OutputCollector
 describe('Let', () => {
   beforeEach(() => {
     context = new Context
-    context.rootLevel = 1
+    context.depth = 1
     out = new OutputCollector
   })
 
   it('should serialize a @let', () => {
-    context.rootLevel = 2
+    context.depth = 2
     let rule = set(keyval({
       name: 'brandColor',
       value: expr([anon('#eee')])

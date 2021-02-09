@@ -42,6 +42,9 @@ export abstract class Node {
   allowRuleRoot: boolean
   _nodeKeys: string[]
 
+  /** Used by Ruleset */
+  rootRules: Node[]
+
   value: NodeValue
   /** We'll put arbitrary props on the node */
   [k: string]: unknown
@@ -100,6 +103,44 @@ export abstract class Node {
         }
       }
     })
+  }
+
+  /**
+   * Fire a function for each Node in the tree, recursively
+   */
+  walkNodes(func: (n: Node) => void) {
+    const keys = this._nodeKeys
+    keys.forEach(key => {
+      const nodeVal = this[key]
+      if (nodeVal) {
+        /** Process Node arrays only */
+        if (Array.isArray(nodeVal)) {
+          for (let i = 0; i < nodeVal.length; i++) {
+            const node = nodeVal[i]
+            if (node instanceof Node) {
+              func(node)
+              node.walkNodes(func)
+            }
+          }
+        } else if (nodeVal instanceof Node) {
+          func(nodeVal)
+          nodeVal.walkNodes(func)
+        }
+      }
+    })
+  }
+
+  collectRoots(): Node[] {
+    const nodes: Set<Node> = new Set()
+    this.walkNodes(n => {
+      if (n.type === 'Ruleset') {
+        n.rootRules.forEach(n => {
+          nodes.add(n)
+        })
+        n.rootRules = []
+      }
+    })
+    return Array.from(nodes)
   }
   
   accept(visitor: Visitor) {
