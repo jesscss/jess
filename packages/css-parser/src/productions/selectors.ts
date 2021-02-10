@@ -117,11 +117,19 @@ export default function(this: CssParser, $: CssParser) {
     () => ({
       name: 'compoundSelector',
       children: $.OR([
-        { ALT: () => [$.CONSUME($.T.Star)] },
+        {
+          ALT: () => {
+            const children: CstChild[] = [
+              $.CONSUME($.T.Star)
+            ]
+            $.MANY(() => children.push($.SUBRULE($.simpleSelector)))
+            return children
+          }
+        },
         {
           ALT: () => {
             const children: CstNode[] = []
-            $.AT_LEAST_ONE(() => children.push($.SUBRULE($.simpleSelector)))
+            $.AT_LEAST_ONE(() => children.push($.SUBRULE2($.simpleSelector)))
             return children
           }
         }

@@ -1,5 +1,10 @@
 @import styles from './imports/rule.jess';
 
+*, *::before, *::after {
+  box-sizing: inherit;
+}
+
 .nested {
   @include styles();
 }
+
