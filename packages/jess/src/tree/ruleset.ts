@@ -117,9 +117,6 @@ export class Ruleset extends Node {
         const n = node.clone()
         const process = (n: Node) => {
           if (n instanceof JsExpr || n instanceof Call) {
-            if (n instanceof Call) {
-              n.processNodes(process)
-            }
             if (context.isRuntime) {
               context.rootRules.push(new Declaration({
                 name: context.getVar(),
