@@ -4,7 +4,7 @@ import * as fs from 'fs'
 import commonJs from '@rollup/plugin-commonjs'
 import nodeResolve from '@rollup/plugin-node-resolve'
 import sucrase from '@rollup/plugin-sucrase'
-import jess from './plugin/rollup'
+import jess from './plugin/compile'
 import { default as defaultConfig } from './config'
 import merge from 'lodash/merge'
 

@@ -16,13 +16,13 @@
 Using npm:
 
 ```console
-npm install jess rollup-plugin-jess --save-dev
+npm install rollup-plugin-jess --save-dev
 ```
 
 Using yarn:
 
 ```console
-yarn add jess rollup-plugin-jess -D
+yarn add rollup-plugin-jess -D
 ```
 
 ## Usage

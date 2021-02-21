@@ -8,7 +8,7 @@ const chalk = require('chalk')
 const rollup = require('rollup')
 const commonJs = require('@rollup/plugin-commonjs')
 const nodeResolve = require('@rollup/plugin-node-resolve').default
-const jess = require('rollup-plugin-jess').default
+const jess = require('../lib/plugin/runtime').default
 const terser = require('rollup-plugin-terser').terser
 
 

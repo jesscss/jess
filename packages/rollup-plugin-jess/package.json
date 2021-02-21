@@ -15,12 +15,13 @@
     "compile": "tsc -b tsconfig.json",
     "test": "ts-mocha test/**/*.ts"
   },
+  "dependencies": {
+    "jess": "^1.0.8-alpha.7"
+  },
   "peerDependencies": {
-    "jess": "^1.0.8-alpha.1",
     "rollup": "^2.0.0"
   },
   "devDependencies": {
-    "jess": "^1.0.8-alpha.7",
     "rollup": "^2.36.2"
   },
   "author": "Matthew Dean",

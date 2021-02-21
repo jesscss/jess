@@ -1,8 +1,11 @@
 import type { Plugin } from 'rollup'
 import * as path from 'path'
-import * as fs from 'fs'
+// import * as fs from 'fs'
 import { renderModule } from '../render-module'
 
+/**
+ * Rollup plugin to transpile .jess at compile-time
+ */
 export default function(options: {[k: string]: any} = {}): Plugin {
   return {
     name: 'jess',
