@@ -110,19 +110,19 @@ describe('CST-to-AST', () => {
   it(`rule #14`, async () => {
     const node = await parse(`@mixin foo {}`)
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('let foo = function() { return $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n).toContext(this) }')
+    expect(out.toString()).to.eq('let foo = function() { return $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)}')
   })
 
   it(`rule #15`, async () => {
     const node = await parse(`@mixin foo() {}`)
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('let foo = function() { return $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n).toContext(this) }')
+    expect(out.toString()).to.eq('let foo = function() { return $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)}')
   })
 
   it(`rule #16`, async () => {
     const node = await parse(`@mixin foo(bar, foo: 1px) {}`)
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('let foo = function(bar, foo = $J.num({\n  value: 1,\n  unit: "px"\n})) { return $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n).toContext(this) }')
+    expect(out.toString()).to.eq('let foo = function(bar, foo = $J.num({\n  value: 1,\n  unit: "px"\n})) { return $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)}')
   })
 
   it(`rule #17`, async () => {

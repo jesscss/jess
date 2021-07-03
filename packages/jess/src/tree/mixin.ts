@@ -33,9 +33,9 @@ export class Mixin extends JsNode {
   toModule(context: Context, out: OutputCollector) {
     const { name, args, value } = this
     const nm = name.value
-    context.exports.add(nm)
     if (context.depth === 0) {
       out.add(`export let ${nm}`, this.location)
+      context.exports.add(nm)
     } else {
       if (context.depth !== 1) {
         out.add(`let `)
@@ -58,7 +58,7 @@ export class Mixin extends JsNode {
       }
       out.add(') { return ')
       value.toModule(context, out)
-      out.add('.toContext(this) }')
+      out.add('}')
     }
   }
 }

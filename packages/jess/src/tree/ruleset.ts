@@ -56,17 +56,6 @@ export class Ruleset extends Node {
   }
 
   /**
-   * Used for mixin calls to determine if we should return this
-   * ruleset or return an object representation (if called from JS)
-   */
-  toContext(thisContext: any) {
-    if (thisContext && thisContext instanceof Context) {
-      return this
-    }
-    return this.obj()
-  }
-
-  /**
    * Return an object representation of a ruleset
    */
   obj() {
