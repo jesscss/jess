@@ -1,6 +1,6 @@
 {
   "name": "rollup-plugin-jess",
-  "version": "1.0.8-alpha.7",
+  "version": "1.0.8-alpha.8",
   "description": "Rollup plugin for Jess",
   "main": "lib/index",
   "types": "lib/index",
@@ -16,7 +16,7 @@
     "test": "ts-mocha test/**/*.ts"
   },
   "dependencies": {
-    "jess": "^1.0.8-alpha.7"
+    "jess": "^1.0.8-alpha.8"
   },
   "peerDependencies": {
     "rollup": "^2.0.0"
