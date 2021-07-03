@@ -67,7 +67,7 @@ import styles, { myMixin } from 'component.m.jess'
 export const myComponent = props => {
   return (
     <div
-      style={myMixin(props.something)}
+      style={myMixin(props.something).obj()}
       className={styles.box}
     >
       foo
