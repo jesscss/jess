@@ -57,3 +57,6 @@ typings/
 lib
 tsconfig.tsbuildinfo
 .rollup.cache
+
+# jetbrains
+.idea

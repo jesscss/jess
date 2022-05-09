@@ -12,3 +12,12 @@ Our goal is to build a unique and welcoming community around this project. Code 
 ### On the details of contributing
 
 As far as code style, repo management, tools, etc, ehh we can figure that out! Don't sweat it. Ask questions, and when you find answers, do your best to fill in any gaps in code documentation and in the Docusaurus docs, so that the next person doesn't encounter the same gaps.
+
+### Release Process
+Performing a release requires push permissions to the repository.
+
+- Ensure you are on the master branch and synced with origin.
+- yarn run release:version
+- Follow the lerna CLI instructions and choose the new version number.
+- Track the newly pushed tag (/^v[0-9]+(\.[0-9]+)*/) build in the build system until successful completion.
+- Inspect the new artifacts published on npmjs.com, e.g:
