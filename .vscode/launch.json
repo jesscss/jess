@@ -5,6 +5,17 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Debug ANTLR4 grammar",
+      "type": "antlr-debug",
+      "request": "launch",
+      "input": "${workspaceFolder}/packages/antlr/input.css",
+      "grammar": "${workspaceFolder}/packages/antlr/CssParser.g4",
+      // "actionFile": "${workspaceFolder}/packages/antlr/actions.js",
+      "startRule": "stylesheet",
+      "printParseTree": true,
+      "visualParseTree": true
+    },
+    {
       "type": "node",
       "request": "launch",
       "name": "CSS Parsing Tests",
