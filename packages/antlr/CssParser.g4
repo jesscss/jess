@@ -27,7 +27,7 @@ qualifiedRule
 simpleSelector
   : Class
   | ID
-  | Element
+  | Ident
   | Ampersand
   | Star
   | PseudoNth

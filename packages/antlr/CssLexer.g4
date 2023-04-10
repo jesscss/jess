@@ -56,10 +56,6 @@ fragment NmChar
   | Escape
   ;
 
-fragment Ident
-  : '-'? NmStart NmChar*
-  ;
-
 /** Reference: https://www.w3.org/TR/css-syntax-3/#consume-url-token */
 fragment UrlFragment
   : (~(
@@ -121,6 +117,13 @@ Cdc         : '-->' -> skip;
 /** Ignore BOM */
 UnicodeBOM  : '\uFFFE' -> skip;
 
+Ident
+  : '-'? NmStart NmChar*
+  ;
+
+LCurly      : '{';
+RCurly      : '}';
+
 /**
  * CSS syntax says we should identify integers as separate from numbers,
  * probably because there are parts of the syntax where one is allowed but not the other?
@@ -145,38 +148,37 @@ String      : DoubleString | SingleString;
 Semi        : ';';
 
 /** Simple Selectors */
-Star        : '*' -> mode(Selector);
-Ampersand   : '&' -> mode(Selector);
-ID          : '#' Ident -> mode(Selector);
-Class       : '.' Ident -> mode(Selector);
-Element     : Ident -> mode(Selector);
+Star        : '*' -> pushMode(Selector);
+Ampersand   : '&' -> pushMode(Selector);
+ID          : '#' Ident -> pushMode(Selector);
+Class       : '.' Ident -> pushMode(Selector);
 
 fragment NthSyntax   : 'odd' | 'even' | Integer | Integer? [nN] (WS* [+-] WS* Digit)?;
-PseudoNth   : ':' NthFunctions '(' WS* NthSyntax WS* ')' -> mode(Selector);
-Pseudo      : ':' ':'? Ident ('(' .*? ')')? -> mode(Selector);
+PseudoNth   : ':' NthFunctions '(' WS* NthSyntax WS* ')' -> pushMode(Selector);
+Pseudo      : ':' ':'? Ident ('(' .*? ')')? -> pushMode(Selector);
 /** @todo - lookup */
-Attribute   : LSquare WS* Ident [*~|^$]? ('=') WS* (Ident | String) WS* ([is] WS*)? RSquare -> mode(Selector);
+Attribute   : LSquare WS* Ident [*~|^$]? ('=') WS* (Ident | String) WS* ([is] WS*)? RSquare -> pushMode(Selector);
 
-Combinator    : ([~>+] | '||') -> mode(Selector);
+Combinator    : ([~>+] | '||') -> pushMode(Selector);
 
 /** Non-nested */
 Charset           : '@charset' WS String ';' -> channel(HIDDEN);
-ImportRule        : '@import' -> mode(Values);
-NamespaceRule     : '@namespace' -> mode(Values);
+ImportRule        : '@import' -> pushMode(Values);
+NamespaceRule     : '@namespace' -> pushMode(Values);
 
 /** Nested */
-MediaRule         : '@media' -> mode(Values);
-SupportsRule      : '@supports' -> mode(Values);
-PageRule          : '@page' -> mode(Values);
-FontFaceRule      : '@font-face' -> mode(Values);
-KeyframesRule     : '@keyframes' -> mode(Values);
-ContainerRule     : '@container' -> mode(Values);
-PropertyRule      : '@property' -> mode(Values);
-LayerRule         : '@layer' -> mode(Values);
-ScopeRule         : '@scope' -> mode(Values);
+MediaRule         : '@media' -> pushMode(Values);
+SupportsRule      : '@supports' -> pushMode(Values);
+PageRule          : '@page' -> pushMode(Values);
+FontFaceRule      : '@font-face' -> pushMode(Values);
+KeyframesRule     : '@keyframes' -> pushMode(Values);
+ContainerRule     : '@container' -> pushMode(Values);
+PropertyRule      : '@property' -> pushMode(Values);
+LayerRule         : '@layer' -> pushMode(Values);
+ScopeRule         : '@scope' -> pushMode(Values);
 
 /** CSS allows any at-rule definition */
-AtRule            : '@' Ident -> mode(Values);
+AtRule            : '@' Ident -> pushMode(Values);
 
 // Parse specifically later?
 // CounterStyleRule  : '@counter-style';
@@ -200,32 +202,36 @@ Sel_Star          : Star -> type(Star);
 Sel_Amp           : Ampersand -> type(Ampersand);
 Sel_ID            : ID -> type(ID);
 Sel_Class         : Class -> type(Class);
-Sel_Element       : Ident -> type(Element);
+Sel_Ident         : Ident -> type(Ident);
 Sel_PseudoNth     : PseudoNth -> type(PseudoNth);
 Sel_Pseudo        : Pseudo -> type(Pseudo);
 Sel_Attribute     : Attribute -> type(Attribute);
 
 Sel_Combinator    : Combinator -> type(Combinator);
-Sel_LCurly        : LCurly -> type(LCurly), pushMode(DeclarationList);
+Sel_LCurly        : LCurly -> type(LCurly), popMode, pushMode(DeclarationList);
 
 mode DeclarationList;
 
 DList_WS          : Whitespace -> channel(HIDDEN);
-DList_Comma       : Comma -> mode(Selector), type(Comma);
+DList_Comma       : Comma -> type(Comma);
 
-DList_Star        : Star -> mode(Selector), type(Star);
-DList_Amp         : Ampersand -> mode(Selector), type(Ampersand);
-DList_ID          : ID -> mode(Selector), type(ID);
-DList_Class       : Class -> mode(Selector), type(Class);
+DList_Star        : Star -> pushMode(Selector), type(Star);
+DList_Amp         : Ampersand -> pushMode(Selector), type(Ampersand);
+DList_ID          : ID -> pushMode(Selector), type(ID);
+DList_Class       : Class -> pushMode(Selector), type(Class);
 // DeclarationList_Element -- not valid
-DList_PseudoNth   : PseudoNth -> mode(Selector), type(PseudoNth);
-DList_Pseudo      : Pseudo -> mode(Selector), type(Pseudo);
-DList_Attribute   : Attribute -> mode(Selector), type(Attribute);
+DList_PseudoNth   : PseudoNth -> pushMode(Selector), type(PseudoNth);
+DList_Pseudo      : Pseudo -> pushMode(Selector), type(Pseudo);
+DList_Attribute   : Attribute -> pushMode(Selector), type(Attribute);
 
 /** Can start with a combinator in some modes */
-DList_Combinator  : Combinator -> mode(Selector), type(Combinator);
-DList_CustomProp  : '--' NmStart NmChar* WS* ':' -> mode(CustomPropertyValue);
-DList_Property    : Ident WS* ':' -> mode(Values);
+DList_Combinator  : Combinator -> pushMode(Selector), type(Combinator);
+
+
+DList_CustomProp  : '--' NmStart NmChar* WS* ':' -> pushMode(CustomPropertyValue);
+DList_Property    : Ident WS* ':' -> pushMode(Values);
+
+Dlist_RCurly      : RCurly -> type(RCurly), popMode;
 
 /** "Component values" */
 mode Values;
@@ -257,13 +263,13 @@ Minus       : '-';
 Divide      : '/';
 Multiply    : '*';
 
-LCurly      : '{' -> pushMode(Values);
+Val_LCurly  : LCurly -> type(LCurly), pushMode(Values);
 LParen      : '(' -> pushMode(Values);
 LSquare     : '[' -> pushMode(Values);
 
 RParen      : ')' -> popMode;
 RSquare     : ']' -> popMode;
-RCurly      : '}' -> popMode;
+Val_RCurly  : RCurly -> type(RCurly), popMode;
 
 
 mode CustomPropertyValue;
