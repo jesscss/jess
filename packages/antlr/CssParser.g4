@@ -4,7 +4,7 @@ options
   { tokenVocab = CssLexer; }
 
 stylesheet
-  : Charset? (
+  : CHARSET? (
     WS
     | qualifiedRule
     | atRule
@@ -12,7 +12,7 @@ stylesheet
   ;
 
 qualifiedRule
-  : selectorList WS* LCurly declarationList RCurly
+  : selectorList WS* LCURLY declarationList RCURLY
   ;
 
 /*** SELECTORS ***/
@@ -26,14 +26,22 @@ qualifiedRule
   @todo Define known pseudos
 */
 simpleSelector
-  : Class
+  : CLASS
   | ID
   | identifier
-  | Ampersand
-  | Star
-  | PseudoNth
-  | Pseudo
-  | Attribute
+  | AMPERSAND
+  | STAR
+  | pseudoSelector
+  | attributeSelector
+  ;
+
+pseudoSelector
+  : NTH_PSEUDO_CLASS
+  | COLON COLON? identifier (LPAREN anyToken RPAREN)?
+  ;
+
+attributeSelector
+  : LSQUARE WS* identifier (STAR | TILDE | CARET | DOLLAR | PIPE)? EQ WS* (identifier | STRING) WS* (ATTRIBUTE_FLAG WS*)? RSQUARE 
   ;
 
 /**
@@ -51,7 +59,14 @@ compoundSelector
     .e.g. a#selected > .icon
 */
 complexSelector
-  : compoundSelector (WS* (Combinator WS*)? compoundSelector)*
+  : compoundSelector (WS* (combinator WS*)? compoundSelector)*
+  ;
+
+combinator
+  : PLUS
+  | TILDE
+  | COLUMN
+  | GT
   ;
 
 /**
@@ -60,47 +75,54 @@ complexSelector
     e.g. + div#topic > #reference
 */
 relativeSelector
-  : (Combinator WS*)? complexSelector
+  : (combinator WS*)? complexSelector
   ;
 
 selectorList
-  : complexSelector (WS* Comma WS* complexSelector)*
+  : complexSelector (WS* COMMA WS* complexSelector)*
   ;
 
 /*** Declarations ***/
 // https://www.w3.org/TR/css-syntax-3/#declaration-list-diagram
 declarationList
-  : declaration? (Semi declarationList)*
-  | atRule declarationList
+  : WS* (
+    declaration? (SEMI declarationList)*
+    | atRule declarationList
+  )
   ;
 
 declaration
-  : DList_Property value+
-  | DList_CustomProp Custom_Value
+  : identifier WS* COLON WS* value+
+  // | CUSTOM_IDENT WS* COLON CUSTOM_VALUE
   ;
 
 value
-  : Ident
+  : WS+
+  | IDENT
   | integer
   | number
   | dimension
-  | String
-  | Function
+  | STRING
+  | function
+  ;
+
+function
+  : FUNCTION ')'
   ;
 
 integer
-  : UnsignedInteger
-  | SignedInteger
+  : UNSIGNED_INTEGER
+  | SIGNED_INTEGER
   ;
 
 number
-  : UnsignedNumber
-  | SignedNumber
+  : UNSIGNED_NUMBER
+  | SIGNED_NUMBER
   ;
 
 dimension
-  : UnsignedDimension
-  | SignedDimension
+  : UNSIGNED_DIMENSION
+  | SIGNED_DIMENSION
   ;
 
 atRule
@@ -109,13 +131,21 @@ atRule
   ;
 
 importAtRule
-  : ImportRule
+  : IMPORT_RULE
   ;
 
 unknownAtRule
-  : AtRule
+  : AT_RULE
   ;
 
 identifier
-  : Ident
+  : IDENT
+  | AND
+  | NOT
+  | ONLY
+  | OR
+  ;
+
+anyToken
+  : selectorList
   ;

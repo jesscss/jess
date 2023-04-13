@@ -7,11 +7,196 @@
  */
 lexer grammar CssLexer;
 
+// options { caseInsensitive=true; }
+
+/**
+  Formatted like Java example lexer / parser
+  https://github.com/antlr/grammars-v4/blob/master/java/java/JavaLexer.g4
+*/
+
 /** Keywords */
-AND:            'and';
-OR:             'or';
-NOT:            'not';
-ONLY:           'only';
+AND:                  'and';
+OR:                   'or';
+NOT:                  'not';
+ONLY:                 'only';
+ATTRIBUTE_FLAG:       'i' | 's';
+
+/**
+ * CSS syntax says we should identify integers as separate from numbers,
+ * probably because there are parts of the syntax where one is allowed but not the other?
+ */
+/** Separate for easy token identification during parsing */
+UNSIGNED_INTEGER:     Integer;
+SIGNED_INTEGER:       Sign UNSIGNED_INTEGER;
+
+/** Any number that's not simply an integer e.g. 1.1 or 1e+1 */
+UNSIGNED_NUMBER:      Digit* '.' Integer Exp? | Integer Exp?;
+SIGNED_NUMBER:        Sign UNSIGNED_NUMBER;
+
+UNSIGNED_DIMENSION:   UNSIGNED_NUMBER IDENT;
+SIGNED_DIMENSION:     SIGNED_NUMBER IDENT;
+
+UNSIGNED_PERCENTAGE:  UNSIGNED_NUMBER '%';
+SIGNED_PERCENTAGE:    SIGNED_NUMBER '%';
+
+/** Simple Selectors */
+AMPERSAND:            '&';
+
+// We need to separate IDs in general lexing because
+// some may be valid colors.
+
+// Colors can have 3, 4, 6, or 8 hex values
+// These are valid ID selectors
+COLOR_IDENT_START
+  : '#' [a-fA-F] ColorValueRemainder;
+
+// These are not valid ID selectors
+COLOR_INT_START
+  : '#' [0-9] ColorValueRemainder;
+
+fragment ColorValueRemainder
+  : Hex Hex (Hex (Hex Hex (Hex Hex)?)?)?
+  ;
+
+// Anything else is lexed as an ID selector
+ID:                   '#' IDENT;
+
+CLASS:                '.' IDENT;
+
+/** Mark these for special recognition of nth syntax */
+NTH_PSEUDO_CLASS
+  : COLON (
+    'nth-child'
+    | 'nth-last-child'
+    | 'nth-of-type'
+    | 'nth-last-of-type'
+  )
+  ;
+
+/** These pseudo-classes accept a selector list or forgiving selector list as a parameter. */
+FUNCTIONAL_PSEUDO_CLASS
+  : COLON (
+    'is'
+    | 'not'
+    | 'where'
+    | 'has'
+  )
+  ;
+
+
+/** Combinators and Operators */
+
+// Math(multiplication) and all elements
+STAR:                 '*';
+
+// Math(divide) and values separator
+SLASH:                '/';
+
+// sibling combinator
+TILDE:                '~';
+
+// Greater than and child combinator
+GT:                   '>';
+
+// Used in media queries Level 4
+LT:                   '<';
+GTE:                  '>=';
+LTE:                  '<=';
+EQ:                   '=';
+
+// Math(addition) and adjacent sibling
+PLUS:                 '+';
+
+MINUS:                '-';
+
+// Column
+COLUMN:               '||';
+
+CARET:                '^';
+DOLLAR:               '$';
+PIPE:                 '|';
+
+// Assignment or pseudo start
+COLON:                ':';
+
+NTH_ODD:              'odd';
+NTH_EVEN:             'even';
+
+/** Separators */
+SEMI:                 ';';
+LCURLY:               '{';
+RCURLY:               '}';
+LPAREN:               '(';
+RPAREN:               ')';
+LSQUARE:              '[';
+RSQUARE:              ']';
+COMMA:                ',';
+
+/** Strings */
+STRING:               DoubleString | SingleString;
+
+/** At Rules */
+/** Non-nested */
+CHARSET:              '@charset' WS STRING ';' -> channel(HIDDEN);
+IMPORT_RULE:          '@import';
+NAMESPACE_RULE:       '@namespace';
+
+/** Nested */
+MEDIA_RULE:           '@media';
+SUPPORTS_RULE:        '@supports';
+PAGE_RULE:            '@page';
+FONT_FACE_RULE:       '@font-face';
+KEYFRAMES_RULE:       '@keyframes';
+CONTAINER_RULE:       '@container';
+PROPERTY_RULE:        '@property';
+LAYER_RULE:           '@layer';
+SCOPE_RULE:           '@scope';
+
+// Parse specifically later?
+// CounterStyleRule  : '@counter-style';
+// FontFeatureRule   : '@font-feature-values';
+//   SwashRule       : '@swash';
+//   AnnotationRule  : '@annotation';
+//   OrnamentsRule   : '@ornaments';
+//   StylisticRule   : '@stylistic';
+//   StylesetRule    : '@styleset';
+//   CharacterVarRule: '@character-variant';
+
+/** CSS allows any at-rule definition */
+AT_RULE:              '@' IDENT;
+
+/** Special-case function */
+URL_FUNCTION:         'url(' WS* ((UrlFragment | Escape)* | STRING) WS* ')';
+FUNCTION:             IDENT '(';
+/**
+  We consume the ident + custom value because it doesn't
+  parse into individual tokens.
+
+  Another approach might be to open a new mode
+*/
+// CUSTOM_IDENT
+//   : '--' NmStart NmChar* -> pushMode(PossibleCustomDeclaration)
+//   ;
+
+/** 
+ * Uses nongreedy wildcard
+ * @see https://github.com/antlr/antlr4/blob/master/doc/wildcard.md
+ */
+Comment     : '/*' .*? '*/' -> channel(HIDDEN);
+/**
+ * Aliased because Less will not skip CSS comments
+ *   e.g. (Whitespace | Comment)
+ */
+WS          : Whitespace;
+
+Cdo         : '<!--' -> skip;
+Cdc         : '-->' -> skip;
+
+/** Ignore BOM */
+UnicodeBOM  : '\uFFFE' -> skip;
+
+/** Must come after keywords */
+IDENT:                '-'? NmStart NmChar*;
 
 fragment Newline
   : '\n' | '\r' '\n'? | '\f'
@@ -88,220 +273,34 @@ fragment Integer
   : Digit+
   ;
 
-fragment Gt   : '>';
+// Start searching for a colon after a custom property
+// If found, we'll gobble the whole value at once
+// mode PossibleCustomDeclaration;
 
-fragment NthFunctions
-  : 'nth-child'
-  | 'nth-last-child'
-  | 'nth-of-type'
-  | 'nth-last-of-type'
-  ;
-/**
- * TOKENS
- *  - default mode should look for selectors and at-rule starts
- *  - selector mode should look for selectors and '{'
- *  - at-rule mode should look for any token and blocks and outer '{'
- *  - declaration list mode should look for idents and at-rule starts and selectors (nesting)
- *  - declaration mode should look for valid value tokens and ';'
- *  - custom property mode should look for any token and blocks and outer ';'
- */
+// POS_WS:               WS -> skip;
+// POS_COLON:            COLON -> type(COLON), popMode, pushMode(CustomDeclaration);
 
-/** 
- * Uses nongreedy wildcard
- * @see https://github.com/antlr/antlr4/blob/master/doc/wildcard.md
- */
-Comment     : '/*' .*? '*/' -> channel(HIDDEN);
-/**
- * Aliased because Less will not skip CSS comments
- *   e.g. (Whitespace | Comment)
- */
-WS          : Whitespace;
+// UNKNOWN:              . -> popMode, more;
 
-Cdo         : '<!--' -> skip;
-Cdc         : '-->' -> skip;
+// mode CustomDeclaration;
 
-/** Ignore BOM */
-UnicodeBOM  : '\uFFFE' -> skip;
+// CUSTOM_VALUE
+//   : ~[{(['"]+
+//   | STRING
+//   | '{' CUSTOM_VALUE? '}'
+//   | '[' CUSTOM_VALUE? ']'
+//   | '(' CUSTOM_VALUE? ')'
+//   ;
 
-/**
-  Keywords and special characters -
-  These must come before the Ident definition.
-*/
+// CUSTOM_SEMI:          SEMI -> type(SEMI), popMode;
+// CUSTOM_RCURLY:        RCURLY -> type(RCURLY), popMode;
 
-Ident
-  : '-'? NmStart NmChar*
-  ;
 
-LCurly      : '{';
-RCurly      : '}';
-
-/**
- * CSS syntax says we should identify integers as separate from numbers,
- * probably because there are parts of the syntax where one is allowed but not the other?
- */
-/** Separate for easy token identification during parsing */
-UnsignedInteger   : Integer;
-SignedInteger     : Sign UnsignedInteger;
-
-/** Any number that's not simply an integer e.g. 1.1 or 1e+1 */
-UnsignedNumber    : Digit* '.' Integer Exp? | Integer Exp?;
-SignedNumber      : Sign UnsignedNumber;
-
-UnsignedDimension : UnsignedNumber Ident;
-SignedDimension   : SignedNumber Ident;
-
-UnsignedPercentage: UnsignedNumber '%';
-SignedPercentage  : SignedNumber '%';
-
-Comma       : ',';
-String      : DoubleString | SingleString;
-
-Semi        : ';';
-
-/** Simple Selectors */
-Star        : '*' -> pushMode(Selector);
-Ampersand   : '&' -> pushMode(Selector);
-ID          : '#' Ident -> pushMode(Selector);
-Class       : '.' Ident -> pushMode(Selector);
-
-fragment NthSyntax   : 'odd' | 'even' | Integer | Integer? [nN] (WS* [+-] WS* Digit)?;
-PseudoNth   : ':' NthFunctions '(' WS* NthSyntax WS* ')' -> pushMode(Selector);
-Pseudo      : ':' ':'? Ident ('(' .*? ')')? -> pushMode(Selector);
-/** @todo - lookup */
-Attribute   : LSquare WS* Ident [*~|^$]? ('=') WS* (Ident | String) WS* ([is] WS*)? RSquare -> pushMode(Selector);
-
-Combinator    : ([~>+] | '||') -> pushMode(Selector);
-
-/** Non-nested */
-Charset           : '@charset' WS String ';' -> channel(HIDDEN);
-ImportRule        : '@import' -> pushMode(Values);
-NamespaceRule     : '@namespace' -> pushMode(Values);
-
-/** Nested */
-MediaRule         : '@media' -> pushMode(Values);
-SupportsRule      : '@supports' -> pushMode(Values);
-PageRule          : '@page' -> pushMode(Values);
-FontFaceRule      : '@font-face' -> pushMode(Values);
-KeyframesRule     : '@keyframes' -> pushMode(Values);
-ContainerRule     : '@container' -> pushMode(Values);
-PropertyRule      : '@property' -> pushMode(Values);
-LayerRule         : '@layer' -> pushMode(Values);
-ScopeRule         : '@scope' -> pushMode(Values);
-
-/** CSS allows any at-rule definition */
-AtRule            : '@' Ident -> pushMode(Values);
-
-// Parse specifically later?
-// CounterStyleRule  : '@counter-style';
-// FontFeatureRule   : '@font-feature-values';
-//   SwashRule       : '@swash';
-//   AnnotationRule  : '@annotation';
-//   OrnamentsRule   : '@ornaments';
-//   StylisticRule   : '@stylistic';
-//   StylesetRule    : '@styleset';
-//   CharacterVarRule: '@character-variant';
+// fragment NthSyntax   : 'odd' | 'even' | Integer | Integer? [nN] (WS* [+-] WS* Digit)?;
+// PseudoNth   : ':' NthFunctions '(' WS* NthSyntax WS* ')' -> pushMode(Selector);
+// Pseudo      : ':' ':'? Ident ('(' .*? ')')? -> pushMode(Selector);
+// /** @todo - lookup */
+// Attribute   : LSquare WS* Ident [*~|^$]? ('=') WS* (Ident | String) WS* ([is] WS*)? RSquare -> pushMode(Selector);
 
 /** Match any unknown to figure it out at parsing time */
 // MatchUnknown      : . ;
-
-mode Selector;
-/** Un-skipped white-space */
-Sel_WS            : Whitespace -> type(WS);
-Sel_Comma         : Comma -> type(Comma);
-
-Sel_Star          : Star -> type(Star);
-Sel_Amp           : Ampersand -> type(Ampersand);
-Sel_ID            : ID -> type(ID);
-Sel_Class         : Class -> type(Class);
-Sel_Ident         : Ident -> type(Ident);
-Sel_PseudoNth     : PseudoNth -> type(PseudoNth);
-Sel_Pseudo        : Pseudo -> type(Pseudo);
-Sel_Attribute     : Attribute -> type(Attribute);
-
-Sel_Combinator    : Combinator -> type(Combinator);
-Sel_LCurly        : LCurly -> type(LCurly), popMode, pushMode(DeclarationList);
-
-mode DeclarationList;
-
-DList_WS          : Whitespace -> channel(HIDDEN);
-DList_Comma       : Comma -> type(Comma);
-
-DList_Star        : Star -> pushMode(Selector), type(Star);
-DList_Amp         : Ampersand -> pushMode(Selector), type(Ampersand);
-DList_ID          : ID -> pushMode(Selector), type(ID);
-DList_Class       : Class -> pushMode(Selector), type(Class);
-// DeclarationList_Element -- not valid
-DList_PseudoNth   : PseudoNth -> pushMode(Selector), type(PseudoNth);
-DList_Pseudo      : Pseudo -> pushMode(Selector), type(Pseudo);
-DList_Attribute   : Attribute -> pushMode(Selector), type(Attribute);
-
-/** Can start with a combinator in some modes */
-DList_Combinator  : Combinator -> pushMode(Selector), type(Combinator);
-
-
-DList_CustomProp  : '--' NmStart NmChar* WS* ':' -> pushMode(CustomPropertyValue);
-DList_Property    : Ident WS* ':' -> pushMode(Values);
-
-Dlist_RCurly      : RCurly -> type(RCurly), popMode;
-
-/** "Component values" */
-mode Values;
-
-Val_WS                : WS -> channel(HIDDEN);
-Val_SignedInteger     : SignedInteger -> type(SignedInteger);
-Val_UnsignedInteger   : UnsignedInteger -> type(UnsignedInteger);
-
-Val_SignedNumber      : SignedNumber -> type(SignedNumber);
-Val_UnsignedNumber    : UnsignedNumber -> type(UnsignedNumber);
-
-Val_SignedDimension   : SignedDimension -> type(SignedDimension);
-Val_UnsignedDimension : UnsignedDimension -> type(UnsignedDimension);
-
-Val_Comma       : Comma -> type(Comma);
-Url             : 'url(' WS* (UrlFragment | Escape)* | SingleString | DoubleString WS* ')';
-Function        : Ident '(' -> pushMode(Values);
-PlainIdent      : Ident -> type(Ident);
-CustomIdent     : '--' NmStart NmChar*;
-
-Val_String      : String -> type(String);
-Val_Semi        : Semi -> type(Semi), popMode;
-
-CompareOp       : ('>' | '<') '='? | '=';
-
-/** Math operations */
-Plus        : '+';
-Minus       : '-';
-Divide      : '/';
-Multiply    : '*';
-
-Val_LCurly  : LCurly -> type(LCurly), pushMode(Values);
-LParen      : '(' -> pushMode(Values);
-LSquare     : '[' -> pushMode(Values);
-
-RParen      : ')' -> popMode;
-RSquare     : ']' -> popMode;
-Val_RCurly  : RCurly -> type(RCurly), popMode;
-
-
-mode CustomPropertyValue;
-
-/** Just needs matching blocks */
-Custom_Value
-  : ~[{(['"]+
-  | String
-  | '{' Custom_Value? '}'
-  | '[' Custom_Value? ']'
-  | '(' Custom_Value? ')'
-  ;
-
-Custom_Semi       : ';' -> type(Semi), popMode;
-Custom_RCurly     : RCurly ->type(RCurly);
-
-
-
-
-
-
-
-
-
