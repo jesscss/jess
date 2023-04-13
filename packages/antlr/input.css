@@ -1,4 +1,11 @@
 @charset "utf-8";
 
-div, a {}
+div .root, a#selected,
+.a > .b {
+  color: black;
+  padding: 1px 1 1 1;
+  content: "something";
+  foo: and;
+}
+
 @import

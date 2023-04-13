@@ -7,6 +7,12 @@
  */
 lexer grammar CssLexer;
 
+/** Keywords */
+AND:            'and';
+OR:             'or';
+NOT:            'not';
+ONLY:           'only';
+
 fragment Newline
   : '\n' | '\r' '\n'? | '\f'
   ;
@@ -116,6 +122,11 @@ Cdc         : '-->' -> skip;
 
 /** Ignore BOM */
 UnicodeBOM  : '\uFFFE' -> skip;
+
+/**
+  Keywords and special characters -
+  These must come before the Ident definition.
+*/
 
 Ident
   : '-'? NmStart NmChar*
@@ -236,7 +247,7 @@ Dlist_RCurly      : RCurly -> type(RCurly), popMode;
 /** "Component values" */
 mode Values;
 
-Val_WS                : WS -> type(WS);
+Val_WS                : WS -> channel(HIDDEN);
 Val_SignedInteger     : SignedInteger -> type(SignedInteger);
 Val_UnsignedInteger   : UnsignedInteger -> type(UnsignedInteger);
 
@@ -249,7 +260,7 @@ Val_UnsignedDimension : UnsignedDimension -> type(UnsignedDimension);
 Val_Comma       : Comma -> type(Comma);
 Url             : 'url(' WS* (UrlFragment | Escape)* | SingleString | DoubleString WS* ')';
 Function        : Ident '(' -> pushMode(Values);
-PlainIdent      : Ident;
+PlainIdent      : Ident -> type(Ident);
 CustomIdent     : '--' NmStart NmChar*;
 
 Val_String      : String -> type(String);
