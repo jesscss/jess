@@ -80,10 +80,10 @@ How would you use that? You can reference JS expressions with `$`
 If you need to, you can wrap your JS expression in parens, like:
 
 ```less
-@import { WIDTH } from './constants.js';
+import { WIDTH } from './constants.js';
 
 .box {
-  width: $(WIDTH + 10)px;
+  width: ~($WIDTH + 10)px;
 }
 ```
 
@@ -93,7 +93,7 @@ To clarify, the following JS expression is continuous because of matching parens
 @import { Color } from './util.js';
 
 .box {
-  color: $Color.mix(myColor, 0.5);
+  color: $Color.mix($myColor, 0.5);
 }
 ```
 
@@ -156,10 +156,10 @@ You can "send" a CSS value to a TS/JS function in one of two ways.
 @import { mix } from './color-functions.ts';
 
 .box {
-  background-color: mix(#FF0, #3F0, 0.5);
+  background-color: ~mix(#FF0, #3F0, 0.5);
 }
 ```
-Note, though, that in the first example, the last argument will be a primitive JavaScript `Number`, and in the second example, as the arguments are being parsed in Jess, it will be a `Dimension` with a `value` property set to 0.5.
+~Note, though, that in the first example, the last argument will be a primitive JavaScript `Number`, and in the second example, as the arguments are being parsed in Jess, it will be a `Dimension` with a `value` property set to 0.5.~
 
 _NOTE: Also like Less, functions that are not defined in the current scope will output a CSS function, as you would expect._
 
@@ -189,19 +189,24 @@ This means that a `.jess` file is, unlike Sass / Less, tree shake-able. The Jess
 
 @let themeColor: blue;
 @let colors {
-  darkTheme: mix(themeColor, white, 50%);
+  darkTheme: ~mix($themeColor, white, 50%);
 }
+
+// theme.jess
+import css from './library/bootstrap.scss';
+@let theme {
+  primary-color: red;
+}
+@let bootstrap: ~css($theme);
 
 // main.jess
-@import css from 'library/theme.jess';
+@use './theme.jess' bootstrap;
 
-@let theme {
-  themeColor: red;
-}
-@let colors: $css(theme).colors;
+// Returns all rules
+~bootstrap();
 
 .box {
-  color: $colors.darkTheme;
+  color: $primary-color;
 }
 ```
 Output is:
@@ -209,6 +214,12 @@ Output is:
 .box {
   color: #660000;
 }
+```
+
+```less
+// downlevel.jess
+
+
 ```
 
 #### Creating a custom theme
