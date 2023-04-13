@@ -28,7 +28,7 @@ qualifiedRule
 simpleSelector
   : Class
   | ID
-  | Ident
+  | identifier
   | Ampersand
   | Star
   | PseudoNth
@@ -114,4 +114,8 @@ importAtRule
 
 unknownAtRule
   : AtRule
+  ;
+
+identifier
+  : Ident
   ;
