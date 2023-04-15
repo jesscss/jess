@@ -167,6 +167,7 @@ AT_RULE:              '@' IDENT;
 
 /** Special-case function */
 URL_FUNCTION:         'url(' WS* ((UrlFragment | Escape)* | STRING) WS* ')';
+SUPPORTS_FUNCTION:    'supports(';
 FUNCTION:             IDENT '(';
 /**
   We consume the ident + custom value because it doesn't
@@ -284,12 +285,21 @@ UNKNOWN:              . -> popMode, more;
 
 mode CustomDeclaration;
 
-CUSTOM_VALUE
+INNER_CUSTOM_VALUE
   : ~[{(['"]+
-  | STRING
-  | '{' CUSTOM_VALUE? '}'
-  | '[' CUSTOM_VALUE? ']'
-  | '(' CUSTOM_VALUE? ')'
+  | STRING+
+  | '{' INNER_CUSTOM_VALUE*? '}'
+  | '[' INNER_CUSTOM_VALUE*? ']'
+  | '(' INNER_CUSTOM_VALUE*? ')'
+  ;
+
+/** Matching blocks and no outer ';' */
+CUSTOM_VALUE
+  : ~[{(['";]+
+  | STRING+
+  | '{' INNER_CUSTOM_VALUE*? '}'
+  | '[' INNER_CUSTOM_VALUE*? ']'
+  | '(' INNER_CUSTOM_VALUE*? ')'
   ;
 
 CUSTOM_SEMI:          SEMI -> type(SEMI), popMode;

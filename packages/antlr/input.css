@@ -8,4 +8,16 @@ and .root, a#selected,
   foo: and;
 }
 
-@import
+:root {
+  --zero-size: {
+    width: 0;
+    height: 0;
+  };
+  --small-icon: {
+    width: 16px;
+    height: 16px;
+  }
+  ;
+}
+
+@import "foo"

@@ -107,7 +107,8 @@ value
   ;
 
 function
-  : FUNCTION ')'
+  : URL_FUNCTION
+  | FUNCTION ')'
   ;
 
 integer
@@ -130,9 +131,19 @@ atRule
   | unknownAtRule
   ;
 
-importAtRule
-  : IMPORT_RULE
+mediaQueryList
+  : identifier
   ;
+
+// https://www.w3.org/TR/css-cascade-4/#at-import
+importAtRule
+  : IMPORT_RULE WS* (URL_FUNCTION | STRING) (WS* SUPPORTS_FUNCTION WS* (supportsCondition | declaration))? (WS* mediaQueryList)?
+  ;
+
+supportsCondition
+  :
+  ;
+
 
 unknownAtRule
   : AT_RULE

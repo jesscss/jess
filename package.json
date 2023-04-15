@@ -31,7 +31,7 @@
     "lint-staged": "9.4.2",
     "lite-server": "^2.6.1",
     "mocha": "^6.2.0",
-    "puppeteer": "^5.5.0",
+    "puppeteer": "^19.9.0",
     "rollup": "^2.36.2",
     "shx": "^0.3.2",
     "ts-mocha": "^8.0.0",
