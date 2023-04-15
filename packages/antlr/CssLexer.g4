@@ -174,9 +174,9 @@ FUNCTION:             IDENT '(';
 
   Another approach might be to open a new mode
 */
-// CUSTOM_IDENT
-//   : '--' NmStart NmChar* -> pushMode(PossibleCustomDeclaration)
-//   ;
+CUSTOM_IDENT
+  : '--' NmStart NmChar* -> pushMode(PossibleCustomDeclaration)
+  ;
 
 /** 
  * Uses nongreedy wildcard
@@ -275,25 +275,25 @@ fragment Integer
 
 // Start searching for a colon after a custom property
 // If found, we'll gobble the whole value at once
-// mode PossibleCustomDeclaration;
+mode PossibleCustomDeclaration;
 
-// POS_WS:               WS -> skip;
-// POS_COLON:            COLON -> type(COLON), popMode, pushMode(CustomDeclaration);
+POS_WS:               WS -> skip;
+POS_COLON:            COLON -> type(COLON), popMode, pushMode(CustomDeclaration);
 
-// UNKNOWN:              . -> popMode, more;
+UNKNOWN:              . -> popMode, more;
 
-// mode CustomDeclaration;
+mode CustomDeclaration;
 
-// CUSTOM_VALUE
-//   : ~[{(['"]+
-//   | STRING
-//   | '{' CUSTOM_VALUE? '}'
-//   | '[' CUSTOM_VALUE? ']'
-//   | '(' CUSTOM_VALUE? ')'
-//   ;
+CUSTOM_VALUE
+  : ~[{(['"]+
+  | STRING
+  | '{' CUSTOM_VALUE? '}'
+  | '[' CUSTOM_VALUE? ']'
+  | '(' CUSTOM_VALUE? ')'
+  ;
 
-// CUSTOM_SEMI:          SEMI -> type(SEMI), popMode;
-// CUSTOM_RCURLY:        RCURLY -> type(RCURLY), popMode;
+CUSTOM_SEMI:          SEMI -> type(SEMI), popMode;
+CUSTOM_RCURLY:        RCURLY -> type(RCURLY), popMode;
 
 
 // fragment NthSyntax   : 'odd' | 'even' | Integer | Integer? [nN] (WS* [+-] WS* Digit)?;

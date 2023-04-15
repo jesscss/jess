@@ -93,12 +93,12 @@ declarationList
 
 declaration
   : identifier WS* COLON WS* value+
-  // | CUSTOM_IDENT WS* COLON CUSTOM_VALUE
+  | CUSTOM_IDENT WS* COLON CUSTOM_VALUE
   ;
 
 value
   : WS+
-  | IDENT
+  | identifier
   | integer
   | number
   | dimension
@@ -143,7 +143,7 @@ identifier
   | AND
   | NOT
   | ONLY
-  | OR
+  | OR 
   ;
 
 anyToken
