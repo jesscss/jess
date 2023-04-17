@@ -4,6 +4,7 @@
   // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
   "version": "0.2.0",
   "configurations": [
+
     {
       "name": "Debug ANTLR4 grammar",
       "type": "antlr-debug",
@@ -14,6 +15,24 @@
       "startRule": "stylesheet",
       "printParseTree": true,
       "visualParseTree": true
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Jess runtime Tests",
+      "cwd": "${workspaceFolder}/packages/runtime",
+      "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
+      "args": [
+        "-r",
+        "ts-node/register",
+        "-u",
+        "bdd",
+        "--timeout",
+        "999999",
+        "--colors",
+        "${workspaceFolder}/packages/runtime/test/**/*.ts"
+      ],
+      "internalConsoleOptions": "openOnSessionStart"
     },
     {
       "type": "node",

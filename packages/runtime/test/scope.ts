@@ -1,6 +1,6 @@
 import { expect } from 'chai'
 
-import { Scope, register, map, match, matchAll, rules, createMixin } from '../src/scope'
+import { Scope, register, map, match, matchAll, mixinMap, rules, createMixin } from '../src/scope'
 
 
 describe('Scope', () => {
@@ -56,6 +56,13 @@ describe('Scope', () => {
       function() {
         foo = this
         this.prop = 'value'
+        return this
+      },
+      $
+    )
+    $.$mixin = createMixin(
+      function() {
+        this.foo = 'bar'
         return this
       },
       $
