@@ -8,7 +8,9 @@
 
 ## Some syntax changes
 ```js
-// plain imports
+/**
+ * Plain JS/TS imports. In Vue, this would be in the `<script>` tag.
+ */
 import { myFunction } from 'foo.js'
 
 .rule {
@@ -16,11 +18,11 @@ import { myFunction } from 'foo.js'
 }
 
 // Mixin calls and functions don't need `@include`
-~myFunction();
+$myFunction();
 
 // Everything is an expression, not just un-escaped JavaScript, meaning you can do:
 
-~myFunction($sass-var);
+$myFunction($sass-var);
 ```
 
 ## Features
@@ -28,4 +30,48 @@ import { myFunction } from 'foo.js'
 - `@if` / `@else` (like Sass)
 - All Less / Sass functions available
 - Extend?
-- Conversion of Less/Scss to Jess
+- Jess should not flatten selectors by default. See: https://www.w3.org/TR/css-nesting-1/
+  - In flattening mode, Jess should follow CSS nesting convention in `.jess` files, and SCSS/Less convention in respective files.
+- Conversion of Less/Scss to Jess (restrict some things from converting? like `@import`s?)
+
+### `@use [file|object] [namespace|'('imports')'? declarationList?`
+
+Will import the scope (mixins and variables) of the object. Can be a stylesheet or other scope object.
+
+```scss
+@use 'colors.less';
+// or override variables
+@use 'colors.less' {
+  // should throw an error if primary-color is not defined
+  primary-color: #333;
+}
+// or
+@use 'colors.less' colors;
+
+//or
+@use 'colors.less' (primary-color);
+
+.foo {
+  color: $colors.primary-color;
+}
+// or
+.foo {
+  @use 'colors.less';
+  color: $primary-color;
+}
+
+//
+```
+
+## `@include [file|object] declarationList?`
+
+Will import the rules (but not pollute the variable scope)
+```scss
+// main.jess
+@use 'colors.jess';
+@include 'rules.jess';
+
+// rules.jess
+// Doesn't have access to vars in main.jess w/o:
+@use 'main.jess';
+```
