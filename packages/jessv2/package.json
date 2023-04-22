@@ -1,0 +1,59 @@
+{
+  "name": "jess",
+  "version": "1.0.8-alpha.8",
+  "description": "JavaScript Enhanced Style Sheets",
+  "main": "lib/index",
+  "types": "lib/index",
+  "bin": "./bin/cli.js",
+  "files": [
+    "lib"
+  ],
+  "engines": {
+    "node": ">=10"
+  },
+  "dependencies": {
+    "@jesscss/parser": "^1.0.8-alpha.6",
+    "@jesscss/patch-css": "^1.0.8-alpha.8",
+    "@rollup/plugin-commonjs": "^17.0.0",
+    "@rollup/plugin-node-resolve": "^11.1.0",
+    "@rollup/plugin-sucrase": "^3.1.0",
+    "@rollup/plugin-virtual": "^2.0.3",
+    "chalk": "^4.1.0",
+    "combinate": "^1.1.2",
+    "cosmiconfig": "^7.0.0",
+    "lodash": "^4.17.20",
+    "micro-memoize": "^4.0.9",
+    "rollup": "^2.36.2",
+    "rollup-plugin-terser": "^7.0.2",
+    "yargs": "^16.2.0"
+  },
+  "scripts": {
+    "ci": "yarn build && yarn test:all",
+    "prepublishOnly": "yarn build && yarn test:all",
+    "benchmark": "node bin/cli.js benchmark/benchmark.jess",
+    "build": "yarn clean && yarn compile",
+    "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
+    "compile": "tsc -b tsconfig.json",
+    "dev": "tsc -b tsconfig.json -w",
+    "test": "ts-mocha --recursive test/index.ts \"src/**/__tests__/*.ts\"",
+    "test:all": "yarn benchmark && yarn test"
+  },
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jesscss/jess/issues"
+  },
+  "homepage": "https://github.com/jesscss/jess#readme",
+  "devDependencies": {
+    "@types/cosmiconfig": "^6.0.0",
+    "@types/lodash": "^4.14.168"
+  },
+  "keywords": [
+    "css",
+    "less",
+    "preprocessor",
+    "pre-processor",
+    "css-in-js",
+    "front-end"
+  ]
+}

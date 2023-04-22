@@ -1,0 +1,4 @@
+.box {
+  foo: $'bar';
+  width: $(20)px;
+}

@@ -1,6 +1,8 @@
 import { expect } from 'chai'
 
-import { Scope, register, map, match, matchAll, mixinMap, rules, createMixin } from '../src/scope'
+import { Scope, ScopeObj } from '..'
+import { rules } from '../symbols'
+import { createMixin } from '../mixins'
 
 
 describe('Scope', () => {
@@ -51,9 +53,9 @@ describe('Scope', () => {
   it('can assign mixins', () => {
     const $ = Scope({})
     $.$var1 = 1
-    let foo
+    let foo: ScopeObj
     $.$mixin = createMixin(
-      function() {
+      function(this: ScopeObj) {
         foo = this
         this.prop = 'value'
         return this
@@ -61,14 +63,14 @@ describe('Scope', () => {
       $
     )
     $.$mixin = createMixin(
-      function() {
+      function(this: ScopeObj) {
         this.foo = 'bar'
         return this
       },
       $
     )
     expect($.$mixin()).to.deep.eq({ prop: 'value' })
-    expect(foo.$var1).to.eq(1)
+    expect(foo!.$var1).to.eq(1)
   })
 })
 // const rootScope = Scope({})

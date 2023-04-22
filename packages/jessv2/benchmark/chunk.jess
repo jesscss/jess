@@ -1,0 +1,772 @@
+#yelow {
+  #short {
+    color: #fea;
+  }
+  #long {
+    color: #ffeeaa;
+  }
+  #rgba {
+    color: rgba(255, 238, 170, 0.1);
+  }
+}
+
+#blue {
+  #short {
+    color: #00f;
+  }
+  #long {
+    color: #0000ff;
+  }
+  #rgba {
+    color: rgba(0, 0, 255, 0.1);
+  }
+}
+
+#overflow {
+  .a { color: #111111 - #444444; } // #000000
+  .b { color: #eee + #fff; } // #ffffff
+  .c { color: #aaa * 3; } // #ffffff
+  .d { color: #00ee00 + #009900; } // #00ff00
+}
+
+#grey {
+  color: rgb(200, 200, 200);
+}
+
+#A08080 {
+  color: hsl(50, 0%, 50%);
+}
+
+#A0ff00 {
+  color: hsl(120, 100%, 50%);
+}
+/******************\
+*                  *
+*  Comment Header  *
+*                  *
+\******************/
+
+/*
+
+    Comment
+
+*/
+
+/*
+ * Comment Test
+ *
+ * - cloudhead (http://cloudhead.net)
+ *
+ */
+
+////////////////
+@let var2: "content";
+////////////////
+
+/* Colors
+ * ------
+ *   #EDF8FC (background blue)
+ *   #166C89 (darkest blue)
+ *
+ * Text:
+ *   #333 (standard text) // A comment within a comment!
+ *   #1F9EC9 (standard link)
+ *
+ */
+
+/* @group Variables
+------------------- */
+#comments /* boo */ {
+  /**/ // An empty comment
+  color: red; /* A C-style comment */
+  background-color: orange; // A little comment
+  font-size: 12px;
+
+  /* lost comment */ content: $var2;
+
+  border: 1px solid black;
+
+  // padding & margin //
+  padding: 0;
+  margin: 2em;
+} //
+
+/* commented out
+  #more-comments {
+    color: grey;
+  }
+*/
+
+#last { color: blue }
+//
+.comma-delimited {
+  background: url(bg.jpg) no-repeat, url(bg.png) repeat-x top left, url(bg);
+  text-shadow: -1px -1px 1px red, 6px 5px 5px yellow;
+  -moz-box-shadow: 0pt 0pt 2px rgba(255, 255, 255, 0.4) inset,
+  0pt 4px 6px rgba(255, 255, 255, 0.4) inset;
+}
+@font-face {
+  font-family: Headline;
+  src: local(Futura-Medium),
+  url(fonts.svg#MyGeometricModern) format("svg");
+}
+.other {
+  -moz-transform: translate(0, 11em) rotate(-90deg);
+}
+p:not([class*="lead"]) {
+  color: black;
+}
+
+input[type="text"].class#id[attr="32"]:not(1) {
+                                      color: white;
+                                    }
+
+div#id.class[a="1"][b="2"].class:not(1) {
+                        color: white;
+                      }
+
+ul.comma > li:not(:only-child)::after {
+  color: white;
+}
+
+ol.comma > li:nth-last-child(2)::after {
+  color: white;
+}
+
+li:nth-child(4n+1),
+li:nth-child(-5n),
+li:nth-child(-n+2) {
+  color: white;
+}
+
+a[href^="http://"] {
+  color: black;
+}
+
+a[href$="http://"] {
+  color: black;
+}
+
+form[data-disabled] {
+  color: black;
+}
+
+p::before {
+  color: black;
+}
+@charset "utf-8";
+div { color: black; }
+div { width: 99%; }
+
+* {
+  min-width: 45em;
+}
+
+h1, h2 > a > p, h3 {
+  color: none;
+}
+
+div.class {
+  color: blue;
+}
+
+div#id {
+  color: green;
+}
+
+.class#id {
+  color: purple;
+}
+
+.one.two.three {
+  color: grey;
+}
+
+@media print {
+  font-size: 3em;
+}
+
+@media screen {
+  font-size: 10px;
+}
+
+@font-face {
+  font-family: 'Garamond Pro';
+  src: url("/fonts/garamond-pro.ttf");
+}
+
+a:hover, a:link {
+  color: #999;
+}
+
+p, p:first-child {
+  text-transform: none;
+}
+
+q:lang(no) {
+  quotes: none;
+}
+
+p + h1 {
+  font-size: 2.2em;
+}
+
+#shorthands {
+  border: 1px solid #000;
+  font: 12px/16px Arial;
+  margin: 1px 0;
+  padding: 0 auto;
+  background: url("http://www.lesscss.org/spec.html") no-repeat 0 4px;
+}
+
+#more-shorthands {
+  margin: 0;
+  padding: 1px 0 2px 0;
+  font: normal small/20px 'Trebuchet MS', Verdana, sans-serif;
+}
+
+.misc {
+  -moz-border-radius: 2px;
+  display: -moz-inline-stack;
+  width: .1em;
+  background-color: #009998;
+  background-image: url(images/image.jpg);
+  background: -webkit-gradient(linear, left top, left bottom, from(red), to(blue));
+  margin: ;
+}
+
+#important {
+  color: red !important;
+  width: 100%!important;
+  height: 20px ! important;
+}
+
+#functions {
+  @let var1: 10;
+  color: color("red");
+  width: increment(15);
+  height: undefined("self");
+  border-width: add(2, 3);
+  variable: increment($var1);
+}
+
+#built-in {
+  @let r: 32;
+  escaped: e("-Some::weird(#thing, y)");
+  lighten: lighten(#ff0000, 50%);
+  darken: darken(#ff0000, 50%);
+  saturate: saturate(#29332f, 20%);
+  desaturate: desaturate(#203c31, 20%);
+  greyscale: greyscale(#203c31);
+  // format: %("rgb(%d, %d, %d)", @r, 128, 64);
+  // format-string: %("hello %s", "world");
+  // eformat: e(%("rgb(%d, %d, %d)", @r, 128, 64));
+}
+
+@let a: 100%;
+@let var1: $a;
+
+.lazy-eval {
+  width: $var1;
+}
+@mixin mixinx (a: 1px, b: 50%) {
+  width: $a * 5;
+  height: $b - 1%;
+}
+
+@mixin mixina (style, width, color: black) {
+  border: $width $style $color;
+}
+
+@mixin mixiny
+(a: 0, b: 0) {
+  margin: $a;
+  padding: $b;
+}
+
+@mixin hidden {
+  color: transparent;
+}
+
+@mixin twoArgs {
+  color: blue;
+  @include mixinx(2px, 100%);
+  @include mixina(dotted, 2px);
+}
+
+@mixin oneArg {
+  @include mixinx(3px);
+}
+
+@mixin noParens {
+  @include mixinx();
+}
+
+@mixin noArgs {
+  @include mixinx();
+}
+
+.var-args {
+  @let var1: 9;
+  @include mixinx($var1, $var1 * 2);
+}
+
+.multi-mix {
+  @include mixinx(2px, 30%);
+  @include mixiny(4, 5);
+}
+
+@mixin maxa(arg1: 10, arg2: #f00) {
+  padding: $arg1 * 2px;
+  color: $arg2;
+}
+
+body {
+  @include maxa(15);
+}
+
+@let glob: 5;
+@mixin globalMixin(a:2) {
+  width: $(glob + a);
+}
+
+.scope-mix {
+  @include globalMixin(3);
+}
+
+@mixin nestedRuleset (width: 200px) {
+  width: $width;
+  .column { margin: $width; }
+}
+.content {
+  @include nestedRuleset(600px);
+}
+
+//
+
+@mixin sameVarName2(radius) {
+  radius: $radius;
+}
+@mixin sameVarName(radius) {
+  @include sameVarName2($radius);
+}
+#same-var-name {
+  @include sameVarName(5px);
+}
+
+//
+
+@mixin varInside () {
+  @let var1: 10px;
+  width: $var1;
+}
+#var-inside { @include varInside(); }
+@mixin mixInner (var1) {
+  border-width: $var1;
+}
+
+@mixin mix (a: 10) {
+  .inner {
+    height: $a * 10;
+
+    .innest {
+      width: $a;
+      @include mixInner($a * 2);
+    }
+  }
+}
+
+.class {
+  @include mix(30);
+}
+
+@mixin mixin () {
+  zero: 0;
+}
+/** Over-loading mixins supported */
+// @mixin mixin (a: 1px) {
+//   one: 1;
+// }
+// @mixin mixin (a) {
+//   one-req: 1;
+// }
+// @mixin mixin (a: 1px, b: 2px) {
+//   two: 2;
+// }
+
+// @mixin mixin (a, b, c) {
+//   three-req: 3;
+// }
+
+// @mixin mixin (a: 1px, b: 2px, c: 3px) {
+//   three: 3;
+// }
+
+.zero {
+  @include mixin();
+}
+
+// .one {
+//   .mixin(1);
+// }
+
+// .two {
+//   .mixin(1, 2);
+// }
+
+// .three {
+//   .mixin(1, 2, 3);
+// }
+
+//
+
+@mixin mixout (left: 'left') {
+  left: 1;
+}
+
+// .mixout ('right') {
+//   right: 1;
+// }
+
+// .left {
+//   .mixout('left');
+// }
+// .right {
+//   .mixout('right');
+// }
+
+//
+
+@mixin border (side, width) {
+  color: black;
+  @include borderSide($side, $width);
+}
+
+@mixin borderSide (left, w) {
+  border-left: $w;
+}
+// .border-side (right, @w) {
+//   border-right: @w;
+// }
+
+.border-right {
+  @include border(right, 4px);
+}
+.border-left {
+  @include border(left, 4px);
+}
+
+//
+
+
+@mixin borderRadius (r) {
+  both: $r * 10;
+}
+// .border-radius (@r, left) {
+//   left: @r;
+// }
+// .border-radius (@r, right) {
+//   right: @r;
+// }
+
+.only-right {
+  @include borderRadius(33, right);
+}
+.only-left {
+  @include borderRadius(33, left);
+}
+.left-right {
+  @include borderRadius(33);
+}
+.mixin { border: 1px solid black; }
+.mixout { border-color: orange; }
+@mixin borders { border-style: dashed; }
+.borders { @include borders(); }
+
+#namespace {
+  .borders {
+    border-style: dotted;
+  }
+  .biohazard {
+    content: "death";
+    .man {
+      color: transparent;
+    }
+  }
+}
+#theme {
+  > .mixin {
+    background-color: grey;
+  }
+}
+@mixin container {
+  color: black;
+  @include mixin();
+  @include mixout();
+  // #theme > .mixin;
+}
+#container {
+  @include container();
+}
+
+#header {
+  .milk {
+    color: white;
+    @include mixin();
+    // #theme > .mixin;
+  }
+  #cookie {
+    .chips {
+      // #namespace .borders;
+      .calories {
+        @include container();
+      }
+    }
+    @include borders();
+  }
+}
+// .secure-zone { #namespace .biohazard .man; }
+// .direct {
+//   #namespace > .borders;
+// }
+#operations {
+  color: #110000 + #000011 + #001100; // #111111
+  height: 10px / 2px + 6px - 1px * 2; // 9px
+  width: 2 * 4 - 5em; // 3em
+  .spacing {
+    height: 10px / 2px+6px-1px*2;
+    width: 2  * 4-5em;
+  }
+  subtraction: 20 - 10 - 5 - 5; // 0
+  division: 20 / 5 / 4; // 1
+}
+
+@let x: 4;
+@let y: 12em;
+
+.with-variables {
+  height: $x + $y; // 16em
+  width: 12 + $y; // 24em
+  size: 5cm - $x; // 1cm
+}
+
+@let z: -2;
+
+.negative {
+  height: 2px + $z; // 0px
+  width: 2px - $z; // 4px
+}
+
+.shorthands {
+  padding: -1px 2px 0 -4px; //
+}
+
+.colors {
+  color: #123; // #112233
+  border-color: #234 + #111111; // #334455
+  background-color: #222222 - #fff; // #000000
+  .other {
+    color: 2 * #111; // #222222
+    border-color: #333333 / 3 + #111; // #222222
+  }
+}
+.parens {
+  @let var1: 1px;
+  border: ($var1 * 2) solid black;
+  margin: ($var1 * 1) ($var1 + 2) (4 * 4) 3;
+  width: (6 * 6);
+  padding: 2px (6px * 6px);
+}
+
+.more-parens {
+  @let var1: (2 * 2);
+  padding: (2 * $var1) 4 4 ($var1 * 1px);
+  width: ($var1 * $var1) * 6;
+  height: (7 * 7) + (8 * 8);
+  margin: 4 * (5 + 5) / 2 - ($var1 * 2);
+  //margin: (6 * 6)px;
+}
+
+.nested-parens {
+  width: 2 * (4 * (2 + (1 + 6))) - 1;
+  height: ((2+3)*(2+3) / (9-4)) + 1;
+}
+
+.mixed-units {
+  margin: 2px 4em 1 5pc;
+  padding: (2px + 4px) 1em 2px 2;
+}
+#first > .one {
+  > #second .two > #deux {
+    width: 50%;
+    #third {
+      &:focus {
+        color: black;
+        #fifth {
+          > #sixth {
+            .seventh #eighth {
+              + #ninth {
+                color: purple;
+              }
+            }
+          }
+        }
+      }
+      height: 100%;
+    }
+    #fourth, #five, #six {
+      color: #110000;
+      .seven, .eight > #nine {
+        border: 1px solid black;
+      }
+      #ten {
+        color: red;
+      }
+    }
+  }
+  font-size: 2em;
+}
+@let x1: blue;
+@let z1: transparent;
+@let mixval: none;
+
+.mixin {
+  @let mixval: #989;
+}
+
+.tiny-scope {
+  color: $mixval; // #989
+  @include mixin();
+}
+
+.scope1 {
+  @let y: orange;
+  @let z1: black;
+  color: $x1; // blue
+  border-color: $z1; // black
+  .hidden {
+    @let x: #131313;
+  }
+  .scope2 {
+    @let y: red;
+    color: $x1; // blue
+    .scope3 {
+      @let local: white;
+      color: $y; // red
+      border-color: $z1; // black
+      background-color: $local; // white
+    }
+  }
+}h1, h2, h3 {
+   a, p {
+     &:hover {
+       color: red;
+     }
+   }
+ }
+
+#all { color: blue; }
+#the { color: blue; }
+#same { color: blue; }
+
+ul, li, div, q, blockquote, textarea {
+  margin: 0;
+}
+
+td {
+  margin: 0;
+  padding: 0;
+}
+
+td, input {
+  line-height: 1em;
+}
+#strings {
+  background-image: url("http://son-of-a-banana.com");
+  quotes: "~" "~";
+  content: "#*%:&^,)!.(~*})";
+  empty: "";
+  brackets: "{" "}";
+}
+#comments {
+  content: "/* hello */ // not-so-secret";
+}
+#single-quote {
+  quotes: "'" "'";
+  content: '""#!&""';
+  empty: '';
+}
+@let a2: 2;
+@let x2: $a2 * $a2;
+@let y2: $x2 + 1;
+@let z2: $x2 * 2 + $y2;
+
+.variables {
+  width: $z2 + 1cm; // 14cm
+}
+
+@let b: $a2 * 10;
+@let c: #888;
+
+@let fonts: "Trebuchet MS", Verdana, sans-serif;
+@let f: $fonts;
+
+@let quotes: "~" "~";
+@let q: $quotes;
+
+.variables {
+  height: $b + $x2 + 0px; // 24px
+  color: $c;
+  font-family: $f;
+  quotes: $q;
+}
+
+/** Not supported */
+// .redefinition {
+//   @let var1: 4;
+//   @let var1: 2;
+//   @let var1: 3;
+//   three: $var1;
+// }
+
+.values {
+  @let a2: 'Trebuchet';
+  font-family: $a2, $a2, $a2;
+}
+
+
+.whitespace
+{ color: white; }
+
+.whitespace
+{
+  color: white;
+}
+.whitespace
+{ color: white; }
+
+.whitespace{color:white;}
+.whitespace { color : white ; }
+
+.white,
+.space,
+.mania
+{ color: white; }
+
+.no-semi-column { color: white }
+.no-semi-column {
+  color: white;
+  white-space: pre
+}
+.no-semi-column {border: 2px solid white}
+.newlines {
+  background: the,
+  great,
+  wall;
+  border: 2px
+  solid
+  black;
+}
+.empty {
+
+}

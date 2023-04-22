@@ -1,0 +1,5 @@
+@import { area } from './imports/compute.js'
+
+.box {
+  area: $area(5);
+}
