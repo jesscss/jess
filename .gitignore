@@ -58,5 +58,6 @@ typings/
 
 # build artifacts
 lib
+dist/
 tsconfig.tsbuildinfo
 .rollup.cache
