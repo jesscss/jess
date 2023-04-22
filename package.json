@@ -2,14 +2,6 @@
   "name": "@jess/root",
   "version": "1000.0.0",
   "private": true,
-  "workspaces": {
-    "packages": [
-      "packages/*"
-    ],
-    "nohoist": [
-      "**/html-minifier-terser"
-    ]
-  },
   "description": "The Jess Monorepo",
   "main": "rollup.config.js",
   "dependencies": {},
@@ -40,11 +32,10 @@
     "typescript": "^5.0.4"
   },
   "scripts": {
-    "ci": "lerna run ci && yarn run lint",
+    "ci": "pnpm run -r ci && pnpm run lint",
     "lint:fix": "eslint --fix '**/*.{ts,json}'",
     "lint": "eslint '**/*.{ts,json}'",
-    "bootstrap": "lerna bootstrap",
-    "compile": "lerna run compile"
+    "preinstall": "npx only-allow pnpm"
   },
   "repository": {
     "type": "git",
