@@ -148,7 +148,7 @@ const proxyHandler: ProxyHandler<ScopeObj> = {
                   } else {
                     scope[rules] = results
                   }
-                  return results
+                  return scope
                 }
               })
             }

@@ -10,7 +10,6 @@
     "target": "es6",
     "lib": ["es6"],
     "baseUrl": "./packages",
-    "strict": true,
     "paths": {
       "jess": ["jess/lib"],
       "@jess/*": ["*/src"]

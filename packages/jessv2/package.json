@@ -12,8 +12,8 @@
     "node": ">=10"
   },
   "dependencies": {
-    "@jesscss/parser": "^1.0.8-alpha.6",
-    "@jesscss/patch-css": "^1.0.8-alpha.8",
+    "@jesscss/parser": "workspace:^1.0.8-alpha.6",
+    "@jesscss/patch-css": "workspace:^1.0.8-alpha.8",
     "@rollup/plugin-commonjs": "^17.0.0",
     "@rollup/plugin-node-resolve": "^11.1.0",
     "@rollup/plugin-sucrase": "^3.1.0",
@@ -28,15 +28,15 @@
     "yargs": "^16.2.0"
   },
   "scripts": {
-    "ci": "yarn build && yarn test:all",
-    "prepublishOnly": "yarn build && yarn test:all",
+    "ci": "pnpm build && pnpm test:all",
+    "prepublishOnly": "pnpm build && pnpm test:all",
     "benchmark": "node bin/cli.js benchmark/benchmark.jess",
-    "build": "yarn clean && yarn compile",
+    "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
     "compile": "tsc -b tsconfig.json",
     "dev": "tsc -b tsconfig.json -w",
     "test": "ts-mocha --recursive test/index.ts \"src/**/__tests__/*.ts\"",
-    "test:all": "yarn benchmark && yarn test"
+    "test:all": "pnpm benchmark && pnpm test"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",
