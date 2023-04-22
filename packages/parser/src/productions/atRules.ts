@@ -1,11 +1,12 @@
-import { CstChild, CstNode } from '@jesscss/css-parser'
+import type { CstChild } from '@jesscss/css-parser'
+import { CstNode } from '@jesscss/css-parser'
 import type { JessParser } from '../jessParser'
 
-export default function (this: JessParser, $: JessParser) {
+export default function(this: JessParser, $: JessParser) {
   $.knownAtRule = $.OVERRIDE_RULE('knownAtRule',
     () => $.OR([
       { ALT: () => $.SUBRULE($.mixin) },
-      
+
       /** In the mixin section */
       { ALT: () => $.SUBRULE($.atInclude) },
 
@@ -26,18 +27,22 @@ export default function (this: JessParser, $: JessParser) {
     $.OPTION(() => prelude.push($.CONSUME($.T.WS)))
 
     $.OR([
-      { ALT: () => {
-        prelude.push(
-          $.SUBRULE($.atImportCss)
-        )
-        $.OPTION2(() => prelude.push($.CONSUME2($.T.WS)))
-        $.OPTION3(() => prelude.push($.SUBRULE($.mediaQueryList)))
-      }},
-      { ALT: () => {
-        prelude.push(
-          $.SUBRULE($.atImportJs)
-        )
-      }}
+      {
+        ALT: () => {
+          prelude.push(
+            $.SUBRULE($.atImportCss)
+          )
+          $.OPTION2(() => prelude.push($.CONSUME2($.T.WS)))
+          $.OPTION3(() => prelude.push($.SUBRULE($.mediaQueryList)))
+        }
+      },
+      {
+        ALT: () => {
+          prelude.push(
+            $.SUBRULE($.atImportJs)
+          )
+        }
+      }
     ])
 
     $.OPTION4(() => prelude.push($.CONSUME3($.T.WS)))
@@ -71,7 +76,7 @@ export default function (this: JessParser, $: JessParser) {
     () => {
       const children: CstChild[] = []
       $.OR([
-        { 
+        {
           ALT: () => {
             children.push(
               $.CONSUME($.T.Star),
@@ -124,7 +129,7 @@ export default function (this: JessParser, $: JessParser) {
       $._(),
       $.SUBRULE($.atImportJsArg)
     ]
-    
+
     $.MANY(() => {
       children.push(
         {
@@ -138,7 +143,7 @@ export default function (this: JessParser, $: JessParser) {
       )
     })
     children.push($.CONSUME($.T.RCurly))
-    
+
     return {
       name: 'atImportJsBlock',
       children

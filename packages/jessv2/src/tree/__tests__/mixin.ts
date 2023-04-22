@@ -9,17 +9,17 @@ let out: OutputCollector
 
 describe('Mixin', () => {
   beforeEach(() => {
-    context = new Context
+    context = new Context()
     context.depth = 2
-    out = new OutputCollector
+    out = new OutputCollector()
   })
 
   it('should serialize to a module', () => {
-    let rule = mixin({
+    const rule = mixin({
       name: ident('myMixin'),
       value: ruleset([
-        decl({ name: 'color', value: anon('black')}),
-        decl({ name: 'background-color', value: anon('white')})
+        decl({ name: 'color', value: anon('black') }),
+        decl({ name: 'background-color', value: anon('white') })
       ])
     })
     rule.toModule(context, out)
@@ -27,8 +27,8 @@ describe('Mixin', () => {
       'let myMixin = function() { return $J.ruleset(\n  (() => {\n    const $OUT = []\n    $OUT.push($J.decl({\n      name: $J.anon("color"),\n      value: $J.anon("black")\n    }))\n    $OUT.push($J.decl({\n      name: $J.anon("background-color"),\n      value: $J.anon("white")\n    }))\n    return $OUT\n  })()\n)}'
     )
     expect(rule.value.obj()).to.deep.eq({
-      "color": "black",
-      "background-color": "white"
+      color: 'black',
+      'background-color': 'white'
     })
   })
 })

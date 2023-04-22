@@ -29,14 +29,14 @@ const startServer = () => new Promise((resolve) => {
 })
 let browserSync
 // expose variables
-before (async () => {
+before(async () => {
   browserSync = await startServer()
   global.expect = expect
   global.browser = await puppeteer.launch(opts)
 })
 
 // close browser and reset global variables
-after (() => {
+after(() => {
   browser.close()
   browserSync.exit()
 

@@ -24,7 +24,7 @@ export const get = lodashGet
 
 /**
  * Creates a proxy for the default function exports in transpiled stylesheets
- * 
+ *
  * This is so we can get hashed classes on the export
  */
 export const proxy = (func: Function, context: Context) => {

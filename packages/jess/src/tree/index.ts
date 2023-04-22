@@ -6,7 +6,8 @@
  */
 
 /** Base classes - keep these on top */
-import { Node, FileInfo, LocationInfo } from './node'
+import type { FileInfo, LocationInfo } from './node'
+import { Node } from './node'
 import { Context } from '../context'
 import { OutputCollector } from '../output'
 /**
@@ -14,11 +15,11 @@ import { OutputCollector } from '../output'
  * between Context and Node
  */
 Node.prototype.toString = function() {
-  const out = new OutputCollector
-  this.toCSS(new Context, out)
+  const out = new OutputCollector()
+  this.toCSS(new Context(), out)
   return out.toString()
 }
-export { Node, FileInfo, LocationInfo }
+export { Node, type FileInfo, type LocationInfo }
 
 export * from './js-node'
 

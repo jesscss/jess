@@ -1,4 +1,5 @@
-import { Node, NodeMap, LocationInfo } from './node'
+import type { NodeMap, LocationInfo } from './node'
+import { Node } from './node'
 import { Ruleset } from './ruleset'
 import { JsNode } from './js-node'
 import { Nil } from './nil'
@@ -20,8 +21,7 @@ export class Root extends Node {
       if (rule) {
         if (rule instanceof Ruleset) {
           rules.push(...rule.value)
-        }
-        else if (!(rule instanceof Nil)) {
+        } else if (!(rule instanceof Nil)) {
           rules.push(rule)
         }
       }
@@ -46,7 +46,7 @@ export class Root extends Node {
 
   toModule(context: Context, out: OutputCollector) {
     out.add(
-      `import * as $J from 'jess'\n` +
+      'import * as $J from \'jess\'\n' +
       `const $CONTEXT = new $J.Context(${JSON.stringify(context.originalOpts)})\n` +
       `$CONTEXT.id = '${context.id}'\n`,
       this.location
@@ -58,7 +58,7 @@ export class Root extends Node {
     })
 
     out.add(
-      `function $DEFAULT ($VARS = {}, $RETURN_NODE) {\n`
+      'function $DEFAULT ($VARS = {}, $RETURN_NODE) {\n'
     )
     context.indent++
     context.depth++
@@ -69,7 +69,7 @@ export class Root extends Node {
       node.toModule(context, out)
       out.add('\n')
     })
-  
+
     if (!context.opts.dynamic && context.isRuntime) {
       out.add(`${pre}return {\n`)
       let i = 0
@@ -90,9 +90,9 @@ export class Root extends Node {
       this.value.forEach(node => {
         if (!(node instanceof JsNode)) {
           out.add(pre)
-          out.add(`$OUT.push(`)
+          out.add('$OUT.push(')
           node.toModule(context, out)
-          out.add(`)\n`)
+          out.add(')\n')
         }
       })
       context.indent--

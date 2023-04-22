@@ -1,8 +1,9 @@
-import { LocationInfo, Node, NodeMap, isNodeMap } from './node'
+import type { LocationInfo, Node, NodeMap } from './node'
+import { isNodeMap } from './node'
 import { Expression } from './expression'
 import { WS } from './ws'
 import type { Context } from '../context'
-import { OutputCollector } from '../output'
+import type { OutputCollector } from '../output'
 
 /**
  * A space-separated expression.
@@ -12,8 +13,8 @@ export class Spaced extends Expression {
   value: Node[]
 
   constructor(
-    value: (string | Node)[] | NodeMap,
-    location?: LocationInfo  
+    value: Array<string | Node> | NodeMap,
+    location?: LocationInfo
   ) {
     if (isNodeMap(value)) {
       super(value, location)
@@ -31,7 +32,7 @@ export class Spaced extends Expression {
 
   toModule(context: Context, out: OutputCollector) {
     const loc = this.location
-    out.add(`$J.spaced([`, loc)
+    out.add('$J.spaced([', loc)
     const length = this.value.length - 1
     this.value.forEach((n, i) => {
       if (i % 2 === 0) {
@@ -41,7 +42,7 @@ export class Spaced extends Expression {
         }
       }
     })
-    out.add(`])`)
+    out.add('])')
   }
 }
 Spaced.prototype.type = 'Spaced'

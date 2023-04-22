@@ -1,6 +1,6 @@
 module.exports = {
   someSidebar: {
-    "Getting Started": [
+    'Getting Started': [
       'intro/about',
       'intro/install',
       'intro/config',
@@ -28,5 +28,5 @@ module.exports = {
       'functions/logical',
       'functions/math'
     ]
-  },
-};
+  }
+}

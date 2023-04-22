@@ -1,6 +1,8 @@
-import { IToken, Lexer, ILexingResult } from 'chevrotain'
+import type { IToken, ILexingResult } from 'chevrotain'
+import { Lexer } from 'chevrotain'
 import { Tokens, Fragments } from './cssTokens'
-import { CssParser, CstNode } from './cssParser'
+import type { CstNode } from './cssParser'
+import { CssParser } from './cssParser'
 import { createTokens } from './util'
 
 export * from './cssTokens'
@@ -23,7 +25,7 @@ export class Parser {
       ensureOptimizations: true,
       // Always run the validations during testing (dev flows).
       // And avoid validation during productive flows to reduce the Lexer's startup time.
-      skipValidations: process.env['JESS_TESTING_MODE'] !== 'true'
+      skipValidations: process.env.JESS_TESTING_MODE !== 'true'
     })
     this.parser = new CssParser(tokens, T)
   }

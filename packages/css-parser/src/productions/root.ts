@@ -1,4 +1,5 @@
-import { EMPTY_ALT, ConsumeMethodOpts } from 'chevrotain'
+import type { ConsumeMethodOpts } from 'chevrotain'
+import { EMPTY_ALT } from 'chevrotain'
 import type { CssParser, CstChild, CstNode } from '../cssParser'
 
 export default function(this: CssParser, $: CssParser) {
@@ -20,12 +21,12 @@ export default function(this: CssParser, $: CssParser) {
   $.primary = $.RULE<CstChild[]>('primary', () => {
     const rules = []
     $.MANY(() => rules.push($.SUBRULE($.rule)))
-    
+
     const ws = $._()
     if (ws) {
       rules.push(ws)
     }
-    
+
     return rules
   })
 
@@ -48,7 +49,7 @@ export default function(this: CssParser, $: CssParser) {
     if (rule !== EMPTY_ALT) {
       children.push(rule)
     }
-    
+
     return {
       name: 'rule',
       children

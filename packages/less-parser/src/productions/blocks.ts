@@ -44,15 +44,17 @@ export default function(this: LessParser, $: LessParser) {
             $.OR2([
               { ALT: () => $.CONSUME($.T.LCurly) },
               { ALT: () => $.CONSUME($.T.Extend) },
-              { ALT: () => {
-                $.CONSUME($.T.When)
-                $._()
-                $.OPTION(() => {
-                  $.CONSUME($.T.Not)
-                  $._(1)
-                })
-                $.CONSUME($.T.LParen)
-              }}
+              {
+                ALT: () => {
+                  $.CONSUME($.T.When)
+                  $._()
+                  $.OPTION(() => {
+                    $.CONSUME($.T.Not)
+                    $._(1)
+                  })
+                  $.CONSUME($.T.LParen)
+                }
+              }
             ])
           }
         }

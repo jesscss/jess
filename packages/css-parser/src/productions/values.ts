@@ -34,8 +34,8 @@ export default function(this: CssParser, $: CssParser) {
     }
   })
 
-  /** 
-   * A custom value within a block 
+  /**
+   * A custom value within a block
    */
   $.customValueOrSemi = $.RULE('customValueOrSemi', () => {
     const children: CstChild[] = []

@@ -1,4 +1,5 @@
-import { Node, LocationInfo, NodeMap } from './node'
+import type { LocationInfo, NodeMap } from './node'
+import { Node } from './node'
 import { Nil } from './nil'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
@@ -27,7 +28,7 @@ export class Ampersand extends Node {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    out.add(`$J.amp()`, this.location)
+    out.add('$J.amp()', this.location)
   }
 }
 Ampersand.prototype.type = 'Ampersand'

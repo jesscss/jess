@@ -1,7 +1,8 @@
-import { CstChild, CstNode } from '@jesscss/css-parser'
+import type { CstChild } from '@jesscss/css-parser'
+import { CstNode } from '@jesscss/css-parser'
 import type { JessParser } from '../jessParser'
 
-export default function (this: JessParser, $: JessParser) {
+export default function(this: JessParser, $: JessParser) {
   $.mixin = $.RULE('mixin',
     () => ({
       name: 'atRule',
@@ -20,29 +21,33 @@ export default function (this: JessParser, $: JessParser) {
     const prelude = [$._()]
     /** @todo - identify these pieces better */
     $.OR([
-      { ALT: () => {
+      {
+        ALT: () => {
         /** JS ident */
-        prelude.push(
-          $.CONSUME($.T.PlainIdent),
-          $._(1)
-        )
-        $.OPTION3(() => {
           prelude.push(
-            $.CONSUME($.T.LParen),
-            $.SUBRULE($.mixinArgs),
-            $.CONSUME($.T.RParen)
+            $.CONSUME($.T.PlainIdent),
+            $._(1)
           )
-        })
-      }},
-      { ALT: () => {
-        prelude.push(
-          $.CONSUME($.T.Function),
-          undefined,
-          undefined,
-          $.SUBRULE2($.mixinArgs),
-          $.CONSUME2($.T.RParen)
-        )
-      }}
+          $.OPTION3(() => {
+            prelude.push(
+              $.CONSUME($.T.LParen),
+              $.SUBRULE($.mixinArgs),
+              $.CONSUME($.T.RParen)
+            )
+          })
+        }
+      },
+      {
+        ALT: () => {
+          prelude.push(
+            $.CONSUME($.T.Function),
+            undefined,
+            undefined,
+            $.SUBRULE2($.mixinArgs),
+            $.CONSUME2($.T.RParen)
+          )
+        }
+      }
     ])
 
     $.OPTION4(() => prelude.push($.CONSUME3($.T.WS)))

@@ -22,11 +22,11 @@
   "author": "Matthew Dean",
   "license": "MIT",
   "dependencies": {
-    "chevrotain": "^7.1.0",
-    "xregexp": "^4.2.4"
+    "chevrotain": "^10.5.0",
+    "xregexp": "^5.1.1"
   },
   "devDependencies": {
     "@less/test-data": "^4.1.0",
-    "@types/xregexp": "^4.3.0"
+    "@types/xregexp": "^4.4.0"
   }
 }

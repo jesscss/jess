@@ -2,8 +2,9 @@ import { Anonymous } from './anonymous'
 import { List } from './list'
 import { Expression } from './expression'
 import type { Context } from '../context'
-import { Node, LocationInfo, isNodeMap } from './node'
-import { OutputCollector } from '../output'
+import type { LocationInfo } from './node'
+import { Node, isNodeMap } from './node'
+import type { OutputCollector } from '../output'
 
 export class Element extends Node {
   value: any
@@ -17,23 +18,27 @@ export class Element extends Node {
       return
     }
     super({
-      value: value.constructor === String ? new Anonymous(<string>value) : value
+      value: value.constructor === String ? new Anonymous(value as string) : value
     })
   }
-  
+
   /** Very simple string matching */
   get isAttr() {
     return /^\[/.test(this.value.value)
   }
+
   get isClass() {
     return /^\./.test(this.value.value)
   }
+
   get isId() {
     return /^#/.test(this.value.value)
   }
+
   get isPseudo() {
     return /^:/.test(this.value.value)
   }
+
   get isIdent() {
     return /^[a-z]/.test(this.value.value)
   }
@@ -62,7 +67,7 @@ export class Element extends Node {
 
   toModule(context: Context, out: OutputCollector) {
     const loc = this.location
-    out.add(`$J.el(`, loc)
+    out.add('$J.el(', loc)
     this.value.toModule(context, out)
     out.add(')')
   }

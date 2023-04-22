@@ -22,7 +22,7 @@
     "rollup": "^2.0.0"
   },
   "devDependencies": {
-    "rollup": "^2.36.2"
+    "rollup": "^3.20.7"
   },
   "author": "Matthew Dean",
   "license": "MIT"

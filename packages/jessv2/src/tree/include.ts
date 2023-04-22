@@ -1,7 +1,8 @@
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 import isPlainObject from 'lodash/isPlainObject'
-import { Node, isNodeMap, LocationInfo } from './node'
+import type { LocationInfo } from './node'
+import { Node, isNodeMap } from './node'
 import { Declaration } from './declaration'
 import { Ruleset } from './ruleset'
 import { Root } from './root'
@@ -30,7 +31,7 @@ export class Include extends Node {
     /** Convert included objects into declaration sets */
     if (isPlainObject(value)) {
       const rules: Node[] = []
-      for (let name in value) {
+      for (const name in value) {
         if (Object.prototype.hasOwnProperty.call(value, name)) {
           rules.push(new Declaration({
             name,
@@ -49,7 +50,7 @@ export class Include extends Node {
     if (value instanceof Root) {
       return new Ruleset(value.value)
     }
-    
+
     if (!value.allowRoot && !value.allowRuleRoot) {
       let message = '@include returned an invalid node.'
       if (value instanceof Call && this.value instanceof Call) {

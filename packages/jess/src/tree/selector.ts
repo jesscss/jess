@@ -5,25 +5,24 @@ import { WS } from './ws'
 import { isNodeMap } from './node'
 import type { Node, NodeMap, LocationInfo } from './node'
 import type { Context } from '../context'
-import { OutputCollector } from '../output'
+import type { OutputCollector } from '../output'
 import { Nil } from './nil'
 import { List } from './list'
 
 /**
  * @example
  * #id > .class.class
- * 
+ *
  * Stored as:
  * [Element, Combinator, Element, Element]
- * 
+ *
  * @todo
  * Push an ampersand at the beginning of selector expressions
  * if there isn't one
  */
 export class Selector extends Expression {
-  
   constructor(
-    value: (string | Node)[] | NodeMap,
+    value: Array<string | Node> | NodeMap,
     location?: LocationInfo
   ) {
     if (isNodeMap(value)) {
@@ -38,9 +37,9 @@ export class Selector extends Expression {
 
   eval(context: Context) {
     let selector: Selector = this.clone()
-    let elements = [...selector.value]
+    const elements = [...selector.value]
     selector.value = elements
-    
+
     const hasAmp = elements.find(el => el instanceof Ampersand)
     /**
      * Try to evaluate all selectors as if they are prepended by `&`
@@ -54,10 +53,10 @@ export class Selector extends Expression {
     }
 
     selector = super.eval.call(selector, context)
-    
+
     const cleanElements = (elements: Node[]) => {
       for (let i = 0; i < elements.length; i++) {
-        let value = elements[0]
+        const value = elements[0]
         if (
           (
             value instanceof Selector &&
@@ -75,11 +74,11 @@ export class Selector extends Expression {
     }
 
     if (selector instanceof List) {
-      selector.value.forEach(sel => cleanElements(sel.value))
+      selector.value.forEach(sel => { cleanElements(sel.value) })
     } else {
       cleanElements(selector.value)
     }
-    
+
     if (elements.length === 0) {
       return new Nil()
     }
@@ -91,7 +90,7 @@ export class Selector extends Expression {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    out.add(`$J.sel([`, this.location)
+    out.add('$J.sel([', this.location)
     const length = this.value.length - 1
     this.value.forEach((node, i) => {
       node.toModule(context, out)
@@ -99,11 +98,11 @@ export class Selector extends Expression {
         out.add(', ')
       }
     })
-    out.add(`])`)
+    out.add('])')
   }
 }
 Selector.prototype.type = 'Selector'
 
 export const sel =
-  (value: (string | Node)[] | NodeMap, location?: LocationInfo) =>
+  (value: Array<string | Node> | NodeMap, location?: LocationInfo) =>
     new Selector(value, location)

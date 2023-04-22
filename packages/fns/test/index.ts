@@ -17,7 +17,7 @@ describe('Output files', () => {
         const cssFile = jessFile.replace(/\.jess$/, '.css')
 
         const output = await render(jessFile)
-        let referenceCss = (await fs.promises.readFile(cssFile)).toString()
+        const referenceCss = (await fs.promises.readFile(cssFile)).toString()
         expect(output.$toCSS()).to.equal(referenceCss.toString())
       })
     })

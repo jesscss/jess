@@ -1,4 +1,5 @@
-import { Declaration, DeclarationValue } from './declaration'
+import type { DeclarationValue } from './declaration'
+import { Declaration } from './declaration'
 import type { LocationInfo } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
@@ -6,7 +7,7 @@ import type { OutputCollector } from '../output'
 /**
  * A declaration that retains all tokens
  * (white-space, comments, etc)
- * 
+ *
  * Ideally, perhaps, the value would just be
  * one Anonymous node for now
  */
@@ -24,8 +25,8 @@ export class CustomDeclaration extends Declaration {
     /**
      * Don't insert a space after the colon;
      * Instead, insert the exact token stream.
-     * 
-     * @todo - test this 
+     *
+     * @todo - test this
      */
     out.add(':', loc)
     this.value.toCSS(context, out)
@@ -33,9 +34,9 @@ export class CustomDeclaration extends Declaration {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    let pre = context.pre
+    const pre = context.pre
     const loc = this.location
-    out.add(`$J.custom({\n`, loc)
+    out.add('$J.custom({\n', loc)
     out.add(`  ${pre}name: `)
     this.name.toModule(context, out)
     out.add(`\n  ${pre}value: `)

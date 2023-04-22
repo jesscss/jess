@@ -1,4 +1,5 @@
-import { Node, NodeMap, LocationInfo } from './node'
+import type { NodeMap, LocationInfo } from './node'
+import { Node } from './node'
 import type { JsKeyValue } from './js-key-value'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
@@ -7,11 +8,11 @@ import type { OutputCollector } from '../output'
  */
 export class JsCollection extends Node {
   value: JsKeyValue[]
-  
+
   toCSS(context: Context, out: OutputCollector) {
-    let pre = context.pre
+    const pre = context.pre
     context.indent++
-    out.add(`{\n`, this.location)
+    out.add('{\n', this.location)
     const length = this.value.length
     this.value.forEach((decl, i) => {
       out.add(`${pre}  `)
@@ -28,7 +29,7 @@ export class JsCollection extends Node {
   toModule(context: Context, out: OutputCollector) {
     const pre = context.pre
     context.indent++
-    out.add(`{\n`, this.location)
+    out.add('{\n', this.location)
     const length = this.value.length - 1
     this.value.forEach((node, i) => {
       out.add(`  ${pre}${JSON.stringify(node.name.toString())}: `)

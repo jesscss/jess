@@ -10,14 +10,14 @@ function colorBlend(mode: Function, color1: Color, color2: Color) {
   // result
   const ab = color1.alpha
 
-  let cb: number  // backdrop
-  let cs: number  // source
+  let cb: number // backdrop
+  let cs: number // source
   const as = color2.alpha
 
   let cr: number
   const rgba: number[] = []
 
-  let ar = as + ab * (1 - as)
+  const ar = as + ab * (1 - as)
   for (let i = 0; i < 3; i++) {
     cb = color1.rgb[i] / 255
     cs = color2.rgb[i] / 255
@@ -45,16 +45,17 @@ const colorBlendModeFunctions = {
   },
   overlay: function(cb: number, cs: number) {
     cb *= 2
-    return (cb <= 1) ?
-      colorBlendModeFunctions.multiply(cb, cs) :
-      colorBlendModeFunctions.screen(cb - 1, cs)
+    return (cb <= 1)
+      ? colorBlendModeFunctions.multiply(cb, cs)
+      : colorBlendModeFunctions.screen(cb - 1, cs)
   },
   softlight: function(cb: number, cs: number) {
     let d = 1
     let e = cb
     if (cs > 0.5) {
       e = 1
-      d = (cb > 0.25) ? Math.sqrt(cb)
+      d = (cb > 0.25)
+        ? Math.sqrt(cb)
         : ((16 * cb - 12) * cb + 4) * cb
     }
     return cb - (1 - 2 * cs) * e * (d - cb)
@@ -87,4 +88,3 @@ export const difference = colorBlend.bind(null, colorBlendModeFunctions.differen
 export const exclusion = colorBlend.bind(null, colorBlendModeFunctions.exclusion)
 export const average = colorBlend.bind(null, colorBlendModeFunctions.average)
 export const negation = colorBlend.bind(null, colorBlendModeFunctions.negation)
-

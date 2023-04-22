@@ -1,6 +1,8 @@
-import { IToken, Lexer } from 'chevrotain'
+import type { IToken } from 'chevrotain'
+import { Lexer } from 'chevrotain'
 import { Tokens, Fragments } from './jessTokens'
-import { createTokens, IParseResult } from '@jesscss/css-parser'
+import type { IParseResult } from '@jesscss/css-parser'
+import { createTokens } from '@jesscss/css-parser'
 import { JessParser } from './jessParser'
 
 export * from './jessParser'
@@ -12,15 +14,15 @@ export class Parser {
 
   constructor() {
     const { tokens, T } = createTokens(Fragments, Tokens)
-    /** 
+    /**
      * @todo
      * Make a multi-mode lexer for better JavaScript parsing?
      * At the least, we could do multi-mode to properly
-     * process template strings `` 
+     * process template strings ``
      */
     this.lexer = new Lexer(tokens, {
       ensureOptimizations: true,
-      skipValidations: process.env['JESS_TESTING_MODE'] !== 'true'
+      skipValidations: process.env.JESS_TESTING_MODE !== 'true'
     })
     this.parser = new JessParser(tokens, T)
   }

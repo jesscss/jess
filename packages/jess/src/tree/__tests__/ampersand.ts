@@ -8,8 +8,8 @@ let context: Context
 let out: OutputCollector
 describe('Ampersand', () => {
   beforeEach(() => {
-    context = new Context
-    out = new OutputCollector
+    context = new Context()
+    out = new OutputCollector()
   })
   it('should inherit selectors', () => {
     /** We need a root node to bubble rules */
@@ -18,7 +18,9 @@ describe('Ampersand', () => {
         sels: list([sel([el('.one'), el('.two')])]),
         value: ruleset([
           decl({ name: 'chungus', value: expr(['foo', ' ', 'bar']) }),
-          rule({ sels: expr([amp()]), value:
+          rule({
+            sels: expr([amp()]),
+            value:
             ruleset([
               decl({ name: 'chungus', value: expr(['bar', ' ', 'foo']) })
             ])

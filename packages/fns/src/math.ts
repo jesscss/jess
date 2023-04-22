@@ -2,7 +2,7 @@ import { Dimension, Color, Expression, Node, Paren, Anonymous } from 'jess'
 /**
  * This mimics Less's operations, preserving units and types
  * as output.
- * 
+ *
  * The only export here is the `op` function
  */
 
@@ -11,7 +11,7 @@ type Numeric = NumericNode | number
 
 /** Turn a value into a Numeric Node */
 function normalize(val: Numeric): NumericNode {
-  return val.constructor === Number ? new Dimension(val) : <NumericNode>val
+  return val.constructor === Number ? new Dimension(val) : val
 }
 
 function doMath(op: string, left: number, right: number) {
@@ -39,10 +39,10 @@ function toColor(node: Color | Dimension): Color {
 }
 
 function colorOp(op: string, a: Color | Dimension, b: Color | Dimension) {
-  let left = toColor(a).rgba
-  let right = toColor(b).rgba
+  const left = toColor(a).rgba
+  const right = toColor(b).rgba
   const rgba = new Array(4)
-  for(let i = 0; i < 3; i++) {
+  for (let i = 0; i < 3; i++) {
     rgba[i] = doMath(op, left[i], right[i])
   }
   rgba[3] = left[3] * (1 - right[3]) + right[3]
@@ -72,8 +72,8 @@ function multiply(left: NumericNode, right: NumericNode) {
       return colorOp('*', a, b)
     }
   }
-  const aDim: Dimension = <Dimension>left
-  const bDim: Dimension = <Dimension>right
+  const aDim: Dimension = left as Dimension
+  const bDim: Dimension = right as Dimension
   return new Dimension({
     value: aDim.value * bDim.value,
     unit: aDim.unit || bDim.unit
@@ -129,7 +129,6 @@ function operate(
   a: NumericNode | Paren,
   b: NumericNode | Paren
 ) {
-
   const getValue = (node: Paren) => {
     const value = node.value
     if (
@@ -182,7 +181,7 @@ export function op(expr: NumericNode | Expression | any[]): NumericNode {
     if (v instanceof Anonymous) {
       op = v.value
     } else if (v.constructor === String) {
-      op = <string>v
+      op = v as string
     }
     if (!op || !/[+\-*\/]/.test(op)) {
       throw { message: 'Not a valid math expression.' }
@@ -193,12 +192,12 @@ export function op(expr: NumericNode | Expression | any[]): NumericNode {
     return values[0]
   }
   let a = values[0]
-  let additionValues: any[] = []
-  
+  const additionValues: any[] = []
+
   /** Order of operations */
   for (let i = 1; i < values.length; i += 2) {
-    let op = values[i]
-    let b = values[i + 1]
+    const op = values[i]
+    const b = values[i + 1]
     if (op === '*' || op === '/') {
       a = operate(op, a, b)
     } else {
@@ -206,15 +205,15 @@ export function op(expr: NumericNode | Expression | any[]): NumericNode {
       a = b
     }
   }
-  
+
   if (additionValues.length) {
     additionValues.push(a)
     a = values[0]
     for (let i = 1; i < values.length; i += 2) {
-      let op = values[i]
-      let b = values[i + 1]
+      const op = values[i]
+      const b = values[i + 1]
       a = operate(op, a, b)
     }
   }
-  return <NumericNode>a
+  return a
 }

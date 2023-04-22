@@ -1,8 +1,10 @@
+import type {
+  LocationInfo,
+  NodeMap
+} from './node'
 import {
   Node,
-  LocationInfo,
-  isNodeMap,
-  NodeMap
+  isNodeMap
 } from './node'
 
 import type { Context } from '../context'
@@ -27,7 +29,7 @@ export class Dimension extends Node {
       return
     }
     const regex = /([-+]?[0-9]*(?:\.[0-9]+)?)(%|[a-z]*)/
-    const found = (<string>value).match(regex)
+    const found = (value as string).match(regex)
     if (!found) {
       throw { message: 'Not a valid dimension.' }
     }
@@ -50,10 +52,10 @@ export class Dimension extends Node {
 
   toModule(context: Context, out: OutputCollector) {
     const pre = context.pre
-    out.add(`$J.num({\n`
-      + `  ${pre}value: ${this.value},\n`
-      + `  ${pre}unit: "${this.unit ?? ''}"\n`
-      + `${pre}})`
+    out.add('$J.num({\n' +
+      `  ${pre}value: ${this.value},\n` +
+      `  ${pre}unit: "${this.unit ?? ''}"\n` +
+      `${pre}})`
     , this.location)
   }
 }

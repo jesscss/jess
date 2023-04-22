@@ -9,8 +9,8 @@ let out: OutputCollector
 
 describe('Element', () => {
   beforeEach(() => {
-    context = new Context
-    out = new OutputCollector
+    context = new Context()
+    out = new OutputCollector()
   })
   it('should identify a class', () => {
     const rule = el('.foo')
@@ -36,9 +36,9 @@ describe('Element', () => {
     let rule = el('foo')
     rule.toModule(context, out)
     expect(out.toString()).to.eq('$J.el($J.anon("foo"))')
-    
+
     rule = el(js('colorBrand'))
-    out = new OutputCollector
+    out = new OutputCollector()
     rule.toModule(context, out)
     expect(out.toString()).to.eq('$J.el(colorBrand)')
   })

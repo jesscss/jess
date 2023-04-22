@@ -46,7 +46,7 @@ export class Call extends Node {
      * so to not cause conflicts, Function props like `call` are aliased
      * as `__call`
      */
-    const returnVal = ref['$IS_PROXY'] === true
+    const returnVal = ref.$IS_PROXY === true
       ? ref.__call(context, args[0], true)
       : ref.call(context, ...args)
     return returnVal instanceof Node ? returnVal.eval(context) : returnVal
@@ -60,14 +60,14 @@ export class Call extends Node {
 
   toModule(context: Context, out: OutputCollector) {
     const name = this.name
-    out.add(`$J.call({\n`, this.location)
+    out.add('$J.call({\n', this.location)
     context.indent++
     let pre = context.pre
     out.add(`${pre}name: ${JSON.stringify(name)},\n`)
     out.add(`${pre}value: `)
     this.value.toModule(context, out)
-    out.add(`,\n`)
-    
+    out.add(',\n')
+
     /**
      * @todo - in the future, get a list of imported and defined JS idents
      * to determine this part of output. For Alpha, we do a try / catch

@@ -8,9 +8,9 @@ let context: Context
 let out: OutputCollector
 describe('Ruleset', () => {
   beforeEach(() => {
-    context = new Context
+    context = new Context()
     context.id = 'testing'
-    out = new OutputCollector
+    out = new OutputCollector()
   })
 
   it('should merge rulesets into rules', () => {
@@ -32,8 +32,8 @@ describe('Ruleset', () => {
 
   it('should output var() values', () => {
     context.opts.dynamic = true
-    let node = ruleset([
-      decl({ name: 'a', value: spaced([ js('obj.value'), call({ name: 'func', value: js('foo.bar') }) ])})
+    const node = ruleset([
+      decl({ name: 'a', value: spaced([js('obj.value'), call({ name: 'func', value: js('foo.bar') })]) })
     ])
     node.toModule(context, out)
     expect(out.toString()).to.eq(
@@ -43,8 +43,8 @@ describe('Ruleset', () => {
 
   it('should output --var declarations', () => {
     context.opts.dynamic = true
-    let node = ruleset([
-      decl({ name: 'a', value: spaced([ js('obj.value'), call({ name: 'func', value: js('foo.bar') }) ])})
+    const node = ruleset([
+      decl({ name: 'a', value: spaced([js('obj.value'), call({ name: 'func', value: js('foo.bar') })]) })
     ])
     context.isRuntime = true
     node.toModule(context, out)

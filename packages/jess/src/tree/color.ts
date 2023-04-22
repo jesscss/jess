@@ -1,6 +1,7 @@
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
-import { Node, isNodeMap, LocationInfo } from './node'
+import type { LocationInfo } from './node'
+import { Node, isNodeMap } from './node'
 
 type RGBA = [number, number, number, number] | number[]
 
@@ -32,12 +33,12 @@ export class Color extends Node {
       const rgba: number[] = []
 
       if (value.charAt(0) !== '#') {
-        throw new Error(`Only hex string values can be converted to colors.`)
+        throw new Error('Only hex string values can be converted to colors.')
       }
       const hex = value.slice(1)
 
       if (hex.length >= 6) {
-        (<RegExpMatchArray>hex.match(/.{2}/g)).map((c, i) => {
+        (hex.match(/.{2}/g) as RegExpMatchArray).map((c, i) => {
           if (i < 3) {
             rgba.push(parseInt(c, 16))
           } else {
@@ -57,8 +58,8 @@ export class Color extends Node {
       if (rgba.length === 3) {
         rgba.push(1)
       }
-      this._rgba = <RGBA>rgba
-      return <RGBA>rgba
+      this._rgba = rgba as RGBA
+      return rgba as RGBA
     }
     return this._rgba
   }
@@ -99,8 +100,8 @@ export class Color extends Node {
 
       switch (max) {
         case r: h = (g - b) / d + (g < b ? 6 : 0); break
-        case g: h = (b - r) / d + 2;               break
-        case b: h = (r - g) / d + 4;               break
+        case g: h = (b - r) / d + 2; break
+        case b: h = (r - g) / d + 4; break
       }
       h /= 6
     }
@@ -114,7 +115,7 @@ export class Color extends Node {
     /**
      * If we haven't operated on this value, like with a color
      * function, then value should be the original parsed value
-     * 
+     *
      * If we used an rgb()-like function, then value is the
      * color function name.
      */
@@ -146,8 +147,8 @@ export class Color extends Node {
     switch (colorFunction) {
       case 'rgba':
         args.push(clamp(alpha, 1))
-      case 'rgb':  // eslint-disable-line no-fallthrough
-        args = this.rgb.map(function (c) {
+      case 'rgb': // eslint-disable-line no-fallthrough
+        args = this.rgb.map(function(c) {
           return clamp(Math.round(c), 255)
         }).concat(args)
         break

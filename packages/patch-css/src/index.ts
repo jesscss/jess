@@ -1,5 +1,5 @@
 /** Detect that we're in a browser */
-let isBrowser = new Function('try { return this===window } catch(e) { return false }')()
+const isBrowser = new Function('try { return this===window } catch(e) { return false }')()
 
 const sheetMap: Record<string, string> = {}
 /**
@@ -43,7 +43,7 @@ function getCachedSheets() {
 
   const fragment = document.createDocumentFragment()
 
-  for (let id in coll) {
+  for (const id in coll) {
     if (coll.hasOwnProperty(id)) {
       /** Sanity check, in case this script gets loaded twice */
       const exists = document.getElementById(id)

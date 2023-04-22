@@ -19,8 +19,8 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "Jess runtime Tests",
-      "cwd": "${workspaceFolder}/packages/runtime",
+      "name": "Jess v2 runtime Tests",
+      "cwd": "${workspaceFolder}/packages/jessv2",
       "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
       "args": [
         "-r",
@@ -30,7 +30,7 @@
         "--timeout",
         "999999",
         "--colors",
-        "${workspaceFolder}/packages/runtime/test/**/*.ts"
+        "${workspaceFolder}/packages/jessv2/src/scope/**/__tests__/*.ts"
       ],
       "internalConsoleOptions": "openOnSessionStart"
     },

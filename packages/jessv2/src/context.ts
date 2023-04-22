@@ -5,7 +5,7 @@ import { Dimension } from './tree/dimension'
 import { Anonymous } from './tree/anonymous'
 import isPlainObject from 'lodash/isPlainObject'
 
-export type ContextOptions = {
+export interface ContextOptions {
   module?: boolean
   dynamic?: boolean
   [k: string]: string | number | boolean
@@ -30,9 +30,7 @@ export class Context {
    */
   id: string
   varCounter: number = 0
-  classMap: {
-    [k: string]: string
-  }
+  classMap: Record<string, string>
 
   frames: Node[]
 
@@ -99,13 +97,13 @@ export class Context {
   /**
    * Casts a primitive value to a Jess node
    * (if not already). This is for CSS output.
-   * 
+   *
    * @example
    * cast(area(5))
    */
   cast(value: any): Node {
     if (value === undefined || value === null) {
-      return new Nil
+      return new Nil()
     }
     if (value instanceof Node) {
       return value
@@ -120,7 +118,7 @@ export class Context {
       return new List(value)
     }
     if (value.constructor === Number) {
-      return new Dimension(<number>value)
+      return new Dimension(value as number)
     }
     return new Anonymous(value.toString())
   }

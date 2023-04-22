@@ -9,8 +9,8 @@ let out: OutputCollector
 
 describe('Dimension', () => {
   beforeEach(() => {
-    context = new Context
-    out = new OutputCollector
+    context = new Context()
+    out = new OutputCollector()
   })
   it('should make a dimension from a string', () => {
     const rule = dimension('10px')

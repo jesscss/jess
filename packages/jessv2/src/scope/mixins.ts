@@ -1,7 +1,7 @@
-import { noMatch, isMixin, mixinArgs } from "./symbols"
-import { Scope, type ScopeObj } from "."
+import { noMatch, isMixin, mixinArgs } from './symbols'
+import { Scope, type ScopeObj } from '.'
 
-type ParamType = {
+interface ParamType {
   type?: 'color' | 'dimension'
   name: string
   default?: any
@@ -11,15 +11,15 @@ type ParamType = {
 type ArgTest = (args: any[]) => boolean
 /**
  * Mixin definitions like:
- * 
+ *
  * .mixin(@color: #FFF, @width: 2px) {}
  * .mixin() when (default()) {}
  * .mixin(@color: black; @margin: 10px; @padding: 20px) {}
  *   -- called with
  *      .mixin(@margin: 20px; @color: #33acfe);
  *      .mixin(#efca44; @padding: 40px);
- *   
- *   e.g. 
+ *
+ *   e.g.
 createMixin(
   function(color, width) { },
   [
@@ -73,12 +73,12 @@ export const createMixin = (
         newArgs[i].value = arg
       }
     }
-    /** 
+    /**
      * Finally, for internal calls, args are assembled from an
      * object passed on `this`. The reason for this is that
      * assignment can be more complex, with named parameters
      * mixed with positional args.
-     *   e.g. 
+     *   e.g.
      *   {
      *      0: 'value',
      *      color: '#FFF'
@@ -86,7 +86,7 @@ export const createMixin = (
      */
     if (this?.[mixinArgs]) {
       const entries = Object.entries(this[mixinArgs])
-      for (let entry of entries) {
+      for (const entry of entries) {
         const key = entry[0]
         const index: number = parseInt(key)
         if (!isNaN(index)) {
@@ -108,15 +108,15 @@ export const createMixin = (
     }
     if (
       /** One of the mixin's values is not defined */
-      newArgs.find(val => val === undefined)
+      newArgs.find(val => val === undefined) ||
       /** One of the guards does not succeed */
-      || argTests.find(test => !test(newArgs))
+      argTests.find(test => !test(newArgs))
     ) {
       /** One of the mixin's values is not defined, so it's not a match. */
       return noMatch
     }
 
-    for (let arg of newArgs) {
+    for (const arg of newArgs) {
       scope[`$${arg.name}`] = arg.value
     }
 

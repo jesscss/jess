@@ -8,6 +8,7 @@ export class Combinator extends Anonymous {
     const val = this.value
     out.add(val === ' ' ? val : ` ${val} `, this.location)
   }
+
   toModule(context: Context, out: OutputCollector) {
     out.add(`$J.co("${this.value}")`)
   }

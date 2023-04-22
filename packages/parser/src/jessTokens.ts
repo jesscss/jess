@@ -1,14 +1,12 @@
+import type { rawTokenConfig } from '@jesscss/css-parser'
 import {
   Fragments as CSSFragments,
   Tokens as CSSTokens,
-  rawTokenConfig,
   LexerType,
   groupCapture
 } from '@jesscss/css-parser'
 
-interface IMerges {
-  [key: string]: rawTokenConfig[]
-}
+type IMerges = Record<string, rawTokenConfig[]>
 
 export const Fragments = [...CSSFragments]
 export let Tokens = [...CSSTokens]
@@ -16,7 +14,7 @@ export let Tokens = [...CSSTokens]
 Fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*'])
 // Fragments.push(['jsident', '[_a-zA-Z]\\w*'])
 /** Not sure we need all these back-slashes for ` marks */
-Fragments.push(['string3', "\\`(\\\\`|[^\\n\\r\\f\\`]|{{newline}}|{{escape}})*\\`"])
+Fragments.push(['string3', '\\`(\\\\`|[^\\n\\r\\f\\`]|{{newline}}|{{escape}})*\\`'])
 
 Fragments.forEach(fragment => {
   if (fragment[0].indexOf('wsorcomment') !== -1) {
@@ -84,7 +82,7 @@ const merges: IMerges = {
       longer_alt: 'Important'
     }
   ]
-  /** 
+  /**
    * @todo - allow JS expressions within string literals
    * Result will be a CSS string literal with a J.call() in it
   */

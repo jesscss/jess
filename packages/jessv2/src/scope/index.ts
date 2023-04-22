@@ -1,6 +1,8 @@
-import {
+import type {
   protectedScopes,
-  shadowScopes,
+  shadowScopes
+} from './symbols'
+import {
   original,
   rules,
   selectorMap,
@@ -23,13 +25,13 @@ export interface ScopeObj {
 
   /**
    * These are imported scopes which cannot conflict
-   * with in-scope identifiers. 
+   * with in-scope identifiers.
    */
   [protectedScopes]: ScopeObj[]
 
   /**
    * These are imported scopes whose values can be
-   * shadowed (over-written) by a local variable. 
+   * shadowed (over-written) by a local variable.
    */
   [shadowScopes]: ScopeObj[]
 
@@ -62,12 +64,10 @@ export interface ScopeObj {
     matchAll?: boolean
   ) => void
 
-  [mixinMap]?: {
-    [k: string]: {
-      mixins?: Array<(...args: any[]) => ScopeObj>
-      default?: Array<(...args: any[]) => ScopeObj>
-    }
-  }
+  [mixinMap]?: Record<string, {
+    mixins?: Array<(...args: any[]) => ScopeObj>
+    default?: Array<(...args: any[]) => ScopeObj>
+  }>
 
   [context]: Languages
 
@@ -115,7 +115,7 @@ const proxyHandler: ProxyHandler<ScopeObj> = {
               Object.defineProperty(target, p, {
                 writable: true,
                 /**
-                 * 
+                 *
                  * @param this Caller scope
                  */
                 value: function(this: ScopeObj | undefined, ...args: any[]) {
@@ -134,7 +134,7 @@ const proxyHandler: ProxyHandler<ScopeObj> = {
                     results = target[mixinMap]![p].default!
                       .map(mixin => mixin.call(scope, ...args))
                       .filter((result: any) => result !== noMatch)
-                  
+
                     if (results.length === 0) {
                       throw new Error('RuntimeError: No matching definition was found')
                     }
@@ -142,11 +142,11 @@ const proxyHandler: ProxyHandler<ScopeObj> = {
                       throw new Error('RuntimeError: Ambiguous use of `default()`')
                     }
                   }
-                  
+
                   if (results.length === 1) {
-                    scope[rules] = [results[0]]
+                    scope[rules].concat(results[0])
                   } else {
-                    scope[rules] = results
+                    scope[rules].concat(...results)
                   }
                   return scope
                 }
@@ -177,12 +177,14 @@ const proxyHandler: ProxyHandler<ScopeObj> = {
 }
 
 type GenericObject = Record<string | symbol, any>
-type Rule = {
-  [k: string]: any
-}
+type Rule = Record<string, any>
 type Languages = 'less' | 'scss' | 'jess'
-type SelectorMap = {
+interface SelectorMap {
   [k: string]: true | SelectorMap
+}
+
+interface Declaration {
+
 }
 
 /**
@@ -190,30 +192,30 @@ type SelectorMap = {
  */
 export function Scope(obj: GenericObject, ctx: 'less' | 'scss' | 'jess' = 'jess'): ScopeObj {
   if (obj[original]) {
+    /** We make sure we extend the prototype of the non-proxied object */
     obj = Object.create(obj[original])
   } else {
-    obj[original] = obj
-    obj[selectorMap] = {}
-    /**
-     * Creates a selector lookup map like:
-     * {
-     *   [map]: {
-     *     '#foo': {
-     *       '>': {
-     *         '.bar': true
-     *       }
-     *     }
-     *     '.bar': true
-     *   }
-     * }
-     * This is used for :extend and language services
-     */
-
-    /** Register selector paths in the global registry */
-    obj[register] = registry.bind(obj as ScopeObj)
+    Object.defineProperties(obj, {
+      [original]: {
+        value: obj
+      },
+      [selectorMap]: {
+        value: {}
+      },
+      [register]: {
+        value: registry.bind(obj as ScopeObj)
+      }
+    })
   }
-  
-  obj[rules] = []
-  obj[context] = ctx
+
+  Object.defineProperties(obj, {
+    [rules]: {
+      value: []
+    },
+    [context]: {
+      value: ctx
+    }
+  })
+
   return new Proxy(obj as ScopeObj, proxyHandler)
 }

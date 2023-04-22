@@ -9,26 +9,26 @@ let out: OutputCollector
 
 describe('Let', () => {
   beforeEach(() => {
-    context = new Context
+    context = new Context()
     context.depth = 1
-    out = new OutputCollector
+    out = new OutputCollector()
   })
 
   it('should serialize a @let', () => {
     context.depth = 2
-    let rule = set(keyval({
+    const rule = set(keyval({
       name: 'brandColor',
       value: expr([anon('#eee')])
-    })) 
+    }))
     expect(`${rule}`).to.eq('@let brandColor: #eee;')
     rule.toModule(context, out)
     expect(out.toString()).to.eq('let brandColor = $J.expr([$J.anon("#eee")])')
   })
 
   it('should serialize a @let collection', () => {
-    let rule = set(
+    const rule = set(
       keyval({
-        name: 'brand', 
+        name: 'brand',
         value: coll([
           keyval({
             name: 'global',

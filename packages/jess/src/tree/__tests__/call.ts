@@ -8,8 +8,8 @@ let context: Context
 let out: OutputCollector
 describe('Call', () => {
   beforeEach(() => {
-    context = new Context
-    out = new OutputCollector
+    context = new Context()
+    out = new OutputCollector()
   })
   it('should serialize to CSS', () => {
     const rule = call({

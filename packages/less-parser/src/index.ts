@@ -1,6 +1,8 @@
-import { IToken, Lexer } from 'chevrotain'
+import type { IToken } from 'chevrotain'
+import { Lexer } from 'chevrotain'
 import { Tokens, Fragments } from './lessTokens'
-import { createTokens, IParseResult } from '@jesscss/css-parser'
+import type { IParseResult } from '@jesscss/css-parser'
+import { createTokens } from '@jesscss/css-parser'
 import { LessParser } from './lessParser'
 
 export * from './lessParser'
@@ -14,7 +16,7 @@ export class Parser {
     const { tokens, T } = createTokens(Fragments, Tokens)
     this.lexer = new Lexer(tokens, {
       ensureOptimizations: true,
-      skipValidations: process.env['JESS_TESTING_MODE'] !== 'true'
+      skipValidations: process.env.JESS_TESTING_MODE !== 'true'
     })
     this.parser = new LessParser(tokens, T)
   }

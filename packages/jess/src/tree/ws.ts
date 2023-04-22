@@ -1,4 +1,5 @@
-import { Node, NodeMap, LocationInfo } from './node'
+import type { NodeMap, LocationInfo } from './node'
+import { Node } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
@@ -27,7 +28,7 @@ export class WS extends Node {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    out.add(`$J.ws()`)
+    out.add('$J.ws()')
   }
 }
 WS.prototype.type = 'WS'

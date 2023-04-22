@@ -1,8 +1,8 @@
 import { expect } from 'chai'
 import 'mocha'
 import { num, expr } from '..'
-import { Context } from '../../context'
-import { OutputCollector } from '../../output'
+import type { Context } from '../../context'
+import type { OutputCollector } from '../../output'
 
 let context: Context
 let out: OutputCollector

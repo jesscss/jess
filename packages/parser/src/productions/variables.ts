@@ -1,9 +1,10 @@
 
-import { JessParser } from '../jessParser'
+import type { JessParser } from '../jessParser'
 import { EMPTY_ALT } from 'chevrotain'
-import { CstChild, IToken, CstNode } from '@jesscss/css-parser'
+import type { CstChild } from '@jesscss/css-parser'
+import { IToken, CstNode } from '@jesscss/css-parser'
 
-export default function (this: JessParser, $: JessParser) {
+export default function(this: JessParser, $: JessParser) {
   $.atLet = $.RULE('atLet',
     () => ({
       name: 'atLet',
@@ -22,7 +23,7 @@ export default function (this: JessParser, $: JessParser) {
       $._(1)
     ]
     const valueChildren: CstChild[] = []
-    
+
     $.OR([
       {
         ALT: () => {

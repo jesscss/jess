@@ -1,4 +1,4 @@
-import { CstChild, CstNode } from '@jesscss/css-parser'
+import type { CstChild, CstNode } from '@jesscss/css-parser'
 import type { LessParser } from '../lessParser'
 
 export default function(this: LessParser, $: LessParser) {
@@ -6,10 +6,10 @@ export default function(this: LessParser, $: LessParser) {
     const children: CstChild[] = [
       $.SUBRULE($.complexSelector)
     ]
-    
+
     let allExtends = $.hasExtend
     let guard: CstNode
-  
+
     $.OR([
       { ALT: () => guard = $.SUBRULE($.guard) },
       {
@@ -25,7 +25,7 @@ export default function(this: LessParser, $: LessParser) {
               },
               $.SUBRULE2($.complexSelector)
             )
-           
+
             allExtends = allExtends && $.hasExtend
           })
         }
@@ -42,7 +42,7 @@ export default function(this: LessParser, $: LessParser) {
     } else if (children.length === 1) {
       return children[0]
     }
-    
+
     /** Determines here if can omit a curly block */
     $.hasExtend = allExtends
 
@@ -51,17 +51,19 @@ export default function(this: LessParser, $: LessParser) {
       children
     }
   })
-  
+
   $.complexSelector = $.OVERRIDE_RULE('complexSelector', () => {
     const selectors: CstChild[] = []
 
     $.OR([
-      { ALT: () => {
-        selectors.push(
-          $.SUBRULE($.compoundSelector)
-        )
-        $.MANY(() => selectors.push($.SUBRULE($.combinatorSelector)))
-      }},
+      {
+        ALT: () => {
+          selectors.push(
+            $.SUBRULE($.compoundSelector)
+          )
+          $.MANY(() => selectors.push($.SUBRULE($.combinatorSelector)))
+        }
+      },
       {
         ALT: () => $.AT_LEAST_ONE(
           () => selectors.push($.SUBRULE2($.combinatorSelector))
@@ -69,7 +71,7 @@ export default function(this: LessParser, $: LessParser) {
       }
     ])
 
-    let extend: CstNode = $.OPTION(() => {
+    const extend: CstNode = $.OPTION(() => {
       $.hasExtend = true
       return {
         name: 'extend',

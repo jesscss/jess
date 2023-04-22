@@ -1,4 +1,5 @@
-import { Node, LocationInfo, NodeMap } from './node'
+import type { LocationInfo, NodeMap } from './node'
+import { Node } from './node'
 import { Anonymous } from './anonymous'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
@@ -49,9 +50,9 @@ export class Declaration extends Node {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    let pre = context.pre
+    const pre = context.pre
     const loc = this.location
-    out.add(`$J.decl({\n`, loc)
+    out.add('$J.decl({\n', loc)
     context.indent++
     out.add(`  ${pre}name: `)
     this.name.toModule(context, out)

@@ -1,14 +1,12 @@
+import type { rawTokenConfig } from '@jesscss/css-parser'
 import {
   Fragments as CSSFragments,
   Tokens as CSSTokens,
-  rawTokenConfig,
   LexerType,
   groupCapture
 } from '@jesscss/css-parser'
 
-interface IMerges {
-  [key: string]: rawTokenConfig[]
-}
+type IMerges = Record<string, rawTokenConfig[]>
 
 export const Fragments = [...CSSFragments]
 export let Tokens = [...CSSTokens]

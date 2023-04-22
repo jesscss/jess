@@ -11,7 +11,7 @@ export const stringify = (cst: CstNode): string => {
       if (!node.children) {
         console.log(node)
       }
-      node.children.forEach(child => recurseCst(child))
+      node.children.forEach(child => { recurseCst(child) })
       return
     }
     output += node.image

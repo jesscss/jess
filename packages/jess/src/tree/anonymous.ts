@@ -1,10 +1,11 @@
-import { Node, LocationInfo } from './node'
+import type { LocationInfo } from './node'
+import { Node } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
 /**
  * A generic value that needs to
- * be escaped for module output 
+ * be escaped for module output
  */
 export class Anonymous extends Node {
   value: string

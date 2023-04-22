@@ -1,4 +1,5 @@
-import { isNodeMap, NodeMap, LocationInfo } from './node'
+import type { NodeMap, LocationInfo } from './node'
+import { isNodeMap } from './node'
 import { JsNode } from './js-node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
@@ -10,19 +11,19 @@ export const JsReservedWords = [
   'case', 'catch',
   'char', 'class',
   'const', 'continue',
-  'debugger', 'default', 
+  'debugger', 'default',
   'delete', 'do',
   'double', 'else',
   'enum', 'eval',
   'export', 'extends',
   'false', 'final',
-  'finally', 'float', 
+  'finally', 'float',
   'for', 'function',
   'goto', 'if',
   'implements', 'import',
   'in', 'instanceof',
   'int', 'interface',
-  'let', 'long', 
+  'let', 'long',
   'native', 'new',
   'null', 'package',
   'private', 'protected',
@@ -50,9 +51,8 @@ export class JsIdent extends JsNode {
   ) {
     let name: string
     if (isNodeMap(value)) {
-      name = <string>value.value
-    }
-    else {
+      name = value.value as string
+    } else {
       name = value
     }
     if (name.includes('-')) {

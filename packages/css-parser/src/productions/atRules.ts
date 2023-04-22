@@ -1,7 +1,7 @@
 import { IToken } from 'chevrotain'
 import type { CssParser, CstChild, CstNode } from '../cssParser'
 
-export default function (this: CssParser, $: CssParser) {
+export default function(this: CssParser, $: CssParser) {
   $.atRule = $.RULE('atRule',
     () => $.OR([
       { ALT: () => $.SUBRULE($.knownAtRule) },

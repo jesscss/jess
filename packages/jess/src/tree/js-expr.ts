@@ -1,12 +1,13 @@
-import { Node, LocationInfo } from './node'
+import type { LocationInfo } from './node'
+import { Node } from './node'
 import { Declaration } from './declaration'
-import type { Context } from '../context' 
-import { OutputCollector } from '../output'
+import type { Context } from '../context'
+import type { OutputCollector } from '../output'
 
 /**
  * A JS expression
  * (compile-time node)
- * 
+ *
  * @example
  * $variable
  * $(func(arg1, arg2))

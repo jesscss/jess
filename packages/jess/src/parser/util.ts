@@ -1,5 +1,6 @@
-import { Node, LocationInfo, Expression, WS, coll } from '../tree'
-import { CstNode, CstChild, IToken } from '@jesscss/css-parser'
+import type { LocationInfo } from '../tree'
+import { Node, Expression, WS, coll } from '../tree'
+import type { CstNode, CstChild, IToken } from '@jesscss/css-parser'
 import type { BaseTokenType } from './cst-visitor'
 
 /**
@@ -129,7 +130,7 @@ export function collectTokens(nodes: CstChild[], out?: IToken[]) {
 }
 
 export function flatten(arr: any[]): any[] {
-  return arr.reduce(function (flat, toFlatten) {
+  return arr.reduce(function(flat, toFlatten) {
     return flat.concat(Array.isArray(toFlatten) ? flatten(toFlatten) : toFlatten)
   }, [])
 }

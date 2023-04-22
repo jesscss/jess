@@ -19,6 +19,6 @@
   },
   "devDependencies": {
     "jess": "workspace:^1.0.8-alpha.8",
-    "webpack": "^5.19.0"
+    "webpack": "^5.80.0"
   }
 }

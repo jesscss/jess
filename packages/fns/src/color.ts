@@ -1,4 +1,5 @@
-import { Color, Dimension, Node } from 'jess'
+import type { Node } from 'jess'
+import { Color, Dimension } from 'jess'
 
 type RGBValue = Dimension | number
 
@@ -23,14 +24,11 @@ function getHue(h: number, m1: number, m2: number) {
   h = h < 0 ? h + 1 : (h > 1 ? h - 1 : h)
   if (h * 6 < 1) {
     return m1 + (m2 - m1) * h * 6
-  }
-  else if (h * 2 < 1) {
+  } else if (h * 2 < 1) {
     return m2
-  }
-  else if (h * 3 < 2) {
+  } else if (h * 3 < 2) {
     return m1 + (m2 - m1) * (2 / 3 - h) * 6
-  }
-  else {
+  } else {
     return m1
   }
 }
@@ -101,7 +99,7 @@ export function hsla(h: RGBValue, s: RGBValue, l: RGBValue, a: RGBValue) {
   let m1: number
   let m2: number
 
-  const value = `hsla`
+  const value = 'hsla'
 
   h = (number(h) % 360) / 360
   s = clamp(number(s))
@@ -124,7 +122,7 @@ export function hsla(h: RGBValue, s: RGBValue, l: RGBValue, a: RGBValue) {
 }
 
 export function hsl(h: RGBValue, s: RGBValue, l: RGBValue) {
-  const value = `hsl`
+  const value = 'hsl'
   h = number(h)
   s = number(s)
   l = number(l)
@@ -139,8 +137,8 @@ export function hsva(h: RGBValue, s: RGBValue, v: RGBValue, a: RGBValue) {
   v = number(v)
   a = number(a)
 
-  let i = Math.floor((h / 60) % 6)
-  let f = (h / 60) - i
+  const i = Math.floor((h / 60) % 6)
+  const f = (h / 60) - i
 
   const vs = [
     v,
@@ -148,7 +146,7 @@ export function hsva(h: RGBValue, s: RGBValue, v: RGBValue, a: RGBValue) {
     v * (1 - f * s),
     v * (1 - (1 - f) * s)
   ]
-  
+
   const perm = [
     [0, 3, 1],
     [2, 0, 1],
@@ -248,7 +246,7 @@ export function luminance(color: Color) {
   })
 }
 
-type HSLA = {
+interface HSLA {
   h: number
   s: number
   l: number
@@ -258,7 +256,7 @@ type HSLA = {
 function getHsla(origColor: Color, hsl: HSLA) {
   const color = hsla(hsl.h, hsl.s, hsl.l, hsl.a)
   if (color) {
-    if (origColor.value && 
+    if (origColor.value &&
       /^(rgb|hsl)/.test(origColor.value)) {
       color.value = origColor.value
     } else {
@@ -271,16 +269,15 @@ function getHsla(origColor: Color, hsl: HSLA) {
 /**
  * @note
  * There's a lot of boilerplate code in the following functions. Could
- * they be abstracted / have a generator function? 
+ * they be abstracted / have a generator function?
  */
 
 export function saturate(color: Color, amount: Dimension, method?: Node) {
   const hsl = toHSL(color)
 
   if (method && method.value === 'relative') {
-    hsl.s +=  hsl.s * amount.value / 100
-  }
-  else {
+    hsl.s += hsl.s * amount.value / 100
+  } else {
     hsl.s += amount.value / 100
   }
   hsl.s = clamp(hsl.s)
@@ -291,9 +288,8 @@ export function desaturate(color: Color, amount: Dimension, method?: Node) {
   const hsl = toHSL(color)
 
   if (method && method.value === 'relative') {
-    hsl.s -=  hsl.s * amount.value / 100
-  }
-  else {
+    hsl.s -= hsl.s * amount.value / 100
+  } else {
     hsl.s -= amount.value / 100
   }
   hsl.s = clamp(hsl.s)
@@ -304,9 +300,8 @@ export function lighten(color: Color, amount: Dimension, method?: Node) {
   const hsl = toHSL(color)
 
   if (method && method.value === 'relative') {
-    hsl.l +=  hsl.l * amount.value / 100
-  }
-  else {
+    hsl.l += hsl.l * amount.value / 100
+  } else {
     hsl.l += amount.value / 100
   }
   hsl.l = clamp(hsl.l)
@@ -317,9 +312,8 @@ export function darken(color: Color, amount: Dimension, method?: Node) {
   const hsl = toHSL(color)
 
   if (method && method.value === 'relative') {
-    hsl.l -=  hsl.l * amount.value / 100
-  }
-  else {
+    hsl.l -= hsl.l * amount.value / 100
+  } else {
     hsl.l -= amount.value / 100
   }
   hsl.l = clamp(hsl.l)
@@ -330,9 +324,8 @@ export function fadein(color: Color, amount: Dimension, method?: Node) {
   const hsl = toHSL(color)
 
   if (method && method.value === 'relative') {
-    hsl.a +=  hsl.a * amount.value / 100
-  }
-  else {
+    hsl.a += hsl.a * amount.value / 100
+  } else {
     hsl.a += amount.value / 100
   }
   hsl.a = clamp(hsl.a)
@@ -343,9 +336,8 @@ export function fadeout(color: Color, amount: Dimension, method?: Node) {
   const hsl = toHSL(color)
 
   if (method && method.value === 'relative') {
-    hsl.a -=  hsl.a * amount.value / 100
-  }
-  else {
+    hsl.a -= hsl.a * amount.value / 100
+  } else {
     hsl.a -= amount.value / 100
   }
   hsl.a = clamp(hsl.a)

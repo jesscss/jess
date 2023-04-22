@@ -1,6 +1,7 @@
-import { CstChild, CstNode } from '@jesscss/css-parser'
-import { EMPTY_ALT, IToken } from 'chevrotain'
-import { Declaration } from 'css-parser/src/productions/declarations'
+import type { CstChild, CstNode } from '@jesscss/css-parser'
+import type { IToken } from 'chevrotain'
+import { EMPTY_ALT } from 'chevrotain'
+import type { Declaration } from 'css-parser/src/productions/declarations'
 import type { LessParser } from '../lessParser'
 
 export default function(this: LessParser, $: LessParser) {
@@ -25,7 +26,7 @@ export default function(this: LessParser, $: LessParser) {
    * and mixin arguments equally for mixin calls, as it's only
    * the final curlyBlock that determines if this is a definition
    * or a call.
-   * 
+   *
    * During CST-to-AST, we can throw an error if a mixin definition
    * doesn't have valid selectors or arguments, or if, say, a mixin
    * call has a guard and shouldn't.
@@ -35,19 +36,23 @@ export default function(this: LessParser, $: LessParser) {
       $.SUBRULE($.mixinStart)
     ]
     $.OR([
-      { ALT: () => {
-        children.push(
-          $.CONSUME($.T.LParen),
-          $.SUBRULE($.mixinArgs),
-          $.CONSUME($.T.RParen)
-        )
-      }},
-      { ALT: () => {
-        children.push(undefined, undefined, undefined)
-        return EMPTY_ALT
-      }}
+      {
+        ALT: () => {
+          children.push(
+            $.CONSUME($.T.LParen),
+            $.SUBRULE($.mixinArgs),
+            $.CONSUME($.T.RParen)
+          )
+        }
+      },
+      {
+        ALT: () => {
+          children.push(undefined, undefined, undefined)
+          return EMPTY_ALT
+        }
+      }
     ])
-    
+
     children.push(
       $._(1),
       $.OPTION(() => ({
@@ -59,7 +64,7 @@ export default function(this: LessParser, $: LessParser) {
       })),
       $.OPTION4(() => $.SUBRULE($.guard))
     )
-    
+
     $.OR2([
       {
         ALT: () => {
@@ -73,7 +78,7 @@ export default function(this: LessParser, $: LessParser) {
       },
       { ALT: () => EMPTY_ALT }
     ])
-  
+
     return {
       name: 'mixin',
       children
@@ -117,21 +122,21 @@ export default function(this: LessParser, $: LessParser) {
    * This code gets a bit complicated. Less 2.x-4.x uses
    * lookaheads to find semi-colons, and if found, parses
    * arguments differently.
-   * 
+   *
    * Instead, here we just allow for semi-colon or comma
    * separators, and if BOTH, then we MERGE comma-separated
    * arguments into the initial expression as an expression
    * list.
-   * 
+   *
    * This allows us to have one parsing "pass" on arguments
    * without any back-tracking.
-   * 
+   *
    * Is this premature optimization? Possibly. It would depend
    * on the performance of backtracking and the potential
    * length of mixin args.
    */
   $.mixinArgs = $.RULE('mixinArgs', () => {
-    let childrenGroups: any[][] = [[
+    const childrenGroups: any[][] = [[
       $.SUBRULE($.mixinArg)
     ]]
     let children: CstChild[] = childrenGroups[0]
@@ -139,23 +144,27 @@ export default function(this: LessParser, $: LessParser) {
 
     $.MANY(() => {
       $.OR([
-        { ALT: () => {
-          children.push(
-            $.CONSUME($.T.Comma),
-            $.SUBRULE2($.mixinArg)
-          )
-        }},
-        { ALT: () => {
-          children.push(
-            $.CONSUME($.T.SemiColon)
-          )
+        {
+          ALT: () => {
+            children.push(
+              $.CONSUME($.T.Comma),
+              $.SUBRULE2($.mixinArg)
+            )
+          }
+        },
+        {
+          ALT: () => {
+            children.push(
+              $.CONSUME($.T.SemiColon)
+            )
 
-          childrenGroups.push([
-            $.SUBRULE3($.mixinArg)
-          ])
-          groupIndex++
-          children = childrenGroups[groupIndex]
-        }}
+            childrenGroups.push([
+              $.SUBRULE3($.mixinArg)
+            ])
+            groupIndex++
+            children = childrenGroups[groupIndex]
+          }
+        }
       ])
     })
 
@@ -165,10 +174,10 @@ export default function(this: LessParser, $: LessParser) {
         const length = group.length
         const value: CstNode = group[0].children[1]
         let expr: CstNode
-        let exprList: CstNode[] = []
+        const exprList: CstNode[] = []
 
         if (value.name === 'declaration') {
-          expr = (<Declaration>value).children[4]
+          expr = (value as Declaration).children[4]
         } else {
           expr = value
         }
@@ -205,7 +214,6 @@ export default function(this: LessParser, $: LessParser) {
     }
   })
 
-
   /**
    * This will return a mixin arg containing
    * a declaration, an expression, or a rest
@@ -221,7 +229,7 @@ export default function(this: LessParser, $: LessParser) {
     let isDeclaration = false
 
     $.OPTION(() => {
-      /** 
+      /**
        * In a mixin definition, this is the variable declaration.
        * In a mixin call, this is either assignment to a variable, OR
        * could be part of the expression value.
@@ -236,7 +244,7 @@ export default function(this: LessParser, $: LessParser) {
       })
     })
 
-    let value: CstChild = $.OR2([
+    const value: CstChild = $.OR2([
       {
         GATE: () => !isDeclaration && !ws,
         ALT: () => ({
@@ -278,7 +286,7 @@ export default function(this: LessParser, $: LessParser) {
     let chunk = value
 
     if (isDeclaration) {
-      chunk = <Declaration>{
+      chunk = {
         name: 'declaration',
         children: [
           varName,
@@ -289,7 +297,7 @@ export default function(this: LessParser, $: LessParser) {
           undefined,
           undefined
         ]
-      }
+      } as Declaration
     } else {
       chunk = value
     }
@@ -367,9 +375,9 @@ export default function(this: LessParser, $: LessParser) {
     return expr
   })
 
-  /** 
+  /**
    * 'and' and 'or' expressions
-   * 
+   *
    *  In Media queries level 4, you cannot have
    *  `([expr]) or ([expr]) and ([expr])` because
    *  of evaluation order ambiguity.
@@ -397,7 +405,7 @@ export default function(this: LessParser, $: LessParser) {
   })
 
   $.guardExpression = $.RULE('guardExpression', () => {
-    let expr = $.OPTION(() => [
+    const expr = $.OPTION(() => [
       $.CONSUME($.T.Not),
       $._()
     ])

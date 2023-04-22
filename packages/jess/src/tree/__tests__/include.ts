@@ -9,15 +9,15 @@ let out: OutputCollector
 
 describe('Include', () => {
   beforeEach(() => {
-    context = new Context
-    out = new OutputCollector
+    context = new Context()
+    out = new OutputCollector()
   })
   it('should be able to include an object', () => {
     const obj = {
       width: '50px',
       height: '25px'
     }
-    
+
     const node = rule({
       sels: el('.rule'),
       value: [
@@ -29,7 +29,7 @@ describe('Include', () => {
   })
 
   it('should serialize a module', () => {
-    let rule = el('foo')
+    const rule = el('foo')
     rule.toModule(context, out)
     expect(out.toString()).to.eq('$J.el($J.anon("foo"))')
   })

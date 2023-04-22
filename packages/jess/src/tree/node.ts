@@ -1,11 +1,11 @@
 import type { Context } from '../context'
 import type { Visitor } from '../visitor'
-import { OutputCollector } from '../output'
+import type { OutputCollector } from '../output'
 
 export type Primitive = string | number | Node
 /** Function is used by the Call node */
 export type NodeValue = Function | Primitive | Primitive[]
-export type NodeMap = {
+export interface NodeMap {
   value?: NodeValue
   [k: string]: NodeValue
 }
@@ -19,16 +19,16 @@ export type LocationInfo = [
   endColumn?: number,
 ]
 
-export type FileInfo = {
+export interface FileInfo {
   filename?: string
   rootpath?: string
 }
 
 export const isNodeMap = (val: NodeValue | NodeMap): val is NodeMap => {
-  return val
-    && typeof val === 'object'
-    && val.constructor === Object
-    && Object.prototype.hasOwnProperty.call(val, 'value')
+  return val &&
+    typeof val === 'object' &&
+    val.constructor === Object &&
+    Object.prototype.hasOwnProperty.call(val, 'value')
 }
 
 export abstract class Node {
@@ -131,7 +131,7 @@ export abstract class Node {
   }
 
   collectRoots(): Node[] {
-    const nodes: Set<Node> = new Set()
+    const nodes = new Set<Node>()
     this.walkNodes(n => {
       if (n.type === 'Ruleset') {
         n.rootRules.forEach(n => {
@@ -142,7 +142,7 @@ export abstract class Node {
     })
     return Array.from(nodes)
   }
-  
+
   accept(visitor: Visitor) {
     this.processNodes(n => visitor.visit(n))
   }
@@ -166,8 +166,8 @@ export abstract class Node {
     /**
      * Copy added properties on `this`
      */
-    for (let prop in this) {
-      if (Object.prototype.hasOwnProperty.call(this, prop) && nodeKeys.indexOf(prop) === -1) {
+    for (const prop in this) {
+      if (Object.prototype.hasOwnProperty.call(this, prop) && !nodeKeys.includes(prop)) {
         newNode[prop] = this[prop]
       }
     }
@@ -204,7 +204,7 @@ export abstract class Node {
     return this.value
   }
 
-  /** 
+  /**
    * Generate a .ts module and .ts.map
    * @todo - Should we generate an ESTree AST to avoid re-parsing in Rollup?
    */

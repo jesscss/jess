@@ -13,7 +13,7 @@ export interface Declaration extends CstNode {
   ]
 }
 
-export default function (this: CssParser, $: CssParser) {
+export default function(this: CssParser, $: CssParser) {
   /**
    * e.g.
    *   color: red

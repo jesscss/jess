@@ -11,7 +11,7 @@ const parser = jessParser.parser
 
 describe('can parse any rule', () => {
   it('declaration', () => {
-    const lexerResult = jessParser.lexer.tokenize(`color: green;`)
+    const lexerResult = jessParser.lexer.tokenize('color: green;')
     const lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
     const cst = parser.declaration()
@@ -19,14 +19,14 @@ describe('can parse any rule', () => {
   })
 
   it('qualified rule', () => {
-    let lexerResult = jessParser.lexer.tokenize(
+    const lexerResult = jessParser.lexer.tokenize(
       `.light {
           color: green;
       }`
     )
-    let lexedTokens = lexerResult.tokens
+    const lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
-    let cst = parser.qualifiedRule()
+    const cst = parser.qualifiedRule()
     expect(parser.errors.length).to.equal(0)
   })
 
@@ -72,7 +72,7 @@ describe('can parse any rule', () => {
   })
 
   it('include', () => {
-    let lexerResult = jessParser.lexer.tokenize(`@include mixin(0px);`)
+    let lexerResult = jessParser.lexer.tokenize('@include mixin(0px);')
     let lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
     parser.atInclude()
@@ -89,7 +89,7 @@ describe('can parse any rule', () => {
     expect(parser.errors.length).to.equal(0)
 
     lexerResult = jessParser.lexer.tokenize(
-      `@include mixinCall({direct: works;}, {collection: works;});`
+      '@include mixinCall({direct: works;}, {collection: works;});'
     )
     lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
@@ -98,11 +98,11 @@ describe('can parse any rule', () => {
   })
 
   it('variable declaration', () => {
-    let lexerResult = jessParser.lexer.tokenize(
+    const lexerResult = jessParser.lexer.tokenize(
       `@let collection {
         color: red;
       }`)
-    let lexedTokens = lexerResult.tokens
+    const lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
     parser.root()
     expect(parser.errors.length).to.equal(0)
@@ -132,7 +132,7 @@ describe('can parse all Jess stylesheets', () => {
 const invalidCSSOutput = [
   /** Contains a less unquoted string in root */
   'css/_main/css-escapes.css',
-  
+
   /** Intentionally produces invalid CSS */
   'css/_main/import-inline.css',
   'css/_main/import-reference.css',
@@ -155,7 +155,7 @@ describe('can parse all Less CSS output', () => {
   const files = glob.sync(path.join(testData, 'css/_main/*.css'))
   files
     .map(value => path.relative(testData, value))
-    .filter(value => invalidCSSOutput.indexOf(value) === -1)
+    .filter(value => !invalidCSSOutput.includes(value))
     .sort()
     .forEach(file => {
       it(`${file}`, () => {

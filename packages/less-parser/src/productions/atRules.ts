@@ -1,8 +1,8 @@
-import { CstChild, CstNode } from '@jesscss/css-parser'
+import type { CstChild, CstNode } from '@jesscss/css-parser'
 import { Declaration } from 'css-parser/src/productions/declarations'
 import type { LessParser } from '../lessParser'
 
-export default function (this: LessParser, $: LessParser) {
+export default function(this: LessParser, $: LessParser) {
   $.atImport = $.OVERRIDE_RULE('atImport', () => {
     const atRuleChildren: CstChild[] = [
       $.CONSUME($.T.AtImport)
@@ -175,8 +175,9 @@ export default function (this: LessParser, $: LessParser) {
                 prelude,
                 $.OR3([
                   { ALT: () => $.SUBRULE2($.curlyBlock) },
-                  { ALT: () =>
-                    $.OPTION3(() => $.CONSUME2($.T.SemiColon))
+                  {
+                    ALT: () =>
+                      $.OPTION3(() => $.CONSUME2($.T.SemiColon))
                   }
                 ])
               ]

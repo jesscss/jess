@@ -13,7 +13,7 @@ const parser = lessParser.parser
 
 describe('can parse any rule', () => {
   it('declaration', () => {
-    const lexerResult = lessParser.lexer.tokenize(`color: green;`)
+    const lexerResult = lessParser.lexer.tokenize('color: green;')
     const lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
     const cst = parser.declaration()
@@ -22,7 +22,7 @@ describe('can parse any rule', () => {
 
   it('qualified rule', () => {
     let lexerResult = lessParser.lexer.tokenize(
-      `light when (`
+      'light when ('
     )
     let lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
@@ -68,7 +68,7 @@ describe('can parse any rule', () => {
     expect(parser.errors.length).to.equal(0)
 
     lexerResult = lessParser.lexer.tokenize(
-      `.m(@x) when (default()) and (@x = 3) {default: @x}`
+      '.m(@x) when (default()) and (@x = 3) {default: @x}'
     )
     lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
@@ -76,7 +76,7 @@ describe('can parse any rule', () => {
     expect(parser.errors.length).to.equal(0)
 
     lexerResult = lessParser.lexer.tokenize(
-      `.mixin-args(@a: 1, 2, 3; @b: 3);`
+      '.mixin-args(@a: 1, 2, 3; @b: 3);'
     )
     lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
@@ -94,9 +94,8 @@ describe('can parse any rule', () => {
     parser.root()
     expect(parser.errors.length).to.equal(0)
 
-
     lexerResult = lessParser.lexer.tokenize(
-      `.b(`
+      '.b('
     )
     lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
@@ -104,7 +103,7 @@ describe('can parse any rule', () => {
     expect(parser.errors.length).to.equal(0)
 
     lexerResult = lessParser.lexer.tokenize(
-      `#mixin > .mixin (`
+      '#mixin > .mixin ('
     )
     lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
@@ -113,7 +112,7 @@ describe('can parse any rule', () => {
   })
 
   it('mixin call', () => {
-    let lexerResult = lessParser.lexer.tokenize(`.mixin-with-guard-inside(0px);`)
+    let lexerResult = lessParser.lexer.tokenize('.mixin-with-guard-inside(0px);')
     let lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
     parser.mixin()
@@ -128,14 +127,14 @@ describe('can parse any rule', () => {
 
     expect(parser.errors.length).to.equal(0)
 
-    lexerResult = lessParser.lexer.tokenize(`.mixin-call({direct: works;}; @b: {named: works;});`)
+    lexerResult = lessParser.lexer.tokenize('.mixin-call({direct: works;}; @b: {named: works;});')
     lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
     parser.root()
     expect(parser.errors.length).to.equal(0)
 
     lexerResult = lessParser.lexer.tokenize(
-      `.parenthesisNot(`
+      '.parenthesisNot('
     )
     lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
@@ -151,10 +150,10 @@ describe('can parse any rule', () => {
     // parser.testVariable()
     // expect(parser.errors.length).to.equal(0)
 
-    let lexerResult = lessParser.lexer.tokenize(`@ruleset: {
+    const lexerResult = lessParser.lexer.tokenize(`@ruleset: {
         color: red;
       }`)
-    let lexedTokens = lexerResult.tokens
+    const lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
     parser.unknownAtRule()
     expect(parser.errors.length).to.equal(0)
@@ -198,7 +197,7 @@ describe('can parse all Less stylesheets', () => {
   const files = glob.sync(path.join(testData, 'less/**/*.less'))
   files
     .map(value => path.relative(testData, value))
-    .filter(value => invalidLess.indexOf(value) === -1)
+    .filter(value => !invalidLess.includes(value))
     .sort()
     .forEach(file => {
       // if (file.indexOf('namespacing-') > -1) {
@@ -211,7 +210,7 @@ describe('can parse all Less stylesheets', () => {
           console.log(parser.errors)
         }
         expect(parser.errors.length).to.equal(0)
-        
+
         /** JavaScript tokens are skipped */
         if (!([
           'less/_main/javascript.less',
@@ -234,7 +233,7 @@ describe.skip('should throw parsing errors', () => {
   files.forEach(file => {
     it(`${file}`, () => {
       const result = fs.readFileSync(file)
-      const { cst, lexerResult, parser } = lessParser.parse(result.toString())
+      const { lexerResult, parser } = lessParser.parse(result.toString())
       expect(lexerResult.errors.length).to.equal(0)
       expect(parser.errors.length).to.equal(1)
     })

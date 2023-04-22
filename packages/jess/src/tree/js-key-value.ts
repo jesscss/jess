@@ -5,8 +5,7 @@ import type { Node, LocationInfo } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
-
-export type JsKeyValueValue = {
+export interface JsKeyValueValue {
   name: JsIdent | string
   value: Node
 }
@@ -14,7 +13,7 @@ export type JsKeyValueValue = {
 /**
  * Either the left-hand side of a @let assignment,
  * or the key (prop) in a collection.
- * 
+ *
  * @todo - technically we don't need to limit
  * reserved words in object properties, just
  * initial @let identifiers
@@ -51,7 +50,6 @@ export class JsKeyValue extends JsNode {
     out.add(`${this.name.value}: `, this.location)
     this.value.toModule(context, out)
   }
-
 }
 JsKeyValue.prototype.type = 'JsKeyValue'
 

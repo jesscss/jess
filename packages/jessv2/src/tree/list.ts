@@ -1,10 +1,11 @@
-import { NodeMap, LocationInfo, Primitive, Node } from './node'
+import type { NodeMap, LocationInfo, Primitive } from './node'
+import { Node } from './node'
 import type { Context } from '../context'
-import { OutputCollector } from '../output'
+import type { OutputCollector } from '../output'
 
 /**
  * A list of expressions
- * 
+ *
  * i.e. one, two, three
  * or .sel, #id.class, [attr]
  */
@@ -14,7 +15,7 @@ export class List<T extends Primitive = Primitive> extends Node {
   toArray() {
     return this.value
   }
-  
+
   toCSS(context: Context, out: OutputCollector) {
     out.add('', this.location)
     const length = this.value.length - 1
@@ -23,7 +24,7 @@ export class List<T extends Primitive = Primitive> extends Node {
     this.value.forEach((node, i) => {
       const val = cast(node)
       val.toCSS(context, out)
-      
+
       if (i < length) {
         if (context.inSelector) {
           out.add(`,\n${pre}`)
@@ -35,7 +36,7 @@ export class List<T extends Primitive = Primitive> extends Node {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    out.add(`$J.list([\n`, this.location)
+    out.add('$J.list([\n', this.location)
     context.indent++
     let pre = context.pre
     const length = this.value.length - 1

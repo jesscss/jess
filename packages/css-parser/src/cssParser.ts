@@ -1,12 +1,13 @@
-import {
+import { EmbeddedActionsParser } from 'chevrotain'
+import type {
   TokenType,
   IParserConfig,
   BaseParser,
   IRuleConfig,
   IToken
+
 } from 'chevrotain'
-import { EmbeddedActionsParser } from 'chevrotain'
-import { TokenMap } from './util'
+import type { TokenMap } from './util'
 import root from './productions/root'
 import atRules from './productions/atRules'
 import blocks from './productions/blocks'
@@ -41,7 +42,7 @@ export type Rule<T extends any = any> = (idxInCallingRule?: number, ...args: any
  * }
  * ```
  */
-export type ILocationInfo = {
+export interface ILocationInfo {
   startOffset: number
   startLine: number
   startColumn: number
@@ -52,7 +53,7 @@ export type ILocationInfo = {
 
 export type CstChild = CstNode | IToken
 
-export type CstNode = {
+export interface CstNode {
   name: string
   children: CstChild[]
   location?: ILocationInfo
@@ -167,8 +168,12 @@ export class CssParser extends EmbeddedActionsParser {
           const { endOffset, endColumn, endLine } = endToken
 
           result.location = {
-            startOffset, startColumn, startLine,
-            endOffset, endColumn, endLine
+            startOffset,
+            startColumn,
+            startLine,
+            endOffset,
+            endColumn,
+            endLine
           }
         }
       }

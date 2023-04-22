@@ -1,4 +1,5 @@
-import { Node, NodeMap, LocationInfo } from './node'
+import type { NodeMap, LocationInfo } from './node'
+import { Node } from './node'
 import { JsNode } from './js-node'
 import { Nil } from './nil'
 import { Declaration } from './declaration'
@@ -6,13 +7,13 @@ import { JsExpr } from './js-expr'
 import { Call } from './call'
 import { List } from './list'
 
-import { Context } from '../context'
+import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
 /**
  * A set of nodes (usually declarations)
  * Used by Rule and Mixin
- * 
+ *
  * @example
  * color: black;
  * background-color: white;
@@ -36,8 +37,7 @@ export class Ruleset extends Node {
             rule.value.forEach(r => {
               if (r.type === 'Rule' || r.type === 'AtRule') {
                 this.rootRules.push(r)
-              }
-              else {
+              } else {
                 rules.push(r)
               }
             })
@@ -60,7 +60,7 @@ export class Ruleset extends Node {
    */
   obj() {
     const value = this.value
-    const output: { [k: string]: string } = {}
+    const output: Record<string, string> = {}
     value.forEach(n => {
       if (n instanceof Declaration) {
         output[n.name.toString()] = `${n.value}${n.important ? ` ${n.important}` : ''}`
@@ -88,13 +88,13 @@ export class Ruleset extends Node {
     const depth = context.depth
     context.depth = 2
 
-    out.add(`$J.ruleset(\n`, this.location)
+    out.add('$J.ruleset(\n', this.location)
     context.indent++
     let pre = context.pre
     out.add(`${pre}(() => {\n`)
     context.indent++
     out.add(`  ${pre}const $OUT = []\n`)
-    this.value.forEach((node, i) => { 
+    this.value.forEach((node, i) => {
       out.add(`  ${pre}`)
       if (node instanceof JsNode) {
         node.toModule(context, out)
@@ -128,20 +128,20 @@ export class Ruleset extends Node {
 
         if (context.isRuntime) {
           context.rootRules.forEach(n => {
-            out.add(`$OUT.push(`)
+            out.add('$OUT.push(')
             n.toModule(context, out)
-            out.add(`)\n`)
+            out.add(')\n')
           })
           context.rootRules = []
         } else {
-          out.add(`$OUT.push(`)
+          out.add('$OUT.push(')
           n.toModule(context, out)
-          out.add(`)\n`)
+          out.add(')\n')
         }
       } else {
-        out.add(`$OUT.push(`)
+        out.add('$OUT.push(')
         node.toModule(context, out)
-        out.add(`)\n`)
+        out.add(')\n')
       }
     })
     out.add(`  ${pre}return $OUT\n${pre}})()`)

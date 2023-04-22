@@ -1,4 +1,5 @@
-import { Node, NodeMap, LocationInfo } from './node'
+import type { NodeMap, LocationInfo } from './node'
+import { Node } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
@@ -16,7 +17,7 @@ export class Paren extends Node {
 
   toModule(context: Context, out: OutputCollector) {
     const loc = this.location
-    out.add(`$J.paren(`, loc)
+    out.add('$J.paren(', loc)
     this.value.toModule(context, out)
     out.add(')')
   }

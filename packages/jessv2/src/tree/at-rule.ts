@@ -1,4 +1,5 @@
-import { Node, LocationInfo } from './node'
+import type { LocationInfo } from './node'
+import { Node } from './node'
 import { List } from './list'
 import { Ampersand } from './ampersand'
 import { Rule } from './rule'
@@ -6,7 +7,7 @@ import type { Ruleset } from './ruleset'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
-export type AtRuleValue = {
+export interface AtRuleValue {
   name: string
   /** The prelude */
   value: Node
@@ -22,7 +23,7 @@ export class AtRule extends Node {
   rules: Ruleset
 
   eval(context: Context) {
-    const node = <AtRule> super.eval(context)
+    const node = super.eval(context) as AtRule
     /** Don't let rooted rules bubble past an at-rule */
     if (node.rules) {
       let rules = node.rules.value
@@ -55,8 +56,8 @@ export class AtRule extends Node {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    out.add(`$J.atrule({\n`, this.location)
-    let pre = context.pre
+    out.add('$J.atrule({\n', this.location)
+    const pre = context.pre
     context.indent++
     out.add(`${pre}  name: ${JSON.stringify(this.name)}`)
     const value = this.value

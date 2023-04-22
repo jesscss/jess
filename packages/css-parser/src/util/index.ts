@@ -1,10 +1,12 @@
-import {
-  Lexer,
-  createToken,
+import type {
   ITokenConfig,
   TokenType,
   TokenPattern,
   CustomPatternMatcherFunc
+} from 'chevrotain'
+import {
+  Lexer,
+  createToken
 } from 'chevrotain'
 
 // TODO: get rid of xRegExp dep
@@ -17,9 +19,7 @@ export enum LexerType {
   SKIPPED
 }
 
-export interface TokenMap {
-  [key: string]: TokenType
-}
+export type TokenMap = Record<string, TokenType>
 
 export interface rawTokenConfig
   extends Omit<ITokenConfig, 'longer_alt' | 'categories' | 'pattern' | 'group'> {
@@ -39,9 +39,7 @@ interface ILexer {
  * This allows us to extend / modify tokens before creating them
  */
 export const createTokens = (rawFragments: string[][], rawTokens: rawTokenConfig[]): ILexer => {
-  const fragments: {
-    [key: string]: RegExp
-  } = {}
+  const fragments: Record<string, RegExp> = {}
   const T: TokenMap = {}
   const tokens: TokenType[] = []
 
@@ -69,7 +67,7 @@ export const createTokens = (rawFragments: string[][], rawTokens: rawTokenConfig
       } else if (Array.isArray(pattern)) {
         regExpPattern = pattern[1].bind(XRegExp.build(pattern[0], fragments, 'y'))
       } else {
-        regExpPattern = XRegExp.build(<string>pattern, fragments)
+        regExpPattern = XRegExp.build(pattern as string, fragments)
       }
     } else {
       regExpPattern = Lexer.NA
@@ -78,13 +76,13 @@ export const createTokens = (rawFragments: string[][], rawTokens: rawTokenConfig
     const longerAlt = longer_alt ? { longer_alt: T[longer_alt] } : {}
     const groupValue = group === LexerType.SKIPPED
       ? { group: Lexer.SKIPPED }
-      : group ? { group: <string>group } : {}
+      : group ? { group } : {}
     const tokenCategories = categories
       ? {
-        categories: categories.map(category => {
-          return T[category]
-        })
-      }
+          categories: categories.map(category => {
+            return T[category]
+          })
+        }
       : {}
     const token = createToken({
       name,

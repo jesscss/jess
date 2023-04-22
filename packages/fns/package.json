@@ -22,6 +22,6 @@
   "license": "MIT",
   "dependencies": {
     "jess": "workspace:^1.0.8-alpha.8",
-    "lodash": "^4.17.20"
+    "lodash": "^4.17.21"
   }
 }

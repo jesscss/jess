@@ -9,8 +9,8 @@ let out: OutputCollector
 
 describe('Rule', () => {
   beforeEach(() => {
-    context = new Context
-    out = new OutputCollector
+    context = new Context()
+    out = new OutputCollector()
   })
   it('should serialize to CSS', () => {
     const node = rule({

@@ -1,10 +1,11 @@
-import { Node, LocationInfo, isNodeMap, NodeMap } from './node'
+import type { LocationInfo, NodeMap } from './node'
+import { Node, isNodeMap } from './node'
 import { Anonymous } from './anonymous'
 import { Nil } from './nil'
 import { List } from './list'
 import { WS } from './ws'
 import type { Context } from '../context'
-import { OutputCollector } from '../output'
+import type { OutputCollector } from '../output'
 import combinate from 'combinate'
 
 /**
@@ -25,7 +26,7 @@ export class Expression extends Node {
       super(value, location)
       return
     }
-    const values = value.map(v => v.constructor === String ? new Anonymous(<string>v) : v)
+    const values = value.map(v => v.constructor === String ? new Anonymous(v as string) : v)
     super({
       value: values
     }, location)
@@ -39,7 +40,7 @@ export class Expression extends Node {
       .map(n => cast(n).eval(context))
       .filter(n => n && !(n instanceof Nil))
 
-    let lists: { [pos: number]: Node[] }
+    let lists: Record<number, Node[]>
 
     node.value.forEach((n, i) => {
       if (n instanceof List) {
@@ -57,10 +58,10 @@ export class Expression extends Node {
       const Clazz = Object.getPrototypeOf(this).constructor
       const combinations = combinate(lists)
       const returnList = new List([]).inherit(this)
-      
+
       combinations.forEach(combo => {
         const expr = [...node.value]
-        for (let pos in combo) {
+        for (const pos in combo) {
           if (Object.prototype.hasOwnProperty.call(combo, pos)) {
             expr[pos] = combo[pos]
           }
@@ -68,11 +69,10 @@ export class Expression extends Node {
         returnList.value.push(new Clazz(expr))
       })
       if (returnList.value.length === 1) {
-        return <typeof Clazz>returnList.value[0]
+        return returnList.value[0] as typeof Clazz
       }
       return returnList
     }
-
 
     if (node.value.length === 1) {
       return node.value[0]
@@ -90,7 +90,7 @@ export class Expression extends Node {
 
   toModule(context: Context, out: OutputCollector) {
     const loc = this.location
-    out.add(`$J.expr([`, loc)
+    out.add('$J.expr([', loc)
     const length = this.value.length - 1
     this.value.forEach((n, i) => {
       n.toModule(context, out)
@@ -98,7 +98,7 @@ export class Expression extends Node {
         out.add(', ')
       }
     })
-    out.add(`])`)
+    out.add('])')
   }
 }
 Expression.prototype.type = 'Expression'

@@ -1,4 +1,4 @@
-import { CstChild } from '@jesscss/css-parser'
+import type { CstChild } from '@jesscss/css-parser'
 import type { LessParser } from '../lessParser'
 
 export default function(this: LessParser, $: LessParser) {

@@ -1,13 +1,13 @@
 import { JsNode } from './js-node'
 import { JsIdent } from './js-ident'
-import { List } from './list'
+import type { List } from './list'
 import type { Ruleset } from './ruleset'
 import type { JsKeyValue } from './js-key-value'
 import type { Context } from '../context'
-import { OutputCollector } from '../output'
-import { LocationInfo } from './node'
+import type { OutputCollector } from '../output'
+import type { LocationInfo } from './node'
 
-export type MixinValue = {
+export interface MixinValue {
   name: JsIdent
   args?: List<JsIdent | JsKeyValue>
   value: Ruleset
@@ -38,7 +38,7 @@ export class Mixin extends JsNode {
       context.exports.add(nm)
     } else {
       if (context.depth !== 1) {
-        out.add(`let `)
+        out.add('let ')
       }
       out.add(`${nm} = function(`)
       if (args) {

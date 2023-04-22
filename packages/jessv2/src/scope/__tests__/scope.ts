@@ -1,9 +1,9 @@
 import { expect } from 'chai'
 
-import { Scope, ScopeObj } from '..'
+import type { ScopeObj } from '..'
+import { Scope } from '..'
 import { rules } from '../symbols'
 import { createMixin } from '../mixins'
-
 
 describe('Scope', () => {
   /**
@@ -14,7 +14,7 @@ describe('Scope', () => {
   @mixin foo() {
 
   }
-  ``` 
+  ```
   */
   it('can set up a new scope and assign values', () => {
     const $ = Scope({})
@@ -23,7 +23,7 @@ describe('Scope', () => {
     expect($.$var1).to.eq(1)
     expect($.$var2).to.eq(2)
     /** Variables are not iterable, so the object appears "empty" */
-    expect($).to.deep.eq({})
+    expect($).to.eql({})
   })
 
   it('can inherit scope', () => {
@@ -43,8 +43,8 @@ describe('Scope', () => {
     $.property = 'value'
     $.property = 'foo'
     expect($.property).to.eq('foo')
-    expect($).to.deep.eq({ property: 'foo' })
-    expect($[rules]).to.deep.eq([
+    expect($).to.eql({ property: 'foo' })
+    expect($[rules]).to.eql([
       { property: 'value' },
       { property: 'foo' }
     ])
@@ -69,7 +69,7 @@ describe('Scope', () => {
       },
       $
     )
-    expect($.$mixin()).to.deep.eq({ prop: 'value' })
+    expect($.$mixin()).to.eql({ prop: 'value' })
     expect(foo!.$var1).to.eq(1)
   })
 })

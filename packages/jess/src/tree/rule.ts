@@ -1,8 +1,9 @@
-import { Node, NodeMap, LocationInfo } from './node'
+import type { NodeMap, LocationInfo } from './node'
+import { Node } from './node'
 import { Ruleset } from './ruleset'
 import { Nil } from './nil'
 import type { Context } from '../context'
-import { OutputCollector } from '../output'
+import type { OutputCollector } from '../output'
 
 type RuleValue = NodeMap & {
   sels: Node
@@ -35,7 +36,7 @@ export class Rule extends Node {
       const rule = this.clone()
       const sels = this.sels.eval(context)
       rule.sels = sels
-      
+
       context.frames.unshift(sels)
       rule.value = this.value.eval(context)
       context.frames.shift()
@@ -61,9 +62,9 @@ export class Rule extends Node {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    out.add(`$J.rule({\n`, this.location)
+    out.add('$J.rule({\n', this.location)
     context.indent++
-    let pre = context.pre
+    const pre = context.pre
     out.add(`${pre}sels: `)
     this.sels.toModule(context, out)
     out.add(`,\n${pre}value: `)

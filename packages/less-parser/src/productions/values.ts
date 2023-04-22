@@ -1,8 +1,8 @@
-import { LessParser } from '../lessParser'
+import type { LessParser } from '../lessParser'
 import { EMPTY_ALT } from 'chevrotain'
-import { CstChild, IToken, CstNode } from '@jesscss/css-parser'
+import type { CstChild, IToken, CstNode } from '@jesscss/css-parser'
 
-export default function (this: LessParser, $: LessParser) {
+export default function(this: LessParser, $: LessParser) {
   const compareGate = () => $.inCompareBlock
 
   /**
@@ -19,7 +19,7 @@ export default function (this: LessParser, $: LessParser) {
       },
       { ALT: () => $.MANY2(() => children.push($.SUBRULE($.addition))) }
     ])
-  
+
     return {
       name: 'expression',
       children
@@ -54,7 +54,7 @@ export default function (this: LessParser, $: LessParser) {
           ALT: () => {
             const functionArgs: CstChild[] = []
             const func: CstChild = $.CONSUME($.T.IfFunction)
-            
+
             functionArgs.push(
               $.SUBRULE2($.guardOr, { ARGS: [true] }),
               $._()
@@ -64,10 +64,8 @@ export default function (this: LessParser, $: LessParser) {
                 {
                   name: 'delimiter',
                   children: [
-                    $.OR3([{
-                      ALT: () => $.CONSUME($.T.Comma) },
-                    { ALT: () => $.CONSUME($.T.SemiColon)
-                    }]),
+                    $.OR3([{ ALT: () => $.CONSUME($.T.Comma) },
+                      { ALT: () => $.CONSUME($.T.SemiColon) }]),
                     $._(1)
                   ]
                 },
@@ -101,8 +99,7 @@ export default function (this: LessParser, $: LessParser) {
           children: [
             $.OR([
               { ALT: () => $.CONSUME($.T.Comma) },
-              { ALT: () => $.CONSUME($.T.SemiColon)
-              }]),
+              { ALT: () => $.CONSUME($.T.SemiColon) }]),
             $._(1)
           ]
         },
@@ -136,12 +133,13 @@ export default function (this: LessParser, $: LessParser) {
    */
   $.variable = $.RULE('variable', () => {
     let selectors: IToken[]
-    
+
     let node: CstNode = $.OR([
-      { ALT: () => ({
-        name: 'variable',
-        children: [$.CONSUME($.T.VarOrProp)]
-      })
+      {
+        ALT: () => ({
+          name: 'variable',
+          children: [$.CONSUME($.T.VarOrProp)]
+        })
       },
       {
         ALT: () => {
@@ -228,11 +226,11 @@ export default function (this: LessParser, $: LessParser) {
 
   /** This is more specific than the CSS parser */
   $.value = $.OVERRIDE_RULE('value', () => {
-    let op = $.OPTION(() => 
+    const op = $.OPTION(() =>
       /** Applying negative or positive to a value */
       $.CONSUME($.T.AdditionOperator)
     )
-    let value = {
+    const value = {
       name: 'value',
       children: [
         $.OR([

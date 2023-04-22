@@ -13,7 +13,7 @@ import merge from 'lodash/merge'
  */
 export const render = async (filePath: string, config = {}) => {
   const opts = merge({}, defaultConfig, config)
-  
+
   const bundle = await rollup.rollup({
     input: filePath,
     plugins: [
@@ -51,10 +51,10 @@ export const render = async (filePath: string, config = {}) => {
   } catch (e) {
     fs.unlinkSync(compilerFile)
     throw e
-  }  
-  
+  }
+
   return {
     ...css,
-    $js: output[1] && (<any>output[1]).source
+    $js: output[1] && (output[1] as any).source
   }
 }

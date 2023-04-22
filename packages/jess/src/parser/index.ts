@@ -1,4 +1,4 @@
-import { FileInfo, Node } from '../tree'
+import type { FileInfo, Node } from '../tree'
 import { Parser as CstParser } from '@jesscss/parser'
 import { CstVisitor } from './cst-visitor'
 

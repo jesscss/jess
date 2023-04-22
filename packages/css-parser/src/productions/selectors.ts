@@ -6,7 +6,7 @@ export default function(this: CssParser, $: CssParser) {
     const children = [
       $.SUBRULE($.complexSelector)
     ]
-    
+
     $.MANY(() => {
       children.push(
         {
@@ -65,7 +65,7 @@ export default function(this: CssParser, $: CssParser) {
               name: 'combinator',
               children: [
                 undefined,
-                $.CONSUME($.T.Combinator),  // Keep actual combinator in the center position
+                $.CONSUME($.T.Combinator), // Keep actual combinator in the center position
                 $.OPTION(() => $.CONSUME($.T.WS))
               ]
             },
@@ -87,7 +87,7 @@ export default function(this: CssParser, $: CssParser) {
                 children.push($.CONSUME2($.T.Combinator))
                 $.OPTION4(() => children.push($.CONSUME3($.T.WS)))
               })
-              
+
               sel = $.SUBRULE3($.compoundSelector)
             })
             if (sel) {
@@ -203,22 +203,26 @@ export default function(this: CssParser, $: CssParser) {
     let eq, value
 
     $.OR([
-      { ALT: () => {
-        $.OPTION(() => attr.push($.CONSUME($.T.Star)))
-        attr.push(
-          $.CONSUME($.T.Pipe),
-          $.SUBRULE($.attrIdent)
-        )
-      }},
-      { ALT: () => {
-        attr.push($.SUBRULE2($.attrIdent))
-        $.OPTION2(() => {
+      {
+        ALT: () => {
+          $.OPTION(() => attr.push($.CONSUME($.T.Star)))
           attr.push(
-            $.CONSUME2($.T.Pipe),
-            $.SUBRULE3($.attrIdent)
+            $.CONSUME($.T.Pipe),
+            $.SUBRULE($.attrIdent)
           )
-        })
-      }}
+        }
+      },
+      {
+        ALT: () => {
+          attr.push($.SUBRULE2($.attrIdent))
+          $.OPTION2(() => {
+            attr.push(
+              $.CONSUME2($.T.Pipe),
+              $.SUBRULE3($.attrIdent)
+            )
+          })
+        }
+      }
     ])
     $.OPTION4(() => {
       eq = $.OR2([
@@ -250,7 +254,7 @@ export default function(this: CssParser, $: CssParser) {
 
   /** Separated out for Less overriding */
   $.attrIdent = $.RULE('attrIdent', () => $.CONSUME($.T.Ident))
-  $.nameSelector = $.RULE('nameSelector', 
+  $.nameSelector = $.RULE('nameSelector',
     () => $.OR([
       { ALT: () => $.CONSUME($.T.Selector) },
       { ALT: () => $.CONSUME($.T.Ident) }

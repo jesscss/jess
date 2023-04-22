@@ -7,7 +7,7 @@ import { renderModule } from '../render-module'
  * Rollup plugin to create CSS / runtime
  */
 export default function(options = {}): Plugin {
-  const jessFiles: Set<string> = new Set()
+  const jessFiles = new Set<string>()
   return {
     name: 'jess',
 

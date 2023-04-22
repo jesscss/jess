@@ -1,5 +1,5 @@
 import type { Node } from './tree'
-import { Context } from './context'
+import type { Context } from './context'
 import { OutputCollector } from './output'
 import { updateSheet } from '@jesscss/patch-css'
 
@@ -13,7 +13,7 @@ export const renderCss = (root: Node, context: Context) => {
      * @todo - patch document in browser
      */
     $toCSS: () => {
-      const out = new OutputCollector
+      const out = new OutputCollector()
       evaldRoot.toCSS(context, out)
       const css = out.toString()
       updateSheet(css, context.id)

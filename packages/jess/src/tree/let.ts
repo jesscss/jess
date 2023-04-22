@@ -1,17 +1,17 @@
 import { JsNode } from './js-node'
-import { JsKeyValue } from './js-key-value'
+import type { JsKeyValue } from './js-key-value'
 import { JsCollection } from './js-collection'
 import type { Context } from '../context'
-import { OutputCollector } from '../output'
-import { LocationInfo, Node, NodeMap } from './node'
+import type { OutputCollector } from '../output'
+import type { LocationInfo, Node, NodeMap } from './node'
 
 /**
  * @let
- * 
+ *
  * @note
  * The lower-case API variant for this is `set()`,
  * see the note below.
- * 
+ *
  * @todo
  * Check that we're not redefining vars? To do that, we'd have to
  * address the todo in js-import to get a true list of scoped vars.

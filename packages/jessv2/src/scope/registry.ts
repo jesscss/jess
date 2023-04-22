@@ -1,6 +1,20 @@
-import { selectorMap } from "./symbols"
-import type { ScopeObj } from "."
+import { selectorMap } from './symbols'
+import type { ScopeObj } from '.'
 
+/**
+ * Creates a selector lookup map like:
+ * {
+ *   [map]: {
+ *     '#foo': {
+ *       '>': {
+ *         '.bar': true
+ *       }
+ *     }
+ *     '.bar': true
+ *   }
+ * }
+ * This is used for :extend and language services
+ */
 export function registerSelectors(
   this: ScopeObj,
   selector: string[]

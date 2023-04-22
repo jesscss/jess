@@ -9,8 +9,8 @@ let out: OutputCollector
 
 describe('List', () => {
   beforeEach(() => {
-    context = new Context
-    out = new OutputCollector
+    context = new Context()
+    out = new OutputCollector()
   })
   it('should serialize to a list', () => {
     const rule = list([spaced([num(1), '2', '3']), 'four'])

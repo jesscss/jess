@@ -1,4 +1,5 @@
-import { LocationInfo, Node } from './node'
+import type { LocationInfo } from './node'
+import { Node } from './node'
 
 /**
  * A Node type that outputs nothing.
@@ -13,6 +14,7 @@ export class Nil extends Node {
   ) {
     super('', location)
   }
+
   eval() { return this }
   toString() { return '' }
   toCSS() { return '' }

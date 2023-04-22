@@ -1,5 +1,6 @@
 /* eslint no-control-regex: "off" */
-import { rawTokenConfig, LexerType } from './util'
+import type { rawTokenConfig } from './util'
+import { LexerType } from './util'
 
 /**
  * references:
@@ -10,7 +11,7 @@ import { rawTokenConfig, LexerType } from './util'
  * Fragments and Tokens must be defined in order
  * ({{references}} must follow definitions)
  */
-export const Fragments: [string, string][] = [
+export const Fragments: Array<[string, string]> = [
   ['newline', '\\n|\\r\\n?|\\f'],
   ['whitespace', '[ ]|\\t|{{newline}}'],
   ['ws', '{{whitespace}}+'],
@@ -34,7 +35,7 @@ export const Fragments: [string, string][] = [
   ['wsorcomment', '({{ws}})|({{comment}})']
 ]
 
-type Match = { value: string; index: number }
+interface Match { value: string, index: number }
 
 class matchValue implements Match {
   value: string

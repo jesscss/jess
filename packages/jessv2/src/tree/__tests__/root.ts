@@ -9,9 +9,9 @@ let out: OutputCollector
 
 describe('Root', () => {
   beforeEach(() => {
-    context = new Context
+    context = new Context()
     context.id = 'testing'
-    out = new OutputCollector
+    out = new OutputCollector()
   })
   it('should serialize to a module', () => {
     const node = root([])
