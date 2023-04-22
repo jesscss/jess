@@ -6,9 +6,9 @@
   "author": "Matthew Dean",
   "license": "MIT",
   "scripts": {
-    "ci": "yarn build && yarn test",
-    "prepublishOnly": "npm run build",
-    "build": "yarn clean && yarn compile",
+    "ci": "pnpm build && pnpm test",
+    "prepublishOnly": "pnpm run build",
+    "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
     "compile": "tsc -b tsconfig.json",
     "test": "ts-mocha test/**/*.ts"
@@ -18,7 +18,7 @@
     "webpack": "^5.0.0"
   },
   "devDependencies": {
-    "jess": "^1.0.8-alpha.8",
+    "jess": "workspace:^1.0.8-alpha.8",
     "webpack": "^5.19.0"
   }
 }

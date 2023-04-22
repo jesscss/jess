@@ -11,9 +11,9 @@
     "lib"
   ],
   "scripts": {
-    "ci": "yarn build && yarn test",
-    "prepublishOnly": "yarn build",
-    "build": "yarn clean && yarn compile",
+    "ci": "pnpm build && pnpm test",
+    "prepublishOnly": "pnpm build",
+    "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
     "compile": "tsc -b tsconfig.json",
     "dev": "tsc -b tsconfig.json -w",

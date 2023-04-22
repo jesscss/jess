@@ -5,15 +5,15 @@
     "access": "public"
   },
   "scripts": {
-    "ci": "yarn build && yarn test",
-    "prepublishOnly": "yarn build",
+    "ci": "pnpm build && pnpm test",
+    "prepublishOnly": "pnpm build",
     "dist": "rollup -c",
-    "build": "yarn clean && yarn compile",
+    "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./dist ./lib tsconfig.tsbuildinfo",
-    "compile": "tsc -b tsconfig.json && yarn dist",
+    "compile": "tsc -b tsconfig.json && pnpm dist",
     "dev": "tsc -b tsconfig.json -w",
     "serve": "lite-server --baseDir=\"test\"",
-    "test": "yarn dist && mocha test/bootstrap.js --recursive test/**/*.spec.js"
+    "test": "pnpm dist && mocha test/bootstrap.js --recursive test/**/*.spec.js"
   },
   "description": "Attach stylesheets given an id",
   "main": "lib/index",
