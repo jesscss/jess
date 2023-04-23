@@ -1,6 +1,6 @@
 import { expect } from 'chai'
 
-import type { ScopeObj } from '..'
+import type { ScopeObj } from '../types'
 import { Scope } from '..'
 import { rules } from '../symbols'
 import { createMixin } from '../mixins'

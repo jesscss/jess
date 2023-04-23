@@ -1,5 +1,6 @@
 import { noMatch, isMixin, mixinArgs } from './symbols'
-import { Scope, type ScopeObj } from '.'
+import { Scope } from '.'
+import type { ScopeObj } from './types'
 
 interface ParamType {
   type?: 'color' | 'dimension'
@@ -108,7 +109,7 @@ export const createMixin = (
     }
     if (
       /** One of the mixin's values is not defined */
-      newArgs.find(val => val === undefined) ||
+      newArgs.find(val => val === undefined) ??
       /** One of the guards does not succeed */
       argTests.find(test => !test(newArgs))
     ) {

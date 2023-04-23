@@ -58,23 +58,14 @@ module.exports = {
           ignoreVoid: true
         }],
         /**
-         * This needs to be a warning because it's in conflict with TypeScript's
-         * decorator behavior.
-         *
-         * @see: https://github.com/typescript-eslint/typescript-eslint/issues/546
-         */
-        '@typescript-eslint/consistent-type-imports': ['warn', {
-          prefer: 'type-imports'
-        }],
-
-        /**
-         * Loosen some rules to not force as much code refactoring
-         * See individual rules for what issues these can cause.
+         * Loosen some rules to not force to reduce verbosity forced by Standard TS
          */
         '@typescript-eslint/strict-boolean-expressions': 0,
         '@typescript-eslint/restrict-template-expressions': 0,
         '@typescript-eslint/method-signature-style': 0,
-        '@typescript-eslint/explicit-function-return-type': 0
+        '@typescript-eslint/explicit-function-return-type': 0,
+        '@typescript-eslint/no-non-null-assertion': 0,
+        '@typescript-eslint/consistent-type-definitions': 0
       }
     },
     /** Test eslinting rules */
@@ -85,7 +76,7 @@ module.exports = {
         mocha: true
       },
       rules: {
-        '@typescript-eslint/no-non-null-assertion': 0
+        '@typescript-eslint/no-this-alias': 0
       }
     }
   ]

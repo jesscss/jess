@@ -1,5 +1,5 @@
 import { selectorMap } from './symbols'
-import type { ScopeObj } from '.'
+import type { ScopeObj } from './types'
 
 /**
  * Creates a selector lookup map like:

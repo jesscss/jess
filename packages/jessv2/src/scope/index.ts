@@ -1,7 +1,3 @@
-import type {
-  protectedScopes,
-  shadowScopes
-} from './symbols'
 import {
   original,
   rules,
@@ -14,66 +10,7 @@ import {
   noMatch
 } from './symbols'
 import { registry } from './registry'
-
-/**
- * This is the base object for Jess / Less / Sass trees.
- * We use it to store rules, variables, and mixins
- * for easy lookup and interoperability with JavaScript.
- */
-export interface ScopeObj {
-  [k: string | symbol]: any
-
-  /**
-   * These are imported scopes which cannot conflict
-   * with in-scope identifiers.
-   */
-  [protectedScopes]: ScopeObj[]
-
-  /**
-   * These are imported scopes whose values can be
-   * shadowed (over-written) by a local variable.
-   */
-  [shadowScopes]: ScopeObj[]
-
-  /** To be referenced by the Proxy */
-  [original]: GenericObject
-  /** An array of rules */
-  [rules]: Rule[]
-  /**
-   * Creates a selector lookup map like:
-   * {
-   *   [map]: {
-   *     '#foo': {
-   *       '>': {
-   *         '.bar': true
-   *       }
-   *     }
-   *     '.bar': true
-   *   }
-   * }
-   * This is used for :extend and language services
-   *   e.g. if '.bar' is extended by '.extended-class',
-   *        it will have '.bar': ['.extended-class'].
-   *        Therefore selectors, when rendered, traverse the lookup tree
-   */
-  [selectorMap]: SelectorMap
-  /** Registers selectors to the selector map */
-  [register]: (
-    selector: string[],
-    extendSelector?: string[],
-    matchAll?: boolean
-  ) => void
-
-  [mixinMap]?: Record<string, {
-    mixins?: Array<(...args: any[]) => ScopeObj>
-    default?: Array<(...args: any[]) => ScopeObj>
-  }>
-
-  [context]: Languages
-
-  /** Arguments in a caller scope passed to a mixin */
-  [mixinArgs]?: GenericObject
-}
+import type { ScopeObj, GenericObject, Languages } from './types'
 
 const proxyHandler: ProxyHandler<ScopeObj> = {
   // get(target, p) {
@@ -176,21 +113,10 @@ const proxyHandler: ProxyHandler<ScopeObj> = {
   }
 }
 
-type GenericObject = Record<string | symbol, any>
-type Rule = Record<string, any>
-type Languages = 'less' | 'scss' | 'jess'
-interface SelectorMap {
-  [k: string]: true | SelectorMap
-}
-
-interface Declaration {
-
-}
-
 /**
  * Create a new scope object (for root or mixins or declaration lists)
  */
-export function Scope(obj: GenericObject, ctx: 'less' | 'scss' | 'jess' = 'jess'): ScopeObj {
+export function Scope(obj: GenericObject, ctx: Languages = 'jess'): ScopeObj {
   if (obj[original]) {
     /** We make sure we extend the prototype of the non-proxied object */
     obj = Object.create(obj[original])
