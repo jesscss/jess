@@ -1,4 +1,4 @@
-@import { myMixin } from './imports/compute.js';
+import { myMixin } from './imports/compute.js';
 
 @mixin square(dimension) {
   width: $dimension;
@@ -6,6 +6,6 @@
 }
 
 .box {
-  @include square(20px);
-  @include myMixin();
+  $square(20px);
+  $myMixin();
 }

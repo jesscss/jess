@@ -1,3 +1,4 @@
-@import styles from './imports/rule.jess';
+// @import styles from './imports/rule.jess';
+// @include styles();
 
-@include styles();
+@include './imports/rule.jess';
