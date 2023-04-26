@@ -6,6 +6,10 @@
 - For interoperability with JavaScript, Jess mixins should return serialized plain objects, but have a non-enumerable property with an AST return UNLESS they were passed a `this` object with AST args, in which case they should return AST nodes
 - The runtime should be written in AssemblyScript. The generated code should be AssemblyScript. When running locally, it will simply transpile with `swc`, bundle, and execute quickly. When creating the browser bundle, it will compile to `.wasm`
 
+
+## Differences with Sass
+An important difference is that defining a variable is done with a plain identifier, and _referencing_ a variable or identifier is done with `$`. This is so there isn't ambiguity in places in the syntax
+
 ## Some syntax changes
 ```js
 /**
@@ -74,4 +78,30 @@ Will import the rules (but not pollute the variable scope)
 // rules.jess
 // Doesn't have access to vars in main.jess w/o:
 @use 'main.jess';
+```
+Using an `@include` that's the _result_ of a `@use`:
+```scss
+@use 'theme.jess' theme {
+  colors {
+    primary: #3a3a3a;
+  }
+}
+@include $theme();
+```
+
+## Limiting types for a design system (Experimental)
+```scss
+@type Size: 1rem, 1.2rem, 1.4rem;
+@type Props:
+  [Size] size,
+  [color] color;
+
+@mixin set-size([Size] size) {
+  font-size: $size;
+}
+
+// How do we get this to just return class names and var() injections?
+@mixin my-component([Props] (size, color)) {
+
+}
 ```
