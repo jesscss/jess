@@ -27,6 +27,16 @@ $myFunction();
 // Everything is an expression, not just un-escaped JavaScript, meaning you can do:
 
 $myFunction($sass-var);
+
+// Q: Why can't we do `$myFunction(sass-var)`?
+// A: Because we need to parse parameters, and the meaning is ambiguous.
+//    CSS keywords (including colors) and functions are plain identifiers.
+
+// Parenthesized expressions
+.selector~($expr) {
+  prop: ~($value + 1);
+}
+~($myFunction())
 ```
 
 ## Features
