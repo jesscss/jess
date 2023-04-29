@@ -176,7 +176,7 @@ FUNCTION:             IDENT '(';
   Another approach might be to open a new mode
 */
 CUSTOM_IDENT
-  : '--' NmStart NmChar* -> pushMode(PossibleCustomDeclaration)
+  : '--' NmStart NmChar* -> mode(PossibleCustomDeclaration)
   ;
 
 /** 
@@ -278,32 +278,39 @@ fragment Integer
 // If found, we'll gobble the whole value at once
 mode PossibleCustomDeclaration;
 
-POS_WS:               WS -> skip;
-POS_COLON:            COLON -> type(COLON), popMode, pushMode(CustomDeclaration);
+POS_WS:               WS -> type(WS);
+POS_COLON:            COLON -> type(COLON), mode(CustomDeclaration);
 
-UNKNOWN:              . -> popMode, more;
+UNKNOWN:              . -> mode(DEFAULT_MODE), more;
 
 mode CustomDeclaration;
 
-INNER_CUSTOM_VALUE
-  : ~[{(['"]+
-  | STRING+
-  | '{' INNER_CUSTOM_VALUE*? '}'
-  | '[' INNER_CUSTOM_VALUE*? ']'
-  | '(' INNER_CUSTOM_VALUE*? ')'
-  ;
-
 /** Matching blocks and no outer ';' */
 CUSTOM_VALUE
-  : ~[{(['";]+
-  | STRING+
-  | '{' INNER_CUSTOM_VALUE*? '}'
-  | '[' INNER_CUSTOM_VALUE*? ']'
-  | '(' INNER_CUSTOM_VALUE*? ')'
+  : '{' InnerCustomValue* '}'
+  | '[' InnerCustomValue* ']'
+  | '(' InnerCustomValue* ')'
+  | CUSTOM_STRING
+  | ~[{(['"\])};]+
   ;
 
-CUSTOM_SEMI:          SEMI -> type(SEMI), popMode;
-CUSTOM_RCURLY:        RCURLY -> type(RCURLY), popMode;
+/**
+  Values inside blocks can be almost
+  anything, except closing block characters
+  that don't have matching start characters.
+*/
+fragment InnerCustomValue
+  : '{' InnerCustomValue* '}'
+  | '[' InnerCustomValue* ']'
+  | '(' InnerCustomValue* ')'
+  | CUSTOM_STRING
+  | ~[{(['"\])}]+
+  ;
+
+// CUSTOM_WS:            WS -> type(WS);
+CUSTOM_STRING:        STRING -> type(STRING);
+CUSTOM_SEMI:          SEMI -> type(SEMI), mode(DEFAULT_MODE);
+CUSTOM_RCURLY:        RCURLY -> type(RCURLY), mode(DEFAULT_MODE);
 
 
 // fragment NthSyntax   : 'odd' | 'even' | Integer | Integer? [nN] (WS* [+-] WS* Digit)?;

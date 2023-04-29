@@ -93,7 +93,7 @@ declarationList
 
 declaration
   : identifier WS* COLON WS* value+
-  | CUSTOM_IDENT WS* COLON CUSTOM_VALUE
+  | CUSTOM_IDENT WS* COLON CUSTOM_VALUE*
   ;
 
 value
@@ -156,7 +156,7 @@ identifier
   | ONLY
   | OR 
   ;
-
+ 
 anyToken
   : selectorList
   ;

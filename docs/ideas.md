@@ -48,7 +48,7 @@ $myFunction($sass-var);
   - In flattening mode, Jess should follow CSS nesting convention in `.jess` files, and SCSS/Less convention in respective files.
 - Conversion of Less/Scss to Jess (restrict some things from converting? like `@import`s?)
 
-### `@use [file|object] [namespace|'('imports')'? declarationList?`
+### `@use [file|object] [namespace|'(' imports ')']? declarationList?`
 
 Will import the scope (mixins and variables) of the object. Can be a stylesheet or other scope object.
 
