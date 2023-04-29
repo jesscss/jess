@@ -290,7 +290,7 @@ CUSTOM_VALUE
   : '{' InnerCustomValue* '}'
   | '[' InnerCustomValue* ']'
   | '(' InnerCustomValue* ')'
-  | CUSTOM_STRING
+  | STRING
   | ~[{(['"\])};]+
   ;
 
@@ -303,12 +303,10 @@ fragment InnerCustomValue
   : '{' InnerCustomValue* '}'
   | '[' InnerCustomValue* ']'
   | '(' InnerCustomValue* ')'
-  | CUSTOM_STRING
+  | STRING
   | ~[{(['"\])}]+
   ;
 
-// CUSTOM_WS:            WS -> type(WS);
-CUSTOM_STRING:        STRING -> type(STRING);
 CUSTOM_SEMI:          SEMI -> type(SEMI), mode(DEFAULT_MODE);
 CUSTOM_RCURLY:        RCURLY -> type(RCURLY), mode(DEFAULT_MODE);
 

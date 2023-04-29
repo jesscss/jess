@@ -10,7 +10,7 @@ and .root, a#selected,
 
 :root {
   --zero-size: {
-    width: 0;
+    width: 'foo';
     height: 0;
   };
   --small-icon: {
