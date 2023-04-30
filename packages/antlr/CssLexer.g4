@@ -191,6 +191,13 @@ URL_FUNCTION:         'url(' WS? ((UrlFragment | Escape)* | STRING) WS? ')';
 
 SUPPORTS_FUNCTION:    'supports';
 VAR_FUNCTION:         'var';
+CALC_FUNCTION:        'calc';
+/** Used in calc function */
+E:                    'e'; 
+PI:                   'pi';
+INFINITY:             'infinity';
+NAN:                  'nan';
+
 /**
   We consume the ident + custom value because it doesn't
   parse into individual tokens.

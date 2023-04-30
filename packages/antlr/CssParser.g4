@@ -8,6 +8,11 @@ options
   WS? even though whitespace consumes multiple spaces.
   This is because comments can cause consecutive
   WS to be separated into separate tokens.
+
+  Even though CSS pretends that white-space isn't important
+  in a number of specs, it obviously is in one specific place:
+  between selectors. So if you want a general purpose parser,
+  you need to parse whitespace.
 */
 stylesheet
   : CHARSET? main EOF
@@ -140,9 +145,33 @@ value
   | '[' identifier ']'
   ;
 
+mathSum
+  : mathProduct (WS* ('+' | '-') WS* mathProduct)*
+  ;
+
+mathProduct
+  : mathValue (WS* ('*' | '/') WS* mathValue)*
+  ;
+
+mathValue
+  : number
+  | dimension
+  | percentage
+  | mathConstant
+  | '(' WS* mathSum WS* ')'
+  ; 
+
+mathConstant
+  : 'e'
+  | 'pi'
+  | '-'? 'infinity'
+  | 'nan'
+  ;
+
 function
   : URL_FUNCTION
   | VAR_FUNCTION '(' WS* CUSTOM_IDENT (WS* COMMA WS* valueList)? ')'
+  | CALC_FUNCTION '(' WS* mathSum WS* ')'
   | identifier '(' valueList ')'
   ;
 
@@ -163,6 +192,11 @@ dimension
   | SIGNED_DIMENSION
   | NTH_DIMENSION
   | NTH_DIMENSION_SIGNED
+  ;
+
+percentage
+  : UNSIGNED_PERCENTAGE
+  | SIGNED_PERCENTAGE
   ;
 
 /**
@@ -202,7 +236,7 @@ inner_MediaAtRule
 // Note, some of the spec had to be re-written for less ambiguity
 mediaQuery
   : mediaCondition
-  | (NOT | ONLY)? mediaType (AND mediaConditionWithoutOr)?
+  | ((NOT | ONLY) WS*)? mediaType (WS* AND WS* mediaConditionWithoutOr)?
   ;
 
 /** Doesn't include only, not, and, or, layer */
@@ -214,11 +248,11 @@ mediaType
   ;
 
 mediaCondition
-  : mediaNot | mediaInParens ( mediaAnd* | mediaOr* )
+  : mediaNot | mediaInParens ( WS* (mediaAnd* | mediaOr* ))
   ;
 
 mediaConditionWithoutOr
-  : mediaNot | mediaInParens mediaAnd*
+  : mediaNot | mediaInParens (WS* mediaAnd)*
   ;
 
 mediaNot
@@ -338,6 +372,7 @@ unknownAtRule
   : AT_RULE anyOuterValue* (SEMI? | LCURLY anyInnerValue* RCURLY)
   ;
 
+/** List all keywords */
 identifier
   : IDENT
   | AND
@@ -349,6 +384,10 @@ identifier
   | ALL
   | OF
   | ATTRIBUTE_FLAG
+  | E
+  | PI
+  | INFINITY
+  | NAN
   ;
 
 /**

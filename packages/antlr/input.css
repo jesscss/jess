@@ -169,8 +169,11 @@ h1\\{
   color: \\;
 }
 
-/** removed [attr=;] { } */
+/** removed [attr=;] { } from PostCSS tests as it's not legal */
 
 .prop {
   \62 olor: red
 }
+
+
+
