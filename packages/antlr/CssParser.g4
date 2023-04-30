@@ -4,15 +4,18 @@ options
   { tokenVocab = CssLexer; }
 
 stylesheet
-  : CHARSET? (
-    WS
+  : CHARSET? main EOF
+  ;
+
+main
+  : (WS
     | qualifiedRule
     | atRule
-  )* EOF
+  )*
   ;
 
 qualifiedRule
-  : selectorList WS* LCURLY declarationList RCURLY
+  : selectorList WS? LCURLY declarationList RCURLY
   ;
 
 /*** SELECTORS ***/
@@ -37,11 +40,11 @@ simpleSelector
 
 pseudoSelector
   : NTH_PSEUDO_CLASS
-  | COLON COLON? identifier (LPAREN anyToken RPAREN)?
+  | COLON COLON? identifier (LPAREN anyValue RPAREN)?
   ;
 
 attributeSelector
-  : LSQUARE WS* identifier (STAR | TILDE | CARET | DOLLAR | PIPE)? EQ WS* (identifier | STRING) WS* (ATTRIBUTE_FLAG WS*)? RSQUARE 
+  : LSQUARE WS? identifier (STAR | TILDE | CARET | DOLLAR | PIPE)? EQ WS? (identifier | STRING) WS? (ATTRIBUTE_FLAG WS?)? RSQUARE 
   ;
 
 /**
@@ -59,7 +62,7 @@ compoundSelector
     .e.g. a#selected > .icon
 */
 complexSelector
-  : compoundSelector (WS* (combinator WS*)? compoundSelector)*
+  : compoundSelector (WS? (combinator WS?)? compoundSelector)*
   ;
 
 combinator
@@ -75,25 +78,25 @@ combinator
     e.g. + div#topic > #reference
 */
 relativeSelector
-  : (combinator WS*)? complexSelector
+  : (combinator WS?)? complexSelector
   ;
 
 selectorList
-  : complexSelector (WS* COMMA WS* complexSelector)*
+  : complexSelector (WS? COMMA WS? complexSelector)*
   ;
 
 /*** Declarations ***/
 // https://www.w3.org/TR/css-syntax-3/#declaration-list-diagram
 declarationList
-  : WS* (
+  : WS? (
     declaration? (SEMI declarationList)*
-    | atRule declarationList
+    | innerAtRule declarationList
   )
   ;
 
 declaration
-  : identifier WS* COLON WS* valueList
-  | CUSTOM_IDENT WS* COLON CUSTOM_VALUE*
+  : identifier WS? COLON WS? valueList
+  | CUSTOM_IDENT WS? COLON CUSTOM_VALUE*
   ;
 
 /** Values separated by commas or slashes */
@@ -114,7 +117,7 @@ value
 
 function
   : URL_FUNCTION
-  | VAR_FUNCTION WS* CUSTOM_IDENT (WS* COMMA WS* valueList)? ')'
+  | VAR_FUNCTION WS? CUSTOM_IDENT (WS? COMMA WS? valueList)? ')'
   | FUNCTION valueList ')'
   ;
 
@@ -133,27 +136,155 @@ dimension
   | SIGNED_DIMENSION
   ;
 
+/**
+  All At-rules according to spec are supposed to end with either
+  a semi-colon or a curly-braced block. Some pre-processors
+  (like PostCSS) allow the semi-colon to be optional, so we also
+  allow it and insert it if it's missing.
+*/
 atRule
   : importAtRule
+  | mediaAtRule
+  | unknownAtRule
+  | pageAtRule
+  ;
+
+/**
+  Inner rules are mostly the same except they have a declarationList
+  instead of a main block within {}
+*/
+innerAtRule
+  : inner_MediaAtRule
+  | inner_PageAtRule
   | unknownAtRule
   ;
 
-mediaQueryList
+mediaAtRule
+  : MEDIA_RULE WS? mediaQuery WS? LCURLY main RCURLY
+  ;
+
+inner_MediaAtRule
+  : MEDIA_RULE WS? mediaQuery WS? LCURLY declarationList RCURLY
+  ;
+
+// https://w3c.github.io/csswg-drafts/mediaqueries/#mq-syntax
+// Note, some of the spec had to be re-written for less ambiguity
+mediaQuery
+  : mediaCondition
+  | (NOT | ONLY)? mediaType (AND mediaConditionWithoutOr)?
+  ;
+
+/** Doesn't include only, not, and, or, layer */
+mediaType
+  : IDENT
+  ;
+
+mediaCondition
+  : mediaNot | mediaInParens ( mediaAnd* | mediaOr* )
+  ;
+
+mediaConditionWithoutOr
+  : mediaNot | mediaInParens mediaAnd*
+  ;
+
+mediaNot
+  : NOT WS? mediaInParens
+  ;
+
+mediaAnd
+  : AND WS? mediaInParens
+  ;
+
+mediaOr
+  : OR WS? mediaInParens
+  ;
+
+mediaInParens
+  : '(' WS? (mediaCondition | mediaFeature) WS? ')'
+  | generalEnclosed
+  ;
+
+mediaFeature
+  : mfPlain
+  | mfBoolean
+  | mfRange
+  ;
+
+mfPlain
+  : mfName WS? COLON WS? mfName
+  ;
+
+/* Not entirely sure what this represents */
+mfBoolean
+  : mfName
+  ;
+
+mfRange
+  : mfName mfComparison mfValue
+  | mfValue mfComparison mfName
+  | mfValue mfLt mfName mfLt mfValue
+  | mfValue mfGt mfName mfGt mfValue
+  ;
+
+mfName
   : identifier
   ;
 
+mfValue
+  : number | dimension | identifier | ratio
+  ;
+
+mfLt
+  : '<' '='?
+  ;
+
+mfGt
+  : '>' '='?
+  ;
+
+mfEq
+  : '='
+  ;
+
+mfComparison
+  : mfLt | mfGt | mfEq
+  ;
+
+generalEnclosed
+  : function
+  // The spec allows the following, presumably because
+  // whether or not a query is valid is up to the user agent.
+  // However, this makes the grammar more ambiguous,
+  // and we limit parsing to known query types.
+  // | '(' WS? anyValue WS? ')'
+  ;
+
+ratio
+  : number WS? '/' WS? number
+  ;
+
+/** https://www.w3.org/TR/css-page-3/ */
+pageAtRule
+  : PAGE_RULE WS? (PAGE_PSEUDO_CLASS WS?)? LCURLY main RCURLY
+  ;
+
+inner_PageAtRule
+  : PAGE_RULE WS? (PAGE_PSEUDO_CLASS WS?)? LCURLY declarationList RCURLY
+  ;
+
+
 // https://www.w3.org/TR/css-cascade-4/#at-import
 importAtRule
-  : IMPORT_RULE WS* (URL_FUNCTION | STRING) (WS* SUPPORTS_FUNCTION WS* (supportsCondition | declaration))? (WS* mediaQueryList)? SEMI
+  : IMPORT_RULE WS? (URL_FUNCTION | STRING) (WS? SUPPORTS_FUNCTION WS? (supportsCondition | declaration))? (WS? mediaQuery)? SEMI?
   ;
 
 supportsCondition
-  :
+  : identifier
   ;
 
 
 unknownAtRule
-  : AT_RULE
+  : AT_RULE WS? (SEMI | LCURLY RCURLY)
   ;
 
 identifier
@@ -161,9 +292,19 @@ identifier
   | AND
   | NOT
   | ONLY
-  | OR 
+  | OR
+  | SCREEN
   ;
- 
-anyToken
+
+/**
+  @todo - add all tokens
+  @see - https://stackoverflow.com/questions/55594491/antlr-4-parser-match-any-token
+
+  From - https://w3c.github.io/csswg-drafts/css-syntax-3/#typedef-any-value
+  The <any-value> production is identical to <declaration-value>, but also allows
+  top-level <semicolon-token> tokens and <delim-token> tokens with a value of "!".
+  It represents the entirety of what valid CSS can be in any context.
+*/
+anyValue
   : selectorList
   ;

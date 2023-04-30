@@ -7,18 +7,24 @@
  */
 lexer grammar CssLexer;
 
-// options { caseInsensitive=true; }
+options { caseInsensitive=true; }
 
 /**
   Formatted like Java example lexer / parser
   https://github.com/antlr/grammars-v4/blob/master/java/java/JavaLexer.g4
 */
 
-/** Keywords */
+/** Logical Keywords */
 AND:                  'and';
 OR:                   'or';
 NOT:                  'not';
 ONLY:                 'only';
+
+/** Query words */
+SCREEN:               'screen';
+PRINT:                'print';
+ALL:                  'all';
+
 ATTRIBUTE_FLAG:       'i' | 's';
 
 /**
@@ -80,6 +86,15 @@ FUNCTIONAL_PSEUDO_CLASS
     | 'not'
     | 'where'
     | 'has'
+  )
+  ;
+
+PAGE_PSEUDO_CLASS
+  : COLON (
+    'first'
+    | 'left'
+    | 'right'
+    | 'blank'
   )
   ;
 
@@ -166,7 +181,7 @@ SCOPE_RULE:           '@scope';
 AT_RULE:              '@' IDENT;
 
 /** Special-case function */
-URL_FUNCTION:         'url(' WS* ((UrlFragment | Escape)* | STRING) WS* ')';
+URL_FUNCTION:         'url(' WS? ((UrlFragment | Escape)* | STRING) WS? ')';
 SUPPORTS_FUNCTION:    'supports(';
 VAR_FUNCTION:         'var(';
 FUNCTION:             IDENT '(';
@@ -189,7 +204,7 @@ Comment     : '/*' .*? '*/' -> channel(HIDDEN);
  * Aliased because Less will not skip CSS comments
  *   e.g. (Whitespace | Comment)
  */
-WS          : Whitespace;
+WS          : Whitespace+;
 
 Cdo         : '<!--' -> skip;
 Cdc         : '-->' -> skip;
@@ -260,7 +275,7 @@ fragment UrlFragment
     | '\u000b'
     | '\u000e'..'\u001f'
     | '\u007f'
-  ))*
+  ))
   ;
 
 fragment Sign
