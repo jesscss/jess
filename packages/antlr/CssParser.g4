@@ -3,6 +3,12 @@ parser grammar CssParser;
 options
   { tokenVocab = CssLexer; }
 
+/**
+  Note that whitespace is WS* and not consumed as
+  WS? even though whitespace consumes multiple spaces.
+  This is because comments can cause consecutive
+  WS to be separated into separate tokens.
+*/
 stylesheet
   : CHARSET? main EOF
   ;
@@ -15,7 +21,7 @@ main
   ;
 
 qualifiedRule
-  : selectorList WS? LCURLY declarationList RCURLY
+  : selectorList WS* LCURLY declarationList RCURLY
   ;
 
 /*** SELECTORS ***/
@@ -27,10 +33,13 @@ qualifiedRule
     .e.g `a` | `#selected` | `.foo`
 
   @todo Define known pseudos
+
+  NOTE: A COLOR_IDENT_START token is a valid ID
 */
 simpleSelector
   : CLASS
   | ID
+  | COLOR_IDENT_START
   | identifier
   | AMPERSAND
   | STAR
@@ -39,12 +48,12 @@ simpleSelector
   ;
 
 pseudoSelector
-  : NTH_PSEUDO_CLASS
-  | COLON COLON? identifier (LPAREN anyInnerValue RPAREN)?
+  : NTH_PSEUDO_CLASS WS* LPAREN RPAREN
+  | COLON COLON? identifier (LPAREN anyInnerValue* RPAREN)?
   ;
 
 attributeSelector
-  : LSQUARE WS? identifier (STAR | TILDE | CARET | DOLLAR | PIPE)? EQ WS? (identifier | STRING) WS? (ATTRIBUTE_FLAG WS?)? RSQUARE 
+  : LSQUARE WS* identifier (STAR | TILDE | CARET | DOLLAR | PIPE)? EQ WS* (identifier | STRING) WS* (ATTRIBUTE_FLAG WS*)? RSQUARE 
   ;
 
 /**
@@ -62,7 +71,7 @@ compoundSelector
     .e.g. a#selected > .icon
 */
 complexSelector
-  : compoundSelector (WS? (combinator WS?)? compoundSelector)*
+  : compoundSelector (WS* (combinator WS*)? compoundSelector)*
   ;
 
 combinator
@@ -78,25 +87,25 @@ combinator
     e.g. + div#topic > #reference
 */
 relativeSelector
-  : (combinator WS?)? complexSelector
+  : (combinator WS*)? complexSelector
   ;
 
 selectorList
-  : complexSelector (WS? COMMA WS? complexSelector)*
+  : complexSelector (WS* COMMA WS* complexSelector)*
   ;
 
 /*** Declarations ***/
 // https://www.w3.org/TR/css-syntax-3/#declaration-list-diagram
 declarationList
-  : WS? (
+  : WS* (
     declaration? (SEMI declarationList)*
     | innerAtRule declarationList
   )
   ;
 
 declaration
-  : identifier WS? COLON WS? valueList
-  | CUSTOM_IDENT WS? COLON CUSTOM_VALUE*
+  : identifier WS* COLON WS* valueList
+  | CUSTOM_IDENT WS* COLON CUSTOM_VALUE*
   ;
 
 /** Values separated by commas or slashes */
@@ -110,6 +119,8 @@ value
   | integer
   | number
   | dimension
+  | COLOR_IDENT_START
+  | COLOR_INT_START
   | STRING
   | function
   | '[' identifier ']'
@@ -117,8 +128,8 @@ value
 
 function
   : URL_FUNCTION
-  | VAR_FUNCTION WS? CUSTOM_IDENT (WS? COMMA WS? valueList)? ')'
-  | FUNCTION valueList ')'
+  | VAR_FUNCTION '(' WS* CUSTOM_IDENT (WS* COMMA WS* valueList)? ')'
+  | identifier '(' valueList ')'
   ;
 
 integer
@@ -164,11 +175,11 @@ innerAtRule
   ;
 
 mediaAtRule
-  : MEDIA_RULE WS? mediaQuery WS? LCURLY main RCURLY
+  : MEDIA_RULE WS* mediaQuery WS* LCURLY main RCURLY
   ;
 
 inner_MediaAtRule
-  : MEDIA_RULE WS? mediaQuery WS? LCURLY declarationList RCURLY
+  : MEDIA_RULE WS* mediaQuery WS* LCURLY declarationList RCURLY
   ;
 
 // https://w3c.github.io/csswg-drafts/mediaqueries/#mq-syntax
@@ -195,19 +206,19 @@ mediaConditionWithoutOr
   ;
 
 mediaNot
-  : NOT WS? mediaInParens
+  : NOT WS* mediaInParens
   ;
 
 mediaAnd
-  : AND WS? mediaInParens
+  : AND WS* mediaInParens
   ;
 
 mediaOr
-  : OR WS? mediaInParens
+  : OR WS* mediaInParens
   ;
 
 mediaInParens
-  : '(' WS? (mediaCondition | mediaFeature) WS? ')'
+  : '(' WS* (mediaCondition | mediaFeature) WS* ')'
   | generalEnclosed
   ;
 
@@ -218,24 +229,24 @@ mediaInParens
   post-parsing.
 */
 mediaFeature
-  : identifier (WS? (
-    COLON WS? mfValue
+  : identifier (WS* (
+    COLON WS* mfValue
     | mediaRange
-    | mfComparison WS? mfNonIdentifierValue
+    | mfComparison WS* mfNonIdentifierValue
   ))?
-  | mfNonIdentifierValue WS? (
-    mfComparison WS? identifier
+  | mfNonIdentifierValue WS* (
+    mfComparison WS* identifier
     | mediaRange
   )
   ;
 
 mediaRange
-  : mfLt WS? identifier (WS? mfLt WS? mfValue)?
-  | mfGt WS? identifier (WS? mfGt WS? mfValue)?
+  : mfLt WS* identifier (WS* mfLt WS* mfValue)?
+  | mfGt WS* identifier (WS* mfGt WS* mfValue)?
   ;
 
 mfNonIdentifierValue
-  : number (WS? '/' WS? number)?
+  : number (WS* '/' WS* number)?
   | dimension
   ;
 
@@ -265,46 +276,46 @@ generalEnclosed
   // whether or not a query is valid is up to the user agent.
   // However, this makes the grammar more ambiguous,
   // and we limit parsing to known query types.
-  // | '(' WS? anyValue WS? ')'
+  // | '(' WS* anyValue WS* ')'
   ;
 
 ratio
-  : number WS? '/' WS? number
+  : number WS* '/' WS* number
   ;
 
 /** https://www.w3.org/TR/css-page-3/ */
 pageAtRule
-  : PAGE_RULE WS? (PAGE_PSEUDO_CLASS WS?)? LCURLY main RCURLY
+  : PAGE_RULE WS* (PAGE_PSEUDO_CLASS WS*)? LCURLY main RCURLY
   ;
 
 inner_PageAtRule
-  : PAGE_RULE WS? (PAGE_PSEUDO_CLASS WS?)? LCURLY declarationList RCURLY
+  : PAGE_RULE WS* (PAGE_PSEUDO_CLASS WS*)? LCURLY declarationList RCURLY
   ;
 
 fontFaceAtRule
-  : FONT_FACE_RULE WS? LCURLY declarationList RCURLY
+  : FONT_FACE_RULE WS* LCURLY declarationList RCURLY
   ;
 
 /** https://developer.mozilla.org/en-US/docs/Web/CSS/@supports */
 supportsAtRule
-  : SUPPORTS_RULE WS? supportsCondition WS? LCURLY main RCURLY
+  : SUPPORTS_RULE WS* supportsCondition WS* LCURLY main RCURLY
   ;
 
 supportsCondition
   : NOT supportsInParens
-  | supportsInParens (WS? AND supportsInParens)*
-  | supportsInParens (WS? OR supportsInParens)*
+  | supportsInParens (WS* AND supportsInParens)*
+  | supportsInParens (WS* OR supportsInParens)*
   ;
 
 supportsInParens
-  : LPAREN WS? supportsCondition WS? RPAREN
-  | LPAREN WS? declaration WS? RPAREN
+  : LPAREN WS* supportsCondition WS* RPAREN
+  | LPAREN WS* declaration WS* RPAREN
   | generalEnclosed
   ;
 
 // https://www.w3.org/TR/css-cascade-4/#at-import
 importAtRule
-  : IMPORT_RULE WS? (URL_FUNCTION | STRING) (WS? SUPPORTS_FUNCTION WS? (supportsCondition | declaration))? (WS? mediaQuery)? SEMI?
+  : IMPORT_RULE WS* (URL_FUNCTION | STRING) (WS* SUPPORTS_FUNCTION WS* (supportsCondition | declaration))? (WS* mediaQuery)? SEMI?
   ;
 
 unknownAtRule
@@ -342,4 +353,7 @@ anyInnerValue
   : anyOuterValue
   | '{' anyInnerValue* '}'
   | SEMI
+  | ID
+  | CLASS
+  | pseudoSelector
   ;

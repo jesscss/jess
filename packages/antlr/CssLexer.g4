@@ -161,7 +161,7 @@ MEDIA_RULE:           '@media';
 SUPPORTS_RULE:        '@supports';
 PAGE_RULE:            '@page';
 FONT_FACE_RULE:       '@font-face';
-KEYFRAMES_RULE:       '@keyframes';
+KEYFRAMES_RULE:       '@' ('-' IDENT '-')? 'keyframes';
 CONTAINER_RULE:       '@container';
 PROPERTY_RULE:        '@property';
 LAYER_RULE:           '@layer';
@@ -180,11 +180,11 @@ SCOPE_RULE:           '@scope';
 /** CSS allows any at-rule definition */
 AT_RULE:              '@' IDENT;
 
-/** Special-case function */
+/** Special-case function -- change modes for URL? */
 URL_FUNCTION:         'url(' WS? ((UrlFragment | Escape)* | STRING) WS? ')';
-SUPPORTS_FUNCTION:    'supports(';
-VAR_FUNCTION:         'var(';
-FUNCTION:             IDENT '(';
+
+SUPPORTS_FUNCTION:    'supports';
+VAR_FUNCTION:         'var';
 /**
   We consume the ident + custom value because it doesn't
   parse into individual tokens.

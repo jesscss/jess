@@ -74,3 +74,75 @@ and .root, a#selected,
   }
 }
 
+/* between.css */
+a/**/
+{}
+
+/* colon-selector.css */
+a:matches(:hover, :focus) {}
+:fullscreen {}
+
+/* comments.css */
+/* a { color: black } */
+/**/
+/* */
+div {
+  /* inside */
+  color: black;
+  /* between */
+  border-radius: 3px / 7px
+  /* end */
+}
+/* b */
+
+a {
+  color: black;
+  /* c */
+}
+
+/* custom-properties.css */
+:root {
+  --empty: ;
+  --number: 1;
+  --unit: 100vw;
+  --color: #06c;
+
+  --function: calc(1 + 1);
+  --variable: var(--unit);
+
+  --string: 'single quoted string';
+  --string: "double quoted string";
+
+  --square-block: [1, 2, 3];
+  --round-block: (1, 2, 3);
+
+  --bracket-block: {1, 2, 3};
+  --JSON: [1, "2", {"three": 3}, [4]];
+  --curlyList: {1, "2", {"three": 3}, [4]};
+  --javascript: function(rule) { console.log(rule) };
+}
+
+/**
+ * From web platform tests
+ * See: https://github.com/less/less.js/issues/3396
+ */
+legal css variable values {
+  --percentage: 25%;
+  --number: 37;
+  --length: 12em;
+  --time: 75ms;
+  --function: foo();
+  --nested-function: foo(bar());
+  --parentheses: ( );
+  --braces: { };
+  --brackets: [ ];
+  --at-keyword-unknown: @foobar;
+  --at-keyword-known: @media;
+  --at-keyword-unknown-block: @foobar {};
+  --at-keyword-known-block: @media {};
+  --cdo-at-top-level: <!--;
+  --cdc-at-top-level: -->;
+  --semicolon-not-top-level: (;);
+  --cdo-not-top-level: (<!--);
+  --cdc-not-top-level: (-->);
+}
