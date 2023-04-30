@@ -48,8 +48,18 @@ simpleSelector
   ;
 
 pseudoSelector
-  : NTH_PSEUDO_CLASS WS* LPAREN RPAREN
-  | COLON COLON? identifier (LPAREN anyInnerValue* RPAREN)?
+  : NTH_PSEUDO_CLASS '(' WS* nthValue WS* ')'
+  | FUNCTIONAL_PSEUDO_CLASS '(' WS* forgivingSelectorList WS* ')'
+  | COLON COLON? identifier ('(' anyInnerValue* ')')?
+  ;
+
+nthValue
+  : NTH_ODD
+  | NTH_EVEN
+  | (
+    | NTH_DIMENSION
+    | NTH_DIMENSION_SIGNED
+  ) (SIGNED_INTEGER | '-' WS+ UNSIGNED_INTEGER)? (WS* OF WS* complexSelector)?
   ;
 
 attributeSelector
@@ -88,6 +98,10 @@ combinator
 */
 relativeSelector
   : (combinator WS*)? complexSelector
+  ;
+
+forgivingSelectorList
+  : relativeSelector (WS* COMMA WS* relativeSelector)*
   ;
 
 selectorList
@@ -147,6 +161,8 @@ number
 dimension
   : UNSIGNED_DIMENSION
   | SIGNED_DIMENSION
+  | NTH_DIMENSION
+  | NTH_DIMENSION_SIGNED
   ;
 
 /**
@@ -308,8 +324,8 @@ supportsCondition
   ;
 
 supportsInParens
-  : LPAREN WS* supportsCondition WS* RPAREN
-  | LPAREN WS* declaration WS* RPAREN
+  : '(' WS* supportsCondition WS* ')'
+  | '(' WS* declaration WS* ')'
   | generalEnclosed
   ;
 
@@ -329,6 +345,10 @@ identifier
   | ONLY
   | OR
   | SCREEN
+  | PRINT
+  | ALL
+  | OF
+  | ATTRIBUTE_FLAG
   ;
 
 /**

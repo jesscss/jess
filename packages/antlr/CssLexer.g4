@@ -39,6 +39,9 @@ SIGNED_INTEGER:       Sign UNSIGNED_INTEGER;
 UNSIGNED_NUMBER:      Digit* '.' Integer Exp? | Integer Exp?;
 SIGNED_NUMBER:        Sign UNSIGNED_NUMBER;
 
+NTH_DIMENSION:        UNSIGNED_INTEGER? 'n';
+NTH_DIMENSION_SIGNED: SIGNED_INTEGER? 'n';
+
 UNSIGNED_DIMENSION:   UNSIGNED_NUMBER IDENT;
 SIGNED_DIMENSION:     SIGNED_NUMBER IDENT;
 
@@ -78,6 +81,9 @@ NTH_PSEUDO_CLASS
     | 'nth-last-of-type'
   )
   ;
+
+/** Used in nth syntax */
+OF:                   'of';
 
 /** These pseudo-classes accept a selector list or forgiving selector list as a parameter. */
 FUNCTIONAL_PSEUDO_CLASS
@@ -234,7 +240,7 @@ fragment Hex
   ;
 
 fragment Unicode
-  : '\\' Hex (Hex Hex Hex Hex Hex)? Whitespace? // 1 or 6 hex digits
+  : '\\' Hex Hex? Hex? Hex? Hex? Hex? Whitespace? // 1 or 6 hex digits
   ;
 
 fragment Escape
