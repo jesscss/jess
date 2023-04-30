@@ -40,7 +40,7 @@ simpleSelector
 
 pseudoSelector
   : NTH_PSEUDO_CLASS
-  | COLON COLON? identifier (LPAREN anyValue RPAREN)?
+  | COLON COLON? identifier (LPAREN anyInnerValue RPAREN)?
   ;
 
 attributeSelector
@@ -105,7 +105,7 @@ valueList
   ;
 
 value
-  : WS+
+  : WS
   | identifier
   | integer
   | number
@@ -129,6 +129,8 @@ integer
 number
   : UNSIGNED_NUMBER
   | SIGNED_NUMBER
+  | UNSIGNED_INTEGER
+  | SIGNED_INTEGER
   ;
 
 dimension
@@ -147,6 +149,8 @@ atRule
   | mediaAtRule
   | unknownAtRule
   | pageAtRule
+  | fontFaceAtRule
+  | supportsAtRule
   ;
 
 /**
@@ -177,6 +181,9 @@ mediaQuery
 /** Doesn't include only, not, and, or, layer */
 mediaType
   : IDENT
+  | SCREEN
+  | PRINT
+  | ALL
   ;
 
 mediaCondition
@@ -204,34 +211,36 @@ mediaInParens
   | generalEnclosed
   ;
 
+/**
+  An identifier is a legal value, so it can be
+  ambiguous which side of the expression we're on
+  while parsing. The browser figures this out
+  post-parsing.
+*/
 mediaFeature
-  : mfPlain
-  | mfBoolean
-  | mfRange
+  : identifier (WS? (
+    COLON WS? mfValue
+    | mediaRange
+    | mfComparison WS? mfNonIdentifierValue
+  ))?
+  | mfNonIdentifierValue WS? (
+    mfComparison WS? identifier
+    | mediaRange
+  )
   ;
 
-mfPlain
-  : mfName WS? COLON WS? mfName
+mediaRange
+  : mfLt WS? identifier (WS? mfLt WS? mfValue)?
+  | mfGt WS? identifier (WS? mfGt WS? mfValue)?
   ;
 
-/* Not entirely sure what this represents */
-mfBoolean
-  : mfName
-  ;
-
-mfRange
-  : mfName mfComparison mfValue
-  | mfValue mfComparison mfName
-  | mfValue mfLt mfName mfLt mfValue
-  | mfValue mfGt mfName mfGt mfValue
-  ;
-
-mfName
-  : identifier
+mfNonIdentifierValue
+  : number (WS? '/' WS? number)?
+  | dimension
   ;
 
 mfValue
-  : number | dimension | identifier | ratio
+  : mfNonIdentifierValue | identifier
   ;
 
 mfLt
@@ -272,19 +281,34 @@ inner_PageAtRule
   : PAGE_RULE WS? (PAGE_PSEUDO_CLASS WS?)? LCURLY declarationList RCURLY
   ;
 
+fontFaceAtRule
+  : FONT_FACE_RULE WS? LCURLY declarationList RCURLY
+  ;
+
+/** https://developer.mozilla.org/en-US/docs/Web/CSS/@supports */
+supportsAtRule
+  : SUPPORTS_RULE WS? supportsCondition WS? LCURLY main RCURLY
+  ;
+
+supportsCondition
+  : NOT supportsInParens
+  | supportsInParens (WS? AND supportsInParens)*
+  | supportsInParens (WS? OR supportsInParens)*
+  ;
+
+supportsInParens
+  : LPAREN WS? supportsCondition WS? RPAREN
+  | LPAREN WS? declaration WS? RPAREN
+  | generalEnclosed
+  ;
 
 // https://www.w3.org/TR/css-cascade-4/#at-import
 importAtRule
   : IMPORT_RULE WS? (URL_FUNCTION | STRING) (WS? SUPPORTS_FUNCTION WS? (supportsCondition | declaration))? (WS? mediaQuery)? SEMI?
   ;
 
-supportsCondition
-  : identifier
-  ;
-
-
 unknownAtRule
-  : AT_RULE WS? (SEMI | LCURLY RCURLY)
+  : AT_RULE anyOuterValue* (SEMI? | LCURLY anyInnerValue* RCURLY)
   ;
 
 identifier
@@ -305,6 +329,17 @@ identifier
   top-level <semicolon-token> tokens and <delim-token> tokens with a value of "!".
   It represents the entirety of what valid CSS can be in any context.
 */
-anyValue
-  : selectorList
+anyOuterValue
+  : value
+  | COLON
+  | SEMI
+  | COMMA
+  | '(' anyInnerValue* ')'
+  | '[' anyInnerValue* ']'
+  ;
+
+anyInnerValue
+  : anyOuterValue
+  | '{' anyInnerValue* '}'
+  | SEMI
   ;
