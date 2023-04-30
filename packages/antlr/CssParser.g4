@@ -29,6 +29,11 @@ qualifiedRule
   : selectorList WS* LCURLY declarationList RCURLY
   ;
 
+/* https://www.w3.org/TR/css-nesting-1/ */
+innerQualifiedRule
+  : forgivingSelectorList WS* LCURLY declarationList RCURLY
+  ; 
+
 /*** SELECTORS ***/
 /** @see https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors  */
 /**
@@ -119,6 +124,7 @@ declarationList
   : WS* (
     declaration? (SEMI declarationList)*
     | innerAtRule declarationList
+    | innerQualifiedRule declarationList
   )
   ;
 
@@ -365,11 +371,11 @@ supportsInParens
 
 // https://www.w3.org/TR/css-cascade-4/#at-import
 importAtRule
-  : IMPORT_RULE WS* (URL_FUNCTION | STRING) (WS* SUPPORTS_FUNCTION WS* (supportsCondition | declaration))? (WS* mediaQuery)? SEMI?
+  : IMPORT_RULE WS* (URL_FUNCTION | STRING) (WS* SUPPORTS_FUNCTION WS* (supportsCondition | declaration))? (WS* mediaQuery)? SEMI
   ;
 
 unknownAtRule
-  : AT_RULE anyOuterValue* (SEMI? | LCURLY anyInnerValue* RCURLY)
+  : AT_RULE anyOuterValue* (SEMI | LCURLY anyInnerValue* RCURLY)
   ;
 
 /** List all keywords */
