@@ -92,8 +92,13 @@ declarationList
   ;
 
 declaration
-  : identifier WS* COLON WS* value+
+  : identifier WS* COLON WS* valueList
   | CUSTOM_IDENT WS* COLON CUSTOM_VALUE*
+  ;
+
+/** Values separated by commas or slashes */
+valueList
+  : value+ ((',' | '/') value+)*
   ;
 
 value
@@ -104,11 +109,13 @@ value
   | dimension
   | STRING
   | function
+  | '[' identifier ']'
   ;
 
 function
   : URL_FUNCTION
-  | FUNCTION ')'
+  | VAR_FUNCTION WS* CUSTOM_IDENT (WS* COMMA WS* valueList)? ')'
+  | FUNCTION valueList ')'
   ;
 
 integer
@@ -137,7 +144,7 @@ mediaQueryList
 
 // https://www.w3.org/TR/css-cascade-4/#at-import
 importAtRule
-  : IMPORT_RULE WS* (URL_FUNCTION | STRING) (WS* SUPPORTS_FUNCTION WS* (supportsCondition | declaration))? (WS* mediaQueryList)?
+  : IMPORT_RULE WS* (URL_FUNCTION | STRING) (WS* SUPPORTS_FUNCTION WS* (supportsCondition | declaration))? (WS* mediaQueryList)? SEMI
   ;
 
 supportsCondition

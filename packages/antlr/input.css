@@ -18,6 +18,7 @@ and .root, a#selected,
     height: 16px;
   }
   ;
+  something: var(--zero-size);
 }
 
-@import "foo"
+@import "foo";

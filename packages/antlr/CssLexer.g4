@@ -168,6 +168,7 @@ AT_RULE:              '@' IDENT;
 /** Special-case function */
 URL_FUNCTION:         'url(' WS* ((UrlFragment | Escape)* | STRING) WS* ')';
 SUPPORTS_FUNCTION:    'supports(';
+VAR_FUNCTION:         'var(';
 FUNCTION:             IDENT '(';
 /**
   We consume the ident + custom value because it doesn't
@@ -281,7 +282,10 @@ mode PossibleCustomDeclaration;
 POS_WS:               WS -> type(WS);
 POS_COLON:            COLON -> type(COLON), mode(CustomDeclaration);
 
-UNKNOWN:              . -> mode(DEFAULT_MODE), more;
+/** Not a declaration */
+POS_COMMA:            COMMA -> type(COMMA), mode(DEFAULT_MODE);
+POS_RPAREN:           RPAREN -> type(RPAREN), mode(DEFAULT_MODE);
+// UNKNOWN:              . -> mode(DEFAULT_MODE);
 
 mode CustomDeclaration;
 
