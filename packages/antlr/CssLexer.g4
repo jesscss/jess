@@ -24,6 +24,7 @@ ONLY:                 'only';
 SCREEN:               'screen';
 PRINT:                'print';
 ALL:                  'all';
+IMPORTANT:            '!' WS* 'important';
 
 ATTRIBUTE_FLAG:       'i' | 's';
 
@@ -69,8 +70,6 @@ fragment ColorValueRemainder
 
 // Anything else is lexed as an ID selector
 ID:                   '#' IDENT;
-
-CLASS:                '.' IDENT;
 
 /** Mark these for special recognition of nth syntax */
 NTH_PSEUDO_CLASS
@@ -152,6 +151,7 @@ RPAREN:               ')';
 LSQUARE:              '[';
 RSQUARE:              ']';
 COMMA:                ',';
+DOT:                  '.';
 
 /** Strings */
 STRING:               DoubleString | SingleString;
@@ -227,6 +227,9 @@ UnicodeBOM  : '\uFFFE' -> skip;
 
 /** Must come after keywords */
 IDENT:                '-'? NmStart NmChar*;
+
+/** Must be last */
+UNKNOWN:              .;
 
 fragment Newline
   : '\n' | '\r' '\n'? | '\f'

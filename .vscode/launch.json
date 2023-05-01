@@ -9,7 +9,7 @@
       "name": "Debug ANTLR4 grammar",
       "type": "antlr-debug",
       "request": "launch",
-      "input": "${workspaceFolder}/packages/css-parser/test/css/extends.css",
+      "input": "${workspaceFolder}/packages/css-parser/test/css/tab.css",
       "grammar": "${workspaceFolder}/packages/antlr/CssParser.g4",
       // "actionFile": "${workspaceFolder}/packages/antlr/actions.js",
       "startRule": "stylesheet",

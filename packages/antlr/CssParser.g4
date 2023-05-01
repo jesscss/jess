@@ -29,7 +29,12 @@ qualifiedRule
   : selectorList WS* LCURLY declarationList RCURLY
   ;
 
-/* https://www.w3.org/TR/css-nesting-1/ */
+/**
+  https://www.w3.org/TR/css-nesting-1/
+
+  NOTE: implementers should throw a parsing
+  error if the selectorlist starts with an identifier
+*/
 innerQualifiedRule
   : forgivingSelectorList WS* LCURLY declarationList RCURLY
   ; 
@@ -47,7 +52,7 @@ innerQualifiedRule
   NOTE: A COLOR_IDENT_START token is a valid ID
 */
 simpleSelector
-  : CLASS
+  : classSelector
   | ID
   | COLOR_IDENT_START
   | identifier
@@ -55,6 +60,10 @@ simpleSelector
   | STAR
   | pseudoSelector
   | attributeSelector
+  ;
+
+classSelector
+  : DOT identifier
   ;
 
 pseudoSelector
@@ -122,14 +131,14 @@ selectorList
 // https://www.w3.org/TR/css-syntax-3/#declaration-list-diagram
 declarationList
   : WS* (
-    declaration? (SEMI declarationList)*
+    declaration? (WS* SEMI declarationList)*
     | innerAtRule declarationList
     | innerQualifiedRule declarationList
   )
   ;
 
 declaration
-  : identifier WS* COLON WS* valueList
+  : identifier WS* COLON WS* valueList (WS* IMPORTANT)?
   | CUSTOM_IDENT WS* COLON CUSTOM_VALUE*
   ;
 
@@ -149,6 +158,17 @@ value
   | STRING
   | function
   | '[' identifier ']'
+  | unknownValue
+  ;
+
+/** Implementers can decide to throw errors or warnings or not */
+unknownValue
+  : COLON
+  | EQ
+  | DOT
+  | ID
+  | UNKNOWN
+  | AT_RULE
   ;
 
 mathSum
@@ -407,8 +427,6 @@ identifier
 */
 anyOuterValue
   : value
-  | COLON
-  | SEMI
   | COMMA
   | '(' anyInnerValue* ')'
   | '[' anyInnerValue* ']'
@@ -417,8 +435,7 @@ anyOuterValue
 anyInnerValue
   : anyOuterValue
   | '{' anyInnerValue* '}'
-  | SEMI
   | ID
-  | CLASS
+  | SEMI
   | pseudoSelector
   ;
