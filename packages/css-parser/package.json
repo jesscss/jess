@@ -11,6 +11,7 @@
     "lib"
   ],
   "scripts": {
+    "generate": "node generate.mjs",
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
     "build": "pnpm clean && pnpm compile",
@@ -21,10 +22,12 @@
   },
   "author": "Matthew Dean",
   "license": "MIT",
-  "dependencies": {
-  },
   "devDependencies": {
     "@jesscss/grammar": "workspace:^2.0.0-alpha.1",
-    "@less/test-data": "^4.1.0"
+    "@less/test-data": "^4.1.0",
+    "shelljs": "^0.8.5"
+  },
+  "dependencies": {
+    "antlr4": "4.12.0"
   }
 }

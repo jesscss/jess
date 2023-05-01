@@ -3,12 +3,12 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { expect } from 'chai'
 import 'mocha'
-import { Parser } from '../src'
-import { stringify } from '../src/util/cst'
+
+import { parse } from '../src'
+
+// import { stringify } from '../../css-parser_old/src/util/cst'
 
 const testData = path.dirname(require.resolve('@less/test-data'))
-
-const cssParser = new Parser()
 
 /**
  * @todo - write error cases
@@ -21,7 +21,8 @@ describe('can parse all CSS stylesheets', () => {
         it(`${file}`, () => {
           const result = fs.readFileSync(file)
           const contents = result.toString()
-          const { cst, lexerResult, parser } = cssParser.parse(contents)
+
+          const { cst, lexerResult, parser } = parse(contents)
           expect(lexerResult.errors.length).to.equal(0)
           expect(parser.errors.length).to.equal(0)
 

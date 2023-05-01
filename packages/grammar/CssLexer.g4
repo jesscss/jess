@@ -58,7 +58,7 @@ AMPERSAND:            '&';
 // Colors can have 3, 4, 6, or 8 hex values
 // These are valid ID selectors
 COLOR_IDENT_START
-  : '#' [a-fA-F] ColorValueRemainder;
+  : '#' [a-f] ColorValueRemainder;
 
 // These are not valid ID selectors
 COLOR_INT_START
@@ -246,7 +246,6 @@ fragment Digit
 fragment Hex
   : Digit
   | 'a'..'f'
-  | 'A'..'F'
   ;
 
 fragment Unicode
@@ -255,7 +254,7 @@ fragment Unicode
 
 fragment Escape
   : Unicode
-  | '\\' ~[\r\n\f0-9a-fA-F]
+  | '\\' ~[\r\n\f0-9a-f]
   ;
 
 fragment DoubleString
@@ -271,11 +270,11 @@ fragment NonAscii
   ;
 
 fragment NmStart
-  : [_a-zA-Z] | NonAscii | Escape
+  : [_a-z] | NonAscii | Escape
   ;
 
 fragment NmChar
-  : [_a-zA-Z0-9-]
+  : [_a-z0-9-]
   | NonAscii
   | Escape
   ;
@@ -299,7 +298,7 @@ fragment Sign
   ;
 
 fragment Exp
-  : [eE][+-]Digit+
+  : 'e' [+-] Digit+
   ;
 
 fragment Integer
