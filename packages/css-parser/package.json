@@ -7,6 +7,7 @@
   "description": "Jess CSS parser",
   "main": "lib/index",
   "types": "lib/index",
+  "type": "module",
   "files": [
     "lib"
   ],
@@ -18,7 +19,7 @@
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
     "compile": "tsc -b tsconfig.json",
     "dev": "tsc -b tsconfig.json -w",
-    "test": "ts-mocha test/**/*.ts"
+    "test": "NODE_OPTIONS=\"--loader ts-node/esm\" mocha test/**/*.ts"
   },
   "author": "Matthew Dean",
   "license": "MIT",

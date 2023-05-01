@@ -13,6 +13,16 @@ options
   in a number of specs, it obviously is in one specific place:
   between selectors. So if you want a general purpose parser,
   you need to parse whitespace.
+
+  Also, by parsing whitespace, some of the token recognition
+  phase and the parsing phase can be simplified, because
+  we can parse colons (':') as general tokens, which means
+  that a declaration of `a:b` doesn't get mis-labeled as
+  an identifier followed by a pseudo-selector.
+
+  Another approach would be to have different lexing phases
+  for qualified rules vs declarations, but it can
+  get super-complicated quickly.
 */
 stylesheet
   : CHARSET? main EOF
