@@ -3,8 +3,8 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "1.0.8-alpha.6",
-  "description": "Jess CSS base parser",
+  "version": "2.0.0-alpha.1",
+  "description": "Jess CSS parser",
   "main": "lib/index",
   "types": "lib/index",
   "files": [
@@ -22,11 +22,9 @@
   "author": "Matthew Dean",
   "license": "MIT",
   "dependencies": {
-    "chevrotain": "^10.5.0",
-    "xregexp": "^5.1.1"
   },
   "devDependencies": {
-    "@less/test-data": "^4.1.0",
-    "@types/xregexp": "^4.4.0"
+    "@jesscss/grammar": "workspace:^2.0.0-alpha.1",
+    "@less/test-data": "^4.1.0"
   }
 }

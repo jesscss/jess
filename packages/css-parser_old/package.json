@@ -1,7 +1,10 @@
 {
-  "name": "rollup-plugin-jess",
+  "name": "@jesscss/css-parser",
+  "publishConfig": {
+    "access": "public"
+  },
   "version": "2.0.0-alpha.1",
-  "description": "Rollup plugin for Jess",
+  "description": "Jess CSS base parser",
   "main": "lib/index",
   "types": "lib/index",
   "files": [
@@ -9,21 +12,21 @@
   ],
   "scripts": {
     "ci": "pnpm build && pnpm test",
-    "prepublishOnly": "npm run build",
+    "prepublishOnly": "pnpm build",
     "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
     "compile": "tsc -b tsconfig.json",
+    "dev": "tsc -b tsconfig.json -w",
     "test": "ts-mocha test/**/*.ts"
   },
+  "author": "Matthew Dean",
+  "license": "MIT",
   "dependencies": {
-    "jess": "workspace:^2.0.0-alpha.1"
-  },
-  "peerDependencies": {
-    "rollup": "^2.0.0"
+    "chevrotain": "^10.5.0",
+    "xregexp": "^5.1.1"
   },
   "devDependencies": {
-    "rollup": "^3.20.7"
-  },
-  "author": "Matthew Dean",
-  "license": "MIT"
+    "@less/test-data": "^4.1.0",
+    "@types/xregexp": "^4.4.0"
+  }
 }

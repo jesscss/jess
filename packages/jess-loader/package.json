@@ -1,6 +1,6 @@
 {
   "name": "jess-loader",
-  "version": "1.0.8-alpha.8",
+  "version": "2.0.0-alpha.1",
   "description": "Official Webpack loader for Jess",
   "main": "lib/index",
   "author": "Matthew Dean",
@@ -18,7 +18,7 @@
     "webpack": "^5.0.0"
   },
   "devDependencies": {
-    "jess": "workspace:^1.0.8-alpha.8",
+    "jess": "workspace:^2.0.0-alpha.1",
     "webpack": "^5.80.0"
   }
 }

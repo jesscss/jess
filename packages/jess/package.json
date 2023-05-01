@@ -1,7 +1,7 @@
 {
   "name": "jess-old",
   "private": true,
-  "version": "1.0.8-alpha.8",
+  "version": "2.0.0-alpha.1",
   "description": "JavaScript Enhanced Style Sheets",
   "main": "lib/index",
   "types": "lib/index",
@@ -13,8 +13,8 @@
     "node": ">=10"
   },
   "dependencies": {
-    "@jesscss/parser": "workspace:1.0.8-alpha.6",
-    "@jesscss/patch-css": "workspace:1.0.8-alpha.8",
+    "@jesscss/parser": "workspace:2.0.0-alpha.1",
+    "@jesscss/patch-css": "workspace:2.0.0-alpha.1",
     "@rollup/plugin-commonjs": "^24.1.0",
     "@rollup/plugin-node-resolve": "^15.0.2",
     "@rollup/plugin-sucrase": "^5.0.1",

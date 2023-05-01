@@ -93,6 +93,15 @@ importers:
         version: 5.0.4
 
   packages/css-parser:
+    devDependencies:
+      '@jesscss/grammar':
+        specifier: workspace:^2.0.0-alpha.1
+        version: link:../grammar
+      '@less/test-data':
+        specifier: ^4.1.0
+        version: 4.1.0
+
+  packages/css-parser_old:
     dependencies:
       chevrotain:
         specifier: ^10.5.0
@@ -135,19 +144,21 @@ importers:
   packages/fns:
     dependencies:
       jess:
-        specifier: workspace:^1.0.8-alpha.8
+        specifier: workspace:^2.0.0-alpha.1
         version: link:../jessv2
       lodash:
         specifier: ^4.17.21
         version: 4.17.21
 
+  packages/grammar: {}
+
   packages/jess:
     dependencies:
       '@jesscss/parser':
-        specifier: workspace:1.0.8-alpha.6
+        specifier: workspace:2.0.0-alpha.1
         version: link:../parser
       '@jesscss/patch-css':
-        specifier: workspace:1.0.8-alpha.8
+        specifier: workspace:2.0.0-alpha.1
         version: link:../patch-css
       '@rollup/plugin-commonjs':
         specifier: ^24.1.0
@@ -196,7 +207,7 @@ importers:
   packages/jess-loader:
     devDependencies:
       jess:
-        specifier: workspace:^1.0.8-alpha.8
+        specifier: workspace:^2.0.0-alpha.1
         version: link:../jessv2
       webpack:
         specifier: ^5.80.0
@@ -205,10 +216,10 @@ importers:
   packages/jessv2:
     dependencies:
       '@jesscss/parser':
-        specifier: workspace:^1.0.8-alpha.6
+        specifier: workspace:^2.0.0-alpha.1
         version: link:../parser
       '@jesscss/patch-css':
-        specifier: workspace:^1.0.8-alpha.8
+        specifier: workspace:^2.0.0-alpha.1
         version: link:../patch-css
       '@rollup/plugin-commonjs':
         specifier: ^24.1.0
@@ -257,8 +268,8 @@ importers:
   packages/less-parser:
     dependencies:
       '@jesscss/css-parser':
-        specifier: workspace:^1.0.8-alpha.6
-        version: link:../css-parser
+        specifier: workspace:^2.0.0-alpha.1
+        version: link:../css-parser_old
       chevrotain:
         specifier: ^10.5.0
         version: 10.5.0
@@ -270,8 +281,8 @@ importers:
   packages/parser:
     dependencies:
       '@jesscss/css-parser':
-        specifier: workspace:^1.0.8-alpha.6
-        version: link:../css-parser
+        specifier: workspace:^2.0.0-alpha.1
+        version: link:../css-parser_old
       chevrotain:
         specifier: ^10.5.0
         version: 10.5.0
@@ -281,7 +292,7 @@ importers:
   packages/rollup-plugin-jess:
     dependencies:
       jess:
-        specifier: workspace:^1.0.8-alpha.8
+        specifier: workspace:^2.0.0-alpha.1
         version: link:../jessv2
     devDependencies:
       rollup:

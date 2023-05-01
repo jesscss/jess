@@ -424,6 +424,9 @@ identifier
   The <any-value> production is identical to <declaration-value>, but also allows
   top-level <semicolon-token> tokens and <delim-token> tokens with a value of "!".
   It represents the entirety of what valid CSS can be in any context.
+
+  Parts of the spec that allow any value should not display a warning or error
+  for any unknown token.
 */
 anyOuterValue
   : value
