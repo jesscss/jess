@@ -255,8 +255,7 @@ atRule
   instead of a main block within {}
 */
 innerAtRule
-  : inner_MediaAtRule
-  | inner_PageAtRule
+  : innerMediaAtRule
   | unknownAtRule
   ;
 
@@ -264,7 +263,7 @@ mediaAtRule
   : MEDIA_RULE WS* mediaQuery WS* LCURLY main RCURLY
   ;
 
-inner_MediaAtRule
+innerMediaAtRule
   : MEDIA_RULE WS* mediaQuery WS* LCURLY declarationList RCURLY
   ;
 
@@ -371,10 +370,6 @@ ratio
 
 /** https://www.w3.org/TR/css-page-3/ */
 pageAtRule
-  : PAGE_RULE WS* (PAGE_PSEUDO_CLASS WS*)? LCURLY main RCURLY
-  ;
-
-inner_PageAtRule
   : PAGE_RULE WS* (PAGE_PSEUDO_CLASS WS*)? LCURLY declarationList RCURLY
   ;
 

@@ -35,7 +35,7 @@ import { PercentageContext } from "./CssParser";
 import { AtRuleContext } from "./CssParser";
 import { InnerAtRuleContext } from "./CssParser";
 import { MediaAtRuleContext } from "./CssParser";
-import { Inner_MediaAtRuleContext } from "./CssParser";
+import { InnerMediaAtRuleContext } from "./CssParser";
 import { MediaQueryContext } from "./CssParser";
 import { MediaTypeContext } from "./CssParser";
 import { MediaConditionContext } from "./CssParser";
@@ -55,7 +55,6 @@ import { MfComparisonContext } from "./CssParser";
 import { GeneralEnclosedContext } from "./CssParser";
 import { RatioContext } from "./CssParser";
 import { PageAtRuleContext } from "./CssParser";
-import { Inner_PageAtRuleContext } from "./CssParser";
 import { FontFaceAtRuleContext } from "./CssParser";
 import { SupportsAtRuleContext } from "./CssParser";
 import { SupportsConditionContext } from "./CssParser";
@@ -393,15 +392,15 @@ export default class CssParserListener extends ParseTreeListener {
 	 */
 	exitMediaAtRule?: (ctx: MediaAtRuleContext) => void;
 	/**
-	 * Enter a parse tree produced by `CssParser.inner_MediaAtRule`.
+	 * Enter a parse tree produced by `CssParser.innerMediaAtRule`.
 	 * @param ctx the parse tree
 	 */
-	enterInner_MediaAtRule?: (ctx: Inner_MediaAtRuleContext) => void;
+	enterInnerMediaAtRule?: (ctx: InnerMediaAtRuleContext) => void;
 	/**
-	 * Exit a parse tree produced by `CssParser.inner_MediaAtRule`.
+	 * Exit a parse tree produced by `CssParser.innerMediaAtRule`.
 	 * @param ctx the parse tree
 	 */
-	exitInner_MediaAtRule?: (ctx: Inner_MediaAtRuleContext) => void;
+	exitInnerMediaAtRule?: (ctx: InnerMediaAtRuleContext) => void;
 	/**
 	 * Enter a parse tree produced by `CssParser.mediaQuery`.
 	 * @param ctx the parse tree
@@ -592,16 +591,6 @@ export default class CssParserListener extends ParseTreeListener {
 	 * @param ctx the parse tree
 	 */
 	exitPageAtRule?: (ctx: PageAtRuleContext) => void;
-	/**
-	 * Enter a parse tree produced by `CssParser.inner_PageAtRule`.
-	 * @param ctx the parse tree
-	 */
-	enterInner_PageAtRule?: (ctx: Inner_PageAtRuleContext) => void;
-	/**
-	 * Exit a parse tree produced by `CssParser.inner_PageAtRule`.
-	 * @param ctx the parse tree
-	 */
-	exitInner_PageAtRule?: (ctx: Inner_PageAtRuleContext) => void;
 	/**
 	 * Enter a parse tree produced by `CssParser.fontFaceAtRule`.
 	 * @param ctx the parse tree

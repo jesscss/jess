@@ -1,9 +1,4 @@
 {
-  "ts-node": {
-    "transpileOnly": true,
-    "esm": true,
-    "experimentalSpecifierResolution": "node"
-  },
   "compilerOptions": {
     "composite": true,
     "allowJs": true,
@@ -11,7 +6,8 @@
     "rootDir": ".",
     "declaration": true,
     "esModuleInterop": true,
-    "module": "commonjs",
+    "module": "ES2020",
+    "moduleResolution": "node",
     "target": "es6",
     "lib": ["es6"],
     "baseUrl": "./packages",
