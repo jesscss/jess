@@ -8,6 +8,7 @@ import {
 } from 'antlr4'
 import CssLexer from './generated/CssLexer'
 import CssParser from './generated/CssParser'
+import CssParserListener from './generated/CssParserListener'
 import { type ConditionalKeys } from 'type-fest'
 
 type ParserMethods = ConditionalKeys<CssParser, () => ParserRuleContext>
@@ -27,9 +28,27 @@ class CssParserErrorListener<T> extends ErrorListener<T> {
     this.errors.push(error)
     console.log(`${line}:${column} - ${msg}`, offendingSymbol)
   }
+
+  reset() {
+    this.errors = []
+  }
 }
 
-export const parseTree = (input: string, startRule: ParserMethods = 'stylesheet') => {
+/**
+ * Creates better warnings and errors for the parser
+ */
+class CssParserNormalizeListener extends CssParserListener {
+
+}
+
+const errorListener = new CssParserErrorListener()
+
+/**
+ * This exposes the parser, so that anyone downstream can
+ * alter error listeners or parse strategies before
+ * processing.
+ */
+export const getParser = (input: string) => {
   const chars = new CharStream(input)
   const lexer = new CssLexer(chars)
   const tokens = new CommonTokenStream(lexer)
@@ -37,6 +56,12 @@ export const parseTree = (input: string, startRule: ParserMethods = 'stylesheet'
   const errorListener = new CssParserErrorListener()
   parser.removeErrorListeners()
   parser.addErrorListener(errorListener)
+  return parser
+}
+
+export const parseTree = (input: string, startRule: ParserMethods = 'stylesheet') => {
+  const parser = getParser(input)
+  errorListener.reset()
   const tree = parser[startRule]()
   return { tree, parser, errors: errorListener.errors }
 }
