@@ -3,6 +3,7 @@ import {
   CommonTokenStream,
   type ParserRuleContext,
   ErrorListener,
+  ErrorStrategy,
   type Recognizer,
   type RecognitionException
 } from 'antlr4'
@@ -21,7 +22,7 @@ class SyntaxError<T> extends Error {
 class CssParserErrorListener<T> extends ErrorListener<T> {
   errors: Error[] = []
   syntaxError(recognizer: Recognizer<T>, offendingSymbol: T, line: number, column: number, msg: string, e: RecognitionException | undefined) {
-    const error = new SyntaxError(msg)
+    const error = new SyntaxError<T>(msg)
     error.line = line
     error.column = column
     error.symbol = offendingSymbol
@@ -35,13 +36,23 @@ class CssParserErrorListener<T> extends ErrorListener<T> {
 }
 
 /**
+ * Need to update to DefaultErrorStrategy
+ * when its properly exported with the
+ * next Antlr release.
+ */
+class CssParserErrorStrategy extends ErrorStrategy {
+
+}
+
+const errorStrategy = new CssParserErrorStrategy()
+const errorListener = new CssParserErrorListener()
+
+/**
  * Creates better warnings and errors for the parser
  */
 class CssParserNormalizeListener extends CssParserListener {
 
 }
-
-const errorListener = new CssParserErrorListener()
 
 /**
  * This exposes the parser, so that anyone downstream can
@@ -53,7 +64,8 @@ export const getParser = (input: string) => {
   const lexer = new CssLexer(chars)
   const tokens = new CommonTokenStream(lexer)
   const parser = new CssParser(tokens)
-  const errorListener = new CssParserErrorListener()
+  parser._errHandler = errorStrategy
+  errorListener.reset()
   parser.removeErrorListeners()
   parser.addErrorListener(errorListener)
   return parser
@@ -61,7 +73,6 @@ export const getParser = (input: string) => {
 
 export const parseTree = (input: string, startRule: ParserMethods = 'stylesheet') => {
   const parser = getParser(input)
-  errorListener.reset()
   const tree = parser[startRule]()
   return { tree, parser, errors: errorListener.errors }
 }
