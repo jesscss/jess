@@ -3,10 +3,10 @@ import {
   CommonTokenStream,
   type ParserRuleContext,
   ErrorListener,
-  ErrorStrategy,
   type Recognizer,
   type RecognitionException
 } from 'antlr4'
+import DefaultErrorStrategy from 'antlr4/src/antlr4/error/DefaultErrorStrategy'
 import CssLexer from './generated/CssLexer'
 import CssParser from './generated/CssParser'
 import CssParserListener from './generated/CssParserListener'
@@ -40,7 +40,7 @@ class CssParserErrorListener<T> extends ErrorListener<T> {
  * when its properly exported with the
  * next Antlr release.
  */
-class CssParserErrorStrategy extends ErrorStrategy {
+class CssParserErrorStrategy extends DefaultErrorStrategy {
 
 }
 
