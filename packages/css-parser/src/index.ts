@@ -4,9 +4,9 @@ import {
   type ParserRuleContext,
   ErrorListener,
   type Recognizer,
-  type RecognitionException
+  type RecognitionException,
+  DefaultErrorStrategy
 } from 'antlr4'
-import DefaultErrorStrategy from 'antlr4/src/antlr4/error/DefaultErrorStrategy'
 import CssLexer from './generated/CssLexer'
 import CssParser from './generated/CssParser'
 import CssParserListener from './generated/CssParserListener'
@@ -35,11 +35,6 @@ class CssParserErrorListener<T> extends ErrorListener<T> {
   }
 }
 
-/**
- * Need to update to DefaultErrorStrategy
- * when its properly exported with the
- * next Antlr release.
- */
 class CssParserErrorStrategy extends DefaultErrorStrategy {
 
 }
@@ -51,8 +46,12 @@ const errorListener = new CssParserErrorListener()
  * Creates better warnings and errors for the parser
  */
 class CssParserNormalizeListener extends CssParserListener {
-
+  enterInnerQualifiedRule = (ctx: ParserRuleContext): void => {
+    console.log(ctx)
+  }
 }
+
+const parseListeners = [new CssParserNormalizeListener()]
 
 /**
  * This exposes the parser, so that anyone downstream can
@@ -68,6 +67,7 @@ export const getParser = (input: string) => {
   errorListener.reset()
   parser.removeErrorListeners()
   parser.addErrorListener(errorListener)
+  parser._parseListeners = parseListeners
   return parser
 }
 
