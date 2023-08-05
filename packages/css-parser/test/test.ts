@@ -1,8 +1,6 @@
 import * as glob from 'glob'
 import * as fs from 'fs'
 import * as path from 'path'
-import { expect } from 'chai'
-import 'mocha'
 import { Parser } from '../src'
 import { stringify } from '../src/util/cst'
 
@@ -22,13 +20,13 @@ describe('can parse all CSS stylesheets', () => {
           const result = fs.readFileSync(file)
           const contents = result.toString()
           const { cst, lexerResult, parser } = cssParser.parse(contents)
-          expect(lexerResult.errors.length).to.equal(0)
-          expect(parser.errors.length).to.equal(0)
+          expect(lexerResult.errors.length).toBe(0)
+          expect(parser.errors.length).toBe(0)
           
           /** This contains CDO tokens, which are skipped */
           if (!(['test/css/custom-properties.css'].includes(file))) {
             const output = stringify(cst)
-            expect(output).to.equal(contents)
+            expect(output).toBe(contents)
           }
         })
       }
@@ -70,8 +68,8 @@ describe('can parse Less CSS output', () => {
       it(`${file}`, () => {
         const result = fs.readFileSync(path.join(testData, file))
         const { cst, lexerResult, parser } = cssParser.parse(result.toString())
-        expect(lexerResult.errors.length).to.equal(0)
-        expect(parser.errors.length).to.equal(0)
+        expect(lexerResult.errors.length).toBe(0)
+        expect(parser.errors.length).toBe(0)
       })
     })
 })
@@ -85,8 +83,8 @@ describe('returns errors on invalid Less CSS output', () => {
       it(`${file}`, () => {
         const result = fs.readFileSync(path.join(testData, file))
         const { cst, lexerResult, parser } = cssParser.parse(result.toString())
-        expect(lexerResult.errors.length).to.equal(0)
-        expect(parser.errors.length).to.be.gt(0)
+        expect(lexerResult.errors.length).toBe(0)
+        expect(parser.errors.length).toBeGreaterThan(0)
       })
     })
 })

@@ -16,7 +16,7 @@
     "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
     "compile": "tsc -b tsconfig.json",
-    "test": "ts-mocha test/**/*.ts"
+    "test": "jest"
   },
   "author": "Matthew Dean",
   "license": "MIT",

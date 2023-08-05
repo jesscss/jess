@@ -1,5 +1,3 @@
-import { expect } from 'chai'
-import 'mocha'
 import { include, rule, sel, el } from '..'
 import { Context } from '../../context'
 import { OutputCollector } from '../../output'
@@ -25,12 +23,12 @@ describe('Include', () => {
       ]
     })
     const result = node.eval(context)
-    expect(`${result}`).to.eq('.rule {\n  width: 50px;\n  height: 25px;\n}')
+    expect(`${result}`).toBe('.rule {\n  width: 50px;\n  height: 25px;\n}')
   })
 
   it('should serialize a module', () => {
     const rule = el('foo')
     rule.toModule(context, out)
-    expect(out.toString()).to.eq('$J.el($J.anon("foo"))')
+    expect(out.toString()).toBe('$J.el($J.anon("foo"))')
   })
 })

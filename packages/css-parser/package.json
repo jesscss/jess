@@ -17,7 +17,7 @@
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
     "compile": "tsc -b tsconfig.json",
     "dev": "tsc -b tsconfig.json -w",
-    "test": "ts-mocha test/**/*.ts"
+    "test": "jest"
   },
   "author": "Matthew Dean",
   "license": "MIT",

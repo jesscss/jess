@@ -1,5 +1,3 @@
-import { expect } from 'chai'
-import 'mocha'
 import { rule, list, sel, el, decl, js, set, spaced, anon, keyval } from '..'
 import { Context } from '../../context'
 import { OutputCollector } from '../../output'
@@ -20,7 +18,7 @@ describe('Rule', () => {
         decl({ name: 'color', value: anon('#eee') })
       ]
     })
-    expect(`${node}`).to.eq('foo {\n  border: 1px solid black;\n  color: #eee;\n}')
+    expect(`${node}`).toBe('foo {\n  border: 1px solid black;\n  color: #eee;\n}')
   })
   it('should serialize to a module', () => {
     const node = rule({
@@ -31,7 +29,7 @@ describe('Rule', () => {
       ]
     })
     node.toModule(context, out)
-    expect(out.toString()).to.eq(
+    expect(out.toString()).toBe(
       '$J.rule({\n  sels: $J.list([\n    $J.sel([$J.el($J.anon("foo"))])\n  ]),\n  value: $J.ruleset(\n    (() => {\n      const $OUT = []\n      let brandColor = area(5)\n      $OUT.push($J.decl({\n        name: $J.anon("color"),\n        value: brandColor\n      }))\n      return $OUT\n    })()\n  )},[])'
     )
   })

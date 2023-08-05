@@ -1,5 +1,3 @@
-import { expect } from 'chai'
-import 'mocha'
 import { root, amp, rule, sel, el, expr, list, ruleset, decl } from '..'
 import { Context } from '../../context'
 import { OutputCollector } from '../../output'
@@ -29,12 +27,12 @@ describe('Ampersand', () => {
       })
     ])
     node = node.eval(context)
-    expect(`${node}`).to.eq('.one.two {\n  chungus: foo bar;\n}\n.one.two {\n  chungus: bar foo;\n}\n')
+    expect(`${node}`).toBe('.one.two {\n  chungus: foo bar;\n}\n.one.two {\n  chungus: bar foo;\n}\n')
   })
 
   it('should serialize to a module', () => {
     const node = expr([amp()])
     node.toModule(context, out)
-    expect(out.toString()).to.eq('$J.expr([$J.amp()])')
+    expect(out.toString()).toBe('$J.expr([$J.amp()])')
   })
 })

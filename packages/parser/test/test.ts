@@ -1,8 +1,6 @@
 import * as glob from 'glob'
 import * as fs from 'fs'
 import * as path from 'path'
-import { expect } from 'chai'
-import 'mocha'
 import { Parser } from '../src'
 import { stringify } from '@jesscss/css-parser'
 
@@ -15,7 +13,7 @@ describe('can parse any rule', () => {
     const lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
     const cst = parser.declaration()
-    expect(parser.errors.length).to.equal(0)
+    expect(parser.errors.length).toBe(0)
   })
 
   it('qualified rule', () => {
@@ -27,7 +25,7 @@ describe('can parse any rule', () => {
     const lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
     const cst = parser.qualifiedRule()
-    expect(parser.errors.length).to.equal(0)
+    expect(parser.errors.length).toBe(0)
   })
 
   it('mixin definition', () => {
@@ -42,7 +40,7 @@ describe('can parse any rule', () => {
     let lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
     parser.mixin()
-    expect(parser.errors.length).to.equal(0)
+    expect(parser.errors.length).toBe(0)
 
     /** Collections */
     lexerResult = jessParser.lexer.tokenize(
@@ -54,10 +52,10 @@ describe('can parse any rule', () => {
     lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
     parser.mixin()
-    expect(parser.errors.length).to.equal(0)
+    expect(parser.errors.length).toBe(0)
     parser.input = lexedTokens
     parser.root()
-    expect(parser.errors.length).to.equal(0)
+    expect(parser.errors.length).toBe(0)
 
     lexerResult = jessParser.lexer.tokenize(
       `@mixin someMixin {
@@ -68,7 +66,7 @@ describe('can parse any rule', () => {
     lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
     parser.root()
-    expect(parser.errors.length).to.equal(0)
+    expect(parser.errors.length).toBe(0)
   })
 
   it('include', () => {
@@ -76,7 +74,7 @@ describe('can parse any rule', () => {
     let lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
     parser.atInclude()
-    expect(parser.errors.length).to.equal(0)
+    expect(parser.errors.length).toBe(0)
 
     lexerResult = jessParser.lexer.tokenize(
       `@include wrapCollection({
@@ -86,7 +84,7 @@ describe('can parse any rule', () => {
     parser.input = lexedTokens
     parser.atInclude()
 
-    expect(parser.errors.length).to.equal(0)
+    expect(parser.errors.length).toBe(0)
 
     lexerResult = jessParser.lexer.tokenize(
       '@include mixinCall({direct: works;}, {collection: works;});'
@@ -94,7 +92,7 @@ describe('can parse any rule', () => {
     lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
     parser.root()
-    expect(parser.errors.length).to.equal(0)
+    expect(parser.errors.length).toBe(0)
   })
 
   it('variable declaration', () => {
@@ -105,7 +103,7 @@ describe('can parse any rule', () => {
     const lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
     parser.root()
-    expect(parser.errors.length).to.equal(0)
+    expect(parser.errors.length).toBe(0)
   })
 })
 
@@ -120,11 +118,11 @@ describe('can parse all Jess stylesheets', () => {
         const result = fs.readFileSync(path.join(testData, file))
         const contents = result.toString()
         const { cst, lexerResult } = jessParser.parse(contents)
-        expect(lexerResult.errors.length).to.equal(0)
-        expect(parser.errors.length).to.equal(0)
+        expect(lexerResult.errors.length).toBe(0)
+        expect(parser.errors.length).toBe(0)
 
         const output = stringify(cst)
-        expect(output).to.equal(contents)
+        expect(output).toBe(contents)
       })
     })
 })
@@ -162,8 +160,8 @@ describe('can parse all Less CSS output', () => {
         const result = fs.readFileSync(path.join(testData, file))
         const contents = result.toString()
         const { cst, lexerResult } = jessParser.parse(contents)
-        expect(lexerResult.errors.length).to.equal(0)
-        expect(parser.errors.length).to.equal(0)
+        expect(lexerResult.errors.length).toBe(0)
+        expect(parser.errors.length).toBe(0)
       })
     })
 })

@@ -1,10 +1,13 @@
-module.exports = {
+/** @type {import('jest').Config} */
+const config = {
   transform: {
     '^.+\\.(t|j)sx?$': [
       '@swc/jest'
     ]
   },
-  transformIgnorePatterns: [
-    'node_modules/(?!((.pnpm/)?antlr4))'
+  testMatch: [
+    '**/(__tests__|test)/**/*.(t|j)s?(x)'
   ]
 }
+
+module.exports = config

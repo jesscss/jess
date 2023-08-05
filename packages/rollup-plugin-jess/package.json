@@ -13,7 +13,7 @@
     "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
     "compile": "tsc -b tsconfig.json",
-    "test": "ts-mocha test/**/*.ts"
+    "test": "jest"
   },
   "dependencies": {
     "jess": "workspace:^2.0.0-alpha.1"

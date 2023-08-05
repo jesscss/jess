@@ -1,5 +1,3 @@
-import { expect } from 'chai'
-import 'mocha'
 import { root, rule, sel, el, list, ruleset, decl, spaced, call, js } from '..'
 import { Context } from '../../context'
 import { OutputCollector } from '../../output'
@@ -27,7 +25,7 @@ describe('Ruleset', () => {
       })
     ])
     node = node.eval(context)
-    expect(`${node}`).to.eq('.collapse {\n  chungus: foo bar;\n  bird: in hand;\n}\n')
+    expect(`${node}`).toBe('.collapse {\n  chungus: foo bar;\n  bird: in hand;\n}\n')
   })
 
   it('should output var() values', () => {
@@ -36,7 +34,7 @@ describe('Ruleset', () => {
       decl({ name: 'a', value: spaced([js('obj.value'), call({ name: 'func', value: js('foo.bar') })]) })
     ])
     node.toModule(context, out)
-    expect(out.toString()).to.eq(
+    expect(out.toString()).toBe(
       '$J.ruleset(\n  (() => {\n    const $OUT = []\n    $OUT.push($J.decl({\n      name: $J.anon("a"),\n      value: $J.spaced([$J.call({\n        name: "var",\n        value: $J.list([\n          "--vtesting-0",\n          obj.value\n        ]),\n      }), $J.call({\n        name: "var",\n        value: $J.list([\n          "--vtesting-1",\n          $J.call({\n            name: "func",\n            value: foo.bar,\n            ref: () => func,\n          })\n        ]),\n      })])\n    }))\n    return $OUT\n  })()\n)'
     )
   })
@@ -48,7 +46,7 @@ describe('Ruleset', () => {
     ])
     context.isRuntime = true
     node.toModule(context, out)
-    expect(out.toString()).to.eq(
+    expect(out.toString()).toBe(
       '$J.ruleset(\n  (() => {\n    const $OUT = []\n    $OUT.push($J.decl({\n      name: $J.anon("--vtesting-0"),\n      value: obj.value\n    }))\n$OUT.push($J.decl({\n      name: $J.anon("--vtesting-1"),\n      value: $J.call({\n        name: "func",\n        value: foo.bar,\n        ref: () => func,\n      })\n    }))\n    return $OUT\n  })()\n)'
     )
   })

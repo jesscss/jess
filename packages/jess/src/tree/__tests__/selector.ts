@@ -1,5 +1,3 @@
-import { expect } from 'chai'
-import 'mocha'
 import { sel, el } from '..'
 
 describe('Selector', () => {
@@ -9,17 +7,17 @@ describe('Selector', () => {
       '>',
       el('#bar')
     ])
-    expect(`${rule}`).to.eq('.foo > #bar')
+    expect(`${rule}`).toBe('.foo > #bar')
     rule = sel([
       el('.foo'),
       el('#bar')
     ])
-    expect(`${rule}`).to.eq('.foo#bar')
+    expect(`${rule}`).toBe('.foo#bar')
     rule = sel([
       el('.foo'),
       ' ',
       el('#bar')
     ])
-    expect(`${rule}`).to.eq('.foo #bar')
+    expect(`${rule}`).toBe('.foo #bar')
   })
 })

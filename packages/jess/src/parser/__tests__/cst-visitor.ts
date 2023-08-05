@@ -1,6 +1,3 @@
-import { expect } from 'chai'
-import 'mocha'
-
 import * as glob from 'glob'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -16,7 +13,7 @@ let out: OutputCollector
 const serialize = async (str: string, expectStr?: string) => {
   expectStr = expectStr || str
   const node = await parse(str)
-  expect(node.toString()).to.eq(expectStr)
+  expect(node.toString()).toBe(expectStr)
 }
 
 describe('CST-to-AST', () => {
@@ -29,112 +26,122 @@ describe('CST-to-AST', () => {
 
   it('rule #1', async () => {
     const node = await parse('.box> #foo.bar { a: b; }')
-    expect(node.toString()).to.eq('.box > #foo.bar {\n  a: b;\n}\n')
+    expect(node.toString()).toBe('.box > #foo.bar {\n  a: b;\n}\n')
   })
 
   it('rule #2', async () => {
     const node = await parse('@import url("something.css");')
-    expect(node.toString()).to.eq('@import url("something.css");\n')
+    expect(node.toString()).toBe('@import url("something.css");\n')
   })
 
   it('rule #3', async () => {
     context.depth = 0
     const node = await parse('@import foo from \'foo.ts\';')
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('import foo from \'foo.ts\'')
+    expect(out.toString()).toBe('import foo from \'foo.ts\'')
   })
 
   it('rule #4', async () => {
     context.depth = 0
     const node = await parse('@import foo, { bar } from \'foo.ts\';')
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('import foo, { bar } from \'foo.ts\'')
+    expect(out.toString()).toBe('import foo, { bar } from \'foo.ts\'')
   })
 
   it('rule #5', async () => {
     context.depth = 0
     const node = await parse('@import * as foo from \'foo.ts\';')
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('import * as foo from \'foo.ts\'')
+    expect(out.toString()).toBe('import * as foo from \'foo.ts\'')
   })
 
   it('rule #6', async () => {
     context.depth = 0
     const node = await parse('@import { default as foo, bar } from \'foo.ts\';')
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('import { default as foo, bar } from \'foo.ts\'')
+    expect(out.toString()).toBe('import { default as foo, bar } from \'foo.ts\'')
   })
 
   it('rule #7', async () => {
     const node = await parse('@let foo: 1;')
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('let foo = $J.num({\n  value: 1,\n  unit: ""\n})')
+    expect(out.toString()).toBe('let foo = $J.num({\n  value: 1,\n  unit: ""\n})')
   })
 
   it('rule #8', async () => {
     const node = await parse('@let foo { color: #FFF }')
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('let foo = {\n  "color": $J.color("#FFF")\n}')
+    expect(out.toString()).toBe('let foo = {\n  "color": $J.color("#FFF")\n}')
   })
 
   it('rule #9', async () => {
     const node = await parse('@let foo { color: #FFF; nested {} }')
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('let foo = {\n  "color": $J.color("#FFF"),\n  "nested": {\n  }\n}')
+    expect(out.toString()).toBe('let foo = {\n  "color": $J.color("#FFF"),\n  "nested": {\n  }\n}')
   })
 
   it('rule #10', async () => {
     const node = await parse('@let foo { color: #FFF; nested { color: black } }')
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('let foo = {\n  "color": $J.color("#FFF"),\n  "nested": {\n    "color": $J.anon("black")\n  }\n}')
+    expect(out.toString()).toBe(
+      'let foo = {\n  "color": $J.color("#FFF"),\n  "nested": {\n    "color": $J.anon("black")\n  }\n}'
+    )
   })
 
   it('rule #11', async () => {
     const node = await parse('@let foo: $value.foo')
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('let foo = value.foo')
+    expect(out.toString()).toBe('let foo = value.foo')
   })
 
   it('rule #12', async () => {
     const node = await parse('@let foo: $value.foo #FFF')
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('let foo = $J.expr([value.foo, $J.ws(), $J.color("#FFF")])')
+    expect(out.toString()).toBe('let foo = $J.expr([value.foo, $J.ws(), $J.color("#FFF")])')
   })
 
   it('rule #13', async () => {
     const node = await parse('@let foo: $(value.foo && value.bar)')
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('let foo = (value.foo && value.bar)')
+    expect(out.toString()).toBe('let foo = (value.foo && value.bar)')
   })
 
   it('rule #14', async () => {
     const node = await parse('@mixin foo {}')
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('let foo = function() { return $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)}')
+    expect(out.toString()).toBe(
+      'let foo = function() { return $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)}'
+    )
   })
 
   it('rule #15', async () => {
     const node = await parse('@mixin foo() {}')
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('let foo = function() { return $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)}')
+    expect(out.toString()).toBe(
+      'let foo = function() { return $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)}'
+    )
   })
 
   it('rule #16', async () => {
     const node = await parse('@mixin foo(bar, foo: 1px) {}')
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('let foo = function(bar, foo = $J.num({\n  value: 1,\n  unit: "px"\n})) { return $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)}')
+    expect(out.toString()).toBe(
+      'let foo = function(bar, foo = $J.num({\n  value: 1,\n  unit: "px"\n})) { return $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)}'
+    )
   })
 
   it('rule #17', async () => {
     const node = await parse('@include each($list, $mixin);')
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('$J.include($J.call({\n  name: "each",\n  value: $J.list([\n    list,\n    mixin\n  ]),\n  ref: () => each,\n}))')
+    expect(out.toString()).toBe(
+      '$J.include($J.call({\n  name: "each",\n  value: $J.list([\n    list,\n    mixin\n  ]),\n  ref: () => each,\n}))'
+    )
   })
 
   it('rule #18', async () => {
     const node = await parse('@include $each(list, mixin);')
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('$J.include(each(list, mixin))')
+    expect(out.toString()).toBe('$J.include(each(list, mixin))')
   })
 
   it('rule #19', async () => {
@@ -149,7 +156,9 @@ describe('CST-to-AST', () => {
         }
       }`
     )
-    expect(node.toString()).to.eq('@supports (property: value) {\n  @media (max-size: 2px) {\n    @supports (whatever: something) {\n      .inner {\n        property: value;\n      }\n    }\n  }\n}\n')
+    expect(node.toString()).toBe(
+      '@supports (property: value) {\n  @media (max-size: 2px) {\n    @supports (whatever: something) {\n      .inner {\n        property: value;\n      }\n    }\n  }\n}\n'
+    )
   })
 
   it('rule #20', async () => {
@@ -157,10 +166,12 @@ describe('CST-to-AST', () => {
       '&:hover {a:b}'
     )
     node.value[0].toModule(context, out)
-    expect(out.toString()).to.eq('$J.rule({\n  sels: $J.list([\n    $J.sel([$J.amp(), $J.el($J.anon(":hover"))])\n  ]),\n  value: $J.ruleset(\n    (() => {\n      const $OUT = []\n      $OUT.push($J.decl({\n        name: $J.expr([$J.anon("a")]),\n        value: $J.anon("b")\n      }))\n      return $OUT\n    })()\n  )},[1,1,0,1,13,12])')
+    expect(out.toString()).toBe(
+      '$J.rule({\n  sels: $J.list([\n    $J.sel([$J.amp(), $J.el($J.anon(":hover"))])\n  ]),\n  value: $J.ruleset(\n    (() => {\n      const $OUT = []\n      $OUT.push($J.decl({\n        name: $J.expr([$J.anon("a")]),\n        value: $J.anon("b")\n      }))\n      return $OUT\n    })()\n  )},[1,1,0,1,13,12])'
+    )
 
     node = node.eval(context)
-    expect(node.value[0].toString()).to.eq(':hover {\n  a: b;\n}')
+    expect(node.value[0].toString()).toBe(':hover {\n  a: b;\n}')
   })
 
   it('rule #21', async () => {
@@ -174,7 +185,7 @@ describe('CST-to-AST', () => {
       `
     )
     node = node.eval(context)
-    expect(node.toString()).to.eq('a:hover,\nb:hover {\n  background: blue;\n}\n')
+    expect(node.toString()).toBe('a:hover,\nb:hover {\n  background: blue;\n}\n')
   })
 
   it('rule #22', async () => {
@@ -188,7 +199,7 @@ describe('CST-to-AST', () => {
       `
     )
     node = node.eval(context)
-    expect(node.toString()).to.eq('a + c,\nb + c {\n  background: blue;\n}\n')
+    expect(node.toString()).toBe('a + c,\nb + c {\n  background: blue;\n}\n')
   })
 
   it('rule #23', async () => {
@@ -202,7 +213,7 @@ describe('CST-to-AST', () => {
       `
     )
     node = node.eval(context)
-    expect(node.toString()).to.eq('[foo]a,\n[foo]b,\n[foo]c {\n  background: blue;\n}\n')
+    expect(node.toString()).toBe('[foo]a,\n[foo]b,\n[foo]c {\n  background: blue;\n}\n')
   })
 
   it('rule #24', async () => {
@@ -216,7 +227,7 @@ describe('CST-to-AST', () => {
       `
     )
     node = node.eval(context)
-    expect(node.toString()).to.eq('a + a,\nb + a,\na + b,\nb + b {\n  background: blue;\n}\n')
+    expect(node.toString()).toBe('a + a,\nb + a,\na + b,\nb + b {\n  background: blue;\n}\n')
   })
 
   it('rule #25', async () => {
@@ -232,7 +243,7 @@ describe('CST-to-AST', () => {
       `
     )
     node = node.eval(context)
-    expect(node.toString()).to.eq('@media all {\n  a b {\n    color: rebeccapurple;\n  }\n}\n')
+    expect(node.toString()).toBe('@media all {\n  a b {\n    color: rebeccapurple;\n  }\n}\n')
   })
 
   it('rule #26', async () => {
@@ -247,7 +258,9 @@ describe('CST-to-AST', () => {
       `
     )
     node = node.eval(context)
-    expect(node.toString()).to.eq('a {\n  color: blue;\n}\n@media all {\n  a {\n    color: rebeccapurple;\n  }\n}\n')
+    expect(node.toString()).toBe(
+      'a {\n  color: blue;\n}\n@media all {\n  a {\n    color: rebeccapurple;\n  }\n}\n'
+    )
   })
 
   it('rule #27', async () => {
@@ -271,19 +284,21 @@ describe('CST-to-AST', () => {
       `
     )
     node = node.eval(context)
-    expect(node.toString()).to.eq('a b {\n  one: 1;\n}\na b:hover {\n  two: 2;\n}\na c {\n  three: 3;\n  five: 5;\n}\na c d {\n  four: 4;\n}\n')
+    expect(node.toString()).toBe(
+      'a b {\n  one: 1;\n}\na b:hover {\n  two: 2;\n}\na c {\n  three: 3;\n  five: 5;\n}\na c d {\n  four: 4;\n}\n'
+    )
   })
 
   it('rule #28', async () => {
     let node = await parse('& { .box { a: b; } }')
     node = node.eval(context)
-    expect(node.toString()).to.eq('.box {\n  a: b;\n}\n')
+    expect(node.toString()).toBe('.box {\n  a: b;\n}\n')
   })
 
   it('rule #29', async () => {
     let node = await parse('&, & { .box { a: b; } }')
     node = node.eval(context)
-    expect(node.toString()).to.eq('.box,\n.box {\n  a: b;\n}\n')
+    expect(node.toString()).toBe('.box,\n.box {\n  a: b;\n}\n')
   })
 })
 

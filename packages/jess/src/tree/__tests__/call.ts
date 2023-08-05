@@ -1,5 +1,3 @@
-import { expect } from 'chai'
-import 'mocha'
 import { call, list, num } from '..'
 import { Context } from '../../context'
 import { OutputCollector } from '../../output'
@@ -16,7 +14,7 @@ describe('Call', () => {
       name: 'rgb',
       value: list([num(100), num(100), num(100)])
     })
-    expect(`${rule}`).to.eq('rgb(100, 100, 100)')
+    expect(`${rule}`).toBe('rgb(100, 100, 100)')
   })
   it('should serialize to a module', () => {
     const rule = call({
@@ -24,6 +22,8 @@ describe('Call', () => {
       value: list([num(100), num(100), num(100)])
     })
     rule.toModule(context, out)
-    expect(out.toString()).to.eq('$J.call({\n  name: "rgb",\n  value: $J.list([\n    $J.num({\n      value: 100,\n      unit: ""\n    }),\n    $J.num({\n      value: 100,\n      unit: ""\n    }),\n    $J.num({\n      value: 100,\n      unit: ""\n    })\n  ]),\n  ref: () => rgb,\n})')
+    expect(out.toString()).toBe(
+      '$J.call({\n  name: "rgb",\n  value: $J.list([\n    $J.num({\n      value: 100,\n      unit: ""\n    }),\n    $J.num({\n      value: 100,\n      unit: ""\n    }),\n    $J.num({\n      value: 100,\n      unit: ""\n    })\n  ]),\n  ref: () => rgb,\n})'
+    )
   })
 })

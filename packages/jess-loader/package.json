@@ -11,7 +11,7 @@
     "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
     "compile": "tsc -b tsconfig.json",
-    "test": "ts-mocha test/**/*.ts"
+    "test": "jest"
   },
   "peerDependencies": {
     "jess": "^1.0.8-alpha.2",

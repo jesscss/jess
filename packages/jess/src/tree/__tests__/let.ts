@@ -1,5 +1,3 @@
-import { expect } from 'chai'
-import 'mocha'
 import { set, expr, coll, keyval, anon } from '..'
 import { Context } from '../../context'
 import { OutputCollector } from '../../output'
@@ -20,9 +18,9 @@ describe('Let', () => {
       name: 'brandColor',
       value: expr([anon('#eee')])
     }))
-    expect(`${rule}`).to.eq('@let brandColor: #eee;')
+    expect(`${rule}`).toBe('@let brandColor: #eee;')
     rule.toModule(context, out)
-    expect(out.toString()).to.eq('let brandColor = $J.expr([$J.anon("#eee")])')
+    expect(out.toString()).toBe('let brandColor = $J.expr([$J.anon("#eee")])')
   })
 
   it('should serialize a @let collection', () => {
@@ -50,11 +48,11 @@ describe('Let', () => {
         ])
       })
     )
-    expect(`${rule}`).to.eq(
+    expect(`${rule}`).toBe(
       '@let brand {\n  global {\n    dark: #000;\n  }\n  dark: #222;\n  light: #eee;\n}'
     )
     rule.toModule(context, out)
-    expect(out.toString()).to.eq(
+    expect(out.toString()).toBe(
       'brand = $J.merge({}, $J.get($VARS, \'brand\'))\nbrand.global = {}\nbrand.global.dark = $J.get($VARS, \'brand.global.dark\', $J.anon("#000"))\nbrand.dark = $J.get($VARS, \'brand.dark\', $J.anon("#222"))\nbrand.light = $J.get($VARS, \'brand.light\', $J.anon("#eee"))\n'
     )
   })
