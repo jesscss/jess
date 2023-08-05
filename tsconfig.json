@@ -12,6 +12,7 @@
     "lib": ["es6"],
     "baseUrl": "./packages",
     "strict": true,
+    "strictPropertyInitialization": false,
     "paths": {
       "jess": ["jess/lib"],
       "@jess/*": ["*/src"]

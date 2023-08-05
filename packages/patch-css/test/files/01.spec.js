@@ -1,12 +1,13 @@
 describe('simple test for updated CSS', function() {
   let page
+  let browser
 
-  before(async () => {
+  beforeAll(async () => {
     page = await browser.newPage()
     await page.goto('http://localhost:3000/test/files/01.html')
   })
 
-  after(async () => {
+  afterAll(async () => {
     await page.close()
   })
 

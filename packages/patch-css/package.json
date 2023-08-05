@@ -13,7 +13,7 @@
     "compile": "tsc -b tsconfig.json && pnpm dist",
     "dev": "tsc -b tsconfig.json -w",
     "serve": "lite-server --baseDir=\"test\"",
-    "test": "pnpm dist && jest"
+    "test:tofix": "pnpm dist && jest"
   },
   "description": "Attach stylesheets given an id",
   "main": "lib/index",

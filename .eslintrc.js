@@ -65,7 +65,9 @@ module.exports = {
         '@typescript-eslint/method-signature-style': 0,
         '@typescript-eslint/explicit-function-return-type': 0,
         '@typescript-eslint/no-non-null-assertion': 0,
-        '@typescript-eslint/consistent-type-definitions': 0
+        '@typescript-eslint/consistent-type-definitions': 0,
+        /** Chevrotain docs often alias $ to this */
+        '@typescript-eslint/no-this-alias': 0
       }
     },
     /** Test eslinting rules */
@@ -73,10 +75,9 @@ module.exports = {
       files: ['**/test/**/*.{js,ts}', '**/__tests__/*.{js,ts}', '**/*.test.{js,ts}'],
       env: {
         node: true,
-        mocha: true
+        jest: true
       },
       rules: {
-        '@typescript-eslint/no-this-alias': 0
       }
     }
   ]
