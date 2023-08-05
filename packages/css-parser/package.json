@@ -4,30 +4,29 @@
     "access": "public"
   },
   "version": "2.0.0-alpha.1",
-  "description": "Jess CSS parser",
+  "description": "Jess CSS base parser",
   "main": "lib/index",
   "types": "lib/index",
   "files": [
     "lib"
   ],
   "scripts": {
-    "generate": "node generate.mjs",
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
     "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
     "compile": "tsc -b tsconfig.json",
     "dev": "tsc -b tsconfig.json -w",
-    "test": "jest"
+    "test": "ts-mocha test/**/*.ts"
   },
   "author": "Matthew Dean",
   "license": "MIT",
-  "devDependencies": {
-    "@jesscss/grammar": "workspace:^2.0.0-alpha.1",
-    "@less/test-data": "^4.1.0",
-    "shelljs": "^0.8.5"
-  },
   "dependencies": {
-    "antlr4": "^4.13.0"
+    "chevrotain": "^10.5.0",
+    "xregexp": "^5.1.1"
+  },
+  "devDependencies": {
+    "@less/test-data": "^4.1.0",
+    "@types/xregexp": "^4.4.0"
   }
 }

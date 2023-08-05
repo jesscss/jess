@@ -1,84 +1,42 @@
-import {
-  CharStream,
-  CommonTokenStream,
-  type ParserRuleContext,
-  ErrorListener,
-  type Recognizer,
-  type RecognitionException,
-  DefaultErrorStrategy
-} from 'antlr4'
-import CssLexer from './generated/CssLexer'
-import CssParser from './generated/CssParser'
-import CssParserListener from './generated/CssParserListener'
-import { type ConditionalKeys } from 'type-fest'
+import type { IToken, ILexingResult } from 'chevrotain'
+import { Lexer } from 'chevrotain'
+import { Tokens, Fragments } from './cssTokens'
+import type { CstNode } from './cssParser'
+import { CssParser } from './cssParser'
+import { createTokens } from './util'
 
-type ParserMethods = ConditionalKeys<CssParser, () => ParserRuleContext>
+export * from './cssTokens'
+export * from './util'
+export * from './cssParser'
 
-class SyntaxError<T> extends Error {
-  line!: number
-  column!: number
-  symbol!: T
+export interface IParseResult<T extends CssParser = CssParser> {
+  cst: CstNode
+  lexerResult: ILexingResult
+  parser: T
 }
-class CssParserErrorListener<T> extends ErrorListener<T> {
-  errors: Error[] = []
-  syntaxError(recognizer: Recognizer<T>, offendingSymbol: T, line: number, column: number, msg: string, e: RecognitionException | undefined) {
-    const error = new SyntaxError<T>(msg)
-    error.line = line
-    error.column = column
-    error.symbol = offendingSymbol
-    this.errors.push(error)
-    console.log(`${line}:${column} - ${msg}`, offendingSymbol)
+
+export class Parser {
+  lexer: Lexer
+  parser: CssParser
+
+  constructor() {
+    const { tokens, T } = createTokens(Fragments, Tokens)
+    this.lexer = new Lexer(tokens, {
+      ensureOptimizations: true,
+      // Always run the validations during testing (dev flows).
+      // And avoid validation during productive flows to reduce the Lexer's startup time.
+      skipValidations: process.env.JESS_TESTING_MODE !== 'true'
+    })
+    this.parser = new CssParser(tokens, T)
   }
 
-  reset() {
-    this.errors = []
+  parse(text: string): IParseResult {
+    const parser = this.parser
+    const lexerResult = this.lexer.tokenize(text)
+    const lexedTokens: IToken[] = lexerResult.tokens
+    parser.input = lexedTokens
+    const cst = parser.root()
+
+    return { cst, lexerResult, parser }
   }
-}
-
-class CssParserErrorStrategy extends DefaultErrorStrategy {
-
-}
-
-const errorStrategy = new CssParserErrorStrategy()
-const errorListener = new CssParserErrorListener()
-
-/**
- * Creates better warnings and errors for the parser
- */
-class CssParserNormalizeListener extends CssParserListener {
-  enterInnerQualifiedRule = (ctx: ParserRuleContext): void => {
-    console.log(ctx)
-  }
-}
-
-const parseListeners = [new CssParserNormalizeListener()]
-
-/**
- * This exposes the parser, so that anyone downstream can
- * alter error listeners or parse strategies before
- * processing.
- */
-export const getParser = (input: string) => {
-  const chars = new CharStream(input)
-  const lexer = new CssLexer(chars)
-  const tokens = new CommonTokenStream(lexer)
-  const parser = new CssParser(tokens)
-  parser._errHandler = errorStrategy
-  errorListener.reset()
-  parser.removeErrorListeners()
-  parser.addErrorListener(errorListener)
-  parser._parseListeners = parseListeners
-  return parser
-}
-
-export const parseTree = (input: string, startRule: ParserMethods = 'stylesheet') => {
-  const parser = getParser(input)
-  const tree = parser[startRule]()
-  return { tree, parser, errors: errorListener.errors }
-}
-
-export const parse = (input: string, startRule: ParserMethods = 'stylesheet') => {
-  const { tree, parser, errors } = parseTree(input, startRule)
-  const output = tree.toStringTree(null, parser)
-  return { tree, parser, errors, output }
 }
