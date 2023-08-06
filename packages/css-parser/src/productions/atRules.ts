@@ -1,5 +1,4 @@
-import { IToken } from 'chevrotain'
-import type { CssParser, CstChild, CstNode } from '../cssParser'
+import type { CssParser, CstChild } from '../cssParser'
 
 export default function(this: CssParser, $: CssParser) {
   $.atRule = $.RULE('atRule',
@@ -126,10 +125,10 @@ export default function(this: CssParser, $: CssParser) {
     return {
       name: 'mediaQuery',
       children: [
-        $.OPTION(() => {
-          $.CONSUME($.T.Only)
+        ...($.OPTION(() => [
+          $.CONSUME($.T.Only),
           $._()
-        }),
+        ]) ?? [undefined, undefined]),
         $.SUBRULE($.mediaCondition)
       ]
     }
@@ -183,7 +182,7 @@ export default function(this: CssParser, $: CssParser) {
   )
 
   $.mediaFeature = $.RULE('mediaFeature',
-    (afterAnd: boolean) => ({
+    (afterAnd?: boolean) => ({
       name: 'mediaFeature',
       children: [
         $.OR([

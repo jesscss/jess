@@ -4,8 +4,8 @@ import type {
   IParserConfig,
   BaseParser,
   IRuleConfig,
-  IToken
-
+  IToken,
+  ParserMethod
 } from 'chevrotain'
 import type { TokenMap } from './util'
 import root from './productions/root'
@@ -17,7 +17,7 @@ import values from './productions/values'
 
 export type { IToken }
 
-export type Rule<T extends any = any> = (idxInCallingRule?: number, ...args: any[]) => T
+export type Rule<T = CstNode, F extends (...args: any[]) => T = (...args: any[]) => T> = ParserMethod<Parameters<F>, ReturnType<F>>
 
 /**
  * CST structure as follows
@@ -51,7 +51,7 @@ export interface ILocationInfo {
   endColumn: number
 }
 
-export type CstChild = CstNode | IToken
+export type CstChild = CstNode | IToken | undefined
 
 export interface CstNode {
   name: string
@@ -61,14 +61,14 @@ export interface CstNode {
 
 export class CssParser extends EmbeddedActionsParser {
   T: TokenMap
-  _: Function
+  _: (idx?: number) => IToken | undefined
 
   option: BaseParser['option']
   consume: BaseParser['consume']
 
   /** Productions */
-  root: Rule<CstNode>
-  primary: Rule
+  root: Rule
+  primary: Rule<CstChild[]>
   rule: Rule
   atRule: Rule
   knownAtRule: Rule
@@ -88,8 +88,8 @@ export class CssParser extends EmbeddedActionsParser {
 
   /** blocks */
   qualifiedRule: Rule
-  testQualifiedRule: Rule
-  testQualifiedRuleExpression: Rule
+  testQualifiedRule: Rule<void>
+  testQualifiedRuleExpression: Rule<void>
   block: Rule
   curlyBlock: Rule
   customBlock: Rule
@@ -127,6 +127,8 @@ export class CssParser extends EmbeddedActionsParser {
 
   protected currIdx: number
 
+  // declare SUBRULE: SubruleMethodOpts<CssParser>['SUBRULE']
+
   constructor(
     tokens: TokenType[],
     T: TokenMap,
@@ -153,13 +155,13 @@ export class CssParser extends EmbeddedActionsParser {
   }
 
   /** Capture location information for CST nodes */
-  public CAPTURE(func: () => any) {
+  public CAPTURE<T extends () => any>(func: T) {
     if (!this.RECORDING_PHASE) {
       const startIndex = this.currIdx + 1
       const result = func()
       const endIndex = this.currIdx
 
-      if (result && result.name) {
+      if (result?.name) {
         const startToken = this.input[startIndex]
         const endToken = this.input[endIndex]
 
@@ -182,22 +184,24 @@ export class CssParser extends EmbeddedActionsParser {
     return func()
   }
 
-  protected RULE<T>(name: string, impl: (...implArgs: any[]) => T, config?: IRuleConfig<T>) {
-    return super.RULE(
+  protected RULE<T = any, F extends (...args: any[]) => T = (...args: any[]) => T>(
+    name: string, impl: F, config?: IRuleConfig<ReturnType<F>>
+  ) {
+    return super.RULE<F>(
       name,
-      (...args: any[]) => this.CAPTURE(() => impl(...args)),
+      ((...args) => this.CAPTURE(() => impl(...args))) as F,
       config
     )
   }
 
-  protected OVERRIDE_RULE<T>(
+  protected OVERRIDE_RULE<T = any, F extends (...args: any[]) => T = (...args: any[]) => T>(
     name: string,
-    impl: (...implArgs: any[]) => T,
-    config?: IRuleConfig<T>
+    impl: F,
+    config?: IRuleConfig<ReturnType<F>>
   ) {
-    return super.OVERRIDE_RULE(
+    return super.OVERRIDE_RULE<F>(
       name,
-      (...args: any[]) => this.CAPTURE(() => impl(...args)),
+      ((...args: any[]) => this.CAPTURE(() => impl(...args))) as F,
       config
     )
   }

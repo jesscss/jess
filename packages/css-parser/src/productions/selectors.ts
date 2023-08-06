@@ -1,4 +1,4 @@
-import type { CssParser, CstNode, CstChild } from '../cssParser'
+import type { IToken, CssParser, CstNode, CstChild } from '../cssParser'
 
 export default function(this: CssParser, $: CssParser) {
   /** A comma-separated list of selectors */
@@ -37,7 +37,7 @@ export default function(this: CssParser, $: CssParser) {
    * @see https://www.w3.org/TR/selectors-4/#structure
    */
   $.complexSelector = $.RULE('complexSelector', () => {
-    const children: CstNode[] = [
+    const children: Array<CstNode | IToken | undefined> = [
       $.SUBRULE($.compoundSelector)
     ]
     $.MANY(() => children.push($.SUBRULE($.combinatorSelector)))
@@ -171,7 +171,7 @@ export default function(this: CssParser, $: CssParser) {
           /** Handle functions parsed as idents (like `not`) */
           $.OPTION2(() => {
             pseudoName.push($.CONSUME($.T.LParen))
-            args = $.SUBRULE($.expressionList),
+            args = $.SUBRULE($.expressionList)
             R = $.CONSUME($.T.RParen)
           })
         }
@@ -180,7 +180,7 @@ export default function(this: CssParser, $: CssParser) {
         /** e.g. :pseudo(...) */
         ALT: () => {
           pseudoName.push($.CONSUME($.T.Function))
-          args = $.SUBRULE2($.expressionList),
+          args = $.SUBRULE2($.expressionList)
           R = $.CONSUME2($.T.RParen)
         }
       }

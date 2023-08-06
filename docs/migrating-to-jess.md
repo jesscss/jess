@@ -40,7 +40,7 @@ width: ($width * 2);
 ```
 **Jess**
 ```scss
-width: ~($width * 2);
+width: <$width * 2>;
 ```
 
 ### Mixins
@@ -70,7 +70,7 @@ width: ~($width * 2);
   width: ~($size * 1px);
 }
 .box {
-  ~mixin(50);
+  $mixin(50);
 }
 ```
 

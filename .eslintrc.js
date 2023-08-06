@@ -21,11 +21,13 @@ module.exports = {
     node: true,
     browser: true
   },
-  extends: ['standard'],
-  rules: {
-    ...jsRules
-  },
+  rules: {},
   overrides: [
+    {
+      files: ['*.js'],
+      extends: ['standard'],
+      rules: { ...jsRules }
+    },
     {
       files: ['*.ts', '*.tsx'],
       plugins: ['@typescript-eslint'],
@@ -37,17 +39,13 @@ module.exports = {
         project: './tsconfig.json'
       },
       rules: {
-        ...jsRules,
-        'func-call-spacing': 0,
+        'eol-last': 0,
+        camelcase: jsRules.camelcase,
+        '@typescript-eslint/space-before-function-paren': jsRules['space-before-function-paren'],
         '@typescript-eslint/func-call-spacing': 'error',
 
         /** conflicts with https://typescript-eslint.io/rules/no-floating-promises/ */
         'no-void': 0,
-        '@typescript-eslint/space-before-function-paren': ['error', {
-          anonymous: 'never',
-          named: 'never',
-          asyncArrow: 'always'
-        }],
         /** Sometimes this forces awkward assignments */
         '@typescript-eslint/consistent-type-assertions': 0,
         /**

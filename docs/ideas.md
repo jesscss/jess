@@ -33,10 +33,10 @@ $myFunction($sass-var);
 //    CSS keywords (including colors) and functions are plain identifiers.
 
 // Parenthesized expressions
-.selector~($expr) {
-  prop: ~($value + 1);
+.selector<$expr> {
+  prop: <$value + 1>;
 }
-~($myFunction())
+<$myFunction()>
 ```
 
 ## Features

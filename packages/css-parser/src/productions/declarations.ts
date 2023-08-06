@@ -3,13 +3,13 @@ import type { CssParser, CstNode, IToken } from '../cssParser'
 export interface Declaration extends CstNode {
   name: 'declaration'
   children: [
-    name: IToken,
-    postNameWs: IToken,
+    name: CstNode,
+    postNameWs: IToken | undefined,
     assign: IToken,
-    preValueWs: IToken,
+    preValueWs: IToken | undefined,
     value: CstNode,
-    important: CstNode,
-    semi: IToken
+    important: CstNode | undefined,
+    semi: IToken | undefined
   ]
 }
 
@@ -59,7 +59,12 @@ export default function(this: CssParser, $: CssParser) {
     })
   )
 
-  /** "color" in "color: red" */
+  /**
+   * "color" in "color: red"
+   *
+   * This is a CstNode vs. an IToken so its more flexibly
+   * over-rideable by Less, which can embed other
+   */
   $.property = $.RULE('property',
     () => ({
       name: 'property',
@@ -76,5 +81,8 @@ export default function(this: CssParser, $: CssParser) {
     })
   )
 
-  $.customProperty = $.RULE('customProperty', () => $.CONSUME($.T.CustomProperty))
+  $.customProperty = $.RULE('customProperty', () => ({
+    name: 'property',
+    children: [$.CONSUME($.T.CustomProperty)]
+  }))
 }
