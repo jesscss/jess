@@ -12,8 +12,6 @@ import {
 // TODO: get rid of xRegExp dep
 import * as XRegExp from 'xregexp'
 
-export * from './cst'
-
 export enum LexerType {
   NA,
   SKIPPED
@@ -22,11 +20,12 @@ export enum LexerType {
 export type TokenMap = Record<string, TokenType>
 
 export interface rawTokenConfig
-  extends Omit<ITokenConfig, 'longer_alt' | 'categories' | 'pattern' | 'group'> {
-  pattern: TokenPattern | LexerType | [string, Function]
+  extends Omit<ITokenConfig, 'longer_alt' | 'categories' | 'pattern' | 'group' | 'start_chars_hint'> {
+  pattern: TokenPattern | LexerType | readonly [string, Function]
   group?: ITokenConfig['group'] | LexerType
   longer_alt?: string
-  categories?: string[]
+  categories?: readonly string[]
+  start_chars_hint?: readonly string[]
 }
 
 interface ILexer {

@@ -89,38 +89,44 @@ export function groupCapture(this: RegExp, text: string, startOffset: number) {
 /**
  * Anything that is not 'BlockMarker' will be parsed as a generic 'Value',
  * so 'Value' can be considered `!BlockMarker`
+ *
+ * @todo Change to Map implementation? May allow easier replacement of
+ * tokens, in extended parsers, as well as easier TokenMap.
  */
-export const Tokens: rawTokenConfig[] = [
+export const Tokens = [
   { name: 'Value', pattern: LexerType.NA },
   { name: 'NonIdent', pattern: LexerType.NA },
   { name: 'AtName', pattern: LexerType.NA },
+  { name: 'MfLt', pattern: LexerType.NA },
+  { name: 'MfGt', pattern: LexerType.NA },
   // This can match anything, so it must be given the lowest priority
   { name: 'Unknown', pattern: /[\u0000-\uffff]/ },
   { name: 'BlockMarker', pattern: LexerType.NA },
   { name: 'ListMarker', pattern: LexerType.NA },
   { name: 'CompareOperator', pattern: LexerType.NA },
+  { name: 'Slash', pattern: LexerType.NA },
   { name: 'Selector', pattern: LexerType.NA },
   { name: 'Combinator', pattern: LexerType.NA },
   { name: 'Color', pattern: LexerType.NA },
   { name: 'Function', pattern: LexerType.NA },
   { name: 'Assign', pattern: LexerType.NA },
   // TODO: can use string literals for simple patterns (e.g: /\)/ vs ')')
-  { name: 'Gt', pattern: />/, categories: ['CompareOperator', 'Combinator'] },
-  { name: 'Lt', pattern: /</, categories: ['CompareOperator'] },
-  { name: 'GtEq', pattern: />=/, categories: ['CompareOperator'] },
-  { name: 'LtEq', pattern: /<=/, categories: ['CompareOperator'] },
+  { name: 'Gt', pattern: />/, categories: ['CompareOperator', 'Combinator', 'MfGt'] },
+  { name: 'Lt', pattern: /</, categories: ['CompareOperator', 'MfLt'] },
+  { name: 'GtEq', pattern: />=/, categories: ['CompareOperator', 'MfGt'] },
+  { name: 'LtEq', pattern: /<=/, categories: ['CompareOperator', 'MfGt'] },
   { name: 'LCurly', pattern: /{/, categories: ['BlockMarker'] },
   { name: 'RCurly', pattern: /}/, categories: ['BlockMarker'] },
   { name: 'LParen', pattern: /\(/, categories: ['BlockMarker'] },
   { name: 'RParen', pattern: /\)/, categories: ['BlockMarker'] },
   { name: 'LSquare', pattern: /\[/, categories: ['BlockMarker'] },
   { name: 'RSquare', pattern: /\]/, categories: ['BlockMarker'] },
-  { name: 'SemiColon', pattern: /;/, categories: ['BlockMarker'] },
+  { name: 'Semi', pattern: /;/, categories: ['BlockMarker'] },
   { name: 'AdditionOperator', pattern: LexerType.NA },
   { name: 'MultiplicationOperator', pattern: LexerType.NA },
   { name: 'Plus', pattern: /\+/, categories: ['AdditionOperator', 'Combinator'] },
   { name: 'Minus', pattern: /-/, categories: ['AdditionOperator'] },
-  { name: 'Divide', pattern: /\//, categories: ['MultiplicationOperator'] },
+  { name: 'Divide', pattern: /\//, categories: ['MultiplicationOperator', 'Slash'] },
   { name: 'Comma', pattern: /,/, categories: ['BlockMarker'] },
   { name: 'Colon', pattern: /:/, categories: ['BlockMarker', 'Assign'] },
   { name: 'AttrMatchOperator', pattern: LexerType.NA },
@@ -129,7 +135,8 @@ export const Tokens: rawTokenConfig[] = [
   { name: 'Star', pattern: /\*/, categories: ['MultiplicationOperator'] },
   { name: 'Tilde', pattern: /~/, categories: ['Combinator'] },
   /** a namespace or column combinator */
-  { name: 'Pipe', pattern: /\|\|?/, categories: ['Combinator'] },
+  { name: 'Pipe', pattern: /|/, categories: ['Combinator'] },
+  { name: 'Column', pattern: /||/, categories: ['Combinator'] },
   { name: 'AttrMatch', pattern: /[*~|^$]=/, categories: ['AttrMatchOperator'] },
   { name: 'Ident', pattern: LexerType.NA },
   { name: 'PropertyName', pattern: LexerType.NA },
@@ -168,7 +175,7 @@ export const Tokens: rawTokenConfig[] = [
     categories: ['Uri']
   },
   {
-    name: 'StringLiteral',
+    name: 'String',
     pattern: '{{string1}}|{{string2}}'
   },
   {
@@ -195,8 +202,19 @@ export const Tokens: rawTokenConfig[] = [
     categories: ['BlockMarker', 'AtName']
   },
   {
+    name: 'AtPage',
+    pattern: /@page/i,
+    longer_alt: 'AtKeyword',
+    categories: ['BlockMarker', 'AtName']
+  },
+  {
+    name: 'AtFontFace',
+    pattern: /@font-face/i,
+    categories: ['BlockMarker', 'AtName']
+  },
+  {
     name: 'AtNested',
-    pattern: /@page|@font-face|@keyframes|@viewport|@document/i,
+    pattern: /@keyframes|@viewport|@document/i,
     longer_alt: 'AtKeyword',
     categories: ['BlockMarker', 'AtName']
   },
@@ -206,6 +224,7 @@ export const Tokens: rawTokenConfig[] = [
     longer_alt: 'AtKeyword',
     categories: ['BlockMarker', 'AtName']
   },
+  /** Not a rule, but a special token */
   {
     name: 'Charset',
     pattern: '@charset{{ws}}?(?:{{string1}}|{{string2}});'
@@ -214,6 +233,7 @@ export const Tokens: rawTokenConfig[] = [
     name: 'UnicodeRange',
     pattern: /[uU]\+[0-9a-fA-F?]+(-[0-9a-fA-F?]+)?/
   },
+  /** Selectors */
   {
     name: 'Ampersand',
     pattern: /&/,
@@ -228,6 +248,25 @@ export const Tokens: rawTokenConfig[] = [
     pattern: '#{{ident}}',
     categories: ['Selector']
   },
+  {
+    name: 'NthPseudoClass',
+    pattern: /:(?:nth-child|nth-last-child|nth-of-type|nth-last-of-type)/i
+  },
+  {
+    name: 'FunctionalPseudoClass',
+    pattern: /:(?:is|not|where|has)/i
+  },
+
+  /** @see https://developer.mozilla.org/en-US/docs/Web/CSS/@page */
+  {
+    name: 'PagePseudoClass',
+    pattern: /:(?:first|left|right|blank)/i
+  },
+
+  /** Nth Keywords */
+  { name: 'NthOdd', pattern: /odd/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+  { name: 'NthEven', pattern: /even/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+  { name: 'Of', pattern: /of/, longer_alt: 'PlainIdent', categories: ['Ident'] },
 
   {
     name: 'ColorIntStart',
@@ -288,10 +327,37 @@ export const Tokens: rawTokenConfig[] = [
     categories: ['Number']
   },
   {
+    name: 'NthDimensionSigned',
+    pattern: /[+-]\d+n/
+  },
+  {
+    name: 'NthDimension',
+    pattern: /\d+n/
+  },
+  {
+    name: 'MathConstant',
+    pattern: /pi|e|-?infinity|nan/i,
+    longer_alt: 'PlainIdent',
+    categories: ['Ident']
+  },
+  /** Special functions */
+  {
+    name: 'Calc',
+    pattern: /calc/i,
+    longer_alt: 'PlainIdent',
+    categories: ['Ident']
+  },
+  {
+    name: 'Var',
+    pattern: /var/i,
+    longer_alt: 'PlainIdent',
+    categories: ['Ident']
+  },
+  {
     name: 'WS',
     pattern: ['{{wsorcomment}}', groupCapture],
     start_chars_hint: [' ', '\t', '\n', '\r', '\f', '/'],
     line_breaks: true,
     categories: ['BlockMarker']
   }
-]
+] as const satisfies readonly rawTokenConfig[]
