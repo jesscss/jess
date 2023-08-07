@@ -1,12 +1,7 @@
-import {
-  CstParser,
-  type TokenType,
-  type IParserConfig,
-  type BaseParser,
-  type ConsumeMethodOpts,
-  type IToken
-} from "chevrotain";
-import type { TokenMap } from './util'
+parser grammar CssParser;
+
+options
+  { tokenVocab = CssLexer; }
 
 /**
   Note that whitespace is WS* and not consumed as
@@ -29,188 +24,57 @@ import type { TokenMap } from './util'
   for qualified rules vs declarations, but it can
   get super-complicated quickly.
 */
-type Rule = ReturnType<CstParser['RULE']>
+stylesheet
+  : CHARSET? main EOF
+  ;
 
+main
+  : (WS
+    | qualifiedRule
+    | atRule
+  )*
+  ;
 
-class CssParser extends CstParser {
-  _: (idx?: number) => IToken | undefined
+qualifiedRule
+  : selectorList WS* LCURLY declarationList RCURLY
+  ;
 
-  stylesheet: Rule
-  main: Rule
-  qualifiedRule: Rule
-  atRule: Rule
-  selectorList: Rule
-  declarationList: Rule
-  forgivingSelectorList: Rule
-  classSelector: Rule
-  pseudoSelector: Rule
-  attributeSelector: Rule
-  nthValue: Rule
+/**
+  https://www.w3.org/TR/css-nesting-1/
 
-  constructor(
-    tokens: TokenType[],
-    T: TokenMap,
-    config: IParserConfig = {
-      maxLookahead: 1,
-      recoveryEnabled: true
-    }
-  ) {
-    super(tokens, config)
+  NOTE: implementers should throw a parsing
+  error if the selectorlist starts with an identifier
+*/
+innerQualifiedRule
+  : forgivingSelectorList WS* LCURLY declarationList RCURLY
+  ; 
 
-    const $ = this
+/*** SELECTORS ***/
+/** @see https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors  */
+/**
+  A selector with a single component, such as a single id selector
+  or type selector, that's not used in combination with or contains
+  any other selector component or combinator
+    .e.g `a` | `#selected` | `.foo`
 
-    $._ = function(idx: number = 0, options?: ConsumeMethodOpts) {
-      // +10 to avoid conflicts with other OPTION in the calling rule.
-      return $.option(idx + 10, () => $.consume(idx + 10, T.WS, options))
-    }
-  
-    // stylesheet
-    //   : CHARSET? main EOF
-    //   ;
-    $.RULE('stylesheet', () => {
-      $.OPTION(() => {
-        $.CONSUME(T.Charset)
-      })
-      $.SUBRULE($.main)
-    })
+  @todo Define known pseudos
 
-    // main
-    //   : (WS
-    //     | qualifiedRule
-    //     | atRule
-    //   )*
-    //   ;
-    $.RULE('main', () => {
-      $.MANY(() => {
-        $.OR([
-          { ALT: () => $.CONSUME(T.WS) },
-          { ALT: () => $.SUBRULE($.qualifiedRule) },
-          { ALT: () => $.SUBRULE($.atRule) }
-        ])
-      })
-    })
+  NOTE: A COLOR_IDENT_START token is a valid ID
+*/
+simpleSelector
+  : classSelector
+  | ID
+  | COLOR_IDENT_START
+  | identifier
+  | AMPERSAND
+  | STAR
+  | pseudoSelector
+  | attributeSelector
+  ;
 
-    // qualifiedRule
-    //   : selectorList WS* LCURLY declarationList RCURLY
-    //   ;
-    $.RULE('qualifiedRule', () => {
-      $.SUBRULE($.selectorList)
-      $.OPTION(() => {
-        $.CONSUME(T.WS)
-      })
-      $.CONSUME(T.LCurly)
-      $.SUBRULE($.declarationList)
-      $.CONSUME(T.RCurly)
-    })
-
-    /**
-      https://www.w3.org/TR/css-nesting-1/
-
-      NOTE: implementers should throw a parsing
-      error if the selectorlist starts with an identifier
-    */
-    // innerQualifiedRule
-    //   : forgivingSelectorList WS* LCURLY declarationList RCURLY
-    //   ; 
-    $.RULE('innerQualifiedRule', () => {
-      $.SUBRULE($.forgivingSelectorList)
-      $.OPTION(() => {
-        $.CONSUME(T.WS)
-      })
-      $.CONSUME(T.LCurly)
-      $.SUBRULE($.declarationList)
-      $.CONSUME(T.RCurly)
-    })
-
-    /*** SELECTORS ***/
-    /** @see https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors  */
-    /**
-      A selector with a single component, such as a single id selector
-      or type selector, that's not used in combination with or contains
-      any other selector component or combinator
-        .e.g `a` | `#selected` | `.foo`
-
-      @todo Define known pseudos
-
-      NOTE: A COLOR_IDENT_START token is a valid ID
-    */
-    // simpleSelector
-    //   : classSelector
-    //   | ID
-    //   | COLOR_IDENT_START
-    //   | identifier
-    //   | AMPERSAND
-    //   | STAR
-    //   | pseudoSelector
-    //   | attributeSelector
-    //   ;
-    $.RULE('simpleSelector', () => {
-      $.OR([
-        { ALT: () => $.SUBRULE($.classSelector) },
-        { ALT: () => $.CONSUME(T.ID) },
-        { ALT: () => $.CONSUME(T.ColorIdentStart) },
-        { ALT: () => $.CONSUME(T.Ident) },
-        { ALT: () => $.CONSUME(T.Ampersand) },
-        { ALT: () => $.CONSUME(T.Star) },
-        { ALT: () => $.SUBRULE($.pseudoSelector) },
-        { ALT: () => $.SUBRULE($.attributeSelector) }
-      ])
-    })
-
-    // classSelector
-    //   : DOT identifier
-    //   ;
-    $.RULE('classSelector', () => {
-      $.CONSUME(T.Dot)
-      $.CONSUME(T.Ident)
-    })
-
-    // pseudoSelector
-    //   : NTH_PSEUDO_CLASS '(' WS* nthValue WS* ')'
-    //   | FUNCTIONAL_PSEUDO_CLASS '(' WS* forgivingSelectorList WS* ')'
-    //   | COLON COLON? identifier ('(' anyInnerValue* ')')?
-    //   ;
-    $.RULE('pseudoSelector', () => {
-      $.OR([
-        { ALT: () => {
-          $.CONSUME(T.NthPseudoClass)
-          $.CONSUME(T.LParen)
-          $._(0)
-          $.SUBRULE($.nthValue)
-          $._(1)
-          $.CONSUME(T.RParen)
-        }},
-        { ALT: () => {
-          $.CONSUME(T.FunctionalPseudoClass)
-          $.CONSUME(T.LParen)
-          $._(0)
-          $.SUBRULE($.forgivingSelectorList)
-          $._(1)
-          $.CONSUME(T.RParen)
-        }},
-        { ALT: () => {
-          $.CONSUME(T.Colon)
-          $.OPTION(() => {
-            $.CONSUME(T.Colon)
-          })
-          $.CONSUME(T.Ident)
-          $.OPTION2(() => {
-            $.CONSUME(T.LParen)
-            $.MANY(() => {
-              $.CONSUME2(T.Value)
-            })
-            $.CONSUME3(T.RParen)
-          })
-        }}
-      ])
-    })
-  
-
-    if ($.constructor === CssParser) {
-      $.performSelfAnalysis()
-    }
-  }
-}
+classSelector
+  : DOT identifier
+  ;
 
 pseudoSelector
   : NTH_PSEUDO_CLASS '(' WS* nthValue WS* ')'

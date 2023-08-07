@@ -37,7 +37,7 @@ export const Fragments: Array<[string, string]> = [
 
 interface Match { value: string, index: number }
 
-class matchValue implements Match {
+class MatchValue implements Match {
   value: string
   index: number
 
@@ -71,9 +71,9 @@ export function groupCapture(this: RegExp, text: string, startOffset: number) {
         if (i > 0 && group) {
           const item = payload[i - 1]
           if (item) {
-            item.push(new matchValue(group, match.index))
+            item.push(new MatchValue(group, match.index))
           } else {
-            payload[i - 1] = [new matchValue(group, match.index)]
+            payload[i - 1] = [new MatchValue(group, match.index)]
           }
         }
       })
@@ -139,12 +139,20 @@ export const Tokens: rawTokenConfig[] = [
   { name: 'CDCToken', pattern: /-->/, group: LexerType.SKIPPED },
   /** Ignore BOM */
   { name: 'UnicodeBOM', pattern: /\uFFFE/, group: LexerType.SKIPPED },
-  { name: 'AttrFlag', pattern: /[is]/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+  { name: 'AttrFlag', pattern: /[is]/i, longer_alt: 'PlainIdent', categories: ['Ident'] },
   { name: 'PlainFunction', pattern: '{{ident}}\\(', categories: ['BlockMarker', 'Function'] },
+
+  /** Logical Keywords */
   { name: 'And', pattern: /and/, longer_alt: 'PlainIdent', categories: ['Ident'] },
   { name: 'Or', pattern: /or/, longer_alt: 'PlainIdent', categories: ['Ident'] },
   { name: 'Not', pattern: /not/, longer_alt: 'PlainIdent', categories: ['Ident'] },
   { name: 'Only', pattern: /only/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+
+  /** Query words */
+  { name: 'Screen', pattern: /screen/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+  { name: 'Print', pattern: /print/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+  { name: 'All', pattern: /all/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+
   { name: 'AtKeyword', pattern: '@{{ident}}', categories: ['BlockMarker', 'AtName'] },
   { name: 'Uri', pattern: LexerType.NA },
   {
@@ -170,42 +178,50 @@ export const Tokens: rawTokenConfig[] = [
   },
   {
     name: 'AtImport',
-    pattern: /@import/,
+    pattern: /@import/i,
     longer_alt: 'AtKeyword',
     categories: ['BlockMarker', 'AtName']
   },
   {
     name: 'AtMedia',
-    pattern: /@media/,
+    pattern: /@media/i,
     longer_alt: 'AtKeyword',
     categories: ['BlockMarker', 'AtName']
   },
   {
     name: 'AtSupports',
-    pattern: /@supports/,
+    pattern: /@supports/i,
     longer_alt: 'AtKeyword',
     categories: ['BlockMarker', 'AtName']
   },
   {
     name: 'AtNested',
-    pattern: /@page|@font-face|@keyframes|@viewport|@document/,
+    pattern: /@page|@font-face|@keyframes|@viewport|@document/i,
     longer_alt: 'AtKeyword',
     categories: ['BlockMarker', 'AtName']
   },
   {
     name: 'AtNonNested',
-    pattern: /@charset|@namespace/,
+    pattern: /@namespace/i,
     longer_alt: 'AtKeyword',
     categories: ['BlockMarker', 'AtName']
+  },
+  {
+    name: 'Charset',
+    pattern: '@charset{{ws}}?(?:{{string1}}|{{string2}});'
   },
   {
     name: 'UnicodeRange',
     pattern: /[uU]\+[0-9a-fA-F?]+(-[0-9a-fA-F?]+)?/
   },
   {
-    name: 'DotName',
-    pattern: '\\.{{ident}}',
+    name: 'Ampersand',
+    pattern: /&/,
     categories: ['Selector']
+  },
+  {
+    name: 'Dot',
+    pattern: '\\.'
   },
   {
     name: 'HashName',
