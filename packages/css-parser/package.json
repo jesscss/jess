@@ -23,6 +23,7 @@
   "license": "MIT",
   "dependencies": {
     "chevrotain": "^10.5.0",
+    "chevrotain-allstar": "~0.3.0",
     "xregexp": "^5.1.1"
   },
   "devDependencies": {

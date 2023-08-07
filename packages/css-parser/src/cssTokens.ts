@@ -354,6 +354,12 @@ export const Tokens = [
     categories: ['Ident']
   },
   {
+    name: 'Supports',
+    pattern: /supports/i,
+    longer_alt: 'PlainIdent',
+    categories: ['Ident']
+  },
+  {
     name: 'WS',
     pattern: ['{{wsorcomment}}', groupCapture],
     start_chars_hint: [' ', '\t', '\n', '\r', '\f', '/'],

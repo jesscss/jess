@@ -8,6 +8,7 @@ import {
   Lexer,
   createToken
 } from 'chevrotain'
+import { type WritableDeep } from 'type-fest'
 
 // TODO: get rid of xRegExp dep
 import * as XRegExp from 'xregexp'
@@ -37,7 +38,7 @@ interface ILexer {
  * Builds proper tokens from a raw token definition.
  * This allows us to extend / modify tokens before creating them
  */
-export const createTokens = (rawFragments: string[][], rawTokens: rawTokenConfig[]): ILexer => {
+export const createTokens = (rawFragments: string[][], rawTokens: Array<WritableDeep<rawTokenConfig>>): ILexer => {
   const fragments: Record<string, RegExp> = {}
   const T: TokenMap = {}
   const tokens: TokenType[] = []
@@ -46,7 +47,7 @@ export const createTokens = (rawFragments: string[][], rawTokens: rawTokenConfig
   rawFragments.forEach(fragment => {
     fragments[fragment[0]] = XRegExp.build(fragment[1], fragments)
   })
-  rawTokens.forEach((rawToken: rawTokenConfig) => {
+  rawTokens.forEach(rawToken => {
     let { name, pattern, longer_alt, categories, group, ...rest } = rawToken
     let regExpPattern: RegExp | CustomPatternMatcherFunc
     if (pattern !== LexerType.NA) {
