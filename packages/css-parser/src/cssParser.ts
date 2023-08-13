@@ -168,9 +168,7 @@ export class CssParser extends CstParser {
     //   ;
     $.RULE('qualifiedRule', () => {
       $.SUBRULE($.selectorList)
-      $.OPTION(() => {
-        $.CONSUME(T.WS)
-      })
+      $._()
       $.CONSUME(T.LCurly)
       $.SUBRULE($.declarationList)
       $.CONSUME(T.RCurly)
@@ -187,9 +185,7 @@ export class CssParser extends CstParser {
     //   ;
     $.RULE('innerQualifiedRule', () => {
       $.SUBRULE($.forgivingSelectorList, { ARGS: [true] })
-      $.OPTION(() => {
-        $.CONSUME(T.WS)
-      })
+      $._()
       $.CONSUME(T.LCurly)
       $.SUBRULE($.declarationList)
       $.CONSUME(T.RCurly)
@@ -377,13 +373,9 @@ export class CssParser extends CstParser {
     //   ;
     $.RULE('complexSelector', (inDeclarationList?: boolean) => {
       $.SUBRULE($.compoundSelector, { ARGS: [inDeclarationList] })
-      $.MANY(() => {
-        $._(1)
-        $.OPTION(() => {
-          $.CONSUME(T.Combinator)
-          $._(2)
-        })
-        $.SUBRULE2($.compoundSelector)
+      $._()
+      $.OPTION(() => {
+        $.SUBRULE($.relativeSelector)
       })
     })
 
@@ -428,11 +420,12 @@ export class CssParser extends CstParser {
     //   ;
     $.RULE('selectorList', () => {
       $.SUBRULE($.complexSelector)
+      $._(1)
       $.MANY(() => {
-        $._(1)
         $.CONSUME(T.Comma)
         $._(2)
         $.SUBRULE2($.complexSelector)
+        $._(3)
       })
     })
 
@@ -454,7 +447,6 @@ export class CssParser extends CstParser {
               $.SUBRULE($.declaration)
             })
             $.MANY(() => {
-              $._(2)
               $.CONSUME(T.Semi)
               $.SUBRULE2($.declarationList)
             })
@@ -499,7 +491,7 @@ export class CssParser extends CstParser {
             $.CONSUME(T.CustomProperty)
             $._(4)
             $.CONSUME2(T.Assign)
-            $.SUBRULE2($.customValue)
+            $.AT_LEAST_ONE(() => $.SUBRULE2($.customValue))
           }
         }
       ])
@@ -556,21 +548,21 @@ export class CssParser extends CstParser {
         {
           ALT: () => {
             $.CONSUME(T.LParen)
-            $.SUBRULE($.innerCustomValue)
+            $.MANY(() => $.SUBRULE($.innerCustomValue))
             $.CONSUME(T.RParen)
           }
         },
         {
           ALT: () => {
             $.CONSUME(T.LSquare)
-            $.SUBRULE2($.innerCustomValue)
+            $.MANY2(() => $.SUBRULE2($.innerCustomValue))
             $.CONSUME(T.RSquare)
           }
         },
         {
           ALT: () => {
             $.CONSUME(T.LCurly)
-            $.SUBRULE3($.innerCustomValue)
+            $.MANY3(() => $.SUBRULE3($.innerCustomValue))
             $.CONSUME(T.RCurly)
           }
         }
@@ -583,22 +575,24 @@ export class CssParser extends CstParser {
     //   ;
     $.RULE('valueList', () => {
       $.SUBRULE($.spacedValue)
+      $._(1)
       $.MANY(() => {
-        $._(1)
         $.OR([
           { ALT: () => $.CONSUME(T.Comma) },
           { ALT: () => $.CONSUME(T.Slash) }
         ])
         $._(2)
         $.SUBRULE2($.spacedValue)
+        $._(3)
       })
     })
 
     $.RULE('spacedValue', () => {
       $.SUBRULE($.value)
+      $._(1)
       $.MANY(() => {
-        $._()
         $.SUBRULE2($.value)
+        $._(2)
       })
     })
 
@@ -662,14 +656,15 @@ export class CssParser extends CstParser {
     //   ;
     $.RULE('mathSum', () => {
       $.SUBRULE($.mathProduct)
+      $._(1)
       $.MANY(() => {
-        $._(0, { LABEL: 'WS1' })
         $.OR([
           { ALT: () => $.CONSUME(T.Plus) },
           { ALT: () => $.CONSUME(T.Minus) }
         ])
-        $._(1, { LABEL: 'WS2' })
+        $._(2)
         $.SUBRULE2($.mathProduct)
+        $._(3)
       })
     })
 

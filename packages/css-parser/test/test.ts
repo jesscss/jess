@@ -11,8 +11,8 @@ const cssParser = new Parser()
 /**
  * @todo - write error cases
  */
-describe('can parse all CSS stylesheets', () => {
-  glob.sync('test/css/**/*.css')
+describe.only('can parse all CSS stylesheets', () => {
+  glob.sync(path.join(__dirname, 'css/**/*.css'))
     .sort()
     .forEach(file => {
       if (!file.includes('errors')) {
@@ -20,7 +20,6 @@ describe('can parse all CSS stylesheets', () => {
           const result = fs.readFileSync(file)
           const contents = result.toString()
           const { cst, lexerResult, parser } = cssParser.parse(contents)
-          console.log('parsed')
           expect(lexerResult.errors.length).toBe(0)
           expect(parser.errors.length).toBe(0)
 
