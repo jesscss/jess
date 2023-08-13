@@ -135,8 +135,8 @@ const tokens = () => ({
       { name: 'Star', pattern: /\*/, categories: ['MultiplicationOperator'] },
       { name: 'Tilde', pattern: /~/, categories: ['Combinator'] },
       /** a namespace or column combinator */
-      { name: 'Pipe', pattern: /|/, categories: ['Combinator'] },
-      { name: 'Column', pattern: /||/, categories: ['Combinator'] },
+      { name: 'Pipe', pattern: /\|/, categories: ['Combinator'] },
+      { name: 'Column', pattern: /\|\|/, categories: ['Combinator'] },
       { name: 'AttrMatch', pattern: /[*~|^$]=/, categories: ['AttrMatchOperator'] },
       { name: 'Ident', pattern: LexerType.NA },
       { name: 'PropertyName', pattern: LexerType.NA },
@@ -152,6 +152,17 @@ const tokens = () => ({
       { name: 'UnicodeBOM', pattern: /\uFFFE/, group: LexerType.SKIPPED },
       { name: 'AttrFlag', pattern: /[is]/i, longer_alt: 'PlainIdent', categories: ['Ident'] },
       { name: 'PlainFunction', pattern: '{{ident}}\\(', categories: ['BlockMarker', 'Function'] },
+
+      /**
+       * Needs to appear after keywords like `even` which starts with `e`
+       * (Reminder that tokens are in reverse order in this file.)
+       */
+      {
+        name: 'MathConstant',
+        pattern: /pi|e|-?infinity|nan/i,
+        longer_alt: 'PlainIdent',
+        categories: ['Ident']
+      },
 
       /** Logical Keywords */
       { name: 'And', pattern: /and/, longer_alt: 'PlainIdent', categories: ['Ident'] },
@@ -330,12 +341,6 @@ const tokens = () => ({
         name: 'NthDimension',
         pattern: /\d+n/
       },
-      {
-        name: 'MathConstant',
-        pattern: /pi|e|-?infinity|nan/i,
-        longer_alt: 'PlainIdent',
-        categories: ['Ident']
-      },
       /** Special functions */
       {
         name: 'Calc',
@@ -367,7 +372,17 @@ const tokens = () => ({
       /** Reference: https://www.w3.org/TR/css-syntax-3/#consume-url-token */
       {
         name: 'NonQuotedUrl',
-        pattern: '(?:[^(\'"]|{{escape}})*'
+        /**
+         * Equivalent to: /[^(\'"]+/ but a-lot less clear :(
+         * @see https://chevrotain.io/docs/guide/resolving_lexer_errors.html#COMPLEMENT
+         *
+         * Note that:
+         *  - "\u0022" === `"`
+         *  - "\u0027" === `'`
+         *  - "\u0028" === `(`
+         *  - "\u005C" === `\`
+         */
+        pattern: '(?:[\u0000-\u0021\u0023-\u0026\u0029-\u005B\u005D-\uFFFF]|{{escape}})+'
       },
       {
         name: 'UrlEnd',

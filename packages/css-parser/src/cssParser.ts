@@ -4,7 +4,9 @@ import {
   type TokenType,
   type IParserConfig,
   type ConsumeMethodOpts,
-  type IToken
+  type IToken,
+  type CstNode,
+  type ParserMethod
 } from 'chevrotain'
 import { LLStarLookaheadStrategy } from 'chevrotain-allstar'
 
@@ -33,7 +35,7 @@ export type TokenMap = Record<CssTokenType, TokenType>
   for qualified rules vs declarations, but it can
   get super-complicated quickly.
 */
-type Rule = ReturnType<CstParser['RULE']>
+type Rule<F extends () => void = () => void> = ParserMethod<Parameters<F>, CstNode>
 
 export class CssParser extends CstParser {
   _: (idx?: number, options?: ConsumeMethodOpts) => IToken | undefined
@@ -44,20 +46,21 @@ export class CssParser extends CstParser {
   atRule: Rule
   selectorList: Rule
   declarationList: Rule
-  forgivingSelectorList: Rule
+  forgivingSelectorList: Rule<(inDeclarationList?: boolean) => void>
   classSelector: Rule
   pseudoSelector: Rule
   attributeSelector: Rule
   nthValue: Rule
-  complexSelector: Rule
-  simpleSelector: Rule
-  compoundSelector: Rule
-  relativeSelector: Rule
+  complexSelector: Rule<(inDeclarationList?: boolean) => void>
+  simpleSelector: Rule<(inDeclarationList?: boolean) => void>
+  compoundSelector: Rule<(inDeclarationList?: boolean) => void>
+  relativeSelector: Rule<(inDeclarationList?: boolean) => void>
 
   declaration: Rule
   innerQualifiedRule: Rule
   innerAtRule: Rule
   valueList: Rule
+  spacedValue: Rule
   value: Rule
   customValue: Rule
   innerCustomValue: Rule
@@ -100,6 +103,15 @@ export class CssParser extends CstParser {
   /** `@supports` syntax */
   supportsCondition: Rule
   supportsInParens: Rule
+
+  /**
+   * `@supports` is defined differently in spec,
+   * but parsing is much like media queries,
+   * so we structure the same for symmetry
+   */
+  supportsNot: Rule
+  supportsAnd: Rule
+  supportsOr: Rule
 
   /** General purpose subrules */
   anyOuterValue: Rule
@@ -174,7 +186,7 @@ export class CssParser extends CstParser {
     //   : forgivingSelectorList WS* LCURLY declarationList RCURLY
     //   ;
     $.RULE('innerQualifiedRule', () => {
-      $.SUBRULE($.forgivingSelectorList)
+      $.SUBRULE($.forgivingSelectorList, { ARGS: [true] })
       $.OPTION(() => {
         $.CONSUME(T.WS)
       })
@@ -205,12 +217,16 @@ export class CssParser extends CstParser {
     //   | pseudoSelector
     //   | attributeSelector
     //   ;
-    $.RULE('simpleSelector', () => {
+    $.RULE('simpleSelector', (inDeclarationList?: boolean) => {
       $.OR([
+        {
+          /** In CSS Nesting, the first selector cannot be an identifier */
+          GATE: () => !inDeclarationList,
+          ALT: () => $.CONSUME(T.Ident)
+        },
         { ALT: () => $.SUBRULE($.classSelector) },
         { ALT: () => $.CONSUME(T.HashName) },
         { ALT: () => $.CONSUME(T.ColorIdentStart) },
-        { ALT: () => $.CONSUME(T.Ident) },
         { ALT: () => $.CONSUME(T.Ampersand) },
         { ALT: () => $.CONSUME(T.Star) },
         { ALT: () => $.SUBRULE($.pseudoSelector) },
@@ -344,9 +360,10 @@ export class CssParser extends CstParser {
     // compoundSelector
     //   : simpleSelector+
     //   ;
-    $.RULE('compoundSelector', () => {
-      $.AT_LEAST_ONE(() => {
-        $.SUBRULE($.simpleSelector)
+    $.RULE('compoundSelector', (inDeclarationList?: boolean) => {
+      $.SUBRULE($.simpleSelector, { ARGS: [inDeclarationList] })
+      $.MANY(() => {
+        $.SUBRULE2($.simpleSelector)
       })
     })
 
@@ -358,8 +375,8 @@ export class CssParser extends CstParser {
     // complexSelector
     //   : compoundSelector (WS* (combinator WS*)? compoundSelector)*
     //   ;
-    $.RULE('complexSelector', () => {
-      $.SUBRULE($.compoundSelector)
+    $.RULE('complexSelector', (inDeclarationList?: boolean) => {
+      $.SUBRULE($.compoundSelector, { ARGS: [inDeclarationList] })
       $.MANY(() => {
         $._(1)
         $.OPTION(() => {
@@ -378,19 +395,26 @@ export class CssParser extends CstParser {
     // relativeSelector
     //   : (combinator WS*)? complexSelector
     //   ;
-    $.RULE('relativeSelector', () => {
-      $.OPTION(() => {
-        $.CONSUME(T.Combinator)
-        $._()
-      })
-      $.SUBRULE($.complexSelector)
+    $.RULE('relativeSelector', (inDeclarationList?: boolean) => {
+      $.OR([
+        {
+          ALT: () => {
+            $.CONSUME(T.Combinator)
+            $._()
+            $.SUBRULE($.complexSelector)
+          }
+        },
+        {
+          ALT: () => $.SUBRULE2($.complexSelector, { ARGS: [inDeclarationList] })
+        }
+      ])
     })
 
     // forgivingSelectorList
     //   : relativeSelector (WS* COMMA WS* relativeSelector)*
     //   ;
-    $.RULE('forgivingSelectorList', () => {
-      $.SUBRULE($.relativeSelector)
+    $.RULE('forgivingSelectorList', (inDeclarationList?: boolean) => {
+      $.SUBRULE($.relativeSelector, { ARGS: [inDeclarationList] })
       $.MANY(() => {
         $._(1)
         $.CONSUME(T.Comma)
@@ -558,17 +582,23 @@ export class CssParser extends CstParser {
     //   : value+ ((',' | '/') value+)*
     //   ;
     $.RULE('valueList', () => {
-      $.AT_LEAST_ONE(() => {
-        $.SUBRULE($.value)
-      })
+      $.SUBRULE($.spacedValue)
       $.MANY(() => {
+        $._(1)
         $.OR([
           { ALT: () => $.CONSUME(T.Comma) },
           { ALT: () => $.CONSUME(T.Slash) }
         ])
-        $.AT_LEAST_ONE2(() => {
-          $.SUBRULE2($.value)
-        })
+        $._(2)
+        $.SUBRULE2($.spacedValue)
+      })
+    })
+
+    $.RULE('spacedValue', () => {
+      $.SUBRULE($.value)
+      $.MANY(() => {
+        $._()
+        $.SUBRULE2($.value)
       })
     })
 
@@ -587,7 +617,6 @@ export class CssParser extends CstParser {
     //   ;
     $.RULE('value', () => {
       $.OR([
-        { ALT: () => $.CONSUME(T.WS) },
         { ALT: () => $.CONSUME(T.Ident) },
         { ALT: () => $.CONSUME(T.Dimension) },
         { ALT: () => $.CONSUME(T.Number) },
@@ -864,11 +893,13 @@ export class CssParser extends CstParser {
         {
           ALT: () => {
             $.SUBRULE($.mediaInParens)
-            $._()
-            $.OR2([
-              { ALT: () => { $.MANY(() => $.SUBRULE($.mediaAnd)) } },
-              { ALT: () => { $.MANY2(() => $.SUBRULE($.mediaOr)) } }
-            ])
+            $.MANY(() => {
+              $._()
+              $.OR2([
+                { ALT: () => { $.SUBRULE($.mediaAnd) } },
+                { ALT: () => { $.SUBRULE($.mediaOr) } }
+              ])
+            })
           }
         }
       ])
@@ -1093,7 +1124,9 @@ export class CssParser extends CstParser {
     //   // | '(' WS* anyValue WS* ')'
     //   ;
     $.RULE('generalEnclosed', () => {
-      $.SUBRULE($.function)
+      $.CONSUME(T.LParen)
+      $.SUBRULE($.anyToken)
+      $.CONSUME(T.RParen)
     })
 
     /**
@@ -1149,29 +1182,16 @@ export class CssParser extends CstParser {
     //   ;
     $.RULE('supportsCondition', () => {
       $.OR([
+        { ALT: () => $.SUBRULE($.supportsNot) },
         {
           ALT: () => {
-            $.CONSUME(T.Not)
             $.SUBRULE($.supportsInParens)
-          }
-        },
-        {
-          ALT: () => {
-            $.SUBRULE2($.supportsInParens)
             $.MANY(() => {
-              $._(1)
-              $.CONSUME(T.And)
-              $.SUBRULE3($.supportsInParens)
-            })
-          }
-        },
-        {
-          ALT: () => {
-            $.SUBRULE4($.supportsInParens)
-            $.MANY2(() => {
-              $._(2)
-              $.CONSUME(T.Or)
-              $.SUBRULE5($.supportsInParens)
+              $._()
+              $.OR2([
+                { ALT: () => { $.SUBRULE($.supportsAnd) } },
+                { ALT: () => { $.SUBRULE($.supportsOr) } }
+              ])
             })
           }
         }
@@ -1189,22 +1209,34 @@ export class CssParser extends CstParser {
           ALT: () => {
             $.CONSUME(T.LParen)
             $._(1)
-            $.SUBRULE($.supportsCondition)
+            $.OR2([
+              { ALT: () => $.SUBRULE($.supportsCondition) },
+              { ALT: () => $.SUBRULE($.declaration) }
+            ])
             $._(2)
             $.CONSUME(T.RParen)
           }
         },
-        {
-          ALT: () => {
-            $.CONSUME2(T.LParen)
-            $._(3)
-            $.SUBRULE($.declaration)
-            $._(4)
-            $.CONSUME2(T.RParen)
-          }
-        },
         { ALT: () => $.SUBRULE($.generalEnclosed) }
       ])
+    })
+
+    $.RULE('supportsNot', () => {
+      $.CONSUME(T.Not)
+      $._()
+      $.SUBRULE($.supportsInParens)
+    })
+
+    $.RULE('supportsAnd', () => {
+      $.CONSUME(T.And)
+      $._()
+      $.SUBRULE($.supportsInParens)
+    })
+
+    $.RULE('supportsOr', () => {
+      $.CONSUME(T.Or)
+      $._()
+      $.SUBRULE($.supportsInParens)
     })
 
     // https://www.w3.org/TR/css-cascade-4/#at-import

@@ -17,7 +17,7 @@
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
     "compile": "tsc -b tsconfig.json",
     "dev": "tsc -b tsconfig.json -w",
-    "test": "vitest"
+    "test": "cross-env TEST=true vitest"
   },
   "author": "Matthew Dean",
   "license": "MIT",

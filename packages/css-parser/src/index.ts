@@ -22,10 +22,10 @@ export class Parser {
   constructor() {
     const { lexer, T } = createLexerDefinition(cssFragments(), cssTokens())
     this.lexer = new Lexer(lexer, {
-      // ensureOptimizations: true,
+      ensureOptimizations: true,
       // Always run the validations during testing (dev flows).
       // And avoid validation during productive flows to reduce the Lexer's startup time.
-      skipValidations: process.env.JESS_TESTING_MODE !== 'true'
+      skipValidations: process.env.TEST !== 'true'
     })
     this.parser = new CssParser(lexer, T as TokenMap)
   }

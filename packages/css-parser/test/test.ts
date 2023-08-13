@@ -20,6 +20,7 @@ describe('can parse all CSS stylesheets', () => {
           const result = fs.readFileSync(file)
           const contents = result.toString()
           const { cst, lexerResult, parser } = cssParser.parse(contents)
+          console.log('parsed')
           expect(lexerResult.errors.length).toBe(0)
           expect(parser.errors.length).toBe(0)
 
