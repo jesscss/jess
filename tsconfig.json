@@ -16,7 +16,10 @@
     "paths": {
       "jess": ["jess/lib"],
       "@jess/*": ["*/src"]
-    }
+    },
+    "plugins": [
+      { "transform": "ts-macros" }
+    ]
   },
   "exclude": ["node_modules", "lib"]
 }

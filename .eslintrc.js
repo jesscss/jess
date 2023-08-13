@@ -40,7 +40,6 @@ module.exports = {
       },
       rules: {
         'eol-last': 0,
-        camelcase: jsRules.camelcase,
         '@typescript-eslint/space-before-function-paren': jsRules['space-before-function-paren'],
         '@typescript-eslint/func-call-spacing': 'error',
 
@@ -65,7 +64,36 @@ module.exports = {
         '@typescript-eslint/no-non-null-assertion': 0,
         '@typescript-eslint/consistent-type-definitions': 0,
         /** Chevrotain docs often alias $ to this */
-        '@typescript-eslint/no-this-alias': 0
+        '@typescript-eslint/no-this-alias': 0,
+        '@typescript-eslint/naming-convention': [
+          'error',
+          // {
+          //   selector: 'default',
+          //   format: ['camelCase']
+          // },
+
+          {
+            selector: 'variable',
+            format: ['camelCase', 'UPPER_CASE', 'PascalCase']
+          },
+          {
+            selector: 'variable',
+            modifiers: ['destructured'],
+            format: null
+          },
+
+          {
+            selector: 'memberLike',
+            modifiers: ['private'],
+            format: ['camelCase'],
+            leadingUnderscore: 'require'
+          },
+
+          {
+            selector: 'typeLike',
+            format: ['PascalCase']
+          }
+        ]
       }
     },
     /** Test eslinting rules */

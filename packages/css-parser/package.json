@@ -17,7 +17,7 @@
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
     "compile": "tsc -b tsconfig.json",
     "dev": "tsc -b tsconfig.json -w",
-    "test": "jest"
+    "test": "vitest"
   },
   "author": "Matthew Dean",
   "license": "MIT",
@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "@less/test-data": "^4.1.0",
-    "@types/xregexp": "^4.4.0"
+    "@types/xregexp": "^4.4.0",
+    "jsdom": "~22.1.0"
   }
 }

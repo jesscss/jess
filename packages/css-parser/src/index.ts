@@ -1,9 +1,9 @@
-import type { IToken, ILexingResult } from 'chevrotain'
+import type { IToken, ILexingResult, CstNode } from 'chevrotain'
 import { Lexer } from 'chevrotain'
-import { Tokens, Fragments } from './cssTokens'
-import type { CstNode } from './cssParser'
+import { cssTokens, cssFragments } from './cssTokens'
+import type { TokenMap } from './cssParser'
 import { CssParser } from './cssParser'
-import { createTokens } from './util'
+import { createLexerDefinition } from './util'
 
 export * from './cssTokens'
 export * from './util'
@@ -20,14 +20,14 @@ export class Parser {
   parser: CssParser
 
   constructor() {
-    const { tokens, T } = createTokens(Fragments, Tokens)
-    this.lexer = new Lexer(tokens, {
-      ensureOptimizations: true,
+    const { lexer, T } = createLexerDefinition(cssFragments(), cssTokens())
+    this.lexer = new Lexer(lexer, {
+      // ensureOptimizations: true,
       // Always run the validations during testing (dev flows).
       // And avoid validation during productive flows to reduce the Lexer's startup time.
       skipValidations: process.env.JESS_TESTING_MODE !== 'true'
     })
-    this.parser = new CssParser(tokens, T)
+    this.parser = new CssParser(lexer, T as TokenMap)
   }
 
   parse(text: string): IParseResult {
@@ -35,7 +35,7 @@ export class Parser {
     const lexerResult = this.lexer.tokenize(text)
     const lexedTokens: IToken[] = lexerResult.tokens
     parser.input = lexedTokens
-    const cst = parser.root()
+    const cst = parser.stylesheet()
 
     return { cst, lexerResult, parser }
   }

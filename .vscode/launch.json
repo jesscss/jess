@@ -6,15 +6,15 @@
   "configurations": [
 
     {
-      "name": "Debug ANTLR4 grammar",
-      "type": "antlr-debug",
+      "type": "node",
       "request": "launch",
-      "input": "${workspaceFolder}/packages/css-parser/test/css/tab.css",
-      "grammar": "${workspaceFolder}/packages/grammar/CssParser.g4",
-      // "actionFile": "${workspaceFolder}/packages/antlr/actions.js",
-      "startRule": "stylesheet",
-      "printParseTree": true,
-      "visualParseTree": true
+      "name": "Debug Current Test File",
+      "autoAttachChildProcesses": true,
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+      "program": "${workspaceRoot}/node_modules/vitest/vitest.mjs",
+      "args": ["run", "${relativeFile}"],
+      "smartStep": true,
+      "console": "integratedTerminal"
     },
     {
       "type": "node",
@@ -38,19 +38,16 @@
       "type": "node",
       "request": "launch",
       "name": "CSS Parsing Tests",
+      "autoAttachChildProcesses": true,
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
       "cwd": "${workspaceFolder}/packages/css-parser",
-      "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
+      "program": "${workspaceFolder}/node_modules/vitest/vitest.mjs",
       "args": [
-        "-r",
-        "ts-node/register",
-        "-u",
-        "bdd",
-        "--timeout",
-        "999999",
-        "--colors",
+        "run",
         "${workspaceFolder}/packages/css-parser/test/**/*.ts"
       ],
-      "internalConsoleOptions": "openOnSessionStart"
+      "smartStep": true,
+      "console": "integratedTerminal",
     },
     {
       "type": "node",

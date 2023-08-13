@@ -33,16 +33,20 @@
     "puppeteer": "^19.10.1",
     "rollup": "^3.20.7",
     "shx": "^0.3.4",
+    "ts-macros": "~2.3.1",
     "ts-node": "^9.1.1",
+    "ts-patch": "~3.0.2",
     "tslib": "^2.5.0",
     "type-fest": "^3.8.0",
-    "typescript": "^5.0.4"
+    "typescript": "^5.0.4",
+    "vitest": "~0.34.1"
   },
   "scripts": {
     "ci": "pnpm run -r ci && pnpm run lint",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'",
-    "preinstall": "npx only-allow pnpm"
+    "preinstall": "npx only-allow pnpm",
+    "prepare": "ts-patch install -s"
   },
   "repository": {
     "type": "git",

@@ -1,5 +1,6 @@
 import {
   CstParser,
+  type TokenVocabulary,
   type TokenType,
   type IParserConfig,
   type ConsumeMethodOpts,
@@ -7,9 +8,9 @@ import {
 } from 'chevrotain'
 import { LLStarLookaheadStrategy } from 'chevrotain-allstar'
 
-import type { Tokens } from './cssTokens'
+import type { CssTokenType } from './cssTokens'
 
-type TokenMap = Record<typeof Tokens[number]['name'], TokenType>
+export type TokenMap = Record<CssTokenType, TokenType>
 
 /**
   Note that whitespace is WS* and not consumed as
@@ -59,6 +60,7 @@ export class CssParser extends CstParser {
   valueList: Rule
   value: Rule
   customValue: Rule
+  innerCustomValue: Rule
 
   function: Rule
   urlFunction: Rule
@@ -102,19 +104,23 @@ export class CssParser extends CstParser {
   /** General purpose subrules */
   anyOuterValue: Rule
   anyInnerValue: Rule
+  anyToken: Rule
+  extraTokens: Rule
+  customBlock: Rule
 
   constructor(
-    tokens: TokenType[],
+    tokenVocabulary: TokenVocabulary,
     T: TokenMap,
     config: IParserConfig = {
       lookaheadStrategy: new LLStarLookaheadStrategy()
     }
   ) {
-    super(tokens, config)
+    super(tokenVocabulary, config)
 
     const $ = this
 
     $._ = function(idx: number = 0, options?: ConsumeMethodOpts) {
+      options ??= { LABEL: idx === 0 ? 'WS' : `WS${idx}` }
       // +10 to avoid conflicts with other OPTION in the calling rule.
       return $.option(idx + 10, () => $.consume(idx + 10, T.WS, options))
     }
@@ -231,31 +237,31 @@ export class CssParser extends CstParser {
           ALT: () => {
             $.CONSUME(T.NthPseudoClass)
             $.CONSUME(T.LParen)
-            $._(0, { LABEL: 'PreWS' })
+            $._(1)
             $.SUBRULE($.nthValue)
-            $._(1, { LABEL: 'PostWS' })
+            $._(2)
             $.CONSUME(T.RParen)
           }
         },
         {
           ALT: () => {
             $.CONSUME(T.FunctionalPseudoClass)
-            $.CONSUME(T.LParen)
-            $._(0, { LABEL: 'PreWS' })
+            $.CONSUME2(T.LParen)
+            $._(3)
             $.SUBRULE($.forgivingSelectorList)
-            $._(1, { LABEL: 'PostWS' })
-            $.CONSUME(T.RParen)
+            $._(4)
+            $.CONSUME2(T.RParen)
           }
         },
         {
           ALT: () => {
             $.CONSUME(T.Colon)
             $.OPTION(() => {
-              $.CONSUME(T.Colon)
+              $.CONSUME2(T.Colon)
             })
             $.CONSUME(T.Ident)
             $.OPTION2(() => {
-              $.CONSUME(T.LParen)
+              $.CONSUME3(T.LParen)
               $.MANY(() => {
                 $.SUBRULE($.anyInnerValue)
               })
@@ -290,16 +296,16 @@ export class CssParser extends CstParser {
                 {
                   ALT: () => {
                     $.CONSUME(T.Minus)
-                    $.CONSUME(T.WS)
+                    $._(1)
                     $.CONSUME(T.UnsignedInt)
                   }
                 }
               ])
             })
             $.OPTION2(() => {
-              $.CONSUME(T.WS)
+              $._(2)
               $.CONSUME(T.Of)
-              $.CONSUME2(T.WS)
+              $._(3)
               $.SUBRULE($.complexSelector)
             })
           }
@@ -312,20 +318,20 @@ export class CssParser extends CstParser {
     //   ;
     $.RULE('attributeSelector', () => {
       $.CONSUME(T.LSquare)
-      $._(0, { LABEL: 'PreWS' })
+      $._(1)
       $.CONSUME(T.Ident)
       $.OPTION(() => {
         $.CONSUME(T.AttrMatch)
-        $._(1, { LABEL: 'PreValWS' })
+        $._(2)
         $.OR([
-          { ALT: () => $.CONSUME(T.Ident) },
+          { ALT: () => $.CONSUME2(T.Ident) },
           { ALT: () => $.CONSUME(T.String) }
         ])
-        $._(2, { LABEL: 'PostValWS' })
+        $._(3)
       })
       $.OPTION2(() => {
         $.CONSUME(T.AttrFlag)
-        $._(3, { LABEL: 'PostFlagWS' })
+        $._(4)
       })
       $.CONSUME(T.RSquare)
     })
@@ -355,10 +361,10 @@ export class CssParser extends CstParser {
     $.RULE('complexSelector', () => {
       $.SUBRULE($.compoundSelector)
       $.MANY(() => {
-        $._(0, { LABEL: 'PreWS' })
+        $._(1)
         $.OPTION(() => {
           $.CONSUME(T.Combinator)
-          $._(1, { LABEL: 'PostWS' })
+          $._(2)
         })
         $.SUBRULE2($.compoundSelector)
       })
@@ -375,7 +381,7 @@ export class CssParser extends CstParser {
     $.RULE('relativeSelector', () => {
       $.OPTION(() => {
         $.CONSUME(T.Combinator)
-        $._(0)
+        $._()
       })
       $.SUBRULE($.complexSelector)
     })
@@ -386,9 +392,9 @@ export class CssParser extends CstParser {
     $.RULE('forgivingSelectorList', () => {
       $.SUBRULE($.relativeSelector)
       $.MANY(() => {
-        $._(0, { LABEL: 'PreWS' })
+        $._(1)
         $.CONSUME(T.Comma)
-        $._(1, { LABEL: 'PostWS' })
+        $._(2)
         $.SUBRULE2($.relativeSelector)
       })
     })
@@ -399,9 +405,9 @@ export class CssParser extends CstParser {
     $.RULE('selectorList', () => {
       $.SUBRULE($.complexSelector)
       $.MANY(() => {
-        $._(0, { LABEL: 'PreWS' })
+        $._(1)
         $.CONSUME(T.Comma)
-        $._(1, { LABEL: 'PostWS' })
+        $._(2)
         $.SUBRULE2($.complexSelector)
       })
     })
@@ -416,7 +422,7 @@ export class CssParser extends CstParser {
     //   )
     //   ;
     $.RULE('declarationList', () => {
-      $._(0, { LABEL: 'PreWS' })
+      $._(1)
       $.OR([
         {
           ALT: () => {
@@ -424,7 +430,7 @@ export class CssParser extends CstParser {
               $.SUBRULE($.declaration)
             })
             $.MANY(() => {
-              $._(1, { LABEL: 'PostWS' })
+              $._(2)
               $.CONSUME(T.Semi)
               $.SUBRULE2($.declarationList)
             })
@@ -454,12 +460,12 @@ export class CssParser extends CstParser {
         {
           ALT: () => {
             $.CONSUME(T.Ident)
-            $._(0, { LABEL: 'PreWS' })
+            $._(1)
             $.CONSUME(T.Assign)
-            $._(1, { LABEL: 'PostWS' })
+            $._(2)
             $.SUBRULE($.valueList)
             $.OPTION(() => {
-              $._(2, { LABEL: 'PostValWS' })
+              $._(3)
               $.CONSUME(T.Important)
             })
           }
@@ -467,9 +473,81 @@ export class CssParser extends CstParser {
         {
           ALT: () => {
             $.CONSUME(T.CustomProperty)
-            $._(3, { LABEL: 'PreWS' })
-            $.CONSUME(T.Assign)
+            $._(4)
+            $.CONSUME2(T.Assign)
             $.SUBRULE2($.customValue)
+          }
+        }
+      ])
+    })
+
+    /**
+     * @todo - This could be implemented with a multi-mode lexer?
+     * Multi-modes was the right way to do it with Antlr, but
+     * Chevrotain does not support recursive tokens very well.
+     */
+    $.RULE('customValue', () => {
+      $.OR([
+        { ALT: () => $.SUBRULE($.anyToken) },
+        { ALT: () => $.SUBRULE($.extraTokens) },
+        { ALT: () => $.SUBRULE($.customBlock) }
+      ])
+    })
+
+    /** Can also have semi-colons */
+    $.RULE('innerCustomValue', () => {
+      $.OR([
+        { ALT: () => $.CONSUME(T.Semi) },
+        { ALT: () => $.SUBRULE($.anyToken) },
+        { ALT: () => $.SUBRULE($.extraTokens) },
+        { ALT: () => $.SUBRULE($.customBlock) }
+      ])
+    })
+
+    $.RULE('anyToken', () =>
+      $.OR([
+        { ALT: () => $.CONSUME(T.Value) },
+        /** Can be in a var() function */
+        { ALT: () => $.CONSUME(T.CustomProperty) },
+        { ALT: () => $.CONSUME(T.Colon) },
+        { ALT: () => $.CONSUME(T.WS) }
+      ])
+    )
+
+    /**
+     * Extra tokens in a custom property. Should include any
+     * and every token possible (except semis), including unknown tokens.
+     */
+    $.RULE('extraTokens', () =>
+      $.OR([
+        { ALT: () => $.CONSUME(T.AtName) },
+        { ALT: () => $.CONSUME(T.Comma) },
+        { ALT: () => $.CONSUME(T.Important) },
+        { ALT: () => $.CONSUME(T.Unknown) }
+      ])
+    )
+
+    $.RULE('customBlock', () => {
+      $.OR([
+        {
+          ALT: () => {
+            $.CONSUME(T.LParen)
+            $.SUBRULE($.innerCustomValue)
+            $.CONSUME(T.RParen)
+          }
+        },
+        {
+          ALT: () => {
+            $.CONSUME(T.LSquare)
+            $.SUBRULE2($.innerCustomValue)
+            $.CONSUME(T.RSquare)
+          }
+        },
+        {
+          ALT: () => {
+            $.CONSUME(T.LCurly)
+            $.SUBRULE3($.innerCustomValue)
+            $.CONSUME(T.RCurly)
           }
         }
       ])
@@ -556,12 +634,12 @@ export class CssParser extends CstParser {
     $.RULE('mathSum', () => {
       $.SUBRULE($.mathProduct)
       $.MANY(() => {
-        $._(0, { LABEL: 'PreWS' })
+        $._(0, { LABEL: 'WS1' })
         $.OR([
           { ALT: () => $.CONSUME(T.Plus) },
           { ALT: () => $.CONSUME(T.Minus) }
         ])
-        $._(1, { LABEL: 'PostWS' })
+        $._(1, { LABEL: 'WS2' })
         $.SUBRULE2($.mathProduct)
       })
     })
@@ -572,12 +650,12 @@ export class CssParser extends CstParser {
     $.RULE('mathProduct', () => {
       $.SUBRULE($.mathValue)
       $.MANY(() => {
-        $._(0, { LABEL: 'PreWS' })
+        $._(0, { LABEL: 'WS1' })
         $.OR([
           { ALT: () => $.CONSUME(T.Star) },
           { ALT: () => $.CONSUME(T.Divide) }
         ])
-        $._(1, { LABEL: 'PostWS' })
+        $._(1, { LABEL: 'WS2' })
         $.SUBRULE2($.mathValue)
       })
     })
@@ -597,9 +675,9 @@ export class CssParser extends CstParser {
         {
           ALT: () => {
             $.CONSUME(T.LParen)
-            $._(0, { LABEL: 'PreWS' })
+            $._(0, { LABEL: 'WS1' })
             $.SUBRULE($.mathSum)
-            $._(1, { LABEL: 'PostWS' })
+            $._(1, { LABEL: 'WS2' })
             $.CONSUME(T.RParen)
           }
         }
@@ -619,12 +697,12 @@ export class CssParser extends CstParser {
           ALT: () => {
             $.CONSUME(T.Var)
             $.CONSUME(T.LParen)
-            $._(0, { LABEL: 'PreWS' })
+            $._(1)
             $.CONSUME(T.CustomProperty)
             $.OPTION(() => {
-              $._(1, { LABEL: 'PreSepWS' })
+              $._(2)
               $.CONSUME(T.Comma)
-              $._(2, { LABEL: 'PostSepWS' })
+              $._(3)
               $.SUBRULE($.valueList)
             })
             $.CONSUME(T.RParen)
@@ -633,22 +711,33 @@ export class CssParser extends CstParser {
         {
           ALT: () => {
             $.CONSUME(T.Calc)
-            $.CONSUME(T.LParen)
-            $._(0, { LABEL: 'PreWS' })
+            $.CONSUME2(T.LParen)
+            $._(4)
             $.SUBRULE($.mathSum)
-            $._(1, { LABEL: 'PostWS' })
-            $.CONSUME(T.RParen)
+            $._(5)
+            $.CONSUME2(T.RParen)
           }
         },
         {
           ALT: () => {
             $.CONSUME(T.Ident)
-            $.CONSUME(T.LParen)
-            $.SUBRULE($.valueList)
-            $.CONSUME(T.RParen)
+            $.CONSUME3(T.LParen)
+            $.SUBRULE2($.valueList)
+            $.CONSUME3(T.RParen)
           }
         }
       ])
+    })
+
+    $.RULE('urlFunction', () => {
+      $.CONSUME(T.UrlStart)
+      $._(1)
+      $.OR([
+        { ALT: () => $.CONSUME(T.String) },
+        { ALT: () => $.CONSUME(T.NonQuotedUrl) }
+      ])
+      $._(2)
+      $.CONSUME(T.UrlEnd)
     })
 
     /**
@@ -732,17 +821,17 @@ export class CssParser extends CstParser {
         {
           ALT: () => {
             $.OPTION(() => {
-              $.OR([
+              $.OR2([
                 { ALT: () => $.CONSUME(T.Not) },
                 { ALT: () => $.CONSUME(T.Only) }
               ])
-              $._(0, { LABEL: 'PreWS' })
+              $._(1)
             })
             $.SUBRULE($.mediaType)
-            $.OPTION(() => {
-              $._(1, { LABEL: 'PreSepWS' })
+            $.OPTION2(() => {
+              $._(2)
               $.CONSUME(T.And)
-              $._(2, { LABEL: 'PostSepWS' })
+              $._(3)
               $.SUBRULE($.mediaConditionWithoutOr)
             })
           }
@@ -776,9 +865,9 @@ export class CssParser extends CstParser {
           ALT: () => {
             $.SUBRULE($.mediaInParens)
             $._()
-            $.OR([
+            $.OR2([
               { ALT: () => { $.MANY(() => $.SUBRULE($.mediaAnd)) } },
-              { ALT: () => { $.MANY(() => $.SUBRULE($.mediaOr)) } }
+              { ALT: () => { $.MANY2(() => $.SUBRULE($.mediaOr)) } }
             ])
           }
         }
@@ -839,12 +928,12 @@ export class CssParser extends CstParser {
         {
           ALT: () => {
             $.CONSUME(T.LParen)
-            $._(0, { LABEL: 'PreWS' })
-            $.OR([
+            $._(1)
+            $.OR2([
               { ALT: () => $.SUBRULE($.mediaCondition) },
               { ALT: () => $.SUBRULE($.mediaFeature) }
             ])
-            $._(1, { LABEL: 'PostWS' })
+            $._(2)
             $.CONSUME(T.RParen)
           }
         },
@@ -875,12 +964,12 @@ export class CssParser extends CstParser {
           ALT: () => {
             $.CONSUME(T.Ident)
             $.OPTION(() => {
-              $._(0, { LABEL: 'PreSepWS' })
-              $.OR([
+              $._(1)
+              $.OR2([
                 {
                   ALT: () => {
                     $.CONSUME(T.Colon)
-                    $._(1, { LABEL: 'PostSepWS' })
+                    $._(2)
                     $.SUBRULE($.mfValue)
                   }
                 },
@@ -888,7 +977,7 @@ export class CssParser extends CstParser {
                 {
                   ALT: () => {
                     $.SUBRULE($.mfComparison)
-                    $._(2, { LABEL: 'PreSepWS' })
+                    $._(3)
                     $.SUBRULE($.mfNonIdentifierValue)
                   }
                 }
@@ -898,17 +987,17 @@ export class CssParser extends CstParser {
         },
         {
           ALT: () => {
-            $.SUBRULE($.mfNonIdentifierValue)
-            $._(3, { LABEL: 'PostSepWS' })
-            $.OR([
+            $.SUBRULE2($.mfNonIdentifierValue)
+            $._(4)
+            $.OR3([
               {
                 ALT: () => {
-                  $.SUBRULE($.mfComparison)
-                  $._(4, { LABEL: 'PreSepWS' })
-                  $.CONSUME(T.Ident)
+                  $.SUBRULE2($.mfComparison)
+                  $._(5)
+                  $.CONSUME2(T.Ident)
                 }
               },
-              { ALT: () => $.SUBRULE($.mediaRange) }
+              { ALT: () => $.SUBRULE2($.mediaRange) }
             ])
           }
         }
@@ -927,12 +1016,12 @@ export class CssParser extends CstParser {
         {
           ALT: () => {
             $.CONSUME(T.Lt, { LABEL: 'L' })
-            $._(0, { LABEL: 'WS1' })
+            $._(1)
             $.CONSUME(T.Ident)
             $.OPTION(() => {
-              $._(1, { LABEL: 'WS2' })
-              $.CONSUME(T.Lt, { LABEL: 'R' })
-              $._(2, { LABEL: 'WS3' })
+              $._(2)
+              $.CONSUME2(T.Lt, { LABEL: 'R' })
+              $._(3)
               $.SUBRULE($.mfValue)
             })
           }
@@ -940,13 +1029,13 @@ export class CssParser extends CstParser {
         {
           ALT: () => {
             $.CONSUME(T.Gt, { LABEL: 'L' })
-            $._(3, { LABEL: 'WS1' })
-            $.CONSUME(T.Ident)
-            $.OPTION(() => {
-              $._(4, { LABEL: 'WS2' })
-              $.CONSUME(T.Gt, { LABEL: 'R' })
-              $._(5, { LABEL: 'WS3' })
-              $.SUBRULE($.mfValue)
+            $._(4)
+            $.CONSUME2(T.Ident)
+            $.OPTION2(() => {
+              $._(5)
+              $.CONSUME2(T.Gt, { LABEL: 'R' })
+              $._(6)
+              $.SUBRULE2($.mfValue)
             })
           }
         }
@@ -963,10 +1052,10 @@ export class CssParser extends CstParser {
           ALT: () => {
             $.CONSUME(T.Number)
             $.OPTION(() => {
-              $._(0, { LABEL: 'WS1' })
+              $._(1)
               $.CONSUME(T.Slash)
-              $._(1, { LABEL: 'WS2' })
-              $.CONSUME(T.Number)
+              $._(2)
+              $.CONSUME2(T.Number)
             })
           }
         },
@@ -1068,21 +1157,21 @@ export class CssParser extends CstParser {
         },
         {
           ALT: () => {
-            $.SUBRULE($.supportsInParens)
+            $.SUBRULE2($.supportsInParens)
             $.MANY(() => {
-              $._(0, { LABEL: 'WS1' })
+              $._(1)
               $.CONSUME(T.And)
-              $.SUBRULE2($.supportsInParens)
+              $.SUBRULE3($.supportsInParens)
             })
           }
         },
         {
           ALT: () => {
-            $.SUBRULE($.supportsInParens)
+            $.SUBRULE4($.supportsInParens)
             $.MANY2(() => {
-              $._(0, { LABEL: 'WS1' })
+              $._(2)
               $.CONSUME(T.Or)
-              $.SUBRULE3($.supportsInParens)
+              $.SUBRULE5($.supportsInParens)
             })
           }
         }
@@ -1099,19 +1188,19 @@ export class CssParser extends CstParser {
         {
           ALT: () => {
             $.CONSUME(T.LParen)
-            $._(0, { LABEL: 'WS1' })
+            $._(1)
             $.SUBRULE($.supportsCondition)
-            $._(1, { LABEL: 'WS2' })
+            $._(2)
             $.CONSUME(T.RParen)
           }
         },
         {
           ALT: () => {
-            $.CONSUME(T.LParen)
-            $._(0, { LABEL: 'WS1' })
+            $.CONSUME2(T.LParen)
+            $._(3)
             $.SUBRULE($.declaration)
-            $._(1, { LABEL: 'WS2' })
-            $.CONSUME(T.RParen)
+            $._(4)
+            $.CONSUME2(T.RParen)
           }
         },
         { ALT: () => $.SUBRULE($.generalEnclosed) }
