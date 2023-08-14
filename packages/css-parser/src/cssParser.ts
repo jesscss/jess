@@ -290,31 +290,15 @@ export class CssParser extends CstParser {
         {
           ALT: () => {
             $.CONSUME(T.NthPseudoClass)
-            $.OR2([
-              {
-                GATE: noSep,
-                ALT: () => {
-                  $.CONSUME(T.LParen)
-                  $.SUBRULE($.nthValue)
-                  $.CONSUME(T.RParen)
-                }
-              }
-            ])
+            $.SUBRULE($.nthValue)
+            $.CONSUME(T.RParen)
           }
         },
         {
           ALT: () => {
-            $.CONSUME(T.FunctionalPseudoClass)
-            $.OR3([
-              {
-                GATE: noSep,
-                ALT: () => {
-                  $.CONSUME2(T.LParen)
-                  $.SUBRULE($.forgivingSelectorList)
-                  $.CONSUME2(T.RParen)
-                }
-              }
-            ])
+            $.CONSUME(T.SelectorPseudoClass)
+            $.SUBRULE($.forgivingSelectorList)
+            $.CONSUME2(T.RParen)
           }
         },
         {
@@ -330,16 +314,16 @@ export class CssParser extends CstParser {
               {
                 GATE: noSep,
                 ALT: () => $.CONSUME(T.Ident)
+              },
+              {
+                GATE: noSep,
+                ALT: () => {
+                  $.CONSUME(T.PlainFunction)
+                  $.MANY(() => $.SUBRULE($.anyInnerValue))
+                  $.CONSUME3(T.RParen)
+                }
               }
             ])
-            $.OPTION2({
-              GATE: noSep,
-              DEF: () => {
-                $.CONSUME3(T.LParen)
-                $.MANY(() => $.SUBRULE($.anyInnerValue))
-                $.CONSUME3(T.RParen)
-              }
-            })
           }
         }
       ])
@@ -549,7 +533,7 @@ export class CssParser extends CstParser {
           ALT: () => {
             $.CONSUME(T.CustomProperty)
             $.CONSUME2(T.Assign)
-            $.MANY(() => $.SUBRULE2($.customValue))
+            $.MANY(() => $.SUBRULE($.customValue))
           }
         }
       ])
@@ -603,7 +587,15 @@ export class CssParser extends CstParser {
       $.OR([
         {
           ALT: () => {
-            $.CONSUME(T.LParen)
+            $.OR2([
+              /**
+               * All tokens that have a left parentheses.
+               * These need to match a right parentheses.
+               */
+              { ALT: () => $.CONSUME(T.LParen) },
+              { ALT: () => $.CONSUME(T.Function) },
+              { ALT: () => $.CONSUME(T.FunctionalPseudoClass) }
+            ])
             $.MANY(() => $.SUBRULE($.innerCustomValue))
             $.CONSUME(T.RParen)
           }
@@ -761,12 +753,6 @@ export class CssParser extends CstParser {
         {
           ALT: () => {
             $.CONSUME(T.Var)
-            $.OR2([
-              {
-                GATE: noSep,
-                ALT: () => $.CONSUME(T.LParen)
-              }
-            ])
             $.CONSUME(T.CustomProperty)
             $.OPTION(() => {
               $.CONSUME(T.Comma)
@@ -778,25 +764,13 @@ export class CssParser extends CstParser {
         {
           ALT: () => {
             $.CONSUME(T.Calc)
-            $.OR3([
-              {
-                GATE: noSep,
-                ALT: () => $.CONSUME2(T.LParen)
-              }
-            ])
             $.SUBRULE($.mathSum)
             $.CONSUME2(T.RParen)
           }
         },
         {
           ALT: () => {
-            $.CONSUME(T.Ident)
-            $.OR4([
-              {
-                GATE: noSep,
-                ALT: () => $.CONSUME3(T.LParen)
-              }
-            ])
+            $.CONSUME(T.PlainFunction)
             $.SUBRULE2($.valueList)
             $.CONSUME3(T.RParen)
           }
@@ -1194,10 +1168,15 @@ export class CssParser extends CstParser {
     //   ;
     $.RULE('supportsCondition', () => {
       $.OR([
-        { ALT: () => $.SUBRULE($.supportsNot) },
         {
           ALT: () => {
+            $.SUBRULE($.supportsNot)
             $.SUBRULE($.supportsInParens)
+          }
+        },
+        {
+          ALT: () => {
+            $.SUBRULE2($.supportsInParens)
             $.MANY(() => {
               $.OR2([
                 { ALT: () => { $.SUBRULE($.supportsAnd) } },
@@ -1216,6 +1195,9 @@ export class CssParser extends CstParser {
     // ;
     $.RULE('supportsInParens', () => {
       $.OR([
+        {
+          ALT: () => $.SUBRULE($.function)
+        },
         {
           ALT: () => {
             $.CONSUME(T.LParen)
@@ -1370,6 +1352,7 @@ export class CssParser extends CstParser {
   }
 
   reset() {
+    super.reset()
     this.skippedIndex = 0
   }
 }

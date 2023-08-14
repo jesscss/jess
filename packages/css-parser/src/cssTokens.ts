@@ -109,6 +109,7 @@ const tokens = () => ({
       { name: 'Combinator', pattern: LexerType.NA },
       { name: 'Color', pattern: LexerType.NA },
       { name: 'Function', pattern: LexerType.NA },
+      { name: 'FunctionalPseudoClass', pattern: LexerType.NA },
       { name: 'Assign', pattern: LexerType.NA },
       // TODO: can use string literals for simple patterns (e.g: /\)/ vs ')')
       { name: 'Gt', pattern: />/, categories: ['CompareOperator', 'Combinator', 'MfGt'] },
@@ -257,11 +258,13 @@ const tokens = () => ({
       },
       {
         name: 'NthPseudoClass',
-        pattern: /:(?:nth-child|nth-last-child|nth-of-type|nth-last-of-type)/i
+        pattern: /:(?:nth-child|nth-last-child|nth-of-type|nth-last-of-type)\(/i,
+        categories: ['BlockMarker', 'FunctionalPseudoClass']
       },
       {
-        name: 'FunctionalPseudoClass',
-        pattern: /:(?:is|not|where|has)/i
+        name: 'SelectorPseudoClass',
+        pattern: /:(?:is|not|where|has)\(/i,
+        categories: ['BlockMarker', 'FunctionalPseudoClass']
       },
 
       /** @see https://developer.mozilla.org/en-US/docs/Web/CSS/@page */
@@ -344,15 +347,13 @@ const tokens = () => ({
       /** Special functions */
       {
         name: 'Calc',
-        pattern: /calc/i,
-        longer_alt: 'PlainIdent',
-        categories: ['Ident']
+        pattern: /calc\(/i,
+        categories: ['BlockMarker', 'Function']
       },
       {
         name: 'Var',
-        pattern: /var/i,
-        longer_alt: 'PlainIdent',
-        categories: ['Ident']
+        pattern: /var\(/i,
+        categories: ['BlockMarker', 'Function']
       },
       {
         name: 'Supports',
