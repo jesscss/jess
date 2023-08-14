@@ -1,9 +1,9 @@
-import type { CstChild, CstNode } from '../cssParser'
+import type { CstNode } from 'chevrotain'
 
 export const stringify = (cst: CstNode): string => {
   let output = ''
 
-  const recurseCst = (node: CstChild): void => {
+  const recurseCst = (node: CstNode): void => {
     if (!node) {
       return
     }

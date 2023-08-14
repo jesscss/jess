@@ -289,9 +289,9 @@ const tokens = () => ({
         categories: ['Color', 'Selector']
       },
       /**
-   * CSS syntax says we should identify integers as separate from numbers,
-   * probably because there are parts of the syntax where one is allowed but not the other?
-   */
+       * CSS syntax says we should identify integers as separate from numbers,
+       * probably because there are parts of the syntax where one is allowed but not the other?
+       */
       { name: 'Number', pattern: LexerType.NA },
       { name: 'Dimension', pattern: LexerType.NA },
       { name: 'Integer', pattern: LexerType.NA },
@@ -360,12 +360,24 @@ const tokens = () => ({
         longer_alt: 'PlainIdent',
         categories: ['Ident']
       },
+      // {
+      //   name: 'WS',
+      //   pattern: ['{{wsorcomment}}', groupCapture],
+      //   start_chars_hint: [' ', '\t', '\n', '\r', '\f', '/'],
+      //   line_breaks: true,
+      //   categories: ['BlockMarker']
+      // }
       {
         name: 'WS',
-        pattern: ['{{wsorcomment}}', groupCapture],
-        start_chars_hint: [' ', '\t', '\n', '\r', '\f', '/'],
+        pattern: '{{ws}}',
         line_breaks: true,
-        categories: ['BlockMarker']
+        group: 'Skipped'
+      },
+      {
+        name: 'Comment',
+        pattern: '{{comment}}',
+        line_breaks: true,
+        group: 'Skipped'
       }
     ],
     url: [

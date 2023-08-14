@@ -34,6 +34,7 @@ export class Parser {
     const parser = this.parser
     const lexerResult = this.lexer.tokenize(text)
     const lexedTokens: IToken[] = lexerResult.tokens
+    parser.skippedTokens = lexerResult.groups.Skipped
     parser.input = lexedTokens
     const cst = parser.stylesheet()
 

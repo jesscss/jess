@@ -1,0 +1,5 @@
+/** Invalid inner at-rule */
+@media screen {@content}
+
+/** @charset is not an at-rule and can't appear later in the file */
+@charset "UTF-8"
