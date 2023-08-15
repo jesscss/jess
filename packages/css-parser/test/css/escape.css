@@ -11,7 +11,7 @@ a {
 [foo=\"] { }
 [foo=\{] { }
 [foo=\(] { }
-[foo=yes\:\(it\'s\ work\)] { }
+[foo=yes\:\(it\'s\ working\)] { }
 
 \@noat { }
 

@@ -1,0 +1,1 @@
+A @charset must appear first in a CSS file.

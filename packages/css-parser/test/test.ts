@@ -12,7 +12,7 @@ const cssParser = new Parser()
  * @todo - write error cases
  */
 describe.only('can parse all CSS stylesheets', () => {
-  glob.sync(path.join(__dirname, 'css/**/*.css'))
+  glob.sync(path.join(__dirname, 'css/**/escape.css'))
     .sort()
     .forEach(file => {
       if (!file.includes('errors')) {

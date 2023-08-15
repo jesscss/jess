@@ -374,8 +374,11 @@ export class CssParser extends CstParser {
       $.CONSUME(T.LSquare)
       $.CONSUME(T.Ident)
       $.OPTION(() => {
-        $.CONSUME(T.AttrMatch)
         $.OR([
+          { ALT: () => $.CONSUME(T.Eq) },
+          { ALT: () => $.CONSUME(T.AttrMatch) }
+        ])
+        $.OR2([
           { ALT: () => $.CONSUME2(T.Ident) },
           { ALT: () => $.CONSUME(T.String) }
         ])

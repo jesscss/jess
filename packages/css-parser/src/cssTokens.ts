@@ -386,16 +386,17 @@ const tokens = () => ({
       {
         name: 'NonQuotedUrl',
         /**
-         * Equivalent to: /[^(\'"]+/ but a-lot less clear :(
+         * Equivalent to: /[^)(\'"]+/ but a-lot less clear :(
          * @see https://chevrotain.io/docs/guide/resolving_lexer_errors.html#COMPLEMENT
          *
          * Note that:
          *  - "\u0022" === `"`
          *  - "\u0027" === `'`
          *  - "\u0028" === `(`
+         *  - "\u0029" === `)`
          *  - "\u005C" === `\`
          */
-        pattern: '(?:[\u0000-\u0021\u0023-\u0026\u0029-\u005B\u005D-\uFFFF]|{{escape}})+'
+        pattern: '(?:[\\u0000-\\u0021\\u0023-\\u0026\\u002A-\\u005B\\u005D-\\uFFFF]|{{escape}})+'
       },
       {
         name: 'UrlEnd',
