@@ -3,7 +3,6 @@ import {
   type TokenVocabulary,
   type TokenType,
   type IParserConfig,
-  type ConsumeMethodOpts,
   type IToken,
   type CstNode,
   type ParserMethod,
@@ -38,10 +37,14 @@ export type TokenMap = Record<CssTokenType, TokenType>
 */
 type Rule<F extends () => void = () => void> = ParserMethod<Parameters<F>, CstNode>
 
+export interface CssParserConfig extends IParserConfig {
+  legacyMode?: boolean
+}
+
 export class CssParser extends CstParser {
-  _: (idx?: number, options?: ConsumeMethodOpts) => IToken | undefined
   skippedTokens: IToken[]
   skippedIndex = 0
+  legacyMode: boolean
 
   stylesheet: Rule
   main: Rule
@@ -49,15 +52,15 @@ export class CssParser extends CstParser {
   atRule: Rule
   selectorList: Rule
   declarationList: Rule
-  forgivingSelectorList: Rule<(inDeclarationList?: boolean) => void>
+  forgivingSelectorList: Rule<(inner?: boolean, firstSelector?: boolean) => void>
   classSelector: Rule
-  pseudoSelector: Rule
+  pseudoSelector: Rule<(inner?: boolean) => void>
   attributeSelector: Rule
   nthValue: Rule
-  complexSelector: Rule<(inDeclarationList?: boolean) => void>
-  simpleSelector: Rule<(inDeclarationList?: boolean) => void>
-  compoundSelector: Rule<(inDeclarationList?: boolean) => void>
-  relativeSelector: Rule<(inDeclarationList?: boolean) => void>
+  complexSelector: Rule<(inner?: boolean, firstSelector?: boolean) => void>
+  simpleSelector: Rule<(inner?: boolean, firstSelector?: boolean) => void>
+  compoundSelector: Rule<(inner?: boolean, firstSelector?: boolean) => void>
+  relativeSelector: Rule<(inner?: boolean, firstSelector?: boolean) => void>
   combinator: Rule
 
   declaration: Rule
@@ -80,11 +83,12 @@ export class CssParser extends CstParser {
 
   /** At Rules */
   importAtRule: Rule
-  mediaAtRule: Rule
-  innerMediaAtRule: Rule
+  mediaAtRule: Rule<(inner?: boolean) => void>
+  supportsAtRule: Rule<(inner?: boolean) => void>
+  containerAtRule: Rule<(inner?: boolean) => void>
+  atRuleBody: Rule<(inner?: boolean) => void>
   pageAtRule: Rule
   fontFaceAtRule: Rule
-  supportsAtRule: Rule
   nestedAtRule: Rule
   nonNestedAtRule: Rule
   unknownAtRule: Rule
@@ -129,20 +133,19 @@ export class CssParser extends CstParser {
   constructor(
     tokenVocabulary: TokenVocabulary,
     T: TokenMap,
-    config: IParserConfig = {
+    config: CssParserConfig = {}
+  ) {
+    const defaultConfig: CssParserConfig = {
       lookaheadStrategy: new LLStarLookaheadStrategy(),
       nodeLocationTracking: 'full'
     }
-  ) {
-    super(tokenVocabulary, config)
+
+    const { legacyMode = false, ...rest } = { ...defaultConfig, ...config }
+
+    super(tokenVocabulary, rest)
 
     const $ = this
-
-    $._ = function(idx: number = 0, options?: ConsumeMethodOpts) {
-      options ??= { LABEL: idx === 0 ? 'WS' : `WS${idx}` }
-      // +10 to avoid conflicts with other OPTION in the calling rule.
-      return $.option(idx + 10, () => $.consume(idx + 10, T.WS, options))
-    }
+    this.legacyMode = legacyMode
 
     /** Checks if there is white space or comment between tokens */
     const noSep = (whitespaceOnly = false) => {
@@ -220,7 +223,7 @@ export class CssParser extends CstParser {
     //   : forgivingSelectorList WS* LCURLY declarationList RCURLY
     //   ;
     $.RULE('innerQualifiedRule', () => {
-      $.SUBRULE($.forgivingSelectorList, { ARGS: [true] })
+      $.SUBRULE($.forgivingSelectorList, { ARGS: [true, true] })
       $.CONSUME(T.LCurly)
       $.SUBRULE($.declarationList)
       $.CONSUME(T.RCurly)
@@ -248,19 +251,23 @@ export class CssParser extends CstParser {
     //   | pseudoSelector
     //   | attributeSelector
     //   ;
-    $.RULE('simpleSelector', (inDeclarationList?: boolean) => {
+    $.RULE('simpleSelector', (inner: boolean = false, firstSelector: boolean = false) => {
       $.OR([
         {
           /** In CSS Nesting, the first selector cannot be an identifier */
-          GATE: () => !inDeclarationList,
+          GATE: () => !firstSelector,
           ALT: () => $.CONSUME(T.Ident)
+        },
+        {
+          /** In CSS Nesting, outer selector can't contain an ampersand */
+          GATE: () => inner,
+          ALT: () => $.CONSUME(T.Ampersand)
         },
         { ALT: () => $.SUBRULE($.classSelector) },
         { ALT: () => $.CONSUME(T.HashName) },
         { ALT: () => $.CONSUME(T.ColorIdentStart) },
-        { ALT: () => $.CONSUME(T.Ampersand) },
         { ALT: () => $.CONSUME(T.Star) },
-        { ALT: () => $.SUBRULE($.pseudoSelector) },
+        { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [inner] }) },
         { ALT: () => $.SUBRULE($.attributeSelector) }
       ])
     })
@@ -285,7 +292,7 @@ export class CssParser extends CstParser {
     //   | FUNCTIONAL_PSEUDO_CLASS '(' WS* forgivingSelectorList WS* ')'
     //   | COLON COLON? identifier ('(' anyInnerValue* ')')?
     //   ;
-    $.RULE('pseudoSelector', () => {
+    $.RULE('pseudoSelector', (inner?: boolean) => {
       $.OR([
         {
           ALT: () => {
@@ -297,7 +304,7 @@ export class CssParser extends CstParser {
         {
           ALT: () => {
             $.CONSUME(T.SelectorPseudoClass)
-            $.SUBRULE($.forgivingSelectorList)
+            $.SUBRULE($.forgivingSelectorList, { ARGS: [inner] })
             $.CONSUME2(T.RParen)
           }
         },
@@ -397,9 +404,9 @@ export class CssParser extends CstParser {
     // compoundSelector
     //   : simpleSelector+
     //   ;
-    $.RULE('compoundSelector', (inDeclarationList?: boolean) => {
-      $.SUBRULE($.simpleSelector, { ARGS: [inDeclarationList] })
-      $.MANY(() => $.SUBRULE2($.simpleSelector))
+    $.RULE('compoundSelector', (inner?: boolean, firstSelector?: boolean) => {
+      $.SUBRULE($.simpleSelector, { ARGS: [inner, firstSelector] })
+      $.MANY(() => $.SUBRULE2($.simpleSelector, { ARGS: [inner] }))
     })
 
     /**
@@ -410,11 +417,11 @@ export class CssParser extends CstParser {
     // complexSelector
     //   : compoundSelector (WS* (combinator WS*)? compoundSelector)*
     //   ;
-    $.RULE('complexSelector', (inDeclarationList?: boolean) => {
-      $.SUBRULE($.compoundSelector, { ARGS: [inDeclarationList] })
+    $.RULE('complexSelector', (inner?: boolean, firstSelector?: boolean) => {
+      $.SUBRULE($.compoundSelector, { ARGS: [inner, firstSelector] })
       $.MANY(() => {
         $.SUBRULE($.combinator)
-        $.SUBRULE2($.compoundSelector)
+        $.SUBRULE2($.compoundSelector, { ARGS: [inner] })
       })
     })
 
@@ -443,7 +450,7 @@ export class CssParser extends CstParser {
     // relativeSelector
     //   : (combinator WS*)? complexSelector
     //   ;
-    $.RULE('relativeSelector', (inDeclarationList?: boolean) => {
+    $.RULE('relativeSelector', (inner?: boolean, firstSelector?: boolean) => {
       $.OR([
         {
           ALT: () => {
@@ -452,7 +459,7 @@ export class CssParser extends CstParser {
           }
         },
         {
-          ALT: () => $.SUBRULE2($.complexSelector, { ARGS: [inDeclarationList] })
+          ALT: () => $.SUBRULE2($.complexSelector, { ARGS: [inner, firstSelector] })
         }
       ])
     })
@@ -460,11 +467,11 @@ export class CssParser extends CstParser {
     // forgivingSelectorList
     //   : relativeSelector (WS* COMMA WS* relativeSelector)*
     //   ;
-    $.RULE('forgivingSelectorList', (inDeclarationList?: boolean) => {
-      $.SUBRULE($.relativeSelector, { ARGS: [inDeclarationList] })
+    $.RULE('forgivingSelectorList', (inner?: boolean, firstSelector?: boolean) => {
+      $.SUBRULE($.relativeSelector, { ARGS: [inner, firstSelector] })
       $.MANY(() => {
         $.CONSUME(T.Comma)
-        $.SUBRULE2($.relativeSelector)
+        $.SUBRULE2($.relativeSelector, { ARGS: [inner] })
       })
     })
 
@@ -503,15 +510,12 @@ export class CssParser extends CstParser {
         },
         {
           ALT: () => {
-            $.SUBRULE($.declaration)
-            $.OPTION(() => {
+            $.OPTION(() => $.SUBRULE($.declaration))
+            $.OPTION2(() => {
               $.CONSUME(T.Semi)
               $.SUBRULE3($.declarationList)
             })
           }
-        },
-        {
-          ALT: () => EMPTY_ALT
         }
       ])
     })
@@ -524,7 +528,15 @@ export class CssParser extends CstParser {
       $.OR([
         {
           ALT: () => {
-            $.CONSUME(T.Ident)
+            $.OR2([
+              {
+                ALT: () => $.CONSUME(T.Ident)
+              },
+              {
+                GATE: () => $.legacyMode,
+                ALT: () => $.CONSUME(T.LegacyPropIdent)
+              }
+            ])
             $.CONSUME(T.Assign)
             $.SUBRULE($.valueList)
             $.OPTION(() => {
@@ -666,6 +678,15 @@ export class CssParser extends CstParser {
             $.CONSUME2(T.Ident)
             $.CONSUME(T.RSquare)
           }
+        },
+        {
+          /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
+          GATE: () => $.legacyMode,
+          ALT: () => $.OR2([
+            { ALT: () => $.CONSUME(T.Colon) },
+            { ALT: () => $.CONSUME(T.Dot) },
+            { ALT: () => $.CONSUME(T.Eq) }
+          ])
         }
       ])
     })
@@ -820,6 +841,7 @@ export class CssParser extends CstParser {
     /**
       Inner rules are mostly the same except they have a declarationList
       instead of a main block within {}
+      @todo - Add `@container` `@layer` `@scope`
     */
     // innerAtRule
     //   : innerMediaAtRule
@@ -827,30 +849,38 @@ export class CssParser extends CstParser {
     //   ;
     $.RULE('innerAtRule', () => {
       $.OR([
-        { ALT: () => $.SUBRULE($.innerMediaAtRule) },
+        { ALT: () => $.SUBRULE($.mediaAtRule, { ARGS: [true] }) },
+        { ALT: () => $.SUBRULE($.supportsAtRule, { ARGS: [true] }) },
         { ALT: () => $.SUBRULE($.unknownAtRule) }
+      ])
+    })
+
+    /**
+     * @see https://www.w3.org/TR/css-nesting-1/#conditionals
+     */
+    $.RULE('atRuleBody', (inner: boolean = false) => {
+      $.OR([
+        {
+          GATE: () => !inner,
+          ALT: () => {
+            $.SUBRULE($.main)
+          }
+        },
+        {
+          GATE: () => inner,
+          ALT: () => $.SUBRULE($.declarationList)
+        }
       ])
     })
 
     // mediaAtRule
     //   : MEDIA_RULE WS* mediaQuery WS* LCURLY main RCURLY
     //   ;
-    $.RULE('mediaAtRule', () => {
+    $.RULE('mediaAtRule', (inner?: boolean) => {
       $.CONSUME(T.AtMedia)
       $.SUBRULE($.mediaQuery)
       $.CONSUME(T.LCurly)
-      $.SUBRULE($.main)
-      $.CONSUME(T.RCurly)
-    })
-
-    // innerMediaAtRule
-    //   : MEDIA_RULE WS* mediaQuery WS* LCURLY declarationList RCURLY
-    //   ;
-    $.RULE('innerMediaAtRule', () => {
-      $.CONSUME(T.AtMedia)
-      $.SUBRULE($.mediaQuery)
-      $.CONSUME(T.LCurly)
-      $.SUBRULE($.declarationList)
+      $.SUBRULE($.atRuleBody, { ARGS: [inner] })
       $.CONSUME(T.RCurly)
     })
 
@@ -1156,11 +1186,11 @@ export class CssParser extends CstParser {
     // supportsAtRule
     //   : SUPPORTS_RULE WS* supportsCondition WS* LCURLY main RCURLY
     //   ;
-    $.RULE('supportsAtRule', () => {
+    $.RULE('supportsAtRule', (inner?: boolean) => {
       $.CONSUME(T.AtSupports)
       $.SUBRULE($.supportsCondition)
       $.CONSUME(T.LCurly)
-      $.SUBRULE($.main)
+      $.SUBRULE($.atRuleBody, { ARGS: [inner] })
       $.CONSUME(T.RCurly)
     })
 

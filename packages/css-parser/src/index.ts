@@ -1,8 +1,8 @@
 import type { IToken, ILexingResult, CstNode } from 'chevrotain'
 import { Lexer } from 'chevrotain'
 import { cssTokens, cssFragments } from './cssTokens'
-import type { TokenMap } from './cssParser'
 import { CssParser } from './cssParser'
+import type { TokenMap, CssParserConfig } from './cssParser'
 import { createLexerDefinition } from './util'
 
 export * from './cssTokens'
@@ -19,7 +19,7 @@ export class Parser {
   lexer: Lexer
   parser: CssParser
 
-  constructor() {
+  constructor(config: CssParserConfig = {}) {
     const { lexer, T } = createLexerDefinition(cssFragments(), cssTokens())
     this.lexer = new Lexer(lexer, {
       ensureOptimizations: true,
@@ -27,7 +27,7 @@ export class Parser {
       // And avoid validation during productive flows to reduce the Lexer's startup time.
       skipValidations: process.env.TEST !== 'true'
     })
-    this.parser = new CssParser(lexer, T as TokenMap)
+    this.parser = new CssParser(lexer, T as TokenMap, config)
   }
 
   parse(text: string): IParseResult {

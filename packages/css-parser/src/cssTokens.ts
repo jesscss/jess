@@ -140,12 +140,12 @@ const tokens = () => ({
       { name: 'Column', pattern: /\|\|/, categories: ['Combinator'] },
       { name: 'AttrMatch', pattern: /[*~|^$]=/, categories: ['AttrMatchOperator'] },
       { name: 'Ident', pattern: LexerType.NA },
-      { name: 'PropertyName', pattern: LexerType.NA },
-      { name: 'PlainIdent', pattern: '{{ident}}', categories: ['Ident', 'PropertyName'] },
+      { name: 'PlainIdent', pattern: '{{ident}}', categories: ['Ident'] },
+      { name: 'LegacyPropIdent', pattern: '(?:\\*|_){{ident}}' },
       {
         name: 'CustomProperty',
         pattern: '--{{ident}}',
-        categories: ['BlockMarker', 'PropertyName']
+        categories: ['BlockMarker']
       },
       { name: 'CDOToken', pattern: /<!--/, group: LexerType.SKIPPED },
       { name: 'CDCToken', pattern: /-->/, group: LexerType.SKIPPED },
@@ -188,7 +188,7 @@ const tokens = () => ({
       },
       {
         name: 'Important',
-        pattern: '!{{ws}}?important',
+        pattern: '!(?:{{ws}}|{{comment}})*important',
         categories: ['BlockMarker']
       },
       {

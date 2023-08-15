@@ -92,9 +92,9 @@ export const createLexerDefinition = (rawFragments: string[][], rawTokens: Writa
         if (pattern instanceof RegExp) {
           regExpPattern = pattern
         } else if (Array.isArray(pattern)) {
-          regExpPattern = pattern[1].bind(XRegExp.build(pattern[0], fragments, 'y'))
+          regExpPattern = pattern[1].bind(XRegExp.build(pattern[0], fragments, 'yi'))
         } else {
-          regExpPattern = XRegExp.build(pattern as string, fragments)
+          regExpPattern = XRegExp.build(pattern as string, fragments, 'i')
         }
       } else {
         regExpPattern = Lexer.NA

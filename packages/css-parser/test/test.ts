@@ -2,17 +2,16 @@ import * as glob from 'glob'
 import * as fs from 'fs'
 import * as path from 'path'
 import { Parser } from '../src'
-import { stringify } from '../src/util/cst'
 
 const testData = path.dirname(require.resolve('@less/test-data'))
 
-const cssParser = new Parser()
+const cssParser = new Parser({ legacyMode: true })
 
 /**
  * @todo - write error cases
  */
 describe.only('can parse all CSS stylesheets', () => {
-  glob.sync(path.join(__dirname, 'css/**/escape.css'))
+  glob.sync(path.join(__dirname, 'css/**/*.css'))
     .sort()
     .forEach(file => {
       if (!file.includes('errors')) {
