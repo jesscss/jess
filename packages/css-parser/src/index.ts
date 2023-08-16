@@ -4,6 +4,7 @@ import { cssTokens, cssFragments } from './cssTokens'
 import { CssParser } from './cssParser'
 import type { TokenMap, CssParserConfig } from './cssParser'
 import { createLexerDefinition } from './util'
+import { CssErrorMessageProvider } from './cssErrorMessageProvider'
 
 export * from './cssTokens'
 export * from './util'
@@ -19,7 +20,13 @@ export class Parser {
   lexer: Lexer
   parser: CssParser
 
-  constructor(config: CssParserConfig = {}) {
+  constructor(
+    config: CssParserConfig = {}
+  ) {
+    config = {
+      errorMessageProvider: CssErrorMessageProvider,
+      ...config
+    }
     const { lexer, T } = createLexerDefinition(cssFragments(), cssTokens())
     this.lexer = new Lexer(lexer, {
       ensureOptimizations: true,

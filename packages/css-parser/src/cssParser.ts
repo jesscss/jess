@@ -67,7 +67,9 @@ export class CssParser extends CstParser {
   innerQualifiedRule: Rule
   innerAtRule: Rule
   valueList: Rule
-  spacedValue: Rule
+
+  /** Often a space-separated sequence */
+  valueSequence: Rule
   value: Rule
   customValue: Rule
   innerCustomValue: Rule
@@ -637,17 +639,18 @@ export class CssParser extends CstParser {
     //   : value+ ((',' | '/') value+)*
     //   ;
     $.RULE('valueList', () => {
-      $.SUBRULE($.spacedValue)
+      $.SUBRULE($.valueSequence)
       $.MANY(() => {
         $.OR([
           { ALT: () => $.CONSUME(T.Comma) },
           { ALT: () => $.CONSUME(T.Slash) }
         ])
-        $.SUBRULE2($.spacedValue)
+        $.SUBRULE2($.valueSequence)
       })
     })
 
-    $.RULE('spacedValue', () => {
+    /** Often space-separated */
+    $.RULE('valueSequence', () => {
       $.AT_LEAST_ONE(() => $.SUBRULE($.value))
     })
 
@@ -755,6 +758,7 @@ export class CssParser extends CstParser {
         { ALT: () => $.CONSUME(T.Number) },
         { ALT: () => $.CONSUME(T.Dimension) },
         { ALT: () => $.CONSUME(T.MathConstant) },
+        { ALT: () => $.SUBRULE($.function) },
         {
           ALT: () => {
             $.CONSUME(T.LParen)
@@ -1339,7 +1343,10 @@ export class CssParser extends CstParser {
         { ALT: () => $.CONSUME(T.Comma) },
         {
           ALT: () => {
-            $.CONSUME(T.LParen)
+            $.OR2([
+              { ALT: () => $.CONSUME(T.LParen) },
+              { ALT: () => $.CONSUME(T.Function) }
+            ])
             $.MANY(() => $.SUBRULE($.anyInnerValue))
             $.CONSUME(T.RParen)
           }
