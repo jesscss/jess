@@ -365,13 +365,6 @@ const tokens = () => ({
         pattern: /supports\(/i,
         categories: ['BlockMarker', 'Function']
       },
-      // {
-      //   name: 'WS',
-      //   pattern: ['{{wsorcomment}}', groupCapture],
-      //   start_chars_hint: [' ', '\t', '\n', '\r', '\f', '/'],
-      //   line_breaks: true,
-      //   categories: ['BlockMarker']
-      // }
       {
         name: 'WS',
         pattern: '{{ws}}',
@@ -416,7 +409,7 @@ const tokens = () => ({
 
 type TokenModes = ReturnType<typeof tokens>['modes']
 
-type TokenNameMap<T extends readonly any[]> = {
+export type TokenNameMap<T extends readonly any[]> = {
   [P in keyof T]: T[P] extends { name: string }
     ? T[P]['name']
     : T[P]
@@ -424,7 +417,7 @@ type TokenNameMap<T extends readonly any[]> = {
 export type TokenNames<T extends readonly any[]> = TokenNameMap<T>[number]
 
 /** Join all modes to get strong indexing */
-export type CssTokenType = TokenNames<TokenModes['default']> | TokenNames<TokenModes['url']>
+export type CssTokenType = TokenNames<TokenModes[keyof TokenModes]>
 
 export const cssTokens = () => tokens() as WritableDeep<ReturnType<typeof tokens>>
 export const cssFragments = () => fragments()

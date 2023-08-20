@@ -1,9 +1,9 @@
 import type { IToken } from 'chevrotain'
 import { Lexer } from 'chevrotain'
-import { Tokens, Fragments } from './lessTokens'
+import { lessTokens, lessFragments } from './lessTokens'
 import type { IParseResult } from '@jesscss/css-parser'
-import { createTokens } from '@jesscss/css-parser'
-import { LessParser } from './lessParser'
+import { createLexerDefinition } from '@jesscss/css-parser'
+import { LessParser, type LessParserConfig, type TokenMap } from './lessParser'
 
 export * from './lessParser'
 export * from './lessTokens'
@@ -12,21 +12,25 @@ export class Parser {
   lexer: Lexer
   parser: LessParser
 
-  constructor() {
-    const { tokens, T } = createTokens(Fragments, Tokens)
-    this.lexer = new Lexer(tokens, {
+  constructor(
+    config: LessParserConfig = {}
+  ) {
+    const { lexer, T } = createLexerDefinition(lessFragments(), lessTokens())
+
+    this.lexer = new Lexer(lexer, {
       ensureOptimizations: true,
-      skipValidations: process.env.JESS_TESTING_MODE !== 'true'
+      skipValidations: process.env.TEST !== 'true'
     })
-    this.parser = new LessParser(tokens, T)
+    this.parser = new LessParser(lexer, T as TokenMap, config)
   }
 
   parse(text: string): IParseResult<LessParser> {
     const parser = this.parser
     const lexerResult = this.lexer.tokenize(text)
     const lexedTokens: IToken[] = lexerResult.tokens
+    parser.skippedTokens = lexerResult.groups.Skipped
     parser.input = lexedTokens
-    const cst = parser.root()
+    const cst = parser.stylesheet()
 
     return { cst, lexerResult, parser }
   }

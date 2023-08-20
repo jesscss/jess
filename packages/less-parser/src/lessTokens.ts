@@ -1,38 +1,37 @@
-import type { rawTokenConfig } from '@jesscss/css-parser'
+/* eslint-disable @typescript-eslint/restrict-plus-operands */
 import {
-  Fragments as CSSFragments,
-  Tokens as CSSTokens,
+  cssFragments,
+  cssTokens,
   LexerType,
-  groupCapture
+  groupCapture,
+  type RawTokenConfig,
+  type RawToken,
+  type TokenNames,
+  type CssTokenType
 } from '@jesscss/css-parser'
+import type { WritableDeep } from 'type-fest'
 
-type IMerges = Record<string, rawTokenConfig[]>
+type IMerges = Partial<Record<CssTokenType, RawTokenConfig>>
 
-export const Fragments = [...CSSFragments]
-export let Tokens = [...CSSTokens]
+export const Fragments = cssFragments()
+export const Tokens = cssTokens()
 
 Fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*'])
 Fragments.push(['interpolated', '[@$]\\{({{ident}})\\}'])
 
-Fragments.forEach(fragment => {
-  if (fragment[0].indexOf('wsorcomment') !== -1) {
-    fragment[1] = '(?:({{ws}})|({{comment}})|({{lineComment}}))'
-  }
-})
-
 /** Keyed by what to insert after */
-const merges: IMerges = {
+const merges = {
   Assign: [
-    { name: 'Ampersand', pattern: /&/, categories: ['Selector'] },
     { name: 'Ellipsis', pattern: /\.\.\./ }
   ],
-  PlainIdent: [
+  PlainFunction: [
     { name: 'Interpolated', pattern: LexerType.NA },
     {
       name: 'InterpolatedIdent',
       pattern: ['{{interpolated}}', groupCapture],
       categories: ['Interpolated', 'Selector'],
-      start_chars_hint: ['@', '$']
+      start_chars_hint: ['@', '$'],
+      line_breaks: true
     },
     /**
      * Unfortunately, there's grammatical ambiguity between
@@ -43,7 +42,8 @@ const merges: IMerges = {
       name: 'InterpolatedSelector',
       pattern: ['[.#:]{{interpolated}}', groupCapture],
       categories: ['Interpolated', 'Selector'],
-      start_chars_hint: ['.', '#', ':']
+      start_chars_hint: ['.', '#', ':'],
+      line_breaks: true
     },
     { name: 'PlusAssign', pattern: '\\+{{whitespace}}*:', categories: ['BlockMarker', 'Assign'] },
     {
@@ -62,7 +62,7 @@ const merges: IMerges = {
     {
       name: 'When',
       pattern: /when/,
-      longer_alt: 'PlainIdent',
+      longer_alt: ['PlainFunction', 'PlainIdent'],
       categories: ['BlockMarker']
     },
     {
@@ -73,23 +73,15 @@ const merges: IMerges = {
       name: 'NestedReference',
       pattern: ['([@$]+{{ident}}?){2,}', groupCapture],
       start_chars_hint: ['@', '$'],
-      categories: ['VarOrProp']
+      categories: ['VarOrProp'],
+      line_breaks: true
     },
     {
       name: 'PropertyReference',
-      pattern: '\\$-?{{ident}}',
+      // eslint-disable-next-line no-template-curly-in-string
+      pattern: '\\${{ident}}',
       categories: ['VarOrProp']
-    }
-  ],
-  // AtMedia: [
-  //   {
-  //     name: 'AtPlugin',
-  //     pattern: /@plugin/,
-  //     longer_alt: 'AtKeyword',
-  //     categories: ['BlockMarker', 'AtName']
-  //   }
-  // ],
-  PlainFunction: [
+    },
     /** Can be used in unit function */
     {
       name: 'Percent',
@@ -111,7 +103,7 @@ const merges: IMerges = {
       categories: ['BlockMarker', 'Function']
     }
   ],
-  Uri: [
+  UrlStart: [
     {
       name: 'JavaScript',
       pattern: /`[^`]*`/,
@@ -119,16 +111,19 @@ const merges: IMerges = {
       line_breaks: true
     }
   ]
-}
+} as const satisfies IMerges
 
-let tokenLength = Tokens.length
+let defaultTokens: WritableDeep<RawToken[]> = Tokens.modes.default
+
+let tokenLength = defaultTokens.length
 for (let i = 0; i < tokenLength; i++) {
-  let token = Tokens[i]
-  let { name, categories } = token
+  let token = defaultTokens[i]
+
+  const { name, categories } = token
   const copyToken = () => {
-    token = { ...token }
-    categories = categories ? categories.slice(0) : []
+    token = structuredClone(token)
   }
+
   let alterations = true
 
   switch (name) {
@@ -137,7 +132,7 @@ for (let i = 0; i < tokenLength; i++) {
     //   copyToken()
     //   token.pattern = /\.?\//
     //   break
-    case 'StringLiteral':
+    case 'String':
       copyToken()
       token.pattern = '~?{{string1}}|~?{{string2}}'
       break
@@ -147,20 +142,31 @@ for (let i = 0; i < tokenLength; i++) {
       break
     case 'AtKeyword':
       copyToken()
-      token.categories = categories.concat(['VarOrProp'])
+      token.categories = categories ? categories.concat(['VarOrProp']) : ['VarOrProp']
       break
     default:
       alterations = false
   }
   if (alterations) {
-    Tokens[i] = token
+    defaultTokens[i] = token
   }
+  // @ts-expect-error - Suppress index warning
   const merge = merges[name]
   if (merge) {
     /** Insert after current token */
-    Tokens = Tokens.slice(0, i + 1).concat(merge, Tokens.slice(i + 1))
+    defaultTokens = defaultTokens.slice(0, i + 1).concat(merge, defaultTokens.slice(i + 1))
+    ;(Tokens.modes.default as WritableDeep<RawToken[]>) = defaultTokens
     const mergeLength = merge.length
     tokenLength += mergeLength
     i += mergeLength
   }
 }
+
+type MergeMap = {
+  [K in keyof typeof merges]: typeof merges[K]
+}
+
+export type LessTokenType = CssTokenType | TokenNames<MergeMap[keyof MergeMap]>
+
+export const lessFragments = () => Fragments
+export const lessTokens = () => Tokens

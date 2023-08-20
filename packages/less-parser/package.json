@@ -13,10 +13,9 @@
   "scripts": {
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "npm run build",
-    "build": "pnpm clean && pnpm compile",
-    "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
+    "build": "pnpm compile",
     "compile": "tsc -b tsconfig.build.json",
-    "test": "jest"
+    "test": "cross-env TEST=true vitest"
   },
   "author": "Matthew Dean",
   "license": "MIT",

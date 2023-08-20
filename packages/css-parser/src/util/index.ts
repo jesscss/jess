@@ -19,7 +19,7 @@ export enum LexerType {
   SKIPPED
 }
 
-interface RawToken
+export interface RawToken
   extends Omit<ITokenConfig, 'longer_alt' | 'categories' | 'pattern' | 'group' | 'start_chars_hint'> {
   pattern: TokenPattern | LexerType | readonly [string, (this: RegExp, text: string, startOffset: number) => any]
   group?: ITokenConfig['group'] | LexerType
@@ -30,7 +30,7 @@ interface RawToken
 export type RawTokenConfig = Readonly<RawToken[]>
 export type RawModeConfig = Readonly<{
   modes: {
-    default: ReadonlyArray<string | Readonly<RawToken>>
+    default: ReadonlyArray<Readonly<RawToken>>
     [k: string]: ReadonlyArray<string | Readonly<RawToken>>
   }
   defaultMode: 'default'

@@ -85,7 +85,7 @@ export class CssParser extends CstParser {
   urlFunction: Rule
   unknownValue: Rule
 
-  expression: Rule
+  // expression: Rule
   mathProduct: Rule
   mathSum: Rule
   mathValue: Rule
@@ -508,6 +508,15 @@ export class CssParser extends CstParser {
       $.OR([
         {
           ALT: () => {
+            $.OPTION(() => $.SUBRULE($.declaration))
+            $.OPTION2(() => {
+              $.CONSUME(T.Semi)
+              $.SUBRULE3($.declarationList)
+            })
+          }
+        },
+        {
+          ALT: () => {
             $.SUBRULE($.innerAtRule)
             $.SUBRULE($.declarationList)
           }
@@ -516,15 +525,6 @@ export class CssParser extends CstParser {
           ALT: () => {
             $.SUBRULE($.innerQualifiedRule)
             $.SUBRULE2($.declarationList)
-          }
-        },
-        {
-          ALT: () => {
-            $.OPTION(() => $.SUBRULE($.declaration))
-            $.OPTION2(() => {
-              $.CONSUME(T.Semi)
-              $.SUBRULE3($.declarationList)
-            })
           }
         }
       ])
@@ -728,9 +728,9 @@ export class CssParser extends CstParser {
       ])
     })
 
-    $.RULE('expression', () => {
-      $.SUBRULE($.mathSum)
-    })
+    // $.RULE('expression', () => {
+    //   $.SUBRULE($.mathSum)
+    // })
 
     // mathSum
     //   : mathProduct (WS* ('+' | '-') WS* mathProduct)*
@@ -1355,9 +1355,7 @@ export class CssParser extends CstParser {
     //   ;
     $.RULE('anyOuterValue', () => {
       $.OR([
-        { ALT: () => $.CONSUME(T.Value) },
-        { ALT: () => $.CONSUME(T.Colon) },
-        { ALT: () => $.CONSUME(T.Comma) },
+        { ALT: () => $.SUBRULE($.extraTokens) },
         { ALT: () => $.SUBRULE($.function) },
         {
           ALT: () => {
