@@ -35,7 +35,7 @@ export type TokenMap = Record<CssTokenType, TokenType>
   for qualified rules vs declarations, but it can
   get super-complicated quickly.
 */
-type Rule<F extends () => void = () => void> = ParserMethod<Parameters<F>, CstNode>
+export type Rule<F extends () => void = () => void> = ParserMethod<Parameters<F>, CstNode>
 
 export interface CssParserConfig extends IParserConfig {
   /** Thinks like star property hacks and IE filters */

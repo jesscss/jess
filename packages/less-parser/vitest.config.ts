@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
-    name: 'css-parser',
+    name: 'less-parser',
     include: ['test/**/*.ts', '**/__tests__/**/*.ts'],
     globals: true,
     coverage: {

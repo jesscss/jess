@@ -41,12 +41,25 @@ interface ILexer {
   lexer: IMultiModeLexerDefinition
 }
 
+const $buildFragments = (rawFragments: string[][]) => {
+  const fragments: Record<string, RegExp> = {}
+  rawFragments.forEach(fragment => {
+    fragments[fragment[0]] = XRegExp.build(fragment[1], fragments)
+  })
+  return fragments
+}
+
 /**
  * Builds proper tokens from a raw token definition.
  * This allows us to extend / modify tokens before creating them
  */
 export const createLexerDefinition = (rawFragments: string[][], rawTokens: WritableDeep<RawModeConfig>): ILexer => {
-  const fragments: Record<string, RegExp> = {}
+  /**
+   * @todo - get ts-macros working to eliminate XRegExp dependency
+   * @see https://github.com/GoogleFeud/ts-macros/issues/66
+   */
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+  const fragments: Record<string, RegExp> = $buildFragments(rawFragments)
   const T: Record<string, TokenType> = {}
   const lexer: IMultiModeLexerDefinition = {
     modes: {
@@ -56,9 +69,6 @@ export const createLexerDefinition = (rawFragments: string[][], rawTokens: Writa
   }
 
   /** Build fragment replacements */
-  rawFragments.forEach(fragment => {
-    fragments[fragment[0]] = XRegExp.build(fragment[1], fragments)
-  })
   const entries = Object.entries(rawTokens.modes)
   entries.forEach(([mode, modeTokens]) => {
     modeTokens.forEach(rawToken => {

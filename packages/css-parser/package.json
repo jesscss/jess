@@ -15,7 +15,7 @@
     "prepublishOnly": "pnpm build",
     "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
-    "compile": "tsc -b tsconfig.json",
+    "compile": "tsc -b tsconfig.build.json",
     "dev": "tsc -b tsconfig.json -w",
     "test": "cross-env TEST=true vitest"
   },
@@ -29,6 +29,7 @@
   "devDependencies": {
     "@less/test-data": "^4.1.0",
     "@types/xregexp": "^4.4.0",
+    "@vitest/coverage-v8": "~0.34.2",
     "jsdom": "~22.1.0"
   }
 }

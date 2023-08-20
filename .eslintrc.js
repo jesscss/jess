@@ -21,6 +21,11 @@ module.exports = {
     node: true,
     browser: true
   },
+  ignorePatterns: [
+    '**/dist/**/*',
+    '**/node_modules/**/*',
+    '**/lib/**/*'
+  ],
   rules: {},
   overrides: [
     {

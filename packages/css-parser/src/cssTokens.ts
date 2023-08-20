@@ -68,6 +68,7 @@ export function groupCapture(this: RegExp, text: string, startOffset: number) {
       match.forEach((group, i) => {
         if (i > 0 && group) {
           const item = payload[i - 1]
+          /* c8 ignore next 2 */
           if (item) {
             item.push(new MatchValue(group, match.index))
           } else {
