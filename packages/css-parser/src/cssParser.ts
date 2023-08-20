@@ -38,13 +38,20 @@ export type TokenMap = Record<CssTokenType, TokenType>
 type Rule<F extends () => void = () => void> = ParserMethod<Parameters<F>, CstNode>
 
 export interface CssParserConfig extends IParserConfig {
+  /** Thinks like star property hacks and IE filters */
   legacyMode?: boolean
+  /**
+   * This allows more syntax that is invalid according to the CSS spec.
+   * Mainly, this allows unknown tokens (or no tokens) in property values.
+   */
+  loose?: boolean
 }
 
 export class CssParser extends CstParser {
   skippedTokens: IToken[]
   skippedIndex = 0
   legacyMode: boolean
+  loose: boolean
 
   stylesheet: Rule
   main: Rule
@@ -90,6 +97,7 @@ export class CssParser extends CstParser {
   containerAtRule: Rule<(inner?: boolean) => void>
   atRuleBody: Rule<(inner?: boolean) => void>
   pageAtRule: Rule
+  pageSelector: Rule
   fontFaceAtRule: Rule
   nestedAtRule: Rule
   nonNestedAtRule: Rule
@@ -128,7 +136,6 @@ export class CssParser extends CstParser {
   /** General purpose subrules */
   anyOuterValue: Rule
   anyInnerValue: Rule
-  anyToken: Rule
   extraTokens: Rule
   customBlock: Rule
 
@@ -142,12 +149,13 @@ export class CssParser extends CstParser {
       nodeLocationTracking: 'full'
     }
 
-    const { legacyMode = false, ...rest } = { ...defaultConfig, ...config }
+    const { legacyMode, loose = false, ...rest } = { ...defaultConfig, ...config }
 
     super(tokenVocabulary, rest)
 
     const $ = this
-    this.legacyMode = legacyMode
+    this.legacyMode = legacyMode ?? loose
+    this.loose = loose
 
     /** Checks if there is white space or comment between tokens */
     const noSep = (whitespaceOnly = false) => {
@@ -439,7 +447,7 @@ export class CssParser extends CstParser {
          */
         {
           GATE: () => !noSep(true),
-          ALT: () => EMPTY_ALT
+          ALT: EMPTY_ALT()
         }
       ])
     })
@@ -563,7 +571,6 @@ export class CssParser extends CstParser {
      */
     $.RULE('customValue', () => {
       $.OR([
-        { ALT: () => $.SUBRULE($.anyToken) },
         { ALT: () => $.SUBRULE($.extraTokens) },
         { ALT: () => $.SUBRULE($.customBlock) }
       ])
@@ -573,26 +580,20 @@ export class CssParser extends CstParser {
     $.RULE('innerCustomValue', () => {
       $.OR([
         { ALT: () => $.CONSUME(T.Semi) },
-        { ALT: () => $.SUBRULE($.anyToken) },
         { ALT: () => $.SUBRULE($.extraTokens) },
         { ALT: () => $.SUBRULE($.customBlock) }
       ])
     })
 
-    $.RULE('anyToken', () =>
-      $.OR([
-        { ALT: () => $.CONSUME(T.Value) },
-        { ALT: () => $.CONSUME(T.CustomProperty) },
-        { ALT: () => $.CONSUME(T.Colon) }
-      ])
-    )
-
     /**
-     * Extra tokens in a custom property. Should include any
+     * Extra tokens in a custom property or general enclosed. Should include any
      * and every token possible (except semis), including unknown tokens.
      */
     $.RULE('extraTokens', () =>
       $.OR([
+        { ALT: () => $.CONSUME(T.Value) },
+        { ALT: () => $.CONSUME(T.CustomProperty) },
+        { ALT: () => $.CONSUME(T.Colon) },
         { ALT: () => $.CONSUME(T.AtName) },
         { ALT: () => $.CONSUME(T.Comma) },
         { ALT: () => $.CONSUME(T.Important) },
@@ -651,7 +652,17 @@ export class CssParser extends CstParser {
 
     /** Often space-separated */
     $.RULE('valueSequence', () => {
-      $.AT_LEAST_ONE(() => $.SUBRULE($.value))
+      $.OR([
+        {
+          GATE: () => $.loose,
+          ALT: () => $.MANY(() => $.SUBRULE($.anyOuterValue))
+        },
+        {
+          GATE: () => !$.loose,
+          /** @todo - create warning in the CST Visitor */
+          ALT: () => $.AT_LEAST_ONE(() => $.SUBRULE2($.value))
+        }
+      ])
     })
 
     // value
@@ -668,30 +679,33 @@ export class CssParser extends CstParser {
     //   | unknownValue
     //   ;
     $.RULE('value', () => {
-      $.OR([
-        { ALT: () => $.CONSUME(T.Ident) },
-        { ALT: () => $.CONSUME(T.Dimension) },
-        { ALT: () => $.CONSUME(T.Number) },
-        { ALT: () => $.CONSUME(T.Color) },
-        { ALT: () => $.CONSUME(T.String) },
-        { ALT: () => $.SUBRULE($.function) },
-        {
-          ALT: () => {
-            $.CONSUME(T.LSquare)
-            $.CONSUME2(T.Ident)
-            $.CONSUME(T.RSquare)
-          }
-        },
-        {
+      $.OR({
+        IGNORE_AMBIGUITIES: true,
+        DEF: [
+          { ALT: () => $.CONSUME(T.Ident) },
+          { ALT: () => $.CONSUME(T.Dimension) },
+          { ALT: () => $.CONSUME(T.Number) },
+          { ALT: () => $.CONSUME(T.Color) },
+          { ALT: () => $.CONSUME(T.String) },
+          { ALT: () => $.SUBRULE($.function) },
+          {
+            ALT: () => {
+              $.CONSUME(T.LSquare)
+              $.CONSUME2(T.Ident)
+              $.CONSUME(T.RSquare)
+            }
+          },
+          {
           /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
-          GATE: () => $.legacyMode,
-          ALT: () => $.OR2([
-            { ALT: () => $.CONSUME(T.Colon) },
-            { ALT: () => $.CONSUME(T.Dot) },
-            { ALT: () => $.CONSUME(T.Eq) }
-          ])
-        }
-      ])
+            GATE: () => $.legacyMode,
+            ALT: () => $.OR2([
+              { ALT: () => $.CONSUME(T.Colon) },
+              { ALT: () => $.CONSUME(T.Dot) },
+              { ALT: () => $.CONSUME(T.Eq) }
+            ])
+          }
+        ]
+      })
     })
 
     /** Implementers can decide to throw errors or warnings or not */
@@ -866,9 +880,7 @@ export class CssParser extends CstParser {
       $.OR([
         {
           GATE: () => !inner,
-          ALT: () => {
-            $.SUBRULE($.main)
-          }
+          ALT: () => $.SUBRULE($.main)
         },
         {
           GATE: () => inner,
@@ -882,7 +894,10 @@ export class CssParser extends CstParser {
     //   ;
     $.RULE('mediaAtRule', (inner?: boolean) => {
       $.CONSUME(T.AtMedia)
-      $.SUBRULE($.mediaQuery)
+      $.AT_LEAST_ONE_SEP({
+        SEP: T.Comma,
+        DEF: () => $.SUBRULE($.mediaQuery)
+      })
       $.CONSUME(T.LCurly)
       $.SUBRULE($.atRuleBody, { ARGS: [inner] })
       $.CONSUME(T.RCurly)
@@ -1153,7 +1168,7 @@ export class CssParser extends CstParser {
     //   ;
     $.RULE('generalEnclosed', () => {
       $.CONSUME(T.LParen)
-      $.SUBRULE($.anyToken)
+      $.SUBRULE($.anyInnerValue)
       $.CONSUME(T.RParen)
     })
 
@@ -1161,17 +1176,20 @@ export class CssParser extends CstParser {
      * @see https://www.w3.org/TR/css-page-3/
      * @see https://developer.mozilla.org/en-US/docs/Web/CSS/@page
      */
-    // pageAtRule
-    //   : PAGE_RULE WS* (PAGE_PSEUDO_CLASS WS*)? LCURLY declarationList RCURLY
-    //   ;
     $.RULE('pageAtRule', () => {
       $.CONSUME(T.AtPage)
-      $.OPTION(() => {
-        $.CONSUME(T.PagePseudoClass)
+      $.MANY_SEP({
+        SEP: T.Comma,
+        DEF: () => $.SUBRULE($.pageSelector)
       })
       $.CONSUME(T.LCurly)
       $.SUBRULE($.declarationList)
       $.CONSUME(T.RCurly)
+    })
+
+    $.RULE('pageSelector', () => {
+      $.OPTION(() => $.CONSUME(T.Ident))
+      $.MANY(() => $.CONSUME(T.PagePseudoClass))
     })
 
     // fontFaceAtRule
@@ -1208,12 +1226,11 @@ export class CssParser extends CstParser {
         {
           ALT: () => {
             $.SUBRULE($.supportsNot)
-            $.SUBRULE($.supportsInParens)
           }
         },
         {
           ALT: () => {
-            $.SUBRULE2($.supportsInParens)
+            $.SUBRULE($.supportsInParens)
             $.MANY(() => {
               $.OR2([
                 { ALT: () => { $.SUBRULE($.supportsAnd) } },
@@ -1341,12 +1358,10 @@ export class CssParser extends CstParser {
         { ALT: () => $.CONSUME(T.Value) },
         { ALT: () => $.CONSUME(T.Colon) },
         { ALT: () => $.CONSUME(T.Comma) },
+        { ALT: () => $.SUBRULE($.function) },
         {
           ALT: () => {
-            $.OR2([
-              { ALT: () => $.CONSUME(T.LParen) },
-              { ALT: () => $.CONSUME(T.Function) }
-            ])
+            $.CONSUME(T.LParen)
             $.MANY(() => $.SUBRULE($.anyInnerValue))
             $.CONSUME(T.RParen)
           }

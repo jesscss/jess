@@ -20,11 +20,20 @@ export class Parser {
   lexer: Lexer
   parser: CssParser
 
+  /**
+   * @note `recoveryEnabled` should be set to true for
+   * linting and language services.
+   */
   constructor(
     config: CssParserConfig = {}
   ) {
     config = {
       errorMessageProvider: CssErrorMessageProvider,
+      /**
+       * Override this if you want a stricter CSS parser.
+       * You can also override when parsing using a single rule.
+       */
+      loose: true,
       ...config
     }
     const { lexer, T } = createLexerDefinition(cssFragments(), cssTokens())

@@ -23,7 +23,7 @@ interface RawToken
   extends Omit<ITokenConfig, 'longer_alt' | 'categories' | 'pattern' | 'group' | 'start_chars_hint'> {
   pattern: TokenPattern | LexerType | readonly [string, (this: RegExp, text: string, startOffset: number) => any]
   group?: ITokenConfig['group'] | LexerType
-  longer_alt?: string
+  longer_alt?: string | readonly string[]
   categories?: readonly string[]
   start_chars_hint?: readonly string[]
 }
@@ -100,7 +100,13 @@ export const createLexerDefinition = (rawFragments: string[][], rawTokens: Writa
         regExpPattern = Lexer.NA
       }
 
-      const longerAlt = longer_alt ? { longer_alt: T[longer_alt] } : {}
+      const longerAlt = longer_alt
+        ? {
+            longer_alt: Array.isArray(longer_alt)
+              ? longer_alt.map(val => T[val])
+              : T[longer_alt]
+          }
+        : {}
       const groupValue = group === LexerType.SKIPPED
         ? { group: Lexer.SKIPPED }
         : group ? { group } : {}
