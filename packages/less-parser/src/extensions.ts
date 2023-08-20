@@ -1,6 +1,7 @@
-import type { LessParser } from './lessParser'
+import type { LessParser, TokenMap } from './lessParser'
 
-export function allowInnerIdentSelector($: LessParser) {
+export function innerIdentSelector(this: LessParser, T: TokenMap) {
+  const $ = this
   /** Allow identifiers at rule starts */
   $.OVERRIDE_RULE('simpleSelector', (inner: boolean = false) => {
     $.OR([
@@ -20,7 +21,8 @@ export function allowInnerIdentSelector($: LessParser) {
   })
 }
 
-export function allowAtVariableDeclarations($: LessParser) {
+export function atVariableDeclarations(this: LessParser, T: TokenMap) {
+  const $ = this
   /** Less variables */
   $.OVERRIDE_RULE('unknownAtRule', () => {
     $.CONSUME(T.AtKeyword)
@@ -66,7 +68,8 @@ export function allowAtVariableDeclarations($: LessParser) {
   })
 }
 
-export function allowMathExpressions($: LessParser) {
+export function mathExpressions(this: LessParser, T: TokenMap) {
+  const $ = this
   $.OVERRIDE_RULE('valueSequence', () => {
     $.OR([
       {
@@ -105,4 +108,8 @@ export function allowMathExpressions($: LessParser) {
       }
     ])
   })
+}
+
+export function mixinDefinition(this: LessParser, T: TokenMap) {
+  const $ = this
 }

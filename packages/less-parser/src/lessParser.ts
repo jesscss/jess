@@ -4,9 +4,10 @@ import type { Rule } from '@jesscss/css-parser'
 import { CssParser } from '@jesscss/css-parser'
 import { type LessTokenType } from './lessTokens'
 import {
-  allowInnerIdentSelector,
-  allowAtVariableDeclarations,
-  allowMathExpressions
+  innerIdentSelector,
+  atVariableDeclarations,
+  mathExpressions,
+  mixinDefinition
 } from './extensions'
 
 // import root from './productions/root'
@@ -36,9 +37,13 @@ export class LessParser extends CssParser {
 
     const $ = this
 
-    allowInnerIdentSelector.call($, $)
-    allowAtVariableDeclarations.call($, $)
-    allowMathExpressions.call($, $)
+    /** Less extensions */
+    ;[
+      innerIdentSelector,
+      atVariableDeclarations,
+      mathExpressions,
+      mixinDefinition
+    ].forEach(ext => ext.call($, T))
 
     if ($.constructor === LessParser) {
       $.performSelfAnalysis()

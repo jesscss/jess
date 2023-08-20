@@ -47,6 +47,7 @@ module.exports = {
         'eol-last': 0,
         '@typescript-eslint/space-before-function-paren': jsRules['space-before-function-paren'],
         '@typescript-eslint/func-call-spacing': 'error',
+        '@typescript-eslint/no-confusing-void-expression': 'off',
 
         /** conflicts with https://typescript-eslint.io/rules/no-floating-promises/ */
         'no-void': 0,
