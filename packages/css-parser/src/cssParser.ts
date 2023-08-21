@@ -48,6 +48,7 @@ export interface CssParserConfig extends IParserConfig {
 }
 
 export class CssParser extends CstParser {
+  T: TokenMap
   skippedTokens: IToken[]
   skippedIndex = 0
   legacyMode: boolean
@@ -154,39 +155,9 @@ export class CssParser extends CstParser {
     super(tokenVocabulary, rest)
 
     const $ = this
+    $.T = T
     this.legacyMode = legacyMode ?? loose
     this.loose = loose
-
-    /** Checks if there is white space or comment between tokens */
-    const noSep = (whitespaceOnly = false) => {
-      const skippedLength = this.skippedTokens.length
-      const last = $.LA(0).endOffset!
-      const next = $.LA(1).startOffset
-
-      /** No separator because of offsets */
-      if (last + 1 === next) {
-        return true
-      }
-      let passed = true
-      /**
-       * Start where we left off each time, because
-       * token parsing is happening linearly.
-       */
-      for (let i = this.skippedIndex; i < skippedLength; i++) {
-        const token = this.skippedTokens[i]
-        if (whitespaceOnly && token.tokenType !== T.WS) {
-          continue
-        }
-        if (token.startOffset > last) {
-          this.skippedIndex = i
-          if (token.endOffset! < next) {
-            passed = false
-          }
-          break
-        }
-      }
-      return passed
-    }
 
     // stylesheet
     //   : CHARSET? main EOF
@@ -289,7 +260,7 @@ export class CssParser extends CstParser {
       $.CONSUME(T.Dot)
       $.OR([
         {
-          GATE: noSep,
+          GATE: $.noSep,
           ALT: () => {
             $.CONSUME(T.Ident)
           }
@@ -322,18 +293,18 @@ export class CssParser extends CstParser {
           ALT: () => {
             $.CONSUME(T.Colon)
             $.OPTION({
-              GATE: noSep,
+              GATE: $.noSep,
               DEF: () => {
                 $.CONSUME2(T.Colon)
               }
             })
             $.OR4([
               {
-                GATE: noSep,
+                GATE: $.noSep,
                 ALT: () => $.CONSUME(T.Ident)
               },
               {
-                GATE: noSep,
+                GATE: $.noSep,
                 ALT: () => {
                   $.CONSUME(T.PlainFunction)
                   $.MANY(() => $.SUBRULE($.anyInnerValue))
@@ -446,7 +417,7 @@ export class CssParser extends CstParser {
          * so this indicates at least 1 whitespace is present
          */
         {
-          GATE: () => !noSep(true),
+          GATE: () => !$.noSep(true),
           ALT: EMPTY_ALT()
         }
       ])
@@ -1402,6 +1373,37 @@ export class CssParser extends CstParser {
     if ($.constructor === CssParser) {
       $.performSelfAnalysis()
     }
+  }
+
+  /** Checks if there is white space or comment between tokens */
+  noSep(whitespaceOnly = false) {
+    const skippedLength = this.skippedTokens.length
+    const last = this.LA(0).endOffset!
+    const next = this.LA(1).startOffset
+
+    /** No separator because of offsets */
+    if (last + 1 === next) {
+      return true
+    }
+    let passed = true
+    /**
+     * Start where we left off each time, because
+     * token parsing is happening linearly.
+     */
+    for (let i = this.skippedIndex; i < skippedLength; i++) {
+      const token = this.skippedTokens[i]
+      if (whitespaceOnly && token.tokenType !== this.T.WS) {
+        continue
+      }
+      if (token.startOffset > last) {
+        this.skippedIndex = i
+        if (token.endOffset! < next) {
+          passed = false
+        }
+        break
+      }
+    }
+    return passed
   }
 
   reset() {
