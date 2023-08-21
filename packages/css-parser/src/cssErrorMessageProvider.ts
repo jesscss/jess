@@ -1,4 +1,7 @@
-import { type IParserErrorMessageProvider, defaultParserErrorProvider } from 'chevrotain'
+import {
+  type IParserErrorMessageProvider,
+  defaultParserErrorProvider
+} from 'chevrotain'
 
 const camelToSpaces = (str: string) => str.replace(/([A-Z])/g, ' $1').toLowerCase()
 
@@ -15,10 +18,30 @@ export class CssErrorMessageProvider implements IParserErrorMessageProvider {
     return defaultParserErrorProvider.buildNotAllInputParsedMessage(options)
   }
 
+  /**
+   * This error message needs to be reduced, because the lookahead strategy
+   * can generate thousands of possible paths.
+   */
   buildNoViableAltMessage(
     options: Parameters<IParserErrorMessageProvider['buildNoViableAltMessage']>[0]
   ) {
-    return defaultParserErrorProvider.buildNoViableAltMessage(options)
+    const initialTokens: string[] = []
+    options.expectedPathsPerAlt.forEach(expectedPath => {
+      expectedPath.forEach(path => {
+        if (!initialTokens.includes(path[0].name)) {
+          initialTokens.push(path[0].name)
+        }
+      })
+    })
+    const firstOfTokens = initialTokens.slice(0, 4)
+    const rest = initialTokens.slice(5)
+    // eslint-disable-next-line @typescript-eslint/quotes
+    let err = `Error in ${camelToSpaces(options.ruleName)}: Expected '${firstOfTokens.join(`', '`)}' `
+    if (rest.length > 0) {
+      err += `(and ${rest.length} more) `
+    }
+    err += `but found '${options.actual[0].image}'`
+    return err
   }
 
   buildEarlyExitMessage(

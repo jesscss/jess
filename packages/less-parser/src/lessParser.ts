@@ -4,7 +4,6 @@ import type { Rule } from '@jesscss/css-parser'
 import { CssParser } from '@jesscss/css-parser'
 import { type LessTokenType } from './lessTokens'
 import {
-  innerIdentSelector,
   atVariableDeclarations,
   mathExpressions,
   mixinsAndNamespaces,
@@ -25,14 +24,21 @@ export type LessParserConfig = IParserConfig
 
 export type TokenMap = Record<LessTokenType, TokenType>
 
+/**
+ * Unlike the historical Less parser, this parser
+ * avoids all backtracking
+ */
 export class LessParser extends CssParser {
   T: TokenMap
 
   expression: Rule
+  isMixinCallCandidate: boolean
+  isMixinDefinitionCandidate: boolean
+  isCompareExpression: boolean
 
   // mixins
   mixinName: Rule
-  mixinDefinition: Rule
+  // mixinDefinition: Rule
   mixinCallSequence: Rule
   mixinCall: Rule
   mixinCallArgs: Rule
@@ -42,7 +48,11 @@ export class LessParser extends CssParser {
   // namespaces
   accessors: Rule
 
+  comparison: Rule
   guard: Rule
+  guardOr: Rule<(disallowComma?: boolean) => void>
+  guardAnd: Rule
+  guardExpression: Rule
 
   constructor(
     tokenVocabulary: TokenVocabulary,
@@ -55,7 +65,6 @@ export class LessParser extends CssParser {
 
     /** Less extensions */
     ;[
-      innerIdentSelector,
       atVariableDeclarations,
       mathExpressions,
       guards,

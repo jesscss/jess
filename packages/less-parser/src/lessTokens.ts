@@ -27,6 +27,11 @@ const merges = {
   PlainIdent: [
     { name: 'Interpolated', pattern: LexerType.NA },
     {
+      name: 'LineComment',
+      pattern: '{{lineComment}}',
+      group: 'Skipped'
+    },
+    {
       name: 'InterpolatedIdent',
       pattern: ['{{interpolated}}', groupCapture],
       categories: ['Interpolated', 'Selector'],
@@ -40,9 +45,9 @@ const merges = {
      */
     {
       name: 'InterpolatedSelector',
-      pattern: ['[.#:]{{interpolated}}', groupCapture],
+      pattern: ['[.#]{{interpolated}}', groupCapture],
       categories: ['Interpolated', 'Selector'],
-      start_chars_hint: ['.', '#', ':'],
+      start_chars_hint: ['.', '#'],
       line_breaks: true
     },
     { name: 'PlusAssign', pattern: '\\+{{whitespace}}*:', categories: ['BlockMarker', 'Assign'] },

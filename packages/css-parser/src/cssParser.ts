@@ -86,7 +86,7 @@ export class CssParser extends CstParser {
   urlFunction: Rule
   unknownValue: Rule
 
-  // expression: Rule
+  expression: Rule
   mathProduct: Rule
   mathSum: Rule
   mathValue: Rule
@@ -713,9 +713,10 @@ export class CssParser extends CstParser {
       ])
     })
 
-    // $.RULE('expression', () => {
-    //   $.SUBRULE($.mathSum)
-    // })
+    /** Abstracted for easy over-ride */
+    $.RULE('expression', () => {
+      $.SUBRULE($.mathSum)
+    })
 
     // mathSum
     //   : mathProduct (WS* ('+' | '-') WS* mathProduct)*
@@ -761,7 +762,7 @@ export class CssParser extends CstParser {
         {
           ALT: () => {
             $.CONSUME(T.LParen)
-            $.SUBRULE($.mathSum)
+            $.SUBRULE($.expression)
             $.CONSUME(T.RParen)
           }
         }
