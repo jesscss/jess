@@ -112,4 +112,64 @@ export function mathExpressions(this: LessParser, T: TokenMap) {
 
 export function mixinDefinition(this: LessParser, T: TokenMap) {
   const $ = this
+
+  $.OVERRIDE_RULE('selectorList', () => {
+    $.SUBRULE($.complexSelector)
+    $.OR([
+      {
+        ALT: () => {
+          $.CONSUME(T.LParen)
+          $.OPTION(() => $.SUBRULE($.mixinDefinitionArgList))
+          $.CONSUME(T.RParen)
+        }
+      },
+      {
+        ALT: () => {
+          $.MANY(() => {
+            $.CONSUME(T.Comma)
+            $.SUBRULE2($.complexSelector)
+          })
+        }
+      }
+    ])
+  })
+
+  /**
+   * @see https://lesscss.org/features/#mixins-feature-mixins-parametric-feature
+   *
+   * Less allows separating with commas or semi-colons, so we sort out
+   * the bounds of each argument in the CST Visitor.
+   */
+  $.RULE('mixinDefinitionArgList', () => {
+    $.SUBRULE($.mixinDefinitionArg)
+    $.MANY(() => {
+      $.OR([
+        { ALT: () => $.CONSUME(T.Comma) },
+        { ALT: () => $.CONSUME(T.Semi) }
+      ])
+      $.SUBRULE2($.mixinDefinitionArg)
+    })
+    $.OPTION(() => $.CONSUME2(T.Semi))
+  })
+
+  $.RULE('mixinDefinitionArg', () => {
+    $.OR([
+      {
+        ALT: () => {
+          $.CONSUME(T.AtKeyword)
+          $.OR2([
+            {
+              ALT: () => {
+                $.CONSUME(T.Colon)
+                $.SUBRULE($.valueSequence)
+              }
+            },
+            { ALT: () => $.CONSUME(T.Ellipsis) }
+          ])
+        }
+      },
+      { ALT: () => $.SUBRULE2($.valueSequence) },
+      { ALT: () => $.CONSUME2(T.Ellipsis) }
+    ])
+  })
 }

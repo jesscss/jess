@@ -28,6 +28,10 @@ export class LessParser extends CssParser {
 
   expression: Rule
 
+  // mixins
+  mixinDefinitionArgList: Rule
+  mixinDefinitionArg: Rule
+
   constructor(
     tokenVocabulary: TokenVocabulary,
     T: TokenMap,
