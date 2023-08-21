@@ -95,6 +95,7 @@ export const createLexerDefinition = (rawFragments: string[][], rawTokens: Writa
           } else {
             categories = ['Value']
           }
+          /** Any non-blockmarker that's not an Identifier */
           if (category !== 'Ident') {
             categories.push('NonIdent')
           }

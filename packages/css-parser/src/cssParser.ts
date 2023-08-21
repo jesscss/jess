@@ -82,7 +82,8 @@ export class CssParser extends CstParser {
   customValue: Rule
   innerCustomValue: Rule
 
-  function: Rule
+  identOrFunction: Rule
+  knownFunctions: Rule
   urlFunction: Rule
   unknownValue: Rule
 
@@ -576,7 +577,8 @@ export class CssParser extends CstParser {
      */
     $.RULE('extraTokens', () =>
       $.OR([
-        { ALT: () => $.CONSUME(T.Value) },
+        { ALT: () => $.CONSUME(T.NonIdent) },
+        { ALT: () => $.SUBRULE($.identOrFunction) },
         { ALT: () => $.CONSUME(T.CustomProperty) },
         { ALT: () => $.CONSUME(T.Colon) },
         { ALT: () => $.CONSUME(T.AtName) },
@@ -667,12 +669,11 @@ export class CssParser extends CstParser {
       $.OR({
         IGNORE_AMBIGUITIES: true,
         DEF: [
-          { ALT: () => $.CONSUME(T.Ident) },
+          { ALT: () => $.SUBRULE($.identOrFunction) },
           { ALT: () => $.CONSUME(T.Dimension) },
           { ALT: () => $.CONSUME(T.Number) },
           { ALT: () => $.CONSUME(T.Color) },
           { ALT: () => $.CONSUME(T.String) },
-          { ALT: () => $.SUBRULE($.function) },
           {
             ALT: () => {
               $.CONSUME(T.LSquare)
@@ -758,7 +759,7 @@ export class CssParser extends CstParser {
         { ALT: () => $.CONSUME(T.Number) },
         { ALT: () => $.CONSUME(T.Dimension) },
         { ALT: () => $.CONSUME(T.MathConstant) },
-        { ALT: () => $.SUBRULE($.function) },
+        { ALT: () => $.SUBRULE($.knownFunctions) },
         {
           ALT: () => {
             $.CONSUME(T.LParen)
@@ -775,7 +776,7 @@ export class CssParser extends CstParser {
     //   | CALC_FUNCTION '(' WS* mathSum WS* ')'
     //   | identifier '(' valueList ')'
     //   ;
-    $.RULE('function', () => {
+    $.RULE('knownFunctions', () => {
       $.OR([
         { ALT: () => $.SUBRULE($.urlFunction) },
         {
@@ -794,14 +795,6 @@ export class CssParser extends CstParser {
             $.CONSUME(T.Calc)
             $.SUBRULE($.mathSum)
             $.CONSUME2(T.RParen)
-          }
-        },
-        {
-          ALT: () => {
-            $.CONSUME(T.Ident)
-            $.CONSUME(T.LParen)
-            $.SUBRULE2($.valueList)
-            $.CONSUME3(T.RParen)
           }
         }
       ])
@@ -1229,6 +1222,25 @@ export class CssParser extends CstParser {
       ])
     })
 
+    $.RULE('identOrFunction', () => {
+      $.OR([
+        { ALT: () => $.SUBRULE($.knownFunctions) },
+        {
+          ALT: () => {
+            $.CONSUME(T.Ident)
+            $.OPTION({
+              GATE: $.noSep,
+              DEF: () => {
+                $.CONSUME(T.LParen)
+                $.SUBRULE($.valueList)
+                $.CONSUME(T.RParen)
+              }
+            })
+          }
+        }
+      ])
+    })
+
     // supportsInParens
     // : '(' WS* supportsCondition WS* ')'
     // | '(' WS* declaration WS* ')'
@@ -1237,16 +1249,28 @@ export class CssParser extends CstParser {
     $.RULE('supportsInParens', () => {
       $.OR([
         {
-          ALT: () => $.SUBRULE($.function)
+          ALT: () => {
+            $.CONSUME(T.Ident)
+            $.OR2([
+              {
+                GATE: $.noSep,
+                ALT: () => {
+                  $.CONSUME(T.LParen)
+                  $.SUBRULE($.valueList)
+                  $.CONSUME(T.RParen)
+                }
+              }
+            ])
+          }
         },
         {
           ALT: () => {
-            $.CONSUME(T.LParen)
-            $.OR2([
+            $.CONSUME2(T.LParen)
+            $.OR3([
               { ALT: () => $.SUBRULE($.supportsCondition) },
               { ALT: () => $.SUBRULE($.declaration) }
             ])
-            $.CONSUME(T.RParen)
+            $.CONSUME2(T.RParen)
           }
         },
         { ALT: () => $.SUBRULE($.generalEnclosed) }
@@ -1343,7 +1367,7 @@ export class CssParser extends CstParser {
     $.RULE('anyOuterValue', () => {
       $.OR([
         { ALT: () => $.SUBRULE($.extraTokens) },
-        { ALT: () => $.SUBRULE($.function) },
+        { ALT: () => $.SUBRULE($.identOrFunction) },
         {
           ALT: () => {
             $.CONSUME(T.LParen)

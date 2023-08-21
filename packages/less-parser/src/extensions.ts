@@ -207,13 +207,6 @@ export function mathExpressions(this: LessParser, T: TokenMap) {
     ])
   })
 
-  $.RULE('expression', () => {
-    $.OR([
-      { ALT: () => $.SUBRULE($.mathSum) },
-      { ALT: () => $.SUBRULE($.anyOuterValue) }
-    ])
-  })
-
   $.OVERRIDE_RULE('mathValue', () => {
     $.OR([
       { ALT: () => $.SUBRULE($.mixinCallSequence) },
@@ -223,7 +216,7 @@ export function mathExpressions(this: LessParser, T: TokenMap) {
       { ALT: () => $.CONSUME(T.Number) },
       { ALT: () => $.CONSUME(T.Dimension) },
       { ALT: () => $.CONSUME(T.MathConstant) },
-      { ALT: () => $.SUBRULE($.function) },
+      { ALT: () => $.SUBRULE($.identOrFunction) },
       {
         ALT: () => {
           $.CONSUME(T.LParen)
