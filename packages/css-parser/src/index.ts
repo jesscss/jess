@@ -9,12 +9,15 @@ import { CssErrorMessageProvider } from './cssErrorMessageProvider'
 export * from './cssTokens'
 export * from './util'
 export * from './cssParser'
+export * from './cssErrorMessageProvider'
 
 export interface IParseResult<T extends CssParser = CssParser> {
   cst: CstNode
   lexerResult: ILexingResult
   parser: T
 }
+
+const errorMessageProvider = new CssErrorMessageProvider()
 
 export class Parser {
   lexer: Lexer
@@ -28,7 +31,7 @@ export class Parser {
     config: CssParserConfig = {}
   ) {
     config = {
-      errorMessageProvider: CssErrorMessageProvider,
+      errorMessageProvider,
       /**
        * Override this if you want a stricter CSS parser.
        * You can also override when parsing using a single rule.

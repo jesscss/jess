@@ -7,7 +7,9 @@ import {
   innerIdentSelector,
   atVariableDeclarations,
   mathExpressions,
-  mixinDefinition
+  mixinsAndNamespaces,
+  extendSelectors,
+  guards
 } from './extensions'
 
 // import root from './productions/root'
@@ -29,8 +31,18 @@ export class LessParser extends CssParser {
   expression: Rule
 
   // mixins
-  mixinDefinitionArgList: Rule
-  mixinDefinitionArg: Rule
+  mixinName: Rule
+  mixinDefinition: Rule
+  mixinCallSequence: Rule
+  mixinCall: Rule
+  mixinCallArgs: Rule
+  mixinArgList: Rule<(definition?: boolean) => void>
+  mixinArg: Rule<(definition?: boolean) => void>
+
+  // namespaces
+  accessors: Rule
+
+  guard: Rule
 
   constructor(
     tokenVocabulary: TokenVocabulary,
@@ -46,7 +58,9 @@ export class LessParser extends CssParser {
       innerIdentSelector,
       atVariableDeclarations,
       mathExpressions,
-      mixinDefinition
+      guards,
+      mixinsAndNamespaces,
+      extendSelectors
     ].forEach(ext => ext.call($, T))
 
     if ($.constructor === LessParser) {

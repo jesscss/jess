@@ -156,8 +156,12 @@ const tokens = () => ({
       { name: 'CDCToken', pattern: /-->/, group: LexerType.SKIPPED },
       /** Ignore BOM */
       { name: 'UnicodeBOM', pattern: /\uFFFE/, group: LexerType.SKIPPED },
-      { name: 'PlainFunction', pattern: '{{ident}}\\(', categories: ['BlockMarker', 'Function'] },
-      { name: 'AttrFlag', pattern: /[is]/i, longer_alt: ['PlainFunction', 'PlainIdent'], categories: ['Ident'] },
+      /**
+       * Normally this is a CSS token, but it makes downstream parsers much trickier.
+       * Instead, we leave parens and idents as separate tokens.
+       */
+      // { name: 'PlainFunction', pattern: '{{ident}}\\(', categories: ['BlockMarker', 'Function'] },
+      { name: 'AttrFlag', pattern: /[is]/i, longer_alt: 'PlainIdent', categories: ['Ident'] },
 
       /**
        * Needs to appear after keywords like `even` which starts with `e`
@@ -166,20 +170,20 @@ const tokens = () => ({
       {
         name: 'MathConstant',
         pattern: /pi|e|-?infinity|nan/i,
-        longer_alt: ['PlainFunction', 'PlainIdent'],
+        longer_alt: 'PlainIdent',
         categories: ['Ident']
       },
 
       /** Logical Keywords */
-      { name: 'And', pattern: /and/, longer_alt: ['PlainFunction', 'PlainIdent'], categories: ['Ident'] },
-      { name: 'Or', pattern: /or/, longer_alt: ['PlainFunction', 'PlainIdent'], categories: ['Ident'] },
-      { name: 'Not', pattern: /not/, longer_alt: ['PlainFunction', 'PlainIdent'], categories: ['Ident'] },
-      { name: 'Only', pattern: /only/, longer_alt: ['PlainFunction', 'PlainIdent'], categories: ['Ident'] },
+      { name: 'And', pattern: /and/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'Or', pattern: /or/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'Not', pattern: /not/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'Only', pattern: /only/, longer_alt: 'PlainIdent', categories: ['Ident'] },
 
       /** Query words */
-      { name: 'Screen', pattern: /screen/, longer_alt: ['PlainFunction', 'PlainIdent'], categories: ['Ident'] },
-      { name: 'Print', pattern: /print/, longer_alt: ['PlainFunction', 'PlainIdent'], categories: ['Ident'] },
-      { name: 'All', pattern: /all/, longer_alt: ['PlainFunction', 'PlainIdent'], categories: ['Ident'] },
+      { name: 'Screen', pattern: /screen/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'Print', pattern: /print/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'All', pattern: /all/, longer_alt: 'PlainIdent', categories: ['Ident'] },
 
       { name: 'AtKeyword', pattern: '@{{ident}}', categories: ['BlockMarker', 'AtName'] },
       {
@@ -279,9 +283,9 @@ const tokens = () => ({
       },
 
       /** Nth Keywords */
-      { name: 'NthOdd', pattern: /odd/, longer_alt: ['PlainFunction', 'PlainIdent'], categories: ['Ident'] },
-      { name: 'NthEven', pattern: /even/, longer_alt: ['PlainFunction', 'PlainIdent'], categories: ['Ident'] },
-      { name: 'Of', pattern: /of/, longer_alt: ['PlainFunction', 'PlainIdent'], categories: ['Ident'] },
+      { name: 'NthOdd', pattern: /odd/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'NthEven', pattern: /even/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'Of', pattern: /of/, longer_alt: 'PlainIdent', categories: ['Ident'] },
 
       {
         name: 'ColorIntStart',

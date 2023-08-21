@@ -24,7 +24,7 @@ const merges = {
   Assign: [
     { name: 'Ellipsis', pattern: /\.\.\./ }
   ],
-  PlainFunction: [
+  PlainIdent: [
     { name: 'Interpolated', pattern: LexerType.NA },
     {
       name: 'InterpolatedIdent',
@@ -62,7 +62,7 @@ const merges = {
     {
       name: 'When',
       pattern: /when/,
-      longer_alt: ['PlainFunction', 'PlainIdent'],
+      longer_alt: 'PlainIdent',
       categories: ['BlockMarker']
     },
     {

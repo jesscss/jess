@@ -4,9 +4,12 @@ import { lessTokens, lessFragments } from './lessTokens'
 import type { IParseResult } from '@jesscss/css-parser'
 import { createLexerDefinition } from '@jesscss/css-parser'
 import { LessParser, type LessParserConfig, type TokenMap } from './lessParser'
+import { LessErrorMessageProvider } from './lessErrorMessageProvider'
 
 export * from './lessParser'
 export * from './lessTokens'
+
+const errorMessageProvider = new LessErrorMessageProvider()
 
 export class Parser {
   lexer: Lexer
@@ -15,6 +18,10 @@ export class Parser {
   constructor(
     config: LessParserConfig = {}
   ) {
+    config = {
+      errorMessageProvider,
+      ...config
+    }
     const { lexer, T } = createLexerDefinition(lessFragments(), lessTokens())
 
     this.lexer = new Lexer(lexer, {

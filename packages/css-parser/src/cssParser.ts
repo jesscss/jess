@@ -56,12 +56,13 @@ export class CssParser extends CstParser {
 
   stylesheet: Rule
   main: Rule
-  qualifiedRule: Rule
+  qualifiedRule: Rule<(inner?: boolean) => void>
   atRule: Rule
   selectorList: Rule
   declarationList: Rule
   forgivingSelectorList: Rule<(inner?: boolean, firstSelector?: boolean) => void>
   classSelector: Rule
+  idSelector: Rule
   pseudoSelector: Rule<(inner?: boolean) => void>
   attributeSelector: Rule
   nthValue: Rule
@@ -72,7 +73,6 @@ export class CssParser extends CstParser {
   combinator: Rule
 
   declaration: Rule
-  innerQualifiedRule: Rule
   innerAtRule: Rule
   valueList: Rule
 
@@ -146,7 +146,10 @@ export class CssParser extends CstParser {
     config: CssParserConfig = {}
   ) {
     const defaultConfig: CssParserConfig = {
-      lookaheadStrategy: new LLStarLookaheadStrategy(),
+      lookaheadStrategy: new LLStarLookaheadStrategy({
+        // suppress ambiguity logging
+        logging() {}
+      }),
       nodeLocationTracking: 'full'
     }
 
@@ -175,36 +178,35 @@ export class CssParser extends CstParser {
     //     | atRule
     //   )*
     //   ;
+    /**
+     * Defined here similar to a declaration list,
+     * with a recursive optional callback.
+     */
     $.RULE('main', () => {
-      $.MANY(() => {
+      $.OPTION(() => {
         $.OR([
           { ALT: () => $.SUBRULE($.qualifiedRule) },
           { ALT: () => $.SUBRULE($.atRule) }
         ])
+        $.OPTION2(() => $.SUBRULE($.main))
       })
     })
 
     // qualifiedRule
     //   : selectorList WS* LCURLY declarationList RCURLY
     //   ;
-    $.RULE('qualifiedRule', () => {
-      $.SUBRULE($.selectorList)
-      $.CONSUME(T.LCurly)
-      $.SUBRULE($.declarationList)
-      $.CONSUME(T.RCurly)
-    })
+    $.RULE('qualifiedRule', (inner: boolean = false) => {
+      $.OR([
+        {
+          GATE: () => !inner,
+          ALT: () => $.SUBRULE($.selectorList)
+        },
+        {
+          GATE: () => inner,
+          ALT: () => $.SUBRULE($.forgivingSelectorList, { ARGS: [true, true] })
+        }
+      ])
 
-    /**
-      https://www.w3.org/TR/css-nesting-1/
-
-      NOTE: implementers should throw a parsing
-      error if the selectorlist starts with an identifier
-    */
-    // innerQualifiedRule
-    //   : forgivingSelectorList WS* LCURLY declarationList RCURLY
-    //   ;
-    $.RULE('innerQualifiedRule', () => {
-      $.SUBRULE($.forgivingSelectorList, { ARGS: [true, true] })
       $.CONSUME(T.LCurly)
       $.SUBRULE($.declarationList)
       $.CONSUME(T.RCurly)
@@ -245,8 +247,7 @@ export class CssParser extends CstParser {
           ALT: () => $.CONSUME(T.Ampersand)
         },
         { ALT: () => $.SUBRULE($.classSelector) },
-        { ALT: () => $.CONSUME(T.HashName) },
-        { ALT: () => $.CONSUME(T.ColorIdentStart) },
+        { ALT: () => $.SUBRULE($.idSelector) },
         { ALT: () => $.CONSUME(T.Star) },
         { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [inner] }) },
         { ALT: () => $.SUBRULE($.attributeSelector) }
@@ -265,6 +266,14 @@ export class CssParser extends CstParser {
             $.CONSUME(T.Ident)
           }
         }
+      ])
+    })
+
+    /** #id, #FF0000 are both valid ids */
+    $.RULE('idSelector', () => {
+      $.OR([
+        { ALT: () => $.CONSUME(T.HashName) },
+        { ALT: () => $.CONSUME(T.ColorIdentStart) }
       ])
     })
 
@@ -301,14 +310,13 @@ export class CssParser extends CstParser {
             $.OR4([
               {
                 GATE: $.noSep,
-                ALT: () => $.CONSUME(T.Ident)
-              },
-              {
-                GATE: $.noSep,
                 ALT: () => {
-                  $.CONSUME(T.PlainFunction)
-                  $.MANY(() => $.SUBRULE($.anyInnerValue))
-                  $.CONSUME3(T.RParen)
+                  $.CONSUME(T.Ident)
+                  $.OPTION2(() => {
+                    $.CONSUME(T.LParen)
+                    $.MANY(() => $.SUBRULE($.anyInnerValue))
+                    $.CONSUME3(T.RParen)
+                  })
                 }
               }
             ])
@@ -445,6 +453,12 @@ export class CssParser extends CstParser {
       ])
     })
 
+    /**
+      https://www.w3.org/TR/css-nesting-1/
+
+      NOTE: implementers should throw a parsing
+      error if the selectorlist starts with an identifier
+    */
     // forgivingSelectorList
     //   : relativeSelector (WS* COMMA WS* relativeSelector)*
     //   ;
@@ -494,7 +508,7 @@ export class CssParser extends CstParser {
         },
         {
           ALT: () => {
-            $.SUBRULE($.innerQualifiedRule)
+            $.SUBRULE($.qualifiedRule, { ARGS: [true] })
             $.SUBRULE2($.declarationList)
           }
         }
@@ -783,7 +797,8 @@ export class CssParser extends CstParser {
         },
         {
           ALT: () => {
-            $.CONSUME(T.PlainFunction)
+            $.CONSUME(T.Ident)
+            $.CONSUME(T.LParen)
             $.SUBRULE2($.valueList)
             $.CONSUME3(T.RParen)
           }
