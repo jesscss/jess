@@ -2,6 +2,7 @@ import * as glob from 'glob'
 import * as fs from 'fs'
 import * as path from 'path'
 import { Parser } from '../src'
+import { stringify } from '../src/util/cst'
 
 const testData = path.dirname(require.resolve('@less/test-data'))
 
@@ -66,16 +67,22 @@ const invalidCSSOutput = [
 ]
 
 describe.only('can parse Less CSS output', () => {
-  glob.sync(path.join(testData, 'css/_main/calc.css'))
+  glob.sync(path.join(testData, 'css/_main/*.css'))
     .map(value => path.relative(testData, value))
     .filter(value => !invalidCSSOutput.includes(value))
     .sort()
     .forEach(file => {
       it(`${file}`, () => {
         const result = fs.readFileSync(path.join(testData, file))
-        const { lexerResult, parser } = cssParser.parse(result.toString())
+        const contents = result.toString()
+        const { cst, lexerResult, parser } = cssParser.parse(result.toString())
         expect(lexerResult.errors.length).toBe(0)
         expect(parser.errors.length).toBe(0)
+
+        if (!(['test/css/custom-properties.css'].includes(file))) {
+          const output = stringify(cst)
+          expect(output).toBe(contents)
+        }
       })
     })
 })
