@@ -239,7 +239,6 @@ export class CssParser extends CstParser {
   set input(value: IToken[]) {
     const skippedTokens = new Map<number, IToken[]>()
     const inputTokens: IToken[] = []
-    /** `currIdx` is -1 relative to `tokVector` index */
     let foundTokens: number = 0
     for (let i = 0; i < value.length; i++) {
       const token = value[i]
