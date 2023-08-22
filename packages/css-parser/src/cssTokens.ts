@@ -3,6 +3,7 @@ import { type WritableDeep } from 'type-fest'
 import type { RawModeConfig } from './util'
 import { LexerType } from './util'
 
+export const SKIPPED_LABEL = 'Skipped'
 /**
  * references:
  * https://github.com/antlr/grammars-v4/blob/master/css3/css3.g4
@@ -373,13 +374,13 @@ const tokens = () => ({
         name: 'WS',
         pattern: '{{ws}}',
         line_breaks: true,
-        group: 'Skipped'
+        label: SKIPPED_LABEL
       },
       {
         name: 'Comment',
         pattern: '{{comment}}',
         line_breaks: true,
-        group: 'Skipped'
+        label: SKIPPED_LABEL
       }
     ],
     url: [

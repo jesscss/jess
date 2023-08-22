@@ -10,7 +10,7 @@ import {
 } from 'chevrotain'
 import { LLStarLookaheadStrategy } from 'chevrotain-allstar'
 
-import type { CssTokenType } from './cssTokens'
+import { type CssTokenType, SKIPPED_LABEL } from './cssTokens'
 
 export type TokenMap = Record<CssTokenType, TokenType>
 
@@ -494,15 +494,6 @@ export class CssParser extends CstParser {
       $.OR([
         {
           ALT: () => {
-            $.OPTION(() => $.SUBRULE($.declaration))
-            $.OPTION2(() => {
-              $.CONSUME(T.Semi)
-              $.SUBRULE3($.declarationList)
-            })
-          }
-        },
-        {
-          ALT: () => {
             $.SUBRULE($.innerAtRule)
             $.SUBRULE($.declarationList)
           }
@@ -511,6 +502,20 @@ export class CssParser extends CstParser {
           ALT: () => {
             $.SUBRULE($.qualifiedRule, { ARGS: [true] })
             $.SUBRULE2($.declarationList)
+          }
+        },
+        /**
+         * Declaration needs to be last, because in the
+         * Less and Sass parsers, a qualifiedRule can
+         * start with an Identifier also.
+         */
+        {
+          ALT: () => {
+            $.OPTION(() => $.SUBRULE($.declaration))
+            $.OPTION2(() => {
+              $.CONSUME(T.Semi)
+              $.SUBRULE3($.declarationList)
+            })
           }
         }
       ])
@@ -1414,6 +1419,60 @@ export class CssParser extends CstParser {
       $.performSelfAnalysis()
     }
   }
+
+  LA(offset: number) {
+    /**
+     * @see https://github.com/Chevrotain/chevrotain/blob/ac5806631779035c2c1955744a47d8ed4f25a175/examples/grammars/json/json_with_comments.js#L26
+     */
+    let token = super.LA(offset)
+    while (token.tokenType.LABEL === SKIPPED_LABEL) {
+      super.consumeToken()
+      token = super.LA(offset)
+    }
+
+    return token
+  }
+
+  cstPostTerminal(key: string, consumedToken: IToken) {
+    super.cstPostTerminal(key, consumedToken)
+
+    let lookBehindIdx = -1
+    let prevToken = super.LA(lookBehindIdx)
+
+    // After every Token (terminal) is successfully consumed
+    // We will add all the comment that appeared before it to the CST (Parse Tree)
+    while (prevToken.tokenType.LABEL === SKIPPED_LABEL) {
+      super.cstPostTerminal(prevToken.tokenType.name, prevToken)
+      lookBehindIdx--
+      prevToken = super.LA(lookBehindIdx)
+    }
+  }
+
+  // LA(offset: number) {
+  //   const token = super.LA(offset)
+
+  // }
+
+  // private _consumeImplicits() {
+  //   let checkForMore = false
+  //   do {
+  //     const nextToken = this.LA(1)
+  //     if (nextToken.tokenType.LABEL === SKIPPED_LABEL) {
+  //       this.consumeToken()
+  //       this.cstPostTerminal(nextToken.tokenType.name, nextToken)
+  //       checkForMore = true
+  //     } else {
+  //       checkForMore = false
+  //     }
+  //   } while (checkForMore)
+  // }
+
+  // consumeInternal(tokType: TokenType, idx: number, options?: ConsumeMethodOpts): IToken {
+  //   this._consumeImplicits()
+  //   const retVal = super.consumeInternal(tokType, idx, options)
+  //   this._consumeImplicits()
+  //   return retVal
+  // }
 
   /** Checks if there is white space or comment between tokens */
   noSep(whitespaceOnly = false) {

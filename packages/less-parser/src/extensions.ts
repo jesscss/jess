@@ -1,6 +1,7 @@
 import type { LessParser, TokenMap } from './lessParser'
 import { EMPTY_ALT } from 'chevrotain'
 
+/** Extensions of the CSS language */
 export function extendSelectors(this: LessParser, T: TokenMap) {
   const $ = this
 
@@ -18,10 +19,19 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
         ALT: () => $.SUBRULE($.forgivingSelectorList, { ARGS: [true, true] })
       }
     ])
-
-    $.CONSUME(T.LCurly)
-    $.SUBRULE($.declarationList)
-    $.CONSUME(T.RCurly)
+    $.OR2([
+      {
+        GATE: () => $.isMixinCallCandidate,
+        ALT: () => $.CONSUME(T.Semi)
+      },
+      {
+        ALT: () => {
+          $.CONSUME(T.LCurly)
+          $.SUBRULE($.declarationList)
+          $.CONSUME(T.RCurly)
+        }
+      }
+    ])
 
     $.isMixinCallCandidate = false
     $.isMixinDefinitionCandidate = false
@@ -76,6 +86,40 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
         }
       }
     ])
+  })
+
+  $.RULE('testQualifiedRule', () => {
+    $.CONSUME(T.Ident)
+    $.MANY(() => {})
+    $.OR({
+      IGNORE_AMBIGUITIES: true,
+      DEF: [
+        { ALT: () => $.CONSUME($.T.DotName) },
+        { ALT: () => $.CONSUME($.T.HashName) },
+        { ALT: () => $.CONSUME($.T.Colon) },
+        { ALT: () => $.CONSUME($.T.Ampersand) },
+        {
+          ALT: () => {
+            $.SUBRULE($.testQualifiedRuleExpression)
+            $.OR2([
+              { ALT: () => $.CONSUME($.T.LCurly) },
+              { ALT: () => $.CONSUME($.T.Extend) },
+              {
+                ALT: () => {
+                  $.CONSUME($.T.When)
+                  $._()
+                  $.OPTION(() => {
+                    $.CONSUME($.T.Not)
+                    $._(1)
+                  })
+                  $.CONSUME($.T.LParen)
+                }
+              }
+            ])
+          }
+        }
+      ]
+    })
   })
 
   /**

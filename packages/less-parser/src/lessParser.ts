@@ -36,6 +36,8 @@ export class LessParser extends CssParser {
   isMixinDefinitionCandidate: boolean
   isCompareExpression: boolean
 
+  testQualifiedRule: Rule
+
   // mixins
   mixinName: Rule
   // mixinDefinition: Rule
