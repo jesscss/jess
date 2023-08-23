@@ -1,5 +1,6 @@
 import {
   CstParser,
+  EOF,
   type TokenVocabulary,
   type TokenType,
   type IParserConfig,
@@ -12,7 +13,6 @@ import { LLStarLookaheadStrategy } from 'chevrotain-allstar'
 
 import { type CssTokenType, SKIPPED_LABEL } from './cssTokens'
 import { productions } from './productions'
-import { EOF } from 'chevrotain'
 
 export type TokenMap = Record<CssTokenType, TokenType>
 

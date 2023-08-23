@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/prefer-ts-expect-error */
 import type {
   TokenType,
   IToken,
@@ -20,7 +21,10 @@ declare module 'chevrotain' {
       nodeLocation: CstNodeLocation,
       locationInformation: CstNodeLocation,
     ) => void
+    // @ts-ignore - this is defined as a property in Chevrotain
     set input(value: IToken[])
+    // @ts-ignore - this is defined as a property in Chevrotain
+    get input(): IToken[]
     currIdx: number
     CST_STACK: CstNode[]
   }
