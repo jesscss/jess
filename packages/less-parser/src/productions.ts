@@ -88,38 +88,53 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
     ])
   })
 
-  $.RULE('testQualifiedRule', () => {
-    $.CONSUME(T.Ident)
-    $.MANY(() => {})
-    $.OR({
-      IGNORE_AMBIGUITIES: true,
-      DEF: [
-        { ALT: () => $.CONSUME($.T.DotName) },
-        { ALT: () => $.CONSUME($.T.HashName) },
-        { ALT: () => $.CONSUME($.T.Colon) },
-        { ALT: () => $.CONSUME($.T.Ampersand) },
-        {
-          ALT: () => {
-            $.SUBRULE($.testQualifiedRuleExpression)
-            $.OR2([
-              { ALT: () => $.CONSUME($.T.LCurly) },
-              { ALT: () => $.CONSUME($.T.Extend) },
-              {
-                ALT: () => {
-                  $.CONSUME($.T.When)
-                  $._()
-                  $.OPTION(() => {
-                    $.CONSUME($.T.Not)
-                    $._(1)
-                  })
-                  $.CONSUME($.T.LParen)
-                }
-              }
-            ])
-          }
+  $.OVERRIDE_RULE('declarationList', () => {
+    $.OR([
+      {
+        ALT: () => {
+          $.SUBRULE($.innerAtRule)
+          $.SUBRULE($.declarationList)
         }
-      ]
-    })
+      },
+      {
+        GATE: $.BACKTRACK($.testQualifiedRule),
+        ALT: () => {
+          $.SUBRULE($.qualifiedRule, { ARGS: [true] })
+          $.SUBRULE2($.declarationList)
+        }
+      },
+      /**
+         * Declaration needs to be last, because in the
+         * Less and Sass parsers, a qualifiedRule can
+         * start with an Identifier also.
+         */
+      {
+        ALT: () => {
+          $.OPTION(() => $.SUBRULE($.declaration))
+          $.OPTION2(() => {
+            $.CONSUME(T.Semi)
+            $.SUBRULE3($.declarationList)
+          })
+        }
+      }
+    ])
+  })
+
+  /**
+   * We need this rule to succeed quickly if it starts with anything other than an identifier
+   */
+  $.RULE('testQualifiedRule', (inner: boolean = false) => {
+    $.OR([
+      { ALT: () => $.CONSUME(T.NonIdent) },
+      {
+        ALT: () => {
+          /** Well, poop, now we have to look ahead for a '{' */
+          $.CONSUME(T.Ident)
+          $.MANY(() => $.SUBRULE($.anyOuterValue))
+          $.CONSUME(T.LCurly)
+        }
+      }
+    ])
   })
 
   /**
@@ -141,7 +156,7 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
              * so this indicates at least 1 whitespace is present
              */
             {
-              GATE: () => !$.noSep(true),
+              GATE: $.hasWS,
               ALT: EMPTY_ALT()
             }
           ])
@@ -254,7 +269,12 @@ export function mathExpressions(this: LessParser, T: TokenMap) {
   $.OVERRIDE_RULE('mathValue', () => {
     $.OR([
       { ALT: () => $.SUBRULE($.mixinCallSequence) },
-      { ALT: () => $.CONSUME(T.AtKeyword) },
+      {
+        ALT: () => {
+          $.CONSUME(T.AtKeyword)
+          $.OPTION(() => $.SUBRULE($.accessors))
+        }
+      },
       { ALT: () => $.CONSUME(T.Color) },
       { ALT: () => $.CONSUME(T.String) },
       { ALT: () => $.CONSUME(T.Number) },
@@ -401,8 +421,9 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
     $.CONSUME(T.LSquare)
     $.OPTION(() => $.OR([
       { ALT: () => $.CONSUME(T.NestedReference) },
-      { ALT: () => $.CONSUME(T.AtName) },
-      { ALT: () => $.CONSUME(T.PropertyReference) }
+      { ALT: () => $.CONSUME(T.AtKeyword) },
+      { ALT: () => $.CONSUME(T.PropertyReference) },
+      { ALT: () => $.CONSUME(T.Ident) }
     ]))
     $.CONSUME(T.RSquare)
     /** Allows chaining of lookups / calls */

@@ -72,10 +72,13 @@ describe.only('can parse Less CSS output', () => {
     .filter(value => !invalidCSSOutput.includes(value))
     .sort()
     .forEach(file => {
-      it(`${file}`, () => {
-        const result = fs.readFileSync(path.join(testData, file))
-        const contents = result.toString()
-        const { cst, lexerResult, parser } = cssParser.parse(result.toString())
+      const result = fs.readFileSync(path.join(testData, file))
+      const contents = result.toString()
+      const parseStart = performance.now()
+      const { cst, lexerResult, parser } = cssParser.parse(contents)
+      const parseEnd = performance.now()
+
+      it(`${file} (${Math.round(parseEnd - parseStart)}ms)`, () => {
         expect(lexerResult.errors.length).toBe(0)
         expect(parser.errors.length).toBe(0)
 
@@ -95,7 +98,11 @@ describe('returns errors on invalid Less CSS output', () => {
     .forEach(file => {
       it(`${file}`, () => {
         const result = fs.readFileSync(path.join(testData, file))
-        const { lexerResult, parser } = cssParser.parse(result.toString())
+        const contents = result.toString()
+        const parseStart = performance.now()
+        const { lexerResult, parser } = cssParser.parse(contents)
+        const parseEnd = performance.now()
+        console.log(`parse time: ${parseEnd - parseStart}ms`)
         expect(lexerResult.errors.length).toBe(0)
         expect(parser.errors.length).toBeGreaterThan(0)
       })

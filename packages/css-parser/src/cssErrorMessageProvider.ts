@@ -28,8 +28,8 @@ export class CssErrorMessageProvider implements IParserErrorMessageProvider {
     const initialTokens: string[] = []
     options.expectedPathsPerAlt.forEach(expectedPath => {
       expectedPath.forEach(path => {
-        if (!initialTokens.includes(path[0].name)) {
-          initialTokens.push(path[0].name)
+        if (!initialTokens.includes(path[0]?.name)) {
+          initialTokens.push(path[0]?.name)
         }
       })
     })

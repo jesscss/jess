@@ -9,7 +9,7 @@ import {
   mixinsAndNamespaces,
   extendSelectors,
   guards
-} from './extensions'
+} from './productions'
 
 // import root from './productions/root'
 // import atRules from './productions/atRules'
@@ -36,7 +36,7 @@ export class LessParser extends CssParser {
   isMixinDefinitionCandidate: boolean
   isCompareExpression: boolean
 
-  testQualifiedRule: Rule
+  testQualifiedRule: Rule<(inner?: boolean) => void>
 
   // mixins
   mixinName: Rule

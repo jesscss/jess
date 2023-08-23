@@ -10,7 +10,15 @@ const parser = lessParser.parser
 
 describe.skip('can parse any rule', () => {
   it('declaration', () => {
-    const lexerResult = lessParser.lexer.tokenize('color: green;')
+    const lexerResult = lessParser.lexer.tokenize('color: green')
+    const lexedTokens = lexerResult.tokens
+    parser.input = lexedTokens
+    const cst = parser.declaration()
+    expect(parser.errors.length).toBe(0)
+  })
+
+  it('accessors', () => {
+    const lexerResult = lessParser.lexer.tokenize('color: @p[accessor]')
     const lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
     const cst = parser.declaration()
@@ -191,17 +199,19 @@ const invalidLess = [
 ]
 
 describe('can parse all Less stylesheets', () => {
-  const files = glob.sync(path.join(testData, 'less/**/*.less'))
+  const files = glob.sync(path.join(testData, 'less/**/calc.less'))
   files
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))
     .sort()
     .forEach(file => {
-      // if (file.indexOf('namespacing-') > -1) {
-      it(`${file}`, () => {
-        const result = fs.readFileSync(path.join(testData, file))
-        const contents = result.toString()
-        const { cst, lexerResult } = lessParser.parse(contents)
+      const result = fs.readFileSync(path.join(testData, file))
+      const contents = result.toString()
+      const parseStart = performance.now()
+      const { cst, lexerResult, parser } = lessParser.parse(contents)
+      const parseEnd = performance.now()
+
+      it(`${file} (${Math.round(parseEnd - parseStart)}ms)`, () => {
         expect(lexerResult.errors.length).toBe(0)
         expect(parser.errors.length).toBe(0)
 

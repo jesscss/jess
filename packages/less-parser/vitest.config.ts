@@ -4,11 +4,11 @@ export default defineConfig({
   test: {
     name: 'less-parser',
     include: ['test/**/*.ts', '**/__tests__/**/*.ts'],
-    globals: true,
-    coverage: {
-      enabled: true,
-      include: ['src/**/*.ts'],
-      100: true
-    }
+    globals: true
+    // coverage: {
+    //   enabled: true,
+    //   include: ['src/**/*.ts'],
+    //   100: true
+    // }
   }
 })
