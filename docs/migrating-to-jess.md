@@ -10,7 +10,7 @@ $color: red;
 ```
 **Jess**
 ```less
-@let color: red;
+$color: red;
 ```
 
 ### Variable Reference
@@ -40,7 +40,7 @@ width: ($width * 2);
 ```
 **Jess**
 ```scss
-width: <$width * 2>;
+width: ~($width * 2);
 ```
 
 ### Mixins
@@ -102,14 +102,13 @@ each(@sizes, #(@size) {
 **Jess**
 
 ```less
-import each from '@jesscss/fns/each';
+// import each from '@jesscss/fns/each';
 
-@mixin size(size) {
+@for $size of $sizes {
   .icon-~($size) {
     font-size: $size;
     height: $size;
     width: $size;
   }
 }
-~each($sizes, $size);
 ```
