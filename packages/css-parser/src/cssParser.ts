@@ -83,8 +83,10 @@ export class CssParser extends CstParser {
   customValue: Rule
   innerCustomValue: Rule
 
-  identOrFunction: Rule
+  function: Rule
   knownFunctions: Rule
+  varFunction: Rule
+  calcFunction: Rule
   urlFunction: Rule
   unknownValue: Rule
 

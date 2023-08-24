@@ -423,8 +423,8 @@ export function productions(this: CssParser, T: TokenMap) {
      */
   $.RULE('extraTokens', () =>
     $.OR([
-      { ALT: () => $.CONSUME(T.NonIdent) },
-      { ALT: () => $.SUBRULE($.identOrFunction) },
+      { ALT: () => $.SUBRULE($.knownFunctions) },
+      { ALT: () => $.CONSUME(T.Value) },
       { ALT: () => $.CONSUME(T.CustomProperty) },
       { ALT: () => $.CONSUME(T.Colon) },
       { ALT: () => $.CONSUME(T.AtName) },
@@ -515,7 +515,9 @@ export function productions(this: CssParser, T: TokenMap) {
     $.OR({
       IGNORE_AMBIGUITIES: true,
       DEF: [
-        { ALT: () => $.SUBRULE($.identOrFunction) },
+        /** Function should appear before Ident */
+        { ALT: () => $.SUBRULE($.function) },
+        { ALT: () => $.CONSUME(T.Ident) },
         { ALT: () => $.CONSUME(T.Dimension) },
         { ALT: () => $.CONSUME(T.Number) },
         { ALT: () => $.CONSUME(T.Color) },
@@ -625,25 +627,25 @@ export function productions(this: CssParser, T: TokenMap) {
   $.RULE('knownFunctions', () => {
     $.OR([
       { ALT: () => $.SUBRULE($.urlFunction) },
-      {
-        ALT: () => {
-          $.CONSUME(T.Var)
-          $.CONSUME(T.CustomProperty)
-          $.OPTION(() => {
-            $.CONSUME(T.Comma)
-            $.SUBRULE($.valueList)
-          })
-          $.CONSUME(T.RParen)
-        }
-      },
-      {
-        ALT: () => {
-          $.CONSUME(T.Calc)
-          $.SUBRULE($.mathSum)
-          $.CONSUME2(T.RParen)
-        }
-      }
+      { ALT: () => $.SUBRULE($.varFunction) },
+      { ALT: () => $.SUBRULE($.calcFunction) }
     ])
+  })
+
+  $.RULE('varFunction', () => {
+    $.CONSUME(T.Var)
+    $.CONSUME(T.CustomProperty)
+    $.OPTION(() => {
+      $.CONSUME(T.Comma)
+      $.SUBRULE($.valueList)
+    })
+    $.CONSUME(T.RParen)
+  })
+
+  $.RULE('calcFunction', () => {
+    $.CONSUME(T.Calc)
+    $.SUBRULE($.mathSum)
+    $.CONSUME2(T.RParen)
   })
 
   $.RULE('urlFunction', () => {
@@ -1068,20 +1070,20 @@ export function productions(this: CssParser, T: TokenMap) {
     ])
   })
 
-  $.RULE('identOrFunction', () => {
+  $.RULE('function', () => {
     $.OR([
       { ALT: () => $.SUBRULE($.knownFunctions) },
       {
         ALT: () => {
           $.CONSUME(T.Ident)
-          $.OPTION({
+          $.OR2([{
             GATE: $.noSep,
-            DEF: () => {
+            ALT: () => {
               $.CONSUME(T.LParen)
               $.SUBRULE($.valueList)
               $.CONSUME(T.RParen)
             }
-          })
+          }])
         }
       }
     ])
@@ -1213,7 +1215,6 @@ export function productions(this: CssParser, T: TokenMap) {
   $.RULE('anyOuterValue', () => {
     $.OR([
       { ALT: () => $.SUBRULE($.extraTokens) },
-      { ALT: () => $.SUBRULE($.identOrFunction) },
       {
         ALT: () => {
           $.CONSUME(T.LParen)

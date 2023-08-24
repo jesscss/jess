@@ -13,6 +13,7 @@ const errorMessageProvider = new LessErrorMessageProvider()
 
 export class Parser {
   lexer: Lexer
+  /** @todo - return Jess AST as parser */
   parser: LessParser
 
   constructor(

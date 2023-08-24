@@ -21,6 +21,7 @@ const errorMessageProvider = new CssErrorMessageProvider()
 
 export class Parser {
   lexer: Lexer
+  /** @todo - return Jess AST as parser */
   parser: CssParser
 
   /**
@@ -49,6 +50,7 @@ export class Parser {
     this.parser = new CssParser(lexer, T as TokenMap, config)
   }
 
+  /** @todo  */
   parse(text: string): IParseResult {
     const parser = this.parser
     const lexerResult = this.lexer.tokenize(text)

@@ -72,13 +72,12 @@ describe.only('can parse Less CSS output', () => {
     .filter(value => !invalidCSSOutput.includes(value))
     .sort()
     .forEach(file => {
-      const result = fs.readFileSync(path.join(testData, file))
-      const contents = result.toString()
-      const parseStart = performance.now()
-      const { cst, lexerResult, parser } = cssParser.parse(contents)
-      const parseEnd = performance.now()
-
-      it(`${file} (${Math.round(parseEnd - parseStart)}ms)`, () => {
+      it(`${file}`, () => {
+        const result = fs.readFileSync(path.join(testData, file))
+        const contents = result.toString()
+        // const parseStart = performance.now()
+        const { cst, lexerResult, parser } = cssParser.parse(contents)
+        // const parseEnd = performance.now()
         expect(lexerResult.errors.length).toBe(0)
         expect(parser.errors.length).toBe(0)
 

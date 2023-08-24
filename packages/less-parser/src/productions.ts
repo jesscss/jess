@@ -8,6 +8,7 @@ export function extendRoot(this: LessParser, T: TokenMap) {
   $.OVERRIDE_RULE('main', () => {
     $.OPTION(() => {
       $.OR([
+        { ALT: () => $.SUBRULE($.function) },
         { ALT: () => $.SUBRULE($.qualifiedRule) },
         { ALT: () => $.SUBRULE($.atRule) }
       ])
@@ -139,9 +140,12 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
   })
 
   /**
-   * We need this rule to succeed quickly if it starts with anything other than an identifier
+   * We need this rule to succeed quickly if it starts with anything other
+   * than an identifier. We also parse very loosely, so that we can
+   * establish author intent, and that way we can throw qualified-rule-specific
+   * errors when parsing.
    */
-  $.RULE('testQualifiedRule', (inner: boolean = false) => {
+  $.RULE('testQualifiedRule', () => {
     $.OR([
       { ALT: () => $.CONSUME(T.NonIdent) },
       {
@@ -248,6 +252,15 @@ export function atVariableDeclarations(this: LessParser, T: TokenMap) {
           ])
         }
       },
+      /** This is a variable call */
+      {
+        GATE: () => $.noSep() && $.LA(1).tokenType === T.LParen,
+        /**
+         * This is a change from Less 1.x-4.x
+         * e.g. `@dr(arg1, arg2)`
+         */
+        ALT: () => $.SUBRULE($.mixinCallArgs)
+      },
       /** Just a regular unknown at-rule */
       {
         ALT: () => {
@@ -293,16 +306,16 @@ export function mathExpressions(this: LessParser, T: TokenMap) {
           $.OPTION(() => $.SUBRULE($.accessors))
         }
       },
-      { ALT: () => $.CONSUME(T.Color) },
-      { ALT: () => $.CONSUME(T.String) },
-      { ALT: () => $.CONSUME(T.Number) },
-      { ALT: () => $.CONSUME(T.Dimension) },
-      { ALT: () => $.CONSUME(T.MathConstant) },
-      { ALT: () => $.SUBRULE($.identOrFunction) },
+      /**
+       * Fall back to regular value.
+       * @note This may create some invalid calc() expressions
+       * @todo Differentiate between calc() and Less math?
+       */
+      { ALT: () => $.SUBRULE($.value) },
       {
         ALT: () => {
           $.CONSUME(T.LParen)
-          $.SUBRULE($.mathSum)
+          $.SUBRULE($.expression)
           $.CONSUME(T.RParen)
         }
       }
@@ -482,7 +495,7 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
             {
               ALT: () => {
                 $.CONSUME(T.Colon)
-                $.SUBRULE($.valueSequence)
+                $.SUBRULE($.mixinValue)
               }
             },
             {
@@ -492,11 +505,24 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
           ])
         }
       },
-      { ALT: () => $.SUBRULE2($.valueSequence) },
+      { ALT: () => $.SUBRULE2($.mixinValue) },
       {
         GATE: () => definition,
         ALT: () => $.CONSUME2(T.Ellipsis)
       }
+    ])
+  })
+
+  $.RULE('mixinValue', () => {
+    $.OR([
+      {
+        ALT: () => {
+          $.CONSUME(T.LCurly)
+          $.SUBRULE($.declarationList)
+          $.CONSUME(T.RCurly)
+        }
+      },
+      { ALT: () => $.SUBRULE($.valueSequence) }
     ])
   })
 

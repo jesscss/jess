@@ -13,9 +13,6 @@ importers:
       '@rollup/plugin-sucrase':
         specifier: ^5.0.1
         version: 5.0.1(rollup@3.20.7)
-      '@types/chai':
-        specifier: ^4.3.4
-        version: 4.3.4
       '@types/glob':
         specifier: ^8.1.0
         version: 8.1.0
@@ -3417,10 +3414,6 @@ packages:
     resolution: {integrity: sha512-frBecisrNGz+F4T6bcc+NLeolfiojh5FxW2klu669+8BARtyQv2C/GkNW6FUodVe4BroGMP/wER/YDGc7rEllw==}
     dependencies:
       '@types/chai': 4.3.5
-    dev: true
-
-  /@types/chai@4.3.4:
-    resolution: {integrity: sha512-KnRanxnpfpjUTqTCXslZSEdLfXExwgNxYPdiO2WGUj8+HDjFi8R3k5RVKPeSCzLjCcshCAtVO2QBbVuAV4kTnw==}
     dev: true
 
   /@types/chai@4.3.5:

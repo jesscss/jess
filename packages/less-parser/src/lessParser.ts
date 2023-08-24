@@ -8,6 +8,7 @@ import {
   mathExpressions,
   mixinsAndNamespaces,
   extendSelectors,
+  extendRoot,
   guards
 } from './productions'
 
@@ -32,11 +33,12 @@ export class LessParser extends CssParser {
   T: TokenMap
 
   expression: Rule
+  function: Rule
   isMixinCallCandidate: boolean
   isMixinDefinitionCandidate: boolean
   isCompareExpression: boolean
 
-  testQualifiedRule: Rule<(inner?: boolean) => void>
+  testQualifiedRule: Rule
 
   // mixins
   mixinName: Rule
@@ -46,6 +48,7 @@ export class LessParser extends CssParser {
   mixinCallArgs: Rule
   mixinArgList: Rule<(definition?: boolean) => void>
   mixinArg: Rule<(definition?: boolean) => void>
+  mixinValue: Rule
 
   // namespaces
   accessors: Rule
@@ -67,6 +70,7 @@ export class LessParser extends CssParser {
 
     /** Less extensions */
     ;[
+      extendRoot,
       atVariableDeclarations,
       mathExpressions,
       guards,

@@ -4,8 +4,7 @@ export default defineConfig({
   test: {
     name: 'less-parser',
     include: ['test/**/*.ts', '**/__tests__/**/*.ts'],
-    globals: true,
-    reporters: ['default', 'basic']
+    globals: true
     // coverage: {
     //   enabled: true,
     //   include: ['src/**/*.ts'],
