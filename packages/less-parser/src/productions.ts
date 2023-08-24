@@ -2,9 +2,27 @@ import type { LessParser, TokenMap } from './lessParser'
 import { EMPTY_ALT } from 'chevrotain'
 
 /** Extensions of the CSS language */
+export function extendRoot(this: LessParser, T: TokenMap) {
+  const $ = this
+
+  $.OVERRIDE_RULE('main', () => {
+    $.OPTION(() => {
+      $.OR([
+        { ALT: () => $.SUBRULE($.qualifiedRule) },
+        { ALT: () => $.SUBRULE($.atRule) }
+      ])
+      $.OPTION2(() => $.SUBRULE($.main))
+    })
+  })
+}
+
 export function extendSelectors(this: LessParser, T: TokenMap) {
   const $ = this
 
+  /**
+   * Technically, the qualified rule here does some magic
+   * to determine if it's alternatively a mixin call or definition.
+   */
   $.OVERRIDE_RULE('qualifiedRule', (inner: boolean = false) => {
     $.isMixinCallCandidate = true
     $.isMixinDefinitionCandidate = true
