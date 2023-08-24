@@ -1,7 +1,8 @@
 import * as glob from 'glob'
 import * as fs from 'fs'
 import * as path from 'path'
-import { Parser } from '../src'
+import { Parser, type LessParser } from '../src'
+import { type IParseResult } from '@jesscss/css-parser'
 
 const testData = path.dirname(require.resolve('@less/test-data'))
 
@@ -199,19 +200,19 @@ const invalidLess = [
 ]
 
 describe('can parse all Less stylesheets', () => {
-  const files = glob.sync(path.join(testData, 'less/**/calc.less'))
+  const files = glob.sync(path.join(testData, 'less/**/*.less'))
   files
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))
     .sort()
     .forEach(file => {
-      const result = fs.readFileSync(path.join(testData, file))
-      const contents = result.toString()
-      const parseStart = performance.now()
-      const { cst, lexerResult, parser } = lessParser.parse(contents)
-      const parseEnd = performance.now()
-
-      it(`${file} (${Math.round(parseEnd - parseStart)}ms)`, () => {
+      it(`${file}`, () => {
+        const result = fs.readFileSync(path.join(testData, file))
+        const contents = result.toString()
+        const parseStart = performance.now()
+        const { cst, lexerResult, parser } = lessParser.parse(contents)
+        const parseEnd = performance.now()
+        expect(`(${Math.round(parseEnd - parseStart)}ms)`).toBeDefined()
         expect(lexerResult.errors.length).toBe(0)
         expect(parser.errors.length).toBe(0)
 
