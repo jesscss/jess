@@ -1,6 +1,6 @@
 import type { IParserConfig, TokenVocabulary, TokenType } from 'chevrotain'
 // import { LLStarLookaheadStrategy } from 'chevrotain-allstar'
-import type { Rule } from '@jesscss/css-parser'
+import type { Rule, RuleContext as CssRuleContext } from '@jesscss/css-parser'
 import { CssParser } from '@jesscss/css-parser'
 import { type LessTokenType } from './lessTokens'
 import {
@@ -25,6 +25,17 @@ export type LessParserConfig = IParserConfig
 
 export type TokenMap = Record<LessTokenType, TokenType>
 
+export type RuleContext = CssRuleContext & {
+  /**
+   * This is parsing state maintained while parsing a qualified rule.
+   * It helps determine if this is valid as a mixin call or definition
+   * without having to backtrack.
+   */
+  isMixinCallCandidate?: boolean
+  isMixinDefinitionCandidate?: boolean
+
+  // isCompareExpression?: boolean
+}
 /**
  * Unlike the historical Less parser, this parser
  * avoids all backtracking
@@ -34,20 +45,19 @@ export class LessParser extends CssParser {
 
   expression: Rule
   function: Rule
-  isMixinCallCandidate: boolean
-  isMixinDefinitionCandidate: boolean
-  isCompareExpression: boolean
 
   testQualifiedRule: Rule
+  // Move to context?
+  isCompareExpression: boolean
 
   // mixins
   mixinName: Rule
   // mixinDefinition: Rule
   mixinCallSequence: Rule
   mixinCall: Rule
-  mixinCallArgs: Rule
-  mixinArgList: Rule<(definition?: boolean) => void>
-  mixinArg: Rule<(definition?: boolean) => void>
+  mixinCallArgs: Rule<(ctx?: RuleContext) => void>
+  mixinArgList: Rule<(ctx?: RuleContext) => void>
+  mixinArg: Rule<(ctx?: RuleContext) => void>
   mixinValue: Rule
 
   // namespaces

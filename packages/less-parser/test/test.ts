@@ -210,10 +210,10 @@ describe('can parse all Less stylesheets', () => {
       it(`${file}`, () => {
         const result = fs.readFileSync(path.join(testData, file))
         const contents = result.toString()
-        const parseStart = performance.now()
+        // const parseStart = performance.now()
         const { cst, lexerResult, parser } = lessParser.parse(contents)
-        const parseEnd = performance.now()
-        expect(`(${Math.round(parseEnd - parseStart)}ms)`).toBeDefined()
+        // const parseEnd = performance.now()
+        // expect(`(${Math.round(parseEnd - parseStart)}ms)`).toBeDefined()
         expect(lexerResult.errors.length).toBe(0)
         expect(parser.errors.length).toBe(0)
 

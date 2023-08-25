@@ -49,6 +49,11 @@ export interface CssParserConfig extends IParserConfig {
   loose?: boolean
 }
 
+export type RuleContext = {
+  inner?: boolean
+  firstSelector?: boolean
+}
+
 export class CssParser extends CstParser {
   T: TokenMap
   skippedTokens: Map<number, IToken[]>
@@ -57,20 +62,20 @@ export class CssParser extends CstParser {
 
   stylesheet: Rule
   main: Rule
-  qualifiedRule: Rule<(inner?: boolean) => void>
+  qualifiedRule: Rule<(ctx?: RuleContext) => void>
   atRule: Rule
-  selectorList: Rule
+  selectorList: Rule<(ctx?: RuleContext) => void>
   declarationList: Rule
-  forgivingSelectorList: Rule<(inner?: boolean, firstSelector?: boolean) => void>
+  forgivingSelectorList: Rule<(ctx?: RuleContext) => void>
   classSelector: Rule
   idSelector: Rule
-  pseudoSelector: Rule<(inner?: boolean) => void>
+  pseudoSelector: Rule<(ctx?: RuleContext) => void>
   attributeSelector: Rule
   nthValue: Rule
-  complexSelector: Rule<(inner?: boolean, firstSelector?: boolean) => void>
-  simpleSelector: Rule<(inner?: boolean, firstSelector?: boolean) => void>
-  compoundSelector: Rule<(inner?: boolean, firstSelector?: boolean) => void>
-  relativeSelector: Rule<(inner?: boolean, firstSelector?: boolean) => void>
+  complexSelector: Rule<(ctx?: RuleContext) => void>
+  simpleSelector: Rule<(ctx?: RuleContext) => void>
+  compoundSelector: Rule<(ctx?: RuleContext) => void>
+  relativeSelector: Rule<(ctx?: RuleContext) => void>
   combinator: Rule
 
   declaration: Rule

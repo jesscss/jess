@@ -1,4 +1,4 @@
-import type { CssParser, TokenMap } from './cssParser'
+import type { CssParser, TokenMap, RuleContext } from './cssParser'
 import { EMPTY_ALT } from 'chevrotain'
 
 export function productions(this: CssParser, T: TokenMap) {
@@ -37,15 +37,15 @@ export function productions(this: CssParser, T: TokenMap) {
   // qualifiedRule
   //   : selectorList WS* LCURLY declarationList RCURLY
   //   ;
-  $.RULE('qualifiedRule', (inner: boolean = false) => {
+  $.RULE('qualifiedRule', (ctx: RuleContext = {}) => {
     $.OR([
       {
-        GATE: () => !inner,
+        GATE: () => !ctx.inner,
         ALT: () => $.SUBRULE($.selectorList)
       },
       {
-        GATE: () => inner,
-        ALT: () => $.SUBRULE($.forgivingSelectorList, { ARGS: [true, true] })
+        GATE: () => !!ctx.inner,
+        ALT: () => $.SUBRULE($.forgivingSelectorList, { ARGS: [{ ...ctx, firstSelector: true }] })
       }
     ])
 
@@ -76,22 +76,22 @@ export function productions(this: CssParser, T: TokenMap) {
   //   | pseudoSelector
   //   | attributeSelector
   //   ;
-  $.RULE('simpleSelector', (inner: boolean = false, firstSelector: boolean = false) => {
+  $.RULE('simpleSelector', (ctx: RuleContext = {}) => {
     $.OR([
       {
         /** In CSS Nesting, the first selector cannot be an identifier */
-        GATE: () => !firstSelector,
+        GATE: () => !ctx.firstSelector,
         ALT: () => $.CONSUME(T.Ident)
       },
       {
         /** In CSS Nesting, outer selector can't contain an ampersand */
-        GATE: () => inner,
+        GATE: () => !!ctx.inner,
         ALT: () => $.CONSUME(T.Ampersand)
       },
       { ALT: () => $.SUBRULE($.classSelector) },
       { ALT: () => $.SUBRULE($.idSelector) },
       { ALT: () => $.CONSUME(T.Star) },
-      { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [inner] }) },
+      { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [ctx] }) },
       { ALT: () => $.SUBRULE($.attributeSelector) }
     ])
   })
@@ -124,7 +124,7 @@ export function productions(this: CssParser, T: TokenMap) {
   //   | FUNCTIONAL_PSEUDO_CLASS '(' WS* forgivingSelectorList WS* ')'
   //   | COLON COLON? identifier ('(' anyInnerValue* ')')?
   //   ;
-  $.RULE('pseudoSelector', (inner?: boolean) => {
+  $.RULE('pseudoSelector', (ctx: RuleContext = {}) => {
     $.OR([
       {
         ALT: () => {
@@ -136,7 +136,7 @@ export function productions(this: CssParser, T: TokenMap) {
       {
         ALT: () => {
           $.CONSUME(T.SelectorPseudoClass)
-          $.SUBRULE($.forgivingSelectorList, { ARGS: [inner] })
+          $.SUBRULE($.forgivingSelectorList, { ARGS: [ctx] })
           $.CONSUME2(T.RParen)
         }
       },
@@ -235,9 +235,9 @@ export function productions(this: CssParser, T: TokenMap) {
   // compoundSelector
   //   : simpleSelector+
   //   ;
-  $.RULE('compoundSelector', (inner?: boolean, firstSelector?: boolean) => {
-    $.SUBRULE($.simpleSelector, { ARGS: [inner, firstSelector] })
-    $.MANY(() => $.SUBRULE2($.simpleSelector, { ARGS: [inner] }))
+  $.RULE('compoundSelector', (ctx: RuleContext = {}) => {
+    $.SUBRULE($.simpleSelector, { ARGS: [ctx] })
+    $.MANY(() => $.SUBRULE2($.simpleSelector, { ARGS: [{ ...ctx, firstSelector: false }] }))
   })
 
   /**
@@ -248,11 +248,11 @@ export function productions(this: CssParser, T: TokenMap) {
   // complexSelector
   //   : compoundSelector (WS* (combinator WS*)? compoundSelector)*
   //   ;
-  $.RULE('complexSelector', (inner?: boolean, firstSelector?: boolean) => {
-    $.SUBRULE($.compoundSelector, { ARGS: [inner, firstSelector] })
+  $.RULE('complexSelector', (ctx: RuleContext = {}) => {
+    $.SUBRULE($.compoundSelector, { ARGS: [ctx] })
     $.MANY(() => {
       $.SUBRULE($.combinator)
-      $.SUBRULE2($.compoundSelector, { ARGS: [inner] })
+      $.SUBRULE2($.compoundSelector, { ARGS: [{ ...ctx, firstSelector: false }] })
     })
   })
 
@@ -281,16 +281,16 @@ export function productions(this: CssParser, T: TokenMap) {
   // relativeSelector
   //   : (combinator WS*)? complexSelector
   //   ;
-  $.RULE('relativeSelector', (inner?: boolean, firstSelector?: boolean) => {
+  $.RULE('relativeSelector', (ctx: RuleContext = {}) => {
     $.OR([
       {
         ALT: () => {
           $.CONSUME(T.Combinator)
-          $.SUBRULE($.complexSelector)
+          $.SUBRULE($.complexSelector, { ARGS: [{ ...ctx, firstSelector: false }] })
         }
       },
       {
-        ALT: () => $.SUBRULE2($.complexSelector, { ARGS: [inner, firstSelector] })
+        ALT: () => $.SUBRULE2($.complexSelector, { ARGS: [ctx] })
       }
     ])
   })
@@ -304,21 +304,21 @@ export function productions(this: CssParser, T: TokenMap) {
   // forgivingSelectorList
   //   : relativeSelector (WS* COMMA WS* relativeSelector)*
   //   ;
-  $.RULE('forgivingSelectorList', (inner?: boolean, firstSelector?: boolean) => {
-    $.SUBRULE($.relativeSelector, { ARGS: [inner, firstSelector] })
+  $.RULE('forgivingSelectorList', (ctx: RuleContext = {}) => {
+    $.SUBRULE($.relativeSelector, { ARGS: [ctx] })
     $.MANY(() => {
       $.CONSUME(T.Comma)
-      $.SUBRULE2($.relativeSelector, { ARGS: [inner] })
+      $.SUBRULE2($.relativeSelector, { ARGS: [{ ...ctx, firstSelector: false }] })
     })
   })
 
   // selectorList
   //   : complexSelector (WS* COMMA WS* complexSelector)*
   //   ;
-  $.RULE('selectorList', () => {
+  $.RULE('selectorList', (ctx: RuleContext = {}) => {
     $.MANY_SEP({
       SEP: T.Comma,
-      DEF: () => $.SUBRULE($.complexSelector)
+      DEF: () => $.SUBRULE($.complexSelector, { ARGS: [ctx] })
     })
   })
 
@@ -341,7 +341,7 @@ export function productions(this: CssParser, T: TokenMap) {
       },
       {
         ALT: () => {
-          $.SUBRULE($.qualifiedRule, { ARGS: [true] })
+          $.SUBRULE($.qualifiedRule, { ARGS: [{ inner: true }] })
           $.SUBRULE2($.declarationList)
         }
       },

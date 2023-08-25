@@ -1,4 +1,4 @@
-import type { LessParser, TokenMap } from './lessParser'
+import type { LessParser, TokenMap, RuleContext } from './lessParser'
 import { EMPTY_ALT } from 'chevrotain'
 
 /** Extensions of the CSS language */
@@ -17,6 +17,14 @@ export function extendRoot(this: LessParser, T: TokenMap) {
   })
 }
 
+// const getRuleContext = (ctx: RuleContext): RuleContext => ({
+//   mixinCandidate: {
+//     call: false,
+//     definition: false
+//   },
+//   ...ctx
+// })
+
 export function extendSelectors(this: LessParser, T: TokenMap) {
   const $ = this
 
@@ -24,23 +32,26 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
    * Technically, the qualified rule here does some magic
    * to determine if it's alternatively a mixin call or definition.
    */
-  $.OVERRIDE_RULE('qualifiedRule', (inner: boolean = false) => {
-    $.isMixinCallCandidate = true
-    $.isMixinDefinitionCandidate = true
+  $.OVERRIDE_RULE('qualifiedRule', (ctx: RuleContext = {}) => {
+    ctx = {
+      ...ctx,
+      isMixinCallCandidate: true,
+      isMixinDefinitionCandidate: true
+    }
 
     $.OR([
       {
-        GATE: () => !inner,
-        ALT: () => $.SUBRULE($.selectorList)
+        GATE: () => !ctx.inner,
+        ALT: () => $.SUBRULE($.selectorList, { ARGS: [ctx] })
       },
       {
-        GATE: () => inner,
-        ALT: () => $.SUBRULE($.forgivingSelectorList, { ARGS: [true, true] })
+        GATE: () => !!ctx.inner,
+        ALT: () => $.SUBRULE($.forgivingSelectorList, { ARGS: [ctx] })
       }
     ])
     $.OR2([
       {
-        GATE: () => $.isMixinCallCandidate,
+        GATE: () => !!ctx.isMixinCallCandidate,
         ALT: () => $.CONSUME(T.Semi)
       },
       {
@@ -51,33 +62,31 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
         }
       }
     ])
-
-    $.isMixinCallCandidate = false
-    $.isMixinDefinitionCandidate = false
   })
 
-  $.OVERRIDE_RULE('relativeSelector', (inner?: boolean, firstSelector?: boolean) => {
+  $.OVERRIDE_RULE('relativeSelector', (ctx: RuleContext = {}) => {
     $.OR([
       {
         ALT: () => {
-          $.isMixinCallCandidate = false
-          $.isMixinDefinitionCandidate = false
+          ctx.isMixinCallCandidate = false
+          ctx.isMixinCallCandidate = false
+          ctx.isMixinDefinitionCandidate = false
           $.CONSUME(T.Combinator)
           $.SUBRULE($.complexSelector)
         }
       },
       {
-        ALT: () => $.SUBRULE2($.complexSelector, { ARGS: [inner, firstSelector] })
+        ALT: () => $.SUBRULE2($.complexSelector, { ARGS: [ctx] })
       }
     ])
   })
 
-  $.OVERRIDE_RULE('simpleSelector', (inner: boolean = false) => {
+  $.OVERRIDE_RULE('simpleSelector', (ctx: RuleContext = {}) => {
     $.OR([
       {
         ALT: () => {
-          $.isMixinCallCandidate &&= true
-          $.isMixinDefinitionCandidate &&= true
+          ctx.isMixinCallCandidate &&= true
+          ctx.isMixinDefinitionCandidate &&= true
           $.OR2([
             { ALT: () => $.SUBRULE($.classSelector) },
             { ALT: () => $.SUBRULE($.idSelector) },
@@ -88,18 +97,18 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
       },
       {
         ALT: () => {
-          $.isMixinCallCandidate = false
-          $.isMixinDefinitionCandidate = false
+          ctx.isMixinCallCandidate = false
+          ctx.isMixinDefinitionCandidate = false
           $.OR3([
             /** Allow identifiers at rule starts */
             { ALT: () => $.CONSUME(T.Ident) },
             {
             /** In CSS Nesting, outer selector can't contain an ampersand */
-              GATE: () => inner,
+              GATE: () => !!ctx.inner,
               ALT: () => $.CONSUME(T.Ampersand)
             },
             { ALT: () => $.CONSUME(T.Star) },
-            { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [inner] }) },
+            { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [ctx] }) },
             { ALT: () => $.SUBRULE($.attributeSelector) }
           ])
         }
@@ -118,7 +127,7 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
       {
         GATE: $.BACKTRACK($.testQualifiedRule),
         ALT: () => {
-          $.SUBRULE($.qualifiedRule, { ARGS: [true] })
+          $.SUBRULE($.qualifiedRule, { ARGS: [{ inner: true }] })
           $.SUBRULE2($.declarationList)
         }
       },
@@ -163,12 +172,12 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
    * We need to list specific combinators,
    * because only one kind is allowed in a mixin call.
    */
-  $.OVERRIDE_RULE('combinator', () => {
+  $.OVERRIDE_RULE('combinator', (ctx: RuleContext = {}) => {
     $.OR([
       {
         ALT: () => {
-          $.isMixinDefinitionCandidate = false
-          $.isMixinCallCandidate &&= true
+          ctx.isMixinDefinitionCandidate = false
+          ctx.isMixinCallCandidate &&= true
           $.OR2([
             {
               ALT: () => $.CONSUME(T.Gt)
@@ -186,8 +195,8 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
       },
       {
         ALT: () => {
-          $.isMixinDefinitionCandidate = false
-          $.isMixinCallCandidate = false
+          ctx.isMixinDefinitionCandidate = false
+          ctx.isMixinCallCandidate = false
           $.OR3([
             { ALT: () => $.CONSUME(T.Plus) },
             { ALT: () => $.CONSUME(T.Tilde) },
@@ -199,23 +208,23 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
     ])
   })
 
-  $.OVERRIDE_RULE('compoundSelector', (inner?: boolean, firstSelector?: boolean) => {
-    $.SUBRULE($.simpleSelector, { ARGS: [inner, firstSelector] })
+  $.OVERRIDE_RULE('compoundSelector', (ctx: RuleContext = {}) => {
+    $.SUBRULE($.simpleSelector, { ARGS: [ctx] })
     $.OR([
       {
         ALT: () => {
           /** If there are multiple selectors, it can't be a mixin definition */
-          $.isMixinDefinitionCandidate = false
-          $.MANY(() => $.SUBRULE2($.simpleSelector, { ARGS: [inner] }))
+          ctx.isMixinDefinitionCandidate = false
+          $.MANY(() => $.SUBRULE2($.simpleSelector, { ARGS: [ctx] }))
         }
       }
     ])
     $.OPTION({
-      GATE: () => $.isMixinCallCandidate,
+      GATE: () => !!ctx.isMixinCallCandidate,
       DEF: () => {
-        $.SUBRULE($.mixinCallArgs)
+        $.SUBRULE($.mixinCallArgs, { ARGS: [ctx] })
         $.OPTION2(() => {
-          $.isMixinDefinitionCandidate = false
+          ctx.isMixinDefinitionCandidate = false
           $.SUBRULE($.accessors)
         })
       }
@@ -295,6 +304,23 @@ export function mathExpressions(this: LessParser, T: TokenMap) {
         ALT: () => { $.AT_LEAST_ONE(() => $.SUBRULE2($.expression)) }
       }
     ])
+  })
+
+  /**
+   * @todo - deal with space-less subtractions
+   * and additions
+   *   e.g. 1-1  <-- Less evalutes as 0,
+   *        but CSS parses as 2 tokens: `1` and `-1`
+   */
+  $.OVERRIDE_RULE('mathSum', () => {
+    $.SUBRULE($.mathProduct)
+    $.MANY(() => {
+      $.OR([
+        { ALT: () => $.CONSUME(T.Plus) },
+        { ALT: () => $.CONSUME(T.Minus) }
+      ])
+      $.SUBRULE2($.mathProduct)
+    })
   })
 
   $.OVERRIDE_RULE('mathValue', () => {
@@ -442,9 +468,9 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
     $.OPTION2(() => $.SUBRULE($.accessors))
   })
 
-  $.RULE('mixinCallArgs', () => {
+  $.RULE('mixinCallArgs', (ctx: RuleContext = {}) => {
     $.CONSUME(T.LParen)
-    $.OPTION(() => $.SUBRULE($.mixinArgList))
+    $.OPTION(() => $.SUBRULE($.mixinArgList, { ARGS: [ctx] }))
     $.CONSUME(T.RParen)
   })
 
@@ -473,20 +499,20 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
    * Less allows separating with commas or semi-colons, so we sort out
    * the bounds of each argument in the CST Visitor.
    */
-  $.RULE('mixinArgList', () => {
-    $.SUBRULE($.mixinArg)
+  $.RULE('mixinArgList', (ctx: RuleContext = {}) => {
+    $.SUBRULE($.mixinArg, { ARGS: [ctx] })
     $.MANY(() => {
       $.OR([
         { ALT: () => $.CONSUME(T.Comma) },
         { ALT: () => $.CONSUME(T.Semi) }
       ])
-      $.SUBRULE2($.mixinArg)
+      $.SUBRULE2($.mixinArg, { ARGS: [ctx] })
     })
     $.OPTION(() => $.CONSUME2(T.Semi))
   })
 
-  $.RULE('mixinArg', () => {
-    const definition = $.isMixinDefinitionCandidate
+  $.RULE('mixinArg', (ctx: RuleContext = {}) => {
+    const definition = !!ctx.isMixinDefinitionCandidate
     $.OR([
       {
         ALT: () => {
