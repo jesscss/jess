@@ -29,8 +29,10 @@ const fragments = () => [
   ['ident', '-?{{nmstart}}{{nmchar}}*'],
 
   ['integer', '[+-]?\\d+'],
-  /** Any number that's not simply an integer e.g. 1.1 or 1e+1 */
-  ['number', '[+-]?(?:\\d*\\.\\d+(?:[eE][+-]\\d+)?|\\d+(?:[eE][+-]\\d+))'],
+  /**
+   * Any (signless) number that's not simply an integer e.g. 1.1 or 1e+1
+  */
+  ['number', '(?:\\d*\\.\\d+(?:[eE][+-]\\d+)?|\\d+(?:[eE][+-]\\d+))'],
   ['wsorcomment', '({{ws}})|({{comment}})']
 ]
 
@@ -308,12 +310,12 @@ const tokens = () => ({
       { name: 'Number', pattern: LexerType.NA },
       { name: 'Dimension', pattern: LexerType.NA },
       { name: 'Integer', pattern: LexerType.NA },
+      { name: 'Signed', pattern: LexerType.NA },
       {
         name: 'DimensionNum',
         pattern: ['({{number}})({{ident}}|%)', groupCapture],
         start_chars_hint: [
-          '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-          '-', '+'
+          '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
         ],
         line_breaks: false,
         categories: ['Dimension']
@@ -322,17 +324,30 @@ const tokens = () => ({
         name: 'DimensionInt',
         pattern: ['({{integer}})({{ident}}|%)', groupCapture],
         start_chars_hint: [
-          '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-          '-', '+'
+          '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
         ],
         line_breaks: false,
         categories: ['Dimension', 'Integer']
       },
       {
+        name: 'SignedDimensionNum',
+        pattern: ['([+-]{{number}})({{ident}}|%)', groupCapture],
+        start_chars_hint: ['-', '+'],
+        line_breaks: false,
+        categories: ['Dimension', 'Signed']
+      },
+      {
+        name: 'SignedDimensionInt',
+        pattern: ['([+-]{{integer}})({{ident}}|%)', groupCapture],
+        start_chars_hint: ['-', '+'],
+        line_breaks: false,
+        categories: ['Dimension', 'Integer', 'Signed']
+      },
+      {
         name: 'SignedInt',
         pattern: /[+-]\d+/,
-        longer_alt: 'DimensionInt',
-        categories: ['Integer', 'Number']
+        longer_alt: 'SignedDimensionInt',
+        categories: ['Integer', 'Number', 'Signed']
       },
       {
         name: 'UnsignedInt',
@@ -341,7 +356,13 @@ const tokens = () => ({
         categories: ['Integer', 'Number']
       },
       {
-        name: 'UnitlessNum',
+        name: 'SignedNum',
+        pattern: '[+-]{{number}}',
+        longer_alt: 'SignedDimensionNum',
+        categories: ['Integer', 'Number', 'Signed']
+      },
+      {
+        name: 'UnsignedNum',
         pattern: '{{number}}',
         longer_alt: 'DimensionNum',
         categories: ['Number']

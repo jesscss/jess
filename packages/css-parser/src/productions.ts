@@ -563,9 +563,9 @@ export function productions(this: CssParser, T: TokenMap) {
   })
 
   /** Abstracted for easy over-ride */
-  $.RULE('expression', () => {
-    $.SUBRULE($.mathSum)
-  })
+  // $.RULE('expression', () => {
+  //   $.SUBRULE($.mathSum)
+  // })
 
   // mathSum
   //   : mathProduct (WS* ('+' | '-') WS* mathProduct)*
@@ -611,7 +611,7 @@ export function productions(this: CssParser, T: TokenMap) {
       {
         ALT: () => {
           $.CONSUME(T.LParen)
-          $.SUBRULE($.expression)
+          $.SUBRULE($.mathSum)
           $.CONSUME(T.RParen)
         }
       }

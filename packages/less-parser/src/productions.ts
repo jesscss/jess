@@ -103,8 +103,10 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
             /** Allow identifiers at rule starts */
             { ALT: () => $.CONSUME(T.Ident) },
             {
-            /** In CSS Nesting, outer selector can't contain an ampersand */
-              GATE: () => !!ctx.inner,
+            /**
+             * In CSS Nesting, an outer selector can't contain an ampersand,
+             * but Less allows it and merges the rules.
+             */
               ALT: () => $.CONSUME(T.Ampersand)
             },
             { ALT: () => $.CONSUME(T.Star) },
@@ -254,7 +256,7 @@ export function atVariableDeclarations(this: LessParser, T: TokenMap) {
             },
             {
               ALT: () => {
-                $.SUBRULE($.expression)
+                $.SUBRULE($.valueList)
                 $.CONSUME2(T.Semi)
               }
             }
@@ -323,30 +325,34 @@ export function mathExpressions(this: LessParser, T: TokenMap) {
     })
   })
 
-  $.OVERRIDE_RULE('mathValue', () => {
-    $.OR([
-      { ALT: () => $.SUBRULE($.mixinCallSequence) },
-      {
-        ALT: () => {
-          $.CONSUME(T.AtKeyword)
-          $.OPTION(() => $.SUBRULE($.accessors))
-        }
-      },
-      /**
-       * Fall back to regular value.
-       * @note This may create some invalid calc() expressions
-       * @todo Differentiate between calc() and Less math?
-       */
-      { ALT: () => $.SUBRULE($.value) },
-      {
-        ALT: () => {
-          $.CONSUME(T.LParen)
-          $.SUBRULE($.expression)
-          $.CONSUME(T.RParen)
-        }
-      }
-    ])
+  $.RULE('', () => {
+
   })
+
+  // $.OVERRIDE_RULE('mathValue', () => {
+  //   $.OR([
+  //     { ALT: () => $.SUBRULE($.mixinCallSequence) },
+  //     {
+  //       ALT: () => {
+  //         $.CONSUME(T.AtKeyword)
+  //         $.OPTION(() => $.SUBRULE($.accessors))
+  //       }
+  //     },
+  //     /**
+  //      * Fall back to regular value.
+  //      * @note This may create some invalid calc() expressions
+  //      * @todo Differentiate between calc() and Less math?
+  //      */
+  //     { ALT: () => $.SUBRULE($.value) },
+  //     {
+  //       ALT: () => {
+  //         $.CONSUME(T.LParen)
+  //         $.SUBRULE($.expression)
+  //         $.CONSUME(T.RParen)
+  //       }
+  //     }
+  //   ])
+  // })
 }
 
 export function guards(this: LessParser, T: TokenMap) {
@@ -354,14 +360,17 @@ export function guards(this: LessParser, T: TokenMap) {
 
   $.RULE('guard', () => {
     $.CONSUME(T.When)
-    $.SUBRULE($.guardOr)
+    $.SUBRULE($.guardOr, { ARGS: [true] })
   })
 
-  /** 'or' expression */
-  $.RULE('guardOr', (disallowComma: boolean = false) => {
+  /**
+   * 'or' expression
+   * Allows an (outer) comma like historical media queries
+   */
+  $.RULE('guardOr', (allowComma: boolean = false) => {
     $.SUBRULE($.guardAnd)
     $.MANY({
-      GATE: () => $.LA(1).tokenType !== T.Comma || !disallowComma,
+      GATE: () => allowComma || $.LA(1).tokenType !== T.Comma,
       DEF: () => {
         /**
          * Nest expressions within expressions for correct
@@ -387,45 +396,137 @@ export function guards(this: LessParser, T: TokenMap) {
   $.RULE('guardAnd', () => {
     $.MANY_SEP({
       SEP: T.And,
-      DEF: () => $.SUBRULE($.guardExpression)
+      DEF: () => {
+        $.OPTION(() => $.CONSUME(T.Not))
+        $.SUBRULE($.guardInParens)
+      }
     })
   })
 
-  $.RULE('guardExpression', () => {
-    $.OPTION(() => $.CONSUME($.T.Not))
+  $.RULE('guardInParens', () => {
     $.CONSUME(T.LParen)
-    $.SUBRULE($.comparison)
+    $.OR([
+      { ALT: () => $.SUBRULE($.guardOr) },
+      { ALT: () => $.SUBRULE($.comparison) }
+    ])
     $.CONSUME(T.RParen)
   })
 
   /** Currently, Less only allows a single comparison expression */
   $.RULE('comparison', () => {
-    $.isCompareExpression = true
-    $.SUBRULE($.mathSum)
-    $.OR([
-      { ALT: () => $.CONSUME(T.Eq) },
-      { ALT: () => $.CONSUME(T.Gt) },
-      { ALT: () => $.CONSUME(T.GtEq) },
-      { ALT: () => $.CONSUME(T.GtEqAlias) },
-      { ALT: () => $.CONSUME(T.Lt) },
-      { ALT: () => $.CONSUME(T.LtEq) },
-      { ALT: () => $.CONSUME(T.LtEqAlias) }
-    ])
-    $.SUBRULE2($.mathSum)
-    $.isCompareExpression = false
+    $.SUBRULE($.valueList, { LABEL: 'L' })
+    $.OPTION(() => {
+      $.OR([
+        { ALT: () => $.CONSUME(T.Eq) },
+        { ALT: () => $.CONSUME(T.Gt) },
+        { ALT: () => $.CONSUME(T.GtEq) },
+        { ALT: () => $.CONSUME(T.GtEqAlias) },
+        { ALT: () => $.CONSUME(T.Lt) },
+        { ALT: () => $.CONSUME(T.LtEq) },
+        { ALT: () => $.CONSUME(T.LtEqAlias) }
+      ])
+      $.SUBRULE2($.valueList, { LABEL: 'R' })
+    })
   })
 
-  $.OVERRIDE_RULE('expression', () => {
-    const isCompare = $.isCompareExpression
+  /**
+   * In CSS, would be a single value.
+   * In Less, these are math expressions which
+   * represent a single value. During AST construction,
+   * these will be grouped by order of operations.
+   */
+  $.RULE('expression', () => {
+    $.SUBRULE($.expressionValue, { LABEL: 'L' })
+    $.MANY(() => {
+      $.OR([
+        {
+          ALT: () => {
+            $.OR2([
+              { ALT: () => $.CONSUME(T.Plus) },
+              { ALT: () => $.CONSUME(T.Minus) },
+              { ALT: () => $.CONSUME(T.Star) },
+              { ALT: () => $.CONSUME(T.Divide) }
+            ])
+            $.SUBRULE2($.expressionValue, { LABEL: 'R' })
+          }
+        },
+        {
+          GATE: $.noSep,
+          ALT: () => {
+            /** This will be interpreted by Less as a complete expression */
+            $.CONSUME(T.Signed)
+          }
+        }
+      ])
+    })
+  })
+
+  $.RULE('expressionValue', () => {
     $.OR([
       {
-        GATE: () => !isCompare,
-        ALT: () => $.SUBRULE($.mathSum)
+        ALT: () => {
+          /** Can create a negative expression */
+          $.OPTION(() => $.CONSUME(T.Minus))
+          $.CONSUME(T.LParen)
+          $.SUBRULE($.expression)
+          $.CONSUME(T.RParen)
+        }
       },
-      {
-        GATE: () => isCompare,
-        ALT: () => $.SUBRULE($.comparison)
-      }
+      { ALT: () => $.SUBRULE($.value) }
+    ])
+  })
+
+  $.OVERRIDE_RULE('value', () => {
+    $.OR({
+      IGNORE_AMBIGUITIES: true,
+      DEF: [
+        /** Function should appear before Ident */
+        { ALT: () => $.SUBRULE($.function) },
+        { ALT: () => $.SUBRULE($.mixinCallSequence) },
+        {
+          ALT: () => {
+            $.CONSUME(T.AtKeyword)
+            $.OPTION(() => $.SUBRULE($.accessors))
+          }
+        },
+        { ALT: () => $.CONSUME(T.Value) },
+        {
+          ALT: () => {
+            $.CONSUME(T.LSquare)
+            $.CONSUME2(T.Ident)
+            $.CONSUME(T.RSquare)
+          }
+        },
+        {
+          /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
+          GATE: () => $.legacyMode,
+          ALT: () => $.OR2([
+            { ALT: () => $.CONSUME(T.Colon) },
+            { ALT: () => $.CONSUME(T.Dot) },
+            { ALT: () => $.CONSUME(T.Eq) }
+          ])
+        }
+      ]
+    })
+  })
+}
+
+export function atRuleBubbling(this: LessParser, T: TokenMap) {
+  const $ = this
+
+  /**
+   * Less (perhaps unwisely) allows bubling of normally document-root
+   * at-rules, so we need to override CSS here.
+   */
+  $.OVERRIDE_RULE('innerAtRule', () => {
+    $.OR([
+      { ALT: () => $.SUBRULE($.mediaAtRule, { ARGS: [true] }) },
+      { ALT: () => $.SUBRULE($.supportsAtRule, { ARGS: [true] }) },
+      { ALT: () => $.SUBRULE($.pageAtRule) },
+      { ALT: () => $.SUBRULE($.fontFaceAtRule) },
+      { ALT: () => $.SUBRULE($.nestedAtRule) },
+      { ALT: () => $.SUBRULE($.nonNestedAtRule) },
+      { ALT: () => $.SUBRULE($.unknownAtRule) }
     ])
   })
 }
@@ -503,12 +604,20 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
     $.SUBRULE($.mixinArg, { ARGS: [ctx] })
     $.MANY(() => {
       $.OR([
-        { ALT: () => $.CONSUME(T.Comma) },
-        { ALT: () => $.CONSUME(T.Semi) }
+        {
+          ALT: () => {
+            $.CONSUME(T.Comma)
+            $.SUBRULE2($.mixinArg, { ARGS: [ctx] })
+          }
+        },
+        {
+          ALT: () => {
+            $.CONSUME(T.Semi)
+            $.OPTION(() => $.SUBRULE3($.mixinArg, { ARGS: [ctx] }))
+          }
+        }
       ])
-      $.SUBRULE2($.mixinArg, { ARGS: [ctx] })
     })
-    $.OPTION(() => $.CONSUME2(T.Semi))
   })
 
   $.RULE('mixinArg', (ctx: RuleContext = {}) => {
@@ -517,18 +626,20 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
       {
         ALT: () => {
           $.CONSUME(T.AtKeyword)
-          $.OR2([
-            {
-              ALT: () => {
-                $.CONSUME(T.Colon)
-                $.SUBRULE($.mixinValue)
+          $.OPTION(() => {
+            $.OR2([
+              {
+                ALT: () => {
+                  $.CONSUME(T.Colon)
+                  $.SUBRULE($.mixinValue)
+                }
+              },
+              {
+                GATE: () => definition,
+                ALT: () => $.CONSUME(T.Ellipsis)
               }
-            },
-            {
-              GATE: () => definition,
-              ALT: () => $.CONSUME(T.Ellipsis)
-            }
-          ])
+            ])
+          })
         }
       },
       { ALT: () => $.SUBRULE2($.mixinValue) },

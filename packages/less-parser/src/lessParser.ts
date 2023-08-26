@@ -9,7 +9,8 @@ import {
   mixinsAndNamespaces,
   extendSelectors,
   extendRoot,
-  guards
+  guards,
+  atRuleBubbling
 } from './productions'
 
 // import root from './productions/root'
@@ -44,11 +45,10 @@ export class LessParser extends CssParser {
   T: TokenMap
 
   expression: Rule
+  expressionValue: Rule
   function: Rule
 
   testQualifiedRule: Rule
-  // Move to context?
-  isCompareExpression: boolean
 
   // mixins
   mixinName: Rule
@@ -67,7 +67,7 @@ export class LessParser extends CssParser {
   guard: Rule
   guardOr: Rule<(disallowComma?: boolean) => void>
   guardAnd: Rule
-  guardExpression: Rule
+  guardInParens: Rule
 
   constructor(
     tokenVocabulary: TokenVocabulary,
@@ -85,7 +85,8 @@ export class LessParser extends CssParser {
       mathExpressions,
       guards,
       mixinsAndNamespaces,
-      extendSelectors
+      extendSelectors,
+      atRuleBubbling
     ].forEach(ext => ext.call($, T))
 
     if ($.constructor === LessParser) {
