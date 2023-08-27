@@ -324,35 +324,6 @@ export function mathExpressions(this: LessParser, T: TokenMap) {
       $.SUBRULE2($.mathProduct)
     })
   })
-
-  $.RULE('', () => {
-
-  })
-
-  // $.OVERRIDE_RULE('mathValue', () => {
-  //   $.OR([
-  //     { ALT: () => $.SUBRULE($.mixinCallSequence) },
-  //     {
-  //       ALT: () => {
-  //         $.CONSUME(T.AtKeyword)
-  //         $.OPTION(() => $.SUBRULE($.accessors))
-  //       }
-  //     },
-  //     /**
-  //      * Fall back to regular value.
-  //      * @note This may create some invalid calc() expressions
-  //      * @todo Differentiate between calc() and Less math?
-  //      */
-  //     { ALT: () => $.SUBRULE($.value) },
-  //     {
-  //       ALT: () => {
-  //         $.CONSUME(T.LParen)
-  //         $.SUBRULE($.expression)
-  //         $.CONSUME(T.RParen)
-  //       }
-  //     }
-  //   ])
-  // })
 }
 
 export function guards(this: LessParser, T: TokenMap) {
@@ -489,6 +460,7 @@ export function guards(this: LessParser, T: TokenMap) {
             $.OPTION(() => $.SUBRULE($.accessors))
           }
         },
+        { ALT: () => $.SUBRULE($.string) },
         { ALT: () => $.CONSUME(T.Value) },
         {
           ALT: () => {
@@ -516,12 +488,41 @@ export function guards(this: LessParser, T: TokenMap) {
       { ALT: () => $.CONSUME(T.Number) },
       { ALT: () => $.CONSUME(T.Dimension) },
       { ALT: () => $.SUBRULE($.function) },
-      { ALT: () => $.CONSUME(T.MathConstant) },
+      {
+        /** Only allow escaped strings in calc */
+        GATE: () => $.LA(1).image.startsWith('~'),
+        ALT: () => $.SUBRULE($.string)
+      },
+      {
+        /** For some reason, e() goes here instead of $.function */
+        GATE: () => $.LA(2).tokenType !== T.LParen,
+        ALT: () => $.CONSUME(T.MathConstant)
+      },
       {
         ALT: () => {
           $.CONSUME(T.LParen)
           $.SUBRULE($.mathSum)
           $.CONSUME(T.RParen)
+        }
+      }
+    ])
+  })
+
+  /** @todo - add interpolation */
+  $.OVERRIDE_RULE('string', () => {
+    $.OR([
+      {
+        ALT: () => {
+          $.CONSUME(T.SingleQuoteStart)
+          $.OPTION(() => $.CONSUME(T.SingleQuoteStringContents))
+          $.CONSUME(T.SingleQuoteEnd)
+        }
+      },
+      {
+        ALT: () => {
+          $.CONSUME(T.DoubleQuoteStart)
+          $.OPTION2(() => $.CONSUME(T.DoubleQuoteStringContents))
+          $.CONSUME(T.DoubleQuoteEnd)
         }
       }
     ])

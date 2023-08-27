@@ -38,6 +38,7 @@ export class Parser {
        * You can also override when parsing using a single rule.
        */
       loose: true,
+      skipValidations: process.env.TEST !== 'true',
       ...config
     }
     const { lexer, T } = createLexerDefinition(cssFragments(), cssTokens())

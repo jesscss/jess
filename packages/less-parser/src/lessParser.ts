@@ -93,13 +93,4 @@ export class LessParser extends CssParser {
       $.performSelfAnalysis()
     }
   }
-
-  // https://sap.github.io/chevrotain/documentation/6_1_0/classes/baseparser.html#reset
-  reset() {
-    super.reset()
-    // this.inCompareBlock = false
-    // this.isMixinDefinition = false
-    // this.isSemiColonSeparated = false
-    // this.isVariableCall = false
-  }
 }

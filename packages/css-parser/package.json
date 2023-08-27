@@ -21,7 +21,7 @@
   "author": "Matthew Dean",
   "license": "MIT",
   "dependencies": {
-    "chevrotain": "^10.5.0",
+    "chevrotain": "^11",
     "chevrotain-allstar": "~0.3.0",
     "xregexp": "^5.1.1"
   },

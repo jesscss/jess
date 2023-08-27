@@ -21,7 +21,7 @@
   "license": "MIT",
   "dependencies": {
     "@jesscss/css-parser": "workspace:^2.0.0-alpha.1",
-    "chevrotain": "^10.5.0"
+    "chevrotain": "../../../chevrotain/packages/chevrotain"
   },
   "devDependencies": {
     "@less/test-data": "^4.1.0"
