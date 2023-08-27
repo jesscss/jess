@@ -41,11 +41,11 @@ export function productions(this: CssParser, T: TokenMap) {
     $.OR([
       {
         GATE: () => !ctx.inner,
-        ALT: () => $.SUBRULE($.selectorList)
+        ALT: () => $.SUBRULE($.selectorList, { ARGS: [{ ...ctx, qualifiedRule: true }] })
       },
       {
         GATE: () => !!ctx.inner,
-        ALT: () => $.SUBRULE($.forgivingSelectorList, { ARGS: [{ ...ctx, firstSelector: true }] })
+        ALT: () => $.SUBRULE($.forgivingSelectorList, { ARGS: [{ ...ctx, firstSelector: true, qualifiedRule: true }] })
       }
     ])
 

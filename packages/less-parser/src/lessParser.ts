@@ -1,6 +1,6 @@
-import type { IParserConfig, TokenVocabulary, TokenType } from 'chevrotain'
+import type { TokenVocabulary, TokenType } from 'chevrotain'
 // import { LLStarLookaheadStrategy } from 'chevrotain-allstar'
-import type { Rule, RuleContext as CssRuleContext } from '@jesscss/css-parser'
+import type { Rule, RuleContext as CssRuleContext, CssParserConfig } from '@jesscss/css-parser'
 import { CssParser } from '@jesscss/css-parser'
 import { type LessTokenType } from './lessTokens'
 import {
@@ -22,7 +22,7 @@ import {
 // import interpolation from './productions/interpolation'
 // import values from './productions/values'
 
-export type LessParserConfig = IParserConfig
+export type LessParserConfig = CssParserConfig
 
 export type TokenMap = Record<LessTokenType, TokenType>
 
@@ -34,7 +34,7 @@ export type RuleContext = CssRuleContext & {
    */
   isMixinCallCandidate?: boolean
   isMixinDefinitionCandidate?: boolean
-
+  hasExtend?: boolean
   // isCompareExpression?: boolean
 }
 /**
@@ -60,6 +60,8 @@ export class LessParser extends CssParser {
   mixinArg: Rule<(ctx?: RuleContext) => void>
   mixinValue: Rule
 
+  extend: Rule<(ctx?: RuleContext) => void>
+
   // namespaces
   accessors: Rule
 
@@ -72,7 +74,7 @@ export class LessParser extends CssParser {
   constructor(
     tokenVocabulary: TokenVocabulary,
     T: TokenMap,
-    config: IParserConfig = {}
+    config: LessParserConfig = {}
   ) {
     super(tokenVocabulary, T, config)
 

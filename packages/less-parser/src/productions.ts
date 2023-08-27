@@ -1,5 +1,5 @@
 import type { LessParser, TokenMap, RuleContext } from './lessParser'
-import { EMPTY_ALT } from 'chevrotain'
+import { EMPTY_ALT, tokenMatcher } from 'chevrotain'
 
 /** Extensions of the CSS language */
 export function extendRoot(this: LessParser, T: TokenMap) {
@@ -35,6 +35,8 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
   $.OVERRIDE_RULE('qualifiedRule', (ctx: RuleContext = {}) => {
     ctx = {
       ...ctx,
+      qualifiedRule: true,
+      hasExtend: false,
       isMixinCallCandidate: true,
       isMixinDefinitionCandidate: true
     }
@@ -51,7 +53,7 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
     ])
     $.OR2([
       {
-        GATE: () => !!ctx.isMixinCallCandidate,
+        GATE: () => !!ctx.isMixinCallCandidate || !!ctx.hasExtend,
         ALT: () => $.CONSUME(T.Semi)
       },
       {
@@ -62,6 +64,26 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
         }
       }
     ])
+  })
+
+  $.OVERRIDE_RULE('complexSelector', (ctx: RuleContext = {}) => {
+    $.SUBRULE($.compoundSelector, { ARGS: [ctx] })
+    $.MANY(() => {
+      $.SUBRULE($.combinator)
+      $.SUBRULE2($.compoundSelector, { ARGS: [{ ...ctx, firstSelector: false }] })
+    })
+    $.OPTION({
+      GATE: () => !!ctx.qualifiedRule,
+      DEF: () => $.SUBRULE($.extend, { ARGS: [ctx] })
+    })
+  })
+
+  $.RULE('extend', (ctx: RuleContext = {}) => {
+    ctx.hasExtend = true
+    $.CONSUME(T.Extend)
+    $.SUBRULE($.selectorList)
+    $.OPTION(() => $.CONSUME(T.All))
+    $.CONSUME(T.RParen)
   })
 
   $.OVERRIDE_RULE('relativeSelector', (ctx: RuleContext = {}) => {
@@ -408,27 +430,34 @@ export function guards(this: LessParser, T: TokenMap) {
    */
   $.RULE('expression', () => {
     $.SUBRULE($.expressionValue, { LABEL: 'L' })
-    $.MANY(() => {
-      $.OR([
-        {
-          ALT: () => {
-            $.OR2([
-              { ALT: () => $.CONSUME(T.Plus) },
-              { ALT: () => $.CONSUME(T.Minus) },
-              { ALT: () => $.CONSUME(T.Star) },
-              { ALT: () => $.CONSUME(T.Divide) }
-            ])
-            $.SUBRULE2($.expressionValue, { LABEL: 'R' })
-          }
-        },
-        {
-          GATE: $.noSep,
-          ALT: () => {
-            /** This will be interpreted by Less as a complete expression */
-            $.CONSUME(T.Signed)
-          }
-        }
-      ])
+    $.MANY({
+      GATE: () => {
+        const next = $.LA(1)
+        const nextType = next.tokenType
+        return (
+          nextType === T.Plus ||
+          nextType === T.Minus ||
+          nextType === T.Divide ||
+          nextType === T.Star
+        ) || ($.noSep() && tokenMatcher(next, T.Signed))
+      },
+      DEF: () => {
+        $.OR([
+          {
+            ALT: () => {
+              $.OR2([
+                { ALT: () => $.CONSUME(T.Plus) },
+                { ALT: () => $.CONSUME(T.Minus) },
+                { ALT: () => $.CONSUME(T.Star) },
+                { ALT: () => $.CONSUME(T.Divide) }
+              ])
+              $.SUBRULE2($.expressionValue, { LABEL: 'R' })
+            }
+          },
+          /** This will be interpreted by Less as a complete expression */
+          { ALT: () => $.CONSUME(T.Signed) }
+        ])
+      }
     })
   })
 

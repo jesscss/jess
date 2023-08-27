@@ -47,7 +47,7 @@
     "url": "git+https://github.com/matthew-dean/jess.git"
   },
   "resolutions": {
-    "chevrotain": "file:../chevrotain/packages/chevrotain"
+    "chevrotain": "^10.5.0"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "ISC",

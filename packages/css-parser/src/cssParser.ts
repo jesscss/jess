@@ -50,8 +50,12 @@ export interface CssParserConfig extends IParserConfig {
 }
 
 export type RuleContext = {
+  /** Inside a declaration list */
   inner?: boolean
+  /** Determine if this is the first selector in the list */
   firstSelector?: boolean
+  /** If downstream selector rules are part of a qualified rule */
+  qualifiedRule?: boolean
 }
 
 export class CssParser extends CstParser {

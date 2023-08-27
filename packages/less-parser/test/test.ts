@@ -174,7 +174,9 @@ describe.skip('can parse any rule', () => {
  * parser and therefore catches more errors.
  */
 const invalidLess = [
+  /** This file is full of errors. */
   'less/_main/css-3.less',
+
   'less/_main/css-guards.less',
   'less/_main/extract-and-length.less',
   'less/_main/functions.less',
@@ -201,7 +203,7 @@ const invalidLess = [
 ]
 
 describe('can parse all Less stylesheets', () => {
-  const files = glob.sync(path.join(testData, 'less/**/calc.less'))
+  const files = glob.sync(path.join(testData, 'less/**/extend-chaining.less'))
   files
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))

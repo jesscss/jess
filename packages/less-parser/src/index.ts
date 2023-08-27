@@ -21,6 +21,12 @@ export class Parser {
   ) {
     config = {
       errorMessageProvider,
+      /**
+       * Override this if you want a stricter Less/CSS parser.
+       * You can also override when parsing using a single rule.
+       */
+      loose: true,
+      skipValidations: process.env.TEST !== 'true',
       ...config
     }
     const { lexer, T } = createLexerDefinition(lessFragments(), lessTokens())

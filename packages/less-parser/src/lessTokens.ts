@@ -66,7 +66,7 @@ const merges = {
     },
     {
       name: 'When',
-      pattern: /when/,
+      pattern: /when/i,
       longer_alt: 'PlainIdent',
       categories: ['BlockMarker']
     },
