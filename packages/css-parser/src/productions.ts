@@ -1234,6 +1234,7 @@ export function productions(this: CssParser, T: TokenMap) {
   $.RULE('anyOuterValue', () => {
     $.OR([
       { ALT: () => $.SUBRULE($.extraTokens) },
+      { ALT: () => $.SUBRULE($.string) },
       {
         ALT: () => {
           $.CONSUME(T.LParen)
