@@ -218,7 +218,7 @@ export function productions(this: CssParser, T: TokenMap) {
       ])
       $.OR2([
         { ALT: () => $.CONSUME2(T.Ident) },
-        { ALT: () => $.CONSUME(T.String) }
+        { ALT: () => $.SUBRULE($.string) }
       ])
     })
     $.OPTION2(() => {
@@ -521,7 +521,7 @@ export function productions(this: CssParser, T: TokenMap) {
         { ALT: () => $.CONSUME(T.Dimension) },
         { ALT: () => $.CONSUME(T.Number) },
         { ALT: () => $.CONSUME(T.Color) },
-        { ALT: () => $.CONSUME(T.String) },
+        { ALT: () => $.SUBRULE($.string) },
         {
           ALT: () => {
             $.CONSUME(T.LSquare)
@@ -540,6 +540,25 @@ export function productions(this: CssParser, T: TokenMap) {
         }
       ]
     })
+  })
+
+  $.RULE('string', () => {
+    $.OR([
+      {
+        ALT: () => {
+          $.CONSUME(T.SingleQuoteStart)
+          $.OPTION(() => $.CONSUME(T.SingleQuoteStringContents))
+          $.CONSUME(T.SingleQuoteEnd)
+        }
+      },
+      {
+        ALT: () => {
+          $.CONSUME(T.DoubleQuoteStart)
+          $.OPTION2(() => $.CONSUME(T.DoubleQuoteStringContents))
+          $.CONSUME(T.DoubleQuoteEnd)
+        }
+      }
+    ])
   })
 
   /** Implementers can decide to throw errors or warnings or not */
@@ -651,7 +670,7 @@ export function productions(this: CssParser, T: TokenMap) {
   $.RULE('urlFunction', () => {
     $.CONSUME(T.UrlStart)
     $.OR([
-      { ALT: () => $.CONSUME(T.String) },
+      { ALT: () => $.SUBRULE($.string) },
       { ALT: () => $.CONSUME(T.NonQuotedUrl) }
     ])
     $.CONSUME(T.UrlEnd)
@@ -1148,7 +1167,7 @@ export function productions(this: CssParser, T: TokenMap) {
     $.CONSUME(T.AtImport)
     $.OR([
       { ALT: () => $.SUBRULE($.urlFunction) },
-      { ALT: () => $.CONSUME(T.String) }
+      { ALT: () => $.SUBRULE($.string) }
     ])
     $.OPTION(() => {
       $.CONSUME(T.Supports)

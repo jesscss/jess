@@ -21,12 +21,12 @@ const fragments = () => [
   ['hex', '[\\da-fA-F]'],
   ['unicode', '\\\\{{hex}}{1,6}{{whitespace}}?'],
   ['escape', '{{unicode}}|\\\\[^\\r\\n\\f0-9a-fA-F]'],
-  ['string1', '\\"(\\\\"|[^\\n\\r\\f\\"]|{{newline}}|{{escape}})*\\"'],
-  ['string2', "\\'(\\\\'|[^\\n\\r\\f\\']|{{newline}}|{{escape}})*\\'"],
   ['nonascii', '[\\u0240-\\uffff]'],
   ['nmstart', '[_a-zA-Z]|{{nonascii}}|{{escape}}'],
   ['nmchar', '[_a-zA-Z0-9-]|{{nonascii}}|{{escape}}'],
   ['ident', '-?{{nmstart}}{{nmchar}}*'],
+  ['string1', '\\"(\\\\"|[^\\n\\r\\f\\"]|{{newline}}|{{escape}})*\\"'],
+  ['string2', "\\'(\\\\'|[^\\n\\r\\f\\']|{{newline}}|{{escape}})*\\'"],
 
   ['integer', '[+-]?\\d+'],
   /**
@@ -97,7 +97,7 @@ export function groupCapture(this: RegExp, text: string, startOffset: number) {
  */
 const tokens = () => ({
   modes: {
-    default: [
+    Default: [
       { name: 'Value', pattern: LexerType.NA },
       { name: 'NonIdent', pattern: LexerType.NA },
       { name: 'AtName', pattern: LexerType.NA },
@@ -192,11 +192,24 @@ const tokens = () => ({
       {
         name: 'UrlStart',
         pattern: /url\(/i,
-        push_mode: 'url'
+        push_mode: 'Url'
+      },
+      /**
+       * Rather than consume the whole string, we push
+       * a string mode. This makes string parsing
+       * extensible to languages with embedded expressions.
+       */
+      {
+        name: 'SingleQuoteStart',
+        pattern: /'/,
+        push_mode: 'SingleQuoteString',
+        categories: ['BlockMarker']
       },
       {
-        name: 'String',
-        pattern: '{{string1}}|{{string2}}'
+        name: 'DoubleQuoteStart',
+        pattern: /"/,
+        push_mode: 'DoubleQuoteString',
+        categories: ['BlockMarker']
       },
       {
         name: 'Important',
@@ -404,7 +417,35 @@ const tokens = () => ({
         label: SKIPPED_LABEL
       }
     ],
-    url: [
+    SingleQuoteString: [
+      /**
+       * Note that:
+       *  - "\u0022" === `"`
+       *  - "\u0027" === `'`
+       *  - "\u005C" === `\`
+       */
+      {
+        name: 'SingleQuoteStringContents',
+        pattern: "(?:[\\u0000-\\u0026\\u0028-\\u005B\\u005D-\\uFFFF]|\\\\'|{{newline}}|{{escape}})+"
+      },
+      {
+        name: 'SingleQuoteEnd',
+        pattern: /'/,
+        pop_mode: true
+      }
+    ],
+    DoubleQuoteString: [
+      {
+        name: 'DoubleQuoteStringContents',
+        pattern: '(?:[\\u0000-\\u0021\\u0023-\\u005B\\u005D-\\uFFFF]|\\\\"|{{newline}}|{{escape}})+'
+      },
+      {
+        name: 'DoubleQuoteEnd',
+        pattern: /"/,
+        pop_mode: true
+      }
+    ],
+    Url: [
       /** Reference: https://www.w3.org/TR/css-syntax-3/#consume-url-token */
       {
         name: 'NonQuotedUrl',
@@ -426,11 +467,12 @@ const tokens = () => ({
         pattern: /\)/,
         pop_mode: true
       },
-      'String',
+      'SingleQuoteStart',
+      'DoubleQuoteStart',
       'WS'
     ]
   },
-  defaultMode: 'default'
+  defaultMode: 'Default'
 }) as const satisfies RawModeConfig
 
 type TokenModes = ReturnType<typeof tokens>['modes']

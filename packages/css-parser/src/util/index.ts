@@ -30,10 +30,10 @@ export interface RawToken
 export type RawTokenConfig = Readonly<RawToken[]>
 export type RawModeConfig = Readonly<{
   modes: {
-    default: ReadonlyArray<Readonly<RawToken>>
+    Default: ReadonlyArray<Readonly<RawToken>>
     [k: string]: ReadonlyArray<string | Readonly<RawToken>>
   }
-  defaultMode: 'default'
+  defaultMode: 'Default'
 }>
 
 interface ILexer {
@@ -63,9 +63,9 @@ export const createLexerDefinition = (rawFragments: string[][], rawTokens: Writa
   const T: Record<string, TokenType> = {}
   const lexer: IMultiModeLexerDefinition = {
     modes: {
-      default: []
+      Default: []
     },
-    defaultMode: 'default'
+    defaultMode: 'Default'
   }
 
   /** Build fragment replacements */
@@ -81,7 +81,7 @@ export const createLexerDefinition = (rawFragments: string[][], rawTokens: Writa
         }
       }
       if (typeof rawToken === 'string') {
-        const token = lexer.modes.default.find(token => token.name === rawToken)!
+        const token = lexer.modes.Default.find(token => token.name === rawToken)!
         addToken(token)
         return
       }

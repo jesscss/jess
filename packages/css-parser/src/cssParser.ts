@@ -94,6 +94,7 @@ export class CssParser extends CstParser {
   calcFunction: Rule
   urlFunction: Rule
   unknownValue: Rule
+  string: Rule
 
   // expression: Rule
   // calc()

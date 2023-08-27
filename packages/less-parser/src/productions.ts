@@ -509,6 +509,23 @@ export function guards(this: LessParser, T: TokenMap) {
       ]
     })
   })
+
+  $.OVERRIDE_RULE('mathValue', () => {
+    $.OR([
+      { ALT: () => $.CONSUME(T.AtKeyword) },
+      { ALT: () => $.CONSUME(T.Number) },
+      { ALT: () => $.CONSUME(T.Dimension) },
+      { ALT: () => $.CONSUME(T.MathConstant) },
+      { ALT: () => $.SUBRULE($.knownFunctions) },
+      {
+        ALT: () => {
+          $.CONSUME(T.LParen)
+          $.SUBRULE($.mathSum)
+          $.CONSUME(T.RParen)
+        }
+      }
+    ])
+  })
 }
 
 export function atRuleBubbling(this: LessParser, T: TokenMap) {
