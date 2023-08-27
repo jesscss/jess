@@ -515,8 +515,8 @@ export function guards(this: LessParser, T: TokenMap) {
       { ALT: () => $.CONSUME(T.AtKeyword) },
       { ALT: () => $.CONSUME(T.Number) },
       { ALT: () => $.CONSUME(T.Dimension) },
+      { ALT: () => $.SUBRULE($.function) },
       { ALT: () => $.CONSUME(T.MathConstant) },
-      { ALT: () => $.SUBRULE($.knownFunctions) },
       {
         ALT: () => {
           $.CONSUME(T.LParen)

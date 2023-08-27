@@ -118,7 +118,7 @@ const merges = {
   ]
 } as const satisfies IMerges
 
-let defaultTokens: WritableDeep<RawToken[]> = Tokens.modes.default
+let defaultTokens: WritableDeep<RawToken[]> = Tokens.modes.Default
 
 let tokenLength = defaultTokens.length
 for (let i = 0; i < tokenLength; i++) {
@@ -137,9 +137,13 @@ for (let i = 0; i < tokenLength; i++) {
     //   copyToken()
     //   token.pattern = /\.?\//
     //   break
-    case 'String':
+    case 'SingleQuoteStart':
       copyToken()
-      token.pattern = '~?{{string1}}|~?{{string2}}'
+      token.pattern = /~?'/
+      break
+    case 'DoubleQuoteStart':
+      copyToken()
+      token.pattern = /~?"/
       break
     case 'CustomProperty':
       copyToken()
@@ -160,7 +164,7 @@ for (let i = 0; i < tokenLength; i++) {
   if (merge) {
     /** Insert after current token */
     defaultTokens = defaultTokens.slice(0, i + 1).concat(merge, defaultTokens.slice(i + 1))
-    ;(Tokens.modes.default as WritableDeep<RawToken[]>) = defaultTokens
+    ;(Tokens.modes.Default as WritableDeep<RawToken[]>) = defaultTokens
     const mergeLength = merge.length
     tokenLength += mergeLength
     i += mergeLength
