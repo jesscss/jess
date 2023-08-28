@@ -2,8 +2,8 @@
 import { type WritableDeep } from 'type-fest'
 import type { RawModeConfig } from './util'
 import { LexerType } from './util'
+import { SKIPPED_LABEL } from './advancedCstParser'
 
-export const SKIPPED_LABEL = 'Skipped'
 /**
  * references:
  * https://github.com/antlr/grammars-v4/blob/master/css3/css3.g4

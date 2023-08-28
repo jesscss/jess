@@ -8,6 +8,7 @@ import { CssErrorMessageProvider } from './cssErrorMessageProvider'
 
 export * from './cssTokens'
 export * from './util'
+export * from './advancedCstParser'
 export * from './cssParser'
 export * from './cssErrorMessageProvider'
 

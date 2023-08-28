@@ -23,10 +23,12 @@
   "dependencies": {
     "chevrotain": "^10.5.0",
     "chevrotain-allstar": "~0.3.0",
+    "lodash-es": "~4.17.21",
     "xregexp": "^5.1.1"
   },
   "devDependencies": {
     "@less/test-data": "^4.1.0",
+    "@types/lodash-es": "~4.17.8",
     "@types/xregexp": "^4.4.0"
   }
 }

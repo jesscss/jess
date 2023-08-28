@@ -1,17 +1,15 @@
 import {
-  CstParser,
-  EOF,
   type TokenVocabulary,
   type TokenType,
   type IParserConfig,
   type IToken,
   type CstNode,
-  type ParserMethod,
-  type ConsumeMethodOpts
+  type ParserMethod
 } from 'chevrotain'
+import { AdvancedCstParser } from './advancedCstParser'
 import { LLStarLookaheadStrategy } from 'chevrotain-allstar'
 
-import { type CssTokenType, SKIPPED_LABEL } from './cssTokens'
+import { type CssTokenType } from './cssTokens'
 import { productions } from './productions'
 
 export type TokenMap = Record<CssTokenType, TokenType>
@@ -58,7 +56,7 @@ export type RuleContext = {
   qualifiedRule?: boolean
 }
 
-export class CssParser extends CstParser {
+export class CssParser extends AdvancedCstParser {
   T: TokenMap
   skippedTokens: Map<number, IToken[]>
   legacyMode: boolean
@@ -181,109 +179,5 @@ export class CssParser extends CstParser {
     if (this.constructor === CssParser) {
       this.performSelfAnalysis()
     }
-  }
-
-  cstPostTerminal(
-    key: string,
-    consumedToken: IToken
-  ): void {
-    const rootCst = this.CST_STACK[this.CST_STACK.length - 1]
-    this.addTerminalToCst(rootCst, consumedToken, key)
-    this.setNodeLocationFromToken(rootCst.location!, <any>consumedToken)
-  }
-
-  cstPostNonTerminal(
-    ruleCstResult: CstNode,
-    ruleName: string
-  ): void {
-    const preCstNode = this.CST_STACK[this.CST_STACK.length - 1]
-    this.addNoneTerminalToCst(preCstNode, ruleName, ruleCstResult)
-    this.setNodeLocationFromNode(preCstNode.location!, ruleCstResult.location!)
-  }
-
-  cstInvocationStateUpdate(this: CstParser, fullRuleName: string): void {
-    const cstNode: Partial<CstNode> = {
-      name: fullRuleName,
-      children: Object.create(null)
-    }
-    /**
-     * Sets a linear stream of children CstNodes and ITokens
-     * which can easily be re-serialized.
-     */
-    Object.defineProperty(cstNode, 'childrenStream', {
-      value: []
-    })
-
-    this.setInitialNodeLocation(cstNode as CstNode)
-    this.CST_STACK.push(cstNode as CstNode)
-  }
-
-  addTerminalToCst(node: CstNode, token: IToken, tokenTypeName: string) {
-    node.childrenStream.push(token)
-    if (node.children[tokenTypeName] === undefined) {
-      node.children[tokenTypeName] = [token]
-    } else {
-      node.children[tokenTypeName].push(token)
-    }
-  }
-
-  addNoneTerminalToCst(node: CstNode, ruleName: string, ruleResult: any) {
-    this.addTerminalToCst(node, ruleResult, ruleName)
-  }
-
-  private _consumeImplicits(key: 'pre' | 'post') {
-    const skipped = this.skippedTokens.get(this.currIdx + 1)
-    if (skipped) {
-      if (key === 'pre' || this.LA(1).tokenType === EOF) {
-        skipped.forEach(token => this.cstPostTerminal(key, token))
-      }
-    }
-  }
-
-  consumeInternal(tokType: TokenType, idx: number, options?: ConsumeMethodOpts): IToken {
-    this._consumeImplicits('pre')
-    const retVal = super.consumeInternal(tokType, idx, options)
-    this._consumeImplicits('post')
-    return retVal
-  }
-
-  /** Separate skipped tokens into a new map */
-  // eslint-disable-next-line accessor-pairs
-  set input(value: IToken[]) {
-    const skippedTokens = new Map<number, IToken[]>()
-    const inputTokens: IToken[] = []
-    let foundTokens: number = 0
-    for (let i = 0; i < value.length; i++) {
-      const token = value[i]
-      if (token.tokenType.LABEL === SKIPPED_LABEL) {
-        const tokens = skippedTokens.get(foundTokens) ?? []
-        skippedTokens.set(foundTokens, [...tokens, token])
-      } else {
-        inputTokens.push(token)
-        foundTokens++
-      }
-    }
-    this.skippedTokens = skippedTokens
-    super.input = inputTokens
-  }
-
-  /**
-   * Used in a GATE.
-   * Determine if there is white-space before the next token
-   */
-  hasWS() {
-    const skipped = this.skippedTokens.get(this.currIdx + 1)
-    if (!skipped) {
-      return false
-    }
-    return !!skipped.find(token => token.tokenType === this.T.WS)
-  }
-
-  /**
-   * Used in a GATE.
-   * Affirms that there is NOT white space or comment before next token
-   */
-  noSep() {
-    return !this.skippedTokens.get(this.currIdx + 1)
   }
 }

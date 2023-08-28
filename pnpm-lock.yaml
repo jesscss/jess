@@ -103,6 +103,9 @@ importers:
       chevrotain-allstar:
         specifier: ~0.3.0
         version: 0.3.0(chevrotain@10.5.0)
+      lodash-es:
+        specifier: ~4.17.21
+        version: 4.17.21
       xregexp:
         specifier: ^5.1.1
         version: 5.1.1
@@ -110,6 +113,9 @@ importers:
       '@less/test-data':
         specifier: ^4.1.0
         version: 4.1.0
+      '@types/lodash-es':
+        specifier: ~4.17.8
+        version: 4.17.8
       '@types/xregexp':
         specifier: ^4.4.0
         version: 4.4.0
@@ -3439,6 +3445,12 @@ packages:
     dependencies:
       '@types/node': 18.15.13
     dev: false
+
+  /@types/lodash-es@4.17.8:
+    resolution: {integrity: sha512-euY3XQcZmIzSy7YH5+Unb3b2X12Wtk54YWINBvvGQ5SmMvwb11JQskGsfkH/5HXK77Kr8GF0wkVDIxzAisWtog==}
+    dependencies:
+      '@types/lodash': 4.14.194
+    dev: true
 
   /@types/lodash@4.14.194:
     resolution: {integrity: sha512-r22s9tAS7imvBt2lyHC9B8AGwWnXaYb1tY09oyLkXDs4vArpYJzw09nj8MLx5VfciBPGIb+ZwG0ssYnEPJxn/g==}
