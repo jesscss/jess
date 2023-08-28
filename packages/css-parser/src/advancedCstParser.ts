@@ -205,9 +205,6 @@ export class AdvancedCstParser extends CstParser {
   }
 
   addTerminalToCst(node: AdvancedCstNode, token: IToken, tokenTypeName: string) {
-    if (!node) {
-      return
-    }
     node.childrenStream.push(token)
     if (node.children[tokenTypeName] === undefined) {
       node.children[tokenTypeName] = [token]
