@@ -6,15 +6,13 @@ import {
   NoViableAltException,
   type SubruleMethodOpts,
   type IToken,
-  type CstElement,
   type CstNode,
   type TokenType,
   type ConsumeMethodOpts,
   type CstNodeLocation,
   type IRecognitionException
 } from 'chevrotain'
-import type { IParserState } from 'chevrotain/src/parse/parser/parser'
-import type { PROD_TYPE } from 'chevrotain/src/parse/grammar/lookahead'
+
 import clone from 'lodash-es/clone'
 
 /** Apply this label to tokens you wish to skip during parsing consideration */
@@ -24,8 +22,8 @@ export const WS_NAME = 'WS'
 
 const BACKTRACKING_ERROR = 'Error during backtracking'
 
-type AdvancedCstNode = CstNode & {
-  childrenStream: CstElement[]
+export type AdvancedCstNode = CstNode & {
+  childrenStream: Array<AdvancedCstNode | IToken>
 }
 
 /**
@@ -64,7 +62,7 @@ export class AdvancedCstParser extends CstParser {
   /** End exposing private Chevrotain API */
 
   /** Used by backtracking and try-parse */
-  saveRecogState(): IParserState {
+  saveRecogState() {
     const savedRuleStack = clone(this.RULE_STACK)
     return {
       // errors is a getter which will clone the errors array
@@ -76,7 +74,7 @@ export class AdvancedCstParser extends CstParser {
   }
 
   /** Used by backtracking and try-parse */
-  reloadRecogState(newState: IParserState) {
+  reloadRecogState(newState: any) {
     if (!this.isBackTracking()) {
       this.errors = newState.errors
     }
@@ -87,7 +85,7 @@ export class AdvancedCstParser extends CstParser {
   /** Suppress error recording when backtracking */
   raiseEarlyExitException(
     occurrence: number,
-    prodType: PROD_TYPE,
+    prodType: any,
     userDefinedErrMsg: string | undefined
   ) {
     if (this.isBackTracking()) {
@@ -166,7 +164,7 @@ export class AdvancedCstParser extends CstParser {
     key: string,
     consumedToken: IToken
   ): void {
-    if (this.isBackTracking()) {
+    if (!this.outputCst) {
       return
     }
     const rootCst = this.CST_STACK[this.CST_STACK.length - 1]
@@ -178,7 +176,7 @@ export class AdvancedCstParser extends CstParser {
     ruleCstResult: CstNode,
     ruleName: string
   ): void {
-    if (this.isBackTracking()) {
+    if (!this.outputCst) {
       return
     }
     const preCstNode = this.CST_STACK[this.CST_STACK.length - 1]
@@ -187,7 +185,7 @@ export class AdvancedCstParser extends CstParser {
   }
 
   cstInvocationStateUpdate(fullRuleName: string): void {
-    if (this.isBackTracking()) {
+    if (!this.outputCst) {
       return
     }
     const cstNode: Partial<AdvancedCstNode> = {
@@ -207,6 +205,9 @@ export class AdvancedCstParser extends CstParser {
   }
 
   addTerminalToCst(node: AdvancedCstNode, token: IToken, tokenTypeName: string) {
+    if (!node) {
+      return
+    }
     node.childrenStream.push(token)
     if (node.children[tokenTypeName] === undefined) {
       node.children[tokenTypeName] = [token]

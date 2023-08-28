@@ -185,6 +185,11 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
         ALT: () => {
           /** Well, poop, now we have to look ahead for a '{' */
           $.CONSUME(T.Ident)
+          $.OR2([
+            {
+              ALT: () => $.CONSUME(T.Colon)
+            }
+          ])
           $.MANY(() => $.SUBRULE($.anyOuterValue))
           $.CONSUME(T.LCurly)
         }

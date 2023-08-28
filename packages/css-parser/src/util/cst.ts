@@ -1,9 +1,10 @@
-import type { CstNode, IToken } from 'chevrotain'
+import type { IToken } from 'chevrotain'
+import type { AdvancedCstNode } from '../advancedCstParser'
 
-export const stringify = (cst: CstNode): string => {
+export const stringify = (cst: AdvancedCstNode): string => {
   let output = ''
 
-  const recurseCst = (node: CstNode | IToken): void => {
+  const recurseCst = (node: AdvancedCstNode | IToken): void => {
     if (!node) {
       return
     }

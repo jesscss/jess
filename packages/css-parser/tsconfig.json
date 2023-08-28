@@ -3,7 +3,8 @@
   "compilerOptions": {
     "composite": true,
     "outDir": "./lib",
-    "rootDir": "./src"
+    "rootDir": "./src",
+    "skipLibCheck": true
   },
   "include": ["src/**/*", "test/**/*", "vitest.config.ts"],
   "exclude": ["node_modules", "lib"]
