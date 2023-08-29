@@ -140,37 +140,37 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
     ])
   })
 
-  $.OVERRIDE_RULE('declarationList', () => {
-    $.OR([
-      {
-        ALT: () => {
-          $.SUBRULE($.innerAtRule)
-          $.SUBRULE($.declarationList)
-        }
-      },
-      {
-        GATE: $.BACKTRACK($.testQualifiedRule),
-        ALT: () => {
-          $.SUBRULE($.qualifiedRule, { ARGS: [{ inner: true }] })
-          $.SUBRULE2($.declarationList)
-        }
-      },
-      /**
-         * Declaration needs to be last, because in the
-         * Less and Sass parsers, a qualifiedRule can
-         * start with an Identifier also.
-         */
-      {
-        ALT: () => {
-          $.OPTION(() => $.SUBRULE($.declaration))
-          $.OPTION2(() => {
-            $.CONSUME(T.Semi)
-            $.SUBRULE3($.declarationList)
-          })
-        }
-      }
-    ])
-  })
+  // $.OVERRIDE_RULE('declarationList', () => {
+  //   $.OR([
+  //     /**
+  //        * Declaration needs to be last, because in the
+  //        * Less and Sass parsers, a qualifiedRule can
+  //        * start with an Identifier also.
+  //        */
+  //     {
+  //       ALT: () => {
+  //         $.OPTION(() => $.SUBRULE($.declaration))
+  //         $.OPTION2(() => {
+  //           $.CONSUME(T.Semi)
+  //           $.SUBRULE3($.declarationList)
+  //         })
+  //       }
+  //     },
+  //     {
+  //       ALT: () => {
+  //         $.SUBRULE($.innerAtRule)
+  //         $.SUBRULE($.declarationList)
+  //       }
+  //     },
+  //     {
+  //       // GATE: $.BACKTRACK($.testQualifiedRule),
+  //       ALT: () => {
+  //         $.SUBRULE($.qualifiedRule, { ARGS: [{ inner: true }] })
+  //         $.SUBRULE2($.declarationList)
+  //       }
+  //     }
+  //   ])
+  // })
 
   /**
    * We need this rule to succeed quickly if it starts with anything other
@@ -185,11 +185,6 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
         ALT: () => {
           /** Well, poop, now we have to look ahead for a '{' */
           $.CONSUME(T.Ident)
-          $.OR2([
-            {
-              ALT: () => $.CONSUME(T.Colon)
-            }
-          ])
           $.MANY(() => $.SUBRULE($.anyOuterValue))
           $.CONSUME(T.LCurly)
         }

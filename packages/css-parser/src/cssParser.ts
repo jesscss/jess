@@ -12,6 +12,41 @@ import { LLStarLookaheadStrategy } from 'chevrotain-allstar'
 import { type CssTokenType } from './cssTokens'
 import { productions } from './productions'
 
+class LLStarLookaheadStrategyLogged extends LLStarLookaheadStrategy {
+  constructor(...args: any[]) {
+    super(...args)
+
+    ;[
+      'initialize',
+      'validateAmbiguousAlternationAlternatives',
+      'validateEmptyOrAlternatives',
+      'buildLookaheadForAlternation',
+      'buildLookaheadForOptional'
+    ].forEach(key => {
+      // @ts-expect-error - this is a hack to log the methods
+      const value = this[key]
+      // @ts-expect-error - this is a hack to log the methods
+      this[key] = function(...args) {
+        const methodStart = performance.now()
+        const result = value.apply(this, args)
+        const methodEnd = performance.now()
+        console.log(`${key}(): ${Math.round(methodEnd - methodStart)}ms`)
+        if (typeof result === 'function') {
+          return function(...args: any[]) {
+            const start = performance.now()
+            // @ts-expect-error - Don't worry about this
+            const newResult = result.apply(this, args)
+            const end = performance.now()
+            console.log(`function(): ${Math.round(end - start)}ms`)
+            return newResult
+          }
+        }
+        return result
+      }
+    })
+  }
+}
+
 export type TokenMap = Record<CssTokenType, TokenType>
 
 /**
@@ -159,7 +194,7 @@ export class CssParser extends AdvancedCstParser {
     config: CssParserConfig = {}
   ) {
     const defaultConfig: CssParserConfig = {
-      lookaheadStrategy: new LLStarLookaheadStrategy({
+      lookaheadStrategy: new LLStarLookaheadStrategyLogged({
         // suppress ambiguity logging
         logging() {}
       }),

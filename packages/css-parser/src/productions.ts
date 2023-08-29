@@ -332,34 +332,32 @@ export function productions(this: CssParser, T: TokenMap) {
   //   )
   //   ;
   $.RULE('declarationList', () => {
-    $.OR([
-      {
-        ALT: () => {
-          $.SUBRULE($.innerAtRule)
-          $.SUBRULE($.declarationList)
+    $.OR({
+      // CONTINUE_ON_ERROR: true,
+      DEF: [
+        {
+          ALT: () => {
+            $.OPTION(() => $.SUBRULE($.declaration))
+            $.OPTION2(() => {
+              $.CONSUME(T.Semi)
+              $.SUBRULE3($.declarationList)
+            })
+          }
+        },
+        {
+          ALT: () => {
+            $.SUBRULE($.innerAtRule)
+            $.SUBRULE($.declarationList)
+          }
+        },
+        {
+          ALT: () => {
+            $.SUBRULE($.qualifiedRule, { ARGS: [{ inner: true }] })
+            $.SUBRULE2($.declarationList)
+          }
         }
-      },
-      {
-        ALT: () => {
-          $.SUBRULE($.qualifiedRule, { ARGS: [{ inner: true }] })
-          $.SUBRULE2($.declarationList)
-        }
-      },
-      /**
-         * Declaration needs to be last, because in the
-         * Less and Sass parsers, a qualifiedRule can
-         * start with an Identifier also.
-         */
-      {
-        ALT: () => {
-          $.OPTION(() => $.SUBRULE($.declaration))
-          $.OPTION2(() => {
-            $.CONSUME(T.Semi)
-            $.SUBRULE3($.declarationList)
-          })
-        }
-      }
-    ])
+      ]
+    })
   })
 
   // declaration

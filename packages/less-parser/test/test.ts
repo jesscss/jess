@@ -203,7 +203,7 @@ const invalidLess = [
 ]
 
 describe('can parse all Less stylesheets', () => {
-  const files = glob.sync(path.join(testData, 'less/**/extend-chaining.less'))
+  const files = glob.sync(path.join(testData, 'less/**/colors.less'))
   files
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))
@@ -212,9 +212,10 @@ describe('can parse all Less stylesheets', () => {
       it(`${file}`, () => {
         const result = fs.readFileSync(path.join(testData, file))
         const contents = result.toString()
-        // const parseStart = performance.now()
+        const parseStart = performance.now()
         const { cst, lexerResult, parser } = lessParser.parse(contents)
-        // const parseEnd = performance.now()
+        const parseEnd = performance.now()
+        console.log(`${file} parse time: ${Math.round(parseEnd - parseStart)}ms`)
         // expect(`(${Math.round(parseEnd - parseStart)}ms)`).toBeDefined()
         expect(lexerResult.errors.length).toBe(0)
         expect(parser.errors.length).toBe(0)

@@ -4,6 +4,8 @@ import {
   isRecognitionException,
   EarlyExitException,
   NoViableAltException,
+  type IOrAlt,
+  type OrMethodOpts,
   type SubruleMethodOpts,
   type IToken,
   type CstNode,
@@ -13,7 +15,21 @@ import {
   type IRecognitionException
 } from 'chevrotain'
 
+import type { ParserMethodInternal } from 'chevrotain/src/parse/parser/types'
+
 import clone from 'lodash-es/clone'
+
+/** copied from 'chevrotain/src/parse/grammar/keys'  */
+export const BITS_FOR_METHOD_TYPE = 4
+export const BITS_FOR_OCCURRENCE_IDX = 8
+export const OR_IDX = 1 << BITS_FOR_OCCURRENCE_IDX
+
+export interface IParserState {
+  errors: IRecognitionException[]
+  lexerState: any
+  RULE_STACK: number[]
+  CST_STACK: CstNode[]
+}
 
 /** Apply this label to tokens you wish to skip during parsing consideration */
 export const SKIPPED_LABEL = 'Skipped'
@@ -24,6 +40,10 @@ const BACKTRACKING_ERROR = 'Error during backtracking'
 
 export type AdvancedCstNode = CstNode & {
   childrenStream: Array<AdvancedCstNode | IToken>
+}
+
+export type OrAdvancedMethodOpts<T> = OrMethodOpts<T> & {
+  CONTINUE_ON_ERROR?: boolean
 }
 
 /**
@@ -45,6 +65,15 @@ export class AdvancedCstParser extends CstParser {
   outputCst: boolean
   _errors: IRecognitionException[]
   RULE_STACK: number[]
+  isTryingAlt: boolean
+  trySubRuleCache: WeakMap<ParserMethodInternal<any[], any>, { args: any[] }>
+
+  getLaFuncFromCache: (key: number) => (alts: Array<IOrAlt<any>>) => number
+
+  getKeyForAutomaticLookahead: (
+    dslMethodIdx: number,
+    occurrence: number
+  ) => number
 
   isBackTracking: () => boolean
 
@@ -62,10 +91,9 @@ export class AdvancedCstParser extends CstParser {
   /** End exposing private Chevrotain API */
 
   /** Used by backtracking and try-parse */
-  saveRecogState() {
+  saveRecogState(): IParserState {
     const savedRuleStack = clone(this.RULE_STACK)
     return {
-      // errors is a getter which will clone the errors array
       errors: this.isBackTracking() ? [] : this.errors,
       lexerState: this.currIdx,
       RULE_STACK: savedRuleStack,
@@ -74,7 +102,7 @@ export class AdvancedCstParser extends CstParser {
   }
 
   /** Used by backtracking and try-parse */
-  reloadRecogState(newState: any) {
+  reloadRecogState(newState: IParserState) {
     if (!this.isBackTracking()) {
       this.errors = newState.errors
     }
@@ -136,7 +164,7 @@ export class AdvancedCstParser extends CstParser {
     super.consumeInternalError(tokType, nextToken, options)
   }
 
-  protected BACKTRACK<T>(grammarRule: (...args: any[]) => T, args?: any[]): () => boolean {
+  BACKTRACK<T>(grammarRule: (...args: any[]) => T, args?: any[]): () => boolean {
     const self = this
     return function() {
       self.isBackTrackingStack.push(1)
@@ -159,6 +187,56 @@ export class AdvancedCstParser extends CstParser {
       }
     }
   }
+
+  // orInternal<T>(
+  //   altsOrOpts: Array<IOrAlt<any>> | OrAdvancedMethodOpts<unknown>,
+  //   occurrence: number
+  // // @ts-expect-error - `raiseNoAltException` throws an error
+  // ): T {
+  //   const laKey = this.getKeyForAutomaticLookahead(OR_IDX, occurrence)
+  //   let alts: Array<IOrAlt<any>>
+  //   let continueOnError = false
+  //   if (Array.isArray(altsOrOpts)) {
+  //     alts = altsOrOpts
+  //   } else {
+  //     alts = altsOrOpts.DEF
+  //     continueOnError = altsOrOpts.CONTINUE_ON_ERROR ?? false
+  //   }
+
+  //   const laFunc = this.getLaFuncFromCache(laKey)
+  //   if (continueOnError) {
+  //     const altIdxesToTake = alts.map(alt => laFunc.call(this, [alt]))
+  //     if (altIdxesToTake.length) {
+  //       for (let i = 0; i < altIdxesToTake.length; i++) {
+  //         const altIdxToTake = altIdxesToTake[i]
+  //         const chosenAlternative: any = alts[altIdxToTake]
+  //         const isTrying = this.isTryingAlt
+  //         const orgState = this.saveRecogState()
+  //         try {
+  //           this.isTryingAlt = isTrying
+  //           return chosenAlternative.ALT.call(this)
+  //         } catch (e) {
+  //           this.isTryingAlt = isTrying
+  //           if (isRecognitionException(e as Error)) {
+  //             this.reloadRecogState(orgState)
+  //           } else {
+  //             throw e
+  //           }
+  //         }
+  //       }
+  //     }
+  //   } else {
+  //     const altIdxToTake = laFunc.call(this, alts)
+  //     if (altIdxToTake !== undefined) {
+  //       const chosenAlternative: any = alts[altIdxToTake]
+  //       return chosenAlternative.ALT.call(this)
+  //     }
+  //   }
+  //   this.raiseNoAltException(
+  //     occurrence,
+  //     (altsOrOpts as OrMethodOpts<unknown>).ERR_MSG
+  //   )
+  // }
 
   cstPostTerminal(
     key: string,
@@ -204,6 +282,13 @@ export class AdvancedCstParser extends CstParser {
     this.CST_STACK.push(cstNode as AdvancedCstNode)
   }
 
+  cstFinallyStateUpdate(): void {
+    if (!this.outputCst) {
+      return
+    }
+    this.CST_STACK.pop()
+  }
+
   addTerminalToCst(node: AdvancedCstNode, token: IToken, tokenTypeName: string) {
     node.childrenStream.push(token)
     if (node.children[tokenTypeName] === undefined) {
@@ -218,7 +303,7 @@ export class AdvancedCstParser extends CstParser {
   }
 
   private _consumeImplicits(key: 'pre' | 'post') {
-    if (this.isBackTracking()) {
+    if (!this.outputCst) {
       return
     }
     const skipped = this.skippedTokens.get(this.currIdx + 1)
