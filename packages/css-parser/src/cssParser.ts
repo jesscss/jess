@@ -37,7 +37,7 @@ class LLStarLookaheadStrategyLogged extends LLStarLookaheadStrategy {
             // @ts-expect-error - Don't worry about this
             const newResult = result.apply(this, args)
             const end = performance.now()
-            console.log(`function(): ${Math.round(end - start)}ms`)
+            console.log(`${key} => (): ${Math.round(end - start)}ms`)
             return newResult
           }
         }
