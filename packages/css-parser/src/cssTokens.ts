@@ -115,6 +115,7 @@ const tokens = () => ({
       { name: 'Function', pattern: LexerType.NA },
       { name: 'FunctionalPseudoClass', pattern: LexerType.NA },
       { name: 'Assign', pattern: LexerType.NA },
+      { name: 'QuoteStart', pattern: LexerType.NA },
       // TODO: can use string literals for simple patterns (e.g: /\)/ vs ')')
       { name: 'Gt', pattern: />/, categories: ['CompareOperator', 'Combinator', 'MfGt'] },
       { name: 'Lt', pattern: /</, categories: ['CompareOperator', 'MfLt'] },
@@ -203,13 +204,13 @@ const tokens = () => ({
         name: 'SingleQuoteStart',
         pattern: /'/,
         push_mode: 'SingleQuoteString',
-        categories: ['BlockMarker']
+        categories: ['BlockMarker', 'QuoteStart']
       },
       {
         name: 'DoubleQuoteStart',
         pattern: /"/,
         push_mode: 'DoubleQuoteString',
-        categories: ['BlockMarker']
+        categories: ['BlockMarker', 'QuoteStart']
       },
       {
         name: 'Important',

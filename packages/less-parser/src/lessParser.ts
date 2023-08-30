@@ -27,14 +27,9 @@ export type LessParserConfig = CssParserConfig
 export type TokenMap = Record<LessTokenType, TokenType>
 
 export type RuleContext = CssRuleContext & {
-  /**
-   * This is parsing state maintained while parsing a qualified rule.
-   * It helps determine if this is valid as a mixin call or definition
-   * without having to backtrack.
-   */
-  isMixinCallCandidate?: boolean
-  isMixinDefinitionCandidate?: boolean
   hasExtend?: boolean
+  /** Mixin definition */
+  isDefinition?: boolean
   // isCompareExpression?: boolean
 }
 /**
@@ -53,9 +48,8 @@ export class LessParser extends CssParser {
   // mixins
   mixinName: Rule
   mixinDefinition: Rule
-  mixinCallSequence: Rule
   mixinCall: Rule
-  mixinCallArgs: Rule<(ctx?: RuleContext) => void>
+  mixinArgs: Rule<(ctx?: RuleContext) => void>
   mixinArgList: Rule<(ctx?: RuleContext) => void>
   mixinArg: Rule<(ctx?: RuleContext) => void>
   mixinValue: Rule

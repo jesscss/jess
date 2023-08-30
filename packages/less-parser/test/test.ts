@@ -203,7 +203,7 @@ const invalidLess = [
 ]
 
 describe('can parse all Less stylesheets', () => {
-  const files = glob.sync(path.join(testData, 'less/**/colors.less'))
+  const files = glob.sync(path.join(testData, 'less/**/media.less'))
   files
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))
