@@ -65,7 +65,7 @@ export class AdvancedCstParser extends CstParser {
   outputCst: boolean
   _errors: IRecognitionException[]
   RULE_STACK: number[]
-  isTryingAlt: boolean
+  isTryingSubRule: boolean
   trySubRuleCache: WeakMap<ParserMethodInternal<any[], any>, { args: any[] }>
 
   getLaFuncFromCache: (key: number) => (alts: Array<IOrAlt<any>>) => number
@@ -184,6 +184,30 @@ export class AdvancedCstParser extends CstParser {
         self.outputCst = true
         self.reloadRecogState(orgState)
         self.isBackTrackingStack.pop()
+      }
+    }
+  }
+
+  trySubRule<ARGS extends unknown[], R>(
+    ruleToCall: ParserMethodInternal<ARGS, R>,
+    options?: SubruleMethodOpts<ARGS>
+  ): () => boolean {
+    const self = this
+    return function() {
+      const isTryingSubRule = self.isTryingSubRule
+      const orgState = self.saveRecogState()
+      try {
+        self.isTryingSubRule = true
+        ruleToCall.apply(self, (options?.ARGS ?? []) as ARGS)
+        return true
+      } catch (e) {
+        if (isRecognitionException(e as Error)) {
+          self.isTryingSubRule = isTryingSubRule
+
+          return false
+        } else {
+          throw e
+        }
       }
     }
   }

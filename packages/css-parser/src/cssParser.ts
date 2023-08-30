@@ -196,7 +196,7 @@ export class CssParser extends AdvancedCstParser {
     const defaultConfig: CssParserConfig = {
       lookaheadStrategy: new LLStarLookaheadStrategyLogged({
         // suppress ambiguity logging
-        logging() {}
+        // logging() {}
       }),
       nodeLocationTracking: 'full'
     }
