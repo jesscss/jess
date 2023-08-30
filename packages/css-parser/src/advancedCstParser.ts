@@ -66,7 +66,7 @@ export class AdvancedCstParser extends CstParser {
   _errors: IRecognitionException[]
   RULE_STACK: number[]
   isTryingSubRule: boolean
-  trySubRuleCache: WeakMap<ParserMethodInternal<any[], any>, { args: any[] }>
+  trySubRuleCache = new WeakMap<(...args: any[]) => any, { state: IParserState, result: any }>()
 
   getLaFuncFromCache: (key: number) => (alts: Array<IOrAlt<any>>) => number
 
@@ -138,6 +138,21 @@ export class AdvancedCstParser extends CstParser {
     super.raiseNoAltException(occurrence, errMsgTypes)
   }
 
+  subruleInternal<ARGS extends unknown[], R>(
+    ruleToCall: ParserMethodInternal<ARGS, R>,
+    idx: number,
+    options?: SubruleMethodOpts<ARGS>
+  ): R {
+    if (this.trySubRuleCache.has(ruleToCall)) {
+      const cached = this.trySubRuleCache.get(ruleToCall)!
+      this.trySubRuleCache.delete(ruleToCall)
+      this.reloadRecogState(cached.state)
+      return cached.result
+    }
+    // @ts-expect-error - This exists
+    return super.subruleInternal(ruleToCall, idx, options)
+  }
+
   subRuleInternalError(
     e: any,
     options: SubruleMethodOpts<unknown[]> | undefined,
@@ -188,26 +203,25 @@ export class AdvancedCstParser extends CstParser {
     }
   }
 
-  trySubRule<ARGS extends unknown[], R>(
-    ruleToCall: ParserMethodInternal<ARGS, R>,
-    options?: SubruleMethodOpts<ARGS>
-  ): () => boolean {
-    const self = this
-    return function() {
-      const isTryingSubRule = self.isTryingSubRule
-      const orgState = self.saveRecogState()
-      try {
-        self.isTryingSubRule = true
-        ruleToCall.apply(self, (options?.ARGS ?? []) as ARGS)
-        return true
-      } catch (e) {
-        if (isRecognitionException(e as Error)) {
-          self.isTryingSubRule = isTryingSubRule
-
-          return false
-        } else {
-          throw e
-        }
+  /** Unlike Backtrack, should be called by an arrow function */
+  trySubRule<T>(grammarRule: (...args: any[]) => T, args?: any[]): boolean {
+    const isTryingSubRule = this.isTryingSubRule
+    const state = this.saveRecogState()
+    try {
+      this.isTryingSubRule = true
+      grammarRule.apply(this, args!)
+      const result = grammarRule.apply(this, args!)
+      this.trySubRuleCache.set(grammarRule, { result, state })
+      this.isTryingSubRule = isTryingSubRule
+      this.reloadRecogState(state)
+      return true
+    } catch (e) {
+      if (isRecognitionException(e as Error)) {
+        this.isTryingSubRule = isTryingSubRule
+        this.reloadRecogState(state)
+        return false
+      } else {
+        throw e
       }
     }
   }

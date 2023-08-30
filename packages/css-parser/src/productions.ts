@@ -20,17 +20,12 @@ export function productions(this: CssParser, T: TokenMap) {
   //     | atRule
   //   )*
   //   ;
-  /**
-     * Defined here similar to a declaration list,
-     * with a recursive optional callback.
-     */
   $.RULE('main', () => {
-    $.OPTION(() => {
+    $.MANY(() => {
       $.OR([
         { ALT: () => $.SUBRULE($.qualifiedRule) },
         { ALT: () => $.SUBRULE($.atRule) }
       ])
-      $.OPTION2(() => $.SUBRULE($.main))
     })
   })
 
@@ -331,32 +326,42 @@ export function productions(this: CssParser, T: TokenMap) {
   //     | innerQualifiedRule declarationList
   //   )
   //   ;
+  /**
+   * Originally this was structured much like the CSS spec,
+   * like this:
+   *  $.OPTION(() => $.SUBRULE($.declaration))
+   *  $.OPTION2(() => {
+   *     $.CONSUME(T.Semi)
+   *     $.SUBRULE3($.declarationList)
+   *   })
+   * ...but chevrotain-allstar doesn't deal well with
+   * recursivity, as it predicts the ENTIRE path for
+   * each alt
+   */
   $.RULE('declarationList', () => {
-    $.OR({
-      // CONTINUE_ON_ERROR: true,
-      DEF: [
-        {
-          ALT: () => {
-            $.OPTION(() => $.SUBRULE($.declaration))
-            $.OPTION2(() => {
-              $.CONSUME(T.Semi)
-              $.SUBRULE3($.declarationList)
-            })
+    let needsSemi = false
+    $.MANY({
+      GATE: () => !needsSemi || (needsSemi && $.LA(1).tokenType === T.Semi),
+      DEF: () => {
+        $.OR([
+          {
+            ALT: () => {
+              $.SUBRULE($.declaration)
+              needsSemi = true
+            }
+          },
+          {
+            ALT: () => {
+              $.OR2([
+                { ALT: () => $.SUBRULE($.innerAtRule) },
+                { ALT: () => $.SUBRULE2($.qualifiedRule, { ARGS: [{ inner: true }] }) },
+                { ALT: () => $.CONSUME(T.Semi) }
+              ])
+              needsSemi = false
+            }
           }
-        },
-        {
-          ALT: () => {
-            $.SUBRULE($.innerAtRule)
-            $.SUBRULE($.declarationList)
-          }
-        },
-        {
-          ALT: () => {
-            $.SUBRULE($.qualifiedRule, { ARGS: [{ inner: true }] })
-            $.SUBRULE2($.declarationList)
-          }
-        }
-      ]
+        ])
+      }
     })
   })
 

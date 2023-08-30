@@ -32,39 +32,39 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
    * Technically, the qualified rule here does some magic
    * to determine if it's alternatively a mixin call or definition.
    */
-  $.OVERRIDE_RULE('qualifiedRule', (ctx: RuleContext = {}) => {
-    ctx = {
-      ...ctx,
-      qualifiedRule: true,
-      hasExtend: false,
-      isMixinCallCandidate: true,
-      isMixinDefinitionCandidate: true
-    }
+  // $.OVERRIDE_RULE('qualifiedRule', (ctx: RuleContext = {}) => {
+  //   ctx = {
+  //     ...ctx,
+  //     qualifiedRule: true,
+  //     hasExtend: false,
+  //     isMixinCallCandidate: true,
+  //     isMixinDefinitionCandidate: true
+  //   }
 
-    $.OR([
-      {
-        GATE: () => !ctx.inner,
-        ALT: () => $.SUBRULE($.selectorList, { ARGS: [ctx] })
-      },
-      {
-        GATE: () => !!ctx.inner,
-        ALT: () => $.SUBRULE($.forgivingSelectorList, { ARGS: [ctx] })
-      }
-    ])
-    $.OR2([
-      {
-        GATE: () => !!ctx.isMixinCallCandidate || !!ctx.hasExtend,
-        ALT: () => $.CONSUME(T.Semi)
-      },
-      {
-        ALT: () => {
-          $.CONSUME(T.LCurly)
-          $.SUBRULE($.declarationList)
-          $.CONSUME(T.RCurly)
-        }
-      }
-    ])
-  })
+  //   $.OR([
+  //     {
+  //       GATE: () => !ctx.inner,
+  //       ALT: () => $.SUBRULE($.selectorList, { ARGS: [ctx] })
+  //     },
+  //     {
+  //       GATE: () => !!ctx.inner,
+  //       ALT: () => $.SUBRULE($.forgivingSelectorList, { ARGS: [ctx] })
+  //     }
+  //   ])
+  //   $.OR2([
+  //     {
+  //       GATE: () => !!ctx.isMixinCallCandidate || !!ctx.hasExtend,
+  //       ALT: () => $.CONSUME(T.Semi)
+  //     },
+  //     {
+  //       ALT: () => {
+  //         $.CONSUME(T.LCurly)
+  //         $.SUBRULE($.declarationList)
+  //         $.CONSUME(T.RCurly)
+  //       }
+  //     }
+  //   ])
+  // })
 
   $.OVERRIDE_RULE('complexSelector', (ctx: RuleContext = {}) => {
     $.SUBRULE($.compoundSelector, { ARGS: [ctx] })
@@ -86,91 +86,42 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
     $.CONSUME(T.RParen)
   })
 
-  $.OVERRIDE_RULE('relativeSelector', (ctx: RuleContext = {}) => {
-    $.OR([
-      {
-        ALT: () => {
-          ctx.isMixinCallCandidate = false
-          ctx.isMixinCallCandidate = false
-          ctx.isMixinDefinitionCandidate = false
-          $.CONSUME(T.Combinator)
-          $.SUBRULE($.complexSelector)
-        }
-      },
-      {
-        ALT: () => $.SUBRULE2($.complexSelector, { ARGS: [ctx] })
-      }
-    ])
-  })
+  // $.OVERRIDE_RULE('relativeSelector', (ctx: RuleContext = {}) => {
+  //   $.OR([
+  //     {
+  //       ALT: () => {
+  //         ctx.isMixinCallCandidate = false
+  //         ctx.isMixinCallCandidate = false
+  //         ctx.isMixinDefinitionCandidate = false
+  //         $.CONSUME(T.Combinator)
+  //         $.SUBRULE($.complexSelector)
+  //       }
+  //     },
+  //     {
+  //       ALT: () => $.SUBRULE2($.complexSelector, { ARGS: [ctx] })
+  //     }
+  //   ])
+  // })
 
   $.OVERRIDE_RULE('simpleSelector', (ctx: RuleContext = {}) => {
     $.OR([
       {
-        ALT: () => {
-          ctx.isMixinCallCandidate &&= true
-          ctx.isMixinDefinitionCandidate &&= true
-          $.OR2([
-            { ALT: () => $.SUBRULE($.classSelector) },
-            { ALT: () => $.SUBRULE($.idSelector) },
-            { ALT: () => $.CONSUME(T.InterpolatedSelector) },
-            { ALT: () => $.CONSUME(T.Interpolated) }
-          ])
-        }
+        /** In Less/Sass, the first selector can be an identifier */
+        // GATE: () => !ctx.firstSelector,
+        ALT: () => $.CONSUME(T.Ident)
       },
       {
-        ALT: () => {
-          ctx.isMixinCallCandidate = false
-          ctx.isMixinDefinitionCandidate = false
-          $.OR3([
-            /** Allow identifiers at rule starts */
-            { ALT: () => $.CONSUME(T.Ident) },
-            {
-            /**
-             * In CSS Nesting, an outer selector can't contain an ampersand,
-             * but Less allows it and merges the rules.
-             */
-              ALT: () => $.CONSUME(T.Ampersand)
-            },
-            { ALT: () => $.CONSUME(T.Star) },
-            { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [ctx] }) },
-            { ALT: () => $.SUBRULE($.attributeSelector) }
-          ])
-        }
-      }
+        /** In CSS Nesting, outer selector can't contain an ampersand */
+        GATE: () => !!ctx.inner,
+        ALT: () => $.CONSUME(T.Ampersand)
+      },
+      { ALT: () => $.SUBRULE($.classSelector) },
+      { ALT: () => $.SUBRULE($.idSelector) },
+      { ALT: () => $.CONSUME(T.Star) },
+      { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [ctx] }) },
+      { ALT: () => $.SUBRULE($.attributeSelector) }
     ])
   })
-
-  // $.OVERRIDE_RULE('declarationList', () => {
-  //   $.OR([
-  //     /**
-  //        * Declaration needs to be last, because in the
-  //        * Less and Sass parsers, a qualifiedRule can
-  //        * start with an Identifier also.
-  //        */
-  //     {
-  //       ALT: () => {
-  //         $.OPTION(() => $.SUBRULE($.declaration))
-  //         $.OPTION2(() => {
-  //           $.CONSUME(T.Semi)
-  //           $.SUBRULE3($.declarationList)
-  //         })
-  //       }
-  //     },
-  //     {
-  //       ALT: () => {
-  //         $.SUBRULE($.innerAtRule)
-  //         $.SUBRULE($.declarationList)
-  //       }
-  //     },
-  //     {
-  //       // GATE: $.BACKTRACK($.testQualifiedRule),
-  //       ALT: () => {
-  //         $.SUBRULE($.qualifiedRule, { ARGS: [{ inner: true }] })
-  //         $.SUBRULE2($.declarationList)
-  //       }
-  //     }
-  //   ])
-  // })
 
   /**
    * We need this rule to succeed quickly if it starts with anything other
@@ -234,37 +185,54 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
 
   $.OVERRIDE_RULE('compoundSelector', (ctx: RuleContext = {}) => {
     $.SUBRULE($.simpleSelector, { ARGS: [ctx] })
-    $.OR([
-      {
-        ALT: () => {
-          /** If there are multiple selectors, it can't be a mixin definition */
-          ctx.isMixinDefinitionCandidate = false
-          $.MANY(() => $.SUBRULE2($.simpleSelector, { ARGS: [ctx] }))
-        }
-      }
-    ])
-    $.OPTION({
-      GATE: () => !!ctx.isMixinCallCandidate,
-      DEF: () => {
-        $.SUBRULE($.mixinCallArgs, { ARGS: [ctx] })
-        $.OPTION2(() => {
-          ctx.isMixinDefinitionCandidate = false
-          $.SUBRULE($.accessors)
-        })
-      }
-    })
-    $.OPTION3(() => $.SUBRULE($.guard))
+    $.MANY(() => $.SUBRULE2($.simpleSelector, { ARGS: [{ ...ctx, firstSelector: false }] }))
+    $.OPTION(() => $.SUBRULE($.guard))
   })
+
+  // $.OVERRIDE_RULE('compoundSelector', (ctx: RuleContext = {}) => {
+  //   $.SUBRULE($.simpleSelector, { ARGS: [ctx] })
+  //   $.OR([
+  //     {
+  //       ALT: () => {
+  //         /** If there are multiple selectors, it can't be a mixin definition */
+  //         ctx.isMixinDefinitionCandidate = false
+  //         $.MANY(() => $.SUBRULE2($.simpleSelector, { ARGS: [ctx] }))
+  //       }
+  //     }
+  //   ])
+  //   $.OPTION({
+  //     GATE: () => !!ctx.isMixinCallCandidate,
+  //     DEF: () => {
+  //       $.SUBRULE($.mixinCallArgs, { ARGS: [ctx] })
+  //       $.OPTION2(() => {
+  //         ctx.isMixinDefinitionCandidate = false
+  //         $.SUBRULE($.accessors)
+  //       })
+  //     }
+  //   })
+  //   $.OPTION3(() => $.SUBRULE($.guard))
+  // })
 }
 
 export function atVariableDeclarations(this: LessParser, T: TokenMap) {
   const $ = this
+
+  /** Starts with a colon, followed by white space */
+  const isVariableLike = () => $.LA(1).tokenType === T.Colon && $.skippedTokens.has($.currIdx + 1)
+
+  /** Doesn't start with a colon or DOES, but it is NOT followed by a space */
+  const isNotVariableLike = () => $.LA(1).tokenType !== T.Colon || !$.skippedTokens.has($.currIdx + 1)
+
   /** Less variables */
   $.OVERRIDE_RULE('unknownAtRule', () => {
     $.CONSUME(T.AtKeyword)
     $.OR([
       {
-        /** This is a variable declaration */
+        /**
+         * This is a variable declaration
+         * Disallows `@atrule :foo;` because it resembles a pseudo-selector
+         */
+        GATE: isVariableLike,
         ALT: () => {
           $.CONSUME(T.Colon)
           $.OR2([
@@ -296,6 +264,7 @@ export function atVariableDeclarations(this: LessParser, T: TokenMap) {
       },
       /** Just a regular unknown at-rule */
       {
+        GATE: isNotVariableLike,
         ALT: () => {
           $.MANY(() => $.SUBRULE2($.anyOuterValue))
           $.OR3([
@@ -581,6 +550,37 @@ export function atRuleBubbling(this: LessParser, T: TokenMap) {
 export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
   const $ = this
 
+  $.OVERRIDE_RULE('declarationList', () => {
+    let needsSemi = false
+    $.MANY({
+      GATE: () => !needsSemi || (needsSemi && $.LA(1).tokenType === T.Semi),
+      DEF: () => {
+        $.OR([
+          {
+            ALT: () => {
+              $.OR3([
+                { ALT: () => $.SUBRULE($.mixinDefinition) },
+                { ALT: () => $.SUBRULE($.innerAtRule) },
+                { ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [{ inner: true }] }) },
+                { ALT: () => $.CONSUME(T.Semi) }
+              ])
+              needsSemi = false
+            }
+          },
+          {
+            ALT: () => {
+              $.OR2([
+                { ALT: () => $.SUBRULE($.declaration) },
+                { ALT: () => $.SUBRULE($.mixinCallSequence) }
+              ])
+              needsSemi = true
+            }
+          }
+        ])
+      }
+    })
+  })
+
   /** e.g. .mixin */
   $.RULE('mixinName', () => {
     $.OR([
@@ -608,6 +608,15 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
       $.OPTION(() => $.CONSUME(T.Gt))
       $.SUBRULE2($.mixinCall)
     })
+  })
+
+  $.RULE('mixinDefinition', () => {
+    $.SUBRULE($.mixinName)
+    $.SUBRULE($.mixinCallArgs)
+    $.OPTION(() => $.SUBRULE($.guard))
+    $.CONSUME(T.LCurly)
+    $.SUBRULE($.declarationList)
+    $.CONSUME(T.RCurly)
   })
 
   $.RULE('mixinCall', () => {
@@ -747,40 +756,5 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
   //       }
   //     ])
   //   })
-  // })
-
-  // $.OVERRIDE_RULE('declarationList', () => {
-  //   $.OR([
-  //     {
-  //       ALT: () => {
-  //         $.SUBRULE($.mixinDefinition)
-  //         $.OPTION(() => $.SUBRULE($.declarationList))
-  //       }
-  //     },
-  //     {
-  //       ALT: () => {
-  //         $.OR2([
-  //           { ALT: () => $.SUBRULE($.mixinCallSequence) },
-  //           { ALT: () => $.OPTION2(() => $.SUBRULE($.declaration)) }
-  //         ])
-  //         $.OPTION3(() => {
-  //           $.CONSUME(T.Semi)
-  //           $.SUBRULE2($.declarationList)
-  //         })
-  //       }
-  //     },
-  //     {
-  //       ALT: () => {
-  //         $.SUBRULE($.innerAtRule)
-  //         $.SUBRULE3($.declarationList)
-  //       }
-  //     },
-  //     {
-  //       ALT: () => {
-  //         $.SUBRULE($.qualifiedRule, { ARGS: [true] })
-  //         $.SUBRULE4($.declarationList)
-  //       }
-  //     }
-  //   ])
   // })
 }

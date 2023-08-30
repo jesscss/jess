@@ -1,5 +1,9 @@
 lockfileVersion: '6.0'
 
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
 overrides:
   chevrotain: ^10.5.0
 
@@ -4673,7 +4677,7 @@ packages:
   /chevrotain-allstar@0.3.0(chevrotain@10.5.0):
     resolution: {integrity: sha512-ZlkKZb97Jga/2619A5KET+CmvkhvoLlGVpJ7IXd5pHTZweGhr+apCuKHUvlwFeIVxk3A8o9DMjf+DXJKQxUQ/A==}
     peerDependencies:
-      chevrotain: ^11.0.0
+      chevrotain: ^10.5.0
     dependencies:
       chevrotain: 10.5.0
       lodash-es: 4.17.21
@@ -12014,7 +12018,3 @@ packages:
   /zwitch@1.0.5:
     resolution: {integrity: sha512-V50KMwwzqJV0NpZIZFwfOD5/lyny3WlSzRiXgA0G7VUnRlqttta1L6UQIHzd6EuBY/cHGfwTIck7w1yH6Q5zUw==}
     dev: false
-
-settings:
-  autoInstallPeers: true
-  excludeLinksFromLockfile: false

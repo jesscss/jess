@@ -116,6 +116,7 @@ export class CssParser extends AdvancedCstParser {
   combinator: Rule
 
   declaration: Rule
+  innerRule: Rule
   innerAtRule: Rule
   valueList: Rule
 
@@ -194,7 +195,7 @@ export class CssParser extends AdvancedCstParser {
     config: CssParserConfig = {}
   ) {
     const defaultConfig: CssParserConfig = {
-      lookaheadStrategy: new LLStarLookaheadStrategyLogged({
+      lookaheadStrategy: new LLStarLookaheadStrategy({
         // suppress ambiguity logging
         // logging() {}
       }),
