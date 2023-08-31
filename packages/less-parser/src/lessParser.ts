@@ -5,7 +5,7 @@ import { CssParser } from '@jesscss/css-parser'
 import { type LessTokenType } from './lessTokens'
 import {
   atVariableDeclarations,
-  mathExpressions,
+  expressionsAndValues,
   mixinsAndNamespaces,
   extendSelectors,
   extendRoot,
@@ -31,6 +31,7 @@ export type RuleContext = CssRuleContext & {
   /** Mixin definition */
   isDefinition?: boolean
   // isCompareExpression?: boolean
+  allowsAnonymousMixins?: boolean
 }
 /**
  * Unlike the historical Less parser, this parser
@@ -39,9 +40,9 @@ export type RuleContext = CssRuleContext & {
 export class LessParser extends CssParser {
   T: TokenMap
 
-  expression: Rule
-  expressionValue: Rule
-  function: Rule
+  expression: Rule<(ctx?: RuleContext) => void>
+  expressionValue: Rule<(ctx?: RuleContext) => void>
+  functionValueList: Rule
 
   testQualifiedRule: Rule
 
@@ -49,10 +50,12 @@ export class LessParser extends CssParser {
   mixinName: Rule
   mixinDefinition: Rule
   mixinCall: Rule
+  mixinCallLookup: Rule
   mixinArgs: Rule<(ctx?: RuleContext) => void>
   mixinArgList: Rule<(ctx?: RuleContext) => void>
   mixinArg: Rule<(ctx?: RuleContext) => void>
   mixinValue: Rule
+  anonymousMixinDefinition: Rule
 
   extend: Rule<(ctx?: RuleContext) => void>
 
@@ -78,7 +81,7 @@ export class LessParser extends CssParser {
     ;[
       extendRoot,
       atVariableDeclarations,
-      mathExpressions,
+      expressionsAndValues,
       guards,
       mixinsAndNamespaces,
       extendSelectors,

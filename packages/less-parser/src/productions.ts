@@ -11,15 +11,113 @@ export function extendRoot(this: LessParser, T: TokenMap) {
   }
 
   $.OVERRIDE_RULE('main', () => {
-    $.MANY(() => {
-      $.OR([
-        { ALT: () => $.SUBRULE($.mixinDefinition) },
-        { ALT: () => $.SUBRULE($.function) },
-        { ALT: () => $.SUBRULE($.qualifiedRule) },
-        { ALT: () => $.SUBRULE($.atRule) },
-        { ALT: () => $.SUBRULE($.mixinCall) }
-      ])
+    let needsSemi = false
+    $.MANY({
+      GATE: () => !needsSemi ||
+        (needsSemi && (
+          $.LA(1).tokenType === T.Semi ||
+          $.LA(0).tokenType === T.Semi
+        )),
+      DEF: () => {
+        $.OR([
+          {
+            ALT: () => {
+              $.OR2([
+                { ALT: () => $.SUBRULE($.mixinDefinition) },
+                {
+                  ALT: () => {
+                    $.SUBRULE($.function)
+                    $.CONSUME(T.Semi)
+                  }
+                },
+                { ALT: () => $.SUBRULE($.qualifiedRule) },
+                /** At-rules that don't have curly blocks must end in semi-colons according to CSS */
+                { ALT: () => $.SUBRULE($.atRule) },
+                { ALT: () => $.CONSUME2(T.Semi) }
+              ])
+              needsSemi = false
+            }
+          },
+          {
+            ALT: () => {
+              $.SUBRULE($.mixinCall)
+              needsSemi = true
+            }
+          }
+        ])
+      }
     })
+  })
+
+  $.OVERRIDE_RULE('declarationList', () => {
+    let needsSemi = false
+    $.MANY({
+      GATE: () => !needsSemi ||
+        (needsSemi && (
+          $.LA(1).tokenType === T.Semi ||
+          $.LA(0).tokenType === T.Semi
+        )),
+      DEF: () => {
+        $.OR([
+          {
+            ALT: () => {
+              $.OR2([
+                { ALT: () => $.SUBRULE($.declaration) },
+                { ALT: () => $.SUBRULE($.mixinCall) }
+              ])
+              needsSemi = true
+            }
+          },
+          {
+            ALT: () => {
+              $.OR3([
+                { ALT: () => $.SUBRULE($.mixinDefinition) },
+                {
+                  ALT: () => {
+                    $.SUBRULE($.function)
+                    $.CONSUME(T.Semi)
+                  }
+                },
+                { ALT: () => $.SUBRULE($.innerAtRule) },
+                { ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [{ inner: true }] }) },
+                { ALT: () => $.CONSUME2(T.Semi) }
+              ])
+              needsSemi = false
+            }
+          }
+        ])
+      }
+    })
+  })
+
+  $.OVERRIDE_RULE('declaration', () => {
+    $.OR([
+      {
+        ALT: () => {
+          $.OR2([
+            {
+              ALT: () => $.CONSUME(T.Ident)
+            },
+            {
+              GATE: () => $.legacyMode,
+              ALT: () => $.CONSUME(T.LegacyPropIdent)
+            }
+          ])
+          $.CONSUME(T.Assign)
+          $.SUBRULE($.valueList)
+          $.OPTION(() => {
+            $.CONSUME(T.Important)
+          })
+        }
+      },
+      {
+        ALT: () => {
+          $.CONSUME(T.CustomProperty)
+          $.CONSUME2(T.Assign)
+          $.MANY(() => $.SUBRULE($.customValue))
+        }
+      }
+    ])
   })
 
   // $.OVERRIDE_RULE('mediaQuery', () => {
@@ -97,43 +195,37 @@ export function extendRoot(this: LessParser, T: TokenMap) {
 export function extendSelectors(this: LessParser, T: TokenMap) {
   const $ = this
 
-  /**
-   * Technically, the qualified rule here does some magic
-   * to determine if it's alternatively a mixin call or definition.
-   */
-  // $.OVERRIDE_RULE('qualifiedRule', (ctx: RuleContext = {}) => {
-  //   ctx = {
-  //     ...ctx,
-  //     qualifiedRule: true,
-  //     hasExtend: false,
-  //     isMixinCallCandidate: true,
-  //     isMixinDefinitionCandidate: true
-  //   }
+  $.OVERRIDE_RULE('qualifiedRule', (ctx: RuleContext = {}) => {
+    ctx.qualifiedRule = true
+    $.OR([
+      {
+        GATE: () => !ctx.inner,
+        ALT: () => $.SUBRULE($.selectorList, { ARGS: [ctx] })
+      },
+      {
+        GATE: () => !!ctx.inner,
+        ALT: () => {
+          ctx.firstSelector = true
+          $.SUBRULE($.forgivingSelectorList, { ARGS: [ctx] })
+        }
+      }
+    ])
 
-  //   $.OR([
-  //     {
-  //       GATE: () => !ctx.inner,
-  //       ALT: () => $.SUBRULE($.selectorList, { ARGS: [ctx] })
-  //     },
-  //     {
-  //       GATE: () => !!ctx.inner,
-  //       ALT: () => $.SUBRULE($.forgivingSelectorList, { ARGS: [ctx] })
-  //     }
-  //   ])
-  //   $.OR2([
-  //     {
-  //       GATE: () => !!ctx.isMixinCallCandidate || !!ctx.hasExtend,
-  //       ALT: () => $.CONSUME(T.Semi)
-  //     },
-  //     {
-  //       ALT: () => {
-  //         $.CONSUME(T.LCurly)
-  //         $.SUBRULE($.declarationList)
-  //         $.CONSUME(T.RCurly)
-  //       }
-  //     }
-  //   ])
-  // })
+    $.OR2([
+      {
+        /** :extend at the end of a qualified rule */
+        GATE: () => !!ctx.hasExtend,
+        ALT: () => $.CONSUME(T.Semi)
+      },
+      {
+        ALT: () => {
+          $.CONSUME(T.LCurly)
+          $.SUBRULE($.declarationList)
+          $.CONSUME(T.RCurly)
+        }
+      }
+    ])
+  })
 
   $.OVERRIDE_RULE('complexSelector', (ctx: RuleContext = {}) => {
     $.SUBRULE($.compoundSelector, { ARGS: [ctx] })
@@ -141,9 +233,14 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
       $.SUBRULE($.combinator)
       $.SUBRULE2($.compoundSelector, { ARGS: [{ ...ctx, firstSelector: false }] })
     })
-    $.OPTION({
-      GATE: () => !!ctx.qualifiedRule,
-      DEF: () => $.SUBRULE($.extend, { ARGS: [ctx] })
+    $.OPTION(() => {
+      $.OR([
+        { ALT: () => $.SUBRULE($.guard) },
+        {
+          GATE: () => !!ctx.qualifiedRule,
+          ALT: () => $.SUBRULE($.extend, { ARGS: [ctx] })
+        }
+      ])
     })
   })
 
@@ -180,8 +277,11 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
         ALT: () => $.CONSUME(T.Ident)
       },
       {
-        /** In CSS Nesting, outer selector can't contain an ampersand */
-        GATE: () => !!ctx.inner,
+        /**
+         * Unlike CSS Nesting, Less allows outer qualified rules
+         * to have `&`, and it is just silently absorbed if there
+         * is no parent selector.
+         */
         ALT: () => $.CONSUME(T.Ampersand)
       },
       { ALT: () => $.SUBRULE($.classSelector) },
@@ -211,12 +311,6 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
       }
     ])
   })
-
-  $.OVERRIDE_RULE('compoundSelector', (ctx: RuleContext = {}) => {
-    $.SUBRULE($.simpleSelector, { ARGS: [ctx] })
-    $.MANY(() => $.SUBRULE2($.simpleSelector, { ARGS: [{ ...ctx, firstSelector: false }] }))
-    $.OPTION(() => $.SUBRULE($.guard))
-  })
 }
 
 export function atVariableDeclarations(this: LessParser, T: TokenMap) {
@@ -227,6 +321,17 @@ export function atVariableDeclarations(this: LessParser, T: TokenMap) {
 
   /** Doesn't start with a colon or DOES, but it is NOT followed by a space */
   const isNotVariableLike = () => $.LA(1).tokenType !== T.Colon || !$.skippedTokens.has($.currIdx + 1)
+
+  $.RULE('anonymousMixinDefinition', () => {
+    $.OPTION(() => {
+      $.CONSUME(T.AnonMixinStart)
+      $.SUBRULE($.mixinArgList, { ARGS: [{ isDefinition: true }] })
+      $.CONSUME(T.RParen)
+    })
+    $.CONSUME(T.LCurly)
+    $.SUBRULE($.declarationList)
+    $.CONSUME(T.RCurly)
+  })
 
   /** Less variables */
   $.OVERRIDE_RULE('unknownAtRule', () => {
@@ -243,14 +348,7 @@ export function atVariableDeclarations(this: LessParser, T: TokenMap) {
           $.OR2([
             {
               ALT: () => {
-                $.OPTION(() => {
-                  $.CONSUME(T.AnonMixinStart)
-                  $.SUBRULE($.mixinArgList, { ARGS: [{ isDefinition: true }] })
-                  $.CONSUME(T.RParen)
-                })
-                $.CONSUME(T.LCurly)
-                $.SUBRULE($.declarationList)
-                $.CONSUME(T.RCurly)
+                $.SUBRULE($.anonymousMixinDefinition)
                 $.OPTION2(() => $.CONSUME(T.Semi))
               }
             },
@@ -298,38 +396,193 @@ export function atVariableDeclarations(this: LessParser, T: TokenMap) {
   })
 }
 
-export function mathExpressions(this: LessParser, T: TokenMap) {
+export function expressionsAndValues(this: LessParser, T: TokenMap) {
   const $ = this
-  $.OVERRIDE_RULE('valueSequence', () => {
+
+  $.OVERRIDE_RULE('valueSequence', (ctx: RuleContext = {}) => {
     $.OR([
       {
         GATE: () => $.loose,
-        ALT: () => { $.MANY(() => $.SUBRULE($.expression)) }
+        ALT: () => { $.MANY(() => $.SUBRULE($.expression, { ARGS: [ctx] })) }
       },
       {
         GATE: () => !$.loose,
         /** @todo - create warning in the CST Visitor */
-        ALT: () => { $.AT_LEAST_ONE(() => $.SUBRULE2($.expression)) }
+        ALT: () => { $.AT_LEAST_ONE(() => $.SUBRULE2($.expression, { ARGS: [ctx] })) }
       }
     ])
   })
 
   /**
-   * @todo - deal with space-less subtractions
-   * and additions
-   *   e.g. 1-1  <-- Less evalutes as 0,
-   *        but CSS parses as 2 tokens: `1` and `-1`
+   * In CSS, would be a single value.
+   * In Less, these are math expressions which
+   * represent a single value. During AST construction,
+   * these will be grouped by order of operations.
    */
-  $.OVERRIDE_RULE('mathSum', () => {
-    $.SUBRULE($.mathProduct)
-    $.MANY(() => {
-      $.OR([
-        { ALT: () => $.CONSUME(T.Plus) },
-        { ALT: () => $.CONSUME(T.Minus) }
-      ])
-      $.SUBRULE2($.mathProduct)
+  $.RULE('expression', (ctx: RuleContext = {}) => {
+    $.SUBRULE($.expressionValue, { LABEL: 'L', ARGS: [ctx] })
+    $.MANY({
+      /**
+       * What this GATE does. We need to dis-ambiguate
+       * 1 -1 (a value sequence) from 1-1 (a Less expression),
+       * so Less is white-space sensitive here.
+       */
+      GATE: () => {
+        const next = $.LA(1)
+        const nextType = next.tokenType
+        return (
+          nextType === T.Plus ||
+          nextType === T.Minus ||
+          nextType === T.Divide ||
+          nextType === T.Star
+        ) || ($.noSep() && tokenMatcher(next, T.Signed))
+      },
+      DEF: () => {
+        $.OR([
+          {
+            ALT: () => {
+              $.OR2([
+                { ALT: () => $.CONSUME(T.Plus) },
+                { ALT: () => $.CONSUME(T.Minus) },
+                { ALT: () => $.CONSUME(T.Star) },
+                { ALT: () => $.CONSUME(T.Divide) }
+              ])
+              $.SUBRULE2($.expressionValue, { LABEL: 'R', ARGS: [ctx] })
+            }
+          },
+          /** This will be interpreted by Less as a complete expression */
+          { ALT: () => $.CONSUME(T.Signed) }
+        ])
+      }
     })
   })
+
+  $.RULE('expressionValue', (ctx: RuleContext = {}) => {
+    $.OR([
+      {
+        ALT: () => {
+          /** Can create a negative expression */
+          $.OPTION(() => $.CONSUME(T.Minus))
+          $.CONSUME(T.LParen)
+          $.SUBRULE($.expression, { ARGS: [ctx] })
+          $.CONSUME(T.RParen)
+        }
+      },
+      { ALT: () => $.SUBRULE($.value, { ARGS: [ctx] }) }
+    ])
+  })
+
+  $.OVERRIDE_RULE('function', () => {
+    $.OR([
+      { ALT: () => $.SUBRULE($.knownFunctions) },
+      {
+        ALT: () => {
+          $.CONSUME(T.Ident)
+          $.OR2([{
+            GATE: $.noSep,
+            ALT: () => {
+              $.CONSUME(T.LParen)
+              $.SUBRULE($.functionValueList)
+              $.CONSUME(T.RParen)
+            }
+          }])
+        }
+      }
+    ])
+  })
+
+  $.RULE('functionValueList', (ctx: RuleContext = {}) => {
+    ctx.allowsAnonymousMixins = true
+    $.SUBRULE($.valueSequence, { ARGS: [ctx] })
+    $.MANY(() => {
+      $.OR([
+        { ALT: () => $.CONSUME(T.Comma) },
+        { ALT: () => $.CONSUME(T.Semi) }
+      ])
+      $.SUBRULE2($.valueSequence, { ARGS: [ctx] })
+    })
+  })
+
+  $.OVERRIDE_RULE('value', (ctx: RuleContext = {}) => {
+    $.OR({
+      IGNORE_AMBIGUITIES: true,
+      DEF: [
+        /** Function should appear before Ident */
+        { ALT: () => $.SUBRULE($.function) },
+        { ALT: () => $.SUBRULE($.mixinCallLookup) },
+        {
+          GATE: () => !!ctx.allowsAnonymousMixins,
+          ALT: () => $.SUBRULE($.anonymousMixinDefinition)
+        },
+        {
+          ALT: () => {
+            $.CONSUME(T.AtKeyword)
+            $.OPTION(() => $.SUBRULE($.accessors))
+          }
+        },
+        { ALT: () => $.SUBRULE($.string) },
+        { ALT: () => $.CONSUME(T.Value) },
+        {
+          ALT: () => {
+            $.CONSUME(T.LSquare)
+            $.CONSUME2(T.Ident)
+            $.CONSUME(T.RSquare)
+          }
+        },
+        {
+          /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
+          GATE: () => $.legacyMode,
+          ALT: () => $.CONSUME(T.LegacyMSFilter)
+        }
+      ]
+    })
+  })
+
+  $.OVERRIDE_RULE('mathValue', () => {
+    $.OR([
+      { ALT: () => $.CONSUME(T.AtKeyword) },
+      { ALT: () => $.CONSUME(T.Number) },
+      { ALT: () => $.CONSUME(T.Dimension) },
+      { ALT: () => $.SUBRULE($.function) },
+      {
+        /** Only allow escaped strings in calc */
+        GATE: () => $.LA(1).image.startsWith('~'),
+        ALT: () => $.SUBRULE($.string)
+      },
+      {
+        /** For some reason, e() goes here instead of $.function */
+        GATE: () => $.LA(2).tokenType !== T.LParen,
+        ALT: () => $.CONSUME(T.MathConstant)
+      },
+      {
+        ALT: () => {
+          $.CONSUME(T.LParen)
+          $.SUBRULE($.mathSum)
+          $.CONSUME(T.RParen)
+        }
+      }
+    ])
+  })
+
+  /** @todo - add interpolation */
+  // $.OVERRIDE_RULE('string', () => {
+  //   $.OR([
+  //     {
+  //       ALT: () => {
+  //         $.CONSUME(T.SingleQuoteStart)
+  //         $.OPTION(() => $.CONSUME(T.SingleQuoteStringContents))
+  //         $.CONSUME(T.SingleQuoteEnd)
+  //       }
+  //     },
+  //     {
+  //       ALT: () => {
+  //         $.CONSUME(T.DoubleQuoteStart)
+  //         $.OPTION2(() => $.CONSUME(T.DoubleQuoteStringContents))
+  //         $.CONSUME(T.DoubleQuoteEnd)
+  //       }
+  //     }
+  //   ])
+  // })
 }
 
 export function guards(this: LessParser, T: TokenMap) {
@@ -405,141 +658,6 @@ export function guards(this: LessParser, T: TokenMap) {
       $.SUBRULE2($.valueList, { LABEL: 'R' })
     })
   })
-
-  /**
-   * In CSS, would be a single value.
-   * In Less, these are math expressions which
-   * represent a single value. During AST construction,
-   * these will be grouped by order of operations.
-   */
-  $.RULE('expression', () => {
-    $.SUBRULE($.expressionValue, { LABEL: 'L' })
-    $.MANY({
-      GATE: () => {
-        const next = $.LA(1)
-        const nextType = next.tokenType
-        return (
-          nextType === T.Plus ||
-          nextType === T.Minus ||
-          nextType === T.Divide ||
-          nextType === T.Star
-        ) || ($.noSep() && tokenMatcher(next, T.Signed))
-      },
-      DEF: () => {
-        $.OR([
-          {
-            ALT: () => {
-              $.OR2([
-                { ALT: () => $.CONSUME(T.Plus) },
-                { ALT: () => $.CONSUME(T.Minus) },
-                { ALT: () => $.CONSUME(T.Star) },
-                { ALT: () => $.CONSUME(T.Divide) }
-              ])
-              $.SUBRULE2($.expressionValue, { LABEL: 'R' })
-            }
-          },
-          /** This will be interpreted by Less as a complete expression */
-          { ALT: () => $.CONSUME(T.Signed) }
-        ])
-      }
-    })
-  })
-
-  $.RULE('expressionValue', () => {
-    $.OR([
-      {
-        ALT: () => {
-          /** Can create a negative expression */
-          $.OPTION(() => $.CONSUME(T.Minus))
-          $.CONSUME(T.LParen)
-          $.SUBRULE($.expression)
-          $.CONSUME(T.RParen)
-        }
-      },
-      { ALT: () => $.SUBRULE($.value) }
-    ])
-  })
-
-  $.OVERRIDE_RULE('value', () => {
-    $.OR({
-      IGNORE_AMBIGUITIES: true,
-      DEF: [
-        /** Function should appear before Ident */
-        { ALT: () => $.SUBRULE($.function) },
-        { ALT: () => $.SUBRULE($.mixinCall) },
-        {
-          ALT: () => {
-            $.CONSUME(T.AtKeyword)
-            $.OPTION(() => $.SUBRULE($.accessors))
-          }
-        },
-        { ALT: () => $.SUBRULE($.string) },
-        { ALT: () => $.CONSUME(T.Value) },
-        {
-          ALT: () => {
-            $.CONSUME(T.LSquare)
-            $.CONSUME2(T.Ident)
-            $.CONSUME(T.RSquare)
-          }
-        },
-        {
-          /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
-          GATE: () => $.legacyMode,
-          ALT: () => $.OR2([
-            { ALT: () => $.CONSUME(T.Colon) },
-            { ALT: () => $.CONSUME(T.Dot) },
-            { ALT: () => $.CONSUME(T.Eq) }
-          ])
-        }
-      ]
-    })
-  })
-
-  $.OVERRIDE_RULE('mathValue', () => {
-    $.OR([
-      { ALT: () => $.CONSUME(T.AtKeyword) },
-      { ALT: () => $.CONSUME(T.Number) },
-      { ALT: () => $.CONSUME(T.Dimension) },
-      { ALT: () => $.SUBRULE($.function) },
-      {
-        /** Only allow escaped strings in calc */
-        GATE: () => $.LA(1).image.startsWith('~'),
-        ALT: () => $.SUBRULE($.string)
-      },
-      {
-        /** For some reason, e() goes here instead of $.function */
-        GATE: () => $.LA(2).tokenType !== T.LParen,
-        ALT: () => $.CONSUME(T.MathConstant)
-      },
-      {
-        ALT: () => {
-          $.CONSUME(T.LParen)
-          $.SUBRULE($.mathSum)
-          $.CONSUME(T.RParen)
-        }
-      }
-    ])
-  })
-
-  /** @todo - add interpolation */
-  $.OVERRIDE_RULE('string', () => {
-    $.OR([
-      {
-        ALT: () => {
-          $.CONSUME(T.SingleQuoteStart)
-          $.OPTION(() => $.CONSUME(T.SingleQuoteStringContents))
-          $.CONSUME(T.SingleQuoteEnd)
-        }
-      },
-      {
-        ALT: () => {
-          $.CONSUME(T.DoubleQuoteStart)
-          $.OPTION2(() => $.CONSUME(T.DoubleQuoteStringContents))
-          $.CONSUME(T.DoubleQuoteEnd)
-        }
-      }
-    ])
-  })
 }
 
 export function atRuleBubbling(this: LessParser, T: TokenMap) {
@@ -564,42 +682,6 @@ export function atRuleBubbling(this: LessParser, T: TokenMap) {
 
 export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
   const $ = this
-
-  /**
-   .foo(1) {
-      bar: 1
-   }.
-   */
-  $.OVERRIDE_RULE('declarationList', () => {
-    let needsSemi = false
-    $.MANY({
-      GATE: () => !needsSemi || (needsSemi && $.LA(1).tokenType === T.Semi),
-      DEF: () => {
-        $.OR([
-          {
-            ALT: () => {
-              $.OR3([
-                { ALT: () => $.SUBRULE($.mixinDefinition) },
-                { ALT: () => $.SUBRULE($.innerAtRule) },
-                { ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [{ inner: true }] }) },
-                { ALT: () => $.CONSUME(T.Semi) }
-              ])
-              needsSemi = false
-            }
-          },
-          {
-            ALT: () => {
-              $.OR2([
-                { ALT: () => $.SUBRULE($.declaration) },
-                { ALT: () => $.SUBRULE($.mixinCall) }
-              ])
-              needsSemi = true
-            }
-          }
-        ])
-      }
-    })
-  })
 
   /** e.g. .mixin, #mixin */
   $.RULE('mixinName', () => {
@@ -628,7 +710,8 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
       $.OPTION(() => $.CONSUME(T.Gt))
       $.SUBRULE2($.mixinName)
     })
-    // $.OPTION2(() => $.SUBRULE($.mixinArgs))
+
+    /** Either needs to end in parens or in a semi-colon (or both) */
     $.OR([
       {
         ALT: () => {
@@ -640,8 +723,14 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
     ])
   })
 
+  /** Used within a value */
   $.RULE('mixinCallLookup', () => {
-    $.SUBRULE($.mixinCall)
+    $.SUBRULE($.mixinName)
+    $.MANY(() => {
+      $.OPTION(() => $.CONSUME(T.Gt))
+      $.SUBRULE2($.mixinName)
+    })
+    $.OPTION2(() => $.SUBRULE($.mixinArgs))
     $.SUBRULE($.accessors)
   })
 
@@ -672,7 +761,7 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
     /** Allows chaining of lookups / calls */
     $.OPTION2(() => {
       $.OR2([
-        { ALT: () => $.SUBRULE($.mixinCall) },
+        { ALT: () => $.SUBRULE($.mixinCallLookup) },
         { ALT: () => $.SUBRULE($.accessors) }
       ])
     })
@@ -746,43 +835,4 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
       { ALT: () => $.SUBRULE($.valueSequence) }
     ])
   })
-
-  /**
-   * Expland the recursive pattern to make sure we have semi-separators
-   * after mixin calls.
-   */
-  // $.OVERRIDE_RULE('main', () => {
-  //   $.OPTION(() => {
-  //     $.OR([
-  //       {
-  //         ALT: () => {
-  //           $.SUBRULE($.mixinDefinition)
-  //           $.OPTION2(() => $.SUBRULE($.main))
-  //         }
-  //       },
-  //       {
-  //         ALT: () => {
-  //           $.SUBRULE($.mixinCallSequence)
-  //           /** This is very similar to declaration list parsing */
-  //           $.OPTION3(() => {
-  //             $.CONSUME(T.Semi)
-  //             $.OPTION4(() => $.SUBRULE2($.main))
-  //           })
-  //         }
-  //       },
-  //       {
-  //         ALT: () => {
-  //           $.SUBRULE($.qualifiedRule)
-  //           $.OPTION5(() => $.SUBRULE3($.main))
-  //         }
-  //       },
-  //       {
-  //         ALT: () => {
-  //           $.SUBRULE($.atRule)
-  //           $.OPTION6(() => $.SUBRULE4($.main))
-  //         }
-  //       }
-  //     ])
-  //   })
-  // })
 }

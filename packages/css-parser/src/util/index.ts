@@ -88,17 +88,16 @@ export const createLexerDefinition = (rawFragments: string[][], rawTokens: Writa
       let { name, pattern, longer_alt, categories, group, ...rest } = rawToken
       let regExpPattern: RegExp | CustomPatternMatcherFunc
       if (pattern !== LexerType.NA) {
-        const category = !categories || categories[0]
-        if (!category || (group !== LexerType.SKIPPED && category !== 'BlockMarker')) {
-          if (categories) {
-            categories.push('Value')
+        if (!categories || (group !== LexerType.SKIPPED && !categories.includes('BlockMarker'))) {
+          if (!categories) {
+            categories = []
           } else {
-            categories = ['Value']
+            /** Any non-blockmarker that's not an Identifier */
+            if (!categories.includes('Ident')) {
+              categories.push('NonIdent')
+            }
           }
-          /** Any non-blockmarker that's not an Identifier */
-          if (category !== 'Ident') {
-            categories.push('NonIdent')
-          }
+          categories.push('Value')
         }
         if (pattern instanceof RegExp) {
           regExpPattern = pattern

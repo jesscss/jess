@@ -311,7 +311,7 @@ export function productions(this: CssParser, T: TokenMap) {
   //   : complexSelector (WS* COMMA WS* complexSelector)*
   //   ;
   $.RULE('selectorList', (ctx: RuleContext = {}) => {
-    $.MANY_SEP({
+    $.AT_LEAST_ONE_SEP({
       SEP: T.Comma,
       DEF: () => $.SUBRULE($.complexSelector, { ARGS: [ctx] })
     })
@@ -475,28 +475,28 @@ export function productions(this: CssParser, T: TokenMap) {
   // valueList
   //   : value+ ((',' | '/') value+)*
   //   ;
-  $.RULE('valueList', () => {
-    $.SUBRULE($.valueSequence)
+  $.RULE('valueList', (ctx: RuleContext = {}) => {
+    $.SUBRULE($.valueSequence, { ARGS: [ctx] })
     $.MANY(() => {
       $.OR([
         { ALT: () => $.CONSUME(T.Comma) },
         { ALT: () => $.CONSUME(T.Slash) }
       ])
-      $.SUBRULE2($.valueSequence)
+      $.SUBRULE2($.valueSequence, { ARGS: [ctx] })
     })
   })
 
   /** Often space-separated */
-  $.RULE('valueSequence', () => {
+  $.RULE('valueSequence', (ctx: RuleContext = {}) => {
     $.OR([
       {
         GATE: () => $.loose,
-        ALT: () => $.MANY(() => $.SUBRULE($.anyOuterValue))
+        ALT: () => $.MANY(() => $.SUBRULE($.anyOuterValue, { ARGS: [ctx] }))
       },
       {
         GATE: () => !$.loose,
         /** @todo - create warning in the CST Visitor */
-        ALT: () => $.AT_LEAST_ONE(() => $.SUBRULE2($.value))
+        ALT: () => $.AT_LEAST_ONE(() => $.SUBRULE2($.value, { ARGS: [ctx] }))
       }
     ])
   })
@@ -514,7 +514,7 @@ export function productions(this: CssParser, T: TokenMap) {
   //   | '[' identifier ']'
   //   | unknownValue
   //   ;
-  $.RULE('value', () => {
+  $.RULE('value', (ctx: RuleContext = {}) => {
     $.OR({
       IGNORE_AMBIGUITIES: true,
       DEF: [
@@ -535,11 +535,7 @@ export function productions(this: CssParser, T: TokenMap) {
         {
           /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
           GATE: () => $.legacyMode,
-          ALT: () => $.OR2([
-            { ALT: () => $.CONSUME(T.Colon) },
-            { ALT: () => $.CONSUME(T.Dot) },
-            { ALT: () => $.CONSUME(T.Eq) }
-          ])
+          ALT: () => $.CONSUME(T.LegacyMSFilter)
         }
       ]
     })

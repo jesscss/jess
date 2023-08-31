@@ -89,6 +89,8 @@ export type RuleContext = {
   firstSelector?: boolean
   /** If downstream selector rules are part of a qualified rule */
   qualifiedRule?: boolean
+
+  [k: string]: boolean | undefined
 }
 
 export class CssParser extends AdvancedCstParser {
@@ -116,13 +118,10 @@ export class CssParser extends AdvancedCstParser {
   combinator: Rule
 
   declaration: Rule
-  innerRule: Rule
-  innerAtRule: Rule
-  valueList: Rule
-
+  valueList: Rule<(ctx?: RuleContext) => void>
   /** Often a space-separated sequence */
-  valueSequence: Rule
-  value: Rule
+  valueSequence: Rule<(ctx?: RuleContext) => void>
+  value: Rule<(ctx?: RuleContext) => void>
   customValue: Rule
   innerCustomValue: Rule
 
@@ -141,6 +140,7 @@ export class CssParser extends AdvancedCstParser {
   mathValue: Rule
 
   /** At Rules */
+  innerAtRule: Rule
   importAtRule: Rule
   mediaAtRule: Rule<(inner?: boolean) => void>
   supportsAtRule: Rule<(inner?: boolean) => void>
@@ -184,8 +184,8 @@ export class CssParser extends AdvancedCstParser {
   supportsOr: Rule
 
   /** General purpose subrules */
-  anyOuterValue: Rule
-  anyInnerValue: Rule
+  anyOuterValue: Rule<(ctx?: RuleContext) => void>
+  anyInnerValue: Rule<(ctx?: RuleContext) => void>
   extraTokens: Rule
   customBlock: Rule
 
