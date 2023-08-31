@@ -628,7 +628,16 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
       $.OPTION(() => $.CONSUME(T.Gt))
       $.SUBRULE2($.mixinName)
     })
-    $.SUBRULE($.mixinArgs)
+    // $.OPTION2(() => $.SUBRULE($.mixinArgs))
+    $.OR([
+      {
+        ALT: () => {
+          $.SUBRULE($.mixinArgs)
+          $.OPTION2(() => $.CONSUME(T.Semi))
+        }
+      },
+      { ALT: () => $.CONSUME2(T.Semi) }
+    ])
   })
 
   $.RULE('mixinCallLookup', () => {
