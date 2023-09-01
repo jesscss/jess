@@ -1,15 +1,23 @@
 import * as glob from 'glob'
 import * as fs from 'fs'
 import * as path from 'path'
-import { Parser, type LessParser } from '../src'
-import { type IParseResult } from '@jesscss/css-parser'
+import { Parser } from '../src'
+// import { type IParseResult } from '@jesscss/css-parser'
 
 const testData = path.dirname(require.resolve('@less/test-data'))
 
 const lessParser = new Parser()
 const parser = lessParser.parser
 
-describe.skip('can parse any rule', () => {
+describe('can parse any rule', () => {
+  it.only('qualified rule with interpolation', () => {
+    const lexerResult = lessParser.lexer.tokenize('sw@{ident} { foo: bar }')
+    const lexedTokens = lexerResult.tokens
+    parser.input = lexedTokens
+    parser.main()
+    expect(parser.errors.length).toBe(0)
+  })
+
   it('declaration', () => {
     const lexerResult = lessParser.lexer.tokenize('color: green')
     const lexedTokens = lexerResult.tokens
