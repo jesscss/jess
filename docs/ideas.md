@@ -6,26 +6,27 @@
 - For interoperability with JavaScript, Jess mixins should return serialized plain objects, but have a non-enumerable property with an AST return UNLESS they were passed a `this` object with AST args, in which case they should return AST nodes
 
 
-## Differences with Sass
-An important difference is that defining a variable is done with a plain identifier, and _referencing_ a variable or identifier is done with `$`. This is so there isn't ambiguity in places in the syntax
-
 ## Some syntax changes
-```js
+```less
 /**
- * Plain JS/TS imports. In Vue, this would be in the `<script>` tag.
+ * Maps to JS/TS import syntax
+ * Mirrors @use syntax.
+ *
+ * This will be ported to Less 5 to replace `@plugin`.
  */
-import { myFunction } from 'foo.js'
+@from './foo.js' (myFunction);
+@from '#less' (rgb);
 
 .rule {
   foo: bar;
 }
 
 // Mixin calls and functions don't need `@include`
-$myFunction();
+~myFunction();
 
 // Everything is an expression, not just un-escaped JavaScript, meaning you can do:
 
-$myFunction($sass-var);
+~myFunction($sass-var);
 
 // Q: Why can't we do `$myFunction(sass-var)`?
 // A: Because we need to parse parameters, and the meaning is ambiguous.
@@ -50,11 +51,12 @@ $myFunction($sass-var);
 ### `@use [file|object] [namespace|'(' imports ')']? declarationList?`
 
 Will import the scope (mixins and variables) of the object. Can be a stylesheet or other scope object.
+Note that `@use` will also re-export.
 
 ```scss
 @use 'colors.less';
 // or override variables
-@use 'colors.less' {
+@use 'colors.less' with {
   // should throw an error if primary-color is not defined
   primary-color: #333;
 }
@@ -90,12 +92,12 @@ Will import the rules (but not pollute the variable scope)
 ```
 Using an `@include` that's the _result_ of a `@use`:
 ```scss
-@use 'theme.jess' theme {
+@use 'theme.jess' theme with {
   colors {
     primary: #3a3a3a;
   }
 }
-@include $theme();
+~theme();
 ```
 
 ## Limiting types for a design system (Experimental)

@@ -17,7 +17,7 @@ type IMerges = Partial<Record<CssTokenType, RawTokenConfig>>
 function $preBuildFragments() {
   const fragments = cssFragments()
   fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*'])
-  fragments.push(['interpolated', '[@$]\\{({{ident}})\\}'])
+  fragments.push(['interpolated', '[@$]\\{(?:{{ident}})\\}'])
 
   return fragments
 }
@@ -54,27 +54,6 @@ function $preBuildTokens() {
         name: 'LineComment',
         pattern: '{{lineComment}}',
         group: 'Skipped'
-      },
-      {
-        name: 'InterpolatedIdent',
-        /**
-       * It's too expensive for Chevrotain to capture groups here,
-       * so we'll extract the interpolated values later.
-       */
-        pattern: '(?:{{interpolated}}|{{ident}})+',
-        categories: ['Interpolated', 'Selector', 'Ident']
-      },
-      /**
-     * Unfortunately, there's grammatical ambiguity between
-     * interpolated props and a naked interpolated selector name,
-     * making this awkward token necessary.
-     */
-      {
-        name: 'InterpolatedSelector',
-        pattern: ['[.#]{{interpolated}}', groupCapture],
-        categories: ['Interpolated', 'Selector'],
-        start_chars_hint: ['.', '#'],
-        line_breaks: true
       },
       { name: 'PlusAssign', pattern: '\\+{{whitespace}}*:', categories: ['BlockMarker', 'Assign'] },
       {
@@ -141,6 +120,35 @@ function $preBuildTokens() {
         group: LexerType.SKIPPED,
         line_breaks: true
       }
+    ],
+    /**
+     * These need to be after any keywords, so that
+     * keywords with a longer_alt of `PlainIdent`
+     * aren't captured first.
+     */
+    Signed: [
+      {
+        name: 'InterpolatedIdent',
+        /**
+         * Must contain one `@{}`
+         * It's too expensive for Chevrotain to capture groups here,
+         * so we'll extract the interpolated values later.
+         */
+        pattern: '(?:{{ident}}|-)?{{interpolated}}(?:{{interpolated}}|{{nmchar}})*',
+        categories: ['Interpolated', 'Selector', 'Ident']
+      },
+      /**
+     * Unfortunately, there's grammatical ambiguity between
+     * interpolated props and a naked interpolated selector name,
+     * making this awkward token necessary.
+     */
+      {
+        name: 'InterpolatedSelector',
+        pattern: ['[.#]{{interpolated}}', groupCapture],
+        categories: ['Interpolated', 'Selector'],
+        start_chars_hint: ['.', '#'],
+        line_breaks: true
+      }
     ]
   } as const satisfies IMerges
 
@@ -196,7 +204,6 @@ function $preBuildTokens() {
       i += mergeLength
     }
   }
-  console.log(tokens.modes.Default)
   return tokens
 }
 

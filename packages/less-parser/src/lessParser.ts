@@ -50,7 +50,7 @@ export class LessParser extends CssParser {
   mixinName: Rule
   mixinDefinition: Rule
   mixinCall: Rule
-  mixinCallLookup: Rule
+  inlineMixinCall: Rule
   mixinArgs: Rule<(ctx?: RuleContext) => void>
   mixinArgList: Rule<(ctx?: RuleContext) => void>
   mixinArg: Rule<(ctx?: RuleContext) => void>

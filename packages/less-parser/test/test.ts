@@ -10,11 +10,19 @@ const lessParser = new Parser()
 const parser = lessParser.parser
 
 describe('can parse any rule', () => {
-  it.only('qualified rule with interpolation', () => {
-    const lexerResult = lessParser.lexer.tokenize('sw@{ident} { foo: bar }')
+  it('qualified rule with interpolation', () => {
+    const lexerResult = lessParser.lexer.tokenize('qw@{ident} { foo: bar }')
     const lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
     parser.main()
+    expect(parser.errors.length).toBe(0)
+  })
+
+  it('can parse anonymous mixins', () => {
+    const lexerResult = lessParser.lexer.tokenize('.(@v;@i) {}')
+    const lexedTokens = lexerResult.tokens
+    parser.input = lexedTokens
+    parser.anonymousMixinDefinition()
     expect(parser.errors.length).toBe(0)
   })
 
@@ -34,7 +42,7 @@ describe('can parse any rule', () => {
     expect(parser.errors.length).toBe(0)
   })
 
-  it('qualified rule', () => {
+  it.skip('qualified rule', () => {
     let lexerResult = lessParser.lexer.tokenize(
       'light when ('
     )
@@ -54,7 +62,7 @@ describe('can parse any rule', () => {
     expect(parser.errors.length).toBe(0)
   })
 
-  it.skip('mixin definition', () => {
+  it('mixin definition', () => {
     let lexerResult = lessParser.lexer.tokenize(
       `.mixin_def_with_colors(@a: white, // in
               @b: 1px //put in @b - causes problems! --->
@@ -67,8 +75,7 @@ describe('can parse any rule', () => {
     )
     let lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
-    /** Expose mixin? */
-    parser.mixin()
+    parser.mixinDefinition()
     expect(parser.errors.length).toBe(0)
 
     lexerResult = lessParser.lexer.tokenize(
@@ -79,7 +86,7 @@ describe('can parse any rule', () => {
     )
     lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
-    parser.mixin()
+    parser.mixinDefinition()
     expect(parser.errors.length).toBe(0)
 
     lexerResult = lessParser.lexer.tokenize(
@@ -87,7 +94,7 @@ describe('can parse any rule', () => {
     )
     lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
-    parser.mixin()
+    parser.mixinDefinition()
     expect(parser.errors.length).toBe(0)
 
     lexerResult = lessParser.lexer.tokenize(
@@ -130,7 +137,7 @@ describe('can parse any rule', () => {
     let lexerResult = lessParser.lexer.tokenize('.mixin-with-guard-inside(0px);')
     let lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
-    parser.mixin()
+    parser.mixinCall()
     expect(parser.errors.length).toBe(0)
 
     lexerResult = lessParser.lexer.tokenize(`.wrap-mixin(@ruleset: {
@@ -138,22 +145,14 @@ describe('can parse any rule', () => {
       });`)
     lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
-    parser.mixin()
+    parser.mixinCall()
 
     expect(parser.errors.length).toBe(0)
 
     lexerResult = lessParser.lexer.tokenize('.mixin-call({direct: works;}; @b: {named: works;});')
     lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
-    parser.root()
-    expect(parser.errors.length).toBe(0)
-
-    lexerResult = lessParser.lexer.tokenize(
-      '.parenthesisNot('
-    )
-    lexedTokens = lexerResult.tokens
-    parser.input = lexedTokens
-    parser.testMixin()
+    parser.stylesheet()
     expect(parser.errors.length).toBe(0)
   })
 

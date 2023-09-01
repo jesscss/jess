@@ -13,19 +13,30 @@
 This is the monorepo for Jess, a new, modern CSS pre-processor from the people who brought you Less. [See the docs.](https://jesscss.github.io)
 
 ```less
-@import { width } from './values.ts';
-@import { myMixin } from './mixins.jess';
+@from './values.ts' (width);
 
-@let iconWidth: $(width)px;
+@use './variables.less' variables;
+@include './bootstrap.scss' with variables;
+
+@use './mixins.jess' (my-mixin);
+
+@icon-width: ~($width)px;
 
 @mixin square(unit: 24px) {
   width: $unit;
   height: $unit;
 }
 
+@mixin overloaded() {
+  color: black;
+}
+@mixin overloaded() {
+  background-color: green;
+}
+
 .icon {
-  @include myMixin();
-  @include square($iconWidth);
+  ~myMixin();
+  ~square($iconWidth);
 
   color: cornflowerblue;
 }

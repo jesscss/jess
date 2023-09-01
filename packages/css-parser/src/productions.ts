@@ -95,15 +95,7 @@ export function productions(this: CssParser, T: TokenMap) {
   //   : DOT identifier
   //   ;
   $.RULE('classSelector', () => {
-    $.CONSUME(T.Dot)
-    $.OR([
-      {
-        GATE: $.noSep,
-        ALT: () => {
-          $.CONSUME(T.Ident)
-        }
-      }
-    ])
+    $.CONSUME(T.DotName)
   })
 
   /** #id, #FF0000 are both valid ids */
@@ -573,7 +565,7 @@ export function productions(this: CssParser, T: TokenMap) {
     $.OR([
       { ALT: () => $.CONSUME(T.Colon) },
       { ALT: () => $.CONSUME(T.Eq) },
-      { ALT: () => $.CONSUME(T.Dot) },
+      { ALT: () => $.CONSUME(T.DotName) },
       { ALT: () => $.CONSUME(T.HashName) },
       { ALT: () => $.CONSUME(T.Unknown) },
       { ALT: () => $.CONSUME(T.AtName) }

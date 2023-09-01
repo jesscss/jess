@@ -63,7 +63,8 @@ export function extendRoot(this: LessParser, T: TokenMap) {
             ALT: () => {
               $.OR2([
                 { ALT: () => $.SUBRULE($.declaration) },
-                { ALT: () => $.SUBRULE($.mixinCall) }
+                { ALT: () => $.SUBRULE($.mixinCall) },
+                { ALT: () => $.SUBRULE($.function) }
               ])
               needsSemi = true
             }
@@ -72,12 +73,6 @@ export function extendRoot(this: LessParser, T: TokenMap) {
             ALT: () => {
               $.OR3([
                 { ALT: () => $.SUBRULE($.mixinDefinition) },
-                {
-                  ALT: () => {
-                    $.SUBRULE($.function)
-                    $.CONSUME(T.Semi)
-                  }
-                },
                 { ALT: () => $.SUBRULE($.innerAtRule) },
                 { ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [{ inner: true }] }) },
                 { ALT: () => $.CONSUME2(T.Semi) }
@@ -284,6 +279,7 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
          */
         ALT: () => $.CONSUME(T.Ampersand)
       },
+      { ALT: () => $.CONSUME(T.InterpolatedSelector) },
       { ALT: () => $.SUBRULE($.classSelector) },
       { ALT: () => $.SUBRULE($.idSelector) },
       { ALT: () => $.CONSUME(T.Star) },
@@ -509,7 +505,11 @@ export function expressionsAndValues(this: LessParser, T: TokenMap) {
       DEF: [
         /** Function should appear before Ident */
         { ALT: () => $.SUBRULE($.function) },
-        { ALT: () => $.SUBRULE($.mixinCallLookup) },
+        { ALT: () => $.SUBRULE($.inlineMixinCall) },
+        /**
+         * Functions can pass anonymous mixin definitions
+         * as arguments. (Used with `each`)
+         */
         {
           GATE: () => !!ctx.allowsAnonymousMixins,
           ALT: () => $.SUBRULE($.anonymousMixinDefinition)
@@ -691,18 +691,6 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
     ])
   })
 
-  /** e.g. .mixin() {} */
-  // $.RULE('mixinDefinition', () => {
-  //   $.SUBRULE($.mixinName)
-  //   $.CONSUME(T.LParen)
-  //   $.OPTION(() => $.SUBRULE($.mixinArgList))
-  //   $.CONSUME(T.RParen)
-  //   $.OPTION2(() => $.SUBRULE($.guard))
-  //   $.CONSUME(T.LCurly)
-  //   $.SUBRULE($.declarationList)
-  //   $.CONSUME(T.RCurly)
-  // })
-
   /** e.g. #ns > .mixin() */
   $.RULE('mixinCall', () => {
     $.SUBRULE($.mixinName)
@@ -723,15 +711,20 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
     ])
   })
 
-  /** Used within a value */
-  $.RULE('mixinCallLookup', () => {
+  /**
+   * Used within a value. These can be
+   * chained more recursively, unlike
+   * Less 1.x-4.x
+   *   e.g. .mixin1() > .mixin2[@val1].ns() > .sub-mixin[@val2]
+   */
+  $.RULE('inlineMixinCall', () => {
     $.SUBRULE($.mixinName)
     $.MANY(() => {
       $.OPTION(() => $.CONSUME(T.Gt))
       $.SUBRULE2($.mixinName)
     })
     $.OPTION2(() => $.SUBRULE($.mixinArgs))
-    $.SUBRULE($.accessors)
+    $.OPTION3(() => $.SUBRULE($.accessors))
   })
 
   $.RULE('mixinDefinition', () => {
@@ -761,7 +754,7 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
     /** Allows chaining of lookups / calls */
     $.OPTION2(() => {
       $.OR2([
-        { ALT: () => $.SUBRULE($.mixinCallLookup) },
+        { ALT: () => $.SUBRULE($.inlineMixinCall) },
         { ALT: () => $.SUBRULE($.accessors) }
       ])
     })

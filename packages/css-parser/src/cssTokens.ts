@@ -275,8 +275,9 @@ const tokens = () => ({
         categories: ['Selector']
       },
       {
-        name: 'Dot',
-        pattern: '\\.'
+        name: 'DotName',
+        pattern: '\\.{{ident}}',
+        categories: ['Selector']
       },
       {
         name: 'HashName',
