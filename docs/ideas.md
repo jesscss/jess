@@ -17,26 +17,27 @@
 @from './foo.js' (myFunction);
 @from '#less' (rgb);
 
+@include './file.css' as less;
+
 .rule {
   foo: bar;
 }
 
 // Mixin calls and functions don't need `@include`
-~myFunction();
+$myFunction();
 
-// Everything is an expression, not just un-escaped JavaScript, meaning you can do:
+// You can write this in two ways:
+$myFunction(sass-var);
+$myFunction($sass-var);
 
-~myFunction($sass-var);
-
-// Q: Why can't we do `$myFunction(sass-var)`?
-// A: Because we need to parse parameters, and the meaning is ambiguous.
-//    CSS keywords (including colors) and functions are plain identifiers.
+// if you need a keyword:
+$myFunction('sass-var');
 
 // Parenthesized expressions
-.selector~($expr) {
-  prop: ~($value + 1);
+.selector$(expr) {
+  prop: $(value + 1);
 }
-~($myFunction())
+$myFunction()
 ```
 
 ## Features

@@ -33,6 +33,19 @@ export function extendRoot(this: LessParser, T: TokenMap) {
                 { ALT: () => $.SUBRULE($.qualifiedRule) },
                 /** At-rules that don't have curly blocks must end in semi-colons according to CSS */
                 { ALT: () => $.SUBRULE($.atRule) },
+
+                /**
+                 * Historically, Less allows `@charset` anywhere,
+                 * to avoid outputting it in the wrong place.
+                 * Ideally, this would result in an error if, say,
+                 * the `@charset` was defined at the bottom of the file,
+                 * but that wasn't the solution made.
+                 * @see https://github.com/less/less.js/issues/2126
+                 */
+                {
+                  GATE: () => $.loose,
+                  ALT: () => $.CONSUME(T.Charset)
+                },
                 { ALT: () => $.CONSUME2(T.Semi) }
               ])
               needsSemi = false
@@ -214,6 +227,7 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
       },
       {
         ALT: () => {
+          $.OPTION(() => $.SUBRULE($.guard))
           $.CONSUME(T.LCurly)
           $.SUBRULE($.declarationList)
           $.CONSUME(T.RCurly)
@@ -247,23 +261,6 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
     $.CONSUME(T.RParen)
   })
 
-  // $.OVERRIDE_RULE('relativeSelector', (ctx: RuleContext = {}) => {
-  //   $.OR([
-  //     {
-  //       ALT: () => {
-  //         ctx.isMixinCallCandidate = false
-  //         ctx.isMixinCallCandidate = false
-  //         ctx.isMixinDefinitionCandidate = false
-  //         $.CONSUME(T.Combinator)
-  //         $.SUBRULE($.complexSelector)
-  //       }
-  //     },
-  //     {
-  //       ALT: () => $.SUBRULE2($.complexSelector, { ARGS: [ctx] })
-  //     }
-  //   ])
-  // })
-
   $.OVERRIDE_RULE('simpleSelector', (ctx: RuleContext = {}) => {
     $.OR([
       {
@@ -287,26 +284,6 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
       { ALT: () => $.SUBRULE($.attributeSelector) }
     ])
   })
-
-  /**
-   * We need this rule to succeed quickly if it starts with anything other
-   * than an identifier. We also parse very loosely, so that we can
-   * establish author intent, and that way we can throw qualified-rule-specific
-   * errors when parsing.
-   */
-  $.RULE('testQualifiedRule', () => {
-    $.OR([
-      { ALT: () => $.CONSUME(T.NonIdent) },
-      {
-        ALT: () => {
-          /** Well, poop, now we have to look ahead for a '{' */
-          $.CONSUME(T.Ident)
-          $.MANY(() => $.SUBRULE($.anyOuterValue))
-          $.CONSUME(T.LCurly)
-        }
-      }
-    ])
-  })
 }
 
 export function atVariableDeclarations(this: LessParser, T: TokenMap) {
@@ -327,6 +304,38 @@ export function atVariableDeclarations(this: LessParser, T: TokenMap) {
     $.CONSUME(T.LCurly)
     $.SUBRULE($.declarationList)
     $.CONSUME(T.RCurly)
+  })
+
+  $.OVERRIDE_RULE('importAtRule', () => {
+    $.CONSUME(T.AtImport)
+
+    $.OPTION(() => {
+      $.CONSUME(T.LParen)
+      $.AT_LEAST_ONE_SEP({
+        SEP: T.Comma,
+        DEF: () => $.CONSUME(T.PlainIdent)
+      })
+      $.CONSUME(T.RParen)
+    })
+
+    $.OR([
+      { ALT: () => $.SUBRULE($.urlFunction) },
+      { ALT: () => $.SUBRULE($.string) }
+    ])
+
+    $.OPTION2(() => {
+      $.CONSUME(T.Supports)
+      $.OR2([
+        { ALT: () => $.SUBRULE($.supportsCondition) },
+        { ALT: () => $.SUBRULE($.declaration) }
+      ])
+    })
+
+    $.OPTION3(() => {
+      $.SUBRULE($.mediaQuery)
+    })
+
+    $.CONSUME(T.Semi)
   })
 
   /** Less variables */
@@ -454,17 +463,54 @@ export function expressionsAndValues(this: LessParser, T: TokenMap) {
   })
 
   $.RULE('expressionValue', (ctx: RuleContext = {}) => {
+    /** Can create a negative expression */
+    $.OPTION(() => $.CONSUME(T.Minus))
     $.OR([
       {
         ALT: () => {
-          /** Can create a negative expression */
-          $.OPTION(() => $.CONSUME(T.Minus))
           $.CONSUME(T.LParen)
           $.SUBRULE($.expression, { ARGS: [ctx] })
           $.CONSUME(T.RParen)
         }
       },
       { ALT: () => $.SUBRULE($.value, { ARGS: [ctx] }) }
+    ])
+  })
+
+  /**
+   * Add interpolation
+   * @todo - Should OR arrays be exported from CSS parser so they
+   *         they can be easily extended?
+   */
+  $.OVERRIDE_RULE('nthValue', () => {
+    $.OR([
+      { ALT: () => $.CONSUME(T.InterpolatedIdent) },
+      { ALT: () => $.CONSUME(T.NthOdd) },
+      { ALT: () => $.CONSUME(T.NthEven) },
+      { ALT: () => $.CONSUME(T.Integer) },
+      {
+        ALT: () => {
+          $.OR2([
+            { ALT: () => $.CONSUME(T.NthDimension) },
+            { ALT: () => $.CONSUME(T.NthDimensionSigned) }
+          ])
+          $.OPTION(() => {
+            $.OR3([
+              { ALT: () => $.CONSUME(T.SignedInt) },
+              {
+                ALT: () => {
+                  $.CONSUME(T.Minus)
+                  $.CONSUME(T.UnsignedInt)
+                }
+              }
+            ])
+          })
+          $.OPTION2(() => {
+            $.CONSUME(T.Of)
+            $.SUBRULE($.complexSelector)
+          })
+        }
+      }
     ])
   })
 
@@ -522,6 +568,8 @@ export function expressionsAndValues(this: LessParser, T: TokenMap) {
         },
         { ALT: () => $.SUBRULE($.string) },
         { ALT: () => $.CONSUME(T.Value) },
+        /** Explicitly not marked as an ident */
+        { ALT: () => $.CONSUME(T.When) },
         {
           ALT: () => {
             $.CONSUME(T.LSquare)
@@ -671,6 +719,7 @@ export function atRuleBubbling(this: LessParser, T: TokenMap) {
     $.OR([
       { ALT: () => $.SUBRULE($.mediaAtRule, { ARGS: [true] }) },
       { ALT: () => $.SUBRULE($.supportsAtRule, { ARGS: [true] }) },
+      { ALT: () => $.SUBRULE($.importAtRule) },
       { ALT: () => $.SUBRULE($.pageAtRule) },
       { ALT: () => $.SUBRULE($.fontFaceAtRule) },
       { ALT: () => $.SUBRULE($.nestedAtRule) },
@@ -704,7 +753,8 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
       {
         ALT: () => {
           $.SUBRULE($.mixinArgs)
-          $.OPTION2(() => $.CONSUME(T.Semi))
+          $.OPTION2(() => $.CONSUME(T.Important))
+          $.OPTION3(() => $.CONSUME(T.Semi))
         }
       },
       { ALT: () => $.CONSUME2(T.Semi) }

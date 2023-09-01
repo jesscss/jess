@@ -154,18 +154,14 @@ export function productions(this: CssParser, T: TokenMap) {
     ])
   })
 
-  // nthValue
-  //   : NTH_ODD
-  //   | NTH_EVEN
-  //   | (
-  //     | NTH_DIMENSION
-  //     | NTH_DIMENSION_SIGNED
-  //   ) (SIGNED_INTEGER | '-' WS+ UNSIGNED_INTEGER)? (WS* OF WS* complexSelector)?
-  //   ;
+  /**
+   * @see https://developer.mozilla.org/en-US/docs/Web/CSS/:nth-child
+   */
   $.RULE('nthValue', () => {
     $.OR([
       { ALT: () => $.CONSUME(T.NthOdd) },
       { ALT: () => $.CONSUME(T.NthEven) },
+      { ALT: () => $.CONSUME(T.Integer) },
       {
         ALT: () => {
           $.OR2([
@@ -1027,7 +1023,13 @@ export function productions(this: CssParser, T: TokenMap) {
 
   $.RULE('pageSelector', () => {
     $.OPTION(() => $.CONSUME(T.Ident))
-    $.MANY(() => $.CONSUME(T.PagePseudoClass))
+    $.MANY({
+      GATE: () => $.LA(1).tokenType === T.Colon && $.noSep(1),
+      DEF: () => {
+        $.CONSUME(T.Colon)
+        $.CONSUME(T.PagePseudoClassKeywords)
+      }
+    })
   })
 
   // fontFaceAtRule

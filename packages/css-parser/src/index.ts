@@ -1,10 +1,10 @@
 import type { IToken, ILexingResult, CstNode } from 'chevrotain'
 import { Lexer } from 'chevrotain'
 import { cssTokens, cssFragments } from './cssTokens'
-import { CssParser } from './cssParser'
-import type { TokenMap, CssParserConfig } from './cssParser'
+import { type TokenMap, type CssParserConfig, CssParser } from './cssParser'
 import { createLexerDefinition } from './util'
 import { CssErrorMessageProvider } from './cssErrorMessageProvider'
+import type { ConditionalPick } from 'type-fest'
 
 export * from './cssTokens'
 export * from './util'
@@ -15,10 +15,12 @@ export * from './cssErrorMessageProvider'
 export interface IParseResult<T extends CssParser = CssParser> {
   cst: CstNode
   lexerResult: ILexingResult
-  parser: T
+  errors: T['errors']
 }
 
 const errorMessageProvider = new CssErrorMessageProvider()
+
+type CssRules = keyof ConditionalPick<CssParser, () => CstNode>
 
 export class Parser {
   lexer: Lexer
@@ -52,14 +54,13 @@ export class Parser {
     this.parser = new CssParser(lexer, T as TokenMap, config)
   }
 
-  /** @todo  */
-  parse(text: string): IParseResult {
+  parse(text: string, rule: CssRules = 'stylesheet'): IParseResult {
     const parser = this.parser
     const lexerResult = this.lexer.tokenize(text)
     const lexedTokens: IToken[] = lexerResult.tokens
     parser.input = lexedTokens
-    const cst = parser.stylesheet()
+    const cst = parser[rule]()
 
-    return { cst, lexerResult, parser }
+    return { cst, lexerResult, errors: parser.errors }
   }
 }

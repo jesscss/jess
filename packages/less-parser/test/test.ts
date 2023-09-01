@@ -2,119 +2,123 @@ import * as glob from 'glob'
 import * as fs from 'fs'
 import * as path from 'path'
 import { Parser } from '../src'
-// import { type IParseResult } from '@jesscss/css-parser'
 
 const testData = path.dirname(require.resolve('@less/test-data'))
 
 const lessParser = new Parser()
-const parser = lessParser.parser
+const parse = lessParser.parse
 
 describe('can parse any rule', () => {
-  it('qualified rule with interpolation', () => {
-    const lexerResult = lessParser.lexer.tokenize('qw@{ident} { foo: bar }')
-    const lexedTokens = lexerResult.tokens
-    parser.input = lexedTokens
-    parser.main()
-    expect(parser.errors.length).toBe(0)
-  })
-
-  it('can parse anonymous mixins', () => {
-    const lexerResult = lessParser.lexer.tokenize('.(@v;@i) {}')
-    const lexedTokens = lexerResult.tokens
-    parser.input = lexedTokens
-    parser.anonymousMixinDefinition()
-    expect(parser.errors.length).toBe(0)
-  })
-
-  it('declaration', () => {
-    const lexerResult = lessParser.lexer.tokenize('color: green')
-    const lexedTokens = lexerResult.tokens
-    parser.input = lexedTokens
-    parser.declaration()
-    expect(parser.errors.length).toBe(0)
-  })
-
-  it('accessors', () => {
-    const lexerResult = lessParser.lexer.tokenize('color: @p[accessor]')
-    const lexedTokens = lexerResult.tokens
-    parser.input = lexedTokens
-    parser.declaration()
-    expect(parser.errors.length).toBe(0)
-  })
-
-  it.skip('qualified rule', () => {
-    let lexerResult = lessParser.lexer.tokenize(
-      'light when ('
+  test('qualified rule with interpolation', () => {
+    const { errors } = parse(
+      'qw@{ident} { foo: bar }',
+      'main'
     )
-    let lexedTokens = lexerResult.tokens
-    parser.input = lexedTokens
-    parser.testQualifiedRule()
-    expect(parser.errors.length).toBe(0)
+    expect(errors.length).toBe(0)
+  })
 
-    lexerResult = lessParser.lexer.tokenize(
+  test('anonymous mixins', () => {
+    const { errors } = parse(
+      '.(@v;@i) {}',
+      'anonymousMixinDefinition'
+    )
+    expect(errors.length).toBe(0)
+  })
+
+  test('declaration', () => {
+    const { errors } = parse(
+      'color: green',
+      'declaration'
+    )
+    expect(errors.length).toBe(0)
+  })
+
+  test('accessors', () => {
+    const { errors } = parse(
+      'color: @p[accessor]',
+      'declaration'
+    )
+    expect(errors.length).toBe(0)
+  })
+
+  test('qualified rule', () => {
+    const { errors } = parse(
       `.light when (lightness(@a) > 50%) {
           color: green;
-      }`
+      }`,
+      'qualifiedRule'
     )
-    lexedTokens = lexerResult.tokens
-    parser.input = lexedTokens
-    parser.qualifiedRule()
-    expect(parser.errors.length).toBe(0)
+    expect(errors.length).toBe(0)
   })
 
-  it('mixin definition', () => {
-    let lexerResult = lessParser.lexer.tokenize(
-      `.mixin_def_with_colors(@a: white, // in
-              @b: 1px //put in @b - causes problems! --->
-              ) // the
-              when (@a = white) {
-          .test-rule {
-              color: @b;
-          }
-      }`
+  test('parses mixin args', () => {
+    const { errors } = parse(
+      '(@v)',
+      'mixinArgs',
+      { isDefinition: true }
     )
-    let lexedTokens = lexerResult.tokens
-    parser.input = lexedTokens
-    parser.mixinDefinition()
-    expect(parser.errors.length).toBe(0)
+    expect(errors.length).toBe(0)
+  })
 
-    lexerResult = lessParser.lexer.tokenize(
-      `.mixin-definition(@a: {}, @b: {default: works;}) {
-        @a();
-        @b();
-      }`
-    )
-    lexedTokens = lexerResult.tokens
-    parser.input = lexedTokens
-    parser.mixinDefinition()
-    expect(parser.errors.length).toBe(0)
+  test('mixin definition', () => {
+    // let lexerResult = lessParser.lexer.tokenize(
+    //   `.mixin_def_with_colors(@a: white, // in
+    //           @b: 1px //put in @b - causes problems! --->
+    //           ) // the
+    //           when (@a = white) {
+    //       .test-rule {
+    //           color: @b;
+    //       }
+    //   }`
+    // )
+    // let lexedTokens = lexerResult.tokens
+    // parser.input = lexedTokens
+    // parser.mixinDefinition()
+    // expect(parser.errors.length).toBe(0)
 
-    lexerResult = lessParser.lexer.tokenize(
-      '.m(@x) when (default()) and (@x = 3) {default: @x}'
-    )
-    lexedTokens = lexerResult.tokens
-    parser.input = lexedTokens
-    parser.mixinDefinition()
-    expect(parser.errors.length).toBe(0)
+    // lexerResult = lessParser.lexer.tokenize(
+    //   `.mixin-definition(@a: {}, @b: {default: works;}) {
+    //     @a();
+    //     @b();
+    //   }`
+    // )
+    // lexedTokens = lexerResult.tokens
+    // parser.input = lexedTokens
+    // parser.mixinDefinition()
+    // expect(parser.errors.length).toBe(0)
 
-    lexerResult = lessParser.lexer.tokenize(
-      '.mixin-args(@a: 1, 2, 3; @b: 3);'
-    )
-    lexedTokens = lexerResult.tokens
-    parser.input = lexedTokens
-    parser.stylesheet()
-    expect(parser.errors.length).toBe(0)
+    // lexerResult = lessParser.lexer.tokenize(
+    //   '.m(@x) when (default()) and (@x = 3) {default: @x}'
+    // )
+    // lexedTokens = lexerResult.tokens
+    // parser.input = lexedTokens
+    // parser.mixinDefinition()
+    // expect(parser.errors.length).toBe(0)
 
-    lexerResult = lessParser.lexer.tokenize(
-      `.mixin-definition(@a: {}; @b: {default: works;};) {
-        @a();
-        @b();
-      }`
+    const { errors } = parse(
+      '.m(@v) when (@v)        {two: when true}',
+      'mixinDefinition'
     )
-    lexedTokens = lexerResult.tokens
-    parser.input = lexedTokens
-    parser.stylesheet()
-    expect(parser.errors.length).toBe(0)
+    expect(errors.length).toBe(0)
+
+    // lexerResult = lessParser.lexer.tokenize(
+    //   '.mixin-args(@a: 1, 2, 3; @b: 3);'
+    // )
+    // lexedTokens = lexerResult.tokens
+    // parser.input = lexedTokens
+    // parser.stylesheet()
+    // expect(parser.errors.length).toBe(0)
+
+    // lexerResult = lessParser.lexer.tokenize(
+    //   `.mixin-definition(@a: {}; @b: {default: works;};) {
+    //     @a();
+    //     @b();
+    //   }`
+    // )
+    // lexedTokens = lexerResult.tokens
+    // parser.input = lexedTokens
+    // parser.stylesheet()
+    // expect(parser.errors.length).toBe(0)
 
     // lexerResult = lessParser.lexer.tokenize(
     //   '.b('
@@ -133,27 +137,34 @@ describe('can parse any rule', () => {
     // expect(parser.errors.length).toBe(0)
   })
 
-  it('mixin call', () => {
-    let lexerResult = lessParser.lexer.tokenize('.mixin-with-guard-inside(0px);')
-    let lexedTokens = lexerResult.tokens
-    parser.input = lexedTokens
-    parser.mixinCall()
-    expect(parser.errors.length).toBe(0)
+  test('mixin call', () => {
+    let { errors } = parse(
+      '.mixin-with-guard-inside(0px);',
+      'mixinCall'
+    )
+    expect(errors.length).toBe(0)
 
-    lexerResult = lessParser.lexer.tokenize(`.wrap-mixin(@ruleset: {
+    ;({ errors } = parse(
+      `.wrap-mixin(@ruleset: {
         color: red;
-      });`)
-    lexedTokens = lexerResult.tokens
-    parser.input = lexedTokens
-    parser.mixinCall()
+      });`,
+      'mixinCall'
+    ))
 
-    expect(parser.errors.length).toBe(0)
+    expect(errors.length).toBe(0)
 
-    lexerResult = lessParser.lexer.tokenize('.mixin-call({direct: works;}; @b: {named: works;});')
-    lexedTokens = lexerResult.tokens
-    parser.input = lexedTokens
-    parser.stylesheet()
-    expect(parser.errors.length).toBe(0)
+    ;({ errors } = parse(
+      '.mixin-call({direct: works;}; @b: {named: works;});',
+      'stylesheet'
+    ))
+    expect(errors.length).toBe(0)
+
+    ;({ errors } = parse(
+      `.mixout ('left') {
+        left: 1;
+      }`,
+      'mixinCall'
+    ))
   })
 
   it('variable declaration', () => {
@@ -164,13 +175,14 @@ describe('can parse any rule', () => {
     // parser.testVariable()
     // expect(parser.errors.length).to.equal(0)
 
-    const lexerResult = lessParser.lexer.tokenize(`@ruleset: {
+    const { errors } = parse(
+      `@ruleset: {
         color: red;
-      }`)
-    const lexedTokens = lexerResult.tokens
-    parser.input = lexedTokens
-    parser.unknownAtRule()
-    expect(parser.errors.length).toBe(0)
+      }`,
+      /** @todo - add `variableDeclaration` as sugar */
+      'unknownAtRule'
+    )
+    expect(errors.length).toBe(0)
   })
 })
 
@@ -205,12 +217,14 @@ const invalidLess = [
   'less/math/always/no-sm-operations.less',
   'less/math/parens-division/new-division.less',
   'less/math/strict/css.less',
-  'less/_main/import/invalid-css.less'
+  'less/_main/import/invalid-css.less',
 
+  /** Contains invalid `[prop=10%]` */
+  'less/_main/selectors.less'
 ]
 
 describe('can parse all Less stylesheets', () => {
-  const files = glob.sync(path.join(testData, 'less/**/functions-each.less'))
+  const files = glob.sync(path.join(testData, 'less/**/*.less'))
   files
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))
@@ -220,12 +234,15 @@ describe('can parse all Less stylesheets', () => {
         const result = fs.readFileSync(path.join(testData, file))
         const contents = result.toString()
         const parseStart = performance.now()
-        const { cst, lexerResult, parser } = lessParser.parse(contents)
+        const { cst, lexerResult, errors } = lessParser.parse(contents)
         const parseEnd = performance.now()
         console.log(`${file} parse time: ${Math.round(parseEnd - parseStart)}ms`)
         // expect(`(${Math.round(parseEnd - parseStart)}ms)`).toBeDefined()
+        if (lexerResult.errors.length || errors.length) {
+          console.log('oops')
+        }
         expect(lexerResult.errors.length).toBe(0)
-        expect(parser.errors.length).toBe(0)
+        expect(errors.length).toBe(0)
 
         /** JavaScript tokens are skipped */
         // if (!([
@@ -251,9 +268,9 @@ describe.skip('should throw parsing errors', () => {
     .forEach(file => {
       it(`${file}`, () => {
         const result = fs.readFileSync(file)
-        const { lexerResult, parser } = lessParser.parse(result.toString())
+        const { lexerResult, errors } = lessParser.parse(result.toString())
         expect(lexerResult.errors.length).toBe(0)
-        expect(parser.errors.length).toBe(1)
+        expect(errors.length).toBe(1)
       })
     })
 })

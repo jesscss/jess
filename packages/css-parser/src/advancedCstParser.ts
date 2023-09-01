@@ -396,7 +396,7 @@ export class AdvancedCstParser extends CstParser {
    * Used in a GATE.
    * Affirms that there is NOT white space or comment before next token
    */
-  noSep() {
-    return !this.skippedTokens.get(this.currIdx + 1)
+  noSep(offset: number = 0) {
+    return !this.skippedTokens.get(this.currIdx + 1 + offset)
   }
 }

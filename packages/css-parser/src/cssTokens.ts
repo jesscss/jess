@@ -297,8 +297,10 @@ const tokens = () => ({
 
       /** @see https://developer.mozilla.org/en-US/docs/Web/CSS/@page */
       {
-        name: 'PagePseudoClass',
-        pattern: /:(?:first|left|right|blank)/i
+        name: 'PagePseudoClassKeywords',
+        pattern: /(?:first|left|right|blank)/i,
+        categories: ['Ident'],
+        longer_alt: 'PlainIdent'
       },
 
       /** Nth Keywords */

@@ -69,6 +69,10 @@ function $preBuildTokens() {
         pattern: /:extend\(/,
         categories: ['BlockMarker']
       },
+      /**
+       * Keywords that we don't identify as idents
+       * should be manually added to other places where an ident is valid.
+       */
       {
         name: 'When',
         pattern: /when/i,
@@ -158,7 +162,7 @@ function $preBuildTokens() {
   for (let i = 0; i < tokenLength; i++) {
     let token: WritableDeep<RawToken> = defaultTokens[i]
 
-    const { name, categories } = token
+    const { name } = token
     const copyToken = () => {
       token = structuredClone(token)
     }
@@ -166,11 +170,20 @@ function $preBuildTokens() {
     let alterations = true
 
     switch (name) {
-    // Removed in Less v5
-    // case 'Divide':
-    //   copyToken()
-    //   token.pattern = /\.?\//
-    //   break
+      /**
+       * Less / Sass Ampersand is slightly different
+       * from CSS Nesting in that it concatenates, so we
+       * need to gobble up the rest of the identifier
+       * if present.
+       */
+      case 'Ampersand':
+        copyToken()
+        token.pattern = '&{{nmchar}}*'
+        break
+      case 'Divide':
+        copyToken()
+        token.pattern = /\.?\//
+        break
       case 'SingleQuoteStart':
         copyToken()
         token.pattern = /~?'/
@@ -178,14 +191,6 @@ function $preBuildTokens() {
       case 'DoubleQuoteStart':
         copyToken()
         token.pattern = /~?"/
-        break
-      case 'CustomProperty':
-        copyToken()
-        token.pattern = '--(?:{{nmstart}}{{nmchar}}*)?'
-        break
-      case 'AtKeyword':
-        copyToken()
-        token.categories = categories ? categories.concat(['VarOrProp']) : ['VarOrProp']
         break
       default:
         alterations = false

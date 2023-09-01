@@ -3,14 +3,18 @@
 
 
   _Jess is now in Alpha! Star this repo for later updates!_
-
-  [![Ask questions in the Jess Gitter community!](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/jesscss/community)
 </div>
 
 # Jess
 ### The New CSS Pre-Processing Hotness
 
 This is the monorepo for Jess, a new, modern CSS pre-processor from the people who brought you Less. [See the docs.](https://jesscss.github.io)
+
+Jess is the modern stylesheet replacement for:
+- Less
+- Sass (SCSS)
+- CSS Modules
+- CSS-in-JS
 
 ```less
 @from './values.ts' (width);
@@ -20,7 +24,7 @@ This is the monorepo for Jess, a new, modern CSS pre-processor from the people w
 
 @use './mixins.jess' (my-mixin);
 
-@icon-width: ~($width)px;
+$icon-width: ~($width)px;
 
 @mixin square(unit: 24px) {
   width: $unit;
