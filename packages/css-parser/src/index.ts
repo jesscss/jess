@@ -37,10 +37,11 @@ export class Parser {
     config = {
       errorMessageProvider,
       /**
-       * Override this if you want a stricter CSS parser.
-       * You can also override when parsing using a single rule.
+       * Override this if you want to omit legacy IE syntax
+       * and ancient CSS hacks.
+       * @todo Allow overriding when parsing a single rule.
        */
-      loose: true,
+      legacyMode: true,
       skipValidations: process.env.TEST !== 'true',
       ...config
     }

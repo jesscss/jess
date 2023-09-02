@@ -25,9 +25,9 @@ export class Parser {
       errorMessageProvider,
       /**
        * Override this if you want a stricter Less/CSS parser.
-       * You can also override when parsing using a single rule.
+       * @todo - Allow overriding when parsing a single rule.
        */
-      loose: true,
+      looseMode: true,
       skipValidations: process.env.TEST !== 'true',
       ...config
     }

@@ -141,6 +141,16 @@ function $preBuildTokens() {
         pattern: '(?:{{ident}}|-)?{{interpolated}}(?:{{interpolated}}|{{nmchar}})*',
         categories: ['Interpolated', 'Selector', 'Ident']
       },
+      {
+        name: 'InterpolatedCustomProperty',
+        /**
+         * Must contain one `@{}`
+         * It's too expensive for Chevrotain to capture groups here,
+         * so we'll extract the interpolated values later.
+         */
+        pattern: '--{{ident}}?{{interpolated}}(?:{{interpolated}}|{{nmchar}})*',
+        categories: ['Interpolated']
+      },
       /**
      * Unfortunately, there's grammatical ambiguity between
      * interpolated props and a naked interpolated selector name,

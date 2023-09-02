@@ -476,17 +476,7 @@ export function productions(this: CssParser, T: TokenMap) {
 
   /** Often space-separated */
   $.RULE('valueSequence', (ctx: RuleContext = {}) => {
-    $.OR([
-      {
-        GATE: () => $.loose,
-        ALT: () => $.MANY(() => $.SUBRULE($.anyOuterValue, { ARGS: [ctx] }))
-      },
-      {
-        GATE: () => !$.loose,
-        /** @todo - create warning in the CST Visitor */
-        ALT: () => $.AT_LEAST_ONE(() => $.SUBRULE2($.value, { ARGS: [ctx] }))
-      }
-    ])
+    $.AT_LEAST_ONE(() => $.SUBRULE($.value, { ARGS: [ctx] }))
   })
 
   // value
@@ -630,6 +620,7 @@ export function productions(this: CssParser, T: TokenMap) {
   //   | CALC_FUNCTION '(' WS* mathSum WS* ')'
   //   | identifier '(' valueList ')'
   //   ;
+  // These have special parsing rules
   $.RULE('knownFunctions', () => {
     $.OR([
       { ALT: () => $.SUBRULE($.urlFunction) },
@@ -1092,7 +1083,7 @@ export function productions(this: CssParser, T: TokenMap) {
             GATE: $.noSep,
             ALT: () => {
               $.CONSUME(T.LParen)
-              $.SUBRULE($.valueList)
+              $.OPTION(() => $.SUBRULE($.valueList))
               $.CONSUME(T.RParen)
             }
           }])

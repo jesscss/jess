@@ -151,7 +151,8 @@ const tokens = () => ({
         categories: ['Ident']
       },
       { name: 'LegacyPropIdent', pattern: '(?:\\*|_){{ident}}' },
-      { name: 'LegacyMSFilter', pattern: /progid:(?:[\w]\.)*\w(?:\([^)]*\))?/ },
+      /** Supports the very old alpha(opacity=[number]) */
+      { name: 'LegacyMSFilter', pattern: /alpha\(opacity=\d{1,3}\)|progid:(?:[\w]+\.)*\w+(?:\([^)]*\))?/ },
       {
         name: 'CustomProperty',
         pattern: '--{{ident}}',

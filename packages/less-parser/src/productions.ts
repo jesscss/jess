@@ -43,7 +43,7 @@ export function extendRoot(this: LessParser, T: TokenMap) {
                  * @see https://github.com/less/less.js/issues/2126
                  */
                 {
-                  GATE: () => $.loose,
+                  GATE: () => $.looseMode,
                   ALT: () => $.CONSUME(T.Charset)
                 },
                 { ALT: () => $.CONSUME2(T.Semi) }
@@ -120,7 +120,10 @@ export function extendRoot(this: LessParser, T: TokenMap) {
       },
       {
         ALT: () => {
-          $.CONSUME(T.CustomProperty)
+          $.OR3([
+            { ALT: () => $.CONSUME(T.InterpolatedCustomProperty) },
+            { ALT: () => $.CONSUME(T.CustomProperty) }
+          ])
           $.CONSUME2(T.Assign)
           $.MANY(() => $.SUBRULE($.customValue))
         }
@@ -166,7 +169,11 @@ export function extendRoot(this: LessParser, T: TokenMap) {
         GATE: isEscapedString,
         ALT: () => $.SUBRULE($.string)
       },
-      { ALT: () => $.CONSUME(T.AtKeyword) },
+      /**
+       * After Less evaluation, should throw an error
+       * if the value of `@myvar` is a ruleset
+       */
+      { ALT: () => $.SUBRULE($.valueReference) },
       {
         ALT: () => {
           $.CONSUME(T.LParen)
@@ -407,11 +414,11 @@ export function expressionsAndValues(this: LessParser, T: TokenMap) {
   $.OVERRIDE_RULE('valueSequence', (ctx: RuleContext = {}) => {
     $.OR([
       {
-        GATE: () => $.loose,
+        GATE: () => $.looseMode,
         ALT: () => { $.MANY(() => $.SUBRULE($.expression, { ARGS: [ctx] })) }
       },
       {
-        GATE: () => !$.loose,
+        GATE: () => !$.looseMode,
         /** @todo - create warning in the CST Visitor */
         ALT: () => { $.AT_LEAST_ONE(() => $.SUBRULE2($.expression, { ARGS: [ctx] })) }
       }
@@ -533,8 +540,53 @@ export function expressionsAndValues(this: LessParser, T: TokenMap) {
     ])
   })
 
+  $.OVERRIDE_RULE('knownFunctions', () => {
+    $.OR([
+      { ALT: () => $.SUBRULE($.urlFunction) },
+      { ALT: () => $.SUBRULE($.varFunction) },
+      { ALT: () => $.SUBRULE($.calcFunction) },
+      { ALT: () => $.SUBRULE($.ifFunction) },
+      { ALT: () => $.SUBRULE($.booleanFunction) }
+    ])
+  })
+
+  $.RULE('ifFunction', () => {
+    $.CONSUME(T.IfFunction)
+    $.SUBRULE($.guardOr, { ARGS: [{ inValueList: true }] })
+    $.OR([
+      {
+        ALT: () => {
+          $.CONSUME(T.Semi)
+          $.SUBRULE($.valueList, { ARGS: [{ allowAnonymousMixins: true }] })
+          $.OPTION(() => {
+            $.CONSUME2(T.Semi)
+            $.SUBRULE2($.valueList, { ARGS: [{ allowAnonymousMixins: true }] })
+          })
+        }
+      },
+      {
+        ALT: () => {
+          $.CONSUME(T.Comma)
+          $.SUBRULE($.valueSequence, { ARGS: [{ allowAnonymousMixins: true }] })
+          $.OPTION2(() => {
+            $.CONSUME2(T.Comma)
+            $.SUBRULE2($.valueSequence, { ARGS: [{ allowAnonymousMixins: true }] })
+          })
+        }
+      }
+    ])
+    $.CONSUME(T.RParen)
+  })
+
+  $.RULE('booleanFunction', () => {
+    $.CONSUME(T.BooleanFunction)
+    $.SUBRULE($.guardOr, { ARGS: [{ inValueList: true }] })
+    $.CONSUME(T.RParen)
+  })
+
+  /** At AST time, join comma-lists together if separated by semis */
   $.RULE('functionValueList', (ctx: RuleContext = {}) => {
-    ctx.allowsAnonymousMixins = true
+    ctx.allowAnonymousMixins = true
     $.SUBRULE($.valueSequence, { ARGS: [ctx] })
     $.MANY(() => {
       $.OR([
@@ -543,6 +595,24 @@ export function expressionsAndValues(this: LessParser, T: TokenMap) {
       ])
       $.SUBRULE2($.valueSequence, { ARGS: [ctx] })
     })
+  })
+
+  $.RULE('valueReference', () => {
+    $.OR([
+      {
+        ALT: () => {
+          $.SUBRULE($.mixinReference)
+          $.OPTION(() => $.SUBRULE($.mixinArgs))
+          $.SUBRULE($.accessors)
+        }
+      },
+      {
+        ALT: () => {
+          $.CONSUME(T.AtKeyword)
+          $.OPTION2(() => $.SUBRULE2($.accessors))
+        }
+      }
+    ])
   })
 
   $.OVERRIDE_RULE('value', (ctx: RuleContext = {}) => {
@@ -636,29 +706,37 @@ export function expressionsAndValues(this: LessParser, T: TokenMap) {
 export function guards(this: LessParser, T: TokenMap) {
   const $ = this
 
-  $.RULE('guard', () => {
+  $.RULE('guard', (ctx: RuleContext = {}) => {
     $.CONSUME(T.When)
-    $.SUBRULE($.guardOr, { ARGS: [true] })
+    $.OR([
+      {
+        GATE: () => !!ctx.inValueList,
+        ALT: () => $.SUBRULE($.comparison)
+      },
+      {
+        ALT: () => $.SUBRULE($.guardOr, { ARGS: [{ ...ctx, allowComma: true }] })
+      }
+    ])
   })
 
   /**
    * 'or' expression
    * Allows an (outer) comma like historical media queries
    */
-  $.RULE('guardOr', (allowComma: boolean = false) => {
-    $.SUBRULE($.guardAnd)
+  $.RULE('guardOr', (ctx: RuleContext = {}) => {
+    $.SUBRULE($.guardAnd, { ARGS: [ctx] })
     $.MANY({
-      GATE: () => allowComma || $.LA(1).tokenType !== T.Comma,
+      GATE: () => !!ctx.allowComma || $.LA(1).tokenType !== T.Comma,
       DEF: () => {
         /**
-         * Nest expressions within expressions for correct
-         * order of operations.
-         */
-        $.OR([
+               * Nest expressions within expressions for correct
+               * order of operations.
+               */
+        $.OR2([
           { ALT: () => $.CONSUME($.T.Comma) },
           { ALT: () => $.CONSUME($.T.Or) }
         ])
-        $.SUBRULE2($.guardAnd)
+        $.SUBRULE2($.guardAnd, { ARGS: [ctx] })
       }
     })
   })
@@ -671,7 +749,7 @@ export function guards(this: LessParser, T: TokenMap) {
    *  of evaluation order ambiguity.
    *  However, Less allows it.
    */
-  $.RULE('guardAnd', () => {
+  $.RULE('guardAnd', (ctx: RuleContext = {}) => {
     $.MANY_SEP({
       SEP: T.And,
       DEF: () => {
@@ -692,6 +770,22 @@ export function guards(this: LessParser, T: TokenMap) {
 
   /** Currently, Less only allows a single comparison expression */
   $.RULE('comparison', () => {
+    $.SUBRULE($.valueList, { LABEL: 'L' })
+    $.OPTION(() => {
+      $.OR([
+        { ALT: () => $.CONSUME(T.Eq) },
+        { ALT: () => $.CONSUME(T.Gt) },
+        { ALT: () => $.CONSUME(T.GtEq) },
+        { ALT: () => $.CONSUME(T.GtEqAlias) },
+        { ALT: () => $.CONSUME(T.Lt) },
+        { ALT: () => $.CONSUME(T.LtEq) },
+        { ALT: () => $.CONSUME(T.LtEqAlias) }
+      ])
+      $.SUBRULE2($.valueList, { LABEL: 'R' })
+    })
+  })
+
+  $.RULE('comparison2', () => {
     $.SUBRULE($.valueList, { LABEL: 'L' })
     $.OPTION(() => {
       $.OR([
@@ -740,13 +834,17 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
     ])
   })
 
-  /** e.g. #ns > .mixin() */
-  $.RULE('mixinCall', () => {
+  $.RULE('mixinReference', () => {
     $.SUBRULE($.mixinName)
     $.MANY(() => {
       $.OPTION(() => $.CONSUME(T.Gt))
       $.SUBRULE2($.mixinName)
     })
+  })
+
+  /** e.g. #ns > .mixin() */
+  $.RULE('mixinCall', () => {
+    $.SUBRULE($.mixinReference)
 
     /** Either needs to end in parens or in a semi-colon (or both) */
     $.OR([
@@ -768,13 +866,9 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
    *   e.g. .mixin1() > .mixin2[@val1].ns() > .sub-mixin[@val2]
    */
   $.RULE('inlineMixinCall', () => {
-    $.SUBRULE($.mixinName)
-    $.MANY(() => {
-      $.OPTION(() => $.CONSUME(T.Gt))
-      $.SUBRULE2($.mixinName)
-    })
-    $.OPTION2(() => $.SUBRULE($.mixinArgs))
-    $.OPTION3(() => $.SUBRULE($.accessors))
+    $.SUBRULE($.mixinReference)
+    $.OPTION(() => $.SUBRULE($.mixinArgs))
+    $.OPTION2(() => $.SUBRULE($.accessors))
   })
 
   $.RULE('mixinDefinition', () => {
@@ -850,10 +944,21 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
                   $.SUBRULE($.mixinValue)
                 }
               },
-              {
-                GATE: () => definition,
-                ALT: () => $.CONSUME(T.Ellipsis)
-              }
+              /**
+               * Mixin definitions can spread variables, which
+               * means it will match a variable number of elements
+               * at the end.
+               *
+               * However, mixin calls can also spread variables,
+               * which means it will expand a variable representing
+               * a list, which, to my knowledge, is an undocumented
+               * feature of Less (and only exists in mixin calls?)
+               *
+               * @todo - Intuitively, shouldn't this be available
+               * elsewhere in the language? Or would there be no
+               * reason?
+               */
+              { ALT: () => $.CONSUME(T.Ellipsis) }
             ])
           })
         }

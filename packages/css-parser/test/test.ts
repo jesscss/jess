@@ -20,9 +20,9 @@ describe('can parse all CSS stylesheets', () => {
         it(`${file}`, () => {
           const result = fs.readFileSync(file)
           const contents = result.toString()
-          const { cst, lexerResult, parser } = cssParser.parse(contents)
+          const { lexerResult, errors } = cssParser.parse(contents)
           expect(lexerResult.errors.length).toBe(0)
-          expect(parser.errors.length).toBe(0)
+          expect(errors.length).toBe(0)
 
           /** This contains CDO tokens, which are skipped */
           // if (!(['test/css/custom-properties.css'].includes(file))) {
@@ -57,13 +57,19 @@ const invalidCSSOutput = [
   'css/_main/mixins-interpolated.css',
 
   /** invalid attribute selector */
-  'css/_main/selectors.css'
+  'css/_main/selectors.css',
 
-  /** The last rule's property has no value. */
-  // 'css/_main/comments.css',
+  /** Contains an invalid Microsoft progid filter */
+  'css/_main/strings.css',
 
-  /** it outputs a property with no value */
-  // 'css/_main/extract-and-length.css'
+  /**
+   * All of these contain a property with no value,
+   * and/or a list with no value
+   */
+  'css/_main/extract-and-length.css',
+  'css/_main/comments.css',
+  'css/_main/functions.css',
+  'css/_main/javascript.css'
 ]
 
 describe.only('can parse Less CSS output', () => {
@@ -76,10 +82,10 @@ describe.only('can parse Less CSS output', () => {
         const result = fs.readFileSync(path.join(testData, file))
         const contents = result.toString()
         // const parseStart = performance.now()
-        const { cst, lexerResult, parser } = cssParser.parse(contents)
+        const { cst, lexerResult, errors } = cssParser.parse(contents)
         // const parseEnd = performance.now()
         expect(lexerResult.errors.length).toBe(0)
-        expect(parser.errors.length).toBe(0)
+        expect(errors.length).toBe(0)
 
         if (!(['test/css/custom-properties.css'].includes(file))) {
           const output = stringify(cst)
@@ -99,10 +105,10 @@ describe('returns errors on invalid Less CSS output', () => {
         const result = fs.readFileSync(path.join(testData, file))
         const contents = result.toString()
         // const parseStart = performance.now()
-        const { lexerResult, parser } = cssParser.parse(contents)
+        const { lexerResult, errors } = cssParser.parse(contents)
         // const parseEnd = performance.now()
         expect(lexerResult.errors.length).toBe(0)
-        expect(parser.errors.length).toBeGreaterThan(0)
+        expect(errors.length).toBeGreaterThan(0)
       })
     })
 })

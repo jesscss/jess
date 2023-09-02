@@ -15,6 +15,9 @@ As Jess started as a re-write of Less, this package represents a portion of that
 7. Convert `@import (less) './file.css';` to `@include './file.css' as less;`
 8. Convert `@import (inline) './file.css';` to `@include './file.css' as text;`
 9. Convert `@import (reference) './file.less';` to `@use './file.less';`
+10. Files that consume variables, mixins, or rules (like with extend) should have a `@use` added.
+11. Don't allow `.class` as a value in a declaration. Convert to `\.class`
+12. In a custom property value, convert `@variable` to `@{variable}`.
 
 
 ### Converting Less 1.x-4.x to Jess
@@ -27,4 +30,6 @@ As Jess started as a re-write of Less, this package represents a portion of that
 5. Convert variable declarations `@my-var` with `$my-var`
 6. Convert interpolated vars `@{my-var}` to `$(my-var)`
 7. Convert property references `$prop` to `$[prop]`
-8. Convert color names in expressions to hex values.
+8. Convert color names in expressions to hex values (or wrapped in `color()`?) (because Jess doesn't support color keywords in expressions). Alternatively, should Jess allow `keyword` to denote keywords?
+9. Convert `@rest...` to `...rest`
+10. Convert `.rules()` to `@include .rules` if `.rules` is a selector. What if it's a selector and mixin? Maybe something like `@include .rules, $rules();`? This might change the execution order from Less though.

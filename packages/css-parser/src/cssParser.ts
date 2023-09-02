@@ -40,11 +40,6 @@ export type Rule<F extends () => void = () => void> = ParserMethod<Parameters<F>
 export interface CssParserConfig extends IParserConfig {
   /** Thinks like star property hacks and IE filters */
   legacyMode?: boolean
-  /**
-   * This allows more syntax that is invalid according to the CSS spec.
-   * Mainly, this allows unknown tokens (or no tokens) in property values.
-   */
-  loose?: boolean
 }
 
 export type RuleContext = {
@@ -62,7 +57,6 @@ export class CssParser extends AdvancedCstParser {
   T: TokenMap
   skippedTokens: Map<number, IToken[]>
   legacyMode: boolean
-  loose: boolean
 
   stylesheet: Rule
   main: Rule
@@ -167,13 +161,12 @@ export class CssParser extends AdvancedCstParser {
       nodeLocationTracking: 'full'
     }
 
-    const { legacyMode, loose = false, ...rest } = { ...defaultConfig, ...config }
+    const { legacyMode = true, ...rest } = { ...defaultConfig, ...config }
 
     super(tokenVocabulary, rest)
 
     this.T = T
-    this.legacyMode = legacyMode ?? loose
-    this.loose = loose
+    this.legacyMode = legacyMode
 
     productions.call(this, T)
 

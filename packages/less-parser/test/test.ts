@@ -25,6 +25,22 @@ describe('can parse any rule', () => {
     expect(errors.length).toBe(0)
   })
 
+  test('comparison', () => {
+    const { errors } = parse(
+      '@a = white',
+      'comparison'
+    )
+    expect(errors.length).toBe(0)
+  })
+
+  test('when guard', () => {
+    const { errors } = parse(
+      'when(@a = white)',
+      'guard'
+    )
+    expect(errors.length).toBe(0)
+  })
+
   test('declaration', () => {
     const { errors } = parse(
       'color: green',

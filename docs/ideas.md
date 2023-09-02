@@ -5,6 +5,12 @@
 - In addition, function calls to Jess functions should receive plain arguments with primitive values, but when called internally, should bind to a `this` object that has AST arguments. Each function, therefore should call something like `getArguments(this, args)` and either parse primitives or get the passed arguments.
 - For interoperability with JavaScript, Jess mixins should return serialized plain objects, but have a non-enumerable property with an AST return UNLESS they were passed a `this` object with AST args, in which case they should return AST nodes
 
+## TypeScript / JavaScript calls
+
+This:
+```less
+@mixin foo($)
+
 
 ## Some syntax changes
 ```less
@@ -27,11 +33,11 @@
 $myFunction();
 
 // You can write this in two ways:
-$myFunction(sass-var);
 $myFunction($sass-var);
+$myFunction(sass-var);
 
 // if you need a keyword:
-$myFunction('sass-var');
+$myFunction(`sass-var`);
 
 // Parenthesized expressions
 .selector$(expr) {
@@ -59,7 +65,7 @@ Note that `@use` will also re-export.
 // or override variables
 @use 'colors.less' with {
   // should throw an error if primary-color is not defined
-  primary-color: #333;
+  $primary-color: #333;
 }
 // or
 @use 'colors.less' colors;
@@ -79,7 +85,7 @@ Note that `@use` will also re-export.
 //
 ```
 
-## `@include [file|object] declarationList?`
+## `@include [file|object|selector] declarationList?`
 
 Will import the rules (but not pollute the variable scope)
 ```scss
@@ -90,6 +96,7 @@ Will import the rules (but not pollute the variable scope)
 // rules.jess
 // Doesn't have access to vars in main.jess w/o:
 @use 'main.jess';
+// this would include the vars in colors.jess
 ```
 Using an `@include` that's the _result_ of a `@use`:
 ```scss
@@ -98,7 +105,7 @@ Using an `@include` that's the _result_ of a `@use`:
     primary: #3a3a3a;
   }
 }
-~theme();
+$theme();
 ```
 
 ## Limiting types for a design system (Experimental)
