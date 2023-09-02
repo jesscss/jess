@@ -17,13 +17,17 @@
     "compile": "tsc -b tsconfig.build.json",
     "test": "cross-env TEST=true vitest"
   },
-  "author": "Matthew Dean",
-  "license": "MIT",
   "dependencies": {
     "@jesscss/css-parser": "workspace:^2.0.0-alpha.1",
     "chevrotain": "^11.0.3"
   },
   "devDependencies": {
     "@less/test-data": "^4.1.0"
-  }
+  },
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jesscss/jess/issues"
+  },
+  "homepage": "https://github.com/jesscss/jess#readme"
 }

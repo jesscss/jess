@@ -1,0 +1,33 @@
+{
+  "name": "jess",
+  "private": true,
+  "version": "2.0.0-alpha.1",
+  "description": "Jess Abstract Syntax Tree (AST)",
+  "main": "lib/index",
+  "types": "lib/index",
+  "files": [
+    "lib"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "dependencies": {
+    "chevrotain": "^11.0.3"
+  },
+  "scripts": {
+    "ci": "pnpm build && pnpm test:all",
+    "prepublishOnly": "pnpm build && pnpm test:all",
+    "build": "pnpm clean && pnpm compile",
+    "compile": "tsc -b tsconfig.json",
+    "dev": "tsc -b tsconfig.json -w",
+    "test": "vitest"
+  },
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jesscss/jess/issues"
+  },
+  "homepage": "https://github.com/jesscss/jess#readme",
+  "devDependencies": {
+  }
+}

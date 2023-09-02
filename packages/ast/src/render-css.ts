@@ -1,10 +1,6 @@
 import type { Node } from './tree'
 import type { Context } from './context'
 import { OutputCollector } from './output'
-/**
- * @todo use vssom
- * @see https://github.com/streamich/nano-css/blob/master/docs/vcssom.md
- */
 import { updateSheet } from '@jesscss/patch-css'
 
 /**

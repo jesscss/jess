@@ -18,10 +18,14 @@
     "compile": "tsc -b tsconfig.json",
     "test": "jest"
   },
-  "author": "Matthew Dean",
-  "license": "MIT",
   "dependencies": {
     "jess": "workspace:^2.0.0-alpha.1",
     "lodash": "^4.17.21"
-  }
+  },
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jesscss/jess/issues"
+  },
+  "homepage": "https://github.com/jesscss/jess#readme"
 }

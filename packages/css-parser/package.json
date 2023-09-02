@@ -18,8 +18,6 @@
     "dev": "tsc -b tsconfig.json -w",
     "test": "cross-env TEST=true vitest"
   },
-  "author": "Matthew Dean",
-  "license": "MIT",
   "dependencies": {
     "chevrotain": "^11.0.3",
     "chevrotain-allstar": "~0.3.0",
@@ -30,5 +28,11 @@
     "@less/test-data": "^4.1.0",
     "@types/lodash-es": "~4.17.8",
     "@types/xregexp": "^4.4.0"
-  }
+  },
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jesscss/jess/issues"
+  },
+  "homepage": "https://github.com/jesscss/jess#readme"
 }
