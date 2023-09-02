@@ -627,7 +627,7 @@ export function expressionsAndValues(this: LessParser, T: TokenMap) {
          * as arguments. (Used with `each`)
          */
         {
-          GATE: () => !!ctx.allowsAnonymousMixins,
+          GATE: () => !!ctx.allowAnonymousMixins,
           ALT: () => $.SUBRULE($.anonymousMixinDefinition)
         },
         {
