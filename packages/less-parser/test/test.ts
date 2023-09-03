@@ -250,7 +250,7 @@ describe('can parse all Less stylesheets', () => {
         const result = fs.readFileSync(path.join(testData, file))
         const contents = result.toString()
         const parseStart = performance.now()
-        const { cst, lexerResult, errors } = lessParser.parse(contents)
+        const { lexerResult, errors } = lessParser.parse(contents)
         const parseEnd = performance.now()
         console.log(`${file} parse time: ${Math.round(parseEnd - parseStart)}ms`)
         // expect(`(${Math.round(parseEnd - parseStart)}ms)`).toBeDefined()

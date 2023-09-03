@@ -7,10 +7,6 @@
 
 ## TypeScript / JavaScript calls
 
-This:
-```less
-@mixin foo($)
-
 
 ## Some syntax changes
 ```less
@@ -23,7 +19,7 @@ This:
 @from './foo.js' (myFunction);
 @from '#less' (rgb);
 
-@include './file.css' as less;
+@include './file.css' (type: 'less');
 
 .rule {
   foo: bar;
@@ -72,6 +68,18 @@ Note that `@use` will also re-export.
 
 //or
 @use 'colors.less' (primary-color);
+
+// or ultimate customization
+@use 'bootstrap.scss' with {
+  // Transitively apply a different use
+  @use 'variables.scss' with variables;
+  @use 'some-classes.scss' with {
+    // Replace a class
+    .class {
+      color: blue;
+    }
+  }
+}
 
 .foo {
   color: $colors.primary-color;

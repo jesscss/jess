@@ -7,7 +7,7 @@ export type Primitive = string | number | Node
 export type NodeValue = Function | Primitive | Primitive[]
 export interface NodeMap {
   value?: NodeValue
-  [k: string]: NodeValue
+  [k: string]: NodeValue | undefined
 }
 
 export type LocationInfo = [
@@ -25,7 +25,7 @@ export interface FileInfo {
 }
 
 export const isNodeMap = (val: NodeValue | NodeMap): val is NodeMap => {
-  return val &&
+  return !!val &&
     typeof val === 'object' &&
     val.constructor === Object &&
     Object.prototype.hasOwnProperty.call(val, 'value')
@@ -36,6 +36,11 @@ export abstract class Node {
   fileInfo: FileInfo
 
   type: string
+  shortType: string
+
+  /** Whitespace or comments */
+  pre: Node[] | undefined
+  post: Node[] | undefined
 
   evaluated: boolean
   allowRoot: boolean
@@ -55,7 +60,7 @@ export abstract class Node {
     fileInfo?: FileInfo
   ) {
     if (value === undefined) {
-      throw { message: 'Node requires a value.' }
+      throw new Error('Node requires a value.')
     }
     let nodes: NodeMap
     let nodeKeys: string[]
@@ -74,8 +79,8 @@ export abstract class Node {
       this[key] = value
     })
 
-    this.location = location || []
-    this.fileInfo = fileInfo || {}
+    this.location = location ?? []
+    this.fileInfo = fileInfo ?? {}
   }
 
   /**

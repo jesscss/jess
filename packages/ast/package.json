@@ -1,8 +1,8 @@
 {
-  "name": "jess",
+  "name": "@jess/ast",
   "private": true,
   "version": "2.0.0-alpha.1",
-  "description": "Jess Abstract Syntax Tree (AST)",
+  "description": "The Jess Abstract Syntax Tree (AST)",
   "main": "lib/index",
   "types": "lib/index",
   "files": [
@@ -12,7 +12,8 @@
     "node": ">=16"
   },
   "dependencies": {
-    "chevrotain": "^11.0.3"
+    "chevrotain": "^11.0.3",
+    "combinate": "^1.1.11"
   },
   "scripts": {
     "ci": "pnpm build && pnpm test:all",
@@ -29,5 +30,6 @@
   },
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
+    "@types/lodash": "^4.14.194"
   }
 }

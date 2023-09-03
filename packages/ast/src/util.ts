@@ -1,6 +1,6 @@
 import isPlainObject from 'lodash/isPlainObject'
-import { default as lodashMerge } from 'lodash/merge'
-import { default as lodashGet } from 'lodash/get'
+import lodashMerge from 'lodash/merge'
+import lodashGet from 'lodash/get'
 import type { Context } from './context'
 import memoize from 'micro-memoize'
 
