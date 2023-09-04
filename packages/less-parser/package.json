@@ -18,6 +18,7 @@
     "test": "cross-env TEST=true vitest"
   },
   "dependencies": {
+    "@jesscss/ast": "workspace:^2.0.0-alpha.1",
     "@jesscss/css-parser": "workspace:^2.0.0-alpha.1",
     "chevrotain": "^11.0.3"
   },

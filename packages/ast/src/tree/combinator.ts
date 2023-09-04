@@ -1,9 +1,9 @@
-import { Anonymous } from './anonymous'
-import type { LocationInfo, NodeMap } from './node'
+import { Node, type LocationInfo, type NodeMap } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
-export class Combinator extends Anonymous {
+export class Combinator extends Node {
+  value: string
   toCSS(context: Context, out: OutputCollector) {
     const val = this.value
     out.add(val === ' ' ? val : ` ${val} `, this.location)
@@ -14,6 +14,7 @@ export class Combinator extends Anonymous {
   }
 }
 Combinator.prototype.type = 'Combinator'
+Combinator.prototype.shortType = 'co'
 
 export const co =
   (value?: string | NodeMap, location?: LocationInfo) =>

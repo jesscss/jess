@@ -3,65 +3,82 @@ import type { OutputCollector } from '../output'
 import type { LocationInfo } from './node'
 import { Node, isNodeMap } from './node'
 
-type RGBA = [number, number, number, number] | number[]
+type ColorValues = [number, number, number, number] | number[]
 
 function clamp(v: number, max: number) {
   return Math.min(Math.max(v, 0), max)
 }
 
 export class Color extends Node {
+  /** This is the originally parsed representation */
   value: string
-  _rgba: RGBA
+  private _rgba: ColorValues | undefined
+  private _hsla: ColorValues | undefined
 
   constructor(
-    val?: string | { value: string, rgba?: RGBA },
+    val?: string | {
+      value: string
+      rgba?: ColorValues
+      hsla?: ColorValues
+    },
     location?: LocationInfo
   ) {
     if (isNodeMap(val)) {
-      const { value, rgba } = val
+      const { value, rgba, hsla } = val
       super({ value }, location)
       this._rgba = rgba
+      this._hsla = hsla
       return
     }
     super({ value: val }, location)
   }
 
   /** Create an rgba map only if we need it */
-  get rgba(): RGBA {
-    if (!this._rgba) {
-      const value = this.value
-      const rgba: number[] = []
-
-      if (value.charAt(0) !== '#') {
-        throw new Error('Only hex string values can be converted to colors.')
-      }
-      const hex = value.slice(1)
-
-      if (hex.length >= 6) {
-        (hex.match(/.{2}/g) as RegExpMatchArray).map((c, i) => {
-          if (i < 3) {
-            rgba.push(parseInt(c, 16))
-          } else {
-            rgba.push(parseInt(c, 16) / 255)
-          }
-        })
-      } else {
-        hex.split('').map((c, i) => {
-          if (i < 3) {
-            rgba.push(parseInt(c + c, 16))
-          } else {
-            rgba.push(parseInt(c + c, 16) / 255)
-          }
-        })
-      }
-      /** Make sure an alpha value is present */
-      if (rgba.length === 3) {
-        rgba.push(1)
-      }
-      this._rgba = rgba as RGBA
-      return rgba as RGBA
+  get rgba(): ColorValues {
+    if (this._rgba) {
+      return this._rgba
     }
-    return this._rgba
+
+    const value = this.value
+    const rgba: number[] = []
+
+    if (value.charAt(0) !== '#') {
+      throw new Error('Only hex string values can be converted to colors.')
+    }
+    const hex = value.slice(1)
+
+    if (hex.length >= 6) {
+      (hex.match(/.{2}/g) as RegExpMatchArray).forEach((c, i) => {
+        if (i < 3) {
+          rgba.push(parseInt(c, 16))
+        } else {
+          rgba.push(parseInt(c, 16) / 255)
+        }
+      })
+    } else {
+      hex.split('').forEach((c, i) => {
+        if (i < 3) {
+          rgba.push(parseInt(c + c, 16))
+        } else {
+          rgba.push(parseInt(c + c, 16) / 255)
+        }
+      })
+    }
+    /** Make sure an alpha value is present */
+    if (rgba.length === 3) {
+      rgba.push(1)
+    }
+    this._rgba = rgba as ColorValues
+    return rgba as ColorValues
+  }
+
+  get hsla(): ColorValues {
+    if (this._hsla) {
+      return this._hsla
+    }
+    const hsla = this.toHSL()
+    this._hsla = hsla
+    return hsla
   }
 
   get rgb(): [number, number, number] {
@@ -80,11 +97,11 @@ export class Color extends Node {
     }).join('')}`
   }
 
-  toHSL() {
-    const r = this.rgb[0] / 255
-    const g = this.rgb[1] / 255
-    const b = this.rgb[2] / 255
-    const a = this.alpha
+  toHSL(): ColorValues {
+    let [r, g, b, a] = this.rgba
+    r /= 255
+    g /= 255
+    b /= 255
 
     const max = Math.max(r, g, b)
     const min = Math.min(r, g, b)
@@ -103,14 +120,14 @@ export class Color extends Node {
         case g: h = (b - r) / d + 2; break
         case b: h = (r - g) / d + 4; break
       }
-      h /= 6
+      h! /= 6
     }
-    return { h: h * 360, s, l, a }
+    return [h! * 360, s, l, a]
   }
 
   toString() {
     const value = this.value
-    let colorFunction: string
+    let colorFunction: string | undefined
 
     /**
      * If we haven't operated on this value, like with a color
@@ -155,15 +172,16 @@ export class Color extends Node {
       case 'hsla':
         args.push(clamp(alpha, 1))
       case 'hsl': { // eslint-disable-line no-fallthrough
-        const color = this.toHSL()
+        const [h, s, l] = this.hsla
         args = [
-          this.fround(color.h),
-          `${this.fround(color.s * 100)}%`,
-          `${this.fround(color.l * 100)}%`
+          this.fround(h),
+          `${this.fround(s * 100)}%`,
+          `${this.fround(l * 100)}%`
         ].concat(args)
       }
     }
 
+    /** @todo - represent with slash syntax? */
     if (colorFunction) {
       return `${colorFunction}(${args.join(', ')})`
     }
@@ -182,5 +200,5 @@ export class Color extends Node {
 Color.prototype.type = 'Color'
 
 export const color =
-  (value?: string | { value: string, rgba?: RGBA }, location?: LocationInfo) =>
+  (value?: string | { value: string, rgba?: ColorValues, hsla?: ColorValues }, location?: LocationInfo) =>
     new Color(value, location)

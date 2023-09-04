@@ -26,6 +26,8 @@ export const get = lodashGet
  * Creates a proxy for the default function exports in transpiled stylesheets
  *
  * This is so we can get hashed classes on the export
+ *
+ * @todo Use symbols and Object.defineProperty so these props won't be serialized
  */
 export const proxy = (func: Function, context: Context) => {
   const memo = memoize(func.bind(context))

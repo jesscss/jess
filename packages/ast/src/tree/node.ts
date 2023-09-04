@@ -1,14 +1,20 @@
+/* eslint-disable @typescript-eslint/prefer-nullish-coalescing */
 import type { Context } from '../context'
 import type { Visitor } from '../visitor'
 import type { OutputCollector } from '../output'
+import type { Constructor, Writable } from 'type-fest'
 
 export type Primitive = string | number | Node
-/** Function is used by the Call node */
-export type NodeValue = Function | Primitive | Primitive[]
-export interface NodeMap {
-  value?: NodeValue
-  [k: string]: NodeValue | undefined
-}
+export type NodeOptions = Record<string, boolean | string>
+
+/**
+ * Function is used by the Call node
+ * @todo Remove for 2.0?
+ */
+export type NodeValue = ((...args: any[]) => any) | Primitive | Primitive[]
+export type NodeMapArray = Array<[string, NodeValue]>
+export type NodeMap = Map<string, NodeValue>
+export type NodeInValue = NodeValue | NodeMapArray | NodeMap
 
 export type LocationInfo = [
   startOffset?: number,
@@ -24,63 +30,67 @@ export interface FileInfo {
   rootpath?: string
 }
 
-export const isNodeMap = (val: NodeValue | NodeMap): val is NodeMap => {
-  return !!val &&
-    typeof val === 'object' &&
-    val.constructor === Object &&
-    Object.prototype.hasOwnProperty.call(val, 'value')
+/**
+ * Assume the value is a NodeMap if it's an array of arrays
+ *
+ * This just checks that it can be safely passed to `new Map()`
+ */
+export const isNodeMap = (val: any): val is NodeMap | NodeMapArray => {
+  return val instanceof Map || (Array.isArray(val) && Array.isArray(val[0]))
 }
 
-export abstract class Node {
-  location: LocationInfo
-  fileInfo: FileInfo
+export abstract class Node<T extends NodeValue = NodeValue, O extends NodeOptions = NodeOptions> {
+  readonly location: LocationInfo
+  readonly fileInfo: FileInfo | undefined
 
-  type: string
-  shortType: string
+  readonly options: O | undefined
 
-  /** Whitespace or comments */
-  pre: Node[] | undefined
-  post: Node[] | undefined
+  readonly type: string
+  readonly shortType: string
+
+  /**
+   * Whitespace or comments. If this is `false`,
+   * it represents a single space character.
+   *
+   * If it's `undefined`, it means there were
+   * no tokens whatsoever.
+   *
+   * We use `false` and `undefined` so we can
+   * do falsey checks when evaluating.
+   */
+  readonly pre: Node[] | false | undefined
+  readonly post: Node[] | false | undefined
 
   evaluated: boolean
   allowRoot: boolean
   allowRuleRoot: boolean
-  _nodeKeys: string[]
 
   /** Used by Ruleset */
   rootRules: Node[]
 
-  value: NodeValue
-  /** We'll put arbitrary props on the node */
-  [k: string]: unknown
+  /**
+   * This should always represent the `data` of the Node
+   */
+  protected readonly valueMap: Map<string, NodeValue>
 
   constructor(
-    value: NodeValue | NodeMap,
-    location?: LocationInfo,
+    value: NodeInValue,
+    location?: LocationInfo | 0,
+    options?: O,
     fileInfo?: FileInfo
   ) {
     if (value === undefined) {
       throw new Error('Node requires a value.')
     }
-    let nodes: NodeMap
-    let nodeKeys: string[]
-    if (isNodeMap(value)) {
-      nodes = value
-      nodeKeys = Object.keys(nodes)
-    } else {
-      nodes = { value }
-      nodeKeys = ['value']
-    }
-    this._nodeKeys = nodeKeys
 
-    /** Place all sub-node keys on `this` */
-    nodeKeys.forEach(key => {
-      const value = nodes[key]
-      this[key] = value
-    })
+    this.valueMap = new Map(isNodeMap(value) ? value : [['value', value]])
+    this.location = location || []
+    this.fileInfo = fileInfo
+    this.options = options
+  }
 
-    this.location = location ?? []
-    this.fileInfo = fileInfo ?? {}
+  get value(): T {
+    return this.valueMap.get('value') as T
   }
 
   /**
@@ -88,24 +98,20 @@ export abstract class Node {
    * which first makes a shallow clone before mutating.
    */
   processNodes(func: (n: Node) => Node) {
-    const keys = this._nodeKeys
-    keys.forEach(key => {
-      const nodeVal = this[key]
-      if (nodeVal) {
-        /** Process Node arrays only */
-        if (Array.isArray(nodeVal)) {
-          const out = []
-          for (let i = 0; i < nodeVal.length; i++) {
-            const node = nodeVal[i]
-            const result = node instanceof Node ? func(node) : node
-            if (result) {
-              out.push(result)
-            }
+    this.valueMap.forEach((nodeVal, key, map) => {
+      /** Process Node arrays only */
+      if (Array.isArray(nodeVal)) {
+        const out = []
+        for (let i = 0; i < nodeVal.length; i++) {
+          const node = nodeVal[i]
+          const result = node instanceof Node ? func(node) : node
+          if (result) {
+            out.push(result)
           }
-          this[key] = out
-        } else if (nodeVal instanceof Node) {
-          this[key] = func(nodeVal)
         }
+        map.set(key, out)
+      } else if (nodeVal instanceof Node) {
+        map.set(key, func(nodeVal))
       }
     })
   }
@@ -114,23 +120,19 @@ export abstract class Node {
    * Fire a function for each Node in the tree, recursively
    */
   walkNodes(func: (n: Node) => void) {
-    const keys = this._nodeKeys
-    keys.forEach(key => {
-      const nodeVal = this[key]
-      if (nodeVal) {
-        /** Process Node arrays only */
-        if (Array.isArray(nodeVal)) {
-          for (let i = 0; i < nodeVal.length; i++) {
-            const node = nodeVal[i]
-            if (node instanceof Node) {
-              func(node)
-              node.walkNodes(func)
-            }
+    this.valueMap.forEach((nodeVal, key, map) => {
+      /** Process Node arrays only */
+      if (Array.isArray(nodeVal)) {
+        for (let i = 0; i < nodeVal.length; i++) {
+          const node = nodeVal[i]
+          if (node instanceof Node) {
+            func(node)
+            node.walkNodes(func)
           }
-        } else if (nodeVal instanceof Node) {
-          func(nodeVal)
-          nodeVal.walkNodes(func)
         }
+      } else if (nodeVal instanceof Node) {
+        func(nodeVal)
+        nodeVal.walkNodes(func)
       }
     })
   }
@@ -156,29 +158,16 @@ export abstract class Node {
    * Creates a copy of the current node.
    */
   clone(): this {
-    const Clazz = Object.getPrototypeOf(this).constructor
-    const nodeKeys = this._nodeKeys
-    const nodes: Record<string, any> = {}
-    nodeKeys.forEach(key => {
-      nodes[key] = this[key]
-    })
-    const newNode = new Clazz(
-      nodes,
+    const Class: Constructor<this> = Object.getPrototypeOf(this).constructor
+
+    const newNode = new Class(
+      this.valueMap,
       this.location,
+      this.options,
       this.fileInfo
     )
 
-    /**
-     * Copy added properties on `this`
-     */
-    for (const prop in this) {
-      if (Object.prototype.hasOwnProperty.call(this, prop) && !nodeKeys.includes(prop)) {
-        newNode[prop] = this[prop]
-      }
-    }
-
-    /** Copy inheritance props */
-    newNode.inherit(this)
+    newNode.evaluated = this.evaluated
 
     return newNode
   }
@@ -193,9 +182,10 @@ export abstract class Node {
     return this
   }
 
+  /** Override normally readonly props to make them inheritable */
   inherit(node: Node) {
-    this.location = node.location
-    this.fileInfo = node.fileInfo
+    (this as Writable<this>).location = node.location
+    ;(this as Writable<this>).fileInfo = node.fileInfo
     this.evaluated = node.evaluated
     return this
   }
@@ -206,14 +196,18 @@ export abstract class Node {
   }
 
   valueOf() {
-    return this.value
+    const values = [...this.valueMap.values()]
+    if (values.length === 1) {
+      return values[0]
+    }
+    return values
   }
 
   /**
-   * Generate a .ts module and .ts.map
-   * @todo - Should we generate an ESTree AST to avoid re-parsing in Rollup?
+   * Generates a .js module
+   * @todo - Generate a .ts module & .js.map
    */
-  abstract toModule(context: Context, out: OutputCollector): void
+  toModule?(context: Context, out: OutputCollector): void
 
   /** Generate a .css file and .css.map */
   toCSS(context: Context, out: OutputCollector): void {

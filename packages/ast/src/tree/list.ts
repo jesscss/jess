@@ -2,16 +2,19 @@ import type { NodeMap, LocationInfo, Primitive } from './node'
 import { Node } from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
+import type { Writable } from 'type-fest'
 
+export type ListOptions = {
+  slash: boolean
+}
 /**
  * A list of expressions
  *
  * i.e. one, two, three
  * or .sel, #id.class, [attr]
+ * or one / two / three
  */
-export class List<T extends Primitive = Primitive> extends Node {
-  value: T[]
-
+export class List extends Node<Node[], ListOptions> {
   toArray() {
     return this.value
   }
@@ -57,7 +60,8 @@ export class List<T extends Primitive = Primitive> extends Node {
     return out
   }
 }
-List.prototype.type = 'List'
+
+(List.prototype as Writable<List>).type = 'List'
 
 export const list =
   (value: Primitive[] | NodeMap, location?: LocationInfo) =>

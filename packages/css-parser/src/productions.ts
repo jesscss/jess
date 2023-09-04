@@ -1,7 +1,7 @@
-import type { CssParser, TokenMap, RuleContext } from './cssParser'
+import type { CssCoreParser, TokenMap, RuleContext } from './cssCoreParser'
 import { EMPTY_ALT } from 'chevrotain'
 
-export function productions(this: CssParser, T: TokenMap) {
+export function productions(this: CssCoreParser, T: TokenMap) {
   const $ = this
 
   // stylesheet

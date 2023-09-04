@@ -51,10 +51,16 @@ $myFunction()
   - In flattening mode, Jess should follow CSS nesting convention in `.jess` files, and SCSS/Less convention in respective files.
 - Conversion of Less/Scss to Jess (restrict some things from converting? like `@import`s?)
 
-### `@use [file|object] [namespace|'(' imports ')']? declarationList?`
+### Sass+
+Sass is an overly-complex stylesheet language. Jess aims to be:
+- 100% compatible with Less
+- Compatible with a common subset of Sass called Sass+ (to be defined)
 
-Will import the scope (mixins and variables) of the object. Can be a stylesheet or other scope object.
-Note that `@use` will also re-export.
+### `@use [file|object|map] [namespace|'(' imports ')']? declarationList?`
+
+Will import the scope (mixins, variables, and selector references) of the object. Can be a stylesheet or other scope object.
+
+Can be at the root or nested.
 
 ```scss
 @use 'colors.less';
@@ -93,9 +99,69 @@ Note that `@use` will also re-export.
 //
 ```
 
+### `@use` without `@forward`
+
+In Jess, variables defined or imported with `@use` will be re-exported. This means you do not have to use the Sass `@forward` rule. Just `@use` them.
+
+Q: what happens if a two files use `@use` on the same file with different params?
+
+They would be subject to evaluation order.
+```scss
+// use1.jess
+@use './file.jess' with {
+  $foo: one;
+}
+
+// use2.jess
+@use './file.jess' with {
+  $foo: two;
+}
+
+// final.jess
+@use './use1.jess';
+@use './use2.jess';
+
+.rule {
+  value: $foo; // two
+}
+```
+
+Q: What if you don't want to forward a use?
+
+You can use the `@private` at-rule:
+
+```scss
+// This is a private `@use`
+@private @use './somefile.jess';
+// can also be used with variables
+@private $-private: var;
+```
+
+
+Therefore, a SCSS file like this:
+```scss
+@use './file1.scss' as *;
+$not-private: var;
+$-private: var;
+@forward './file2.scss';
+```
+Would be converted to:
+```scss
+@private @use './file1.jess';
+$not-private: var;
+@private $-private: var;
+@use './file2.jess';
+
+```
+
+
+
 ## `@include [file|object|selector] declarationList?`
 
-Will import the rules (but not pollute the variable scope)
+Will import the rules (but not pollute the variable scope).
+
+Can be at the root or nested.
+
 ```scss
 // main.jess
 @use 'colors.jess';

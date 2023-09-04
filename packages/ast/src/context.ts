@@ -3,12 +3,12 @@ import { Nil } from './tree/nil'
 import { List } from './tree/list'
 import { Dimension } from './tree/dimension'
 import { Anonymous } from './tree/anonymous'
-import isPlainObject from 'lodash/isPlainObject'
+import isPlainObject from 'lodash-es/isPlainObject'
 
 export interface ContextOptions {
   module?: boolean
   dynamic?: boolean
-  [k: string]: string | number | boolean
+  // [k: string]: string | number | boolean
 }
 
 const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('')

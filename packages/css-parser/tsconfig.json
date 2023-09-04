@@ -1,5 +1,8 @@
 {
   "extends": "../../tsconfig.json",
+  "references": [
+    { "path": "../ast"}
+  ],
   "compilerOptions": {
     "composite": true,
     "outDir": "./lib",

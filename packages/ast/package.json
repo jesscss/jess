@@ -1,6 +1,8 @@
 {
-  "name": "@jess/ast",
-  "private": true,
+  "name": "@jesscss/ast",
+  "publishConfig": {
+    "access": "public"
+  },
   "version": "2.0.0-alpha.1",
   "description": "The Jess Abstract Syntax Tree (AST)",
   "main": "lib/index",
@@ -13,15 +15,16 @@
   },
   "dependencies": {
     "chevrotain": "^11.0.3",
-    "combinate": "^1.1.11"
+    "combinate": "^1.1.11",
+    "lodash-es": "^4.17.21"
   },
   "scripts": {
     "ci": "pnpm build && pnpm test:all",
     "prepublishOnly": "pnpm build && pnpm test:all",
-    "build": "pnpm clean && pnpm compile",
-    "compile": "tsc -b tsconfig.json",
-    "dev": "tsc -b tsconfig.json -w",
-    "test": "vitest"
+    "build": "pnpm compile",
+    "compile": "tsc -b tsconfig.build.json",
+    "dev": "tsc -b tsconfig.build.json -w",
+    "test": "cross-env TEST=true vitest"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",
@@ -30,6 +33,6 @@
   },
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
-    "@types/lodash": "^4.14.194"
+    "@types/lodash-es": "^4.17.8"
   }
 }

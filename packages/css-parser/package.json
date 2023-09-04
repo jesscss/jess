@@ -15,7 +15,7 @@
     "prepublishOnly": "pnpm build",
     "build": "pnpm compile",
     "compile": "tsc -b tsconfig.build.json",
-    "dev": "tsc -b tsconfig.json -w",
+    "dev": "tsc -b tsconfig.build.json -w",
     "test": "cross-env TEST=true vitest"
   },
   "dependencies": {
@@ -25,6 +25,7 @@
     "xregexp": "^5.1.1"
   },
   "devDependencies": {
+    "@jesscss/ast": "workspace:^2.0.0-alpha.1",
     "@less/test-data": "^4.1.0",
     "@types/lodash-es": "~4.17.8",
     "@types/xregexp": "^4.4.0"
