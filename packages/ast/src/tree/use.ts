@@ -8,6 +8,11 @@ export type UseOptions = {
   include?: boolean
 }
 
+export type UseValue = {
+  path: string
+  imports: string | Array<string | [string, string]>
+}
+
 /**
  * This is a generic class for:
  *   - Less, Sass+, Jess `@use`
@@ -16,7 +21,8 @@ export type UseOptions = {
  *
  * @see https://sass-lang.com/documentation/at-rules/import/
  */
-export class Use extends Node {
-  /** The path */
-  value: string
+export class Use extends Node<UseValue, UseOptions> {
+  get path() {
+    return this.valueMap.get('path')
+  }
 }

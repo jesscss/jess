@@ -2,9 +2,9 @@
 import type { Context } from '../context'
 import type { Visitor } from '../visitor'
 import type { OutputCollector } from '../output'
-import type { Constructor, Writable } from 'type-fest'
+import type { Constructor, Writable, Class, ValueOf } from 'type-fest'
 
-export type Primitive = string | number | Node
+export type Primitive = string | number | boolean | Node
 export type NodeOptions = Record<string, boolean | string>
 
 /**
@@ -12,9 +12,14 @@ export type NodeOptions = Record<string, boolean | string>
  * @todo Remove for 2.0?
  */
 export type NodeValue = ((...args: any[]) => any) | Primitive | Primitive[]
-export type NodeMapArray = Array<[string, NodeValue]>
 export type NodeMap = Map<string, NodeValue>
 export type NodeInValue = NodeValue | NodeMapArray | NodeMap
+export type NodeTypeMap = Record<string, NodeValue>
+export type NodeMapArray<
+  T extends NodeTypeMap = NodeTypeMap,
+  K = keyof T,
+  V = T[string]
+> = Array<[K, V]>
 
 export type LocationInfo = [
   startOffset?: number,
@@ -39,7 +44,28 @@ export const isNodeMap = (val: any): val is NodeMap | NodeMapArray => {
   return val instanceof Map || (Array.isArray(val) && Array.isArray(val[0]))
 }
 
-export abstract class Node<T extends NodeValue = NodeValue, O extends NodeOptions = NodeOptions> {
+export const defineType = <T extends Node>(proto: Class<T>, type: string, shortType?: string) => {
+  shortType ??= type.toLowerCase()
+  ;(proto.prototype as Writable<T>).type = type
+  ;(proto.prototype as Writable<T>).shortType = shortType
+}
+
+/**
+ * Couldn't find this elsewhere in the wild.
+ * This strongly binds keys to values based
+ * on a passed-in interface.
+ */
+export type TypeMap<
+  T extends NodeTypeMap = NodeTypeMap,
+  K extends keyof T = keyof T,
+  V = ValueOf<T>
+> = Omit<Map<K, V>, 'get' | 'set'> & {
+  [P in K as 'get']: <U extends P>(key: U) => T[U]
+} & {
+  [P in K as 'set']: <U extends P>(key: U, value: T[U]) => TypeMap<T>
+}
+
+export abstract class Node<T extends NodeTypeMap = { value: NodeValue }, O extends NodeOptions = NodeOptions> {
   readonly location: LocationInfo
   readonly fileInfo: FileInfo | undefined
 
@@ -71,7 +97,7 @@ export abstract class Node<T extends NodeValue = NodeValue, O extends NodeOption
   /**
    * This should always represent the `data` of the Node
    */
-  protected readonly valueMap: Map<string, NodeValue>
+  protected readonly valueMap: TypeMap<T>
 
   constructor(
     value: NodeInValue,
@@ -83,21 +109,21 @@ export abstract class Node<T extends NodeValue = NodeValue, O extends NodeOption
       throw new Error('Node requires a value.')
     }
 
-    this.valueMap = new Map(isNodeMap(value) ? value : [['value', value]])
+    this.valueMap = new Map(isNodeMap(value) ? value : [['value', value]]) as TypeMap<T>
     this.location = location || []
     this.fileInfo = fileInfo
     this.options = options
   }
 
-  get value(): T {
-    return this.valueMap.get('value') as T
+  get value() {
+    return this.valueMap.get('value')
   }
 
   /**
    * Mutates node children in place. Used by eval()
    * which first makes a shallow clone before mutating.
    */
-  processNodes(func: (n: Node) => Node) {
+  processNodes(func: (n: Node) => NodeValue) {
     this.valueMap.forEach((nodeVal, key, map) => {
       /** Process Node arrays only */
       if (Array.isArray(nodeVal)) {
@@ -105,13 +131,14 @@ export abstract class Node<T extends NodeValue = NodeValue, O extends NodeOption
         for (let i = 0; i < nodeVal.length; i++) {
           const node = nodeVal[i]
           const result = node instanceof Node ? func(node) : node
-          if (result) {
-            out.push(result)
-          }
+          /** Node processing must always produce a value (not `null` nor `undefined`) */
+          out.push(result)
         }
-        map.set(key, out)
+        /** Assume that the type will still be valid */
+        map.set(key, out as T[typeof key])
       } else if (nodeVal instanceof Node) {
-        map.set(key, func(nodeVal))
+        /** Assume that the type will still be valid */
+        map.set(key, func(nodeVal) as typeof nodeVal)
       }
     })
   }
@@ -120,7 +147,7 @@ export abstract class Node<T extends NodeValue = NodeValue, O extends NodeOption
    * Fire a function for each Node in the tree, recursively
    */
   walkNodes(func: (n: Node) => void) {
-    this.valueMap.forEach((nodeVal, key, map) => {
+    this.valueMap.forEach(nodeVal => {
       /** Process Node arrays only */
       if (Array.isArray(nodeVal)) {
         for (let i = 0; i < nodeVal.length; i++) {
@@ -167,12 +194,17 @@ export abstract class Node<T extends NodeValue = NodeValue, O extends NodeOption
       this.fileInfo
     )
 
+    this.processNodes(n => n.clone())
     newNode.evaluated = this.evaluated
 
     return newNode
   }
 
-  eval(context: Context): Node {
+  /**
+   * Individually nodes will specify type
+   * when overriding eval()
+   */
+  eval(context: Context): this {
     if (!this.evaluated) {
       const node = this.clone()
       node.processNodes(n => n.eval(context))
@@ -207,26 +239,28 @@ export abstract class Node<T extends NodeValue = NodeValue, O extends NodeOption
    * Generates a .js module
    * @todo - Generate a .ts module & .js.map
    */
-  toModule?(context: Context, out: OutputCollector): void
+  /** Move to ToModuleVisitor */
+  // toModule?(context: Context, out: OutputCollector): void
 
   /** Generate a .css file and .css.map */
-  toCSS(context: Context, out: OutputCollector): void {
-    const value = this.value
-    const loc = this.location
-    if (Array.isArray(value)) {
-      value.forEach(n => {
-        if (n instanceof Node) {
-          n.toCSS(context, out)
-        } else {
-          out.add(n.toString(), loc)
-        }
-      })
-    } else {
-      if (value instanceof Node) {
-        value.toCSS(context, out)
-      } else {
-        out.add(value.toString(), loc)
-      }
-    }
-  }
+  /** Move to ToCssVisitor */
+  // toCSS(context: Context, out: OutputCollector): void {
+  //   const value = this.value
+  //   const loc = this.location
+  //   if (Array.isArray(value)) {
+  //     value.forEach(n => {
+  //       if (n instanceof Node) {
+  //         n.toCSS(context, out)
+  //       } else {
+  //         out.add(n.toString(), loc)
+  //       }
+  //     })
+  //   } else {
+  //     if (value instanceof Node) {
+  //       value.toCSS(context, out)
+  //     } else {
+  //       out.add(value.toString(), loc)
+  //     }
+  //   }
+  // }
 }

@@ -15,9 +15,11 @@
  * Mirrors @use syntax.
  *
  * This will be ported to Less 5 to replace `@plugin`.
+ *
+ * @note `import` should not be needed, but provides intuitive symmetery with JS
  */
-@from './foo.js' (myFunction);
-@from '#less' (rgb);
+@from './foo.js' import (myFunction); // also allow `@from './foo.js' import { myFunction } ?
+@from '#less' import * as less;
 
 @include './file.css' (type: 'less');
 

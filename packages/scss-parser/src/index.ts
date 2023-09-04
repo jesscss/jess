@@ -1,13 +1,13 @@
 import { type IToken, type CstNode, Lexer } from 'chevrotain'
-import { lessTokens, lessFragments } from './lessTokens'
+import { lessTokens, lessFragments } from './scssTokens'
 import type { IParseResult } from '@jesscss/css-parser'
 import { createLexerDefinition } from '@jesscss/css-parser'
-import { LessParser, type LessParserConfig, type TokenMap } from './lessParser'
-import { LessErrorMessageProvider } from './lessErrorMessageProvider'
+import { LessParser, type LessParserConfig, type TokenMap } from './scssParser'
+import { LessErrorMessageProvider } from './scssErrorMessageProvider'
 import type { ConditionalPick } from 'type-fest'
 
-export * from './lessParser'
-export * from './lessTokens'
+export * from './scssParser'
+export * from './scssTokens'
 
 const errorMessageProvider = new LessErrorMessageProvider()
 

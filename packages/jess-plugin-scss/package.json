@@ -1,0 +1,34 @@
+{
+  "name": "jess-plugin-scss",
+  "publishConfig": {
+    "access": "public"
+  },
+  "description": "A Less stylesheet engine for Jess",
+  "version": "2.0.0-alpha.1",
+  "main": "lib/index",
+  "types": "lib/index",
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "ci": "pnpm build && pnpm test",
+    "prepublishOnly": "npm run build",
+    "build": "pnpm compile",
+    "compile": "tsc -b tsconfig.build.json",
+    "test": "cross-env TEST=true vitest"
+  },
+  "dependencies": {
+    "@jesscss/ast": "workspace:^2.0.0-alpha.1",
+    "@jesscss/scss-parser": "workspace:^2.0.0-alpha.1",
+    "chevrotain": "^11.0.3"
+  },
+  "devDependencies": {
+    "jess-plugin": "workspace:^2.0.0-alpha.1"
+  },
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jesscss/jess/issues"
+  },
+  "homepage": "https://github.com/jesscss/jess#readme"
+}

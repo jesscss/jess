@@ -1,8 +1,12 @@
-import type { NodeMap, LocationInfo, Primitive } from './node'
-import { Node } from './node'
+import {
+  type NodeMap,
+  type LocationInfo,
+  type Primitive,
+  defineType
+  , Node
+} from './node'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
-import type { Writable } from 'type-fest'
 
 export type ListOptions = {
   slash: boolean
@@ -61,7 +65,7 @@ export class List extends Node<Node[], ListOptions> {
   }
 }
 
-(List.prototype as Writable<List>).type = 'List'
+defineType(List, 'List')
 
 export const list =
   (value: Primitive[] | NodeMap, location?: LocationInfo) =>
