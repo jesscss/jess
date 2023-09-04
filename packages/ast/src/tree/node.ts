@@ -44,10 +44,12 @@ export const isNodeMap = (val: any): val is NodeMap | NodeMapArray => {
   return val instanceof Map || (Array.isArray(val) && Array.isArray(val[0]))
 }
 
-export const defineType = <T extends Node>(proto: Class<T>, type: string, shortType?: string) => {
+export const defineType = <T extends Node>(Clazz: Class<T>, type: string, shortType?: string) => {
   shortType ??= type.toLowerCase()
-  ;(proto.prototype as Writable<T>).type = type
-  ;(proto.prototype as Writable<T>).shortType = shortType
+  ;(Clazz.prototype as Writable<T>).type = type
+  ;(Clazz.prototype as Writable<T>).shortType = shortType
+
+  return (...args: Parameters<T>) => new Clazz(...args)
 }
 
 /**
