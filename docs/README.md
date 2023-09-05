@@ -1,5 +1,8 @@
 ### The Quick and Dirty
 
+TODO - Rewrite all of this. Much of it is wrong since incorporating Less
+
+
 TL;DR --
 
 Be able to do this...
@@ -83,7 +86,7 @@ If you need to, you can wrap your JS expression in parens, like:
 import { WIDTH } from './constants.js';
 
 .box {
-  width: ~($WIDTH + 10)px;
+  width: #($WIDTH + 10)px;
 }
 ```
 

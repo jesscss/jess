@@ -23,23 +23,35 @@
 
 @include './file.css' (type: 'less');
 
-.rule {
-  foo: bar;
+// declaring vars
+@let count; // a Node of `Nil`
+
+// setting vars
+@set count +: 1;
+
+// `$` is a referencer, to reduce ambiguity
+@set count: $count + 1;
+
+// Mixin calls and functions don't need `@include` (but you can use it)
+$myFunction();
+
+// #() to wrap expressions, to avoid repeating `$`
+.bar {
+  foo: #($count + 1);
 }
 
-// Mixin calls and functions don't need `@include`
-$myFunction();
+// !() for "live" expressions (only allowed in values)
+.bar {
+  foo: !($count + 1); // outputs something like var(--a1sdf, 2);
+}
 
 // You can write this in two ways:
 $myFunction($sass-var);
-$myFunction(sass-var);
-
-// if you need a keyword:
-$myFunction(`sass-var`);
+#($myFunction($sass-var));
 
 // Parenthesized expressions
-.selector$(expr) {
-  prop: $(value + 1);
+.selector#(expr) {
+  prop: #($value + 1);
 }
 $myFunction()
 ```
@@ -69,7 +81,7 @@ Can be at the root or nested.
 // or override variables
 @use 'colors.less' with {
   // should throw an error if primary-color is not defined
-  $primary-color: #333;
+  @set primary-color: #333;
 }
 // or
 @use 'colors.less' colors;
@@ -111,12 +123,12 @@ They would be subject to evaluation order.
 ```scss
 // use1.jess
 @use './file.jess' with {
-  $foo: one;
+  @set foo: one;
 }
 
 // use2.jess
 @use './file.jess' with {
-  $foo: two;
+  @set foo: two;
 }
 
 // final.jess
@@ -150,8 +162,8 @@ $-private: var;
 Would be converted to:
 ```scss
 @private @use './file1.jess';
-$not-private: var;
-@private $-private: var;
+@let not-private: var;
+@private @let -private: var;
 @use './file2.jess';
 
 ```

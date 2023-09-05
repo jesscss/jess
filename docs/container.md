@@ -1,12 +1,12 @@
 
 *container.jess*
 ```less
-@from '@jess/fns' (if);
+@from '@jess/fns' import (if);
 
-$contain: 640;
+@let contain: 640;
 
 .box {
-  width: $(if(contain < 640, 100, 200))px;
+  width: #(if(contain < 640, 100, 200))px;
 }
 ```
 Interpreted as:

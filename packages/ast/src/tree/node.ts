@@ -4,14 +4,14 @@ import type { Visitor } from '../visitor'
 import type { OutputCollector } from '../output'
 import type { Constructor, Writable, Class, ValueOf } from 'type-fest'
 
-export type Primitive = string | number | boolean | Node
+export type Concrete = string | number | boolean | Node
 export type NodeOptions = Record<string, boolean | string>
 
 /**
  * Function is used by the Call node
  * @todo Remove for 2.0?
  */
-export type NodeValue = ((...args: any[]) => any) | Primitive | Primitive[]
+export type NodeValue = unknown // ((...args: any[]) => any) | Concrete | Concrete[] | Concrete[][]
 export type NodeMap = Map<string, NodeValue>
 export type NodeInValue = NodeValue | NodeMapArray | NodeMap
 export type NodeTypeMap = Record<string, NodeValue>
@@ -44,17 +44,17 @@ export const isNodeMap = (val: any): val is NodeMap | NodeMapArray => {
   return val instanceof Map || (Array.isArray(val) && Array.isArray(val[0]))
 }
 
-export const defineType = <T extends Node>(Clazz: Class<T>, type: string, shortType?: string) => {
+export const defineType = <T extends NodeTypeMap = NodeTypeMap, U extends Node<T> = Node<T>>(Clazz: Class<U>, type: string, shortType?: string) => {
   shortType ??= type.toLowerCase()
-  ;(Clazz.prototype as Writable<T>).type = type
-  ;(Clazz.prototype as Writable<T>).shortType = shortType
+  ;(Clazz.prototype as Writable<U>).type = type
+  ;(Clazz.prototype as Writable<U>).shortType = shortType
 
-  return (...args: Parameters<T>) => new Clazz(...args)
+  return (...args: ConstructorParameters<Class<U>>) => new Clazz(...args)
 }
 
 /**
  * Couldn't find this elsewhere in the wild.
- * This strongly binds keys to values based
+ * This strongly binds Map keys to values based
  * on a passed-in interface.
  */
 export type TypeMap<
@@ -67,7 +67,13 @@ export type TypeMap<
   [P in K as 'set']: <U extends P>(key: U, value: T[U]) => TypeMap<T>
 }
 
-export abstract class Node<T extends NodeTypeMap = { value: NodeValue }, O extends NodeOptions = NodeOptions> {
+type NodeMapType<T> = T extends NodeTypeMap ? T : { value: T }
+
+export abstract class Node<
+  T = unknown,
+  O extends NodeOptions = NodeOptions,
+  M extends NodeTypeMap = NodeMapType<T>
+> {
   readonly location: LocationInfo
   readonly fileInfo: FileInfo | undefined
 
@@ -99,7 +105,7 @@ export abstract class Node<T extends NodeTypeMap = { value: NodeValue }, O exten
   /**
    * This should always represent the `data` of the Node
    */
-  protected readonly valueMap: TypeMap<T>
+  protected readonly valueMap: TypeMap<M>
 
   constructor(
     value: NodeInValue,
@@ -111,7 +117,7 @@ export abstract class Node<T extends NodeTypeMap = { value: NodeValue }, O exten
       throw new Error('Node requires a value.')
     }
 
-    this.valueMap = new Map(isNodeMap(value) ? value : [['value', value]]) as TypeMap<T>
+    this.valueMap = new Map(isNodeMap(value) ? value : [['value', value]]) as TypeMap<M>
     this.location = location || []
     this.fileInfo = fileInfo
     this.options = options
@@ -137,7 +143,7 @@ export abstract class Node<T extends NodeTypeMap = { value: NodeValue }, O exten
           out.push(result)
         }
         /** Assume that the type will still be valid */
-        map.set(key, out as T[typeof key])
+        map.set(key, out as M[typeof key])
       } else if (nodeVal instanceof Node) {
         /** Assume that the type will still be valid */
         map.set(key, func(nodeVal) as typeof nodeVal)
