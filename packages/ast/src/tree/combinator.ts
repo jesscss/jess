@@ -1,21 +1,16 @@
-import { Node, type LocationInfo, type NodeMap } from './node'
-import type { Context } from '../context'
-import type { OutputCollector } from '../output'
+import { Node, defineType } from './node'
 
-export class Combinator extends Node {
-  value: string
-  toCSS(context: Context, out: OutputCollector) {
-    const val = this.value
-    out.add(val === ' ' ? val : ` ${val} `, this.location)
-  }
+export class Combinator extends Node<string> {
 
-  toModule(context: Context, out: OutputCollector) {
-    out.add(`$J.co("${this.value}")`)
-  }
+  /** @todo move to visitor */
+  // toCSS(context: Context, out: OutputCollector) {
+  //   const val = this.value
+  //   out.add(val === ' ' ? val : ` ${val} `, this.location)
+  // }
+
+  /** @todo move to visitor */
+  // toModule(context: Context, out: OutputCollector) {
+  //   out.add(`$J.co("${this.value}")`)
+  // }
 }
-Combinator.prototype.type = 'Combinator'
-Combinator.prototype.shortType = 'co'
-
-export const co =
-  (value?: string | NodeMap, location?: LocationInfo) =>
-    new Combinator(value, location)
+export const co = defineType<string>(Combinator, 'Combinator', 'co')

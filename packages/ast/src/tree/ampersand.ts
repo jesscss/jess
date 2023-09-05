@@ -1,5 +1,5 @@
 import type { LocationInfo, NodeMap } from './node'
-import { Node } from './node'
+import { Node, defineType } from './node'
 import { Nil } from './nil'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
@@ -7,14 +7,12 @@ import type { OutputCollector } from '../output'
 /**
  * The '&' selector element
  */
-export class Ampersand extends Node {
-  value: string
-
+export class Ampersand extends Node<string | NodeMap> {
   constructor(
     value?: string | NodeMap,
     location?: LocationInfo
   ) {
-    value = value || '&'
+    value = value ?? '&'
     super(value, location)
   }
 
@@ -27,12 +25,10 @@ export class Ampersand extends Node {
     return new Nil()
   }
 
+  /** @todo - move to ToModuleVisitor */
   toModule(context: Context, out: OutputCollector) {
     out.add('$J.amp()', this.location)
   }
 }
-Ampersand.prototype.type = 'Ampersand'
 
-export const amp =
-  (value?: string | NodeMap, location?: LocationInfo) =>
-    new Ampersand(value, location)
+export const amp = defineType(Ampersand, 'Ampersand', 'amp')

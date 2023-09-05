@@ -5,6 +5,8 @@ import { Node } from './node'
  * A Node type that outputs nothing.
  * We use this for nodes that expect other
  * nodes in the form of { value: any }
+ *
+ * @todo - remove?
  */
 export class Nil extends Node {
   value: any

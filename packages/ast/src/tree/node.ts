@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/prefer-nullish-coalescing */
 import type { Context } from '../context'
 import type { Visitor } from '../visitor'
-import type { OutputCollector } from '../output'
+// import type { OutputCollector } from '../output'
 import type { Constructor, Writable, Class, ValueOf } from 'type-fest'
 
 export type Concrete = string | number | boolean | Node
@@ -44,12 +44,18 @@ export const isNodeMap = (val: any): val is NodeMap | NodeMapArray => {
   return val instanceof Map || (Array.isArray(val) && Array.isArray(val[0]))
 }
 
-export const defineType = <T extends NodeTypeMap = NodeTypeMap, U extends Node<T> = Node<T>>(Clazz: Class<U>, type: string, shortType?: string) => {
+export const defineType = <
+  T = unknown,
+  M extends NodeTypeMap = NodeMapType<T>,
+  U extends Node<M> = Node<M>,
+  C extends Class<U> = Class<U>
+>(Clazz: C, type: string, shortType?: string) => {
   shortType ??= type.toLowerCase()
   ;(Clazz.prototype as Writable<U>).type = type
   ;(Clazz.prototype as Writable<U>).shortType = shortType
 
-  return (...args: ConstructorParameters<Class<U>>) => new Clazz(...args)
+  /** @todo - not yet returning the correct types for args */
+  return (...args: ConstructorParameters<C>) => new Clazz(...args)
 }
 
 /**
@@ -83,17 +89,13 @@ export abstract class Node<
   readonly shortType: string
 
   /**
-   * Whitespace or comments. If this is `false`,
-   * it represents a single space character.
+   * Whitespace or comments before or after a Node.
+   * If this is `1`, it represents a single space character (' ').
    *
-   * If it's `undefined`, it means there were
-   * no tokens whatsoever.
-   *
-   * We use `false` and `undefined` so we can
-   * do falsey checks when evaluating.
+   * If it's 0, it means there were no tokens whatsoever.
    */
-  readonly pre: Node[] | false | undefined
-  readonly post: Node[] | false | undefined
+  readonly pre: Array<string | Node> | 1 | 0
+  readonly post: Array<string | Node> | 1 | 0
 
   evaluated: boolean
   allowRoot: boolean
@@ -123,8 +125,18 @@ export abstract class Node<
     this.options = options
   }
 
-  get value() {
-    return this.valueMap.get('value')
+  get value(): M['value'] | Array<ValueOf<M>> {
+    if (this.valueMap.has('value')) {
+      return this.valueMap.get('value')
+    }
+    return [...this.valueMap.values()]
+  }
+
+  set value(n: M['value']) {
+    if (this.valueMap.has('value')) {
+      this.valueMap.set('value', n)
+    }
+    throw new Error('Cannot set the "value" property of this node.')
   }
 
   /**
@@ -139,8 +151,9 @@ export abstract class Node<
         for (let i = 0; i < nodeVal.length; i++) {
           const node = nodeVal[i]
           const result = node instanceof Node ? func(node) : node
-          /** Node processing must always produce a value (not `null` nor `undefined`) */
-          out.push(result)
+          if (result ?? false) {
+            out.push(result)
+          }
         }
         /** Assume that the type will still be valid */
         map.set(key, out as M[typeof key])
@@ -212,7 +225,7 @@ export abstract class Node<
    * Individually nodes will specify type
    * when overriding eval()
    */
-  eval(context: Context): this {
+  eval(context: Context): unknown {
     if (!this.evaluated) {
       const node = this.clone()
       node.processNodes(n => n.eval(context))

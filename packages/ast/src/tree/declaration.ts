@@ -1,31 +1,33 @@
-import type { LocationInfo, NodeMap } from './node'
-import { Node } from './node'
+import { Node, defineType } from './node'
 import { Anonymous } from './anonymous'
 import type { Context } from '../context'
-import type { OutputCollector } from '../output'
+// import type { OutputCollector } from '../output'
 
-export type DeclarationValue = NodeMap & {
+export type DeclarationValue = {
   name: Node | string
-  value: any
+  value: Node
+  /** The actual string representation of important, if it exists */
+  important?: string
 }
 
 /**
  * A continuous collection of nodes
  */
-export class Declaration extends Node {
-  name: Node
-  value: any
-  important: Anonymous
+export class Declaration extends Node<DeclarationValue> {
+  get name() {
+    return this.valueMap.get('name')
+  }
 
-  constructor(
-    value: DeclarationValue,
-    location?: LocationInfo
-  ) {
-    const name = value.name
-    if (name.constructor === String) {
-      value.name = new Anonymous(name)
-    }
-    super(value, location)
+  set name(v: Node | string) {
+    this.valueMap.set('name', v)
+  }
+
+  get important() {
+    return this.valueMap.get('important')
+  }
+
+  set important(v: string | undefined) {
+    this.valueMap.set('important', v)
   }
 
   eval(context: Context) {
@@ -38,37 +40,35 @@ export class Declaration extends Node {
     return node
   }
 
-  toCSS(context: Context, out: OutputCollector) {
-    this.name.toCSS(context, out)
-    out.add(': ')
-    context.cast(this.value).toCSS(context, out)
-    if (this.important) {
-      out.add(' ')
-      this.important.toCSS(context, out)
-    }
-    out.add(';')
-  }
+  /** @todo - move to visitors */
+  // toCSS(context: Context, out: OutputCollector) {
+  //   this.name.toCSS(context, out)
+  //   out.add(': ')
+  //   context.cast(this.value).toCSS(context, out)
+  //   if (this.important) {
+  //     out.add(' ')
+  //     this.important.toCSS(context, out)
+  //   }
+  //   out.add(';')
+  // }
 
-  toModule(context: Context, out: OutputCollector) {
-    const pre = context.pre
-    const loc = this.location
-    out.add('$J.decl({\n', loc)
-    context.indent++
-    out.add(`  ${pre}name: `)
-    this.name.toModule(context, out)
-    out.add(`,\n  ${pre}value: `)
-    this.value.toModule(context, out)
-    if (this.important) {
-      out.add(`,\n  ${pre}important: `)
-      this.important.toModule(context, out)
-    }
-    context.indent--
-    out.add(`\n${pre}})`)
-  }
+  // toModule(context: Context, out: OutputCollector) {
+  //   const pre = context.pre
+  //   const loc = this.location
+  //   out.add('$J.decl({\n', loc)
+  //   context.indent++
+  //   out.add(`  ${pre}name: `)
+  //   this.name.toModule(context, out)
+  //   out.add(`,\n  ${pre}value: `)
+  //   this.value.toModule(context, out)
+  //   if (this.important) {
+  //     out.add(`,\n  ${pre}important: `)
+  //     this.important.toModule(context, out)
+  //   }
+  //   context.indent--
+  //   out.add(`\n${pre}})`)
+  // }
 }
-Declaration.prototype.allowRuleRoot = true
-Declaration.prototype.type = 'Declaration'
 
-export const decl =
-  (value: DeclarationValue, location?: LocationInfo) =>
-    new Declaration(value, location)
+export const decl = defineType<DeclarationValue>(Declaration, 'Declaration', 'decl')
+Declaration.prototype.allowRuleRoot = true

@@ -7,7 +7,7 @@ import type { Ruleset } from './ruleset'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
-export interface AtRuleValue {
+export type AtRuleValue = {
   name: string
   /** The prelude */
   value: Node
@@ -17,10 +17,14 @@ export interface AtRuleValue {
 /**
  * A rule like @charset or @media
  */
-export class AtRule extends Node {
-  name: string
-  value: Node
-  rules: Ruleset
+export class AtRule extends Node<AtRuleValue> {
+  get name() {
+    return this.valueMap.get('name')
+  }
+
+  get rules() {
+    return this.valueMap.get('rules')
+  }
 
   eval(context: Context) {
     const node = super.eval(context) as AtRule

@@ -1,13 +1,14 @@
-import type { NodeMap, LocationInfo } from './node'
+import type { LocationInfo } from './node'
 import { Node } from './node'
-import { Ruleset } from './ruleset'
-import { Nil } from './nil'
+import { type Ruleset } from './ruleset'
 import type { Context } from '../context'
-import type { OutputCollector } from '../output'
+// import type { OutputCollector } from '../output'
+import type { Selector } from './selector'
 
-type RuleValue = NodeMap & {
-  sels: Node
-  value: Ruleset | Node[]
+type RuleValue = {
+  /** This will be either a List<Selector> or Selector */
+  selector: Selector | null
+  value: Ruleset
 }
 /**
  * A qualified rule
@@ -16,26 +17,23 @@ type RuleValue = NodeMap & {
  *   color: black;
  * }
  */
-export class Rule extends Node {
-  sels: Node
-  value: Ruleset
+export class Rule extends Node<RuleValue> {
+  get selector() {
+    return this.valueMap.get('selector')
+  }
 
-  constructor(
-    value: RuleValue,
-    location?: LocationInfo
-  ) {
-    const val = value.value
-    if (Array.isArray(val)) {
-      value.value = new Ruleset(val)
-    }
-    super(value, location)
+  set selector(v: Selector | null) {
+    this.valueMap.set('selector', v)
   }
 
   eval(context: Context) {
     if (!this.evaluated) {
       const rule = this.clone()
-      const sels = this.sels.eval(context)
-      rule.sels = sels
+      const sels = this.selector?.eval(context)
+      if (!sels) {
+        return null
+      }
+      rule.selector = sels
 
       context.frames.unshift(sels)
       rule.value = this.value.eval(context)
@@ -45,33 +43,35 @@ export class Rule extends Node {
 
       /** Remove empty rules */
       if (rule.value.value.length === 0) {
-        return new Nil()
+        return null
       }
       return rule
     }
     return this
   }
 
-  toCSS(context: Context, out: OutputCollector) {
-    const { sels, value } = this
-    context.inSelector = true
-    sels.toCSS(context, out)
-    context.inSelector = false
-    out.add(' ')
-    value.toCSS(context, out)
-  }
+  /** @todo move to ToCssVisitor */
+  // toCSS(context: Context, out: OutputCollector) {
+  //   const { sels, value } = this
+  //   context.inSelector = true
+  //   sels.toCSS(context, out)
+  //   context.inSelector = false
+  //   out.add(' ')
+  //   value.toCSS(context, out)
+  // }
 
-  toModule(context: Context, out: OutputCollector) {
-    out.add('$J.rule({\n', this.location)
-    context.indent++
-    const pre = context.pre
-    out.add(`${pre}sels: `)
-    this.sels.toModule(context, out)
-    out.add(`,\n${pre}value: `)
-    this.value.toModule(context, out)
-    context.indent--
-    out.add(`},${JSON.stringify(this.location)})`)
-  }
+  /** @todo Move to ToModuleVisitor */
+  // toModule(context: Context, out: OutputCollector) {
+  //   out.add('$J.rule({\n', this.location)
+  //   context.indent++
+  //   const pre = context.pre
+  //   out.add(`${pre}sels: `)
+  //   this.sels.toModule(context, out)
+  //   out.add(`,\n${pre}value: `)
+  //   this.value.toModule(context, out)
+  //   context.indent--
+  //   out.add(`},${JSON.stringify(this.location)})`)
+  // }
 }
 Rule.prototype.allowRoot = true
 Rule.prototype.type = 'Rule'

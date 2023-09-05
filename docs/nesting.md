@@ -1,3 +1,5 @@
+TODO: Align with CSS Nesting (do not allow plain identifiers)
+
 ```less
 .box {
   display: block;

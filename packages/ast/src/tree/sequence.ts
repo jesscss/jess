@@ -1,5 +1,5 @@
 import type { LocationInfo, NodeMap } from './node'
-import { Node, isNodeMap } from './node'
+import { Node, defineType } from './node'
 import { Anonymous } from './anonymous'
 import { Nil } from './nil'
 import { List } from './list'
@@ -12,32 +12,31 @@ export type SequenceOptions = {
    * CSS values are typically spaced,
    * because of how they're parsed.
    */
-  spaced: boolean
+  // spaced: boolean
 }
+
 /**
  * A continuous collection of nodes
  */
-export class Sequence extends Node {
-  value: Node[]
-
+export class Sequence extends Node<Node[], SequenceOptions> {
   toArray() {
-    return this.value
+    return this.value.filter(n => n instanceof Node)
   }
 
-  constructor(
-    value: Array<string | Node> | NodeMap,
-    location?: LocationInfo,
-    options?: SequenceOptions
-  ) {
-    if (isNodeMap(value)) {
-      super(value, location, options)
-      return
-    }
-    const values = value.map(v => v.constructor === String ? new Anonymous(v) : v)
-    super({
-      value: values
-    }, location)
-  }
+  // constructor(
+  //   value: Array<string | Node> | NodeMap,
+  //   location?: LocationInfo,
+  //   options?: SequenceOptions
+  // ) {
+  //   if (isNodeMap(value)) {
+  //     super(value, location, options)
+  //     return
+  //   }
+  //   const values = value.map(v => v.constructor === String ? new Anonymous(v) : v)
+  //   super({
+  //     value: values
+  //   }, location)
+  // }
 
   /**
    * During evaluation of sequences,
@@ -50,7 +49,7 @@ export class Sequence extends Node {
    *         evaluated an expression to an inner sequence,
    *         then we should be inserting white-space combinators?
    */
-  eval(context: Context): Node {
+  eval(context: Context) {
     const node = this.clone()
     /** Convert all values to Nodes */
     const cast = context.cast
@@ -103,30 +102,27 @@ export class Sequence extends Node {
     return node
   }
 
-  toCSS(context: Context, out: OutputCollector): void {
-    const cast = context.cast
-    this.value.forEach(n => {
-      const val = cast(n)
-      val.toCSS(context, out)
-    })
-  }
+  /** @todo move to visitors */
+  // toCSS(context: Context, out: OutputCollector): void {
+  //   const cast = context.cast
+  //   this.value.forEach(n => {
+  //     const val = cast(n)
+  //     val.toCSS(context, out)
+  //   })
+  // }
 
-  toModule(context: Context, out: OutputCollector) {
-    const loc = this.location
-    out.add('$J.expr([', loc)
-    const length = this.value.length - 1
-    this.value.forEach((n, i) => {
-      n.toModule(context, out)
-      if (i < length) {
-        out.add(', ')
-      }
-    })
-    out.add('])')
-  }
+  // toModule(context: Context, out: OutputCollector) {
+  //   const loc = this.location
+  //   out.add('$J.expr([', loc)
+  //   const length = this.value.length - 1
+  //   this.value.forEach((n, i) => {
+  //     n.toModule(context, out)
+  //     if (i < length) {
+  //       out.add(', ')
+  //     }
+  //   })
+  //   out.add('])')
+  // }
 }
-Sequence.prototype.type = 'Sequence'
-Sequence.prototype.shortType = 'seq'
 
-export const seq =
-  (...args: ConstructorParameters<typeof Sequence>) =>
-    new Sequence(...args)
+export const seq = defineType(Sequence, 'Sequence', 'seq')

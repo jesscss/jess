@@ -26,11 +26,17 @@
 // declaring vars
 @let count; // a Node of `Nil`
 
-// setting vars
+// setting vars - note, this avoids the need for !global in Sass
 @set count +: 1;
 
 // `$` is a referencer, to reduce ambiguity
 @set count: $count + 1;
+
+// allow destructuring
+@let list: one, two;
+
+// This avoids the need for extract() in Less
+@let (one, two): $list;
 
 // Mixin calls and functions don't need `@include` (but you can use it)
 $myFunction();
@@ -70,7 +76,7 @@ Sass is an overly-complex stylesheet language. Jess aims to be:
 - 100% compatible with Less
 - Compatible with a common subset of Sass called Sass+ (to be defined)
 
-### `@use [file|object|map] [namespace|'(' imports ')']? declarationList?`
+### `@use [file|object|map] [namespace|'(' imports ')']? ('with' reference|declarationList)?`
 
 Will import the scope (mixins, variables, and selector references) of the object. Can be a stylesheet or other scope object.
 
@@ -170,7 +176,7 @@ Would be converted to:
 
 
 
-## `@include [file|object|selector] declarationList?`
+## `@include [file|object|selector] ('with' reference|declarationList)?`
 
 Will import the rules (but not pollute the variable scope).
 
@@ -178,8 +184,8 @@ Can be at the root or nested.
 
 ```scss
 // main.jess
-@use 'colors.jess';
-@include 'rules.jess';
+@use 'colors.jess' colors;
+@include 'rules.jess' colors;
 
 // rules.jess
 // Doesn't have access to vars in main.jess w/o:
@@ -189,7 +195,7 @@ Can be at the root or nested.
 Using an `@include` that's the _result_ of a `@use`:
 ```scss
 @use 'theme.jess' theme with {
-  colors {
+  @assign colors {
     primary: #3a3a3a;
   }
 }
