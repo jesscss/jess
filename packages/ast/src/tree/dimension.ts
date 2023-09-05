@@ -11,7 +11,7 @@ import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 
 export type DimensionValue = [
-  value: number,
+  number: number,
   unit?: string
 ]
 

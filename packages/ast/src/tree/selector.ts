@@ -1,4 +1,4 @@
-import { Expression } from './expression'
+import { Sequence } from './sequence'
 import { Combinator } from './combinator'
 import { Ampersand } from './ampersand'
 import { WS } from './ws'
@@ -20,7 +20,7 @@ import { List } from './list'
  * Push an ampersand at the beginning of selector expressions
  * if there isn't one
  */
-export class Selector extends Expression {
+export class Selector extends Sequence {
   constructor(
     value: Array<string | Node> | NodeMap,
     location?: LocationInfo

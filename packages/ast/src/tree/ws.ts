@@ -1,36 +1,11 @@
 import type { NodeMap, LocationInfo } from './node'
 import { Node } from './node'
-import type { Context } from '../context'
-import type { OutputCollector } from '../output'
 
 /**
  * A whitespace node
+ * @note -
  */
-export class WS extends Node {
-  value: string
-
-  constructor(
-    value?: string | NodeMap,
-    location?: LocationInfo
-  ) {
-    if (!value) {
-      super({ value: ' ' })
-      return
-    }
-    super(value, location)
-  }
-
-  eval(context: Context) {
-    if (!context.inCustom) {
-      this.value = ' '
-    }
-    return this
-  }
-
-  toModule(context: Context, out: OutputCollector) {
-    out.add('$J.ws()')
-  }
-}
+export class WS extends Node<{ value: string }> {}
 WS.prototype.type = 'WS'
 
 export const ws =
