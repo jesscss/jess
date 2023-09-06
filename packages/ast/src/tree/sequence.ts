@@ -16,7 +16,10 @@ export type SequenceOptions = {
 }
 
 /**
- * A continuous collection of nodes
+ * A continuous collection of nodes. Historically in Less,
+ * these were termed "expressions", but in computer science,
+ * an expression will yield a value, and a CSS value can
+ * actually be a sequence of values (like for shorthand)
  */
 export class Sequence extends Node<Node[], SequenceOptions> {
   toArray() {

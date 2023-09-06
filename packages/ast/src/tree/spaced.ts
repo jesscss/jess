@@ -8,7 +8,7 @@ import type { OutputCollector } from '../output'
  * A space-separated sequence of nodes,
  * which is how most CSS values are written.
  *
- * @todo - Removee?
+ * @todo - Remove?
  */
 export class Spaced extends Sequence {
   value: Node[]

@@ -32,10 +32,14 @@ export class Declaration extends Node<DeclarationValue> {
 
   eval(context: Context) {
     const node = this.clone()
-    node.name = this.name.eval(context)
-    node.value = context.cast(this.value).eval(context)
-    if (node.important) {
-      node.important = new Anonymous(this.important.value)
+    const { name, value, important } = node
+    /** Name may be a variable or a sequence containing a variable */
+    node.name = name instanceof Node ? name.eval(context) as string : name
+    const newValue = value.eval(context)
+    if (newValue instanceof Node) {
+      node.value = newValue
+    } else {
+      return undefined
     }
     return node
   }

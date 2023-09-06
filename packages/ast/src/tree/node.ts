@@ -125,11 +125,9 @@ export abstract class Node<
     this.options = options
   }
 
-  get value(): M['value'] | Array<ValueOf<M>> {
-    if (this.valueMap.has('value')) {
-      return this.valueMap.get('value')
-    }
-    return [...this.valueMap.values()]
+  get value() {
+    return this.valueMap.get('value')
+    // return [...this.valueMap.values()]
   }
 
   set value(n: M['value']) {
@@ -204,6 +202,9 @@ export abstract class Node<
 
   /**
    * Creates a copy of the current node.
+   *
+   * @todo - Cloning should strip comments, except in the
+   * case of custom declaration values.
    */
   clone(): this {
     const Class: Constructor<this> = Object.getPrototypeOf(this).constructor
@@ -248,6 +249,10 @@ export abstract class Node<
     return Number((value + 2e-16).toFixed(8))
   }
 
+  /**
+   * @todo - should this just return `this.valueMap.get('value')`?
+   * The use cases aren't clear.
+   */
   valueOf() {
     const values = [...this.valueMap.values()]
     if (values.length === 1) {

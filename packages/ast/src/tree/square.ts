@@ -5,6 +5,8 @@ import type { OutputCollector } from '../output'
 
 /**
  * An expression in square brackets
+ *
+ * @todo - what was this for?
  */
 export class Square extends Node {
   value: Node
