@@ -15,19 +15,19 @@ export type DeclarationValue = {
  */
 export class Declaration extends Node<DeclarationValue> {
   get name() {
-    return this.valueMap.get('name')
+    return this.data.get('name')
   }
 
   set name(v: Node | string) {
-    this.valueMap.set('name', v)
+    this.data.set('name', v)
   }
 
   get important() {
-    return this.valueMap.get('important')
+    return this.data.get('important')
   }
 
   set important(v: string | undefined) {
-    this.valueMap.set('important', v)
+    this.data.set('important', v)
   }
 
   eval(context: Context) {

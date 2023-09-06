@@ -107,7 +107,7 @@ export abstract class Node<
   /**
    * This should always represent the `data` of the Node
    */
-  protected readonly valueMap: TypeMap<M>
+  protected readonly data: TypeMap<M>
 
   constructor(
     value: NodeInValue,
@@ -119,20 +119,20 @@ export abstract class Node<
       throw new Error('Node requires a value.')
     }
 
-    this.valueMap = new Map(isNodeMap(value) ? value : [['value', value]]) as TypeMap<M>
+    this.data = new Map(isNodeMap(value) ? value : [['value', value]]) as TypeMap<M>
     this.location = location || []
     this.fileInfo = fileInfo
     this.options = options
   }
 
   get value() {
-    return this.valueMap.get('value')
-    // return [...this.valueMap.values()]
+    return this.data.get('value')
+    // return [...this.data.values()]
   }
 
   set value(n: M['value']) {
-    if (this.valueMap.has('value')) {
-      this.valueMap.set('value', n)
+    if (this.data.has('value')) {
+      this.data.set('value', n)
     }
     throw new Error('Cannot set the "value" property of this node.')
   }
@@ -142,7 +142,7 @@ export abstract class Node<
    * which first makes a shallow clone before mutating.
    */
   processNodes(func: (n: Node) => NodeValue) {
-    this.valueMap.forEach((nodeVal, key, map) => {
+    this.data.forEach((nodeVal, key, map) => {
       /** Process Node arrays only */
       if (Array.isArray(nodeVal)) {
         const out = []
@@ -166,7 +166,7 @@ export abstract class Node<
    * Fire a function for each Node in the tree, recursively
    */
   walkNodes(func: (n: Node) => void) {
-    this.valueMap.forEach(nodeVal => {
+    this.data.forEach(nodeVal => {
       /** Process Node arrays only */
       if (Array.isArray(nodeVal)) {
         for (let i = 0; i < nodeVal.length; i++) {
@@ -210,7 +210,7 @@ export abstract class Node<
     const Class: Constructor<this> = Object.getPrototypeOf(this).constructor
 
     const newNode = new Class(
-      this.valueMap,
+      this.data,
       this.location,
       this.options,
       this.fileInfo
@@ -250,11 +250,11 @@ export abstract class Node<
   }
 
   /**
-   * @todo - should this just return `this.valueMap.get('value')`?
+   * @todo - should this just return `this.data.get('value')`?
    * The use cases aren't clear.
    */
   valueOf() {
-    const values = [...this.valueMap.values()]
+    const values = [...this.data.values()]
     if (values.length === 1) {
       return values[0]
     }

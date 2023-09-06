@@ -39,7 +39,7 @@ export type UseValue = {
  */
 export class Use extends Node<UseValue, UseOptions> {
   get path() {
-    return this.valueMap.get('path')
+    return this.data.get('path')
   }
 }
 

@@ -19,11 +19,11 @@ type RuleValue = {
  */
 export class Rule extends Node<RuleValue> {
   get selector() {
-    return this.valueMap.get('selector')
+    return this.data.get('selector')
   }
 
   set selector(v: Selector | null) {
-    this.valueMap.set('selector', v)
+    this.data.set('selector', v)
   }
 
   eval(context: Context) {

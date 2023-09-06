@@ -19,11 +19,11 @@ export type AtRuleValue = {
  */
 export class AtRule extends Node<AtRuleValue> {
   get name() {
-    return this.valueMap.get('name')
+    return this.data.get('name')
   }
 
   get rules() {
-    return this.valueMap.get('rules')
+    return this.data.get('rules')
   }
 
   eval(context: Context) {
