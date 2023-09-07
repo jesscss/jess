@@ -1,37 +1,29 @@
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 import type { LocationInfo } from './node'
-import { Node, isNodeMap } from './node'
+import { Node, defineType } from './node'
 
 type ColorValues = [number, number, number, number] | number[]
+
+export const enum ColorFormat {
+  HEX,
+  RGB,
+  HSL
+}
 
 function clamp(v: number, max: number) {
   return Math.min(Math.max(v, 0), max)
 }
 
-export class Color extends Node {
+/**
+ * Color's `value` will either be the parsed value,
+ * or, when constructed with a function, the preferred
+ * output type.
+ */
+export class Color extends Node<`#${string}` | ColorFormat> {
   /** This is the originally parsed representation */
-  value: string
   private _rgba: ColorValues | undefined
   private _hsla: ColorValues | undefined
-
-  constructor(
-    val?: string | {
-      value: string
-      rgba?: ColorValues
-      hsla?: ColorValues
-    },
-    location?: LocationInfo
-  ) {
-    if (isNodeMap(val)) {
-      const { value, rgba, hsla } = val
-      super({ value }, location)
-      this._rgba = rgba
-      this._hsla = hsla
-      return
-    }
-    super({ value: val }, location)
-  }
 
   /** Create an rgba map only if we need it */
   get rgba(): ColorValues {
@@ -42,7 +34,7 @@ export class Color extends Node {
     const value = this.value
     const rgba: number[] = []
 
-    if (value.charAt(0) !== '#') {
+    if (typeof value !== 'string') {
       throw new Error('Only hex string values can be converted to colors.')
     }
     const hex = value.slice(1)
@@ -72,6 +64,10 @@ export class Color extends Node {
     return rgba as ColorValues
   }
 
+  set rgba(rgba: ColorValues) {
+    this._rgba = rgba
+  }
+
   get hsla(): ColorValues {
     if (this._hsla) {
       return this._hsla
@@ -79,6 +75,10 @@ export class Color extends Node {
     const hsla = this.toHSL()
     this._hsla = hsla
     return hsla
+  }
+
+  set hsla(hsla: ColorValues) {
+    this._hsla = hsla
   }
 
   get rgb(): [number, number, number] {
@@ -90,12 +90,19 @@ export class Color extends Node {
     return this.rgba[3]
   }
 
+  /**
+   * Note - modern browsers support 4 & 8 digit hex values
+   */
   toHex() {
-    return `#${this.rgb.map(c => {
+    return `#${this.rgba.map(c => {
       c = clamp(Math.round(c), 255)
       return (c < 16 ? '0' : '') + c.toString(16)
     }).join('')}`
   }
+
+  /**
+   * @todo add toRBB() function from hsl() function
+   */
 
   toHSL(): ColorValues {
     let [r, g, b, a] = this.rgba
@@ -126,36 +133,27 @@ export class Color extends Node {
   }
 
   toString() {
-    const value = this.value
+    const { value } = this
+    /** This is a hex value, output as-is */
+    if (typeof value === 'string') {
+      return value
+    }
     let colorFunction: string | undefined
 
-    /**
-     * If we haven't operated on this value, like with a color
-     * function, then value should be the original parsed value
-     *
-     * If we used an rgb()-like function, then value is the
-     * color function name.
-     */
-    if (value) {
-      if (value.indexOf('rgb') === 0) {
-        if (this.alpha < 1) {
-          colorFunction = 'rgba'
-        } else {
-          colorFunction = 'rgb'
-        }
-      } else if (value.indexOf('hsl') === 0) {
-        if (this.alpha < 1) {
-          colorFunction = 'hsla'
-        } else {
-          colorFunction = 'hsl'
-        }
-      } else {
-        return value
-      }
-    } else {
+    if (value === ColorFormat.RGB) {
       if (this.alpha < 1) {
         colorFunction = 'rgba'
+      } else {
+        colorFunction = 'rgb'
       }
+    } else if (value === ColorFormat.HSL) {
+      if (this.alpha < 1) {
+        colorFunction = 'hsla'
+      } else {
+        colorFunction = 'hsl'
+      }
+    } else {
+      return this.toHex()
     }
 
     const alpha = this.alpha
@@ -182,23 +180,17 @@ export class Color extends Node {
     }
 
     /** @todo - represent with slash syntax? */
-    if (colorFunction) {
-      return `${colorFunction}(${args.join(', ')})`
-    }
-
-    return this.toHex()
+    return `${colorFunction}(${args.join(', ')})`
   }
 
-  toCSS(context: Context, out: OutputCollector) {
-    out.add(this.toString(), this.location)
-  }
+  /** @todo move to visitors */
+  // toCSS(context: Context, out: OutputCollector) {
+  //   out.add(this.toString(), this.location)
+  // }
 
-  toModule(context: Context, out: OutputCollector) {
-    out.add(`$J.color("${this.value}")`)
-  }
+  // toModule(context: Context, out: OutputCollector) {
+  //   out.add(`$J.color("${this.value}")`)
+  // }
 }
-Color.prototype.type = 'Color'
 
-export const color =
-  (value?: string | { value: string, rgba?: ColorValues, hsla?: ColorValues }, location?: LocationInfo) =>
-    new Color(value, location)
+export const color = defineType(Color, 'Color')

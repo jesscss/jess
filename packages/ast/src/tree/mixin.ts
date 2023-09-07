@@ -1,5 +1,5 @@
-import { JsNode } from './js-node'
-import { JsIdent } from './js-ident'
+import { Node } from './node'
+// import { JsIdent } from './js-ident'
 import type { List } from './list'
 import type { Ruleset } from './ruleset'
 import type { JsKeyValue } from './js-key-value'
@@ -7,8 +7,8 @@ import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 import type { LocationInfo } from './node'
 
-export interface MixinValue {
-  name: JsIdent
+export type MixinValue = {
+  name: string | Node
   args?: List<JsIdent | JsKeyValue>
   value: Ruleset
 }
@@ -20,7 +20,7 @@ export interface MixinValue {
  *   border-radius: $arg2;
  * }
  */
-export class Mixin extends JsNode {
+export class Mixin extends Node {
   name: JsIdent
   args: List<JsIdent | JsKeyValue>
   value: Ruleset

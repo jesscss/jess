@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/prefer-nullish-coalescing */
+/* eslint-disable @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/restrict-plus-operands */
 import type { Context } from '../context'
 import type { Visitor } from '../visitor'
 // import type { OutputCollector } from '../output'
@@ -223,7 +223,7 @@ export abstract class Node<
   }
 
   /**
-   * Individually nodes will specify type
+   * Individual nodes will specify type
    * when overriding eval()
    */
   eval(context: Context): unknown {
@@ -244,11 +244,6 @@ export abstract class Node<
     return this
   }
 
-  fround(value: number) {
-    // add "epsilon" to ensure numbers like 1.000000005 (represented as 1.000000004999...) are properly rounded:
-    return Number((value + 2e-16).toFixed(8))
-  }
-
   /**
    * @todo - should this just return `this.data.get('value')`?
    * The use cases aren't clear.
@@ -259,6 +254,57 @@ export abstract class Node<
       return values[0]
     }
     return values
+  }
+
+  toString() {
+    const value = this.valueOf()
+    if (Array.isArray(value)) {
+      return value.join('')
+    }
+    return String(value)
+  }
+
+  /**
+   * Individual node types will override this.
+   *
+   * This is just a default implementation.
+   * 0 = equal (==)
+   * 1 = greater than (>)
+   * -1 = less than (<)
+   */
+  compare(b: Node, context?: Context) {
+    const aVal = this.toString()
+    const bVal = b.toString()
+    if (aVal === bVal) {
+      return 0
+    } else if (aVal > bVal) {
+      return 1
+    } else {
+      return -1
+    }
+  }
+
+  /**
+   * Individual node types will override this.
+   */
+  operate(b: Node, op: '+' | '-' | '*' | '/', context?: Context) {
+    const aVal: any = this.valueOf()
+    const bVal: any = b.valueOf()
+    switch (op) {
+      case '+':
+        return aVal + bVal
+      case '-':
+        return aVal - bVal
+      case '*':
+        return aVal * bVal
+      case '/':
+        return aVal / bVal
+    }
+  }
+
+  fround(value: number) {
+    // add "epsilon" to ensure numbers like 1.000000005 (represented as 1.000000004999...) are properly rounded:
+    return Number((value + 2e-16).toFixed(8))
   }
 
   /**
