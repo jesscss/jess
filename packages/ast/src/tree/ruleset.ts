@@ -1,16 +1,9 @@
 /* eslint-disable @typescript-eslint/prefer-readonly */
-import type { NodeMap, LocationInfo, NodeOptions, FileInfo } from './node'
 import { Node, defineType } from './node'
-import { JsNode } from './js-node'
-import { Nil } from './nil'
 import { Declaration } from './declaration'
-import { JsExpr } from './js-expr'
 import { Call } from './call'
-import { List } from './list'
 
 import type { Context } from '../context'
-import type { OutputCollector } from '../output'
-import { Rule } from './rule'
 
 /**
  * The class representing a "declaration list".
@@ -63,6 +56,10 @@ export class Ruleset extends Node<Node[]> {
   private _first: Node
   private _last: Node
   private _evalQueue: QueueMap = {};
+
+  constructor(value: { scope: }) {
+    super([])
+  }
 
   /** Allows array spreading of nodes */
   * [Symbol.iterator]() {
@@ -191,27 +188,29 @@ export class Ruleset extends Node<Node[]> {
         }
       }
 
-      if (result && !(result instanceof Nil)) {
-        if (result.type === 'Rule' || result.type === 'AtRule') {
-          this.rootRules.push(rule, ...rule.collectRoots())
-        } else if (result instanceof Ruleset) {
-          /** Collapse a ruleset into rules */
-          result.value.forEach(r => {
-            if (r.type === 'Rule' || r.type === 'AtRule') {
-              this.rootRules.push(r)
-            } else {
-              rules.push(r)
-            }
-          })
-        } else {
-          rules.push(result)
-        }
-      }
+      /**
+       * @todo - previous code dumps at-rules and qualified rules
+       *         into the rootRules array. This would not handle
+       *         CSS Nesting, so we need to re-think this
+       */
+      // if (result && !(result instanceof Nil)) {
+      //   if (result.type === 'Rule' || result.type === 'AtRule') {
+      //     this.rootRules.push(rule, ...rule.collectRoots())
+      //   } else if (result instanceof Ruleset) {
+      //     /** Collapse a ruleset into rules */
+      //     result.value.forEach(r => {
+      //       if (r.type === 'Rule' || r.type === 'AtRule') {
+      //         this.rootRules.push(r)
+      //       } else {
+      //         rules.push(r)
+      //       }
+      //     })
+      //   } else {
+      //     rules.push(result)
+      //   }
+      // }
 
-      rule.value = rules
-      rule.evaluated = true
-
-      return rule
+      return this.finishEval(rules)
     }
     return this
   }
