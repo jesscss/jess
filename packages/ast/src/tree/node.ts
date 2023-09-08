@@ -76,7 +76,7 @@ export type TypeMap<
 type NodeMapType<T> = T extends NodeTypeMap ? T : { value: T }
 
 export abstract class Node<
-  T = unknown,
+  T = any,
   O extends NodeOptions = NodeOptions,
   M extends NodeTypeMap = NodeMapType<T>
 > {
@@ -103,6 +103,9 @@ export abstract class Node<
 
   /** Used by Ruleset */
   rootRules: Node[]
+
+  /** Used in iterators */
+  _next: Node
 
   /**
    * This should always represent the `data` of the Node
@@ -206,7 +209,7 @@ export abstract class Node<
    * @todo - Cloning should strip comments, except in the
    * case of custom declaration values.
    */
-  clone(): this {
+  clone(deep?: boolean): this {
     const Class: Constructor<this> = Object.getPrototypeOf(this).constructor
 
     const newNode = new Class(
@@ -216,7 +219,9 @@ export abstract class Node<
       this.fileInfo
     )
 
-    this.processNodes(n => n.clone())
+    if (deep) {
+      this.processNodes(n => n.clone())
+    }
     newNode.evaluated = this.evaluated
 
     return newNode
@@ -226,14 +231,20 @@ export abstract class Node<
    * Individual nodes will specify type
    * when overriding eval()
    */
-  eval(context: Context): unknown {
+  eval(context: Context): Node {
     if (!this.evaluated) {
       const node = this.clone()
       node.processNodes(n => n.eval(context))
-      node.evaluated = true
-      return node
+      return this.finishEval(node)
     }
     return this
+  }
+
+  finishEval<T extends Node = Node>(n: T | Node): T & { evaluated: true } {
+    if (!n.evaluated) {
+      n.evaluated = true
+    }
+    return n as T & { evaluated: true }
   }
 
   /** Override normally readonly props to make them inheritable */

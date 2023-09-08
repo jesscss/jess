@@ -5,12 +5,11 @@ import { Ampersand } from './ampersand'
 import { Rule } from './rule'
 import type { Ruleset } from './ruleset'
 import type { Context } from '../context'
-import type { OutputCollector } from '../output'
 
 export type AtRuleValue = {
   name: string
   /** The prelude */
-  value: Node
+  prelude: Node
   rules?: Ruleset
 }
 
@@ -18,6 +17,10 @@ export type AtRuleValue = {
  * A rule like @charset or @media
  */
 export class AtRule extends Node<AtRuleValue> {
+  get prelude() {
+    return this.data.get('prelude')
+  }
+
   get name() {
     return this.data.get('name')
   }
@@ -27,11 +30,15 @@ export class AtRule extends Node<AtRuleValue> {
   }
 
   eval(context: Context) {
-    const node = super.eval(context) as AtRule
+    const node = super.eval(context)
     /** Don't let rooted rules bubble past an at-rule */
     if (node.rules) {
       let rules = node.rules.value
-      /** Wrap sub-rules of a media query like Less */
+      /**
+       * Wrap sub-rules of a media query like Less
+       *
+       * @todo - do not do this if we're outputting nesting
+       */
       if (context.frames.length !== 0) {
         const rule = new Rule({ sels: new List([new Ampersand()]), value: rules })
           .inherit(this)
@@ -45,38 +52,39 @@ export class AtRule extends Node<AtRuleValue> {
     return node
   }
 
-  toCSS(context: Context, out: OutputCollector) {
-    out.add(`${this.name}`, this.location)
-    /** Prelude expression includes white space */
-    const value = this.value
-    if (value) {
-      value.toCSS(context, out)
-    }
-    if (this.rules) {
-      this.rules.toCSS(context, out)
-    } else {
-      out.add(';')
-    }
-  }
+  /** @todo - move to visitors */
+  // toCSS(context: Context, out: OutputCollector) {
+  //   out.add(`${this.name}`, this.location)
+  //   /** Prelude expression includes white space */
+  //   const value = this.value
+  //   if (value) {
+  //     value.toCSS(context, out)
+  //   }
+  //   if (this.rules) {
+  //     this.rules.toCSS(context, out)
+  //   } else {
+  //     out.add(';')
+  //   }
+  // }
 
-  toModule(context: Context, out: OutputCollector) {
-    out.add('$J.atrule({\n', this.location)
-    const pre = context.pre
-    context.indent++
-    out.add(`${pre}  name: ${JSON.stringify(this.name)}`)
-    const value = this.value
-    if (value) {
-      out.add(`,\n${pre}  value: `)
-      value.toModule(context, out)
-    }
-    const rules = this.rules
-    if (rules) {
-      out.add(`,\n${pre}  rules: `)
-      rules.toModule(context, out)
-    }
-    context.indent--
-    out.add(`\n${pre}},${JSON.stringify(this.location)})`)
-  }
+  // toModule(context: Context, out: OutputCollector) {
+  //   out.add('$J.atrule({\n', this.location)
+  //   const pre = context.pre
+  //   context.indent++
+  //   out.add(`${pre}  name: ${JSON.stringify(this.name)}`)
+  //   const value = this.value
+  //   if (value) {
+  //     out.add(`,\n${pre}  value: `)
+  //     value.toModule(context, out)
+  //   }
+  //   const rules = this.rules
+  //   if (rules) {
+  //     out.add(`,\n${pre}  rules: `)
+  //     rules.toModule(context, out)
+  //   }
+  //   context.indent--
+  //   out.add(`\n${pre}},${JSON.stringify(this.location)})`)
+  // }
 }
 AtRule.prototype.allowRoot = true
 AtRule.prototype.type = 'AtRule'

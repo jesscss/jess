@@ -1,21 +1,23 @@
-import { defineType } from './node'
-import { Declaration, type DeclarationValue } from './declaration'
-import { type MixinBody } from './mixin-body'
+import { Node, defineType } from './node'
+import type { List } from './list'
+import type { Ruleset } from './ruleset'
+
+export type MixinValue = {
+  params?: List
+  value: Ruleset
+}
 
 /**
- * @mixin someMixin (arg1, arg2: 10px) {
- *   color: black;
- *   background-color: white;
- *   border-radius: $arg2;
- * }
- *
- * This extends Declaration because name resolving is the same
+ * This is just the body of a mixin
+ * (an anonymous mixin)
  */
-export class Mixin extends Declaration<MixinBody> {
+export class MixinBody extends Node<MixinValue> {
   /**
    * @todo -
    * Return either a ruleset if `this` is the eval context,
    * or return ruleset.obj() if not (for React/Vue)
+   *
+   * @todo - move to visitors
    */
   // toModule(context: Context, out: OutputCollector) {
   //   const { name, args, value } = this
@@ -50,4 +52,4 @@ export class Mixin extends Declaration<MixinBody> {
   // }
 }
 
-export const mixin = defineType<DeclarationValue<MixinBody>>(Mixin, 'Mixin')
+export const mixinbody = defineType<MixinValue>(MixinBody, 'MixinBody')

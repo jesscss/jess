@@ -1,31 +1,32 @@
-import type { LocationInfo } from './node'
-import { Node } from './node'
+import {
+  Node,
+  defineType,
+  type LocationInfo,
+  type NodeOptions,
+  type FileInfo
+} from './node'
 
 /**
  * A Node type that outputs nothing.
- * We use this for nodes that expect other
- * nodes in the form of { value: any }
  *
- * @todo - remove?
+ * We need this for things like rulesets,
+ * which need dynamically-linked nodes
  */
-export class Nil extends Node {
-  value: any
+export class Nil extends Node<undefined> {
+  evaluated: true = true
+
   constructor(
     value?: any,
-    location?: LocationInfo
-  ) {
-    super('', location)
+    location?: LocationInfo | 0,
+    options?: NodeOptions,
+    fileInfo?: FileInfo) {
+    super(undefined, location, options, fileInfo)
   }
 
   eval() { return this }
   toString() { return '' }
-  toCSS() { return '' }
-  toModule() { return '' }
 }
 Nil.prototype.allowRoot = true
 Nil.prototype.allowRuleRoot = true
-Nil.prototype.type = 'Nil'
 
-export const nil =
-  (value?: any, location?: LocationInfo) =>
-    new Nil(value, location)
+export const nil = defineType<undefined>(Nil, 'Nil')

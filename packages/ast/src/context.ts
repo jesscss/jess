@@ -4,11 +4,18 @@ import { List } from './tree/list'
 import { Dimension } from './tree/dimension'
 import { Anonymous } from './tree/anonymous'
 import isPlainObject from 'lodash-es/isPlainObject'
+import { Scope } from './scope'
 
 export interface ContextOptions {
   module?: boolean
   dynamic?: boolean
-  // [k: string]: string | number | boolean
+  /**
+   * Hoists declarations, so they can be
+   * evaluated per scope. Less sets this
+   * to true.
+   */
+  hoist?: boolean
+  scope?: Scope
 }
 
 const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('')
@@ -24,28 +31,32 @@ export const generateId = (length = 8) => {
 export class Context {
   opts: ContextOptions
   originalOpts: ContextOptions
+
+  scope: Scope
   /**
    * The file (eval) context should have the same ID at compile-time
    * as run-time, so this ID will be set in `toModule()` output
    */
-  id: string
+  id = generateId()
   varCounter: number = 0
-  classMap: Record<string, string>
 
-  frames: Node[]
+  /** @todo - change to Map() */
+  classMap: Record<string, string> = Object.create(null)
+
+  frames: Node[] = []
 
   /** Keeps track of the indention level */
-  indent: number
+  indent = 0
 
   /**
    * Keys of @let variables --
    * We need this b/c we need to generate code
    * for over-riding in the exported function.
    */
-  exports: Set<string>
+  exports = new Set<string>()
 
-  depth: number
-  rootRules: Node[]
+  depth = 0
+  rootRules: Node[] = []
 
   /** currently generating a runtime module or not */
   isRuntime: boolean
@@ -59,13 +70,7 @@ export class Context {
   constructor(opts: ContextOptions = {}) {
     this.originalOpts = opts
     this.opts = opts
-    this.id = generateId()
-    this.frames = []
-    this.exports = new Set()
-    this.indent = 0
-    this.depth = 0
-    this.classMap = Object.create(null)
-    this.rootRules = []
+    this.scope = opts.scope ?? new Scope()
   }
 
   get pre() {

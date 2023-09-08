@@ -1,4 +1,5 @@
-import type { NodeMap, LocationInfo } from './node'
+/* eslint-disable @typescript-eslint/prefer-readonly */
+import type { NodeMap, LocationInfo, NodeOptions, FileInfo } from './node'
 import { Node, defineType } from './node'
 import { JsNode } from './js-node'
 import { Nil } from './nil'
@@ -9,6 +10,7 @@ import { List } from './list'
 
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
+import { Rule } from './rule'
 
 /**
  * The class representing a "declaration list".
@@ -22,34 +24,189 @@ import type { OutputCollector } from '../output'
  * @example
  * color: black;
  * background-color: white;
+ *
+ * @todo Nodes should be stored in a binary search tree?
+ *       Ideally, we would not have to iterate through all nodes to
+ *       find declaration / variable / function names.
+ *
+ *       Therefore, every entry of a node should be stored in this
+ *       tree, including qualified rules (used by extend). Extend,
+ *       however, would not search the tree, but would make an entry
+ *       that is used by qualified rules when rendering.
+ *
+ * @see https://stackoverflow.com/questions/2130416/what-are-the-applications-of-binary-trees
  */
+
+export const enum Priority {
+  Low = 0,
+  Medium = 1,
+  High = 2
+}
+
+type QueueMap = {
+  [Priority.Low]?: Node[]
+  [Priority.Medium]?: Node[]
+  [Priority.High]?: Node[]
+}
+
+const assign = (map: QueueMap, key: Priority, value: Node) => {
+  const arr = map[key]
+  if (arr) {
+    map[key]?.push(value)
+  } else {
+    map[key] = [value]
+  }
+}
+
 export class Ruleset extends Node<Node[]> {
-  rootRules: Node[] = []
+  // rootRules: Node[] = []
+  private _first: Node
+  private _last: Node
+  private _evalQueue: QueueMap = {};
+
+  /** Allows array spreading of nodes */
+  * [Symbol.iterator]() {
+    let current = this._first
+    while (current) {
+      yield current
+      current = current._next
+    }
+  }
 
   eval(context: Context) {
     if (!this.evaluated) {
-      const rule = this.clone()
+      const rules = this.clone()
+      const { value, _evalQueue } = this
 
-      const rules: Node[] = []
-      this.value.forEach(rule => {
-        const result = rule.eval(context)
-        if (result && !(result instanceof Nil)) {
-          if (result.type === 'Rule' || result.type === 'AtRule') {
-            this.rootRules.push(rule, ...rule.collectRoots())
-          } else if (result instanceof Ruleset) {
-            /** Collapse a ruleset into rules */
-            result.value.forEach(r => {
-              if (r.type === 'Rule' || r.type === 'AtRule') {
-                this.rootRules.push(r)
-              } else {
-                rules.push(r)
-              }
-            })
+      /**
+       * First, create a linked list.
+       * This is so folding in mixins can be done
+       * without mutating arrays.
+       */
+      let prev: Node | undefined
+      const nodeLength = value.length
+      /** Iterate in reverse order, to assign the _next node */
+      for (let i = nodeLength - 1; i >= 0; i--) {
+        const n = value[i]
+        if (i === nodeLength - 1) {
+          this._last = n
+        }
+        if (i === 0) {
+          this._first = n
+        }
+        if (prev) {
+          n._next = prev
+        }
+        prev = n
+      }
+
+      if (context.opts.hoist) {
+        /**
+         * Assign to the evaluation queue.
+         *
+         * Evalution order (for Less) should go:
+         *   1. declaration names
+         *   2. mixin and function calls
+         *   3. everything else
+         *
+         * Modes other than Less will use a linear evaluation order
+         */
+        for (let i = 0; i < nodeLength; i++) {
+          const n = value[i]
+          if (n instanceof Declaration && n.name instanceof Node) {
+            assign(_evalQueue, Priority.High, n.name)
+          } else if (n instanceof Call) {
+            assign(_evalQueue, Priority.Medium, n)
           } else {
-            rules.push(result)
+            assign(_evalQueue, Priority.Low, n)
           }
         }
-      })
+      } else {
+        _evalQueue[0] = value
+      }
+
+      /** Start with high priority */
+      for (let i: Priority = Priority.High; i >= 0; i--) {
+        const map = _evalQueue[i]
+        if (!map) {
+          continue
+        }
+        let current = map[0]
+        let prevEvald: Node | undefined
+
+        /**
+         * This will dynamically link rulesets like
+         * [rule]._next = [ruleset]._first
+         * [ruleset]._last = [rule]._next._next
+         *
+         * @todo Register declarations
+         */
+        while (current) {
+          const evald = current.eval(context)
+          const evaldIsRuleset = evald instanceof Ruleset
+          /**
+           * If previous iteration produced a ruleset, link its
+           * last value to the currently-evaluated rule
+           */
+          if (prevEvald) {
+            if (prevEvald instanceof Ruleset) {
+              prevEvald._last._next = evald
+            } else {
+              prevEvald._next = evald
+            }
+          }
+
+          /**
+           * If we're on the first node, and it evals to a ruleset,
+           * link this ruleset's first node to the first node of
+           * the ruleset.
+           */
+          if (this._first === current) {
+            if (evaldIsRuleset) {
+              this._first = evald._first
+            } else {
+              this._first = evald
+            }
+          }
+
+          if (evaldIsRuleset && prevEvald) {
+            prevEvald._next = evald._first
+          }
+
+          /**
+           * If we're on the last node, and it evals to a ruleset,
+           * link this ruleset's last node to the last node of
+           * the ruleset.
+           */
+          if (this._last === current) {
+            if (evaldIsRuleset) {
+              this._last = evald._last
+            } else {
+              this._last = evald
+            }
+          }
+
+          current = current._next
+          prevEvald = evald
+        }
+      }
+
+      if (result && !(result instanceof Nil)) {
+        if (result.type === 'Rule' || result.type === 'AtRule') {
+          this.rootRules.push(rule, ...rule.collectRoots())
+        } else if (result instanceof Ruleset) {
+          /** Collapse a ruleset into rules */
+          result.value.forEach(r => {
+            if (r.type === 'Rule' || r.type === 'AtRule') {
+              this.rootRules.push(r)
+            } else {
+              rules.push(r)
+            }
+          })
+        } else {
+          rules.push(result)
+        }
+      }
 
       rule.value = rules
       rule.evaluated = true

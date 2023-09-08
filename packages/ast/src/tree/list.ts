@@ -11,7 +11,7 @@ export type ListOptions = {
  * or .sel, #id.class, [attr]
  * or one / two / three
  */
-export class List extends Node<Node[], ListOptions> {
+export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   toArray() {
     return this.value
   }

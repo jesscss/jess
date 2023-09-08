@@ -1,24 +1,30 @@
-import { Node, defineType } from './node'
-import { Anonymous } from './anonymous'
+import {
+  Node,
+  defineType
+} from './node'
+import { Nil } from './nil'
 import type { Context } from '../context'
 // import type { OutputCollector } from '../output'
 
-export type DeclarationValue = {
-  name: Node | string
+export type DeclarationValue<T = Node | string> = {
+  name: T
   value: Node
   /** The actual string representation of important, if it exists */
   important?: string
 }
 
 /**
- * A continuous collection of nodes
+ * A continuous collection of nodes.
+ *
+ * Initially, the name can be a Node or string.
+ * Once evaluated, name must be a string
  */
-export class Declaration extends Node<DeclarationValue> {
-  get name() {
+export class Declaration<T = Node | string> extends Node<DeclarationValue<T>> {
+  get name(): T {
     return this.data.get('name')
   }
 
-  set name(v: Node | string) {
+  set name(v: T) {
     this.data.set('name', v)
   }
 
@@ -30,18 +36,28 @@ export class Declaration extends Node<DeclarationValue> {
     this.data.set('important', v)
   }
 
-  eval(context: Context) {
+  eval(context: Context): Declaration<string> | Nil {
     const node = this.clone()
-    const { name, value, important } = node
+    node.evaluated = true
+    const { name, value } = node
     /** Name may be a variable or a sequence containing a variable */
-    node.name = name instanceof Node ? name.eval(context) as string : name
-    const newValue = value.eval(context)
-    if (newValue instanceof Node) {
-      node.value = newValue
+    if (name instanceof Node) {
+      const evald = name.eval(context)
+      if (typeof evald.value !== 'string') {
+        throw new Error('Invalid name')
+      }
+      node.name = name
     } else {
-      return undefined
+      node.name = name
     }
-    return node
+    const newValue = value.eval(context)
+    if (newValue instanceof Nil) {
+      return newValue.inherit(node)
+    } else {
+      context.scope.set(node.name as string, node)
+      node.value = newValue
+    }
+    return this.finishEval<Declaration<string>>(node)
   }
 
   /** @todo - move to visitors */

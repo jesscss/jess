@@ -1,6 +1,3 @@
-import type { Context } from '../context'
-import type { OutputCollector } from '../output'
-import type { LocationInfo } from './node'
 import { Node, defineType } from './node'
 
 type ColorValues = [number, number, number, number] | number[]
