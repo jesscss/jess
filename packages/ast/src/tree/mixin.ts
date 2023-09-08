@@ -1,4 +1,4 @@
-import { defineType } from './node'
+import { type Node, defineType } from './node'
 import { Declaration, type DeclarationValue } from './declaration'
 import { type MixinBody } from './mixin-body'
 
@@ -11,7 +11,7 @@ import { type MixinBody } from './mixin-body'
  *
  * This extends Declaration because name resolving is the same
  */
-export class Mixin extends Declaration<MixinBody> {
+export class Mixin extends Declaration<string | Node, MixinBody> {
   /**
    * @todo -
    * Return either a ruleset if `this` is the eval context,

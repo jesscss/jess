@@ -30,8 +30,8 @@ export class ScopeEntry {
   }
 }
 
-export type ScopeObj = {
-  _entries: Record<string, ScopeEntry>
+export type ScopeEntryMap = Record<string, ScopeEntry | undefined> & {
+  prototype: ScopeEntryMap | undefined
 }
 
 /**
@@ -54,10 +54,10 @@ const RESERVED = [
  * This should be extended by each language
  */
 export class Scope {
-  _entries: Record<string, ScopeEntry | undefined>
-  _parentScope: ScopeObj | undefined
+  _entries: ScopeEntryMap
+  _parentScope: Scope | undefined
 
-  constructor(parentScope?: ScopeObj) {
+  constructor(parentScope?: Scope) {
     this._parentScope = parentScope
     if (parentScope) {
       this._entries = parentScope._entries
@@ -68,7 +68,7 @@ export class Scope {
    * Lazily create prototype chains
    * for improved performance.
    */
-  get entries(): Record<string, ScopeEntry | undefined> {
+  get entries(): ScopeEntryMap {
     const currentEntries = this._entries
     if (currentEntries) {
       if (currentEntries === this._parentScope?._entries) {
@@ -110,9 +110,47 @@ export class Scope {
         entry.value = value
         return
       }
-      entry.value = Array.isArray(entry.value) ? [...entry.value, value] : [entry.value, value]
+      /** First entry is most recent */
+      entry.value = Array.isArray(entry.value) ? [value, ...entry.value] : [value, entry.value]
     } else {
       entries[key] = new ScopeEntry(key, value, opts)
+    }
+  }
+
+  /**
+   * We can pass in a filter to narrow the
+   * entries.
+   */
+  get(key: string, options: {
+    filter?: (entry: ScopeEntry | undefined) => { value: any, done: boolean }
+  } = {}): any {
+    const {
+      filter = entry => ({ value: entry, done: true })
+    } = options
+    let current: ScopeEntryMap | undefined = this._entries
+    /**
+     * We use this instead of undefined,
+     * in case the prototype chain has undefined values?
+     *
+     * May be unnecessary?
+     */
+    const unset = Symbol('unset')
+    let value: any = unset
+    while (current) {
+      const result = filter(current[key])
+      const resultValue = result.value
+      if (value === unset) {
+        value = resultValue
+      } else {
+        value = [
+          ...(Array.isArray(value) ? value : [value]),
+          ...(Array.isArray(resultValue) ? resultValue : [resultValue])
+        ]
+      }
+      if (result.done) {
+        return value
+      }
+      current = current.prototype
     }
   }
 }

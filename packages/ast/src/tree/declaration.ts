@@ -6,11 +6,16 @@ import { Nil } from './nil'
 import type { Context } from '../context'
 // import type { OutputCollector } from '../output'
 
-export type DeclarationValue<T = Node | string> = {
+export type DeclarationValue<T = Node | string, U extends Node = Node> = {
   name: T
-  value: Node
+  value: U
   /** The actual string representation of important, if it exists */
   important?: string
+}
+
+/** Used by Less */
+export type DeclarationOptions = {
+  merge?: boolean
 }
 
 /**
@@ -19,7 +24,7 @@ export type DeclarationValue<T = Node | string> = {
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
-export class Declaration<T = Node | string> extends Node<DeclarationValue<T>> {
+export class Declaration<T = Node | string, U extends Node = Node> extends Node<DeclarationValue<T, U>, DeclarationOptions> {
   get name(): T {
     return this.data.get('name')
   }
@@ -55,7 +60,7 @@ export class Declaration<T = Node | string> extends Node<DeclarationValue<T>> {
       return newValue.inherit(node)
     } else {
       context.scope.set(node.name as string, node)
-      node.value = newValue
+      node.value = newValue as U
     }
     return this.finishEval<Declaration<string>>(node)
   }
