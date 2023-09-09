@@ -1,3 +1,3 @@
-# Jess Abstract Syntax Tree (AST)
+# Jess Core runtime
 
-All parsers consume and ultimately expose this AST to the Jess evaluation engine.
+This is separate from the `jess` package, because it contains the AST, therefore parsers can import this package to export an AST, and `jess` can import the parser + core. (Avoids circular dependencies.)

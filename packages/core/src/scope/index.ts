@@ -1,3 +1,4 @@
+import { logger } from '../logger'
 /**
  * The Scope object is meant to be an efficient
  * lookup mechanism for variables, mixins,
@@ -70,11 +71,36 @@ export class Scope {
     }
   }
 
+  /** Normalizes keys as valid JavaScript identifiers. */
   normalizeKey(key: string) {
-    const existing = Scope.entryKeys.get(key)
-    if (existing !== key) {
+    let normalKey = Scope.entryKeys.get(key)
+    if (normalKey) {
+      if (normalKey !== key) {
+        logger.warn(`${key} was previously normalized from ${normalKey}, which could lead to unexpected behaviors.`)
+      }
+    } else {
+      normalKey = key
+        /** Replace initial dash with underscore */
+        .replace(/^-/, '_')
+        /** Remove initial . or # (used by Less) */
+        .replace(/^[.#]/, '')
+        /** Convert dash-case to camelCase */
+        .replace(/(^_)|(?:[-_])(.)/g, (_, p1 = '', p2 = '') => `${p1}${p2.toUpperCase()}`)
 
+      /**
+       * Quick way to identify a valid JS identifier -
+       * try to create a variable with it.
+       *
+       * @see https://stackoverflow.com/questions/2008279/validate-a-javascript-function-name
+       */
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new, no-new-func
+        new Function(`let ${normalKey}`)
+      } catch (err) {
+        throw new SyntaxError(`"${key}" is not a valid name, as it is not exportable`)
+      }
     }
+    return normalKey
   }
 
   /**
@@ -98,12 +124,17 @@ export class Scope {
   }
 
   set(key: string, value: unknown, opts?: ScopeOptions) {
-    if (RESERVED.includes(key)) {
-      throw new SyntaxError(`"${key}" is a reserved identifier`)
+    if (key.startsWith('$')) {
+      throw new SyntaxError(`"${key}" cannot start with "$"`)
+    }
+    const normalKey = this.normalizeKey(key)
+    Scope.entryKeys.set(normalKey, key)
+    if (RESERVED.includes(normalKey)) {
+      throw new SyntaxError(`"${normalKey}" is a reserved identifier`)
     }
     const { entries } = this
-    const entry = entries[key]
-    if (key in entries) {
+    const entry = entries[normalKey]
+    if (normalKey in entries) {
       /**
        * These sort of do similar things, they just throw
        * different errors.
@@ -116,7 +147,7 @@ export class Scope {
     } else if (opts?.throwIfUndefined) {
       throw new ReferenceError(`"${key}" is not defined`)
     }
-    if (Object.prototype.hasOwnProperty.call(entries, key)) {
+    if (Object.prototype.hasOwnProperty.call(entries, normalKey)) {
       /** Modify the local entry */
       const entry = entries[key]!
       if (entry.options.replace) {
@@ -126,7 +157,7 @@ export class Scope {
       /** First entry is most recent */
       entry.value = Array.isArray(entry.value) ? [value, ...entry.value] : [value, entry.value]
     } else {
-      entries[key] = new ScopeEntry(key, value, opts)
+      entries[normalKey] = new ScopeEntry(normalKey, value, opts)
     }
   }
 
@@ -137,6 +168,7 @@ export class Scope {
   get(key: string, options: {
     filter?: (entry: ScopeEntry | undefined) => { value: any, done: boolean }
   } = {}): any {
+    key = this.normalizeKey(key)
     const {
       filter = entry => ({ value: entry, done: true })
     } = options

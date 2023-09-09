@@ -3,7 +3,7 @@ import {
   type CssRules,
   type IParseResult
 } from './cssCstParser'
-import { type Node } from '@jesscss/ast'
+import { type Node } from '@jesscss/core'
 
 export type CssParseResult = Omit<IParseResult, 'cst' | 'lexerResult'> & {
   tree: Node

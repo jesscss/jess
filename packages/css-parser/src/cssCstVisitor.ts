@@ -31,7 +31,7 @@ import {
   Color,
   Paren,
   Square
-} from '@jesscss/ast'
+} from '@jesscss/core'
 
 import { JsImport } from '../tree/js-import'
 import { CssCstParser } from './cssCstParser'
