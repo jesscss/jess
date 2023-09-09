@@ -57,10 +57,23 @@ export class Scope {
   _entries: ScopeEntryMap
   _parentScope: Scope | undefined
 
+  /**
+   * Keys are normalized to camelCase, therefore we should
+   * warn when a key is normalized differently
+   */
+  static entryKeys: Map<string, string>
+
   constructor(parentScope?: Scope) {
     this._parentScope = parentScope
     if (parentScope) {
       this._entries = parentScope._entries
+    }
+  }
+
+  normalizeKey(key: string) {
+    const existing = Scope.entryKeys.get(key)
+    if (existing !== key) {
+
     }
   }
 
@@ -154,3 +167,5 @@ export class Scope {
     }
   }
 }
+
+Scope.entryKeys = new Map()

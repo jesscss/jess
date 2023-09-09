@@ -1,5 +1,5 @@
 {
-  "name": "@jesscss/ast",
+  "name": "@jesscss/core",
   "publishConfig": {
     "access": "public"
   },
