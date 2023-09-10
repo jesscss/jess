@@ -1,5 +1,6 @@
 import { Declaration } from './declaration'
 import type { Node } from './node'
+import type { Interpolated } from './interpolated'
 
 export type VariableOptions = {
   /**
@@ -23,7 +24,10 @@ export type VariableOptions = {
 }
 
 /** A variable declaration */
-export class Variable<T = Node | string, U extends Node = Node> extends Declaration <T, U, VariableOptions> {
+export class Variable<
+  T extends Interpolated | string = Interpolated | string,
+  U extends Node = Node
+> extends Declaration <T, U, VariableOptions> {
   // register(context: Context, name: string, node: Declaration<string>): void {
   //   context.scope.setVar(name, node, this.options)
   // }

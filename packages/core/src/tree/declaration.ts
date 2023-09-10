@@ -14,7 +14,7 @@ import { Interpolated } from './interpolated'
 //     ? string
 //     : never
 
-export type DeclarationValue<T extends Interpolated | string = Interpolated | string, U extends Node = Node> = {
+export type DeclarationValue<U extends Node = Node, T extends Interpolated | string = Interpolated | string> = {
   name: T
   value: U
   /** The actual string representation of important, if it exists */
@@ -36,7 +36,7 @@ export class Declaration<
   T extends Interpolated | string = Interpolated | string,
   U extends Node = Node,
   O extends NodeOptions = DeclarationOptions
-> extends Node<DeclarationValue<T, U>, O> {
+> extends Node<DeclarationValue<U, T>, O> {
   get name(): T {
     return this.data.get('name')
   }

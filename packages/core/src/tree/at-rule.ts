@@ -35,8 +35,8 @@ export class AtRule extends Node<AtRuleValue> {
   eval(context: Context) {
     const node = super.eval(context) as AtRule
     /** Don't let rooted rules bubble past an at-rule */
-    if (node.rules) {
-      let rules = node.rules.value
+    if (node.value) {
+      let rules = node.value.value
       /**
        * Wrap sub-rules of a media query like Less
        *
@@ -47,7 +47,7 @@ export class AtRule extends Node<AtRuleValue> {
           .inherit(this)
           .eval(context)
         rules = [rule]
-        node.rules.value = rules
+        node.value.value = rules
       }
       const rootRules = this.collectRoots()
       rootRules.forEach(rule => rules.push(rule))

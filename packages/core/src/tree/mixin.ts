@@ -1,8 +1,9 @@
-import { type Node, defineType } from './node'
+import { defineType } from './node'
 import { type DeclarationValue } from './declaration'
 import { Variable } from './variable'
 import { type MixinBody } from './mixin-body'
 import { type Ruleset } from './ruleset'
+import { type Interpolated } from './interpolated'
 
 /**
  * @mixin someMixin (arg1, arg2: 10px) {
@@ -11,9 +12,11 @@ import { type Ruleset } from './ruleset'
  *   border-radius: $arg2;
  * }
  *
- * This extends Variable because name resolving is the same
+ * This extends Variable because name resolving is the same,
+ * and it has similar options as variables, such as being
+ * able to define a mixin if it exists.
  */
-export class Mixin<T = Ruleset> extends Variable<string | Node, MixinBody<T>> {
+export class Mixin<T = Ruleset> extends Variable<string | Interpolated, MixinBody<T>> {
   // register(context: Context, name: string, node: Declaration<string>): void {
   //   context.scope.setVar(name, node)
   // }

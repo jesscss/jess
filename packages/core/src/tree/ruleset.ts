@@ -179,12 +179,11 @@ export class Ruleset extends Node<Node[]> {
         map.forEach(({ node, pos, nameOnly }) => {
           if (nameOnly) {
             const decl = node.clone() as Declaration
-            let name = decl.name
+            const name = decl.name
             let ident: string
             if (name instanceof Node) {
-              name = name.eval(context)
-              ident = name.value
-              decl.name = name
+              ident = name.get()
+              decl.name = ident
             } else {
               ident = name
             }
