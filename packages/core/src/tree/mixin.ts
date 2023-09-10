@@ -1,7 +1,7 @@
 import { type Node, defineType } from './node'
-import { Declaration, type DeclarationValue } from './declaration'
+import { type DeclarationValue } from './declaration'
+import { Variable } from './variable'
 import { type MixinBody } from './mixin-body'
-import { type Context } from '../context'
 import { type Ruleset } from './ruleset'
 
 /**
@@ -11,12 +11,12 @@ import { type Ruleset } from './ruleset'
  *   border-radius: $arg2;
  * }
  *
- * This extends Declaration because name resolving is the same
+ * This extends Variable because name resolving is the same
  */
-export class Mixin<T = Ruleset> extends Declaration<string | Node, MixinBody<T>> {
-  register(context: Context, name: string, node: Declaration<string>): void {
-    context.scope.setVar(name, node)
-  }
+export class Mixin<T = Ruleset> extends Variable<string | Node, MixinBody<T>> {
+  // register(context: Context, name: string, node: Declaration<string>): void {
+  //   context.scope.setVar(name, node)
+  // }
   /**
    * @todo -
    * Return either a ruleset if `this` is the eval context,

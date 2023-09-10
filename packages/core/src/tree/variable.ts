@@ -17,7 +17,7 @@ export type VariableOptions = {
    * Throw if already defined in the immediate scope
    * Will not throw if defined in a parent scope.
    *
-   * Used by Jess (@let)
+   * Used by Jess (@let) and SCSS in the case of mixins
    */
   throwIfDefined?: boolean
 }

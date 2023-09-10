@@ -15,8 +15,10 @@ export class FunctionDefinition extends Mixin<(...args: any[]) => any> {
   eval(context: Context) {
     const result = super.eval(context)
     if (result && result instanceof Ruleset) {
-      if (result._last instanceof AtRule && result._last.name === '@return') {
-        return result._last.prelude
+      const value = result.value
+      const last = value[value.length - 1]
+      if (last instanceof AtRule && last.name === '@return') {
+        return last.prelude
       }
     }
     return result

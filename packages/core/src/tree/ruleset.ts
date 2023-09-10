@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/prefer-readonly */
 import { Node, defineType, type LocationInfo, type FileInfo } from './node'
 import { Declaration } from './declaration'
+import { Variable } from './variable'
 import { Call } from './call'
 import { Scope } from '../scope'
 import { Nil } from './nil'
@@ -187,7 +188,11 @@ export class Ruleset extends Node<Node[]> {
               ident = name
             }
             rules[pos] = decl
-            this._scope.setProp(ident, decl)
+            if (decl instanceof Variable) {
+              this._scope.setVar(ident, decl, decl.options)
+            } else {
+              this._scope.setProp(ident, decl)
+            }
             /** Now that we've evaluated the name, add it to the evaluation queue */
             assign(_evalQueue, Priority.None, decl, i)
           } else {

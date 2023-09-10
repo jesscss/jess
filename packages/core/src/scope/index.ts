@@ -1,4 +1,3 @@
-import { StringKeyOf } from 'type-fest'
 import { logger } from '../logger'
 /**
  * The Scope object is meant to be an efficient
@@ -93,6 +92,7 @@ type FilterResult = {
 type GetterOptions = {
   /** Filter is a function or value to compare when looking up values */
   filter?: (value: unknown, foundValues?: any[]) => FilterResult
+  suppressUndefinedError?: boolean
 }
 
 export type ScopeFilter = (
@@ -320,8 +320,8 @@ export class Scope {
    * We can pass in a filter to narrow the
    * entries.
    */
-  private _getBase(collection: '_vars' | '_props', key: string, options: GetterOptions = {}): any {
-    key = this.normalizeKey(key)
+  private _getBase(collection: '_vars' | '_props', baseKey: string, options: GetterOptions = {}): any {
+    const key = this.normalizeKey(baseKey)
     const {
       /** By default, return the first value */
       filter = (value: unknown) => ({ value, done: true })
@@ -336,7 +336,10 @@ export class Scope {
     while (current) {
       const entry = current[key]
       if (!entry) {
-        return undefined
+        if (options.suppressUndefinedError) {
+          return undefined
+        }
+        throw new ReferenceError(`"${baseKey}" is not defined`)
       }
       const entryValue: unknown = collection === '_vars' ? (entry as ScopeEntryMap).value : entry
       let lastResult: FilterResult
@@ -369,11 +372,15 @@ export class Scope {
       /** Traverse up the prototype chain */
       current = current.prototype
     }
-    return results.length
+    const returnResult = results.length
       ? results.length === 1
         ? results[0]
         : results
       : undefined
+    if (returnResult === undefined && !options.suppressUndefinedError) {
+      throw new ReferenceError(`"${baseKey}" is not defined`)
+    }
+    return returnResult
   }
 }
 
