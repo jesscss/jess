@@ -1,3 +1,4 @@
+import { e } from 'vitest/dist/types-3c7dbfa5'
 import { Scope } from '../index'
 
 let scope: Scope
@@ -7,7 +8,7 @@ describe('Scope', () => {
     scope = new Scope()
   })
 
-  describe('success', () => {
+  describe('set / get', () => {
     it('can do a normal get / set of properties', () => {
       scope.setProp('foo', 'bar')
       expect(scope.getProp('foo')).toBe('bar')
@@ -30,12 +31,80 @@ describe('Scope', () => {
       expect(scope.getProp('one')).toEqual(['one', 'two'])
     })
 
+    it('will create an endless array of props', () => {
+      scope.setProp('one', 'one')
+      scope.setProp('one', 'two')
+      scope.setProp('one', 'three')
+      expect(scope.getProp('one')).toEqual(['one', 'two', 'three'])
+    })
+
+    it('will merge arrays with array of props', () => {
+      scope.setProp('one', 'one')
+      scope.setProp('one', 'two')
+      scope.setProp('one', ['three', 'four'])
+      expect(scope.getProp('one')).toEqual(['one', 'two', 'three', 'four'])
+    })
+
     it('will exclude an item', () => {
       scope.setProp('one', 'one')
       scope.setProp('one', 'two')
       expect(scope.getProp('one', {
         filter: value => ({ value: value === 'two' ? undefined : value, done: false })
       })).toEqual('one')
+    })
+  })
+
+  describe('scope inheritance', () => {
+    it('inherits values when set before', () => {
+      scope.setVar('foo', 'bar')
+      const inherited = new Scope(scope)
+      expect(inherited.getVar('foo')).toBe('bar')
+    })
+
+    it('inherits values when set after', () => {
+      const inherited = new Scope(scope)
+      scope.setVar('foo', 'bar')
+      expect(inherited.getVar('foo')).toBe('bar')
+    })
+
+    it('shadows variables', () => {
+      const inherited = new Scope(scope)
+      scope.setVar('one', 'two')
+      inherited.setVar('one', 'three')
+      expect(scope.getVar('one')).toBe('two')
+      expect(inherited.getVar('one')).toBe('three')
+    })
+
+    it('sets existing variables', () => {
+      const inherited = new Scope(scope)
+      scope.setVar('one', 'two')
+      inherited.setVar('one', 'three', { setDefined: true })
+      expect(scope.getVar('one')).toBe('three')
+      expect(inherited.getVar('one')).toBe('three')
+    })
+
+    it('can deeply inherit scope', () => {
+      const child = new Scope(scope)
+      scope.setVar('one', 'one')
+      scope.setVar('root', 'value')
+      child.setVar('foo', 'bar')
+      child.setVar('one', 'two')
+      const grandChild = new Scope(child)
+      grandChild.setVar('one', 'three')
+
+      // inherited.setVar('one', 'three', { setDefined: true })
+      expect(scope.getVar('one')).toBe('one')
+      expect(grandChild.getVar('one')).toBe('three')
+      expect(grandChild.getVar('foo')).toBe('bar')
+      expect(grandChild.getVar('root')).toBe('value')
+    })
+
+    it('can merge child scope into parent scope', () => {
+      scope.setVar('one', 'one')
+      const child = new Scope()
+      child.setVar('one', 'two')
+      scope.assign(child)
+      expect(scope.getVar('one')).toBe('two')
     })
   })
 

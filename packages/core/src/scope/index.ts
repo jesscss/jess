@@ -76,7 +76,6 @@ const RESERVED = [
 ]
 
 type ScopeOptions = {
-  parent?: Scope
   /**
    * Less leaks variable declarations into the parent
    * if it's undefined.
@@ -109,6 +108,7 @@ export class Scope {
    */
   _vars: ScopeEntryMap
   _props: PropMap
+  _parent?: Scope
 
   options: ScopeOptions | undefined
 
@@ -118,8 +118,9 @@ export class Scope {
    */
   static entryKeys: Map<string, string>
 
-  constructor(options?: ScopeOptions) {
+  constructor(parent?: Scope, options?: ScopeOptions) {
     this.options = options
+    this._parent = parent
     /**
      * Assign to parent entries at first.
      * This allows us to lazily extend the prototype chain.
@@ -127,9 +128,12 @@ export class Scope {
      * If no keys are ever assigned, we can just lookup
      * keys from the parent scope.
      */
-    if (options?.parent) {
-      this._vars = options.parent._vars
-      this._props = options.parent._props
+    if (parent) {
+      this._vars = parent._vars
+      this._props = parent._props
+    } else {
+      this._vars = Object.create(null)
+      this._props = Object.create(null)
     }
   }
 
@@ -173,18 +177,12 @@ export class Scope {
   getEntries(key: '_props'): PropMap
   getEntries(key: '_vars' | '_props'): ScopeEntryMap | PropMap {
     const currentEntries = this[key]
-    if (currentEntries) {
-      if (currentEntries === this.options?.parent?.[key]) {
-        const entries = Object.create(this.options.parent[key])
-        this[key] = entries
-        return entries
-      }
-      return currentEntries
-    } else {
-      const entries = Object.create(null)
+    if (currentEntries === this._parent?.[key]) {
+      const entries = Object.create(this._parent[key])
       this[key] = entries
       return entries
     }
+    return currentEntries
   }
 
   assign(scope: Scope) {
