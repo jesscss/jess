@@ -4,6 +4,7 @@ import { List } from './tree/list'
 import { Dimension } from './tree/dimension'
 import { Anonymous } from './tree/anonymous'
 import type { Ruleset } from './tree/ruleset'
+import type { Selector } from './tree'
 import isPlainObject from 'lodash-es/isPlainObject'
 
 export interface ContextOptions {

@@ -7,6 +7,12 @@ import { Node, isNodeMap } from './node'
 import type { OutputCollector } from '../output'
 
 /**
+ * An element is akin to a "segment" of
+ * a selector. It _may_ be a selector,
+ * but we don't really know until its
+ * evaluated, such as if the element
+ * contains a variable reference.
+ *
  * @todo attribute elements, when compared,
  * compare with a normalized value
 */
@@ -34,6 +40,11 @@ export class Element extends Node<string | Node> {
 
   eval(context: Context) {
     if (!this.evaluated) {
+      const el = this.clone()
+      let { value } = el
+      if (value instanceof Node) {
+        value = value.eval(context)
+      }
       const node = super.eval(context)
       if (node.isClass) {
         context.hashClass(node.value)

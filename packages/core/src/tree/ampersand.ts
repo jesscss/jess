@@ -2,7 +2,8 @@ import type { LocationInfo, NodeMap } from './node'
 import { Node, defineType } from './node'
 import { Nil } from './nil'
 import type { Context } from '../context'
-import type { OutputCollector } from '../output'
+import { Rule } from './rule'
+// import type { OutputCollector } from '../output'
 
 /**
  * The '&' selector element
@@ -19,8 +20,8 @@ export class Ampersand extends Node<string | NodeMap> {
   /** Return the parent selector from context */
   eval(context: Context) {
     const frame = context.frames[0]
-    if (frame) {
-      return frame.clone()
+    if (frame && frame instanceof Rule) {
+      return frame.selector.clone()
     }
     return new Nil()
   }
