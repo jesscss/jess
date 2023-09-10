@@ -46,15 +46,15 @@ export class Declaration<
     this.data.set('important', v)
   }
 
-  register(context: Context, name: string, node: Declaration<string>) {
-    context.scope.setProp(name, node)
-  }
-
-  eval(context: Context): Declaration<string> | Nil {
+  eval(context: Context): Node {
     const node = this.clone()
     node.evaluated = true
     const { name, value } = node
-    /** Name may be a variable or a sequence containing a variable */
+    /**
+     * Name may be a variable or a sequence containing a variable
+     *
+     * @todo - is this valid if rulesets pre-emptively evaluate names?
+     */
     if (name instanceof Node) {
       const evald = name.eval(context)
       if (typeof evald.value !== 'string') {
@@ -68,7 +68,6 @@ export class Declaration<
     if (newValue instanceof Nil) {
       return newValue.inherit(node)
     } else {
-      this.register(context, node.name as string, node as Declaration<string>)
       node.value = newValue as U
     }
     return this.finishEval<Declaration<string>>(node)

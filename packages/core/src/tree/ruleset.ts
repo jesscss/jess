@@ -1,9 +1,49 @@
 /* eslint-disable @typescript-eslint/prefer-readonly */
-import { Node, defineType } from './node'
+import { Node, defineType, type LocationInfo, type FileInfo } from './node'
 import { Declaration } from './declaration'
 import { Call } from './call'
+import { Scope } from '../scope'
+import { Nil } from './nil'
 
 import type { Context } from '../context'
+import { Mixin } from './mixin'
+import { Use } from './use'
+
+export const enum Priority {
+  None = 0,
+  Low = 1,
+  Medium = 2,
+  High = 3
+}
+
+type QueueItem = {
+  node: Node
+  /** Position in rules array */
+  pos: number
+  /** If we're just evaluating a declaration's name */
+  nameOnly?: boolean
+}
+
+type QueueMap = {
+  [Priority.None]?: Set<QueueItem>
+  [Priority.Low]?: Set<QueueItem>
+  [Priority.Medium]?: Set<QueueItem>
+  [Priority.High]?: Set<QueueItem>
+}
+
+function assign(map: QueueMap, key: Priority, value: Node, pos: number, nameOnly?: boolean) {
+  const set = map[key]
+  if (set) {
+    set.add({ node: value, pos, nameOnly })
+  } else {
+    map[key] = new Set([{ node: value, pos, nameOnly }])
+  }
+}
+
+export type RulesetValues = {
+  value: Node[]
+  scope?: Scope
+}
 
 /**
  * The class representing a "declaration list".
@@ -12,114 +52,120 @@ import type { Context } from '../context'
  * and Less historically calls this a "Ruleset"
  * (for a set of rules), so we'll keep that name.
  *
- * Used by Rule and Mixin
+ * Used by Rule and Mixin. Additionally, imports / use statements
+ * return rulesets.
  *
  * @example
  * color: black;
  * background-color: white;
- *
- * @todo Nodes should be stored in a binary search tree?
- *       Ideally, we would not have to iterate through all nodes to
- *       find declaration / variable / function names.
- *
- *       Therefore, every entry of a node should be stored in this
- *       tree, including qualified rules (used by extend). Extend,
- *       however, would not search the tree, but would make an entry
- *       that is used by qualified rules when rendering.
- *
- * @see https://stackoverflow.com/questions/2130416/what-are-the-applications-of-binary-trees
  */
-
-export const enum Priority {
-  Low = 0,
-  Medium = 1,
-  High = 2
-}
-
-type QueueMap = {
-  [Priority.Low]?: Node[]
-  [Priority.Medium]?: Node[]
-  [Priority.High]?: Node[]
-}
-
-const assign = (map: QueueMap, key: Priority, value: Node) => {
-  const arr = map[key]
-  if (arr) {
-    map[key]?.push(value)
-  } else {
-    map[key] = [value]
-  }
-}
-
 export class Ruleset extends Node<Node[]> {
   // rootRules: Node[] = []
-  private _first: Node
-  private _last: Node
-  private _evalQueue: QueueMap = {};
+  // _first: Node
+  // _last: Node
+  private _evalQueue: QueueMap = {}
+  _scope: Scope
 
-  constructor(value: { scope: }) {
-    super([])
+  constructor(
+    values: RulesetValues | Node[],
+    location?: LocationInfo | 0,
+    options?: undefined,
+    fileInfo?: FileInfo
+  ) {
+    const { value, scope } = (values as any)
+    super({
+      value: Array.isArray(values) ? values : value
+    }, location, options, fileInfo)
+    this._scope = scope ?? new Scope()
   }
+
+  // constructor(value: { scope: }) {
+  //   super([])
+  // }
 
   /** Allows array spreading of nodes */
-  * [Symbol.iterator]() {
-    let current = this._first
-    while (current) {
-      yield current
-      current = current._next
-    }
-  }
+  // * [Symbol.iterator]() {
+  //   let current = this._first
+  //   while (current) {
+  //     yield current
+  //     current = current._next
+  //   }
+  // }
 
   eval(context: Context) {
     if (!this.evaluated) {
-      const rules = this.clone()
-      const { value, _evalQueue } = this
+      const { hoistDeclarations } = context.opts
+      const ruleset = this.clone()
+      const rules = ruleset.value = [...ruleset.value]
+      const { _evalQueue } = this
 
       /**
        * First, create a linked list.
        * This is so folding in mixins can be done
        * without mutating arrays.
        */
-      let prev: Node | undefined
-      const nodeLength = value.length
+      // let prev: Node | undefined
+      const nodeLength = rules.length
       /** Iterate in reverse order, to assign the _next node */
-      for (let i = nodeLength - 1; i >= 0; i--) {
-        const n = value[i]
-        if (i === nodeLength - 1) {
-          this._last = n
-        }
-        if (i === 0) {
-          this._first = n
-        }
-        if (prev) {
-          n._next = prev
-        }
-        prev = n
-      }
+      // for (let i = nodeLength - 1; i >= 0; i--) {
+      //   const n = value[i]
+      //   if (i === nodeLength - 1) {
+      //     this._last = n
+      //   }
+      //   if (i === 0) {
+      //     this._first = n
+      //   }
+      //   if (prev) {
+      //     n._next = prev
+      //   }
+      //   prev = n
+      // }
 
-      if (context.opts.hoist) {
-        /**
-         * Assign to the evaluation queue.
-         *
-         * Evalution order (for Less) should go:
-         *   1. declaration names
-         *   2. mixin and function calls
-         *   3. everything else
-         *
-         * Modes other than Less will use a linear evaluation order
-         */
-        for (let i = 0; i < nodeLength; i++) {
-          const n = value[i]
-          if (n instanceof Declaration && n.name instanceof Node) {
-            assign(_evalQueue, Priority.High, n.name)
-          } else if (n instanceof Call) {
-            assign(_evalQueue, Priority.Medium, n)
-          } else {
-            assign(_evalQueue, Priority.Low, n)
+      /**
+       * Assign to the evaluation queue.
+       *
+       * Evalution order (in Less) should go:
+       *   1. static declaration names (names that do not, themselves,
+       *      contain variables). This includes mixin and qualified rule names
+       *   2. variable declaration names
+       *   3. mixin and function calls
+       *   3. everything else
+       *
+       * Everything else:
+       *   1. static declaration names of mixins and functions
+       *   2. variable declaration names of mixins and functions
+       *   3. everything else
+       */
+      for (let i = 0; i < nodeLength; i++) {
+        const n = rules[i]
+
+        if (n instanceof Declaration) {
+          if (hoistDeclarations) {
+            if (n.name instanceof Node) {
+              assign(_evalQueue, Priority.Medium, n, i, true)
+            } else {
+              assign(_evalQueue, Priority.High, n, i, true)
+            }
+          /** Function declarations are also mixins */
+          } else if (n instanceof Mixin) {
+            if (n.name instanceof Node) {
+              assign(_evalQueue, Priority.Medium, n, i, true)
+            } else {
+              assign(_evalQueue, Priority.High, n, i, true)
+            }
           }
         }
-      } else {
-        _evalQueue[0] = value
+
+        /**
+         * Hoist imports
+         *
+         * @note - this might need tweaking
+         */
+        if (n instanceof Use || (hoistDeclarations && n instanceof Call)) {
+          assign(_evalQueue, Priority.Low, n, i)
+        } else {
+          assign(_evalQueue, Priority.None, n, i)
+        }
       }
 
       /** Start with high priority */
@@ -128,64 +174,111 @@ export class Ruleset extends Node<Node[]> {
         if (!map) {
           continue
         }
-        let current = map[0]
-        let prevEvald: Node | undefined
+        map.forEach(({ node, pos, nameOnly }) => {
+          if (nameOnly) {
+            const decl = node.clone() as Declaration
+            let name = decl.name
+            let ident: string
+            if (name instanceof Node) {
+              name = name.eval(context)
+              ident = name.value
+              decl.name = name
+            } else {
+              ident = name
+            }
+            rules[pos] = decl
+            this._scope.setProp(ident, decl)
+            /** Now that we've evaluated the name, add it to the evaluation queue */
+            assign(_evalQueue, Priority.None, decl, i)
+          } else {
+            /**
+             * We've already cloned and partially evaluated this,
+             * so we only need to evaluate the value.
+             */
+            if (node instanceof Declaration) {
+              const evald = node.value.eval(context)
+              if (evald instanceof Nil) {
+                rules[pos] = evald
+              } else {
+                node.value = evald
+              }
+            } else {
+              const result = node.eval(context)
+              rules[pos] = result
+              if (result instanceof Ruleset) {
+                this._scope.assign(result._scope)
+              }
+            }
+          }
+        })
+
+        // let current = map[0]
+        // let prevEvald: Node | undefined
 
         /**
          * This will dynamically link rulesets like
          * [rule]._next = [ruleset]._first
          * [ruleset]._last = [rule]._next._next
          *
-         * @todo Register declarations
+         * @todo Register declarations for languages
+         *       that merge them in.
          */
-        while (current) {
-          const evald = current.eval(context)
-          const evaldIsRuleset = evald instanceof Ruleset
-          /**
-           * If previous iteration produced a ruleset, link its
-           * last value to the currently-evaluated rule
-           */
-          if (prevEvald) {
-            if (prevEvald instanceof Ruleset) {
-              prevEvald._last._next = evald
-            } else {
-              prevEvald._next = evald
-            }
-          }
+        // while (current) {
+        //   let evald: Node
 
-          /**
-           * If we're on the first node, and it evals to a ruleset,
-           * link this ruleset's first node to the first node of
-           * the ruleset.
-           */
-          if (this._first === current) {
-            if (evaldIsRuleset) {
-              this._first = evald._first
-            } else {
-              this._first = evald
-            }
-          }
+        //   if (current.nameOnly) {
+        //     const decl = current.node.clone() as Declaration<Node>
+        //     decl.name = decl.name.eval(context)
+        //     evald = decl
+        //   } else {
+        //     evald = current.node.eval(context)
+        //   }
+        //   const evaldIsRuleset = evald instanceof Ruleset
+        //   /**
+        //    * If previous iteration produced a ruleset, link its
+        //    * last value to the currently-evaluated rule
+        //    */
+        //   if (prevEvald) {
+        //     if (prevEvald instanceof Ruleset) {
+        //       prevEvald._last._next = evald
+        //     } else {
+        //       prevEvald._next = evald
+        //     }
+        //   }
 
-          if (evaldIsRuleset && prevEvald) {
-            prevEvald._next = evald._first
-          }
+        //   /**
+        //    * If we're on the first node, and it evals to a ruleset,
+        //    * link this ruleset's first node to the first node of
+        //    * the ruleset.
+        //    */
+        //   if (this._first === current.node) {
+        //     if (evaldIsRuleset) {
+        //       this._first = (evald as Ruleset)._first
+        //     } else {
+        //       this._first = evald
+        //     }
+        //   }
 
-          /**
-           * If we're on the last node, and it evals to a ruleset,
-           * link this ruleset's last node to the last node of
-           * the ruleset.
-           */
-          if (this._last === current) {
-            if (evaldIsRuleset) {
-              this._last = evald._last
-            } else {
-              this._last = evald
-            }
-          }
+        //   if (evaldIsRuleset && prevEvald) {
+        //     prevEvald._next = (evald as Ruleset)._first
+        //   }
 
-          current = current._next
-          prevEvald = evald
-        }
+        //   /**
+        //    * If we're on the last node, and it evals to a ruleset,
+        //    * link this ruleset's last node to the last node of
+        //    * the ruleset.
+        //    */
+        //   if (this._last === current.node) {
+        //     if (evaldIsRuleset) {
+        //       this._last = (evald as Ruleset)._last
+        //     } else {
+        //       this._last = evald
+        //     }
+        //   }
+
+        //   current = current._next
+        //   prevEvald = evald
+        // }
       }
 
       /**
@@ -210,7 +303,7 @@ export class Ruleset extends Node<Node[]> {
       //   }
       // }
 
-      return this.finishEval(rules)
+      return this.finishEval(ruleset)
     }
     return this
   }

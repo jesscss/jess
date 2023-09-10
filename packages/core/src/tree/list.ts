@@ -1,4 +1,6 @@
+import { type Context } from '../context'
 import { defineType, Node } from './node'
+import type { Nil } from './nil'
 
 export type ListOptions = {
   slash: boolean
@@ -14,6 +16,10 @@ export type ListOptions = {
 export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   toArray() {
     return this.value
+  }
+
+  eval(context: Context) {
+    return super.eval(context) as List<Exclude<T, Nil>> | T | ReturnType<T['eval']> | List<Exclude<ReturnType<T['eval']>, Nil>>
   }
 
   /** @todo move to ToCssVisitor */

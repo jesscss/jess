@@ -1,5 +1,4 @@
-import type { LocationInfo } from './node'
-import { Node } from './node'
+import { Node, defineType } from './node'
 import { List } from './list'
 import { Ampersand } from './ampersand'
 import { Rule } from './rule'
@@ -30,7 +29,7 @@ export class AtRule extends Node<AtRuleValue> {
   }
 
   eval(context: Context) {
-    const node = super.eval(context)
+    const node = super.eval(context) as AtRule
     /** Don't let rooted rules bubble past an at-rule */
     if (node.rules) {
       let rules = node.rules.value
@@ -87,8 +86,5 @@ export class AtRule extends Node<AtRuleValue> {
   // }
 }
 AtRule.prototype.allowRoot = true
-AtRule.prototype.type = 'AtRule'
 
-export const atrule =
-  (value: AtRuleValue, location?: LocationInfo) =>
-    new AtRule(value, location)
+export const atrule = defineType<AtRuleValue>(AtRule, 'AtRule')

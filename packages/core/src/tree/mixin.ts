@@ -2,6 +2,7 @@ import { type Node, defineType } from './node'
 import { Declaration, type DeclarationValue } from './declaration'
 import { type MixinBody } from './mixin-body'
 import { type Context } from '../context'
+import { type Ruleset } from './ruleset'
 
 /**
  * @mixin someMixin (arg1, arg2: 10px) {
@@ -12,7 +13,7 @@ import { type Context } from '../context'
  *
  * This extends Declaration because name resolving is the same
  */
-export class Mixin extends Declaration<string | Node, MixinBody> {
+export class Mixin<T = Ruleset> extends Declaration<string | Node, MixinBody<T>> {
   register(context: Context, name: string, node: Declaration<string>): void {
     context.scope.setVar(name, node)
   }

@@ -8,7 +8,7 @@ import { logger } from '../logger'
  * lookup, and provides a language-agnostic interface
  * for determing behavior when setting identifiers.
  */
-export type ScopeOptions = {
+export type ScopeEntryOptions = {
   /**
    * These are from JS import statements
    */
@@ -26,6 +26,12 @@ export type ScopeOptions = {
    * Preserve previous entries. Used by Jess/Less for mixins.
    */
   preserve?: boolean
+
+  /**
+   * A variable marked private.
+   * In SCSS, this is any variable starting with a dash.
+   */
+  private?: boolean
 }
 
 /**
@@ -34,11 +40,11 @@ export type ScopeOptions = {
  * from imports are protected.
  */
 export class ScopeEntry {
-  options: ScopeOptions
+  options: ScopeEntryOptions
   key: string
   value: unknown
 
-  constructor(key: string, value?: unknown, opts?: ScopeOptions) {
+  constructor(key: string, value?: unknown, opts?: ScopeEntryOptions) {
     this.key = key
     this.value = value
     this.options = opts ?? {}
@@ -69,6 +75,15 @@ const RESERVED = [
   'static'
 ]
 
+type ScopeOptions = {
+  parent?: Scope
+  /**
+   * Less leaks variable declarations into the parent
+   * if it's undefined.
+   */
+  leakIntoParent?: boolean
+}
+
 /**
  * This should be extended by each language
  */
@@ -79,7 +94,8 @@ export class Scope {
    */
   _vars: ScopeEntryMap
   _props: PropMap
-  _parentScope: Scope | undefined
+
+  options: ScopeOptions | undefined
 
   /**
    * Keys are normalized to camelCase, therefore we should
@@ -87,8 +103,8 @@ export class Scope {
    */
   static entryKeys: Map<string, string>
 
-  constructor(parentScope?: Scope) {
-    this._parentScope = parentScope
+  constructor(options?: ScopeOptions) {
+    this.options = options
     /**
      * Assign to parent entries at first.
      * This allows us to lazily extend the prototype chain.
@@ -96,9 +112,9 @@ export class Scope {
      * If no keys are ever assigned, we can just lookup
      * keys from the parent scope.
      */
-    if (parentScope) {
-      this._vars = parentScope._vars
-      this._props = parentScope._props
+    if (options?.parent) {
+      this._vars = options.parent._vars
+      this._props = options.parent._props
     }
   }
 
@@ -143,8 +159,8 @@ export class Scope {
   getEntries(key: '_vars' | '_props'): ScopeEntryMap | PropMap {
     const currentEntries = this[key]
     if (currentEntries) {
-      if (currentEntries === this._parentScope?.[key]) {
-        const entries = Object.create(this._parentScope[key])
+      if (currentEntries === this.options?.parent?.[key]) {
+        const entries = Object.create(this.options.parent[key])
         this[key] = entries
         return entries
       }
@@ -153,6 +169,32 @@ export class Scope {
       const entries = Object.create(null)
       this[key] = entries
       return entries
+    }
+  }
+
+  assign(scope: Scope) {
+    const props = scope._props
+    const keys = Object.getOwnPropertyNames(props)
+    const keyLength = keys.length
+    for (let i = 0; i < keyLength; i++) {
+      const key = keys[i]
+      this.setProp(key, props[key])
+    }
+    if (this.options?.leakIntoParent) {
+      const vars = scope._vars
+      const keys = Object.getOwnPropertyNames(vars)
+      const keyLength = keys.length
+      for (let i = 0; i < keyLength; i++) {
+        const key = keys[i]
+        /** Only leak vars if they aren't defined */
+        if (key in this._vars && this._vars[key]?.options.preserve !== true) {
+          continue
+        }
+        const entry = vars[key]!
+        if (!entry.options.private) {
+          this.setVar(key, entry)
+        }
+      }
     }
   }
 
@@ -169,8 +211,14 @@ export class Scope {
     if (Object.prototype.hasOwnProperty.call(props, key)) {
       /** Modify the local entry */
       const entry = props[key]!
-      /** First entry is most recent */
-      props[key] = Array.isArray(entry) ? [...entry, value] : [entry, value]
+      props[key] =
+        Array.isArray(entry)
+          ? Array.isArray(value)
+            ? [...entry, ...value]
+            : [...entry, value]
+          : Array.isArray(value)
+            ? [entry, ...value]
+            : [entry, value]
     } else {
       props[key] = value
     }
@@ -185,7 +233,11 @@ export class Scope {
    * This will store a scoped identifier
    * that is compatible with JS.
    */
-  setVar(key: string, value: unknown, opts?: ScopeOptions) {
+  setVar(key: string, value: unknown, opts?: ScopeEntryOptions) {
+    const { vars } = this
+    if (value instanceof ScopeEntry) {
+      vars[key] = value
+    }
     if (key.startsWith('$')) {
       throw new SyntaxError(`"${key}" cannot start with "$"`)
     }
@@ -200,7 +252,6 @@ export class Scope {
     }
     Scope.entryKeys.set(normalKey, key)
 
-    const { vars } = this
     if (normalKey in vars) {
       if (opts?.setIfUndefined) {
         return

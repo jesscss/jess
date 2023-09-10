@@ -3,6 +3,8 @@
  * These nodes are actually taking the role of two ASTs,
  * because there are nodes that will be used to produce a module,
  * and that module will create AST nodes to create CSS.
+ *
+ * @todo - rewrite the above, this is no longer true
  */
 
 /** Base classes - keep these on top */

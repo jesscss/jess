@@ -2,10 +2,11 @@ import { Sequence } from './sequence'
 import { Combinator } from './combinator'
 import { Ampersand } from './ampersand'
 import { WS } from './ws'
-import { isNodeMap } from './node'
-import type { Node, NodeMap, LocationInfo } from './node'
+import {
+  defineType,
+  type Node
+} from './node'
 import type { Context } from '../context'
-import type { OutputCollector } from '../output'
 import { Nil } from './nil'
 import { List } from './list'
 
@@ -21,19 +22,19 @@ import { List } from './list'
  * if there isn't one
  */
 export class Selector extends Sequence {
-  constructor(
-    value: Array<string | Node> | NodeMap,
-    location?: LocationInfo
-  ) {
-    if (isNodeMap(value)) {
-      super(value, location)
-      return
-    }
-    const values = value.map(v => v.constructor === String ? new Combinator(v) : v)
-    super({
-      value: values
-    }, location)
-  }
+  // constructor(
+  //   value: Array<string | Node> | NodeMap,
+  //   location?: LocationInfo
+  // ) {
+  //   if (isNodeMap(value)) {
+  //     super(value, location)
+  //     return
+  //   }
+  //   const values = value.map(v => v.constructor === String ? new Combinator(v) : v)
+  //   super({
+  //     value: values
+  //   }, location)
+  // }
 
   eval(context: Context) {
     let selector: Selector = this.clone()
@@ -85,24 +86,22 @@ export class Selector extends Sequence {
     return selector
   }
 
-  toCSS(context: Context, out: OutputCollector) {
-    this.value.forEach(node => node.toCSS(context, out))
-  }
+  /** @todo move to visitors */
+  // toCSS(context: Context, out: OutputCollector) {
+  //   this.value.forEach(node => node.toCSS(context, out))
+  // }
 
-  toModule(context: Context, out: OutputCollector) {
-    out.add('$J.sel([', this.location)
-    const length = this.value.length - 1
-    this.value.forEach((node, i) => {
-      node.toModule(context, out)
-      if (i < length) {
-        out.add(', ')
-      }
-    })
-    out.add('])')
-  }
+  // toModule(context: Context, out: OutputCollector) {
+  //   out.add('$J.sel([', this.location)
+  //   const length = this.value.length - 1
+  //   this.value.forEach((node, i) => {
+  //     node.toModule(context, out)
+  //     if (i < length) {
+  //       out.add(', ')
+  //     }
+  //   })
+  //   out.add('])')
+  // }
 }
-Selector.prototype.type = 'Selector'
 
-export const sel =
-  (value: Array<string | Node> | NodeMap, location?: LocationInfo) =>
-    new Selector(value, location)
+export const sel = defineType(Selector, 'Selector', 'sel')

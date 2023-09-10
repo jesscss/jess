@@ -2,16 +2,16 @@ import { Node, defineType } from './node'
 import type { List } from './list'
 import type { Ruleset } from './ruleset'
 
-export type MixinValue = {
+export type MixinValue<T = Ruleset> = {
   params?: List
-  value: Ruleset
+  value: T
 }
 
 /**
  * This is just the body of a mixin
  * (an anonymous mixin)
  */
-export class MixinBody extends Node<MixinValue> {
+export class MixinBody<T = Ruleset> extends Node<MixinValue<T>> {
   /**
    * @todo -
    * Return either a ruleset if `this` is the eval context,

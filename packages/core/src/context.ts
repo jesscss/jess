@@ -10,12 +10,10 @@ export interface ContextOptions {
   module?: boolean
   dynamic?: boolean
   /**
-   * Hoists declarations, so they can be
-   * evaluated per scope. Less sets this
-   * to true.
+   * Hoists variable declarations, so they can be
+   * evaluated per scope. Less sets this to true.
    */
-  hoist?: boolean
-  scope?: Scope
+  hoistDeclarations?: boolean
 }
 
 const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('')
@@ -32,7 +30,6 @@ export class Context {
   opts: ContextOptions
   originalOpts: ContextOptions
 
-  scope: Scope
   /**
    * The file (eval) context should have the same ID at compile-time
    * as run-time, so this ID will be set in `toModule()` output
@@ -70,7 +67,6 @@ export class Context {
   constructor(opts: ContextOptions = {}) {
     this.originalOpts = opts
     this.opts = opts
-    this.scope = opts.scope ?? new Scope()
   }
 
   get pre() {
