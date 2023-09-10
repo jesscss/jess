@@ -1,3 +1,4 @@
+import { StringKeyOf } from 'type-fest'
 import { logger } from '../logger'
 /**
  * The Scope object is meant to be an efficient
@@ -84,6 +85,20 @@ type ScopeOptions = {
   leakIntoParent?: boolean
 }
 
+type FilterResult = {
+  value: unknown
+  done: boolean
+}
+
+type GetterOptions = {
+  /** Filter is a function or value to compare when looking up values */
+  filter?: (value: unknown, foundValues?: any[]) => FilterResult
+}
+
+export type ScopeFilter = (
+  entry: ScopeEntry | undefined,
+  valueFilter: (value: any, index?: number, entryValue?: any[]) => boolean
+) => ({ value: unknown, done: boolean })
 /**
  * This should be extended by each language
  */
@@ -211,6 +226,7 @@ export class Scope {
     if (Object.prototype.hasOwnProperty.call(props, key)) {
       /** Modify the local entry */
       const entry = props[key]!
+
       props[key] =
         Array.isArray(entry)
           ? Array.isArray(value)
@@ -222,11 +238,6 @@ export class Scope {
     } else {
       props[key] = value
     }
-  }
-
-  /** @todo - merge into lists / sequences */
-  getProp(key: string) {
-    return this._props[key]
   }
 
   /**
@@ -279,74 +290,90 @@ export class Scope {
       if (entry?.options.throwIfDefined ?? opts?.throwIfDefined) {
         throw new SyntaxError(`"${key}" is already defined`)
       }
-      if (entry.options.preserve) {
-        /** First entry is most recent */
-        entry.value = Array.isArray(entry.value) ? [value, ...entry.value] : [value, entry.value]
-        return
-      }
-      entry.value = value
+
+      /**
+       * Unlike properties, vars are stored with
+       * most recent first.
+       */
+      entry.value = Array.isArray(entry.value) ? [value, ...entry.value] : [value, entry.value]
     } else {
       /** Shadow the variable within the local scope */
       vars[normalKey] = new ScopeEntry(normalKey, value, opts)
     }
   }
 
+  getVar(key: string, options?: GetterOptions) {
+    return this._getBase('_vars', key, options)
+  }
+
+  /** @todo - merge into lists / sequences */
+  getProp(key: string, options: GetterOptions = {}) {
+    return this._getBase('_props', key, {
+      filter(value: unknown) {
+        return { value, done: false }
+      },
+      ...options
+    })
+  }
+
   /**
    * We can pass in a filter to narrow the
    * entries.
    */
-  getVar(key: string, options: {
-    filter?: (entry: ScopeEntry | undefined) => { value: unknown, done: boolean }
-  } = {}): any {
+  private _getBase(collection: '_vars' | '_props', key: string, options: GetterOptions = {}): any {
     key = this.normalizeKey(key)
     const {
-      filter = (entry: ScopeEntry | undefined) => {
-        if (entry) {
-          if (Array.isArray(entry.value)) {
-            return {
-              value: entry.value[0],
-              done: true
-            }
-          } else {
-            return {
-              value: entry.value,
-              done: true
-            }
-          }
-        }
-        return { value: undefined, done: true }
-      }
+      /** By default, return the first value */
+      filter = (value: unknown) => ({ value, done: true })
     } = options
     /**
      * When getting, use the private variable,
      * so we don't extend the prototype chain.
      */
-    let current: ScopeEntryMap | undefined = this._vars
-    /**
-     * We use this instead of undefined,
-     * in case the prototype chain has undefined values?
-     *
-     * May be unnecessary?
-     */
-    const unset = Symbol('unset')
-    let value: any = unset
+    let current: ScopeEntryMap | PropMap | undefined = this[collection]
+    const results: any[] = []
+
     while (current) {
-      const result = filter(current[key])
-      const resultValue = result.value
-      if (value === unset) {
-        value = resultValue
-      } else {
-        value = [
-          ...(Array.isArray(value) ? value : [value]),
-          ...(Array.isArray(resultValue) ? resultValue : [resultValue])
-        ]
+      const entry = current[key]
+      if (!entry) {
+        return undefined
       }
-      if (result.done) {
-        return value
+      const entryValue: unknown = collection === '_vars' ? (entry as ScopeEntryMap).value : entry
+      let lastResult: FilterResult
+      if (Array.isArray(entryValue)) {
+        for (let i = 0; i < entryValue.length; i++) {
+          const val = filter(entryValue[i], results)
+          if (val.value !== undefined) {
+            results.push(val.value)
+          }
+          lastResult = val
+          if (val.done) {
+            break
+          }
+        }
+      } else {
+        const val = filter(entryValue, results)
+        lastResult = val
+        if (val.value !== undefined) {
+          results.push(val.value)
+        }
+      }
+
+      if (lastResult!.done) {
+        return results.length
+          ? results.length === 1
+            ? results[0]
+            : results
+          : undefined
       }
       /** Traverse up the prototype chain */
       current = current.prototype
     }
+    return results.length
+      ? results.length === 1
+        ? results[0]
+        : results
+      : undefined
   }
 }
 

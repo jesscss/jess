@@ -22,4 +22,18 @@ describe('Scope', () => {
     scope.setVar('one', 'two')
     expect(scope.getVar('one')).toBe('two')
   })
+
+  it('will create an array of props', () => {
+    scope.setProp('one', 'one')
+    scope.setProp('one', 'two')
+    expect(scope.getProp('one')).toEqual(['one', 'two'])
+  })
+
+  it('will exclude an item', () => {
+    scope.setProp('one', 'one')
+    scope.setProp('one', 'two')
+    expect(scope.getProp('one', {
+      filter: value => ({ value: value === 'two' ? undefined : value, done: false })
+    })).toEqual('one')
+  })
 })

@@ -205,6 +205,8 @@ export class Ruleset extends Node<Node[]> {
             } else {
               const result = node.eval(context)
               rules[pos] = result
+
+              /** Merge any scope that we need for lookups */
               if (result instanceof Ruleset) {
                 this._scope.assign(result._scope)
               }

@@ -4,7 +4,6 @@ import { List } from './tree/list'
 import { Dimension } from './tree/dimension'
 import { Anonymous } from './tree/anonymous'
 import isPlainObject from 'lodash-es/isPlainObject'
-import { Scope } from './scope'
 
 export interface ContextOptions {
   module?: boolean
