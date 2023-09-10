@@ -1,6 +1,7 @@
 import { type Node, defineType } from './node'
 import { Declaration, type DeclarationValue } from './declaration'
 import { type MixinBody } from './mixin-body'
+import { type Context } from '../context'
 
 /**
  * @mixin someMixin (arg1, arg2: 10px) {
@@ -12,6 +13,9 @@ import { type MixinBody } from './mixin-body'
  * This extends Declaration because name resolving is the same
  */
 export class Mixin extends Declaration<string | Node, MixinBody> {
+  register(context: Context, name: string, node: Declaration<string>): void {
+    context.scope.setVar(name, node)
+  }
   /**
    * @todo -
    * Return either a ruleset if `this` is the eval context,

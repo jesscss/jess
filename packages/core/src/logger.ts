@@ -19,10 +19,14 @@ export class Logger {
   }
 }
 
+type LoggerExport = Logger & {
+  configure(log: Logger): void
+}
+
 export const logger = {
   configure(log: Logger) {
     Object.assign(logger, log)
   }
-}
+} as LoggerExport
 
 logger.configure(new Logger())

@@ -1,5 +1,6 @@
 import {
   Node,
+  type NodeOptions,
   defineType
 } from './node'
 import { Nil } from './nil'
@@ -15,7 +16,7 @@ export type DeclarationValue<T = Node | string, U extends Node = Node> = {
 
 /** Used by Less */
 export type DeclarationOptions = {
-  merge?: boolean
+  merge?: 'list' | 'spaced'
 }
 
 /**
@@ -24,7 +25,11 @@ export type DeclarationOptions = {
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
-export class Declaration<T = Node | string, U extends Node = Node> extends Node<DeclarationValue<T, U>, DeclarationOptions> {
+export class Declaration<
+  T = Node | string,
+  U extends Node = Node,
+  O extends NodeOptions = DeclarationOptions
+> extends Node<DeclarationValue<T, U>, O> {
   get name(): T {
     return this.data.get('name')
   }
@@ -39,6 +44,10 @@ export class Declaration<T = Node | string, U extends Node = Node> extends Node<
 
   set important(v: string | undefined) {
     this.data.set('important', v)
+  }
+
+  register(context: Context, name: string, node: Declaration<string>) {
+    context.scope.setProp(name, node)
   }
 
   eval(context: Context): Declaration<string> | Nil {
@@ -59,7 +68,7 @@ export class Declaration<T = Node | string, U extends Node = Node> extends Node<
     if (newValue instanceof Nil) {
       return newValue.inherit(node)
     } else {
-      context.scope.set(node.name as string, node)
+      this.register(context, node.name as string, node as Declaration<string>)
       node.value = newValue as U
     }
     return this.finishEval<Declaration<string>>(node)
