@@ -9,7 +9,7 @@ export type AtRuleValue = {
   name: string
   /** The prelude */
   prelude: Node
-  rules?: Ruleset
+  value?: Ruleset
 }
 
 /**
@@ -20,12 +20,16 @@ export class AtRule extends Node<AtRuleValue> {
     return this.data.get('prelude')
   }
 
+  set prelude(v: Node) {
+    this.data.set('prelude', v)
+  }
+
   get name() {
     return this.data.get('name')
   }
 
-  get rules() {
-    return this.data.get('rules')
+  set name(v: string) {
+    this.data.set('name', v)
   }
 
   eval(context: Context) {

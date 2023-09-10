@@ -77,10 +77,10 @@ const RESERVED = [
 
 type ScopeOptions = {
   /**
-   * Less leaks variable declarations into the parent
-   * if it's undefined.
+   * Less leaks variable declarations from a child
+   * scope into the current scope.
    */
-  leakIntoParent?: boolean
+  leakVariablesIntoScope?: boolean
 }
 
 type FilterResult = {
@@ -110,7 +110,7 @@ export class Scope {
   _props: PropMap
   _parent?: Scope
 
-  options: ScopeOptions | undefined
+  options: ScopeOptions
 
   /**
    * Keys are normalized to camelCase, therefore we should
@@ -119,7 +119,7 @@ export class Scope {
   static entryKeys: Map<string, string>
 
   constructor(parent?: Scope, options?: ScopeOptions) {
-    this.options = options
+    this.options = options ?? {}
     this._parent = parent
     /**
      * Assign to parent entries at first.
@@ -185,7 +185,8 @@ export class Scope {
     return currentEntries
   }
 
-  assign(scope: Scope) {
+  /** Merges a scope (usually child) into this scope object */
+  merge(scope: Scope) {
     const props = scope._props
     const keys = Object.getOwnPropertyNames(props)
     const keyLength = keys.length
@@ -193,7 +194,7 @@ export class Scope {
       const key = keys[i]
       this.setProp(key, props[key])
     }
-    if (this.options?.leakIntoParent) {
+    if (this.options?.leakVariablesIntoScope) {
       const vars = scope._vars
       const keys = Object.getOwnPropertyNames(vars)
       const keyLength = keys.length
@@ -246,6 +247,7 @@ export class Scope {
     const { vars } = this
     if (value instanceof ScopeEntry) {
       vars[key] = value
+      return
     }
     if (key.startsWith('$')) {
       throw new SyntaxError(`"${key}" cannot start with "$"`)

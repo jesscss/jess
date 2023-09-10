@@ -130,7 +130,6 @@ export abstract class Node<
 
   get value() {
     return this.data.get('value')
-    // return [...this.data.values()]
   }
 
   set value(n: M['value']) {

@@ -5,9 +5,16 @@ import {
 } from './node'
 import { Nil } from './nil'
 import type { Context } from '../context'
+import { Interpolated } from './interpolated'
 // import type { OutputCollector } from '../output'
 
-export type DeclarationValue<T = Node | string, U extends Node = Node> = {
+// type NameType<T> = T extends Interpolated
+//   ? Interpolated
+//   : T extends string
+//     ? string
+//     : never
+
+export type DeclarationValue<T extends Interpolated | string = Interpolated | string, U extends Node = Node> = {
   name: T
   value: U
   /** The actual string representation of important, if it exists */
@@ -26,7 +33,7 @@ export type DeclarationOptions = {
  * Once evaluated, name must be a string
  */
 export class Declaration<
-  T = Node | string,
+  T extends Interpolated | string = Interpolated | string,
   U extends Node = Node,
   O extends NodeOptions = DeclarationOptions
 > extends Node<DeclarationValue<T, U>, O> {
@@ -47,7 +54,7 @@ export class Declaration<
   }
 
   eval(context: Context): Node {
-    const node = this.clone()
+    const node = this.clone() as Declaration
     node.evaluated = true
     const { name, value } = node
     /**
@@ -55,12 +62,8 @@ export class Declaration<
      *
      * @todo - is this valid if rulesets pre-emptively evaluate names?
      */
-    if (name instanceof Node) {
-      const evald = name.eval(context)
-      if (typeof evald.value !== 'string') {
-        throw new Error('Invalid name')
-      }
-      node.name = name
+    if (name instanceof Interpolated) {
+      node.name = name.get()
     } else {
       node.name = name
     }

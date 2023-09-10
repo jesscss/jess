@@ -1,9 +1,11 @@
-import { e } from 'vitest/dist/types-3c7dbfa5'
 import { Scope } from '../index'
+import { logger } from '../../logger'
+
+vi.spyOn(logger, 'warn')
 
 let scope: Scope
 
-describe('Scope', () => {
+describe('Scope', async () => {
   beforeEach(() => {
     scope = new Scope()
   })
@@ -100,11 +102,55 @@ describe('Scope', () => {
     })
 
     it('can merge child scope into parent scope', () => {
-      scope.setVar('one', 'one')
+      scope.setProp('one', 'one')
+      const child = new Scope()
+      child.setProp('one', 'two')
+      scope.merge(child)
+      expect(scope.getProp('one')).toEqual(['one', 'two'])
+    })
+
+    it('will leak undefined vars', () => {
       const child = new Scope()
       child.setVar('one', 'two')
-      scope.assign(child)
-      expect(scope.getVar('one')).toBe('two')
+      scope.options.leakVariablesIntoScope = true
+      scope.merge(child)
+      expect(scope.getVar('one')).toEqual('two')
+    })
+
+    it('will not leak defined vars', () => {
+      const child = new Scope()
+      child.setVar('one', 'two')
+      scope.options.leakVariablesIntoScope = true
+      scope.setVar('one', 'one')
+      scope.merge(child)
+      expect(scope.getVar('one')).toEqual('one')
+    })
+  })
+
+  describe('key normalization', () => {
+    it('normalizes into camel case', () => {
+      expect(scope.normalizeKey('foo-bar')).toBe('fooBar')
+    })
+    it('changes a starting dash to underscore', () => {
+      expect(scope.normalizeKey('-foo-bar')).toBe('_fooBar')
+    })
+    it('replaces a leading "." or "#"', () => {
+      expect(scope.normalizeKey('.foo-bar')).toBe('fooBar')
+      expect(scope.normalizeKey('#foo-bar')).toBe('fooBar')
+    })
+  })
+
+  describe('warnings', () => {
+    it('warns if keys are normalized differently', () => {
+      scope.setVar('foo-bar', 'one')
+      scope.setVar('fooBar', 'one')
+      expect(logger.warn).toBeCalled()
+    })
+
+    it('warns if keys are normalized differently', () => {
+      scope.setVar('.foo-bar', 'one')
+      scope.setVar('fooBar', 'one')
+      expect(logger.warn).toBeCalled()
     })
   })
 
@@ -123,6 +169,10 @@ describe('Scope', () => {
 
     it('throws if a variable starts with "$"', () => {
       expect(() => scope.setVar('$foo', null)).toThrow()
+    })
+
+    it('throws if a variable is not a valid JS identifier', () => {
+      expect(() => scope.setVar('foo~~bar', null)).toThrow()
     })
 
     it('throws if a the variable is marked as protected', () => {

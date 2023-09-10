@@ -1,13 +1,18 @@
-import type { LocationInfo } from './node'
-import { Node } from './node'
+import { Node, defineType } from './node'
 import { type Ruleset } from './ruleset'
 import type { Context } from '../context'
 // import type { OutputCollector } from '../output'
 import type { Selector } from './selector'
+import type { List } from './list'
+import { Nil } from './nil'
 
 type RuleValue = {
-  /** This will be either a List<Selector> or Selector */
-  selector: Selector | null
+  selector: Selector | List<Selector> | Nil
+  /**
+   * It's important that any Node that defines a Ruleset
+   * sets it to the `value` property. This allows us to
+   * generalize nodes for the `frames` property in Context
+   */
   value: Ruleset
 }
 /**
@@ -22,20 +27,20 @@ export class Rule extends Node<RuleValue> {
     return this.data.get('selector')
   }
 
-  set selector(v: Selector | null) {
+  set selector(v: Selector | List<Selector> | Nil) {
     this.data.set('selector', v)
   }
 
-  eval(context: Context) {
+  eval(context: Context): Rule | Nil {
     if (!this.evaluated) {
       const rule = this.clone()
-      const sels = this.selector?.eval(context)
-      if (!sels) {
-        return null
+      const sels = this.selector.eval(context)
+      if (sels instanceof Nil) {
+        return sels
       }
       rule.selector = sels
 
-      context.frames.unshift(sels)
+      context.frames.unshift(rule)
       rule.value = this.value.eval(context)
       context.frames.shift()
 
@@ -43,7 +48,7 @@ export class Rule extends Node<RuleValue> {
 
       /** Remove empty rules */
       if (rule.value.value.length === 0) {
-        return null
+        return new Nil().inherit(this)
       }
       return rule
     }
@@ -74,8 +79,5 @@ export class Rule extends Node<RuleValue> {
   // }
 }
 Rule.prototype.allowRoot = true
-Rule.prototype.type = 'Rule'
 
-export const rule =
-  (value: RuleValue, location?: LocationInfo) =>
-    new Rule(value, location)
+export const rule = defineType<RuleValue>(Rule, 'Rule')

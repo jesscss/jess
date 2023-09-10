@@ -9,7 +9,7 @@ import type { OutputCollector } from '../output'
 import combinate from 'combinate'
 
 /**
- * A continuous collection of nodes
+ * @todo - replace with something more like Operation
  */
 export class Expression extends Node {
   value: any[]

@@ -26,9 +26,9 @@ export class Ampersand extends Node<string | NodeMap> {
   }
 
   /** @todo - move to ToModuleVisitor */
-  toModule(context: Context, out: OutputCollector) {
-    out.add('$J.amp()', this.location)
-  }
+  // toModule(context: Context, out: OutputCollector) {
+  //   out.add('$J.amp()', this.location)
+  // }
 }
 
 export const amp = defineType(Ampersand, 'Ampersand', 'amp')

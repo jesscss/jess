@@ -97,6 +97,7 @@ export class Ruleset extends Node<Node[]> {
     if (!this.evaluated) {
       const { hoistDeclarations } = context.opts
       const ruleset = this.clone()
+      ruleset._scope = this._scope
       const rules = ruleset.value = [...ruleset.value]
       const { _evalQueue } = this
 
@@ -213,7 +214,7 @@ export class Ruleset extends Node<Node[]> {
 
               /** Merge any scope that we need for lookups */
               if (result instanceof Ruleset) {
-                this._scope.assign(result._scope)
+                this._scope.merge(result._scope)
               }
             }
           }

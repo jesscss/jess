@@ -1,8 +1,9 @@
-import { Node } from './tree/node'
+import { Node, type NodeTypeMap } from './tree/node'
 import { Nil } from './tree/nil'
 import { List } from './tree/list'
 import { Dimension } from './tree/dimension'
 import { Anonymous } from './tree/anonymous'
+import type { Ruleset } from './tree/ruleset'
 import isPlainObject from 'lodash-es/isPlainObject'
 
 export interface ContextOptions {
@@ -39,7 +40,12 @@ export class Context {
   /** @todo - change to Map() */
   classMap: Record<string, string> = Object.create(null)
 
-  frames: Node[] = []
+  /**
+   * Only nodes with rulesets are valid
+   * frames, because they are the only
+   * nodes with scope.
+   */
+  frames: Array<Node<NodeTypeMap & { value: Ruleset }>> = []
 
   /** Keeps track of the indention level */
   indent = 0
