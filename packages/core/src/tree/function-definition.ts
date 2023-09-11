@@ -3,8 +3,6 @@ import { AtRule } from './at-rule'
 import { Mixin } from './mixin'
 import { defineType } from './node'
 import { Ruleset } from './ruleset'
-import type { DeclarationValue } from './declaration'
-import type { MixinBody } from './mixin-body'
 
 /**
  * Functions are mixins with a return value
@@ -25,4 +23,4 @@ export class FunctionDefinition extends Mixin<(...args: any[]) => any> {
   }
 }
 
-export const func = defineType<DeclarationValue<MixinBody>>(FunctionDefinition, 'FunctionDefinition')
+export const func = defineType(FunctionDefinition, 'FunctionDefinition')

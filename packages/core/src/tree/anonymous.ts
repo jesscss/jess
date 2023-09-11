@@ -9,4 +9,4 @@ export class Anonymous extends Node<string> {
   // }
 }
 
-export const anon = defineType<string>(Anonymous, 'Anonymous', 'anon')
+export const a = defineType(Anonymous, 'Anonymous', 'a')

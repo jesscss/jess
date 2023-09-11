@@ -29,4 +29,4 @@ export class Nil extends Node<undefined> {
 Nil.prototype.allowRoot = true
 Nil.prototype.allowRuleRoot = true
 
-export const nil = defineType<undefined>(Nil, 'Nil')
+export const nil = defineType(Nil, 'Nil')

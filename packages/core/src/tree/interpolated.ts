@@ -1,4 +1,6 @@
 import { Node, defineType } from './node'
+import { Anonymous } from './anonymous'
+import type { Context } from '../context'
 
 type InterpolatedValue = {
   /** String with ## placeholders */
@@ -13,10 +15,12 @@ type InterpolatedValue = {
  * when evaluated.
  */
 export class Interpolated extends Node<InterpolatedValue> {
-  get() {
-    const replacements = this.data.get('replacements')
-    return this.value.replace(/##/g, _ => String(replacements.shift()))
+  eval(context: Context) {
+    const replacements = this.data.get('replacements').map(n => n.eval(context))
+    const value = this.value.replace(/##/g, _ => String(replacements.shift()))
+    const node = new Anonymous(value).inherit(this)
+    return node
   }
 }
 
-export const interpolated = defineType<InterpolatedValue>(Interpolated, 'Interpolated')
+export const interpolated = defineType(Interpolated, 'Interpolated')

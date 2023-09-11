@@ -6,6 +6,7 @@ import {
 import { Nil } from './nil'
 import type { Context } from '../context'
 import { Interpolated } from './interpolated'
+import type { Anonymous } from './anonymous'
 // import type { OutputCollector } from '../output'
 
 // type NameType<T> = T extends Interpolated
@@ -14,7 +15,9 @@ import { Interpolated } from './interpolated'
 //     ? string
 //     : never
 
-export type DeclarationValue<U extends Node = Node, T extends Interpolated | string = Interpolated | string> = {
+export type Name = Interpolated | Anonymous | string
+
+export type DeclarationValue<U extends Node = Node, T extends Name = Name> = {
   name: T
   value: U
   /** The actual string representation of important, if it exists */
@@ -33,7 +36,7 @@ export type DeclarationOptions = {
  * Once evaluated, name must be a string
  */
 export class Declaration<
-  T extends Interpolated | string = Interpolated | string,
+  T extends Name = Name,
   U extends Node = Node,
   O extends NodeOptions = DeclarationOptions
 > extends Node<DeclarationValue<U, T>, O> {
@@ -54,26 +57,29 @@ export class Declaration<
   }
 
   eval(context: Context): Node {
-    const node = this.clone() as Declaration
-    node.evaluated = true
-    const { name, value } = node
-    /**
-     * Name may be a variable or a sequence containing a variable
-     *
-     * @todo - is this valid if rulesets pre-emptively evaluate names?
-     */
-    if (name instanceof Interpolated) {
-      node.name = name.get()
-    } else {
-      node.name = name
+    if (!this.evaluated) {
+      const node = this.clone() as Declaration
+      node.evaluated = true
+      const { name, value } = node
+      /**
+       * Name may be a variable or a sequence containing a variable
+       *
+       * @todo - is this valid if rulesets pre-emptively evaluate names?
+       */
+      if (name instanceof Interpolated) {
+        node.name = name.eval(context)
+      } else {
+        node.name = name
+      }
+      const newValue = value.eval(context)
+      if (newValue instanceof Nil) {
+        return newValue.inherit(node)
+      } else {
+        node.value = newValue as U
+      }
+      return this.finishEval<Declaration<string>>(node)
     }
-    const newValue = value.eval(context)
-    if (newValue instanceof Nil) {
-      return newValue.inherit(node)
-    } else {
-      node.value = newValue as U
-    }
-    return this.finishEval<Declaration<string>>(node)
+    return this
   }
 
   /** @todo - move to visitors */
@@ -106,5 +112,5 @@ export class Declaration<
   // }
 }
 
-export const decl = defineType<DeclarationValue>(Declaration, 'Declaration', 'decl')
+export const decl = defineType(Declaration, 'Declaration', 'decl')
 Declaration.prototype.allowRuleRoot = true

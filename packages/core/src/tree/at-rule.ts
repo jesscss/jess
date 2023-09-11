@@ -91,4 +91,4 @@ export class AtRule extends Node<AtRuleValue> {
 }
 AtRule.prototype.allowRoot = true
 
-export const atrule = defineType<AtRuleValue>(AtRule, 'AtRule')
+export const atrule = defineType(AtRule, 'AtRule')

@@ -80,4 +80,4 @@ export class Rule extends Node<RuleValue> {
 }
 Rule.prototype.allowRoot = true
 
-export const rule = defineType<RuleValue>(Rule, 'Rule')
+export const rule = defineType(Rule, 'Rule')

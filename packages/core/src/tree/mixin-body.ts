@@ -11,7 +11,7 @@ export type MixinValue<T = Ruleset> = {
  * This is just the body of a mixin
  * (an anonymous mixin)
  */
-export class MixinBody<T = Ruleset> extends Node<MixinValue<T>> {
+export class MixinBody<T extends Node = Ruleset> extends Node<MixinValue<T>> {
   /**
    * @todo -
    * Return either a ruleset if `this` is the eval context,
@@ -52,4 +52,4 @@ export class MixinBody<T = Ruleset> extends Node<MixinValue<T>> {
   // }
 }
 
-export const mixinbody = defineType<MixinValue>(MixinBody, 'MixinBody')
+export const mixinbody = defineType(MixinBody, 'MixinBody')

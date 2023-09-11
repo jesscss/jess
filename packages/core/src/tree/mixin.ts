@@ -58,4 +58,4 @@ export class Mixin<T = Ruleset> extends Variable<string | Interpolated, MixinBod
   // }
 }
 
-export const mixin = defineType<DeclarationValue<MixinBody>>(Mixin, 'Mixin')
+export const mixin = defineType(Mixin, 'Mixin')

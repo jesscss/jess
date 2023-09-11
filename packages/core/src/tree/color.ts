@@ -17,7 +17,7 @@ function clamp(v: number, max: number) {
  * or, when constructed with a function, the preferred
  * output type.
  */
-export class Color extends Node<`#${string}` | ColorFormat> {
+export class Color extends Node<string | ColorFormat> {
   /** This is the originally parsed representation */
   private _rgba: ColorValues | undefined
   private _hsla: ColorValues | undefined
@@ -31,7 +31,7 @@ export class Color extends Node<`#${string}` | ColorFormat> {
     const value = this.value
     const rgba: number[] = []
 
-    if (typeof value !== 'string') {
+    if (typeof value !== 'string' || value[0] !== '#') {
       throw new Error('Only hex string values can be converted to colors.')
     }
     const hex = value.slice(1)
@@ -131,7 +131,7 @@ export class Color extends Node<`#${string}` | ColorFormat> {
 
   toString() {
     const { value } = this
-    /** This is a hex value, output as-is */
+    /** This is a hex value or keyword, output as-is */
     if (typeof value === 'string') {
       return value
     }

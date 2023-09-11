@@ -1,7 +1,6 @@
 import { Sequence } from './sequence'
 import { Combinator } from './combinator'
 import { Ampersand } from './ampersand'
-import { WS } from './ws'
 import {
   defineType,
   type Node
@@ -64,8 +63,7 @@ export class Selector extends Sequence {
             value.value.length === 0
           ) ||
           value instanceof Nil ||
-          value instanceof Combinator ||
-          value instanceof WS
+          value instanceof Combinator
         ) {
           elements.shift()
         } else {

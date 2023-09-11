@@ -3,7 +3,7 @@ import { Node, isNodeMap } from './node'
 import { Anonymous } from './anonymous'
 import { Nil } from './nil'
 import { List } from './list'
-import { WS } from './ws'
+// import { WS } from './comment'
 import type { Context } from '../context'
 import type { OutputCollector } from '../output'
 import combinate from 'combinate'
@@ -80,26 +80,27 @@ export class Expression extends Node {
     return node
   }
 
-  toCSS(context: Context, out: OutputCollector): void {
-    const cast = context.cast
-    this.value.forEach(n => {
-      const val = cast(n)
-      val.toCSS(context, out)
-    })
-  }
+  /** @todo - move to visitors */
+  // toCSS(context: Context, out: OutputCollector): void {
+  //   const cast = context.cast
+  //   this.value.forEach(n => {
+  //     const val = cast(n)
+  //     val.toCSS(context, out)
+  //   })
+  // }
 
-  toModule(context: Context, out: OutputCollector) {
-    const loc = this.location
-    out.add('$J.expr([', loc)
-    const length = this.value.length - 1
-    this.value.forEach((n, i) => {
-      n.toModule(context, out)
-      if (i < length) {
-        out.add(', ')
-      }
-    })
-    out.add('])')
-  }
+  // toModule(context: Context, out: OutputCollector) {
+  //   const loc = this.location
+  //   out.add('$J.expr([', loc)
+  //   const length = this.value.length - 1
+  //   this.value.forEach((n, i) => {
+  //     n.toModule(context, out)
+  //     if (i < length) {
+  //       out.add(', ')
+  //     }
+  //   })
+  //   out.add('])')
+  // }
 }
 Expression.prototype.type = 'Expression'
 

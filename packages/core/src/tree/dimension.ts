@@ -1,14 +1,10 @@
-import type {
-  LocationInfo,
-  NodeMap
-} from './node'
 import {
   Node,
-  isNodeMap
+  defineType
 } from './node'
 
-import type { Context } from '../context'
-import type { OutputCollector } from '../output'
+// import type { Context } from '../context'
+// import type { OutputCollector } from '../output'
 
 export type DimensionValue = [
   number: number,
@@ -48,23 +44,21 @@ export class Dimension extends Node<DimensionValue> {
     return `${value}${unit ?? ''}`
   }
 
-  toCSS(context: Context, out: OutputCollector) {
-    out.add(this.toString(), this.location)
-  }
+  /** @todo - move to visitors */
+  // toCSS(context: Context, out: OutputCollector) {
+  //   out.add(this.toString(), this.location)
+  // }
 
-  toModule(context: Context, out: OutputCollector) {
-    const pre = context.pre
-    out.add('$J.num({\n' +
-      `  ${pre}value: ${this.value},\n` +
-      `  ${pre}unit: "${this.unit ?? ''}"\n` +
-      `${pre}})`
-    , this.location)
-  }
+  // toModule(context: Context, out: OutputCollector) {
+  //   const pre = context.pre
+  //   out.add('$J.num({\n' +
+  //     `  ${pre}value: ${this.value},\n` +
+  //     `  ${pre}unit: "${this.unit ?? ''}"\n` +
+  //     `${pre}})`
+  //   , this.location)
+  // }
 }
-Dimension.prototype.type = 'Dimension'
 
-export const dimension =
-  (...args: ConstructorParameters<typeof Dimension>) => new Dimension(...args)
-
+export const dimension = defineType(Dimension, 'Dimension')
 /** alias */
 export const num = dimension

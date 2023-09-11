@@ -10,17 +10,17 @@
 /** Base classes - keep these on top */
 import type { FileInfo, LocationInfo } from './node'
 import { Node } from './node'
-import { Context } from '../context'
-import { OutputCollector } from '../output'
+// import { Context } from '../context'
+// import { OutputCollector } from '../output'
 /**
  * We bind this here to avoid circular dependencies
  * between Context and Node
  */
-Node.prototype.toString = function() {
-  const out = new OutputCollector()
-  this.toCSS(new Context(), out)
-  return out.toString()
-}
+// Node.prototype.toString = function() {
+//   const out = new OutputCollector()
+//   this.toCSS(new Context(), out)
+//   return out.toString()
+// }
 export { Node, type FileInfo, type LocationInfo }
 
 export * from './js-node'
@@ -53,4 +53,4 @@ export * from './selector'
 export * from './sequence'
 export * from './spaced'
 export * from './square'
-export * from './ws'
+export * from './comment'

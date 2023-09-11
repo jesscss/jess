@@ -3,7 +3,7 @@ import { List } from './list'
 import { Expression } from './expression'
 import type { Context } from '../context'
 import type { LocationInfo } from './node'
-import { Node, isNodeMap } from './node'
+import { Node, defineType } from './node'
 import type { OutputCollector } from '../output'
 
 /**
@@ -70,7 +70,5 @@ export class Element extends Node<string | Node> {
   //   out.add(')')
   // }
 }
-Element.prototype.type = 'Element'
 
-export const el =
-  (...args: ConstructorParameters<typeof Element>) => new Element(...args)
+export const el = defineType(Element, 'Element', 'el')

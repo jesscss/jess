@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/restrict-plus-operands */
 import type { Context } from '../context'
 import type { Visitor } from '../visitor'
+import type { Comment } from './comment'
 // import type { OutputCollector } from '../output'
 import type { Constructor, Writable, Class, ValueOf } from 'type-fest'
 
@@ -44,18 +45,13 @@ export const isNodeMap = (val: any): val is NodeMap | NodeMapArray => {
   return val instanceof Map || (Array.isArray(val) && Array.isArray(val[0]))
 }
 
-export const defineType = <
-  T = unknown,
-  M extends NodeTypeMap = NodeMapType<T>,
-  U extends Node<M> = Node<M>,
-  C extends Class<U> = Class<U>
->(Clazz: C, type: string, shortType?: string) => {
+export const defineType = <T extends Class<Node> = Class<Node>>(Clazz: T, type: string, shortType?: string) => {
   shortType ??= type.toLowerCase()
-  ;(Clazz.prototype as Writable<U>).type = type
-  ;(Clazz.prototype as Writable<U>).shortType = shortType
+  ;(Clazz.prototype as Writable<InstanceType<T>>).type = type
+  ;(Clazz.prototype as Writable<InstanceType<T>>).shortType = shortType
 
   /** @todo - not yet returning the correct types for args */
-  return (...args: ConstructorParameters<C>) => new Clazz(...args)
+  return (...args: ConstructorParameters<T>) => new Clazz(...args)
 }
 
 /**
@@ -90,12 +86,15 @@ export abstract class Node<
 
   /**
    * Whitespace or comments before or after a Node.
-   * If this is `1`, it represents a single space character (' ').
    *
+   * If this is `1`, it represents a single space character (' ').
    * If it's 0, it means there were no tokens whatsoever.
+   * In array, if it's whitespace, it's representing literal whitespace.
    */
-  pre: Array<string | Node> | 1 | 0
-  post: Array<string | Node> | 1 | 0
+  pre: Array<string | Comment> | 1 | 0 = 0
+  post: Array<string | Comment> | 1 | 0
+
+  visible = true
 
   evaluated: boolean
   allowRoot: boolean
@@ -113,7 +112,7 @@ export abstract class Node<
   protected readonly data: TypeMap<M>
 
   constructor(
-    value: NodeInValue,
+    value: T | NodeMapType<T>,
     location?: LocationInfo | 0,
     options?: O,
     fileInfo?: FileInfo
@@ -266,12 +265,49 @@ export abstract class Node<
     return values
   }
 
-  toString() {
-    const value = this.valueOf()
-    if (Array.isArray(value)) {
-      return value.join('')
+  processPrePost(key: 'pre' | 'post') {
+    const value = this[key]
+    if (value === 0) {
+      return ''
+    } else if (value === 1) {
+      return ' '
+    } else {
+      let output = ''
+      output += value
+        .map(v => `${v}`)
+        .join('')
+      return output
     }
-    return String(value)
+  }
+
+  /**
+   * This re-serializes the node, if needed. Will
+   * likely be over-ridden in some cases.
+   *
+   * Note that the ToCssVisitor will be a little
+   * more sophisticated, as it will re-format
+   * to some extent by replacing newlines + spacing
+   * with the appropriate amount of whitespace.
+   */
+  toString() {
+    let output = ''
+    this.data.forEach(value => {
+      if (Array.isArray(value)) {
+        output += value.join('')
+      } else {
+        if (value instanceof Node) {
+          if (!value.visible) {
+            return
+          }
+          output += value.processPrePost('pre')
+          output += value.toString()
+          output += value.processPrePost('post')
+        } else {
+          output += `${value}`
+        }
+      }
+    })
+    return output
   }
 
   /**
