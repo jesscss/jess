@@ -11,7 +11,8 @@ export type CallValue = {
 }
 
 /**
- * A mixin or function call.
+ * A mixin or function call. In Less, the ref for something like `rgb`
+ * is not a string, but is an (optional) variable reference.
  */
 export class Call extends Node<CallValue> {
 
