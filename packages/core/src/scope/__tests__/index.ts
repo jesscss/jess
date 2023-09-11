@@ -47,12 +47,33 @@ describe('Scope', async () => {
       expect(scope.getProp('one')).toEqual(['one', 'two', 'three', 'four'])
     })
 
+    it('will merge arrays with array of props', () => {
+      scope.setProp('one', 'one')
+      scope.setProp('one', ['two', 'three'])
+      expect(scope.getProp('one')).toEqual(['one', 'two', 'three'])
+    })
+
     it('will exclude an item', () => {
       scope.setProp('one', 'one')
       scope.setProp('one', 'two')
       expect(scope.getProp('one', {
-        filter: value => ({ value: value === 'two' ? undefined : value, done: false })
+        filter: value => ({ value: value === 'two' ? Scope.NONE : value, done: false })
       })).toEqual('one')
+    })
+
+    it('will skip normalization', () => {
+      scope.setVar('one', 'one', { isNormalized: true, protected: true })
+      expect(scope.getVar('one')).toEqual('one')
+    })
+
+    it('will not set if defined', () => {
+      scope.setVar('one', 'one')
+      scope.setVar('one', 'two', { setIfUndefined: true })
+      expect(scope.getVar('one')).toEqual('one')
+    })
+
+    it('doesn\'t throw error if suppressed', () => {
+      expect(scope.getVar('one', { suppressUndefinedError: true })).toBeUndefined()
     })
   })
 
@@ -185,8 +206,16 @@ describe('Scope', async () => {
     })
 
     it('throws if trying to declare a variable which is already declared', () => {
-      scope.setVar('foo', 'one', { throwIfDefined: true })
+      scope.setVar('foo', 'one')
       expect(() => scope.setVar('foo', 'two', { throwIfDefined: true })).toThrow()
+    })
+
+    it('throws if all items are excluded, so no match found', () => {
+      scope.setProp('one', 'one')
+      scope.setProp('one', 'two')
+      expect(() => scope.getProp('one', {
+        filter: value => ({ value: Scope.NONE, done: false })
+      })).toThrow()
     })
   })
 })

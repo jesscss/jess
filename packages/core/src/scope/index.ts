@@ -91,6 +91,10 @@ type FilterResult = {
 type GetterOptions = {
   /** Filter is a function or value to compare when looking up values */
   filter?: (value: unknown, foundValues?: any[]) => FilterResult
+  /**
+   * Not sure this is a good option, as it maybe makes more
+   * sense to throw an error if not found? Depends on user expectations.
+   */
   suppressUndefinedError?: boolean
 }
 
@@ -113,10 +117,20 @@ export class Scope {
   options: ScopeOptions
 
   /**
+   * For none found. Use this to distinguish from
+   * found but has a value of undefined.
+   *
+   * Not sure if this is needed, but works.
+   */
+  static NONE = Symbol('None')
+
+  /**
    * Keys are normalized to camelCase, therefore we should
    * warn when a key is normalized differently
    */
-  static entryKeys: Map<string, string>
+  static entryKeys = new Map<string, string>()
+  /** If we already normalized, don't re-normalize */
+  static cachedKeys = new Map<string, string>()
 
   constructor(parent?: Scope, options?: ScopeOptions) {
     this.options = options ?? {}
@@ -139,20 +153,24 @@ export class Scope {
 
   /** Normalizes keys as valid JavaScript identifiers. */
   normalizeKey(key: string) {
+    const cachedKey = Scope.cachedKeys.get(key)
+    if (cachedKey) {
+      return cachedKey
+    }
     const normalKey = key
-    /** Replace initial dash with underscore */
+      /** Replace initial dash with underscore */
       .replace(/^-/, '_')
-    /** Remove initial . or # (used by Less) */
+      /** Remove initial . or # (used by Less) */
       .replace(/^[.#]/, '')
-    /** Convert dash-case to camelCase */
+      /** Convert dash-case to camelCase */
       .replace(/(^_)|(?:[-_])(.)/g, (_, p1 = '', p2 = '') => `${p1}${p2.toUpperCase()}`)
 
     /**
-       * Quick way to identify a valid JS identifier -
-       * try to create a variable with it.
-       *
-       * @see https://stackoverflow.com/questions/2008279/validate-a-javascript-function-name
-       */
+     * Quick way to identify a valid JS identifier -
+     * try to create a variable with it.
+     *
+     * @see https://stackoverflow.com/questions/2008279/validate-a-javascript-function-name
+     */
     try {
       // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new, no-new-func
       new Function(`let ${normalKey}`)
@@ -166,6 +184,7 @@ export class Scope {
         logger.warn(`${key} was previously normalized from ${lookupKey}, which could lead to unexpected behaviors.`)
       }
     }
+    Scope.cachedKeys.set(key, normalKey)
     return normalKey
   }
 
@@ -321,6 +340,7 @@ export class Scope {
    * entries.
    */
   private _getBase(collection: '_vars' | '_props', baseKey: string, options: GetterOptions = {}): any {
+    const NONE = Scope.NONE
     const key = this.normalizeKey(baseKey)
     const {
       /** By default, return the first value */
@@ -336,6 +356,7 @@ export class Scope {
     while (current) {
       const entry = current[key]
       if (!entry) {
+        /** Needed? */
         if (options.suppressUndefinedError) {
           return undefined
         }
@@ -346,7 +367,7 @@ export class Scope {
       if (Array.isArray(entryValue)) {
         for (let i = 0; i < entryValue.length; i++) {
           const val = filter(entryValue[i], results)
-          if (val.value !== undefined) {
+          if (val.value !== NONE) {
             results.push(val.value)
           }
           lastResult = val
@@ -357,17 +378,13 @@ export class Scope {
       } else {
         const val = filter(entryValue, results)
         lastResult = val
-        if (val.value !== undefined) {
+        if (val.value !== NONE) {
           results.push(val.value)
         }
       }
 
       if (lastResult!.done) {
-        return results.length
-          ? results.length === 1
-            ? results[0]
-            : results
-          : undefined
+        break
       }
       /** Traverse up the prototype chain */
       current = current.prototype
@@ -376,8 +393,8 @@ export class Scope {
       ? results.length === 1
         ? results[0]
         : results
-      : undefined
-    if (returnResult === undefined && !options.suppressUndefinedError) {
+      : NONE
+    if (returnResult === NONE && !options.suppressUndefinedError) {
       throw new ReferenceError(`"${baseKey}" is not defined`)
     }
     return returnResult
@@ -385,3 +402,4 @@ export class Scope {
 }
 
 Scope.entryKeys = new Map()
+Scope.cachedKeys = new Map()
