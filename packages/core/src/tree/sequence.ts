@@ -1,10 +1,7 @@
-import type { LocationInfo, NodeMap } from './node'
 import { Node, defineType } from './node'
-import { Anonymous } from './anonymous'
 import { Nil } from './nil'
 import { List } from './list'
 import type { Context } from '../context'
-import type { OutputCollector } from '../output'
 import combinate from 'combinate'
 
 export type SequenceOptions = {

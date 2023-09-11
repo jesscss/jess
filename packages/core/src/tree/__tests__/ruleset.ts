@@ -1,4 +1,4 @@
-import { root, rule, sel, el, list, ruleset, decl, spaced, call, js } from '..'
+import { root, rule, sel, el, list, ruleset, decl, spaced, anon, call, js } from '..'
 import { Context } from '../../context'
 import { OutputCollector } from '../../output'
 
@@ -11,15 +11,15 @@ describe('Ruleset', () => {
     out = new OutputCollector()
   })
 
-  it('should merge rulesets into rules', () => {
+  it.only('should merge rulesets into rules', () => {
     /** We need a root node to bubble rules */
     let node = root([
       rule({
         sels: list([sel([el('.collapse')])]),
         value: ruleset([
-          decl({ name: 'chungus', value: spaced(['foo', 'bar']) }),
+          decl({ name: 'chungus', value: spaced([anon('foo'), anon('bar')]) }),
           ruleset([
-            decl({ name: 'bird', value: spaced(['in', 'hand']) })
+            decl({ name: 'bird', value: spaced([anon('in'), anon('hand')]) })
           ])
         ])
       })

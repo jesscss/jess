@@ -1,8 +1,5 @@
-import type { LocationInfo, Node, NodeMap } from './node'
-import { isNodeMap } from './node'
-import { Sequence } from './sequence'
-import type { Context } from '../context'
-import type { OutputCollector } from '../output'
+import { defineType, type Node, type LocationInfo, type FileInfo } from './node'
+import { Sequence, type SequenceOptions } from './sequence'
 
 /**
  * A space-separated sequence of nodes,
@@ -11,25 +8,33 @@ import type { OutputCollector } from '../output'
  * @todo - Remove?
  */
 export class Spaced extends Sequence {
-  value: Node[]
+  constructor(
+    value: Node[] | { value: Node[] },
+    location?: LocationInfo,
+    options?: SequenceOptions,
+    fileInfo?: FileInfo
+  ) {
+    super(value, location, options, fileInfo)
+    const values = this.value
 
-  toModule(context: Context, out: OutputCollector) {
-    const loc = this.location
-    out.add('$J.spaced([', loc)
-    const length = this.value.length - 1
-    this.value.forEach((n, i) => {
-      if (i % 2 === 0) {
-        n.toModule(context, out)
-        if (i < length) {
-          out.add(', ', loc)
-        }
-      }
-    })
-    out.add('])')
+    for (let i = 1; i < values.length; i++) {
+      values[i].pre = 1
+    }
   }
+  // toModule(context: Context, out: OutputCollector) {
+  //   const loc = this.location
+  //   out.add('$J.spaced([', loc)
+  //   const length = this.value.length - 1
+  //   this.value.forEach((n, i) => {
+  //     if (i % 2 === 0) {
+  //       n.toModule(context, out)
+  //       if (i < length) {
+  //         out.add(', ', loc)
+  //       }
+  //     }
+  //   })
+  //   out.add('])')
+  // }
 }
-Spaced.prototype.type = 'Spaced'
 
-export const spaced =
-  (...args: ConstructorParameters<typeof Spaced>) =>
-    new Spaced(...args)
+export const spaced = defineType(Spaced, 'Spaced')

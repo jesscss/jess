@@ -94,8 +94,8 @@ export abstract class Node<
    *
    * If it's 0, it means there were no tokens whatsoever.
    */
-  readonly pre: Array<string | Node> | 1 | 0
-  readonly post: Array<string | Node> | 1 | 0
+  pre: Array<string | Node> | 1 | 0
+  post: Array<string | Node> | 1 | 0
 
   evaluated: boolean
   allowRoot: boolean
