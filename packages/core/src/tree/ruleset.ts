@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/prefer-readonly */
 import { Node, defineType, type LocationInfo, type FileInfo } from './node'
 import { Declaration } from './declaration'
-import { Variable } from './variable'
+import { VariableDeclaration } from './variable-declaration'
 import { Call } from './call'
 import { Scope } from '../scope'
 import { Nil } from './nil'
@@ -182,13 +182,13 @@ export class Ruleset extends Node<Node[]> {
             const name = decl.name
             let ident: string
             if (name instanceof Node) {
-              ident = name.get()
+              ident = name.eval(context).value
               decl.name = ident
             } else {
               ident = name
             }
             rules[pos] = decl
-            if (decl instanceof Variable) {
+            if (decl instanceof VariableDeclaration) {
               this._scope.setVar(ident, decl, decl.options)
             } else {
               this._scope.setProp(ident, decl)
