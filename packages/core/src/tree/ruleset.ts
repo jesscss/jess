@@ -94,8 +94,8 @@ export class Ruleset extends Node<Node[]> {
   //   }
   // }
 
-  eval(context: Context) {
-    if (!this.evaluated) {
+  eval(context: Context): Ruleset {
+    return this.evalIfNot(context, () => {
       const { hoistDeclarations } = context.opts
       const ruleset = this.clone()
       ruleset._scope = this._scope
@@ -314,10 +314,8 @@ export class Ruleset extends Node<Node[]> {
       //     rules.push(result)
       //   }
       // }
-
-      return this.finishEval(ruleset)
-    }
-    return this
+      return ruleset
+    })
   }
 
   /**

@@ -1,11 +1,11 @@
-import { Node, defineType } from './node'
+import { Node, defineType, type NodeOptions } from './node'
 import { Anonymous } from './anonymous'
 import type { Context } from '../context'
 
-type InterpolatedValue = {
+export type InterpolatedValue = {
   /** String with ## placeholders */
   value: string
-  replacements: Node[]
+  replacements?: Node[]
 }
 
 /**
@@ -14,11 +14,21 @@ type InterpolatedValue = {
  * which MUST resolve to a single string
  * when evaluated.
  */
-export class Interpolated extends Node<InterpolatedValue> {
-  eval(context: Context) {
-    const replacements = this.data.get('replacements').map(n => n.eval(context))
-    const value = this.value.replace(/##/g, _ => String(replacements.shift()))
-    const node = new Anonymous(value).inherit(this)
+export class Interpolated<O extends NodeOptions = NodeOptions> extends Node<InterpolatedValue, O> {
+  eval(context: Context): Node {
+    let replacements = this.data.get('replacements')
+    if (!replacements) {
+      return super.eval(context)
+    }
+    replacements = replacements.map(n => n.eval(context))
+    const value = this.value.replace(/##/g, _ => String(replacements!.shift()))
+    if (this.type === 'Interpolated') {
+      const node = new Anonymous(value).inherit(this)
+      return node
+    }
+    const node = this.clone()
+    node.value = value
+    node.evaluated = true
     return node
   }
 }

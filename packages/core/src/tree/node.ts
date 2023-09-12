@@ -230,19 +230,20 @@ export abstract class Node<
    * when overriding eval()
    */
   eval(context: Context): Node {
-    if (!this.evaluated) {
+    return this.evalIfNot(context, () => {
       const node = this.clone()
       node.processNodes(n => n.eval(context))
-      return this.finishEval(node)
-    }
-    return this
+      return node
+    })
   }
 
-  finishEval<T extends Node = Node>(n: T | Node): T & { evaluated: true } {
-    if (!n.evaluated) {
-      n.evaluated = true
+  protected evalIfNot<T extends Node = Node>(context: Context, func: () => T): T {
+    if (!this.evaluated) {
+      const node = func()
+      node.evaluated = true
+      return node
     }
-    return n as T & { evaluated: true }
+    return this as unknown as T
   }
 
   /** Override normally readonly props to make them inheritable */

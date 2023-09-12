@@ -1,34 +1,28 @@
 import type { Context } from '../context'
-import type { OutputCollector } from '../output'
 import isPlainObject from 'lodash-es/isPlainObject'
-import type { LocationInfo } from './node'
-import { Node, isNodeMap } from './node'
+import { Node, defineType } from './node'
 import { Declaration } from './declaration'
 import { Ruleset } from './ruleset'
 import { Root } from './root'
 import { Call } from './call'
 
-export class Include extends Node {
-  value: any
+export type IncludeValue = {
+  value: Node
+  with?: Ruleset
+}
 
-  constructor(
-    value: any,
-    location?: LocationInfo
-  ) {
-    if (isNodeMap(value)) {
-      super(value, location)
-    } else {
-      super({ value }, location)
-    }
-  }
-
+export class Include extends Node<IncludeValue> {
   eval(context: Context) {
     let value = this.value
     if (value instanceof Call) {
       value = value.eval(context)
     }
 
-    /** Convert included objects into declaration sets */
+    /**
+     * Convert included objects into declaration sets
+     * @todo - replace now that we're not pre-converting
+     * into a module
+     */
     if (isPlainObject(value)) {
       const rules: Node[] = []
       for (const name in value) {
@@ -56,19 +50,17 @@ export class Include extends Node {
       if (value instanceof Call && this.value instanceof Call) {
         message += ` Unknown function "${value.name}"`
       }
-      throw { message }
+      throw new Error(message)
     }
     return value
   }
 
-  toModule(context: Context, out: OutputCollector) {
-    out.add('$J.include(')
-    this.value.toModule(context, out)
-    out.add(')')
-  }
+  /** Move to ToModuleVisitor */
+  // toModule(context: Context, out: OutputCollector) {
+  //   out.add('$J.include(')
+  //   this.value.toModule(context, out)
+  //   out.add(')')
+  // }
 }
-Include.prototype.type = 'Include'
 
-export const include =
-  (value: any, location?: LocationInfo) =>
-    new Include(value, location)
+export const include = defineType(Include, 'Include')
