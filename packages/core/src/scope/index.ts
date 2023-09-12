@@ -111,6 +111,12 @@ export class Scope {
    * imported functions, JS identifiers, etc
    */
   _vars: ScopeEntryMap
+  /**
+   * @note - For Jess, we could have stored all
+   * mixins in the vars map, but other languages
+   * need more dis-ambiguation.
+   */
+  _mixins: ScopeEntryMap
   _props: PropMap
   _parent?: Scope
 
@@ -145,9 +151,11 @@ export class Scope {
     if (parent) {
       this._vars = parent._vars
       this._props = parent._props
+      this._mixins = parent._mixins
     } else {
       this._vars = Object.create(null)
       this._props = Object.create(null)
+      this._mixins = Object.create(null)
     }
   }
 
@@ -157,13 +165,14 @@ export class Scope {
     if (cachedKey) {
       return cachedKey
     }
+    /** @todo - can this be a single replace with the replacer function? */
     const normalKey = key
       /** Replace initial dash with underscore */
       .replace(/^-/, '_')
-      /** Remove initial . or # (used by Less) */
-      .replace(/^[.#]/, '')
-      /** Convert dash-case to camelCase */
-      .replace(/(^_)|(?:[-_])(.)/g, (_, p1 = '', p2 = '') => `${p1}${p2.toUpperCase()}`)
+      /** Remove initial . (used by Less) */
+      .replace(/^\./, '')
+      /** Convert dash-case to camelCase, as well as leading '#' */
+      .replace(/(^_)|(?:[#-_])(.)/g, (_, p1 = '', p2 = '') => `${p1}${p2.toUpperCase()}`)
 
     /**
      * Quick way to identify a valid JS identifier -
@@ -192,9 +201,9 @@ export class Scope {
    * Lazily create prototype chains
    * for improved performance.
    */
-  getEntries(key: '_vars'): ScopeEntryMap
+  getEntries(key: '_vars' | '_mixins'): ScopeEntryMap
   getEntries(key: '_props'): PropMap
-  getEntries(key: '_vars' | '_props'): ScopeEntryMap | PropMap {
+  getEntries(key: '_vars' | '_props' | '_mixins'): ScopeEntryMap | PropMap {
     const currentEntries = this[key]
     if (currentEntries === this._parent?.[key]) {
       const entries = Object.create(this._parent[key])
@@ -214,21 +223,31 @@ export class Scope {
       this.setProp(key, props[key])
     }
     if (this.options?.leakVariablesIntoScope) {
-      const vars = scope._vars
-      const keys = Object.getOwnPropertyNames(vars)
-      const keyLength = keys.length
-      for (let i = 0; i < keyLength; i++) {
-        const key = keys[i]
-        /** Only leak vars if they aren't defined */
-        if (key in this._vars && this._vars[key]?.options.preserve !== true) {
-          continue
-        }
-        const entry = vars[key]!
-        if (!entry.options.private) {
-          this.setVar(key, entry)
+      const leakVariables = (lookupKey: '_vars' | '_mixins') => {
+        const importedVars = scope[lookupKey]
+        const localVars = this[lookupKey]
+        const setter = lookupKey === '_vars' ? this.setVar : this.setMixin
+        const keys = Object.getOwnPropertyNames(importedVars)
+        const keyLength = keys.length
+        for (let i = 0; i < keyLength; i++) {
+          const key = keys[i]
+          /** Only leak vars if they aren't defined */
+          if (key in localVars && localVars[key]?.options.preserve !== true) {
+            continue
+          }
+          const entry = importedVars[key]!
+          if (!entry.options.private) {
+            setter(key, entry)
+          }
         }
       }
+      leakVariables('_vars')
+      leakVariables('_mixins')
     }
+  }
+
+  get mixins(): ScopeEntryMap {
+    return this.getEntries('_mixins')
   }
 
   get vars(): ScopeEntryMap {
@@ -262,8 +281,8 @@ export class Scope {
    * This will store a scoped identifier
    * that is compatible with JS.
    */
-  setVar(key: string, value: unknown, opts?: ScopeEntryOptions) {
-    const { vars } = this
+  private _setVarOrMixin(lookupKey: 'vars' | 'mixins', key: string, value: unknown, opts?: ScopeEntryOptions) {
+    const vars = this[lookupKey]
     if (value instanceof ScopeEntry) {
       vars[key] = value
       return
@@ -321,8 +340,20 @@ export class Scope {
     }
   }
 
+  setVar(key: string, value: unknown, opts?: ScopeEntryOptions) {
+    this._setVarOrMixin('vars', key, value, opts)
+  }
+
+  setMixin(key: string, value: unknown, opts?: ScopeEntryOptions) {
+    this._setVarOrMixin('mixins', key, value, opts)
+  }
+
   getVar(key: string, options?: GetterOptions) {
     return this._getBase('_vars', key, options)
+  }
+
+  getMixin(key: string, options?: GetterOptions) {
+    return this._getBase('_mixins', key, options)
   }
 
   /** @todo - merge into lists / sequences */
@@ -339,7 +370,7 @@ export class Scope {
    * We can pass in a filter to narrow the
    * entries.
    */
-  private _getBase(collection: '_vars' | '_props', baseKey: string, options: GetterOptions = {}): any {
+  private _getBase(collection: '_vars' | '_props' | '_mixins', baseKey: string, options: GetterOptions = {}): any {
     const NONE = Scope.NONE
     const key = this.normalizeKey(baseKey)
     const {

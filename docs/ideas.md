@@ -38,8 +38,8 @@
 // This avoids the need for extract() in Less
 @let (one, two): $list;
 
-// Mixin calls and functions don't need `@include` (but you can use it)
-$myFunction();
+// To dis-ambiguate mixin calls for Less, Sass, they need `@include`
+@include mixin();
 
 // #() to wrap expressions, to avoid repeating `$`
 .bar {
@@ -51,25 +51,31 @@ $myFunction();
   foo: !($count + 1); // outputs something like var(--a1sdf, 2);
 }
 
-// You can write this in two ways:
-$myFunction($sass-var);
-#($myFunction($sass-var));
+// Function calls can use $
+.bar {
+  // You can write this in two ways:
+  value: $myFunction($sass-var);
+  value: #($myFunction($sass-var));
+}
+
+// you can also do:
+.bar {
+  value: $something.prop.func(#FFF).value;
+}
 
 // Parenthesized expressions
 .selector#(expr) {
   prop: #($value + 1);
 }
-$myFunction()
 ```
 
 ## Features
 - Mixin guards (like Less)
 - `@if` / `@else` (like Sass)
 - All Less / Sass functions available
-- Extend?
+- Extend
 - Jess should not flatten selectors by default. See: https://www.w3.org/TR/css-nesting-1/
   - In flattening mode, Jess should follow CSS nesting convention in `.jess` files, and SCSS/Less convention in respective files.
-- Conversion of Less/Scss to Jess (restrict some things from converting? like `@import`s?)
 
 ### Sass+
 Sass is an overly-complex stylesheet language. Jess aims to be:
@@ -154,7 +160,7 @@ You can use the `@private` at-rule:
 // This is a private `@use`
 @private @use './somefile.jess';
 // can also be used with variables
-@private $-private: var;
+@private @let -private: var;
 ```
 
 
@@ -176,7 +182,7 @@ Would be converted to:
 
 
 
-## `@include [file|object|selector] ('with' reference|declarationList)?`
+## `@include [file|object|selector|mixin] ('with' reference|declarationList)?`
 
 Will import the rules (but not pollute the variable scope).
 
@@ -199,7 +205,26 @@ Using an `@include` that's the _result_ of a `@use`:
     primary: #3a3a3a;
   }
 }
-$theme();
+@include theme();
+```
+You could also do the above like:
+```scss
+@include 'theme.jess' with {
+  @assign colors {
+    primary: #3a3a3a;
+  }
+}
+```
+### Include for mixins / inter-operability
+```scss
+@use 'mixins.less';
+
+// Note: this is necessary for Less, if you
+// wish to include selectors evaluated as mixins.
+@include .root-mixin();
+
+// this will do the same thing, except not include selectors?
+@include root-mixin();
 ```
 
 ## Limiting types for a design system (Experimental)

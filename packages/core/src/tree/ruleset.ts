@@ -8,6 +8,7 @@ import { Nil } from './nil'
 
 import type { Context } from '../context'
 import { Mixin } from './mixin'
+import { FunctionDefinition } from './function-definition'
 import { Use } from './use'
 
 export const enum Priority {
@@ -189,7 +190,11 @@ export class Ruleset extends Node<Node[]> {
             }
             rules[pos] = decl
             if (decl instanceof VariableDeclaration) {
-              this._scope.setVar(ident, decl, decl.options)
+              if (decl instanceof Mixin && !(decl instanceof FunctionDefinition)) {
+                this._scope.setMixin(ident, decl, decl.options)
+              } else {
+                this._scope.setVar(ident, decl, decl.options)
+              }
             } else {
               this._scope.setProp(ident, decl)
             }
@@ -420,5 +425,5 @@ export class Ruleset extends Node<Node[]> {
   //   context.depth = depth
   // }
 }
-export const ruleset = defineType<Node[]>(Ruleset, 'Ruleset')
+export const ruleset = defineType(Ruleset, 'Ruleset')
 Ruleset.prototype.allowRuleRoot = true
