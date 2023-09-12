@@ -285,6 +285,9 @@ export abstract class Node<
    * This re-serializes the node, if needed. Will
    * likely be over-ridden in some cases.
    *
+   * Note that this is the "as-is" representation of the
+   * node, not the "evaluated" version.
+   *
    * Note that the ToCssVisitor will be a little
    * more sophisticated, as it will re-format
    * to some extent by replacing newlines + spacing

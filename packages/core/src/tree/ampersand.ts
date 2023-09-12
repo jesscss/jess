@@ -1,22 +1,66 @@
-import type { LocationInfo, NodeMap } from './node'
 import { Node, defineType } from './node'
 import { Nil } from './nil'
 import type { Context } from '../context'
 import { Rule } from './rule'
-// import type { OutputCollector } from '../output'
+import { type Anonymous } from './anonymous'
 
+export type AmpersandValue = {
+  /**
+   * The only value that may exist is an anonymous value
+   * This is represented as &(). Any &() will signal
+   * a forced output (as well as an adjacent ident starting with
+   * a dash)
+   *
+   * @example
+     .rule {
+       &-foo {
+         color: red;
+       }
+     }
+     // output:
+     .rule-foo {
+       color: red;
+     }
+
+     .rule {
+       &(-foo) {
+         color: red;
+       }
+     }
+     // output:
+     .rule-foo {
+       color: red;
+     }
+
+    .rule {
+       &.foo {
+         color: red;
+       }
+     }
+     // output:
+     .rule {
+       &.foo {
+         color: red;
+       }
+     }
+
+     .rule {
+       &().foo {
+         color: red;
+       }
+     }
+     // output:
+     .rule.foo {
+       color: red;
+     }
+
+   */
+  value: Anonymous | undefined
+}
 /**
  * The '&' selector element
  */
-export class Ampersand extends Node<string | NodeMap> {
-  constructor(
-    value?: string | NodeMap,
-    location?: LocationInfo
-  ) {
-    value = value ?? '&'
-    super(value, location)
-  }
-
+export class Ampersand extends Node<AmpersandValue> {
   /** Return the parent selector from context */
   eval(context: Context) {
     const frame = context.frames[0]

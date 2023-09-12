@@ -4,13 +4,18 @@ import { Node, defineType } from './node'
 // import type { Context } from '../context'
 // import type { OutputCollector } from '../output'
 
+export type ParenOptions = {
+  escaped: boolean
+}
+
 /**
  * An expression in parenthesis
  */
-export class Paren extends Node<Node> {
+export class Paren extends Node<Node, ParenOptions> {
   toString(): string {
     const output = super.toString()
-    return `(${output})`
+    const escapeChar = this.options?.escaped ? '~' : ''
+    return `${escapeChar}(${output})`
   }
 
   eval(context: Context): Node {

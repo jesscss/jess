@@ -11,9 +11,10 @@ export type QuotedOptions = {
  */
 export class Quoted extends Interpolated<QuotedOptions> {
   toString() {
+    const { quote = '"', escaped } = this.options ?? {}
     const output = super.toString()
-    const quote = this.options?.quote
-    return `${this.options.quote}${output}${this.options.quote}`
+    const escapeChar = escaped ? '~' : ''
+    return `${escapeChar}${quote}${output}${quote}`
   }
 }
-export const quoted = defineType(Quoted, 'quoted')
+export const quoted = defineType(Quoted, 'Quoted')
