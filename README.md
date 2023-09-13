@@ -28,11 +28,6 @@ Jess is the modern stylesheet replacement for:
 
 @let icon-width: $unit($width, px);
 
-@mixin square(unit: 24px) {
-  width: $unit;
-  height: $unit;
-}
-
 @mixin overloaded() {
   color: black;
 }
@@ -40,13 +35,21 @@ Jess is the modern stylesheet replacement for:
   background-color: green;
 }
 
+// non-overloadable (but replaceable) mixin
+@let square: @(unit: 24px) {
+  width: $unit;
+  height: $unit;
+};
+
+@let color: cornflowerblue;
+
 .icon {
   @include my-mixin();
   @include .less-mixin();
-  @include square($icon-width);
+  @include $square($icon-width);
   @include overloaded();
 
-  color: cornflowerblue;
+  color: $color;
 }
 ```
 
