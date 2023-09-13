@@ -17,8 +17,8 @@ Jess is the modern stylesheet replacement for:
 - CSS-in-JS
 
 ```less
-@from './values.ts' (width);
-@from '#less' (unit);
+@from './values.ts' import (width);
+@from '#less' import (unit);
 
 @use './variables.less' my-vars;
 @include './bootstrap.scss' with my-vars;
