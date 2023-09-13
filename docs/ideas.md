@@ -14,7 +14,7 @@
  * Maps to JS/TS import syntax
  * Mirrors @use syntax.
  *
- * This will be ported to Less 5 to replace `@plugin`.
+ * This will be ported to Less 6 to replace `@plugin`.
  *
  * @note `import` should not be needed, but provides intuitive symmetery with JS
  */
@@ -74,6 +74,15 @@
 - `@if` / `@else` (like Sass)
 - All Less / Sass functions available
 - Extend
+
+```css
+.foo {
+  // Glob expression to limit extend
+  // '~' is compilation root
+  :extend(.bar '~/*');
+}
+```
+
 - Jess should not flatten selectors by default. See: https://www.w3.org/TR/css-nesting-1/
   - In flattening mode, Jess should follow CSS nesting convention in `.jess` files, and SCSS/Less convention in respective files.
 

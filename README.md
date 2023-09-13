@@ -18,13 +18,15 @@ Jess is the modern stylesheet replacement for:
 
 ```less
 @from './values.ts' (width);
+@from '#less' (unit);
 
-@use './variables.less' variables;
-@include './bootstrap.scss' with variables;
+@use './variables.less' my-vars;
+@include './bootstrap.scss' with my-vars;
 
 @use './mixins.jess' (my-mixin);
+@use './mixins.less' (.less-mixin);
 
-$icon-width: ~($width)px;
+@let icon-width: $unit($width, px);
 
 @mixin square(unit: 24px) {
   width: $unit;
@@ -39,8 +41,10 @@ $icon-width: ~($width)px;
 }
 
 .icon {
-  ~myMixin();
-  ~square($iconWidth);
+  @include my-mixin();
+  @include .less-mixin();
+  @include square($icon-width);
+  @include overloaded();
 
   color: cornflowerblue;
 }

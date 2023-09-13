@@ -4,7 +4,7 @@ Translates a Less string to a Jess AST.
 
 ## Ideas
 
-### Converting Less 1.x-4.x to Less 5
+### Converting Less 1.x-5.x to Less 6
 
 1. Auto-wrap parens around division to dis-ambiguate.
 2. Convert `@import` to `@use` and `@include` syntax.
