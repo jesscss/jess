@@ -16,7 +16,7 @@ Translates a Less string to a Jess AST.
 8. Convert `@import (inline) './file.css';` to `@include './file.css' as text;`
 9. Convert `@import (reference) './file.less';` to `@use './file.less';`
 10. Files that consume variables, mixins, or rules (like with extend) should have a `@use` added.
-11. Don't allow `.class` as a value in a declaration. Convert to `\.class`
+11. Don't allow `.class` as a value in a declaration. Convert to `\.class` e.g. `@foo: .class` should be converted to `@foo: \.class` (or `selector(.class)`?).
 12. In a custom property value, convert `@variable` to `@{variable}`.
 
 
@@ -32,4 +32,5 @@ Translates a Less string to a Jess AST.
 7. Convert property references `$prop` to `$[prop]`
 8. Convert color names in expressions to hex values (or wrapped in `color()`?) (because Jess doesn't support color keywords in expressions). Alternatively, should Jess allow `keyword` to denote keywords?
 9. Convert `@rest...` to `...rest`
-10. Convert `.rules()` to `@include .rules` if `.rules` is a selector. What if it's a selector and mixin? Maybe something like `@include .rules, $rules();`? This might change the execution order from Less though.
+10. Convert `.rules()` to `@include .rules()` if `.rules` is a selector. What if it's a selector and mixin? Maybe something like `@include .rules, $rules();`? This might change the execution order from Less though.
+11. Convert `@foo: extract(@bar, 1)` to `@let foo: $bar[0];`?

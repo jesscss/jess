@@ -236,6 +236,20 @@ You could also do the above like:
 @include root-mixin();
 ```
 
+## Mixins are functions, and functions are called with a consistent signature
+```scss
+call: $my-func(one: $value, $two, $three);
+```
+JS representation:
+```js
+myFunc({ one: value }, value, two, three);
+
+// defined with https://typia.io/docs/
+function myFunc(one: Color, two?: any, three?: any) {}
+```
+
+
+
 ## Limiting types for a design system (Experimental)
 ```scss
 @type Size: 1rem, 1.2rem, 1.4rem;

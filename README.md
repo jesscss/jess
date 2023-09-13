@@ -10,7 +10,7 @@
 
 This is the monorepo for Jess, a new, modern CSS pre-processor from the people who brought you Less. [See the docs.](https://jesscss.github.io)
 
-Jess is the modern stylesheet replacement for:
+Jess is a language-agnostic, CSS pre-processor replacement for:
 - Less
 - Sass (SCSS)
 - CSS Modules

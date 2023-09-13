@@ -23,7 +23,9 @@ We look up .bar, and find .one, now we have ":is(.foo, .bar, .one)"
 We look up .one and it doesn't exist, so we're done.
 
  @example 2
-.one.two.three {}
+.one.two.three {
+  color: blue;
+}
 
 .foo:extend(.one);
 .bar:extend(.two.three);
