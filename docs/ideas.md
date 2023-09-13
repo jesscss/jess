@@ -245,6 +245,9 @@ JS representation:
 myFunc({ one: value }, value, two, three);
 
 // defined with https://typia.io/docs/
+/**
+ * @see https://github.com/microsoft/TypeScript/issues/55736 - a solution!!
+ */
 function myFunc(one: Color, two?: any, three?: any) {}
 ```
 
