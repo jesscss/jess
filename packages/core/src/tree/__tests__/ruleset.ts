@@ -15,7 +15,7 @@ describe('Ruleset', () => {
     /** We need a root node to bubble rules */
     let node = root([
       rule({
-        sels: list([sel([el('.collapse')])]),
+        selector: list([sel([el('.collapse')])]),
         value: ruleset([
           decl({ name: 'chungus', value: spaced([anon('foo'), anon('bar')]) }),
           ruleset([

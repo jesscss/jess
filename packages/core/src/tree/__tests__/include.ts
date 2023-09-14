@@ -17,7 +17,7 @@ describe('Include', () => {
     }
 
     const node = rule({
-      sels: el('.rule'),
+      selector: el('.rule'),
       value: [
         include(obj)
       ]

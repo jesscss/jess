@@ -55,19 +55,31 @@ export type AmpersandValue = {
      }
 
    */
+  /** @note Anonymous will be present with &() even if it has an empty value */
   value: Anonymous | undefined
 }
 /**
  * The '&' selector element
  */
 export class Ampersand extends Node<AmpersandValue> {
-  /** Return the parent selector from context */
+  constructor(...args: Partial<ConstructorParameters<typeof Node<AmpersandValue>>>) {
+    let [value, ...rest] = args
+    value ??= [['value', undefined]]
+    super(value, ...rest)
+  }
+
   eval(context: Context) {
-    const frame = context.frames[0]
-    if (frame && frame instanceof Rule) {
-      return frame.selector.clone()
-    }
-    return new Nil()
+    return this.evalIfNot(context, () => {
+      if (this.value ?? context.opts.collapseNesting) {
+        const frame = context.frames[0]
+        if (frame && frame instanceof Rule) {
+          console.log(frame)
+          return frame.selector.clone()
+        }
+        return new Nil()
+      }
+      return this.clone()
+    })
   }
 
   /** @todo - move to ToModuleVisitor */

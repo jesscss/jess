@@ -112,5 +112,5 @@ export class Declaration<
   // }
 }
 
-export const decl = defineType(Declaration, 'Declaration', 'decl')
+export const decl = defineType<DeclarationValue<Node, Name>>(Declaration, 'Declaration', 'decl')
 Declaration.prototype.allowRuleRoot = true

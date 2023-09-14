@@ -1,18 +1,13 @@
 /* eslint-disable @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/restrict-plus-operands */
+import isPlainObject from 'lodash-es/isPlainObject'
 import type { Context } from '../context'
 import type { Visitor } from '../visitor'
 import type { Comment } from './comment'
 // import type { OutputCollector } from '../output'
 import type { Constructor, Writable, Class, ValueOf } from 'type-fest'
 
-export type Concrete = string | number | boolean | Node
 export type NodeOptions = Record<string, boolean | string>
-
-/**
- * Function is used by the Call node
- * @todo Remove for 2.0?
- */
-export type NodeValue = unknown // ((...args: any[]) => any) | Concrete | Concrete[] | Concrete[][]
+export type NodeValue = unknown
 export type NodeMap = Map<string, NodeValue>
 export type NodeInValue = NodeValue | NodeMapArray | NodeMap
 export type NodeTypeMap = Record<string, NodeValue>
@@ -45,13 +40,28 @@ export const isNodeMap = (val: any): val is NodeMap | NodeMapArray => {
   return val instanceof Map || (Array.isArray(val) && Array.isArray(val[0]))
 }
 
-export const defineType = <T extends Class<Node> = Class<Node>>(Clazz: T, type: string, shortType?: string) => {
+export const defineType = <
+  V = never,
+  T extends Class<Node> = Class<Node>,
+  P extends ConstructorParameters<T> = ConstructorParameters<T>
+>(
+    Clazz: T,
+    type: string,
+    shortType?: string
+  ) => {
   shortType ??= type.toLowerCase()
   ;(Clazz.prototype as Writable<InstanceType<T>>).type = type
   ;(Clazz.prototype as Writable<InstanceType<T>>).shortType = shortType
 
-  /** @todo - not yet returning the correct types for args */
-  return (...args: ConstructorParameters<T>) => new Clazz(...args)
+  type Args = [value?: P[0] | V, location?: P[1], options?: P[2], fileInfo?: P[3]]
+  return (...args: Args) => {
+    /** Allow objects to be passed into the public form */
+    const value = args[0]
+    if (isPlainObject(value)) {
+      args[0] = new Map(Object.entries(value as Record<string, any>))
+    }
+    return new Clazz(...args) as T extends Class<infer C> ? InstanceType<Class<C, Args>> : never
+  }
 }
 
 /**
@@ -69,6 +79,10 @@ export type TypeMap<
   [P in K as 'set']: <U extends P>(key: U, value: T[U]) => TypeMap<T>
 }
 
+/**
+ * @todo - this allows excess properties on T,
+ * but using `Exact` from type-fest caused other issues
+ */
 type NodeMapType<T> = T extends NodeTypeMap ? T : { value: T }
 
 export abstract class Node<
@@ -112,7 +126,7 @@ export abstract class Node<
   protected readonly data: TypeMap<M>
 
   constructor(
-    value: T | NodeMapType<T>,
+    value: M['value'] | TypeMap<M> | Array<[keyof M, M[keyof M]]>,
     location?: LocationInfo | 0,
     options?: O,
     fileInfo?: FileInfo

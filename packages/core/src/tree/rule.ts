@@ -34,6 +34,7 @@ export class Rule extends Node<RuleValue> {
   eval(context: Context): Rule | Nil {
     if (!this.evaluated) {
       const rule = this.clone()
+      console.log(rule)
       const sels = this.selector.eval(context)
       if (sels instanceof Nil) {
         return sels
@@ -80,4 +81,4 @@ export class Rule extends Node<RuleValue> {
 }
 Rule.prototype.allowRoot = true
 
-export const rule = defineType(Rule, 'Rule')
+export const rule = defineType<RuleValue>(Rule, 'Rule')

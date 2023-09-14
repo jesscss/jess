@@ -1,6 +1,7 @@
 import { Node, defineType } from './node'
 import type { List } from './list'
 import type { Ruleset } from './ruleset'
+import type { Class } from 'type-fest'
 
 export type MixinValue<T = Ruleset> = {
   params?: List
@@ -11,7 +12,7 @@ export type MixinValue<T = Ruleset> = {
  * This is just the body of a mixin
  * (an anonymous mixin)
  */
-export class MixinBody<T extends Node = Ruleset> extends Node<MixinValue<T>> {
+export class MixinBody<T = Ruleset> extends Node<MixinValue<T>> {
   /**
    * @todo -
    * Return either a ruleset if `this` is the eval context,
@@ -52,4 +53,5 @@ export class MixinBody<T extends Node = Ruleset> extends Node<MixinValue<T>> {
   // }
 }
 
-export const mixinbody = defineType(MixinBody, 'MixinBody')
+/** Not sure why the Class<Node> assertion was necessary */
+export const mixinbody = defineType(MixinBody as Class<Node>, 'MixinBody')

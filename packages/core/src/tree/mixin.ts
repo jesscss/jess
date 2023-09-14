@@ -1,4 +1,4 @@
-import { defineType, type Node } from './node'
+import { defineType } from './node'
 import { VariableDeclaration } from './variable-declaration'
 import { type MixinBody } from './mixin-body'
 import { type Ruleset } from './ruleset'
@@ -15,7 +15,7 @@ import { type Interpolated } from './interpolated'
  * and it has similar options as variables, such as being
  * able to define a mixin if it exists.
  */
-export class Mixin<T extends Node = Ruleset> extends VariableDeclaration<string | Interpolated, MixinBody<T>> {
+export class Mixin<T = Ruleset> extends VariableDeclaration<string | Interpolated, MixinBody<T>> {
   // register(context: Context, name: string, node: Declaration<string>): void {
   //   context.scope.setVar(name, node)
   // }

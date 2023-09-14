@@ -1,15 +1,15 @@
-import { Node, type NodeTypeMap } from './tree/node'
+import { Node } from './tree/node'
 import { Nil } from './tree/nil'
 import { List } from './tree/list'
 import { Dimension } from './tree/dimension'
 import { Anonymous } from './tree/anonymous'
-import type { Ruleset } from './tree/ruleset'
-import type { Selector } from './tree'
+import type { Rule } from './tree/rule'
 import isPlainObject from 'lodash-es/isPlainObject'
 
 export interface ContextOptions {
   module?: boolean
   dynamic?: boolean
+  collapseNesting?: boolean
   /**
    * Hoists variable declarations, so they can be
    * evaluated per scope. Less sets this to true.
@@ -42,11 +42,10 @@ export class Context {
   classMap: Record<string, string> = Object.create(null)
 
   /**
-   * Only nodes with rulesets are valid
-   * frames, because they are the only
-   * nodes with scope.
+   * The rule frames. This is used to resolve
+   * '&' when we need to.
    */
-  frames: Array<Node<NodeTypeMap & { value: Ruleset }>> = []
+  frames: Rule[] = []
 
   /** Keeps track of the indention level */
   indent = 0
@@ -125,7 +124,7 @@ export class Context {
       return new List(value)
     }
     if (value.constructor === Number) {
-      return new Dimension(value as number)
+      return new Dimension([value as number])
     }
     return new Anonymous(value.toString())
   }
