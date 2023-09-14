@@ -18,7 +18,7 @@ export type SequenceOptions = {
  * an expression will yield a value, and a CSS value can
  * actually be a sequence of values (like for shorthand)
  */
-export class Sequence extends Node<Node[], SequenceOptions> {
+export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> {
   toArray() {
     return this.value.filter(n => n instanceof Node)
   }
@@ -96,7 +96,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return returnList
     }
 
-    if (node.value.length === 1) {
+    /** Selectors maintain wrappers around elements */
+    if (node.type !== 'Selector' && node.value.length === 1) {
       return node.value[0]
     }
     return node

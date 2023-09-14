@@ -6,7 +6,9 @@ import type { Comment } from './comment'
 // import type { OutputCollector } from '../output'
 import type { Constructor, Writable, Class, ValueOf } from 'type-fest'
 
-export type NodeOptions = Record<string, boolean | string>
+export type NodeOptions = Record<string, boolean | string> & {
+  hoistToRoot?: boolean
+}
 export type NodeValue = unknown
 export type NodeMap = Map<string, NodeValue>
 export type NodeInValue = NodeValue | NodeMapArray | NodeMap
@@ -106,7 +108,7 @@ export abstract class Node<
    * In array, if it's whitespace, it's representing literal whitespace.
    */
   pre: Array<string | Comment> | 1 | 0 = 0
-  post: Array<string | Comment> | 1 | 0
+  post: Array<string | Comment> | 1 | 0 = 0
 
   visible = true
 
@@ -115,7 +117,7 @@ export abstract class Node<
   allowRuleRoot: boolean
 
   /** Used by Ruleset */
-  rootRules: Node[]
+  rootRules: Node[] | undefined
 
   /** Used in iterators */
   _next: Node
@@ -148,6 +150,7 @@ export abstract class Node<
   set value(n: M['value']) {
     if (this.data.has('value')) {
       this.data.set('value', n)
+      return
     }
     throw new Error('Cannot set the "value" property of this node.')
   }
@@ -202,10 +205,10 @@ export abstract class Node<
     const nodes = new Set<Node>()
     this.walkNodes(n => {
       if (n.type === 'Ruleset') {
-        n.rootRules.forEach(n => {
-          nodes.add(n)
-        })
-        n.rootRules = []
+        if (n.rootRules) {
+          n.rootRules.forEach(n => nodes.add(n))
+          n.rootRules = []
+        }
       }
     })
     return Array.from(nodes)
@@ -234,6 +237,8 @@ export abstract class Node<
     if (deep) {
       this.processNodes(n => n.clone())
     }
+    newNode.pre = this.pre
+    newNode.post = this.post
     newNode.evaluated = this.evaluated
 
     return newNode
@@ -309,22 +314,15 @@ export abstract class Node<
    */
   toString() {
     let output = ''
+    output += this.processPrePost('pre')
     this.data.forEach(value => {
       if (Array.isArray(value)) {
         output += value.join('')
       } else {
-        if (value instanceof Node) {
-          if (!value.visible) {
-            return
-          }
-          output += value.processPrePost('pre')
-          output += value.toString()
-          output += value.processPrePost('post')
-        } else {
-          output += `${value}`
-        }
+        output += `${value}`
       }
     })
+    output += this.processPrePost('post')
     return output
   }
 

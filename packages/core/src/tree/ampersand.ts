@@ -68,6 +68,11 @@ export class Ampersand extends Node<AmpersandValue> {
     super(value, ...rest)
   }
 
+  toString(): string {
+    const { value } = this
+    return value ? `&(${value})` : '&'
+  }
+
   eval(context: Context) {
     return this.evalIfNot(context, () => {
       if (this.value ?? context.opts.collapseNesting) {

@@ -1,4 +1,4 @@
-import { root, amp, rule, sel, el, spaced, a, list, ruleset, decl } from '..'
+import { root, amp, rule, sel, el, spaced, any, list, ruleset, decl } from '..'
 import { Context } from '../../context'
 import { OutputCollector } from '../../output'
 
@@ -15,12 +15,12 @@ describe('Ampersand', () => {
       rule({
         selector: list([sel([el('.one'), el('.two')])]),
         value: ruleset([
-          decl({ name: 'chungus', value: spaced([a('foo'), a('bar')]) }),
+          decl({ name: 'chungus', value: spaced([any('foo'), any('bar')]) }),
           rule({
             selector: sel([amp()]),
             value:
             ruleset([
-              decl({ name: 'chungus', value: spaced([a('bar'), a('foo')]) })
+              decl({ name: 'chungus', value: spaced([any('bar'), any('foo')]) })
             ])
           })
         ])

@@ -1,6 +1,5 @@
 import { defineType, type Node, type LocationInfo, type FileInfo } from './node'
 import { Sequence, type SequenceOptions } from './sequence'
-import { Anonymous } from './anonymous'
 
 /**
  * A space-separated sequence of nodes,
@@ -10,21 +9,17 @@ import { Anonymous } from './anonymous'
  */
 export class Spaced extends Sequence {
   constructor(
-    value: Node[] | string[] | { value: Node[] },
+    value: Node[],
     location?: LocationInfo,
     options?: SequenceOptions,
     fileInfo?: FileInfo
   ) {
-    if (Array.isArray(value)) {
-      value = value.map(v => (typeof v === 'string' ? new Anonymous(v) : v))
-    }
-    super(value, location, options, fileInfo)
-    const values = this.value
-
     /** Offset by 1 to put in pre-whitespace */
-    for (let i = 1; i < values.length; i++) {
-      values[i].pre = 1
+    for (let i = 1; i < value.length; i++) {
+      value[i].pre = 1
     }
+
+    super(value, location, options, fileInfo)
   }
   // toModule(context: Context, out: OutputCollector) {
   //   const loc = this.location

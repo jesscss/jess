@@ -6,7 +6,7 @@ import type { Selector } from './selector'
 import type { List } from './list'
 import { Nil } from './nil'
 
-type RuleValue = {
+export type RuleValue = {
   selector: Selector | List<Selector> | Nil
   /**
    * It's important that any Node that defines a Ruleset
@@ -32,9 +32,8 @@ export class Rule extends Node<RuleValue> {
   }
 
   eval(context: Context): Rule | Nil {
-    if (!this.evaluated) {
+    return this.evalIfNot(context, () => {
       const rule = this.clone()
-      console.log(rule)
       const sels = this.selector.eval(context)
       if (sels instanceof Nil) {
         return sels
@@ -45,15 +44,12 @@ export class Rule extends Node<RuleValue> {
       rule.value = this.value.eval(context)
       context.frames.shift()
 
-      rule.evaluated = true
-
       /** Remove empty rules */
       if (rule.value.value.length === 0) {
         return new Nil().inherit(this)
       }
       return rule
-    }
-    return this
+    })
   }
 
   /** @todo move to ToCssVisitor */

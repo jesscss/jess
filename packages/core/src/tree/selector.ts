@@ -8,6 +8,7 @@ import {
 import type { Context } from '../context'
 import { Nil } from './nil'
 import { List } from './list'
+import { type Element } from './element'
 
 /**
  * @example
@@ -20,7 +21,7 @@ import { List } from './list'
  * Push an ampersand at the beginning of selector expressions
  * if there isn't one
  */
-export class Selector extends Sequence {
+export class Selector extends Sequence<Element | Combinator | Ampersand> {
   // constructor(
   //   value: Array<string | Node> | NodeMap,
   //   location?: LocationInfo
@@ -43,8 +44,11 @@ export class Selector extends Sequence {
     const hasAmp = elements.find(el => el instanceof Ampersand)
     /**
      * Try to evaluate all selectors as if they are prepended by `&`
+     *
+     * @todo - An initial plain identifier should be wrapped in `:is()`
+     * for outputting to CSS -- this is done in the ToCssVisitor?
      */
-    if (!hasAmp) {
+    if (!hasAmp && context.frames.length > 0) {
       if (elements[0] instanceof Combinator) {
         elements.unshift(new Ampersand())
       } else {

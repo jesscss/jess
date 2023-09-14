@@ -75,9 +75,9 @@ export class Ruleset extends Node<Node[]> {
     fileInfo?: FileInfo
   ) {
     const { value, scope } = (values as any)
-    super({
-      value: Array.isArray(values) ? values : value
-    }, location, options, fileInfo)
+    super([
+      ['value', Array.isArray(values) ? values : value]
+    ], location, options, fileInfo)
     this._scope = scope ?? new Scope()
   }
 
@@ -99,7 +99,12 @@ export class Ruleset extends Node<Node[]> {
       const { hoistDeclarations } = context.opts
       const ruleset = this.clone()
       ruleset._scope = this._scope
-      const rules = ruleset.value = [...ruleset.value]
+      /**
+       * Make a shallow copy of rules.
+       * This is because we're going to replace
+       * each item in the array when evaluating.
+       */
+      const rules = ruleset.value = [...this.value]
       const { _evalQueue } = this
 
       /**
@@ -294,26 +299,36 @@ export class Ruleset extends Node<Node[]> {
       }
 
       /**
-       * @todo - previous code dumps at-rules and qualified rules
-       *         into the rootRules array. This would not handle
-       *         CSS Nesting, so we need to re-think this
+       * Bubble rules to root as needed
        */
-      // if (result && !(result instanceof Nil)) {
-      //   if (result.type === 'Rule' || result.type === 'AtRule') {
-      //     this.rootRules.push(rule, ...rule.collectRoots())
-      //   } else if (result instanceof Ruleset) {
-      //     /** Collapse a ruleset into rules */
-      //     result.value.forEach(r => {
-      //       if (r.type === 'Rule' || r.type === 'AtRule') {
-      //         this.rootRules.push(r)
-      //       } else {
-      //         rules.push(r)
-      //       }
-      //     })
-      //   } else {
-      //     rules.push(result)
-      //   }
-      // }
+      const tryAddToRoot = (rule: Node) => {
+        if (
+          rule.options?.hoistToRoot || context.opts.collapseNesting
+        ) {
+          if (!this.rootRules) {
+            this.rootRules = [rule, ...rule.collectRoots()]
+          } else {
+            this.rootRules.push(rule, ...rule.collectRoots())
+          }
+        } else {
+          newRules.push(rule)
+        }
+      }
+      const newRules: Node[] = []
+
+      const walkRules = (rules: Node[]) => {
+        rules.forEach(rule => {
+          if (rule.type === 'Rule' || rule.type === 'AtRule') {
+            tryAddToRoot(rule)
+          } else if (rule instanceof Ruleset) {
+            walkRules(rule.value)
+          } else {
+            newRules.push(rule)
+          }
+        })
+      }
+      walkRules(rules)
+      ruleset.value = newRules
       return ruleset
     })
   }

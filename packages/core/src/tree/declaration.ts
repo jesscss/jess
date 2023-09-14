@@ -56,8 +56,12 @@ export class Declaration<
     this.data.set('important', v)
   }
 
+  toString() {
+    return `${this.name}: ${this.value}${this.important ? ` ${this.important}` : ''};`
+  }
+
   eval(context: Context): Node {
-    if (!this.evaluated) {
+    return this.evalIfNot(context, () => {
       const node = this.clone() as Declaration
       node.evaluated = true
       const { name, value } = node
@@ -77,9 +81,8 @@ export class Declaration<
       } else {
         node.value = newValue as U
       }
-      return this.finishEval<Declaration<string>>(node)
-    }
-    return this
+      return node
+    })
   }
 
   /** @todo - move to visitors */
