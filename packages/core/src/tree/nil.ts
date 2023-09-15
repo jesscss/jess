@@ -23,7 +23,7 @@ export class Nil extends Node<undefined> {
     super(undefined, location, options, fileInfo)
   }
 
-  eval() { return this }
+  async eval() { return this }
   toString() { return '' }
 }
 Nil.prototype.allowRoot = true

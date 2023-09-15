@@ -31,8 +31,8 @@ export class Rule extends Node<RuleValue> {
     this.data.set('selector', v)
   }
 
-  eval(context: Context): Rule | Nil {
-    return this.evalIfNot(context, () => {
+  async eval(context: Context): Rule | Nil {
+    return await this.evalIfNot(context, () => {
       const rule = this.clone()
       const sels = this.selector.eval(context)
       if (sels instanceof Nil) {

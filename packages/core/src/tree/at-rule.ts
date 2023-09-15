@@ -32,8 +32,8 @@ export class AtRule extends Node<AtRuleValue> {
     this.data.set('name', v)
   }
 
-  eval(context: Context) {
-    const node = super.eval(context) as AtRule
+  async eval(context: Context) {
+    const node = await super.eval(context) as AtRule
     /** Don't let rooted rules bubble past an at-rule */
     if (node.value) {
       let rules = node.value.value
@@ -43,7 +43,10 @@ export class AtRule extends Node<AtRuleValue> {
        * @todo - do not do this if we're outputting nesting
        */
       if (context.frames.length !== 0) {
-        const rule = new Rule({ sels: new List([new Ampersand()]), value: rules })
+        const rule = new Rule([
+          ['selector', new List([new Ampersand()])],
+          ['value', rules]
+        ])
           .inherit(this)
           .eval(context)
         rules = [rule]

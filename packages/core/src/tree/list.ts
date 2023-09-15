@@ -18,8 +18,8 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     return this.value
   }
 
-  eval(context: Context) {
-    return super.eval(context) as List<Exclude<T, Nil>> | T | ReturnType<T['eval']> | List<Exclude<ReturnType<T['eval']>, Nil>>
+  async eval(context: Context) {
+    return await (super.eval(context) as List<Exclude<T, Nil>> | T | ReturnType<T['eval']> | List<Exclude<ReturnType<T['eval']>, Nil>>)
   }
 
   /** @todo move to ToCssVisitor */

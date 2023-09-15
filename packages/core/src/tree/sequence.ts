@@ -49,12 +49,12 @@ export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> 
    *         evaluated an expression to an inner sequence,
    *         then we should be inserting white-space combinators?
    */
-  eval(context: Context) {
+  async eval(context: Context) {
     const node = this.clone()
     /** Convert all values to Nodes */
     const cast = context.cast
     node.value = node.value
-      .map(n => cast(n).eval(context))
+      .map(async n => await cast(n).eval(context))
       .filter(n => n && !(n instanceof Nil))
 
     let lists: Record<number, Node[]> | undefined

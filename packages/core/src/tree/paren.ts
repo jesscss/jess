@@ -18,8 +18,8 @@ export class Paren extends Node<Node, ParenOptions> {
     return `${escapeChar}(${output})`
   }
 
-  eval(context: Context): Node {
-    return this.evalIfNot(context, () => {
+  async eval(context: Context): Node {
+    return await this.evalIfNot(context, () => {
       let { value } = this
       const isExpression = value instanceof Expression
       value = value.eval(context)

@@ -3,6 +3,8 @@ import { Nil } from './nil'
 import type { Context } from '../context'
 import { Rule } from './rule'
 import { type Anonymous } from './anonymous'
+import { type Selector } from './selector'
+import { type List } from './list'
 
 export type AmpersandValue = {
   /**
@@ -73,12 +75,11 @@ export class Ampersand extends Node<AmpersandValue> {
     return value ? `&(${value})` : '&'
   }
 
-  eval(context: Context) {
-    return this.evalIfNot(context, () => {
+  async eval(context: Context): Promise<Selector | List<Selector> | Ampersand | Nil> {
+    return await this.evalIfNot(context, () => {
       if (this.value ?? context.opts.collapseNesting) {
         const frame = context.frames[0]
         if (frame && frame instanceof Rule) {
-          console.log(frame)
           return frame.selector.clone()
         }
         return new Nil()

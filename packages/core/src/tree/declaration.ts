@@ -60,8 +60,8 @@ export class Declaration<
     return `${this.name}: ${this.value}${this.important ? ` ${this.important}` : ''};`
   }
 
-  eval(context: Context): Node {
-    return this.evalIfNot(context, () => {
+  async eval(context: Context): Promise<Node> {
+    return await this.evalIfNot(context, async () => {
       const node = this.clone() as Declaration
       node.evaluated = true
       const { name, value } = node
@@ -75,7 +75,7 @@ export class Declaration<
       } else {
         node.name = name
       }
-      const newValue = value.eval(context)
+      const newValue = await value.eval(context)
       if (newValue instanceof Nil) {
         return newValue.inherit(node)
       } else {

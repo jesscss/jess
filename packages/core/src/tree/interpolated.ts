@@ -15,12 +15,12 @@ export type InterpolatedValue = {
  * when evaluated.
  */
 export class Interpolated<O extends NodeOptions = NodeOptions> extends Node<InterpolatedValue, O> {
-  eval(context: Context): Node {
+  async eval(context: Context): Node {
     let replacements = this.data.get('replacements')
     if (!replacements) {
-      return super.eval(context)
+      return await super.eval(context)
     }
-    replacements = replacements.map(n => n.eval(context))
+    replacements = replacements.map(async n => await n.eval(context))
     const value = this.value.replace(/##/g, _ => String(replacements!.shift()))
     if (this.type === 'Interpolated') {
       const node = new Anonymous(value).inherit(this)

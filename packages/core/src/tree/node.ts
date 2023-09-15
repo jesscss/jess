@@ -181,6 +181,32 @@ export abstract class Node<
   }
 
   /**
+   * Mutates node children in place. Used by eval()
+   * which first makes a shallow clone before mutating.
+   */
+  async processNodesAsync(func: (n: Node) => NodeValue | Promise<NodeValue>) {
+    const map = this.data as Map<string, any>
+    for (const [key, nodeVal] of map) {
+      /** Process Node arrays only */
+      if (Array.isArray(nodeVal)) {
+        const out = []
+        for (let i = 0; i < nodeVal.length; i++) {
+          const node = nodeVal[i]
+          const result = node instanceof Node ? await func(node) : node
+          if (result ?? false) {
+            out.push(result)
+          }
+        }
+        /** Assume that the type will still be valid */
+        map.set(key, out)
+      } else if (nodeVal instanceof Node) {
+        /** Assume that the type will still be valid */
+        map.set(key, await func(nodeVal))
+      }
+    }
+  }
+
+  /**
    * Fire a function for each Node in the tree, recursively
    */
   walkNodes(func: (n: Node) => void) {
@@ -248,17 +274,17 @@ export abstract class Node<
    * Individual nodes will specify type
    * when overriding eval()
    */
-  eval(context: Context): Node {
-    return this.evalIfNot(context, () => {
+  async eval(context: Context): Promise<Node> {
+    return await this.evalIfNot(context, async () => {
       const node = this.clone()
-      node.processNodes(n => n.eval(context))
+      await node.processNodesAsync(async (n) => await n.eval(context))
       return node
     })
   }
 
-  protected evalIfNot<T extends Node = Node>(context: Context, func: () => T): T {
+  protected async evalIfNot<T extends Node = Node>(context: Context, func: () => T | Promise<T>): Promise<T> {
     if (!this.evaluated) {
-      const node = func()
+      const node = await func()
       node.evaluated = true
       return node
     }

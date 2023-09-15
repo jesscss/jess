@@ -1,22 +1,14 @@
-import { Anonymous } from './anonymous'
-import { List } from './list'
-import { Expression } from './expression'
 import type { Context } from '../context'
-import type { LocationInfo } from './node'
 import { Node, defineType } from './node'
-import type { OutputCollector } from '../output'
 
 /**
- * An element is akin to a "segment" of
- * a selector. It _may_ be a selector,
- * but we don't really know until its
- * evaluated, such as if the element
- * contains a variable reference.
+ * An element is a simple selector
+ *   e.g. div, .foo, #bar, [attr]
  *
  * @todo attribute elements, when compared,
  * compare with a normalized value
 */
-export class Element extends Node<string | Node> {
+export class Element extends Node<string> {
   /** Very simple string matching */
   get isAttr() {
     return /^\[/.test(this.value)
@@ -38,14 +30,9 @@ export class Element extends Node<string | Node> {
   //   return /^[a-zA-Z-]/.test(this.value)
   // }
 
-  eval(context: Context) {
+  async eval(context: Context) {
     if (!this.evaluated) {
-      const el = this.clone()
-      let { value } = el
-      if (value instanceof Node) {
-        value = value.eval(context)
-      }
-      const node = super.eval(context)
+      const node = await super.eval(context) as Element
       if (node.isClass) {
         context.hashClass(node.value)
       }

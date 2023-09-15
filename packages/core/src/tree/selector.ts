@@ -36,7 +36,7 @@ export class Selector extends Sequence<Element | Combinator | Ampersand> {
   //   }, location)
   // }
 
-  eval(context: Context) {
+  async eval(context: Context) {
     let selector: Selector = this.clone()
     const elements = [...selector.value]
     selector.value = elements

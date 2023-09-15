@@ -32,12 +32,12 @@ export class Expression extends Node {
     }, location)
   }
 
-  eval(context: Context): Node {
+  async eval(context: Context): Node {
     const node = this.clone()
     /** Convert all values to Nodes */
     const cast = context.cast
     node.value = node.value
-      .map(n => cast(n).eval(context))
+      .map(async n => await cast(n).eval(context))
       .filter(n => n && !(n instanceof Nil))
 
     let lists: Record<number, Node[]>

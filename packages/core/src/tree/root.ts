@@ -7,7 +7,7 @@ import type { Context } from '../context'
  * The root node. Contains a collection of nodes
  */
 export class Root extends Node<Node[]> {
-  eval(context: Context) {
+  async eval(context: Context) {
     const node = this.clone()
     const rules: Node[] = []
     context.depth++

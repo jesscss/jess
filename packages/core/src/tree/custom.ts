@@ -12,9 +12,9 @@ import type { OutputCollector } from '../output'
  * one Anonymous node for now?
  */
 export class CustomDeclaration extends Declaration {
-  eval(context: Context) {
+  async eval(context: Context) {
     context.inCustom = true
-    const node = super.eval(context)
+    const node = await super.eval(context)
     context.inCustom = false
     return node
   }

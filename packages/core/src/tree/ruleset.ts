@@ -94,8 +94,8 @@ export class Ruleset extends Node<Node[]> {
   //   }
   // }
 
-  eval(context: Context): Ruleset {
-    return this.evalIfNot(context, () => {
+  async eval(context: Context): Ruleset {
+    return await this.evalIfNot(context, () => {
       const { hoistDeclarations } = context.opts
       const ruleset = this.clone()
       ruleset._scope = this._scope

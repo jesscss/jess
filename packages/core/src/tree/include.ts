@@ -12,7 +12,7 @@ export type IncludeValue = {
 }
 
 export class Include extends Node<IncludeValue> {
-  eval(context: Context) {
+  async eval(context: Context) {
     let value = this.value
     if (value instanceof Call) {
       value = value.eval(context)

@@ -12,7 +12,7 @@ export type OperationValue = [
  * The '&' selector element
  */
 export class Operation extends Node<OperationValue> {
-  eval(context: Context) {
+  async eval(context: Context) {
     const [left, op, right] = this.value
     return left.eval(context).operate(right.eval(context), op)
   }
