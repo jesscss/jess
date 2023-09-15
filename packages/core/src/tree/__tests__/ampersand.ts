@@ -1,17 +1,17 @@
 import { root, amp, rule, sel, el, spaced, any, list, ruleset, decl } from '..'
 import { Context } from '../../context'
-import { OutputCollector } from '../../output'
+// import { OutputCollector } from '../../output'
 
 let context: Context
-let out: OutputCollector
+// let out: OutputCollector
 describe('Ampersand', () => {
   beforeEach(() => {
     context = new Context()
-    out = new OutputCollector()
+    // out = new OutputCollector()
   })
-  it('should inherit selectors', () => {
+  it('should inherit selectors', async () => {
     /** We need a root node to bubble rules */
-    let node = root([
+    const initialNode = root([
       rule({
         selector: list([sel([el('.one'), el('.two')])]),
         value: ruleset([
@@ -26,8 +26,11 @@ describe('Ampersand', () => {
         ])
       })
     ])
-    node = node.eval(context)
-    expect(`${node}`).toBe('.one.two {\n  chungus: foo bar;\n}\n.one.two {\n  chungus: bar foo;\n}\n')
+    const node = await initialNode.eval(context)
+    expect(`${node}`).toBe('.one.two {\n  chungus: foo bar;\n  & {\n    chungus: bar foo;\n  }\n}\n')
+    // context = new Context({ collapseNesting: true })
+    // node = await initialNode.eval(context)
+    // expect(`${node}`).toBe('.one.two {\n  chungus: foo bar;\n}\n.one.two {\n  chungus: bar foo;\n}\n')
   })
 
   // it.skip('should serialize to a module', () => {

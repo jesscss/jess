@@ -1,29 +1,22 @@
-import { Node, defineType } from './node'
+import { defineType } from './node'
 import { Ruleset } from './ruleset'
-import { Nil } from './nil'
 import type { Context } from '../context'
 
 /**
  * The root node. Contains a collection of nodes
  */
-export class Root extends Node<Node[]> {
+export class Root extends Ruleset {
   async eval(context: Context) {
-    const node = this.clone()
-    const rules: Node[] = []
+    /**
+     * We're evaluating asynchronously,
+     * so we need to evaluate rules out of order,
+     * then sort them into the correct order
+     */
     context.depth++
-    this.value.forEach(rule => {
-      rule = rule.eval(context)
-      if (rule) {
-        if (rule instanceof Ruleset) {
-          rules.push(...rule.value)
-        } else if (!(rule instanceof Nil)) {
-          rules.push(rule)
-        }
-      }
-
-      const rootRules = this.collectRoots()
-      rootRules.forEach(rule => rules.push(rule))
-    })
+    const node = await super.eval(context)
+    const rules = node.value
+    const rootRules = node.collectRoots()
+    rootRules.forEach(rule => rules.push(rule))
     context.depth--
     node.value = rules
     return node

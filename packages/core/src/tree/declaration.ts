@@ -71,7 +71,7 @@ export class Declaration<
        * @todo - is this valid if rulesets pre-emptively evaluate names?
        */
       if (name instanceof Interpolated) {
-        node.name = name.eval(context)
+        node.name = await name.eval(context)
       } else {
         node.name = name
       }

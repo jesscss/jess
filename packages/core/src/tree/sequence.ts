@@ -53,8 +53,10 @@ export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> 
     const node = this.clone()
     /** Convert all values to Nodes */
     const cast = context.cast
-    node.value = node.value
+    const valuePromises = node.value
       .map(async n => await cast(n).eval(context))
+
+    node.value = (await Promise.all(valuePromises) as T[])
       .filter(n => n && !(n instanceof Nil))
 
     let lists: Record<number, Node[]> | undefined
@@ -74,13 +76,13 @@ export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> 
        */
       const Class = Object.getPrototypeOf(this).constructor
       const combinations = combinate(lists)
-      const returnList = new List([]).inherit(this)
+      const returnList = new List([] as T[]).inherit(this)
 
       combinations.forEach(combo => {
         const expr = [...node.value]
         for (const pos in combo) {
           if (Object.prototype.hasOwnProperty.call(combo, pos)) {
-            expr[pos] = combo[pos]
+            expr[pos] = combo[pos] as T
           }
         }
         returnList.value.push(new Class(expr))

@@ -1,6 +1,5 @@
 import { type Context } from '../context'
 import { defineType, Node } from './node'
-import type { Nil } from './nil'
 
 export type ListOptions = {
   slash: boolean
@@ -19,7 +18,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   }
 
   async eval(context: Context) {
-    return await (super.eval(context) as List<Exclude<T, Nil>> | T | ReturnType<T['eval']> | List<Exclude<ReturnType<T['eval']>, Nil>>)
+    return await (super.eval(context) as Promise<List<T>>)
   }
 
   /** @todo move to ToCssVisitor */

@@ -3,6 +3,7 @@ import { AtRule } from './at-rule'
 import { Mixin } from './mixin'
 import { defineType } from './node'
 import { Ruleset } from './ruleset'
+import type { Node } from './node'
 
 /**
  * Functions are mixins with a return value
@@ -10,8 +11,8 @@ import { Ruleset } from './ruleset'
  * @todo - Allow this to be applied to external JS functions
  */
 export class FunctionDefinition extends Mixin<(...args: any[]) => any> {
-  async eval(context: Context) {
-    const result = super.eval(context)
+  async eval(context: Context): Promise<Node> {
+    const result = await super.eval(context)
     if (result && result instanceof Ruleset) {
       const value = result.value
       const last = value[value.length - 1]

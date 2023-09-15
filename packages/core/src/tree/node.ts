@@ -87,6 +87,20 @@ export type TypeMap<
  */
 type NodeMapType<T> = T extends NodeTypeMap ? T : { value: T }
 
+type CollectionType<T> =
+  T extends Array<infer U>
+    ? U[]
+    : T extends Map<infer K, infer V>
+      ? Map<K, V>
+      : T extends Set<infer U> ? Set<U> : never
+
+type CollectionPair<T> =
+  T extends Array<infer U>
+    ? [number, U]
+    : T extends Map<infer K, infer V>
+      ? [K, V]
+      : T extends Set<infer U> ? [U, U] : never
+
 export abstract class Node<
   T = any,
   O extends NodeOptions = NodeOptions,
@@ -181,12 +195,37 @@ export abstract class Node<
   }
 
   /**
+   * Like a forEach, but calls each function
+   * for the iterable, resolves it in parallel,
+   * and finally awaits the Promise.all of results.
+   */
+  async forEachPromise<
+    T extends any[] | Map<any, any> | Set<any>,
+    P extends CollectionPair<T> = CollectionPair<T>,
+    I extends CollectionType<T> = CollectionType<T>
+  >(iterable: T, func: (value: P[1], key: P[0], container: I) => Promise<void>) {
+    const promises: Array<Promise<void>> = []
+    iterable.forEach((value, key, container) => {
+      promises.push(func(value, key, container as I))
+    })
+    await Promise.all(promises)
+  }
+
+  /**
    * Mutates node children in place. Used by eval()
    * which first makes a shallow clone before mutating.
    */
   async processNodesAsync(func: (n: Node) => NodeValue | Promise<NodeValue>) {
     const map = this.data as Map<string, any>
-    for (const [key, nodeVal] of map) {
+    await this.forEachPromise(map, async (nodeVal, key) => {
+      /**
+       * For each member of the map, we create an async function
+       * that we call, which returns a promise.
+       *
+       * This allows calls like eval() to resolve in parallel,
+       * which means some nodes can be evaluated after things
+       * like async file operations and dynamic imports.
+       */
       /** Process Node arrays only */
       if (Array.isArray(nodeVal)) {
         const out = []
@@ -203,7 +242,7 @@ export abstract class Node<
         /** Assume that the type will still be valid */
         map.set(key, await func(nodeVal))
       }
-    }
+    })
   }
 
   /**
@@ -338,7 +377,7 @@ export abstract class Node<
    * to some extent by replacing newlines + spacing
    * with the appropriate amount of whitespace.
    */
-  toString() {
+  toString(depth?: number) {
     let output = ''
     output += this.processPrePost('pre')
     this.data.forEach(value => {

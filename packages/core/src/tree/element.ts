@@ -30,15 +30,14 @@ export class Element extends Node<string> {
   //   return /^[a-zA-Z-]/.test(this.value)
   // }
 
-  async eval(context: Context) {
-    if (!this.evaluated) {
+  async eval(context: Context): Promise<Element> {
+    return await this.evalIfNot(context, async () => {
       const node = await super.eval(context) as Element
       if (node.isClass) {
         context.hashClass(node.value)
       }
       return node
-    }
-    return this
+    })
   }
 
   /** @todo - move to visitors */

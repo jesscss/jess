@@ -56,7 +56,7 @@ export class Selector extends Sequence<Element | Combinator | Ampersand> {
       }
     }
 
-    selector = super.eval.call(selector, context)
+    selector = await super.eval.call(selector, context)
 
     const cleanElements = (elements: Node[]) => {
       for (let i = 0; i < elements.length; i++) {

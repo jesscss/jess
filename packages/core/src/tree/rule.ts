@@ -31,17 +31,26 @@ export class Rule extends Node<RuleValue> {
     this.data.set('selector', v)
   }
 
-  async eval(context: Context): Rule | Nil {
-    return await this.evalIfNot(context, () => {
+  toString(depth: number = 0): string {
+    const space = ''.padStart(depth * 2)
+    let output = space
+    output += `${this.selector.toString()} {\n`
+    output += `${this.value.toString(depth + 1)}`
+    output += `${space}}`
+    return output
+  }
+
+  async eval(context: Context): Promise<Rule | Nil> {
+    return await this.evalIfNot(context, async () => {
       const rule = this.clone()
-      const sels = this.selector.eval(context)
+      const sels = await this.selector.eval(context)
       if (sels instanceof Nil) {
         return sels
       }
       rule.selector = sels
 
       context.frames.unshift(rule)
-      rule.value = this.value.eval(context)
+      rule.value = await this.value.eval(context)
       context.frames.shift()
 
       /** Remove empty rules */

@@ -94,8 +94,17 @@ export class Ruleset extends Node<Node[]> {
   //   }
   // }
 
-  async eval(context: Context): Ruleset {
-    return await this.evalIfNot(context, () => {
+  toString(depth: number = 0) {
+    const space = ''.padStart(depth * 2)
+    let output = space
+    this.value.forEach(n => {
+      output += `${n.toString(depth)}\n`
+    })
+    return output
+  }
+
+  async eval(context: Context): Promise<Ruleset> {
+    return await this.evalIfNot(context, async () => {
       const { hoistDeclarations } = context.opts
       const ruleset = this.clone()
       ruleset._scope = this._scope
@@ -178,56 +187,60 @@ export class Ruleset extends Node<Node[]> {
 
       /** Start with high priority */
       for (let i: Priority = Priority.High; i >= 0; i--) {
-        const map = _evalQueue[i]
-        if (!map) {
+        const set = _evalQueue[i]
+        if (!set) {
           continue
         }
-        map.forEach(({ node, pos, nameOnly }) => {
-          if (nameOnly) {
-            const decl = node.clone() as Declaration
-            const name = decl.name
-            let ident: string
-            if (name instanceof Node) {
-              ident = name.eval(context).value
-              decl.name = ident
-            } else {
-              ident = name
-            }
-            rules[pos] = decl
-            if (decl instanceof VariableDeclaration) {
-              if (decl instanceof Mixin && !(decl instanceof FunctionDefinition)) {
-                this._scope.setMixin(ident, decl, decl.options)
+        const setPromises: Array<Promise<void>> = []
+        set.forEach(({ node, pos, nameOnly }) => {
+          setPromises.push((async () => {
+            if (nameOnly) {
+              const decl = node.clone() as Declaration
+              const name = decl.name
+              let ident: string
+              if (name instanceof Node) {
+                ident = (await name.eval(context)).value
+                decl.name = ident
               } else {
-                this._scope.setVar(ident, decl, decl.options)
+                ident = name
               }
+              rules[pos] = decl
+              if (decl instanceof VariableDeclaration) {
+                if (decl instanceof Mixin && !(decl instanceof FunctionDefinition)) {
+                  this._scope.setMixin(ident, decl, decl.options)
+                } else {
+                  this._scope.setVar(ident, decl, decl.options)
+                }
+              } else {
+                this._scope.setProp(ident, decl)
+              }
+              /** Now that we've evaluated the name, add it to the evaluation queue */
+              assign(_evalQueue, Priority.None, decl, i)
             } else {
-              this._scope.setProp(ident, decl)
-            }
-            /** Now that we've evaluated the name, add it to the evaluation queue */
-            assign(_evalQueue, Priority.None, decl, i)
-          } else {
             /**
              * We've already cloned and partially evaluated this,
              * so we only need to evaluate the value.
              */
-            if (node instanceof Declaration) {
-              const evald = node.value.eval(context)
-              if (evald instanceof Nil) {
-                rules[pos] = evald
+              if (node instanceof Declaration) {
+                const evald = await node.value.eval(context)
+                if (evald instanceof Nil) {
+                  rules[pos] = evald
+                } else {
+                  node.value = evald
+                }
               } else {
-                node.value = evald
-              }
-            } else {
-              const result = node.eval(context)
-              rules[pos] = result
+                const result = await node.eval(context)
+                rules[pos] = result
 
-              /** Merge any scope that we need for lookups */
-              if (result instanceof Ruleset) {
-                this._scope.merge(result._scope)
+                /** Merge any scope that we need for lookups */
+                if (result instanceof Ruleset) {
+                  this._scope.merge(result._scope)
+                }
               }
             }
-          }
+          })())
         })
+        await Promise.all(setPromises)
 
         // let current = map[0]
         // let prevEvald: Node | undefined

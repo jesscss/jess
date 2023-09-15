@@ -1,8 +1,7 @@
-import type { DeclarationValue } from './declaration'
 import { Declaration } from './declaration'
-import { type LocationInfo, defineType } from './node'
+import { defineType } from './node'
 import type { Context } from '../context'
-import type { OutputCollector } from '../output'
+// import type { OutputCollector } from '../output'
 
 /**
  * A declaration that retains all tokens
