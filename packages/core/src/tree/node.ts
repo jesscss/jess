@@ -6,9 +6,11 @@ import type { Comment } from './comment'
 // import type { OutputCollector } from '../output'
 import type { Constructor, Writable, Class, ValueOf } from 'type-fest'
 
-export type NodeOptions = Record<string, boolean | string> & {
+type AllNodeOptions = {
   hoistToRoot?: boolean
 }
+
+export type NodeOptions = Record<string, boolean | string> & AllNodeOptions
 export type NodeValue = unknown
 export type NodeMap = Map<string, NodeValue>
 export type NodeInValue = NodeValue | NodeMapArray | NodeMap
@@ -109,7 +111,7 @@ export abstract class Node<
   readonly location: LocationInfo
   readonly fileInfo: FileInfo | undefined
 
-  readonly options: O | undefined
+  options: O & AllNodeOptions | undefined
 
   readonly type: string
   readonly shortType: string
@@ -321,10 +323,15 @@ export abstract class Node<
     })
   }
 
+  /**
+   * @note - this should be used if we're conditionally evaluating
+   * and then inheriting.
+   */
   protected async evalIfNot<T extends Node = Node>(context: Context, func: () => T | Promise<T>): Promise<T> {
     if (!this.evaluated) {
       const node = await func()
       node.evaluated = true
+      node.inherit(this)
       return node
     }
     return this as unknown as T

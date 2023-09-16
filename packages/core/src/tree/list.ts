@@ -17,6 +17,11 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     return this.value
   }
 
+  toString() {
+    return this.value.map(v => v.toString()).join(', ')
+  }
+
+  /** @todo? Lists should collapse nested lists? */
   async eval(context: Context) {
     return await (super.eval(context) as Promise<List<T>>)
   }

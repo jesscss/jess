@@ -3,7 +3,7 @@ import { Nil } from './nil'
 import type { Context } from '../context'
 import { Rule } from './rule'
 import { type Anonymous } from './anonymous'
-import { type Selector } from './selector'
+import { Selector } from './selector'
 import { type List } from './list'
 
 export type AmpersandValue = {
@@ -57,9 +57,9 @@ export type AmpersandValue = {
      }
 
    */
-  /** @note Anonymous will be present with &() even if it has an empty value */
   value: Anonymous | undefined
 }
+
 /**
  * The '&' selector element
  */
@@ -72,14 +72,18 @@ export class Ampersand extends Node<AmpersandValue> {
 
   toString(): string {
     const { value } = this
-    return value ? `&(${value})` : '&'
+    const hoistToRoot = this.options?.hoistToRoot
+    return hoistToRoot ?? value ? `&(${value ?? ''})` : '&'
   }
 
   async eval(context: Context): Promise<Selector | List<Selector> | Ampersand | Nil> {
     return await this.evalIfNot(context, () => {
-      if (this.value ?? context.opts.collapseNesting) {
+      if (this.value ?? this.options?.hoistToRoot ?? context.opts.collapseNesting) {
         const frame = context.frames[0]
         if (frame && frame instanceof Rule) {
+          if (this.value) {
+            return new Selector([['value', [frame.selector.clone(), this.value.clone()]]])
+          }
           return frame.selector.clone()
         }
         return new Nil()

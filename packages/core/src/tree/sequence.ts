@@ -64,9 +64,12 @@ export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> 
     node.value.forEach((n, i) => {
       if (n instanceof List) {
         if (!lists) {
-          lists = {}
+          lists = {
+            [i]: n.value
+          }
+        } else {
+          lists[i] = n.value
         }
-        lists[i] = n.value
       }
     })
 
@@ -78,6 +81,7 @@ export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> 
       const combinations = combinate(lists)
       const returnList = new List([] as T[]).inherit(this)
 
+      /** @todo - create :is() in selector */
       combinations.forEach(combo => {
         const expr = [...node.value]
         for (const pos in combo) {
