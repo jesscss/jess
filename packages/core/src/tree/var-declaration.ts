@@ -2,7 +2,7 @@ import { Declaration, type DeclarationOptions } from './declaration'
 import { defineType, type Node } from './node'
 import type { Interpolated } from './interpolated'
 
-export type VariableDeclarationOptions = DeclarationOptions & {
+export type VarDeclarationOptions = DeclarationOptions & {
   /**
    * Instead of implicitly declaring or overriding,
    * requires a variable to previously be explicitly
@@ -32,14 +32,17 @@ export type VariableDeclarationOptions = DeclarationOptions & {
  * @example `setDefined`
  *   Jess: `@set var: 1`
  *   SCSS: `$var: 1 !global`
+ *
+ * @note This is extended by mixins, who also implicitly
+ * declare a type of var in scope.
  */
-export class VariableDeclaration<
+export class VarDeclaration<
   T extends Interpolated | string = Interpolated | string,
   U extends Node = Node
-> extends Declaration <T, U, VariableDeclarationOptions> {
+> extends Declaration <T, U, VarDeclarationOptions> {
   // register(context: Context, name: string, node: Declaration<string>): void {
   //   context.scope.setVar(name, node, this.options)
   // }
 }
 
-export const vardef = defineType(VariableDeclaration, 'VariableDeclaration', 'vardef')
+export const vardecl = defineType(VarDeclaration, 'VarDeclaration', 'vardecl')

@@ -20,17 +20,17 @@ describe('Ampersand', () => {
             selector: sel([amp()]),
             value:
             ruleset([
-              decl({ name: 'chungus', value: spaced([any('bar'), any('foo')]) })
+              decl({ name: 'inner', value: spaced([any('one'), any('two')]) })
             ])
           })
         ])
       })
     ])
     const node = await initialNode.eval(context)
-    expect(`${node}`).toBe('.one.two {\n  chungus: foo bar;\n  & {\n    chungus: bar foo;\n  }\n}\n')
-    // context = new Context({ collapseNesting: true })
-    // node = await initialNode.eval(context)
-    // expect(`${node}`).toBe('.one.two {\n  chungus: foo bar;\n}\n.one.two {\n  chungus: bar foo;\n}\n')
+    expect(`${node}`).toBe('.one.two {\n  chungus: foo bar;\n  & {\n    inner: one two;\n  }\n}\n')
+    context = new Context({ collapseNesting: true })
+    const collapsed = await initialNode.eval(context)
+    expect(`${collapsed}`).toBe('.one.two {\n  chungus: foo bar;\n}\n.one.two {\n  inner: one two;\n}\n')
   })
 
   // it.skip('should serialize to a module', () => {

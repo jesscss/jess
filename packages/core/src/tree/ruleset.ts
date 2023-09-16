@@ -1,15 +1,14 @@
 /* eslint-disable @typescript-eslint/prefer-readonly */
 import { Node, defineType, type LocationInfo, type FileInfo } from './node'
 import { Declaration } from './declaration'
-import { VariableDeclaration } from './variable-declaration'
-import { Call } from './call'
+import type { VarDeclarationOptions } from './var-declaration'
 import { Scope } from '../scope'
 import { Nil } from './nil'
 
 import type { Context } from '../context'
-import { Mixin } from './mixin'
-import { FunctionDefinition } from './function-definition'
-import { Use } from './use'
+import { isNode } from './util'
+import { type Rule } from './rule'
+import { type AtRule } from './at-rule'
 
 export const enum Priority {
   None = 0,
@@ -65,7 +64,6 @@ export class Ruleset extends Node<Node[]> {
   // rootRules: Node[] = []
   // _first: Node
   // _last: Node
-  private _evalQueue: QueueMap = {}
   _scope: Scope
 
   constructor(
@@ -114,7 +112,7 @@ export class Ruleset extends Node<Node[]> {
        * each item in the array when evaluating.
        */
       const rules = ruleset.value = [...this.value]
-      const { _evalQueue } = this
+      const evalQueue: QueueMap = {}
 
       /**
        * First, create a linked list.
@@ -156,19 +154,19 @@ export class Ruleset extends Node<Node[]> {
       for (let i = 0; i < nodeLength; i++) {
         const n = rules[i]
 
-        if (n instanceof Declaration) {
+        if (isNode(n, 'Declaration')) {
           if (hoistDeclarations) {
             if (n.name instanceof Node) {
-              assign(_evalQueue, Priority.Medium, n, i, true)
+              assign(evalQueue, Priority.Medium, n, i, true)
             } else {
-              assign(_evalQueue, Priority.High, n, i, true)
+              assign(evalQueue, Priority.High, n, i, true)
             }
           /** Function declarations are also mixins */
-          } else if (n instanceof Mixin) {
+          } else if (isNode(n, 'Mixin')) {
             if (n.name instanceof Node) {
-              assign(_evalQueue, Priority.Medium, n, i, true)
+              assign(evalQueue, Priority.Medium, n, i, true)
             } else {
-              assign(_evalQueue, Priority.High, n, i, true)
+              assign(evalQueue, Priority.High, n, i, true)
             }
           }
         }
@@ -178,69 +176,67 @@ export class Ruleset extends Node<Node[]> {
          *
          * @note - this might need tweaking
          */
-        if (n instanceof Use || (hoistDeclarations && n instanceof Call)) {
-          assign(_evalQueue, Priority.Low, n, i)
+        if (isNode(n, 'Use') || (hoistDeclarations && isNode(n, 'Call'))) {
+          assign(evalQueue, Priority.Low, n, i)
         } else {
-          assign(_evalQueue, Priority.None, n, i)
+          assign(evalQueue, Priority.None, n, i)
         }
       }
 
       /** Start with high priority */
       for (let i: Priority = Priority.High; i >= 0; i--) {
-        const set = _evalQueue[i]
+        const set = evalQueue[i]
         if (!set) {
           continue
         }
-        const setPromises: Array<Promise<void>> = []
-        set.forEach(({ node, pos, nameOnly }) => {
-          setPromises.push((async () => {
-            if (nameOnly) {
-              const decl = node.clone() as Declaration
-              const name = decl.name
-              let ident: string
-              if (name instanceof Node) {
-                ident = (await name.eval(context)).value
-                decl.name = ident
-              } else {
-                ident = name
-              }
-              rules[pos] = decl
-              if (decl instanceof VariableDeclaration) {
-                if (decl instanceof Mixin && !(decl instanceof FunctionDefinition)) {
-                  this._scope.setMixin(ident, decl, decl.options)
-                } else {
-                  this._scope.setVar(ident, decl, decl.options)
-                }
-              } else {
-                this._scope.setProp(ident, decl)
-              }
-              /** Now that we've evaluated the name, add it to the evaluation queue */
-              assign(_evalQueue, Priority.None, decl, i)
+        /**
+         * @todo Not sure this will work, because they need to
+         * evaluate in a guaranteed order
+        */
+        await this.forEachPromise(set, async ({ node, pos, nameOnly }) => {
+          if (nameOnly) {
+            const decl = node.clone() as Declaration
+            const name = decl.name
+            let ident: string
+            if (name instanceof Node) {
+              ident = (await name.eval(context)).value
+              decl.name = ident
             } else {
+              ident = name
+            }
+            rules[pos] = decl
+            if (isNode(node, 'Mixin')) {
+              this._scope.setMixin(ident, decl, decl.options as VarDeclarationOptions)
+            } else if (isNode(node, ['VarDeclaration', 'FunctionDefinition'])) {
+              this._scope.setVar(ident, decl, decl.options as VarDeclarationOptions)
+            } else {
+              this._scope.setProp(ident, decl)
+            }
+            /** Now that we've evaluated the name, add it to the evaluation queue */
+            assign(evalQueue, Priority.None, decl, i)
+          } else {
             /**
              * We've already cloned and partially evaluated this,
              * so we only need to evaluate the value.
              */
-              if (node instanceof Declaration) {
-                const evald = await node.value.eval(context)
-                if (evald instanceof Nil) {
-                  rules[pos] = evald
-                } else {
-                  node.value = evald
-                }
+            if (node instanceof Declaration) {
+              const evald = await node.value.eval(context)
+              if (evald instanceof Nil) {
+                rules[pos] = evald
               } else {
-                const result = await node.eval(context)
-                rules[pos] = result
+                node.value = evald
+              }
+            } else {
+              const result = await node.eval(context)
+              rules[pos] = result
 
-                /** Merge any scope that we need for lookups */
-                if (result instanceof Ruleset) {
-                  this._scope.merge(result._scope)
-                }
+              /** Merge any scope that we need for lookups */
+              if (result instanceof Ruleset) {
+                this._scope.merge(result._scope)
               }
             }
-          })())
+          }
         })
-        await Promise.all(setPromises)
 
         // let current = map[0]
         // let prevEvald: Node | undefined
@@ -311,17 +307,32 @@ export class Ruleset extends Node<Node[]> {
         // }
       }
 
+      const bubbleRootRules = (rule: Node) => {
+        const importedRoots =
+          (isNode(rule, 'Rule') || isNode(rule, 'AtRule'))
+            ? rule.value?.rootRules
+            : rule.rootRules
+        if (importedRoots) {
+          const { rootRules } = ruleset
+          if (!rootRules) {
+            ruleset.rootRules = importedRoots
+          } else {
+            rootRules.push(...importedRoots)
+          }
+        }
+      }
       /**
        * Bubble rules to root as needed
        */
-      const tryAddToRoot = (rule: Node) => {
+      const tryAddToRoot = (rule: Rule | AtRule) => {
         if (
-          rule.options?.hoistToRoot || context.opts.collapseNesting
+          ruleset.type !== 'Root' &&
+          (rule.options?.hoistToRoot || context.opts.collapseNesting)
         ) {
-          if (!this.rootRules) {
-            this.rootRules = [rule, ...rule.collectRoots()]
+          if (!ruleset.rootRules) {
+            ruleset.rootRules = [rule]
           } else {
-            this.rootRules.push(rule, ...rule.collectRoots())
+            ruleset.rootRules.push(rule)
           }
         } else {
           newRules.push(rule)
@@ -331,9 +342,11 @@ export class Ruleset extends Node<Node[]> {
 
       const walkRules = (rules: Node[]) => {
         rules.forEach(rule => {
-          if (rule.type === 'Rule' || rule.type === 'AtRule') {
+          if (isNode(rule, ['Rule', 'AtRule'])) {
+            bubbleRootRules(rule)
             tryAddToRoot(rule)
           } else if (rule instanceof Ruleset) {
+            bubbleRootRules(rule)
             walkRules(rule.value)
           } else {
             newRules.push(rule)

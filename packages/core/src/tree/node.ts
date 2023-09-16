@@ -142,7 +142,7 @@ export abstract class Node<
   protected readonly data: TypeMap<M>
 
   constructor(
-    value: M['value'] | TypeMap<M> | Array<[keyof M, M[keyof M]]>,
+    value: M['value'] | TypeMap<M> | Array<[string, any]>,
     location?: LocationInfo | 0,
     options?: O,
     fileInfo?: FileInfo

@@ -15,8 +15,7 @@ export class Root extends Ruleset {
     context.depth++
     const node = await super.eval(context)
     const rules = node.value
-    const rootRules = node.collectRoots()
-    rootRules.forEach(rule => rules.push(rule))
+    node.rootRules?.forEach(rule => rules.push(rule))
     context.depth--
     node.value = rules
     return node
