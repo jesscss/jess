@@ -16,21 +16,20 @@ export type AtRuleValue = {
  * A rule like @charset or @media
  */
 export class AtRule extends Node<AtRuleValue> {
-  /** @todo - Volar keeps getting confused, so this has assertions */
   get prelude() {
-    return this.data.get!('prelude')
+    return this.data.get('prelude')
   }
 
   set prelude(v: Node) {
-    this.data.set!('prelude', v)
+    this.data.set('prelude', v)
   }
 
   get name() {
-    return this.data.get!('name')
+    return this.data.get('name')
   }
 
   set name(v: string) {
-    this.data.set!('name', v)
+    this.data.set('name', v)
   }
 
   async eval(context: Context) {

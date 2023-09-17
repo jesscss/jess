@@ -78,6 +78,14 @@ export type TypeMap<
   K extends keyof T = keyof T,
   V = ValueOf<T>
 > = Omit<Map<K, V>, 'get' | 'set'> & {
+  /**
+   * TypeScript sometimes gets confused
+   * about whether or not get / set will exist,
+   * so this fixes it.
+   */
+  get(key: any): any
+  set(key: any, value: any): any
+} & {
   [P in K as 'get']: <U extends P>(key: U) => T[U]
 } & {
   [P in K as 'set']: <U extends P>(key: U, value: T[U]) => TypeMap<T>

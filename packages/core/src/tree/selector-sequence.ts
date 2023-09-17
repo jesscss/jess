@@ -7,37 +7,23 @@ import {
 } from './node'
 import type { Context } from '../context'
 import { Nil } from './nil'
-import { List } from './list'
-import { type Element } from './element'
+import { type SimpleSelector } from './selector-simple'
+import { isNode } from './util'
 
 /**
+ * This is a complex selector. However, instead of storing
+ * "compound selectors" as a distinct class, we just store
+ * the sequence of simple selectors and combinators.
+ *
  * @example
  * #id > .class.class
  *
  * Stored as:
  * [Element, Combinator, Element, Element]
- *
- * @todo
- * Push an ampersand at the beginning of selector expressions
- * if there isn't one
  */
-export class Selector extends Sequence<Element | Combinator | Ampersand> {
-  // constructor(
-  //   value: Array<string | Node> | NodeMap,
-  //   location?: LocationInfo
-  // ) {
-  //   if (isNodeMap(value)) {
-  //     super(value, location)
-  //     return
-  //   }
-  //   const values = value.map(v => v.constructor === String ? new Combinator(v) : v)
-  //   super({
-  //     value: values
-  //   }, location)
-  // }
-
+export class SelectorSequence extends Sequence<SimpleSelector | Combinator> {
   async eval(context: Context) {
-    let selector: Selector = this.clone()
+    let selector: SelectorSequence = this.clone()
     let elements = [...selector.value]
     selector.value = elements
 
@@ -63,7 +49,7 @@ export class Selector extends Sequence<Element | Combinator | Ampersand> {
         let value = elements[0]
         if (
           (
-            value instanceof Selector &&
+            value instanceof SelectorSequence &&
             value.value.length === 0
           ) ||
           value instanceof Nil ||
@@ -76,7 +62,7 @@ export class Selector extends Sequence<Element | Combinator | Ampersand> {
       }
     }
 
-    if (selector instanceof List) {
+    if (isNode(selector, 'SelectorList')) {
       selector.value.forEach(sel => { cleanElements(sel.value) })
     } else {
       cleanElements(selector.value)
@@ -106,4 +92,4 @@ export class Selector extends Sequence<Element | Combinator | Ampersand> {
   // }
 }
 
-export const sel = defineType(Selector, 'Selector', 'sel')
+export const sel = defineType(SelectorSequence, 'SelectorSequence', 'sel')

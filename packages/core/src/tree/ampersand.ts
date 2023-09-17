@@ -1,7 +1,7 @@
 import { Node, defineType } from './node'
 import { Nil } from './nil'
 import type { Context } from '../context'
-import { type Selector } from './selector'
+import { type SelectorSequence } from './selector-sequence'
 import { type List } from './list'
 import { isNode } from './util'
 
@@ -83,7 +83,7 @@ export class Ampersand extends Node<AmpersandValue> {
           let selector = frame.selector.clone(true)
           const { value } = this
           if (value && !isNode(selector, 'Nil')) {
-            let appendValue = (n: Selector) => {
+            let appendValue = (n: SelectorSequence) => {
               let last = n.value[n.value.length - 1]
               if (last.value) {
                 last.value += value

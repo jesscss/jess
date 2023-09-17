@@ -1,19 +1,13 @@
 import type { Context } from '../context'
-import { Node, defineType } from './node'
+import { defineType } from './node'
+import { SimpleSelector } from './selector-simple'
 
 /**
- * An element is a simple selector
- *   e.g. div, .foo, #bar, [attr]
- *
- * @todo attribute elements, when compared,
- * compare with a normalized value
+ * A basic selector
+ * @see https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_selectors/Selectors_and_combinators#basic_selectors
+ *   e.g. div, .foo, #bar
 */
-export class Element extends Node<string> {
-  /** Very simple string matching */
-  get isAttr() {
-    return /^\[/.test(this.value)
-  }
-
+export class BasicSelector extends SimpleSelector<string> {
   get isClass() {
     return /^\./.test(this.value)
   }
@@ -22,17 +16,14 @@ export class Element extends Node<string> {
     return /^#/.test(this.value)
   }
 
-  // get isPseudo() {
-  //   return /^:/.test(this.value)
-  // }
+  /** A tag-type selector */
+  get isType() {
+    return /^[^.#]/.test(this.value)
+  }
 
-  // get isIdent() {
-  //   return /^[a-zA-Z-]/.test(this.value)
-  // }
-
-  async eval(context: Context): Promise<Element> {
+  async eval(context: Context): Promise<BasicSelector> {
     return await this.evalIfNot(context, async () => {
-      let node = await super.eval(context) as Element
+      let node = await super.eval(context) as BasicSelector
       if (node.isClass) {
         context.hashClass(node.value)
       }
@@ -57,4 +48,4 @@ export class Element extends Node<string> {
   // }
 }
 
-export const el = defineType(Element, 'Element', 'el')
+export const basic = defineType(BasicSelector, 'BasicSelector', 'basic')
