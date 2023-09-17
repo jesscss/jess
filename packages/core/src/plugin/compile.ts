@@ -14,7 +14,7 @@ export default function(options: Record<string, any> = {}): Plugin {
       if (!(/\.jess$/.test(id))) {
         return null
       }
-      const result = await renderModule(code, id, options)
+      let result = await renderModule(code, id, options)
       // For testing...
       // fs.writeFileSync(id.replace(/\.jess/, '__.js'), result.code)
 

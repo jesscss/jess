@@ -38,10 +38,10 @@ export class Selector extends Sequence<Element | Combinator | Ampersand> {
 
   async eval(context: Context) {
     let selector: Selector = this.clone()
-    const elements = [...selector.value]
+    let elements = [...selector.value]
     selector.value = elements
 
-    const hasAmp = elements.find(el => el instanceof Ampersand)
+    let hasAmp = elements.find(el => el instanceof Ampersand)
     /**
      * Try to evaluate all selectors as if they are prepended by `&`
      *
@@ -58,9 +58,9 @@ export class Selector extends Sequence<Element | Combinator | Ampersand> {
 
     selector = await super.eval.call(selector, context)
 
-    const cleanElements = (elements: Node[]) => {
+    let cleanElements = (elements: Node[]) => {
       for (let i = 0; i < elements.length; i++) {
-        const value = elements[0]
+        let value = elements[0]
         if (
           (
             value instanceof Selector &&

@@ -7,15 +7,15 @@ import { updateSheet } from '@jesscss/patch-css'
  * Given a root node (usually from a module) render to CSS
  */
 export const renderCss = (root: Node, context: Context) => {
-  const evaldRoot = root.eval(context)
-  const result = {
+  let evaldRoot = root.eval(context)
+  let result = {
     /**
      * @todo - patch document in browser
      */
     $toCSS: () => {
-      const out = new OutputCollector()
+      let out = new OutputCollector()
       evaldRoot.toCSS(context, out)
-      const css = out.toString()
+      let css = out.toString()
       updateSheet(css, context.id)
       return css
     },

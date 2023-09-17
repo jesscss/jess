@@ -24,8 +24,8 @@ export class Include extends Node<IncludeValue> {
      * into a module
      */
     if (isPlainObject(value)) {
-      const rules: Node[] = []
-      for (const name in value) {
+      let rules: Node[] = []
+      for (let name in value) {
         if (Object.prototype.hasOwnProperty.call(value, name)) {
           rules.push(new Declaration({
             name,

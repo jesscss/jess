@@ -14,7 +14,7 @@ describe('Let', () => {
 
   it('should serialize a @let', () => {
     context.depth = 2
-    const rule = set(keyval({
+    let rule = set(keyval({
       name: 'brandColor',
       value: expr([anon('#eee')])
     }))
@@ -24,7 +24,7 @@ describe('Let', () => {
   })
 
   it('should serialize a @let collection', () => {
-    const rule = set(
+    let rule = set(
       keyval({
         name: 'brand',
         value: coll([

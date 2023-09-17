@@ -11,11 +11,11 @@ describe('List', () => {
     out = new OutputCollector()
   })
   it('should serialize to a list', () => {
-    const rule = list([spaced([num(1), '2', '3']), 'four'])
+    let rule = list([spaced([num(1), '2', '3']), 'four'])
     expect(`${rule}`).toBe('1 2 3, four')
   })
   it('should serialize to a module', () => {
-    const rule = list([spaced(['1', '2', '3']), 'four'])
+    let rule = list([spaced(['1', '2', '3']), 'four'])
     rule.toModule(context, out)
     expect(out.toString()).toBe(
       '$J.list([\n  $J.spaced([$J.anon("1"), $J.anon("2"), $J.anon("3")]),\n  "four"\n])'

@@ -11,23 +11,23 @@ describe('Element', () => {
     out = new OutputCollector()
   })
   it('should identify a class', () => {
-    const rule = el('.foo')
+    let rule = el('.foo')
     expect(rule.isClass).toBe(true)
   })
   it('should identify an id', () => {
-    const rule = el('#id')
+    let rule = el('#id')
     expect(rule.isId).toBe(true)
   })
   it('should identify a pseudo-class', () => {
-    const rule = el(':foo')
+    let rule = el(':foo')
     expect(rule.isPseudo).toBe(true)
   })
   it('should identify an attribute', () => {
-    const rule = el('[foo]')
+    let rule = el('[foo]')
     expect(rule.isAttr).toBe(true)
   })
   it('should identify an ident', () => {
-    const rule = el('foo')
+    let rule = el('foo')
     expect(rule.isIdent).toBe(true)
   })
   it('should serialize a module', () => {

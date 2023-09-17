@@ -17,7 +17,7 @@ export const updateSheet = (text: string, id: string) => {
   if (!el) {
     el = document.createElement('style')
     el.setAttribute('id', id)
-    const head = document.getElementsByTagName('head')[0]
+    let head = document.getElementsByTagName('head')[0]
     el.innerHTML = text
     head.appendChild(el)
   } else {
@@ -34,24 +34,24 @@ export const updateSheet = (text: string, id: string) => {
  * updateSheet for every current value.
  */
 function getCachedSheets() {
-  const cache = localStorage.getItem('patchcss:sheets')
+  let cache = localStorage.getItem('patchcss:sheets')
   if (!cache) {
     return
   }
-  const coll: Record<string, string> = JSON.parse(cache)
-  const head = document.getElementsByTagName('head')[0]
+  let coll: Record<string, string> = JSON.parse(cache)
+  let head = document.getElementsByTagName('head')[0]
 
-  const fragment = document.createDocumentFragment()
+  let fragment = document.createDocumentFragment()
 
-  for (const id in coll) {
+  for (let id in coll) {
     if (coll.hasOwnProperty(id)) {
       /** Sanity check, in case this script gets loaded twice */
-      const exists = document.getElementById(id)
+      let exists = document.getElementById(id)
       if (exists) {
         continue
       }
-      const el = document.createElement('style')
-      const text = coll[id]
+      let el = document.createElement('style')
+      let text = coll[id]
       el.setAttribute('id', id)
       el.innerHTML = text
       fragment.appendChild(el)

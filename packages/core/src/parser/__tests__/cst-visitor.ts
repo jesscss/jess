@@ -12,7 +12,7 @@ let out: OutputCollector
 
 const serialize = async (str: string, expectStr?: string) => {
   expectStr = expectStr || str
-  const node = await parse(str)
+  let node = await parse(str)
   expect(node.toString()).toBe(expectStr)
 }
 
@@ -25,63 +25,63 @@ describe('CST-to-AST', () => {
   })
 
   it('rule #1', async () => {
-    const node = await parse('.box> #foo.bar { a: b; }')
+    let node = await parse('.box> #foo.bar { a: b; }')
     expect(node.toString()).toBe('.box > #foo.bar {\n  a: b;\n}\n')
   })
 
   it('rule #2', async () => {
-    const node = await parse('@import url("something.css");')
+    let node = await parse('@import url("something.css");')
     expect(node.toString()).toBe('@import url("something.css");\n')
   })
 
   it('rule #3', async () => {
     context.depth = 0
-    const node = await parse('@import foo from \'foo.ts\';')
+    let node = await parse('@import foo from \'foo.ts\';')
     node.value[0].toModule(context, out)
     expect(out.toString()).toBe('import foo from \'foo.ts\'')
   })
 
   it('rule #4', async () => {
     context.depth = 0
-    const node = await parse('@import foo, { bar } from \'foo.ts\';')
+    let node = await parse('@import foo, { bar } from \'foo.ts\';')
     node.value[0].toModule(context, out)
     expect(out.toString()).toBe('import foo, { bar } from \'foo.ts\'')
   })
 
   it('rule #5', async () => {
     context.depth = 0
-    const node = await parse('@import * as foo from \'foo.ts\';')
+    let node = await parse('@import * as foo from \'foo.ts\';')
     node.value[0].toModule(context, out)
     expect(out.toString()).toBe('import * as foo from \'foo.ts\'')
   })
 
   it('rule #6', async () => {
     context.depth = 0
-    const node = await parse('@import { default as foo, bar } from \'foo.ts\';')
+    let node = await parse('@import { default as foo, bar } from \'foo.ts\';')
     node.value[0].toModule(context, out)
     expect(out.toString()).toBe('import { default as foo, bar } from \'foo.ts\'')
   })
 
   it('rule #7', async () => {
-    const node = await parse('@let foo: 1;')
+    let node = await parse('@let foo: 1;')
     node.value[0].toModule(context, out)
     expect(out.toString()).toBe('let foo = $J.num({\n  value: 1,\n  unit: ""\n})')
   })
 
   it('rule #8', async () => {
-    const node = await parse('@let foo { color: #FFF }')
+    let node = await parse('@let foo { color: #FFF }')
     node.value[0].toModule(context, out)
     expect(out.toString()).toBe('let foo = {\n  "color": $J.color("#FFF")\n}')
   })
 
   it('rule #9', async () => {
-    const node = await parse('@let foo { color: #FFF; nested {} }')
+    let node = await parse('@let foo { color: #FFF; nested {} }')
     node.value[0].toModule(context, out)
     expect(out.toString()).toBe('let foo = {\n  "color": $J.color("#FFF"),\n  "nested": {\n  }\n}')
   })
 
   it('rule #10', async () => {
-    const node = await parse('@let foo { color: #FFF; nested { color: black } }')
+    let node = await parse('@let foo { color: #FFF; nested { color: black } }')
     node.value[0].toModule(context, out)
     expect(out.toString()).toBe(
       'let foo = {\n  "color": $J.color("#FFF"),\n  "nested": {\n    "color": $J.anon("black")\n  }\n}'
@@ -89,25 +89,25 @@ describe('CST-to-AST', () => {
   })
 
   it('rule #11', async () => {
-    const node = await parse('@let foo: $value.foo')
+    let node = await parse('@let foo: $value.foo')
     node.value[0].toModule(context, out)
     expect(out.toString()).toBe('let foo = value.foo')
   })
 
   it('rule #12', async () => {
-    const node = await parse('@let foo: $value.foo #FFF')
+    let node = await parse('@let foo: $value.foo #FFF')
     node.value[0].toModule(context, out)
     expect(out.toString()).toBe('let foo = $J.expr([value.foo, $J.ws(), $J.color("#FFF")])')
   })
 
   it('rule #13', async () => {
-    const node = await parse('@let foo: $(value.foo && value.bar)')
+    let node = await parse('@let foo: $(value.foo && value.bar)')
     node.value[0].toModule(context, out)
     expect(out.toString()).toBe('let foo = (value.foo && value.bar)')
   })
 
   it('rule #14', async () => {
-    const node = await parse('@mixin foo {}')
+    let node = await parse('@mixin foo {}')
     node.value[0].toModule(context, out)
     expect(out.toString()).toBe(
       'let foo = function() { return $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)}'
@@ -115,7 +115,7 @@ describe('CST-to-AST', () => {
   })
 
   it('rule #15', async () => {
-    const node = await parse('@mixin foo() {}')
+    let node = await parse('@mixin foo() {}')
     node.value[0].toModule(context, out)
     expect(out.toString()).toBe(
       'let foo = function() { return $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)}'
@@ -123,7 +123,7 @@ describe('CST-to-AST', () => {
   })
 
   it('rule #16', async () => {
-    const node = await parse('@mixin foo(bar, foo: 1px) {}')
+    let node = await parse('@mixin foo(bar, foo: 1px) {}')
     node.value[0].toModule(context, out)
     expect(out.toString()).toBe(
       'let foo = function(bar, foo = $J.num({\n  value: 1,\n  unit: "px"\n})) { return $J.ruleset(\n  (() => {\n    const $OUT = []\n    return $OUT\n  })()\n)}'
@@ -131,7 +131,7 @@ describe('CST-to-AST', () => {
   })
 
   it('rule #17', async () => {
-    const node = await parse('@include each($list, $mixin);')
+    let node = await parse('@include each($list, $mixin);')
     node.value[0].toModule(context, out)
     expect(out.toString()).toBe(
       '$J.include($J.call({\n  name: "each",\n  value: $J.list([\n    list,\n    mixin\n  ]),\n  ref: () => each,\n}))'
@@ -139,13 +139,13 @@ describe('CST-to-AST', () => {
   })
 
   it('rule #18', async () => {
-    const node = await parse('@include $each(list, mixin);')
+    let node = await parse('@include $each(list, mixin);')
     node.value[0].toModule(context, out)
     expect(out.toString()).toBe('$J.include(each(list, mixin))')
   })
 
   it('rule #19', async () => {
-    const node = await parse(
+    let node = await parse(
       `@supports (property: value) {
         @media (max-size: 2px) {
           @supports (whatever: something) {
@@ -356,7 +356,7 @@ const validCSS = [
 describe('can turn CSS into an AST', () => {
   validCSS.forEach(file => {
     it(`${file}`, async () => {
-      const result = fs.readFileSync(path.join(testData, file)).toString()
+      let result = fs.readFileSync(path.join(testData, file)).toString()
       await serialize(result)
     })
   })

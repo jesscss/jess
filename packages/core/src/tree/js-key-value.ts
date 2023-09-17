@@ -34,7 +34,7 @@ export class JsKeyValue extends JsNode {
   }
 
   toCSS(context: Context, out: OutputCollector) {
-    const value = this.value
+    let value = this.value
     out.add(this.name.value, this.location)
     if (!(value instanceof JsCollection)) {
       out.add(':')

@@ -30,7 +30,7 @@ export const get = lodashGet
  * @todo Use symbols and Object.defineProperty so these props won't be serialized
  */
 export const proxy = (func: Function, context: Context) => {
-  const memo = memoize(func.bind(context))
+  let memo = memoize(func.bind(context))
   return new Proxy(memo, {
     get(target, p) {
       let prop = p.toString()

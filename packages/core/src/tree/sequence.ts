@@ -50,10 +50,10 @@ export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> 
    *         then we should be inserting white-space combinators?
    */
   async eval(context: Context) {
-    const node = this.clone()
+    let node = this.clone()
     /** Convert all values to Nodes */
-    const cast = context.cast
-    const valuePromises = node.value
+    let cast = context.cast
+    let valuePromises = node.value
       .map(async n => await cast(n).eval(context))
 
     node.value = (await Promise.all(valuePromises) as T[])
@@ -62,7 +62,7 @@ export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> 
     let lists: Record<number, Node[]> | undefined
     let hoistToRoot = false
 
-    const finalize = <T extends Node>(n: T) => {
+    let finalize = <T extends Node>(n: T) => {
       if (hoistToRoot) {
         n.options = {
           ...n.options ?? {},
@@ -89,14 +89,14 @@ export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> 
       /**
        * Create new sequences of the inherited type
        */
-      const Class = Object.getPrototypeOf(this).constructor
-      const combinations = combinate(lists)
-      const returnList = new List([] as T[]).inherit(this)
+      let Class = Object.getPrototypeOf(this).constructor
+      let combinations = combinate(lists)
+      let returnList = new List([] as T[]).inherit(this)
 
       /** @todo - create :is() in selector */
       combinations.forEach(combo => {
-        const expr = [...node.value]
-        for (const pos in combo) {
+        let expr = [...node.value]
+        for (let pos in combo) {
           if (Object.prototype.hasOwnProperty.call(combo, pos)) {
             expr[pos] = combo[pos] as T
           }

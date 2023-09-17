@@ -30,7 +30,7 @@ describe('Ruleset', () => {
 
   it('should output var() values', () => {
     context.opts.dynamic = true
-    const node = ruleset([
+    let node = ruleset([
       decl({ name: 'a', value: spaced([js('obj.value'), call({ name: 'func', value: js('foo.bar') })]) })
     ])
     node.toModule(context, out)
@@ -41,7 +41,7 @@ describe('Ruleset', () => {
 
   it('should output --var declarations', () => {
     context.opts.dynamic = true
-    const node = ruleset([
+    let node = ruleset([
       decl({ name: 'a', value: spaced([js('obj.value'), call({ name: 'func', value: js('foo.bar') })]) })
     ])
     context.isRuntime = true

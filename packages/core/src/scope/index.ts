@@ -161,12 +161,12 @@ export class Scope {
 
   /** Normalizes keys as valid JavaScript identifiers. */
   normalizeKey(key: string) {
-    const cachedKey = Scope.cachedKeys.get(key)
+    let cachedKey = Scope.cachedKeys.get(key)
     if (cachedKey) {
       return cachedKey
     }
     /** @todo - can this be a single replace with the replacer function? */
-    const normalKey = key
+    let normalKey = key
       /** Replace initial dash with underscore */
       .replace(/^-/, '_')
       /** Remove initial . (used by Less) */
@@ -187,7 +187,7 @@ export class Scope {
       throw new SyntaxError(`"${key}" is not a valid name, as it is not exportable`)
     }
 
-    const lookupKey = Scope.entryKeys.get(normalKey)
+    let lookupKey = Scope.entryKeys.get(normalKey)
     if (lookupKey) {
       if (lookupKey !== key) {
         logger.warn(`${key} was previously normalized from ${lookupKey}, which could lead to unexpected behaviors.`)
@@ -204,9 +204,9 @@ export class Scope {
   getEntries(key: '_vars' | '_mixins'): ScopeEntryMap
   getEntries(key: '_props'): PropMap
   getEntries(key: '_vars' | '_props' | '_mixins'): ScopeEntryMap | PropMap {
-    const currentEntries = this[key]
+    let currentEntries = this[key]
     if (currentEntries === this._parent?.[key]) {
-      const entries = Object.create(this._parent[key])
+      let entries = Object.create(this._parent[key])
       this[key] = entries
       return entries
     }
@@ -215,27 +215,27 @@ export class Scope {
 
   /** Merges a scope (usually child) into this scope object */
   merge(scope: Scope) {
-    const props = scope._props
-    const keys = Object.getOwnPropertyNames(props)
-    const keyLength = keys.length
+    let props = scope._props
+    let keys = Object.getOwnPropertyNames(props)
+    let keyLength = keys.length
     for (let i = 0; i < keyLength; i++) {
-      const key = keys[i]
+      let key = keys[i]
       this.setProp(key, props[key])
     }
     if (this.options?.leakVariablesIntoScope) {
-      const leakVariables = (lookupKey: '_vars' | '_mixins') => {
-        const importedVars = scope[lookupKey]
-        const localVars = this[lookupKey]
-        const setter = lookupKey === '_vars' ? this.setVar : this.setMixin
-        const keys = Object.getOwnPropertyNames(importedVars)
-        const keyLength = keys.length
+      let leakVariables = (lookupKey: '_vars' | '_mixins') => {
+        let importedVars = scope[lookupKey]
+        let localVars = this[lookupKey]
+        let setter = lookupKey === '_vars' ? this.setVar : this.setMixin
+        let keys = Object.getOwnPropertyNames(importedVars)
+        let keyLength = keys.length
         for (let i = 0; i < keyLength; i++) {
-          const key = keys[i]
+          let key = keys[i]
           /** Only leak vars if they aren't defined */
           if (key in localVars && localVars[key]?.options.preserve !== true) {
             continue
           }
-          const entry = importedVars[key]!
+          let entry = importedVars[key]!
           if (!entry.options.private) {
             setter(key, entry)
           }
@@ -259,10 +259,10 @@ export class Scope {
   }
 
   setProp(key: string, value: unknown) {
-    const { props } = this
+    let { props } = this
     if (Object.prototype.hasOwnProperty.call(props, key)) {
       /** Modify the local entry */
-      const entry = props[key]!
+      let entry = props[key]!
 
       props[key] =
         Array.isArray(entry)
@@ -282,7 +282,7 @@ export class Scope {
    * that is compatible with JS.
    */
   private _setVarOrMixin(lookupKey: 'vars' | 'mixins', key: string, value: unknown, opts?: ScopeEntryOptions) {
-    const vars = this[lookupKey]
+    let vars = this[lookupKey]
     if (value instanceof ScopeEntry) {
       vars[key] = value
       return
@@ -305,7 +305,7 @@ export class Scope {
       if (opts?.setIfUndefined) {
         return
       }
-      const entry = vars[normalKey]!
+      let entry = vars[normalKey]!
       /**
        * These sort of do similar things, they just throw
        * different errors.
@@ -323,7 +323,7 @@ export class Scope {
     }
     if (Object.prototype.hasOwnProperty.call(vars, normalKey)) {
       /** Modify the local entry */
-      const entry = vars[normalKey]!
+      let entry = vars[normalKey]!
 
       if (entry?.options.throwIfDefined ?? opts?.throwIfDefined) {
         throw new SyntaxError(`"${key}" is already defined`)
@@ -371,9 +371,9 @@ export class Scope {
    * entries.
    */
   private _getBase(collection: '_vars' | '_props' | '_mixins', baseKey: string, options: GetterOptions = {}): any {
-    const NONE = Scope.NONE
-    const key = this.normalizeKey(baseKey)
-    const {
+    let NONE = Scope.NONE
+    let key = this.normalizeKey(baseKey)
+    let {
       /** By default, return the first value */
       filter = (value: unknown) => ({ value, done: true })
     } = options
@@ -382,10 +382,10 @@ export class Scope {
      * so we don't extend the prototype chain.
      */
     let current: ScopeEntryMap | PropMap | undefined = this[collection]
-    const results: any[] = []
+    let results: any[] = []
 
     while (current) {
-      const entry = current[key]
+      let entry = current[key]
       if (!entry) {
         /** Needed? */
         if (options.suppressUndefinedError) {
@@ -393,11 +393,11 @@ export class Scope {
         }
         throw new ReferenceError(`"${baseKey}" is not defined`)
       }
-      const entryValue: unknown = collection === '_vars' ? (entry as ScopeEntryMap).value : entry
+      let entryValue: unknown = collection === '_vars' ? (entry as ScopeEntryMap).value : entry
       let lastResult: FilterResult
       if (Array.isArray(entryValue)) {
         for (let i = 0; i < entryValue.length; i++) {
-          const val = filter(entryValue[i], results)
+          let val = filter(entryValue[i], results)
           if (val.value !== NONE) {
             results.push(val.value)
           }
@@ -407,7 +407,7 @@ export class Scope {
           }
         }
       } else {
-        const val = filter(entryValue, results)
+        let val = filter(entryValue, results)
         lastResult = val
         if (val.value !== NONE) {
           results.push(val.value)
@@ -420,7 +420,7 @@ export class Scope {
       /** Traverse up the prototype chain */
       current = current.prototype
     }
-    const returnResult = results.length
+    let returnResult = results.length
       ? results.length === 1
         ? results[0]
         : results

@@ -60,7 +60,7 @@ export const defineType = <
   type Args = [value?: P[0] | V, location?: P[1], options?: P[2], fileInfo?: P[3]]
   return (...args: Args) => {
     /** Allow objects to be passed into the public form */
-    const value = args[0]
+    let value = args[0]
     if (isPlainObject(value)) {
       args[0] = new Map(Object.entries(value as Record<string, any>))
     }
@@ -179,10 +179,10 @@ export abstract class Node<
     this.data.forEach((nodeVal, key, map) => {
       /** Process Node arrays only */
       if (Array.isArray(nodeVal)) {
-        const out = []
+        let out = []
         for (let i = 0; i < nodeVal.length; i++) {
-          const node = nodeVal[i]
-          const result = node instanceof Node ? func(node) : node
+          let node = nodeVal[i]
+          let result = node instanceof Node ? func(node) : node
           if (result ?? false) {
             out.push(result)
           }
@@ -206,7 +206,7 @@ export abstract class Node<
     P extends CollectionPair<T> = CollectionPair<T>,
     I extends CollectionType<T> = CollectionType<T>
   >(iterable: T, func: (value: P[1], key: P[0], container: I) => Promise<void>) {
-    const promises: Array<Promise<void>> = []
+    let promises: Array<Promise<void>> = []
     iterable.forEach((value, key, container) => {
       promises.push(func(value, key, container as I))
     })
@@ -218,7 +218,7 @@ export abstract class Node<
    * which first makes a shallow clone before mutating.
    */
   async processNodesAsync(func: (n: Node) => NodeValue | Promise<NodeValue>) {
-    const map = this.data as Map<string, any>
+    let map = this.data as Map<string, any>
     await this.forEachPromise(map, async (nodeVal, key) => {
       /**
        * For each member of the map, we create an async function
@@ -230,10 +230,10 @@ export abstract class Node<
        */
       /** Process Node arrays only */
       if (Array.isArray(nodeVal)) {
-        const out = []
+        let out = []
         for (let i = 0; i < nodeVal.length; i++) {
-          const node = nodeVal[i]
-          const result = node instanceof Node ? await func(node) : node
+          let node = nodeVal[i]
+          let result = node instanceof Node ? await func(node) : node
           if (result ?? false) {
             out.push(result)
           }
@@ -255,7 +255,7 @@ export abstract class Node<
       /** Process Node arrays only */
       if (Array.isArray(nodeVal)) {
         for (let i = 0; i < nodeVal.length; i++) {
-          const node = nodeVal[i]
+          let node = nodeVal[i]
           if (node instanceof Node) {
             func(node)
             node.walkNodes(func)
@@ -269,7 +269,7 @@ export abstract class Node<
   }
 
   collectRoots(): Node[] {
-    const nodes = new Set<Node>()
+    let nodes = new Set<Node>()
     this.walkNodes(n => {
       if (n.type === 'Ruleset') {
         if (n.rootRules) {
@@ -292,9 +292,9 @@ export abstract class Node<
    * case of custom declaration values.
    */
   clone(deep?: boolean): this {
-    const Class: Constructor<this> = Object.getPrototypeOf(this).constructor
+    let Class: Constructor<this> = Object.getPrototypeOf(this).constructor
 
-    const newNode = new Class(
+    let newNode = new Class(
       /**
        * Creates a new Map object instance.
        * Otherwise, replacing nodes would replace them
@@ -322,7 +322,7 @@ export abstract class Node<
    */
   async eval(context: Context): Promise<Node> {
     return await this.evalIfNot(context, async () => {
-      const node = this.clone()
+      let node = this.clone()
       await node.processNodesAsync(async (n) => await n.eval(context))
       return node
     })
@@ -334,7 +334,7 @@ export abstract class Node<
    */
   protected async evalIfNot<T extends Node = Node>(context: Context, func: () => T | Promise<T>): Promise<T> {
     if (!this.evaluated) {
-      const node = await func()
+      let node = await func()
       node.inherit(this)
       node.evaluated = true
       return node
@@ -357,7 +357,7 @@ export abstract class Node<
    * The use cases aren't clear.
    */
   valueOf() {
-    const values = [...this.data.values()]
+    let values = [...this.data.values()]
     if (values.length === 1) {
       return values[0]
     }
@@ -365,7 +365,7 @@ export abstract class Node<
   }
 
   processPrePost(key: 'pre' | 'post') {
-    const value = this[key]
+    let value = this[key]
     if (value === 0) {
       return ''
     } else if (value === 1) {
@@ -414,8 +414,8 @@ export abstract class Node<
    * -1 = less than (<)
    */
   compare(b: Node, context?: Context) {
-    const aVal = this.toString()
-    const bVal = b.toString()
+    let aVal = this.toString()
+    let bVal = b.toString()
     if (aVal === bVal) {
       return 0
     } else if (aVal > bVal) {
@@ -429,8 +429,8 @@ export abstract class Node<
    * Individual node types will override this.
    */
   operate(b: Node, op: '+' | '-' | '*' | '/', context?: Context) {
-    const aVal: any = this.valueOf()
-    const bVal: any = b.valueOf()
+    let aVal: any = this.valueOf()
+    let bVal: any = b.valueOf()
     switch (op) {
       case '+':
         return aVal + bVal

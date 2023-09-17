@@ -12,7 +12,7 @@ const opts = {
 }
 
 const startServer = () => new Promise((resolve) => {
-  const browserSync = require('browser-sync').create()
+  let browserSync = require('browser-sync').create()
   browserSync.init({
     watch: true,
     open: false,

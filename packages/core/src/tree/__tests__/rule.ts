@@ -11,7 +11,7 @@ describe('Rule', () => {
     out = new OutputCollector()
   })
   it('should serialize to CSS', () => {
-    const node = rule({
+    let node = rule({
       selector: list([sel([el('foo')])]),
       value: [
         decl({ name: 'border', value: spaced(['1px', 'solid', 'black']) }),
@@ -21,7 +21,7 @@ describe('Rule', () => {
     expect(`${node}`).toBe('foo {\n  border: 1px solid black;\n  color: #eee;\n}')
   })
   it('should serialize to a module', () => {
-    const node = rule({
+    let node = rule({
       selector: list([sel([el('foo')])]),
       value: [
         set(keyval({ name: 'brandColor', value: js('area(5)') })),

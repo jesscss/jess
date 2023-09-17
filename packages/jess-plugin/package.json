@@ -13,7 +13,9 @@
     "prepublishOnly": "npm run build",
     "build": "pnpm compile",
     "compile": "tsc -b tsconfig.build.json",
-    "test": "cross-env TEST=true vitest"
+    "test": "cross-env TEST=true vitest",
+    "lint:fix": "eslint --fix '**/*.{js,ts}'",
+    "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
     "@jesscss/core": "workspace:^2.0.0-alpha.1",

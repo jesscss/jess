@@ -12,3 +12,8 @@ Our goal is to build a unique and welcoming community around this project. Code 
 ### On the details of contributing
 
 As far as code style, repo management, tools, etc, ehh we can figure that out! Don't sweat it. Ask questions, and when you find answers, do your best to fill in any gaps in code documentation and in the Docusaurus docs, so that the next person doesn't encounter the same gaps.
+
+
+### One note about `let` vs `const`
+
+This code-base uses https://www.npmjs.com/package/eslint-plugin-prefer-let. I have VSCode set to auto-fix lint errors, and I got tired of `let`s being converted to `const` before I was finished writing code, as well as test code being inconsistent and hard to add to because of the aforementioned conversion. See [this article](https://medium.com/@PepsRyuu/use-let-by-default-not-const-58773e53db52) for more information.

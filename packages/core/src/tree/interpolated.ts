@@ -21,12 +21,12 @@ export class Interpolated<O extends NodeOptions = NodeOptions> extends Node<Inte
       return await super.eval(context)
     }
     replacements = await Promise.all(replacements.map(async n => await n.eval(context)))
-    const value = this.value.replace(/##/g, _ => String(replacements!.shift()))
+    let value = this.value.replace(/##/g, _ => String(replacements!.shift()))
     if (this.type === 'Interpolated') {
-      const node = new Anonymous(value).inherit(this)
+      let node = new Anonymous(value).inherit(this)
       return node
     }
-    const node = this.clone()
+    let node = this.clone()
     node.value = value
     node.evaluated = true
     return node

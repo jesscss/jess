@@ -16,7 +16,9 @@
     "build": "pnpm compile",
     "compile": "tsc -b tsconfig.build.json",
     "dev": "tsc -b tsconfig.build.json -w",
-    "test": "cross-env TEST=true vitest"
+    "test": "cross-env TEST=true vitest",
+    "lint:fix": "eslint --fix '**/*.{js,ts}'",
+    "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
     "chevrotain": "^11.0.3",

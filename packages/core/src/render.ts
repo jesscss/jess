@@ -12,9 +12,9 @@ import merge from 'lodash/merge'
  * Render CSS and (optionally) a runtime module
  */
 export const render = async (filePath: string, config = {}) => {
-  const opts = merge({}, defaultConfig, config)
+  let opts = merge({}, defaultConfig, config)
 
-  const bundle = await rollup.rollup({
+  let bundle = await rollup.rollup({
     input: filePath,
     plugins: [
       // nodeResolve({
@@ -34,14 +34,14 @@ export const render = async (filePath: string, config = {}) => {
   })
 
   let compilerFile = filePath.replace(/\.jess$/, '__.js')
-  const { output } = await bundle.generate({
+  let { output } = await bundle.generate({
     format: 'cjs',
     file: compilerFile,
     exports: 'named'
   })
   compilerFile = path.resolve(process.cwd(), compilerFile)
 
-  const compiler = output[0].code
+  let compiler = output[0].code
 
   fs.writeFileSync(compilerFile, compiler)
   let css: any

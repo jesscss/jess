@@ -38,7 +38,7 @@ export class Dimension extends Node<DimensionValue> {
   // }
 
   toString() {
-    const precision = 100000000
+    let precision = 100000000
     let [value, unit] = this.value
     value = Math.round(value * precision) / precision
     return `${value}${unit ?? ''}`

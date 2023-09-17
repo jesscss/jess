@@ -10,11 +10,11 @@ describe('Declaration', () => {
     out = new OutputCollector()
   })
   it('should serialize to CSS', () => {
-    const rule = decl({ name: expr(['color']), value: spaced(['#eee']) })
+    let rule = decl({ name: expr(['color']), value: spaced(['#eee']) })
     expect(`${rule}`).toBe('color: #eee;')
   })
   it('should serialize to a module', () => {
-    const rule = decl({ name: expr([anon('color')]), value: spaced([anon('#eee')]) })
+    let rule = decl({ name: expr([anon('color')]), value: spaced([anon('#eee')]) })
     rule.toModule(context, out)
     expect(out.toString()).toBe(
       '$J.decl({\n  name: $J.expr([$J.anon("color")]),\n  value: $J.spaced([$J.anon("#eee")])\n})'

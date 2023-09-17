@@ -32,7 +32,7 @@ export class Rule extends Node<RuleValue> {
   }
 
   toString(depth: number = 0): string {
-    const space = ''.padStart(depth * 2)
+    let space = ''.padStart(depth * 2)
     let output = space
     output += `${this.selector.toString()} {\n`
     output += `${this.value.toString(depth + 1)}`
@@ -42,9 +42,9 @@ export class Rule extends Node<RuleValue> {
 
   async eval(context: Context): Promise<Rule | Nil> {
     return await this.evalIfNot(context, async () => {
-      const rule = this.clone()
-      const sels = await this.selector.eval(context)
-      const hoistToRoot = this.options?.hoistToRoot ??
+      let rule = this.clone()
+      let sels = await this.selector.eval(context)
+      let hoistToRoot = this.options?.hoistToRoot ??
         sels.options?.hoistToRoot ??
         sels.value?.some(s => !!s.options?.hoistToRoot)
       if (hoistToRoot) {

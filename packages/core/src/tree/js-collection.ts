@@ -10,10 +10,10 @@ export class JsCollection extends Node {
   value: JsKeyValue[]
 
   toCSS(context: Context, out: OutputCollector) {
-    const pre = context.pre
+    let pre = context.pre
     context.indent++
     out.add('{\n', this.location)
-    const length = this.value.length
+    let length = this.value.length
     this.value.forEach((decl, i) => {
       out.add(`${pre}  `)
       decl.toCSS(context, out)
@@ -27,10 +27,10 @@ export class JsCollection extends Node {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    const pre = context.pre
+    let pre = context.pre
     context.indent++
     out.add('{\n', this.location)
-    const length = this.value.length - 1
+    let length = this.value.length - 1
     this.value.forEach((node, i) => {
       out.add(`  ${pre}${JSON.stringify(node.name.toString())}: `)
       node.value.toModule(context, out)

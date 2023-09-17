@@ -36,7 +36,9 @@
     "compile": "tsc -b tsconfig.json",
     "dev": "tsc -b tsconfig.json -w",
     "test": "jest",
-    "test:all": "pnpm benchmark && pnpm test"
+    "test:all": "pnpm benchmark && pnpm test",
+    "lint:fix": "eslint --fix '**/*.{js,ts}'",
+    "lint": "eslint '**/*.{js,ts}'"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",

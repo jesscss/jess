@@ -13,7 +13,7 @@ import type { Context } from '../context'
 export class CustomDeclaration extends Declaration {
   async eval(context: Context) {
     context.inCustom = true
-    const node = await super.eval(context)
+    let node = await super.eval(context)
     context.inCustom = false
     return node
   }

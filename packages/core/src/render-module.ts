@@ -5,7 +5,7 @@ import { parse } from './parser'
 const hashCode = (str: string) => {
   let hash = 0
   for (let i = 0; i < str.length; i++) {
-    const chr = str.charCodeAt(i)
+    let chr = str.charCodeAt(i)
     hash = ((hash << 5) - hash) + chr
     hash |= 0 // Convert to 32bit integer
   }
@@ -25,20 +25,20 @@ export const renderModule = async (
   filePath: string,
   opts: Record<string, any> = {}
 ) => {
-  const contextOpts = /\.m(odule)?\.jess/.test(filePath)
+  let contextOpts = /\.m(odule)?\.jess/.test(filePath)
     ? {
         module: true,
         ...opts
       }
     : opts
-  const root = await parse(contents, {
+  let root = await parse(contents, {
     filename: filePath,
     rootpath: process.cwd()
   })
 
   /** Create compile-time module */
   let context = new Context(contextOpts)
-  const contextId = hashCode(filePath).toString(16)
+  let contextId = hashCode(filePath).toString(16)
   context.id = contextId
   let out = new OutputCollector()
   let $js: string

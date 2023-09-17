@@ -13,8 +13,8 @@ export class Root extends Ruleset {
      * then sort them into the correct order
      */
     context.depth++
-    const node = await super.eval(context)
-    const rules = node.value
+    let node = await super.eval(context)
+    let rules = node.value
     node.rootRules?.forEach(rule => rules.push(rule))
     context.depth--
     node.value = rules

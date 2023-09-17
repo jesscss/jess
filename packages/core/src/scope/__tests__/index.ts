@@ -80,18 +80,18 @@ describe('Scope', async () => {
   describe('scope inheritance', () => {
     it('inherits values when set before', () => {
       scope.setVar('foo', 'bar')
-      const inherited = new Scope(scope)
+      let inherited = new Scope(scope)
       expect(inherited.getVar('foo')).toBe('bar')
     })
 
     it('inherits values when set after', () => {
-      const inherited = new Scope(scope)
+      let inherited = new Scope(scope)
       scope.setVar('foo', 'bar')
       expect(inherited.getVar('foo')).toBe('bar')
     })
 
     it('shadows variables', () => {
-      const inherited = new Scope(scope)
+      let inherited = new Scope(scope)
       scope.setVar('one', 'two')
       inherited.setVar('one', 'three')
       expect(scope.getVar('one')).toBe('two')
@@ -99,7 +99,7 @@ describe('Scope', async () => {
     })
 
     it('sets existing variables', () => {
-      const inherited = new Scope(scope)
+      let inherited = new Scope(scope)
       scope.setVar('one', 'two')
       inherited.setVar('one', 'three', { setDefined: true })
       expect(scope.getVar('one')).toBe('three')
@@ -107,12 +107,12 @@ describe('Scope', async () => {
     })
 
     it('can deeply inherit scope', () => {
-      const child = new Scope(scope)
+      let child = new Scope(scope)
       scope.setVar('one', 'one')
       scope.setVar('root', 'value')
       child.setVar('foo', 'bar')
       child.setVar('one', 'two')
-      const grandChild = new Scope(child)
+      let grandChild = new Scope(child)
       grandChild.setVar('one', 'three')
 
       // inherited.setVar('one', 'three', { setDefined: true })
@@ -124,14 +124,14 @@ describe('Scope', async () => {
 
     it('can merge child scope into parent scope', () => {
       scope.setProp('one', 'one')
-      const child = new Scope()
+      let child = new Scope()
       child.setProp('one', 'two')
       scope.merge(child)
       expect(scope.getProp('one')).toEqual(['one', 'two'])
     })
 
     it('will leak undefined vars', () => {
-      const child = new Scope()
+      let child = new Scope()
       child.setVar('one', 'two')
       scope.options.leakVariablesIntoScope = true
       scope.merge(child)
@@ -139,7 +139,7 @@ describe('Scope', async () => {
     })
 
     it('will not leak defined vars', () => {
-      const child = new Scope()
+      let child = new Scope()
       child.setVar('one', 'two')
       scope.options.leakVariablesIntoScope = true
       scope.setVar('one', 'one')

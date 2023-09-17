@@ -33,7 +33,7 @@ type QueueMap = {
 }
 
 function assign(map: QueueMap, key: Priority, value: Node, pos: number, nameOnly?: boolean) {
-  const set = map[key]
+  let set = map[key]
   if (set) {
     set.add({ node: value, pos, nameOnly })
   } else {
@@ -72,7 +72,7 @@ export class Ruleset extends Node<Node[]> {
     options?: undefined,
     fileInfo?: FileInfo
   ) {
-    const { value, scope } = (values as any)
+    let { value, scope } = (values as any)
     super([
       ['value', Array.isArray(values) ? values : value]
     ], location, options, fileInfo)
@@ -93,7 +93,7 @@ export class Ruleset extends Node<Node[]> {
   // }
 
   toString(depth: number = 0) {
-    const space = ''.padStart(depth * 2)
+    let space = ''.padStart(depth * 2)
     let output = space
     this.value.forEach(n => {
       output += `${n.toString(depth)}\n`
@@ -103,16 +103,16 @@ export class Ruleset extends Node<Node[]> {
 
   async eval(context: Context): Promise<Ruleset> {
     return await this.evalIfNot(context, async () => {
-      const { hoistDeclarations } = context.opts
-      const ruleset = this.clone()
+      let { hoistDeclarations } = context.opts
+      let ruleset = this.clone()
       ruleset._scope = this._scope
       /**
        * Make a shallow copy of rules.
        * This is because we're going to replace
        * each item in the array when evaluating.
        */
-      const rules = ruleset.value = [...this.value]
-      const evalQueue: QueueMap = {}
+      let rules = ruleset.value = [...this.value]
+      let evalQueue: QueueMap = {}
 
       /**
        * First, create a linked list.
@@ -120,7 +120,7 @@ export class Ruleset extends Node<Node[]> {
        * without mutating arrays.
        */
       // let prev: Node | undefined
-      const nodeLength = rules.length
+      let nodeLength = rules.length
       /** Iterate in reverse order, to assign the _next node */
       // for (let i = nodeLength - 1; i >= 0; i--) {
       //   const n = value[i]
@@ -152,7 +152,7 @@ export class Ruleset extends Node<Node[]> {
        *   3. everything else
        */
       for (let i = 0; i < nodeLength; i++) {
-        const n = rules[i]
+        let n = rules[i]
 
         if (isNode(n, 'Declaration')) {
           if (hoistDeclarations) {
@@ -185,7 +185,7 @@ export class Ruleset extends Node<Node[]> {
 
       /** Start with high priority */
       for (let i: Priority = Priority.High; i >= 0; i--) {
-        const set = evalQueue[i]
+        let set = evalQueue[i]
         if (!set) {
           continue
         }
@@ -195,8 +195,8 @@ export class Ruleset extends Node<Node[]> {
         */
         await this.forEachPromise(set, async ({ node, pos, nameOnly }) => {
           if (nameOnly) {
-            const decl = node.clone() as Declaration
-            const name = decl.name
+            let decl = node.clone() as Declaration
+            let name = decl.name
             let ident: string
             if (name instanceof Node) {
               ident = (await name.eval(context)).value
@@ -220,14 +220,14 @@ export class Ruleset extends Node<Node[]> {
              * so we only need to evaluate the value.
              */
             if (node instanceof Declaration) {
-              const evald = await node.value.eval(context)
+              let evald = await node.value.eval(context)
               if (evald instanceof Nil) {
                 rules[pos] = evald
               } else {
                 node.value = evald
               }
             } else {
-              const result = await node.eval(context)
+              let result = await node.eval(context)
               rules[pos] = result
 
               /** Merge any scope that we need for lookups */
@@ -307,13 +307,13 @@ export class Ruleset extends Node<Node[]> {
         // }
       }
 
-      const bubbleRootRules = (rule: Node) => {
-        const importedRoots =
+      let bubbleRootRules = (rule: Node) => {
+        let importedRoots =
           (isNode(rule, 'Rule') || isNode(rule, 'AtRule'))
             ? rule.value?.rootRules
             : rule.rootRules
         if (importedRoots) {
-          const { rootRules } = ruleset
+          let { rootRules } = ruleset
           if (!rootRules) {
             ruleset.rootRules = importedRoots
           } else {
@@ -324,7 +324,7 @@ export class Ruleset extends Node<Node[]> {
       /**
        * Bubble rules to root as needed
        */
-      const tryAddToRoot = (rule: Rule | AtRule) => {
+      let tryAddToRoot = (rule: Rule | AtRule) => {
         if (
           ruleset.type !== 'Root' &&
           (rule.options?.hoistToRoot || context.opts.collapseNesting)
@@ -338,9 +338,9 @@ export class Ruleset extends Node<Node[]> {
           newRules.push(rule)
         }
       }
-      const newRules: Node[] = []
+      let newRules: Node[] = []
 
-      const walkRules = (rules: Node[]) => {
+      let walkRules = (rules: Node[]) => {
         rules.forEach(rule => {
           if (isNode(rule, ['Rule', 'AtRule'])) {
             bubbleRootRules(rule)
@@ -370,8 +370,8 @@ export class Ruleset extends Node<Node[]> {
    * case we can auto-serialize it.
    */
   obj() {
-    const value = this.value
-    const output: Record<string, string> = {}
+    let value = this.value
+    let output: Record<string, string> = {}
     value.forEach(n => {
       if (n instanceof Declaration) {
         output[n.name.toString()] = `${n.value}${n.important ? ` ${n.important}` : ''}`

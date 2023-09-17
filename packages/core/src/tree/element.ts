@@ -32,7 +32,7 @@ export class Element extends Node<string> {
 
   async eval(context: Context): Promise<Element> {
     return await this.evalIfNot(context, async () => {
-      const node = await super.eval(context) as Element
+      let node = await super.eval(context) as Element
       if (node.isClass) {
         context.hashClass(node.value)
       }

@@ -82,7 +82,7 @@ export class Context {
   hashClass(name: string) {
     /** Remove dot for mapping */
     name = name.slice(1)
-    const lookup = this.classMap[name]
+    let lookup = this.classMap[name]
     if (lookup) {
       return `.${lookup}`
     }

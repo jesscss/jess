@@ -70,21 +70,21 @@ export class Ampersand extends Node<AmpersandValue> {
   }
 
   toString(): string {
-    const { value } = this
-    const hoistToRoot = this.options?.hoistToRoot
+    let { value } = this
+    let hoistToRoot = this.options?.hoistToRoot
     return hoistToRoot ?? value ? `&(${value ?? ''})` : '&'
   }
 
   async eval(context: Context): Promise<Selector | List<Selector> | Ampersand | Nil> {
     return await this.evalIfNot(context, () => {
       if (this.value ?? this.options?.hoistToRoot ?? context.opts.collapseNesting) {
-        const frame = context.frames[0]
+        let frame = context.frames[0]
         if (frame) {
-          const selector = frame.selector.clone(true)
-          const { value } = this
+          let selector = frame.selector.clone(true)
+          let { value } = this
           if (value && !isNode(selector, 'Nil')) {
-            const appendValue = (n: Selector) => {
-              const last = n.value[n.value.length - 1]
+            let appendValue = (n: Selector) => {
+              let last = n.value[n.value.length - 1]
               if (last.value) {
                 last.value += value
               }

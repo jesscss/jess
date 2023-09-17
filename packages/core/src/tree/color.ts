@@ -28,13 +28,13 @@ export class Color extends Node<string | ColorFormat> {
       return this._rgba
     }
 
-    const value = this.value
-    const rgba: number[] = []
+    let value = this.value
+    let rgba: number[] = []
 
     if (typeof value !== 'string' || value[0] !== '#') {
       throw new Error('Only hex string values can be converted to colors.')
     }
-    const hex = value.slice(1)
+    let hex = value.slice(1)
 
     if (hex.length >= 6) {
       (hex.match(/.{2}/g) as RegExpMatchArray).forEach((c, i) => {
@@ -69,7 +69,7 @@ export class Color extends Node<string | ColorFormat> {
     if (this._hsla) {
       return this._hsla
     }
-    const hsla = this.toHSL()
+    let hsla = this.toHSL()
     this._hsla = hsla
     return hsla
   }
@@ -79,7 +79,7 @@ export class Color extends Node<string | ColorFormat> {
   }
 
   get rgb(): [number, number, number] {
-    const [r, g, b] = this.rgba
+    let [r, g, b] = this.rgba
     return [r, g, b]
   }
 
@@ -107,12 +107,12 @@ export class Color extends Node<string | ColorFormat> {
     g /= 255
     b /= 255
 
-    const max = Math.max(r, g, b)
-    const min = Math.min(r, g, b)
+    let max = Math.max(r, g, b)
+    let min = Math.min(r, g, b)
     let h: number
     let s: number
-    const l = (max + min) / 2
-    const d = max - min
+    let l = (max + min) / 2
+    let d = max - min
 
     if (max === min) {
       h = s = 0
@@ -130,7 +130,7 @@ export class Color extends Node<string | ColorFormat> {
   }
 
   toString() {
-    const { value } = this
+    let { value } = this
     /** This is a hex value or keyword, output as-is */
     if (typeof value === 'string') {
       return value
@@ -153,7 +153,7 @@ export class Color extends Node<string | ColorFormat> {
       return this.toHex()
     }
 
-    const alpha = this.alpha
+    let alpha = this.alpha
     let args: any[] = []
 
     switch (colorFunction) {
@@ -167,7 +167,7 @@ export class Color extends Node<string | ColorFormat> {
       case 'hsla':
         args.push(clamp(alpha, 1))
       case 'hsl': { // eslint-disable-line no-fallthrough
-        const [h, s, l] = this.hsla
+        let [h, s, l] = this.hsla
         args = [
           this.fround(h),
           `${this.fround(s * 100)}%`,

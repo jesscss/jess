@@ -17,7 +17,7 @@ export class JsExpr extends Node {
   post: string
 
   getValue() {
-    const { value, post } = this
+    let { value, post } = this
     if (post) {
       return `${value} + '${post}'`
     }

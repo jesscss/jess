@@ -2,7 +2,7 @@ import { Node, defineType } from './node'
 
 export class Combinator extends Node<string> {
   toString() {
-    const { value } = this
+    let { value } = this
     return value === ' ' ? value : ` ${value} `
   }
 

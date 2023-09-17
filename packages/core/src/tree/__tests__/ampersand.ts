@@ -11,7 +11,7 @@ describe('Ampersand', () => {
   })
 
   /** We need a root node to bubble rules */
-  const wrapAmp = (selectors: Array<Element | Combinator | Ampersand>) => root([
+  let wrapAmp = (selectors: Array<Element | Combinator | Ampersand>) => root([
     rule({
       selector: sel([el('.one'), el('.two')]),
       value: ruleset([
@@ -26,7 +26,7 @@ describe('Ampersand', () => {
     })
   ])
 
-  const wrapAmpList = (selectors: Array<Element | Combinator | Ampersand>) => root([
+  let wrapAmpList = (selectors: Array<Element | Combinator | Ampersand>) => root([
     rule({
       selector: list([sel([el('.one')]), sel([el('.two')])]),
       value: ruleset([
@@ -91,8 +91,8 @@ describe('Ampersand', () => {
   })
 
   it('should wrap inner lists in :is()', async () => {
-    const node = wrapAmp([amp('-1')])
-    const evald = await node.eval(context)
+    let node = wrapAmp([amp('-1')])
+    let evald = await node.eval(context)
     expect(`${evald}`).toBe('.one.two {\n  chungus: foo bar;\n}\n.one.two-1 {\n  inner: one two;\n}\n')
   })
 

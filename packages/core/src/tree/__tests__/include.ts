@@ -11,23 +11,23 @@ describe('Include', () => {
     out = new OutputCollector()
   })
   it('should be able to include an object', () => {
-    const obj = {
+    let obj = {
       width: '50px',
       height: '25px'
     }
 
-    const node = rule({
+    let node = rule({
       selector: el('.rule'),
       value: [
         include(obj)
       ]
     })
-    const result = node.eval(context)
+    let result = node.eval(context)
     expect(`${result}`).toBe('.rule {\n  width: 50px;\n  height: 25px;\n}')
   })
 
   it('should serialize a module', () => {
-    const rule = el('foo')
+    let rule = el('foo')
     rule.toModule(context, out)
     expect(out.toString()).toBe('$J.el($J.anon("foo"))')
   })

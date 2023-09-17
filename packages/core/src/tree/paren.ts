@@ -13,20 +13,20 @@ export type ParenOptions = {
  */
 export class Paren extends Node<Node, ParenOptions> {
   toString(): string {
-    const output = super.toString()
-    const escapeChar = this.options?.escaped ? '~' : ''
+    let output = super.toString()
+    let escapeChar = this.options?.escaped ? '~' : ''
     return `${escapeChar}(${output})`
   }
 
   async eval(context: Context): Node {
     return await this.evalIfNot(context, () => {
       let { value } = this
-      const isExpression = value instanceof Expression
+      let isExpression = value instanceof Expression
       value = value.eval(context)
       if (isExpression && !(value instanceof Expression)) {
         return value
       }
-      const node = this.clone()
+      let node = this.clone()
       node.value = value
       return node
     })

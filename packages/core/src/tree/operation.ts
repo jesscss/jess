@@ -13,7 +13,7 @@ export type OperationValue = [
  */
 export class Operation extends Node<OperationValue> {
   async eval(context: Context) {
-    const [left, op, right] = this.value
+    let [left, op, right] = this.value
     return left.eval(context).operate(right.eval(context), op)
   }
 }

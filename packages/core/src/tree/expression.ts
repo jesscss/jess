@@ -26,16 +26,16 @@ export class Expression extends Node {
       super(value, location)
       return
     }
-    const values = value.map(v => v.constructor === String ? new Anonymous(v as string) : v)
+    let values = value.map(v => v.constructor === String ? new Anonymous(v as string) : v)
     super({
       value: values
     }, location)
   }
 
   async eval(context: Context): Node {
-    const node = this.clone()
+    let node = this.clone()
     /** Convert all values to Nodes */
-    const cast = context.cast
+    let cast = context.cast
     node.value = node.value
       .map(async n => await cast(n).eval(context))
       .filter(n => n && !(n instanceof Nil))
@@ -55,13 +55,13 @@ export class Expression extends Node {
       /**
        * Create new expressions of the inherited type
        */
-      const Clazz = Object.getPrototypeOf(this).constructor
-      const combinations = combinate(lists)
-      const returnList = new List([]).inherit(this)
+      let Clazz = Object.getPrototypeOf(this).constructor
+      let combinations = combinate(lists)
+      let returnList = new List([]).inherit(this)
 
       combinations.forEach(combo => {
-        const expr = [...node.value]
-        for (const pos in combo) {
+        let expr = [...node.value]
+        for (let pos in combo) {
           if (Object.prototype.hasOwnProperty.call(combo, pos)) {
             expr[pos] = combo[pos]
           }

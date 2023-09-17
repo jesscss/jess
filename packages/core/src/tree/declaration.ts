@@ -62,9 +62,9 @@ export class Declaration<
 
   async eval(context: Context): Promise<Node> {
     return await this.evalIfNot(context, async () => {
-      const node = this.clone() as Declaration
+      let node = this.clone() as Declaration
       node.evaluated = true
-      const { name, value } = node
+      let { name, value } = node
       /**
        * Name may be a variable or a sequence containing a variable
        *
@@ -75,7 +75,7 @@ export class Declaration<
       } else {
         node.name = name
       }
-      const newValue = await value.eval(context)
+      let newValue = await value.eval(context)
       if (newValue instanceof Nil) {
         return newValue.inherit(node)
       } else {

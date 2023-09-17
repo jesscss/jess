@@ -14,7 +14,7 @@ describe('simple test for updated CSS', function() {
   it('should add a new style block', async () => {
     console.log(await browser.version())
     await page.evaluate('patchCss.updateSheet(\'body { background: blue }\', \'foo\')')
-    const bg = await page.$eval('body', el => getComputedStyle(el).backgroundColor)
+    let bg = await page.$eval('body', el => getComputedStyle(el).backgroundColor)
     expect(bg).to.eq('rgb(0, 0, 255)')
   })
 })

@@ -16,7 +16,9 @@
     "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
     "compile": "tsc -b tsconfig.json",
-    "test": "jest"
+    "test": "jest",
+    "lint:fix": "eslint --fix '**/*.{js,ts}'",
+    "lint": "eslint '**/*.{js,ts}'"
   },
   "author": "Matthew Dean",
   "license": "MIT",

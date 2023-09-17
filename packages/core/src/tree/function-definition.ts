@@ -12,10 +12,10 @@ import type { Node } from './node'
  */
 export class FunctionDefinition extends Mixin<(...args: any[]) => any> {
   async eval(context: Context): Promise<Node> {
-    const result = await super.eval(context)
+    let result = await super.eval(context)
     if (result && result instanceof Ruleset) {
-      const value = result.value
-      const last = value[value.length - 1]
+      let value = result.value
+      let last = value[value.length - 1]
       if (last instanceof AtRule && last.name === '@return') {
         return last.prelude
       }

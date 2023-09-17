@@ -10,14 +10,14 @@ describe('Call', () => {
     out = new OutputCollector()
   })
   it('should serialize to CSS', () => {
-    const rule = call({
+    let rule = call({
       name: 'rgb',
       value: list([num(100), num(100), num(100)])
     })
     expect(`${rule}`).toBe('rgb(100, 100, 100)')
   })
   it('should serialize to a module', () => {
-    const rule = call({
+    let rule = call({
       name: 'rgb',
       value: list([num(100), num(100), num(100)])
     })

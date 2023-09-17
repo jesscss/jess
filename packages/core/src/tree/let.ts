@@ -26,7 +26,7 @@ export class Let extends JsNode {
   }
 
   recurseValue(value: Node, keys: string[], context: Context, out: OutputCollector) {
-    const pre = context.pre
+    let pre = context.pre
     if (value instanceof JsCollection) {
       if (keys.length === 1) {
         out.add(`${keys[0]} = $J.merge({}, $J.get($VARS, '${keys[0]}'))\n${pre}`)
@@ -44,7 +44,7 @@ export class Let extends JsNode {
   }
 
   toModule(context: Context, out: OutputCollector) {
-    const name = this.value.name.value
+    let name = this.value.name.value
     if (context.depth === 0) {
       out.add(`export let ${name}`, this.location)
       context.exports.add(name)

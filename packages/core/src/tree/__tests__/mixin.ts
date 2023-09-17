@@ -13,7 +13,7 @@ describe('Mixin', () => {
   })
 
   it('should serialize to a module', () => {
-    const rule = mixin({
+    let rule = mixin({
       name: ident('myMixin'),
       value: ruleset([
         decl({ name: 'color', value: anon('black') }),

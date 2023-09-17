@@ -7,7 +7,7 @@ import { renderModule } from '../render-module'
  * Rollup plugin to create CSS / runtime
  */
 export default function(options = {}): Plugin {
-  const jessFiles = new Set<string>()
+  let jessFiles = new Set<string>()
   return {
     name: 'jess',
 
@@ -16,20 +16,20 @@ export default function(options = {}): Plugin {
         return null
       }
       jessFiles.add(id)
-      const result = await renderModule(code, id, options)
+      let result = await renderModule(code, id, options)
 
       return { code: result.$js_runtime }
     },
 
     async buildEnd() {
-      const emitCss = async (id: string) => {
+      let emitCss = async (id: string) => {
         /**
          * @todo - even though the file is already read, I couldn't figure
          * out a way yet to pass that as a string to the internal Jess Rollup
          * process in the `render` function. So, technically, this file
          * will be read from the filesystem twice.
          */
-        const result = await render(id, options)
+        let result = await render(id, options)
         this.emitFile({
           type: 'asset',
           name: path.basename(id.replace(/\.jess/, '.css')),
@@ -42,15 +42,15 @@ export default function(options = {}): Plugin {
        * or is imported by a non-Jess file, then generate a
        * CSS asset.
        */
-      const entries = jessFiles.values()
-      for (const file of entries) {
-        const info = this.getModuleInfo(file)
+      let entries = jessFiles.values()
+      for (let file of entries) {
+        let info = this.getModuleInfo(file)
         /** If it's the entry file, we can stop */
         if (info.isEntry) {
           await emitCss(file)
           break
         }
-        const nonJessImporters = info.importers.filter(id => !/\.jess$/.test(id))
+        let nonJessImporters = info.importers.filter(id => !/\.jess$/.test(id))
         if (nonJessImporters.length !== 0) {
           await emitCss(file)
         }
