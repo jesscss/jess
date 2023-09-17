@@ -81,7 +81,7 @@ export class Ampersand extends Node<AmpersandValue> {
         let frame = context.frames[0]
         if (frame) {
           let selector = frame.selector.clone(true)
-          let { value } = this
+          const { value } = this
           if (value && !isNode(selector, 'Nil')) {
             let appendValue = (n: Selector) => {
               let last = n.value[n.value.length - 1]

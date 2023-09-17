@@ -16,4 +16,4 @@ As far as code style, repo management, tools, etc, ehh we can figure that out! D
 
 ### One note about `let` vs `const`
 
-This code-base uses https://www.npmjs.com/package/eslint-plugin-prefer-let. I have VSCode set to auto-fix lint errors, and I got tired of `let`s being converted to `const` before I was finished writing code, as well as test code being inconsistent and hard to add to because of the aforementioned conversion. See [this article](https://medium.com/@PepsRyuu/use-let-by-default-not-const-58773e53db52) for more information.
+This code-base _prefers_ `const` only for module-level scope, and `let` for temporary assignment scope. For this reason, I tried using https://www.npmjs.com/package/eslint-plugin-prefer-let, but TypeScript cannot do type narrowing in some instances if `let` is used instead of `const`. Therefore, while `let` is preferred, `const` is fine, and ESLint doesn't enforce anything. See [this article](https://medium.com/@PepsRyuu/use-let-by-default-not-const-58773e53db52) for more information.

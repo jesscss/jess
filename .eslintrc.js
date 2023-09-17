@@ -31,16 +31,14 @@ module.exports = {
     {
       files: ['*.js'],
       extends: ['standard'],
-      plugins: ['prefer-let'],
       rules: {
         ...jsRules,
-        'prefer-const': 0,
-        'prefer-let/prefer-let': 2
+        'prefer-const': 0
       }
     },
     {
       files: ['*.ts', '*.tsx'],
-      plugins: ['prefer-let', '@typescript-eslint'],
+      plugins: ['@typescript-eslint'],
       extends: [
         'standard-with-typescript'
       ],
@@ -51,7 +49,6 @@ module.exports = {
       rules: {
         'eol-last': 0,
         'prefer-const': 0,
-        'prefer-let/prefer-let': 2,
         '@typescript-eslint/space-before-function-paren': jsRules['space-before-function-paren'],
         '@typescript-eslint/func-call-spacing': 'error',
         '@typescript-eslint/no-confusing-void-expression': 'off',
