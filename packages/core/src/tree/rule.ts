@@ -43,14 +43,16 @@ export class Rule extends Node<RuleValue> {
   async eval(context: Context): Promise<Rule | Nil> {
     return await this.evalIfNot(context, async () => {
       const rule = this.clone()
-      const hoistToRoot = this.options?.hoistToRoot ?? this.selector.value?.some(s => !!s.options?.hoistToRoot)
+      const sels = await this.selector.eval(context)
+      const hoistToRoot = this.options?.hoistToRoot ??
+        sels.options?.hoistToRoot ??
+        sels.value?.some(s => !!s.options?.hoistToRoot)
       if (hoistToRoot) {
         rule.options = {
           ...this.options ?? {},
           hoistToRoot
         }
       }
-      const sels = await this.selector.eval(context)
       if (sels instanceof Nil) {
         return sels
       }

@@ -295,14 +295,19 @@ export abstract class Node<
     const Class: Constructor<this> = Object.getPrototypeOf(this).constructor
 
     const newNode = new Class(
-      this.data,
+      /**
+       * Creates a new Map object instance.
+       * Otherwise, replacing nodes would replace them
+       * in the old map.
+       */
+      new Map(this.data),
       this.location,
       this.options,
       this.fileInfo
     )
 
     if (deep) {
-      this.processNodes(n => n.clone())
+      newNode.processNodes(n => n.clone(deep))
     }
     newNode.pre = this.pre
     newNode.post = this.post
@@ -330,8 +335,8 @@ export abstract class Node<
   protected async evalIfNot<T extends Node = Node>(context: Context, func: () => T | Promise<T>): Promise<T> {
     if (!this.evaluated) {
       const node = await func()
-      node.evaluated = true
       node.inherit(this)
+      node.evaluated = true
       return node
     }
     return this as unknown as T
@@ -342,6 +347,8 @@ export abstract class Node<
     (this as Writable<this>).location = node.location
     ;(this as Writable<this>).fileInfo = node.fileInfo
     this.evaluated = node.evaluated
+    this.pre = node.pre
+    this.post = node.post
     return this
   }
 

@@ -2,7 +2,7 @@ import { type Context } from '../context'
 import { defineType, Node } from './node'
 
 export type ListOptions = {
-  slash: boolean
+  slash?: boolean
 }
 
 /**

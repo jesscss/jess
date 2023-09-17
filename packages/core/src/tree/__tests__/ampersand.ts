@@ -10,7 +10,23 @@ describe('Ampersand', () => {
     // out = new OutputCollector()
   })
 
+  /** We need a root node to bubble rules */
   const wrapAmp = (selectors: Array<Element | Combinator | Ampersand>) => root([
+    rule({
+      selector: sel([el('.one'), el('.two')]),
+      value: ruleset([
+        decl({ name: 'chungus', value: spaced([any('foo'), any('bar')]) }),
+        rule({
+          selector: sel(selectors),
+          value: ruleset([
+            decl({ name: 'inner', value: spaced([any('one'), any('two')]) })
+          ])
+        })
+      ])
+    })
+  ])
+
+  const wrapAmpList = (selectors: Array<Element | Combinator | Ampersand>) => root([
     rule({
       selector: list([sel([el('.one')]), sel([el('.two')])]),
       value: ruleset([
@@ -27,39 +43,57 @@ describe('Ampersand', () => {
 
   it('should output valid CSS Nesting as-is', async () => {
   /** We need a root node to bubble rules */
-    const node = wrapAmp([amp()])
-    const evald = await node.eval(context)
+    let node = wrapAmp([amp()])
+    let evald = await node.eval(context)
+    expect(`${evald}`).toBe('.one.two {\n  chungus: foo bar;\n  & {\n    inner: one two;\n  }\n}\n')
+    node = wrapAmpList([amp()])
+    evald = await node.eval(context)
     expect(`${evald}`).toBe('.one, .two {\n  chungus: foo bar;\n  & {\n    inner: one two;\n  }\n}\n')
   })
 
   it('should collapse selectors when in collapsing mode', async () => {
     /** We need a root node to bubble rules */
-    const node = wrapAmp([amp()])
+    let node = wrapAmp([amp()])
     context = new Context({ collapseNesting: true })
-    const evald = await node.eval(context)
+    let evald = await node.eval(context)
+    expect(`${evald}`).toBe('.one.two {\n  chungus: foo bar;\n}\n.one.two {\n  inner: one two;\n}\n')
+    node = wrapAmpList([amp()])
+    evald = await node.eval(context)
     expect(`${evald}`).toBe('.one, .two {\n  chungus: foo bar;\n}\n.one, .two {\n  inner: one two;\n}\n')
   })
 
   it('should combine selectors when collapsing', async () => {
-    /** We need a root node to bubble rules */
-    const node = wrapAmp([amp(), any('-1')])
+    let node = wrapAmp([amp(), any('-1')])
     context = new Context({ collapseNesting: true })
-    const evald = await node.eval(context)
+    let evald = await node.eval(context)
+    expect(`${evald}`).toBe('.one.two {\n  chungus: foo bar;\n}\n.one.two-1 {\n  inner: one two;\n}\n')
+    node = wrapAmpList([amp(), any('-1')])
+    evald = await node.eval(context)
     expect(`${evald}`).toBe('.one, .two {\n  chungus: foo bar;\n}\n.one-1, .two-1 {\n  inner: one two;\n}\n')
   })
 
   it('should collapse selectors when ampersand is set to hoist', async () => {
-    /** We need a root node to bubble rules */
-    const node = wrapAmp([amp(undefined, 0, { hoistToRoot: true })])
-    const evald = await node.eval(context)
+    let node = wrapAmp([amp(undefined, 0, { hoistToRoot: true })])
+    let evald = await node.eval(context)
+    expect(`${evald}`).toBe('.one.two {\n  chungus: foo bar;\n}\n.one.two {\n  inner: one two;\n}\n')
+    node = wrapAmpList([amp(undefined, 0, { hoistToRoot: true })])
+    evald = await node.eval(context)
     expect(`${evald}`).toBe('.one, .two {\n  chungus: foo bar;\n}\n.one, .two {\n  inner: one two;\n}\n')
   })
 
-  it.only('should collapse selectors when ampersand has an inner value', async () => {
-    /** We need a root node to bubble rules */
-    const node = wrapAmp([amp(any('-1'))])
+  it('should collapse selectors when ampersand has an inner value', async () => {
+    let node = wrapAmp([amp('-1')])
+    let evald = await node.eval(context)
+    expect(`${evald}`).toBe('.one.two {\n  chungus: foo bar;\n}\n.one.two-1 {\n  inner: one two;\n}\n')
+    node = wrapAmpList([amp('-1')])
+    evald = await node.eval(context)
+    expect(`${evald}`).toBe('.one, .two {\n  chungus: foo bar;\n}\n.one-1, .two-1 {\n  inner: one two;\n}\n')
+  })
+
+  it('should wrap inner lists in :is()', async () => {
+    const node = wrapAmp([amp('-1')])
     const evald = await node.eval(context)
-    expect(`${evald}`).toBe('.one, .two {\n  chungus: foo bar;\n}\n.one, .two {\n  inner: one two;\n}\n')
+    expect(`${evald}`).toBe('.one.two {\n  chungus: foo bar;\n}\n.one.two-1 {\n  inner: one two;\n}\n')
   })
 
   // it.skip('should serialize to a module', () => {

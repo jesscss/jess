@@ -60,8 +60,20 @@ export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> 
       .filter(n => n && !(n instanceof Nil))
 
     let lists: Record<number, Node[]> | undefined
+    let hoistToRoot = false
+
+    const finalize = <T extends Node>(n: T) => {
+      if (hoistToRoot) {
+        n.options = {
+          ...n.options ?? {},
+          hoistToRoot
+        }
+      }
+      return n
+    }
 
     node.value.forEach((n, i) => {
+      hoistToRoot = hoistToRoot || !!n.options?.hoistToRoot
       if (n instanceof List) {
         if (!lists) {
           lists = {
@@ -97,16 +109,16 @@ export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> 
        * case we can return the first value
        */
       if (returnList.value.length === 1) {
-        return returnList.value[0] as typeof Class
+        return finalize(returnList.value[0] as typeof Class)
       }
-      return returnList
+      return finalize(returnList)
     }
 
     /** Selectors maintain wrappers around elements */
     if (node.type !== 'Selector' && node.value.length === 1) {
-      return node.value[0]
+      return finalize(node.value[0])
     }
-    return node
+    return finalize(node)
   }
 
   /** @todo move to visitors */

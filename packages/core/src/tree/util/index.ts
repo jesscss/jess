@@ -12,6 +12,7 @@ import { Node } from '../node'
 import type { Rule } from '../rule'
 import type { Selector } from '../selector'
 import type { Use } from '../use'
+import { type Nil } from '../nil'
 
 /**
  * This utility function prevents circular dependencies,
@@ -36,6 +37,7 @@ export function isNode(value: any, type: 'Rule'): value is Rule
 export function isNode(value: any, type: 'AtRule'): value is AtRule
 export function isNode(value: any, type: ['Rule', 'AtRule']): value is Rule | AtRule
 export function isNode(value: any, type: 'Use'): value is Use
+export function isNode(value: any, type: 'Nil'): value is Nil
 export function isNode(value: any, type?: string | string[]): value is Node
 export function isNode(value: any, type?: string | string[]): value is Node {
   if (!(value ?? false)) {

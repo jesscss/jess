@@ -1,10 +1,9 @@
 import { Node, defineType } from './node'
 import { Nil } from './nil'
 import type { Context } from '../context'
-import { Rule } from './rule'
-import { type Anonymous } from './anonymous'
-import { Selector } from './selector'
+import { type Selector } from './selector'
 import { type List } from './list'
+import { isNode } from './util'
 
 export type AmpersandValue = {
   /**
@@ -57,7 +56,7 @@ export type AmpersandValue = {
      }
 
    */
-  value: Anonymous | undefined
+  value: string | undefined
 }
 
 /**
@@ -80,11 +79,27 @@ export class Ampersand extends Node<AmpersandValue> {
     return await this.evalIfNot(context, () => {
       if (this.value ?? this.options?.hoistToRoot ?? context.opts.collapseNesting) {
         const frame = context.frames[0]
-        if (frame && frame instanceof Rule) {
-          if (this.value) {
-            return new Selector([['value', [frame.selector.clone(), this.value.clone()]]])
+        if (frame) {
+          const selector = frame.selector.clone(true)
+          const { value } = this
+          if (value && !isNode(selector, 'Nil')) {
+            const appendValue = (n: Selector) => {
+              const last = n.value[n.value.length - 1]
+              if (last.value) {
+                last.value += value
+              }
+            }
+            if (isNode(selector, 'List')) {
+              selector.value.forEach(appendValue)
+            } else {
+              appendValue(selector)
+            }
           }
-          return frame.selector.clone()
+          selector.options = {
+            ...selector.options ?? {},
+            hoistToRoot: true
+          }
+          return selector
         }
         return new Nil()
       }
