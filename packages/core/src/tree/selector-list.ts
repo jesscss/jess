@@ -1,4 +1,10 @@
-import { Node, defineType, type LocationInfo, type FileInfo, type NodeOptions } from './node'
+import {
+  Node, defineType,
+  type LocationInfo,
+  type FileInfo,
+  type NodeOptions,
+  type TypeMap
+} from './node'
 import { SelectorSequence } from './selector-sequence'
 import { type SimpleSelector } from './selector-simple'
 import { type Combinator } from './combinator'
@@ -7,18 +13,31 @@ import { type Context } from '../context'
 /** Constructs */
 export class SelectorList extends Node<SelectorSequence[]> {
   constructor(
-    nodes: Array<Array<SimpleSelector | Combinator>>,
+    nodes: TypeMap<{ value: SelectorSequence[] }> | Array<SelectorSequence | Array<SimpleSelector | Combinator>>,
     location?: LocationInfo | 0,
     options?: NodeOptions,
     fileInfo?: FileInfo
   ) {
-    let newNodes = nodes.map(seq => seq instanceof SelectorSequence ? seq : new SelectorSequence(seq))
+    /** When cloning, nodes will be a map */
+    let newNodes = nodes instanceof Map
+      ? nodes
+      : (nodes as any[]).map(seq => seq instanceof SelectorSequence ? seq : new SelectorSequence(seq))
     super(newNodes, location, options, fileInfo)
   }
 
-  /** @todo? Lists should collapse nested lists? */
-  async eval(context: Context) {
-    return await (super.eval(context) as Promise<SelectorList>)
+  toString() {
+    return this.value.map(v => v.toString()).join(', ')
+  }
+
+  async eval(context: Context): Promise<SelectorList | SelectorSequence> {
+    return await this.evalIfNot(context, async () => {
+      const list = await (super.eval(context) as Promise<SelectorList>)
+      const { value } = list
+      if (value.length === 1) {
+        return value[0]
+      }
+      return list
+    })
   }
 }
 

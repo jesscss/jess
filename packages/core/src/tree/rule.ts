@@ -2,12 +2,12 @@ import { Node, defineType } from './node'
 import { type Ruleset } from './ruleset'
 import type { Context } from '../context'
 // import type { OutputCollector } from '../output'
-import type { Selector } from './selector'
-import type { List } from './list'
+import type { SelectorSequence } from './selector-sequence'
+import type { SelectorList } from './selector-list'
 import { Nil } from './nil'
 
 export type RuleValue = {
-  selector: Selector | List<Selector> | Nil
+  selector: SelectorList | SelectorSequence | Nil
   /**
    * It's important that any Node that defines a Ruleset
    * sets it to the `value` property. This allows us to
@@ -27,7 +27,7 @@ export class Rule extends Node<RuleValue> {
     return this.data.get('selector')
   }
 
-  set selector(v: Selector | List<Selector> | Nil) {
+  set selector(v: SelectorList | SelectorSequence | Nil) {
     this.data.set('selector', v)
   }
 
@@ -43,16 +43,17 @@ export class Rule extends Node<RuleValue> {
   async eval(context: Context): Promise<Rule | Nil> {
     return await this.evalIfNot(context, async () => {
       let rule = this.clone()
+      const collapseNesting = context.opts.collapseNesting
       let sels = await this.selector.eval(context)
-      let hoistToRoot = this.options?.hoistToRoot ??
-        sels.options?.hoistToRoot ??
-        sels.value?.some(s => !!s.options?.hoistToRoot)
+      let hoistToRoot = this.options?.hoistToRoot ?? context.opts.collapseNesting
       if (hoistToRoot) {
         rule.options = {
           ...this.options ?? {},
           hoistToRoot
         }
       }
+      context.opts.collapseNesting = collapseNesting
+
       if (sels instanceof Nil) {
         return sels
       }

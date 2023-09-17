@@ -1,14 +1,16 @@
-import { Sequence } from './sequence'
 import { Combinator } from './combinator'
 import { Ampersand } from './ampersand'
 import {
   defineType,
-  type Node
+  Node
 } from './node'
 import type { Context } from '../context'
 import { Nil } from './nil'
 import { type SimpleSelector } from './selector-simple'
+import { BasicSelector } from './selector-basic'
 import { isNode } from './util'
+import { PseudoSelector } from './selector-pseudo'
+import { type SelectorList } from './selector-list'
 
 /**
  * This is a complex selector. However, instead of storing
@@ -21,8 +23,8 @@ import { isNode } from './util'
  * Stored as:
  * [Element, Combinator, Element, Element]
  */
-export class SelectorSequence extends Sequence<SimpleSelector | Combinator> {
-  async eval(context: Context) {
+export class SelectorSequence extends Node<Array<SimpleSelector | Combinator>> {
+  async eval(context: Context): Promise<SelectorSequence | SelectorList | Nil> {
     let selector: SelectorSequence = this.clone()
     let elements = [...selector.value]
     selector.value = elements
@@ -42,10 +44,11 @@ export class SelectorSequence extends Sequence<SimpleSelector | Combinator> {
       }
     }
 
-    selector = await super.eval.call(selector, context)
+    selector = await super.eval.call(selector, context) as SelectorSequence
 
     let cleanElements = (elements: Node[]) => {
-      for (let i = 0; i < elements.length; i++) {
+      let elementsLength = elements.length
+      for (let i = 0; i < elementsLength; i++) {
         let value = elements[0]
         if (
           (
@@ -56,10 +59,23 @@ export class SelectorSequence extends Sequence<SimpleSelector | Combinator> {
           value instanceof Combinator
         ) {
           elements.shift()
-        } else {
-          break
+          elementsLength -= 1
+        } else if (isNode(value, 'SelectorList') && elementsLength > 1) {
+          /**
+           * Wrap returned lists with :is(), if
+           * there are more elements in the sequence
+           */
+          elements[i] = new PseudoSelector([
+            ['name', ':is'],
+            ['value', value]
+          ])
         }
       }
+      elements.sort((a, b) => {
+        const aVal = a instanceof BasicSelector && a.isType ? -1 : 0
+        const bVal = b instanceof BasicSelector && b.isType ? -1 : 0
+        return aVal - bVal
+      })
     }
 
     if (isNode(selector, 'SelectorList')) {

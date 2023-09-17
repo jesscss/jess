@@ -1,4 +1,4 @@
-import { Selector } from '../selector'
+import { Selector } from '../selector-sequence'
 import { sel, el, co } from '..'
 import type { Class } from 'type-fest'
 import type { Node } from '../node'

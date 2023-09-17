@@ -338,7 +338,8 @@ export abstract class Node<
 
   /**
    * @note - this should be used if we're conditionally evaluating
-   * and then inheriting.
+   * and then inheriting. It allows you to call eval() without
+   * penalty, if you're not sure if a node has been evaluated.
    */
   protected async evalIfNot<T extends Node = Node>(context: Context, func: () => T | Promise<T>): Promise<T> {
     if (!this.evaluated) {

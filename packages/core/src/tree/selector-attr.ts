@@ -1,4 +1,4 @@
-import { defineType, type Node } from './node'
+import { defineType, type FileInfo, type LocationInfo, type Node } from './node'
 import { SimpleSelector } from './selector-simple'
 
 export type AttributeSelectorValue = {
@@ -48,4 +48,10 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   }
 }
 
-export const attr = defineType(AttributeSelector, 'AttributeSelector', 'attr')
+/** Not sure why types couldn't be properly inferred */
+export const attr = defineType<AttributeSelectorValue>(AttributeSelector, 'AttributeSelector', 'attr') as (
+  value: AttributeSelectorValue | Map<string, any>,
+  location?: LocationInfo | 0,
+  options?: undefined,
+  fileInfo?: FileInfo
+) => AttributeSelector

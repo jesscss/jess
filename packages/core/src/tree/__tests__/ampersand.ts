@@ -1,4 +1,7 @@
-import { root, amp, rule, sel, el, spaced, any, list, ruleset, decl, type Element, type Combinator, type Ampersand, type Selector } from '..'
+import {
+  root, amp, rule, sel, basic, spaced, any, sellist, ruleset, decl, attr,
+  type SimpleSelector, type Combinator, type SelectorSequence
+} from '..'
 import { Context } from '../../context'
 // import { OutputCollector } from '../../output'
 
@@ -11,28 +14,28 @@ describe('Ampersand', () => {
   })
 
   /** We need a root node to bubble rules */
-  let wrapAmp = (selectors: Array<Element | Combinator | Ampersand>) => root([
+  let wrapAmp = (selectors: Array<SimpleSelector | Combinator>) => root([
     rule({
-      selector: sel([el('.one'), el('.two')]),
+      selector: sellist([[basic('.one'), basic('.two')]]),
       value: ruleset([
-        decl({ name: 'chungus', value: spaced([any('foo'), any('bar')]) }),
+        decl({ name: 'chungus', value: spaced([basic('foo'), basic('bar')]) }),
         rule({
           selector: sel(selectors),
           value: ruleset([
-            decl({ name: 'inner', value: spaced([any('one'), any('two')]) })
+            decl({ name: 'inner', value: spaced([basic('one'), basic('two')]) })
           ])
         })
       ])
     })
   ])
 
-  let wrapAmpList = (selectors: Selector[]) => root([
+  let wrapAmpList = (selectors: SelectorSequence[]) => root([
     rule({
-      selector: list([sel([el('.one')]), sel([el('.two')])]),
+      selector: sellist([sel([basic('.one')]), sel([basic('.two')])]),
       value: ruleset([
         decl({ name: 'chungus', value: spaced([any('foo'), any('bar')]) }),
         rule({
-          selector: list(selectors),
+          selector: sellist(selectors),
           value: ruleset([
             decl({ name: 'inner', value: spaced([any('one'), any('two')]) })
           ])
@@ -62,14 +65,11 @@ describe('Ampersand', () => {
     expect(`${evald}`).toBe('.one, .two {\n  chungus: foo bar;\n}\n.one, .two {\n  inner: one two;\n}\n')
   })
 
-  it('should combine selectors when collapsing', async () => {
-    let node = wrapAmp([amp(), any('-1')])
+  it('should order selectors when collapsing', async () => {
+    let node = wrapAmp([amp(), basic('h2')])
     context = new Context({ collapseNesting: true })
     let evald = await node.eval(context)
-    expect(`${evald}`).toBe('.one.two {\n  chungus: foo bar;\n}\n.one.two-1 {\n  inner: one two;\n}\n')
-    node = wrapAmpList([sel([amp(), any('-1')])])
-    evald = await node.eval(context)
-    expect(`${evald}`).toBe('.one, .two {\n  chungus: foo bar;\n}\n.one-1, .two-1 {\n  inner: one two;\n}\n')
+    expect(`${evald}`).toBe('.one.two {\n  chungus: foo bar;\n}\nh2.one.two {\n  inner: one two;\n}\n')
   })
 
   it('should collapse selectors when ampersand is set to hoist', async () => {
@@ -81,7 +81,7 @@ describe('Ampersand', () => {
     expect(`${evald}`).toBe('.one, .two {\n  chungus: foo bar;\n}\n.one, .two {\n  inner: one two;\n}\n')
   })
 
-  it('should collapse selectors when ampersand has an inner value', async () => {
+  it('should collapse selectors when ampersand has an appended value', async () => {
     let node = wrapAmp([amp('-1')])
     let evald = await node.eval(context)
     expect(`${evald}`).toBe('.one.two {\n  chungus: foo bar;\n}\n.one.two-1 {\n  inner: one two;\n}\n')
@@ -91,15 +91,37 @@ describe('Ampersand', () => {
   })
 
   it('should wrap inner lists in :is()', async () => {
-    let node = wrapAmpList([sel([amp()]), sel([el('.three')])])
+    let node = wrapAmpList([sel([amp()]), sel([basic('.three')])])
     context = new Context({ collapseNesting: true })
     let evald = await node.eval(context)
-    expect(`${evald}`).toBe('.one, .two {\n  chungus: foo bar;\n}\n:is(.one, .two) .three {\n  inner: one two;\n}\n')
+    expect(`${evald}`).toBe('.one, .two {\n  chungus: foo bar;\n}\n.one, .two, :is(.one, .two) .three {\n  inner: one two;\n}\n')
+    node = wrapAmpList([sel([amp(), basic('.three')])])
+    evald = await node.eval(context)
+    expect(`${evald}`).toBe('.one, .two {\n  chungus: foo bar;\n}\n:is(.one, .two).three {\n  inner: one two;\n}\n')
   })
 
-  // it.skip('should serialize to a module', () => {
-  //   const node = expr([amp()])
-  //   node.toModule(context, out)
-  //   expect(out.toString()).toBe('$J.expr([$J.amp()])')
-  // })
+  it('should throw if the parent selector is not basic', async () => {
+    let node = root([
+      rule({
+        selector: sel([
+          // @ts-expect-error - fix type
+          attr({
+            key: 'data-prop',
+            op: '=',
+            value: any('foo')
+          })
+        ]),
+        value: ruleset([
+          decl({ name: 'chungus', value: spaced([basic('foo'), basic('bar')]) }),
+          rule({
+            selector: sel([amp('-1')]),
+            value: ruleset([
+              decl({ name: 'inner', value: spaced([basic('one'), basic('two')]) })
+            ])
+          })
+        ])
+      })
+    ])
+    await expect(async () => await node.eval(context)).rejects.toThrow('Cannot append "-1" to this type of selector')
+  })
 })
