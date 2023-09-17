@@ -71,7 +71,7 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
     super(value, ...rest)
   }
 
-  toString(): string {
+  toTrimmedString(): string {
     let { value } = this
     let hoistToRoot = this.options?.hoistToRoot
     return hoistToRoot ?? value ? `&(${value ?? ''})` : '&'

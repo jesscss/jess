@@ -15,6 +15,24 @@ export type DimensionValue = [
  * A number or dimension
  */
 export class Dimension extends Node<DimensionValue> {
+  get number() {
+    return this.data.get('value')[0]
+  }
+
+  set number(v: number) {
+    const value = this.data.get('value')
+    this.data.set('value', [v, value[1]])
+  }
+
+  get unit() {
+    return this.data.get('value')[1] ?? ''
+  }
+
+  set unit(v: string) {
+    const value = this.data.get('value')
+    this.data.set('value', [value[0], v])
+  }
+
   // constructor(
   //   value: number | string | NodeMap,
   //   location?: LocationInfo
@@ -37,11 +55,11 @@ export class Dimension extends Node<DimensionValue> {
   //   }, location)
   // }
 
-  toString() {
+  toTrimmedString() {
     let precision = 100000000
-    let [value, unit] = this.value
-    value = Math.round(value * precision) / precision
-    return `${value}${unit ?? ''}`
+    let [number, unit = ''] = this.value
+    number = Math.round(number * precision) / precision
+    return `${number}${unit}`
   }
 
   /** @todo - move to visitors */
@@ -60,5 +78,11 @@ export class Dimension extends Node<DimensionValue> {
 }
 
 export const dimension = defineType(Dimension, 'Dimension')
+type DimensionShortParams = Parameters<typeof dimension>
 /** alias */
-export const num = dimension
+export const num = (
+  value: number,
+  location?: DimensionShortParams[1],
+  options?: DimensionShortParams[2],
+  fileInfo?: DimensionShortParams[3]
+) => dimension([value])

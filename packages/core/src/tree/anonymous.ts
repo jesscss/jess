@@ -5,7 +5,7 @@ import { Node, defineType } from './node'
  */
 export class Anonymous extends Node<string> {
   // toModule(context: Context, out: OutputCollector) {
-  //   out.add(`$J.anon(${JSON.stringify(this.value)})`, this.location)
+  //   out.add(`$J.any(${JSON.stringify(this.value)})`, this.location)
   // }
 }
 

@@ -31,7 +31,7 @@ export class Rule extends Node<RuleValue> {
     this.data.set('selector', v)
   }
 
-  toString(depth: number = 0): string {
+  toTrimmedString(depth: number = 0): string {
     let space = ''.padStart(depth * 2)
     let output = space
     output += `${this.selector.toString()} {\n`

@@ -12,17 +12,17 @@ export type ParenOptions = {
  * An expression in parenthesis
  */
 export class Paren extends Node<Node, ParenOptions> {
-  toString(): string {
+  toTrimmedString(): string {
     let output = super.toString()
     let escapeChar = this.options?.escaped ? '~' : ''
     return `${escapeChar}(${output})`
   }
 
-  async eval(context: Context): Node {
-    return await this.evalIfNot(context, () => {
+  async eval(context: Context): Promise<Node> {
+    return await this.evalIfNot(context, async () => {
       let { value } = this
       let isExpression = value instanceof Expression
-      value = value.eval(context)
+      value = await value.eval(context)
       if (isExpression && !(value instanceof Expression)) {
         return value
       }

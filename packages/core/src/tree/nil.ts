@@ -24,7 +24,7 @@ export class Nil extends Node<undefined> {
   }
 
   async eval() { return this }
-  toString() { return '' }
+  toTrimmedString() { return '' }
 }
 Nil.prototype.allowRoot = true
 Nil.prototype.allowRuleRoot = true

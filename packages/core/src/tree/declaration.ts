@@ -56,7 +56,7 @@ export class Declaration<
     this.data.set('important', v)
   }
 
-  toString() {
+  toTrimmedString() {
     return `${this.name}: ${this.value}${this.important ? ` ${this.important}` : ''};`
   }
 

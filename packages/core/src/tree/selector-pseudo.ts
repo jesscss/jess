@@ -26,7 +26,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     this.data.set('name', v)
   }
 
-  toString() {
+  toTrimmedString() {
     let { name, value } = this
     return `${name}${value ? `(${value})` : ''}`
   }

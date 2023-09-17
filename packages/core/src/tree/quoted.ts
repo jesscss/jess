@@ -10,7 +10,7 @@ export type QuotedOptions = {
  * An quoted value
  */
 export class Quoted extends Interpolated<QuotedOptions> {
-  toString() {
+  toTrimmedString() {
     let { quote = '"', escaped } = this.options ?? {}
     let output = super.toString()
     let escapeChar = escaped ? '~' : ''

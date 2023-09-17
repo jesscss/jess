@@ -16,11 +16,11 @@ describe('Let', () => {
     context.depth = 2
     let rule = set(keyval({
       name: 'brandColor',
-      value: expr([anon('#eee')])
+      value: expr([any('#eee')])
     }))
     expect(`${rule}`).toBe('@let brandColor: #eee;')
     rule.toModule(context, out)
-    expect(out.toString()).toBe('let brandColor = $J.expr([$J.anon("#eee")])')
+    expect(out.toString()).toBe('let brandColor = $J.expr([$J.any("#eee")])')
   })
 
   it('should serialize a @let collection', () => {
@@ -33,17 +33,17 @@ describe('Let', () => {
             value: coll([
               keyval({
                 name: 'dark',
-                value: anon('#000')
+                value: any('#000')
               })
             ])
           }),
           keyval({
             name: 'dark',
-            value: anon('#222')
+            value: any('#222')
           }),
           keyval({
             name: 'light',
-            value: anon('#eee')
+            value: any('#eee')
           })
         ])
       })
@@ -53,7 +53,7 @@ describe('Let', () => {
     )
     rule.toModule(context, out)
     expect(out.toString()).toBe(
-      'brand = $J.merge({}, $J.get($VARS, \'brand\'))\nbrand.global = {}\nbrand.global.dark = $J.get($VARS, \'brand.global.dark\', $J.anon("#000"))\nbrand.dark = $J.get($VARS, \'brand.dark\', $J.anon("#222"))\nbrand.light = $J.get($VARS, \'brand.light\', $J.anon("#eee"))\n'
+      'brand = $J.merge({}, $J.get($VARS, \'brand\'))\nbrand.global = {}\nbrand.global.dark = $J.get($VARS, \'brand.global.dark\', $J.any("#000"))\nbrand.dark = $J.get($VARS, \'brand.dark\', $J.any("#222"))\nbrand.light = $J.get($VARS, \'brand.light\', $J.any("#eee"))\n'
     )
   })
 })

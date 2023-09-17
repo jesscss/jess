@@ -17,7 +17,7 @@ export class BasicSelector extends SimpleSelector<string> {
   }
 
   /** A tag-type selector */
-  get isType() {
+  get isTag() {
     return /^[^.#]/.test(this.value)
   }
 
@@ -48,4 +48,5 @@ export class BasicSelector extends SimpleSelector<string> {
   // }
 }
 
-export const basic = defineType(BasicSelector, 'BasicSelector', 'basic')
+/** Short form of a basic selector is a short 'el' for 'element' */
+export const el = defineType(BasicSelector, 'BasicSelector', 'el')

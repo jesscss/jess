@@ -92,12 +92,11 @@ export class Ruleset extends Node<Node[]> {
   //   }
   // }
 
-  toString(depth: number = 0) {
+  toTrimmedString(depth: number = 0) {
     let space = ''.padStart(depth * 2)
     let output = space
-    this.value.forEach(n => {
-      output += `${n.toString(depth)}\n`
-    })
+    let outputs = this.value.map(n => n.toString(depth))
+    output += outputs.join(`\n${space}`) + '\n'
     return output
   }
 

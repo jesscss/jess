@@ -4,8 +4,6 @@ import { Sequence, type SequenceOptions } from './sequence'
 /**
  * A space-separated sequence of nodes,
  * which is how most CSS values are written.
- *
- * For convenience, wraps strings.
  */
 export class Spaced extends Sequence {
   constructor(

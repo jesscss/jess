@@ -129,7 +129,7 @@ export class Color extends Node<string | ColorFormat> {
     return [h! * 360, s, l, a]
   }
 
-  toString() {
+  toTrimmedString() {
     let { value } = this
     /** This is a hex value or keyword, output as-is */
     if (typeof value === 'string') {

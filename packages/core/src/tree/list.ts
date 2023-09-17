@@ -17,7 +17,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     return this.value
   }
 
-  toString() {
+  toTrimmedString() {
     return this.value.map(v => v.toString()).join(', ')
   }
 

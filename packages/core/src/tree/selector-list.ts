@@ -25,7 +25,7 @@ export class SelectorList extends Node<SelectorSequence[]> {
     super(newNodes, location, options, fileInfo)
   }
 
-  toString() {
+  toTrimmedString() {
     return this.value.map(v => v.toString()).join(', ')
   }
 

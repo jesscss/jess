@@ -29,6 +29,6 @@ describe('Include', () => {
   it('should serialize a module', () => {
     let rule = el('foo')
     rule.toModule(context, out)
-    expect(out.toString()).toBe('$J.el($J.anon("foo"))')
+    expect(out.toString()).toBe('$J.el($J.any("foo"))')
   })
 })

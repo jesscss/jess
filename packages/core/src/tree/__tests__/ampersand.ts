@@ -16,13 +16,13 @@ describe('Ampersand', () => {
   /** We need a root node to bubble rules */
   let wrapAmp = (selectors: Array<SimpleSelector | Combinator>) => root([
     rule({
-      selector: sellist([[basic('.one'), basic('.two')]]),
+      selector: sellist([[el('.one'), el('.two')]]),
       value: ruleset([
-        decl({ name: 'chungus', value: spaced([basic('foo'), basic('bar')]) }),
+        decl({ name: 'chungus', value: spaced([el('foo'), el('bar')]) }),
         rule({
           selector: sel(selectors),
           value: ruleset([
-            decl({ name: 'inner', value: spaced([basic('one'), basic('two')]) })
+            decl({ name: 'inner', value: spaced([el('one'), el('two')]) })
           ])
         })
       ])
@@ -31,7 +31,7 @@ describe('Ampersand', () => {
 
   let wrapAmpList = (selectors: SelectorSequence[]) => root([
     rule({
-      selector: sellist([sel([basic('.one')]), sel([basic('.two')])]),
+      selector: sellist([sel([el('.one')]), sel([el('.two')])]),
       value: ruleset([
         decl({ name: 'chungus', value: spaced([any('foo'), any('bar')]) }),
         rule({
@@ -66,7 +66,7 @@ describe('Ampersand', () => {
   })
 
   it('should order selectors when collapsing', async () => {
-    let node = wrapAmp([amp(), basic('h2')])
+    let node = wrapAmp([amp(), el('h2')])
     context = new Context({ collapseNesting: true })
     let evald = await node.eval(context)
     expect(`${evald}`).toBe('.one.two {\n  chungus: foo bar;\n}\nh2.one.two {\n  inner: one two;\n}\n')
@@ -91,11 +91,11 @@ describe('Ampersand', () => {
   })
 
   it('should wrap inner lists in :is()', async () => {
-    let node = wrapAmpList([sel([amp()]), sel([basic('.three')])])
+    let node = wrapAmpList([sel([amp()]), sel([el('.three')])])
     context = new Context({ collapseNesting: true })
     let evald = await node.eval(context)
     expect(`${evald}`).toBe('.one, .two {\n  chungus: foo bar;\n}\n.one, .two, :is(.one, .two) .three {\n  inner: one two;\n}\n')
-    node = wrapAmpList([sel([amp(), basic('.three')])])
+    node = wrapAmpList([sel([amp(), el('.three')])])
     evald = await node.eval(context)
     expect(`${evald}`).toBe('.one, .two {\n  chungus: foo bar;\n}\n:is(.one, .two).three {\n  inner: one two;\n}\n')
   })
@@ -112,11 +112,11 @@ describe('Ampersand', () => {
           })
         ]),
         value: ruleset([
-          decl({ name: 'chungus', value: spaced([basic('foo'), basic('bar')]) }),
+          decl({ name: 'chungus', value: spaced([el('foo'), el('bar')]) }),
           rule({
             selector: sel([amp('-1')]),
             value: ruleset([
-              decl({ name: 'inner', value: spaced([basic('one'), basic('two')]) })
+              decl({ name: 'inner', value: spaced([el('one'), el('two')]) })
             ])
           })
         ])

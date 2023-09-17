@@ -1,7 +1,7 @@
 import { Node, defineType } from './node'
 
 export class Combinator extends Node<string> {
-  toString() {
+  toTrimmedString() {
     let { value } = this
     return value === ' ' ? value : ` ${value} `
   }

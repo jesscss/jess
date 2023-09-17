@@ -4,7 +4,7 @@ import type { Context } from '../context'
 import type { Visitor } from '../visitor'
 import type { Comment } from './comment'
 // import type { OutputCollector } from '../output'
-import type { Constructor, Writable, Class, ValueOf } from 'type-fest'
+import type { Constructor, Writable, Class, ValueOf, Opaque } from 'type-fest'
 
 type AllNodeOptions = {
   hoistToRoot?: boolean
@@ -399,10 +399,32 @@ export abstract class Node<
    * more sophisticated, as it will re-format
    * to some extent by replacing newlines + spacing
    * with the appropriate amount of whitespace.
+   *
+   * @note toString() will, by default, include pre/post
+   * white-space and comments, to make serialization
+   * easy.
+   *
+   * @note The Opaque type is just a sanity check to
+   * make sure we don't override
    */
-  toString(depth?: number) {
+  toString(depth?: number): Opaque<string> { // eslint-disable-line @typescript-eslint/naming-convention
     let output = ''
     output += this.processPrePost('pre')
+    output += this.toTrimmedString(depth)
+    output += this.processPrePost('post')
+    return output as Opaque<string>
+  }
+
+  /**
+   * The form of the node without pre/post comments and white-space
+   *
+   * @note - Internally, this still calls `toString()` on each value,
+   * so that the internal spacing of the node serialization is
+   * correct. This method just serializes a node without the outer
+   * pre/post nodes.
+   */
+  toTrimmedString(depth?: number) {
+    let output = ''
     this.data.forEach(value => {
       if (Array.isArray(value)) {
         output += value.join('')
@@ -410,7 +432,6 @@ export abstract class Node<
         output += `${value}`
       }
     })
-    output += this.processPrePost('post')
     return output
   }
 

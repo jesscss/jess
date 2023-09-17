@@ -9,30 +9,32 @@ import type { OutputCollector } from '../output'
 import combinate from 'combinate'
 
 /**
- * @todo - replace with something more like Operation
+ * @todo - replace with something more like Operation?
  */
 export class Expression extends Node {
-  value: any[]
+  // toArray() {
+  //   return this.value.filter(node => node && !(node instanceof WS))
+  // }
 
-  toArray() {
-    return this.value.filter(node => node && !(node instanceof WS))
-  }
+  // constructor(
+  //   value: any[] | NodeMap,
+  //   location?: LocationInfo
+  // ) {
+  //   if (isNodeMap(value)) {
+  //     super(value, location)
+  //     return
+  //   }
+  //   let values = value.map(v => v.constructor === String ? new Anonymous(v as string) : v)
+  //   super({
+  //     value: values
+  //   }, location)
+  // }
 
-  constructor(
-    value: any[] | NodeMap,
-    location?: LocationInfo
-  ) {
-    if (isNodeMap(value)) {
-      super(value, location)
-      return
-    }
-    let values = value.map(v => v.constructor === String ? new Anonymous(v as string) : v)
-    super({
-      value: values
-    }, location)
-  }
-
-  async eval(context: Context): Node {
+  /**
+   * This was replaced by Sequence
+   * @todo - rewrite all of this
+  */
+  async eval(context: Context): Promise<Node> {
     let node = this.clone()
     /** Convert all values to Nodes */
     let cast = context.cast

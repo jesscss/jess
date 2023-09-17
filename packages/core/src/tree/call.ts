@@ -1,4 +1,4 @@
-import { Node } from './node'
+import { Node, defineType } from './node'
 import { type List } from './list'
 
 export type CallValue = {
@@ -7,7 +7,7 @@ export type CallValue = {
    *   e.g. #mixin > .class() is [Call (#mixin ())] -> [Call (class ())]
    */
   ref: string | Node
-  args: List
+  args?: List
 }
 
 /**
@@ -15,5 +15,26 @@ export type CallValue = {
  * is not a string, but is an (optional) variable reference.
  */
 export class Call extends Node<CallValue> {
+  get ref() {
+    return this.data.get('ref')
+  }
 
+  set ref(v: string | Node) {
+    this.data.set('ref', v)
+  }
+
+  get args() {
+    return this.data.get('args')
+  }
+
+  set args(v: List | undefined) {
+    this.data.set('args', v)
+  }
+
+  toTrimmedString() {
+    let { ref, args } = this
+    return `${ref}(${args ?? ''})`
+  }
 }
+
+export const call = defineType(Call, 'Call')
