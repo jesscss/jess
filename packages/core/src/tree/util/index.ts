@@ -14,6 +14,7 @@ import type { SelectorSequence } from '../selector-sequence'
 import type { Use } from '../use'
 import type { Nil } from '../nil'
 import type { SelectorList } from '../selector-list'
+import type { Collection } from '../collection'
 
 /**
  * This utility function prevents circular dependencies,
@@ -40,6 +41,7 @@ export function isNode(value: any, type: 'AtRule'): value is AtRule
 export function isNode(value: any, type: ['Rule', 'AtRule']): value is Rule | AtRule
 export function isNode(value: any, type: 'Use'): value is Use
 export function isNode(value: any, type: 'Nil'): value is Nil
+export function isNode(value: any, type: 'Collection'): value is Collection
 export function isNode(value: any, type?: string | string[]): value is Node
 export function isNode(value: any, type?: string | string[]): value is Node {
   if (!(value ?? false)) {

@@ -1,6 +1,7 @@
-import { Declaration, type DeclarationOptions } from './declaration'
+import { Declaration, type DeclarationOptions, type DeclarationValue } from './declaration'
 import { defineType, type Node } from './node'
 import type { Interpolated } from './interpolated'
+import { isNode } from './util'
 
 export type VarDeclarationOptions = DeclarationOptions & {
   /**
@@ -25,16 +26,19 @@ export type VarDeclarationOptions = DeclarationOptions & {
 
 /**
  * @example
- *   Jess: `@let var: 1`
- *   Less: `@var: 1`
- *   SCSS: `$var: 1`
+ *   Jess: `@let foo: 1`
+ *   Less: `@foo: 1`
+ *   SCSS: `$foo: 1`
  *
  * @example `setDefined`
- *   Jess: `@set var: 1`
- *   SCSS: `$var: 1 !global`
+ *   Jess: `@set foo: 1`
+ *   SCSS: `$foo: 1 !global`
  *
  * @note This is extended by mixins, who also implicitly
  * declare a type of var in scope.
+ *
+ * @todo Support destructuring
+ * e.g. `@let (var1, var2): 1 2`
  */
 export class VarDeclaration<
   T extends Interpolated | string = Interpolated | string,
@@ -43,6 +47,16 @@ export class VarDeclaration<
   // register(context: Context, name: string, node: Declaration<string>): void {
   //   context.scope.setVar(name, node, this.options)
   // }
+  toTrimmedString(depth?: number): string {
+    const rule = this.type === 'KeyValue' ? '' : (this.options?.setDefined ? '@set ' : '@let ')
+    const { name, value } = this
+    if (isNode(value, 'Collection')) {
+      return `${rule}${name} ${value.toString(depth)}`
+    }
+    return `${rule}${name}: ${value};`
+  }
 }
 
-export const vardecl = defineType(VarDeclaration, 'VarDeclaration', 'vardecl')
+export const vardecl = defineType<DeclarationValue>(VarDeclaration, 'VarDeclaration', 'vardecl')
+export class KeyValue extends VarDeclaration {}
+export const keyval = defineType<DeclarationValue>(KeyValue, 'KeyValue', 'keyval')

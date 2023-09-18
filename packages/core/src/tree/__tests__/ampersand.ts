@@ -1,5 +1,5 @@
 import {
-  root, amp, rule, sel, basic, spaced, any, sellist, ruleset, decl, attr,
+  root, amp, rule, sel, el, spaced, any, sellist, ruleset, decl, attr,
   type SimpleSelector, type Combinator, type SelectorSequence
 } from '..'
 import { Context } from '../../context'
@@ -48,10 +48,25 @@ describe('Ampersand', () => {
   /** We need a root node to bubble rules */
     let node = wrapAmp([amp()])
     let evald = await node.eval(context)
-    expect(`${evald}`).toBe('.one.two {\n  chungus: foo bar;\n  & {\n    inner: one two;\n  }\n}\n')
+    console.log(`${evald}`.charCodeAt(0))
+    expect(`${evald}`).toBeString(`
+      .one.two {
+        chungus: foo bar;
+        & {
+          inner: one two;
+        }
+      }
+    `)
     node = wrapAmpList([sel([amp()])])
     evald = await node.eval(context)
-    expect(`${evald}`).toBe('.one, .two {\n  chungus: foo bar;\n  & {\n    inner: one two;\n  }\n}\n')
+    expect(`${evald}`).toBeString(`
+      .one, .two {
+        chungus: foo bar;
+        & {
+          inner: one two;
+        }
+      }`
+    )
   })
 
   it('should collapse selectors when in collapsing mode', async () => {
@@ -59,45 +74,108 @@ describe('Ampersand', () => {
     let node = wrapAmp([amp()])
     context = new Context({ collapseNesting: true })
     let evald = await node.eval(context)
-    expect(`${evald}`).toBe('.one.two {\n  chungus: foo bar;\n}\n.one.two {\n  inner: one two;\n}\n')
+    expect(`${evald}`).toBeString(`
+      .one.two {
+        chungus: foo bar;
+      }
+      .one.two {
+        inner: one two;
+      }`
+    )
     node = wrapAmpList([sel([amp()])])
     evald = await node.eval(context)
-    expect(`${evald}`).toBe('.one, .two {\n  chungus: foo bar;\n}\n.one, .two {\n  inner: one two;\n}\n')
+    expect(`${evald}`).toBeString(`
+      .one, .two {
+        chungus: foo bar;
+      }
+      .one, .two {
+        inner: one two;
+      }`
+    )
   })
 
   it('should order selectors when collapsing', async () => {
     let node = wrapAmp([amp(), el('h2')])
     context = new Context({ collapseNesting: true })
     let evald = await node.eval(context)
-    expect(`${evald}`).toBe('.one.two {\n  chungus: foo bar;\n}\nh2.one.two {\n  inner: one two;\n}\n')
+    expect(`${evald}`).toBeString(`
+      .one.two {
+        chungus: foo bar;
+      }
+      h2.one.two {
+        inner: one two;
+      }`
+    )
   })
 
   it('should collapse selectors when ampersand is set to hoist', async () => {
     let node = wrapAmp([amp(undefined, 0, { hoistToRoot: true })])
     let evald = await node.eval(context)
-    expect(`${evald}`).toBe('.one.two {\n  chungus: foo bar;\n}\n.one.two {\n  inner: one two;\n}\n')
+    expect(`${evald}`).toBeString(`
+      .one.two {
+        chungus: foo bar;
+      }
+      .one.two {
+        inner: one two;
+      }`
+    )
     node = wrapAmpList([sel([amp(undefined, 0, { hoistToRoot: true })])])
     evald = await node.eval(context)
-    expect(`${evald}`).toBe('.one, .two {\n  chungus: foo bar;\n}\n.one, .two {\n  inner: one two;\n}\n')
+    expect(`${evald}`).toBeString(`
+      .one, .two {
+        chungus: foo bar;
+      }
+      .one, .two {
+        inner: one two;
+      }`
+    )
   })
 
   it('should collapse selectors when ampersand has an appended value', async () => {
     let node = wrapAmp([amp('-1')])
     let evald = await node.eval(context)
-    expect(`${evald}`).toBe('.one.two {\n  chungus: foo bar;\n}\n.one.two-1 {\n  inner: one two;\n}\n')
+    expect(`${evald}`).toBeString(`
+      .one.two {
+        chungus: foo bar;
+      }
+      .one.two-1 {
+        inner: one two;
+      }`
+    )
     node = wrapAmpList([sel([amp('-1')])])
     evald = await node.eval(context)
-    expect(`${evald}`).toBe('.one, .two {\n  chungus: foo bar;\n}\n.one-1, .two-1 {\n  inner: one two;\n}\n')
+    expect(`${evald}`).toBeString(`
+      .one, .two {
+        chungus: foo bar;
+      }
+      .one-1, .two-1 {
+        inner: one two;
+      }`
+    )
   })
 
   it('should wrap inner lists in :is()', async () => {
     let node = wrapAmpList([sel([amp()]), sel([el('.three')])])
     context = new Context({ collapseNesting: true })
     let evald = await node.eval(context)
-    expect(`${evald}`).toBe('.one, .two {\n  chungus: foo bar;\n}\n.one, .two, :is(.one, .two) .three {\n  inner: one two;\n}\n')
+    expect(`${evald}`).toBeString(`
+      .one, .two {
+        chungus: foo bar;
+      }
+      .one, .two, :is(.one, .two) .three {
+        inner: one two;
+      }`
+    )
     node = wrapAmpList([sel([amp(), el('.three')])])
     evald = await node.eval(context)
-    expect(`${evald}`).toBe('.one, .two {\n  chungus: foo bar;\n}\n:is(.one, .two).three {\n  inner: one two;\n}\n')
+    expect(`${evald}`).toBeString(`
+      .one, .two {
+        chungus: foo bar;
+      }
+      :is(.one, .two).three {
+        inner: one two;
+      }`
+    )
   })
 
   it('should throw if the parent selector is not basic', async () => {

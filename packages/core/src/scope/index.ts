@@ -237,7 +237,7 @@ export class Scope {
           }
           let entry = importedVars[key]!
           if (!entry.options.private) {
-            setter(key, entry)
+            setter.call(this, key, entry)
           }
         }
       }
