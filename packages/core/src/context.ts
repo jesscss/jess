@@ -1,10 +1,11 @@
-import { Node } from './tree/node'
+import { type Node } from './tree/node'
 import { Nil } from './tree/nil'
 import { List } from './tree/list'
 import { Dimension } from './tree/dimension'
 import { Anonymous } from './tree/anonymous'
 import type { Rule } from './tree/rule'
 import isPlainObject from 'lodash-es/isPlainObject'
+import type { Scope } from './scope'
 
 export interface ContextOptions {
   module?: boolean
@@ -30,6 +31,9 @@ export const generateId = (length = 8) => {
 export class Context {
   opts: ContextOptions
   originalOpts: ContextOptions
+
+  /** Rulesets will assign scope when evaluating */
+  scope: Scope
 
   /**
    * The file (eval) context should have the same ID at compile-time
@@ -98,34 +102,5 @@ export class Context {
 
   getVar() {
     return `--v${this.id}-${this.varCounter++}`
-  }
-
-  /**
-   * Casts a primitive value to a Jess node
-   * (if not already). This is for CSS output.
-   *
-   * @example
-   * cast(area(5))
-   */
-  cast(value: any): Node {
-    if (value === undefined || value === null) {
-      return new Nil()
-    }
-    if (value instanceof Node) {
-      return value
-    }
-    if (isPlainObject(value)) {
-      if (Object.prototype.hasOwnProperty.call(value, '$root')) {
-        return value.$root
-      }
-      return new Anonymous('[object]')
-    }
-    if (Array.isArray(value)) {
-      return new List(value)
-    }
-    if (value.constructor === Number) {
-      return new Dimension([value as number])
-    }
-    return new Anonymous(value.toString())
   }
 }

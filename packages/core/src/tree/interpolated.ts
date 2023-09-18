@@ -10,9 +10,14 @@ export type InterpolatedValue = {
 
 /**
  * An interpolated value is one that contains
- * references variables, or expressions, but
- * which MUST resolve to a single string
- * when evaluated.
+ * reference variables, or expressions, but
+ * which MUST resolve to a node with a string value
+ * (like Anonymous) when evaluated.
+ *
+ * @example
+ *   in Less:
+ *     - `@@foo` is an interpolated variable
+ *     - `--prop-@{foo}` is an interpolated property
  */
 export class Interpolated<O extends NodeOptions = NodeOptions> extends Node<InterpolatedValue, O> {
   async eval(context: Context): Promise<Node> {
@@ -20,8 +25,8 @@ export class Interpolated<O extends NodeOptions = NodeOptions> extends Node<Inte
     if (!replacements) {
       return await super.eval(context)
     }
-    replacements = await Promise.all(replacements.map(async n => await n.eval(context)))
-    let value = this.value.replace(/##/g, _ => String(replacements!.shift()))
+    replacements = await Promise.all(replacements.map(async (n: Node) => await n.eval(context)))
+    let value = this.value.replace(/##/g, _ => String(replacements.shift()))
     if (this.type === 'Interpolated') {
       let node = new Anonymous(value).inherit(this)
       return node

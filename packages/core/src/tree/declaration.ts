@@ -7,6 +7,7 @@ import { Nil } from './nil'
 import type { Context } from '../context'
 import { Interpolated } from './interpolated'
 import type { Anonymous } from './anonymous'
+import { isNode } from './util'
 // import type { OutputCollector } from '../output'
 
 // type NameType<T> = T extends Interpolated
@@ -56,8 +57,12 @@ export class Declaration<
     this.data.set('important', v)
   }
 
-  toTrimmedString() {
-    return `${this.name}: ${this.value}${this.important ? ` ${this.important}` : ''};`
+  toTrimmedString(depth?: number) {
+    const { name, value, important } = this
+    if (isNode(value, 'Collection')) {
+      return `${name} ${value.toString(depth)}`
+    }
+    return `${name}: ${value.toString(depth)}${important ? ` ${important}` : ''};`
   }
 
   async eval(context: Context): Promise<Node> {

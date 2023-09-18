@@ -3,7 +3,8 @@ import type { List } from './list'
 import type { Ruleset } from './ruleset'
 import type { Class } from 'type-fest'
 
-export type MixinValue<T = Ruleset> = {
+type MixinValueType = Ruleset | ((...args: any[]) => any)
+export type MixinValue<T extends MixinValueType = Ruleset> = {
   params?: List
   value: T
 }
@@ -12,7 +13,14 @@ export type MixinValue<T = Ruleset> = {
  * This is just the body of a mixin
  * (an anonymous mixin)
  */
-export class MixinBody<T = Ruleset> extends Node<MixinValue<T>> {
+export class MixinBody<T extends MixinValueType = Ruleset> extends Node<MixinValue<T>> {
+  toTrimmedString(depth: number = 0): string {
+    let space = ''.padStart(depth * 2)
+    let output = '{\n'
+    output += this.value.toString(depth + 1)
+    output += `${space}}`
+    return output
+  }
   /**
    * @todo -
    * Return either a ruleset if `this` is the eval context,

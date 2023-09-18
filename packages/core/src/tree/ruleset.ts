@@ -102,6 +102,8 @@ export class Ruleset extends Node<Node[]> {
 
   async eval(context: Context): Promise<Ruleset> {
     return await this.evalIfNot(context, async () => {
+      let inheritedScope = context.scope
+      context.scope = this._scope
       let { hoistDeclarations } = context.opts
       let ruleset = this.clone()
       ruleset._scope = this._scope
@@ -354,6 +356,8 @@ export class Ruleset extends Node<Node[]> {
       }
       walkRules(rules)
       ruleset.value = newRules
+      /** Restore scope */
+      context.scope = inheritedScope
       return ruleset
     })
   }

@@ -91,6 +91,9 @@ type FilterResult = {
 type GetterOptions = {
   /** Filter is a function or value to compare when looking up values */
   filter?: (value: unknown, foundValues?: any[]) => FilterResult
+
+  /** Only return local values, not all scope values */
+  local?: boolean
   /**
    * Not sure this is a good option, as it maybe makes more
    * sense to throw an error if not found? Depends on user expectations.
@@ -366,6 +369,31 @@ export class Scope {
     })
   }
 
+  getLocal(
+    collection: 'property' | 'mixin' | 'variable',
+    key: string,
+    options: GetterOptions = {}
+  ) {
+    let getter: (key: string, options?: GetterOptions) => unknown
+    options = {
+      ...options,
+      local: true
+    }
+
+    switch (collection) {
+      case 'property':
+        getter = this.getProp
+        break
+      case 'mixin':
+        getter = this.getMixin
+        break
+      case 'variable':
+        getter = this.getVar
+        break
+    }
+    return getter.call(this, key, options)
+  }
+
   /**
    * We can pass in a filter to narrow the
    * entries.
@@ -385,7 +413,7 @@ export class Scope {
     let results: any[] = []
 
     while (current) {
-      let entry = current[key]
+      let entry = (options.local && !Object.prototype.hasOwnProperty.call(current, key)) ? undefined : current[key]
       if (!entry) {
         /** Needed? */
         if (options.suppressUndefinedError) {

@@ -48,7 +48,7 @@ export class VarDeclaration<
   //   context.scope.setVar(name, node, this.options)
   // }
   toTrimmedString(depth?: number): string {
-    const rule = this.type === 'KeyValue' ? '' : (this.options?.setDefined ? '@set ' : '@let ')
+    const rule = this.options?.setDefined ? '@set ' : '@let '
     const { name, value } = this
     if (isNode(value, 'Collection')) {
       return `${rule}${name} ${value.toString(depth)}`
@@ -58,5 +58,3 @@ export class VarDeclaration<
 }
 
 export const vardecl = defineType<DeclarationValue>(VarDeclaration, 'VarDeclaration', 'vardecl')
-export class KeyValue extends VarDeclaration {}
-export const keyval = defineType<DeclarationValue>(KeyValue, 'KeyValue', 'keyval')

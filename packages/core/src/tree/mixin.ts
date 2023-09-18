@@ -16,6 +16,9 @@ import { type Interpolated } from './interpolated'
  * able to define a mixin if it exists.
  */
 export class Mixin<T = Ruleset> extends VarDeclaration<string | Interpolated, MixinBody<T>> {
+  toTrimmedString(depth?: number): string {
+    return `@mixin ${this.name} ${this.value.toString(depth)}`
+  }
   // register(context: Context, name: string, node: Declaration<string>): void {
   //   context.scope.setVar(name, node)
   // }

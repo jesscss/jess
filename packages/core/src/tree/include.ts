@@ -1,7 +1,5 @@
 import type { Context } from '../context'
-import isPlainObject from 'lodash-es/isPlainObject'
 import { Node, defineType } from './node'
-import { Declaration } from './declaration'
 import { Ruleset } from './ruleset'
 import { Root } from './root'
 import { Call } from './call'
@@ -11,11 +9,17 @@ export type IncludeValue = {
   with?: Ruleset
 }
 
+/**
+ * Include can be for a file or a mixin
+ * or a variable that returns a ruleset.
+ *
+ * Basically anything that returns a ruleset.
+ */
 export class Include extends Node<IncludeValue> {
   async eval(context: Context) {
     let value = this.value
     if (value instanceof Call) {
-      value = value.eval(context)
+      value = await value.eval(context)
     }
 
     /**
@@ -23,23 +27,24 @@ export class Include extends Node<IncludeValue> {
      * @todo - replace now that we're not pre-converting
      * into a module
      */
-    if (isPlainObject(value)) {
-      let rules: Node[] = []
-      for (let name in value) {
-        if (Object.prototype.hasOwnProperty.call(value, name)) {
-          rules.push(new Declaration({
-            name,
-            value: context.cast((value[name])).eval(context)
-          }))
-        }
-      }
-      return new Ruleset(rules)
-    }
+    // if (isPlainObject(value)) {
+    //   let rules: Node[] = []
+    //   for (let name in value) {
+    //     if (Object.prototype.hasOwnProperty.call(value, name)) {
+    //       rules.push(new Declaration({
+    //         name,
+    //         value: context.cast((value[name])).eval(context)
+    //       }))
+    //     }
+    //   }
+    //   return new Ruleset(rules)
+    // }
 
-    value = context.cast(value).eval(context)
+    // value = context.cast(value).eval(context)
 
     /**
      * Include Roots as plain Rulesets
+     * @todo - add fileInfo
      */
     if (value instanceof Root) {
       return new Ruleset(value.value)

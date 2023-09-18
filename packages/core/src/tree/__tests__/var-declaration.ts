@@ -28,9 +28,9 @@ describe('Let', () => {
     let rule = vardecl({
       name: 'brandColor',
       value: coll([
-        keyval({ name: 'global', value: coll([decl({ name: 'dark', value: any('#000') })]) }),
-        keyval({ name: 'dark', value: any('#222') }),
-        keyval({ name: 'light', value: any('#eee') })
+        decl({ name: 'global', value: coll([decl({ name: 'dark', value: any('#000') })]) }),
+        decl({ name: 'dark', value: any('#222') }),
+        decl({ name: 'light', value: any('#eee') })
       ])
     })
     expect(`${rule}`).toBeString(`
