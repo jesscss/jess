@@ -1,14 +1,23 @@
 import { type Node } from './tree/node'
-import { Nil } from './tree/nil'
-import { List } from './tree/list'
-import { Dimension } from './tree/dimension'
-import { Anonymous } from './tree/anonymous'
 import type { Rule } from './tree/rule'
-import isPlainObject from 'lodash-es/isPlainObject'
 import type { Scope } from './scope'
 
+export const enum MathMode {
+  /**
+   * @note - A Jess file always performs math for expressions,
+   * but that's because expressions are only parsed as such
+   * when wrapped with `#()`, whereas Less & SCSS try to
+   * parse expressions in regular value sequences.
+   */
+  ALWAYS = 0,
+  PARENS_DIVISION = 1,
+  PARENS = 2
+}
+
 export interface ContextOptions {
+  /** Hash classes for module output */
   module?: boolean
+  /** Shit what does this mean */
   dynamic?: boolean
   collapseNesting?: boolean
   /**
@@ -16,6 +25,8 @@ export interface ContextOptions {
    * evaluated per scope. Less sets this to true.
    */
   hoistDeclarations?: boolean
+
+  mathMode?: MathMode
 }
 
 const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('')
@@ -28,9 +39,17 @@ export const generateId = (length = 8) => {
   return str
 }
 
+/**
+ * @todo
+ * Every file should get a new context, but should inherit
+ * from an existing context?
+ *
+ * @note
+ * Most of context represents "state" while evaluating.
+ */
 export class Context {
-  opts: ContextOptions
-  originalOpts: ContextOptions
+  readonly opts: ContextOptions
+  state: ContextOptions
 
   /** Rulesets will assign scope when evaluating */
   scope: Scope
@@ -73,8 +92,16 @@ export class Context {
   /** In a selector */
   inSelector: boolean
 
+  /** A flag set by expressions */
+  canOperate: boolean
+
   constructor(opts: ContextOptions = {}) {
-    this.originalOpts = opts
+    opts = {
+      /** Default mode for Less & SCSS */
+      mathMode: MathMode.PARENS_DIVISION,
+      ...opts
+    }
+    this.state = opts
     this.opts = opts
   }
 
@@ -102,5 +129,20 @@ export class Context {
 
   getVar() {
     return `--v${this.id}-${this.varCounter++}`
+  }
+
+  shouldOperate(op: '+' | '-' | '*' | '/') {
+    const mathMode = this.opts.mathMode
+    /** Parens for Less/SCSS will set `canOperate` to true */
+    if (mathMode === MathMode.ALWAYS || this.canOperate) {
+      return true
+    }
+    if (mathMode === MathMode.PARENS_DIVISION && op === '/') {
+      return false
+    }
+    if (mathMode === MathMode.PARENS) {
+      return false
+    }
+    return true
   }
 }

@@ -20,9 +20,12 @@ export class Paren extends Node<Node, ParenOptions> {
 
   async eval(context: Context): Promise<Node> {
     return await this.evalIfNot(context, async () => {
+      let canOperate = context.canOperate
+      context.canOperate = true
       let { value } = this
       let isExpression = value instanceof Expression
       value = await value.eval(context)
+      context.canOperate = canOperate
       if (isExpression && !(value instanceof Expression)) {
         return value
       }

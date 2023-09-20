@@ -13,8 +13,14 @@ export type OperationValue = [
  */
 export class Operation extends Node<OperationValue> {
   async eval(context: Context) {
-    let [left, op, right] = this.value
-    return left.eval(context).operate(right.eval(context), op)
+    return await this.evalIfNot(context, async () => {
+      let [left, op, right] = this.value
+      if (context.shouldOperate(op)) {
+        left = await left.eval(context)
+        right = await right.eval(context)
+        return left.operate(right, op, context)
+      }
+    })
   }
 }
 

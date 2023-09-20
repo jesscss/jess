@@ -85,4 +85,4 @@ export const num = (
   location?: DimensionShortParams[1],
   options?: DimensionShortParams[2],
   fileInfo?: DimensionShortParams[3]
-) => dimension([value])
+) => dimension([value], location, options, fileInfo)

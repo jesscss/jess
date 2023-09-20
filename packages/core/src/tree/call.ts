@@ -1,5 +1,6 @@
 import { Node, defineType } from './node'
 import { type List } from './list'
+import { type Context } from '../context'
 
 export type CallValue = {
   /**
@@ -34,6 +35,24 @@ export class Call extends Node<CallValue> {
   toTrimmedString() {
     let { ref, args } = this
     return `${ref}(${args ?? ''})`
+  }
+
+  async eval(context: Context) {
+    return await this.evalIfNot(context, async () => {
+      let canOperate = context.canOperate
+      /** Reset parentheses "state" */
+      context.canOperate = false
+      let { ref, args } = this
+      if (ref instanceof Node) {
+        ref = await ref.eval(context)
+      }
+      args = await args?.eval(context)
+      context.canOperate = canOperate
+      let node = this.clone()
+      node.ref = ref
+      node.args = args
+      return node
+    })
   }
 }
 
