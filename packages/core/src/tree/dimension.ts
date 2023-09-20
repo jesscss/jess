@@ -1,5 +1,8 @@
+import { type Context } from '../context'
+import { Color } from './color'
 import {
   Node,
+  NodeOptions,
   defineType
 } from './node'
 
@@ -33,27 +36,13 @@ export class Dimension extends Node<DimensionValue> {
     this.data.set('value', [value[0], v])
   }
 
-  // constructor(
-  //   value: number | string | NodeMap,
-  //   location?: LocationInfo
-  // ) {
-  //   if (isNodeMap(value)) {
-  //     super(value, location)
-  //     return
-  //   } else if (value.constructor === Number) {
-  //     super({ value }, location)
-  //     return
-  //   }
-  //   const regex = /([-+]?[0-9]*(?:\.[0-9]+)?)(%|[a-z]*)/
-  //   const found = (value as string).match(regex)
-  //   if (!found) {
-  //     throw { message: 'Not a valid dimension.' }
-  //   }
-  //   super({
-  //     value: parseFloat(found[1]),
-  //     unit: found[2]
-  //   }, location)
-  // }
+  operate(b: Node, op: '+' | '-' | '*' | '/', context?: Context | undefined) {
+    const aUnit = this.unit
+    if (!(b instanceof Dimension) || b instanceof Color) {
+
+    }
+    const bUnit = b.unit
+  }
 
   toTrimmedString() {
     let precision = 100000000
