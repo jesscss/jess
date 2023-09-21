@@ -18,6 +18,7 @@ export type DimensionValue = [
  * A number or dimension
  */
 export class Dimension extends Node<DimensionValue> {
+  _unitToGroup: Map<string, ConversionGroup> | undefined
   get number() {
     return this.data.get('value')[0]
   }
@@ -38,7 +39,18 @@ export class Dimension extends Node<DimensionValue> {
 
   operate(b: Node, op: '+' | '-' | '*' | '/', context?: Context | undefined) {
     const aUnit = this.unit
-    if (!(b instanceof Dimension) || b instanceof Color) {
+    if (!(b instanceof Dimension || b instanceof Color)) {
+      throw new Error(`Cannot operate on ${b.type}`)
+    }
+    let unitToGroup = this._unitToGroup
+    if (!unitToGroup) {
+      const lengthEntries: Array<[string, ConversionGroup]> = ['m', 'cm', 'mm', 'in', 'px', 'pt', 'pc'].map((unit) => [unit, ConversionGroup.Length])
+      const durationEntries: Array<[string, ConversionGroup]> = ['s', 'ms'].map((unit) => [unit, ConversionGroup.Duration])
+      const angleEntries: Array<[string, ConversionGroup]> = ['rad', 'deg', 'grad', 'turn'].map((unit) => [unit, ConversionGroup.Angle])
+      const entries: Array<[string, ConversionGroup]> = lengthEntries.concat(durationEntries).concat(angleEntries)
+      this._unitToGroup = unitToGroup = new Map(entries)
+    }
+    if (b instanceof Dimension) {
 
     }
     const bUnit = b.unit
@@ -50,6 +62,10 @@ export class Dimension extends Node<DimensionValue> {
     number = Math.round(number * precision) / precision
     return `${number}${unit}`
   }
+
+  unify(b: Dimension) {
+
+  };
 
   /** @todo - move to visitors */
   // toCSS(context: Context, out: OutputCollector) {
@@ -64,6 +80,34 @@ export class Dimension extends Node<DimensionValue> {
   //     `${pre}})`
   //   , this.location)
   // }
+}
+
+const enum ConversionGroup {
+  Length = 0,
+  Duration = 1,
+  Angle = 2
+}
+
+const conversions = {
+  [ConversionGroup.Length]: {
+    m: 1,
+    cm: 0.01,
+    mm: 0.001,
+    in: 0.0254,
+    px: 0.0254 / 96,
+    pt: 0.0254 / 72,
+    pc: 0.0254 / 72 * 12
+  },
+  [ConversionGroup.Duration]: {
+    s: 1,
+    ms: 0.001
+  },
+  [ConversionGroup.Angle]: {
+    rad: 1 / (2 * Math.PI),
+    deg: 1 / 360,
+    grad: 1 / 400,
+    turn: 1
+  }
 }
 
 export const dimension = defineType(Dimension, 'Dimension')

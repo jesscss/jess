@@ -14,6 +14,12 @@ export const enum MathMode {
   PARENS = 2
 }
 
+export const enum UnitMode {
+  /** Less's default 1.x-5.x */
+  LOOSE = 0,
+  STRICT = 1
+}
+
 export interface ContextOptions {
   /** Hash classes for module output */
   module?: boolean
@@ -27,6 +33,7 @@ export interface ContextOptions {
   hoistDeclarations?: boolean
 
   mathMode?: MathMode
+  unitMode?: UnitMode
 }
 
 const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('')
@@ -99,6 +106,7 @@ export class Context {
     opts = {
       /** Default mode for Less & SCSS */
       mathMode: MathMode.PARENS_DIVISION,
+      unitMode: UnitMode.STRICT,
       ...opts
     }
     this.state = opts
