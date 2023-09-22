@@ -1,4 +1,5 @@
 import { logger } from '../logger'
+import type { Node } from '../tree/node'
 /**
  * The Scope object is meant to be an efficient
  * lookup mechanism for variables, mixins,
@@ -90,7 +91,7 @@ type FilterResult = {
 
 type GetterOptions = {
   /** Filter is a function or value to compare when looking up values */
-  filter?: (value: unknown, foundValues?: any[]) => FilterResult
+  filter?: Node | ((value: unknown, foundValues?: any[]) => FilterResult)
 
   /** Only return local values, not all scope values */
   local?: boolean
@@ -405,6 +406,16 @@ export class Scope {
       /** By default, return the first value */
       filter = (value: unknown) => ({ value, done: true })
     } = options
+
+    if (typeof filter !== 'function') {
+      let filteredNode = filter
+      filter = (value: unknown) => {
+        if (value === filteredNode) {
+          return { value: NONE, done: false }
+        }
+        return { value, done: true }
+      }
+    }
     /**
      * When getting, use the private variable,
      * so we don't extend the prototype chain.

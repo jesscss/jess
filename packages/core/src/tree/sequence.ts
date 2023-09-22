@@ -3,6 +3,7 @@ import { Nil } from './nil'
 import { List } from './list'
 import type { Context } from '../context'
 import combinate from 'combinate'
+import { cast } from './util/cast'
 
 export type SequenceOptions = {
   /**
@@ -52,7 +53,6 @@ export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> 
   async eval(context: Context) {
     let node = this.clone()
     /** Convert all values to Nodes */
-    let cast = context.cast
     let valuePromises = node.value
       .map(async n => await cast(n).eval(context))
 

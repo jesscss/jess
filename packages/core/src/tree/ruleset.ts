@@ -104,7 +104,7 @@ export class Ruleset extends Node<Node[]> {
     return await this.evalIfNot(context, async () => {
       let inheritedScope = context.scope
       context.scope = this._scope
-      let { hoistVariables } = context.opts
+      let { hoistDeclarations } = context.opts
       let ruleset = this.clone()
       ruleset._scope = this._scope
       /**
@@ -156,7 +156,7 @@ export class Ruleset extends Node<Node[]> {
         let n = rules[i]
 
         if (n instanceof Declaration) {
-          if (hoistVariables) {
+          if (hoistDeclarations) {
             if (n.name instanceof Node) {
               /** Evaluate these names after evaluating static names */
               assign(evalQueue, Priority.Medium, n, i, true)
@@ -183,7 +183,7 @@ export class Ruleset extends Node<Node[]> {
          *
          * @note - this might need tweaking
          */
-        } else if (isNode(n, 'Use') || (hoistVariables && isNode(n, 'Call'))) {
+        } else if (isNode(n, 'Use') || (hoistDeclarations && isNode(n, 'Call'))) {
           assign(evalQueue, Priority.Low, n, i)
         } else {
           assign(evalQueue, Priority.None, n, i)
@@ -196,11 +196,9 @@ export class Ruleset extends Node<Node[]> {
         if (!set) {
           continue
         }
-        /**
-         * @todo Not sure this will work, because they need to
-         * evaluate in a guaranteed order
-        */
-        await this.forEachPromise(set, async ({ node, pos, nameOnly }) => {
+
+        for (let item of set) {
+          const { node, pos, nameOnly } = item
           if (nameOnly) {
             let decl = node.clone() as Declaration
             let name = decl.name
@@ -227,11 +225,12 @@ export class Ruleset extends Node<Node[]> {
               assign(evalQueue, Priority.None, decl, i)
             }
           } else {
-            if (hoistVariables && node instanceof Declaration) {
+            if (hoistDeclarations && node instanceof Declaration) {
               /**
                * We've already cloned and partially evaluated this,
                * so we only need to evaluate the value.
                */
+              context.declarationScope = node
               let evald = await node.value.eval(context)
               if (evald instanceof Nil) {
                 rules[pos] = evald
@@ -247,12 +246,15 @@ export class Ruleset extends Node<Node[]> {
                   node.name = await node.name.eval(context)
                 }
               } else {
+                if (node instanceof Declaration) {
+                  context.declarationScope = node
+                }
                 result = await node.eval(context)
               }
               rules[pos] = result
 
               /** Set references linearly */
-              if (!hoistVariables && result instanceof Declaration) {
+              if (!hoistDeclarations && result instanceof Declaration) {
                 let ident = result.name instanceof Node ? result.name.value : result.name
                 if (isNode(node, 'VarDeclaration')) {
                   this._scope.setVar(ident, result, result.options)
@@ -266,7 +268,7 @@ export class Ruleset extends Node<Node[]> {
               }
             }
           }
-        })
+        }
 
         // let current = map[0]
         // let prevEvald: Node | undefined

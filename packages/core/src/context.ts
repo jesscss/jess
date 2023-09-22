@@ -1,6 +1,7 @@
 import { type Node } from './tree/node'
 import type { Rule } from './tree/rule'
 import type { Scope } from './scope'
+import type { Declaration } from './tree'
 
 export const enum MathMode {
   /**
@@ -30,7 +31,7 @@ export interface ContextOptions {
    * Hoists variable declarations, so they can be
    * evaluated per scope. Less sets this to true.
    */
-  hoistVariables?: boolean
+  hoistDeclarations?: boolean
 
   mathMode?: MathMode
   unitMode?: UnitMode
@@ -60,6 +61,12 @@ export class Context {
 
   /** Rulesets will assign scope when evaluating */
   scope: Scope
+
+  /**
+   * When getting vars, the current declaration is ommitted
+   * to prevent recursion errors
+   */
+  declarationScope: Declaration
 
   /**
    * The file (eval) context should have the same ID at compile-time

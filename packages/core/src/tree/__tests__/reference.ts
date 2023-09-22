@@ -1,4 +1,4 @@
-import { ref, ruleset, decl, vardecl, rule, any } from '..'
+import { ref, ruleset, decl, vardecl, rule, seq, spaced, any } from '..'
 import { Context } from '../../context'
 
 let context: Context
@@ -58,13 +58,13 @@ describe('reference', () => {
       let evald = await node.eval(context)
       /** The var declaration will be removed when going to CSS */
       expect(`${evald}`).toBeString(`
-        @let foo: red;
+        foo: red;
         bar: red;
       `)
     })
 
     it('should get a hoisted var from scope', async () => {
-      context.opts.hoistVariables = true
+      context.opts.hoistDeclarations = true
       let node = ruleset([
         decl([
           ['name', 'bar'],
@@ -83,8 +83,47 @@ describe('reference', () => {
       `)
     })
 
-    it('should allow recursive referencing', async () => {
+    it('should get a hoisted prop from scope', async () => {
+      context.opts.hoistDeclarations = true
+      let node = ruleset([
+        decl([
+          ['name', 'bar'],
+          ['value', ref('foo', { type: 'property' })]
+        ]),
+        decl([
+          ['name', 'foo'],
+          ['value', any('red')]
+        ])
+      ])
+      let evald = await node.eval(context)
+      /** The var declaration will be removed when going to CSS */
+      expect(`${evald}`).toBeString(`
+        bar: red;
+        foo: red;
+      `)
+    })
 
+    it('should allow recursive referencing', async () => {
+      let node = ruleset([
+        vardecl([
+          ['name', 'foo'],
+          ['value', any('red')]
+        ]),
+        vardecl([
+          ['name', 'foo'],
+          ['value', spaced([ref('foo', { type: 'variable' }), any('red')])]
+        ]),
+        decl([
+          ['name', 'bar'],
+          ['value', ref('foo', { type: 'variable' })]
+        ])
+      ])
+      let evald = await node.eval(context)
+      expect(`${evald}`).toBeString(`
+        @let foo: red;
+        @let foo: $foo red;
+        bar: red red;
+      `)
     })
   })
 

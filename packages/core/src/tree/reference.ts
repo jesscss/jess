@@ -50,17 +50,19 @@ export class Reference extends Node<string | Interpolated, ReferenceOptions> {
       const resolved = await value.eval(context)
       value = resolved.value
     }
+    let opts = { filter: context.declarationScope }
     switch (type) {
       case 'variable':
-        value = context.scope.getVar(value as string)
+        value = context.scope.getVar(value, opts)
         break
       case 'property':
-        value = context.scope.getProp(value as string)
+        value = context.scope.getProp(value, opts)
         break
       case 'mixin':
-        value = context.scope.getMixin(value as string)
+        value = context.scope.getMixin(value, opts)
     }
     if (value instanceof Declaration) {
+      context.declarationScope = value
       let returnVal = await value.value.eval(context)
       return returnVal.inherit(this)
     } else {
