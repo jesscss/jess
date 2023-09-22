@@ -1,4 +1,3 @@
-import strict from 'assert/strict'
 import { type Context, UnitMode } from '../context'
 import { Color, ColorFormat } from './color'
 import {

@@ -15,6 +15,7 @@ import type { Use } from '../use'
 import type { Nil } from '../nil'
 import type { SelectorList } from '../selector-list'
 import type { Collection } from '../collection'
+import type { VarDeclaration } from '../var-declaration'
 
 /**
  * This utility function prevents circular dependencies,
@@ -28,6 +29,8 @@ export function isNode(value: any, type: 'Anonymous'): value is Anonymous
 export function isNode(value: any, type: 'AtRule'): value is AtRule
 export function isNode(value: any, type: 'Call'): value is Call
 export function isNode(value: any, type: 'Declaration'): value is Declaration
+export function isNode(value: any, type: 'VarDeclaration'): value is VarDeclaration
+export function isNode(value: any, type: ['Declaration', 'VarDeclaration', 'Mixin', 'FunctionDefinition']): value is Declaration | VarDeclaration | Mixin | FunctionDefinition
 export function isNode(value: any, type: 'Dimension'): value is Dimension
 export function isNode(value: any, type: 'BasicSelector'): value is BasicSelector
 export function isNode(value: any, type: 'List'): value is List

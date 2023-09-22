@@ -30,7 +30,7 @@ export interface ContextOptions {
    * Hoists variable declarations, so they can be
    * evaluated per scope. Less sets this to true.
    */
-  hoistDeclarations?: boolean
+  hoistVariables?: boolean
 
   mathMode?: MathMode
   unitMode?: UnitMode

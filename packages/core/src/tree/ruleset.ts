@@ -3,12 +3,12 @@ import { Node, defineType, type LocationInfo, type FileInfo } from './node'
 import { Declaration } from './declaration'
 import type { VarDeclarationOptions } from './var-declaration'
 import { Scope } from '../scope'
-import { Nil } from './nil'
 
 import type { Context } from '../context'
 import { isNode } from './util'
 import { type Rule } from './rule'
 import { type AtRule } from './at-rule'
+import { Nil } from './nil'
 
 export const enum Priority {
   None = 0,
@@ -68,14 +68,14 @@ export class Ruleset extends Node<Node[]> {
 
   constructor(
     values: RulesetValues | Node[],
-    location?: LocationInfo | 0,
     options?: undefined,
+    location?: LocationInfo | 0,
     fileInfo?: FileInfo
   ) {
     let { value, scope } = (values as any)
     super([
       ['value', Array.isArray(values) ? values : value]
-    ], location, options, fileInfo)
+    ], options, location, fileInfo)
     this._scope = scope ?? new Scope()
   }
 
@@ -104,7 +104,7 @@ export class Ruleset extends Node<Node[]> {
     return await this.evalIfNot(context, async () => {
       let inheritedScope = context.scope
       context.scope = this._scope
-      let { hoistDeclarations } = context.opts
+      let { hoistVariables } = context.opts
       let ruleset = this.clone()
       ruleset._scope = this._scope
       /**
@@ -155,29 +155,35 @@ export class Ruleset extends Node<Node[]> {
       for (let i = 0; i < nodeLength; i++) {
         let n = rules[i]
 
-        if (isNode(n, 'Declaration')) {
-          if (hoistDeclarations) {
+        if (n instanceof Declaration) {
+          if (hoistVariables) {
             if (n.name instanceof Node) {
+              /** Evaluate these names after evaluating static names */
               assign(evalQueue, Priority.Medium, n, i, true)
             } else {
+              /** Evaluate static names first */
               assign(evalQueue, Priority.High, n, i, true)
             }
           /** Function declarations are also mixins */
-          } else if (isNode(n, 'Mixin')) {
+          } else if (isNode(n, ['Mixin', 'FunctionDefinition'])) {
             if (n.name instanceof Node) {
               assign(evalQueue, Priority.Medium, n, i, true)
             } else {
               assign(evalQueue, Priority.High, n, i, true)
             }
+          } else {
+            /**
+             * If we're not hoisting variables, evaluate
+             * declarations immediately.
+             */
+            assign(evalQueue, Priority.None, n, i)
           }
-        }
-
         /**
          * Hoist imports
          *
          * @note - this might need tweaking
          */
-        if (isNode(n, 'Use') || (hoistDeclarations && isNode(n, 'Call'))) {
+        } else if (isNode(n, 'Use') || (hoistVariables && isNode(n, 'Call'))) {
           assign(evalQueue, Priority.Low, n, i)
         } else {
           assign(evalQueue, Priority.None, n, i)
@@ -213,14 +219,19 @@ export class Ruleset extends Node<Node[]> {
             } else {
               this._scope.setProp(ident, decl)
             }
-            /** Now that we've evaluated the name, add it to the evaluation queue */
-            assign(evalQueue, Priority.None, decl, i)
-          } else {
             /**
-             * We've already cloned and partially evaluated this,
-             * so we only need to evaluate the value.
+             * Now that we've evaluated the name, add it to the evaluation queue.
+             * (Variable values are not evaluated unless they are called)
              */
-            if (node instanceof Declaration) {
+            if (isNode(node, 'Declaration')) {
+              assign(evalQueue, Priority.None, decl, i)
+            }
+          } else {
+            if (hoistVariables && node instanceof Declaration) {
+              /**
+               * We've already cloned and partially evaluated this,
+               * so we only need to evaluate the value.
+               */
               let evald = await node.value.eval(context)
               if (evald instanceof Nil) {
                 rules[pos] = evald
@@ -228,9 +239,27 @@ export class Ruleset extends Node<Node[]> {
                 node.value = evald
               }
             } else {
-              let result = await node.eval(context)
+              let result: Node
+              /** Late evaluation of vars */
+              if (isNode(node, 'VarDeclaration')) {
+                result = node.clone()
+                if (node.name instanceof Node) {
+                  node.name = await node.name.eval(context)
+                }
+              } else {
+                result = await node.eval(context)
+              }
               rules[pos] = result
 
+              /** Set references linearly */
+              if (!hoistVariables && result instanceof Declaration) {
+                let ident = result.name instanceof Node ? result.name.value : result.name
+                if (isNode(node, 'VarDeclaration')) {
+                  this._scope.setVar(ident, result, result.options)
+                } else if (isNode(node, 'Declaration')) {
+                  this._scope.setProp(ident, result)
+                }
+              }
               /** Merge any scope that we need for lookups */
               if (result instanceof Ruleset) {
                 this._scope.merge(result._scope)

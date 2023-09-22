@@ -1,4 +1,4 @@
-import { vardecl, coll, decl, keyval, any } from '..'
+import { vardecl, coll, decl, any } from '..'
 import { Context } from '../../context'
 import { OutputCollector } from '../../output'
 
@@ -12,28 +12,29 @@ describe('Let', () => {
     out = new OutputCollector()
   })
 
-  it('should serialize a @let', () => {
-    context.depth = 2
-    let rule = vardecl({
-      name: 'brandColor',
-      value: any('#eee')
-    })
-    expect(`${rule}`).toBe('@let brandColor: #eee;')
+  describe('serialization', () => {
+    it('should serialize a @let', () => {
+      context.depth = 2
+      let rule = vardecl({
+        name: 'brandColor',
+        value: any('#eee')
+      })
+      expect(`${rule}`).toBe('@let brandColor: #eee;')
     // rule.toModule(context, out)
     // expect(out.toString()).toBe('let brandColor = $J.expr([$J.any("#eee")])')
-  })
-
-  it('should serialize a @let collection', () => {
-    context.depth = 2
-    let rule = vardecl({
-      name: 'brandColor',
-      value: coll([
-        decl({ name: 'global', value: coll([decl({ name: 'dark', value: any('#000') })]) }),
-        decl({ name: 'dark', value: any('#222') }),
-        decl({ name: 'light', value: any('#eee') })
-      ])
     })
-    expect(`${rule}`).toBeString(`
+
+    it('should serialize a @let collection', () => {
+      context.depth = 2
+      let rule = vardecl({
+        name: 'brandColor',
+        value: coll([
+          decl({ name: 'global', value: coll([decl({ name: 'dark', value: any('#000') })]) }),
+          decl({ name: 'dark', value: any('#222') }),
+          decl({ name: 'light', value: any('#eee') })
+        ])
+      })
+      expect(`${rule}`).toBeString(`
       @let brandColor {
         global {
           dark: #000;
@@ -42,9 +43,10 @@ describe('Let', () => {
         light: #eee;
       }
       `
-    )
+      )
     // rule.toModule(context, out)
     // expect(out.toString()).toBe('let brandColor = $J.expr([$J.any("#eee")])')
+    })
   })
 
   // it('should serialize a @let collection', () => {

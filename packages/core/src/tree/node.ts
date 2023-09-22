@@ -153,8 +153,8 @@ export abstract class Node<
 
   constructor(
     value: M['value'] | TypeMap<M> | Array<[string, any]>,
-    location?: LocationInfo | 0,
     options?: O,
+    location?: LocationInfo | 0,
     fileInfo?: FileInfo
   ) {
     if (value === undefined) {
@@ -309,8 +309,8 @@ export abstract class Node<
        * in the old map.
        */
       new Map(this.data),
-      this.location,
       this.options,
+      this.location,
       this.fileInfo
     )
 

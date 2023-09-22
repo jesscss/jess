@@ -4,7 +4,7 @@ describe('Lookup', () => {
   describe('serialization', () => {
     it('should serialize a property lookup', () => {
       let node = look({
-        value: ref('foo', 0, { type: 'variable' }),
+        value: ref('foo', { type: 'variable' }),
         key: 'bar'
       })
       expect(`${node}`).toBe('$foo.bar')
@@ -12,7 +12,7 @@ describe('Lookup', () => {
 
     it('should serialize a variable lookup', () => {
       let node = look({
-        value: ref('foo', 0, { type: 'variable' }),
+        value: ref('foo', { type: 'variable' }),
         key: '$bar'
       })
       expect(`${node}`).toBe('$foo.$bar')
@@ -20,9 +20,9 @@ describe('Lookup', () => {
 
     it('should serialize a mixin lookup', () => {
       let node = look({
-        value: ref('foo', 0, { type: 'variable' }),
+        value: ref('foo', { type: 'variable' }),
         key: 'bar'
-      }, 0, { mixin: true })
+      }, { mixin: true })
       expect(`${node}`).toBe('$foo -> bar')
     })
   })
@@ -31,8 +31,8 @@ describe('Lookup', () => {
     /** This is looking up a property but the key is dynamic (a variable) */
     it('should serialize a dynamic lookup', () => {
       let node = look({
-        value: ref('foo', 0, { type: 'variable' }),
-        key: ref('bar', 0, { type: 'variable' })
+        value: ref('foo', { type: 'variable' }),
+        key: ref('bar', { type: 'variable' })
       })
       expect(`${node}`).toBe('$foo[$bar]')
     })
@@ -45,8 +45,8 @@ describe('Lookup', () => {
      */
     it('should serialize a dynamic prop lookup', () => {
       let node = look({
-        value: ref('foo', 0, { type: 'variable' }),
-        key: ref('bar', 0, { type: 'property' })
+        value: ref('foo', { type: 'variable' }),
+        key: ref('bar', { type: 'property' })
       })
       expect(`${node}`).toBe('$foo[$.bar]')
     })
@@ -54,9 +54,9 @@ describe('Lookup', () => {
     /** This is looking up a mixin but the key is dynamic (a variable) */
     it('should serialize a dynamic mixin lookup', () => {
       let node = look({
-        value: ref('foo', 0, { type: 'variable' }),
-        key: ref('bar', 0, { type: 'variable' })
-      }, 0, { mixin: true })
+        value: ref('foo', { type: 'variable' }),
+        key: ref('bar', { type: 'variable' })
+      }, { mixin: true })
       expect(`${node}`).toBe('$foo -> [$bar]')
     })
   })

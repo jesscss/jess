@@ -2,6 +2,7 @@ import { defineType, Node } from './node'
 import type { Interpolated } from './interpolated'
 import { type Context } from '../context'
 import { cast } from './util/cast'
+import { Declaration } from './declaration'
 
 /**
  * The type is determined by syntax
@@ -20,7 +21,7 @@ export type ReferenceOptions = {
 }
 /**
  * This is a variable or property reference,
- * which can itself contain a reference.
+ * which can itself contain a reference (a variable variable).
  */
 export class Reference extends Node<string | Interpolated, ReferenceOptions> {
   declare options: ReferenceOptions
@@ -42,7 +43,7 @@ export class Reference extends Node<string | Interpolated, ReferenceOptions> {
    * We don't need to mark evaluated, because a reference
    * should never resolve to another reference
    */
-  async eval(context: Context) {
+  async eval(context: Context): Promise<Node> {
     let { value } = this
     let { type } = this.options
     if (value instanceof Node) {
@@ -59,8 +60,9 @@ export class Reference extends Node<string | Interpolated, ReferenceOptions> {
       case 'mixin':
         value = context.scope.getMixin(value as string)
     }
-    if (value instanceof Node) {
-      return await value.eval(context)
+    if (value instanceof Declaration) {
+      let returnVal = await value.value.eval(context)
+      return returnVal.inherit(this)
     } else {
       return cast(value)
     }
