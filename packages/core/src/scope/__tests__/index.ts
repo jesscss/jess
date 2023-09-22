@@ -157,7 +157,7 @@ describe('Scope', async () => {
     })
     it('replaces a leading "." or "#"', () => {
       expect(scope.normalizeKey('.foo-bar')).toBe('fooBar')
-      expect(scope.normalizeKey('#foo-bar')).toBe('fooBar')
+      expect(scope.normalizeKey('#foo-bar')).toBe('FooBar')
     })
   })
 

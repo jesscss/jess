@@ -176,7 +176,7 @@ export class Scope {
       /** Remove initial . (used by Less) */
       .replace(/^\./, '')
       /** Convert dash-case to camelCase, as well as leading '#' */
-      .replace(/(^_)|(?:[#-_])(.)/g, (_, p1 = '', p2 = '') => `${p1}${p2.toUpperCase()}`)
+      .replace(/(^_)|(?:[#\-_])(.)/g, (_, p1 = '', p2 = '') => `${p1}${p2.toUpperCase()}`)
 
     /**
      * Quick way to identify a valid JS identifier -
