@@ -99,6 +99,28 @@ describe('Dimension', () => {
       expect(left.operate(right, '/', context).toString()).toBe('5')
     })
   })
+
+  describe('conversions', () => {
+    it('should convert lengths', () => {
+      let left = dimension([1, 'cm'])
+      let right = dimension([2, 'mm'])
+      expect(left.operate(right, '+').toString()).toBe('1.2cm')
+      expect(left.operate(right, '-').toString()).toBe('0.8cm')
+    })
+    it('should convert duration', () => {
+      let left = dimension([1, 's'])
+      let right = dimension([1, 'ms'])
+      expect(left.operate(right, '+').toString()).toBe('1.001s')
+      expect(left.operate(right, '-').toString()).toBe('0.999s')
+    })
+    it('should convert angle', () => {
+      let left = dimension([1, 'rad'])
+      let right = dimension([1, 'deg'])
+      // I assume this is correct
+      expect(left.operate(right, '+').toString()).toBe('1.01745329rad')
+    })
+  })
+
   describe('errors', () => {
     beforeEach(() => {
       context.opts.unitMode = 1
