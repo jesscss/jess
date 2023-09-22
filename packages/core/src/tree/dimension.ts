@@ -37,8 +37,12 @@ export class Dimension extends Node<DimensionValue> {
     this.data.set('value', [value[0], v])
   }
 
+  /** @todo - abstract into calculate() function */
+  _operateWithDimension(b: Dimension, op: '+' | '-' | '*' | '/') {
+
+  }
+
   operate(b: Node, op: '+' | '-' | '*' | '/', context?: Context | undefined) {
-    const aUnit = this.unit
     if (!(b instanceof Dimension || b instanceof Color)) {
       throw new Error(`Cannot operate on ${b.type}`)
     }
@@ -51,9 +55,21 @@ export class Dimension extends Node<DimensionValue> {
       this._unitToGroup = unitToGroup = new Map(entries)
     }
     if (b instanceof Dimension) {
+      let [aVal, aUnit] = this.value
+      let [bVal, bUnit] = b.value
 
+      if (!aUnit || !bUnit) {
+        let outUnit = aUnit ?? bUnit
+      }
+
+      if (aUnit && bUnit) {
+        if (aUnit === bUnit) {
+          return new Dimension([aVal + bVal, aUnit])
+        }
+        const aGroup = unitToGroup.get(aUnit)
+        const bGroup = unitToGroup.get(bUnit)
+      }
     }
-    const bUnit = b.unit
   }
 
   toTrimmedString() {
