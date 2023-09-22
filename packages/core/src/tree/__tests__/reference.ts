@@ -1,4 +1,4 @@
-import { ref, ruleset, decl, vardecl, rule, seq, spaced, any } from '..'
+import { ref, ruleset, decl, vardecl, spaced, any } from '..'
 import { Context } from '../../context'
 
 let context: Context
@@ -56,7 +56,6 @@ describe('reference', () => {
         ])
       ])
       let evald = await node.eval(context)
-      /** The var declaration will be removed when going to CSS */
       expect(`${evald}`).toBeString(`
         foo: red;
         bar: red;
@@ -96,7 +95,6 @@ describe('reference', () => {
         ])
       ])
       let evald = await node.eval(context)
-      /** The var declaration will be removed when going to CSS */
       expect(`${evald}`).toBeString(`
         bar: red;
         foo: red;
