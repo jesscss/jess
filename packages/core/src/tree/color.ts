@@ -18,21 +18,21 @@ function clamp(v: number, max: number) {
  * output type.
  */
 export class Color extends Node<string | ColorFormat> {
-  /** This is the originally parsed representation */
-  private _rgba: ColorValues | undefined
-  private _hsla: ColorValues | undefined
+  private _rgb: [number, number, number] | undefined
+  private _hsl: [number, number, number] | undefined
+  private _alpha: number = 1
 
   /** Create an rgba map only if we need it */
   get rgba(): ColorValues {
-    if (this._rgba) {
-      return this._rgba
+    if (this._rgb) {
+      return [...this._rgb, this._alpha]
     }
 
     let value = this.value
     let rgba: number[] = []
 
     if (typeof value !== 'string' || value[0] !== '#') {
-      throw new Error('Only hex string values can be converted to colors.')
+      throw new TypeError('Only hex string values can be converted to colors.')
     }
     let hex = value.slice(1)
 
@@ -55,27 +55,34 @@ export class Color extends Node<string | ColorFormat> {
     }
     /** Make sure an alpha value is present */
     if (rgba.length === 3) {
-      rgba.push(1)
+      this._rgb = rgba as [number, number, number]
+    } else {
+      let [r, g, b, a] = rgba
+      this._rgb = [r, g, b]
+      this._alpha = a
     }
-    this._rgba = rgba as ColorValues
     return rgba as ColorValues
   }
 
   set rgba(rgba: ColorValues) {
-    this._rgba = rgba
+    let [r, g, b, a] = rgba
+    this._rgb = [r, g, b]
+    this._alpha = a
   }
 
   get hsla(): ColorValues {
-    if (this._hsla) {
-      return this._hsla
+    const a = this._alpha
+    if (this._hsl) {
+      return [...this._hsl, a]
     }
-    let hsla = this.toHSL()
-    this._hsla = hsla
-    return hsla
+    let [h, s, l] = this.toHSL()
+    return [h, s, l, a]
   }
 
   set hsla(hsla: ColorValues) {
-    this._hsla = hsla
+    let [h, s, l, a] = hsla
+    this._hsl = [h, s, l]
+    this._alpha = a
   }
 
   get rgb(): [number, number, number] {
@@ -83,8 +90,12 @@ export class Color extends Node<string | ColorFormat> {
     return [r, g, b]
   }
 
+  set rgb(rgb: [number, number, number]) {
+    this._rgb = rgb
+  }
+
   get alpha(): number {
-    return this.rgba[3]
+    return this._alpha
   }
 
   /**
@@ -101,8 +112,8 @@ export class Color extends Node<string | ColorFormat> {
    * @todo add toRBB() function from hsl() function
    */
 
-  toHSL(): ColorValues {
-    let [r, g, b, a] = this.rgba
+  toHSL(): [number, number, number] {
+    let [r, g, b] = this.rgb
     r /= 255
     g /= 255
     b /= 255
@@ -126,7 +137,7 @@ export class Color extends Node<string | ColorFormat> {
       }
       h! /= 6
     }
-    return [h! * 360, s, l, a]
+    return [h! * 360, s, l]
   }
 
   toTrimmedString() {

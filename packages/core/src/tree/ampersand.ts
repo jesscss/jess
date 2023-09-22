@@ -90,7 +90,7 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
               if (last instanceof BasicSelector) {
                 last.value += value
               } else {
-                throw new Error(`Cannot append "${value}" to this type of selector`)
+                throw new SyntaxError(`Cannot append "${value}" to this type of selector`)
               }
             }
             if (isNode(selector, 'SelectorList')) {
