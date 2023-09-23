@@ -1,4 +1,7 @@
 import { Node, defineType } from './node'
+import { calculate, type Operator } from './util/calculate'
+import { type Context } from '../context'
+import { isNode } from './util'
 
 type ColorValues = [number, number, number, number] | number[]
 
@@ -56,6 +59,8 @@ export class Color extends Node<string | ColorFormat> {
     /** Make sure an alpha value is present */
     if (rgba.length === 3) {
       this._rgb = rgba as [number, number, number]
+      this._alpha = 1
+      rgba.push(1)
     } else {
       let [r, g, b, a] = rgba
       this._rgb = [r, g, b]
@@ -95,14 +100,22 @@ export class Color extends Node<string | ColorFormat> {
   }
 
   get alpha(): number {
-    return this._alpha
+    return this.rgba[3]
   }
 
   /**
-   * Note - modern browsers support 4 & 8 digit hex values
+   * @todo - shorten hex values that can be shortened
    */
   toHex() {
-    return `#${this.rgba.map(c => {
+    let [r, g, b, a] = this.rgba
+    if (a < 1) {
+      a = Math.round(a * 255)
+      return `#${[r, g, b, a].map(c => {
+        c = clamp(Math.round(c), 255)
+        return (c < 16 ? '0' : '') + c.toString(16)
+      }).join('')}`
+    }
+    return `#${[r, g, b].map(c => {
       c = clamp(Math.round(c), 255)
       return (c < 16 ? '0' : '') + c.toString(16)
     }).join('')}`
@@ -189,6 +202,36 @@ export class Color extends Node<string | ColorFormat> {
 
     /** @todo - represent with slash syntax? */
     return `${colorFunction}(${args.join(', ')})`
+  }
+
+  operate(b: Node, op: Operator, context?: Context | undefined): Color {
+    let bNode = b
+    if (isNode(b, 'Dimension')) {
+      const [bVal, bUnit] = b.value
+      if (bUnit) {
+        throw new TypeError(`Cannot convert "${b}" to a color`)
+      }
+      bNode = new Color(ColorFormat.RGB).inherit(b)
+      ;(bNode as Color).rgb = [bVal, bVal, bVal]
+    }
+    if (!(bNode instanceof Color)) {
+      throw new TypeError(`Cannot operate on ${bNode.type}`)
+    }
+    let aRGB = this.rgb
+    let bRGB = bNode.rgb
+    let newColorValues = aRGB.map((a, i) => calculate(a, op, bRGB[i]))
+    let { value } = this
+    if (typeof value === 'string') {
+      value = ColorFormat.HEX
+    }
+    let newColor = new Color(value).inherit(this)
+    newColor.rgb = newColorValues as [number, number, number]
+    /**
+     * There's no intuitive way to blend alpha values with operations,
+     * but this is how Less does it.
+     */
+    newColor._alpha = this.alpha * (1 - bNode.alpha) + bNode.alpha
+    return newColor
   }
 
   /** @todo move to visitors */

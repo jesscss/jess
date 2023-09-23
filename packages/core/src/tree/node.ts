@@ -455,24 +455,6 @@ export abstract class Node<
     }
   }
 
-  /**
-   * Individual node types will override this.
-   */
-  operate(b: Node, op: '+' | '-' | '*' | '/', context?: Context) {
-    let aVal: any = this.valueOf()
-    let bVal: any = b.valueOf()
-    switch (op) {
-      case '+':
-        return aVal + bVal
-      case '-':
-        return aVal - bVal
-      case '*':
-        return aVal * bVal
-      case '/':
-        return aVal / bVal
-    }
-  }
-
   fround(value: number) {
     // add "epsilon" to ensure numbers like 1.000000005 (represented as 1.000000004999...) are properly rounded:
     return Number((value + 2e-16).toFixed(8))

@@ -1,4 +1,4 @@
-export type Operator = '+' | '-' | '*' | '/'
+export type Operator = '+' | '-' | '*' | '/' | '%'
 
 export function calculate(a: number, op: Operator, b: number) {
   switch (op) {
@@ -6,5 +6,6 @@ export function calculate(a: number, op: Operator, b: number) {
     case '-': return a - b
     case '*': return a * b
     case '/': return a / b
+    case '%': return a % b
   }
 }

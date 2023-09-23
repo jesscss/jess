@@ -56,6 +56,9 @@ export class Dimension extends Node<DimensionValue> {
       this._unitToGroup = unitToGroup = new Map(entries)
     }
     if (b instanceof Color) {
+      if (this.unit) {
+        throw new TypeError(`Cannot convert "${this}" to a color`)
+      }
       let thisColor = new Color(ColorFormat.RGB).inherit(this)
       thisColor.rgb = [this.number, this.number, this.number]
       return thisColor.operate(b, op, context)

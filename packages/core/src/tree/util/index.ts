@@ -11,7 +11,7 @@ import type { FunctionDefinition } from '../function-definition'
 import { Node } from '../node'
 import type { Rule } from '../rule'
 import type { SelectorSequence } from '../selector-sequence'
-import type { Use } from '../use'
+import type { Import } from '../import'
 import type { Nil } from '../nil'
 import type { SelectorList } from '../selector-list'
 import type { Collection } from '../collection'
@@ -42,7 +42,7 @@ export function isNode(value: any, type: 'SelectorList'): value is SelectorList
 export function isNode(value: any, type: 'Rule'): value is Rule
 export function isNode(value: any, type: 'AtRule'): value is AtRule
 export function isNode(value: any, type: ['Rule', 'AtRule']): value is Rule | AtRule
-export function isNode(value: any, type: 'Use'): value is Use
+export function isNode(value: any, type: 'Import'): value is Import
 export function isNode(value: any, type: 'Nil'): value is Nil
 export function isNode(value: any, type: 'Collection'): value is Collection
 export function isNode(value: any, type?: string | string[]): value is Node
