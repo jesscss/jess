@@ -3,6 +3,7 @@ import isPlainObject from 'lodash-es/isPlainObject'
 import type { Context } from '../context'
 import type { Visitor } from '../visitor'
 import type { Comment } from './comment'
+import { type Operator } from './util/calculate'
 // import type { OutputCollector } from '../output'
 import type { Constructor, Writable, Class, ValueOf, Opaque } from 'type-fest'
 
@@ -111,6 +112,20 @@ type CollectionPair<T> =
       ? [K, V]
       : T extends Set<infer U> ? [U, U] : never
 
+/**
+ * Creates an optional abstract method
+ * @see https://stackoverflow.com/questions/44153378/typescript-abstract-optional-method
+ */
+export interface Node {
+  /**
+   * Individual node types will override this.
+   */
+  operate?(b: Node, op: Operator, context?: Context): Node
+}
+
+/**
+ * The underlying type for all Jess nodes
+ */
 export abstract class Node<
   T = any,
   O extends NodeOptions = NodeOptions,

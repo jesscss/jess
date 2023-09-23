@@ -3,14 +3,11 @@ import {
   type SimpleSelector, type Combinator, type SelectorSequence
 } from '..'
 import { Context } from '../../context'
-// import { OutputCollector } from '../../output'
 
 let context: Context
-// let out: OutputCollector
 describe('Ampersand', () => {
   beforeEach(() => {
     context = new Context()
-    // out = new OutputCollector()
   })
 
   /** We need a root node to bubble rules */
@@ -109,7 +106,7 @@ describe('Ampersand', () => {
   })
 
   it('should collapse selectors when ampersand is set to hoist', async () => {
-    let node = wrapAmp([amp(undefined, 0, { hoistToRoot: true })])
+    let node = wrapAmp([amp(undefined, { hoistToRoot: true })])
     let evald = await node.eval(context)
     expect(`${evald}`).toBeString(`
       .one.two {
@@ -119,7 +116,7 @@ describe('Ampersand', () => {
         inner: one two;
       }`
     )
-    node = wrapAmpList([sel([amp(undefined, 0, { hoistToRoot: true })])])
+    node = wrapAmpList([sel([amp(undefined, { hoistToRoot: true })])])
     evald = await node.eval(context)
     expect(`${evald}`).toBeString(`
       .one, .two {

@@ -2,7 +2,6 @@ import { ColorFormat, color, dimension } from '..'
 import { Context } from '../../context'
 
 let context: Context
-let out: OutputCollector
 
 describe('Color', () => {
   beforeEach(() => {

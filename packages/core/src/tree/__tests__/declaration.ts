@@ -1,13 +1,10 @@
-import { decl, spaced, expr, anon, color } from '..'
+import { decl, spaced, color } from '..'
 import { Context } from '../../context'
-import { OutputCollector } from '../../output'
 
 let context: Context
-let out: OutputCollector
 describe('Declaration', () => {
   beforeEach(() => {
     context = new Context()
-    out = new OutputCollector()
   })
   it('should serialize to CSS', () => {
     let rule = decl({ name: 'color', value: color('#eee') })

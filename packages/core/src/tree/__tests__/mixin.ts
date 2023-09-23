@@ -1,15 +1,12 @@
 import { mixin, mixinbody, ruleset, decl, any } from '..'
 import { Context } from '../../context'
-import { OutputCollector } from '../../output'
 
 let context: Context
-let out: OutputCollector
 
 describe('Mixin', () => {
   beforeEach(() => {
     context = new Context()
     context.depth = 2
-    out = new OutputCollector()
   })
 
   describe('serialization', () => {

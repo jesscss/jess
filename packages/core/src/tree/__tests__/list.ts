@@ -1,14 +1,11 @@
 import { list, spaced, num, any } from '..'
 import { Context } from '../../context'
-import { OutputCollector } from '../../output'
 
 let context: Context
-let out: OutputCollector
 
 describe('List', () => {
   beforeEach(() => {
     context = new Context()
-    out = new OutputCollector()
   })
   it('should serialize to a list', () => {
     let rule = list([spaced([num(1), any('2'), any('3')]), any('four')])

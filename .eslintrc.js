@@ -73,6 +73,8 @@ module.exports = {
         '@typescript-eslint/explicit-function-return-type': 0,
         '@typescript-eslint/no-non-null-assertion': 0,
         '@typescript-eslint/consistent-type-definitions': 0,
+        /** ESLint often gets this wrong */
+        '@typescript-eslint/no-unused-vars': 0,
         /** Chevrotain docs often alias $ to this */
         '@typescript-eslint/no-this-alias': 0,
         '@typescript-eslint/naming-convention': [

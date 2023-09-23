@@ -1,14 +1,11 @@
 import { include, rule, sel, el } from '..'
 import { Context } from '../../context'
-import { OutputCollector } from '../../output'
 
 let context: Context
-let out: OutputCollector
 
 describe('Include', () => {
   beforeEach(() => {
     context = new Context()
-    out = new OutputCollector()
   })
   it('should be able to include an object', () => {
     let obj = {

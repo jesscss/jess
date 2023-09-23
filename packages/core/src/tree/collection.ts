@@ -3,6 +3,9 @@ import { defineType, Node } from './node'
 /**
  * A collection is kind of like a ruleset except
  * it only holds declarations.
+ *
+ * Can be used like Sass property nesting.
+ * @see https://sass-lang.com/documentation/style-rules/declarations/#nesting
  */
 export class Collection extends Node<Node[]> {
   toTrimmedString(depth: number = 0) {

@@ -1,14 +1,11 @@
-import { rule, list, sel, el, decl, ruleset, spaced, any, keyval } from '..'
+import { rule, list, sel, el, decl, ruleset, spaced, any } from '..'
 import { Context } from '../../context'
-import { OutputCollector } from '../../output'
 
 let context: Context
-let out: OutputCollector
 
 describe('Rule', () => {
   beforeEach(() => {
     context = new Context()
-    out = new OutputCollector()
   })
   it('should serialize to CSS', () => {
     let node = rule({

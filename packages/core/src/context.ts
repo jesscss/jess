@@ -2,6 +2,7 @@ import { type Node } from './tree/node'
 import type { Rule } from './tree/rule'
 import type { Scope } from './scope'
 import type { Declaration } from './tree'
+import { type Operator } from './tree/util/calculate'
 
 export const enum MathMode {
   /**
@@ -24,7 +25,14 @@ export const enum UnitMode {
 export interface ContextOptions {
   /** Hash classes for module output */
   module?: boolean
-  /** Shit what does this mean */
+  /**
+   * From docs:
+   * "Changes compilation mode so dynamic content
+   * is output as CSS variables, and changes
+   * the runtime module to generate CSS patches."
+   *
+   * @todo - Change this behavior to "live expressions"
+   */
   dynamic?: boolean
   collapseNesting?: boolean
   /**
@@ -146,7 +154,7 @@ export class Context {
     return `--v${this.id}-${this.varCounter++}`
   }
 
-  shouldOperate(op: '+' | '-' | '*' | '/') {
+  shouldOperate(op: Operator) {
     const mathMode = this.opts.mathMode
     /** Parens for Less/SCSS will set `canOperate` to true */
     if (mathMode === MathMode.ALWAYS || this.canOperate) {

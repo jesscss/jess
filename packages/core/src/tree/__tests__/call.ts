@@ -1,13 +1,10 @@
 import { call, list, num } from '..'
 import { Context } from '../../context'
-// import { OutputCollector } from '../../output'
 
 let context: Context
-// let out: OutputCollector
 describe('Call', () => {
   beforeEach(() => {
     context = new Context()
-    // out = new OutputCollector()
   })
 
   it('should serialize a CSS function', () => {
