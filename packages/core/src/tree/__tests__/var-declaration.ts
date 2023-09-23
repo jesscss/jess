@@ -35,8 +35,8 @@ describe('Let', () => {
         ])
       })
       expect(`${rule}`).toBeString(`
-      @let brandColor {
-        global {
+      @let brandColor: {
+        global: {
           dark: #000;
         }
         dark: #222;

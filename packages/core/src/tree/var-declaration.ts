@@ -50,10 +50,8 @@ export class VarDeclaration<
   toTrimmedString(depth?: number): string {
     const rule = this.options?.setDefined ? '@set ' : '@let '
     const { name, value } = this
-    if (isNode(value, 'Collection')) {
-      return `${rule}${name} ${value.toString(depth)}`
-    }
-    return `${rule}${name}: ${value};`
+    const semi = isNode(value, 'Collection') ? '' : ';'
+    return `${rule}${name}: ${value.toString(depth)}${semi}`
   }
 }
 
