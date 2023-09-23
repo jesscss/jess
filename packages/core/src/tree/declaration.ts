@@ -60,7 +60,7 @@ export class Declaration<
   toTrimmedString(depth?: number) {
     const { name, value, important } = this
     if (isNode(value, 'Collection')) {
-      return `${name} ${value.toString(depth)}`
+      return `${name}: ${value.toString(depth)}`
     }
     return `${name}: ${value.toString(depth)}${important ? ` ${important}` : ''};`
   }

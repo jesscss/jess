@@ -1,10 +1,10 @@
-import { defineType } from './node'
-import { Ruleset } from './ruleset'
+import { defineType, Node } from './node'
 
 /**
- * A Jess kind of dictionary / map construct
+ * A collection is kind of like a ruleset except
+ * it only holds declarations.
  */
-export class Collection extends Ruleset {
+export class Collection extends Node<Node[]> {
   toTrimmedString(depth: number = 0) {
     let space = ''.padStart(depth * 2)
     let output = '{\n'
