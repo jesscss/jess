@@ -23,8 +23,6 @@ import { Node } from './node'
 // }
 export { Node, type FileInfo, type LocationInfo }
 
-export * from './js-node'
-
 /** @todo - remove nodes from tree index that we don't need to bundle for runtime? */
 export * from './at-rule'
 export * from './ampersand'
