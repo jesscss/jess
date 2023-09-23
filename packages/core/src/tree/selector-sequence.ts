@@ -35,6 +35,8 @@ export class SelectorSequence extends Node<Array<SimpleSelector | Combinator>> {
      *
      * @todo - An initial plain identifier should be wrapped in `:is()`
      * for outputting to CSS -- this is done in the ToCssVisitor?
+     *
+     * @todo - we should not push an ampersand if we're not collapsing nesting
      */
     if (!hasAmp && context.frames.length > 0) {
       if (elements[0] instanceof Combinator) {
