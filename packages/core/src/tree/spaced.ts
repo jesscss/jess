@@ -8,8 +8,8 @@ import { Sequence, type SequenceOptions } from './sequence'
 export class Spaced extends Sequence {
   constructor(
     value: Node[],
-    location?: LocationInfo,
     options?: SequenceOptions,
+    location?: LocationInfo,
     fileInfo?: FileInfo
   ) {
     /** Offset by 1 to put in pre-whitespace */
@@ -17,7 +17,7 @@ export class Spaced extends Sequence {
       value[i].pre = 1
     }
 
-    super(value, location, options, fileInfo)
+    super(value, options, location, fileInfo)
   }
   // toModule(context: Context, out: OutputCollector) {
   //   const loc = this.location

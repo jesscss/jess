@@ -17,10 +17,10 @@ export class Nil extends Node<undefined> {
 
   constructor(
     value?: any,
-    location?: LocationInfo | 0,
     options?: NodeOptions,
+    location?: LocationInfo | 0,
     fileInfo?: FileInfo) {
-    super(undefined, location, options, fileInfo)
+    super(undefined, options, location, fileInfo)
   }
 
   async eval() { return this }

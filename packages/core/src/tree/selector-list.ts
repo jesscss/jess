@@ -14,15 +14,15 @@ import { type Context } from '../context'
 export class SelectorList extends Node<SelectorSequence[]> {
   constructor(
     nodes: TypeMap<{ value: SelectorSequence[] }> | Array<SelectorSequence | Array<SimpleSelector | Combinator>>,
-    location?: LocationInfo | 0,
     options?: NodeOptions,
+    location?: LocationInfo | 0,
     fileInfo?: FileInfo
   ) {
     /** When cloning, nodes will be a map */
     let newNodes = nodes instanceof Map
       ? nodes
       : (nodes as any[]).map(seq => seq instanceof SelectorSequence ? seq : new SelectorSequence(seq))
-    super(newNodes, location, options, fileInfo)
+    super(newNodes, options, location, fileInfo)
   }
 
   toTrimmedString() {
