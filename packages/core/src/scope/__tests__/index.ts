@@ -1,3 +1,4 @@
+import { decl, any } from '../../tree'
 import { Scope } from '../index'
 import { logger } from '../../logger'
 
@@ -12,8 +13,8 @@ describe('Scope', async () => {
 
   describe('set / get', () => {
     it('can do a normal get / set of properties', () => {
-      scope.setProp('foo', 'bar')
-      expect(scope.getProp('foo')).toBe('bar')
+      scope.setProp('foo', decl({ name: 'foo', value: any('bar') }))
+      expect(`${scope.getProp('foo')}`).toBe('foo: bar;')
     })
 
     it('can do a normal get / set of variables', () => {
@@ -25,40 +26,6 @@ describe('Scope', async () => {
       scope.setVar('one', 'one')
       scope.setVar('one', 'two')
       expect(scope.getVar('one')).toBe('two')
-    })
-
-    it('will create an array of props', () => {
-      scope.setProp('one', 'one')
-      scope.setProp('one', 'two')
-      expect(scope.getProp('one')).toEqual(['one', 'two'])
-    })
-
-    it('will create an endless array of props', () => {
-      scope.setProp('one', 'one')
-      scope.setProp('one', 'two')
-      scope.setProp('one', 'three')
-      expect(scope.getProp('one')).toEqual(['one', 'two', 'three'])
-    })
-
-    it('will merge arrays with array of props', () => {
-      scope.setProp('one', 'one')
-      scope.setProp('one', 'two')
-      scope.setProp('one', ['three', 'four'])
-      expect(scope.getProp('one')).toEqual(['one', 'two', 'three', 'four'])
-    })
-
-    it('will merge arrays with array of props', () => {
-      scope.setProp('one', 'one')
-      scope.setProp('one', ['two', 'three'])
-      expect(scope.getProp('one')).toEqual(['one', 'two', 'three'])
-    })
-
-    it('will exclude an item', () => {
-      scope.setProp('one', 'one')
-      scope.setProp('one', 'two')
-      expect(scope.getProp('one', {
-        filter: value => ({ value: value === 'two' ? Scope.NONE : value, done: false })
-      })).toEqual('one')
     })
 
     it('will skip normalization', () => {
@@ -123,11 +90,11 @@ describe('Scope', async () => {
     })
 
     it('can merge child scope into parent scope', () => {
-      scope.setProp('one', 'one')
+      scope.setProp('foo', decl({ name: 'foo', value: any('one') }, { merge: 'list' }))
       let child = new Scope()
-      child.setProp('one', 'two')
+      child.setProp('foo', decl({ name: 'foo', value: any('two') }, { merge: 'list' }))
       scope.merge(child)
-      expect(scope.getProp('one')).toEqual(['one', 'two'])
+      expect(`${scope.getProp('foo')}`).toEqual('foo: one, two;')
     })
 
     it('will leak undefined vars', () => {
@@ -211,10 +178,10 @@ describe('Scope', async () => {
     })
 
     it('throws if all items are excluded, so no match found', () => {
-      scope.setProp('one', 'one')
-      scope.setProp('one', 'two')
-      expect(() => scope.getProp('one', {
-        filter: value => ({ value: Scope.NONE, done: false })
+      scope.setVar('one', 'one')
+      scope.setVar('one', 'two')
+      expect(() => scope.getVar('one', {
+        filter: () => ({ value: Scope.NONE, done: false })
       })).toThrow()
     })
   })

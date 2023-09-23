@@ -14,8 +14,6 @@
     "strict": true,
     "strictPropertyInitialization": false,
     "skipLibCheck": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
     "paths": {
       "jess": ["jess/lib"],
       "@jess/*": ["*/src"]

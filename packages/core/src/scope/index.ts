@@ -1,4 +1,7 @@
 import { logger } from '../logger'
+import { Declaration } from '../tree/declaration'
+import { List } from '../tree/list'
+import { Spaced } from '../tree/spaced'
 import type { Node } from '../tree/node'
 /**
  * The Scope object is meant to be an efficient
@@ -56,7 +59,7 @@ export type ScopeEntryMap = Record<string, ScopeEntry | undefined> & {
   prototype: ScopeEntryMap | undefined
 }
 
-export type PropMap = Record<string, unknown | unknown[]> & {
+export type PropMap = Record<string, Declaration | Declaration[]> & {
   prototype: PropMap | undefined
 }
 
@@ -91,7 +94,7 @@ type FilterResult = {
 
 type GetterOptions = {
   /** Filter is a function or value to compare when looking up values */
-  filter?: Node | ((value: unknown, foundValues?: any[]) => FilterResult)
+  filter?: Node | ((value: any, foundValues?: any[]) => FilterResult)
 
   /** Only return local values, not all scope values */
   local?: boolean
@@ -262,7 +265,7 @@ export class Scope {
     return this.getEntries('_props')
   }
 
-  setProp(key: string, value: unknown) {
+  setProp(key: string, value: Declaration | Declaration[]) {
     let { props } = this
     if (Object.prototype.hasOwnProperty.call(props, key)) {
       /** Modify the local entry */
@@ -271,11 +274,11 @@ export class Scope {
       props[key] =
         Array.isArray(entry)
           ? Array.isArray(value)
-            ? [...entry, ...value]
-            : [...entry, value]
+            ? [...value, ...entry]
+            : [value, ...entry]
           : Array.isArray(value)
-            ? [entry, ...value]
-            : [entry, value]
+            ? [...value, entry]
+            : [value, entry]
     } else {
       props[key] = value
     }
@@ -333,10 +336,6 @@ export class Scope {
         throw new SyntaxError(`"${key}" is already defined`)
       }
 
-      /**
-       * Unlike properties, vars are stored with
-       * most recent first.
-       */
       entry.value = Array.isArray(entry.value) ? [value, ...entry.value] : [value, entry.value]
     } else {
       /** Shadow the variable within the local scope */
@@ -356,18 +355,49 @@ export class Scope {
     return this._getBase('_vars', key, options)
   }
 
-  getMixin(key: string, options?: GetterOptions) {
-    return this._getBase('_mixins', key, options)
-  }
-
-  /** @todo - merge into lists / sequences */
-  getProp(key: string, options: GetterOptions = {}) {
-    return this._getBase('_props', key, {
+  getMixin(key: string, options: GetterOptions = {}) {
+    return this._getBase('_mixins', key, {
       filter(value: unknown) {
         return { value, done: false }
       },
       ...options
     })
+  }
+
+  getProp(key: string, options: GetterOptions = {}) {
+    let props: Declaration | Declaration[] = this._getBase('_props', key, {
+      filter(value: Declaration) {
+        if (!value.options?.merge) {
+          return { value, done: true }
+        }
+        return { value, done: false }
+      },
+      ...options
+    })
+    /** Our last entry had a merge flag, so collect merges */
+    if (Array.isArray(props)) {
+      let length = props.length
+      let values: Node[] = []
+      let important: string | undefined
+      let merge: 'list' | 'spaced' | undefined
+      for (let i = length - 1; i >= 0; i--) {
+        let decl = props[i]
+        if (decl.options?.merge) {
+          merge = decl.options.merge
+          values.push(decl.value)
+          if (decl.important) {
+            important = decl.important
+          }
+        }
+      }
+      return new Declaration([
+        ['name', key],
+        ['value', merge === 'list' ? new List(values) : new Spaced(values)],
+        ['important', important]
+      ])
+    }
+
+    return props
   }
 
   getLocal(
@@ -432,7 +462,9 @@ export class Scope {
         }
         throw new ReferenceError(`"${baseKey}" is not defined`)
       }
-      let entryValue: unknown = collection === '_vars' ? (entry as ScopeEntryMap).value : entry
+      let entryValue: unknown = (collection === '_vars' || collection === '_mixins')
+        ? (entry as unknown as ScopeEntryMap).value
+        : entry
       let lastResult: FilterResult
       if (Array.isArray(entryValue)) {
         for (let i = 0; i < entryValue.length; i++) {

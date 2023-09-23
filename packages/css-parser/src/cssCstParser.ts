@@ -2,7 +2,7 @@ import type { IToken, ILexingResult, CstNode } from 'chevrotain'
 import { Lexer } from 'chevrotain'
 import { cssTokens, cssFragments } from './cssTokens'
 import { type TokenMap, type CssParserConfig, CssCoreParser } from './cssCoreParser'
-import { createLexerDefinition } from './util'
+import { createLexerDefinition } from './util/util'
 import { CssErrorMessageProvider } from './cssErrorMessageProvider'
 import type { ConditionalPick } from 'type-fest'
 

@@ -42,7 +42,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     this.data.set('mod', v)
   }
 
-  toString() {
+  toTrimmedString() {
     let { key, op, value, mod } = this
     return `[${key}${op ?? ''}${value ?? ''}${mod ? ` ${mod}` : ''}]`
   }
@@ -51,7 +51,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
 /** Not sure why types couldn't be properly inferred */
 export const attr = defineType<AttributeSelectorValue>(AttributeSelector, 'AttributeSelector', 'attr') as (
   value: AttributeSelectorValue | Map<string, any>,
-  location?: LocationInfo | 0,
   options?: undefined,
+  location?: LocationInfo | 0,
   fileInfo?: FileInfo
 ) => AttributeSelector

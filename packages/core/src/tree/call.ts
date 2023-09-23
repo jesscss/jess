@@ -56,4 +56,4 @@ export class Call extends Node<CallValue> {
   }
 }
 
-export const call = defineType(Call, 'Call')
+export const call = defineType<CallValue>(Call, 'Call')

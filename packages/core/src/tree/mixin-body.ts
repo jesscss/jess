@@ -11,7 +11,18 @@ export type MixinValue<T extends MixinValueType = Ruleset> = {
 
 /**
  * This is just the body of a mixin
- * (an anonymous mixin)
+ * (an anonymous mixin).
+ *
+ * Note that mixin calls are called as JavaScript functions,
+ * with either only positional arguments, or a plain object
+ * as the first argument, representing named arguments,
+ * followed by positional arguments.
+ *
+ * e.g. `@ mixin foo(a, b) { ... }`
+ *   can be called from JS like:
+ *     foo(1, 2) or
+ *     foo({ a: 1, b: 2 }) or
+ *     foo({ b: 2 }, 1)
  */
 export class MixinBody<T extends MixinValueType = Ruleset> extends Node<MixinValue<T>> {
   toTrimmedString(depth: number = 0): string {

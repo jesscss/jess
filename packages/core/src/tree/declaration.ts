@@ -27,6 +27,14 @@ export type DeclarationValue<U extends Node = Node, T extends Name = Name> = {
 
 /** Used by Less */
 export type DeclarationOptions = {
+  /**
+   * This is mostly backwards-compatibility with this Less
+   * feature, and mostly isn't needed in Jess.
+   *
+   * It is represented as `!merge` or `!merge-spaced` when parsing
+   * or converting from Less, since the `+:` syntax is not exactly
+   * the same feature and operates more like JavaScript.
+  */
   merge?: 'list' | 'spaced'
 }
 
@@ -120,5 +128,12 @@ export class Declaration<
   // }
 }
 
-export const decl = defineType<DeclarationValue<Node, Name>>(Declaration, 'Declaration', 'decl')
+type DeclarationParams = ConstructorParameters<typeof Declaration>
+
+export const decl = defineType<DeclarationValue<Node, Name>>(Declaration, 'Declaration', 'decl') as (
+  value: DeclarationValue<Node, Name> | DeclarationParams[0],
+  options?: DeclarationParams[1],
+  location?: DeclarationParams[2],
+  fileInfo?: DeclarationParams[3]
+) => Declaration
 Declaration.prototype.allowRuleRoot = true

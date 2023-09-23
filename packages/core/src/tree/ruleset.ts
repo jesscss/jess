@@ -211,7 +211,7 @@ export class Ruleset extends Node<Node[]> {
             }
             rules[pos] = decl
             if (isNode(node, 'Mixin')) {
-              this._scope.setMixin(ident, decl, decl.options as VarDeclarationOptions)
+              this._scope.setMixin(ident, decl.value, decl.options as VarDeclarationOptions)
             } else if (isNode(node, ['VarDeclaration', 'FunctionDefinition'])) {
               this._scope.setVar(ident, decl, decl.options as VarDeclarationOptions)
             } else {
@@ -232,6 +232,7 @@ export class Ruleset extends Node<Node[]> {
                */
               context.declarationScope = node
               let evald = await node.value.eval(context)
+              context.declarationScope = undefined
               if (evald instanceof Nil) {
                 rules[pos] = evald
               } else {

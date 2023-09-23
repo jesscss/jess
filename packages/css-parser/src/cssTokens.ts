@@ -1,7 +1,7 @@
 /* eslint no-control-regex: "off" */
 import { type WritableDeep } from 'type-fest'
-import type { RawModeConfig } from './util'
-import { LexerType } from './util'
+import type { RawModeConfig } from './util/util'
+import { LexerType } from './util/util'
 import { SKIPPED_LABEL } from './advancedCstParser'
 
 /**

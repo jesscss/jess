@@ -3,6 +3,7 @@ import type { Interpolated } from './interpolated'
 import { type Context } from '../context'
 import { cast } from './util/cast'
 import { Declaration } from './declaration'
+import { isNode } from './util'
 
 /**
  * The type is determined by syntax
@@ -50,23 +51,26 @@ export class Reference extends Node<string | Interpolated, ReferenceOptions> {
       const resolved = await value.eval(context)
       value = resolved.value
     }
-    let opts = { filter: context.declarationScope }
+    let opts = context.declarationScope ? { filter: context.declarationScope } : {}
+    let returnVal: any
     switch (type) {
       case 'variable':
-        value = context.scope.getVar(value, opts)
+        returnVal = context.scope.getVar(value, opts)
         break
       case 'property':
-        value = context.scope.getProp(value, opts)
+        returnVal = context.scope.getProp(value, opts)
         break
       case 'mixin':
-        value = context.scope.getMixin(value, opts)
+        returnVal = context.scope.getMixin(value, opts)
     }
-    if (value instanceof Declaration) {
-      context.declarationScope = value
-      let returnVal = await value.value.eval(context)
+    if (returnVal instanceof Declaration) {
+      context.declarationScope = returnVal
+      returnVal = returnVal.value
+      returnVal = await returnVal.eval(context)
+      context.declarationScope = undefined
       return returnVal.inherit(this)
     } else {
-      return cast(value)
+      return cast(returnVal)
     }
   }
 }

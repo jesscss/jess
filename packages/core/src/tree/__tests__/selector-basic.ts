@@ -1,14 +1,11 @@
 import { el } from '..'
 import { Context } from '../../context'
-import { OutputCollector } from '../../output'
 
 let context: Context
-let out: OutputCollector
 
 describe('BasicSelector', () => {
   beforeEach(() => {
     context = new Context()
-    out = new OutputCollector()
   })
   it('should identify a class', () => {
     let rule = el('.foo')

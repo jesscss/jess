@@ -1,15 +1,12 @@
 import { vardecl, coll, decl, any } from '..'
 import { Context } from '../../context'
-import { OutputCollector } from '../../output'
 
 let context: Context
-let out: OutputCollector
 
 describe('Let', () => {
   beforeEach(() => {
     context = new Context()
     context.depth = 1
-    out = new OutputCollector()
   })
 
   describe('serialization', () => {

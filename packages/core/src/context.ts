@@ -74,7 +74,7 @@ export class Context {
    * When getting vars, the current declaration is ommitted
    * to prevent recursion errors
    */
-  declarationScope: Declaration
+  declarationScope: Declaration | undefined
 
   /**
    * The file (eval) context should have the same ID at compile-time
@@ -84,7 +84,7 @@ export class Context {
   varCounter: number = 0
 
   /** @todo - change to Map() */
-  classMap: Record<string, string> = Object.create(null)
+  classMap = new Map<string, string>()
 
   /**
    * The rule frames. This is used to resolve
@@ -102,17 +102,28 @@ export class Context {
    */
   exports = new Set<string>()
 
+  /** @todo - is this still used? */
   depth = 0
+
   rootRules: Node[] = []
 
-  /** currently generating a runtime module or not */
-  isRuntime: boolean
+  /**
+   * currently generating a runtime module or not
+   * @todo - remove in favor of ToModuleVisitor?
+   */
+  // isRuntime: boolean
 
-  /** In a custom declaration's value */
+  /**
+   * In a custom declaration's value. All nodes should
+   * be preserved as-is.
+  */
   inCustom: boolean
 
-  /** In a selector */
-  inSelector: boolean
+  /**
+   * In a selector
+   * @todo - remove?
+  */
+  // inSelector: boolean
 
   /** A flag set by expressions */
   canOperate: boolean
@@ -132,11 +143,15 @@ export class Context {
     return Array(this.indent + 1).join('  ')
   }
 
-  /** Hash a CSS class name or not depending on the `module` setting */
+  /**
+   * Hash a CSS class name or not depending on the `module` setting
+   * @todo - module files should have different contexts, therefore different
+   * hash maps.
+   */
   hashClass(name: string) {
     /** Remove dot for mapping */
     name = name.slice(1)
-    let lookup = this.classMap[name]
+    let lookup = this.classMap.get(name)
     if (lookup) {
       return `.${lookup}`
     }
@@ -146,7 +161,7 @@ export class Context {
     } else {
       mapVal = name
     }
-    this.classMap[name] = mapVal
+    this.classMap.set(name, mapVal)
     return `.${mapVal}`
   }
 

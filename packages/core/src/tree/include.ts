@@ -52,10 +52,10 @@ export class Include extends Node<IncludeValue> {
 
     if (!value.allowRoot && !value.allowRuleRoot) {
       let message = '@include returned an invalid node.'
-      if (value instanceof Call && this.value instanceof Call) {
-        message += ` Unknown function "${value.name}"`
+      if (value instanceof Call) {
+        message += ` Unknown reference "${value.ref}"`
       }
-      throw new Error(message)
+      throw new TypeError(message)
     }
     return value
   }
