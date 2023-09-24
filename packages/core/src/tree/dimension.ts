@@ -5,6 +5,7 @@ import {
   defineType
 } from './node'
 import { type Operator, calculate } from './util/calculate'
+import { logger } from '../logger'
 
 // import type { Context } from '../context'
 // import type { OutputCollector } from '../output'
@@ -43,10 +44,7 @@ export class Dimension extends Node<DimensionValue> {
     this.data.set('value', [value[0], v])
   }
 
-  operate(b: Node, op: Operator, context?: Context | undefined): Dimension | Color {
-    if (!(b instanceof Dimension || b instanceof Color)) {
-      throw new TypeError(`Cannot operate on ${b.type}`)
-    }
+  get unitToGroup() {
     let unitToGroup = this._unitToGroup
     if (!unitToGroup) {
       const lengthEntries: UnitMapEntries = ['m', 'cm', 'mm', 'in', 'px', 'pt', 'pc'].map((unit) => [unit as LengthUnit, ConversionGroup.Length])
@@ -55,6 +53,14 @@ export class Dimension extends Node<DimensionValue> {
       const entries = lengthEntries.concat(durationEntries).concat(angleEntries)
       this._unitToGroup = unitToGroup = new Map(entries)
     }
+    return unitToGroup
+  }
+
+  operate(b: Node, op: Operator, context?: Context | undefined): Dimension | Color {
+    if (!(b instanceof Dimension || b instanceof Color)) {
+      throw new TypeError(`Cannot operate on ${b.type}`)
+    }
+    let unitToGroup = this.unitToGroup
     if (b instanceof Color) {
       if (this.unit) {
         throw new TypeError(`Cannot convert "${this}" to a color`)
@@ -116,16 +122,69 @@ export class Dimension extends Node<DimensionValue> {
     return new Dimension([calculate(aVal, op, bVal), aUnit])
   }
 
+  compare(b: Node, context: Context) {
+    if (!(b instanceof Dimension || b instanceof Color)) {
+      /** Do a string comparison */
+      return super.compare(b, context)
+    }
+    let unitToGroup = this.unitToGroup
+    let isStrictMode = context?.opts.unitMode === UnitMode.STRICT
+    if (b instanceof Color) {
+      if (this.unit) {
+        let msg = `Cannot convert "${this}" to a color`
+        if (isStrictMode) {
+          throw new TypeError(msg)
+        } else {
+          logger.warn(msg)
+        }
+        return super.compare(b, context)
+      }
+      let thisColor = new Color(ColorFormat.RGB).inherit(this)
+      thisColor.rgb = [this.number, this.number, this.number]
+      return thisColor.compare(b)
+    }
+    let [aVal, aUnit] = this.value
+    let [bVal, bUnit] = b.value
+
+    if (
+      (!aUnit && !bUnit) ||
+      (aUnit && bUnit)
+    ) {
+      /** These are the only truly comparable dimensions */
+      if (!aUnit) {
+        return Node.numericCompare(aVal, bVal)
+      }
+      const aGroup = unitToGroup.get(aUnit)
+      const bGroup = unitToGroup.get(bUnit!)
+
+      if (aGroup === undefined || bGroup === undefined || aGroup !== bGroup) {
+        if (isStrictMode) {
+          /** Units don't match, and can't be converted */
+          throw new TypeError('Incompatible units. Change the units or use the unit function')
+        }
+        /** Just compare numbers but not units */
+        return Node.numericCompare(aVal, bVal)
+      }
+      const group = conversions[bGroup]
+      // @ts-expect-error - set up proper indexing later
+      let atomicUnit = group[aUnit] as number
+      // @ts-expect-error - set up proper indexing later
+      let targetUnit = group[bUnit] as number
+
+      bVal = bVal / (atomicUnit / targetUnit)
+
+      return Node.numericCompare(aVal, bVal)
+    } else {
+      return super.compare(b, context)
+    }
+  }
+
   toTrimmedString() {
     let precision = 100000000
     let [number, unit = ''] = this.value
     number = Math.round(number * precision) / precision
     return `${number}${unit}`
   }
-
-  unify(b: Dimension) {
-
-  };
 
   /** @todo - move to visitors */
   // toCSS(context: Context, out: OutputCollector) {

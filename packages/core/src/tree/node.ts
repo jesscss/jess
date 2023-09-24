@@ -457,13 +457,24 @@ export abstract class Node<
    * 0 = equal (==)
    * 1 = greater than (>)
    * -1 = less than (<)
+   * undefined = not comparable
    */
-  compare(b: Node, context?: Context) {
+  compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
     let aVal = this.toString()
     let bVal = b.toString()
     if (aVal === bVal) {
       return 0
     } else if (aVal > bVal) {
+      return 1
+    } else {
+      return -1
+    }
+  }
+
+  static numericCompare(a: number, b: number) {
+    if (a === b) {
+      return 0
+    } else if (a > b) {
       return 1
     } else {
       return -1

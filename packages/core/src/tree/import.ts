@@ -10,9 +10,11 @@ import { Node, defineType } from './node'
  */
 export type ImportOptions = {
   /** Make mixins & vars available, set to `true` with `@import` */
-  use?: boolean
+  reference?: boolean
   /** Output selectors, set to `true` with `@import` */
   include?: boolean
+  /** Classic `@import` in Less/Sass doesn't have isolated scope */
+  useParentScope?: boolean
   /** JS/TS (or modules compiled to JS) imports */
   from?: boolean
 }

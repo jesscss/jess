@@ -13,7 +13,7 @@ export type VarDeclarationOptions = DeclarationOptions & {
    */
   setDefined?: boolean
 
-  /** Used by SCSS (!default) and Jess (?:) */
+  /** Used by SCSS (!default) */
   setIfUndefined?: boolean
   /**
    * Throw if already defined in the immediate scope

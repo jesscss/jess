@@ -1,4 +1,5 @@
 import { type Context } from '../context'
+import { Bool } from './bool'
 import { Expression } from './expression'
 import { Node, defineType } from './node'
 // import type { Context } from '../context'
@@ -25,6 +26,9 @@ export class Paren extends Node<Node, ParenOptions> {
       let { value } = this
       let isExpression = value instanceof Expression
       value = await value.eval(context)
+      if (value instanceof Bool) {
+        return value
+      }
       context.canOperate = canOperate
       if (isExpression && !(value instanceof Expression)) {
         return value

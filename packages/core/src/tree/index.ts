@@ -25,12 +25,14 @@ export { Node, type FileInfo, type LocationInfo }
 
 /** @todo - remove nodes from tree index that we don't need to bundle for runtime? */
 export * from './at-rule'
+export * from './bool'
 export * from './ampersand'
 export * from './anonymous'
 export * from './call'
 export * from './collection'
 export * from './color'
 export * from './combinator'
+export * from './condition'
 export * from './declaration'
 export * from './dimension'
 export * from './expression'

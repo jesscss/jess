@@ -27,10 +27,11 @@
 @let count; // a Node of `Nil`
 
 // setting vars - note, this avoids the need for !global in Sass
-@set count +: 1;
+// Note also that this will throw an error in Jess without `@let count`
+$count: 1;
 
 // `$` is a referencer, to reduce ambiguity
-@set count: $count + 1;
+$count: $count + 1;
 
 // allow destructuring
 @let list: one, two;
@@ -46,9 +47,10 @@
   foo: #($count + 1);
 }
 
-// !() for "live" expressions (only allowed in values)
+// var expressions will be re-output as "live" expression functions
+// i.e. changing the value of `count` will update `--live`
 .bar {
-  foo: !($count + 1); // outputs something like var(--a1sdf, 2);
+  foo: var(--live, $count + 1);
 }
 
 // Function calls can use $
@@ -79,6 +81,7 @@
 .foo {
   // Glob expression to limit extend
   // '~' is compilation root
+  // @todo - remove?
   :extend(.bar '~/*');
 }
 ```
@@ -91,29 +94,36 @@ Sass is an overly-complex stylesheet language. Jess aims to be:
 - 100% compatible with Less
 - Compatible with a common subset of Sass called Sass+ (to be defined)
 
-### `@use [file|object|map] [namespace|'(' imports ')']? ('with' reference|declarationList)?`
+### `@use ('(' type ')')? [file|object|map] [namespace|'(' imports ')']? ('with' reference|declarationList)?`
 
-Will import the scope (mixins, variables, and selector references) of the object. Can be a stylesheet or other scope object.
+Non-leaky replacement for `@import`. Will import the scope (mixins, variables, and selector references) of the object, as well as render rules.
 
 Can be at the root or nested.
 
+### `@ref ('(' type ')')? [file|object|map] [namespace|'(' imports ')']? ('with' reference|declarationList)?`
+
+(In Less, this will be `@reference`)
+
 ```scss
-@use 'colors.less';
+@ref 'colors.less';
 // or override variables
-@use 'colors.less' with {
+@ref 'colors.less' with {
   // should throw an error if primary-color is not defined
-  @set primary-color: #333;
+  $primary-color: #333;
 }
 // or
-@use 'colors.less' colors;
+@ref 'colors.less' colors;
 
 //or
-@use 'colors.less' (primary-color);
+@ref 'colors.less' (primary-color);
+```
 
+
+```less
 // or ultimate customization
 @use 'bootstrap.scss' with {
   // Transitively apply a different use
-  @use 'variables.scss' with variables;
+  @ref 'variables.scss' with variables;
   @use 'some-classes.scss' with {
     // Replace a class
     .class {
@@ -144,12 +154,12 @@ They would be subject to evaluation order.
 ```scss
 // use1.jess
 @use './file.jess' with {
-  @set foo: one;
+  $foo: one;
 }
 
 // use2.jess
 @use './file.jess' with {
-  @set foo: two;
+  $foo: two;
 }
 
 // final.jess
@@ -161,13 +171,13 @@ They would be subject to evaluation order.
 }
 ```
 
-Q: What if you don't want to forward a use?
+Q: What if you don't want to forward variables / mixins?
 
 You can use the `@private` at-rule:
 
 ```scss
 // This is a private `@use`
-@private @use './somefile.jess';
+@private @ref './somefile.jess';
 // can also be used with variables
 @private @let -private: var;
 ```
@@ -199,18 +209,19 @@ Can be at the root or nested.
 
 ```scss
 // main.jess
-@use 'colors.jess' colors;
-@include 'rules.jess' colors;
+@ref 'colors.jess' colors;
+@include 'rules.jess' with colors;
 
 // rules.jess
 // Doesn't have access to vars in main.jess w/o:
 @use 'main.jess';
 // this would include the vars in colors.jess
 ```
-Using an `@include` that's the _result_ of a `@use`:
+Using an `@include` that's the _result_ of a `@ref`:
 ```scss
-@use 'theme.jess' theme with {
-  @assign colors {
+@ref 'theme.jess' theme with {
+  // Using +: with a collection will merge values
+  $colors +: {
     primary: #3a3a3a;
   }
 }
@@ -219,7 +230,7 @@ Using an `@include` that's the _result_ of a `@use`:
 You could also do the above like:
 ```scss
 @include 'theme.jess' with {
-  @assign colors {
+  $colors +: {
     primary: #3a3a3a;
   }
 }
@@ -228,8 +239,6 @@ You could also do the above like:
 ```scss
 @use 'mixins.less';
 
-// Note: this is necessary for Less, if you
-// wish to include selectors evaluated as mixins.
 @include .root-mixin();
 
 // this will do the same thing, except not include selectors?

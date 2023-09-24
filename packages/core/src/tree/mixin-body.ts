@@ -2,10 +2,12 @@ import { Node, defineType } from './node'
 import type { List } from './list'
 import type { Ruleset } from './ruleset'
 import type { Class } from 'type-fest'
+import type { Condition } from './condition'
 
 export type MixinValueType = Ruleset | ((...args: any[]) => any)
 export type MixinValue<T extends MixinValueType = Ruleset> = {
   params?: List
+  guard?: Condition
   value: T
 }
 

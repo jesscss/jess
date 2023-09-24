@@ -3,7 +3,6 @@ import type { Interpolated } from './interpolated'
 import { type Context } from '../context'
 import { cast } from './util/cast'
 import { Declaration } from './declaration'
-import { isNode } from './util'
 
 /**
  * The type is determined by syntax
