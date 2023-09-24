@@ -250,8 +250,10 @@ You could also do the above like:
 call: $my-func(one: $value, $two, $three);
 ```
 JS representation:
+
+Mixins assign named arguments, and then go through positional arguments.
 ```js
-myFunc({ one: value }, value, two, three);
+myFunc({ one: value }, two, three);
 
 // defined with https://typia.io/docs/
 /**

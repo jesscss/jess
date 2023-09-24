@@ -55,13 +55,8 @@ export class ScopeEntry {
   }
 }
 
-export type ScopeEntryMap = Record<string, ScopeEntry | undefined> & {
-  prototype: ScopeEntryMap | undefined
-}
-
-export type PropMap = Record<string, Declaration | Declaration[]> & {
-  prototype: PropMap | undefined
-}
+export type ScopeEntryMap = Record<string, ScopeEntry | undefined>
+export type PropMap = Record<string, Declaration | Declaration[]>
 
 /**
  * For JS interoperability,
@@ -267,6 +262,7 @@ export class Scope {
 
   setProp(key: string, value: Declaration | Declaration[]) {
     let { props } = this
+    Scope.cachedKeys.set(key, key)
     if (Object.prototype.hasOwnProperty.call(props, key)) {
       /** Modify the local entry */
       let entry = props[key]!
@@ -288,8 +284,8 @@ export class Scope {
    * This will store a scoped identifier
    * that is compatible with JS.
    */
-  private _setVarOrMixin(lookupKey: 'vars' | 'mixins', key: string, value: unknown, opts?: ScopeEntryOptions) {
-    let vars = this[lookupKey]
+  private _setVarOrMixin(lookupKey: 'var' | 'mixin', key: string, value: unknown, opts?: ScopeEntryOptions) {
+    let vars = this[`${lookupKey}s`]
     if (value instanceof ScopeEntry) {
       vars[key] = value
       return
@@ -318,7 +314,7 @@ export class Scope {
        * different errors.
        */
       if (entry.options.protected ?? opts?.protected) {
-        throw new SyntaxError(`Assignment to protected variable "${key}"`)
+        throw new SyntaxError(`Assignment to protected ${lookupKey} "${key}"`)
       }
       /** Set the already defined variable */
       if (opts?.setDefined) {
@@ -336,7 +332,12 @@ export class Scope {
         throw new SyntaxError(`"${key}" is already defined`)
       }
 
-      entry.value = Array.isArray(entry.value) ? [value, ...entry.value] : [value, entry.value]
+      if (lookupKey === 'var') {
+        entry.value = Array.isArray(entry.value) ? [value, ...entry.value] : [value, entry.value]
+      } else {
+        /** mixins are in linear order */
+        entry.value = Array.isArray(entry.value) ? [...entry.value, value] : [entry.value, value]
+      }
     } else {
       /** Shadow the variable within the local scope */
       vars[normalKey] = new ScopeEntry(normalKey, value, opts)
@@ -344,38 +345,41 @@ export class Scope {
   }
 
   setVar(key: string, value: unknown, opts?: ScopeEntryOptions) {
-    this._setVarOrMixin('vars', key, value, opts)
+    this._setVarOrMixin('var', key, value, opts)
   }
 
   setMixin(key: string, value: unknown, opts?: ScopeEntryOptions) {
-    this._setVarOrMixin('mixins', key, value, opts)
+    this._setVarOrMixin('mixin', key, value, opts)
   }
 
   getVar(key: string, options?: GetterOptions) {
     return this._getBase('_vars', key, options)
   }
 
-  getMixin(key: string, options: GetterOptions = {}) {
-    return this._getBase('_mixins', key, {
-      filter(value: unknown) {
-        return { value, done: false }
-      },
-      ...options
-    })
+  getMixin(key: string, options?: GetterOptions) {
+    return this._getBase('_mixins', key, options)
   }
 
   getProp(key: string, options: GetterOptions = {}) {
     let props: Declaration | Declaration[] = this._getBase('_props', key, {
       filter(value: Declaration) {
-        if (!value.options?.merge) {
-          return { value, done: true }
-        }
+        /**
+         * Find all declarations, in case we need to merge
+         */
         return { value, done: false }
       },
       ...options
     })
     /** Our last entry had a merge flag, so collect merges */
     if (Array.isArray(props)) {
+      /**
+       * If the most recent value is not a merge value
+       * return this as the only value.
+       */
+      if (!props[0].options?.merge) {
+        return props[0]
+      }
+
       let length = props.length
       let values: Node[] = []
       let important: string | undefined
@@ -390,6 +394,7 @@ export class Scope {
           }
         }
       }
+      key = props[0].name.toString()
       return new Declaration([
         ['name', key],
         ['value', merge === 'list' ? new List(values) : new Spaced(values)],
@@ -453,6 +458,21 @@ export class Scope {
     let current: ScopeEntryMap | PropMap | undefined = this[collection]
     let results: any[] = []
 
+    /**
+     * In Less / Jess, mixins are defined / merged per scope
+     * We don't climb the prototype chain, and they aren't filtered.
+     */
+    if (collection === '_mixins') {
+      let entry = current[key]
+      if (!entry) {
+        /** Needed? */
+        if (options.suppressUndefinedError) {
+          return undefined
+        }
+        throw new ReferenceError(`"${baseKey}" is not defined`)
+      }
+      return (entry as unknown as ScopeEntryMap).value
+    }
     while (current) {
       let entry = (options.local && !Object.prototype.hasOwnProperty.call(current, key)) ? undefined : current[key]
       if (!entry) {
@@ -462,7 +482,7 @@ export class Scope {
         }
         throw new ReferenceError(`"${baseKey}" is not defined`)
       }
-      let entryValue: unknown = (collection === '_vars' || collection === '_mixins')
+      let entryValue: unknown = collection === '_vars'
         ? (entry as unknown as ScopeEntryMap).value
         : entry
       let lastResult: FilterResult
@@ -489,7 +509,7 @@ export class Scope {
         break
       }
       /** Traverse up the prototype chain */
-      current = current.prototype
+      current = Object.getPrototypeOf(current)
     }
     let returnResult = results.length
       ? results.length === 1

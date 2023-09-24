@@ -33,8 +33,22 @@ describe('Scope - Nodes', async () => {
 
     it('will return a space-merged declaration', () => {
       scope.setProp('prop', decl({ name: 'prop', value: any('one') }, { merge: 'spaced' }))
-      scope.setProp('prop', decl({ name: 'prop', value: any('two') }, { merge: 'spaced' }))
-      expect(`${scope.getProp('prop')}`).toBe('prop: one two;')
+      scope.setProp('prop', decl({ name: 'prop', value: any('two') }))
+      let inherited = new Scope(scope)
+      inherited.setProp('prop', decl({ name: 'prop', value: any('three') }, { merge: 'spaced' }))
+      expect(`${inherited.getProp('prop')}`).toBe('prop: one three;')
+    })
+
+    it('does not return parent mixins if shadowed', () => {
+      scope.setMixin('foo', 'mixin')
+      expect(scope.getMixin('foo')).toBe('mixin')
+      let inherited = new Scope(scope)
+      expect(inherited.getMixin('foo')).toBe('mixin')
+      inherited.setMixin('foo', 'new one')
+      expect(inherited.getMixin('foo')).toBe('new one')
+      inherited.setMixin('foo', 'new two')
+      expect(inherited.getMixin('foo')).toStrictEqual(['new one', 'new two'])
+      expect(scope.getMixin('foo')).toBe('mixin')
     })
   })
 
