@@ -9,6 +9,7 @@ import { isNode } from './util'
 import { type Rule } from './rule'
 import { type AtRule } from './at-rule'
 import { Nil } from './nil'
+import { type MixinBody } from './mixin-body'
 
 export const enum Priority {
   None = 0,
@@ -211,7 +212,7 @@ export class Ruleset extends Node<Node[]> {
             }
             rules[pos] = decl
             if (isNode(node, 'Mixin')) {
-              this._scope.setMixin(ident, decl.value, decl.options as VarDeclarationOptions)
+              this._scope.setMixin(ident, decl.value as MixinBody, decl.options as VarDeclarationOptions)
             } else if (isNode(node, ['VarDeclaration', 'FunctionDefinition'])) {
               this._scope.setVar(ident, decl, decl.options as VarDeclarationOptions)
             } else {

@@ -3,6 +3,8 @@ import { Declaration } from '../tree/declaration'
 import { List } from '../tree/list'
 import { Spaced } from '../tree/spaced'
 import type { Node } from '../tree/node'
+import type { MixinBody } from '../tree/mixin-body'
+import isPlainObject from 'lodash-es/isPlainObject'
 /**
  * The Scope object is meant to be an efficient
  * lookup mechanism for variables, mixins,
@@ -43,19 +45,19 @@ export type ScopeEntryOptions = {
  * about keys / values. For example, values
  * from imports are protected.
  */
-export class ScopeEntry {
+export class ScopeEntry<T = unknown> {
   options: ScopeEntryOptions
   key: string
-  value: unknown
+  value: T | undefined
 
-  constructor(key: string, value?: unknown, opts?: ScopeEntryOptions) {
+  constructor(key: string, value?: T, opts?: ScopeEntryOptions) {
     this.key = key
     this.value = value
     this.options = opts ?? {}
   }
 }
 
-export type ScopeEntryMap = Record<string, ScopeEntry | undefined>
+export type ScopeEntryMap<T = unknown> = Record<string, ScopeEntry<T> | undefined>
 export type PropMap = Record<string, Declaration | Declaration[]>
 
 /**
@@ -109,7 +111,7 @@ export type ScopeFilter = (
  */
 export class Scope {
   /**
-   * Includes vars but also mixin declarations,
+   * Includes vars but also
    * imported functions, JS identifiers, etc
    */
   _vars: ScopeEntryMap
@@ -118,7 +120,7 @@ export class Scope {
    * mixins in the vars map, but other languages
    * need more dis-ambiguation.
    */
-  _mixins: ScopeEntryMap
+  _mixins: ScopeEntryMap<MixinBody>
   _props: PropMap
   _parent?: Scope
 
@@ -348,7 +350,7 @@ export class Scope {
     this._setVarOrMixin('var', key, value, opts)
   }
 
-  setMixin(key: string, value: unknown, opts?: ScopeEntryOptions) {
+  setMixin(key: string, value: MixinBody, opts?: ScopeEntryOptions) {
     this._setVarOrMixin('mixin', key, value, opts)
   }
 
@@ -357,7 +359,25 @@ export class Scope {
   }
 
   getMixin(key: string, options?: GetterOptions) {
-    return this._getBase('_mixins', key, options)
+    let mixins = this._getBase('_mixins', key, options)
+    if (mixins) {
+      let mixinArr = Array.isArray(mixins) ? mixins : [mixins]
+      return function(...args: any[]) {
+        const mixinLength = mixinArr.length
+        /**
+         * Check named and positional arguments
+         * against mixins, to see which ones match.
+         * (Any mixin with a mis-match of
+         * arguments fails.)
+         */
+        for (let i = 0; i < mixinLength; i++) {
+          let mixin = mixinArr[i]
+          if (isPlainObject(args[0])) {
+            const keys = Object.keys(args[0])
+          }
+        }
+      }
+    }
   }
 
   getProp(key: string, options: GetterOptions = {}) {
@@ -434,6 +454,8 @@ export class Scope {
    * We can pass in a filter to narrow the
    * entries.
    */
+  private _getBase(collection: '_mixins', baseKey: string, options?: GetterOptions): MixinBody | MixinBody[] | undefined
+  private _getBase(collection: '_vars' | '_props', baseKey: string, options?: GetterOptions): any
   private _getBase(collection: '_vars' | '_props' | '_mixins', baseKey: string, options: GetterOptions = {}): any {
     let NONE = Scope.NONE
     let key = this.normalizeKey(baseKey)
