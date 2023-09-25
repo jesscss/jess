@@ -19,12 +19,21 @@ import { Declaration } from './declaration'
 export type ReferenceOptions = {
   type: 'variable' | 'property' | 'mixin'
 }
+
+type NodeType = typeof Node<string | Interpolated, ReferenceOptions>
+type ReferenceParams = ConstructorParameters<NodeType>
 /**
  * This is a variable or property reference,
  * which can itself contain a reference (a variable variable).
  */
 export class Reference extends Node<string | Interpolated, ReferenceOptions> {
-  options: ReferenceOptions = { type: 'variable' }
+  options: ReferenceOptions
+
+  constructor(...args: ReferenceParams) {
+    /** Default to a variable-type reference */
+    args[1] ??= { type: 'variable' }
+    super(...args)
+  }
 
   toTrimmedString(): string {
     const { type } = this.options ?? {}
@@ -69,7 +78,7 @@ export class Reference extends Node<string | Interpolated, ReferenceOptions> {
       context.declarationScope = undefined
       return returnVal.inherit(this)
     } else {
-      return cast(returnVal)
+      return cast(returnVal).inherit(this)
     }
   }
 }

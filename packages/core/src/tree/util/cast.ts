@@ -3,6 +3,8 @@ import { Nil } from '../nil'
 import { List } from '../list'
 import { Dimension } from '../dimension'
 import { Anonymous } from '../anonymous'
+import { Color } from '../color'
+import { FunctionDefinition } from '../function-definition'
 import isPlainObject from 'lodash-es/isPlainObject'
 
 function getNodeType(value: any): Node {
@@ -11,6 +13,9 @@ function getNodeType(value: any): Node {
   }
   if (value === undefined || value === null) {
     return new Nil()
+  }
+  if (value.constructor === Function) {
+    return new FunctionDefinition(value)
   }
   /**
    * @todo - need to remove the $root part
@@ -23,10 +28,20 @@ function getNodeType(value: any): Node {
     return new Anonymous('[object]')
   }
   if (Array.isArray(value)) {
-    return new List(value)
+    return new List(value.map(val => cast(val)))
   }
   if (value.constructor === Number) {
     return new Dimension([value as number])
+  }
+  if (typeof value === 'string') {
+    if (value.startsWith('#')) {
+      return new Color(value)
+    } else {
+      let result = value.match(/^(\d*(?:\.\d+))([a-z]*)$/i)
+      if (result) {
+        return new Dimension([parseFloat(result[1]), result[2] || undefined])
+      }
+    }
   }
   return new Anonymous(value.toString())
 }

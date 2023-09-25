@@ -4,6 +4,7 @@ import { isNode } from '../tree/util'
 import { cast } from '../tree/util/cast'
 import type { MixinBody } from '../tree/mixin-body'
 
+/** Returns a plain JS function for calling a set of mixins */
 export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
   let mixinArr = Array.isArray(mixins) ? mixins : [mixins]
   /** This will be called by a mixin call or by JavaScript */
@@ -35,16 +36,18 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         let paramEntries = Array.from(params)
         let skipPos: number[] = []
         /**
-             * First argument can be a plain object with named params
-             * e.g. { a: 1, b: 2 }
-             */
+         * First argument can be a plain object with named params
+         * e.g. { a: 1, b: 2 }
+         */
+        let argPos = 0
         if (isPlainObject(args[0])) {
+          argPos = 1
           let namedMap = new Map(Object.entries(args[0]))
           /**
-               * We iterate through params instead of args,
-               * because we need to track the position
-               * of each parameter.
-               */
+           * We iterate through params instead of args,
+           * because we need to track the position
+           * of each parameter.
+           */
           for (let i = 0; i < paramEntries.length; i++) {
             let [key] = paramEntries[i]
             if (typeof key === 'string') {
@@ -67,9 +70,12 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           }
         }
         /** Now we can go through positional matches */
-        let argPos = 0
         for (let i = 0; i < paramEntries.length; i++) {
-
+          if (skipPos.includes(i)) {
+            continue
+          }
+          paramEntries[i][1] = cast(args[argPos])
+          argPos++
         }
       }
     }

@@ -5,8 +5,7 @@ import { Spaced } from '../tree/spaced'
 import type { Node } from '../tree/node'
 import type { MixinBody } from '../tree/mixin-body'
 import type { Ruleset } from '../tree/ruleset'
-import isPlainObject from 'lodash-es/isPlainObject'
-import { isNode } from '../tree/util'
+import { getFunctionFromMixins } from './util'
 /**
  * The Scope object is meant to be an efficient
  * lookup mechanism for variables, mixins,
@@ -59,7 +58,7 @@ export class ScopeEntry<T = unknown> {
   }
 }
 
-type MixinEntry = MixinBody | Ruleset
+export type MixinEntry = MixinBody | Ruleset
 export type ScopeEntryMap<T = unknown> = Record<string, ScopeEntry<T> | undefined>
 export type PropMap = Record<string, Declaration | Declaration[]>
 
@@ -364,55 +363,7 @@ export class Scope {
   getMixin(key: string, options?: GetterOptions) {
     let mixins = this._getBase('_mixins', key, options)
     if (mixins) {
-      let mixinArr = Array.isArray(mixins) ? mixins : [mixins]
-      /** This will be called by a mixin call or by JavaScript */
-      return function(...args: any[]) {
-        const mixinLength = mixinArr.length
-        let mixinCandidates: MixinEntry[] = []
-        /**
-         * Check named and positional arguments
-         * against mixins, to see which ones match.
-         * (Any mixin with a mis-match of
-         * arguments fails.)
-         *
-         * Possibly use pattern matcher?
-         * @see https://github.com/shuckster/match-iz/wiki/Core-Pattern-helpers#combinators
-         */
-        for (let i = 0; i < mixinLength; i++) {
-          let mixin = mixinArr[i]
-          let isPlainRule = isNode(mixin, 'Ruleset')
-          let paramLength = isPlainRule ? 0 : (mixin as MixinBody).params?.size ?? 0
-          if (!paramLength) {
-            /** Exit early if args were passed in, but no args are possible */
-            if (args.length) {
-              continue
-            }
-            mixinCandidates.push(mixin)
-          } else {
-            /** The mixin has parameters, so let's check args to see if there's a match */
-            let params = (mixin as MixinBody).params!
-            let skipPos: number[] = []
-            let match = true
-            let paramCopy = new Map(params)
-            /**
-             * First argument can be a plain object with named params
-             * e.g. { a: 1, b: 2 }
-             */
-            if (isPlainObject(args[0])) {
-              let namedMap = new Map(Object.entries(args[0]))
-              let paramEntries = Array.from(params)
-              for (let i = 0; i < paramEntries.length; i++) {
-                let [key, value] = paramEntries[i]
-                if (typeof key === 'string') {
-                  if (namedMap.has(key)) {
-                    paramEntries
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+      return getFunctionFromMixins(mixins)
     }
   }
 
