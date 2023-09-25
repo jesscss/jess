@@ -10,6 +10,7 @@ import type { Mixin } from '../mixin'
 import type { FunctionDefinition } from '../function-definition'
 import { Node } from '../node'
 import type { Rule } from '../rule'
+import type { Ruleset } from '../ruleset'
 import type { SelectorSequence } from '../selector-sequence'
 import type { Import } from '../import'
 import type { Nil } from '../nil'
@@ -40,6 +41,7 @@ export function isNode(value: any, type: ['Mixin', 'FunctionDefinition']): value
 export function isNode(value: any, type: 'SelectorSequence'): value is SelectorSequence
 export function isNode(value: any, type: 'SelectorList'): value is SelectorList
 export function isNode(value: any, type: 'Rule'): value is Rule
+export function isNode(value: any, type: 'Ruleset'): value is Ruleset
 export function isNode(value: any, type: 'AtRule'): value is AtRule
 export function isNode(value: any, type: ['Rule', 'AtRule']): value is Rule | AtRule
 export function isNode(value: any, type: 'Import'): value is Import

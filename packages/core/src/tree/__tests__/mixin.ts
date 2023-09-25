@@ -1,4 +1,4 @@
-import { mixin, mixinbody, ruleset, decl, any } from '..'
+import { mixin, mixinbody, ruleset, decl, any, condition, paren, ref } from '..'
 import { Context } from '../../context'
 
 let context: Context
@@ -22,6 +22,51 @@ describe('Mixin', () => {
       })
       expect(`${rule}`).toBeString(`
         @mixin myMixin {
+          color: black;
+          background-color: white;
+        }
+      `)
+    })
+
+    it('should serialize a mixin with args', () => {
+      const rule = mixin({
+        name: 'my-mixin',
+        value: mixinbody({
+          params: new Map([
+            ['a', any('black')],
+            ['b', any('white')]
+          ]),
+          value: ruleset([
+            decl({ name: 'color', value: any('black') }),
+            decl({ name: 'background-color', value: any('white') })
+          ])
+        })
+      })
+      expect(`${rule}`).toBeString(`
+        @mixin my-mixin($a: black, $b: white) {
+          color: black;
+          background-color: white;
+        }
+      `)
+    })
+
+    it('should serialize a guard', () => {
+      const rule = mixin({
+        name: 'my-mixin',
+        value: mixinbody({
+          params: new Map([
+            ['a', any('black')],
+            ['b', any('white')]
+          ]),
+          guard: condition([paren(condition([ref('a'), '=', ref('b')]))]),
+          value: ruleset([
+            decl({ name: 'color', value: any('black') }),
+            decl({ name: 'background-color', value: any('white') })
+          ])
+        })
+      })
+      expect(`${rule}`).toBeString(`
+        @mixin my-mixin($a: black, $b: white) when ($a = $b) {
           color: black;
           background-color: white;
         }

@@ -18,7 +18,7 @@ import { type DeclarationValue } from './declaration'
  */
 export class Mixin<T extends MixinValueType = Ruleset> extends VarDeclaration<string | Interpolated, MixinBody<T>> {
   toTrimmedString(depth?: number): string {
-    return `@mixin ${this.name} ${this.value.toString(depth)}`
+    return `@mixin ${this.name}${this.value.toString(depth)}`
   }
   // register(context: Context, name: string, node: Declaration<string>): void {
   //   context.scope.setVar(name, node)

@@ -4,7 +4,9 @@ import { List } from '../tree/list'
 import { Spaced } from '../tree/spaced'
 import type { Node } from '../tree/node'
 import type { MixinBody } from '../tree/mixin-body'
+import type { Ruleset } from '../tree/ruleset'
 import isPlainObject from 'lodash-es/isPlainObject'
+import { isNode } from '../tree/util'
 /**
  * The Scope object is meant to be an efficient
  * lookup mechanism for variables, mixins,
@@ -57,6 +59,7 @@ export class ScopeEntry<T = unknown> {
   }
 }
 
+type MixinEntry = MixinBody | Ruleset
 export type ScopeEntryMap<T = unknown> = Record<string, ScopeEntry<T> | undefined>
 export type PropMap = Record<string, Declaration | Declaration[]>
 
@@ -120,7 +123,7 @@ export class Scope {
    * mixins in the vars map, but other languages
    * need more dis-ambiguation.
    */
-  _mixins: ScopeEntryMap<MixinBody>
+  _mixins: ScopeEntryMap<MixinEntry>
   _props: PropMap
   _parent?: Scope
 
@@ -350,7 +353,7 @@ export class Scope {
     this._setVarOrMixin('var', key, value, opts)
   }
 
-  setMixin(key: string, value: MixinBody, opts?: ScopeEntryOptions) {
+  setMixin(key: string, value: MixinEntry, opts?: ScopeEntryOptions) {
     this._setVarOrMixin('mixin', key, value, opts)
   }
 
@@ -362,8 +365,10 @@ export class Scope {
     let mixins = this._getBase('_mixins', key, options)
     if (mixins) {
       let mixinArr = Array.isArray(mixins) ? mixins : [mixins]
+      /** This will be called by a mixin call or by JavaScript */
       return function(...args: any[]) {
         const mixinLength = mixinArr.length
+        let mixinCandidates: MixinEntry[] = []
         /**
          * Check named and positional arguments
          * against mixins, to see which ones match.
@@ -375,8 +380,36 @@ export class Scope {
          */
         for (let i = 0; i < mixinLength; i++) {
           let mixin = mixinArr[i]
-          if (isPlainObject(args[0])) {
-            const keys = Object.keys(args[0])
+          let isPlainRule = isNode(mixin, 'Ruleset')
+          let paramLength = isPlainRule ? 0 : (mixin as MixinBody).params?.size ?? 0
+          if (!paramLength) {
+            /** Exit early if args were passed in, but no args are possible */
+            if (args.length) {
+              continue
+            }
+            mixinCandidates.push(mixin)
+          } else {
+            /** The mixin has parameters, so let's check args to see if there's a match */
+            let params = (mixin as MixinBody).params!
+            let skipPos: number[] = []
+            let match = true
+            let paramCopy = new Map(params)
+            /**
+             * First argument can be a plain object with named params
+             * e.g. { a: 1, b: 2 }
+             */
+            if (isPlainObject(args[0])) {
+              let namedMap = new Map(Object.entries(args[0]))
+              let paramEntries = Array.from(params)
+              for (let i = 0; i < paramEntries.length; i++) {
+                let [key, value] = paramEntries[i]
+                if (typeof key === 'string') {
+                  if (namedMap.has(key)) {
+                    paramEntries
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -457,7 +490,7 @@ export class Scope {
    * We can pass in a filter to narrow the
    * entries.
    */
-  private _getBase(collection: '_mixins', baseKey: string, options?: GetterOptions): MixinBody | MixinBody[] | undefined
+  private _getBase(collection: '_mixins', baseKey: string, options?: GetterOptions): MixinEntry | MixinEntry[] | undefined
   private _getBase(collection: '_vars' | '_props', baseKey: string, options?: GetterOptions): any
   private _getBase(collection: '_vars' | '_props' | '_mixins', baseKey: string, options: GetterOptions = {}): any {
     let NONE = Scope.NONE

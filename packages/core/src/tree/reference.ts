@@ -24,7 +24,7 @@ export type ReferenceOptions = {
  * which can itself contain a reference (a variable variable).
  */
 export class Reference extends Node<string | Interpolated, ReferenceOptions> {
-  declare options: ReferenceOptions
+  options: ReferenceOptions = { type: 'variable' }
 
   toTrimmedString(): string {
     const { type } = this.options ?? {}

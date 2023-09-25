@@ -14,7 +14,7 @@ export type ParenOptions = {
  */
 export class Paren extends Node<Node, ParenOptions> {
   toTrimmedString(): string {
-    let output = super.toString()
+    let output = super.toTrimmedString()
     let escapeChar = this.options?.escaped ? '~' : ''
     return `${escapeChar}(${output})`
   }

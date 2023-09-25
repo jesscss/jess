@@ -6,11 +6,11 @@ import { Anonymous } from '../anonymous'
 import isPlainObject from 'lodash-es/isPlainObject'
 
 function getNodeType(value: any): Node {
-  if (value === undefined || value === null) {
-    return new Nil()
-  }
   if (value instanceof Node) {
     return value
+  }
+  if (value === undefined || value === null) {
+    return new Nil()
   }
   /**
    * @todo - need to remove the $root part
