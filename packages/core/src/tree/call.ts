@@ -1,6 +1,7 @@
 import { Node, defineType } from './node'
 import { type List } from './list'
 import { type Context } from '../context'
+import { isNode } from './util'
 
 export type CallValue = {
   /**
@@ -47,6 +48,13 @@ export class Call extends Node<CallValue> {
         ref = await ref.eval(context)
       }
       args = await args?.eval(context)
+      if (isNode(ref, 'FunctionDefinition')) {
+        try {
+          return ref.value.call(context)
+        } catch (e) {
+
+        }
+      }
       context.canOperate = canOperate
       let node = this.clone()
       node.ref = ref
