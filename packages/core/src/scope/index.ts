@@ -369,6 +369,9 @@ export class Scope {
          * against mixins, to see which ones match.
          * (Any mixin with a mis-match of
          * arguments fails.)
+         *
+         * Possibly use pattern matcher?
+         * @see https://github.com/shuckster/match-iz/wiki/Core-Pattern-helpers#combinators
          */
         for (let i = 0; i < mixinLength; i++) {
           let mixin = mixinArr[i]
