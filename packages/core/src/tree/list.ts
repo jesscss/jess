@@ -13,8 +13,15 @@ export type ListOptions = {
  * or one / two / three
  */
 export class List<T extends Node = Node> extends Node<T[], ListOptions> {
-  toArray() {
-    return this.value
+  /**
+   * Allow for..of and destructuring for lists
+   * @note Unlike arrays, this will return the index
+   */
+  * [Symbol.iterator]() {
+    let i = 0
+    for (let item of this.value) {
+      yield [item, i++]
+    }
   }
 
   toTrimmedString() {

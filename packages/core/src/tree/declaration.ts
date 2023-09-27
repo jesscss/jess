@@ -1,26 +1,16 @@
 import {
-  Node,
+  type Node,
   type NodeOptions,
   defineType
 } from './node'
-import { Nil } from './nil'
-import type { Context } from '../context'
-import { Interpolated } from './interpolated'
-import type { Anonymous } from './anonymous'
 import { isNode } from './util'
-// import type { OutputCollector } from '../output'
+import {
+  type BaseDeclarationValue,
+  type Name,
+  BaseDeclaration
+} from './base-declaration'
 
-// type NameType<T> = T extends Interpolated
-//   ? Interpolated
-//   : T extends string
-//     ? string
-//     : never
-
-export type Name = Interpolated | Anonymous | string
-
-export type DeclarationValue<U extends Node = Node, T extends Name = Name> = {
-  name: T
-  value: U
+export type DeclarationValue = BaseDeclarationValue & {
   /** The actual string representation of important, if it exists */
   important?: string
 }
@@ -44,16 +34,12 @@ export type DeclarationOptions = {
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
-export class Declaration<
-  T extends Name = Name,
-  U extends Node = Node,
-  O extends NodeOptions = DeclarationOptions
-> extends Node<DeclarationValue<U, T>, O> {
-  get name(): T {
+export class Declaration<O extends NodeOptions = DeclarationOptions> extends BaseDeclaration<Name, Node, O> {
+  get name(): Name {
     return this.data.get('name')
   }
 
-  set name(v: T) {
+  set name(v: Name) {
     this.data.set('name', v)
   }
 
@@ -71,31 +57,6 @@ export class Declaration<
       return `${name}: ${value.toString(depth)}`
     }
     return `${name}: ${value.toString(depth)}${important ? ` ${important}` : ''};`
-  }
-
-  async eval(context: Context): Promise<Node> {
-    return await this.evalIfNot(context, async () => {
-      let node = this.clone() as Declaration
-      node.evaluated = true
-      let { name, value } = node
-      /**
-       * Name may be a variable or a sequence containing a variable
-       *
-       * @todo - is this valid if rulesets pre-emptively evaluate names?
-       */
-      if (name instanceof Interpolated) {
-        node.name = await name.eval(context)
-      } else {
-        node.name = name
-      }
-      let newValue = await value.eval(context)
-      if (newValue instanceof Nil) {
-        return newValue.inherit(node)
-      } else {
-        node.value = newValue as U
-      }
-      return node
-    })
   }
 
   /** @todo - move to visitors */
@@ -130,8 +91,8 @@ export class Declaration<
 
 type DeclarationParams = ConstructorParameters<typeof Declaration>
 
-export const decl = defineType<DeclarationValue<Node, Name>>(Declaration, 'Declaration', 'decl') as (
-  value: DeclarationValue<Node, Name> | DeclarationParams[0],
+export const decl = defineType<DeclarationValue>(Declaration, 'Declaration', 'decl') as (
+  value: DeclarationValue | DeclarationParams[0],
   options?: DeclarationParams[1],
   location?: DeclarationParams[2],
   fileInfo?: DeclarationParams[3]

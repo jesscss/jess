@@ -1,10 +1,13 @@
 import { Node, defineType } from './node'
 import type { Ruleset } from './ruleset'
 import type { Condition } from './condition'
+import type { List } from './list'
+import type { Declaration } from './declaration'
+import type { Rest } from './rest'
 
 export type MixinValueType = Ruleset | ((...args: any[]) => any)
 export type MixinValue<T extends MixinValueType = Ruleset> = {
-  params?: Map<string | Node, Node | undefined>
+  params?: List<Node | Declaration | Rest>
   guard?: Condition
   value: T
 }

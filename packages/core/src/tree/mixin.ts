@@ -1,8 +1,8 @@
 import { defineType } from './node'
-import { VarDeclaration } from './var-declaration'
+import { BaseDeclaration, type Name } from './base-declaration'
 import { type MixinBody, type MixinValueType } from './mixin-body'
 import { type Ruleset } from './ruleset'
-import { type Interpolated } from './interpolated'
+import { type VarDeclarationOptions } from './var-declaration'
 import { type DeclarationValue } from './declaration'
 
 /**
@@ -16,7 +16,7 @@ import { type DeclarationValue } from './declaration'
  * and it has similar options as variables, such as being
  * able to define a mixin if it exists.
  */
-export class Mixin<T extends MixinValueType = Ruleset> extends VarDeclaration<string | Interpolated, MixinBody<T>> {
+export class Mixin<T extends MixinValueType = Ruleset> extends BaseDeclaration<Name, MixinBody<T>, VarDeclarationOptions> {
   toTrimmedString(depth?: number): string {
     return `@mixin ${this.name}${this.value.toString(depth)}`
   }

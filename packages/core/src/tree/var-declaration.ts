@@ -1,9 +1,8 @@
-import { Declaration, type DeclarationOptions, type DeclarationValue } from './declaration'
-import { defineType, type Node } from './node'
-import type { Interpolated } from './interpolated'
+import { Declaration, type DeclarationValue } from './declaration'
+import { defineType } from './node'
 import { isNode } from './util'
 
-export type VarDeclarationOptions = DeclarationOptions & {
+export type VarDeclarationOptions = {
   /**
    * Instead of implicitly declaring or overriding,
    * requires a variable to previously be explicitly
@@ -40,15 +39,12 @@ export type VarDeclarationOptions = DeclarationOptions & {
  * @todo Support destructuring
  * e.g. `@let (var1, var2): 1 2`
  */
-export class VarDeclaration<
-  T extends Interpolated | string = Interpolated | string,
-  U extends Node = Node
-> extends Declaration <T, U, VarDeclarationOptions> {
+export class VarDeclaration extends Declaration<VarDeclarationOptions> {
   // register(context: Context, name: string, node: Declaration<string>): void {
   //   context.scope.setVar(name, node, this.options)
   // }
   toTrimmedString(depth?: number): string {
-    const rule = this.options?.setDefined ? '@set ' : '@let '
+    const rule = this.options?.setDefined ? '$' : '@let '
     const { name, value } = this
     const semi = isNode(value, 'Collection') ? '' : ';'
     return `${rule}${name}: ${value.toString(depth)}${semi}`
