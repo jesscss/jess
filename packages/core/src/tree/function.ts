@@ -4,14 +4,22 @@ import { defineType } from './node'
 import { Ruleset } from './ruleset'
 import type { Node } from './node'
 import { BaseDeclaration, type Name } from './base-declaration'
-import { type VarDeclarationOptions } from './var-declaration'
+import { type List } from './list'
+import { type VarDeclaration } from './var-declaration'
+import { type Rest } from './rest'
+
+export type FunctionValue = {
+  name?: Name
+  params?: List<Node | VarDeclaration | Rest>
+  value: Ruleset | ((...args: any[]) => any)
+}
 
 /**
  * Functions are mixins with a return value
  *
  * @todo - Allow this to be applied to external JS functions
  */
-export class FunctionDefinition extends BaseDeclaration<Name, MixinBody<T>, VarDeclarationOptions> {
+export class Func extends BaseDeclaration<FunctionValue> {
   async eval(context: Context): Promise<Node> {
     let result = await super.eval(context)
     if (result && result instanceof Ruleset) {
@@ -25,4 +33,4 @@ export class FunctionDefinition extends BaseDeclaration<Name, MixinBody<T>, VarD
   }
 }
 
-export const func = defineType(FunctionDefinition, 'FunctionDefinition')
+export const fn = defineType(Func, 'Func', 'fn')

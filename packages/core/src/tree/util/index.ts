@@ -7,7 +7,7 @@ import type { Dimension } from '../dimension'
 import type { BasicSelector } from '../selector-basic'
 import type { List } from '../list'
 import type { Mixin } from '../mixin'
-import type { FunctionDefinition } from '../function-definition'
+import type { Func } from '../function'
 import { Node } from '../node'
 import type { Rule } from '../rule'
 import type { Ruleset } from '../ruleset'
@@ -36,8 +36,8 @@ export function isNode(value: any, type: 'Dimension'): value is Dimension
 export function isNode(value: any, type: 'BasicSelector'): value is BasicSelector
 export function isNode(value: any, type: 'List'): value is List
 export function isNode(value: any, type: 'Mixin'): value is Mixin
-export function isNode(value: any, type: 'FunctionDefinition'): value is FunctionDefinition
-export function isNode(value: any, type: ['Mixin', 'FunctionDefinition']): value is Mixin | FunctionDefinition
+export function isNode(value: any, type: 'Func'): value is Func
+export function isNode(value: any, type: ['Mixin', 'Func']): value is Mixin | Func
 export function isNode(value: any, type: 'SelectorSequence'): value is SelectorSequence
 export function isNode(value: any, type: 'SelectorList'): value is SelectorList
 export function isNode(value: any, type: 'Rule'): value is Rule

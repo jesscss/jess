@@ -12,6 +12,9 @@ export type VarDeclarationOptions = {
    */
   setDefined?: boolean
 
+  /** Defined in a mixin definition */
+  paramVar?: boolean
+
   /** Used by SCSS (!default) */
   setIfUndefined?: boolean
   /**
@@ -30,7 +33,7 @@ export type VarDeclarationOptions = {
  *   SCSS: `$foo: 1`
  *
  * @example `setDefined`
- *   Jess: `@set foo: 1`
+ *   Jess: `$foo: 1`
  *   SCSS: `$foo: 1 !global`
  *
  * @note This is extended by mixins, who also implicitly
@@ -44,7 +47,7 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
   //   context.scope.setVar(name, node, this.options)
   // }
   toTrimmedString(depth?: number): string {
-    const rule = this.options?.setDefined ? '$' : '@let '
+    const rule = this.options?.setDefined || this.options?.paramVar ? '$' : '@let '
     const { name, value } = this
     const semi = isNode(value, 'Collection') ? '' : ';'
     return `${rule}${name}: ${value.toString(depth)}${semi}`

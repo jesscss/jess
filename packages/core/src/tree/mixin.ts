@@ -1,9 +1,18 @@
-import { defineType } from './node'
-import { BaseDeclaration, type Name } from './base-declaration'
-import { type MixinBody, type MixinValueType } from './mixin-body'
-import { type Ruleset } from './ruleset'
-import { type VarDeclarationOptions } from './var-declaration'
-import { type DeclarationValue } from './declaration'
+import { type Node, defineType } from './node'
+import type { Ruleset } from './ruleset'
+import type { Condition } from './condition'
+import type { List } from './list'
+import type { Declaration } from './declaration'
+import type { Rest } from './rest'
+import { type Name, BaseDeclaration } from './base-declaration'
+import { type VarDeclarationOptions, type VarDeclaration } from './var-declaration'
+
+export type MixinValue = {
+  name?: Name
+  params?: List<Node | VarDeclaration | Rest>
+  guard?: Condition
+  value: Ruleset
+}
 
 /**
  * @mixin someMixin (arg1, arg2: 10px) {
@@ -12,21 +21,49 @@ import { type DeclarationValue } from './declaration'
  *   border-radius: $arg2;
  * }
  *
- * This extends Variable because name resolving is the same,
- * and it has similar options as variables, such as being
- * able to define a mixin if it exists.
+ *
+ * Note that mixin calls are called as JavaScript functions,
+ * with either only positional arguments, or a plain object
+ * as the first argument, representing named arguments,
+ * followed by positional arguments.
+ *
+ * e.g. `@ mixin foo($a, $b) { ... }`
+ *   can be called from JS like:
+ *     foo(1, 2) or
+ *     foo({ a: 1, b: 2 }) or
+ *     foo({ b: 2 }, 1)
  */
-export class Mixin<T extends MixinValueType = Ruleset> extends BaseDeclaration<Name, MixinBody<T>, VarDeclarationOptions> {
-  toTrimmedString(depth?: number): string {
-    return `@mixin ${this.name}${this.value.toString(depth)}`
+export class Mixin extends BaseDeclaration<MixinValue, VarDeclarationOptions> {
+  get params(): List<Node | Declaration | Rest> | undefined {
+    return this.data.get('params')
   }
-  // register(context: Context, name: string, node: Declaration<string>): void {
-  //   context.scope.setVar(name, node)
-  // }
+
+  get guard(): Condition | undefined {
+    return this.data.get('guard')
+  }
+
+  toTrimmedString(depth: number = 0): string {
+    let space = ''.padStart(depth * 2)
+    let output = `@mixin ${this.name}`
+    if (this.params) {
+      output += '('
+      output += this.params.toString(depth)
+      output += ')'
+    }
+    if (this.guard) {
+      output += ` when ${this.guard}`
+    }
+    output += ' {\n'
+    output += this.value.toString(depth + 1)
+    output += `${space}}`
+    return output
+  }
   /**
    * @todo -
    * Return either a ruleset if `this` is the eval context,
    * or return ruleset.obj() if not (for React/Vue)
+   *
+   * @todo - move to visitors
    */
   // toModule(context: Context, out: OutputCollector) {
   //   const { name, args, value } = this
@@ -61,4 +98,13 @@ export class Mixin<T extends MixinValueType = Ruleset> extends BaseDeclaration<N
   // }
 }
 
-export const mixin = defineType<DeclarationValue>(Mixin, 'Mixin')
+/** Not sure why the Class<Node> assertion was necessary */
+
+type MixinConstructorParams = ConstructorParameters<typeof Mixin>
+
+export const mixin = defineType(Mixin, 'Mixin') as (
+  value: MixinValue | MixinConstructorParams[0],
+  options?: MixinConstructorParams[1],
+  location?: MixinConstructorParams[2],
+  fileInfo?: MixinConstructorParams[3]
+) => Mixin

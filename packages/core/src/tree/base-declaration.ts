@@ -9,30 +9,29 @@ import type { Anonymous } from './anonymous'
 
 export type Name = Interpolated | Anonymous | string
 
-export type BaseDeclarationValue<U extends Node = Node, T extends Name = Name> = {
-  name: T
-  value: U
+export type BaseDeclarationValue = {
+  name?: Name
+  value: unknown
 }
 
 /**
  * A base class with a name / value pair
  */
 export abstract class BaseDeclaration<
-  T extends Name = Name,
-  U extends Node = Node,
+  T extends BaseDeclarationValue = BaseDeclarationValue,
   O extends NodeOptions = NodeOptions
-> extends Node<BaseDeclarationValue<U, T>, O> {
-  get name(): T {
+> extends Node<T, O> {
+  get name(): Name | undefined {
     return this.data.get('name')
   }
 
-  set name(v: T) {
+  set name(v: Name | undefined) {
     this.data.set('name', v)
   }
 
   async eval(context: Context): Promise<Node> {
     return await this.evalIfNot(context, async () => {
-      let node = this.clone() as BaseDeclaration
+      let node = this.clone()
       node.evaluated = true
       let { name, value } = node
       /**
@@ -45,11 +44,13 @@ export abstract class BaseDeclaration<
       } else {
         node.name = name
       }
-      let newValue = await value.eval(context)
-      if (newValue instanceof Nil) {
-        return newValue.inherit(node)
-      } else {
-        node.value = newValue as U
+      if (value instanceof Node) {
+        let newValue = await value.eval(context)
+        if (newValue instanceof Nil) {
+          return newValue.inherit(node)
+        } else {
+          node.value = newValue
+        }
       }
       return node
     })

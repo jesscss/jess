@@ -9,7 +9,7 @@ import { isNode } from './util'
 import { type Rule } from './rule'
 import { type AtRule } from './at-rule'
 import { Nil } from './nil'
-import { type MixinBody } from './mixin-body'
+import { type MixinBody } from './mixin'
 
 export const enum Priority {
   None = 0,

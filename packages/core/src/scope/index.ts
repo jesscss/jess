@@ -3,7 +3,7 @@ import { Declaration } from '../tree/declaration'
 import { List } from '../tree/list'
 import { Spaced } from '../tree/spaced'
 import type { Node } from '../tree/node'
-import type { MixinBody } from '../tree/mixin-body'
+import type { MixinBody } from '../tree/mixin'
 import type { Ruleset } from '../tree/ruleset'
 import { getFunctionFromMixins } from './util'
 /**
