@@ -10,7 +10,7 @@ import { type Rest } from './rest'
 
 export type FunctionValue = {
   name?: Name
-  params?: List<Node | VarDeclaration | Rest>
+  params?: List<Node | VarDeclaration<string> | Rest>
   value: Ruleset | ((...args: any[]) => any)
 }
 
@@ -19,10 +19,14 @@ export type FunctionValue = {
  *
  * @todo - Allow this to be applied to external JS functions
  */
-export class Func extends BaseDeclaration<FunctionValue> {
+export class Func extends BaseDeclaration<Name, FunctionValue> {
+  get params(): List<Node | VarDeclaration<string> | Rest> {
+    return this.data.get('params') ?? []
+  }
+
   async eval(context: Context): Promise<Node> {
     let result = await super.eval(context)
-    if (result && result instanceof Ruleset) {
+    if (result instanceof Ruleset) {
       let value = result.value
       let last = value[value.length - 1]
       if (last instanceof AtRule && last.name === '@return') {

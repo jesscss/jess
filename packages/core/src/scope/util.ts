@@ -2,7 +2,7 @@ import type { MixinEntry } from '.'
 import isPlainObject from 'lodash-es/isPlainObject'
 import { isNode } from '../tree/util'
 import { cast } from '../tree/util/cast'
-import type { MixinBody } from '../tree/mixin-body'
+import type { Mixin } from '../tree/mixin'
 
 /** Returns a plain JS function for calling a set of mixins */
 export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
@@ -16,14 +16,11 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      * against mixins, to see which ones match.
      * (Any mixin with a mis-match of
      * arguments fails.)
-     *
-     * Possibly use pattern matcher?
-     * @see https://github.com/shuckster/match-iz/wiki/Core-Pattern-helpers#combinators
      */
     for (let i = 0; i < mixinLength; i++) {
       let mixin = mixinArr[i]
       let isPlainRule = isNode(mixin, 'Ruleset')
-      let paramLength = isPlainRule ? 0 : (mixin as MixinBody).params?.size ?? 0
+      let paramLength = isPlainRule ? 0 : (mixin as Mixin).params?.length ?? 0
       if (!paramLength) {
         /** Exit early if args were passed in, but no args are possible */
         if (args.length) {
@@ -32,9 +29,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         mixinCandidates.push(mixin)
       } else {
         /** The mixin has parameters, so let's check args to see if there's a match */
-        let params = (mixin as MixinBody).params!
-        let paramEntries = Array.from(params)
-        let skipPos: number[] = []
+        let params = (mixin as Mixin).params.clone()
+        let positions = new Set(params.value.map((_, i) => i))
         /**
          * First argument can be a plain object with named params
          * e.g. { a: 1, b: 2 }
@@ -48,19 +44,22 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
            * because we need to track the position
            * of each parameter.
            */
-          for (let i = 0; i < paramEntries.length; i++) {
-            let [key] = paramEntries[i]
-            if (typeof key === 'string') {
+          for (let [i, param] of params) {
+            if (isNode(param, 'VarDeclaration')) {
+              let key = param.name as string
               let namedValue = namedMap.get(key)
               /** Replace our param value with the passed in named value */
               if (namedValue) {
-                paramEntries[i] = [key, cast(namedValue)]
+                params.value[i] = cast(namedValue)
                 /**
-                     * Because we've assigned a named value, any
-                     * positional arguments will be shifted.
-                     */
-                skipPos.push(i)
+                 * Because we've assigned a named value, any
+                 * positional arguments will be shifted.
+                 */
+                positions.delete(i)
                 namedMap.delete(key)
+              } else {
+                /** This mixin is not a match */
+                break
               }
             }
           }
@@ -69,12 +68,17 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             continue
           }
         }
-        /** Now we can go through positional matches */
-        for (let i = 0; i < paramEntries.length; i++) {
-          if (skipPos.includes(i)) {
-            continue
-          }
-          paramEntries[i][1] = cast(args[argPos])
+        /**
+         * Now we can check remaining positional matches
+         * against the remaining parameters.
+         */
+        if (args.length - argPos !== positions.size) {
+          /** This mixin is not a match */
+          continue
+        }
+        mixinCandidates.push(mixin)
+        for (let i of positions) {
+          params.value[i] = cast(args[argPos])
           argPos++
         }
       }

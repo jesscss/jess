@@ -34,12 +34,12 @@ export type DeclarationOptions = {
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
-export class Declaration<O extends NodeOptions = DeclarationOptions> extends BaseDeclaration<Node, O> {
-  get name(): Name {
+export class Declaration<O extends NodeOptions = DeclarationOptions, N extends Name = Name> extends BaseDeclaration<N, Node, O> {
+  get name(): N {
     return this.data.get('name')
   }
 
-  set name(v: Name) {
+  set name(v: N) {
     this.data.set('name', v)
   }
 

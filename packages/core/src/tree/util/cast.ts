@@ -4,7 +4,7 @@ import { List } from '../list'
 import { Dimension } from '../dimension'
 import { Anonymous } from '../anonymous'
 import { Color } from '../color'
-import { FunctionDefinition } from '../function-definition'
+import { Func } from '../function'
 import isPlainObject from 'lodash-es/isPlainObject'
 
 function getNodeType(value: any): Node {
@@ -15,7 +15,7 @@ function getNodeType(value: any): Node {
     return new Nil()
   }
   if (value.constructor === Function) {
-    return new FunctionDefinition(value)
+    return new Func(value)
   }
   /**
    * @todo - need to remove the $root part

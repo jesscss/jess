@@ -1,6 +1,7 @@
 import { Declaration, type DeclarationValue } from './declaration'
 import { defineType } from './node'
 import { isNode } from './util'
+import { type Name } from './base-declaration'
 
 export type VarDeclarationOptions = {
   /**
@@ -42,7 +43,7 @@ export type VarDeclarationOptions = {
  * @todo Support destructuring
  * e.g. `@let (var1, var2): 1 2`
  */
-export class VarDeclaration extends Declaration<VarDeclarationOptions> {
+export class VarDeclaration<N extends Name = Name> extends Declaration<VarDeclarationOptions, N> {
   // register(context: Context, name: string, node: Declaration<string>): void {
   //   context.scope.setVar(name, node, this.options)
   // }

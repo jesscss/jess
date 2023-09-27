@@ -2,14 +2,13 @@ import { type Node, defineType } from './node'
 import type { Ruleset } from './ruleset'
 import type { Condition } from './condition'
 import type { List } from './list'
-import type { Declaration } from './declaration'
 import type { Rest } from './rest'
 import { type Name, BaseDeclaration } from './base-declaration'
 import { type VarDeclarationOptions, type VarDeclaration } from './var-declaration'
 
 export type MixinValue = {
   name?: Name
-  params?: List<Node | VarDeclaration | Rest>
+  params?: List<Node | VarDeclaration<string> | Rest>
   guard?: Condition
   value: Ruleset
 }
@@ -33,9 +32,9 @@ export type MixinValue = {
  *     foo({ a: 1, b: 2 }) or
  *     foo({ b: 2 }, 1)
  */
-export class Mixin extends BaseDeclaration<MixinValue, VarDeclarationOptions> {
-  get params(): List<Node | Declaration | Rest> | undefined {
-    return this.data.get('params')
+export class Mixin extends BaseDeclaration<Name, MixinValue, VarDeclarationOptions> {
+  get params(): List<Node | VarDeclaration<string> | Rest> {
+    return this.data.get('params') ?? []
   }
 
   get guard(): Condition | undefined {

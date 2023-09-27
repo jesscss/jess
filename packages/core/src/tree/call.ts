@@ -48,7 +48,7 @@ export class Call extends Node<CallValue> {
         ref = await ref.eval(context)
       }
       args = await args?.eval(context)
-      if (isNode(ref, 'FunctionDefinition')) {
+      if (isNode(ref, 'Func')) {
         try {
           return ref.value.call(context)
         } catch (e) {

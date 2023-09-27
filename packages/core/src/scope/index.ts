@@ -3,7 +3,7 @@ import { Declaration } from '../tree/declaration'
 import { List } from '../tree/list'
 import { Spaced } from '../tree/spaced'
 import type { Node } from '../tree/node'
-import type { MixinBody } from '../tree/mixin'
+import type { Mixin } from '../tree/mixin'
 import type { Ruleset } from '../tree/ruleset'
 import { getFunctionFromMixins } from './util'
 /**
@@ -58,7 +58,7 @@ export class ScopeEntry<T = unknown> {
   }
 }
 
-export type MixinEntry = MixinBody | Ruleset
+export type MixinEntry = Mixin | Ruleset
 export type ScopeEntryMap<T = unknown> = Record<string, ScopeEntry<T> | undefined>
 export type PropMap = Record<string, Declaration | Declaration[]>
 

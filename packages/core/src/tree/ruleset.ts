@@ -1,15 +1,20 @@
 /* eslint-disable @typescript-eslint/prefer-readonly */
 import { Node, defineType, type LocationInfo, type FileInfo } from './node'
 import { Declaration } from './declaration'
-import type { VarDeclarationOptions } from './var-declaration'
+import {
+  BaseDeclaration,
+  type BaseDeclarationValue,
+  type Name
+} from './base-declaration'
+import {
+  type VarDeclarationOptions
+} from './var-declaration'
 import { Scope } from '../scope'
-
 import type { Context } from '../context'
 import { isNode } from './util'
 import { type Rule } from './rule'
 import { type AtRule } from './at-rule'
 import { Nil } from './nil'
-import { type MixinBody } from './mixin'
 
 export const enum Priority {
   None = 0,
@@ -18,12 +23,18 @@ export const enum Priority {
   High = 3
 }
 
+type AnyDeclarationValue = BaseDeclarationValue & Record<string, any>
+
 type QueueItem = {
   node: Node
   /** Position in rules array */
   pos: number
+  nameOnly?: true
+} | {
+  node: BaseDeclaration<Name, AnyDeclarationValue>
+  pos: number
   /** If we're just evaluating a declaration's name */
-  nameOnly?: boolean
+  nameOnly: true
 }
 
 type QueueMap = {
@@ -33,7 +44,9 @@ type QueueMap = {
   [Priority.High]?: Set<QueueItem>
 }
 
-function assign(map: QueueMap, key: Priority, value: Node, pos: number, nameOnly?: boolean) {
+function assign(map: QueueMap, key: Priority, value: Node, pos: number): void
+function assign(map: QueueMap, key: Priority, value: BaseDeclaration<Name, AnyDeclarationValue>, pos: number, nameOnly?: true): void
+function assign(map: QueueMap, key: Priority, value: Node, pos: number, nameOnly?: true | undefined) {
   let set = map[key]
   if (set) {
     set.add({ node: value, pos, nameOnly })
@@ -156,7 +169,7 @@ export class Ruleset extends Node<Node[]> {
       for (let i = 0; i < nodeLength; i++) {
         let n = rules[i]
 
-        if (n instanceof Declaration) {
+        if (n instanceof BaseDeclaration) {
           if (hoistDeclarations) {
             if (n.name instanceof Node) {
               /** Evaluate these names after evaluating static names */
@@ -165,8 +178,7 @@ export class Ruleset extends Node<Node[]> {
               /** Evaluate static names first */
               assign(evalQueue, Priority.High, n, i, true)
             }
-          /** Function declarations are also mixins */
-          } else if (isNode(n, ['Mixin', 'FunctionDefinition'])) {
+          } else if (isNode(n, ['Mixin', 'Func'])) {
             if (n.name instanceof Node) {
               assign(evalQueue, Priority.Medium, n, i, true)
             } else {
@@ -201,8 +213,9 @@ export class Ruleset extends Node<Node[]> {
         for (let item of set) {
           const { node, pos, nameOnly } = item
           if (nameOnly) {
-            let decl = node.clone() as Declaration
-            let name = decl.name
+            let decl = node.clone() as BaseDeclaration
+            /** Everything in a ruleset root will have a name */
+            let name = decl.name!
             let ident: string
             if (name instanceof Node) {
               ident = (await name.eval(context)).value
@@ -211,12 +224,12 @@ export class Ruleset extends Node<Node[]> {
               ident = name
             }
             rules[pos] = decl
-            if (isNode(node, 'Mixin')) {
-              this._scope.setMixin(ident, decl.value as MixinBody, decl.options as VarDeclarationOptions)
-            } else if (isNode(node, ['VarDeclaration', 'FunctionDefinition'])) {
+            if (isNode(decl, 'Mixin')) {
+              this._scope.setMixin(ident, decl, decl.options)
+            } else if (isNode(decl, ['VarDeclaration', 'Func'])) {
               this._scope.setVar(ident, decl, decl.options as VarDeclarationOptions)
             } else {
-              this._scope.setProp(ident, decl)
+              this._scope.setProp(ident, decl as Declaration)
             }
             /**
              * Now that we've evaluated the name, add it to the evaluation queue.

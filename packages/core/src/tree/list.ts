@@ -17,10 +17,10 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
    * Allow for..of and destructuring for lists
    * @note Unlike arrays, this will return the index
    */
-  * [Symbol.iterator]() {
+  * [Symbol.iterator](): Generator<[number, T]> {
     let i = 0
     for (let item of this.value) {
-      yield [item, i++]
+      yield [i++, item]
     }
   }
 

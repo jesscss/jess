@@ -9,8 +9,8 @@ import type { Anonymous } from './anonymous'
 
 export type Name = Interpolated | Anonymous | string
 
-export type BaseDeclarationValue = {
-  name?: Name
+export type BaseDeclarationValue<N extends Name = Name> = {
+  name?: N
   value: unknown
 }
 
@@ -18,8 +18,9 @@ export type BaseDeclarationValue = {
  * A base class with a name / value pair
  */
 export abstract class BaseDeclaration<
-  T extends BaseDeclarationValue = BaseDeclarationValue,
-  O extends NodeOptions = NodeOptions
+  N extends Name = Name,
+  T extends BaseDeclarationValue = BaseDeclarationValue<N>,
+  O extends NodeOptions = NodeOptions,
 > extends Node<T, O> {
   get name(): Name | undefined {
     return this.data.get('name')
