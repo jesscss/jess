@@ -13,6 +13,11 @@ export type MixinValue = {
   value: Ruleset
 }
 
+export type MixinOptions = {
+  /** This is a flag that will set during parsing */
+  default?: boolean
+}
+
 /**
  * @mixin someMixin (arg1, arg2: 10px) {
  *   color: black;
@@ -32,9 +37,13 @@ export type MixinValue = {
  *     foo({ a: 1, b: 2 }) or
  *     foo({ b: 2 }, 1)
  */
-export class Mixin extends BaseDeclaration<Name, MixinValue, VarDeclarationOptions> {
+export class Mixin extends BaseDeclaration<Name, MixinValue, VarDeclarationOptions & MixinOptions> {
   get params(): List<Node | VarDeclaration<string> | Rest> {
     return this.data.get('params') ?? []
+  }
+
+  set params(v: List<Node | VarDeclaration<string> | Rest>) {
+    this.data.set('params', v)
   }
 
   get guard(): Condition | undefined {

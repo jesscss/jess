@@ -4,8 +4,10 @@ import { List } from '../tree/list'
 import { Spaced } from '../tree/spaced'
 import type { Node } from '../tree/node'
 import type { Mixin } from '../tree/mixin'
-import type { Ruleset } from '../tree/ruleset'
-import { getFunctionFromMixins } from './util'
+import isPlainObject from 'lodash-es/isPlainObject'
+import { isNode } from '../tree/util'
+import { cast } from '../tree/util/cast'
+import { Rule, Ruleset } from '../tree'
 /**
  * The Scope object is meant to be an efficient
  * lookup mechanism for variables, mixins,
@@ -534,3 +536,182 @@ export class Scope {
 
 Scope.entryKeys = new Map()
 Scope.cachedKeys = new Map()
+
+/** Returns a plain JS function for calling a set of mixins */
+export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
+  let mixinArr = Array.isArray(mixins) ? mixins : [mixins]
+  /** This will be called by a mixin call or by JavaScript */
+  return function(...args: any[]) {
+    const mixinLength = mixinArr.length
+    let mixinCandidates: MixinEntry[] = []
+    let evalCandidates: Array<[MixinEntry, number]>
+    /**
+     * Check named and positional arguments
+     * against mixins, to see which ones match.
+     * (Any mixin with a mis-match of
+     * arguments fails.)
+     */
+    let argEntries = isPlainObject(args[0]) ? Object.entries(args[0]) : null
+    for (let i = 0; i < mixinLength; i++) {
+      let mixin = mixinArr[i]
+      let isPlainRule = isNode(mixin, 'Ruleset')
+      let paramLength = isPlainRule ? 0 : (mixin as Mixin).params?.length ?? 0
+      if (!paramLength) {
+        /** Exit early if args were passed in, but no args are possible */
+        if (args.length) {
+          continue
+        }
+        mixinCandidates.push(mixin)
+      } else {
+        /** The mixin has parameters, so let's check args to see if there's a match */
+        let params = (mixin as Mixin).params.clone()
+        let positions = new Set(params.value.map((_, i) => i))
+        /**
+         * First argument can be a plain object with named params
+         * e.g. { a: 1, b: 2 }
+         */
+        let argPos = 0
+        if (argEntries) {
+          argPos = 1
+          let namedMap = new Map(argEntries)
+          /**
+           * We iterate through params instead of args,
+           * because we need to track the position
+           * of each parameter.
+           */
+          for (let [i, param] of params) {
+            if (isNode(param, 'VarDeclaration')) {
+              let key = param.name as string
+              let namedValue = namedMap.get(key)
+              /** Replace our param value with the passed in named value */
+              if (namedValue) {
+                params.value[i] = cast(namedValue)
+                /**
+                 * Because we've assigned a named value, any
+                 * positional arguments will be shifted.
+                 */
+                positions.delete(i)
+                namedMap.delete(key)
+              } else {
+                /** This mixin is not a match */
+                break
+              }
+            }
+          }
+          if (namedMap.size) {
+            /** This mixin is not a match */
+            continue
+          }
+        }
+        /**
+         * Now we can check remaining positional matches
+         * against the remaining parameters.
+         */
+        if (args.length - argPos !== positions.size) {
+          /** This mixin is not a match */
+          continue
+        }
+        let match = true
+
+        for (let i of positions) {
+          let arg = args[argPos]
+          if (isNode(arg, 'VarDeclaration')) {
+            params.value[i] = cast(arg)
+          } else if (isNode(arg, 'Rest')) {
+            /** @todo */
+          /** Check a pattern-matching node */
+          } else if (params.value[i].compare(arg) !== 0) {
+            /** This mixin is not a match */
+            match = false
+            break
+          }
+          argPos++
+        }
+        if (match) {
+          (mixin as Mixin).params = params
+          mixinCandidates.push(mixin)
+        }
+      }
+    }
+    /**
+     * Alright, we have mixin candidates (mixins that match
+     * by arity, pattern, and/or named arguments), now what?
+     *
+     * First, let's make an evaluation order that evaluates
+     * default guards last.
+     */
+    let hasDefault = false
+    evalCandidates = mixinCandidates
+      .map<[MixinEntry, number]>(
+      (candidate, i) => {
+        let isDefault = candidate.options?.default
+        if (isDefault) {
+          if (hasDefault) {
+            throw new Error('Ambiguous use of default guard found')
+          }
+          hasDefault = true
+        }
+        return [candidate, i]
+      })
+
+    if (hasDefault) {
+      /** There is a default guard, so sort candidates */
+      evalCandidates = evalCandidates.slice(0).sort((a, b) => {
+        let aNode = a[0]
+        let bNode = b[0]
+        let aDefault = aNode.options?.default
+        let bDefault = bNode.options?.default
+        /** No guard (or is just a plain ruleset) */
+        if (!aDefault && !bDefault) {
+          return 0
+        }
+
+        if (!aDefault) {
+          return 1
+        }
+        if (!bDefault) {
+          return -1
+        }
+        return 0
+      })
+    }
+
+    /**
+     * Now we have a set of mixins that can return rulesets,
+     * but first we need to create a new scope for each mixin,
+     * and create variable declarations for each parameter.
+     */
+    let hasMatch = false
+    let outputRules: Array<[Ruleset, number]> = []
+    for (let [candidate, i] of evalCandidates) {
+      if (isNode(candidate, 'Ruleset')) {
+        hasMatch = true
+        outputRules.push([candidate, i])
+        continue
+      }
+      let ruleset = candidate.value
+      /**
+       * During parsing, each ruleset should have been assigned
+       * a scope by the parsing context, so we can use that to
+       * create a new scope.
+       */
+      let newRuleset = new Ruleset([])
+      newRuleset._scope = new Scope(ruleset._scope)
+
+      /** Now we need to add our parameters, if any */
+      let params = candidate.params
+      if (params) {
+        for (let param of params.value) {
+          if (isNode(param, 'VarDeclaration')) {
+            newRuleset._scope.setVar(param.name as string, param.value)
+          }
+        }
+      }
+      /** Now we can evaluate our guards, if any */
+      let guard = candidate.guard
+      if (!guard) {
+
+      }
+    }
+  }
+}

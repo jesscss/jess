@@ -1,4 +1,4 @@
-import { include, rule, sel, ref, any, ruleset, mixin, mixinbody, decl, call } from '..'
+import { include, rule, sel, ref, any, ruleset, mixin, decl, call } from '..'
 import { Context } from '../../context'
 
 let context: Context
@@ -11,19 +11,15 @@ describe('Include', () => {
     let node = ruleset([
       mixin({
         name: 'foo',
-        value: mixinbody({
-          value: ruleset([
-            decl({ name: 'prop1', value: any('value') })
-          ])
-        })
+        value: ruleset([
+          decl({ name: 'prop1', value: any('value') })
+        ])
       }),
       mixin({
         name: 'foo',
-        value: mixinbody({
-          value: ruleset([
-            decl({ name: 'prop2', value: any('value') })
-          ])
-        })
+        value: ruleset([
+          decl({ name: 'prop2', value: any('value') })
+        ])
       }),
       include(call({
         ref: ref('foo', { type: 'mixin' })

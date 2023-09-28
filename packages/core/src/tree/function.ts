@@ -3,27 +3,17 @@ import { AtRule } from './at-rule'
 import { defineType } from './node'
 import { Ruleset } from './ruleset'
 import type { Node } from './node'
-import { BaseDeclaration, type Name } from './base-declaration'
-import { type List } from './list'
-import { type VarDeclaration } from './var-declaration'
-import { type Rest } from './rest'
-
-export type FunctionValue = {
-  name?: Name
-  params?: List<Node | VarDeclaration<string> | Rest>
-  value: Ruleset | ((...args: any[]) => any)
-}
+import { Mixin } from './mixin'
 
 /**
- * Functions are mixins with a return value
+ * Functions are mixins with a return value,
+ * defined in a stylesheet.
  *
- * @todo - Allow this to be applied to external JS functions
+ *  e.g. `@ function ($a, $b) { ... }`
+ *
+ * Used by Jess / Sass
  */
-export class Func extends BaseDeclaration<Name, FunctionValue> {
-  get params(): List<Node | VarDeclaration<string> | Rest> {
-    return this.data.get('params') ?? []
-  }
-
+export class Func extends Mixin {
   async eval(context: Context): Promise<Node> {
     let result = await super.eval(context)
     if (result instanceof Ruleset) {

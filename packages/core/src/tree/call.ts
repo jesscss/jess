@@ -2,6 +2,7 @@ import { Node, defineType } from './node'
 import { type List } from './list'
 import { type Context } from '../context'
 import { isNode } from './util'
+import { cast } from './util/cast'
 
 export type CallValue = {
   /**
@@ -38,7 +39,7 @@ export class Call extends Node<CallValue> {
     return `${ref}(${args ?? ''})`
   }
 
-  async eval(context: Context) {
+  async eval(context: Context): Promise<Node> {
     return await this.evalIfNot(context, async () => {
       let canOperate = context.canOperate
       /** Reset parentheses "state" */
@@ -47,13 +48,25 @@ export class Call extends Node<CallValue> {
       if (ref instanceof Node) {
         ref = await ref.eval(context)
       }
-      args = await args?.eval(context)
-      if (isNode(ref, 'Func')) {
-        try {
-          return ref.value.call(context)
-        } catch (e) {
 
+      if (isNode(ref, 'FunctionValue')) {
+        try {
+          const func = ref.value
+          let result: any
+          if (func.evalArgs !== false) {
+            args = await args?.eval(context)
+          }
+          if (args) {
+            result = ref.value.call(context, ...args)
+          } else {
+            result = ref.value.call(context)
+          }
+          return cast(result)
+        } catch (e) {
+          /** Do something with JS errors */
         }
+      } else {
+        args = await args?.eval(context)
       }
       context.canOperate = canOperate
       let node = this.clone()

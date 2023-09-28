@@ -8,6 +8,7 @@ import type { BasicSelector } from '../selector-basic'
 import type { List } from '../list'
 import type { Mixin } from '../mixin'
 import type { Func } from '../function'
+import type { FunctionValue } from '../function-value'
 import { Node } from '../node'
 import type { Rule } from '../rule'
 import type { Ruleset } from '../ruleset'
@@ -17,6 +18,7 @@ import type { Nil } from '../nil'
 import type { SelectorList } from '../selector-list'
 import type { Collection } from '../collection'
 import type { VarDeclaration } from '../var-declaration'
+import type { Rest } from '../rest'
 
 /**
  * This utility function prevents circular dependencies,
@@ -37,6 +39,7 @@ export function isNode(value: any, type: 'BasicSelector'): value is BasicSelecto
 export function isNode(value: any, type: 'List'): value is List
 export function isNode(value: any, type: 'Mixin'): value is Mixin
 export function isNode(value: any, type: 'Func'): value is Func
+export function isNode(value: any, type: 'FunctionValue'): value is FunctionValue
 export function isNode(value: any, type: ['Mixin', 'Func']): value is Mixin | Func
 export function isNode(value: any, type: 'SelectorSequence'): value is SelectorSequence
 export function isNode(value: any, type: 'SelectorList'): value is SelectorList
@@ -47,6 +50,7 @@ export function isNode(value: any, type: ['Rule', 'AtRule']): value is Rule | At
 export function isNode(value: any, type: 'Import'): value is Import
 export function isNode(value: any, type: 'Nil'): value is Nil
 export function isNode(value: any, type: 'Collection'): value is Collection
+export function isNode(value: any, type: 'Rest'): value is Rest
 export function isNode(value: any, type?: string | string[]): value is Node
 export function isNode(value: any, type?: string | string[]): value is Node {
   if (!(value ?? false)) {
