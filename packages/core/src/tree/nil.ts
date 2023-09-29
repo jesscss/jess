@@ -3,7 +3,7 @@ import {
   defineType,
   type LocationInfo,
   type NodeOptions,
-  type FileInfo
+  type TreeContext
 } from './node'
 
 /**
@@ -19,8 +19,8 @@ export class Nil extends Node<undefined> {
     value?: any,
     options?: NodeOptions,
     location?: LocationInfo | 0,
-    fileInfo?: FileInfo) {
-    super(undefined, options, location, fileInfo)
+    treeContext?: TreeContext) {
+    super(undefined, options, location, treeContext)
   }
 
   async eval() { return this }

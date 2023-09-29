@@ -35,11 +35,20 @@ export interface ContextOptions {
    */
   dynamic?: boolean
   collapseNesting?: boolean
+
+  mathMode?: MathMode
+  unitMode?: UnitMode
+}
+
+export interface TreeContextOptions {
   /**
    * Hoists variable declarations, so they can be
    * evaluated per scope. Less sets this to true.
    */
   hoistDeclarations?: boolean
+
+  /** In Less 1.x-5.x, Less sets this to true */
+  leakVariablesIntoScope?: boolean
 
   mathMode?: MathMode
   unitMode?: UnitMode
@@ -56,19 +65,54 @@ export const generateId = (length = 8) => {
 }
 
 /**
- * @todo
- * Every file should get a new context, but should inherit
- * from an existing context?
+ * Tree context is attached to each node
+ * during the parsing phase / AST creation.
+ *
+ * Each file (and hence, tree) will get a new tree
+ * context. For the most part, it is passed around
+ * as an object reference, but during AST creation,
+ * the scope property will be modified (and later
+ * restored when the file is finished with AST
+ * creation) so that rulesets can inherit scope
+ * based on their tree postion.
+ *
+ * It's used primarily to attach scope to rulesets,
+ * since rules have context / scope according
+ * to their position in the tree.
+ *
+ * Additionally, it sets options that may be
+ * unique to the tree, such as the math mode.
+ */
+export class TreeContext implements TreeContextOptions {
+  hoistDeclarations?: boolean
+  leakVariablesIntoScope?: boolean
+  mathMode?: MathMode
+  unitMode?: UnitMode
+
+  fileInfo?: {
+    filename: string
+    rootpath: string
+  }
+
+  /** Rulesets will inherit scope when created */
+  scope: Scope
+
+  constructor(opts: TreeContextOptions = {}) {
+    this.hoistDeclarations = opts.hoistDeclarations ?? false
+    this.leakVariablesIntoScope = opts.leakVariablesIntoScope ?? false
+    this.mathMode = opts.mathMode ?? MathMode.PARENS_DIVISION
+    this.unitMode = opts.unitMode ?? UnitMode.STRICT
+  }
+}
+
+/**
+ * This is the context object used for evaluation.
  *
  * @note
  * Most of context represents "state" while evaluating.
  */
 export class Context {
   readonly opts: ContextOptions
-  state: ContextOptions
-
-  /** Rulesets will assign scope when evaluating */
-  scope: Scope
 
   /**
    * When getting vars, the current declaration is ommitted
@@ -76,6 +120,11 @@ export class Context {
    */
   declarationScope: Declaration | undefined
 
+  /**
+   * This is set when entering rulesets so that child nodes
+   * can use this to lookup values.
+   */
+  scope: Scope
   /**
    * The file (eval) context should have the same ID at compile-time
    * as run-time, so this ID will be set in `toModule()` output
@@ -115,7 +164,8 @@ export class Context {
 
   /**
    * In a custom declaration's value. All nodes should
-   * be preserved as-is.
+   * be preserved as-is and not evaluated, except for
+   * interpolated expressions.
   */
   inCustom: boolean
 
@@ -128,14 +178,10 @@ export class Context {
   /** A flag set by expressions */
   canOperate: boolean
 
+  /** A flag set when evaluating conditions */
+  isDefault: boolean
+
   constructor(opts: ContextOptions = {}) {
-    opts = {
-      /** Default mode for Less & SCSS */
-      mathMode: MathMode.PARENS_DIVISION,
-      unitMode: UnitMode.STRICT,
-      ...opts
-    }
-    this.state = opts
     this.opts = opts
   }
 

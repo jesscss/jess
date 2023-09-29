@@ -11,6 +11,7 @@ import {
 } from './base-declaration'
 
 export type DeclarationValue = BaseDeclarationValue & {
+  value: Node
   /** The actual string representation of important, if it exists */
   important?: string
 }
@@ -34,13 +35,21 @@ export type DeclarationOptions = {
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
-export class Declaration<O extends NodeOptions = DeclarationOptions, N extends Name = Name> extends BaseDeclaration<N, Node, O> {
+export class Declaration<O extends NodeOptions = DeclarationOptions, N extends Name = Name> extends BaseDeclaration<N, DeclarationValue, O> {
   get name(): N {
     return this.data.get('name')
   }
 
   set name(v: N) {
     this.data.set('name', v)
+  }
+
+  get value(): Node {
+    return this.data.get('value')
+  }
+
+  set value(v: Node) {
+    this.data.set('value', v)
   }
 
   get important() {
@@ -95,6 +104,6 @@ export const decl = defineType<DeclarationValue>(Declaration, 'Declaration', 'de
   value: DeclarationValue | DeclarationParams[0],
   options?: DeclarationParams[1],
   location?: DeclarationParams[2],
-  fileInfo?: DeclarationParams[3]
+  treeContext?: DeclarationParams[3]
 ) => Declaration
 Declaration.prototype.allowRuleRoot = true

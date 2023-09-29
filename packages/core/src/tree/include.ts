@@ -16,7 +16,7 @@ export type IncludeValue = {
  * Basically anything that returns a ruleset.
  */
 export class Include extends Node<IncludeValue> {
-  async eval(context: Context) {
+  async eval(context: Context): Promise<Node> {
     let value = this.value
     if (value instanceof Call) {
       value = await value.eval(context)
@@ -47,7 +47,7 @@ export class Include extends Node<IncludeValue> {
      * @todo - add fileInfo
      */
     if (value instanceof Root) {
-      return new Ruleset(value.value)
+      return new Ruleset(value.value).inherit(this)
     }
 
     if (!value.allowRoot && !value.allowRuleRoot) {
@@ -57,7 +57,7 @@ export class Include extends Node<IncludeValue> {
       }
       throw new TypeError(message)
     }
-    return value
+    return value.inherit(this)
   }
 
   /** Move to ToModuleVisitor */

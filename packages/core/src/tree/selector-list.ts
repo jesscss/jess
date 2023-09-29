@@ -1,7 +1,7 @@
 import {
   Node, defineType,
   type LocationInfo,
-  type FileInfo,
+  type TreeContext,
   type NodeOptions,
   type TypeMap
 } from './node'
@@ -16,13 +16,13 @@ export class SelectorList extends Node<SelectorSequence[]> {
     nodes: TypeMap<{ value: SelectorSequence[] }> | Array<SelectorSequence | Array<SimpleSelector | Combinator>>,
     options?: NodeOptions,
     location?: LocationInfo | 0,
-    fileInfo?: FileInfo
+    treeContext?: TreeContext
   ) {
     /** When cloning, nodes will be a map */
     let newNodes = nodes instanceof Map
       ? nodes
       : (nodes as any[]).map(seq => seq instanceof SelectorSequence ? seq : new SelectorSequence(seq))
-    super(newNodes, options, location, fileInfo)
+    super(newNodes, options, location, treeContext)
   }
 
   toTrimmedString() {

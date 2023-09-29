@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/prefer-readonly */
-import { Node, defineType, type LocationInfo, type FileInfo } from './node'
+import { Node, defineType, type LocationInfo, type TreeContext } from './node'
 import { Declaration } from './declaration'
 import {
   BaseDeclaration,
@@ -55,11 +55,6 @@ function assign(map: QueueMap, key: Priority, value: Node, pos: number, nameOnly
   }
 }
 
-export type RulesetValues = {
-  value: Node[]
-  scope?: Scope
-}
-
 /**
  * The class representing a "declaration list".
  * CSS calls it this even though CSS Nesting
@@ -81,16 +76,14 @@ export class Ruleset extends Node<Node[]> {
   _scope: Scope
 
   constructor(
-    values: RulesetValues | Node[],
+    value: Node[],
     options?: undefined,
     location?: LocationInfo | 0,
-    fileInfo?: FileInfo
+    treeContext?: TreeContext
   ) {
-    let { value, scope } = (values as any)
-    super([
-      ['value', Array.isArray(values) ? values : value]
-    ], options, location, fileInfo)
-    this._scope = scope ?? new Scope()
+    super(value, options, location, treeContext)
+    let scope = this.treeContext.scope
+    this._scope = new Scope(scope)
   }
 
   // constructor(value: { scope: }) {
@@ -118,7 +111,7 @@ export class Ruleset extends Node<Node[]> {
     return await this.evalIfNot(context, async () => {
       let inheritedScope = context.scope
       context.scope = this._scope
-      let { hoistDeclarations } = context.opts
+      let { hoistDeclarations, leakVariablesIntoScope } = this.treeContext
       let ruleset = this.clone()
       ruleset._scope = this._scope
       /**
@@ -279,7 +272,7 @@ export class Ruleset extends Node<Node[]> {
               }
               /** Merge any scope that we need for lookups */
               if (result instanceof Ruleset) {
-                this._scope.merge(result._scope)
+                this._scope.merge(result._scope, leakVariablesIntoScope)
               }
             }
           }
@@ -410,23 +403,21 @@ export class Ruleset extends Node<Node[]> {
 
   /**
    * Return an object representation of a ruleset
-   *
-   * @todo - This is unnecessary! When we call
-   * a mixin from Jess / Less etc, we will bind
-   * `this` to the ruleset of the caller, but
-   * when called from JavaScript, `this` will
-   * not be an instance of Ruleset, in which
-   * case we can auto-serialize it.
    */
   obj() {
-    let value = this.value
-    let output: Record<string, string> = {}
-    value.forEach(n => {
-      if (n instanceof Declaration) {
-        output[n.name.toString()] = `${n.value}${n.important ? ` ${n.important}` : ''}`
-      }
-    })
-    return output
+    let output = new Map<string, string>()
+    const iterateRuleset = (ruleset: Ruleset) => {
+      let value = ruleset.value
+      value.forEach(n => {
+        if (n instanceof Declaration) {
+          output.set(n.name.toString(), `${n.value}${n.important ? ` ${n.important}` : ''}`)
+        } else if (n instanceof Ruleset) {
+          iterateRuleset(n)
+        }
+      })
+    }
+    iterateRuleset(this)
+    return Object.fromEntries(output)
   }
 
   /** @todo move to visitors */

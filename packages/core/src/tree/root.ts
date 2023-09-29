@@ -7,6 +7,8 @@ import type { Context } from '../context'
  */
 export class Root extends Ruleset {
   async eval(context: Context) {
+    context.opts.mathMode = this.treeContext.mathMode
+    context.opts.unitMode = this.treeContext.unitMode
     /**
      * We're evaluating asynchronously,
      * so we need to evaluate rules out of order,

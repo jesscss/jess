@@ -51,6 +51,7 @@ export function isNode(value: any, type: 'Import'): value is Import
 export function isNode(value: any, type: 'Nil'): value is Nil
 export function isNode(value: any, type: 'Collection'): value is Collection
 export function isNode(value: any, type: 'Rest'): value is Rest
+export function isNode(value: any, type: ['VarDeclaration', 'Rest']): value is Rest | VarDeclaration
 export function isNode(value: any, type?: string | string[]): value is Node
 export function isNode(value: any, type?: string | string[]): value is Node {
   if (!(value ?? false)) {

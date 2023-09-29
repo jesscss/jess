@@ -7,7 +7,10 @@ import type { Mixin } from '../tree/mixin'
 import isPlainObject from 'lodash-es/isPlainObject'
 import { isNode } from '../tree/util'
 import { cast } from '../tree/util/cast'
-import { Rule, Ruleset } from '../tree'
+import { Ruleset } from '../tree/ruleset'
+import type { Bool } from '../tree/bool'
+import type { Condition } from '../tree/condition'
+import { Context } from '../context'
 /**
  * The Scope object is meant to be an efficient
  * lookup mechanism for variables, mixins,
@@ -80,14 +83,6 @@ const RESERVED = [
   'static'
 ]
 
-type ScopeOptions = {
-  /**
-   * Less leaks variable declarations from a child
-   * scope into the current scope.
-   */
-  leakVariablesIntoScope?: boolean
-}
-
 type FilterResult = {
   value: unknown
   done: boolean
@@ -128,8 +123,6 @@ export class Scope {
   _props: PropMap
   _parent?: Scope
 
-  options: ScopeOptions
-
   /**
    * For none found. Use this to distinguish from
    * found but has a value of undefined.
@@ -146,8 +139,7 @@ export class Scope {
   /** If we already normalized, don't re-normalize */
   static cachedKeys = new Map<string, string>()
 
-  constructor(parent?: Scope, options?: ScopeOptions) {
-    this.options = options ?? {}
+  constructor(parent?: Scope) {
     this._parent = parent
     /**
      * Assign to parent entries at first.
@@ -222,7 +214,7 @@ export class Scope {
   }
 
   /** Merges a scope (usually child) into this scope object */
-  merge(scope: Scope) {
+  merge(scope: Scope, leakVariablesIntoScope?: boolean) {
     let props = scope._props
     let keys = Object.getOwnPropertyNames(props)
     let keyLength = keys.length
@@ -230,7 +222,7 @@ export class Scope {
       let key = keys[i]
       this.setProp(key, props[key])
     }
-    if (this.options?.leakVariablesIntoScope) {
+    if (leakVariablesIntoScope) {
       let leakVariables = (lookupKey: '_vars' | '_mixins') => {
         let importedVars = scope[lookupKey]
         let localVars = this[lookupKey]
@@ -540,8 +532,13 @@ Scope.cachedKeys = new Map()
 /** Returns a plain JS function for calling a set of mixins */
 export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
   let mixinArr = Array.isArray(mixins) ? mixins : [mixins]
-  /** This will be called by a mixin call or by JavaScript */
-  return function(...args: any[]) {
+  /**
+   * This will be called by a mixin call or by JavaScript
+   *
+   * @note - Mixins resolve to async functions because they
+   * can contain dynamic imports.
+   */
+  return async function(this: Context | unknown, ...args: any[]) {
     const mixinLength = mixinArr.length
     let mixinCandidates: MixinEntry[] = []
     let evalCandidates: Array<[MixinEntry, number]>
@@ -615,11 +612,12 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
 
         for (let i of positions) {
           let arg = args[argPos]
-          if (isNode(arg, 'VarDeclaration')) {
-            params.value[i] = cast(arg)
-          } else if (isNode(arg, 'Rest')) {
-            /** @todo */
-          /** Check a pattern-matching node */
+          let param = params.value[i]
+          if (isNode(param, 'VarDeclaration')) {
+            param.value = cast(arg)
+          } else if (isNode(param, 'Rest')) {
+            param.value = new Spaced(args.slice(argPos))
+            /** Check a pattern-matching node */
           } else if (params.value[i].compare(arg) !== 0) {
             /** This mixin is not a match */
             match = false
@@ -692,26 +690,48 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       let ruleset = candidate.value
       /**
        * During parsing, each ruleset should have been assigned
-       * a scope by the parsing context, so we can use that to
+       * a scope by the tree context, so we can use that to
        * create a new scope.
        */
-      let newRuleset = new Ruleset([])
-      newRuleset._scope = new Scope(ruleset._scope)
+      let scope = new Scope(ruleset._scope)
 
       /** Now we need to add our parameters, if any */
       let params = candidate.params
       if (params) {
         for (let param of params.value) {
-          if (isNode(param, 'VarDeclaration')) {
-            newRuleset._scope.setVar(param.name as string, param.value)
+          if (isNode(param, ['VarDeclaration', 'Rest'])) {
+            scope.setVar(param.name as string, param.value)
           }
         }
       }
       /** Now we can evaluate our guards, if any */
-      let guard = candidate.guard
-      if (!guard) {
-
+      let guard: Condition | Bool | undefined = candidate.guard
+      if (guard) {
+        /** All nodes need context to be evaluated, so we create one */
+        let context = new Context()
+        context.scope = scope
+        context.isDefault = !hasMatch
+        guard = await guard.eval(context)
+        /** The guard condition passed */
+        if (guard.value) {
+          let newRuleset = ruleset.clone()
+          newRuleset._scope = scope
+          newRuleset = await newRuleset.eval(context)
+          outputRules.push([newRuleset, i])
+        }
       }
+    }
+    /**
+     * Now that we have output rules, we sort them by
+     * their original order and wrap them in a final ruleset
+     */
+    let output = new Ruleset(
+      outputRules.sort((a, b) => a[1] - b[1]).map(r => r[0])
+    )
+    if (this instanceof Context) {
+      return output
+    } else {
+      return output.obj()
     }
   }
 }

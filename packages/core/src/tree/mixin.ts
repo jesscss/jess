@@ -114,5 +114,5 @@ export const mixin = defineType(Mixin, 'Mixin') as (
   value: MixinValue | MixinConstructorParams[0],
   options?: MixinConstructorParams[1],
   location?: MixinConstructorParams[2],
-  fileInfo?: MixinConstructorParams[3]
+  treeContext?: MixinConstructorParams[3]
 ) => Mixin

@@ -1,11 +1,13 @@
 /* eslint-disable @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/restrict-plus-operands */
 import isPlainObject from 'lodash-es/isPlainObject'
-import type { Context } from '../context'
+import { type Context, TreeContext } from '../context'
 import type { Visitor } from '../visitor'
 import type { Comment } from './comment'
 import { type Operator } from './util/calculate'
 // import type { OutputCollector } from '../output'
 import type { Constructor, Writable, Class, ValueOf, Opaque } from 'type-fest'
+
+export { TreeContext }
 
 type AllNodeOptions = {
   hoistToRoot?: boolean
@@ -31,11 +33,6 @@ export type LocationInfo = [
   endColumn?: number,
 ]
 
-export interface FileInfo {
-  filename?: string
-  rootpath?: string
-}
-
 /**
  * Assume the value is a NodeMap if it's an array of arrays
  *
@@ -58,7 +55,7 @@ export const defineType = <
   ;(Clazz.prototype as Writable<InstanceType<T>>).type = type
   ;(Clazz.prototype as Writable<InstanceType<T>>).shortType = shortType
 
-  type Args = [value?: P[0] | V, location?: P[1], options?: P[2], fileInfo?: P[3]]
+  type Args = [value?: P[0] | V, location?: P[1], options?: P[2], treeContext?: P[3]]
   return (...args: Args) => {
     /** Allow objects to be passed into the public form */
     let value = args[0]
@@ -132,7 +129,7 @@ export abstract class Node<
   M extends NodeTypeMap = NodeMapType<T>
 > {
   readonly location: LocationInfo
-  readonly fileInfo: FileInfo | undefined
+  readonly treeContext: TreeContext
 
   options: O & AllNodeOptions | undefined
 
@@ -170,7 +167,7 @@ export abstract class Node<
     value: M['value'] | TypeMap<M> | Array<[string, any]>,
     options?: O,
     location?: LocationInfo | 0,
-    fileInfo?: FileInfo
+    treeContext?: TreeContext
   ) {
     if (value === undefined) {
       throw new Error('Node requires a value.')
@@ -178,7 +175,7 @@ export abstract class Node<
 
     this.data = new Map(isNodeMap(value) ? value : [['value', value]]) as TypeMap<M>
     this.location = location || []
-    this.fileInfo = fileInfo
+    this.treeContext = treeContext ?? new TreeContext()
     this.options = options
   }
 
@@ -326,7 +323,7 @@ export abstract class Node<
       new Map(this.data),
       this.options,
       this.location,
-      this.fileInfo
+      this.treeContext
     )
 
     if (deep) {
@@ -369,7 +366,7 @@ export abstract class Node<
   /** Override normally readonly props to make them inheritable */
   inherit(node: Node) {
     (this as Writable<this>).location = node.location
-    ;(this as Writable<this>).fileInfo = node.fileInfo
+    ;(this as Writable<this>).treeContext = node.treeContext
     this.evaluated = node.evaluated
     this.pre = node.pre
     this.post = node.post

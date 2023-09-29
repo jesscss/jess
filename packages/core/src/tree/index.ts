@@ -8,7 +8,7 @@
  */
 
 /** Base classes - keep these on top */
-import type { FileInfo, LocationInfo } from './node'
+import type { TreeContext, LocationInfo } from './node'
 import { Node } from './node'
 // import { Context } from '../context'
 // import { OutputCollector } from '../output'
@@ -21,7 +21,7 @@ import { Node } from './node'
 //   this.toCSS(new Context(), out)
 //   return out.toString()
 // }
-export { Node, type FileInfo, type LocationInfo }
+export { Node, type TreeContext, type LocationInfo }
 
 /** @todo - remove nodes from tree index that we don't need to bundle for runtime? */
 export * from './at-rule'

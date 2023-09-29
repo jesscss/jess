@@ -236,5 +236,5 @@ export const num = (
   value: number,
   location?: DimensionShortParams[1],
   options?: DimensionShortParams[2],
-  fileInfo?: DimensionShortParams[3]
-) => dimension([value], location, options, fileInfo)
+  treeContext?: DimensionShortParams[3]
+) => dimension([value], location, options, treeContext)

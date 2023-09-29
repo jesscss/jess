@@ -1,4 +1,4 @@
-import { defineType, type Node, type LocationInfo, type FileInfo } from './node'
+import { defineType, type Node, type LocationInfo, type TreeContext } from './node'
 import { Sequence, type SequenceOptions } from './sequence'
 
 /**
@@ -10,14 +10,14 @@ export class Spaced extends Sequence {
     value: Node[],
     options?: SequenceOptions,
     location?: LocationInfo,
-    fileInfo?: FileInfo
+    treeContext?: TreeContext
   ) {
     /** Offset by 1 to put in pre-whitespace */
     for (let i = 1; i < value.length; i++) {
       value[i].pre = 1
     }
 
-    super(value, options, location, fileInfo)
+    super(value, options, location, treeContext)
   }
   // toModule(context: Context, out: OutputCollector) {
   //   const loc = this.location

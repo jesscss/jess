@@ -1,4 +1,4 @@
-import { defineType, type FileInfo, type LocationInfo, type Node } from './node'
+import { defineType, type TreeContext, type LocationInfo, type Node } from './node'
 import { SimpleSelector } from './selector-simple'
 
 export type AttributeSelectorValue = {
@@ -53,5 +53,5 @@ export const attr = defineType<AttributeSelectorValue>(AttributeSelector, 'Attri
   value: AttributeSelectorValue | Map<string, any>,
   options?: undefined,
   location?: LocationInfo | 0,
-  fileInfo?: FileInfo
+  treeContext?: TreeContext
 ) => AttributeSelector
