@@ -542,6 +542,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     const mixinLength = mixinArr.length
     let mixinCandidates: MixinEntry[] = []
     let evalCandidates: Array<[MixinEntry, number]>
+    let thisContext = this instanceof Context ? this : new Context()
     /**
      * Check named and positional arguments
      * against mixins, to see which ones match.
@@ -706,20 +707,26 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       }
       /** Now we can evaluate our guards, if any */
       let guard: Condition | Bool | undefined = candidate.guard
+      let passes = true
+      let incomingScope = thisContext.scope
+      thisContext.scope = scope
       if (guard) {
-        /** All nodes need context to be evaluated, so we create one */
-        let context = new Context()
-        context.scope = scope
-        context.isDefault = !hasMatch
-        guard = await guard.eval(context)
+        passes = false
+        /** All nodes need context to be evaluated */
+        thisContext.isDefault = !hasMatch
+        guard = await guard.eval(thisContext)
         /** The guard condition passed */
         if (guard.value) {
-          let newRuleset = ruleset.clone()
-          newRuleset._scope = scope
-          newRuleset = await newRuleset.eval(context)
-          outputRules.push([newRuleset, i])
+          passes = true
         }
       }
+      if (passes) {
+        let newRuleset = ruleset.clone()
+        newRuleset._scope = scope
+        newRuleset = await newRuleset.eval(thisContext)
+        outputRules.push([newRuleset, i])
+      }
+      thisContext.scope = incomingScope
     }
     /**
      * Now that we have output rules, we sort them by

@@ -50,21 +50,22 @@ export class Call extends Node<CallValue> {
       }
 
       if (isNode(ref, 'FunctionValue')) {
-        try {
-          const func = ref.value
-          let result: any
-          if (func.evalArgs !== false) {
-            args = await args?.eval(context)
-          }
-          if (args) {
-            result = ref.value.call(context, ...args)
-          } else {
-            result = ref.value.call(context)
-          }
-          return cast(result)
-        } catch (e) {
-          /** Do something with JS errors */
+        // try {
+        const func = ref.value
+        let result: any
+        if (func.evalArgs !== false) {
+          args = await args?.eval(context)
         }
+        if (args) {
+          result = await ref.value.call(context, ...args)
+        } else {
+          result = await ref.value.call(context)
+        }
+        return cast(result)
+        // } catch (e) {
+        /** Do something with JS errors */
+        // console.log(e)
+        // }
       } else {
         args = await args?.eval(context)
       }

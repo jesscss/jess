@@ -26,7 +26,10 @@ describe('Include', () => {
       }))
     ])
     let evald = await node.eval(context)
-    expect(`${evald}`).toBeString('')
+    expect(`${evald}`).toBeString(`
+      prop1: value;
+      prop2: value;
+    `)
   })
   // it('should be able to include an object', () => {
   //   let obj = {

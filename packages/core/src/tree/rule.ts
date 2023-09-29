@@ -95,6 +95,7 @@ export class Rule extends Node<RuleValue> {
   //   out.add(`},${JSON.stringify(this.location)})`)
   // }
 }
+Rule.prototype.allowRuleRoot = true
 Rule.prototype.allowRoot = true
 
 export const rule = defineType<RuleValue>(Rule, 'Rule')

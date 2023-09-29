@@ -100,17 +100,15 @@ describe('Scope', async () => {
     it('will leak undefined vars', () => {
       let child = new Scope()
       child.setVar('one', 'two')
-      scope.options.leakVariablesIntoScope = true
-      scope.merge(child)
+      scope.merge(child, true)
       expect(scope.getVar('one')).toEqual('two')
     })
 
     it('will not leak defined vars', () => {
       let child = new Scope()
       child.setVar('one', 'two')
-      scope.options.leakVariablesIntoScope = true
       scope.setVar('one', 'one')
-      scope.merge(child)
+      scope.merge(child, true)
       expect(scope.getVar('one')).toEqual('one')
     })
   })

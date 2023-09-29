@@ -39,7 +39,7 @@ export type MixinOptions = {
  */
 export class Mixin extends BaseDeclaration<Name, MixinValue, VarDeclarationOptions & MixinOptions> {
   get params(): List<Node | VarDeclaration<string> | Rest> {
-    return this.data.get('params') ?? []
+    return this.data.get('params')
   }
 
   set params(v: List<Node | VarDeclaration<string> | Rest>) {
@@ -105,6 +105,8 @@ export class Mixin extends BaseDeclaration<Name, MixinValue, VarDeclarationOptio
   //   }
   // }
 }
+Mixin.prototype.allowRuleRoot = false
+Mixin.prototype.allowRoot = false
 
 /** Not sure why the Class<Node> assertion was necessary */
 

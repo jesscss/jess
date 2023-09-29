@@ -102,7 +102,9 @@ export class Ruleset extends Node<Node[]> {
   toTrimmedString(depth: number = 0) {
     let space = ''.padStart(depth * 2)
     let output = space
-    let outputs = this.value.map(n => n.toString(depth))
+    let outputs = this.value
+      .filter(n => n.visible)
+      .map(n => n.toString(depth))
     output += outputs.join(`\n${space}`) + '\n'
     return output
   }
@@ -216,6 +218,9 @@ export class Ruleset extends Node<Node[]> {
             } else {
               ident = name
             }
+            if (!decl.allowRuleRoot) {
+              decl.visible = false
+            }
             rules[pos] = decl
             if (isNode(decl, 'Mixin')) {
               this._scope.setMixin(ident, decl, decl.options)
@@ -258,6 +263,9 @@ export class Ruleset extends Node<Node[]> {
                   context.declarationScope = node
                 }
                 result = await node.eval(context)
+              }
+              if (!result.allowRuleRoot) {
+                result.visible = false
               }
               rules[pos] = result
 

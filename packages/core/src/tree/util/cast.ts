@@ -14,7 +14,7 @@ function getNodeType(value: any): Node {
   if (value === undefined || value === null) {
     return new Nil()
   }
-  if (value.constructor === Function) {
+  if (typeof value === 'function') {
     return new FunctionValue(value)
   }
   /**

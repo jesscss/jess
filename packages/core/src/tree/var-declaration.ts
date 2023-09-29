@@ -54,5 +54,7 @@ export class VarDeclaration<N extends Name = Name> extends Declaration<VarDeclar
     return `${rule}${name}: ${value.toString(depth)}${semi}`
   }
 }
+VarDeclaration.prototype.allowRuleRoot = false
+VarDeclaration.prototype.allowRoot = false
 
 export const vardecl = defineType<DeclarationValue>(VarDeclaration, 'VarDeclaration', 'vardecl')
