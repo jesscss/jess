@@ -237,6 +237,8 @@ export class Scope {
           }
           let entry = importedVars[key]!
           if (!entry.options.private) {
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment, @typescript-eslint/prefer-ts-expect-error
+            // @ts-ignore
             setter.call(this, key, entry)
           }
         }
@@ -738,7 +740,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     if (this instanceof Context) {
       return output
     } else {
-      return output.obj()
+      return output.toObject()
     }
   }
 }

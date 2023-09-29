@@ -10,6 +10,8 @@
 /** Base classes - keep these on top */
 import type { TreeContext, LocationInfo } from './node'
 import { Node } from './node'
+import { type Operator } from './util/calculate'
+import { Anonymous } from './anonymous'
 // import { Context } from '../context'
 // import { OutputCollector } from '../output'
 /**
@@ -21,6 +23,15 @@ import { Node } from './node'
 //   this.toCSS(new Context(), out)
 //   return out.toString()
 // }
+Node.prototype.operate = function(b: Node, op: Operator) {
+  let aVal = this.toString()
+  let bVal = b.toString()
+  if (op === '+') {
+    return new Anonymous(aVal + bVal).inherit(this)
+  }
+  throw new Error(`Cannot operate on ${this.type}`)
+}
+
 export { Node, type TreeContext, type LocationInfo }
 
 /** @todo - remove nodes from tree index that we don't need to bundle for runtime? */

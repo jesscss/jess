@@ -50,7 +50,7 @@ export class VarDeclaration<N extends Name = Name> extends Declaration<VarDeclar
   toTrimmedString(depth?: number): string {
     const rule = this.options?.setDefined || this.options?.paramVar ? '$' : '@let '
     const { name, value } = this
-    const semi = isNode(value, 'Collection') ? '' : ';'
+    const semi = this.options?.paramVar || isNode(value, 'Collection') ? '' : ';'
     return `${rule}${name}: ${value.toString(depth)}${semi}`
   }
 }

@@ -56,6 +56,11 @@ export class Dimension extends Node<DimensionValue> {
     return unitToGroup
   }
 
+  valueOf() {
+    let { number, unit } = this
+    return unit ? `${number}${unit}` : number
+  }
+
   operate(b: Node, op: Operator, context?: Context | undefined): Dimension | Color {
     if (!(b instanceof Dimension || b instanceof Color)) {
       throw new TypeError(`Cannot operate on ${b.type}`)
@@ -122,7 +127,7 @@ export class Dimension extends Node<DimensionValue> {
     return new Dimension([calculate(aVal, op, bVal), aUnit])
   }
 
-  compare(b: Node, context: Context) {
+  compare(b: Node, context: Context): 0 | 1 | -1 | undefined {
     if (!(b instanceof Dimension || b instanceof Color)) {
       /** Do a string comparison */
       return super.compare(b, context)

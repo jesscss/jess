@@ -63,7 +63,6 @@ describe('reference', () => {
     })
 
     it('should get a hoisted var from scope', async () => {
-      context.opts.hoistDeclarations = true
       let node = ruleset([
         decl([
           ['name', 'bar'],
@@ -74,6 +73,7 @@ describe('reference', () => {
           ['value', any('red')]
         ])
       ])
+      node.treeContext.hoistDeclarations = true
       let evald = await node.eval(context)
       /** The var declaration will be removed when going to CSS */
       expect(`${evald}`).toBeString(`
@@ -83,7 +83,6 @@ describe('reference', () => {
     })
 
     it('should get a hoisted prop from scope', async () => {
-      context.opts.hoistDeclarations = true
       let node = ruleset([
         decl([
           ['name', 'bar'],
@@ -94,6 +93,7 @@ describe('reference', () => {
           ['value', any('red')]
         ])
       ])
+      node.treeContext.hoistDeclarations = true
       let evald = await node.eval(context)
       expect(`${evald}`).toBeString(`
         bar: red;

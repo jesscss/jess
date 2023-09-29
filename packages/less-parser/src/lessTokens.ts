@@ -96,7 +96,7 @@ function $preBuildTokens() {
         pattern: '\\${{ident}}',
         categories: ['VarOrProp']
       },
-      /** Can be used in unit function */
+      /** Can be used in unit function or mod operation */
       {
         name: 'Percent',
         pattern: /%/
@@ -115,6 +115,10 @@ function $preBuildTokens() {
         name: 'BooleanFunction',
         pattern: /boolean\(/,
         categories: ['BlockMarker', 'Function']
+      },
+      {
+        name: 'DefaultGuard',
+        pattern: /default(?:\(\))?/
       }
     ],
     UrlStart: [

@@ -1,5 +1,5 @@
 import { Scope } from '../index'
-import { decl, mixin, mixinbody, any } from '../../tree'
+import { decl, mixin, any, ruleset, num } from '../../tree'
 import { logger } from '../../logger'
 
 vi.spyOn(logger, 'warn')
@@ -39,16 +39,24 @@ describe('Scope - Nodes', async () => {
       expect(`${inherited.getProp('prop')}`).toBe('prop: one three;')
     })
 
-    it('does not return parent mixins if shadowed', () => {
-      scope.setMixin('foo', 'mixin')
-      expect(scope.getMixin('foo')).toBe('mixin')
+    it('does not return parent mixins if shadowed', async () => {
+      const mix = mixin({ name: 'foo', value: ruleset([any('value')]) })
+      scope.setMixin('foo', mix)
+      expect(scope.getMixin('foo')).toBeTypeOf('function')
       let inherited = new Scope(scope)
-      expect(inherited.getMixin('foo')).toBe('mixin')
-      inherited.setMixin('foo', 'new one')
-      expect(inherited.getMixin('foo')).toBe('new one')
-      inherited.setMixin('foo', 'new two')
-      expect(inherited.getMixin('foo')).toStrictEqual(['new one', 'new two'])
-      expect(scope.getMixin('foo')).toBe('mixin')
+      expect(inherited.getMixin('foo')).toBeTypeOf('function')
+      inherited.setMixin('foo', mixin({ name: 'foo', value: ruleset([decl({ name: 'one', value: num(1) })]) }))
+      expect(inherited.getMixin('foo')).toBeTypeOf('function')
+      inherited.setMixin('foo', mixin({ name: 'foo', value: ruleset([decl({ name: 'two', value: num(2) })]) }))
+
+      const mix2 = inherited.getMixin('foo')
+      if (mix2) {
+        let returnVal = await mix2()
+        expect(returnVal).toStrictEqual({
+          one: '1',
+          two: '2'
+        })
+      }
     })
   })
 

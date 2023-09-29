@@ -411,14 +411,17 @@ export class Ruleset extends Node<Node[]> {
 
   /**
    * Return an object representation of a ruleset
+   *
+   * @todo - get primitive values rendered for things
+   * like numbers?
    */
-  obj() {
+  toObject() {
     let output = new Map<string, string>()
     const iterateRuleset = (ruleset: Ruleset) => {
       let value = ruleset.value
       value.forEach(n => {
         if (n instanceof Declaration) {
-          output.set(n.name.toString(), `${n.value}${n.important ? ` ${n.important}` : ''}`)
+          output.set(n.name.toString(), `${n.value.valueOf()}${n.important ? ` ${n.important}` : ''}`)
         } else if (n instanceof Ruleset) {
           iterateRuleset(n)
         }

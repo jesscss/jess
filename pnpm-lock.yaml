@@ -75,8 +75,8 @@ importers:
         specifier: ^0.3.4
         version: 0.3.4
       ts-macros:
-        specifier: ~2.4.0
-        version: 2.4.0(typescript@5.1.6)
+        specifier: ~2.5.0
+        version: 2.5.0(typescript@5.1.6)
       ts-node:
         specifier: ^9.1.1
         version: 9.1.1(typescript@5.1.6)
@@ -11139,12 +11139,14 @@ packages:
   /ts-interface-checker@0.1.13:
     resolution: {integrity: sha512-Y/arvbn+rrz3JCKl9C4kVNfTfSm2/mEp5FSz5EsZSANGPSlQrpRI5M4PKF+mJnE52jOO90PnPSc3Ur3bTQw0gA==}
 
-  /ts-macros@2.4.0(typescript@5.1.6):
-    resolution: {integrity: sha512-HKt4/r1KvtnBKu+RLUPFB4BJk2L4VjN5SlHHJJQSGBq5ycGhYSpgGi6VvbJjYFQscCUXOvSQRyISYVC+FF7Svg==}
+  /ts-macros@2.5.0(typescript@5.1.6):
+    resolution: {integrity: sha512-Uha8rei70+YtQS7nJ1F9m4BVUUV78vky3hIeH6JaHo2cqrKFpA9VWKzkzt4CAQU7g1pheNKr0iOkBmCzrKy2jw==}
+    hasBin: true
     peerDependencies:
-      typescript: 4.7.x || 4.8.x || 4.9.x || 5.0.x || 5.1.x
+      typescript: 4.7.x || 4.8.x || 4.9.x || 5.0.x || 5.1.x || 5.2.x
     dependencies:
       typescript: 5.1.6
+      yargs-parser: 21.1.1
     dev: true
 
   /ts-node@10.9.1(@types/node@18.15.13)(typescript@5.1.6):

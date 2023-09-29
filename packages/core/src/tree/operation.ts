@@ -22,7 +22,7 @@ export class Operation extends Node<OperationValue> {
       if (context.shouldOperate(op)) {
         left = await left.eval(context)
         right = await right.eval(context)
-        return left.operate!(right, op, context)
+        return left.operate(right, op, context)
       }
       let node = this.clone()
       node.evaluated = true

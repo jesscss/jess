@@ -446,7 +446,8 @@ export function expressionsAndValues(this: LessParser, T: TokenMap) {
           nextType === T.Plus ||
           nextType === T.Minus ||
           nextType === T.Divide ||
-          nextType === T.Star
+          nextType === T.Star ||
+          nextType === T.Percent
         ) || ($.noSep() && tokenMatcher(next, T.Signed))
       },
       DEF: () => {
@@ -458,6 +459,7 @@ export function expressionsAndValues(this: LessParser, T: TokenMap) {
                 { ALT: () => $.CONSUME(T.Minus) },
                 { ALT: () => $.CONSUME(T.Star) },
                 { ALT: () => $.CONSUME(T.Divide) }
+                { ALT: () => $.CONSUME(T.Percent) }
               ])
               $.SUBRULE2($.expressionValue, { LABEL: 'R', ARGS: [ctx] })
             }
@@ -724,21 +726,28 @@ export function guards(this: LessParser, T: TokenMap) {
    * Allows an (outer) comma like historical media queries
    */
   $.RULE('guardOr', (ctx: RuleContext = {}) => {
-    $.SUBRULE($.guardAnd, { ARGS: [ctx] })
-    $.MANY({
-      GATE: () => !!ctx.allowComma || $.LA(1).tokenType !== T.Comma,
-      DEF: () => {
-        /**
-               * Nest expressions within expressions for correct
-               * order of operations.
-               */
-        $.OR2([
-          { ALT: () => $.CONSUME($.T.Comma) },
-          { ALT: () => $.CONSUME($.T.Or) }
-        ])
-        $.SUBRULE2($.guardAnd, { ARGS: [ctx] })
+    $.OR([
+      { ALT: () => $.CONSUME(T.DefaultGuard) },
+      {
+        ALT: () => {
+          $.SUBRULE($.guardAnd, { ARGS: [ctx] })
+          $.MANY({
+            GATE: () => !!ctx.allowComma || $.LA(1).tokenType !== T.Comma,
+            DEF: () => {
+              /**
+                     * Nest expressions within expressions for correct
+                     * order of operations.
+                     */
+              $.OR2([
+                { ALT: () => $.CONSUME($.T.Comma) },
+                { ALT: () => $.CONSUME($.T.Or) }
+              ])
+              $.SUBRULE2($.guardAnd, { ARGS: [ctx] })
+            }
+          })
+        }
       }
-    })
+    ])
   })
 
   /**

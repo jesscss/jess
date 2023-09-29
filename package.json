@@ -27,7 +27,7 @@
     "puppeteer": "^19.10.1",
     "rollup": "^3.20.7",
     "shx": "^0.3.4",
-    "ts-macros": "~2.4.0",
+    "ts-macros": "~2.5.0",
     "ts-node": "^9.1.1",
     "ts-patch": "~3.0.2",
     "tslib": "^2.6.2",

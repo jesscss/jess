@@ -110,17 +110,6 @@ type CollectionPair<T> =
       : T extends Set<infer U> ? [U, U] : never
 
 /**
- * Creates an optional abstract method
- * @see https://stackoverflow.com/questions/44153378/typescript-abstract-optional-method
- */
-export interface Node {
-  /**
-   * Individual node types will override this.
-   */
-  operate?(b: Node, op: Operator, context?: Context): Node
-}
-
-/**
  * The underlying type for all Jess nodes
  */
 export abstract class Node<
@@ -374,10 +363,11 @@ export abstract class Node<
   }
 
   /**
-   * @todo - should this just return `this.data.get('value')`?
-   * The use cases aren't clear.
+   * @todo - it's not clear this needs to be in the
+   * root Node class, except it can be then generally
+   * called on any node.
    */
-  valueOf() {
+  valueOf(): any {
     let values = [...this.data.values()]
     if (values.length === 1) {
       return values[0]
@@ -463,9 +453,14 @@ export abstract class Node<
       return 0
     } else if (aVal > bVal) {
       return 1
-    } else {
+    } else if (aVal < bVal) {
       return -1
     }
+  }
+
+  /** Overridden in index.ts to avoid circularity */
+  operate(b: Node, op: Operator, context?: Context): Node {
+    return this
   }
 
   static numericCompare(a: number, b: number) {
