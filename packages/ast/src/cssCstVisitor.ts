@@ -1,8 +1,8 @@
-import type { CstNode, IToken } from 'chevrotain'
+import type { CstNode, IToken, CstElement } from 'chevrotain'
 import { tokenMatcher } from 'chevrotain'
 
 import {
-  isToken, getLocation, collectTokens, collapseTokens, flatten,
+  // isToken, getLocation, collectTokens, collapseTokens, flatten,
   type Node,
   type LocationInfo,
   Anonymous,
@@ -10,30 +10,23 @@ import {
   Root,
   Rule,
   List,
-  Element,
   Ruleset,
   Declaration,
   Expression,
-  Let,
-  JsKeyValue,
-  WS,
+  VarDeclaration,
   Dimension,
-  Selector,
+  SelectorList,
+  SelectorSequence,
   Combinator,
   AtRule,
-  JsCollection,
-  JsExpr,
-  JsImport,
   Mixin,
   Ampersand,
   Include,
-  JsIdent,
   Color,
-  Paren,
-  Square
+  Paren
 } from '@jesscss/core'
 
-import { JsImport } from '../tree/js-import'
+// import { JsImport } from '../tree/js-import'
 import { CssCstParser } from './cssCstParser'
 
 export type BaseTokenType = Pick<
@@ -59,7 +52,7 @@ export const cstVisitor = {
           }
         }
 
-        visitArray(coll: CstChild[]): any[] {
+        visitArray(coll: CstElement[]): any[] {
           return coll.map(node => this.visit(node)).filter(node => node)
         }
 

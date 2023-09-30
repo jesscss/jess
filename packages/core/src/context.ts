@@ -89,9 +89,11 @@ export class TreeContext implements TreeContextOptions {
   mathMode?: MathMode
   unitMode?: UnitMode
 
-  fileInfo?: {
-    filename: string
-    rootpath: string
+  file?: {
+    name: string
+    path: string
+    /** Contents of the file, separated into lines */
+    contents: string[]
   }
 
   /** Rulesets will inherit scope when created */

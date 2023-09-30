@@ -27,7 +27,6 @@
     "xregexp": "^5.1.1"
   },
   "devDependencies": {
-    "@jesscss/core": "workspace:^2.0.0-alpha.1",
     "@less/test-data": "^4.1.0",
     "@types/lodash-es": "~4.17.8",
     "@types/xregexp": "^4.4.0"
