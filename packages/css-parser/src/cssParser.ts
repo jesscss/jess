@@ -2,12 +2,13 @@ import type { IToken, ILexingResult, CstNode } from 'chevrotain'
 import { Lexer } from 'chevrotain'
 import { cssTokens, cssFragments } from './cssTokens'
 import { type TokenMap, type CssParserConfig, CssCstParser } from './cssCstParser'
+import { type AdvancedCstNode } from './advancedCstParser'
 import { createLexerDefinition } from './util'
 import { CssErrorMessageProvider } from './cssErrorMessageProvider'
 import type { ConditionalPick } from 'type-fest'
 
 export interface IParseResult<T extends CssCstParser = CssCstParser> {
-  cst: CstNode
+  cst: AdvancedCstNode
   lexerResult: ILexingResult
   errors: T['errors']
 }
@@ -59,7 +60,7 @@ export class CssParser {
     const lexerResult = this.lexer.tokenize(text)
     const lexedTokens: IToken[] = lexerResult.tokens
     parser.input = lexedTokens
-    const cst = parser[rule]()
+    const cst = parser[rule]() as AdvancedCstNode
 
     return { cst, lexerResult, errors: parser.errors }
   }

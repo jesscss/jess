@@ -40,6 +40,7 @@ const BACKTRACKING_ERROR = 'Error during backtracking'
 
 export type AdvancedCstNode = CstNode & {
   childrenStream: Array<AdvancedCstNode | IToken>
+  location: CstNodeLocation
 }
 
 export type OrAdvancedMethodOpts<T> = OrMethodOpts<T> & {
@@ -285,7 +286,7 @@ export class AdvancedCstParser extends CstParser {
     }
     const rootCst = this.CST_STACK[this.CST_STACK.length - 1]
     this.addTerminalToCst(rootCst, consumedToken, key)
-    this.setNodeLocationFromToken(rootCst.location!, <any>consumedToken)
+    this.setNodeLocationFromToken(rootCst.location, <any>consumedToken)
   }
 
   cstPostNonTerminal(
@@ -297,7 +298,7 @@ export class AdvancedCstParser extends CstParser {
     }
     const preCstNode = this.CST_STACK[this.CST_STACK.length - 1]
     this.addNoneTerminalToCst(preCstNode, ruleName, ruleCstResult)
-    this.setNodeLocationFromNode(preCstNode.location!, ruleCstResult.location!)
+    this.setNodeLocationFromNode(preCstNode.location, ruleCstResult.location!)
   }
 
   cstInvocationStateUpdate(fullRuleName: string): void {

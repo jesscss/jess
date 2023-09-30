@@ -5,7 +5,6 @@ export default defineConfig({
     name: 'ast',
     include: ['test/**/*.ts', '!test/setup.ts', '**/__tests__/**/*.ts'],
     globals: true,
-    setupFiles: ['./test/setup.ts'],
     coverage: {
       provider: 'v8',
       enabled: true,

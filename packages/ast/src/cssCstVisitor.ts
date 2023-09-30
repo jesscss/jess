@@ -27,7 +27,7 @@ import {
 } from '@jesscss/core'
 
 // import { JsImport } from '../tree/js-import'
-import { CssCstParser } from './cssCstParser'
+import { CssCstParser } from '../../css-parser/src/cssParser'
 
 export type BaseTokenType = Pick<
 IToken,
