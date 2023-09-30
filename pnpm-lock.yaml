@@ -108,6 +108,9 @@ importers:
       chevrotain:
         specifier: ^11.0.3
         version: 11.0.3
+      type-fest:
+        specifier: ^3.8.0
+        version: 3.8.0
 
   packages/core:
     dependencies:

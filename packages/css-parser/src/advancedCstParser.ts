@@ -38,7 +38,16 @@ export const WS_NAME = 'WS'
 
 const BACKTRACKING_ERROR = 'Error during backtracking'
 
-export type AdvancedCstNode = CstNode & {
+type UppercaseLetters = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M' | 'N' | 'O' | 'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z'
+type LowercaseLetters = Lowercase<UppercaseLetters>
+export type TokenKey = `${UppercaseLetters}${string}`
+export type NodeKey = `${LowercaseLetters}${string}`
+
+export type AdvancedCstNode = Omit<CstNode, 'children'> & {
+  children: {
+    [token: TokenKey]: IToken[]
+    [node: NodeKey]: AdvancedCstNode[]
+  }
   childrenStream: Array<AdvancedCstNode | IToken>
   location: CstNodeLocation
 }
@@ -98,7 +107,7 @@ export class AdvancedCstParser extends CstParser {
       errors: this.isBackTracking() ? [] : this.errors,
       lexerState: this.currIdx,
       RULE_STACK: savedRuleStack,
-      CST_STACK: this.CST_STACK
+      CST_STACK: this.CST_STACK as unknown as CstNode[]
     }
   }
 
@@ -317,7 +326,7 @@ export class AdvancedCstParser extends CstParser {
       value: []
     })
 
-    this.setInitialNodeLocation(cstNode as CstNode)
+    this.setInitialNodeLocation(cstNode as unknown as CstNode)
     this.CST_STACK.push(cstNode as AdvancedCstNode)
   }
 
@@ -330,10 +339,10 @@ export class AdvancedCstParser extends CstParser {
 
   addTerminalToCst(node: AdvancedCstNode, token: IToken, tokenTypeName: string) {
     node.childrenStream.push(token)
-    if (node.children[tokenTypeName] === undefined) {
-      node.children[tokenTypeName] = [token]
+    if (node.children[tokenTypeName as TokenKey | NodeKey] === undefined) {
+      node.children[tokenTypeName as TokenKey] = [token]
     } else {
-      node.children[tokenTypeName].push(token)
+      node.children[tokenTypeName as TokenKey].push(token)
     }
   }
 
