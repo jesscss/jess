@@ -82,6 +82,7 @@ export class CssCstParser extends AdvancedCstParser {
   /** Often a space-separated sequence */
   valueSequence: Rule<(ctx?: RuleContext) => void>
   value: Rule<(ctx?: RuleContext) => void>
+  squareValue: Rule<(ctx?: RuleContext) => void>
   customValue: Rule
   innerCustomValue: Rule
 

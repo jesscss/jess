@@ -350,23 +350,23 @@ export class AdvancedCstParser extends CstParser {
     this.addTerminalToCst(node, ruleResult, ruleName)
   }
 
-  private _consumeImplicits(key: 'pre' | 'post') {
+  private _consumeImplicits(key: 'pre' | 'post', associatedToken: string) {
     if (!this.outputCst) {
       return
     }
     const skipped = this.skippedTokens.get(this.currIdx + 1)
     if (skipped) {
       if (key === 'pre' || this.LA(1).tokenType === EOF) {
-        skipped.forEach(token => this.cstPostTerminal(key, token))
+        skipped.forEach(token => this.cstPostTerminal(`${key}${associatedToken}`, token))
       }
     }
   }
 
   consumeInternal(tokType: TokenType, idx: number, options?: ConsumeMethodOpts): IToken {
-    this._consumeImplicits('pre')
+    this._consumeImplicits('pre', tokType.name)
     // @ts-expect-error - Yes this exists.
     const retVal = super.consumeInternal(tokType, idx, options)
-    this._consumeImplicits('post')
+    this._consumeImplicits('post', tokType.name)
     return retVal
   }
 

@@ -17,7 +17,10 @@ import {
   Combinator,
   BasicSelector,
   Ampersand,
-  List
+  List,
+  Sequence,
+  Dimension,
+  Color
 } from '@jesscss/core'
 import { type CssRules } from './cssParser'
 
@@ -195,23 +198,27 @@ export class CssCstVisitor implements CssRuleMethods {
     return new Combinator(' ', undefined, getLocationInfo(ctx.location), this.context)
   }
 
+  private _processSelectorToken(children: AdvancedCstNode['children'], tok: 'Ident' | 'Ampersand' | 'Star') {
+    let token = children[tok]?.[0]
+    if (isToken(token)) {
+      switch (tok) {
+        case 'Ident':
+        case 'Star':
+          return new BasicSelector(token.image, undefined, getLocationInfo(token), this.context)
+        case 'Ampersand':
+          return new Ampersand('&', undefined, getLocationInfo(token), this.context)
+      }
+    }
+  }
+
   simpleSelector(ctx: AdvancedCstNode, param?: any): SimpleSelector {
     const {
       children
     } = ctx
-    let processToken = (tok: 'Ident' | 'Ampersand' | 'Star') => {
-      let token = children[tok]?.[0]
-      if (isToken(token)) {
-        switch (tok) {
-          case 'Ident':
-          case 'Star':
-            return new BasicSelector(token.image, undefined, getLocationInfo(token), this.context)
-          case 'Ampersand':
-            return new Ampersand('&', undefined, getLocationInfo(token), this.context)
-        }
-      }
-    }
-    let token = processToken('Ident') ?? processToken('Ampersand') ?? processToken('Star')
+    let processToken = this._processSelectorToken.bind(this, children)
+    let token = processToken('Ident') ??
+      processToken('Ampersand') ??
+      processToken('Star')
     if (token) {
       return token
     }
@@ -226,7 +233,13 @@ export class CssCstVisitor implements CssRuleMethods {
     let context = this.context
     let initialScope = context.scope
     context.scope = new Scope(initialScope)
-    let rules: Node[] = (childrenStream as RequiredCstNode[]).map(child => this.visit<Node>(child))
+    let rules: Node[] = []
+    for (let child of childrenStream as RequiredCstNode[]) {
+      if (isToken(child)) {
+        continue
+      }
+      rules.push(this.visit(child))
+    }
     let ruleset = new Ruleset(rules, undefined, getLocationInfo(ctx.location), this.context)
     context.scope = initialScope
     return ruleset
@@ -271,5 +284,65 @@ export class CssCstVisitor implements CssRuleMethods {
       return values[0]
     }
     return new List(values, { slash }, getLocationInfo(ctx.location), this.context)
+  }
+
+  valueSequence(ctx: AdvancedCstNode, param?: any) {
+    const {
+      children: { value }
+    } = ctx
+    let values = (value as RequiredCstNode[]).map(child => this.visit(child))
+    if (values.length === 1) {
+      return values[0]
+    }
+    return new Sequence(values, undefined, getLocationInfo(ctx.location), this.context)
+  }
+
+  private _processValueToken(
+    children: AdvancedCstNode['children'],
+    tok: 'Ident' | 'Dimension' | 'Number' | 'Color' | 'LegacyMSFilter'
+  ) {
+    let token = children[tok]?.[0]
+    if (isToken(token)) {
+      let tokValue = token.image
+      let dimValue: [number: number, unit?: string] | undefined
+      switch (tok) {
+        case 'Ident':
+          /** @todo - check to see if it's a color */
+        // eslint-disable-next-line no-fallthrough
+        case 'LegacyMSFilter':
+          return new Anonymous(tokValue, undefined, getLocationInfo(token), this.context)
+        case 'Dimension':
+          dimValue = [parseFloat(token.payload[1]), token.payload[2]]
+        // eslint-disable-next-line no-fallthrough
+        case 'Number':
+          dimValue ??= [parseFloat(tokValue)]
+          return new Dimension(dimValue, undefined, getLocationInfo(token), this.context)
+        case 'Color':
+          return new Color(tokValue, undefined, getLocationInfo(token), this.context)
+      }
+    }
+  }
+
+  value(ctx: AdvancedCstNode, param?: any) {
+    const {
+      children
+    } = ctx
+
+    let processToken = this._processValueToken.bind(this, children)
+    let token = processToken('Ident') ??
+      processToken('Dimension') ??
+      processToken('Number') ??
+      processToken('Color') ??
+      processToken('LegacyMSFilter')
+
+    if (token) {
+      return token
+    }
+
+    const { function: func, string, squareValue } = children
+
+    return this.visit<Node>(
+      (func ?? string ?? squareValue) as RequiredCstNode[]
+    )
   }
 }

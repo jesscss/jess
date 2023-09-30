@@ -479,6 +479,12 @@ export function productions(this: CssCstParser, T: TokenMap) {
     $.AT_LEAST_ONE(() => $.SUBRULE($.value, { ARGS: [ctx] }))
   })
 
+  $.RULE('squareValue', (ctx: RuleContext = {}) => {
+    $.CONSUME(T.LSquare)
+    $.CONSUME(T.Ident)
+    $.CONSUME(T.RSquare)
+  })
+
   // value
   //   : WS
   //   | identifier
@@ -503,13 +509,7 @@ export function productions(this: CssCstParser, T: TokenMap) {
         { ALT: () => $.CONSUME(T.Number) },
         { ALT: () => $.CONSUME(T.Color) },
         { ALT: () => $.SUBRULE($.string) },
-        {
-          ALT: () => {
-            $.CONSUME(T.LSquare)
-            $.CONSUME2(T.Ident)
-            $.CONSUME(T.RSquare)
-          }
-        },
+        { ALT: () => $.SUBRULE($.squareValue) },
         {
           /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
           GATE: () => $.legacyMode,
