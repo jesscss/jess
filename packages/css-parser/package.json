@@ -21,6 +21,7 @@
     "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
+    "@jesscss/core": "workspace:^2.0.0-alpha.1",
     "chevrotain": "^11.0.3",
     "chevrotain-allstar": "~0.3.0",
     "lodash-es": "~4.17.21",

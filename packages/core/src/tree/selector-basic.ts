@@ -18,7 +18,7 @@ export class BasicSelector extends SimpleSelector<string> {
 
   /** A tag-type selector */
   get isTag() {
-    return /^[^.#]/.test(this.value)
+    return /^[^.#*]/.test(this.value)
   }
 
   async eval(context: Context): Promise<BasicSelector> {

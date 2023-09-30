@@ -106,6 +106,8 @@ export class TreeContext implements TreeContextOptions {
     this.unitMode = opts.unitMode ?? UnitMode.STRICT
   }
 }
+let code1 = 0
+let code2 = 0
 
 /**
  * This is the context object used for evaluation.
@@ -114,6 +116,18 @@ export class TreeContext implements TreeContextOptions {
  * Most of context represents "state" while evaluating.
  */
 export class Context {
+  /**
+   * Selector elements (simple selectors and combinators)
+   * mapped to incremented char codes.
+   *
+   * When extending, we can use this to search for
+   * matches within a selector sequence, and then
+   * map the match position (and range) back to the
+   * selector sequence.
+   */
+  static selectorKeys = new Map<string, string>()
+  static keysFromSelector = new Map<string, string>()
+
   readonly opts: ContextOptions
 
   /**
@@ -211,6 +225,22 @@ export class Context {
     }
     this.classMap.set(name, mapVal)
     return `.${mapVal}`
+  }
+
+  /** This is only done for simple selectors and combinators */
+  registerSelectorElement(el: string) {
+    let key = Context.selectorKeys.get(el)
+    if (key) {
+      return key
+    }
+    key = String.fromCharCode(code1, code2++)
+    if (code2 > 65535) {
+      code2 = 0
+      code1++
+    }
+    Context.selectorKeys.set(key, el)
+    Context.keysFromSelector.set(el, key)
+    return key
   }
 
   getVar() {

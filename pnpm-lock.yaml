@@ -108,9 +108,6 @@ importers:
       chevrotain:
         specifier: ^11.0.3
         version: 11.0.3
-      type-fest:
-        specifier: ^3.8.0
-        version: 3.8.0
 
   packages/core:
     dependencies:
@@ -133,6 +130,9 @@ importers:
 
   packages/css-parser:
     dependencies:
+      '@jesscss/core':
+        specifier: workspace:^2.0.0-alpha.1
+        version: link:../core
       chevrotain:
         specifier: ^11.0.3
         version: 11.0.3

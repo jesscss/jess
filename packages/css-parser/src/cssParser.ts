@@ -6,11 +6,15 @@ import { type AdvancedCstNode } from './advancedCstParser'
 import { createLexerDefinition } from './util'
 import { CssErrorMessageProvider } from './cssErrorMessageProvider'
 import type { ConditionalPick } from 'type-fest'
+import { CssCstVisitor } from './cssCstVisitor'
+import { type Node } from '@jesscss/core'
 
 export interface IParseResult<T extends CssCstParser = CssCstParser> {
   cst: AdvancedCstNode
   lexerResult: ILexingResult
   errors: T['errors']
+  tree?: Node
+  contents?: string[]
 }
 
 const errorMessageProvider = new CssErrorMessageProvider()
@@ -26,6 +30,7 @@ export class CssParser {
   lexer: Lexer
   /** @todo - return Jess AST as parser */
   parser: CssCstParser
+  visitor: CssCstVisitor
 
   /**
    * @note `recoveryEnabled` should be set to true for
@@ -53,6 +58,7 @@ export class CssParser {
       skipValidations: process.env.TEST !== 'true'
     })
     this.parser = new CssCstParser(lexer, T as TokenMap, config)
+    this.visitor = new CssCstVisitor()
   }
 
   parse(text: string, rule: CssRules = 'stylesheet'): IParseResult {
@@ -62,6 +68,26 @@ export class CssParser {
     parser.input = lexedTokens
     const cst = parser[rule]() as AdvancedCstNode
 
-    return { cst, lexerResult, errors: parser.errors }
+    return {
+      cst,
+      lexerResult,
+      errors: parser.errors
+    }
+  }
+
+  parseTree(text: string, rule: CssRules = 'stylesheet'): IParseResult {
+    const { cst, lexerResult, errors } = this.parse(text, rule)
+    if (!lexerResult.errors.length && !errors.length) {
+      const tree = this.visitor.visit(cst)
+      const contents = text.split('\n')
+      return {
+        cst,
+        lexerResult,
+        errors,
+        tree,
+        contents
+      }
+    }
+    return { cst, lexerResult, errors }
   }
 }
