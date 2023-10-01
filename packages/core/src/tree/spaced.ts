@@ -14,10 +14,11 @@ export class Spaced extends Sequence {
   ) {
     /** Offset by 1 to put in pre-whitespace */
     for (let i = 1; i < value.length; i++) {
-      value[i].pre = 1
+      value[i]!.pre = 1
     }
 
     super(value, options, location, treeContext)
+    this.pre = 1
   }
   // toModule(context: Context, out: OutputCollector) {
   //   const loc = this.location

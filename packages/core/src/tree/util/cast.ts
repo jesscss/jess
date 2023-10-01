@@ -39,7 +39,7 @@ function getNodeType(value: any): Node {
     } else {
       let result = value.match(/^(\d*(?:\.\d+))([a-z]*)$/i)
       if (result) {
-        return new Dimension([parseFloat(result[1]), result[2] || undefined])
+        return new Dimension([parseFloat(result[1]!), result[2] || undefined])
       }
     }
   }

@@ -162,7 +162,7 @@ export class Ruleset extends Node<Node[]> {
        *   3. everything else
        */
       for (let i = 0; i < nodeLength; i++) {
-        let n = rules[i]
+        let n = rules[i]!
 
         if (n instanceof BaseDeclaration) {
           if (hoistDeclarations) {

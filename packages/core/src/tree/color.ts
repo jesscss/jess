@@ -63,8 +63,8 @@ export class Color extends Node<string | ColorFormat> {
       rgba.push(1)
     } else {
       let [r, g, b, a] = rgba
-      this._rgb = [r, g, b]
-      this._alpha = a
+      this._rgb = [r!, g!, b!]
+      this._alpha = a!
     }
     return rgba as ColorValues
   }
@@ -219,7 +219,7 @@ export class Color extends Node<string | ColorFormat> {
     }
     let aRGB = this.rgb
     let bRGB = bNode.rgb
-    let newColorValues = aRGB.map((a, i) => calculate(a, op, bRGB[i]))
+    let newColorValues = aRGB.map((a, i) => calculate(a, op, bRGB[i]!))
     let { value } = this
     if (typeof value === 'string') {
       value = ColorFormat.HEX

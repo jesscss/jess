@@ -219,8 +219,8 @@ export class Scope {
     let keys = Object.getOwnPropertyNames(props)
     let keyLength = keys.length
     for (let i = 0; i < keyLength; i++) {
-      let key = keys[i]
-      this.setProp(key, props[key])
+      let key = keys[i]!
+      this.setProp(key, props[key]!)
     }
     if (leakVariablesIntoScope) {
       let leakVariables = (lookupKey: '_vars' | '_mixins') => {
@@ -230,7 +230,7 @@ export class Scope {
         let keys = Object.getOwnPropertyNames(importedVars)
         let keyLength = keys.length
         for (let i = 0; i < keyLength; i++) {
-          let key = keys[i]
+          let key = keys[i]!
           /** Only leak vars if they aren't defined */
           if (key in localVars && localVars[key]?.options.preserve !== true) {
             continue
@@ -379,7 +379,7 @@ export class Scope {
        * If the most recent value is not a merge value
        * return this as the only value.
        */
-      if (!props[0].options?.merge) {
+      if (!props[0]!.options?.merge) {
         return props[0]
       }
 
@@ -388,7 +388,7 @@ export class Scope {
       let important: string | undefined
       let merge: 'list' | 'spaced' | undefined
       for (let i = length - 1; i >= 0; i--) {
-        let decl = props[i]
+        let decl = props[i]!
         if (decl.options?.merge) {
           merge = decl.options.merge
           values.push(decl.value)
@@ -397,7 +397,7 @@ export class Scope {
           }
         }
       }
-      key = props[0].name.toString()
+      key = props[0]!.name.toString()
       return new Declaration([
         ['name', key],
         ['value', merge === 'list' ? new List(values) : new Spaced(values)],
@@ -553,7 +553,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      */
     let argEntries = isPlainObject(args[0]) ? Object.entries(args[0]) : null
     for (let i = 0; i < mixinLength; i++) {
-      let mixin = mixinArr[i]
+      let mixin = mixinArr[i]!
       let isPlainRule = isNode(mixin, 'Ruleset')
       let paramLength = isPlainRule ? 0 : (mixin as Mixin).params?.length ?? 0
       if (!paramLength) {
@@ -615,13 +615,13 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
 
         for (let i of positions) {
           let arg = args[argPos]
-          let param = params.value[i]
+          let param = params.value[i]!
           if (isNode(param, 'VarDeclaration')) {
             param.value = cast(arg)
           } else if (isNode(param, 'Rest')) {
             param.value = new Spaced(args.slice(argPos))
             /** Check a pattern-matching node */
-          } else if (params.value[i].compare(arg) !== 0) {
+          } else if (param.compare(arg) !== 0) {
             /** This mixin is not a match */
             match = false
             break

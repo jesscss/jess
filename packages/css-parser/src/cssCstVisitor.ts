@@ -85,7 +85,7 @@ export class CssCstVisitor implements CssRuleMethods {
      * follows.
      */
     for (let [,tokens] of skippedTokenMap) {
-      let startOffset = tokens[0].startOffset - 1
+      let startOffset = tokens[0]!.startOffset - 1
       this.postSkippedTokenMap.set(startOffset, tokens)
     }
     this.usedSkippedTokens = new Set()
@@ -244,7 +244,7 @@ export class CssCstVisitor implements CssRuleMethods {
     } = ctx
     let selectors: SelectorSequence[] = (complexSelector as RequiredCstNode[]).map(child => this.visit(child))
     if (selectors.length === 1) {
-      return selectors[0]
+      return selectors[0]!
     }
     return new SelectorList(selectors, undefined, getLocationInfo(ctx.location), this.context)
   }
@@ -255,7 +255,7 @@ export class CssCstVisitor implements CssRuleMethods {
     } = ctx
     let selectors: SelectorSequence[] = (relativeSelector as RequiredCstNode[]).map(child => this.visit(child))
     if (selectors.length === 1) {
-      return selectors[0]
+      return selectors[0]!
     }
     return new SelectorList(selectors, undefined, getLocationInfo(ctx.location), this.context)
   }
@@ -319,13 +319,15 @@ export class CssCstVisitor implements CssRuleMethods {
       processToken('Ampersand') ??
       processToken('Star')
     if (token) {
-      return this._wrap(token, true)
+      return this._wrap(token, true, true)
     }
     const { idSelector, classSelector, attributeSelector, pseudoSelector } = children
     return this._wrap(
       this.visit<SimpleSelector>(
         (idSelector ?? classSelector ?? attributeSelector ?? pseudoSelector) as RequiredCstNode[]
-      )
+      ),
+      true,
+      true
     )
   }
 
@@ -376,7 +378,7 @@ export class CssCstVisitor implements CssRuleMethods {
       values.push(this.visit(child))
     }
     if (values.length === 1) {
-      return values[0]
+      return values[0]!
     }
     return new List(values, { slash }, getLocationInfo(ctx.location), this.context)
   }
@@ -387,7 +389,7 @@ export class CssCstVisitor implements CssRuleMethods {
     } = ctx
     let values = (value as RequiredCstNode[]).map(child => this.visit(child))
     if (values.length === 1) {
-      return values[0]
+      return values[0]!
     }
     return new Sequence(values, undefined, getLocationInfo(ctx.location), this.context)
   }
@@ -431,13 +433,15 @@ export class CssCstVisitor implements CssRuleMethods {
       processToken('LegacyMSFilter')
 
     if (token) {
-      return token
+      return this._wrap(token)
     }
 
     const { function: func, string, squareValue } = children
 
-    return this.visit<Node>(
-      (func ?? string ?? squareValue) as RequiredCstNode[]
+    return this._wrap(
+      this.visit<Node>(
+        (func ?? string ?? squareValue) as RequiredCstNode[]
+      )
     )
   }
 }

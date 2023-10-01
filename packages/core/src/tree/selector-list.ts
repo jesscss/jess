@@ -34,7 +34,7 @@ export class SelectorList extends Node<SelectorSequence[]> {
       const list = await (super.eval(context) as Promise<SelectorList>)
       const { value } = list
       if (value.length === 1) {
-        return value[0]
+        return value[0]!
       }
       return list
     })

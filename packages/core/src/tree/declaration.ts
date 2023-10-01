@@ -63,9 +63,9 @@ export class Declaration<O extends NodeOptions = DeclarationOptions, N extends N
   toTrimmedString(depth?: number) {
     const { name, value, important } = this
     if (isNode(value, 'Collection')) {
-      return `${name}: ${value.toString(depth)}`
+      return `${name}:${value.toString(depth)}`
     }
-    return `${name}: ${value.toString(depth)}${important ? ` ${important}` : ''};`
+    return `${name}:${value.toString(depth)}${important ? ` ${important}` : ''};`
   }
 
   /** @todo - move to visitors */
@@ -100,10 +100,26 @@ export class Declaration<O extends NodeOptions = DeclarationOptions, N extends N
 
 type DeclarationParams = ConstructorParameters<typeof Declaration>
 
-export const decl = defineType<DeclarationValue>(Declaration, 'Declaration', 'decl') as (
+const origDefine = defineType<DeclarationValue>(Declaration, 'Declaration', 'decl') as (
   value: DeclarationValue | DeclarationParams[0],
   options?: DeclarationParams[1],
   location?: DeclarationParams[2],
   treeContext?: DeclarationParams[3]
 ) => Declaration
+
+export const decl = (
+  value: DeclarationValue | DeclarationParams[0],
+  options?: DeclarationParams[1],
+  location?: DeclarationParams[2],
+  treeContext?: DeclarationParams[3]
+) => {
+  /**
+   * For convenience, add pre-whitespace to value node
+   * @todo - for custom properties, this should be handled differently
+  */
+  const node = origDefine(value, options, location, treeContext)
+  node.value.pre = 1
+  return node
+}
+
 Declaration.prototype.allowRuleRoot = true
