@@ -1,8 +1,8 @@
-import type { IToken, ILexingResult, CstNode } from 'chevrotain'
+import type { ILexingResult, CstNode } from 'chevrotain'
 import { Lexer } from 'chevrotain'
 import { cssTokens, cssFragments } from './cssTokens'
 import { type TokenMap, type CssParserConfig, CssCstParser } from './cssCstParser'
-import { type AdvancedCstNode } from './advancedCstParser'
+import { type AdvancedCstNode, type IToken } from './advancedCstParser'
 import { createLexerDefinition } from './util'
 import { CssErrorMessageProvider } from './cssErrorMessageProvider'
 import type { ConditionalPick } from 'type-fest'
@@ -64,7 +64,7 @@ export class CssParser {
   parse(text: string, rule: CssRules = 'stylesheet'): IParseResult {
     const parser = this.parser
     const lexerResult = this.lexer.tokenize(text)
-    const lexedTokens: IToken[] = lexerResult.tokens
+    const lexedTokens = lexerResult.tokens as IToken[]
     parser.input = lexedTokens
     const cst = parser[rule]() as AdvancedCstNode
 
@@ -78,7 +78,9 @@ export class CssParser {
   parseTree(text: string, rule: CssRules = 'stylesheet'): IParseResult {
     const { cst, lexerResult, errors } = this.parse(text, rule)
     if (!lexerResult.errors.length && !errors.length) {
-      const tree = this.visitor.visit(cst)
+      let { parser, visitor } = this
+      visitor.init(parser.skippedTokens)
+      const tree = visitor.visit(cst)
       const contents = text.split('\n')
       return {
         cst,

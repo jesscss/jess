@@ -2,7 +2,6 @@ import {
   type TokenVocabulary,
   type TokenType,
   type IParserConfig,
-  type IToken,
   type CstNode,
   type ParserMethod
 } from 'chevrotain'
@@ -55,7 +54,6 @@ export type RuleContext = {
 
 export class CssCstParser extends AdvancedCstParser {
   T: TokenMap
-  skippedTokens: Map<number, IToken[]>
   legacyMode: boolean
 
   /** Rewire, declaring class fields in constructor with `public` */

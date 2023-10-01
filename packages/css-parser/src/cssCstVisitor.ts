@@ -1,16 +1,16 @@
 import {
   type CstElement,
-  type IToken,
   type CstNodeLocation
 } from 'chevrotain'
 import {
-  type Node,
+  Node,
   type LocationInfo,
   TreeContext,
   Root,
   Anonymous,
   Rule, Declaration,
-  Scope, type SimpleSelector,
+  Scope,
+  type SimpleSelector,
   SelectorList,
   SelectorSequence,
   Ruleset,
@@ -20,12 +20,14 @@ import {
   List,
   Sequence,
   Dimension,
-  Color
+  Color,
+  Comment
 } from '@jesscss/core'
 import { type CssRules } from './cssParser'
 
 import {
   type AdvancedCstNode as RequiredCstNode,
+  type IToken,
   type TokenKey,
   type NodeKey
 } from './advancedCstParser'
@@ -45,7 +47,7 @@ export function isToken(node: CstElement | undefined): node is IToken {
   return Boolean(node && 'tokenType' in node)
 }
 
-export function getLocationInfo(loc: CstNodeLocation): LocationInfo {
+export function getLocationInfo(loc: Required<CstNodeLocation>): LocationInfo {
   const {
     startOffset,
     startLine,
@@ -66,14 +68,18 @@ type CssRuleMethods = {
 }
 
 export class CssCstVisitor implements CssRuleMethods {
+  skippedTokens: IToken[]
+  skipIndex: number
   context: TreeContext
   initialScope: Scope
 
-  constructor(context?: TreeContext) {
+  /** This is a required call for a functioning visitor */
+  init(skippedTokens?: IToken[]) {
+    this.skipIndex = 0
+    this.skippedTokens = skippedTokens ?? []
     // @ts-expect-error - this is exported correctly, not sure what the problem is
-    context ??= new TreeContext()
-    this.context = context
-    this.initialScope = context.scope ??= new Scope()
+    let context = this.context = new TreeContext()
+    this.initialScope = context.scope = new Scope()
   }
 
   /**
@@ -118,9 +124,72 @@ export class CssCstVisitor implements CssRuleMethods {
     return root
   }
 
+  private _getPrePost(offset: number, inRuleset?: boolean): Node['pre'] {
+    let skipped = this.skippedTokens
+    let skippedLength = skipped.length
+    let i = this.skipIndex
+    let pre: Node['pre'] = 0
+    let addPre = (token: IToken) => {
+      let item: string | Comment | undefined
+      let name = token.tokenType.name
+      if (name === 'WS') {
+        item = token.image
+      } else {
+        item = new Comment(token.image, { lineComment: name.includes('Line') }, getLocationInfo(token), this.context)
+        if (isArray(pre)) {
+          let prev = pre[i - 1]
+          if (inRuleset && typeof prev === 'string') {
+            /** Absorb previous white-space into comment node */
+            item.pre = [prev]
+            pre[i - 1] = item
+          } else {
+            pre.push(item)
+          }
+        } else {
+          pre = [item]
+        }
+      }
+    }
+    for (; i < skippedLength; i++) {
+      let token = skipped[i]
+      if (token.endOffset > offset) {
+        break
+      }
+      addPre(token)
+    }
+    this.skipIndex = i
+    if (isArray(pre) && pre.length === 1 && pre[0] === ' ') {
+      pre = 1
+    }
+    return pre
+  }
+
+  private _getRulesWithComments(nodes: AdvancedCstNode[]) {
+    let rules = []
+    for (let child of nodes) {
+      let pre = this._getPrePost(child.location.startOffset, true)
+      if (isArray(pre)) {
+        let i = 0
+        let item = pre[i]
+        while (item) {
+          if (item instanceof Node) {
+            rules.push(item)
+            pre.unshift()
+            i--
+          }
+          item = pre[++i]
+        }
+      }
+      let rule = this.visit(child)
+      rule.pre = pre
+      rules.push(rule)
+    }
+    return rules
+  }
+
   main(ctx: AdvancedCstNode, param?: any): Root {
     const { childrenStream } = ctx
-    let rules = (childrenStream as RequiredCstNode[]).map(child => this.visit(child))
+    let rules = this._getRulesWithComments(childrenStream as RequiredCstNode[])
     return new Root(rules, undefined, getLocationInfo(ctx.location), this.context)
   }
 

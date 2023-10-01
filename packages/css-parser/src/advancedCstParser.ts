@@ -7,7 +7,7 @@ import {
   type IOrAlt,
   type OrMethodOpts,
   type SubruleMethodOpts,
-  type IToken,
+  type IToken as OrigIToken,
   type CstNode,
   type TokenType,
   type ConsumeMethodOpts,
@@ -31,6 +31,10 @@ export interface IParserState {
   CST_STACK: CstNode[]
 }
 
+export interface IToken extends Required<Omit<OrigIToken, 'payload'>> {
+  payload?: OrigIToken['payload']
+}
+
 /** Apply this label to tokens you wish to skip during parsing consideration */
 export const SKIPPED_LABEL = 'Skipped'
 /** The name of the whitespace token */
@@ -49,7 +53,7 @@ export type AdvancedCstNode = Omit<CstNode, 'children'> & {
     [node: NodeKey]: AdvancedCstNode[]
   }
   childrenStream: Array<AdvancedCstNode | IToken>
-  location: CstNodeLocation
+  location: Required<CstNodeLocation>
 }
 
 export type OrAdvancedMethodOpts<T> = OrMethodOpts<T> & {
@@ -66,7 +70,8 @@ export type OrAdvancedMethodOpts<T> = OrMethodOpts<T> & {
  *   3. It has more advanced backtracking along with try-parsing functionality.
  */
 export class AdvancedCstParser extends CstParser {
-  skippedTokens: Map<number, IToken[]>
+  skippedTokenMap: Map<number, IToken[]>
+  skippedTokens: IToken[]
 
   /** Start exposing private Chevrotain API */
   CST_STACK: AdvancedCstNode[]
@@ -350,43 +355,45 @@ export class AdvancedCstParser extends CstParser {
     this.addTerminalToCst(node, ruleResult, ruleName)
   }
 
-  private _consumeImplicits(key: 'pre' | 'post', associatedToken: string) {
+  private _consumeImplicits(key: 'pre' | 'post') {
     if (!this.outputCst) {
       return
     }
-    const skipped = this.skippedTokens.get(this.currIdx + 1)
+    const skipped = this.skippedTokenMap.get(this.currIdx + 1)
     if (skipped) {
       if (key === 'pre' || this.LA(1).tokenType === EOF) {
-        skipped.forEach(token => this.cstPostTerminal(`${key}${associatedToken}`, token))
+        skipped.forEach(token => this.cstPostTerminal('Skipped', token))
       }
     }
   }
 
   consumeInternal(tokType: TokenType, idx: number, options?: ConsumeMethodOpts): IToken {
-    this._consumeImplicits('pre', tokType.name)
+    this._consumeImplicits('pre')
     // @ts-expect-error - Yes this exists.
     const retVal = super.consumeInternal(tokType, idx, options)
-    this._consumeImplicits('post', tokType.name)
+    this._consumeImplicits('post')
     return retVal
   }
 
   /** Separate skipped tokens into a new map */
   // @ts-expect-error - It's defined in Chevrotain as a data property
   set input(value: IToken[]) { // eslint-disable-line accessor-pairs
-    const skippedTokens = new Map<number, IToken[]>()
+    const skippedTokenMap = new Map<number, IToken[]>()
+    const skippedTokens: IToken[] = []
     const inputTokens: IToken[] = []
     let foundTokens: number = 0
     for (let i = 0; i < value.length; i++) {
       const token = value[i]
       if (token.tokenType.LABEL === SKIPPED_LABEL) {
-        const tokens = skippedTokens.get(foundTokens) ?? []
-        skippedTokens.set(foundTokens, [...tokens, token])
+        const tokens = skippedTokenMap.get(foundTokens) ?? []
+        skippedTokenMap.set(foundTokens, [...tokens, token])
+        skippedTokens.push(token)
       } else {
         inputTokens.push(token)
         foundTokens++
       }
     }
-    this.skippedTokens = skippedTokens
+    this.skippedTokenMap = skippedTokenMap
     super.input = inputTokens
   }
 
@@ -395,7 +402,7 @@ export class AdvancedCstParser extends CstParser {
    * Determine if there is white-space before the next token
    */
   hasWS() {
-    const skipped = this.skippedTokens.get(this.currIdx + 1)
+    const skipped = this.skippedTokenMap.get(this.currIdx + 1)
     if (!skipped) {
       return false
     }
@@ -407,6 +414,6 @@ export class AdvancedCstParser extends CstParser {
    * Affirms that there is NOT white space or comment before next token
    */
   noSep(offset: number = 0) {
-    return !this.skippedTokens.get(this.currIdx + 1 + offset)
+    return !this.skippedTokenMap.get(this.currIdx + 1 + offset)
   }
 }
