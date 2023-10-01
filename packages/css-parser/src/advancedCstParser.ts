@@ -70,8 +70,8 @@ export type OrAdvancedMethodOpts<T> = OrMethodOpts<T> & {
  *   3. It has more advanced backtracking along with try-parsing functionality.
  */
 export class AdvancedCstParser extends CstParser {
+  /** Indexed by the startOffset of the next token it precedes */
   skippedTokenMap: Map<number, IToken[]>
-  skippedTokens: IToken[]
 
   /** Start exposing private Chevrotain API */
   CST_STACK: AdvancedCstNode[]
@@ -359,9 +359,16 @@ export class AdvancedCstParser extends CstParser {
     if (!this.outputCst) {
       return
     }
-    const skipped = this.skippedTokenMap.get(this.currIdx + 1)
-    if (skipped) {
-      if (key === 'pre' || this.LA(1).tokenType === EOF) {
+    let nextToken = this.LA(1)
+    if (key === 'pre') {
+      let startOffset = nextToken.startOffset
+      const skipped = this.skippedTokenMap.get(startOffset)
+      if (skipped) {
+        skipped.forEach(token => this.cstPostTerminal('Skipped', token))
+      }
+    } else if (nextToken.tokenType === EOF) {
+      const skipped = this.skippedTokenMap.get(Infinity)
+      if (skipped) {
         skipped.forEach(token => this.cstPostTerminal('Skipped', token))
       }
     }
@@ -379,18 +386,23 @@ export class AdvancedCstParser extends CstParser {
   // @ts-expect-error - It's defined in Chevrotain as a data property
   set input(value: IToken[]) { // eslint-disable-line accessor-pairs
     const skippedTokenMap = new Map<number, IToken[]>()
-    const skippedTokens: IToken[] = []
     const inputTokens: IToken[] = []
-    let foundTokens: number = 0
     for (let i = 0; i < value.length; i++) {
       const token = value[i]
+      let nextToken: IToken | undefined
+      /** Find the next non-skipped token */
+      for (let j = i + 1; j < value.length; j++) {
+        nextToken = value[j]
+        if (nextToken.tokenType.LABEL !== SKIPPED_LABEL) {
+          break
+        }
+      }
+      const beforeIndex = nextToken?.startOffset ?? Infinity
       if (token.tokenType.LABEL === SKIPPED_LABEL) {
-        const tokens = skippedTokenMap.get(foundTokens) ?? []
-        skippedTokenMap.set(foundTokens, [...tokens, token])
-        skippedTokens.push(token)
+        const tokens = skippedTokenMap.get(beforeIndex) ?? []
+        skippedTokenMap.set(beforeIndex, [...tokens, token])
       } else {
         inputTokens.push(token)
-        foundTokens++
       }
     }
     this.skippedTokenMap = skippedTokenMap
@@ -402,7 +414,8 @@ export class AdvancedCstParser extends CstParser {
    * Determine if there is white-space before the next token
    */
   hasWS() {
-    const skipped = this.skippedTokenMap.get(this.currIdx + 1)
+    let startOffset = this.LA(1).startOffset
+    const skipped = this.skippedTokenMap.get(startOffset)
     if (!skipped) {
       return false
     }
@@ -414,6 +427,7 @@ export class AdvancedCstParser extends CstParser {
    * Affirms that there is NOT white space or comment before next token
    */
   noSep(offset: number = 0) {
-    return !this.skippedTokenMap.get(this.currIdx + 1 + offset)
+    let startOffset = this.LA(1 + offset).startOffset
+    return !this.skippedTokenMap.get(startOffset)
   }
 }

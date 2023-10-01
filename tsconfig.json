@@ -13,6 +13,7 @@
     "baseUrl": "./packages",
     "strict": true,
     "strictPropertyInitialization": false,
+    "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
     "paths": {
       "jess": ["jess/lib"],

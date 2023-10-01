@@ -5,7 +5,7 @@ export default defineConfig({
     name: 'core',
     include: ['test/**/*.ts', '!test/setup.ts', '**/__tests__/**/*.ts', '!src/old_tree/**/*'],
     globals: true,
-    setupFiles: ['./test/setup.ts'],
+    setupFiles: ['../../test/setup.ts'],
     coverage: {
       enabled: true,
       reporter: ['text'],

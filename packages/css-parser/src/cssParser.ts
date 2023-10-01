@@ -79,7 +79,7 @@ export class CssParser {
     const { cst, lexerResult, errors } = this.parse(text, rule)
     if (!lexerResult.errors.length && !errors.length) {
       let { parser, visitor } = this
-      visitor.init(parser.skippedTokens)
+      visitor.init(parser.skippedTokenMap)
       const tree = visitor.visit(cst)
       const contents = text.split('\n')
       return {

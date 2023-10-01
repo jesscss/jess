@@ -117,7 +117,7 @@ export abstract class Node<
   O extends NodeOptions = NodeOptions,
   M extends NodeTypeMap = NodeMapType<T>
 > {
-  readonly location: LocationInfo | 0
+  readonly location: LocationInfo | []
   readonly treeContext: TreeContext
 
   options: O & AllNodeOptions | undefined
@@ -163,7 +163,7 @@ export abstract class Node<
     }
 
     this.data = new Map(isNodeMap(value) ? value : [['value', value]]) as TypeMap<M>
-    this.location = location ?? 0
+    this.location = location || []
     this.treeContext = treeContext ?? new TreeContext()
     this.options = options
   }

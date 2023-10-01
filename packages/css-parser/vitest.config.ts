@@ -5,6 +5,7 @@ export default defineConfig({
     name: 'css-parser',
     include: ['test/**/*.ts', '**/__tests__/**/*.ts'],
     globals: true,
+    setupFiles: ['../../test/setup.ts'],
     coverage: {
       enabled: true,
       include: ['src/**/*.ts'],

@@ -43,7 +43,7 @@ type CstNode = AdvancedCstNode | AdvancedCstNode[]
 
 type PossibleCstNode = CstNode | undefined
 
-export function isToken(node: CstElement | undefined): node is IToken {
+export function isToken(node: any): node is IToken {
   return Boolean(node && 'tokenType' in node)
 }
 
@@ -68,15 +68,27 @@ type CssRuleMethods = {
 }
 
 export class CssCstVisitor implements CssRuleMethods {
-  skippedTokens: IToken[]
-  skipIndex: number
+  preSkippedTokenMap: Map<number, IToken[]>
+  postSkippedTokenMap: Map<number, IToken[]>
+  usedSkippedTokens: Set<number>
   context: TreeContext
   initialScope: Scope
 
   /** This is a required call for a functioning visitor */
-  init(skippedTokens?: IToken[]) {
-    this.skipIndex = 0
-    this.skippedTokens = skippedTokens ?? []
+  init(skippedTokenMap: Map<number, IToken[]>) {
+    this.preSkippedTokenMap = skippedTokenMap
+    this.postSkippedTokenMap = new Map()
+    /**
+     * Make a post skipped token map. When we pass in a
+     * non-skipped-token's endOffset, it should look up
+     * to see if there's a token group that immediately
+     * follows.
+     */
+    for (let [,tokens] of skippedTokenMap) {
+      let startOffset = tokens[0].startOffset - 1
+      this.postSkippedTokenMap.set(startOffset, tokens)
+    }
+    this.usedSkippedTokens = new Set()
     // @ts-expect-error - this is exported correctly, not sure what the problem is
     let context = this.context = new TreeContext()
     this.initialScope = context.scope = new Scope()
@@ -124,41 +136,30 @@ export class CssCstVisitor implements CssRuleMethods {
     return root
   }
 
-  private _getPrePost(offset: number, inRuleset?: boolean): Node['pre'] {
-    let skipped = this.skippedTokens
-    let skippedLength = skipped.length
-    let i = this.skipIndex
-    let pre: Node['pre'] = 0
-    let addPre = (token: IToken) => {
-      let item: string | Comment | undefined
+  private _getPrePost(offset: number, commentsOnly?: boolean, post?: boolean): Node['pre'] {
+    if (!post && this.usedSkippedTokens.has(offset)) {
+      return 0
+    }
+    let skipped = post ? this.postSkippedTokenMap.get(offset) : this.preSkippedTokenMap.get(offset)
+    if (!skipped) {
+      return 0
+    }
+    if (!post) {
+      this.usedSkippedTokens.add(offset)
+    }
+    let pre: Node['pre'] = skipped.map(token => {
       let name = token.tokenType.name
       if (name === 'WS') {
-        item = token.image
+        return token.image
       } else {
-        item = new Comment(token.image, { lineComment: name.includes('Line') }, getLocationInfo(token), this.context)
-        if (isArray(pre)) {
-          let prev = pre[i - 1]
-          if (inRuleset && typeof prev === 'string') {
-            /** Absorb previous white-space into comment node */
-            item.pre = [prev]
-            pre[i - 1] = item
-          } else {
-            pre.push(item)
-          }
-        } else {
-          pre = [item]
-        }
+        return new Comment(token.image, { lineComment: name.includes('Line') }, getLocationInfo(token), this.context)
       }
+    })
+    if (commentsOnly) {
+      pre = pre.filter(item => item instanceof Comment)
     }
-    for (; i < skippedLength; i++) {
-      let token = skipped[i]
-      if (token.endOffset > offset) {
-        break
-      }
-      addPre(token)
-    }
-    this.skipIndex = i
-    if (isArray(pre) && pre.length === 1 && pre[0] === ' ') {
+
+    if (pre.length === 1 && pre[0] === ' ') {
       pre = 1
     }
     return pre
@@ -166,13 +167,30 @@ export class CssCstVisitor implements CssRuleMethods {
 
   private _getRulesWithComments(nodes: AdvancedCstNode[]) {
     let rules = []
+    /**
+     * @todo - I think this pattern means that comments after
+     * the last rule will be tossed out, so we need to figure
+     * out a way to get comments when comments are the only
+     * content in a file.
+     */
+    let rule: Node | undefined
     for (let child of nodes) {
+      /** Skip extraneous semi-colons */
+      if (isToken(child)) {
+        continue
+      }
       let pre = this._getPrePost(child.location.startOffset, true)
       if (isArray(pre)) {
         let i = 0
         let item = pre[i]
         while (item) {
           if (item instanceof Node) {
+            let prev = pre[i - 1]
+            if (prev) {
+              item.pre = [prev]
+              pre.unshift()
+              i--
+            }
             rules.push(item)
             pre.unshift()
             i--
@@ -180,11 +198,22 @@ export class CssCstVisitor implements CssRuleMethods {
           item = pre[++i]
         }
       }
-      let rule = this.visit(child)
+      rule = this.visit(child)
       rule.pre = pre
       rules.push(rule)
     }
     return rules
+  }
+
+  private _wrap<T extends Node = Node>(node: T, post?: boolean, commentsOnly?: boolean): T {
+    if (post) {
+      let endOffset = node.location[3]!
+      node.post = this._getPrePost(endOffset, commentsOnly, true)
+      return node
+    }
+    let startOffset = node.location[0]!
+    node.pre = this._getPrePost(startOffset, commentsOnly)
+    return node
   }
 
   main(ctx: AdvancedCstNode, param?: any): Root {
@@ -202,6 +231,7 @@ export class CssCstVisitor implements CssRuleMethods {
     )
     let declarationList = this.visit<Ruleset>(ctx.children.declarationList as CstNode)
 
+    /** These will already have pre-nodes assigned by `main` / `declarationList` */
     return new Rule([
       ['selector', selector],
       ['value', declarationList]
@@ -289,11 +319,13 @@ export class CssCstVisitor implements CssRuleMethods {
       processToken('Ampersand') ??
       processToken('Star')
     if (token) {
-      return token
+      return this._wrap(token, true)
     }
     const { idSelector, classSelector, attributeSelector, pseudoSelector } = children
-    return this.visit<SimpleSelector>(
-      (idSelector ?? classSelector ?? attributeSelector ?? pseudoSelector) as RequiredCstNode[]
+    return this._wrap(
+      this.visit<SimpleSelector>(
+        (idSelector ?? classSelector ?? attributeSelector ?? pseudoSelector) as RequiredCstNode[]
+      )
     )
   }
 
@@ -302,13 +334,7 @@ export class CssCstVisitor implements CssRuleMethods {
     let context = this.context
     let initialScope = context.scope
     context.scope = new Scope(initialScope)
-    let rules: Node[] = []
-    for (let child of childrenStream as RequiredCstNode[]) {
-      if (isToken(child)) {
-        continue
-      }
-      rules.push(this.visit(child))
-    }
+    let rules = this._getRulesWithComments(childrenStream as RequiredCstNode[])
     let ruleset = new Ruleset(rules, undefined, getLocationInfo(ctx.location), this.context)
     context.scope = initialScope
     return ruleset
