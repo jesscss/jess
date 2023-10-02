@@ -21,7 +21,8 @@ import {
   Sequence,
   Dimension,
   Color,
-  Comment
+  Comment,
+  Func
 } from '@jesscss/core'
 import { type CssRules } from './cssParser'
 
@@ -451,5 +452,37 @@ export class CssCstVisitor implements CssRuleMethods {
         (func ?? string ?? squareValue) as RequiredCstNode[]
       )
     )
+  }
+
+  function(ctx: AdvancedCstNode, param?: any) {
+    const {
+      children: {
+        knownFunctions,
+        Ident,
+        valueList
+      }
+    } = ctx
+    if (knownFunctions) {
+      return this.visit(knownFunctions as RequiredCstNode[])
+    }
+    return new Func([
+      ['ref', Ident?.[0]?.image],
+      ['args', this.visit(valueList as RequiredCstNode[])]
+    ])
+  }
+
+  knownFunctions(ctx: AdvancedCstNode, param?: any) {
+    const {
+      children: {
+        urlFunction,
+        varFunction,
+        calcFunction
+      }
+    } = ctx
+    return this.visit((urlFunction ?? varFunction ?? calcFunction) as RequiredCstNode[])
+  }
+
+  urlFunction(ctx: AdvancedCstNode, param?: any) {
+
   }
 }

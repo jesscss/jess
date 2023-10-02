@@ -6,24 +6,24 @@ import { cast } from './util/cast'
 
 export type CallValue = {
   /**
-   * Can be an identifier or something like a mixin lookup
+   * Can be an identifier or something like a mixin or variable lookup
    *   e.g. #mixin > .class() is [Call (#mixin ())] -> [Call (class ())]
    */
-  ref: string | Node
+  name: string | Node
   args?: List
 }
 
 /**
- * A mixin or function call. In Less, the ref for something like `rgb`
+ * @note In Less, the ref for something like `rgb`
  * is not a string, but is an (optional) variable reference.
  */
-export class Call extends Node<CallValue> {
-  get ref() {
-    return this.data.get('ref')
+export class Call<T extends CallValue = CallValue> extends Node<T> {
+  get name() {
+    return this.data.get('name')
   }
 
-  set ref(v: string | Node) {
-    this.data.set('ref', v)
+  set name(v: string | Node) {
+    this.data.set('name', v)
   }
 
   get args() {
@@ -35,8 +35,8 @@ export class Call extends Node<CallValue> {
   }
 
   toTrimmedString() {
-    let { ref, args } = this
-    return `${ref}(${args ?? ''})`
+    let { name, args } = this
+    return `${name}(${args ?? ''})`
   }
 
   async eval(context: Context): Promise<Node> {
@@ -44,22 +44,22 @@ export class Call extends Node<CallValue> {
       let canOperate = context.canOperate
       /** Reset parentheses "state" */
       context.canOperate = false
-      let { ref, args } = this
-      if (ref instanceof Node) {
-        ref = await ref.eval(context)
+      let { name, args } = this
+      if (name instanceof Node) {
+        name = await name.eval(context)
       }
 
-      if (isNode(ref, 'FunctionValue')) {
+      if (isNode(name, 'FunctionValue')) {
         // try {
-        const func = ref.value
+        const func = name.value
         let result: any
         if (func.evalArgs !== false) {
           args = await args?.eval(context)
         }
         if (args) {
-          result = await ref.value.call(context, ...args)
+          result = await name.value.call(context, ...args)
         } else {
-          result = await ref.value.call(context)
+          result = await name.value.call(context)
         }
         return cast(result)
         // } catch (e) {
@@ -71,7 +71,7 @@ export class Call extends Node<CallValue> {
       }
       context.canOperate = canOperate
       let node = this.clone()
-      node.ref = ref
+      node.name = name
       node.args = args
       return node
     })
