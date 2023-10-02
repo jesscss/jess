@@ -185,22 +185,17 @@ export class CssCstVisitor implements CssRuleMethods {
         let item = pre[i]
         while (item) {
           if (item instanceof Node) {
-            // prev = pre[0]
-            // i = 1
-            // item = pre[1]
             let prev = pre[i - 1]
+            /** Attach whitespace before comment to comment */
             if (prev) {
               item.pre = [prev]
               pre.shift()
-              // i = 0
               i--
             }
             rules.push(item)
             pre.shift()
-            // i = -1
             i--
           }
-          // i = 0
           item = pre[++i]
         }
       }
