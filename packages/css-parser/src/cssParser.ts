@@ -61,7 +61,7 @@ export class CssParser {
     this.visitor = new CssCstVisitor()
   }
 
-  parse(text: string, rule: CssRules = 'stylesheet'): IParseResult {
+  parse(text: string, rule: CssRules = 'stylesheet'): Omit<IParseResult, 'tree' | 'contents'> {
     const parser = this.parser
     const lexerResult = this.lexer.tokenize(text)
     const lexedTokens = lexerResult.tokens as IToken[]

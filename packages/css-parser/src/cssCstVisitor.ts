@@ -103,7 +103,7 @@ export class CssCstVisitor implements CssRuleMethods {
     if (isArray(cstNode)) {
       // A CST Node's children dictionary can never have empty arrays as values
       // If a key is defined there will be at least one element in the corresponding value array.
-      cstNode = cstNode[0]
+      cstNode = cstNode[0]!
     }
     return this[cstNode.name as VisitorMethodNames](cstNode, param) as T
   }
@@ -185,16 +185,22 @@ export class CssCstVisitor implements CssRuleMethods {
         let item = pre[i]
         while (item) {
           if (item instanceof Node) {
+            // prev = pre[0]
+            // i = 1
+            // item = pre[1]
             let prev = pre[i - 1]
             if (prev) {
               item.pre = [prev]
-              pre.unshift()
+              pre.shift()
+              // i = 0
               i--
             }
             rules.push(item)
-            pre.unshift()
+            pre.shift()
+            // i = -1
             i--
           }
+          // i = 0
           item = pre[++i]
         }
       }
@@ -355,6 +361,10 @@ export class CssCstVisitor implements CssRuleMethods {
     /** Had to have a property when parsed */
     let name = (Ident?.[0] ?? LegacyPropIdent?.[0])!
     let value = this.visit(valueList as RequiredCstNode[])
+    /** Insert initial whitespace before value, if not present */
+    if (!this.preSkippedTokenMap.has(value.location[0]!)) {
+      value.pre = 1
+    }
     let important = Important?.[0] ? Important?.[0].image : undefined
 
     return new Declaration([
@@ -377,10 +387,13 @@ export class CssCstVisitor implements CssRuleMethods {
       }
       values.push(this.visit(child))
     }
+    let node: Node
     if (values.length === 1) {
-      return values[0]!
+      node = values[0]!
+    } else {
+      node = new List(values, { slash }, getLocationInfo(ctx.location), this.context)
     }
-    return new List(values, { slash }, getLocationInfo(ctx.location), this.context)
+    return this._wrap(node)
   }
 
   valueSequence(ctx: AdvancedCstNode, param?: any) {
