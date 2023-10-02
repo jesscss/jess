@@ -1,6 +1,21 @@
 import { expect } from 'vitest'
 
 expect.extend({
+  /** Normalizes CSS-ish strings */
+  toMatchCss(received: string, expected: string) {
+    let replaceWS = (str: string) =>
+      str.replace(/\s+/g, ' ').replace(/:\s*/, ':').replace(/;/, '')
+
+    received = replaceWS(received)
+    expected = replaceWS(expected)
+    return {
+      // do not alter your "pass" based on isNot. Vitest does it for you
+      pass: received === expected,
+      message: () => 'strings do not match',
+      actual: received,
+      expected
+    }
+  },
   toBeString(received: string, expected: string) {
     /**
      * This is how much space we can remove.

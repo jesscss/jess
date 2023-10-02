@@ -83,7 +83,10 @@ export class Ruleset extends Node<Node[]> {
   ) {
     super(value, options, location, treeContext)
     let scope = this.treeContext.scope
-    this._scope = new Scope(scope)
+    Object.defineProperty(this, '_scope', {
+      value: new Scope(scope),
+      writable: true
+    })
   }
 
   // constructor(value: { scope: }) {

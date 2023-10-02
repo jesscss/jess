@@ -1,0 +1,126 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`CSS CST Visitor > visits every visitor method > Qualified Rule 1`] = `
+Root {
+  "data": Map {
+    "value" => [
+      Rule {
+        "data": Map {
+          "selector" => SelectorSequence {
+            "data": Map {
+              "value" => [
+                BasicSelector {
+                  "data": Map {
+                    "value" => "a",
+                  },
+                  "location": [
+                    0,
+                    1,
+                    1,
+                    0,
+                    1,
+                    1,
+                  ],
+                  "options": undefined,
+                  "post": [],
+                  "pre": 0,
+                  "visible": true,
+                },
+              ],
+            },
+            "location": [
+              0,
+              1,
+              1,
+              0,
+              1,
+              1,
+            ],
+            "options": undefined,
+            "post": 0,
+            "pre": 0,
+            "visible": true,
+          },
+          "value" => Ruleset {
+            "data": Map {
+              "value" => [
+                Declaration {
+                  "data": Map {
+                    "name" => "color",
+                    "value" => Anonymous {
+                      "data": Map {
+                        "value" => "red",
+                      },
+                      "location": [
+                        11,
+                        1,
+                        12,
+                        13,
+                        1,
+                        14,
+                      ],
+                      "options": undefined,
+                      "post": 0,
+                      "pre": 0,
+                      "visible": true,
+                    },
+                    "important" => undefined,
+                  },
+                  "location": [
+                    4,
+                    1,
+                    5,
+                    13,
+                    1,
+                    14,
+                  ],
+                  "options": {},
+                  "post": 0,
+                  "pre": [],
+                  "visible": true,
+                },
+              ],
+            },
+            "location": [
+              4,
+              1,
+              5,
+              14,
+              1,
+              15,
+            ],
+            "options": undefined,
+            "post": 0,
+            "pre": 0,
+            "visible": true,
+          },
+        },
+        "location": [
+          0,
+          1,
+          1,
+          16,
+          1,
+          17,
+        ],
+        "options": undefined,
+        "post": 0,
+        "pre": 0,
+        "visible": true,
+      },
+    ],
+  },
+  "location": [
+    0,
+    1,
+    1,
+    16,
+    1,
+    17,
+  ],
+  "options": undefined,
+  "post": 0,
+  "pre": 0,
+  "visible": true,
+}
+`;

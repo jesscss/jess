@@ -164,7 +164,10 @@ export abstract class Node<
 
     this.data = new Map(isNodeMap(value) ? value : [['value', value]]) as TypeMap<M>
     this.location = location || []
-    this.treeContext = treeContext ?? new TreeContext()
+    Object.defineProperty(this, 'treeContext', {
+      value: treeContext ?? new TreeContext(),
+      writable: true
+    })
     this.options = options
   }
 

@@ -33,7 +33,7 @@
     "tslib": "^2.6.2",
     "type-fest": "^3.8.0",
     "typescript": "~5.1.3",
-    "vitest": "~0.34.4"
+    "vitest": "~1.0.0-beta.0"
   },
   "scripts": {
     "ci": "pnpm run -r ci && pnpm run lint",

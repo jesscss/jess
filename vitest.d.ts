@@ -3,6 +3,7 @@ import type { Assertion, AsymmetricMatchersContaining } from 'vitest'
 
 interface CustomMatchers<R = unknown> {
   toBeString(str: string): R
+  toMatchCss(str: string): R
 }
 
 declare module 'vitest' {
