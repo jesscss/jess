@@ -187,8 +187,8 @@ export class Dimension extends Node<DimensionValue> {
   toTrimmedString() {
     let precision = 100000000
     let [number, unit = ''] = this.value
-    number = Math.round(number * precision) / precision
-    return `${number}${unit}`
+    let numberStr = `${Math.round(number * precision) / precision}`.toLowerCase()
+    return `${numberStr}${unit}`
   }
 
   /** @todo - move to visitors */

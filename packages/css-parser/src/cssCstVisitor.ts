@@ -22,7 +22,9 @@ import {
   Dimension,
   Color,
   Comment,
-  Func
+  Func,
+  Call,
+  Paren
 } from '@jesscss/core'
 import { type CssRules } from './cssParser'
 
@@ -207,11 +209,13 @@ export class CssCstVisitor implements CssRuleMethods {
     return rules
   }
 
-  private _wrap<T extends Node = Node>(node: T, post?: boolean, commentsOnly?: boolean): T {
+  private _wrap<T extends Node = Node>(node: T, post?: boolean | 'both', commentsOnly?: boolean): T {
     if (post) {
       let endOffset = node.location[3]!
       node.post = this._getPrePost(endOffset, commentsOnly, true)
-      return node
+      if (post !== 'both') {
+        return node
+      }
     }
     let startOffset = node.location[0]!
     node.pre = this._getPrePost(startOffset, commentsOnly)
@@ -405,12 +409,14 @@ export class CssCstVisitor implements CssRuleMethods {
 
   private _processValueToken(
     children: AdvancedCstNode['children'],
-    tok: 'Ident' | 'Dimension' | 'Number' | 'Color' | 'LegacyMSFilter'
+    tok: 'Ident' | 'Dimension' | 'Number' | 'Color' | 'LegacyMSFilter' | 'MathConstant'
   ) {
     let token = children[tok]?.[0]
     if (isToken(token)) {
       let tokValue = token.image
       let dimValue: [number: number, unit?: string] | undefined
+      const getDimension = (finalValue: Exclude<typeof dimValue, undefined>) =>
+        new Dimension(finalValue, undefined, getLocationInfo(token!), this.context)
       switch (tok) {
         case 'Ident':
           /** @todo - check to see if it's a color */
@@ -419,10 +425,28 @@ export class CssCstVisitor implements CssRuleMethods {
           return new Anonymous(tokValue, undefined, getLocationInfo(token), this.context)
         case 'Dimension':
           dimValue = [parseFloat(token.payload[1]), token.payload[2]]
-        // eslint-disable-next-line no-fallthrough
+          return getDimension(dimValue)
+        case 'MathConstant':
+          switch (tokValue.toLowerCase()) {
+            case 'pi':
+              dimValue = [Math.PI]
+              break
+            case 'infinity':
+              dimValue = [Infinity]
+              break
+            case '-infinity':
+              dimValue = [-Infinity]
+              break
+            case 'e':
+              dimValue = [Math.E]
+              break
+            case 'nan':
+              dimValue = [NaN]
+          }
+          return getDimension(dimValue!)
         case 'Number':
           dimValue ??= [parseFloat(tokValue)]
-          return new Dimension(dimValue, undefined, getLocationInfo(token), this.context)
+          return getDimension(dimValue)
         case 'Color':
           return new Color(tokValue, undefined, getLocationInfo(token), this.context)
       }
@@ -483,6 +507,80 @@ export class CssCstVisitor implements CssRuleMethods {
   }
 
   urlFunction(ctx: AdvancedCstNode, param?: any) {
+    const {
+      children: {
+        string,
+        NonQuotedUrl
+      }
+    } = ctx
 
+    let value: Node | undefined
+    if (string) {
+      value = this._wrap(this.visit(string as RequiredCstNode[]), 'both')
+    } else {
+      value = new Anonymous(NonQuotedUrl![0]!.image, undefined, getLocationInfo(ctx.location), this.context)
+    }
+
+    return new Call([
+      ['name', 'url'],
+      ['value', value]
+    ], undefined, getLocationInfo(ctx.location), this.context)
+  }
+
+  calcFunction(ctx: AdvancedCstNode, param?: any) {
+    const {
+      children: {
+        mathSum
+      }
+    } = ctx
+    let value = this.visit(mathSum as RequiredCstNode[])
+    return new Call([
+      ['name', 'calc'],
+      ['value', value]
+    ], undefined, getLocationInfo(ctx.location), this.context)
+  }
+
+  mathSum(ctx: AdvancedCstNode, param?: any) {
+    const { childrenStream } = ctx
+    let values: Node[] = []
+    let wrap = this._wrap.bind(this)
+    const addNodes = (child: Array<RequiredCstNode | IToken>) => {
+      for (let child of childrenStream) {
+        if (isToken(child)) {
+          values.push(wrap(new Anonymous(child.image, undefined, getLocationInfo(child), this.context)))
+        } else if (child.name === 'mathProduct') {
+          addNodes(child.childrenStream)
+        } else {
+          values.push(wrap(this.visit(child)))
+        }
+      }
+    }
+    addNodes(childrenStream)
+    return wrap(new Sequence(values, undefined, getLocationInfo(ctx.location), this.context), true)
+  }
+
+  mathValue(ctx: AdvancedCstNode, param?: any) {
+    const {
+      children
+    } = ctx
+
+    let processToken = this._processValueToken.bind(this, children)
+    let token = processToken('Number') ??
+      processToken('Dimension') ??
+      processToken('MathConstant')
+
+    if (token) {
+      return token
+    }
+
+    const { knownFunctions, mathSum } = children
+
+    let value: Node | undefined
+    if (mathSum) {
+      value = this.visit(mathSum as RequiredCstNode[])
+      return new Paren(value, undefined, getLocationInfo(ctx.location), this.context)
+    }
+
+    return this.visit<Node>(knownFunctions as RequiredCstNode[])
   }
 }
