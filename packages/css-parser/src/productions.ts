@@ -459,18 +459,14 @@ export function productions(this: CssCstParser, T: TokenMap) {
     ])
   })
 
-  /** Values separated by commas or slashes */
+  /** Values separated by commas */
   // valueList
-  //   : value+ ((',' | '/') value+)*
+  //   : value+ (, value+)*
   //   ;
   $.RULE('valueList', (ctx: RuleContext = {}) => {
-    $.SUBRULE($.valueSequence, { ARGS: [ctx] })
-    $.MANY(() => {
-      $.OR([
-        { ALT: () => $.CONSUME(T.Comma) },
-        { ALT: () => $.CONSUME(T.Slash) }
-      ])
-      $.SUBRULE2($.valueSequence, { ARGS: [ctx] })
+    $.MANY_SEP({
+      SEP: T.Comma,
+      DEF: () => $.SUBRULE($.valueSequence, { ARGS: [ctx] })
     })
   })
 
@@ -503,19 +499,33 @@ export function productions(this: CssCstParser, T: TokenMap) {
       IGNORE_AMBIGUITIES: true,
       DEF: [
         /** Function should appear before Ident */
-        { ALT: () => $.SUBRULE($.function) },
-        { ALT: () => $.CONSUME(T.Ident) },
-        { ALT: () => $.CONSUME(T.Dimension) },
-        { ALT: () => $.CONSUME(T.Number) },
-        { ALT: () => $.CONSUME(T.Color) },
-        { ALT: () => $.SUBRULE($.string) },
-        { ALT: () => $.SUBRULE($.squareValue) },
+        { ALT: () => $.SUBRULE($.function, { LABEL: 'value' }) },
+        { ALT: () => $.CONSUME(T.Ident, { LABEL: 'Value' }) },
+        { ALT: () => $.CONSUME(T.Dimension, { LABEL: 'Value' }) },
+        { ALT: () => $.CONSUME(T.Number, { LABEL: 'Value' }) },
+        { ALT: () => $.CONSUME(T.Color, { LABEL: 'Value' }) },
+        { ALT: () => $.SUBRULE($.string, { LABEL: 'value' }) },
+        { ALT: () => $.SUBRULE($.squareValue, { LABEL: 'value' }) },
         {
           /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
           GATE: () => $.legacyMode,
-          ALT: () => $.CONSUME(T.LegacyMSFilter)
+          ALT: () => $.CONSUME(T.LegacyMSFilter, { LABEL: 'Value' })
         }
       ]
+    })
+    /**
+     * Allows slash separators. Note that, structurally, the meaning
+     * of slash separators in CSS is inconsistent and ambiguous. It
+     * could separate a sequence of tokens from another sequence,
+     * or it could separate ONE token from another, with other tokens
+     * not included in the "slash list", OR it can represent division
+     * in a math expression. CSS is just, unfortunately, not a very
+     * syntactically-consistent language, and each property's value
+     * essentially has a defined "micro-syntax".
+     */
+    $.OPTION(() => {
+      $.CONSUME(T.Slash)
+      $.SUBRULE($.value, { LABEL: 'additionalValue' })
     })
   })
 
