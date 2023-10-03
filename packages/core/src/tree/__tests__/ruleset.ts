@@ -1,50 +1,33 @@
-import { root, rule, sel, el, list, ruleset, decl, spaced, any, call } from '..'
+import { rules, list, sel, el, decl, ruleset, spaced, any } from '..'
 import { Context } from '../../context'
 
 let context: Context
-describe('Ruleset', () => {
+
+describe('Rule', () => {
   beforeEach(() => {
     context = new Context()
-    context.id = 'testing'
   })
-
-  it.only('should merge rulesets into rules', async () => {
-    /** We need a root node to bubble rules */
-    let node = root([
-      rule({
-        selector: list([sel([el('.collapse')])]),
-        value: ruleset([
-          decl({ name: 'chungus', value: spaced([any('foo'), any('bar')]) }),
-          ruleset([
-            decl({ name: 'bird', value: spaced([any('in'), any('hand')]) })
-          ])
-        ])
-      })
-    ])
-    let evald = await node.eval(context)
-    expect(`${evald}`).toBe('.collapse {\n  chungus: foo bar;\n  bird: in hand;\n}\n')
+  it('should serialize to CSS', () => {
+    let node = ruleset({
+      selector: list([sel([el('foo')])]),
+      value: rules([
+        decl({ name: 'border', value: spaced([any('1px'), any('solid'), any('black')]) }),
+        decl({ name: 'color', value: any('#eee') })
+      ])
+    })
+    expect(`${node}`).toBe('foo {\n  border: 1px solid black;\n  color: #eee;\n}')
   })
-
-  // it('should output var() values', () => {
-  //   context.opts.dynamic = true
-  //   let node = ruleset([
-  //     decl({ name: 'a', value: spaced([js('obj.value'), call({ name: 'func', value: js('foo.bar') })]) })
-  //   ])
+  // it('should serialize to a module', () => {
+  //   let node = rule({
+  //     selector: list([sel([el('foo')])]),
+  //     value: [
+  //       set(keyval({ name: 'brandColor', value: js('area(5)') })),
+  //       decl({ name: 'color', value: js('brandColor') })
+  //     ]
+  //   })
   //   node.toModule(context, out)
   //   expect(out.toString()).toBe(
-  //     '$J.ruleset(\n  (() => {\n    const $OUT = []\n    $OUT.push($J.decl({\n      name: $J.any("a"),\n      value: $J.spaced([$J.call({\n        name: "var",\n        value: $J.list([\n          "--vtesting-0",\n          obj.value\n        ]),\n      }), $J.call({\n        name: "var",\n        value: $J.list([\n          "--vtesting-1",\n          $J.call({\n            name: "func",\n            value: foo.bar,\n            ref: () => func,\n          })\n        ]),\n      })])\n    }))\n    return $OUT\n  })()\n)'
-  //   )
-  // })
-
-  // it('should output --var declarations', () => {
-  //   context.opts.dynamic = true
-  //   let node = ruleset([
-  //     decl({ name: 'a', value: spaced([js('obj.value'), call({ name: 'func', value: js('foo.bar') })]) })
-  //   ])
-  //   context.isRuntime = true
-  //   node.toModule(context, out)
-  //   expect(out.toString()).toBe(
-  //     '$J.ruleset(\n  (() => {\n    const $OUT = []\n    $OUT.push($J.decl({\n      name: $J.any("--vtesting-0"),\n      value: obj.value\n    }))\n$OUT.push($J.decl({\n      name: $J.any("--vtesting-1"),\n      value: $J.call({\n        name: "func",\n        value: foo.bar,\n        ref: () => func,\n      })\n    }))\n    return $OUT\n  })()\n)'
+  //     '$J.rule({\n  selector: $J.list([\n    $J.sel([$J.el($J.any("foo"))])\n  ]),\n  value: $J.ruleset(\n    (() => {\n      const $OUT = []\n      let brandColor = area(5)\n      $OUT.push($J.decl({\n        name: $J.any("color"),\n        value: brandColor\n      }))\n      return $OUT\n    })()\n  )},[])'
   //   )
   // })
 })

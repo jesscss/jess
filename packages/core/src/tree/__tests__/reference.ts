@@ -1,4 +1,4 @@
-import { ref, ruleset, decl, vardecl, spaced, any } from '..'
+import { ref, rules, decl, vardecl, spaced, any } from '..'
 import { Context } from '../../context'
 
 let context: Context
@@ -26,7 +26,7 @@ describe('reference', () => {
 
   describe('get from scope', () => {
     it('should get a variable from scope', async () => {
-      let node = ruleset([
+      let node = rules([
         vardecl([
           ['name', 'foo'],
           ['value', any('red')]
@@ -45,7 +45,7 @@ describe('reference', () => {
     })
 
     it('should get a property from scope', async () => {
-      let node = ruleset([
+      let node = rules([
         decl([
           ['name', 'foo'],
           ['value', any('red')]
@@ -63,7 +63,7 @@ describe('reference', () => {
     })
 
     it('should get a hoisted var from scope', async () => {
-      let node = ruleset([
+      let node = rules([
         decl([
           ['name', 'bar'],
           ['value', ref('foo', { type: 'variable' })]
@@ -83,7 +83,7 @@ describe('reference', () => {
     })
 
     it('should get a hoisted prop from scope', async () => {
-      let node = ruleset([
+      let node = rules([
         decl([
           ['name', 'bar'],
           ['value', ref('foo', { type: 'property' })]
@@ -102,7 +102,7 @@ describe('reference', () => {
     })
 
     it('should allow recursive referencing', async () => {
-      let node = ruleset([
+      let node = rules([
         vardecl([
           ['name', 'foo'],
           ['value', any('red')]
@@ -127,7 +127,7 @@ describe('reference', () => {
 
   describe('errors', () => {
     it('should throw if the variable is not defined', async () => {
-      let node = ruleset([
+      let node = rules([
         decl([
           ['name', 'bar'],
           ['value', ref('foo', { type: 'variable' })]

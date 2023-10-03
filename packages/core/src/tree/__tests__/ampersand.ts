@@ -1,5 +1,5 @@
 import {
-  root, amp, rule, sel, el, spaced, any, sellist, ruleset, decl, attr,
+  root, amp, rules, sel, el, spaced, any, sellist, ruleset, decl, attr,
   type SimpleSelector, type Combinator, type SelectorSequence
 } from '..'
 import { Context } from '../../context'
@@ -12,11 +12,11 @@ describe('Ampersand', () => {
 
   /** We need a root node to bubble rules */
   let wrapAmp = (selectors: Array<SimpleSelector | Combinator>) => root([
-    rule({
+    ruleset({
       selector: sellist([[el('.one'), el('.two')]]),
-      value: ruleset([
+      value: rules([
         decl({ name: 'chungus', value: spaced([el('foo'), el('bar')]) }),
-        rule({
+        ruleset({
           selector: sel(selectors),
           value: ruleset([
             decl({ name: 'inner', value: spaced([el('one'), el('two')]) })
@@ -27,13 +27,13 @@ describe('Ampersand', () => {
   ])
 
   let wrapAmpList = (selectors: SelectorSequence[]) => root([
-    rule({
+    ruleset({
       selector: sellist([sel([el('.one')]), sel([el('.two')])]),
-      value: ruleset([
+      value: rules([
         decl({ name: 'chungus', value: spaced([any('foo'), any('bar')]) }),
-        rule({
+        ruleset({
           selector: sellist(selectors),
-          value: ruleset([
+          value: rules([
             decl({ name: 'inner', value: spaced([any('one'), any('two')]) })
           ])
         })
@@ -177,7 +177,7 @@ describe('Ampersand', () => {
 
   it('should throw if the parent selector is not basic', async () => {
     let node = root([
-      rule({
+      ruleset({
         selector: sel([
           // @ts-expect-error - fix type
           attr({
@@ -186,11 +186,11 @@ describe('Ampersand', () => {
             value: any('foo')
           })
         ]),
-        value: ruleset([
+        value: rules([
           decl({ name: 'chungus', value: spaced([el('foo'), el('bar')]) }),
-          rule({
+          ruleset({
             selector: sel([amp('-1')]),
-            value: ruleset([
+            value: rules([
               decl({ name: 'inner', value: spaced([el('one'), el('two')]) })
             ])
           })

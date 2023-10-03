@@ -2,7 +2,7 @@ import { defineType, Node } from './node'
 import { type Interpolated } from './interpolated'
 import { type Context } from '../context'
 import isPlainObject from 'lodash-es/isPlainObject'
-import { Ruleset } from './ruleset'
+import { Rules } from './rules'
 
 export type LookupValue = {
   /** This is the reference value to resolve first */
@@ -51,7 +51,7 @@ export class Lookup extends Node<LookupValue, LookupOptions> {
     let { value, key } = this
     let keyStr: string = key instanceof Node ? (await key.eval(context)).value : key
     value = await value.eval(context)
-    if (value instanceof Ruleset) {
+    if (value instanceof Rules) {
       if (this.options?.mixin) {
         return value._scope.getMixin(keyStr)
       }

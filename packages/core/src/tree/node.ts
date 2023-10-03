@@ -141,7 +141,7 @@ export abstract class Node<
   allowRoot: boolean
   allowRuleRoot: boolean
 
-  /** Used by Ruleset */
+  /** Used by Rules */
   rootRules: Node[] | undefined
 
   /** Used in iterators */
@@ -283,7 +283,7 @@ export abstract class Node<
   collectRoots(): Node[] {
     let nodes = new Set<Node>()
     this.walkNodes(n => {
-      if (n.type === 'Ruleset') {
+      if (n.type === 'Rules') {
         if (n.rootRules) {
           n.rootRules.forEach(n => nodes.add(n))
           n.rootRules = []

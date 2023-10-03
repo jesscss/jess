@@ -1,12 +1,12 @@
 import type { Context } from '../context'
 import { Node, defineType } from './node'
-import { Ruleset } from './ruleset'
+import { Rules } from './rules'
 import { Root } from './root'
 import { Call } from './call'
 
 export type IncludeValue = {
   value: Node
-  with?: Ruleset
+  with?: Rules
 }
 
 /**
@@ -37,17 +37,17 @@ export class Include extends Node<IncludeValue> {
     //       }))
     //     }
     //   }
-    //   return new Ruleset(rules)
+    //   return new Rules(rules)
     // }
 
     // value = context.cast(value).eval(context)
 
     /**
-     * Include Roots as plain Rulesets
+     * Include Roots as plain Ruless
      * @todo - add fileInfo
      */
     if (value instanceof Root) {
-      return new Ruleset(value.value).inherit(this)
+      return new Rules(value.value).inherit(this)
     }
 
     if (!value.allowRoot && !value.allowRuleRoot) {

@@ -1,5 +1,203 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`CSS CST Visitor > visits every visitor method > Calc 1`] = `
+Root {
+  "data": Map {
+    "value" => [
+      Rule {
+        "data": Map {
+          "selector" => SelectorSequence {
+            "data": Map {
+              "value" => [
+                BasicSelector {
+                  "data": Map {
+                    "value" => "a",
+                  },
+                  "location": [
+                    0,
+                    1,
+                    1,
+                    0,
+                    1,
+                    1,
+                  ],
+                  "options": undefined,
+                  "post": [],
+                  "pre": 0,
+                  "visible": true,
+                },
+              ],
+            },
+            "location": [
+              0,
+              1,
+              1,
+              0,
+              1,
+              1,
+            ],
+            "options": undefined,
+            "post": 0,
+            "pre": 0,
+            "visible": true,
+          },
+          "value" => Ruleset {
+            "data": Map {
+              "value" => [
+                Declaration {
+                  "data": Map {
+                    "name" => "b",
+                    "value" => Call {
+                      "data": Map {
+                        "name" => "calc",
+                        "value" => Sequence {
+                          "data": Map {
+                            "value" => [
+                              Dimension {
+                                "data": Map {
+                                  "value" => [
+                                    1,
+                                  ],
+                                },
+                                "location": [
+                                  12,
+                                  1,
+                                  13,
+                                  12,
+                                  1,
+                                  13,
+                                ],
+                                "options": undefined,
+                                "post": 0,
+                                "pre": 0,
+                                "visible": true,
+                              },
+                              Anonymous {
+                                "data": Map {
+                                  "value" => "+",
+                                },
+                                "location": [
+                                  14,
+                                  1,
+                                  15,
+                                  14,
+                                  1,
+                                  15,
+                                ],
+                                "options": undefined,
+                                "post": 0,
+                                "pre": 1,
+                                "visible": true,
+                              },
+                              Dimension {
+                                "data": Map {
+                                  "value" => [
+                                    1,
+                                  ],
+                                },
+                                "location": [
+                                  16,
+                                  1,
+                                  17,
+                                  16,
+                                  1,
+                                  17,
+                                ],
+                                "options": undefined,
+                                "post": 0,
+                                "pre": 1,
+                                "visible": true,
+                              },
+                            ],
+                          },
+                          "location": [
+                            12,
+                            1,
+                            13,
+                            16,
+                            1,
+                            17,
+                          ],
+                          "options": undefined,
+                          "post": 0,
+                          "pre": 0,
+                          "visible": true,
+                        },
+                      },
+                      "location": [
+                        7,
+                        1,
+                        8,
+                        17,
+                        1,
+                        18,
+                      ],
+                      "options": undefined,
+                      "post": 0,
+                      "pre": 0,
+                      "visible": true,
+                    },
+                    "important" => undefined,
+                  },
+                  "location": [
+                    4,
+                    1,
+                    5,
+                    17,
+                    1,
+                    18,
+                  ],
+                  "options": {},
+                  "post": 0,
+                  "pre": [],
+                  "visible": true,
+                },
+              ],
+            },
+            "location": [
+              4,
+              1,
+              5,
+              17,
+              1,
+              18,
+            ],
+            "options": undefined,
+            "post": 0,
+            "pre": 0,
+            "visible": true,
+          },
+        },
+        "location": [
+          0,
+          1,
+          1,
+          19,
+          1,
+          20,
+        ],
+        "options": undefined,
+        "post": 0,
+        "pre": 0,
+        "visible": true,
+      },
+    ],
+  },
+  "location": [
+    0,
+    1,
+    1,
+    19,
+    1,
+    20,
+  ],
+  "options": undefined,
+  "post": 0,
+  "pre": 0,
+  "visible": true,
+}
+`;
+
 exports[`CSS CST Visitor > visits every visitor method > Qualified Rule 1`] = `
 Root {
   "data": Map {

@@ -1,7 +1,7 @@
 import { type Context } from '../context'
 import { AtRule } from './at-rule'
 import { defineType } from './node'
-import { Ruleset } from './ruleset'
+import { Rules } from './rules'
 import type { Node } from './node'
 import { Mixin } from './mixin'
 
@@ -16,7 +16,7 @@ import { Mixin } from './mixin'
 export class Func extends Mixin {
   async eval(context: Context): Promise<Node> {
     let result = await super.eval(context)
-    if (result instanceof Ruleset) {
+    if (result instanceof Rules) {
       let value = result.value
       let last = value[value.length - 1]
       if (last instanceof AtRule && last.name === '@return') {

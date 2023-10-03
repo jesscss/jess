@@ -76,18 +76,18 @@ export function productions(this: CssCstParser, T: TokenMap) {
       {
         /** In CSS Nesting, the first selector cannot be an identifier */
         GATE: () => !ctx.firstSelector,
-        ALT: () => $.CONSUME(T.Ident)
+        ALT: () => $.CONSUME(T.Ident, { LABEL: 'Selector' })
       },
       {
         /** In CSS Nesting, outer selector can't contain an ampersand */
         GATE: () => !!ctx.inner,
-        ALT: () => $.CONSUME(T.Ampersand)
+        ALT: () => $.CONSUME(T.Ampersand, { LABEL: 'Selector' })
       },
-      { ALT: () => $.SUBRULE($.classSelector) },
-      { ALT: () => $.SUBRULE($.idSelector) },
-      { ALT: () => $.CONSUME(T.Star) },
-      { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [ctx] }) },
-      { ALT: () => $.SUBRULE($.attributeSelector) }
+      { ALT: () => $.SUBRULE($.classSelector, { LABEL: 'selector' }) },
+      { ALT: () => $.SUBRULE($.idSelector, { LABEL: 'selector' }) },
+      { ALT: () => $.CONSUME(T.Star, { LABEL: 'Selector' }) },
+      { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [ctx], LABEL: 'selector' }) },
+      { ALT: () => $.SUBRULE($.attributeSelector, { LABEL: 'selector' }) }
     ])
   })
 
@@ -193,15 +193,15 @@ export function productions(this: CssCstParser, T: TokenMap) {
   //   ;
   $.RULE('attributeSelector', () => {
     $.CONSUME(T.LSquare)
-    $.CONSUME(T.Ident)
+    $.CONSUME(T.Ident, { LABEL: 'Key' })
     $.OPTION(() => {
       $.OR([
-        { ALT: () => $.CONSUME(T.Eq) },
-        { ALT: () => $.CONSUME(T.AttrMatch) }
+        { ALT: () => $.CONSUME(T.Eq, { LABEL: 'Op' }) },
+        { ALT: () => $.CONSUME(T.AttrMatch, { LABEL: 'Op' }) }
       ])
       $.OR2([
-        { ALT: () => $.CONSUME2(T.Ident) },
-        { ALT: () => $.SUBRULE($.string) }
+        { ALT: () => $.CONSUME2(T.Ident, { LABEL: 'value' }) },
+        { ALT: () => $.SUBRULE($.string, { LABEL: 'value' }) }
       ])
     })
     $.OPTION2(() => {
@@ -363,11 +363,11 @@ export function productions(this: CssCstParser, T: TokenMap) {
         ALT: () => {
           $.OR2([
             {
-              ALT: () => $.CONSUME(T.Ident)
+              ALT: () => $.CONSUME(T.Ident, { LABEL: 'Name' })
             },
             {
               GATE: () => $.legacyMode,
-              ALT: () => $.CONSUME(T.LegacyPropIdent)
+              ALT: () => $.CONSUME(T.LegacyPropIdent, { LABEL: 'Name' })
             }
           ])
           $.CONSUME(T.Assign)
@@ -523,16 +523,16 @@ export function productions(this: CssCstParser, T: TokenMap) {
     $.OR([
       {
         ALT: () => {
-          $.CONSUME(T.SingleQuoteStart)
-          $.OPTION(() => $.CONSUME(T.SingleQuoteStringContents))
-          $.CONSUME(T.SingleQuoteEnd)
+          $.CONSUME(T.SingleQuoteStart, { LABEL: 'Quote' })
+          $.OPTION(() => $.CONSUME(T.SingleQuoteStringContents, { LABEL: 'contents' }))
+          $.CONSUME(T.SingleQuoteEnd, { LABEL: 'Quote' })
         }
       },
       {
         ALT: () => {
-          $.CONSUME(T.DoubleQuoteStart)
-          $.OPTION2(() => $.CONSUME(T.DoubleQuoteStringContents))
-          $.CONSUME(T.DoubleQuoteEnd)
+          $.CONSUME(T.DoubleQuoteStart, { LABEL: 'Quote' })
+          $.OPTION2(() => $.CONSUME(T.DoubleQuoteStringContents, { LABEL: 'contents' }))
+          $.CONSUME(T.DoubleQuoteEnd, { LABEL: 'Quote' })
         }
       }
     ])

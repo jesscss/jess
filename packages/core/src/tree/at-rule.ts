@@ -1,15 +1,15 @@
 import { Node, defineType } from './node'
 import { SelectorSequence } from './selector-sequence'
 import { Ampersand } from './ampersand'
-import { Rule } from './rule'
-import type { Ruleset } from './ruleset'
+import { Ruleset } from './ruleset'
+import type { Rules } from './rules'
 import type { Context } from '../context'
 
 export type AtRuleValue = {
   name: string
   /** The prelude */
   prelude: Node
-  value?: Ruleset
+  value?: Rules
 }
 
 /**
@@ -43,7 +43,7 @@ export class AtRule extends Node<AtRuleValue> {
        * @todo - do not do this if we're outputting nesting
        */
       if (context.frames.length !== 0) {
-        let rule = await new Rule([
+        let rule = await new Ruleset([
           ['selector', new SelectorSequence([new Ampersand()])],
           ['value', rules]
         ])

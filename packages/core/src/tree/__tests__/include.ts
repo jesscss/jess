@@ -1,4 +1,4 @@
-import { include, rule, sel, ref, any, ruleset, mixin, decl, call } from '..'
+import { include, rules, sel, ref, any, ruleset, mixin, decl, call } from '..'
 import { Context } from '../../context'
 
 let context: Context
@@ -8,16 +8,16 @@ describe('Include', () => {
     context = new Context()
   })
   it('should include a mixin', async () => {
-    let node = ruleset([
+    let node = rules([
       mixin({
         name: 'foo',
-        value: ruleset([
+        value: rules([
           decl({ name: 'prop1', value: any('value') })
         ])
       }),
       mixin({
         name: 'foo',
-        value: ruleset([
+        value: rules([
           decl({ name: 'prop2', value: any('value') })
         ])
       }),

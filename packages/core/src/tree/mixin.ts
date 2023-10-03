@@ -1,5 +1,5 @@
 import { type Node, defineType } from './node'
-import type { Ruleset } from './ruleset'
+import type { Rules } from './rules'
 import type { Condition } from './condition'
 import type { List } from './list'
 import type { Rest } from './rest'
@@ -10,7 +10,7 @@ export type MixinValue = {
   name?: Name
   params?: List<Node | VarDeclaration<string> | Rest>
   guard?: Condition
-  value: Ruleset
+  value: Rules
 }
 
 export type MixinOptions = {
@@ -62,7 +62,7 @@ export class Mixin extends BaseDeclaration<Name, MixinValue, VarDeclarationOptio
       output += ` when ${this.guard}`
     }
     output += ' {\n'
-    output += this.value.toString(depth + 1)
+    output += this.value.toString(depth + 1) as string
     output += `${space}}`
     return output
   }

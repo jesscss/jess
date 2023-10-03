@@ -49,5 +49,9 @@ describe('CSS CST Visitor', () => {
       let { tree } = parser.parseTree('a { color: red; }')
       expect(tree).toMatchSnapshot()
     })
+    it('Calc', () => {
+      let { tree } = parser.parseTree('a { b: calc(1 + 1) }')
+      expect(tree).toMatchSnapshot()
+    })
   })
 })

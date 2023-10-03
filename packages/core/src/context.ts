@@ -1,5 +1,5 @@
 import { type Node } from './tree/node'
-import type { Rule } from './tree/rule'
+import type { Ruleset } from './tree/ruleset'
 import type { Scope } from './scope'
 import type { Declaration } from './tree'
 import { type Operator } from './tree/util/calculate'
@@ -58,8 +58,9 @@ const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('')
 
 export const generateId = (length = 8) => {
   let str = ''
+  let idCharsLength = idChars.length
   for (let i = 0; i < length; i++) {
-    str += idChars[Math.floor(Math.random() * idChars.length)]
+    str += idChars[Math.floor(Math.random() * idCharsLength)]!
   }
   return str
 }
@@ -96,7 +97,7 @@ export class TreeContext implements TreeContextOptions {
     contents: string[]
   }
 
-  /** Rulesets will inherit scope when created */
+  /** Ruless will inherit scope when created */
   scope: Scope
 
   constructor(opts: TreeContextOptions = {}) {
@@ -152,10 +153,10 @@ export class Context {
   classMap = new Map<string, string>()
 
   /**
-   * The rule frames. This is used to resolve
+   * The ruleset (qualified rule) frames. This is used to resolve
    * '&' when we need to.
    */
-  frames: Rule[] = []
+  frames: Ruleset[] = []
 
   /** Keeps track of the indention level */
   indent = 0

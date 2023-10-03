@@ -299,20 +299,20 @@ export class AdvancedCstParser extends CstParser {
       return
     }
     const rootCst = this.CST_STACK[this.CST_STACK.length - 1]
-    this.addTerminalToCst(rootCst, consumedToken, key)
-    this.setNodeLocationFromToken(rootCst.location, <any>consumedToken)
+    this.addTerminalToCst(rootCst!, consumedToken, key)
+    this.setNodeLocationFromToken(rootCst!.location, <any>consumedToken)
   }
 
   cstPostNonTerminal(
-    ruleCstResult: CstNode,
+    ruleCstResult: AdvancedCstNode,
     ruleName: string
   ): void {
     if (!this.outputCst) {
       return
     }
     const preCstNode = this.CST_STACK[this.CST_STACK.length - 1]
-    this.addNoneTerminalToCst(preCstNode, ruleName, ruleCstResult)
-    this.setNodeLocationFromNode(preCstNode.location, ruleCstResult.location!)
+    this.addNoneTerminalToCst(preCstNode!, ruleName, ruleCstResult)
+    this.setNodeLocationFromNode(preCstNode!.location, ruleCstResult.location)
   }
 
   cstInvocationStateUpdate(fullRuleName: string): void {
@@ -343,16 +343,25 @@ export class AdvancedCstParser extends CstParser {
   }
 
   addTerminalToCst(node: AdvancedCstNode, token: IToken, tokenTypeName: string) {
-    node.childrenStream.push(token)
-    if (node.children[tokenTypeName as TokenKey | NodeKey] === undefined) {
+    if (token.tokenType.LABEL !== SKIPPED_LABEL) {
+      node.childrenStream.push(token)
+    }
+    let childNode = node.children[tokenTypeName as TokenKey]
+    if (childNode === undefined) {
       node.children[tokenTypeName as TokenKey] = [token]
     } else {
-      node.children[tokenTypeName as TokenKey].push(token)
+      childNode.push(token)
     }
   }
 
-  addNoneTerminalToCst(node: AdvancedCstNode, ruleName: string, ruleResult: any) {
-    this.addTerminalToCst(node, ruleResult, ruleName)
+  addNoneTerminalToCst(node: AdvancedCstNode, ruleName: string, ruleResult: AdvancedCstNode) {
+    node.childrenStream.push(ruleResult)
+    let childNode = node.children[ruleName as NodeKey]
+    if (childNode === undefined) {
+      node.children[ruleName as NodeKey] = [ruleResult]
+    } else {
+      childNode.push(ruleResult)
+    }
   }
 
   private _consumeImplicits(key: 'pre' | 'post') {
@@ -388,11 +397,11 @@ export class AdvancedCstParser extends CstParser {
     const skippedTokenMap = new Map<number, IToken[]>()
     const inputTokens: IToken[] = []
     for (let i = 0; i < value.length; i++) {
-      const token = value[i]
+      const token = value[i]!
       let nextToken: IToken | undefined
       /** Find the next non-skipped token */
       for (let j = i + 1; j < value.length; j++) {
-        nextToken = value[j]
+        nextToken = value[j]!
         if (nextToken.tokenType.LABEL !== SKIPPED_LABEL) {
           break
         }

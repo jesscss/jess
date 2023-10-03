@@ -1,5 +1,4 @@
 import {
-  type CstElement,
   type CstNodeLocation
 } from 'chevrotain'
 import {
@@ -8,12 +7,12 @@ import {
   TreeContext,
   Root,
   Anonymous,
-  Rule, Declaration,
-  Scope,
-  type SimpleSelector,
+  Ruleset,
+  Declaration,
+  Scope, type SimpleSelector,
   SelectorList,
   SelectorSequence,
-  Ruleset,
+  Rules,
   Combinator,
   BasicSelector,
   Ampersand,
@@ -24,7 +23,8 @@ import {
   Comment,
   Func,
   Call,
-  Paren
+  Paren,
+  Quoted
 } from '@jesscss/core'
 import { type CssRules } from './cssParser'
 
@@ -108,6 +108,9 @@ export class CssCstVisitor implements CssRuleMethods {
       // If a key is defined there will be at least one element in the corresponding value array.
       cstNode = cstNode[0]!
     }
+    if (!this[cstNode.name]) {
+      throw new Error(`No visitor method defined for ${cstNode.name}`)
+    }
     return this[cstNode.name as VisitorMethodNames](cstNode, param) as T
   }
 
@@ -121,6 +124,9 @@ export class CssCstVisitor implements CssRuleMethods {
     // enables passing optional CstNodes concisely.
     if (cstNode === undefined) {
       return undefined
+    }
+    if (!this[cstNode.name]) {
+      throw new Error(`No visitor method defined for ${cstNode.name}`)
     }
     return this[cstNode.name as VisitorMethodNames](cstNode, param) as T
   }
@@ -228,17 +234,17 @@ export class CssCstVisitor implements CssRuleMethods {
     return new Root(rules, undefined, getLocationInfo(ctx.location), this.context)
   }
 
-  qualifiedRule(ctx: AdvancedCstNode, param?: any): Rule {
+  qualifiedRule(ctx: AdvancedCstNode, param?: any): Ruleset {
     const {
       children: { selectorList, forgivingSelectorList }
     } = ctx
     let selector = this.visit<SelectorList | SelectorSequence | SimpleSelector>(
       (selectorList ?? forgivingSelectorList) as CstNode
     )
-    let declarationList = this.visit<Ruleset>(ctx.children.declarationList as CstNode)
+    let declarationList = this.visit<Rules>(ctx.children.declarationList as CstNode)
 
     /** These will already have pre-nodes assigned by `main` / `declarationList` */
-    return new Rule([
+    return new Ruleset([
       ['selector', selector],
       ['value', declarationList]
     ], undefined, getLocationInfo(ctx.location), this.context)
@@ -303,47 +309,63 @@ export class CssCstVisitor implements CssRuleMethods {
     return new Combinator(' ', undefined, getLocationInfo(ctx.location), this.context)
   }
 
-  private _processSelectorToken(children: AdvancedCstNode['children'], tok: 'Ident' | 'Ampersand' | 'Star') {
-    let token = children[tok]?.[0]
-    if (isToken(token)) {
-      switch (tok) {
-        case 'Ident':
-        case 'Star':
-          return new BasicSelector(token.image, undefined, getLocationInfo(token), this.context)
-        case 'Ampersand':
-          return new Ampersand('&', undefined, getLocationInfo(token), this.context)
-      }
+  private _processSelectorToken(token: IToken) {
+    switch (token.tokenType.name) {
+      case 'Ident':
+      case 'Star':
+        return new BasicSelector(token.image, undefined, getLocationInfo(token), this.context)
+      case 'Ampersand':
+        return new Ampersand('&', undefined, getLocationInfo(token), this.context)
     }
   }
 
   simpleSelector(ctx: AdvancedCstNode, param?: any): SimpleSelector {
     const {
-      children
+      children: {
+        Selector,
+        selector
+      }
     } = ctx
-    let processToken = this._processSelectorToken.bind(this, children)
-    let token = processToken('Ident') ??
-      processToken('Ampersand') ??
-      processToken('Star')
+    let token = Selector ? this._processSelectorToken(Selector[0]!) : undefined
     if (token) {
       return this._wrap(token, true, true)
     }
-    const { idSelector, classSelector, attributeSelector, pseudoSelector } = children
     return this._wrap(
-      this.visit<SimpleSelector>(
-        (idSelector ?? classSelector ?? attributeSelector ?? pseudoSelector) as RequiredCstNode[]
-      ),
+      this.visit<SimpleSelector>(selector as RequiredCstNode[]),
       true,
       true
     )
   }
 
-  declarationList(ctx: AdvancedCstNode, param?: any): Ruleset {
+  classSelector(ctx: AdvancedCstNode, param?: any): BasicSelector {
+    return new BasicSelector(ctx.children.DotName![0]!.image, undefined, getLocationInfo(ctx.location), this.context)
+  }
+
+  idSelector(ctx: AdvancedCstNode, param?: any): BasicSelector {
+    let { children: { HashName, ColorIdentStart } } = ctx
+    let id = (HashName?.[0] ?? ColorIdentStart?.[0])!
+    return new BasicSelector(id.image, undefined, getLocationInfo(ctx.location), this.context)
+  }
+
+  attributeSelector(ctx: AdvancedCstNode, param?: any): BasicSelector {
+    let {
+      children: {
+        Key
+
+      }
+    } = ctx
+
+    let id = (HashName?.[0] ?? ColorIdentStart?.[0])!
+    return new BasicSelector(id.image, undefined, getLocationInfo(ctx.location), this.context)
+  }
+
+  declarationList(ctx: AdvancedCstNode, param?: any): Rules {
     const { childrenStream } = ctx
     let context = this.context
     let initialScope = context.scope
     context.scope = new Scope(initialScope)
     let rules = this._getRulesWithComments(childrenStream as RequiredCstNode[])
-    let ruleset = new Ruleset(rules, undefined, getLocationInfo(ctx.location), this.context)
+    let ruleset = new Rules(rules, undefined, getLocationInfo(ctx.location), this.context)
     context.scope = initialScope
     return ruleset
   }
@@ -351,15 +373,14 @@ export class CssCstVisitor implements CssRuleMethods {
   declaration(ctx: AdvancedCstNode, param?: any): Declaration {
     const {
       children: {
-        Ident,
-        LegacyPropIdent,
+        Name,
         valueList,
         Important
       }
     } = ctx
 
     /** Had to have a property when parsed */
-    let name = (Ident?.[0] ?? LegacyPropIdent?.[0])!
+    let name = Name![0]!.image
     let value = this.visit(valueList as RequiredCstNode[])
     /** Insert initial whitespace before value, if not present */
     if (!this.preSkippedTokenMap.has(value.location[0]!)) {
@@ -368,7 +389,7 @@ export class CssCstVisitor implements CssRuleMethods {
     let important = Important?.[0] ? Important?.[0].image : undefined
 
     return new Declaration([
-      ['name', name.image],
+      ['name', name],
       ['value', value],
       ['important', important]
     ], {}, getLocationInfo(ctx.location), this.context)
@@ -489,10 +510,11 @@ export class CssCstVisitor implements CssRuleMethods {
     if (knownFunctions) {
       return this.visit(knownFunctions as RequiredCstNode[])
     }
-    return new Func([
-      ['ref', Ident?.[0]?.image],
-      ['args', this.visit(valueList as RequiredCstNode[])]
-    ])
+    let funcValue: ConstructorParameters<typeof Func>[0] = [['name', Ident?.[0]?.image]]
+    if (valueList) {
+      funcValue.push(['args', this.visit(valueList as RequiredCstNode[])])
+    }
+    return new Func(funcValue, undefined, getLocationInfo(ctx.location), this.context)
   }
 
   knownFunctions(ctx: AdvancedCstNode, param?: any) {
@@ -544,8 +566,8 @@ export class CssCstVisitor implements CssRuleMethods {
     const { childrenStream } = ctx
     let values: Node[] = []
     let wrap = this._wrap.bind(this)
-    const addNodes = (child: Array<RequiredCstNode | IToken>) => {
-      for (let child of childrenStream) {
+    const addNodes = (stream: Array<RequiredCstNode | IToken>) => {
+      for (let child of stream) {
         if (isToken(child)) {
           values.push(wrap(new Anonymous(child.image, undefined, getLocationInfo(child), this.context)))
         } else if (child.name === 'mathProduct') {
@@ -582,5 +604,25 @@ export class CssCstVisitor implements CssRuleMethods {
     }
 
     return this.visit<Node>(knownFunctions as RequiredCstNode[])
+  }
+
+  string(ctx: AdvancedCstNode, param?: any) {
+    const {
+      children: {
+        contents,
+        Quote
+      }
+    } = ctx
+
+    let contentsItem: AdvancedCstNode | IToken = contents![0]!
+    let contentsNode: Node | undefined
+
+    if (isToken(contentsItem)) {
+      contentsNode = new Anonymous(contentsItem.image, undefined, getLocationInfo(contentsItem), this.context)
+    } else {
+      contentsNode = this.visit(contentsItem)
+    }
+
+    return new Quoted(contentsNode, { quote: Quote![0]!.image as "'" | '"' }, getLocationInfo(ctx.location), this.context)
   }
 }

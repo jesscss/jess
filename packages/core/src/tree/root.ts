@@ -1,11 +1,11 @@
 import { defineType } from './node'
-import { Ruleset } from './ruleset'
+import { Rules } from './rules'
 import type { Context } from '../context'
 
 /**
  * The root node. Contains a collection of nodes
  */
-export class Root extends Ruleset {
+export class Root extends Rules {
   async eval(context: Context) {
     context.opts.mathMode = this.treeContext.mathMode
     context.opts.unitMode = this.treeContext.unitMode

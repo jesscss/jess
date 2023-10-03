@@ -1,5 +1,4 @@
-import { defineType } from './node'
-import { Interpolated } from './interpolated'
+import { Node, defineType } from './node'
 
 export type QuotedOptions = {
   quote?: '"' | "'"
@@ -9,7 +8,7 @@ export type QuotedOptions = {
 /**
  * An quoted value
  */
-export class Quoted extends Interpolated<QuotedOptions> {
+export class Quoted extends Node<Node, QuotedOptions> {
   toTrimmedString() {
     let { quote = '"', escaped } = this.options ?? {}
     let output = super.toString()

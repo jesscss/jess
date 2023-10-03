@@ -7,7 +7,7 @@ import type { Mixin } from '../tree/mixin'
 import isPlainObject from 'lodash-es/isPlainObject'
 import { isNode } from '../tree/util'
 import { cast } from '../tree/util/cast'
-import { Ruleset } from '../tree/ruleset'
+import { Rules } from '../tree/rules'
 import type { Bool } from '../tree/bool'
 import type { Condition } from '../tree/condition'
 import { Context } from '../context'
@@ -63,7 +63,7 @@ export class ScopeEntry<T = unknown> {
   }
 }
 
-export type MixinEntry = Mixin | Ruleset
+export type MixinEntry = Mixin | Rules
 export type ScopeEntryMap<T = unknown> = Record<string, ScopeEntry<T> | undefined>
 export type PropMap = Record<string, Declaration | Declaration[]>
 
@@ -554,7 +554,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     let argEntries = isPlainObject(args[0]) ? Object.entries(args[0]) : null
     for (let i = 0; i < mixinLength; i++) {
       let mixin = mixinArr[i]!
-      let isPlainRule = isNode(mixin, 'Ruleset')
+      let isPlainRule = isNode(mixin, 'Rules')
       let paramLength = isPlainRule ? 0 : (mixin as Mixin).params?.length ?? 0
       if (!paramLength) {
         /** Exit early if args were passed in, but no args are possible */
@@ -683,9 +683,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      * and create variable declarations for each parameter.
      */
     let hasMatch = false
-    let outputRules: Array<[Ruleset, number]> = []
+    let outputRules: Array<[Rules, number]> = []
     for (let [candidate, i] of evalCandidates) {
-      if (isNode(candidate, 'Ruleset')) {
+      if (isNode(candidate, 'Rules')) {
         hasMatch = true
         outputRules.push([candidate, i])
         continue
@@ -723,10 +723,10 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         }
       }
       if (passes) {
-        let newRuleset = ruleset.clone()
-        newRuleset._scope = scope
-        newRuleset = await newRuleset.eval(thisContext)
-        outputRules.push([newRuleset, i])
+        let newRules = ruleset.clone()
+        newRules._scope = scope
+        newRules = await newRules.eval(thisContext)
+        outputRules.push([newRules, i])
       }
       thisContext.scope = incomingScope
     }
@@ -734,7 +734,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      * Now that we have output rules, we sort them by
      * their original order and wrap them in a final ruleset
      */
-    let output = new Ruleset(
+    let output = new Rules(
       outputRules.sort((a, b) => a[1] - b[1]).map(r => r[0])
     )
     if (this instanceof Context) {
