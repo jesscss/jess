@@ -2,18 +2,26 @@ import {
   type TokenVocabulary,
   type TokenType,
   type IParserConfig,
-  type CstNode,
   type ParserMethod
 } from 'chevrotain'
-import { AdvancedCstParser } from './advancedCstParser'
+
+// import { AdvancedCstParser } from './advancedCstParser'
 import { LLStarLookaheadStrategy } from 'chevrotain-allstar'
 
+import { AdvancedActionsParser } from './advancedActionsParser'
+
 import { type CssTokenType } from './cssTokens'
-import { productions } from './productions-cst'
+import { productions } from './productions'
+import { type Node } from '@jesscss/core'
+
+// /** Assert that tokens will have full location info */
+// export interface IToken extends Required<Omit<OrigIToken, 'payload'>> {
+//   payload?: OrigIToken['payload']
+// }
 
 export type TokenMap = Record<CssTokenType, TokenType>
 
-export type Rule<F extends () => void = () => void> = ParserMethod<Parameters<F>, CstNode>
+export type Rule<F extends () => void = () => void> = ParserMethod<Parameters<F>, any>
 
 export interface CssParserConfig extends IParserConfig {
   /** Thinks like star property hacks and IE filters */
@@ -31,7 +39,7 @@ export type RuleContext = {
   [k: string]: boolean | undefined
 }
 
-export class CssCstParser extends AdvancedCstParser {
+export class CssActionsParser extends AdvancedActionsParser {
   T: TokenMap
   legacyMode: boolean
 
@@ -136,8 +144,7 @@ export class CssCstParser extends AdvancedCstParser {
       lookaheadStrategy: new LLStarLookaheadStrategy({
         // suppress ambiguity logging
         // logging() {}
-      }),
-      nodeLocationTracking: 'full'
+      })
     }
 
     const { legacyMode = true, ...rest } = { ...defaultConfig, ...config }
@@ -149,7 +156,7 @@ export class CssCstParser extends AdvancedCstParser {
 
     productions.call(this, T)
 
-    if (this.constructor === CssCstParser) {
+    if (this.constructor === CssActionsParser) {
       this.performSelfAnalysis()
     }
   }

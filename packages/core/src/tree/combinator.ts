@@ -1,10 +1,10 @@
 import { Node, defineType } from './node'
 
 export class Combinator extends Node<string> {
-  toTrimmedString() {
-    let { value } = this
-    return value === ' ' ? value : ` ${value} `
-  }
+  // toTrimmedString() {
+  //   let { value } = this
+  //   return value === ' ' ? value : ` ${value} `
+  // }
 
   /** @todo move to visitor */
   // toCSS(context: Context, out: OutputCollector) {

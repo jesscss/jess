@@ -20,6 +20,15 @@ parsing strategies based on context. Blocks can either parse a list of rules,
 or can parse a list of declarations (at-rules are considered declarations),
 but not both.
 
+However, it's not just blocks. Property values, also, are defined by their
+individual parsing specifications. For example, CSS defines a "list" as
+being either comma-separated or slash-separated. But a list of what? That
+starts where? One might naively presume that, for a list, a slash or comma
+separates and groups all preceding values from all following values. Sometimes
+that's the case! But in the case of the background (shorthand) property, a
+a slash separates one _single_ value (token) from one _single_ following token and those represent distinct values. Yet, in the case of the new color function
+syntax, a slash separates _all_ preceding values from the final (opacity) value.
+
 This means that CSS cannot be defined by context-free grammar. Tokenization is
 different depending on context and preceding tokens. Custom properties can
 be especially challenging for many CSS parsers, as it requires recursive
