@@ -1,13 +1,13 @@
 import {
   type Node,
-  type NodeOptions,
   defineType
 } from './node'
 import { isNode } from './util'
 import {
   type BaseDeclarationValue,
   type Name,
-  BaseDeclaration
+  BaseDeclaration,
+  type BaseDeclarationOptions
 } from './base-declaration'
 
 export type DeclarationValue = BaseDeclarationValue & {
@@ -16,26 +16,13 @@ export type DeclarationValue = BaseDeclarationValue & {
   important?: string
 }
 
-/** Used by Less */
-export type DeclarationOptions = {
-  /**
-   * This is mostly backwards-compatibility with this Less
-   * feature, and mostly isn't needed in Jess.
-   *
-   * It is represented as `!merge` or `!merge-spaced` when parsing
-   * or converting from Less, since the `+:` syntax is not exactly
-   * the same feature and operates more like JavaScript.
-  */
-  merge?: 'list' | 'spaced'
-}
-
 /**
  * A continuous collection of nodes.
  *
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
-export class Declaration<O extends NodeOptions = DeclarationOptions, N extends Name = Name> extends BaseDeclaration<N, DeclarationValue, O> {
+export class Declaration<O extends BaseDeclarationOptions = BaseDeclarationOptions, N extends Name = Name> extends BaseDeclaration<N, DeclarationValue, O> {
   get name(): N {
     return this.data.get('name')
   }

@@ -39,6 +39,25 @@ export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> 
   //   }, location)
   // }
 
+  operate(b: Node, op: string): Sequence | List {
+    if (op !== '+') {
+      throw new Error(`Sequence operation "${op}" not supported`)
+    }
+    let newSequence = this.clone()
+    if (b instanceof List) {
+      return new List([newSequence, ...b.value]).inherit(this)
+    } else if (b instanceof Sequence) {
+      const values = b.value.map(v => v.clone())
+      values[0].pre = 1
+      newSequence.value.push(...values)
+    } else {
+      b = b.clone()
+      b.pre = 1
+      newSequence.value.push(b as T)
+    }
+    return newSequence
+  }
+
   /**
    * During evaluation of sequences,
    * Jess may find values that are lists.

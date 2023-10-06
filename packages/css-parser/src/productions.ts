@@ -1,3 +1,4 @@
+import { rules } from '..'
 /* eslint-disable no-return-assign */
 import type { CssActionsParser, TokenMap, RuleContext } from './cssActionsParser'
 import { EMPTY_ALT, type IToken } from 'chevrotain'
@@ -9,7 +10,7 @@ import {
   Anonymous,
   Ruleset,
   Declaration,
-  type Scope,
+  Scope,
   type SimpleSelector,
   SelectorList,
   SelectorSequence,
@@ -27,8 +28,7 @@ import {
   Paren,
   Quoted,
   PseudoSelector,
-  AttributeSelector,
-  seq
+  AttributeSelector
 } from '@jesscss/core'
 
 export function productions(this: CssActionsParser, T: TokenMap) {
@@ -527,6 +527,12 @@ export function productions(this: CssActionsParser, T: TokenMap) {
    * each alt
    */
   $.RULE('declarationList', () => {
+    $.startRule()
+
+    let context = this.context
+    let initialScope = context.scope
+    context.scope = new Scope(initialScope)
+    let rules: Node[] = []
     let needsSemi = false
     $.MANY({
       GATE: () => !needsSemi || (needsSemi && $.LA(1).tokenType === T.Semi),
@@ -534,15 +540,15 @@ export function productions(this: CssActionsParser, T: TokenMap) {
         $.OR([
           {
             ALT: () => {
-              $.SUBRULE($.declaration)
+              rules.push($.SUBRULE($.declaration))
               needsSemi = true
             }
           },
           {
             ALT: () => {
               $.OR2([
-                { ALT: () => $.SUBRULE($.innerAtRule) },
-                { ALT: () => $.SUBRULE2($.qualifiedRule, { ARGS: [{ inner: true }] }) },
+                { ALT: () => rules.push($.SUBRULE($.innerAtRule)) },
+                { ALT: () => rules.push($.SUBRULE2($.qualifiedRule, { ARGS: [{ inner: true }] })) },
                 { ALT: () => $.CONSUME(T.Semi) }
               ])
               needsSemi = false
@@ -551,6 +557,14 @@ export function productions(this: CssActionsParser, T: TokenMap) {
         ])
       }
     })
+
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      let finalRules = $.getRulesWithComments(rules)
+      let returnRules = new Rules(finalRules, undefined, location, this.context)
+      context.scope = initialScope
+      return returnRules
+    }
   })
 
   // declaration
@@ -558,40 +572,60 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   | CUSTOM_IDENT WS* COLON CUSTOM_VALUE*
   //   ;
   $.RULE('declaration', () => {
+    $.startRule()
+    let name: string | Node | undefined
+    let value: Node | undefined
+    let important: IToken | undefined
     $.OR([
       {
         ALT: () => {
           $.OR2([
             {
-              ALT: () => $.CONSUME(T.Ident, { LABEL: 'Name' })
+              ALT: () => name = $.CONSUME(T.Ident, { LABEL: 'Name' }).image
             },
             {
               GATE: () => $.legacyMode,
-              ALT: () => $.CONSUME(T.LegacyPropIdent, { LABEL: 'Name' })
+              ALT: () => name = $.CONSUME(T.LegacyPropIdent, { LABEL: 'Name' }).image
             }
           ])
           $.CONSUME(T.Assign)
-          $.SUBRULE($.valueList)
+          value = $.SUBRULE($.valueList)
           $.OPTION(() => {
-            $.CONSUME(T.Important)
+            important = $.CONSUME(T.Important)
           })
         }
       },
       {
         ALT: () => {
-          $.CONSUME(T.CustomProperty)
+          name = $.CONSUME(T.CustomProperty).image
           $.CONSUME2(T.Assign)
-          $.MANY(() => $.SUBRULE($.customValue))
+          let nodes: Node[] = []
+          $.startRule()
+          /** @todo - should collect ALL tokens in a stream, including whitespace */
+          $.MANY(() => nodes.push($.SUBRULE($.customValue)))
+          if (!$.RECORDING_PHASE) {
+            let location = $.endRule()
+            value = new Sequence(nodes, undefined, location, this.context)
+          }
         }
       }
     ])
+
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      return new Declaration([
+        ['name', name],
+        ['value', value],
+        ['important', important]
+      ], undefined, location, this.context)
+    }
   })
 
   /**
-     * @todo - This could be implemented with a multi-mode lexer?
-     * Multi-modes was the right way to do it with Antlr, but
-     * Chevrotain does not support recursive tokens very well.
-     */
+   * @todo - This could be implemented with a multi-mode lexer?
+   * Multi-modes was the right way to do it with Antlr, but
+   * Chevrotain does not support recursive tokens very well.
+   */
   $.RULE('customValue', () => {
     $.OR([
       { ALT: () => $.SUBRULE($.extraTokens) },

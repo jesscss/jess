@@ -32,6 +32,20 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     return this.value.map(v => v.toString()).join(', ')
   }
 
+  operate(b: Node, op: string) {
+    if (op !== '+') {
+      throw new Error(`List operation "${op}" not supported`)
+    }
+    let newList = this.clone()
+    if (b instanceof List) {
+      newList.value.push(...b.value)
+    } else {
+      /** @todo - do we need to verify the list type? */
+      newList.value.push(b as T)
+    }
+    return newList
+  }
+
   /** @todo? Lists should collapse nested lists? */
   async eval(context: Context) {
     return await (super.eval(context) as Promise<List<T>>)

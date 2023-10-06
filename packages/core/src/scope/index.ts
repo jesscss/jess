@@ -1,3 +1,4 @@
+import { Sequence } from './../tree/sequence'
 import { logger } from '../logger'
 import { Declaration } from '../tree/declaration'
 import { List } from '../tree/list'
@@ -379,19 +380,28 @@ export class Scope {
        * If the most recent value is not a merge value
        * return this as the only value.
        */
-      if (!props[0]!.options?.merge) {
+      if (!(props[0]!.options?.assign === '+?:')) {
         return props[0]
       }
 
       let length = props.length
-      let values: Node[] = []
+      let value: Sequence | List | undefined
       let important: string | undefined
-      let merge: 'list' | 'spaced' | undefined
+      /**
+       * Legacy property joining for Less -- note, we need to
+       * explicitly wrap values in a list() when parsing
+       */
       for (let i = length - 1; i >= 0; i--) {
         let decl = props[i]!
-        if (decl.options?.merge) {
-          merge = decl.options.merge
-          values.push(decl.value)
+        if (decl.options?.assign === '+?:') {
+          let declValue = decl.value
+          if (!value) {
+            if (!(declValue instanceof List) && !(declValue instanceof Sequence)) {
+              value = new Sequence([declValue]).inherit(declValue)
+            }
+          } else {
+            value = value.operate(declValue, '+')
+          }
           if (decl.important) {
             important = decl.important
           }
@@ -400,7 +410,7 @@ export class Scope {
       key = props[0]!.name.toString()
       return new Declaration([
         ['name', key],
-        ['value', merge === 'list' ? new List(values) : new Spaced(values)],
+        ['value', value!],
         ['important', important]
       ])
     }

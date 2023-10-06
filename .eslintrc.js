@@ -12,6 +12,11 @@ const jsRules = {
     ignoreDestructuring: true,
     properties: 'never'
   }],
+  'no-multi-spaces': [
+    'error', {
+      ignoreEOLComments: true
+    }
+  ],
   /** Seems like a silly rule */
   'eol-last': 0
 }
@@ -47,6 +52,7 @@ module.exports = {
         project: './tsconfig.json'
       },
       rules: {
+        ...jsRules,
         'eol-last': 0,
         'prefer-const': 0,
         '@typescript-eslint/space-before-function-paren': jsRules['space-before-function-paren'],

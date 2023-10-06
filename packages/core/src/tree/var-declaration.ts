@@ -1,31 +1,9 @@
 import { Declaration, type DeclarationValue } from './declaration'
 import { defineType } from './node'
 import { isNode } from './util'
-import { type Name } from './base-declaration'
+import { type Name, type BaseDeclarationOptions } from './base-declaration'
 
-export type VarDeclarationOptions = {
-  /**
-   * Instead of implicitly declaring or overriding,
-   * requires a variable to previously be explicitly
-   * declared within scope.
-   *
-   * Used by SCSS (!global) and Jess (@set)
-   */
-  setDefined?: boolean
-
-  /** Defined in a mixin definition */
-  paramVar?: boolean
-
-  /** Used by SCSS (!default) */
-  setIfUndefined?: boolean
-  /**
-   * Throw if already defined in the immediate scope
-   * Will not throw if defined in a parent scope.
-   *
-   * Used by Jess (@let) and SCSS in the case of mixins
-   */
-  throwIfDefined?: boolean
-}
+export type VarDeclarationOptions = BaseDeclarationOptions
 
 /**
  * @example

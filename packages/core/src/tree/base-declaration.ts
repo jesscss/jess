@@ -1,6 +1,5 @@
 import {
-  Node,
-  type NodeOptions
+  Node
 } from './node'
 import { Nil } from './nil'
 import type { Context } from '../context'
@@ -14,13 +13,54 @@ export type BaseDeclarationValue<N extends Name = Name> = {
   value: unknown
 }
 
+export type AssignmentTypes =
+  ':'     // normal assignment
+  | '+:'  // merge (or add with math) -- similar to `+=` in JS
+  //         however, with sequences or lists, will add value to a member of the sequence or list
+  | '-:'  // only valid for math operations -- similar to `-=` in JS
+  | '*:'  // only valid for math operations -- similar to `*=` in JS
+  | '/:'  // only valid for math operations -- similar to `/=` in JS
+  | '?:'  // assign only if not already defined
+  | '?+:' // add if present, otherwise assign
+  | '?-:' // subtract if present, otherwise assign
+  | '?*:' // multiply if present, otherwise assign
+  | '?/:' // divide if present, otherwise assign
+
+  | '+?:' // Legacy Less flag -- merge only declarations that have '+?:'
+  //         into a List or Sequence, otherwise assign
+
+export type BaseDeclarationOptions = {
+  assign?: AssignmentTypes
+  /**
+   * Instead of implicitly declaring or overriding,
+   * requires a variable to previously be explicitly
+   * declared within scope.
+   *
+   * Used by SCSS (!global) and Jess's (@set)
+   */
+  setDefined?: boolean
+
+  /** Defined in a mixin definition */
+  paramVar?: boolean
+
+  /** Used by SCSS (!default) and Jess (?:) */
+  // setIfUndefined?: boolean
+  /**
+   * Throw if already defined in the immediate scope
+   * Will not throw if defined in a parent scope.
+   *
+   * Used by Jess (@let) and SCSS in the case of mixins
+   */
+  throwIfDefined?: boolean
+}
+
 /**
  * A base class with a name / value pair
  */
 export abstract class BaseDeclaration<
   N extends Name = Name,
   T extends BaseDeclarationValue = BaseDeclarationValue<N>,
-  O extends NodeOptions = NodeOptions,
+  O extends BaseDeclarationOptions = BaseDeclarationOptions,
 > extends Node<T, O> {
   get name(): Name | undefined {
     return this.data.get('name')
