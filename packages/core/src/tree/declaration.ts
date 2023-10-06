@@ -49,10 +49,12 @@ export class Declaration<O extends BaseDeclarationOptions = BaseDeclarationOptio
 
   toTrimmedString(depth?: number) {
     const { name, value, important } = this
+    const { assign = ':' } = this.options ?? {}
+    let a = assign === ':' ? ':' : ` ${assign}`
     if (isNode(value, 'Collection')) {
-      return `${name}:${value.toString(depth)}`
+      return `${name}${a}${value.toString(depth)}`
     }
-    return `${name}:${value.toString(depth)}${important ? ` ${important}` : ''};`
+    return `${name}${a}${value.toString(depth)}${important ? ` ${important}` : ''};`
   }
 
   /** @todo - move to visitors */

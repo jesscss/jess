@@ -1,4 +1,3 @@
-import { rules } from '..'
 /* eslint-disable no-return-assign */
 import type { CssActionsParser, TokenMap, RuleContext } from './cssActionsParser'
 import { EMPTY_ALT, type IToken } from 'chevrotain'
@@ -6,6 +5,7 @@ import {
   type Node,
   type LocationInfo,
   type TreeContext,
+  type AssignmentType,
   Root,
   Anonymous,
   Ruleset,
@@ -574,6 +574,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   $.RULE('declaration', () => {
     $.startRule()
     let name: string | Node | undefined
+    let assign: AssignmentType | undefined
     let value: Node | undefined
     let important: IToken | undefined
     $.OR([
@@ -588,7 +589,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
               ALT: () => name = $.CONSUME(T.LegacyPropIdent, { LABEL: 'Name' }).image
             }
           ])
-          $.CONSUME(T.Assign)
+          assign = $.CONSUME(T.Assign).image as AssignmentType
           value = $.SUBRULE($.valueList)
           $.OPTION(() => {
             important = $.CONSUME(T.Important)
@@ -598,7 +599,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       {
         ALT: () => {
           name = $.CONSUME(T.CustomProperty).image
-          $.CONSUME2(T.Assign)
+          assign = $.CONSUME2(T.Assign).image as AssignmentType
           let nodes: Node[] = []
           $.startRule()
           /** @todo - should collect ALL tokens in a stream, including whitespace */
@@ -617,7 +618,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
         ['name', name],
         ['value', value],
         ['important', important]
-      ], undefined, location, this.context)
+      ], { assign }, location, this.context)
     }
   })
 
@@ -627,10 +628,17 @@ export function productions(this: CssActionsParser, T: TokenMap) {
    * Chevrotain does not support recursive tokens very well.
    */
   $.RULE('customValue', () => {
+    $.startCapture()
+
     $.OR([
       { ALT: () => $.SUBRULE($.extraTokens) },
       { ALT: () => $.SUBRULE($.customBlock) }
     ])
+
+    if (!$.RECORDING_PHASE) {
+      let capture = $.endCapture()
+      return new Anonymous(capture[0], undefined, capture[1], this.context)
+    }
   })
 
   /** Can also have semi-colons */

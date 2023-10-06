@@ -13,7 +13,7 @@ export type BaseDeclarationValue<N extends Name = Name> = {
   value: unknown
 }
 
-export type AssignmentTypes =
+export type AssignmentType =
   ':'     // normal assignment
   | '+:'  // merge (or add with math) -- similar to `+=` in JS
   //         however, with sequences or lists, will add value to a member of the sequence or list
@@ -30,7 +30,7 @@ export type AssignmentTypes =
   //         into a List or Sequence, otherwise assign
 
 export type BaseDeclarationOptions = {
-  assign?: AssignmentTypes
+  assign?: AssignmentType
   /**
    * Instead of implicitly declaring or overriding,
    * requires a variable to previously be explicitly

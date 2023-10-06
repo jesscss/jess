@@ -29,6 +29,7 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
   context: TreeContext
   initialScope: Scope
   locationStack: LocationInfo[]
+  captureStack: number[]
   originalInput: IToken[]
 
   /** Exposed from Chevrotain */
@@ -181,6 +182,14 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
     }
   }
 
+  protected startCapture() {
+    if (!this.RECORDING_PHASE) {
+      let idx = this.currIdx
+      this.startRule()
+      this.captureStack.push(idx)
+    }
+  }
+
   /** Should only be called when not in recording phase */
   protected endRule() {
     let { endOffset, endLine, endColumn } = this.LA(-1)
@@ -189,6 +198,31 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
     location[4] = endLine!
     location[5] = endColumn!
     return location
+  }
+
+  protected endCapture(): [string, LocationInfo] {
+    let location = this.endRule()
+    let prevIdx = this.captureStack.pop()!
+    let currIdx = this.currIdx
+    let input = this.originalInput
+    let tokenStr = ''
+    let token: IToken | undefined
+
+    for (let i = prevIdx; i <= currIdx; i++) {
+      token = input[i]!
+      if (this.preSkippedTokenMap.has(token.startOffset)) {
+        for (let skipped of this.preSkippedTokenMap.get(token.startOffset)!) {
+          tokenStr += skipped.image
+        }
+      }
+      tokenStr += token.image
+    }
+    if (token && this.postSkippedTokenMap.has(token.endOffset!)) {
+      for (let skipped of this.postSkippedTokenMap.get(token.endOffset!)!) {
+        tokenStr += skipped.image
+      }
+    }
+    return [tokenStr, location]
   }
 
   protected getLocationInfo(loc: IToken): LocationInfo {
