@@ -5,7 +5,7 @@ import type { Visitor } from '../visitor'
 import type { Comment } from './comment'
 import { type Operator } from './util/calculate'
 // import type { OutputCollector } from '../output'
-import type { Constructor, Writable, Class, ValueOf, Opaque } from 'type-fest'
+import type { Constructor, Writable, Class, ValueOf, Opaque, IsUnknown } from 'type-fest'
 
 export { TreeContext }
 
@@ -13,7 +13,7 @@ type AllNodeOptions = {
   hoistToRoot?: boolean
 }
 
-export type NodeOptions = Record<string, boolean | string> & AllNodeOptions
+export type NodeOptions = Record<string, boolean | string | number> & AllNodeOptions
 export type NodeValue = unknown
 export type NodeMap = Map<string, NodeValue>
 export type NodeInValue = NodeValue | NodeMapArray | NodeMap
@@ -109,6 +109,10 @@ type CollectionPair<T> =
       ? [K, V]
       : T extends Set<infer U> ? [U, U] : never
 
+type NodeValueArg<M extends NodeTypeMap> =
+  IsUnknown<M['value']> extends true
+    ? TypeMap<M> | Array<[string, any]>
+    : TypeMap<M> | Array<[string, any]> | M['value']
 /**
  * The underlying type for all Jess nodes
  */
@@ -153,7 +157,7 @@ export abstract class Node<
   protected readonly data: TypeMap<M>
 
   constructor(
-    value: M['value'] | TypeMap<M> | Array<[string, any]>,
+    value: NodeValueArg<M>,
     options?: O,
     location?: LocationInfo | 0,
     treeContext?: TreeContext

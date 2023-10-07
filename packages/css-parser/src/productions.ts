@@ -1,11 +1,12 @@
+import { TreeContext } from './../../core/src/context'
 /* eslint-disable no-return-assign */
 import type { CssActionsParser, TokenMap, RuleContext } from './cssActionsParser'
 import { EMPTY_ALT, type IToken } from 'chevrotain'
 import {
   type Node,
   type LocationInfo,
-  type TreeContext,
   type AssignmentType,
+  type Operator,
   Root,
   Anonymous,
   Ruleset,
@@ -29,7 +30,8 @@ import {
   Operation,
   Quoted,
   PseudoSelector,
-  AttributeSelector
+  AttributeSelector,
+  AtRule
 } from '@jesscss/core'
 
 export function productions(this: CssActionsParser, T: TokenMap) {
@@ -45,7 +47,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
     $.OPTION(() => {
       charset = $.CONSUME(T.Charset)
     })
-    let root = $.SUBRULE($.main)
+    let root = $.SUBRULE($.main, { ARGS: [{ isRoot: true }] })
 
     if (!$.RECORDING_PHASE) {
       let location = $.endRule()
@@ -64,10 +66,20 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //     | atRule
   //   )*
   //   ;
-  $.RULE('main', () => {
+  $.RULE('main', (ctx: RuleContext = {}) => {
     $.startRule()
 
+    const isRoot = !!ctx.isRoot
+
+    let context = this.context
+    let initialScope: Scope
+
+    if (!isRoot) {
+      initialScope = context.scope
+      context.scope = new Scope(initialScope)
+    }
     let rules: Node[] = []
+
     $.MANY(() => {
       $.OR([
         { ALT: () => rules.push($.SUBRULE($.qualifiedRule)) },
@@ -78,7 +90,16 @@ export function productions(this: CssActionsParser, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
       let location = $.endRule()
       let finalRules = $.getRulesWithComments(rules)
-      return new Root(finalRules, undefined, location, this.context)
+      let returnNode: Node
+      if (isRoot) {
+        returnNode = new Root(finalRules, undefined, location, context)
+      } else {
+        returnNode = new Rules(finalRules, undefined, location, context)
+      }
+      if (!isRoot) {
+        context.scope = initialScope!
+      }
+      return returnNode
     }
   })
 
@@ -574,8 +595,8 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   ;
   $.RULE('declaration', () => {
     $.startRule()
-    let name: string | Node | undefined
-    let assign: AssignmentType | undefined
+    let name: IToken | undefined
+    let assign: IToken | undefined
     let value: Node | undefined
     let important: IToken | undefined
     $.OR([
@@ -583,14 +604,14 @@ export function productions(this: CssActionsParser, T: TokenMap) {
         ALT: () => {
           $.OR2([
             {
-              ALT: () => name = $.CONSUME(T.Ident).image
+              ALT: () => name = $.CONSUME(T.Ident)
             },
             {
               GATE: () => $.legacyMode,
-              ALT: () => name = $.CONSUME(T.LegacyPropIdent).image
+              ALT: () => name = $.CONSUME(T.LegacyPropIdent)
             }
           ])
-          assign = $.CONSUME(T.Assign).image as AssignmentType
+          assign = $.CONSUME(T.Assign)
           value = $.SUBRULE($.valueList)
           $.OPTION(() => {
             important = $.CONSUME(T.Important)
@@ -599,8 +620,8 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       },
       {
         ALT: () => {
-          name = $.CONSUME(T.CustomProperty).image
-          assign = $.CONSUME2(T.Assign).image as AssignmentType
+          name = $.CONSUME(T.CustomProperty)
+          assign = $.CONSUME2(T.Assign)
           let nodes: Node[] = []
           $.startRule()
           /** @todo - should collect ALL tokens in a stream, including whitespace */
@@ -616,10 +637,10 @@ export function productions(this: CssActionsParser, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
       let location = $.endRule()
       return new Declaration([
-        ['name', name],
+        ['name', name!.image],
         ['value', value],
         ['important', important]
-      ], { assign }, location, this.context)
+      ], { assign: assign!.image as AssignmentType }, location, this.context)
     }
   })
 
@@ -900,7 +921,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       let right: Node = $.SUBRULE2($.mathProduct)
 
       if (!$.RECORDING_PHASE) {
-        left = new Operation([left, op!.image, right])
+        left = new Operation([left, op!.image as Operator, right])
       }
     })
     if (!$.RECORDING_PHASE) {
@@ -926,7 +947,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       let right: Node = $.SUBRULE2($.mathValue)
 
       if (!$.RECORDING_PHASE) {
-        left = new Operation([left, op!.image, right])
+        left = new Operation([left, op!.image as Operator, right], undefined, 0, this.context)
       }
     })
 
@@ -988,28 +1009,75 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   )
 
   $.RULE('varFunction', () => {
+    $.startRule()
     $.CONSUME(T.Var)
-    $.CONSUME(T.CustomProperty)
+    let prop = $.CONSUME(T.CustomProperty)
+    let args: Node | undefined
     $.OPTION(() => {
       $.CONSUME(T.Comma)
-      $.SUBRULE($.valueList)
+      args = $.SUBRULE($.valueList)
     })
     $.CONSUME(T.RParen)
+
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      let propNode = $.wrap(new Anonymous(prop.image, undefined, $.getLocationInfo(prop), this.context), 'both')
+      if (!args) {
+        args = new List([propNode], undefined, $.getLocationInfo(prop), this.context)
+      } else {
+        let { startOffset, startLine, startColumn } = prop
+        args.value.unshift(propNode)
+        args.location[0] = startOffset
+        args.location[1] = startLine!
+        args.location[2] = startColumn!
+      }
+      return new Call([
+        ['name', 'var'],
+        ['args', args]
+      ], undefined, location, this.context)
+    }
   })
 
   $.RULE('calcFunction', () => {
+    $.startRule()
+
     $.CONSUME(T.Calc)
-    $.SUBRULE($.mathSum)
+    let args = $.SUBRULE($.mathSum)
     $.CONSUME2(T.RParen)
+
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      return new Call([
+        ['name', 'calc'],
+        ['args', new List([args]).inherit(args)]
+      ], undefined, location, this.context)
+    }
   })
 
   $.RULE('urlFunction', () => {
+    $.startRule()
+
+    let token: IToken | undefined
+    let node: Node | undefined
+
     $.CONSUME(T.UrlStart)
     $.OR([
-      { ALT: () => $.SUBRULE($.string) },
-      { ALT: () => $.CONSUME(T.NonQuotedUrl) }
+      { ALT: () => node = $.SUBRULE($.string) },
+      { ALT: () => token = $.CONSUME(T.NonQuotedUrl) }
     ])
     $.CONSUME(T.UrlEnd)
+
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      if (token) {
+        /** Whitespace should be included in the NonQuotedUrl */
+        node = new Anonymous(token.image, undefined, $.getLocationInfo(token), this.context)
+      }
+      return new Call([
+        ['name', 'url'],
+        ['args', new List([node!]).inherit(node!)]
+      ], undefined, location, this.context)
+    }
   })
 
   /**
@@ -1026,7 +1094,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   | fontFaceAtRule
   //   | supportsAtRule
   //   ;
-  $.RULE('atRule', () => {
+  $.RULE('atRule', () =>
     $.OR([
       { ALT: () => $.SUBRULE($.importAtRule) },
       { ALT: () => $.SUBRULE($.mediaAtRule) },
@@ -1037,7 +1105,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       { ALT: () => $.SUBRULE($.nonNestedAtRule) },
       { ALT: () => $.SUBRULE($.unknownAtRule) }
     ])
-  })
+  )
 
   /**
       Inner rules are mostly the same except they have a declarationList
@@ -1048,18 +1116,18 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   : innerMediaAtRule
   //   | unknownAtRule
   //   ;
-  $.RULE('innerAtRule', () => {
+  $.RULE('innerAtRule', () =>
     $.OR([
       { ALT: () => $.SUBRULE($.mediaAtRule, { ARGS: [true] }) },
       { ALT: () => $.SUBRULE($.supportsAtRule, { ARGS: [true] }) },
       { ALT: () => $.SUBRULE($.unknownAtRule) }
     ])
-  })
+  )
 
   /**
-     * @see https://www.w3.org/TR/css-nesting-1/#conditionals
-     */
-  $.RULE('atRuleBody', (inner: boolean = false) => {
+   * @see https://www.w3.org/TR/css-nesting-1/#conditionals
+   */
+  $.RULE('atRuleBody', (inner: boolean = false) =>
     $.OR([
       {
         GATE: () => !inner,
@@ -1070,20 +1138,33 @@ export function productions(this: CssActionsParser, T: TokenMap) {
         ALT: () => $.SUBRULE($.declarationList)
       }
     ])
-  })
+  )
 
   // mediaAtRule
   //   : MEDIA_RULE WS* mediaQuery WS* LCURLY main RCURLY
   //   ;
   $.RULE('mediaAtRule', (inner?: boolean) => {
-    $.CONSUME(T.AtMedia)
+    $.startRule()
+    let name = $.CONSUME(T.AtMedia)
+    let queries: Node[] = []
+    let value: Node
+
     $.AT_LEAST_ONE_SEP({
       SEP: T.Comma,
-      DEF: () => $.SUBRULE($.mediaQuery)
+      DEF: () => queries.push($.SUBRULE($.mediaQuery))
     })
     $.CONSUME(T.LCurly)
-    $.SUBRULE($.atRuleBody, { ARGS: [inner] })
+    value = $.SUBRULE($.atRuleBody, { ARGS: [inner] })
     $.CONSUME(T.RCurly)
+
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      return new AtRule([
+        ['name', name.image],
+        ['prelude', new List(queries)],
+        ['value', value]
+      ], undefined, location, this.context)
+    }
   })
 
   /**

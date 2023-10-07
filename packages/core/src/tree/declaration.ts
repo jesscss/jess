@@ -1,8 +1,11 @@
 import {
-  type Node,
+  Node,
   defineType
 } from './node'
 import { isNode } from './util'
+import { Nil } from './nil'
+import type { Context } from '../context'
+import { Interpolated } from './interpolated'
 import {
   type BaseDeclarationValue,
   type Name,
@@ -55,6 +58,33 @@ export class Declaration<O extends BaseDeclarationOptions = BaseDeclarationOptio
       return `${name}${a}${value.toString(depth)}`
     }
     return `${name}${a}${value.toString(depth)}${important ? ` ${important}` : ''};`
+  }
+
+  async eval(context: Context): Promise<Node> {
+    return await this.evalIfNot(context, async () => {
+      let node = this.clone()
+      node.evaluated = true
+      let { name, value } = node
+      /**
+       * Name may be a variable or a sequence containing a variable
+       *
+       * @todo - is this valid if rulesets pre-emptively evaluate names?
+       */
+      if (name instanceof Interpolated) {
+        node.name = await name.eval(context) as N
+      } else {
+        node.name = name
+      }
+      if (value instanceof Node) {
+        let newValue = await value.eval(context)
+        if (newValue instanceof Nil) {
+          return newValue.inherit(node)
+        } else {
+          node.value = newValue
+        }
+      }
+      return node
+    })
   }
 
   /** @todo - move to visitors */

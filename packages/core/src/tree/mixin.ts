@@ -10,7 +10,7 @@ export type MixinValue = {
   name?: Name
   params?: List<Node | VarDeclaration<string> | Rest>
   guard?: Condition
-  value: Rules
+  rules: Rules
 }
 
 export type MixinOptions = {
@@ -50,6 +50,14 @@ export class Mixin extends BaseDeclaration<Name, MixinValue, VarDeclarationOptio
     return this.data.get('guard')
   }
 
+  get rules() {
+    return this.data.get('rules')
+  }
+
+  set rules(v: Rules) {
+    this.data.set('rules', v)
+  }
+
   toTrimmedString(depth: number = 0): string {
     let space = ''.padStart(depth * 2)
     let output = `@mixin ${this.name}`
@@ -62,7 +70,7 @@ export class Mixin extends BaseDeclaration<Name, MixinValue, VarDeclarationOptio
       output += ` when ${this.guard}`
     }
     output += ' {\n'
-    output += this.value.toString(depth + 1) as string
+    output += this.rules.toString(depth + 1) as string
     output += `${space}}`
     return output
   }

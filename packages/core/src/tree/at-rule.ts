@@ -9,7 +9,7 @@ export type AtRuleValue = {
   name: string
   /** The prelude */
   prelude: Node
-  value?: Rules
+  rules?: Rules
 }
 
 /**
@@ -32,11 +32,19 @@ export class AtRule extends Node<AtRuleValue> {
     this.data.set('name', v)
   }
 
+  get rules() {
+    return this.data.get('rules')
+  }
+
+  set rules(v: Rules | undefined) {
+    this.data.set('rules', v)
+  }
+
   async eval(context: Context) {
     let node = await super.eval(context) as AtRule
     /** Don't let rooted rules bubble past an at-rule */
-    if (node.value) {
-      let rules = node.value.value
+    if (node.rules) {
+      let rules = node.rules.value
       /**
        * Wrap sub-rules of a media query like Less
        *
@@ -45,12 +53,12 @@ export class AtRule extends Node<AtRuleValue> {
       if (context.frames.length !== 0) {
         let rule = await new Ruleset([
           ['selector', new SelectorSequence([new Ampersand()])],
-          ['value', rules]
+          ['rules', rules]
         ])
           .inherit(this)
           .eval(context)
         rules = [rule]
-        node.value.value = rules
+        node.rules.value = rules
       }
       let rootRules = this.collectRoots()
       rootRules.forEach(rule => rules.push(rule))

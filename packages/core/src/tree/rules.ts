@@ -363,7 +363,7 @@ export class Rules extends Node<Node[]> {
       let bubbleRootRules = (rule: Node) => {
         let importedRoots =
           (isNode(rule, 'Ruleset') || isNode(rule, 'AtRule'))
-            ? rule.value?.rootRules
+            ? rule.rules?.rootRules
             : rule.rootRules
         if (importedRoots) {
           let { rootRules } = ruleset

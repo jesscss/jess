@@ -55,7 +55,7 @@ export class CssActionsParser extends AdvancedActionsParser {
 
   /** Rewire, declaring class fields in constructor with `public` */
   stylesheet: Rule
-  main: Rule
+  main: Rule<(ctx?: RuleContext) => void>
   qualifiedRule: Rule<(ctx?: RuleContext) => void>
   atRule: Rule
   selectorList: Rule<(ctx?: RuleContext) => void>

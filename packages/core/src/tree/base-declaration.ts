@@ -1,33 +1,30 @@
 import {
   Node
 } from './node'
-import { Nil } from './nil'
-import type { Context } from '../context'
-import { Interpolated } from './interpolated'
+import { type Interpolated } from './interpolated'
 import type { Anonymous } from './anonymous'
 
 export type Name = Interpolated | Anonymous | string
 
 export type BaseDeclarationValue<N extends Name = Name> = {
   name?: N
-  value: unknown
 }
 
-export type AssignmentType =
-  ':'     // normal assignment
-  | '+:'  // merge (or add with math) -- similar to `+=` in JS
-  //         however, with sequences or lists, will add value to a member of the sequence or list
-  | '-:'  // only valid for math operations -- similar to `-=` in JS
-  | '*:'  // only valid for math operations -- similar to `*=` in JS
-  | '/:'  // only valid for math operations -- similar to `/=` in JS
-  | '?:'  // assign only if not already defined
-  | '?+:' // add if present, otherwise assign
-  | '?-:' // subtract if present, otherwise assign
-  | '?*:' // multiply if present, otherwise assign
-  | '?/:' // divide if present, otherwise assign
-
-  | '+?:' // Legacy Less flag -- merge only declarations that have '+?:'
-  //         into a List or Sequence, otherwise assign
+export const enum AssignmentType {
+  Default = ':',
+  Add = '+:',           // similar to += in JS, but merges lists / sequences / collections
+  Subtract = '-:',      // math subtraction, like -= in JS
+  Multiply = '*:',      // math multiplication, like *= in JS
+  Divide = '/:',        // math division, like /= in JS
+  CondAssign = '?:',    // similar to ??= in JS or !default in Sass
+  CondAdd = '?+:',      // add if defined, otherwise assign
+  CondSubtract = '?-:', // subtract if defined, otherwise assign
+  CondMultiply = '?*:', // multiply if defined, otherwise assign
+  CondDivide = '?/:',   // divide if defined, otherwise assign
+  /** Legacy Less flags */
+  MergeList = '+,:',    // merge into a list if another prop exists with this flag
+  MergeSequence = '+_:' // merge into a sequence if another prop exists with this flag
+}
 
 export type BaseDeclarationOptions = {
   assign?: AssignmentType
@@ -68,32 +65,5 @@ export abstract class BaseDeclaration<
 
   set name(v: Name | undefined) {
     this.data.set('name', v)
-  }
-
-  async eval(context: Context): Promise<Node> {
-    return await this.evalIfNot(context, async () => {
-      let node = this.clone()
-      node.evaluated = true
-      let { name, value } = node
-      /**
-       * Name may be a variable or a sequence containing a variable
-       *
-       * @todo - is this valid if rulesets pre-emptively evaluate names?
-       */
-      if (name instanceof Interpolated) {
-        node.name = await name.eval(context)
-      } else {
-        node.name = name
-      }
-      if (value instanceof Node) {
-        let newValue = await value.eval(context)
-        if (newValue instanceof Nil) {
-          return newValue.inherit(node)
-        } else {
-          node.value = newValue
-        }
-      }
-      return node
-    })
   }
 }

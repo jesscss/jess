@@ -10,10 +10,10 @@ export type RulesetValue = {
   selector: SelectorList | SelectorSequence | Nil
   /**
    * It's important that any Node that defines a Rules
-   * sets it to the `value` property. This allows us to
+   * sets it to the `rules` property. This allows us to
    * generalize nodes for the `frames` property in Context
    */
-  value: Rules
+  rules: Rules
 }
 /**
  * A qualified rule. This is historically called a "Ruleset"
@@ -35,12 +35,20 @@ export class Ruleset extends Node<RulesetValue> {
     this.data.set('selector', v)
   }
 
+  get rules() {
+    return this.data.get('rules')
+  }
+
+  set rules(v: Rules) {
+    this.data.set('rules', v)
+  }
+
   toTrimmedString(depth: number = 0): string {
     let space = ''.padStart(depth * 2)
     /** The ruleset will have already indented the first line */
     let output = ''
     output += `${this.selector.toString()} {\n`
-    output += `${this.value.toString(depth + 1)}`
+    output += `${this.rules.toString(depth + 1)}`
     output += `${space}}`
     return output
   }
@@ -65,11 +73,11 @@ export class Ruleset extends Node<RulesetValue> {
       rule.selector = sels
 
       context.frames.unshift(rule)
-      rule.value = await this.value.eval(context)
+      rule.value = await this.rules.eval(context)
       context.frames.shift()
 
       /** Remove empty rules */
-      if (rule.value.value.length === 0) {
+      if (rule.rules.value.length === 0) {
         return new Nil().inherit(this)
       }
       return rule
@@ -102,4 +110,11 @@ export class Ruleset extends Node<RulesetValue> {
 Ruleset.prototype.allowRuleRoot = true
 Ruleset.prototype.allowRoot = true
 
-export const ruleset = defineType<RulesetValue>(Ruleset, 'Ruleset')
+type RulesetParams = ConstructorParameters<typeof Ruleset>
+
+export const ruleset = defineType<RulesetValue>(Ruleset, 'Ruleset') as (
+  value: RulesetValue | RulesetParams[0],
+  options?: RulesetParams[1],
+  location?: RulesetParams[2],
+  treeContext?: RulesetParams[3]
+) => Ruleset

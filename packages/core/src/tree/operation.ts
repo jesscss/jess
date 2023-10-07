@@ -2,6 +2,7 @@ import { Node, defineType } from './node'
 import type { Context } from '../context'
 import type { Operator } from './util/calculate'
 
+export type { Operator }
 /** Operation is always a tuple */
 export type OperationValue = [
   left: Node,

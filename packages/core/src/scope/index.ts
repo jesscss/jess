@@ -1,6 +1,6 @@
-import { Sequence } from './../tree/sequence'
 import { logger } from '../logger'
 import { Declaration } from '../tree/declaration'
+import { AssignmentType } from '../tree/base-declaration'
 import { List } from '../tree/list'
 import { Spaced } from '../tree/spaced'
 import type { Node } from '../tree/node'
@@ -380,28 +380,25 @@ export class Scope {
        * If the most recent value is not a merge value
        * return this as the only value.
        */
-      if (!(props[0]!.options?.assign === '+?:')) {
+      let assignment = props[0]!.options?.assign
+      if (!(assignment === AssignmentType.MergeList || assignment === AssignmentType.MergeSequence)) {
         return props[0]
       }
 
       let length = props.length
-      let value: Sequence | List | undefined
+      let values: Node[] = []
       let important: string | undefined
+      let merge: AssignmentType | undefined
       /**
        * Legacy property joining for Less -- note, we need to
        * explicitly wrap values in a list() when parsing
        */
       for (let i = length - 1; i >= 0; i--) {
         let decl = props[i]!
-        if (decl.options?.assign === '+?:') {
-          let declValue = decl.value
-          if (!value) {
-            if (!(declValue instanceof List) && !(declValue instanceof Sequence)) {
-              value = new Sequence([declValue]).inherit(declValue)
-            }
-          } else {
-            value = value.operate(declValue, '+')
-          }
+        let assignment = decl.options?.assign
+        if (assignment === AssignmentType.MergeList || assignment === AssignmentType.MergeSequence) {
+          merge = assignment
+          values.push(decl.value)
           if (decl.important) {
             important = decl.important
           }
@@ -410,7 +407,7 @@ export class Scope {
       key = props[0]!.name.toString()
       return new Declaration([
         ['name', key],
-        ['value', value!],
+        ['value', merge === AssignmentType.MergeList ? new List(values) : new Spaced(values)],
         ['important', important]
       ])
     }
@@ -700,13 +697,13 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         outputRules.push([candidate, i])
         continue
       }
-      let ruleset = candidate.value
+      let rules = candidate.rules
       /**
        * During parsing, each ruleset should have been assigned
        * a scope by the tree context, so we can use that to
        * create a new scope.
        */
-      let scope = new Scope(ruleset._scope)
+      let scope = new Scope(rules._scope)
 
       /** Now we need to add our parameters, if any */
       let params = candidate.params
@@ -733,7 +730,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         }
       }
       if (passes) {
-        let newRules = ruleset.clone()
+        let newRules = rules.clone()
         newRules._scope = scope
         newRules = await newRules.eval(thisContext)
         outputRules.push([newRules, i])
