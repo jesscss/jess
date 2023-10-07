@@ -10,7 +10,7 @@ describe('Rule', () => {
   it('should serialize to CSS', () => {
     let node = ruleset({
       selector: list([sel([el('foo')])]),
-      value: rules([
+      rules: rules([
         decl({ name: 'border', value: spaced([any('1px'), any('solid'), any('black')]) }),
         decl({ name: 'color', value: any('#eee') })
       ])

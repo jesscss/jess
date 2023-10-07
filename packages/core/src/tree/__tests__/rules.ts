@@ -13,7 +13,7 @@ describe('Rules', () => {
     let node = root([
       ruleset({
         selector: list([sel([el('.collapse')])]),
-        value: rules([
+        rules: rules([
           decl({ name: 'chungus', value: spaced([any('foo'), any('bar')]) }),
           rules([
             decl({ name: 'bird', value: spaced([any('in'), any('hand')]) })

@@ -119,7 +119,6 @@ export class CssActionsParser extends AdvancedActionsParser {
   mediaAnd: Rule
   mediaOr: Rule
   mediaFeature: Rule
-  generalEnclosed: Rule
 
   mfValue: Rule
   mediaRange: Rule

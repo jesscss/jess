@@ -1,4 +1,3 @@
-import { TreeContext } from './../../core/src/context'
 /* eslint-disable no-return-assign */
 import type { CssActionsParser, TokenMap, RuleContext } from './cssActionsParser'
 import { EMPTY_ALT, type IToken } from 'chevrotain'
@@ -1168,34 +1167,57 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   })
 
   /**
-     * @see https://w3c.github.io/csswg-drafts/mediaqueries/#mq-syntax
-     * Note, some of the spec had to be re-written for less ambiguity.
-     * However, this is a spec-compliant implementation.
-     */
+   * @see https://w3c.github.io/csswg-drafts/mediaqueries/#mq-syntax
+   * Note, some of the spec had to be re-written for less ambiguity.
+   * However, this is a spec-compliant implementation.
+   */
   // mediaQuery
   //   : mediaCondition
   //   | ((NOT | ONLY) WS*)? mediaType (WS* AND WS* mediaConditionWithoutOr)?
   //   ;
-  $.RULE('mediaQuery', () => {
+  $.RULE('mediaQuery', () =>
     $.OR([
       { ALT: () => $.SUBRULE($.mediaCondition) },
       {
         ALT: () => {
+          $.startRule()
+
+          let token: IToken | undefined
+          let node: Node | undefined
+          let nodes: Node[] = []
+
           $.OPTION(() => {
             $.OR2([
-              { ALT: () => $.CONSUME(T.Not) },
-              { ALT: () => $.CONSUME(T.Only) }
+              { ALT: () => token = $.CONSUME(T.Not) },
+              { ALT: () => token = $.CONSUME(T.Only) }
             ])
           })
-          $.SUBRULE($.mediaType)
+
+          if (token && !$.RECORDING_PHASE) {
+            nodes.push($.wrap(new Anonymous(token.image, undefined, $.getLocationInfo(token), this.context)))
+            token = undefined
+          }
+          nodes.push($.SUBRULE($.mediaType))
           $.OPTION2(() => {
-            $.CONSUME(T.And)
-            $.SUBRULE($.mediaConditionWithoutOr)
+            token = $.CONSUME(T.And)
+            node = $.SUBRULE($.mediaConditionWithoutOr)
           })
+          if (!$.RECORDING_PHASE) {
+            if (token) {
+              nodes.push($.wrap(new Anonymous(token.image, undefined, $.getLocationInfo(token), this.context)))
+            }
+            if (node) {
+              nodes.push(node)
+            }
+          }
+          if (!$.RECORDING_PHASE) {
+            let location = $.endRule()
+            return new Sequence(nodes, undefined, location, this.context)
+          }
         }
       }
     ])
-  })
+  )
 
   /** Doesn't include only, not, and, or, layer */
   // mediaType
@@ -1205,71 +1227,117 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   | ALL
   //   ;
   $.RULE('mediaType', () => {
-    $.OR([
+    let token = $.OR([
       { ALT: () => $.CONSUME(T.PlainIdent) },
       { ALT: () => $.CONSUME(T.Screen) },
       { ALT: () => $.CONSUME(T.Print) },
       { ALT: () => $.CONSUME(T.All) }
     ])
+    if (!$.RECORDING_PHASE) {
+      return $.wrap(new Anonymous(token.image, undefined, $.getLocationInfo(token), this.context))
+    }
   })
 
   // mediaCondition
   //   : mediaNot | mediaInParens ( WS* (mediaAnd* | mediaOr* ))
   //   ;
-  $.RULE('mediaCondition', () => {
+  $.RULE('mediaCondition', () =>
     $.OR([
       { ALT: () => $.SUBRULE($.mediaNot) },
       {
         ALT: () => {
-          $.SUBRULE($.mediaInParens)
+          $.startRule()
+          let nodes: Node[] = [$.SUBRULE($.mediaInParens)]
           $.MANY(() => {
-            $.OR2([
-              { ALT: () => { $.SUBRULE($.mediaAnd) } },
-              { ALT: () => { $.SUBRULE($.mediaOr) } }
-            ])
+            nodes.push(
+              $.OR2([
+                { ALT: () => $.SUBRULE($.mediaAnd) },
+                { ALT: () => $.SUBRULE($.mediaOr) }
+              ])
+            )
           })
+          if (!$.RECORDING_PHASE) {
+            let location = $.endRule()
+            return new Sequence(nodes, undefined, location, this.context)
+          }
         }
       }
     ])
-  })
+  )
 
   // mediaConditionWithoutOr
   //   : mediaNot | mediaInParens (WS* mediaAnd)*
   //   ;
-  $.RULE('mediaConditionWithoutOr', () => {
+  $.RULE('mediaConditionWithoutOr', () =>
     $.OR([
       { ALT: () => $.SUBRULE($.mediaNot) },
       {
         ALT: () => {
-          $.SUBRULE($.mediaInParens)
-          $.MANY(() => $.SUBRULE($.mediaAnd))
+          $.startRule()
+          let nodes: Node[] = [$.SUBRULE($.mediaInParens)]
+          $.MANY(() => nodes.push($.SUBRULE($.mediaAnd)))
+
+          if (!$.RECORDING_PHASE) {
+            let location = $.endRule()
+            return new Sequence(nodes, undefined, location, this.context)
+          }
         }
       }
     ])
-  })
+  )
 
   // mediaNot
   //   : NOT WS* mediaInParens
   //   ;
   $.RULE('mediaNot', () => {
-    $.CONSUME(T.Not)
-    $.SUBRULE($.mediaInParens)
+    $.startRule()
+
+    let token = $.CONSUME(T.Not)
+    let node = $.SUBRULE($.mediaInParens)
+
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      return new Sequence([
+        $.wrap(new Anonymous(token.image, undefined, $.getLocationInfo(token), this.context)),
+        node
+      ], undefined, location, this.context)
+    }
   })
 
   // mediaAnd
   //   : AND WS* mediaInParens
   //   ;
   $.RULE('mediaAnd', () => {
-    $.CONSUME(T.And)
-    $.SUBRULE($.mediaInParens)
+    $.startRule()
+
+    let token = $.CONSUME(T.And)
+    let node = $.SUBRULE($.mediaInParens)
+
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      return new Sequence([
+        $.wrap(new Anonymous(token.image, undefined, $.getLocationInfo(token), this.context)),
+        node
+      ], undefined, location, this.context)
+    }
   })
 
   // mediaOr
   //   : OR WS* mediaInParens
   //   ;
   $.RULE('mediaOr', () => {
-    $.CONSUME(T.Or)
-    $.SUBRULE($.mediaInParens)
+    $.startRule()
+
+    let token = $.CONSUME(T.Or)
+    let node = $.SUBRULE($.mediaInParens)
+
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      return new Sequence([
+        $.wrap(new Anonymous(token.image, undefined, $.getLocationInfo(token), this.context)),
+        node
+      ], undefined, location, this.context)
+    }
   })
 
   // mediaInParens
@@ -1277,19 +1345,34 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   | generalEnclosed
   //   ;
   $.RULE('mediaInParens', () => {
-    $.OR([
+    $.startRule()
+
+    $.CONSUME(T.LParen)
+
+    let node = $.OR([
+      { ALT: () => $.SUBRULE($.mediaCondition) },
+      { ALT: () => $.SUBRULE($.mediaFeature) },
+      // in the CSS @media spec, is defined as "generalEnclosed"
       {
         ALT: () => {
-          $.CONSUME(T.LParen)
-          $.OR2([
-            { ALT: () => $.SUBRULE($.mediaCondition) },
-            { ALT: () => $.SUBRULE($.mediaFeature) }
-          ])
-          $.CONSUME(T.RParen)
+          $.startRule()
+          let values: Node[] = []
+
+          $.AT_LEAST_ONE(() => values.push($.SUBRULE($.anyInnerValue)))
+
+          if (!$.RECORDING_PHASE) {
+            let location = $.endRule()
+            return new Sequence(values, undefined, location, this.context)
+          }
         }
-      },
-      { ALT: () => $.SUBRULE($.generalEnclosed) }
+      }
     ])
+    $.CONSUME(T.RParen)
+
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      return $.wrap(new Paren($.wrap(node, 'both'), undefined, location, this.context))
+    }
   })
 
   /**
@@ -1422,24 +1505,10 @@ export function productions(this: CssActionsParser, T: TokenMap) {
     ])
   })
 
-  // generalEnclosed
-  //   : function
-  //   // The spec allows the following, presumably because
-  //   // whether or not a query is valid is up to the user agent.
-  //   // However, this makes the grammar more ambiguous,
-  //   // and we limit parsing to known query types.
-  //   // | '(' WS* anyValue WS* ')'
-  //   ;
-  $.RULE('generalEnclosed', () => {
-    $.CONSUME(T.LParen)
-    $.SUBRULE($.anyInnerValue)
-    $.CONSUME(T.RParen)
-  })
-
   /**
-     * @see https://www.w3.org/TR/css-page-3/
-     * @see https://developer.mozilla.org/en-US/docs/Web/CSS/@page
-     */
+   * @see https://www.w3.org/TR/css-page-3/
+   * @see https://developer.mozilla.org/en-US/docs/Web/CSS/@page
+   */
   $.RULE('pageAtRule', () => {
     $.CONSUME(T.AtPage)
     $.MANY_SEP({
@@ -1540,6 +1609,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
     $.OR([
       {
         ALT: () => {
+          /** Function-like call */
           $.CONSUME(T.Ident)
           $.OR2([
             {
@@ -1558,12 +1628,13 @@ export function productions(this: CssActionsParser, T: TokenMap) {
           $.CONSUME2(T.LParen)
           $.OR3([
             { ALT: () => $.SUBRULE($.supportsCondition) },
-            { ALT: () => $.SUBRULE($.declaration) }
+            { ALT: () => $.SUBRULE($.declaration) },
+            // in the CSS @supports spec, is defined as "generalEnclosed"
+            { ALT: () => $.SUBRULE($.anyInnerValue) }
           ])
           $.CONSUME2(T.RParen)
         }
-      },
-      { ALT: () => $.SUBRULE($.generalEnclosed) }
+      }
     ])
   })
 
