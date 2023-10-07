@@ -10,7 +10,7 @@ export type OperationValue = [
 ]
 
 /**
- * The '&' selector element
+ * A math operation
  */
 export class Operation extends Node<OperationValue> {
   async eval(context: Context): Promise<Node> {

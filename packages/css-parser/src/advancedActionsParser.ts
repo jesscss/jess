@@ -3,12 +3,8 @@ import { EmbeddedActionsParser, type IToken } from 'chevrotain'
 import {
   type TreeContext,
   type Scope,
-  type LocationInfo,
-  Node,
-  Comment
+  type LocationInfo
 } from '@jesscss/core'
-
-const { isArray } = Array
 
 /** Apply this label to tokens you wish to skip during parsing consideration */
 export const SKIPPED_LABEL = 'Skipped'
@@ -95,84 +91,6 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
   noSep(offset: number = 0) {
     let startOffset = this.LA(1 + offset).startOffset
     return !this.preSkippedTokenMap.get(startOffset)
-  }
-
-  protected getRulesWithComments(existingRules: Node[]) {
-    let rules = []
-    /**
-     * @todo - I think this pattern means that comments after
-     * the last rule will be tossed out, so we need to figure
-     * out a way to get comments when comments are the only
-     * content in a file.
-     */
-    // let rule: Node | undefined
-
-    for (let rule of existingRules) {
-      let pre = this.getPrePost(rule.location[0]!, true)
-      if (isArray(pre)) {
-        let i = 0
-        let item = pre[i]
-        while (item) {
-          if (item instanceof Node) {
-            let prev = pre[i - 1]
-            /** Attach whitespace before comment to comment */
-            if (prev) {
-              item.pre = [prev]
-              pre.shift()
-              i--
-            }
-            rules.push(item)
-            pre.shift()
-            i--
-          }
-          item = pre[++i]
-        }
-      }
-      rule.pre = pre
-      rules.push(rule)
-    }
-    return rules
-  }
-
-  protected getPrePost(offset: number, commentsOnly?: boolean, post?: boolean): Node['pre'] {
-    let skipped = post ? this.postSkippedTokenMap.get(offset) : this.preSkippedTokenMap.get(offset)
-    if (!skipped) {
-      return 0
-    }
-    if (this.usedSkippedTokens.has(skipped)) {
-      return 0
-    }
-    this.usedSkippedTokens.add(skipped)
-
-    let pre: Node['pre'] = skipped.map(token => {
-      let name = token.tokenType.name
-      if (name === 'WS') {
-        return token.image
-      } else {
-        return new Comment(token.image, { lineComment: name.includes('Line') }, this.getLocationInfo(token), this.context)
-      }
-    })
-    if (commentsOnly) {
-      pre = pre.filter(item => item instanceof Comment)
-    }
-
-    if (pre.length === 1 && pre[0] === ' ') {
-      pre = 1
-    }
-    return pre
-  }
-
-  protected wrap<T extends Node = Node>(node: T, post?: boolean | 'both', commentsOnly?: boolean): T {
-    if (post) {
-      let endOffset = node.location[3]!
-      node.post = this.getPrePost(endOffset, commentsOnly, true)
-      if (post !== 'both') {
-        return node
-      }
-    }
-    let startOffset = node.location[0]!
-    node.pre = this.getPrePost(startOffset, commentsOnly)
-    return node
   }
 
   protected startRule() {

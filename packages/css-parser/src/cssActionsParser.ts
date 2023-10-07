@@ -2,7 +2,9 @@ import {
   type TokenVocabulary,
   type TokenType,
   type IParserConfig,
-  type ParserMethod
+  type ParserMethod,
+  type IToken,
+  tokenMatcher
 } from 'chevrotain'
 
 // import { AdvancedCstParser } from './advancedCstParser'
@@ -12,7 +14,15 @@ import { AdvancedActionsParser } from './advancedActionsParser'
 
 import { type CssTokenType } from './cssTokens'
 import { productions } from './productions'
-import { type Node } from '@jesscss/core'
+import {
+  Node,
+  Comment,
+  Color,
+  Dimension,
+  Anonymous
+} from '@jesscss/core'
+
+const { isArray } = Array
 
 // /** Assert that tokens will have full location info */
 // export interface IToken extends Required<Omit<OrigIToken, 'payload'>> {
@@ -158,6 +168,129 @@ export class CssActionsParser extends AdvancedActionsParser {
 
     if (this.constructor === CssActionsParser) {
       this.performSelfAnalysis()
+    }
+  }
+
+  protected getRulesWithComments(existingRules: Node[]) {
+    let rules = []
+    /**
+     * @todo - I think this pattern means that comments after
+     * the last rule will be tossed out, so we need to figure
+     * out a way to get comments when comments are the only
+     * content in a file.
+     */
+    // let rule: Node | undefined
+
+    for (let rule of existingRules) {
+      let pre = this.getPrePost(rule.location[0]!, true)
+      if (isArray(pre)) {
+        let i = 0
+        let item = pre[i]
+        while (item) {
+          if (item instanceof Node) {
+            let prev = pre[i - 1]
+            /** Attach whitespace before comment to comment */
+            if (prev) {
+              item.pre = [prev]
+              pre.shift()
+              i--
+            }
+            rules.push(item)
+            pre.shift()
+            i--
+          }
+          item = pre[++i]
+        }
+      }
+      rule.pre = pre
+      rules.push(rule)
+    }
+    return rules
+  }
+
+  protected getPrePost(offset: number, commentsOnly?: boolean, post?: boolean): Node['pre'] {
+    let skipped = post ? this.postSkippedTokenMap.get(offset) : this.preSkippedTokenMap.get(offset)
+    if (!skipped) {
+      return 0
+    }
+    if (this.usedSkippedTokens.has(skipped)) {
+      return 0
+    }
+    this.usedSkippedTokens.add(skipped)
+
+    let pre: Node['pre'] = skipped.map(token => {
+      let name = token.tokenType.name
+      if (name === 'WS') {
+        return token.image
+      } else {
+        return new Comment(token.image, { lineComment: name.includes('Line') }, this.getLocationInfo(token), this.context)
+      }
+    })
+    if (commentsOnly) {
+      pre = pre.filter(item => item instanceof Comment)
+    }
+
+    if (pre.length === 1 && pre[0] === ' ') {
+      pre = 1
+    }
+    return pre
+  }
+
+  protected wrap<T extends Node = Node>(node: T, post?: boolean | 'both', commentsOnly?: boolean): T {
+    if (post) {
+      let endOffset = node.location[3]!
+      node.post = this.getPrePost(endOffset, commentsOnly, true)
+      if (post !== 'both') {
+        return node
+      }
+    }
+    let startOffset = node.location[0]!
+    node.pre = this.getPrePost(startOffset, commentsOnly)
+    return node
+  }
+
+  protected processValueToken(
+    token: IToken
+  ) {
+    let tokValue = token.image
+    let tokType = token.tokenType
+    let tokName = tokType.name
+    let T = this.T
+    let dimValue: [number: number, unit?: string] | undefined
+    const getDimension = (finalValue: Exclude<typeof dimValue, undefined>) =>
+      new Dimension(finalValue, undefined, this.getLocationInfo(token), this.context)
+
+    if (tokenMatcher(token, T.Ident)) {
+      /** @todo - check to see if it's a color */
+      return new Anonymous(tokValue, undefined, this.getLocationInfo(token), this.context)
+    } else if (tokenMatcher(token, T.Dimension)) {
+      dimValue = [parseFloat(token.payload[1]), token.payload[2]]
+      return getDimension(dimValue)
+    } else if (tokName === 'MathConstant') {
+      switch (tokValue.toLowerCase()) {
+        case 'pi':
+          dimValue = [Math.PI]
+          break
+        case 'infinity':
+          dimValue = [Infinity]
+          break
+        case '-infinity':
+          dimValue = [-Infinity]
+          break
+        case 'e':
+          dimValue = [Math.E]
+          break
+        case 'nan':
+          dimValue = [NaN]
+      }
+      return getDimension(dimValue!)
+    } else if (tokenMatcher(token, T.Number)) {
+      dimValue = [parseFloat(tokValue)]
+      return getDimension(dimValue)
+    } else if (tokenMatcher(token, T.Color)) {
+      return new Color(tokValue, undefined, this.getLocationInfo(token), this.context)
+    } else {
+      return new Anonymous(tokValue, undefined, this.getLocationInfo(token), this.context)
     }
   }
 }

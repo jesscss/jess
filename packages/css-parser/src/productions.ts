@@ -26,6 +26,7 @@ import {
   Func,
   Call,
   Paren,
+  Operation,
   Quoted,
   PseudoSelector,
   AttributeSelector
@@ -582,11 +583,11 @@ export function productions(this: CssActionsParser, T: TokenMap) {
         ALT: () => {
           $.OR2([
             {
-              ALT: () => name = $.CONSUME(T.Ident, { LABEL: 'Name' }).image
+              ALT: () => name = $.CONSUME(T.Ident).image
             },
             {
               GATE: () => $.legacyMode,
-              ALT: () => name = $.CONSUME(T.LegacyPropIdent, { LABEL: 'Name' }).image
+              ALT: () => name = $.CONSUME(T.LegacyPropIdent).image
             }
           ])
           assign = $.CONSUME(T.Assign).image as AssignmentType
@@ -627,78 +628,101 @@ export function productions(this: CssActionsParser, T: TokenMap) {
    * Multi-modes was the right way to do it with Antlr, but
    * Chevrotain does not support recursive tokens very well.
    */
-  $.RULE('customValue', () => {
-    $.startCapture()
-
+  $.RULE('customValue', () =>
     $.OR([
       { ALT: () => $.SUBRULE($.extraTokens) },
       { ALT: () => $.SUBRULE($.customBlock) }
     ])
-
-    if (!$.RECORDING_PHASE) {
-      let capture = $.endCapture()
-      return new Anonymous(capture[0], undefined, capture[1], this.context)
-    }
-  })
+  )
 
   /** Can also have semi-colons */
   $.RULE('innerCustomValue', () => {
     $.OR([
-      { ALT: () => $.CONSUME(T.Semi) },
+      {
+        ALT: () => {
+          let semi = $.CONSUME(T.Semi)
+          if (!$.RECORDING_PHASE) {
+            return $.wrap(new Anonymous(semi.image, undefined, $.getLocationInfo(semi), this.context))
+          }
+        }
+      },
       { ALT: () => $.SUBRULE($.extraTokens) },
       { ALT: () => $.SUBRULE($.customBlock) }
     ])
   })
 
   /**
-     * Extra tokens in a custom property or general enclosed. Should include any
-     * and every token possible (except semis), including unknown tokens.
-     */
-  $.RULE('extraTokens', () =>
+   * Extra tokens in a custom property or general enclosed. Should include any
+   * and every token possible (except semis), including unknown tokens.
+   *
+   * @todo - In tests, is there a way to test that every token is captured?
+   */
+  $.RULE('extraTokens', () => {
+    let token: IToken | undefined
+    let node: Node | undefined
     $.OR([
-      { ALT: () => $.SUBRULE($.knownFunctions) },
-      { ALT: () => $.CONSUME(T.Value) },
-      { ALT: () => $.CONSUME(T.CustomProperty) },
-      { ALT: () => $.CONSUME(T.Colon) },
-      { ALT: () => $.CONSUME(T.AtName) },
-      { ALT: () => $.CONSUME(T.Comma) },
-      { ALT: () => $.CONSUME(T.Important) },
-      { ALT: () => $.CONSUME(T.Unknown) }
+      { ALT: () => node = $.SUBRULE($.knownFunctions) },
+      { ALT: () => token = $.CONSUME(T.Value) },
+      { ALT: () => token = $.CONSUME(T.CustomProperty) },
+      { ALT: () => token = $.CONSUME(T.Colon) },
+      { ALT: () => token = $.CONSUME(T.AtName) },
+      { ALT: () => token = $.CONSUME(T.Comma) },
+      { ALT: () => token = $.CONSUME(T.Important) },
+      { ALT: () => token = $.CONSUME(T.Unknown) }
     ])
-  )
+    if (!$.RECORDING_PHASE) {
+      if (token) {
+        node = $.wrap(new Anonymous(token.image, undefined, $.getLocationInfo(token), this.context))
+      }
+      return node
+    }
+  })
 
   $.RULE('customBlock', () => {
+    $.startRule()
+    let start: IToken | undefined
+    let end: IToken | undefined
+    let nodes: Node[] = []
     $.OR([
       {
         ALT: () => {
           $.OR2([
             /**
-               * All tokens that have a left parentheses.
-               * These need to match a right parentheses.
-               */
-            { ALT: () => $.CONSUME(T.LParen) },
-            { ALT: () => $.CONSUME(T.Function) },
-            { ALT: () => $.CONSUME(T.FunctionalPseudoClass) }
+             * All tokens that have a left parentheses.
+             * These need to match a right parentheses.
+             */
+            { ALT: () => start = $.CONSUME(T.LParen) },
+            { ALT: () => start = $.CONSUME(T.Function) },
+            { ALT: () => start = $.CONSUME(T.FunctionalPseudoClass) }
           ])
-          $.MANY(() => $.SUBRULE($.innerCustomValue))
-          $.CONSUME(T.RParen)
+
+          $.MANY(() => nodes.push($.SUBRULE($.innerCustomValue)))
+          end = $.CONSUME(T.RParen)
         }
       },
       {
         ALT: () => {
-          $.CONSUME(T.LSquare)
-          $.MANY2(() => $.SUBRULE2($.innerCustomValue))
-          $.CONSUME(T.RSquare)
+          start = $.CONSUME(T.LSquare)
+          $.MANY2(() => nodes.push($.SUBRULE2($.innerCustomValue)))
+          end = $.CONSUME(T.RSquare)
         }
       },
       {
         ALT: () => {
-          $.CONSUME(T.LCurly)
-          $.MANY3(() => $.SUBRULE3($.innerCustomValue))
-          $.CONSUME(T.RCurly)
+          start = $.CONSUME(T.LCurly)
+          $.MANY3(() => nodes.push($.SUBRULE3($.innerCustomValue)))
+          end = $.CONSUME(T.RCurly)
         }
       }
     ])
+
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      let startNode = $.wrap(new Anonymous(start!.image, undefined, $.getLocationInfo(start!), this.context))
+      let endNode = $.wrap(new Anonymous(end!.image, undefined, $.getLocationInfo(end!), this.context))
+      nodes = [startNode, ...nodes, endNode]
+      return new Sequence(nodes, undefined, location, this.context)
+    }
   })
 
   /** Values separated by commas */
@@ -706,15 +730,37 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   : value+ (, value+)*
   //   ;
   $.RULE('valueList', (ctx: RuleContext = {}) => {
-    $.MANY_SEP({
+    $.startRule()
+    let nodes: Node[] = []
+
+    $.AT_LEAST_ONE_SEP({
       SEP: T.Comma,
-      DEF: () => $.SUBRULE($.valueSequence, { ARGS: [ctx] })
+      DEF: () => nodes.push($.SUBRULE($.valueSequence, { ARGS: [ctx] }))
     })
+
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      if (nodes.length === 1) {
+        return nodes[0]
+      }
+      return new List(nodes, undefined, location, this.context)
+    }
   })
 
   /** Often space-separated */
   $.RULE('valueSequence', (ctx: RuleContext = {}) => {
-    $.AT_LEAST_ONE(() => $.SUBRULE($.value, { ARGS: [ctx] }))
+    $.startRule()
+    let nodes: Node[] = []
+
+    $.AT_LEAST_ONE(() => nodes.push($.SUBRULE($.value, { ARGS: [ctx] })))
+
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      if (nodes.length === 1) {
+        return nodes[0]
+      }
+      return new Sequence(nodes, undefined, location, this.context)
+    }
   })
 
   $.RULE('squareValue', (ctx: RuleContext = {}) => {
@@ -737,21 +783,24 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   | unknownValue
   //   ;
   $.RULE('value', (ctx: RuleContext = {}) => {
+    $.startRule()
+    let token: IToken | undefined
+    let node: Node | undefined
     $.OR({
       IGNORE_AMBIGUITIES: true,
       DEF: [
         /** Function should appear before Ident */
-        { ALT: () => $.SUBRULE($.function, { LABEL: 'value' }) },
-        { ALT: () => $.CONSUME(T.Ident, { LABEL: 'Value' }) },
-        { ALT: () => $.CONSUME(T.Dimension, { LABEL: 'Value' }) },
-        { ALT: () => $.CONSUME(T.Number, { LABEL: 'Value' }) },
-        { ALT: () => $.CONSUME(T.Color, { LABEL: 'Value' }) },
-        { ALT: () => $.SUBRULE($.string, { LABEL: 'value' }) },
-        { ALT: () => $.SUBRULE($.squareValue, { LABEL: 'value' }) },
+        { ALT: () => node = $.SUBRULE($.function) },
+        { ALT: () => token = $.CONSUME(T.Ident) },
+        { ALT: () => token = $.CONSUME(T.Dimension) },
+        { ALT: () => token = $.CONSUME(T.Number) },
+        { ALT: () => token = $.CONSUME(T.Color) },
+        { ALT: () => node = $.SUBRULE($.string) },
+        { ALT: () => node = $.SUBRULE($.squareValue) },
         {
           /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
           GATE: () => $.legacyMode,
-          ALT: () => $.CONSUME(T.LegacyMSFilter, { LABEL: 'Value' })
+          ALT: () => token = $.CONSUME(T.LegacyMSFilter)
         }
       ]
     })
@@ -765,29 +814,48 @@ export function productions(this: CssActionsParser, T: TokenMap) {
      * syntactically-consistent language, and each property's value
      * essentially has a defined "micro-syntax".
      */
+    let additionalValue: Node | undefined
     $.OPTION(() => {
       $.CONSUME(T.Slash)
-      $.SUBRULE($.value, { LABEL: 'additionalValue' })
+      additionalValue = $.SUBRULE($.value)
     })
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      if (token) {
+        node = $.wrap($.processValueToken(token))
+      }
+      if (additionalValue) {
+        return new List([node!, additionalValue], { slash: true }, location, this.context)
+      }
+      return node
+    }
   })
 
   $.RULE('string', () => {
+    $.startRule()
+    let quote: IToken | undefined
+    let contents: IToken | undefined
     $.OR([
       {
         ALT: () => {
-          $.CONSUME(T.SingleQuoteStart, { LABEL: 'Quote' })
-          $.OPTION(() => $.CONSUME(T.SingleQuoteStringContents, { LABEL: 'contents' }))
-          $.CONSUME(T.SingleQuoteEnd, { LABEL: 'Quote' })
+          quote = $.CONSUME(T.SingleQuoteStart)
+          $.OPTION(() => contents = $.CONSUME(T.SingleQuoteStringContents))
+          $.CONSUME(T.SingleQuoteEnd)
         }
       },
       {
         ALT: () => {
-          $.CONSUME(T.DoubleQuoteStart, { LABEL: 'Quote' })
-          $.OPTION2(() => $.CONSUME(T.DoubleQuoteStringContents, { LABEL: 'contents' }))
-          $.CONSUME(T.DoubleQuoteEnd, { LABEL: 'Quote' })
+          quote = $.CONSUME(T.DoubleQuoteStart)
+          $.OPTION2(() => contents = $.CONSUME(T.DoubleQuoteStringContents))
+          $.CONSUME(T.DoubleQuoteEnd)
         }
       }
     ])
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      let value = contents!.image
+      return new Quoted(new Anonymous(value), { quote: quote!.image as '"' | "'" }, location, this.context)
+    }
   })
 
   /** Implementers can decide to throw errors or warnings or not */
@@ -799,16 +867,16 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   | UNKNOWN
   //   | AT_RULE
   //   ;
-  $.RULE('unknownValue', () => {
-    $.OR([
-      { ALT: () => $.CONSUME(T.Colon) },
-      { ALT: () => $.CONSUME(T.Eq) },
-      { ALT: () => $.CONSUME(T.DotName) },
-      { ALT: () => $.CONSUME(T.HashName) },
-      { ALT: () => $.CONSUME(T.Unknown) },
-      { ALT: () => $.CONSUME(T.AtName) }
-    ])
-  })
+  // $.RULE('unknownValue', () => {
+  //   $.OR([
+  //     { ALT: () => $.CONSUME(T.Colon) },
+  //     { ALT: () => $.CONSUME(T.Eq) },
+  //     { ALT: () => $.CONSUME(T.DotName) },
+  //     { ALT: () => $.CONSUME(T.HashName) },
+  //     { ALT: () => $.CONSUME(T.Unknown) },
+  //     { ALT: () => $.CONSUME(T.AtName) }
+  //   ])
+  // })
 
   /** Abstracted for easy over-ride */
   // $.RULE('expression', () => {
@@ -819,28 +887,53 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   : mathProduct (WS* ('+' | '-') WS* mathProduct)*
   //   ;
   $.RULE('mathSum', () => {
-    $.SUBRULE($.mathProduct)
+    $.startRule()
+
+    let op: IToken | undefined
+    let left: Node = $.SUBRULE($.mathProduct)
+
     $.MANY(() => {
       $.OR([
-        { ALT: () => $.CONSUME(T.Plus) },
-        { ALT: () => $.CONSUME(T.Minus) }
+        { ALT: () => op = $.CONSUME(T.Plus) },
+        { ALT: () => op = $.CONSUME(T.Minus) }
       ])
-      $.SUBRULE2($.mathProduct)
+      let right: Node = $.SUBRULE2($.mathProduct)
+
+      if (!$.RECORDING_PHASE) {
+        left = new Operation([left, op!.image, right])
+      }
     })
+    if (!$.RECORDING_PHASE) {
+      left.location = $.endRule()
+      return left
+    }
   })
 
   // mathProduct
   //   : mathValue (WS* ('*' | '/') WS* mathValue)*
   //   ;
   $.RULE('mathProduct', () => {
-    $.SUBRULE($.mathValue)
+    $.startRule()
+
+    let op: IToken | undefined
+    let left: Node = $.SUBRULE($.mathValue)
+
     $.MANY(() => {
       $.OR([
-        { ALT: () => $.CONSUME(T.Star) },
-        { ALT: () => $.CONSUME(T.Divide) }
+        { ALT: () => op = $.CONSUME(T.Star) },
+        { ALT: () => op = $.CONSUME(T.Divide) }
       ])
-      $.SUBRULE2($.mathValue)
+      let right: Node = $.SUBRULE2($.mathValue)
+
+      if (!$.RECORDING_PHASE) {
+        left = new Operation([left, op!.image, right])
+      }
     })
+
+    if (!$.RECORDING_PHASE) {
+      left.location = $.endRule()
+      return left
+    }
   })
 
   // mathValue
@@ -851,19 +944,32 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   | '(' WS* mathSum WS* ')'
   //   ;
   $.RULE('mathValue', () => {
+    let token: IToken | undefined
+    let node: Node | undefined
     $.OR([
-      { ALT: () => $.CONSUME(T.Number) },
-      { ALT: () => $.CONSUME(T.Dimension) },
-      { ALT: () => $.CONSUME(T.MathConstant) },
-      { ALT: () => $.SUBRULE($.knownFunctions) },
+      { ALT: () => token = $.CONSUME(T.Number) },
+      { ALT: () => token = $.CONSUME(T.Dimension) },
+      { ALT: () => token = $.CONSUME(T.MathConstant) },
+      { ALT: () => node = $.SUBRULE($.knownFunctions) },
       {
         ALT: () => {
+          $.startRule()
           $.CONSUME(T.LParen)
-          $.SUBRULE($.mathSum)
+          node = $.SUBRULE($.mathSum)
           $.CONSUME(T.RParen)
+          if (!$.RECORDING_PHASE) {
+            let location = $.endRule()
+            return $.wrap(new Paren(node!, undefined, location, this.context), 'both')
+          }
         }
       }
     ])
+    if (!$.RECORDING_PHASE) {
+      if (token) {
+        node = $.wrap($.processValueToken(token), 'both')
+      }
+      return node
+    }
   })
 
   // function
@@ -873,13 +979,13 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   | identifier '(' valueList ')'
   //   ;
   // These have special parsing rules
-  $.RULE('knownFunctions', () => {
+  $.RULE('knownFunctions', () =>
     $.OR([
       { ALT: () => $.SUBRULE($.urlFunction) },
       { ALT: () => $.SUBRULE($.varFunction) },
       { ALT: () => $.SUBRULE($.calcFunction) }
     ])
-  })
+  )
 
   $.RULE('varFunction', () => {
     $.CONSUME(T.Var)

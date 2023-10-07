@@ -117,7 +117,7 @@ export abstract class Node<
   O extends NodeOptions = NodeOptions,
   M extends NodeTypeMap = NodeMapType<T>
 > {
-  readonly location: LocationInfo | []
+  location: LocationInfo | []
   readonly treeContext: TreeContext
 
   options: O & AllNodeOptions | undefined
