@@ -1609,14 +1609,26 @@ export function productions(this: CssActionsParser, T: TokenMap) {
    * @see https://developer.mozilla.org/en-US/docs/Web/CSS/@page
    */
   $.RULE('pageAtRule', () => {
-    $.CONSUME(T.AtPage)
+    $.startRule()
+
+    let name = $.CONSUME(T.AtPage)
+    let selector: Node[] = []
     $.MANY_SEP({
       SEP: T.Comma,
-      DEF: () => $.SUBRULE($.pageSelector)
+      DEF: () => selector.push($.SUBRULE($.pageSelector))
     })
     $.CONSUME(T.LCurly)
-    $.SUBRULE($.declarationList)
+    let rules = $.SUBRULE($.declarationList)
     $.CONSUME(T.RCurly)
+
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      return new AtRule([
+        ['name', name.image],
+        ['prelude', new List(selector)],
+        ['rules', rules]
+      ], undefined, location, this.context)
+    }
   })
 
   $.RULE('pageSelector', () => {
