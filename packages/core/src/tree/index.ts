@@ -34,7 +34,6 @@ Node.prototype.operate = function(b: Node, op: Operator) {
 
 export { Node, type TreeContext, type LocationInfo }
 
-/** @todo - remove nodes from tree index that we don't need to bundle for runtime? */
 export * from './at-rule'
 export * from './bool'
 export * from './ampersand'
@@ -57,6 +56,7 @@ export * from './function-value'
 export * from './nil'
 export * from './operation'
 export * from './paren'
+export * from './query-condition'
 export * from './quoted'
 export * from './ruleset'
 export * from './rules'

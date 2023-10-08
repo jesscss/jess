@@ -18,13 +18,13 @@
  *
  * @note `import` should not be needed, but provides intuitive symmetery with JS
  */
-@from './foo.js' import (myFunction); // also allow `@from './foo.js' import { myFunction } ?
-@from '#less' import * as less;
+@-from './foo.js' import (myFunction); // also allow `@from './foo.js' import { myFunction } ?
+@-from '#less' import * as less;
 
-@include './file.css' (type: 'less');
+@-include './file.css' (type: 'less');
 
 // declaring vars
-@let count; // a Node of `Nil`
+@-let count; // a Node of `Nil`
 
 // setting vars - note, this avoids the need for !global in Sass
 // Note also that this will throw an error in Jess without `@let count`
@@ -34,13 +34,13 @@ $count: 1;
 $count: $count + 1;
 
 // allow destructuring
-@let list: one, two;
+@-let list: one, two;
 
 // This avoids the need for extract() in Less
-@let (one, two): $list;
+@-let (one, two): $list;
 
 // To dis-ambiguate mixin calls for Less, Sass, they need `@include`
-@include mixin();
+@-include mixin();
 
 // #() to wrap expressions, to avoid repeating `$`
 .bar {
@@ -105,26 +105,26 @@ Can be at the root or nested.
 (In Less, this will be `@reference`)
 
 ```scss
-@ref 'colors.less';
+@-ref 'colors.less';
 // or override variables
-@ref 'colors.less' with {
+@-ref 'colors.less' with {
   // should throw an error if primary-color is not defined
   $primary-color: #333;
 }
 // or
-@ref 'colors.less' colors;
+@-ref 'colors.less' colors;
 
 //or
-@ref 'colors.less' (primary-color);
+@-ref 'colors.less' (primary-color);
 ```
 
 
 ```less
 // or ultimate customization
-@use 'bootstrap.scss' with {
+@-use 'bootstrap.scss' with {
   // Transitively apply a different use
-  @ref 'variables.scss' with variables;
-  @use 'some-classes.scss' with {
+  @-ref 'variables.scss' with variables;
+  @-use 'some-classes.scss' with {
     // Replace a class
     .class {
       color: blue;
@@ -137,14 +137,14 @@ Can be at the root or nested.
 }
 // or
 .foo {
-  @use 'colors.less';
+  @-use 'colors.less';
   color: $primary-color;
 }
 
 //
 ```
 
-### `@use` without `@forward`
+### `@-use` without `@-forward`
 
 In Jess, variables defined or imported with `@use` will be re-exported. This means you do not have to use the Sass `@forward` rule. Just `@use` them.
 
@@ -153,18 +153,18 @@ Q: what happens if a two files use `@use` on the same file with different params
 They would be subject to evaluation order.
 ```scss
 // use1.jess
-@use './file.jess' with {
+@-use './file.jess' with {
   $foo: one;
 }
 
 // use2.jess
-@use './file.jess' with {
+@-use './file.jess' with {
   $foo: two;
 }
 
 // final.jess
-@use './use1.jess';
-@use './use2.jess';
+@-use './use1.jess';
+@-use './use2.jess';
 
 .rule {
   value: $foo; // two
@@ -177,9 +177,9 @@ You can use the `@private` at-rule:
 
 ```scss
 // This is a private `@use`
-@private @ref './somefile.jess';
+@-private @-ref './somefile.jess';
 // can also be used with variables
-@private @let -private: var;
+@-private @-let -private: var;
 ```
 
 
@@ -192,10 +192,10 @@ $-private: var;
 ```
 Would be converted to:
 ```scss
-@private @use './file1.jess';
-@let not-private: var;
-@private @let -private: var;
-@use './file2.jess';
+@-private @-use './file1.jess';
+@-let not-private: var;
+@-private @-let -private: var;
+@-use './file2.jess';
 
 ```
 
@@ -209,27 +209,27 @@ Can be at the root or nested.
 
 ```scss
 // main.jess
-@ref 'colors.jess' colors;
-@include 'rules.jess' with colors;
+@-ref 'colors.jess' colors;
+@-include 'rules.jess' with colors;
 
 // rules.jess
 // Doesn't have access to vars in main.jess w/o:
-@use 'main.jess';
+@-use 'main.jess';
 // this would include the vars in colors.jess
 ```
 Using an `@include` that's the _result_ of a `@ref`:
 ```scss
-@ref 'theme.jess' theme with {
+@-ref 'theme.jess' theme with {
   // Using +: with a collection will merge values
   $colors +: {
     primary: #3a3a3a;
   }
 }
-@include theme();
+@-include theme();
 ```
 You could also do the above like:
 ```scss
-@include 'theme.jess' with {
+@-include 'theme.jess' with {
   $colors +: {
     primary: #3a3a3a;
   }
@@ -237,12 +237,12 @@ You could also do the above like:
 ```
 ### Include for mixins / inter-operability
 ```scss
-@use 'mixins.less';
+@-use 'mixins.less';
 
-@include .root-mixin();
+@-include .root-mixin();
 
 // this will do the same thing, except not include selectors?
-@include root-mixin();
+@-include root-mixin();
 ```
 
 ## Mixins are functions, and functions are called with a consistent signature
@@ -266,17 +266,17 @@ function myFunc(one: Color, two?: any, three?: any) {}
 
 ## Limiting types for a design system (Experimental)
 ```scss
-@type Size: 1rem, 1.2rem, 1.4rem;
-@type Props:
+@-type Size: 1rem, 1.2rem, 1.4rem;
+@-type Props:
   <Size> size,
   <color> color;
 
-@mixin set-size(<Size> size) {
+@-mixin set-size(<Size> size) {
   font-size: $size;
 }
 
 // How do we get this to just return class names and var() injections?
-@mixin my-component(<Props> (size, color)) {
+@-mixin my-component(<Props> (size, color)) {
 
 }
 ```

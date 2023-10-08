@@ -1,3 +1,4 @@
+import { type LocationInfo } from './../../core/src/tree/node'
 /* eslint-disable no-return-assign */
 import type { CssActionsParser, TokenMap, RuleContext } from './cssActionsParser'
 import { EMPTY_ALT, type IToken } from 'chevrotain'
@@ -30,7 +31,8 @@ import {
   Quoted,
   PseudoSelector,
   AttributeSelector,
-  AtRule
+  AtRule,
+  QueryCondition
 } from '@jesscss/core'
 
 export function productions(this: CssActionsParser, T: TokenMap) {
@@ -157,8 +159,14 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   $.RULE('simpleSelector', (ctx: RuleContext = {}) => {
     let selector = $.OR([
       {
-        /** In CSS Nesting, the first selector cannot be an identifier */
-        GATE: () => !ctx.firstSelector,
+        /**
+         * It used to be the case that, in CSS Nesting, the first selector
+         * could not be an identifier. However, it looks like that's no
+         * longer the case.
+         *
+         * @see: https://github.com/w3c/csswg-drafts/issues/9317
+         */
+        // GATE: () => !ctx.firstSelector,
         ALT: () => $.CONSUME(T.Ident)
       },
       {
@@ -1194,7 +1202,6 @@ export function productions(this: CssActionsParser, T: TokenMap) {
           })
 
           if (token && !$.RECORDING_PHASE) {
-            nodes.push($.wrap(new Anonymous(token.image, undefined, $.getLocationInfo(token), this.context)))
             token = undefined
           }
           nodes.push($.SUBRULE($.mediaType))
@@ -1212,7 +1219,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
           }
           if (!$.RECORDING_PHASE) {
             let location = $.endRule()
-            return new Sequence(nodes, undefined, location, this.context)
+            return new QueryCondition(nodes, undefined, location, this.context)
           }
         }
       }
@@ -1258,7 +1265,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
           })
           if (!$.RECORDING_PHASE) {
             let location = $.endRule()
-            return new Sequence(nodes, undefined, location, this.context)
+            return new QueryCondition(nodes, undefined, location, this.context)
           }
         }
       }
@@ -1279,7 +1286,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
 
           if (!$.RECORDING_PHASE) {
             let location = $.endRule()
-            return new Sequence(nodes, undefined, location, this.context)
+            return new QueryCondition(nodes, undefined, location, this.context)
           }
         }
       }
@@ -1297,7 +1304,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       let location = $.endRule()
-      return new Sequence([
+      return new QueryCondition([
         $.wrap(new Anonymous(token.image, undefined, $.getLocationInfo(token), this.context)),
         node
       ], undefined, location, this.context)
@@ -1315,7 +1322,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       let location = $.endRule()
-      return new Sequence([
+      return new QueryCondition([
         $.wrap(new Anonymous(token.image, undefined, $.getLocationInfo(token), this.context)),
         node
       ], undefined, location, this.context)
@@ -1333,7 +1340,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       let location = $.endRule()
-      return new Sequence([
+      return new QueryCondition([
         $.wrap(new Anonymous(token.image, undefined, $.getLocationInfo(token), this.context)),
         node
       ], undefined, location, this.context)
@@ -1393,40 +1400,94 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   // )
   // ;
   $.RULE('mediaFeature', () => {
-    $.OR([
+    $.startRule()
+    return $.OR([
       {
         ALT: () => {
-          $.CONSUME(T.Ident)
+          let rule: Node | undefined
+          let ident = $.CONSUME(T.Ident)
           $.OPTION(() => {
-            $.OR2([
+            rule = $.OR2([
               {
                 ALT: () => {
                   $.CONSUME(T.Colon)
-                  $.SUBRULE($.mfValue)
+                  let value = $.SUBRULE($.mfValue)
+                  if (!$.RECORDING_PHASE) {
+                    let location = $.endRule()
+                    return $.wrap(
+                      new Declaration([
+                        ['name', ident.image],
+                        ['value', value]
+                      ], undefined, location, this.context)
+                      , 'both')
+                  }
                 }
               },
-              { ALT: () => $.SUBRULE($.mediaRange) },
               {
                 ALT: () => {
-                  $.SUBRULE($.mfComparison)
-                  $.SUBRULE($.mfNonIdentifierValue)
+                  let seq = $.SUBRULE($.mediaRange)
+                  if (!$.RECORDING_PHASE) {
+                    let [startOffset, startLine, startColumn] = $.endRule()
+                    seq.value.unshift($.wrap(new Anonymous(ident.image, undefined, $.getLocationInfo(ident), this.context)))
+                    seq.location[0] = startOffset
+                    seq.location[1] = startLine
+                    seq.location[2] = startColumn
+                  }
+                  return seq
+                }
+              },
+              {
+                ALT: () => {
+                  let token = $.SUBRULE($.mfComparison)
+                  let value = $.SUBRULE($.mfNonIdentifierValue)
+
+                  if (!$.RECORDING_PHASE) {
+                    let location = $.endRule()
+                    return new Sequence([
+                      $.wrap(new Anonymous(ident.image, undefined, $.getLocationInfo(ident), this.context)),
+                      $.wrap(new Anonymous(token.image, undefined, $.getLocationInfo(token), this.context)),
+                      value
+                    ], undefined, location, this.context)
+                  }
                 }
               }
             ])
           })
+          if (!rule) {
+            return $.wrap(new Anonymous(ident.image, undefined, $.getLocationInfo(ident), this.context))
+          }
         }
       },
       {
         ALT: () => {
-          $.SUBRULE2($.mfNonIdentifierValue)
-          $.OR3([
+          let rule1 = $.SUBRULE2($.mfNonIdentifierValue)
+          return $.OR3([
             {
               ALT: () => {
-                $.SUBRULE2($.mfComparison)
-                $.CONSUME2(T.Ident)
+                let op = $.SUBRULE2($.mfComparison)
+                let value = $.CONSUME2(T.Ident)
+                if (!$.RECORDING_PHASE) {
+                  let location = $.endRule()
+                  return new Sequence([
+                    rule1,
+                    $.wrap(new Anonymous(op.image, undefined, $.getLocationInfo(op), this.context)),
+                    $.wrap(new Anonymous(value.image, undefined, $.getLocationInfo(value), this.context))
+                  ], undefined, location, this.context)
+                }
               }
             },
-            { ALT: () => $.SUBRULE2($.mediaRange) }
+            {
+              ALT: () => {
+                let seq = $.SUBRULE2($.mediaRange)
+                if (!$.RECORDING_PHASE) {
+                  let [startOffset, startLine, startColumn] = $.endRule()
+                  seq.value.unshift(rule1)
+                  seq.location[0] = startOffset
+                  seq.location[1] = startLine
+                  seq.location[2] = startColumn
+                }
+              }
+            }
           ])
         }
       }
@@ -1434,76 +1495,114 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   })
 
   /**
-     * @note Both comparison operators have to match.
-     */
+   * @note Both comparison operators have to match.
+   */
   // mediaRange
   //   : mfLt WS* identifier (WS* mfLt WS* mfValue)?
   //   | mfGt WS* identifier (WS* mfGt WS* mfValue)?
   //   ;
   $.RULE('mediaRange', () => {
+    $.startRule()
+
+    let op1: IToken
+    let val1: IToken
+    let op2: IToken | undefined
+    let val2: IToken | undefined
+
     $.OR([
       {
         ALT: () => {
-          $.CONSUME(T.Lt, { LABEL: 'L' })
-          $.CONSUME(T.Ident)
+          op1 = $.CONSUME(T.MfLt)
+          val1 = $.CONSUME(T.Ident)
           $.OPTION(() => {
-            $.CONSUME2(T.Lt, { LABEL: 'R' })
-            $.SUBRULE($.mfValue)
+            op2 = $.CONSUME2(T.MfLt)
+            val2 = $.SUBRULE($.mfValue)
           })
         }
       },
       {
         ALT: () => {
-          $.CONSUME(T.Gt, { LABEL: 'L' })
-          $.CONSUME2(T.Ident)
+          op1 = $.CONSUME(T.MfGt)
+          val1 = $.CONSUME2(T.Ident)
           $.OPTION2(() => {
-            $.CONSUME2(T.Gt, { LABEL: 'R' })
-            $.SUBRULE2($.mfValue)
+            op2 = $.CONSUME2(T.MfGt)
+            val2 = $.SUBRULE2($.mfValue)
           })
         }
       }
     ])
+
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      let nodes: Node[] = [
+        $.wrap(new Anonymous(op1!.image, undefined, $.getLocationInfo(op1!), this.context)),
+        $.wrap(new Anonymous(val1!.image, undefined, $.getLocationInfo(val1!), this.context))
+      ]
+      if (op2) {
+        nodes.push($.wrap(new Anonymous(op2.image, undefined, $.getLocationInfo(op2), this.context)))
+        nodes.push($.wrap($.processValueToken(val2!), 'both'))
+      }
+      return new Sequence(nodes, undefined, location, this.context)
+    }
   })
 
   // mfNonIdentifierValue
   //   : number (WS* '/' WS* number)?
   //   | dimension
   //   ;
-  $.RULE('mfNonIdentifierValue', () => {
+  $.RULE('mfNonIdentifierValue', () =>
     $.OR([
       {
         ALT: () => {
-          $.CONSUME(T.Number)
+          $.startRule()
+          let num1 = $.CONSUME(T.Number)
+          let num2: IToken | undefined
           $.OPTION(() => {
             $.CONSUME(T.Slash)
-            $.CONSUME2(T.Number)
+            num2 = $.CONSUME2(T.Number)
           })
+          if (!$.RECORDING_PHASE) {
+            let location = $.endRule()
+            let num1Node = $.wrap($.processValueToken(num1), 'both')
+            if (!num2) {
+              return num1Node
+            }
+            let num2Node = $.wrap($.processValueToken(num2), 'both')
+            return new List([num1Node, num2Node], { slash: true }, location, this.context)
+          }
         }
       },
-      { ALT: () => $.CONSUME(T.Dimension) }
+      {
+        ALT: () => {
+          let dim = $.CONSUME(T.Dimension)
+          if (!$.RECORDING_PHASE) {
+            return $.wrap($.processValueToken(dim), 'both')
+          }
+        }
+      }
     ])
-  })
+  )
 
   // mfValue
   //   : mfNonIdentifierValue | identifier
   //   ;
-  $.RULE('mfValue', () => {
+  $.RULE('mfValue', () =>
     $.OR([
       { ALT: () => $.SUBRULE($.mfNonIdentifierValue) },
       { ALT: () => $.CONSUME(T.Ident) }
     ])
-  })
+  )
 
   // mfComparison
   //   : mfLt | mfGt | mfEq
   //   ;
-  $.RULE('mfComparison', () => {
+  $.RULE('mfComparison', () =>
     $.OR([
-      { ALT: () => $.CONSUME(T.Lt) },
-      { ALT: () => $.CONSUME(T.Gt) },
+      { ALT: () => $.CONSUME(T.MfLt) },
+      { ALT: () => $.CONSUME(T.MfGt) },
       { ALT: () => $.CONSUME(T.Eq) }
     ])
-  })
+  )
 
   /**
    * @see https://www.w3.org/TR/css-page-3/
