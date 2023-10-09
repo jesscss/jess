@@ -36,56 +36,37 @@ const fragments = () => [
   ['wsorcomment', '({{ws}})|({{comment}})']
 ]
 
-interface Match { value: string, index: number }
+// interface Match { value: string, index: number }
 
-class MatchValue implements Match {
-  value: string
-  index: number
+// class MatchValue implements Match {
+//   value: string
+//   index: number
 
-  constructor(str: string, index: number) {
-    this.value = str
-    this.index = index
-  }
-}
+//   constructor(str: string, index: number) {
+//     this.value = str
+//     this.index = index
+//   }
+// }
 
 /**
  * When bound to a Regular Expression, it will aggregrate capture groups onto the payload
  */
 export function groupCapture(this: RegExp, text: string, startOffset: number) {
   let endOffset = startOffset
-  let match: RegExpExecArray | null
-  let lastMatch: RegExpExecArray | null = null
-  const matches: RegExpExecArray[] = []
-
   this.lastIndex = startOffset
 
-  while ((match = this.exec(text))) {
-    endOffset = this.lastIndex
-    lastMatch = match
-    matches.push(match)
-  }
+  let match = this.exec(text)
+  endOffset = this.lastIndex
 
-  if (lastMatch !== null) {
-    const payload: Match[][] = new Array(lastMatch.length - 1)
-    matches.forEach(match => {
-      match.forEach((group, i) => {
-        if (i > 0 && group) {
-          const item = payload[i - 1]
-          /* c8 ignore next 2 */
-          if (item) {
-            item.push(new MatchValue(group, match.index))
-          } else {
-            payload[i - 1] = [new MatchValue(group, match.index)]
-          }
-        }
-      })
-    })
-
-    const returnObj: [string] & any = [text.substring(startOffset, endOffset)]
+  const payload = match?.filter((m, i) => {
+    return i !== 0 && typeof m === 'string'
+  })
+  const returnObj: [string] & any = [text.substring(startOffset, endOffset)]
+  if (payload) {
     returnObj.payload = payload
     return returnObj
   }
-  return lastMatch
+  return match
 }
 
 /**

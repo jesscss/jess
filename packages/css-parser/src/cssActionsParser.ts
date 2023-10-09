@@ -188,7 +188,7 @@ export class CssActionsParser extends AdvancedActionsParser {
     // let rule: Node | undefined
 
     for (let rule of existingRules) {
-      let pre = this.getPrePost(rule.location[0]!, true)
+      let pre = this.getPrePost(rule.location[0]!)
       if (isArray(pre)) {
         let i = 0
         let item = pre[i]
@@ -242,19 +242,25 @@ export class CssActionsParser extends AdvancedActionsParser {
     return pre
   }
 
+  /**
+   * Attaches pre / post whitespace and comments.
+   * Note that nodes can be wrapped more than once.
+   */
   protected wrap<T extends Node = Node>(node: T, post?: boolean | 'both', commentsOnly?: boolean): T {
     if (!(node instanceof Node)) {
       return node
     }
     if (post) {
-      let endOffset = node.location[3]!
-      node.post = this.getPrePost(endOffset, commentsOnly, true)
+      if (node.post === 0) {
+        node.post = this.getPrePost(node.location[3]!, commentsOnly, true)
+      }
       if (post !== 'both') {
         return node
       }
     }
-    let startOffset = node.location[0]!
-    node.pre = this.getPrePost(startOffset, commentsOnly)
+    if (node.pre === 0) {
+      node.pre = this.getPrePost(node.location[0]!, commentsOnly)
+    }
     return node
   }
 
@@ -273,7 +279,7 @@ export class CssActionsParser extends AdvancedActionsParser {
       /** @todo - check to see if it's a color */
       return new Keyword(tokValue, undefined, this.getLocationInfo(token), this.context)
     } else if (tokenMatcher(token, T.Dimension)) {
-      dimValue = [parseFloat(token.payload[1]), token.payload[2]]
+      dimValue = [parseFloat(token.payload[0]), token.payload[1]]
       return getDimension(dimValue)
     } else if (tokName === 'MathConstant') {
       switch (tokValue.toLowerCase()) {

@@ -50,11 +50,14 @@ export function productions(this: CssActionsParser, T: TokenMap) {
     $.startRule()
 
     let charset: IToken | undefined
+    let root: Node | undefined
 
     $.OPTION(() => {
       charset = $.CONSUME(T.Charset)
     })
-    let root = $.SUBRULE($.main, { ARGS: [{ isRoot: true }] })
+    $.OPTION2(() => {
+      root = $.SUBRULE($.main, { ARGS: [{ isRoot: true }] })
+    })
 
     if (!RECORDING_PHASE) {
       let location = $.endRule()
@@ -89,18 +92,25 @@ export function productions(this: CssActionsParser, T: TokenMap) {
         context.scope = new Scope(initialScope)
       }
     }
-    let rules: Node[] = []
+    let rules: Node[]
+
+    if (!RECORDING_PHASE) {
+      rules = []
+    }
 
     $.MANY(() => {
-      $.OR([
-        { ALT: () => rules.push($.SUBRULE($.qualifiedRule)) },
-        { ALT: () => rules.push($.SUBRULE($.atRule)) }
+      let rule = $.OR([
+        { ALT: () => $.SUBRULE($.qualifiedRule) },
+        { ALT: () => $.SUBRULE($.atRule) }
       ])
+      if (!RECORDING_PHASE) {
+        rules.push(rule)
+      }
     })
 
     if (!RECORDING_PHASE) {
       let location = $.endRule()
-      let finalRules = $.getRulesWithComments(rules)
+      let finalRules = $.getRulesWithComments(rules!)
       let returnNode: Node
       if (isRoot) {
         returnNode = new Root(finalRules, undefined, location, context)
@@ -110,7 +120,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       if (!isRoot) {
         context.scope = initialScope!
       }
-      return returnNode
+      return $.wrap(returnNode, true)
     }
   })
 
@@ -139,7 +149,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       let location = $.endRule()
       return new Ruleset([
         ['selector', selector],
-        ['value', rules]
+        ['rules', rules]
       ], undefined, location, this.context)
     }
   })
@@ -308,9 +318,10 @@ export function productions(this: CssActionsParser, T: TokenMap) {
    * @see https://developer.mozilla.org/en-US/docs/Web/CSS/:nth-child
    */
   $.RULE('nthValue', () => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
     let startTokenOffset: number | undefined
-    if (!$.RECORDING_PHASE) {
+    if (!RECORDING_PHASE) {
       startTokenOffset = this.LA(1).startOffset
     }
 
@@ -343,7 +354,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       }
     ])
 
-    if ($.RECORDING_PHASE) {
+    if (!RECORDING_PHASE) {
       /** Coelesce all token values into one value */
       let endTokenOffset = $.LA(-1).startOffset
       let location = $.endRule()
@@ -421,14 +432,22 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   : compoundSelector (WS* (combinator WS*)? compoundSelector)*
   //   ;
   $.RULE('complexSelector', (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
     let selectors: Node[] = $.SUBRULE($.compoundSelector, { ARGS: [ctx] })
+
     $.MANY(() => {
-      selectors.push($.SUBRULE($.combinator))
-      selectors.push(...$.SUBRULE2($.compoundSelector, { ARGS: [{ ...ctx, firstSelector: false }] }))
+      let co = $.SUBRULE($.combinator)
+      let compound = $.SUBRULE2($.compoundSelector, { ARGS: [{ ...ctx, firstSelector: false }] })
+      if (!RECORDING_PHASE) {
+        selectors.push(
+          co,
+          ...compound
+        )
+      }
     })
 
-    if (!$.RECORDING_PHASE) {
+    if (!RECORDING_PHASE) {
       let location = $.endRule()
       return new SelectorSequence(selectors as Array<SimpleSelector | Combinator>, undefined, location, this.context)
     }
@@ -501,20 +520,23 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   : relativeSelector (WS* COMMA WS* relativeSelector)*
   //   ;
   $.RULE('forgivingSelectorList', (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
 
     let sequences: SelectorSequence[] = $.SUBRULE($.relativeSelector, { ARGS: [ctx] })
 
     $.MANY(() => {
       $.CONSUME(T.Comma)
-      sequences.push($.SUBRULE2($.relativeSelector, { ARGS: [{ ...ctx, firstSelector: false }] }))
+      let selector = $.SUBRULE2($.relativeSelector, { ARGS: [{ ...ctx, firstSelector: false }] })
+      if (!RECORDING_PHASE) {
+        sequences.push(selector)
+      }
     })
 
-    if (sequences.length === 1) {
-      return sequences[0]
-    }
-
-    if (!$.RECORDING_PHASE) {
+    if (!RECORDING_PHASE) {
+      if (sequences.length === 1) {
+        return sequences[0]
+      }
       let location = $.endRule()
       return new SelectorList(sequences, undefined, location, this.context)
     }
@@ -564,12 +586,19 @@ export function productions(this: CssActionsParser, T: TokenMap) {
    * each alt
    */
   $.RULE('declarationList', () => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
+
     $.startRule()
 
     let context = this.context
-    let initialScope = context.scope
-    context.scope = new Scope(initialScope)
-    let rules: Node[] = []
+    let initialScope: Scope
+    let rules: Node[]
+
+    if (!RECORDING_PHASE) {
+      initialScope = context.scope
+      context.scope = new Scope(initialScope)
+      rules = []
+    }
     let needsSemi = false
     $.MANY({
       GATE: () => !needsSemi || (needsSemi && $.LA(1).tokenType === T.Semi),
@@ -577,17 +606,24 @@ export function productions(this: CssActionsParser, T: TokenMap) {
         $.OR([
           {
             ALT: () => {
-              rules.push($.SUBRULE($.declaration))
+              let decl = $.SUBRULE($.declaration)
               needsSemi = true
+
+              if (!RECORDING_PHASE) {
+                rules.push(decl)
+              }
             }
           },
           {
             ALT: () => {
-              $.OR2([
-                { ALT: () => rules.push($.SUBRULE($.innerAtRule)) },
-                { ALT: () => rules.push($.SUBRULE2($.qualifiedRule, { ARGS: [{ inner: true }] })) },
+              let value = $.OR2([
+                { ALT: () => $.SUBRULE($.innerAtRule) },
+                { ALT: () => $.SUBRULE2($.qualifiedRule, { ARGS: [{ inner: true }] }) },
                 { ALT: () => $.CONSUME(T.Semi) }
               ])
+              if (!RECORDING_PHASE && value instanceof Node) {
+                rules.push(value)
+              }
               needsSemi = false
             }
           }
@@ -595,11 +631,11 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       }
     })
 
-    if (!$.RECORDING_PHASE) {
+    if (!RECORDING_PHASE) {
       let location = $.endRule()
-      let finalRules = $.getRulesWithComments(rules)
+      let finalRules = $.getRulesWithComments(rules!)
       let returnRules = new Rules(finalRules, undefined, location, this.context)
-      context.scope = initialScope
+      context.scope = initialScope!
       return returnRules
     }
   })
@@ -785,17 +821,28 @@ export function productions(this: CssActionsParser, T: TokenMap) {
 
   /** Often space-separated */
   $.RULE('valueSequence', (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
-    let nodes: Node[] = []
+    let nodes: Node[]
 
-    $.AT_LEAST_ONE(() => nodes.push($.SUBRULE($.value, { ARGS: [ctx] })))
+    if (!RECORDING_PHASE) {
+      nodes = []
+    }
 
-    if (!$.RECORDING_PHASE) {
-      let location = $.endRule()
-      if (nodes.length === 1) {
-        return nodes[0]
+    $.AT_LEAST_ONE(() => {
+      let value = $.SUBRULE($.value, { ARGS: [ctx] })
+
+      if (!RECORDING_PHASE) {
+        nodes.push(value)
       }
-      return new Sequence(nodes, undefined, location, this.context)
+    })
+
+    if (!RECORDING_PHASE) {
+      let location = $.endRule()
+      if (nodes!.length === 1) {
+        return nodes![0]
+      }
+      return new Sequence(nodes!, undefined, location, this.context)
     }
   })
 
@@ -858,12 +905,12 @@ export function productions(this: CssActionsParser, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
       let location = $.endRule()
       if (token) {
-        node = $.wrap($.processValueToken(token))
+        node = $.processValueToken(token)
       }
       if (additionalValue) {
-        return new List([node!, additionalValue], { sep: '/' }, location, this.context)
+        return $.wrap(new List([node!, additionalValue], { sep: '/' }, location, this.context))
       }
-      return node
+      return $.wrap(node!)
     }
   })
 
@@ -1633,7 +1680,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       let location = $.endRule()
       return new AtRule([
         ['name', name.image],
-        ['prelude', new List(selector)],
+        ['prelude', $.wrap(new List(selector), 'both')],
         ['rules', rules]
       ], undefined, location, this.context)
     }
@@ -1697,7 +1744,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       let location = $.endRule()
       return new AtRule([
         ['name', name.image],
-        ['prelude', prelude],
+        ['prelude', $.wrap(prelude, 'both')],
         ['rules', rules]
       ], undefined, location, this.context)
     }
@@ -1984,22 +2031,39 @@ export function productions(this: CssActionsParser, T: TokenMap) {
 
   /** @todo - add more structure for known nested at-rules */
   $.RULE('nestedAtRule', () => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
 
     let name = $.CONSUME(T.AtNested)
-    let preludeNodes: Node[] = []
-    let ruleNodes: Node[] = []
-    $.MANY(() => preludeNodes.push($.wrap($.SUBRULE($.anyOuterValue))))
+    let preludeNodes: Node[]
+    let ruleNodes: Node[]
+
+    if (!RECORDING_PHASE) {
+      preludeNodes = []
+      ruleNodes = []
+    }
+
+    $.MANY(() => {
+      let value = $.SUBRULE($.anyOuterValue)
+      if (!RECORDING_PHASE) {
+        preludeNodes.push($.wrap(value))
+      }
+    })
     $.CONSUME(T.LCurly)
     /** @todo - add more structure for known rule bodies */
-    $.MANY2(() => ruleNodes.push($.wrap($.SUBRULE($.anyInnerValue))))
+    $.MANY2(() => {
+      let value = $.SUBRULE($.anyInnerValue)
+      if (!RECORDING_PHASE) {
+        ruleNodes.push($.wrap(value))
+      }
+    })
     $.CONSUME(T.RCurly)
 
     if (!$.RECORDING_PHASE) {
       return new AtRule([
         ['name', name.image],
-        ['prelude', new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context)],
-        ['rules', new Sequence(ruleNodes, undefined, $.getLocationFromNodes(ruleNodes), this.context)]
+        ['prelude', $.wrap(new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context), 'both')],
+        ['rules', $.wrap(new Sequence(ruleNodes!, undefined, $.getLocationFromNodes(ruleNodes!), this.context), 'both')]
       ], undefined, $.endRule(), this.context)
     }
   })
@@ -2015,7 +2079,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
       return new AtRule([
         ['name', name.image],
-        ['prelude', new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context)]
+        ['prelude', $.wrap(new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context))]
       ], undefined, $.endRule(), this.context)
     }
   })
@@ -2030,13 +2094,13 @@ export function productions(this: CssActionsParser, T: TokenMap) {
     let ruleNodes: Node[] = []
 
     let name = $.CONSUME(T.AtKeyword)
-    $.MANY(() => preludeNodes.push($.wrap($.SUBRULE($.anyOuterValue))))
+    $.MANY(() => preludeNodes.push($.wrap($.SUBRULE($.anyOuterValue), 'both')))
     $.OR([
       { ALT: () => $.CONSUME(T.Semi) },
       {
         ALT: () => {
           $.CONSUME(T.LCurly)
-          $.MANY2(() => ruleNodes.push($.wrap($.SUBRULE($.anyInnerValue))))
+          $.MANY2(() => ruleNodes.push($.wrap($.SUBRULE($.anyInnerValue), 'both')))
           $.CONSUME(T.RCurly)
         }
       }

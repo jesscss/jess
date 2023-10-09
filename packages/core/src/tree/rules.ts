@@ -110,7 +110,7 @@ export class Rules extends Node<Node[]> {
     let outputs = this.value
       .filter(n => n.visible)
       .map(n => n.toString(depth))
-    output += outputs.join(`\n${space}`) + '\n'
+    output += outputs.join('')
     return output
   }
 
@@ -520,5 +520,23 @@ export class Rules extends Node<Node[]> {
   //   context.depth = depth
   // }
 }
-export const rules = defineType(Rules, 'Rules')
+const origRules = defineType(Rules, 'Rules')
+type Params = Parameters<typeof origRules>
+export const rules = (
+  value?: Params[0],
+  options?: Params[1],
+  location?: Params[2],
+  treeContext?: Params[3]
+) => {
+  /**
+   * When using the simplified API, attach
+   * new-lines to each node.
+   */
+  if (value) {
+    value.forEach(n => {
+      n.post = ['\n']
+    })
+  }
+  return origRules(value, options, location, treeContext)
+}
 Rules.prototype.allowRuleRoot = true

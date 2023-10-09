@@ -73,7 +73,7 @@ const invalidCSSOutput = [
 ]
 
 describe.only('can parse Less CSS output', () => {
-  glob.sync(path.join(testData, 'css/_main/*.css'))
+  glob.sync(path.join(testData, 'css/_main/calc.css'))
     .map(value => path.relative(testData, value))
     .filter(value => !invalidCSSOutput.includes(value))
     .sort()

@@ -40,6 +40,20 @@ export class AtRule extends Node<AtRuleValue> {
     this.data.set('rules', v)
   }
 
+  toTrimmedString(depth: number = 0): string {
+    let { name, prelude, rules } = this
+    let space = ''.padStart(depth * 2)
+    /** The ruleset will have already indented the first line */
+    let output = `${name}${prelude}`
+    if (rules) {
+      output += `{${rules.toString(depth + 1)}`
+      output += `${space}}`
+    } else {
+      output += ';'
+    }
+    return output
+  }
+
   async eval(context: Context) {
     let node = await super.eval(context) as AtRule
     /** Don't let rooted rules bubble past an at-rule */

@@ -47,7 +47,7 @@ export class Ruleset extends Node<RulesetValue> {
     let space = ''.padStart(depth * 2)
     /** The ruleset will have already indented the first line */
     let output = ''
-    output += `${this.selector.toString()} {\n`
+    output += `${this.selector.toString()}{`
     output += `${this.rules.toString(depth + 1)}`
     output += `${space}}`
     return output

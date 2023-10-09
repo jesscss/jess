@@ -11,7 +11,7 @@ export type QuotedOptions = {
 export class Quoted extends Node<Node, QuotedOptions> {
   toTrimmedString() {
     let { quote = '"', escaped } = this.options ?? {}
-    let output = super.toString()
+    let output = super.toTrimmedString()
     let escapeChar = escaped ? '~' : ''
     return `${escapeChar}${quote}${output}${quote}`
   }

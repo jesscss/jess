@@ -22,8 +22,8 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
   usedSkippedTokens: Set<IToken[]>
 
   context: TreeContext
-  locationStack: LocationInfo[]
-  captureStack: number[]
+  locationStack: LocationInfo[] = []
+  // captureStack: number[]
   originalInput: IToken[]
 
   /** Exposed from Chevrotain */
@@ -54,7 +54,7 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
           tokens.push(token)
         } else {
           tokens = [token]
-          preSkippedTokenMap.set(beforeIndex, [token])
+          preSkippedTokenMap.set(beforeIndex, tokens)
         }
         if (prevToken) {
           postSkippedTokenMap.set(prevToken.endOffset!, tokens)
@@ -102,7 +102,7 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
 
   /** Should only be called when not in recording phase */
   protected endRule() {
-    let { endOffset, endLine, endColumn } = this.LA(-1)
+    let { endOffset, endLine, endColumn } = this.LA(0)
     let location = this.locationStack.pop()!
     location[3] = endOffset!
     location[4] = endLine!
