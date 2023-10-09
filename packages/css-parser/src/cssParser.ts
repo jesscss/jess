@@ -1,25 +1,21 @@
-import type { ILexingResult, CstNode } from 'chevrotain'
-import { Lexer } from 'chevrotain'
+import { type ILexingResult, Lexer } from 'chevrotain'
 import { cssTokens, cssFragments } from './cssTokens'
-import { type TokenMap, type CssParserConfig, CssCstParser } from './cssCstParser'
-import { type AdvancedCstNode, type IToken } from './advancedCstParser'
+import { type TokenMap, type CssParserConfig, CssActionsParser } from './cssActionsParser'
 import { createLexerDefinition } from './util'
 import { CssErrorMessageProvider } from './cssErrorMessageProvider'
 import type { ConditionalPick } from 'type-fest'
-import { CssCstVisitor } from './cssCstVisitor'
 import { type Node } from '@jesscss/core'
 
-export interface IParseResult<T extends CssCstParser = CssCstParser> {
-  cst: AdvancedCstNode
+export interface IParseResult<T extends CssActionsParser = CssActionsParser> {
   lexerResult: ILexingResult
   errors: T['errors']
-  tree?: Node
+  tree: Node
   contents?: string[]
 }
 
 const errorMessageProvider = new CssErrorMessageProvider()
 
-export type CssRules = keyof ConditionalPick<CssCstParser, () => CstNode>
+export type CssRules = keyof ConditionalPick<CssActionsParser, () => Node>
 
 /**
  * If we're not extending the CSS parser,
@@ -28,9 +24,7 @@ export type CssRules = keyof ConditionalPick<CssCstParser, () => CstNode>
  */
 export class CssParser {
   lexer: Lexer
-  /** @todo - return Jess AST as parser */
-  parser: CssCstParser
-  visitor: CssCstVisitor
+  parser: CssActionsParser
 
   /**
    * @note `recoveryEnabled` should be set to true for
@@ -57,39 +51,26 @@ export class CssParser {
       // And avoid validation during productive flows to reduce the Lexer's startup time.
       skipValidations: process.env.TEST !== 'true'
     })
-    this.parser = new CssCstParser(lexer, T as TokenMap, config)
-    this.visitor = new CssCstVisitor()
+    this.parser = new CssActionsParser(lexer, T as TokenMap, config)
   }
 
-  parse(text: string, rule: CssRules = 'stylesheet'): Omit<IParseResult, 'tree' | 'contents'> {
+  parse(text: string, rule: CssRules = 'stylesheet'): IParseResult {
     const parser = this.parser
     const lexerResult = this.lexer.tokenize(text)
-    const lexedTokens = lexerResult.tokens as IToken[]
+    const lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
-    const cst = parser[rule]() as AdvancedCstNode
+    const tree = parser[rule]() as Node
+    let contents: string[] | undefined
+
+    if (!lexerResult.errors.length && !parser.errors.length) {
+      contents = text.split('\n')
+    }
 
     return {
-      cst,
+      tree,
+      contents,
       lexerResult,
       errors: parser.errors
     }
-  }
-
-  parseTree(text: string, rule: CssRules = 'stylesheet'): IParseResult {
-    const { cst, lexerResult, errors } = this.parse(text, rule)
-    if (!lexerResult.errors.length && !errors.length) {
-      let { parser, visitor } = this
-      visitor.init(parser.skippedTokenMap)
-      const tree = visitor.visit(cst)
-      const contents = text.split('\n')
-      return {
-        cst,
-        lexerResult,
-        errors,
-        tree,
-        contents
-      }
-    }
-    return { cst, lexerResult, errors }
   }
 }

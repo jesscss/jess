@@ -15,11 +15,13 @@ import { AdvancedActionsParser } from './advancedActionsParser'
 import { type CssTokenType } from './cssTokens'
 import { productions } from './productions'
 import {
+  type LocationInfo,
   Node,
   Comment,
   Color,
   Dimension,
-  Anonymous
+  Anonymous,
+  Keyword
 } from '@jesscss/core'
 
 const { isArray } = Array
@@ -82,6 +84,7 @@ export class CssActionsParser extends AdvancedActionsParser {
   innerCustomValue: Rule
 
   function: Rule
+  functionArgs: Rule<(ctx?: RuleContext) => void>
   knownFunctions: Rule
   varFunction: Rule
   calcFunction: Rule
@@ -125,18 +128,13 @@ export class CssActionsParser extends AdvancedActionsParser {
   mfComparison: Rule
   mfNonIdentifierValue: Rule
 
-  /** `@supports` syntax */
+  /**
+   * `@supports` syntax - the parsing is defined differently
+   * from `@media`, which is fortunate, because it's much
+   * simpler.
+  */
   supportsCondition: Rule
   supportsInParens: Rule
-
-  /**
-   * `@supports` is defined differently in spec,
-   * but parsing is much like media queries,
-   * so we structure the same for symmetry
-   */
-  supportsNot: Rule
-  supportsAnd: Rule
-  supportsOr: Rule
 
   /** General purpose subrules */
   anyOuterValue: Rule<(ctx?: RuleContext) => void>
@@ -168,6 +166,15 @@ export class CssActionsParser extends AdvancedActionsParser {
     if (this.constructor === CssActionsParser) {
       this.performSelfAnalysis()
     }
+  }
+
+  protected getLocationFromNodes(nodes: Node[]) {
+    let startNode = nodes[0]!
+    let lastNode = nodes[nodes.length - 1]!
+    let [startOffset, startLine, startColumn] = startNode.location
+    let [,,,endOffset, endLine, endColumn] = lastNode.location
+    let location: LocationInfo = [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!]
+    return location
   }
 
   protected getRulesWithComments(existingRules: Node[]) {
@@ -236,6 +243,9 @@ export class CssActionsParser extends AdvancedActionsParser {
   }
 
   protected wrap<T extends Node = Node>(node: T, post?: boolean | 'both', commentsOnly?: boolean): T {
+    if (!(node instanceof Node)) {
+      return node
+    }
     if (post) {
       let endOffset = node.location[3]!
       node.post = this.getPrePost(endOffset, commentsOnly, true)
@@ -261,7 +271,7 @@ export class CssActionsParser extends AdvancedActionsParser {
 
     if (tokenMatcher(token, T.Ident)) {
       /** @todo - check to see if it's a color */
-      return new Anonymous(tokValue, undefined, this.getLocationInfo(token), this.context)
+      return new Keyword(tokValue, undefined, this.getLocationInfo(token), this.context)
     } else if (tokenMatcher(token, T.Dimension)) {
       dimValue = [parseFloat(token.payload[1]), token.payload[2]]
       return getDimension(dimValue)

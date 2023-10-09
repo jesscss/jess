@@ -1,9 +1,9 @@
-import { type LocationInfo } from './../../core/src/tree/node'
 /* eslint-disable no-return-assign */
 import type { CssActionsParser, TokenMap, RuleContext } from './cssActionsParser'
 import { EMPTY_ALT, type IToken } from 'chevrotain'
 import {
-  type Node,
+  TreeContext,
+  Node,
   type LocationInfo,
   type AssignmentType,
   type Operator,
@@ -21,10 +21,6 @@ import {
   Ampersand,
   List,
   Sequence,
-  Dimension,
-  Color,
-  Comment,
-  Func,
   Call,
   Paren,
   Operation,
@@ -32,7 +28,8 @@ import {
   PseudoSelector,
   AttributeSelector,
   AtRule,
-  QueryCondition
+  QueryCondition,
+  Keyword
 } from '@jesscss/core'
 
 export function productions(this: CssActionsParser, T: TokenMap) {
@@ -42,21 +39,30 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   : CHARSET? main EOF
   //   ;
   $.RULE('stylesheet', () => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
+    let context: TreeContext
+    let initialScope: Scope
+    if (!RECORDING_PHASE) {
+      // @ts-expect-error - Not exported with `export type`
+      context = this.context = new TreeContext()
+      initialScope = context.scope
+    }
     $.startRule()
 
     let charset: IToken | undefined
+
     $.OPTION(() => {
       charset = $.CONSUME(T.Charset)
     })
     let root = $.SUBRULE($.main, { ARGS: [{ isRoot: true }] })
 
-    if (!$.RECORDING_PHASE) {
+    if (!RECORDING_PHASE) {
       let location = $.endRule()
-      root ??= new Root([], undefined, location, this.context)
+      root ??= new Root([], undefined, location, context!)
       if (charset) {
-        root.value.unshift(new Anonymous(charset.image, undefined, $.getLocationInfo(charset), this.context))
+        root.value.unshift(new Anonymous(charset.image, undefined, $.getLocationInfo(charset), context!))
       }
-      this.context.scope = this.initialScope
+      this.context.scope = initialScope!
       return root
     }
   })
@@ -68,16 +74,20 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   )*
   //   ;
   $.RULE('main', (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
 
     const isRoot = !!ctx.isRoot
-
     let context = this.context
     let initialScope: Scope
 
-    if (!isRoot) {
-      initialScope = context.scope
-      context.scope = new Scope(initialScope)
+    if (!RECORDING_PHASE) {
+      context = this.context
+
+      if (!isRoot) {
+        initialScope = context.scope
+        context.scope = new Scope(initialScope)
+      }
     }
     let rules: Node[] = []
 
@@ -88,7 +98,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       ])
     })
 
-    if (!$.RECORDING_PHASE) {
+    if (!RECORDING_PHASE) {
       let location = $.endRule()
       let finalRules = $.getRulesWithComments(rules)
       let returnNode: Node
@@ -219,10 +229,11 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   | COLON COLON? identifier ('(' anyInnerValue* ')')?
   //   ;
   $.RULE('pseudoSelector', (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
 
     const createPseudo = (name: string, value?: Node) => {
-      if (!$.RECORDING_PHASE) {
+      if (!RECORDING_PHASE) {
         let location = $.endRule()
         return new PseudoSelector([
           ['name', name],
@@ -269,21 +280,18 @@ export function productions(this: CssActionsParser, T: TokenMap) {
               GATE: $.noSep,
               ALT: () => {
                 name += $.CONSUME(T.Ident).image
-                let values: Node[] | undefined
+                let values: Node[] = []
                 let valuesLocation: LocationInfo
                 $.OPTION2(() => {
-                  if (!$.RECORDING_PHASE) {
-                    values = []
-                  }
                   $.CONSUME(T.LParen)
                   $.startRule()
-                  $.MANY(() => values!.push($.SUBRULE($.anyInnerValue)))
-                  if (!$.RECORDING_PHASE) {
+                  $.MANY(() => values.push($.SUBRULE($.anyInnerValue)))
+                  if (!RECORDING_PHASE) {
                     valuesLocation = $.endRule()
                   }
                   $.CONSUME3(T.RParen)
                 })
-                if (values && !$.RECORDING_PHASE) {
+                if (values && !RECORDING_PHASE) {
                   return new Sequence(values, undefined, valuesLocation!, this.context)
                 }
                 return values
@@ -700,7 +708,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
     ])
     if (!$.RECORDING_PHASE) {
       if (token) {
-        node = $.wrap(new Anonymous(token.image, undefined, $.getLocationInfo(token), this.context))
+        node = $.wrap($.processValueToken(token))
       }
       return node
     }
@@ -853,7 +861,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
         node = $.wrap($.processValueToken(token))
       }
       if (additionalValue) {
-        return new List([node!, additionalValue], { slash: true }, location, this.context)
+        return new List([node!, additionalValue], { sep: '/' }, location, this.context)
       }
       return node
     }
@@ -1211,7 +1219,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
           })
           if (!$.RECORDING_PHASE) {
             if (token) {
-              nodes.push($.wrap(new Anonymous(token.image, undefined, $.getLocationInfo(token), this.context)))
+              nodes.push($.wrap(new Keyword(token.image, undefined, $.getLocationInfo(token), this.context)))
             }
             if (node) {
               nodes.push(node)
@@ -1241,7 +1249,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       { ALT: () => $.CONSUME(T.All) }
     ])
     if (!$.RECORDING_PHASE) {
-      return $.wrap(new Anonymous(token.image, undefined, $.getLocationInfo(token), this.context))
+      return $.wrap(new Keyword(token.image, undefined, $.getLocationInfo(token), this.context))
     }
   })
 
@@ -1305,7 +1313,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
       let location = $.endRule()
       return new QueryCondition([
-        $.wrap(new Anonymous(token.image, undefined, $.getLocationInfo(token), this.context)),
+        $.wrap(new Keyword(token.image, undefined, $.getLocationInfo(token), this.context)),
         node
       ], undefined, location, this.context)
     }
@@ -1323,7 +1331,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
       let location = $.endRule()
       return new QueryCondition([
-        $.wrap(new Anonymous(token.image, undefined, $.getLocationInfo(token), this.context)),
+        $.wrap(new Keyword(token.image, undefined, $.getLocationInfo(token), this.context)),
         node
       ], undefined, location, this.context)
     }
@@ -1341,7 +1349,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
       let location = $.endRule()
       return new QueryCondition([
-        $.wrap(new Anonymous(token.image, undefined, $.getLocationInfo(token), this.context)),
+        $.wrap(new Keyword(token.image, undefined, $.getLocationInfo(token), this.context)),
         node
       ], undefined, location, this.context)
     }
@@ -1454,7 +1462,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
             ])
           })
           if (!rule) {
-            return $.wrap(new Anonymous(ident.image, undefined, $.getLocationInfo(ident), this.context))
+            return $.wrap(new Keyword(ident.image, undefined, $.getLocationInfo(ident), this.context))
           }
         }
       },
@@ -1568,7 +1576,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
               return num1Node
             }
             let num2Node = $.wrap($.processValueToken(num2), 'both')
-            return new List([num1Node, num2Node], { slash: true }, location, this.context)
+            return new List([num1Node, num2Node], { sep: '/' }, location, this.context)
           }
         }
       },
@@ -1632,24 +1640,42 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   })
 
   $.RULE('pageSelector', () => {
-    $.OPTION(() => $.CONSUME(T.Ident))
+    $.startRule()
+    let token = ''
+
+    $.OPTION(() => token += $.CONSUME(T.Ident).image)
     $.MANY({
       GATE: () => $.LA(1).tokenType === T.Colon && $.noSep(1),
       DEF: () => {
-        $.CONSUME(T.Colon)
-        $.CONSUME(T.PagePseudoClassKeywords)
+        token += $.CONSUME(T.Colon).image
+        token += $.CONSUME(T.PagePseudoClassKeywords).image
       }
     })
+
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      return $.wrap(new BasicSelector(token, undefined, location, this.context))
+    }
   })
 
   // fontFaceAtRule
   //   : FONT_FACE_RULE WS* LCURLY declarationList RCURLY
   //   ;
   $.RULE('fontFaceAtRule', () => {
-    $.CONSUME(T.AtFontFace)
+    $.startRule()
+
+    let name = $.CONSUME(T.AtFontFace)
     $.CONSUME(T.LCurly)
-    $.SUBRULE($.declarationList)
+    let rules = $.SUBRULE($.declarationList)
     $.CONSUME(T.RCurly)
+
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      return new AtRule([
+        ['name', name.image],
+        ['rules', rules]
+      ], undefined, location, this.context)
+    }
   })
 
   /**
@@ -1659,53 +1685,92 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   : SUPPORTS_RULE WS* supportsCondition WS* LCURLY main RCURLY
   //   ;
   $.RULE('supportsAtRule', (inner?: boolean) => {
-    $.CONSUME(T.AtSupports)
-    $.SUBRULE($.supportsCondition)
+    $.startRule()
+
+    let name = $.CONSUME(T.AtSupports)
+    let prelude = $.SUBRULE($.supportsCondition)
     $.CONSUME(T.LCurly)
-    $.SUBRULE($.atRuleBody, { ARGS: [inner] })
+    let rules = $.SUBRULE($.atRuleBody, { ARGS: [inner] })
     $.CONSUME(T.RCurly)
+
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      return new AtRule([
+        ['name', name.image],
+        ['prelude', prelude],
+        ['rules', rules]
+      ], undefined, location, this.context)
+    }
   })
 
+  /** spec-compliant but simplified */
   // supportsCondition
   //   : NOT supportsInParens
   //   | supportsInParens (WS* AND supportsInParens)*
   //   | supportsInParens (WS* OR supportsInParens)*
   //   ;
   $.RULE('supportsCondition', () => {
-    $.OR([
+    let start = $.startRule()
+
+    return $.OR([
       {
         ALT: () => {
-          $.SUBRULE($.supportsNot)
+          let keyword = $.CONSUME(T.Not)
+          let value = $.SUBRULE($.supportsInParens)
+
+          if (!$.RECORDING_PHASE) {
+            let location = $.endRule()
+            return new QueryCondition([
+              $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), this.context)),
+              value
+            ], undefined, location, this.context)
+          }
         }
       },
       {
         ALT: () => {
-          $.SUBRULE($.supportsInParens)
-          $.MANY(() => {
-            $.OR2([
-              { ALT: () => { $.SUBRULE($.supportsAnd) } },
-              { ALT: () => { $.SUBRULE($.supportsOr) } }
-            ])
-          })
-        }
-      }
-    ])
-  })
+          let RECORDING_PHASE = $.RECORDING_PHASE
+          let [startOffset, startLine, startColumn] = start ?? []
 
-  $.RULE('function', () => {
-    $.OR([
-      { ALT: () => $.SUBRULE($.knownFunctions) },
+          let left = $.SUBRULE2($.supportsInParens)
+
+          $.MANY(() => {
+            let keyword = $.CONSUME(T.And)
+            let right: Node = $.SUBRULE3($.supportsInParens)
+            if (!RECORDING_PHASE) {
+              let [,,,endOffset, endLine, endColumn] = right.location
+              left = new QueryCondition([
+                left,
+                $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), this.context)),
+                right
+              ], undefined, [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!], this.context)
+            }
+          })
+
+          return left
+        }
+      },
       {
         ALT: () => {
-          $.CONSUME(T.Ident)
-          $.OR2([{
-            GATE: $.noSep,
-            ALT: () => {
-              $.CONSUME(T.LParen)
-              $.OPTION(() => $.SUBRULE($.valueList))
-              $.CONSUME(T.RParen)
+          let RECORDING_PHASE = $.RECORDING_PHASE
+          let [startOffset, startLine, startColumn] = start ?? []
+
+          let left = $.SUBRULE4($.supportsInParens)
+
+          $.MANY2(() => {
+            let keyword = $.CONSUME(T.Or)
+            let right: Node = $.SUBRULE5($.supportsInParens)
+            if (!RECORDING_PHASE) {
+              let [,,,endOffset, endLine, endColumn] = right.location
+              left = new QueryCondition([
+                left,
+                $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), this.context)),
+                right
+              ], undefined, [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!], this.context)
             }
-          }])
+          })
+
+          return left
         }
       }
     ])
@@ -1717,51 +1782,147 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   // | generalEnclosed
   // ;
   $.RULE('supportsInParens', () => {
-    $.OR([
+    let RECORDING_PHASE = $.RECORDING_PHASE
+    $.startRule()
+
+    return $.OR([
       {
         ALT: () => {
           /** Function-like call */
-          $.CONSUME(T.Ident)
+          let name = $.CONSUME(T.Ident)
+          let args: Node | undefined
           $.OR2([
             {
               GATE: $.noSep,
               ALT: () => {
                 $.CONSUME(T.LParen)
-                $.SUBRULE($.valueList)
+                args = $.SUBRULE($.valueList)
                 $.CONSUME(T.RParen)
               }
             }
           ])
+
+          if (!RECORDING_PHASE) {
+            let location = $.endRule()
+            return new Call([
+              ['name', name.image],
+              ['args', args]
+            ], undefined, location, this.context)
+          }
         }
       },
       {
         ALT: () => {
+          let values: Node[] = []
           $.CONSUME2(T.LParen)
-          $.OR3([
+          let value = $.OR3([
             { ALT: () => $.SUBRULE($.supportsCondition) },
             { ALT: () => $.SUBRULE($.declaration) },
             // in the CSS @supports spec, is defined as "generalEnclosed"
-            { ALT: () => $.SUBRULE($.anyInnerValue) }
+            { ALT: () => $.MANY(() => values.push($.SUBRULE($.anyInnerValue))) }
           ])
           $.CONSUME2(T.RParen)
+
+          if (!RECORDING_PHASE) {
+            let location = $.endRule()
+            if (!(value instanceof Node)) {
+              value = new Sequence(values, undefined, $.getLocationFromNodes(values), this.context)
+            }
+            return $.wrap(new Paren($.wrap(value, 'both'), undefined, location, this.context))
+          }
         }
       }
     ])
   })
 
-  $.RULE('supportsNot', () => {
-    $.CONSUME(T.Not)
-    $.SUBRULE($.supportsInParens)
-  })
+  $.RULE('function', () =>
+    $.OR([
+      { ALT: () => $.SUBRULE($.knownFunctions) },
+      {
+        ALT: () => {
+          $.startRule()
 
-  $.RULE('supportsAnd', () => {
-    $.CONSUME(T.And)
-    $.SUBRULE($.supportsInParens)
-  })
+          let name = $.CONSUME(T.Ident)
+          let args: Node | undefined
 
-  $.RULE('supportsOr', () => {
-    $.CONSUME(T.Or)
-    $.SUBRULE($.supportsInParens)
+          $.OR2([{
+            GATE: $.noSep,
+            ALT: () => {
+              $.CONSUME(T.LParen)
+              $.OPTION(() => args = $.SUBRULE($.functionArgs))
+              $.CONSUME(T.RParen)
+            }
+          }])
+
+          if (!$.RECORDING_PHASE) {
+            let location = $.endRule()
+            return new Call([
+              ['name', name.image],
+              ['args', args]
+            ], undefined, location, this.context)
+          }
+        }
+      }
+    ])
+  )
+
+  /**
+   * Originally, function arguments always had commas,
+   * but it looks like that might be expanded in the
+   * future in CSS to allow for semi-colon separators.
+   * with the same rationale of why this was introduced
+   * by Less (that values can already have commas).
+   *
+   * @see https://drafts.csswg.org/css-values-4/#interpolate
+   *
+   * @todo - if a function is introduced where semi-colons
+   * are separators AND only 1 argument is required, then
+   * that will have to be specially handled.
+   */
+  $.RULE('functionArgs', (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
+    $.startRule()
+
+    let commaNodes: Node[] = [$.SUBRULE($.valueSequence, { ARGS: [ctx] })]
+    let semiNodes: Node[] = []
+    let isSemiList = false
+
+    $.MANY(() => {
+      $.OR([
+        {
+          GATE: () => !isSemiList,
+          ALT: () => {
+            $.CONSUME(T.Comma)
+            commaNodes.push($.SUBRULE2($.valueSequence, { ARGS: [ctx] }))
+          }
+        },
+        {
+          ALT: () => {
+            isSemiList = true
+
+            $.CONSUME(T.Semi)
+
+            if (!RECORDING_PHASE) {
+              /** Aggregate the previous set of comma-nodes */
+              if (commaNodes.length > 1) {
+                let commaList = $.wrap(new List(commaNodes, { sep: ',' }, $.getLocationFromNodes(commaNodes), this.context), 'both')
+                semiNodes.push(commaList)
+              } else {
+                semiNodes.push(commaNodes[0]!)
+              }
+            }
+            semiNodes.push($.SUBRULE3($.valueList, { ARGS: [ctx] }))
+          }
+        }
+      ])
+    })
+
+    if (!RECORDING_PHASE) {
+      let location = $.endRule()
+      let nodes = isSemiList ? semiNodes : commaNodes
+      let sep: ';' | ',' = isSemiList ? ';' : ','
+      return $.wrap(new List(nodes, { sep }, location, this.context), 'both')
+    }
   })
 
   // https://www.w3.org/TR/css-cascade-4/#at-import
@@ -1769,67 +1930,138 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   : IMPORT_RULE WS* (URL_FUNCTION | STRING) (WS* SUPPORTS_FUNCTION WS* (supportsCondition | declaration))? (WS* mediaQuery)? SEMI
   //   ;
   $.RULE('importAtRule', () => {
-    $.CONSUME(T.AtImport)
-    $.OR([
-      { ALT: () => $.SUBRULE($.urlFunction) },
-      { ALT: () => $.SUBRULE($.string) }
-    ])
+    let RECORDING_PHASE = $.RECORDING_PHASE
+    $.startRule()
+    let name = $.CONSUME(T.AtImport)
+    let preludeNodes: Node[] = []
+    preludeNodes.push(
+      $.wrap(
+        $.OR([
+          { ALT: () => $.SUBRULE($.urlFunction) },
+          { ALT: () => $.SUBRULE($.string) }
+        ])
+      )
+    )
     $.OPTION(() => {
-      $.CONSUME(T.Supports)
-      $.OR2([
+      let start = $.CONSUME(T.Supports)
+      let value = $.OR2([
         { ALT: () => $.SUBRULE($.supportsCondition) },
         { ALT: () => $.SUBRULE($.declaration) }
       ])
+      let end = $.CONSUME(T.RParen)
+
+      if (!RECORDING_PHASE) {
+        let { startOffset, startLine, startColumn } = start
+        let { endOffset, endLine, endColumn } = end
+        preludeNodes.push(
+          $.wrap(
+            new Call(
+              [
+                ['name', 'supports'],
+                ['args', $.wrap(value, 'both')]
+              ],
+              undefined,
+              [startOffset, startLine!, startColumn!, endOffset!, endLine!, endColumn!],
+              this.context
+            )
+          )
+        )
+      }
     })
     $.OPTION2(() => {
-      $.SUBRULE($.mediaQuery)
+      preludeNodes.push($.SUBRULE($.mediaQuery))
     })
     $.CONSUME(T.Semi)
+
+    if (!RECORDING_PHASE) {
+      let location = $.endRule()
+      return new AtRule([
+        ['name', name.image],
+        ['prelude', new Sequence(preludeNodes)]
+      ], undefined, location, this.context)
+    }
   })
 
+  /** @todo - add more structure for known nested at-rules */
   $.RULE('nestedAtRule', () => {
-    $.CONSUME(T.AtNested)
-    $.MANY(() => $.SUBRULE($.anyOuterValue))
+    $.startRule()
+
+    let name = $.CONSUME(T.AtNested)
+    let preludeNodes: Node[] = []
+    let ruleNodes: Node[] = []
+    $.MANY(() => preludeNodes.push($.wrap($.SUBRULE($.anyOuterValue))))
     $.CONSUME(T.LCurly)
-    $.MANY2(() => $.SUBRULE($.anyInnerValue))
+    /** @todo - add more structure for known rule bodies */
+    $.MANY2(() => ruleNodes.push($.wrap($.SUBRULE($.anyInnerValue))))
     $.CONSUME(T.RCurly)
+
+    if (!$.RECORDING_PHASE) {
+      return new AtRule([
+        ['name', name.image],
+        ['prelude', new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context)],
+        ['rules', new Sequence(ruleNodes, undefined, $.getLocationFromNodes(ruleNodes), this.context)]
+      ], undefined, $.endRule(), this.context)
+    }
   })
 
   $.RULE('nonNestedAtRule', () => {
-    $.CONSUME(T.AtNonNested)
-    $.MANY(() => $.SUBRULE($.anyOuterValue))
+    $.startRule()
+    let preludeNodes: Node[] = []
+
+    let name = $.CONSUME(T.AtNonNested)
+    $.MANY(() => preludeNodes.push($.wrap($.SUBRULE($.anyOuterValue))))
     $.CONSUME(T.Semi)
+
+    if (!$.RECORDING_PHASE) {
+      return new AtRule([
+        ['name', name.image],
+        ['prelude', new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context)]
+      ], undefined, $.endRule(), this.context)
+    }
   })
 
   // unknownAtRule
   //   : AT_RULE anyOuterValue* (SEMI | LCURLY anyInnerValue* RCURLY)
   //   ;
   $.RULE('unknownAtRule', () => {
-    $.CONSUME(T.AtKeyword)
-    $.MANY(() => $.SUBRULE($.anyOuterValue))
+    $.startRule()
+
+    let preludeNodes: Node[] = []
+    let ruleNodes: Node[] = []
+
+    let name = $.CONSUME(T.AtKeyword)
+    $.MANY(() => preludeNodes.push($.wrap($.SUBRULE($.anyOuterValue))))
     $.OR([
       { ALT: () => $.CONSUME(T.Semi) },
       {
         ALT: () => {
           $.CONSUME(T.LCurly)
-          $.MANY2(() => $.SUBRULE($.anyInnerValue))
+          $.MANY2(() => ruleNodes.push($.wrap($.SUBRULE($.anyInnerValue))))
           $.CONSUME(T.RCurly)
         }
       }
     ])
+
+    if (!$.RECORDING_PHASE) {
+      return new AtRule([
+        ['name', name.image],
+        ['prelude', new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context)],
+        ['rules', new Sequence(ruleNodes, undefined, $.getLocationFromNodes(ruleNodes), this.context)]
+      ], undefined, $.endRule(), this.context)
+    }
   })
   /**
-      @todo - add all tokens
-      @see - https://stackoverflow.com/questions/55594491/antlr-4-parser-match-any-token
+    @todo - add all tokens
+    @see - https://stackoverflow.com/questions/55594491/antlr-4-parser-match-any-token
 
-      From - https://w3c.github.io/csswg-drafts/css-syntax-3/#typedef-any-value
-      The <any-value> production is identical to <declaration-value>, but also allows
-      top-level <semicolon-token> tokens and <delim-token> tokens with a value of "!".
-      It represents the entirety of what valid CSS can be in any context.
+    From - https://w3c.github.io/csswg-drafts/css-syntax-3/#typedef-any-value
+    The <any-value> production is identical to <declaration-value>, but also allows
+    top-level <semicolon-token> tokens and <delim-token> tokens with a value of "!".
+    It represents the entirety of what valid CSS can be in any context.
 
-      Parts of the spec that allow any value should not display a warning or error
-      for any unknown token.
-    */
+    Parts of the spec that allow any value should not display a warning or error
+    for any unknown token.
+  */
   // anyOuterValue
   //   : value
   //   | COMMA
@@ -1837,21 +2069,47 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   | '[' anyInnerValue* ']'
   //   ;
   $.RULE('anyOuterValue', () => {
-    $.OR([
+    let RECORDING_PHASE = $.RECORDING_PHASE
+    return $.OR([
       { ALT: () => $.SUBRULE($.extraTokens) },
       { ALT: () => $.SUBRULE($.string) },
       {
         ALT: () => {
+          $.startRule()
+          let nodes: Node[] = []
           $.CONSUME(T.LParen)
-          $.MANY(() => $.SUBRULE($.anyInnerValue))
+          $.MANY(() => nodes.push($.wrap($.SUBRULE($.anyInnerValue))))
           $.CONSUME(T.RParen)
+
+          if (!RECORDING_PHASE) {
+            let location = $.endRule()
+            return new Paren(
+              $.wrap(new Sequence(nodes, undefined, $.getLocationFromNodes(nodes), this.context), true),
+              undefined,
+              location,
+              this.context
+            )
+          }
         }
       },
       {
         ALT: () => {
+          $.startRule()
+          let nodes: Node[] = []
+
           $.CONSUME(T.LSquare)
-          $.MANY2(() => $.SUBRULE2($.anyInnerValue))
+          $.MANY2(() => nodes.push($.wrap($.SUBRULE2($.anyInnerValue))))
           $.CONSUME(T.RSquare)
+
+          if (!RECORDING_PHASE) {
+            let location = $.endRule()
+            return new Paren(
+              $.wrap(new Sequence(nodes, undefined, $.getLocationFromNodes(nodes), this.context), true),
+              undefined,
+              location,
+              this.context
+            )
+          }
         }
       }
     ])
@@ -1869,16 +2127,43 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   | pseudoSelector
   //   ;
   $.RULE('anyInnerValue', () => {
-    $.OR([
+    let RECORDING_PHASE = $.RECORDING_PHASE
+    return $.OR([
       { ALT: () => $.SUBRULE($.anyOuterValue) },
       {
         ALT: () => {
-          $.CONSUME(T.LCurly)
-          $.MANY(() => $.SUBRULE2($.anyInnerValue))
-          $.CONSUME(T.RCurly)
+          let start = $.CONSUME(T.LCurly)
+          let nodes: Node[] = []
+          $.MANY(() => nodes.push($.SUBRULE2($.anyInnerValue)))
+          let end = $.CONSUME(T.RCurly)
+
+          if (!RECORDING_PHASE) {
+            let { startOffset, startLine, startColumn } = start
+            let { endOffset, endLine, endColumn } = end
+            nodes.unshift(
+              $.wrap(new Anonymous(start.image, undefined, $.getLocationInfo(start), this.context))
+            )
+            nodes.push(
+              $.wrap(new Anonymous(end.image, undefined, $.getLocationInfo(end), this.context))
+            )
+            return new Sequence(
+              nodes,
+              undefined,
+              [startOffset, startLine!, startColumn!, endOffset!, endLine!, endColumn!],
+              this.context
+            )
+          }
         }
       },
-      { ALT: () => $.CONSUME(T.Semi) }
+      {
+        ALT: () => {
+          let semi = $.CONSUME(T.Semi)
+
+          if (!RECORDING_PHASE) {
+            return $.wrap(new Anonymous(semi.image, undefined, $.getLocationInfo(semi), this.context))
+          }
+        }
+      }
     ])
   })
 }

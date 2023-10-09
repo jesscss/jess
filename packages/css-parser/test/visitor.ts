@@ -16,7 +16,7 @@ import { CssCstVisitor } from '../src/cssCstVisitor'
 // const getMethods = (obj: Obj) => distinctDeepFunctions(obj).filter(
 //   name => name !== 'constructor' && !~name.indexOf('__'))
 
-describe('CSS CST Visitor', () => {
+describe.skip('CSS CST Visitor', () => {
   describe('produces a valid AST', () => {
     let parser: CssParser
     beforeAll(() => {
@@ -43,7 +43,7 @@ describe('CSS CST Visitor', () => {
     */
     it('Root', () => {
       let { tree } = parser.parseTree('')
-      expect(tree!.type).toBe('Root')
+      expect(tree.type).toBe('Root')
     })
     it('Qualified Rule', () => {
       let { tree } = parser.parseTree('a { color: red; }')

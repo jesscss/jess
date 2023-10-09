@@ -2,7 +2,11 @@ import { type Context } from '../context'
 import { defineType, Node } from './node'
 
 export type ListOptions = {
-  slash?: boolean
+  /**
+   * Lists can be separated by comma, semi-colon,
+   * or slash, depending on the type of list.
+   */
+  sep?: ',' | ';' | '/'
 }
 
 /**
@@ -29,7 +33,8 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   }
 
   toTrimmedString() {
-    return this.value.map(v => v.toString()).join(', ')
+    let { sep = ',' } = this.options ?? {}
+    return this.value.map(v => v.toString()).join(`${sep}`)
   }
 
   operate(b: Node, op: string) {

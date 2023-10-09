@@ -82,14 +82,14 @@ describe.only('can parse Less CSS output', () => {
         const result = fs.readFileSync(path.join(testData, file))
         const contents = result.toString()
         // const parseStart = performance.now()
-        const { tree, lexerResult, errors } = cssParser.parseTree(contents)
+        const { tree, lexerResult, errors } = cssParser.parse(contents)
         // const parseEnd = performance.now()
         expect(lexerResult.errors.length).toBe(0)
         expect(errors.length).toBe(0)
 
         if (!(['test/css/custom-properties.css'].includes(file))) {
           const output = `${tree}`
-          expect(output).toMatchCss(contents)
+          expect(output).toBe(contents)
         }
       })
     })

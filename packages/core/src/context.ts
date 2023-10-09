@@ -1,6 +1,6 @@
 import { type Node } from './tree/node'
 import type { Ruleset } from './tree/ruleset'
-import type { Scope } from './scope'
+import { Scope } from './scope'
 import type { Declaration } from './tree'
 import { type Operator } from './tree/util/calculate'
 
@@ -97,7 +97,7 @@ export class TreeContext implements TreeContextOptions {
     contents: string[]
   }
 
-  /** Ruless will inherit scope when created */
+  /** Rules will inherit scope when created */
   scope: Scope
 
   constructor(opts: TreeContextOptions = {}) {
@@ -105,6 +105,7 @@ export class TreeContext implements TreeContextOptions {
     this.leakVariablesIntoScope = opts.leakVariablesIntoScope ?? false
     this.mathMode = opts.mathMode ?? MathMode.PARENS_DIVISION
     this.unitMode = opts.unitMode ?? UnitMode.STRICT
+    this.scope = new Scope()
   }
 }
 let code1 = 0

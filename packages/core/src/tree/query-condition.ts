@@ -7,6 +7,8 @@ import { Sequence } from './sequence'
  *
  * This just helps identify conditions if we need to
  * merge them later.
+ *
+ * @todo - add more structure?
  */
 export class QueryCondition extends Sequence {}
 export const query = defineType(QueryCondition, 'QueryCondition', 'query')
