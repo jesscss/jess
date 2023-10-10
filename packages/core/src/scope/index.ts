@@ -12,6 +12,7 @@ import { Rules } from '../tree/rules'
 import type { Bool } from '../tree/bool'
 import type { Condition } from '../tree/condition'
 import { Context } from '../context'
+import type { Anonymous } from '../tree/anonymous'
 /**
  * The Scope object is meant to be an efficient
  * lookup mechanism for variables, mixins,
@@ -387,7 +388,7 @@ export class Scope {
 
       let length = props.length
       let values: Node[] = []
-      let important: string | undefined
+      let important: Anonymous | undefined
       let merge: AssignmentType | undefined
       /**
        * Legacy property joining for Less -- note, we need to

@@ -2,11 +2,12 @@ import { Node, defineType } from './node'
 import { SelectorSequence } from './selector-sequence'
 import { Ampersand } from './ampersand'
 import { Ruleset } from './ruleset'
+import type { Anonymous } from './anonymous'
 import type { Rules } from './rules'
 import type { Context } from '../context'
 
 export type AtRuleValue = {
-  name: string
+  name: Anonymous
   /** The prelude */
   prelude?: Node
   rules?: Rules
@@ -28,7 +29,7 @@ export class AtRule extends Node<AtRuleValue> {
     return this.data.get('name')
   }
 
-  set name(v: string) {
+  set name(v: Anonymous) {
     this.data.set('name', v)
   }
 
@@ -44,7 +45,7 @@ export class AtRule extends Node<AtRuleValue> {
     let { name, prelude, rules } = this
     let space = ''.padStart(depth * 2)
     /** The ruleset will have already indented the first line */
-    let output = name
+    let output = `${name}`
     if (prelude) {
       output += prelude.toString()
     }

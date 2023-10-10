@@ -1,9 +1,13 @@
-import { Declaration, type DeclarationValue } from './declaration'
+import {
+  Declaration,
+  type DeclarationValue,
+  type DeclarationOptions
+} from './declaration'
 import { defineType } from './node'
 import { isNode } from './util'
-import { type Name, type BaseDeclarationOptions } from './base-declaration'
+import { type Name } from './base-declaration'
 
-export type VarDeclarationOptions = BaseDeclarationOptions
+export type VarDeclarationOptions = DeclarationOptions
 
 /**
  * @example
@@ -28,8 +32,12 @@ export class VarDeclaration<N extends Name = Name> extends Declaration<VarDeclar
   toTrimmedString(depth?: number): string {
     const rule = this.options?.setDefined || this.options?.paramVar ? '$' : '@let '
     const { name, value } = this
-    const semi = this.options?.paramVar || isNode(value, 'Collection') ? '' : ';'
-    return `${rule}${name}: ${value.toString(depth)}${semi}`
+    const semi = this.options?.paramVar ||
+      isNode(value, 'Collection') ||
+      this.options?.semi !== true
+      ? ''
+      : ';'
+    return `${rule}${name}:${value.toString(depth)}${semi}`
   }
 }
 VarDeclaration.prototype.allowRuleRoot = false

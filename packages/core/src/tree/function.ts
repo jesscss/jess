@@ -19,7 +19,7 @@ export class Func extends Mixin {
     if (result instanceof Rules) {
       let value = result.value
       let last = value[value.length - 1]
-      if (last instanceof AtRule && last.name.includes('return')) {
+      if (last instanceof AtRule && last.name.value.includes('return')) {
         return last.prelude!
       }
     }

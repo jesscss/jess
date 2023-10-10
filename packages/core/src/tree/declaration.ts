@@ -6,6 +6,7 @@ import { isNode } from './util'
 import { Nil } from './nil'
 import type { Context } from '../context'
 import { Interpolated } from './interpolated'
+import type { Anonymous } from './anonymous'
 import {
   type BaseDeclarationValue,
   type Name,
@@ -13,10 +14,14 @@ import {
   type BaseDeclarationOptions
 } from './base-declaration'
 
+export type DeclarationOptions = BaseDeclarationOptions & {
+  semi?: boolean
+}
+
 export type DeclarationValue = BaseDeclarationValue & {
   value: Node
   /** The actual string representation of important, if it exists */
-  important?: string
+  important?: Anonymous
 }
 
 /**
@@ -25,7 +30,7 @@ export type DeclarationValue = BaseDeclarationValue & {
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
-export class Declaration<O extends BaseDeclarationOptions = BaseDeclarationOptions, N extends Name = Name> extends BaseDeclaration<N, DeclarationValue, O> {
+export class Declaration<O extends DeclarationOptions = DeclarationOptions, N extends Name = Name> extends BaseDeclaration<N, DeclarationValue, O> {
   get name(): N {
     return this.data.get('name')
   }
@@ -46,7 +51,7 @@ export class Declaration<O extends BaseDeclarationOptions = BaseDeclarationOptio
     return this.data.get('important')
   }
 
-  set important(v: string | undefined) {
+  set important(v: Anonymous | undefined) {
     this.data.set('important', v)
   }
 
@@ -54,10 +59,11 @@ export class Declaration<O extends BaseDeclarationOptions = BaseDeclarationOptio
     const { name, value, important } = this
     const { assign = ':' } = this.options ?? {}
     let a = assign === ':' ? ':' : ` ${assign}`
+    let semi = this.options?.semi !== true ? '' : ';'
     if (isNode(value, 'Collection')) {
       return `${name}${a}${value.toString(depth)}`
     }
-    return `${name}${a}${value.toString(depth)}${important ? ` ${important}` : ''};`
+    return `${name}${a}${value.toString(depth)}${important ? `${important}` : ''}${semi}`
   }
 
   async eval(context: Context): Promise<Node> {

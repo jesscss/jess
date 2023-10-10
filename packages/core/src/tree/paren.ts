@@ -12,11 +12,11 @@ export type ParenOptions = {
 /**
  * An expression in parenthesis
  */
-export class Paren extends Node<Node, ParenOptions> {
+export class Paren extends Node<Node | undefined, ParenOptions> {
   toTrimmedString(): string {
-    let output = super.toTrimmedString()
+    let value = `${this.value ?? ''}`
     let escapeChar = this.options?.escaped ? '~' : ''
-    return `${escapeChar}(${output})`
+    return `${escapeChar}(${value})`
   }
 
   async eval(context: Context): Promise<Node> {
@@ -24,14 +24,16 @@ export class Paren extends Node<Node, ParenOptions> {
       let canOperate = context.canOperate
       context.canOperate = true
       let { value } = this
-      let isExpression = value instanceof Expression
-      value = await value.eval(context)
-      if (value instanceof Bool) {
-        return value
-      }
-      context.canOperate = canOperate
-      if (isExpression && !(value instanceof Expression)) {
-        return value
+      if (value) {
+        let isExpression = value instanceof Expression
+        value = await value.eval(context)
+        if (value instanceof Bool) {
+          return value
+        }
+        context.canOperate = canOperate
+        if (isExpression && !(value instanceof Expression)) {
+          return value
+        }
       }
       let node = this.clone()
       node.value = value
