@@ -6,12 +6,12 @@ import type { Anonymous } from './anonymous'
 import type { Rules } from './rules'
 import type { Context } from '../context'
 
-export type AtRuleValue = {
-  name: Anonymous
+export type AtRuleValue = [
+  name: ['name', Anonymous],
   /** The prelude */
-  prelude?: Node
-  rules?: Rules
-}
+  prelude?: ['prelude', Node],
+  rules?: ['rules', Rules]
+]
 
 /**
  * A rule like @charset or @media

@@ -17,12 +17,12 @@ export type NodeOptions = Record<string, boolean | string | number> & AllNodeOpt
 export type NodeValue = unknown
 export type NodeMap = Map<string, NodeValue>
 export type NodeInValue = NodeValue | NodeMapArray | NodeMap
-export type NodeTypeMap = Record<string, NodeValue>
-export type NodeMapArray<
-  T extends NodeTypeMap = NodeTypeMap,
-  K = keyof T,
-  V = T[string]
-> = Array<[K, V]>
+export type NodeMapArray = Array<[string, NodeValue]>
+// export type NodeMapArray<
+//   T extends NodeTypeMap = NodeTypeMap,
+//   K = keyof T,
+//   V = T[string]
+// > = Array<[K, V]>
 
 export type LocationInfo = [
   startOffset: number,
@@ -72,9 +72,9 @@ export const defineType = <
  * on a passed-in interface.
  */
 export type TypeMap<
-  T extends NodeTypeMap = NodeTypeMap,
-  K extends keyof T = keyof T,
-  V = ValueOf<T>
+  T extends NodeMapArray = NodeMapArray,
+  K extends keyof T[number] = keyof T[number],
+  V = ValueOf<T[number][1]>
 > = Omit<Map<K, V>, 'get' | 'set'> & {
   /**
    * TypeScript sometimes gets confused
@@ -84,16 +84,20 @@ export type TypeMap<
   get(key: any): any
   set(key: any, value: any): any
 } & {
-  [P in K as 'get']: <U extends P>(key: U) => T[U]
+  [P in T as 'get']: (key: T[0]) => T[1]
 } & {
-  [P in K as 'set']: <U extends P>(key: U, value: T[U]) => TypeMap<T>
+  [P in T as 'set']: (key: T[0], value: T[1]) => TypeMap<T>
 }
 
 /**
  * @todo - this allows excess properties on T,
  * but using `Exact` from type-fest caused other issues
  */
-type NodeMapType<T> = T extends NodeTypeMap ? T : { value: T }
+type NodeMapType<T> = T extends NodeMapArray
+  ? {
+      [K in keyof T[number]]: T[number][K][1]
+    }
+  : { value: T }
 
 type CollectionType<T> =
   T extends Array<infer U>
@@ -162,10 +166,6 @@ export abstract class Node<
     location?: LocationInfo | 0,
     treeContext?: TreeContext
   ) {
-    if (value === undefined) {
-      throw new Error('Node requires a value.')
-    }
-
     this.data = new Map(isNodeMap(value) ? value : [['value', value]]) as TypeMap<M>
     this.location = location || []
     Object.defineProperty(this, 'treeContext', {

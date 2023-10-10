@@ -6,6 +6,7 @@ import {
 } from './node'
 import { type Operator, calculate } from './util/calculate'
 import { logger } from '../logger'
+import round from 'lodash-es/round'
 
 // import type { Context } from '../context'
 // import type { OutputCollector } from '../output'
@@ -185,9 +186,12 @@ export class Dimension extends Node<DimensionValue> {
   }
 
   toTrimmedString() {
-    let precision = 100000000
     let [number, unit = ''] = this.value
-    let numberStr = `${Math.round(number * precision) / precision}`.toLowerCase()
+    /**
+     * Rounding numbers to a particular precision in JavaScript
+     * is extremely non-trivial. Lodash has a solution for this.
+     */
+    let numberStr = `${round(number, 8)}`.toLowerCase()
     return `${numberStr}${unit}`
   }
 
