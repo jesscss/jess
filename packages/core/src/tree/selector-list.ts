@@ -26,7 +26,7 @@ export class SelectorList extends Node<SelectorSequence[]> {
   }
 
   toTrimmedString() {
-    return this.value.map(v => v.toString()).join(', ')
+    return this.value.map(v => v.toString()).join(',')
   }
 
   async eval(context: Context): Promise<SelectorList | SelectorSequence> {

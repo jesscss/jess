@@ -1,6 +1,6 @@
 /* eslint-disable no-return-assign */
 import type { CssActionsParser, TokenMap, RuleContext } from './cssActionsParser'
-import { EMPTY_ALT, type IToken } from 'chevrotain'
+import { type IToken } from 'chevrotain'
 import {
   TreeContext,
   Node,
@@ -120,6 +120,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       if (!isRoot) {
         context.scope = initialScope!
       }
+      // Attaches remaining whitespace at the end of rules
       return $.wrap(returnNode, true)
     }
   })
@@ -419,7 +420,11 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   $.RULE('compoundSelector', (ctx: RuleContext = {}) => {
     let selectors: Node[] = []
     selectors.push($.SUBRULE($.simpleSelector, { ARGS: [ctx] }))
-    $.MANY(() => selectors.push($.SUBRULE2($.simpleSelector, { ARGS: [{ ...ctx, firstSelector: false }] })))
+    $.MANY({
+      /** Make sure we don't ignore space combinators */
+      GATE: () => !$.hasWS(),
+      DEF: () => selectors.push($.SUBRULE2($.simpleSelector, { ARGS: [{ ...ctx, firstSelector: false }] }))
+    })
     return selectors
   })
 
@@ -436,46 +441,39 @@ export function productions(this: CssActionsParser, T: TokenMap) {
     $.startRule()
     let selectors: Node[] = $.SUBRULE($.compoundSelector, { ARGS: [ctx] })
 
-    $.MANY(() => {
-      let co = $.SUBRULE($.combinator)
-      let compound = $.SUBRULE2($.compoundSelector, { ARGS: [{ ...ctx, firstSelector: false }] })
-      if (!RECORDING_PHASE) {
-        selectors.push(
-          co,
-          ...compound
-        )
+    /**
+     * Only space combinators and specified combinators will enter the MANY
+     */
+    $.MANY({
+      GATE: () => $.hasWS() || $.LA(1).tokenType === T.Combinator,
+      DEF: () => {
+        let co: IToken | undefined
+        let combinator: Node
+        $.OPTION(() => {
+          co = $.CONSUME(T.Combinator)
+        })
+        if (!RECORDING_PHASE) {
+          if (co) {
+            combinator = $.wrap(new Combinator(co.image, undefined, $.getLocationInfo(co), this.context), 'both')
+          } else {
+            let startOffset = this.LA(1).startOffset
+            combinator = new Combinator('', undefined, 0, this.context)
+            combinator.pre = $.getPrePost(startOffset)
+          }
+        }
+        let compound = $.SUBRULE2($.compoundSelector, { ARGS: [{ ...ctx, firstSelector: false }] })
+        if (!RECORDING_PHASE) {
+          selectors.push(
+            combinator!,
+            ...compound
+          )
+        }
       }
     })
 
     if (!RECORDING_PHASE) {
       let location = $.endRule()
       return new SelectorSequence(selectors as Array<SimpleSelector | Combinator>, undefined, location, this.context)
-    }
-  })
-
-  /** We must have a combinator of some kind between compound selectors */
-  $.RULE('combinator', () => {
-    let co = $.OR([
-      {
-        ALT: () => $.CONSUME(T.Combinator)
-      },
-      /**
-         * It's not truly empty - we check skipped tokens,
-         * so this indicates at least 1 whitespace is present
-         */
-      {
-        GATE: $.hasWS,
-        ALT: EMPTY_ALT()
-      }
-    ])
-    if (!$.RECORDING_PHASE) {
-      if (co) {
-        return $.wrap(new Combinator(co.image, undefined, $.getLocationInfo(co), this.context), 'both')
-      }
-      let startOffset = this.LA(1).startOffset
-      let combinator = new Combinator('', undefined, 0, this.context)
-      combinator.pre = $.getPrePost(startOffset)
-      return combinator
     }
   })
 
@@ -523,22 +521,27 @@ export function productions(this: CssActionsParser, T: TokenMap) {
     let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
 
-    let sequences: SelectorSequence[] = $.SUBRULE($.relativeSelector, { ARGS: [ctx] })
+    let sequences: SelectorSequence[]
+    let selector = $.SUBRULE($.relativeSelector, { ARGS: [ctx] })
+
+    if (!RECORDING_PHASE) {
+      sequences = [$.wrap(selector, true)]
+    }
 
     $.MANY(() => {
       $.CONSUME(T.Comma)
       let selector = $.SUBRULE2($.relativeSelector, { ARGS: [{ ...ctx, firstSelector: false }] })
       if (!RECORDING_PHASE) {
-        sequences.push(selector)
+        sequences.push($.wrap(selector, 'both'))
       }
     })
 
     if (!RECORDING_PHASE) {
-      if (sequences.length === 1) {
-        return sequences[0]
+      if (sequences!.length === 1) {
+        return sequences![0]
       }
       let location = $.endRule()
-      return new SelectorList(sequences, undefined, location, this.context)
+      return new SelectorList(sequences!, undefined, location, this.context)
     }
   })
 
@@ -546,21 +549,30 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   : complexSelector (WS* COMMA WS* complexSelector)*
   //   ;
   $.RULE('selectorList', (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
-    let sequences: SelectorSequence[] = []
+    let sequences: SelectorSequence[]
+    let sel = $.SUBRULE($.complexSelector, { ARGS: [ctx] })
 
-    $.AT_LEAST_ONE_SEP({
-      SEP: T.Comma,
-      DEF: () => sequences.push($.SUBRULE($.complexSelector, { ARGS: [ctx] }))
-    })
-
-    if (sequences.length === 1) {
-      return sequences[0]
+    if (!RECORDING_PHASE) {
+      sequences = [$.wrap(sel, true)]
     }
 
-    if (!$.RECORDING_PHASE) {
+    $.MANY(() => {
+      $.CONSUME(T.Comma)
+      let sel = $.SUBRULE2($.complexSelector, { ARGS: [ctx] })
+      if (!RECORDING_PHASE) {
+        sequences.push($.wrap(sel, 'both'))
+      }
+    }
+    )
+
+    if (!RECORDING_PHASE) {
+      if (sequences!.length === 1) {
+        return sequences![0]!
+      }
       let location = $.endRule()
-      return new SelectorList(sequences, undefined, location, this.context)
+      return new SelectorList(sequences!, undefined, location, this.context)
     }
   })
 
@@ -636,7 +648,8 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       let finalRules = $.getRulesWithComments(rules!)
       let returnRules = new Rules(finalRules, undefined, location, this.context)
       context.scope = initialScope!
-      return returnRules
+      // Attaches remaining whitespace at the end of rules
+      return $.wrap(returnRules, true)
     }
   })
 
@@ -645,6 +658,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   | CUSTOM_IDENT WS* COLON CUSTOM_VALUE*
   //   ;
   $.RULE('declaration', () => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
     let name: IToken | undefined
     let assign: IToken | undefined
@@ -677,7 +691,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
           $.startRule()
           /** @todo - should collect ALL tokens in a stream, including whitespace */
           $.MANY(() => nodes.push($.SUBRULE($.customValue)))
-          if (!$.RECORDING_PHASE) {
+          if (!RECORDING_PHASE) {
             let location = $.endRule()
             value = new Sequence(nodes, undefined, location, this.context)
           }
@@ -685,12 +699,12 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       }
     ])
 
-    if (!$.RECORDING_PHASE) {
+    if (!RECORDING_PHASE) {
       let location = $.endRule()
       return new Declaration([
         ['name', name!.image],
-        ['value', value],
-        ['important', important]
+        ['value', $.wrap(value!, true)],
+        ['important', important?.image]
       ], { assign: assign!.image as AssignmentType }, location, this.context)
     }
   })
@@ -970,6 +984,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   : mathProduct (WS* ('+' | '-') WS* mathProduct)*
   //   ;
   $.RULE('mathSum', () => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
 
     let op: IToken | undefined
@@ -982,11 +997,11 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       ])
       let right: Node = $.SUBRULE2($.mathProduct)
 
-      if (!$.RECORDING_PHASE) {
-        left = new Operation([left, op!.image as Operator, right])
+      if (!RECORDING_PHASE) {
+        left = new Operation([left, op!.image as Operator, right], undefined, 0, this.context)
       }
     })
-    if (!$.RECORDING_PHASE) {
+    if (!RECORDING_PHASE) {
       left.location = $.endRule()
       return left
     }
@@ -996,6 +1011,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   : mathValue (WS* ('*' | '/') WS* mathValue)*
   //   ;
   $.RULE('mathProduct', () => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
 
     let op: IToken | undefined
@@ -1008,12 +1024,12 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       ])
       let right: Node = $.SUBRULE2($.mathValue)
 
-      if (!$.RECORDING_PHASE) {
+      if (!RECORDING_PHASE) {
         left = new Operation([left, op!.image as Operator, right], undefined, 0, this.context)
       }
     })
 
-    if (!$.RECORDING_PHASE) {
+    if (!RECORDING_PHASE) {
       left.location = $.endRule()
       return left
     }
@@ -1027,6 +1043,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   | '(' WS* mathSum WS* ')'
   //   ;
   $.RULE('mathValue', () => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
     let token: IToken | undefined
     let node: Node | undefined
     $.OR([
@@ -1040,18 +1057,18 @@ export function productions(this: CssActionsParser, T: TokenMap) {
           $.CONSUME(T.LParen)
           node = $.SUBRULE($.mathSum)
           $.CONSUME(T.RParen)
-          if (!$.RECORDING_PHASE) {
+          if (!RECORDING_PHASE) {
             let location = $.endRule()
-            return $.wrap(new Paren(node!, undefined, location, this.context), 'both')
+            node = new Paren(node!, undefined, location, this.context)
           }
         }
       }
     ])
-    if (!$.RECORDING_PHASE) {
+    if (!RECORDING_PHASE) {
       if (token) {
-        node = $.wrap($.processValueToken(token), 'both')
+        node = $.processValueToken(token)
       }
-      return node
+      return $.wrap(node!, 'both')
     }
   })
 

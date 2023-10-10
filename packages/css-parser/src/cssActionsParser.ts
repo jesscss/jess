@@ -72,7 +72,6 @@ export class CssActionsParser extends AdvancedActionsParser {
   simpleSelector: Rule<(ctx?: RuleContext) => void>
   compoundSelector: Rule<(ctx?: RuleContext) => void>
   relativeSelector: Rule<(ctx?: RuleContext) => void>
-  combinator: Rule
 
   declaration: Rule
   valueList: Rule<(ctx?: RuleContext) => void>

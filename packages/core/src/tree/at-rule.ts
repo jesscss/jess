@@ -8,7 +8,7 @@ import type { Context } from '../context'
 export type AtRuleValue = {
   name: string
   /** The prelude */
-  prelude: Node
+  prelude?: Node
   rules?: Rules
 }
 
@@ -20,7 +20,7 @@ export class AtRule extends Node<AtRuleValue> {
     return this.data.get('prelude')
   }
 
-  set prelude(v: Node) {
+  set prelude(v: Node | undefined) {
     this.data.set('prelude', v)
   }
 
@@ -44,7 +44,10 @@ export class AtRule extends Node<AtRuleValue> {
     let { name, prelude, rules } = this
     let space = ''.padStart(depth * 2)
     /** The ruleset will have already indented the first line */
-    let output = `${name}${prelude}`
+    let output = name
+    if (prelude) {
+      output += prelude.toString()
+    }
     if (rules) {
       output += `{${rules.toString(depth + 1)}`
       output += `${space}}`
