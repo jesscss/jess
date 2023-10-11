@@ -51,9 +51,25 @@ export type RuleContext = {
   [k: string]: boolean | undefined
 }
 
+/**
+ * @note - we use an EmbeddedActionsParser for a few reasons:
+ *   1. Jess's AST is essentially a CST; that is, it records
+ *      all whitespace and comments. (The one difference may
+ *      be that some nodes are "simplified" in the Jess AST.)
+ *   2. Chevrotain's CST is not the most efficient structure
+ *      for a CST.
+ *   3. We can avoid the overhead of a CST visitor by creating
+ *      the Jess nodes directly.
+ *   4. In some cases, we need some additional business logic
+ *      about what the intended structure of the AST is, based
+ *      on the presence of certain tokens.
+ */
 export class CssActionsParser extends AdvancedActionsParser {
   T: TokenMap
   legacyMode: boolean
+
+  /** Expose Chevrotain's flag */
+  skipValidations: boolean
 
   /** Rewire, declaring class fields in constructor with `public` */
   stylesheet: Rule
@@ -249,16 +265,25 @@ export class CssActionsParser extends AdvancedActionsParser {
     if (!(node instanceof Node)) {
       return node
     }
+    let skipValidations = this.skipValidations
     if (post) {
       if (node.post === 0) {
-        node.post = this.getPrePost(node.location[3]!, commentsOnly, true)
+        let offset = node.location[3]
+        if (!offset && !skipValidations) {
+          throw new Error(`Node "${node.type}" can't be wrapped`)
+        }
+        node.post = this.getPrePost(offset!, commentsOnly, true)
       }
       if (post !== 'both') {
         return node
       }
     }
     if (node.pre === 0) {
-      node.pre = this.getPrePost(node.location[0]!, commentsOnly)
+      let offset = node.location[0]
+      if (!offset && !skipValidations) {
+        throw new Error(`Node "${node.type}" can't be wrapped`)
+      }
+      node.pre = this.getPrePost(offset!, commentsOnly)
     }
     return node
   }

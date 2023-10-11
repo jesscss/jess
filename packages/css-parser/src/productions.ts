@@ -916,24 +916,21 @@ export function productions(this: CssActionsParser, T: TokenMap) {
     $.startRule()
     let token: IToken | undefined
     let node: Node | undefined
-    $.OR({
-      IGNORE_AMBIGUITIES: true,
-      DEF: [
-        /** Function should appear before Ident */
-        { ALT: () => node = $.SUBRULE($.function) },
-        { ALT: () => token = $.CONSUME(T.Ident) },
-        { ALT: () => token = $.CONSUME(T.Dimension) },
-        { ALT: () => token = $.CONSUME(T.Number) },
-        { ALT: () => token = $.CONSUME(T.Color) },
-        { ALT: () => node = $.SUBRULE($.string) },
-        { ALT: () => node = $.SUBRULE($.squareValue) },
-        {
-          /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
-          GATE: () => $.legacyMode,
-          ALT: () => token = $.CONSUME(T.LegacyMSFilter)
-        }
-      ]
-    })
+    $.OR([
+      /** Function should appear before Ident */
+      { ALT: () => node = $.SUBRULE($.function) },
+      { ALT: () => token = $.CONSUME(T.Ident) },
+      { ALT: () => token = $.CONSUME(T.Dimension) },
+      { ALT: () => token = $.CONSUME(T.Number) },
+      { ALT: () => token = $.CONSUME(T.Color) },
+      { ALT: () => node = $.SUBRULE($.string) },
+      { ALT: () => node = $.SUBRULE($.squareValue) },
+      {
+        /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
+        GATE: () => $.legacyMode,
+        ALT: () => token = $.CONSUME(T.LegacyMSFilter)
+      }
+    ])
     /**
      * Allows slash separators. Note that, structurally, the meaning
      * of slash separators in CSS is inconsistent and ambiguous. It
@@ -1284,11 +1281,11 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       if (queries!.length === 1) {
         prelude = queries![0]!
       } else {
-        prelude = new List(queries!)
+        prelude = new List(queries!, undefined, $.getLocationFromNodes(queries!), this.context)
       }
       return new AtRule([
         ['name', $.wrap(new Anonymous(name.image, undefined, $.getLocationInfo(name), this.context), true)],
-        ['prelude', prelude],
+        ['prelude', $.wrap(prelude, true)],
         ['rules', value]
       ], undefined, location, this.context)
     }
@@ -1327,6 +1324,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
           })
 
           if (token && !RECORDING_PHASE) {
+            nodes!.push($.wrap(new Keyword(token.image, undefined, $.getLocationInfo(token), this.context)))
             token = undefined
           }
           let type = $.SUBRULE($.mediaType)
@@ -1380,6 +1378,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   ;
   $.RULE('mediaCondition', () => {
     let RECORDING_PHASE = $.RECORDING_PHASE
+    $.startRule()
     return $.OR([
       { ALT: () => $.SUBRULE($.mediaNot) },
       {
@@ -1403,7 +1402,8 @@ export function productions(this: CssActionsParser, T: TokenMap) {
             }
           })
           if (!RECORDING_PHASE) {
-            return nodes!
+            let location = $.endRule()
+            return new QueryCondition(nodes!, undefined, location, this.context)
           }
         }
       }
@@ -1415,6 +1415,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   ;
   $.RULE('mediaConditionWithoutOr', () => {
     let RECORDING_PHASE = $.RECORDING_PHASE
+    $.startRule()
     return $.OR([
       { ALT: () => $.SUBRULE($.mediaNot) },
       {
@@ -1435,7 +1436,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
           })
 
           if (!RECORDING_PHASE) {
-            return nodes!
+            return new QueryCondition(nodes!, undefined, $.endRule(), this.context)
           }
         }
       }
@@ -1446,20 +1447,23 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   //   : NOT WS* mediaInParens
   //   ;
   $.RULE('mediaNot', () => {
+    $.startRule()
+
     let token = $.CONSUME(T.Not)
     let node = $.SUBRULE($.mediaInParens)
 
     if (!$.RECORDING_PHASE) {
-      return [
+      return new QueryCondition([
         $.wrap(new Keyword(token.image, undefined, $.getLocationInfo(token), this.context)),
         node
-      ]
+      ], undefined, $.endRule(), this.context)
     }
   })
 
   // mediaAnd
   //   : AND WS* mediaInParens
   //   ;
+  /** Returns an array */
   $.RULE('mediaAnd', () => {
     let token = $.CONSUME(T.And)
     let node = $.SUBRULE($.mediaInParens)
@@ -1475,6 +1479,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   // mediaOr
   //   : OR WS* mediaInParens
   //   ;
+  /** Returns an array */
   $.RULE('mediaOr', () => {
     let token = $.CONSUME(T.Or)
     let node = $.SUBRULE($.mediaInParens)
@@ -1496,31 +1501,21 @@ export function productions(this: CssActionsParser, T: TokenMap) {
     $.startRule()
     $.CONSUME(T.LParen)
 
+    /*
+     * CSS also allows for parentheses to contain
+     * almost anything, including a wild sequence
+     * of tokens (e.g. `@media (!!&) {}`), as it would
+     * be up to the user agent to decide what the content
+     * of the parentheses means. (CSS defines this as
+     * "generalEnclosed" in the spec.)
+     *
+     * But that would mean that detecting errors in
+     * parsing would not be possible. So we only parse
+     * "known" media queries.
+     */
     let node = $.OR([
       { ALT: () => $.SUBRULE($.mediaCondition) },
-      { ALT: () => $.SUBRULE($.mediaFeature) },
-      // in the CSS @media spec, is defined as "generalEnclosed"
-      {
-        ALT: () => {
-          $.startRule()
-          let values: Node[]
-          if (!RECORDING_PHASE) {
-            values = []
-          }
-
-          $.AT_LEAST_ONE(() => {
-            let val = $.SUBRULE($.anyInnerValue)
-            if (!RECORDING_PHASE) {
-              values.push(val)
-            }
-          })
-
-          if (!RECORDING_PHASE) {
-            let location = $.endRule()
-            return new Sequence(values!, undefined, location, this.context)
-          }
-        }
-      }
+      { ALT: () => $.SUBRULE($.mediaFeature) }
     ])
     $.CONSUME(T.RParen)
 
@@ -1602,8 +1597,9 @@ export function productions(this: CssActionsParser, T: TokenMap) {
               }
             ])
           })
-          if (!rule) {
-            return $.wrap(new Keyword(ident.image, undefined, $.getLocationInfo(ident), this.context))
+          if (!RECORDING_PHASE && !rule) {
+            let location = $.endRule()
+            return $.wrap(new Keyword(ident.image, undefined, location, this.context))
           }
           return rule
         }
@@ -1775,7 +1771,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       let location = $.endRule()
       return new AtRule([
         ['name', $.wrap(new Anonymous(name.image, undefined, $.getLocationInfo(name), this.context), true)],
-        ['prelude', $.wrap(new List(selector), 'both')],
+        ['prelude', $.wrap(new List(selector, undefined, $.getLocationFromNodes(selector), this.context), true)],
         ['rules', rules]
       ], undefined, location, this.context)
     }
@@ -1889,6 +1885,10 @@ export function productions(this: CssActionsParser, T: TokenMap) {
             }
           })
 
+          if (!RECORDING_PHASE) {
+            $.endRule()
+          }
+
           return left
         }
       },
@@ -1957,11 +1957,13 @@ export function productions(this: CssActionsParser, T: TokenMap) {
         ALT: () => {
           let values: Node[] = []
           $.CONSUME2(T.LParen)
+          /**
+           * Intentionally omits "generalEnclosed" from spec.
+           * See the note on media queries.
+           */
           let value = $.OR3([
             { ALT: () => $.SUBRULE($.supportsCondition) },
-            { ALT: () => $.SUBRULE($.declaration) },
-            // in the CSS @supports spec, is defined as "generalEnclosed"
-            { ALT: () => $.MANY(() => values.push($.SUBRULE($.anyInnerValue))) }
+            { ALT: () => $.SUBRULE($.declaration) }
           ])
           $.CONSUME2(T.RParen)
 

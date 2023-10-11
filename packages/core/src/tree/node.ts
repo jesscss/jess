@@ -482,11 +482,6 @@ export abstract class Node<
     }
   }
 
-  fround(value: number) {
-    // add "epsilon" to ensure numbers like 1.000000005 (represented as 1.000000004999...) are properly rounded:
-    return Number((value + 2e-16).toFixed(8))
-  }
-
   /**
    * Generates a .js module
    * @todo - Generate a .ts module & .js.map

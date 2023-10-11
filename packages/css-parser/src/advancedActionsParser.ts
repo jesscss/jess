@@ -1,6 +1,14 @@
-import { EmbeddedActionsParser, type IToken } from 'chevrotain'
+import {
+  EmbeddedActionsParser,
+  type IParserConfig,
+  type TokenVocabulary,
+  type IToken,
+  type SubruleMethodOpts,
+  type IOrAlt,
+  type OrMethodOpts
+} from 'chevrotain'
 
-// import type { ParserMethodInternal } from 'chevrotain/src/parse/parser/types'
+import type { ParserMethodInternal } from 'chevrotain/src/parse/parser/types'
 
 import {
   type TreeContext,
@@ -11,6 +19,16 @@ import {
 export const SKIPPED_LABEL = 'Skipped'
 /** The name of the whitespace token */
 export const WS_NAME = 'WS'
+
+const { isArray } = Array
+
+/**
+ * @note copied from 'chevrotain/src/parse/grammar/keys'
+ * We have to copy these because they aren't exported
+ */
+export const BITS_FOR_OCCURRENCE_IDX = 8
+export const OR_IDX = 1 << BITS_FOR_OCCURRENCE_IDX
+export const OPTION_IDX = 2 << BITS_FOR_OCCURRENCE_IDX
 
 /**
  * A parser that can make decisions based on whitespace,
@@ -30,6 +48,31 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
 
   /** Exposed from Chevrotain */
   currIdx: number
+
+  subruleInternal: <ARGS extends unknown[], R>(
+    ruleToCall: ParserMethodInternal<ARGS, R>,
+    idx: number,
+    options?: SubruleMethodOpts<ARGS>
+  ) => R
+
+  getKeyForAutomaticLookahead: (
+    dslMethodIdx: number,
+    occurrence: number,
+  ) => number
+
+  raiseNoAltException: (
+    occurrence: number,
+    errMsgTypes: string | undefined,
+  ) => never
+
+  getLaFuncFromCache: (key: number) => (...args: any[]) => any
+
+  constructor(tokenVocabulary: TokenVocabulary, config: IParserConfig) {
+    super(tokenVocabulary, config)
+    if (!config.skipValidations) {
+      this.subruleInternal = this._subruleInternal.bind(this)
+    }
+  }
 
   /** Separate skipped tokens into a new map */
   // @ts-expect-error - It's defined in Chevrotain as a data property
@@ -71,21 +114,21 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
     super.input = inputTokens
   }
 
-  // subruleInternal<ARGS extends unknown[], R>(
-  //   ruleToCall: ParserMethodInternal<ARGS, R>,
-  //   idx: number,
-  //   options?: SubruleMethodOpts<ARGS>
-  // ): R {
-  //   let name = ruleToCall.ruleName
-  //   let preLength = this.locationStack.length
-  //   // @ts-expect-error - This exists
-  //   let result = super.subruleInternal(ruleToCall, idx, options)
-  //   let postLength = this.locationStack.length
-  //   if (postLength !== preLength) {
-  //     throw new Error(`Rule ${name} did not call endRule()`)
-  //   }
-  //   return result
-  // }
+  _subruleInternal<ARGS extends unknown[], R>(
+    ruleToCall: ParserMethodInternal<ARGS, R>,
+    idx: number,
+    options?: SubruleMethodOpts<ARGS>
+  ): R {
+    let name = ruleToCall.ruleName
+    let preLength = this.locationStack.length
+    // @ts-expect-error - This exists
+    let result = super.subruleInternal(ruleToCall, idx, options)
+    let postLength = this.locationStack.length
+    if (postLength !== preLength) {
+      throw new Error(`Rule ${name} did not call endRule()`)
+    }
+    return result
+  }
 
   /**
    * Used in a GATE.

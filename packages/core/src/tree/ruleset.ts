@@ -44,12 +44,11 @@ export class Ruleset extends Node<RulesetValue> {
   }
 
   toTrimmedString(depth: number = 0): string {
-    let space = ''.padStart(depth * 2)
-    /** The ruleset will have already indented the first line */
+    // let space = ''.padStart(depth * 2)
     let output = ''
     output += `${this.selector.toString()}{`
     output += `${this.rules.toString(depth + 1)}`
-    output += `${space}}`
+    output += '}'
     return output
   }
 
