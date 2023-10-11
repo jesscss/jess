@@ -17,12 +17,12 @@ export type NodeOptions = Record<string, boolean | string | number> & AllNodeOpt
 export type NodeValue = unknown
 export type NodeMap = Map<string, NodeValue>
 export type NodeInValue = NodeValue | NodeMapArray | NodeMap
-export type NodeMapArray = Array<[string, NodeValue]>
-// export type NodeMapArray<
-//   T extends NodeTypeMap = NodeTypeMap,
-//   K = keyof T,
-//   V = T[string]
-// > = Array<[K, V]>
+export type NodeTypeMap = Record<string, NodeValue>
+export type NodeMapArray<
+  T extends NodeTypeMap = NodeTypeMap,
+  K = keyof T,
+  V = T[string]
+> = Array<[K, V]>
 
 export type LocationInfo = [
   startOffset: number,
@@ -72,9 +72,9 @@ export const defineType = <
  * on a passed-in interface.
  */
 export type TypeMap<
-  T extends NodeMapArray = NodeMapArray,
-  K extends keyof T[number] = keyof T[number],
-  V = ValueOf<T[number][1]>
+  T extends NodeTypeMap = NodeTypeMap,
+  K extends keyof T = keyof T,
+  V = ValueOf<T>
 > = Omit<Map<K, V>, 'get' | 'set'> & {
   /**
    * TypeScript sometimes gets confused
@@ -84,20 +84,16 @@ export type TypeMap<
   get(key: any): any
   set(key: any, value: any): any
 } & {
-  [P in T as 'get']: (key: T[0]) => T[1]
+  [P in K as 'get']: <U extends P>(key: U) => T[U]
 } & {
-  [P in T as 'set']: (key: T[0], value: T[1]) => TypeMap<T>
+  [P in K as 'set']: <U extends P>(key: U, value: T[U]) => TypeMap<T>
 }
 
 /**
  * @todo - this allows excess properties on T,
  * but using `Exact` from type-fest caused other issues
  */
-type NodeMapType<T> = T extends NodeMapArray
-  ? {
-      [K in keyof T[number]]: T[number][K][1]
-    }
-  : { value: T }
+type NodeMapType<T> = T extends NodeTypeMap ? T : { value: T }
 
 type CollectionType<T> =
   T extends Array<infer U>
@@ -113,10 +109,16 @@ type CollectionPair<T> =
       ? [K, V]
       : T extends Set<infer U> ? [U, U] : never
 
+type Values<T, K extends keyof T = keyof T> = T[K]
+
+type NodeValueArray<T extends NodeTypeMap> = Array<Values<{
+  [K in keyof T]: [K, T[K]]
+}>>
+
 type NodeValueArg<M extends NodeTypeMap> =
   IsUnknown<M['value']> extends true
-    ? TypeMap<M> | Array<[string, any]>
-    : TypeMap<M> | Array<[string, any]> | M['value']
+    ? TypeMap<M> | NodeValueArray<M>
+    : TypeMap<M> | NodeValueArray<M> | M['value']
 /**
  * The underlying type for all Jess nodes
  */

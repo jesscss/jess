@@ -20,10 +20,6 @@ export type SequenceOptions = {
  * actually be a sequence of values (like for shorthand)
  */
 export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> {
-  toArray() {
-    return this.value.filter(n => n instanceof Node)
-  }
-
   // constructor(
   //   value: Array<string | Node> | NodeMap,
   //   location?: LocationInfo,

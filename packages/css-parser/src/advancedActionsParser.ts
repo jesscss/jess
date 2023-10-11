@@ -1,5 +1,7 @@
 import { EmbeddedActionsParser, type IToken } from 'chevrotain'
 
+// import type { ParserMethodInternal } from 'chevrotain/src/parse/parser/types'
+
 import {
   type TreeContext,
   type LocationInfo
@@ -68,6 +70,22 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
     this.originalInput = value
     super.input = inputTokens
   }
+
+  // subruleInternal<ARGS extends unknown[], R>(
+  //   ruleToCall: ParserMethodInternal<ARGS, R>,
+  //   idx: number,
+  //   options?: SubruleMethodOpts<ARGS>
+  // ): R {
+  //   let name = ruleToCall.ruleName
+  //   let preLength = this.locationStack.length
+  //   // @ts-expect-error - This exists
+  //   let result = super.subruleInternal(ruleToCall, idx, options)
+  //   let postLength = this.locationStack.length
+  //   if (postLength !== preLength) {
+  //     throw new Error(`Rule ${name} did not call endRule()`)
+  //   }
+  //   return result
+  // }
 
   /**
    * Used in a GATE.

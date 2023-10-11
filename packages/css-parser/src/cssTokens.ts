@@ -172,6 +172,10 @@ const tokens = () => ({
       { name: 'Print', pattern: /print/, longer_alt: 'PlainIdent', categories: ['Ident'] },
       { name: 'All', pattern: /all/, longer_alt: 'PlainIdent', categories: ['Ident'] },
 
+      /** Keyframe keywords */
+      { name: 'From', pattern: /from/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'To', pattern: /to/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+
       { name: 'AtKeyword', pattern: '@{{ident}}', categories: ['BlockMarker', 'AtName'] },
       {
         name: 'UrlStart',

@@ -6,12 +6,12 @@ import type { Anonymous } from './anonymous'
 import type { Rules } from './rules'
 import type { Context } from '../context'
 
-export type AtRuleValue = [
-  name: ['name', Anonymous],
+export type AtRuleValue = {
+  name: Anonymous
   /** The prelude */
-  prelude?: ['prelude', Node],
-  rules?: ['rules', Rules]
-]
+  prelude?: Node
+  rules?: Rules
+}
 
 /**
  * A rule like @charset or @media
@@ -43,15 +43,13 @@ export class AtRule extends Node<AtRuleValue> {
 
   toTrimmedString(depth: number = 0): string {
     let { name, prelude, rules } = this
-    let space = ''.padStart(depth * 2)
     /** The ruleset will have already indented the first line */
     let output = `${name}`
     if (prelude) {
       output += prelude.toString()
     }
     if (rules) {
-      output += `{${rules.toString(depth + 1)}`
-      output += `${space}}`
+      output += `{${rules.toString(depth + 1)}}`
     } else {
       output += ';'
     }
@@ -62,11 +60,12 @@ export class AtRule extends Node<AtRuleValue> {
     let node = await super.eval(context) as AtRule
     /** Don't let rooted rules bubble past an at-rule */
     if (node.rules) {
-      let rules = node.rules.value
+      let rules = node.rules
       /**
        * Wrap sub-rules of a media query like Less
        *
        * @todo - do not do this if we're outputting nesting
+       * this probably has to be re-written
        */
       if (context.frames.length !== 0) {
         let rule = await new Ruleset([
@@ -75,11 +74,10 @@ export class AtRule extends Node<AtRuleValue> {
         ])
           .inherit(this)
           .eval(context)
-        rules = [rule]
-        node.rules.value = rules
+        node.rules.value = [rule]
       }
       let rootRules = this.collectRoots()
-      rootRules.forEach(rule => rules.push(rule))
+      rootRules.forEach(rule => rules.value.push(rule))
     }
     return node
   }
