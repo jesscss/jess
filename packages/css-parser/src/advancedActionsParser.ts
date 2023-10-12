@@ -4,8 +4,9 @@ import {
   type TokenVocabulary,
   type IToken,
   type SubruleMethodOpts,
-  type IOrAlt,
-  type OrMethodOpts
+  EOF
+  // type IOrAlt,
+  // type OrMethodOpts
 } from 'chevrotain'
 
 import type { ParserMethodInternal } from 'chevrotain/src/parse/parser/types'
@@ -20,7 +21,7 @@ export const SKIPPED_LABEL = 'Skipped'
 /** The name of the whitespace token */
 export const WS_NAME = 'WS'
 
-const { isArray } = Array
+// const { isArray } = Array
 
 /**
  * @note copied from 'chevrotain/src/parse/grammar/keys'
@@ -39,6 +40,7 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
   /** Indexed by the startOffset of the next token it precedes */
   preSkippedTokenMap: Map<number, IToken[]>
   postSkippedTokenMap: Map<number, IToken[]>
+  /** Boolean flag for used in post node */
   usedSkippedTokens: Set<IToken[]>
 
   context: TreeContext
@@ -206,6 +208,9 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
   // }
 
   protected getLocationInfo(loc: IToken): LocationInfo {
+    if (loc.tokenType === EOF) {
+      return new Array(6).fill(Infinity) as LocationInfo
+    }
     const {
       startOffset,
       startLine,

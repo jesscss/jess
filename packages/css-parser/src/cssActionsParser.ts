@@ -21,7 +21,9 @@ import {
   Color,
   Dimension,
   Anonymous,
-  Keyword
+  Keyword,
+  Rules,
+  Root
 } from '@jesscss/core'
 
 const { isArray } = Array
@@ -192,7 +194,17 @@ export class CssActionsParser extends AdvancedActionsParser {
     return location
   }
 
-  protected getRulesWithComments(existingRules: Node[]) {
+  protected getRulesWithComments(
+    existingRules: Node[] | undefined,
+    nextTokenLocation?: LocationInfo,
+    isRoot?: boolean
+  ) {
+    if (!nextTokenLocation) {
+      nextTokenLocation = this.getLocationInfo(this.LA(1))
+    }
+    if (!existingRules) {
+      return undefined
+    }
     let rules = []
     /**
      * @todo - I think this pattern means that comments after
@@ -202,34 +214,46 @@ export class CssActionsParser extends AdvancedActionsParser {
      */
     // let rule: Node | undefined
 
-    for (let rule of existingRules) {
-      let pre = this.getPrePost(rule.location[0]!)
-      if (isArray(pre)) {
+    const processPrePost = (prePost: Node['pre']) => {
+      if (isArray(prePost)) {
         let i = 0
-        let item = pre[i]
+        let item = prePost[i]
         while (item) {
           if (item instanceof Node) {
-            let prev = pre[i - 1]
+            let prev = prePost[i - 1]
             /** Attach whitespace before comment to comment */
             if (prev) {
               item.pre = [prev]
-              pre.shift()
+              prePost.shift()
               i--
             }
             rules.push(item)
-            pre.shift()
+            prePost.shift()
             i--
           }
-          item = pre[++i]
+          item = prePost[++i]
         }
       }
-      rule.pre = pre
+      return prePost
+    }
+
+    for (let rule of existingRules) {
+      if (rule.pre === 0) {
+        let pre = this.getPrePost(rule.location[0]!)
+        rule.pre = processPrePost(pre)
+      }
       rules.push(rule)
     }
-    return rules
+    let post = this.getPrePost(nextTokenLocation[0]!)
+    let remainder = processPrePost(post)
+    let RulesConstructor = isRoot ? Root : Rules
+    let returnRules =
+      new RulesConstructor(rules, undefined, rules.length ? this.getLocationFromNodes(rules) : 0, this.context)
+    returnRules.post = remainder
+    return returnRules
   }
 
-  protected getPrePost(offset: number, commentsOnly?: boolean, post?: boolean): Node['pre'] {
+  protected getPrePost(offset: number, post?: boolean): Node['pre'] {
     let skipped = post ? this.postSkippedTokenMap.get(offset) : this.preSkippedTokenMap.get(offset)
     if (!skipped) {
       return 0
@@ -247,9 +271,6 @@ export class CssActionsParser extends AdvancedActionsParser {
         return new Comment(token.image, { lineComment: name.includes('Line') }, this.getLocationInfo(token), this.context)
       }
     })
-    if (commentsOnly) {
-      pre = pre.filter(item => item instanceof Comment)
-    }
 
     if (pre.length === 1 && pre[0] === ' ') {
       pre = 1
@@ -261,7 +282,7 @@ export class CssActionsParser extends AdvancedActionsParser {
    * Attaches pre / post whitespace and comments.
    * Note that nodes can be wrapped more than once.
    */
-  protected wrap<T extends Node = Node>(node: T, post?: boolean | 'both', commentsOnly?: boolean): T {
+  protected wrap<T extends Node = Node>(node: T, post?: boolean | 'both'): T {
     if (!(node instanceof Node)) {
       return node
     }
@@ -269,10 +290,10 @@ export class CssActionsParser extends AdvancedActionsParser {
     if (post) {
       if (node.post === 0) {
         let offset = node.location[3]
-        if (!offset && !skipValidations) {
+        if (offset === undefined && !skipValidations) {
           throw new Error(`Node "${node.type}" can't be wrapped`)
         }
-        node.post = this.getPrePost(offset!, commentsOnly, true)
+        node.post = this.getPrePost(offset!, true)
       }
       if (post !== 'both') {
         return node
@@ -280,10 +301,10 @@ export class CssActionsParser extends AdvancedActionsParser {
     }
     if (node.pre === 0) {
       let offset = node.location[0]
-      if (!offset && !skipValidations) {
+      if (offset === undefined && !skipValidations) {
         throw new Error(`Node "${node.type}" can't be wrapped`)
       }
-      node.pre = this.getPrePost(offset!, commentsOnly)
+      node.pre = this.getPrePost(offset!)
     }
     return node
   }

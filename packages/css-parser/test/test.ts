@@ -69,11 +69,16 @@ const invalidCSSOutput = [
   'css/_main/extract-and-length.css',
   'css/_main/comments.css',
   'css/_main/functions.css',
-  'css/_main/javascript.css'
+  'css/_main/javascript.css',
+
+  /** Serialization issues */
+  /** Has a pi value that was not rounded properly */
+  'css/_main/plugin.css',
+  'css/_main/import.css'
 ]
 
 describe.only('can parse Less CSS output', () => {
-  glob.sync(path.join(testData, 'css/_main/media.css'))
+  glob.sync(path.join(testData, 'css/_main/*.css'))
     .map(value => path.relative(testData, value))
     .filter(value => !invalidCSSOutput.includes(value))
     .sort()
