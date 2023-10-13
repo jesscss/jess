@@ -10,8 +10,9 @@ import { SKIPPED_LABEL } from './advancedCstParser'
  * https://www.lifewire.com/css2-vs-css3-3466978
  * https://www.w3.org/TR/css-syntax-3/
  *
- * Fragments and Tokens must be defined in order
- * ({{references}} must follow definitions)
+ * @todo
+ * XRegExp should accept an object rather than an array of arrays,
+ * which would make extending easier.
  */
 const fragments = () => [
   ['newline', '\\n|\\r\\n?|\\f'],

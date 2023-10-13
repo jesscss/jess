@@ -4,7 +4,7 @@ exports[`CSS CST Visitor > visits every visitor method > Calc 1`] = `
 Root {
   "data": Map {
     "value" => [
-      Rule {
+      Ruleset {
         "data": Map {
           "selector" => SelectorSequence {
             "data": Map {
@@ -22,7 +22,7 @@ Root {
                     1,
                   ],
                   "options": undefined,
-                  "post": [],
+                  "post": 0,
                   "pre": 0,
                   "visible": true,
                 },
@@ -37,11 +37,11 @@ Root {
               1,
             ],
             "options": undefined,
-            "post": 0,
+            "post": 1,
             "pre": 0,
             "visible": true,
           },
-          "value" => Ruleset {
+          "rules" => Rules {
             "data": Map {
               "value" => [
                 Declaration {
@@ -50,66 +50,69 @@ Root {
                     "value" => Call {
                       "data": Map {
                         "name" => "calc",
-                        "value" => Sequence {
+                        "args" => List {
                           "data": Map {
                             "value" => [
-                              Dimension {
+                              Operation {
                                 "data": Map {
                                   "value" => [
-                                    1,
+                                    Dimension {
+                                      "data": Map {
+                                        "value" => [
+                                          1,
+                                        ],
+                                      },
+                                      "location": [
+                                        12,
+                                        1,
+                                        13,
+                                        12,
+                                        1,
+                                        13,
+                                      ],
+                                      "options": undefined,
+                                      "post": 1,
+                                      "pre": 0,
+                                      "visible": true,
+                                    },
+                                    "+",
+                                    Dimension {
+                                      "data": Map {
+                                        "value" => [
+                                          1,
+                                        ],
+                                      },
+                                      "location": [
+                                        16,
+                                        1,
+                                        17,
+                                        16,
+                                        1,
+                                        17,
+                                      ],
+                                      "options": undefined,
+                                      "post": 0,
+                                      "pre": 1,
+                                      "visible": true,
+                                    },
                                   ],
                                 },
                                 "location": [
                                   12,
                                   1,
                                   13,
-                                  12,
+                                  16,
                                   1,
-                                  13,
+                                  17,
                                 ],
                                 "options": undefined,
                                 "post": 0,
                                 "pre": 0,
                                 "visible": true,
                               },
-                              Anonymous {
-                                "data": Map {
-                                  "value" => "+",
-                                },
-                                "location": [
-                                  14,
-                                  1,
-                                  15,
-                                  14,
-                                  1,
-                                  15,
-                                ],
-                                "options": undefined,
-                                "post": 0,
-                                "pre": 1,
-                                "visible": true,
-                              },
-                              Dimension {
-                                "data": Map {
-                                  "value" => [
-                                    1,
-                                  ],
-                                },
-                                "location": [
-                                  16,
-                                  1,
-                                  17,
-                                  16,
-                                  1,
-                                  17,
-                                ],
-                                "options": undefined,
-                                "post": 0,
-                                "pre": 1,
-                                "visible": true,
-                              },
                             ],
                           },
+                          "evaluated": undefined,
                           "location": [
                             12,
                             1,
@@ -133,8 +136,8 @@ Root {
                         18,
                       ],
                       "options": undefined,
-                      "post": 0,
-                      "pre": 0,
+                      "post": 1,
+                      "pre": 1,
                       "visible": true,
                     },
                     "important" => undefined,
@@ -147,9 +150,11 @@ Root {
                     1,
                     18,
                   ],
-                  "options": {},
+                  "options": {
+                    "assign": ":",
+                  },
                   "post": 0,
-                  "pre": [],
+                  "pre": 1,
                   "visible": true,
                 },
               ],
@@ -202,7 +207,7 @@ exports[`CSS CST Visitor > visits every visitor method > Qualified Rule 1`] = `
 Root {
   "data": Map {
     "value" => [
-      Rule {
+      Ruleset {
         "data": Map {
           "selector" => SelectorSequence {
             "data": Map {
@@ -220,7 +225,7 @@ Root {
                     1,
                   ],
                   "options": undefined,
-                  "post": [],
+                  "post": 0,
                   "pre": 0,
                   "visible": true,
                 },
@@ -235,17 +240,17 @@ Root {
               1,
             ],
             "options": undefined,
-            "post": 0,
+            "post": 1,
             "pre": 0,
             "visible": true,
           },
-          "value" => Ruleset {
+          "rules" => Rules {
             "data": Map {
               "value" => [
                 Declaration {
                   "data": Map {
                     "name" => "color",
-                    "value" => Anonymous {
+                    "value" => Keyword {
                       "data": Map {
                         "value" => "red",
                       },
@@ -259,7 +264,7 @@ Root {
                       ],
                       "options": undefined,
                       "post": 0,
-                      "pre": 0,
+                      "pre": 1,
                       "visible": true,
                     },
                     "important" => undefined,
@@ -272,9 +277,12 @@ Root {
                     1,
                     14,
                   ],
-                  "options": {},
+                  "options": {
+                    "assign": ":",
+                    "semi": true,
+                  },
                   "post": 0,
-                  "pre": [],
+                  "pre": 1,
                   "visible": true,
                 },
               ],
@@ -283,12 +291,12 @@ Root {
               4,
               1,
               5,
-              14,
+              13,
               1,
-              15,
+              14,
             ],
             "options": undefined,
-            "post": 0,
+            "post": 1,
             "pre": 0,
             "visible": true,
           },

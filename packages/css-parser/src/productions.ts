@@ -7,7 +7,7 @@ import {
   type LocationInfo,
   type AssignmentType,
   type Operator,
-  Root,
+  Custom,
   Anonymous,
   Ruleset,
   Declaration,
@@ -64,7 +64,9 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       if (charset) {
         rules.unshift(new Anonymous(charset.image, undefined, $.getLocationInfo(charset), context!))
       }
-      root = $.getRulesWithComments(rules, undefined, true)
+      if (!root) {
+        root = $.getRulesWithComments(rules, undefined, true)
+      }
 
       this.context.scope = initialScope!
       return root
@@ -701,13 +703,21 @@ export function productions(this: CssActionsParser, T: TokenMap) {
         ALT: () => {
           name = $.CONSUME(T.CustomProperty)
           assign = $.CONSUME2(T.Assign)
-          let nodes: Node[] = []
+          let nodes: Node[]
+          if (!RECORDING_PHASE) {
+            nodes = []
+          }
           $.startRule()
           /** @todo - should collect ALL tokens in a stream, including whitespace */
-          $.MANY(() => nodes.push($.SUBRULE($.customValue)))
+          $.MANY(() => {
+            let val = $.SUBRULE($.customValue)
+            if (!RECORDING_PHASE) {
+              nodes!.push(val)
+            }
+          })
           if (!RECORDING_PHASE) {
             let location = $.endRule()
-            value = new Sequence(nodes, undefined, location, this.context)
+            value = new Sequence(nodes!, undefined, location, this.context)
           }
         }
       }
@@ -903,9 +913,14 @@ export function productions(this: CssActionsParser, T: TokenMap) {
   })
 
   $.RULE('squareValue', (ctx: RuleContext = {}) => {
-    $.CONSUME(T.LSquare)
-    $.CONSUME(T.Ident)
-    $.CONSUME(T.RSquare)
+    $.startRule()
+    let left = $.CONSUME(T.LSquare)
+    let ident = $.CONSUME(T.Ident)
+    let right = $.CONSUME(T.RSquare)
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      return new Custom(`${left.image}${ident.image}${right.image}`, undefined, location, this.context)
+    }
   })
 
   // value
@@ -1037,7 +1052,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       let right: Node = $.SUBRULE2($.mathProduct)
 
       if (!RECORDING_PHASE) {
-        left = new Operation([left, op!.image as Operator, right], undefined, 0, this.context)
+        left = new Operation([left, op!.image as Operator, right], { inCalc: true }, 0, this.context)
       }
     })
     if (!RECORDING_PHASE) {
@@ -1064,7 +1079,7 @@ export function productions(this: CssActionsParser, T: TokenMap) {
       let right: Node = $.SUBRULE2($.mathValue)
 
       if (!RECORDING_PHASE) {
-        left = new Operation([left, op!.image as Operator, right], undefined, 0, this.context)
+        left = new Operation([left, op!.image as Operator, right], { inCalc: true }, 0, this.context)
       }
     })
 

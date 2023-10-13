@@ -21,6 +21,9 @@ export class CssErrorMessageProvider implements IParserErrorMessageProvider {
   /**
    * This error message needs to be reduced, because the lookahead strategy
    * can generate thousands of possible paths.
+   *
+   * @todo - we may be able to eliminate this by addressing all ambiguity in the parser
+   * from chevrotain-allstar
    */
   buildNoViableAltMessage(
     options: Parameters<IParserErrorMessageProvider['buildNoViableAltMessage']>[0]
@@ -28,8 +31,9 @@ export class CssErrorMessageProvider implements IParserErrorMessageProvider {
     const initialTokens: string[] = []
     options.expectedPathsPerAlt.forEach(expectedPath => {
       expectedPath.forEach(path => {
-        if (!initialTokens.includes(path[0]?.name)) {
-          initialTokens.push(path[0]?.name)
+        let pathStr = path[0]?.name
+        if (path && !initialTokens.includes(pathStr!)) {
+          initialTokens.push(pathStr!)
         }
       })
     })
@@ -40,13 +44,13 @@ export class CssErrorMessageProvider implements IParserErrorMessageProvider {
     if (rest.length > 0) {
       err += `(and ${rest.length} more) `
     }
-    err += `but found '${options.actual[0].image}'`
+    err += `but found '${options.actual[0]!.image}'`
     return err
   }
 
   buildEarlyExitMessage(
     options: Parameters<IParserErrorMessageProvider['buildEarlyExitMessage']>[0]
   ) {
-    return `Expected a ${camelToSpaces(options.ruleName)}, but found '${options.actual[0].image}'`
+    return `Expected a ${camelToSpaces(options.ruleName)}, but found '${options.actual[0]!.image}'`
   }
 }

@@ -2,6 +2,7 @@ import { Node, defineType } from './node'
 import { calculate, type Operator } from './util/calculate'
 import { type Context } from '../context'
 import { isNode } from './util'
+import round from 'lodash-es/round'
 
 type ColorValues = [number, number, number, number] | number[]
 
@@ -193,9 +194,9 @@ export class Color extends Node<string | ColorFormat> {
       case 'hsl': { // eslint-disable-line no-fallthrough
         let [h, s, l] = this.hsla
         args = [
-          this.fround(h),
-          `${this.fround(s * 100)}%`,
-          `${this.fround(l * 100)}%`
+          round(h, 8),
+          `${round(s * 100, 8)}%`,
+          `${round(l * 100, 8)}%`
         ].concat(args)
       }
     }

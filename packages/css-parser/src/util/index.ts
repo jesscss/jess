@@ -44,7 +44,7 @@ interface ILexer {
 const $buildFragments = (rawFragments: string[][]) => {
   const fragments: Record<string, RegExp> = {}
   rawFragments.forEach(fragment => {
-    fragments[fragment[0]] = XRegExp.build(fragment[1], fragments)
+    fragments[fragment[0]!] = XRegExp.build(fragment[1]!, fragments)
   })
   return fragments
 }
@@ -77,11 +77,11 @@ export const createLexerDefinition = (rawFragments: string[][], rawTokens: Writa
           lexer.modes[mode] = [token]
         } else {
           /** Build tokens from bottom to top */
-          lexer.modes[mode].unshift(token)
+          lexer.modes[mode]!.unshift(token)
         }
       }
       if (typeof rawToken === 'string') {
-        const token = lexer.modes.Default.find(token => token.name === rawToken)!
+        const token = lexer.modes.Default!.find(token => token.name === rawToken)!
         addToken(token)
         return
       }
@@ -134,7 +134,7 @@ export const createLexerDefinition = (rawFragments: string[][], rawTokens: Writa
         ...groupValue,
         ...tokenCategories,
         ...rest
-      })
+      } as ITokenConfig)
       T[name] = token
       addToken(token)
     })

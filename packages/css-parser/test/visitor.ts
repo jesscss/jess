@@ -16,14 +16,14 @@ import { CssCstVisitor } from '../src/cssCstVisitor'
 // const getMethods = (obj: Obj) => distinctDeepFunctions(obj).filter(
 //   name => name !== 'constructor' && !~name.indexOf('__'))
 
-describe.skip('CSS CST Visitor', () => {
+describe('CSS CST Visitor', () => {
   describe('produces a valid AST', () => {
     let parser: CssParser
     beforeAll(() => {
       parser = new CssParser()
     })
     it('should produce a valid AST', () => {
-      const { tree } = parser.parseTree('a/**/b { color: red blue; }')
+      const { tree } = parser.parse('a/**/b { color: red blue; }')
       expect(`${tree}`).toBeString(`
         a/**/b {
           color: red blue;
@@ -42,15 +42,15 @@ describe.skip('CSS CST Visitor', () => {
      * will be all NaN.
     */
     it('Root', () => {
-      let { tree } = parser.parseTree('')
+      let { tree } = parser.parse('')
       expect(tree.type).toBe('Root')
     })
     it('Qualified Rule', () => {
-      let { tree } = parser.parseTree('a { color: red; }')
+      let { tree } = parser.parse('a { color: red; }')
       expect(tree).toMatchSnapshot()
     })
     it('Calc', () => {
-      let { tree } = parser.parseTree('a { b: calc(1 + 1) }')
+      let { tree } = parser.parse('a { b: calc(1 + 1) }')
       expect(tree).toMatchSnapshot()
     })
   })
