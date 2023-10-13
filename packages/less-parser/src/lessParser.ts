@@ -1,7 +1,7 @@
 import type { TokenVocabulary, TokenType } from 'chevrotain'
 // import { LLStarLookaheadStrategy } from 'chevrotain-allstar'
 import type { Rule, RuleContext as CssRuleContext, CssParserConfig } from '@jesscss/css-parser'
-import { CssParser } from '@jesscss/css-parser'
+import { CssActionsParser } from '@jesscss/css-parser'
 import { type LessTokenType } from './lessTokens'
 import {
   atVariableDeclarations,
@@ -51,7 +51,7 @@ export type RuleContext = CssRuleContext & {
  * Unlike the historical Less parser, this parser
  * avoids all backtracking
  */
-export class LessParser extends CssParser {
+export class LessParser extends CssActionsParser {
   T: TokenMap
   looseMode: boolean
 
