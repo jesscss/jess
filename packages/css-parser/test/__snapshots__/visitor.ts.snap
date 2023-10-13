@@ -105,7 +105,9 @@ Root {
                                   1,
                                   17,
                                 ],
-                                "options": undefined,
+                                "options": {
+                                  "inCalc": true,
+                                },
                                 "post": 0,
                                 "pre": 0,
                                 "visible": true,
@@ -250,7 +252,7 @@ Root {
                 Declaration {
                   "data": Map {
                     "name" => "color",
-                    "value" => Keyword {
+                    "value" => General {
                       "data": Map {
                         "value" => "red",
                       },
@@ -262,7 +264,9 @@ Root {
                         1,
                         14,
                       ],
-                      "options": undefined,
+                      "options": {
+                        "type": "Keyword",
+                      },
                       "post": 0,
                       "pre": 1,
                       "visible": true,

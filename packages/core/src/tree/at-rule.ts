@@ -2,12 +2,12 @@ import { Node, defineType } from './node'
 import { SelectorSequence } from './selector-sequence'
 import { Ampersand } from './ampersand'
 import { Ruleset } from './ruleset'
-import type { Anonymous } from './anonymous'
+import type { General } from './general'
 import type { Rules } from './rules'
 import type { Context } from '../context'
 
 export type AtRuleValue = {
-  name: Anonymous
+  name: General<'Name'>
   /** The prelude */
   prelude?: Node
   rules?: Rules
@@ -29,7 +29,7 @@ export class AtRule extends Node<AtRuleValue> {
     return this.data.get('name')
   }
 
-  set name(v: Anonymous) {
+  set name(v: General) {
     this.data.set('name', v)
   }
 

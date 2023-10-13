@@ -1,10 +1,10 @@
 import { defineType } from './node'
 import { Call, type CallValue } from './call'
 import { type Quoted } from './quoted'
-import { type Anonymous } from './anonymous'
+import { type General } from './general'
 
 export type UrlValue = CallValue & {
-  value: Quoted | Anonymous
+  value: Quoted | General<'Url'>
 }
 /**
  * e.g. url('foo.png')

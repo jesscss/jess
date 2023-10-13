@@ -23,7 +23,7 @@ export class Interpolated<O extends NodeOptions = NodeOptions> extends Node<Inte
   async eval(context: Context): Promise<Anonymous> {
     let replacements = this.data.get('replacements')
     if (!replacements) {
-      return await super.eval(context)
+      return new Anonymous(this.value).inherit(this)
     }
     replacements = await Promise.all(replacements.map(async (n: Node) => await n.eval(context)))
     let value = this.value.replace(/##/g, _ => String(replacements.shift()))

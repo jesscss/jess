@@ -261,7 +261,7 @@ export class Rules extends Node<Node[]> {
               if (isNode(node, 'VarDeclaration')) {
                 result = node.clone()
                 if (node.name instanceof Node) {
-                  node.name = await node.name.eval(context)
+                  node.name = await node.name.eval(context) as Name
                 }
               } else {
                 if (node instanceof Declaration) {

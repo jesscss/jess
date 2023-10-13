@@ -1,5 +1,5 @@
 import type { Ampersand } from '../ampersand'
-import type { Anonymous } from '../anonymous'
+import type { General } from '../general'
 import type { AtRule } from '../at-rule'
 import type { Call } from '../call'
 import type { Declaration } from '../declaration'
@@ -28,7 +28,7 @@ import type { Rest } from '../rest'
  * @todo - Is there a way to use mapped types for this?
  */
 export function isNode(value: any, type: 'Ampersand'): value is Ampersand
-export function isNode(value: any, type: 'Anonymous'): value is Anonymous
+export function isNode(value: any, type: 'General'): value is General
 export function isNode(value: any, type: 'AtRule'): value is AtRule
 export function isNode(value: any, type: 'Call'): value is Call
 export function isNode(value: any, type: 'Declaration'): value is Declaration

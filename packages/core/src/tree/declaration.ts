@@ -6,7 +6,7 @@ import { isNode } from './util'
 import { Nil } from './nil'
 import type { Context } from '../context'
 import { Interpolated } from './interpolated'
-import type { Anonymous } from './anonymous'
+import type { General } from './general'
 import {
   type BaseDeclarationValue,
   type Name,
@@ -21,7 +21,7 @@ export type DeclarationOptions = BaseDeclarationOptions & {
 export type DeclarationValue = BaseDeclarationValue & {
   value: Node
   /** The actual string representation of important, if it exists */
-  important?: Anonymous
+  important?: General<'Flag'>
 }
 
 /**
@@ -51,7 +51,7 @@ export class Declaration<O extends DeclarationOptions = DeclarationOptions, N ex
     return this.data.get('important')
   }
 
-  set important(v: Anonymous | undefined) {
+  set important(v: General<'Flag'> | undefined) {
     this.data.set('important', v)
   }
 

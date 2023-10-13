@@ -13,7 +13,7 @@ import { LLStarLookaheadStrategy } from 'chevrotain-allstar'
 import { AdvancedActionsParser } from './advancedActionsParser'
 
 import { type CssTokenType } from './cssTokens'
-import { productions } from './productions'
+import * as productions from './productions'
 import {
   type LocationInfo,
   Node,
@@ -21,9 +21,9 @@ import {
   Color,
   Dimension,
   Anonymous,
-  Keyword,
   Rules,
-  Root
+  Root,
+  General
 } from '@jesscss/core'
 
 const { isArray } = Array
@@ -100,8 +100,8 @@ export class CssActionsParser extends AdvancedActionsParser {
   customValue: Rule
   innerCustomValue: Rule
 
-  function: Rule
-  functionArgs: Rule<(ctx?: RuleContext) => void>
+  func: Rule
+  funcArgs: Rule<(ctx?: RuleContext) => void>
   knownFunctions: Rule
   varFunction: Rule
   calcFunction: Rule
@@ -178,7 +178,10 @@ export class CssActionsParser extends AdvancedActionsParser {
     this.T = T
     this.legacyMode = legacyMode
 
-    productions.call(this, T)
+    for (let [key, value] of Object.entries(productions)) {
+      let rule = value.call(this, T)
+      this.RULE(key, rule)
+    }
 
     if (this.constructor === CssActionsParser) {
       this.performSelfAnalysis()
@@ -322,7 +325,7 @@ export class CssActionsParser extends AdvancedActionsParser {
 
     if (tokenMatcher(token, T.Ident)) {
       /** @todo - check to see if it's a color */
-      return new Keyword(tokValue, undefined, this.getLocationInfo(token), this.context)
+      return new General(tokValue, { type: 'Keyword' }, this.getLocationInfo(token), this.context)
     } else if (tokenMatcher(token, T.Dimension)) {
       dimValue = [parseFloat(token.payload[0]), token.payload[1]]
       return getDimension(dimValue)
