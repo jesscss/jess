@@ -1,5 +1,5 @@
 import { Node, defineType, type NodeOptions } from './node'
-import { Anonymous } from './anonymous'
+import { General } from './general'
 import type { Context } from '../context'
 
 export type InterpolatedValue = {
@@ -20,14 +20,15 @@ export type InterpolatedValue = {
  *     - `--prop-@{foo}` is an interpolated property
  */
 export class Interpolated<O extends NodeOptions = NodeOptions> extends Node<InterpolatedValue, O> {
-  async eval(context: Context): Promise<Anonymous> {
+  async eval(context: Context): Promise<General> {
     let replacements = this.data.get('replacements')
     if (!replacements) {
-      return new Anonymous(this.value).inherit(this)
+      return new General(this.value, { type: 'Anonymous' }).inherit(this)
     }
     replacements = await Promise.all(replacements.map(async (n: Node) => await n.eval(context)))
-    let value = this.value.replace(/##/g, _ => String(replacements.shift()))
-    let node = new Anonymous(value).inherit(this)
+    // eslint-disable-next-line no-control-regex
+    let value = this.value.replace(/\x00/g, _ => String(replacements.shift()))
+    let node = new General(value, { type: 'Anonymous' }).inherit(this)
     return node
   }
 }

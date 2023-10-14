@@ -136,7 +136,7 @@ export abstract class Node<
   location: LocationInfo | []
   readonly treeContext: TreeContext
 
-  options: O & AllNodeOptions | undefined
+  _options: Partial<O & AllNodeOptions> | undefined
 
   readonly type: string
   readonly shortType: string
@@ -187,7 +187,15 @@ export abstract class Node<
       value: treeContext ?? new TreeContext(),
       writable: true
     })
-    this.options = options
+    this._options = options
+  }
+
+  get options(): Partial<O & AllNodeOptions> {
+    let opts = this._options
+    if (!opts) {
+      opts = this._options = {} as Partial<O & AllNodeOptions>
+    }
+    return opts
   }
 
   get value() {
@@ -332,7 +340,7 @@ export abstract class Node<
        * in the old map.
        */
       new Map(this.data),
-      this.options,
+      this._options,
       this.location,
       this.treeContext
     )

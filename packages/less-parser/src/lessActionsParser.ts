@@ -1,17 +1,9 @@
 import type { TokenVocabulary, TokenType } from 'chevrotain'
 // import { LLStarLookaheadStrategy } from 'chevrotain-allstar'
 import type { Rule, RuleContext as CssRuleContext, CssParserConfig } from '@jesscss/css-parser'
-import { CssActionsParser } from '@jesscss/css-parser'
+import { CssActionsParser, productions as cssProductions } from '@jesscss/css-parser'
 import { type LessTokenType } from './lessTokens'
-import {
-  atVariableDeclarations,
-  expressionsAndValues,
-  mixinsAndNamespaces,
-  extendSelectors,
-  extendRoot,
-  guards,
-  atRuleBubbling
-} from './productions'
+import * as productions from './productions'
 
 // import root from './productions/root'
 // import atRules from './productions/atRules'
@@ -51,7 +43,7 @@ export type RuleContext = CssRuleContext & {
  * Unlike the historical Less parser, this parser
  * avoids all backtracking
  */
-export class LessParser extends CssActionsParser {
+export class LessActionsParser extends CssActionsParser {
   T: TokenMap
   looseMode: boolean
 
@@ -101,17 +93,16 @@ export class LessParser extends CssActionsParser {
     const $ = this
 
     /** Less extensions */
-    ;[
-      extendRoot,
-      atVariableDeclarations,
-      expressionsAndValues,
-      guards,
-      mixinsAndNamespaces,
-      extendSelectors,
-      atRuleBubbling
-    ].forEach(ext => ext.call($, T))
+    for (let [key, value] of Object.entries(productions)) {
+      let rule = value.call(this, T)
+      if (key in cssProductions) {
+        this.OVERRIDE_RULE(key, rule)
+      } else {
+        this.RULE(key, rule)
+      }
+    }
 
-    if ($.constructor === LessParser) {
+    if ($.constructor === LessActionsParser) {
       $.performSelfAnalysis()
     }
   }

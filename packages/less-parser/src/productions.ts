@@ -1,6 +1,12 @@
-import type { LessParser as P, TokenMap, RuleContext } from './lessParser'
-import { tokenMatcher } from 'chevrotain'
-import { main as cssMain } from '@jesscss/css-parser'
+import type { LessActionsParser as P, TokenMap, RuleContext } from './lessActionsParser'
+import {
+  tokenMatcher,
+  type IToken
+} from 'chevrotain'
+import {
+  main as cssMain,
+  declaration as cssDeclaration
+} from '@jesscss/css-parser'
 
 import {
   TreeContext,
@@ -31,7 +37,10 @@ import {
   AttributeSelector,
   AtRule,
   QueryCondition,
-  Token
+  Token,
+  Interpolated,
+  Name,
+  Reference
 } from '@jesscss/core'
 
 
@@ -91,26 +100,59 @@ export function declarationList(this: P, T: TokenMap) {
   return cssMain.call(this, T, new Map<'rule', typeof ruleAlt>([['rule', ruleAlt]]))
 }
 
+let interpolatedRegex = /([$@]){([^}]+)}/
+let charPlaceholder = String.fromCharCode(0)
+
 export function declaration(this: P, T: TokenMap) {
   const $ = this
+
+  const getInterpolated = (name: string, location: LocationInfo): Interpolated => {
+    let nodes: Node[] = []
+    let result: RegExpExecArray | null
+
+    let outputName = name
+    
+    while (result = interpolatedRegex.exec(name)) {
+      let [match, propOrVar, value] = result
+      outputName = outputName.replace(match, charPlaceholder)
+      nodes.push(new Reference(value!, { type: propOrVar === '$' ? 'property' : 'variable' }))
+    }
+    return new Interpolated([
+      ['value', outputName],
+      ['replacements', nodes]
+    ], undefined, location, this.context)
+  }
 
   let ruleAlt = [
     {
       ALT: () => {
+        let name: IToken
         $.OR2([
           {
-            ALT: () => $.CONSUME(T.Ident)
+            ALT: () => name = $.CONSUME(T.Ident)
           },
           {
             GATE: () => $.legacyMode,
-            ALT: () => $.CONSUME(T.LegacyPropIdent)
+            ALT: () => name = $.CONSUME(T.LegacyPropIdent)
           }
         ])
-        $.CONSUME(T.Assign)
-        $.SUBRULE($.valueList)
+        let assign = $.CONSUME(T.Assign)
+        let value = $.SUBRULE($.valueList)
+        let important: IToken | undefined
+
         $.OPTION(() => {
-          $.CONSUME(T.Important)
+          important = $.CONSUME(T.Important)
         })
+        if (!$.RECORDING_PHASE) {
+          let nameNode: Name
+          let nameValue = name!.image
+          if (nameValue.includes('@') || nameValue.includes('$')) {
+            nameNode = getInterpolated(nameValue, $.getLocationInfo(name!))
+          } else {
+            nameNode = $.wrap(new General(name!.image, { type: 'Name' }, $.getLocationInfo(name!), this.context), true)
+          }
+          return [nameNode, assign, value, important]
+        }
       }
     },
     {
@@ -124,6 +166,8 @@ export function declaration(this: P, T: TokenMap) {
       }
     }
   ]
+
+  return cssDeclaration.call(this, T, new Map<'rule', typeof ruleAlt>([['rule', ruleAlt]]))
 }
 
   // $.OVERRIDE_RULE('mediaQuery', () => {

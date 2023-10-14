@@ -132,7 +132,7 @@ export function main(this: C, T: TokenMap, altMap?: AltMap<'rule'>) {
           if (!(value instanceof Node)) {
             /** This is a semi-colon token */
             if (lastRule) {
-              lastRule.options = { ...(lastRule.options ?? {}), semi: true }
+              lastRule.options.semi = true
             } else {
               rules.push(new Token(';', { type: 'Semi' }, $.getLocationInfo($.LA(1)), context))
             }

@@ -27,8 +27,6 @@ type ReferenceParams = ConstructorParameters<NodeType>
  * which can itself contain a reference (a variable variable).
  */
 export class Reference extends Node<string | Interpolated, ReferenceOptions> {
-  options: ReferenceOptions
-
   constructor(...args: ReferenceParams) {
     /** Default to a variable-type reference */
     args[1] ??= { type: 'variable' }
@@ -36,9 +34,9 @@ export class Reference extends Node<string | Interpolated, ReferenceOptions> {
   }
 
   toTrimmedString(): string {
-    const { type } = this.options ?? {}
+    const { type } = this.options
     const { value } = this
-    switch (type) {
+    switch (type!) {
       case 'variable':
         return `$${value}`
       case 'property':

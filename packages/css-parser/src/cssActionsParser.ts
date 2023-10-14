@@ -20,7 +20,7 @@ import {
   Comment,
   Color,
   Dimension,
-  Anonymous,
+  Token,
   Rules,
   Root,
   General
@@ -353,7 +353,7 @@ export class CssActionsParser extends AdvancedActionsParser {
     } else if (tokenMatcher(token, T.Color)) {
       return new Color(tokValue, undefined, this.getLocationInfo(token), this.context)
     } else {
-      return new Anonymous(tokValue, undefined, this.getLocationInfo(token), this.context)
+      return new Token(tokValue, { type: token.tokenType.name }, this.getLocationInfo(token), this.context)
     }
   }
 }

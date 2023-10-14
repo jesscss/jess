@@ -59,10 +59,7 @@ export class Ruleset extends Node<RulesetValue> {
       let sels = await this.selector.eval(context)
       let hoistToRoot = this.options?.hoistToRoot ?? context.opts.collapseNesting
       if (hoistToRoot) {
-        rule.options = {
-          ...this.options ?? {},
-          hoistToRoot
-        }
+        rule.options.hoistToRoot = true
       }
       context.opts.collapseNesting = collapseNesting
 

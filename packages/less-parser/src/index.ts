@@ -2,11 +2,11 @@ import { type IToken, type CstNode, Lexer } from 'chevrotain'
 import { lessTokens, lessFragments } from './lessTokens'
 import type { IParseResult } from '@jesscss/css-parser'
 import { createLexerDefinition } from '@jesscss/css-parser'
-import { LessParser, type LessParserConfig, type TokenMap } from './lessParser'
+import { LessParser, type LessParserConfig, type TokenMap } from './lessActionsParser'
 import { LessErrorMessageProvider } from './lessErrorMessageProvider'
 import type { ConditionalPick } from 'type-fest'
 
-export * from './lessParser'
+export * from './lessActionsParser'
 export * from './lessTokens'
 
 const errorMessageProvider = new LessErrorMessageProvider()
