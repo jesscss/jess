@@ -5,7 +5,9 @@ import {
 } from 'chevrotain'
 import {
   main as cssMain,
-  declaration as cssDeclaration
+  declaration as cssDeclaration,
+  mediaInParens as cssMediaInParens,
+  simpleSelector as cssSimpleSelector
 } from '@jesscss/css-parser'
 
 import {
@@ -40,8 +42,11 @@ import {
   Token,
   Interpolated,
   Name,
-  Reference
+  Reference,
+  Extend,
+  ExtendList
 } from '@jesscss/core'
+import { Condition } from '@jesscss/core'
 
 
 /** Extensions of the CSS language */
@@ -157,12 +162,34 @@ export function declaration(this: P, T: TokenMap) {
     },
     {
       ALT: () => {
-        $.OR3([
+        let RECORDING_PHASE = $.RECORDING_PHASE
+        let nodes: Node[]
+        if (!RECORDING_PHASE) {
+          nodes = []
+        }
+        let name = $.OR3([
           { ALT: () => $.CONSUME(T.InterpolatedCustomProperty) },
           { ALT: () => $.CONSUME(T.CustomProperty) }
         ])
-        $.CONSUME2(T.Assign)
-        $.MANY(() => $.SUBRULE($.customValue))
+        let assign = $.CONSUME2(T.Assign)
+        $.MANY(() => {
+          let val = $.SUBRULE($.customValue)
+          if (!RECORDING_PHASE) {
+            nodes!.push(val)
+          }
+        })
+        if (!RECORDING_PHASE) {
+          let location = $.endRule()
+          let nameNode: Name
+          let nameValue = name!.image
+          if (nameValue.includes('@') || nameValue.includes('$')) {
+            nameNode = getInterpolated(nameValue, $.getLocationInfo(name!))
+          } else {
+            nameNode = $.wrap(new General(name!.image, { type: 'Name' }, $.getLocationInfo(name!), this.context), true)
+          }
+          let value = new Sequence(nodes!, undefined, location, this.context)
+          return [nameNode, assign, value]
+        }
       }
     }
   ]
@@ -170,34 +197,12 @@ export function declaration(this: P, T: TokenMap) {
   return cssDeclaration.call(this, T, new Map<'rule', typeof ruleAlt>([['rule', ruleAlt]]))
 }
 
-  // $.OVERRIDE_RULE('mediaQuery', () => {
-  //   $.OR([
-  //     {
-  //       /** Allow escaped strings */
-  //       GATE: isEscapedString,
-  //       ALT: () => $.SUBRULE($.string)
-  //     },
-  //     { ALT: () => $.CONSUME(T.AtKeyword) },
-  //     { ALT: () => $.SUBRULE($.mediaCondition) },
-  //     {
-  //       ALT: () => {
-  //         $.OPTION(() => {
-  //           $.OR2([
-  //             { ALT: () => $.CONSUME(T.Not) },
-  //             { ALT: () => $.CONSUME(T.Only) }
-  //           ])
-  //         })
-  //         $.SUBRULE($.mediaType)
-  //         $.OPTION2(() => {
-  //           $.CONSUME(T.And)
-  //           $.SUBRULE($.mediaConditionWithoutOr)
-  //         })
-  //       }
-  //     }
-  //   ])
-  // })
+export function mediaInParens(this: P, T: TokenMap) {
+  const $ = this
 
-  $.OVERRIDE_RULE('mediaInParens', () => {
+  let isEscaped = isEscapedString.bind(this, T)
+
+  return () =>
     $.OR([
       /**
        * It's up to the Less author to validate that this will produce
@@ -205,7 +210,7 @@ export function declaration(this: P, T: TokenMap) {
        */
       {
         /** Allow escaped strings */
-        GATE: isEscapedString,
+        GATE: isEscaped,
         ALT: () => $.SUBRULE($.string)
       },
       /**
@@ -214,20 +219,15 @@ export function declaration(this: P, T: TokenMap) {
        */
       { ALT: () => $.SUBRULE($.valueReference) },
       {
-        ALT: () => {
-          $.CONSUME(T.LParen)
-          $.OR2([
-            { ALT: () => $.SUBRULE($.mediaCondition) },
-            { ALT: () => $.SUBRULE($.mediaFeature) }
-          ])
-          $.CONSUME(T.RParen)
-        }
-      },
-      { ALT: () => $.SUBRULE($.generalEnclosed) }
+        ALT: cssMediaInParens.bind(this, T)
+      }
     ])
-  })
+}
 
-  $.OVERRIDE_RULE('mfValue', () => {
+export function mfValue(this: P, T: TokenMap) {
+  const $ = this
+
+  return () =>
     /**
      * Like the original Less Parser, we're
      * going to allow any value expression,
@@ -235,7 +235,6 @@ export function declaration(this: P, T: TokenMap) {
      * if it's valid.
      */
     $.SUBRULE($.expression)
-  })
 }
 
 // const getRuleContext = (ctx: RuleContext): RuleContext => ({
@@ -246,12 +245,12 @@ export function declaration(this: P, T: TokenMap) {
 //   ...ctx
 // })
 
-export function extendSelectors(this: LessParser, T: TokenMap) {
+export function qualifiedRule(this: P, T: TokenMap) {
   const $ = this
 
-  $.OVERRIDE_RULE('qualifiedRule', (ctx: RuleContext = {}) => {
+  return (ctx: RuleContext = {}) => {
     ctx.qualifiedRule = true
-    $.OR([
+    let selectorList: SelectorList = $.OR([
       {
         GATE: () => !ctx.inner,
         ALT: () => $.SUBRULE($.selectorList, { ARGS: [ctx] })
@@ -265,74 +264,158 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
       }
     ])
 
+    let guard: Condition | undefined
+    let semi = false
+    let rules: Rules | undefined
+
     $.OR2([
       {
-        /** :extend at the end of a qualified rule */
+        /**
+         * :extend at the end of a qualified rule selector
+         *
+         * @note - this should be tweaked so that each
+         * complex selector in a list is required to
+         * have an extend in order to end in a semi-colon. 
+         */
         GATE: () => !!ctx.hasExtend,
-        ALT: () => $.CONSUME(T.Semi)
+        ALT: () => semi = !!$.CONSUME(T.Semi)
       },
       {
         ALT: () => {
-          $.OPTION(() => $.SUBRULE($.guard))
+          $.OPTION(() => guard = $.SUBRULE($.guard))
           $.CONSUME(T.LCurly)
-          $.SUBRULE($.declarationList)
+          rules = $.SUBRULE($.declarationList)
           $.CONSUME(T.RCurly)
         }
       }
     ])
-  })
 
-  $.OVERRIDE_RULE('complexSelector', (ctx: RuleContext = {}) => {
-    $.SUBRULE($.compoundSelector, { ARGS: [ctx] })
-    $.MANY(() => {
-      $.SUBRULE($.combinator)
-      $.SUBRULE2($.compoundSelector, { ARGS: [{ ...ctx, firstSelector: false }] })
-    })
-    $.OPTION(() => {
-      $.OR([
-        { ALT: () => $.SUBRULE($.guard) },
-        {
-          GATE: () => !!ctx.qualifiedRule,
-          ALT: () => $.SUBRULE($.extend, { ARGS: [ctx] })
-        }
-      ])
-    })
-  })
-
-  $.RULE('extend', (ctx: RuleContext = {}) => {
-    ctx.hasExtend = true
-    $.CONSUME(T.Extend)
-    $.SUBRULE($.selectorList)
-    $.OPTION(() => $.CONSUME(T.All))
-    $.CONSUME(T.RParen)
-  })
-
-  $.OVERRIDE_RULE('simpleSelector', (ctx: RuleContext = {}) => {
-    $.OR([
-      {
-        /** In Less/Sass, the first selector can be an identifier */
-        // GATE: () => !ctx.firstSelector,
-        ALT: () => $.CONSUME(T.Ident)
-      },
-      {
-        /**
-         * Unlike CSS Nesting, Less allows outer qualified rules
-         * to have `&`, and it is just silently absorbed if there
-         * is no parent selector.
-         */
-        ALT: () => $.CONSUME(T.Ampersand)
-      },
-      { ALT: () => $.CONSUME(T.InterpolatedSelector) },
-      { ALT: () => $.SUBRULE($.classSelector) },
-      { ALT: () => $.SUBRULE($.idSelector) },
-      { ALT: () => $.CONSUME(T.Star) },
-      { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [ctx] }) },
-      { ALT: () => $.SUBRULE($.attributeSelector) }
-    ])
-  })
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      if (semi) {
+        return new ExtendList(selectorList, undefined, location, this.context)
+      }
+      return new Ruleset([
+        ['selector', selectorList],
+        ['rules', rules!],
+        ['guard', guard]
+      ], undefined, location, this.context)
+    }
+  }
 }
 
-export function atVariableDeclarations(this: LessParser, T: TokenMap) {
+/** Mostly copied from the CSS production, with alterations */
+export function complexSelector(this: P, T: TokenMap) {
+  const $ = this
+
+  return (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
+
+    let selectors: Node[] = $.SUBRULE($.compoundSelector, { ARGS: [ctx] })
+
+    $.MANY({
+      GATE: () => $.hasWS() || $.LA(1).tokenType === T.Combinator,
+      DEF: () => {
+        let co: IToken | undefined
+        let combinator: Node
+        $.OPTION(() => {
+          co = $.CONSUME(T.Combinator)
+        })
+        if (!RECORDING_PHASE) {
+          if (co) {
+            combinator = $.wrap(new Combinator(co.image, undefined, $.getLocationInfo(co), this.context), 'both')
+          } else {
+            let startOffset = this.LA(1).startOffset
+            combinator = new Combinator('', undefined, 0, this.context)
+            combinator.pre = $.getPrePost(startOffset)
+          }
+        }
+        let compound = $.SUBRULE2($.compoundSelector, { ARGS: [{ ...ctx, firstSelector: false }] })
+        if (!RECORDING_PHASE) {
+          selectors.push(
+            combinator!,
+            ...compound
+          )
+        }
+      }
+    })
+
+    let extendSelector: SelectorList | SelectorSequence | undefined
+    let extendFlag: IToken | undefined
+    let extendLocation: LocationInfo | undefined
+    
+    $.OPTION({
+      GATE: () => !!ctx.qualifiedRule,
+      DEF: () => {
+        $.startRule()
+        let value = $.SUBRULE($.extend, { ARGS: [ctx] })
+        if (!RECORDING_PHASE) {
+          extendLocation = $.endRule()
+          extendSelector = value[0]
+          extendFlag = value[1]
+        }
+      }
+    })
+  
+    if (!RECORDING_PHASE) {
+      let sequence = new SelectorSequence(selectors as Array<SimpleSelector | Combinator>, undefined, $.getLocationFromNodes(selectors), this.context)
+      if (extendSelector) {
+        return new Extend([
+          ['target', sequence],
+          ['extendList', extendSelector],
+          /** @todo - should support more flags in the future? */
+          ['flag', extendFlag ? '!all' : undefined]
+        ], undefined, extendLocation!, this.context)
+      }
+      return sequence
+    }
+  }
+}
+
+export function extend(this: P, T: TokenMap) {
+  const $ = this
+
+  return (ctx: RuleContext = {}) => {
+    ctx.hasExtend = true
+    $.CONSUME(T.Extend)
+    let selector = $.SUBRULE($.selectorList)
+    let flag: IToken | undefined
+    $.OPTION(() => flag = $.CONSUME(T.All))
+    $.CONSUME(T.RParen)
+    if (!$.RECORDING_PHASE) {
+      return [selector, flag]
+    }
+  }
+}
+
+export function simpleSelector(this: P, T: TokenMap) {
+  const $ = this
+
+  let selectorAlt = ((ctx: RuleContext) => [
+    {
+      /** In Less/Sass (and now CSS), the first inner selector can be an identifier */
+      ALT: () => $.CONSUME(T.Ident)
+    },
+    {
+      /**
+       * Unlike CSS Nesting, Less allows outer qualified rules
+       * to have `&`, and it is just silently absorbed if there
+       * is no parent selector.
+       */
+      ALT: () => $.CONSUME(T.Ampersand)
+    },
+    { ALT: () => $.CONSUME(T.InterpolatedSelector) },
+    { ALT: () => $.SUBRULE($.classSelector) },
+    { ALT: () => $.SUBRULE($.idSelector) },
+    { ALT: () => $.CONSUME(T.Star) },
+    { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.attributeSelector) }
+  ])
+  
+  return cssSimpleSelector.call(this, T, new Map<'selector', typeof selectorAlt>([['selector', selectorAlt]]))
+}
+
+export function atVariableDeclarations(this: P, T: TokenMap) {
   const $ = this
 
   /** Starts with a colon, followed by white space */
@@ -340,8 +423,12 @@ export function atVariableDeclarations(this: LessParser, T: TokenMap) {
 
   /** Doesn't start with a colon or DOES, but it is NOT followed by a space */
   const isNotVariableLike = () => $.LA(1).tokenType !== T.Colon || !$.skippedTokens.has($.currIdx + 1)
+}
 
-  $.RULE('anonymousMixinDefinition', () => {
+export function anonymousMixinDefinition(this: P, T: TokenMap) {
+  const $ = this
+
+  return () => {
     $.OPTION(() => {
       $.CONSUME(T.AnonMixinStart)
       $.SUBRULE($.mixinArgList, { ARGS: [{ isDefinition: true }] })
@@ -350,7 +437,8 @@ export function atVariableDeclarations(this: LessParser, T: TokenMap) {
     $.CONSUME(T.LCurly)
     $.SUBRULE($.declarationList)
     $.CONSUME(T.RCurly)
-  })
+  }
+}
 
   $.OVERRIDE_RULE('importAtRule', () => {
     $.CONSUME(T.AtImport)

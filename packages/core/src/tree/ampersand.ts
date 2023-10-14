@@ -6,6 +6,7 @@ import { type SelectorList } from './selector-list'
 import { SimpleSelector } from './selector-simple'
 import { BasicSelector } from './selector-basic'
 import { isNode } from './util'
+import { type Extend } from './extend'
 
 export type AmpersandValue = {
   /**
@@ -85,7 +86,10 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
           let selector = frame.selector.clone(true)
           const { value } = this
           if (value && !isNode(selector, 'Nil')) {
-            let appendValue = (n: SelectorSequence) => {
+            let appendValue = (n: SelectorSequence | Extend) => {
+              if (!n.value) {
+                throw new SyntaxError(`Cannot append "${value}" to this type of selector`)
+              }
               let last = n.value[n.value.length - 1]
               if (last instanceof BasicSelector) {
                 last.value += value

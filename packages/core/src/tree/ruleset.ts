@@ -5,7 +5,7 @@ import type { Context } from '../context'
 import type { SelectorSequence } from './selector-sequence'
 import type { SelectorList } from './selector-list'
 import { Nil } from './nil'
-
+import type { Condition } from './condition'
 export type RulesetValue = {
   selector: SelectorList | SelectorSequence | Nil
   /**
@@ -14,6 +14,7 @@ export type RulesetValue = {
    * generalize nodes for the `frames` property in Context
    */
   rules: Rules
+  guard?: Condition
 }
 /**
  * A qualified rule. This is historically called a "Ruleset"
@@ -43,6 +44,14 @@ export class Ruleset extends Node<RulesetValue> {
     this.data.set('rules', v)
   }
 
+  get guard() {
+    return this.data.get('guard')
+  }
+
+  set guard(v: Condition | undefined) {
+    this.data.set('guard', v)
+  }
+
   toTrimmedString(depth: number = 0): string {
     // let space = ''.padStart(depth * 2)
     let output = ''
@@ -55,6 +64,14 @@ export class Ruleset extends Node<RulesetValue> {
   async eval(context: Context): Promise<Ruleset | Nil> {
     return await this.evalIfNot(context, async () => {
       let rule = this.clone()
+      if (rule.guard) {
+        let guard = await rule.guard.eval(context)
+        if (!guard.value) {
+          return new Nil().inherit(this)
+        }
+        /** Remove once evaluated */
+        rule.guard = undefined
+      }
       const collapseNesting = context.opts.collapseNesting
       let sels = await this.selector.eval(context)
       let hoistToRoot = this.options?.hoistToRoot ?? context.opts.collapseNesting

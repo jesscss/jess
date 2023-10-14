@@ -754,13 +754,11 @@ export function declaration(this: C, T: TokenMap, altMap?: AltMap<'rule'>) {
         let RECORDING_PHASE = $.RECORDING_PHASE
         let name = $.CONSUME(T.CustomProperty)
         let assign = $.CONSUME2(T.Assign)
-        let value: Node
         let nodes: Node[]
         if (!RECORDING_PHASE) {
           nodes = []
         }
         $.startRule()
-        /** @todo - should collect ALL tokens in a stream, including whitespace */
         $.MANY(() => {
           let val = $.SUBRULE($.customValue)
           if (!RECORDING_PHASE) {
@@ -770,8 +768,8 @@ export function declaration(this: C, T: TokenMap, altMap?: AltMap<'rule'>) {
         if (!RECORDING_PHASE) {
           let location = $.endRule()
           let nameNode = $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true)
-          value = new Sequence(nodes!, undefined, location, this.context)
-          return [nameNode, assign, value!]
+          let value = new Sequence(nodes!, undefined, location, this.context)
+          return [nameNode, assign, value]
         }
       }
     }

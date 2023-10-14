@@ -81,7 +81,7 @@ export class SelectorSequence extends Node<Array<SimpleSelector | Combinator>> {
     }
 
     if (isNode(selector, 'SelectorList')) {
-      selector.value.forEach(sel => { cleanElements(sel.value) })
+      (selector as SelectorList).value.forEach(sel => { cleanElements(sel.value) })
     } else {
       cleanElements(selector.value)
     }

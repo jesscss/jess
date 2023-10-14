@@ -6,12 +6,13 @@ import {
   type TypeMap
 } from './node'
 import { SelectorSequence } from './selector-sequence'
+import { type Extend } from './extend'
 import { type SimpleSelector } from './selector-simple'
 import { type Combinator } from './combinator'
 import { type Context } from '../context'
 
 /** Constructs */
-export class SelectorList extends Node<SelectorSequence[]> {
+export class SelectorList extends Node<Array<SelectorSequence | Extend>> {
   constructor(
     nodes: TypeMap<{ value: SelectorSequence[] }> | Array<SelectorSequence | Array<SimpleSelector | Combinator>>,
     options?: NodeOptions,
@@ -34,7 +35,7 @@ export class SelectorList extends Node<SelectorSequence[]> {
       const list = await (super.eval(context) as Promise<SelectorList>)
       const { value } = list
       if (value.length === 1) {
-        return value[0]!
+        return value[0]! as SelectorSequence
       }
       return list
     })
