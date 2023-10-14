@@ -78,4 +78,6 @@ export class Call<T extends CallValue = CallValue> extends Node<T> {
   }
 }
 
+Call.prototype.requiredSemi = true
+
 export const call = defineType<CallValue>(Call, 'Call')

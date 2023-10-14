@@ -35,6 +35,7 @@ Node.prototype.operate = function(b: Node, op: Operator) {
 export { Node, type TreeContext, type LocationInfo }
 
 export * from './at-rule'
+export * from './block'
 export * from './bool'
 export * from './ampersand'
 export * from './anonymous'

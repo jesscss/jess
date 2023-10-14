@@ -100,8 +100,8 @@ export class CssActionsParser extends AdvancedActionsParser {
   customValue: Rule
   innerCustomValue: Rule
 
-  func: Rule
-  funcArgs: Rule<(ctx?: RuleContext) => void>
+  functionCall: Rule
+  functionCallArgs: Rule<(ctx?: RuleContext) => void>
   knownFunctions: Rule
   varFunction: Rule
   calcFunction: Rule

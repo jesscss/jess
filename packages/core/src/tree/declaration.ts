@@ -59,11 +59,10 @@ export class Declaration<O extends DeclarationOptions = DeclarationOptions, N ex
     const { name, value, important } = this
     const { assign = ':' } = this.options ?? {}
     let a = assign === ':' ? ':' : ` ${assign}`
-    let semi = this.options?.semi !== true ? '' : ';'
     if (isNode(value, 'Collection')) {
       return `${name}${a}${value.toString(depth)}`
     }
-    return `${name}${a}${value.toString(depth)}${important ? `${important}` : ''}${semi}`
+    return `${name}${a}${value.toString(depth)}${important ? `${important}` : ''}`
   }
 
   async eval(context: Context): Promise<Node> {
@@ -147,4 +146,5 @@ export const decl = (
   return node
 }
 
+Declaration.prototype.requiredSemi = true
 Declaration.prototype.allowRuleRoot = true

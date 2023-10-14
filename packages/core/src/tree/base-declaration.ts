@@ -2,9 +2,9 @@ import {
   Node
 } from './node'
 import { type Interpolated } from './interpolated'
-import type { Anonymous } from './anonymous'
+import type { General } from './general'
 
-export type Name = Interpolated | Anonymous | string
+export type Name = Interpolated | General<'Name'> | string
 
 export type BaseDeclarationValue<N extends Name = Name> = {
   name?: N

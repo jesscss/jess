@@ -1,135 +1,130 @@
-import type { LessParser, TokenMap, RuleContext } from './lessParser'
+import type { LessParser as P, TokenMap, RuleContext } from './lessParser'
 import { tokenMatcher } from 'chevrotain'
+import { main as cssMain } from '@jesscss/css-parser'
+
+import {
+  TreeContext,
+  Node,
+  type LocationInfo,
+  type AssignmentType,
+  type Operator,
+  General,
+  Block,
+  Anonymous,
+  Ruleset,
+  Declaration,
+  Scope,
+  type SimpleSelector,
+  SelectorList,
+  SelectorSequence,
+  type Rules,
+  Combinator,
+  BasicSelector,
+  Ampersand,
+  List,
+  Sequence,
+  Call,
+  Paren,
+  Operation,
+  Quoted,
+  PseudoSelector,
+  AttributeSelector,
+  AtRule,
+  QueryCondition,
+  Token
+} from '@jesscss/core'
+
 
 /** Extensions of the CSS language */
-export function extendRoot(this: LessParser, T: TokenMap) {
+export function extendRoot(this: P, T: TokenMap) {
   const $ = this
 
-  const isEscapedString = () => {
-    const next = $.LA(1)
-    return tokenMatcher(next, T.QuoteStart) && next.image.startsWith('~')
-  }
+  
+}
 
-  $.OVERRIDE_RULE('main', () => {
-    let needsSemi = false
-    $.MANY({
-      GATE: () => !needsSemi ||
-        (needsSemi && (
-          $.LA(1).tokenType === T.Semi ||
-          $.LA(0).tokenType === T.Semi
-        )),
-      DEF: () => {
-        $.OR([
+const isEscapedString = function(this: P, T: TokenMap) {
+  const next = this.LA(1)
+  return tokenMatcher(next, T.QuoteStart) && next.image.startsWith('~')
+}
+
+export function main(this: P, T: TokenMap) {
+  const $ = this
+
+  let ruleAlt = [
+    { ALT: () => $.SUBRULE($.mixinDefinition) },
+    { ALT: () => $.SUBRULE($.functionCall) },
+    { ALT: () => $.SUBRULE($.qualifiedRule) },
+    { ALT: () => $.SUBRULE($.atRule) },
+
+    /**
+     * Historically, Less allows `@charset` anywhere,
+     * to avoid outputting it in the wrong place.
+     * Ideally, this would result in an error if, say,
+     * the `@charset` was defined at the bottom of the file,
+     * but that wasn't the solution made.
+     * @see https://github.com/less/less.js/issues/2126
+     */
+    {
+      GATE: () => $.looseMode,
+      ALT: () => $.CONSUME(T.Charset)
+    },
+    { ALT: () => $.CONSUME2(T.Semi) },
+    { ALT: () => $.SUBRULE($.mixinCall) }
+  ]
+
+  return cssMain.call(this, T, new Map<'rule', typeof ruleAlt>([['rule', ruleAlt]]))
+}
+
+export function declarationList(this: P, T: TokenMap) {
+  const $ = this
+
+  let ruleAlt = [
+    { ALT: () => $.SUBRULE($.declaration) },
+    { ALT: () => $.SUBRULE($.mixinCall) },
+    { ALT: () => $.SUBRULE($.functionCall) },
+    { ALT: () => $.SUBRULE($.mixinDefinition) },
+    { ALT: () => $.SUBRULE($.innerAtRule) },
+    { ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [{ inner: true }] }) },
+    { ALT: () => $.CONSUME2(T.Semi) }
+  ]
+
+  return cssMain.call(this, T, new Map<'rule', typeof ruleAlt>([['rule', ruleAlt]]))
+}
+
+export function declaration(this: P, T: TokenMap) {
+  const $ = this
+
+  let ruleAlt = [
+    {
+      ALT: () => {
+        $.OR2([
           {
-            ALT: () => {
-              $.OR2([
-                { ALT: () => $.SUBRULE($.mixinDefinition) },
-                {
-                  ALT: () => {
-                    $.SUBRULE($.function)
-                    $.CONSUME(T.Semi)
-                  }
-                },
-                { ALT: () => $.SUBRULE($.qualifiedRule) },
-                /** At-rules that don't have curly blocks must end in semi-colons according to CSS */
-                { ALT: () => $.SUBRULE($.atRule) },
-
-                /**
-                 * Historically, Less allows `@charset` anywhere,
-                 * to avoid outputting it in the wrong place.
-                 * Ideally, this would result in an error if, say,
-                 * the `@charset` was defined at the bottom of the file,
-                 * but that wasn't the solution made.
-                 * @see https://github.com/less/less.js/issues/2126
-                 */
-                {
-                  GATE: () => $.looseMode,
-                  ALT: () => $.CONSUME(T.Charset)
-                },
-                { ALT: () => $.CONSUME2(T.Semi) }
-              ])
-              needsSemi = false
-            }
+            ALT: () => $.CONSUME(T.Ident)
           },
           {
-            ALT: () => {
-              $.SUBRULE($.mixinCall)
-              needsSemi = true
-            }
+            GATE: () => $.legacyMode,
+            ALT: () => $.CONSUME(T.LegacyPropIdent)
           }
         ])
+        $.CONSUME(T.Assign)
+        $.SUBRULE($.valueList)
+        $.OPTION(() => {
+          $.CONSUME(T.Important)
+        })
       }
-    })
-  })
-
-  $.OVERRIDE_RULE('declarationList', () => {
-    let needsSemi = false
-    $.MANY({
-      GATE: () => !needsSemi ||
-        (needsSemi && (
-          $.LA(1).tokenType === T.Semi ||
-          $.LA(0).tokenType === T.Semi
-        )),
-      DEF: () => {
-        $.OR([
-          {
-            ALT: () => {
-              $.OR2([
-                { ALT: () => $.SUBRULE($.declaration) },
-                { ALT: () => $.SUBRULE($.mixinCall) },
-                { ALT: () => $.SUBRULE($.function) }
-              ])
-              needsSemi = true
-            }
-          },
-          {
-            ALT: () => {
-              $.OR3([
-                { ALT: () => $.SUBRULE($.mixinDefinition) },
-                { ALT: () => $.SUBRULE($.innerAtRule) },
-                { ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [{ inner: true }] }) },
-                { ALT: () => $.CONSUME2(T.Semi) }
-              ])
-              needsSemi = false
-            }
-          }
+    },
+    {
+      ALT: () => {
+        $.OR3([
+          { ALT: () => $.CONSUME(T.InterpolatedCustomProperty) },
+          { ALT: () => $.CONSUME(T.CustomProperty) }
         ])
+        $.CONSUME2(T.Assign)
+        $.MANY(() => $.SUBRULE($.customValue))
       }
-    })
-  })
-
-  $.OVERRIDE_RULE('declaration', () => {
-    $.OR([
-      {
-        ALT: () => {
-          $.OR2([
-            {
-              ALT: () => $.CONSUME(T.Ident)
-            },
-            {
-              GATE: () => $.legacyMode,
-              ALT: () => $.CONSUME(T.LegacyPropIdent)
-            }
-          ])
-          $.CONSUME(T.Assign)
-          $.SUBRULE($.valueList)
-          $.OPTION(() => {
-            $.CONSUME(T.Important)
-          })
-        }
-      },
-      {
-        ALT: () => {
-          $.OR3([
-            { ALT: () => $.CONSUME(T.InterpolatedCustomProperty) },
-            { ALT: () => $.CONSUME(T.CustomProperty) }
-          ])
-          $.CONSUME2(T.Assign)
-          $.MANY(() => $.SUBRULE($.customValue))
-        }
-      }
-    ])
-  })
+    }
+  ]
+}
 
   // $.OVERRIDE_RULE('mediaQuery', () => {
   //   $.OR([

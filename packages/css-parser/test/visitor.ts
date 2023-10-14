@@ -1,6 +1,7 @@
-import { type Visitor } from 'core/src/visitor'
+/**
+ * This is now obselete, as I deleted the CST visitor
+ */
 import { CssParser } from '../src/cssParser'
-import { CssCstVisitor } from '../src/cssCstVisitor'
 
 // type Obj = Record<any, any>
 // /** @see https://stackoverflow.com/questions/2257993/how-to-display-all-methods-of-an-object */

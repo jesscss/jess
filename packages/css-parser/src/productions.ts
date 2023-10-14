@@ -8,6 +8,7 @@ import {
   type AssignmentType,
   type Operator,
   General,
+  Block,
   Anonymous,
   Ruleset,
   Declaration,
@@ -29,7 +30,8 @@ import {
   AttributeSelector,
   AtRule,
   QueryCondition,
-  Token
+  Token,
+  type Name
 } from '@jesscss/core'
 
 type C = CssActionsParser
@@ -111,10 +113,35 @@ export function main(this: C, T: TokenMap, altMap?: AltMap<'rule'>) {
       rules = []
     }
 
-    $.MANY(() => {
-      let rule = $.OR(ruleAlt)
-      if (!RECORDING_PHASE) {
-        rules.push(rule)
+    let requiredSemi = false
+
+    let lastRule: Node | undefined
+    /**
+     * In this production rule, semi-colons are not required
+     * but this is repurposed by declarationList and by Less / Sass,
+     * so that's why this gate is here.
+     */
+    $.MANY({
+      GATE: () => !requiredSemi || (requiredSemi && (
+        $.LA(1).tokenType === T.Semi ||
+        $.LA(0).tokenType === T.Semi
+      )),
+      DEF: () => {
+        let value = $.OR(ruleAlt)
+        if (!RECORDING_PHASE) {
+          if (!(value instanceof Node)) {
+            /** This is a semi-colon token */
+            if (lastRule) {
+              lastRule.options = { ...(lastRule.options ?? {}), semi: true }
+            } else {
+              rules.push(new Token(';', { type: 'Semi' }, $.getLocationInfo($.LA(1)), context))
+            }
+          } else {
+            requiredSemi = !!value.requiredSemi
+            rules.push(value)
+            lastRule = value
+          }
+        }
       }
     })
 
@@ -660,7 +687,7 @@ export function selectorList(this: C, T: TokenMap) {
   }
 }
 
-export function declarationList(this: C, T: TokenMap, altMap?: AltContextMap<'rule'>) {
+export function declarationList(this: C, T: TokenMap, altMap?: AltMap<'rule'>) {
   const $ = this
   /** * Declarations ***/
   // https://www.w3.org/TR/css-syntax-3/#declaration-list-diagram
@@ -684,72 +711,14 @@ export function declarationList(this: C, T: TokenMap, altMap?: AltContextMap<'ru
    * each alt
    */
 
-  let ruleAlt = altMap?.get('rule') ?? ((ctx: RuleContext) => [
-    {
-      ALT: () => {
-        let RECORDING_PHASE = $.RECORDING_PHASE
-        let decl = $.SUBRULE($.declaration)
-        ctx.needsSemi = true
-        $.OPTION(() => {
-          $.CONSUME(T.Semi)
-          ctx.needsSemi = false
-        })
+  let ruleAlt = altMap?.get('rule') ?? [
+    { ALT: () => $.SUBRULE($.declaration) },
+    { ALT: () => $.SUBRULE($.innerAtRule) },
+    { ALT: () => $.SUBRULE2($.qualifiedRule, { ARGS: [{ inner: true }] }) },
+    { ALT: () => $.CONSUME2(T.Semi) }
+  ]
 
-        if (!RECORDING_PHASE) {
-          if (!ctx.needsSemi) {
-            let options = decl.options ?? {}
-            options.semi = true
-            decl.options = options
-          }
-          return decl
-        }
-      }
-    },
-    {
-      ALT: () => {
-        let value = $.OR2([
-          { ALT: () => $.SUBRULE($.innerAtRule) },
-          { ALT: () => $.SUBRULE2($.qualifiedRule, { ARGS: [{ inner: true }] }) },
-          { ALT: () => $.CONSUME2(T.Semi) }
-        ])
-        ctx.needsSemi = false
-        if (!$.RECORDING_PHASE && value instanceof Node) {
-          return value
-        }
-      }
-    }
-  ])
-
-  return () => {
-    let RECORDING_PHASE = $.RECORDING_PHASE
-
-    let context = this.context
-    let initialScope: Scope
-    let rules: Node[]
-
-    if (!RECORDING_PHASE) {
-      initialScope = context.scope
-      context.scope = new Scope(initialScope)
-      rules = []
-    }
-    let ctx = { needsSemi: false }
-    $.MANY({
-      GATE: () => !ctx.needsSemi || (ctx.needsSemi && $.LA(1).tokenType === T.Semi),
-      DEF: () => {
-        let rule = $.OR(ruleAlt(ctx))
-        if (!RECORDING_PHASE) {
-          rules.push(rule)
-        }
-      }
-    })
-
-    if (!RECORDING_PHASE) {
-      let returnRules = $.getRulesWithComments(rules!)
-      context.scope = initialScope!
-      // Attaches remaining whitespace at the end of rules
-      return $.wrap(returnRules!, true)
-    }
-  }
+  return main.call(this, T, new Map<'rule', typeof ruleAlt>([['rule', ruleAlt]]))
 }
 
 export function declaration(this: C, T: TokenMap, altMap?: AltMap<'rule'>) {
@@ -774,7 +743,10 @@ export function declaration(this: C, T: TokenMap, altMap?: AltMap<'rule'>) {
         $.OPTION(() => {
           important = $.CONSUME(T.Important)
         })
-        return [name!, assign, value, important]
+        if (!$.RECORDING_PHASE) {
+          let nameNode = $.wrap(new General(name!.image, { type: 'Name' }, $.getLocationInfo(name!), this.context), true)
+          return [nameNode, assign, value, important]
+        }
       }
     },
     {
@@ -797,9 +769,10 @@ export function declaration(this: C, T: TokenMap, altMap?: AltMap<'rule'>) {
         })
         if (!RECORDING_PHASE) {
           let location = $.endRule()
+          let nameNode = $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true)
           value = new Sequence(nodes!, undefined, location, this.context)
+          return [nameNode, assign, value!]
         }
-        return [name, assign, value!]
       }
     }
   ]
@@ -810,7 +783,7 @@ export function declaration(this: C, T: TokenMap, altMap?: AltMap<'rule'>) {
   return () => {
     let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
-    let name: IToken | undefined
+    let name: Name | undefined
     let assign: IToken | undefined
     let value: Node | undefined
     let important: IToken | undefined
@@ -823,7 +796,7 @@ export function declaration(this: C, T: TokenMap, altMap?: AltMap<'rule'>) {
     if (!RECORDING_PHASE) {
       let location = $.endRule()
       return new Declaration([
-        ['name', name!.image],
+        ['name', name!],
         ['value', $.wrap(value!, true)],
         ['important', important ? $.wrap(new General(important.image, { type: 'Flag' }, $.getLocationInfo(important), this.context), true) : undefined]
       ], { assign: assign!.image as AssignmentType }, location, this.context)
@@ -986,10 +959,23 @@ export function customBlock(this: C, T: TokenMap, altMap?: AltMap<'block'>) {
 
     if (!RECORDING_PHASE) {
       let location = $.endRule()
-      let startNode = $.wrap(new Token(start!.image, { type: start!.tokenType.name }, $.getLocationInfo(start!), this.context))
-      let endNode = $.wrap(new Token(end!.image, { type: end!.tokenType.name }, $.getLocationInfo(end!), this.context))
-      nodes = [startNode, ...nodes!, endNode]
-      return new Sequence(nodes, undefined, location, this.context)
+      let type: 'paren' | 'square' | 'curly' | undefined
+      switch (start!.image) {
+        case '[': type = 'square'; break
+        case '{': type = 'curly'; break
+      }
+      if (type) {
+        let seq = new Sequence(nodes!, undefined, $.getLocationFromNodes(nodes!), this.context)
+        if (type === 'paren') {
+          return $.wrap(new Paren($.wrap(seq, true), undefined, location, this.context))
+        }
+        return $.wrap(new Block($.wrap(seq, true), { type }, location, this.context))
+      } else {
+        let startNode = $.wrap(new Token(start!.image, { type: start!.tokenType.name }, $.getLocationInfo(start!), this.context))
+        let endNode = $.wrap(new Token(end!.image, { type: end!.tokenType.name }, $.getLocationInfo(end!), this.context))
+        nodes = [startNode, ...nodes!, endNode]
+        return new Sequence(nodes, undefined, location, this.context)
+      }
     }
   }
 }
@@ -1065,12 +1051,13 @@ export function squareValue(this: C, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     $.startRule()
-    let left = $.CONSUME(T.LSquare)
+    $.CONSUME(T.LSquare)
     let ident = $.CONSUME(T.Ident)
-    let right = $.CONSUME(T.RSquare)
+    $.CONSUME(T.RSquare)
     if (!$.RECORDING_PHASE) {
       let location = $.endRule()
-      return new General(`${left.image}${ident.image}${right.image}`, { type: 'CustomIdent' }, location, this.context)
+      let identNode = new General(ident.image, { type: 'CustomIdent' }, $.getLocationInfo(ident), this.context)
+      return new Block(identNode, { type: 'square' }, location, this.context)
     }
   }
 }
@@ -1093,7 +1080,7 @@ export function value(this: C, T: TokenMap, altMap?: AltMap<'value'>) {
 
   let valueAlt = altMap?.get('value') ?? [
     /** Function should appear before Ident */
-    { ALT: () => $.SUBRULE($.func) },
+    { ALT: () => $.SUBRULE($.functionCall) },
     { ALT: () => $.CONSUME(T.Ident) },
     { ALT: () => $.CONSUME(T.Dimension) },
     { ALT: () => $.CONSUME(T.Number) },
@@ -2317,7 +2304,7 @@ export function supportsInParens(this: C, T: TokenMap) {
   return () => $.OR(conditionAlt)
 }
 
-export function func(this: C, T: TokenMap, altMap?: AltMap<'func'>) {
+export function functionCall(this: C, T: TokenMap, altMap?: AltMap<'func'>) {
   const $ = this
 
   let funcAlt = altMap?.get('func') ?? [
@@ -2333,7 +2320,7 @@ export function func(this: C, T: TokenMap, altMap?: AltMap<'func'>) {
           GATE: $.noSep,
           ALT: () => {
             $.CONSUME(T.LParen)
-            $.OPTION(() => args = $.SUBRULE($.funcArgs))
+            $.OPTION(() => args = $.SUBRULE($.functionCallArgs))
             $.CONSUME(T.RParen)
           }
         }])
@@ -2365,7 +2352,7 @@ export function func(this: C, T: TokenMap, altMap?: AltMap<'func'>) {
  * are separators AND only 1 argument is required, then
  * that will have to be specially handled.
  */
-export function funcArgs(this: C, T: TokenMap) {
+export function functionCallArgs(this: C, T: TokenMap) {
   const $ = this
 
   return (ctx: RuleContext = {}) => {
@@ -2711,24 +2698,28 @@ export function anyInnerValue(this: C, T: TokenMap) {
     { ALT: () => $.SUBRULE($.anyOuterValue) },
     {
       ALT: () => {
-        let start = $.CONSUME(T.LCurly)
-        let nodes: Node[] = []
-        $.MANY(() => nodes.push($.SUBRULE2($.anyInnerValue)))
-        let end = $.CONSUME(T.RCurly)
+        $.startRule()
+        let RECORDING_PHASE = $.RECORDING_PHASE
+        let nodes: Node[]
+        if (!RECORDING_PHASE) {
+          nodes = []
+        }
+        $.CONSUME(T.LCurly)
+        $.MANY(() => {
+          let node = $.SUBRULE2($.anyInnerValue)
+          if (!RECORDING_PHASE) {
+            nodes.push(node)
+          }
+        })
+        $.CONSUME(T.RCurly)
 
-        if (!$.RECORDING_PHASE) {
-          let { startOffset, startLine, startColumn } = start
-          let { endOffset, endLine, endColumn } = end
-          nodes.unshift(
-            $.wrap(new Token(start.image, { type: 'LCurly' }, $.getLocationInfo(start), this.context))
-          )
-          nodes.push(
-            $.wrap(new Token(end.image, { type: 'RCurly' }, $.getLocationInfo(end), this.context))
-          )
-          return new Sequence(
-            nodes,
-            undefined,
-            [startOffset, startLine!, startColumn!, endOffset!, endLine!, endColumn!],
+        if (!RECORDING_PHASE) {
+          let location = $.endRule()
+
+          return new Block(
+            $.wrap(new Sequence(nodes!, undefined, $.getLocationFromNodes(nodes!), this.context), 'both'),
+            { type: 'curly' },
+            location,
             this.context
           )
         }

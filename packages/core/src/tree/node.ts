@@ -11,6 +11,12 @@ export { TreeContext }
 
 type AllNodeOptions = {
   hoistToRoot?: boolean
+
+  /**
+   * For statements with optional semis,
+   * we flag this for accurate re-serialization.
+   */
+  semi?: boolean
 }
 
 export type NodeOptions = Record<string, boolean | string | number> & AllNodeOptions
@@ -150,6 +156,13 @@ export abstract class Node<
   evaluated: boolean
   allowRoot: boolean
   allowRuleRoot: boolean
+
+  /**
+   * If the node must have a semi separator before
+   * the next node when in a declaration list or main
+   * rules list.
+   */
+  requiredSemi: boolean
 
   /** Used by Rules */
   rootRules: Node[] | undefined
@@ -423,6 +436,9 @@ export abstract class Node<
     output += this.processPrePost('pre')
     output += this.toTrimmedString(depth)
     output += this.processPrePost('post')
+    if (this.options?.semi === true) {
+      output += ';'
+    }
     return output as Opaque<string>
   }
 
