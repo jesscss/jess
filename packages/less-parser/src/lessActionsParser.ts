@@ -47,7 +47,8 @@ export class LessActionsParser extends CssActionsParser {
   T: TokenMap
   looseMode: boolean
 
-  expression: Rule<(ctx?: RuleContext) => void>
+  expressionSum: Rule<(ctx?: RuleContext) => void>
+  expressionProduct: Rule<(ctx?: RuleContext) => void>
   expressionValue: Rule<(ctx?: RuleContext) => void>
   functionValueList: Rule
   ifFunction: Rule

@@ -36,12 +36,10 @@ import {
 
 type C = CssActionsParser
 
-export type AltMap<Alts extends string> =
-  Map<Alts, Array<IOrAlt<any>> | OrMethodOpts<any>>
+export type Alt = Array<IOrAlt<any>> | OrMethodOpts<any>
 
 /** ALT which makes decisions based on context */
-export type AltContextMap<Alts extends string> =
-  Map<Alts, ((ctx: RuleContext) => Array<IOrAlt<any>>) | ((ctx: RuleContext) => OrMethodOpts<any>)>
+export type AltContext = (ctx: RuleContext) => Alt
 
 export function stylesheet(this: C, T: TokenMap) {
   const $ = this
@@ -85,9 +83,9 @@ export function stylesheet(this: C, T: TokenMap) {
   }
 }
 
-export function main(this: C, T: TokenMap, altMap?: AltMap<'rule'>) {
+export function main(this: C, T: TokenMap, alt?: Alt) {
   let $ = this
-  let ruleAlt = altMap?.get('rule') ?? [
+  let ruleAlt = alt ?? [
     { ALT: () => $.SUBRULE($.qualifiedRule) },
     { ALT: () => $.SUBRULE($.atRule) }
   ]
@@ -157,10 +155,10 @@ export function main(this: C, T: TokenMap, altMap?: AltMap<'rule'>) {
   }
 }
 
-export function qualifiedRule(this: C, T: TokenMap, altMap?: AltContextMap<'selector'>) {
+export function qualifiedRule(this: C, T: TokenMap, altContext?: AltContext) {
   const $ = this
 
-  let selectorAlt = altMap?.get('selector') ?? ((ctx: RuleContext) => [
+  let selectorAlt = altContext ?? ((ctx: RuleContext) => [
     {
       GATE: () => !ctx.inner,
       ALT: () => $.SUBRULE($.selectorList, { ARGS: [{ ...ctx, qualifiedRule: true }] })
@@ -176,7 +174,7 @@ export function qualifiedRule(this: C, T: TokenMap, altMap?: AltContextMap<'sele
   return (ctx: RuleContext = {}) => {
     $.startRule()
 
-    let selector = $.OR(selectorAlt(ctx)) as SelectorList
+    let selector = $.OR(selectorAlt(ctx))
 
     $.CONSUME(T.LCurly)
     let rules = $.SUBRULE($.declarationList)
@@ -214,10 +212,10 @@ export function qualifiedRule(this: C, T: TokenMap, altMap?: AltContextMap<'sele
 //   | pseudoSelector
 //   | attributeSelector
 //   ;
-export function simpleSelector(this: C, T: TokenMap, altMap?: AltContextMap<'selector'>) {
+export function simpleSelector(this: C, T: TokenMap, altContext?: AltContext) {
   const $ = this
 
-  let selectorAlt = altMap?.get('selector') ?? ((ctx: RuleContext) => [
+  let selectorAlt = altContext ?? ((ctx: RuleContext) => [
     {
       /**
        * It used to be the case that, in CSS Nesting, the first selector
@@ -270,10 +268,10 @@ export function classSelector(this: C, T: TokenMap) {
   }
 }
 
-export function idSelector(this: C, T: TokenMap, altMap?: AltMap<'selector'>) {
+export function idSelector(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let selectorAlt = altMap?.get('selector') ?? [
+  let selectorAlt = alt ?? [
     { ALT: () => $.CONSUME(T.HashName) },
     { ALT: () => $.CONSUME(T.ColorIdentStart) }
   ]
@@ -286,7 +284,7 @@ export function idSelector(this: C, T: TokenMap, altMap?: AltMap<'selector'>) {
   }
 }
 
-export function pseudoSelector(this: C, T: TokenMap, altMap?: AltContextMap<'selector'>) {
+export function pseudoSelector(this: C, T: TokenMap, altContext?: AltContext) {
   const $ = this
   const createPseudo = (name: string, value?: Node) => {
     if (!$.RECORDING_PHASE) {
@@ -298,7 +296,7 @@ export function pseudoSelector(this: C, T: TokenMap, altMap?: AltContextMap<'sel
     }
   }
 
-  let selectorAlt = altMap?.get('selector') ?? ((ctx: RuleContext) => [
+  let selectorAlt = altContext ?? ((ctx: RuleContext) => [
     {
       ALT: () => {
         let name = $.CONSUME(T.NthPseudoClass)
@@ -378,10 +376,10 @@ export function pseudoSelector(this: C, T: TokenMap, altMap?: AltContextMap<'sel
   }
 }
 
-export function nthValue(this: C, T: TokenMap, altMap?: AltMap<'value'>) {
+export function nthValue(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let valueAlt = altMap?.get('value') ?? [
+  let valueAlt = alt ?? [
     { ALT: () => $.CONSUME(T.NthOdd) },
     { ALT: () => $.CONSUME(T.NthEven) },
     { ALT: () => $.CONSUME(T.Integer) },
@@ -447,10 +445,10 @@ export function nthValue(this: C, T: TokenMap, altMap?: AltMap<'value'>) {
 // attributeSelector
 //   : LSQUARE WS* identifier (STAR | TILDE | CARET | DOLLAR | PIPE)? EQ WS* (identifier | STRING) WS* (ATTRIBUTE_FLAG WS*)? RSQUARE
 //   ;
-export function attributeSelector(this: C, T: TokenMap, altMap?: AltMap<'value'>) {
+export function attributeSelector(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let valueAlt = altMap?.get('value') ?? [
+  let valueAlt = alt ?? [
     {
       ALT: () => {
         let token = $.CONSUME2(T.Ident)
@@ -687,7 +685,7 @@ export function selectorList(this: C, T: TokenMap) {
   }
 }
 
-export function declarationList(this: C, T: TokenMap, altMap?: AltMap<'rule'>) {
+export function declarationList(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
   /** * Declarations ***/
   // https://www.w3.org/TR/css-syntax-3/#declaration-list-diagram
@@ -711,20 +709,20 @@ export function declarationList(this: C, T: TokenMap, altMap?: AltMap<'rule'>) {
    * each alt
    */
 
-  let ruleAlt = altMap?.get('rule') ?? [
+  let ruleAlt = alt ?? [
     { ALT: () => $.SUBRULE($.declaration) },
     { ALT: () => $.SUBRULE($.innerAtRule) },
     { ALT: () => $.SUBRULE2($.qualifiedRule, { ARGS: [{ inner: true }] }) },
     { ALT: () => $.CONSUME2(T.Semi) }
   ]
 
-  return main.call(this, T, new Map<'rule', typeof ruleAlt>([['rule', ruleAlt]]))
+  return main.call(this, T, ruleAlt)
 }
 
-export function declaration(this: C, T: TokenMap, altMap?: AltMap<'rule'>) {
+export function declaration(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let ruleAlt = altMap?.get('rule') ?? [
+  let ruleAlt = alt ?? [
     {
       ALT: () => {
         let name: IToken
@@ -807,10 +805,10 @@ export function declaration(this: C, T: TokenMap, altMap?: AltMap<'rule'>) {
  * Multi-modes was the right way to do it with Antlr, but
  * Chevrotain does not support recursive tokens very well.
  */
-export function customValue(this: C, T: TokenMap, altMap?: AltMap<'value'>) {
+export function customValue(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let valueAlt = altMap?.get('value') ?? [
+  let valueAlt = alt ?? [
     { ALT: () => $.SUBRULE($.extraTokens) },
     { ALT: () => $.SUBRULE($.customBlock) }
   ]
@@ -818,10 +816,10 @@ export function customValue(this: C, T: TokenMap, altMap?: AltMap<'value'>) {
   return () => $.OR(valueAlt)
 }
 
-export function innerCustomValue(this: C, T: TokenMap, altMap?: AltMap<'value'>) {
+export function innerCustomValue(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let valueAlt = altMap?.get('value') ?? [
+  let valueAlt = alt ?? [
     {
       ALT: () => {
         /** Can also have semi-colons */
@@ -844,10 +842,10 @@ export function innerCustomValue(this: C, T: TokenMap, altMap?: AltMap<'value'>)
  *
  * @todo - In tests, is there a way to test that every token is captured?
  */
-export function extraTokens(this: C, T: TokenMap, altMap?: AltMap<'value'>) {
+export function extraTokens(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let valueAlt = altMap?.get('value') ?? [
+  let valueAlt = alt ?? [
     { ALT: () => $.SUBRULE($.knownFunctions) },
     { ALT: () => $.CONSUME(T.Value) },
     { ALT: () => $.CONSUME(T.CustomProperty) },
@@ -869,10 +867,10 @@ export function extraTokens(this: C, T: TokenMap, altMap?: AltMap<'value'>) {
   }
 }
 
-export function customBlock(this: C, T: TokenMap, altMap?: AltMap<'block'>) {
+export function customBlock(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let blockAlt = altMap?.get('block') ?? [
+  let blockAlt = alt ?? [
     {
       ALT: () => {
         let RECORDING_PHASE = $.RECORDING_PHASE
@@ -1073,10 +1071,10 @@ export function squareValue(this: C, T: TokenMap) {
 //   | '[' identifier ']'
 //   | unknownValue
 //   ;
-export function value(this: C, T: TokenMap, altMap?: AltMap<'value'>) {
+export function value(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let valueAlt = altMap?.get('value') ?? [
+  let valueAlt = alt ?? [
     /** Function should appear before Ident */
     { ALT: () => $.SUBRULE($.functionCall) },
     { ALT: () => $.CONSUME(T.Ident) },
@@ -1123,10 +1121,10 @@ export function value(this: C, T: TokenMap, altMap?: AltMap<'value'>) {
   }
 }
 
-export function string(this: C, T: TokenMap, altMap?: AltMap<'string'>) {
+export function string(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let stringAlt = altMap?.get('string') ?? [
+  let stringAlt = alt ?? [
     {
       ALT: () => {
         $.startRule()
@@ -1255,10 +1253,10 @@ export function mathProduct(this: C, T: TokenMap) {
 //   | mathConstant
 //   | '(' WS* mathSum WS* ')'
 //   ;
-export function mathValue(this: C, T: TokenMap, altMap?: AltMap<'value'>) {
+export function mathValue(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let valueAlt = altMap?.get('value') ?? [
+  let valueAlt = alt ?? [
     { ALT: () => $.CONSUME(T.Number) },
     { ALT: () => $.CONSUME(T.Dimension) },
     { ALT: () => $.CONSUME(T.MathConstant) },
@@ -1296,10 +1294,10 @@ export function mathValue(this: C, T: TokenMap, altMap?: AltMap<'value'>) {
 //   | identifier '(' valueList ')'
 //   ;
 // These have special parsing rules
-export function knownFunctions(this: C, T: TokenMap, altMap?: AltMap<'functions'>) {
+export function knownFunctions(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let funcAlt = altMap?.get('functions') ?? [
+  let funcAlt = alt ?? [
     { ALT: () => $.SUBRULE($.urlFunction) },
     { ALT: () => $.SUBRULE($.varFunction) },
     { ALT: () => $.SUBRULE($.calcFunction) }
@@ -1362,10 +1360,10 @@ export function calcFunction(this: C, T: TokenMap) {
   }
 }
 
-export function urlFunction(this: C, T: TokenMap, altMap?: AltMap<'value'>) {
+export function urlFunction(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let valueAlt = altMap?.get('value') ?? [
+  let valueAlt = alt ?? [
     { ALT: () => $.SUBRULE($.string) },
     { ALT: () => $.CONSUME(T.NonQuotedUrl) }
   ]
@@ -1405,10 +1403,10 @@ export function urlFunction(this: C, T: TokenMap, altMap?: AltMap<'value'>) {
 //   | fontFaceAtRule
 //   | supportsAtRule
 //   ;
-export function atRule(this: C, T: TokenMap, altMap?: AltMap<'rule'>) {
+export function atRule(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let ruleAlt = altMap?.get('rule') ?? [
+  let ruleAlt = alt ?? [
     { ALT: () => $.SUBRULE($.importAtRule) },
     { ALT: () => $.SUBRULE($.mediaAtRule) },
     { ALT: () => $.SUBRULE($.pageAtRule) },
@@ -1431,10 +1429,10 @@ export function atRule(this: C, T: TokenMap, altMap?: AltMap<'rule'>) {
 //   : innerMediaAtRule
 //   | unknownAtRule
 //   ;
-export function innerAtRule(this: C, T: TokenMap, altMap?: AltMap<'rule'>) {
+export function innerAtRule(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let ruleAlt = altMap?.get('rule') ?? [
+  let ruleAlt = alt ?? [
     { ALT: () => $.SUBRULE($.mediaAtRule, { ARGS: [true] }) },
     { ALT: () => $.SUBRULE($.supportsAtRule, { ARGS: [true] }) },
     { ALT: () => $.SUBRULE($.unknownAtRule) }
@@ -1517,10 +1515,10 @@ export function mediaAtRule(this: C, T: TokenMap) {
 //   : mediaCondition
 //   | ((NOT | ONLY) WS*)? mediaType (WS* AND WS* mediaConditionWithoutOr)?
 //   ;
-export function mediaQuery(this: C, T: TokenMap, altMap?: AltMap<'query'>) {
+export function mediaQuery(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let queryAlt = altMap?.get('query') ?? [
+  let queryAlt = alt ?? [
     { ALT: () => $.SUBRULE($.mediaCondition) },
     {
       ALT: () => {
@@ -1582,10 +1580,10 @@ export function mediaQuery(this: C, T: TokenMap, altMap?: AltMap<'query'>) {
 //   | PRINT
 //   | ALL
 //   ;
-export function mediaType(this: C, T: TokenMap, altMap?: AltMap<'type'>) {
+export function mediaType(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let typeAlt = altMap?.get('type') ?? [
+  let typeAlt = alt ?? [
     { ALT: () => $.CONSUME(T.PlainIdent) },
     { ALT: () => $.CONSUME(T.Screen) },
     { ALT: () => $.CONSUME(T.Print) },
@@ -1603,10 +1601,10 @@ export function mediaType(this: C, T: TokenMap, altMap?: AltMap<'type'>) {
 // mediaCondition
 //   : mediaNot | mediaInParens ( WS* (mediaAnd* | mediaOr* ))
 //   ;
-export function mediaCondition(this: C, T: TokenMap, altMap?: AltMap<'condition'>) {
+export function mediaCondition(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let conditionAlt = altMap?.get('condition') ?? [
+  let conditionAlt = alt ?? [
     { ALT: () => $.SUBRULE($.mediaNot) },
     {
       ALT: () => {
@@ -1644,10 +1642,10 @@ export function mediaCondition(this: C, T: TokenMap, altMap?: AltMap<'condition'
 // mediaConditionWithoutOr
 //   : mediaNot | mediaInParens (WS* mediaAnd)*
 //   ;
-export function mediaConditionWithoutOr(this: C, T: TokenMap, altMap?: AltMap<'condition'>) {
+export function mediaConditionWithoutOr(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let conditionAlt = altMap?.get('condition') ?? [
+  let conditionAlt = alt ?? [
     { ALT: () => $.SUBRULE($.mediaNot) },
     {
       ALT: () => {
@@ -1743,10 +1741,10 @@ export function mediaOr(this: C, T: TokenMap) {
 //   : '(' WS* (mediaCondition | mediaFeature) WS* ')'
 //   | generalEnclosed
 //   ;
-export function mediaInParens(this: C, T: TokenMap, altMap?: AltMap<'condition'>) {
+export function mediaInParens(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let conditionAlt = altMap?.get('condition') ?? [
+  let conditionAlt = alt ?? [
     { ALT: () => $.SUBRULE($.mediaCondition) },
     { ALT: () => $.SUBRULE($.mediaFeature) }
   ]
@@ -1795,10 +1793,10 @@ export function mediaInParens(this: C, T: TokenMap, altMap?: AltMap<'condition'>
 //   | mediaRange
 // )
 // ;
-export function mediaFeature(this: C, T: TokenMap, altMap?: AltMap<'feature'>) {
+export function mediaFeature(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let featureAlt = altMap?.get('feature') ?? [
+  let featureAlt = alt ?? [
     {
       ALT: () => {
         let RECORDING_PHASE = $.RECORDING_PHASE
@@ -1972,10 +1970,10 @@ export function mediaRange(this: C, T: TokenMap) {
 //   : number (WS* '/' WS* number)?
 //   | dimension
 //   ;
-export function mfNonIdentifierValue(this: C, T: TokenMap, altMap?: AltMap<'value'>) {
+export function mfNonIdentifierValue(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let valueAlt = altMap?.get('value') ?? [
+  let valueAlt = alt ?? [
     {
       ALT: () => {
         $.startRule()
@@ -2302,10 +2300,10 @@ export function supportsInParens(this: C, T: TokenMap) {
   return () => $.OR(conditionAlt)
 }
 
-export function functionCall(this: C, T: TokenMap, altMap?: AltMap<'func'>) {
+export function functionCall(this: C, T: TokenMap, alt?: Alt) {
   const $ = this
 
-  let funcAlt = altMap?.get('func') ?? [
+  let funcAlt = alt ?? [
     { ALT: () => $.SUBRULE($.knownFunctions) },
     {
       ALT: () => {
@@ -2475,7 +2473,7 @@ export function importAtRule(this: C, T: TokenMap) {
       let location = $.endRule()
       return new AtRule([
         ['name', $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true)],
-        ['prelude', new Sequence(preludeNodes!)]
+        ['prelude', new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context)]
       ], undefined, location, this.context)
     }
   }

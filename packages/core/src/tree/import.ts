@@ -1,5 +1,7 @@
 
 import { Node, defineType } from './node'
+import { type Reference } from './reference'
+import { type Rules } from './rules'
 
 /**
  * This class is for Jess / Sass+ / Less-style imports,
@@ -22,6 +24,9 @@ export type ImportOptions = {
 export type ImportValue = {
   path: string
 
+  /** Values to inject */
+  with?: Reference | Rules
+
   /** e.g. `import * as foo` sets namespace to `foo` */
   namespace?: string
   /**
@@ -29,13 +34,16 @@ export type ImportValue = {
    *   - string is a plain import identifier
    *   - [string, string] is { [identifier1] as [identifier2] }
   */
-  imports: string | Array<string | [string, string]>
+  imports?: string | Array<string | [string, string]>
 
   /**
    * Treat import as one of registered types.
    * Will use that type as parser and evaluator.
    */
   importType: string
+
+  /** Options passed to the Jess import plugin */
+  pluginOptions?: Record<string, any>
 }
 
 /**

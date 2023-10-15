@@ -2,14 +2,18 @@
 
 exports[`CSS CST Visitor > visits every visitor method > Calc 1`] = `
 Root {
+  "_options": undefined,
   "data": Map {
     "value" => [
       Ruleset {
+        "_options": undefined,
         "data": Map {
           "selector" => SelectorSequence {
+            "_options": undefined,
             "data": Map {
               "value" => [
                 BasicSelector {
+                  "_options": undefined,
                   "data": Map {
                     "value" => "a",
                   },
@@ -21,7 +25,6 @@ Root {
                     1,
                     1,
                   ],
-                  "options": undefined,
                   "post": 0,
                   "pre": 0,
                   "visible": true,
@@ -36,27 +39,54 @@ Root {
               1,
               1,
             ],
-            "options": undefined,
             "post": 1,
             "pre": 0,
             "visible": true,
           },
           "rules" => Rules {
+            "_options": undefined,
             "data": Map {
               "value" => [
                 Declaration {
+                  "_options": {
+                    "assign": ":",
+                  },
                   "data": Map {
-                    "name" => "b",
+                    "name" => General {
+                      "_options": {
+                        "type": "Name",
+                      },
+                      "data": Map {
+                        "value" => "b",
+                      },
+                      "location": [
+                        4,
+                        1,
+                        5,
+                        4,
+                        1,
+                        5,
+                      ],
+                      "post": 0,
+                      "pre": 0,
+                      "visible": true,
+                    },
                     "value" => Call {
+                      "_options": undefined,
                       "data": Map {
                         "name" => "calc",
                         "args" => List {
+                          "_options": undefined,
                           "data": Map {
                             "value" => [
                               Operation {
+                                "_options": {
+                                  "inCalc": true,
+                                },
                                 "data": Map {
                                   "value" => [
                                     Dimension {
+                                      "_options": undefined,
                                       "data": Map {
                                         "value" => [
                                           1,
@@ -70,13 +100,13 @@ Root {
                                         1,
                                         13,
                                       ],
-                                      "options": undefined,
                                       "post": 1,
                                       "pre": 0,
                                       "visible": true,
                                     },
                                     "+",
                                     Dimension {
+                                      "_options": undefined,
                                       "data": Map {
                                         "value" => [
                                           1,
@@ -90,7 +120,6 @@ Root {
                                         1,
                                         17,
                                       ],
-                                      "options": undefined,
                                       "post": 0,
                                       "pre": 1,
                                       "visible": true,
@@ -105,9 +134,6 @@ Root {
                                   1,
                                   17,
                                 ],
-                                "options": {
-                                  "inCalc": true,
-                                },
                                 "post": 0,
                                 "pre": 0,
                                 "visible": true,
@@ -123,7 +149,6 @@ Root {
                             1,
                             17,
                           ],
-                          "options": undefined,
                           "post": 0,
                           "pre": 0,
                           "visible": true,
@@ -137,7 +162,6 @@ Root {
                         1,
                         18,
                       ],
-                      "options": undefined,
                       "post": 1,
                       "pre": 1,
                       "visible": true,
@@ -152,9 +176,6 @@ Root {
                     1,
                     18,
                   ],
-                  "options": {
-                    "assign": ":",
-                  },
                   "post": 0,
                   "pre": 1,
                   "visible": true,
@@ -169,7 +190,6 @@ Root {
               1,
               18,
             ],
-            "options": undefined,
             "post": 0,
             "pre": 0,
             "visible": true,
@@ -183,7 +203,6 @@ Root {
           1,
           20,
         ],
-        "options": undefined,
         "post": 0,
         "pre": 0,
         "visible": true,
@@ -198,7 +217,6 @@ Root {
     1,
     20,
   ],
-  "options": undefined,
   "post": 0,
   "pre": 0,
   "visible": true,
@@ -207,14 +225,18 @@ Root {
 
 exports[`CSS CST Visitor > visits every visitor method > Qualified Rule 1`] = `
 Root {
+  "_options": undefined,
   "data": Map {
     "value" => [
       Ruleset {
+        "_options": undefined,
         "data": Map {
           "selector" => SelectorSequence {
+            "_options": undefined,
             "data": Map {
               "value" => [
                 BasicSelector {
+                  "_options": undefined,
                   "data": Map {
                     "value" => "a",
                   },
@@ -226,7 +248,6 @@ Root {
                     1,
                     1,
                   ],
-                  "options": undefined,
                   "post": 0,
                   "pre": 0,
                   "visible": true,
@@ -241,18 +262,43 @@ Root {
               1,
               1,
             ],
-            "options": undefined,
             "post": 1,
             "pre": 0,
             "visible": true,
           },
           "rules" => Rules {
+            "_options": undefined,
             "data": Map {
               "value" => [
                 Declaration {
+                  "_options": {
+                    "assign": ":",
+                    "semi": true,
+                  },
                   "data": Map {
-                    "name" => "color",
+                    "name" => General {
+                      "_options": {
+                        "type": "Name",
+                      },
+                      "data": Map {
+                        "value" => "color",
+                      },
+                      "location": [
+                        4,
+                        1,
+                        5,
+                        8,
+                        1,
+                        9,
+                      ],
+                      "post": 0,
+                      "pre": 0,
+                      "visible": true,
+                    },
                     "value" => General {
+                      "_options": {
+                        "type": "Keyword",
+                      },
                       "data": Map {
                         "value" => "red",
                       },
@@ -264,9 +310,6 @@ Root {
                         1,
                         14,
                       ],
-                      "options": {
-                        "type": "Keyword",
-                      },
                       "post": 0,
                       "pre": 1,
                       "visible": true,
@@ -281,10 +324,6 @@ Root {
                     1,
                     14,
                   ],
-                  "options": {
-                    "assign": ":",
-                    "semi": true,
-                  },
                   "post": 0,
                   "pre": 1,
                   "visible": true,
@@ -299,7 +338,6 @@ Root {
               1,
               14,
             ],
-            "options": undefined,
             "post": 1,
             "pre": 0,
             "visible": true,
@@ -313,7 +351,6 @@ Root {
           1,
           17,
         ],
-        "options": undefined,
         "post": 0,
         "pre": 0,
         "visible": true,
@@ -328,7 +365,6 @@ Root {
     1,
     17,
   ],
-  "options": undefined,
   "post": 0,
   "pre": 0,
   "visible": true,

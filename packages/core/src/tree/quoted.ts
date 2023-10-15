@@ -1,3 +1,5 @@
+import { type Interpolated } from './interpolated'
+import { type General } from './general'
 import { Node, defineType } from './node'
 
 export type QuotedOptions = {
@@ -8,7 +10,7 @@ export type QuotedOptions = {
 /**
  * An quoted value
  */
-export class Quoted extends Node<Node, QuotedOptions> {
+export class Quoted extends Node<General | Interpolated, QuotedOptions> {
   toTrimmedString() {
     let { quote = '"', escaped } = this.options ?? {}
     let output = super.toTrimmedString()
