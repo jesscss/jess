@@ -86,7 +86,7 @@ export function main(this: P, T: TokenMap) {
     { ALT: () => $.SUBRULE($.mixinCall) }
   ]
 
-  return cssMain.call(this, T, new Map<'rule', typeof ruleAlt>([['rule', ruleAlt]]))
+  return cssMain.call(this, T, ruleAlt)
 }
 
 export function declarationList(this: P, T: TokenMap) {
@@ -102,7 +102,7 @@ export function declarationList(this: P, T: TokenMap) {
     { ALT: () => $.CONSUME2(T.Semi) }
   ]
 
-  return cssMain.call(this, T, new Map<'rule', typeof ruleAlt>([['rule', ruleAlt]]))
+  return cssMain.call(this, T, ruleAlt)
 }
 
 let interpolatedRegex = /([$@]){([^}]+)}/
@@ -194,7 +194,7 @@ export function declaration(this: P, T: TokenMap) {
     }
   ]
 
-  return cssDeclaration.call(this, T, new Map<'rule', typeof ruleAlt>([['rule', ruleAlt]]))
+  return cssDeclaration.call(this, T, ruleAlt)
 }
 
 export function mediaInParens(this: P, T: TokenMap) {
@@ -412,7 +412,7 @@ export function simpleSelector(this: P, T: TokenMap) {
     { ALT: () => $.SUBRULE($.attributeSelector) }
   ])
   
-  return cssSimpleSelector.call(this, T, new Map<'selector', typeof selectorAlt>([['selector', selectorAlt]]))
+  return cssSimpleSelector.call(this, T, selectorAlt)
 }
 
 export function anonymousMixinDefinition(this: P, T: TokenMap) {
@@ -942,7 +942,7 @@ export function nthValue(this: P, T: TokenMap) {
     }
   ]
 
-  return cssNthValue.call(this, T, new Map<'value', typeof nthValueAlt>([['value', nthValueAlt]]))
+  return cssNthValue.call(this, T, nthValueAlt)
 }
 
 export function knownFunctions(this: P, T: TokenMap) {
@@ -956,36 +956,62 @@ export function knownFunctions(this: P, T: TokenMap) {
     { ALT: () => $.SUBRULE($.booleanFunction) }
   ]
 
-  return cssKnownFunctions.call(this, T, new Map<'functions', typeof functions>([['functions', functions]]))
+  return cssKnownFunctions.call(this, T, functions)
 }
 
-  $.RULE('ifFunction', () => {
+export function ifFunction(this: P, T: TokenMap) {
+  const $ = this
+
+  return () => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
+    $.startRule()
     $.CONSUME(T.IfFunction)
-    $.SUBRULE($.guardOr, { ARGS: [{ inValueList: true }] })
+    $.startRule()
+
+    let node: Node = $.SUBRULE($.guardOr, { ARGS: [{ inValueList: true }] })
+    let values: Node[]
+
+    if (!RECORDING_PHASE) {
+      values = [node]
+    }
+
     $.OR([
       {
         ALT: () => {
           $.CONSUME(T.Semi)
-          $.SUBRULE($.valueList, { ARGS: [{ allowAnonymousMixins: true }] })
+          node = $.SUBRULE($.valueList, { ARGS: [{ allowAnonymousMixins: true }] })
+          if (!RECORDING_PHASE) {
+            values.push(node)
+          }
           $.OPTION(() => {
             $.CONSUME2(T.Semi)
-            $.SUBRULE2($.valueList, { ARGS: [{ allowAnonymousMixins: true }] })
+            node = $.SUBRULE2($.valueList, { ARGS: [{ allowAnonymousMixins: true }] })
+            if (!RECORDING_PHASE) {
+              values.push(node)
+            }
           })
         }
       },
       {
         ALT: () => {
           $.CONSUME(T.Comma)
-          $.SUBRULE($.valueSequence, { ARGS: [{ allowAnonymousMixins: true }] })
+          node = $.SUBRULE($.valueSequence, { ARGS: [{ allowAnonymousMixins: true }] })
+          if (!RECORDING_PHASE) {
+            values.push(node)
+          }
           $.OPTION2(() => {
             $.CONSUME2(T.Comma)
-            $.SUBRULE2($.valueSequence, { ARGS: [{ allowAnonymousMixins: true }] })
+            node = $.SUBRULE2($.valueSequence, { ARGS: [{ allowAnonymousMixins: true }] })
+            if (!RECORDING_PHASE) {
+              values.push(node)
+            }
           })
         }
       }
     ])
     $.CONSUME(T.RParen)
-  })
+  }
+}
 
   $.RULE('booleanFunction', () => {
     $.CONSUME(T.BooleanFunction)
