@@ -8,7 +8,7 @@ import {
   productions as cssProductions
 } from '@jesscss/css-parser'
 
-import { Reference } from '@jesscss/core'
+import { Reference, type Node } from '@jesscss/core'
 
 import { type LessTokenType } from './lessTokens'
 import * as productions from './productions'
@@ -69,7 +69,7 @@ export class LessActionsParser extends CssActionsParser {
   mixinName: Rule
   mixinDefinition: Rule
   mixinCall: Rule
-  inlineMixinCall: Rule
+  inlineMixinCall: Rule<(nodeContext?: Node) => void>
   mixinArgs: Rule<(ctx?: RuleContext) => void>
   mixinArgList: Rule<(ctx?: RuleContext) => void>
   mixinArg: Rule<(ctx?: RuleContext) => void>
@@ -79,10 +79,9 @@ export class LessActionsParser extends CssActionsParser {
   extend: Rule<(ctx?: RuleContext) => void>
 
   // namespaces
-  accessors: Rule
+  accessors: Rule<(nodeContext?: Node) => void>
 
   comparison: Rule
-  comparison2: Rule
   guard: Rule<(ctx?: RuleContext) => void>
   guardOr: Rule<(ctx?: RuleContext) => void>
   guardAnd: Rule<(ctx?: RuleContext) => void>

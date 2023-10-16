@@ -11,6 +11,11 @@ export type CallValue = {
    */
   name: string | Node
   args?: List
+  /**
+   * Legacy Less feature -- if a ruleset is returned,
+   * all the properties can be marked as important.
+   */
+  important?: boolean
 }
 
 /**
@@ -34,9 +39,13 @@ export class Call<T extends CallValue = CallValue> extends Node<T> {
     this.data.set('args', v)
   }
 
+  get important(): boolean {
+    return this.data.get('important')
+  }
+
   toTrimmedString() {
-    let { name, args } = this
-    return `${name}(${args ?? ''})`
+    let { name, args, important } = this
+    return `${name}(${args ?? ''})${important ? ' !important' : ''}}`
   }
 
   async eval(context: Context): Promise<Node> {
@@ -61,6 +70,8 @@ export class Call<T extends CallValue = CallValue> extends Node<T> {
         } else {
           result = await name.value.call(context)
         }
+
+        /** @todo - mark results as important */
         return cast(result)
         // } catch (e) {
         /** Do something with JS errors */

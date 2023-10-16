@@ -11,12 +11,13 @@ import {
   unknownAtRule as cssUnknownAtRule,
   nthValue as cssNthValue,
   knownFunctions as cssKnownFunctions,
-  mathValue as cssMathValue
+  mathValue as cssMathValue,
+  innerAtRule as cssInnerAtRule
 } from '@jesscss/css-parser'
 
 import {
   TreeContext,
-  Node,
+  type Node,
   type LocationInfo,
   type AssignmentType,
   type Operator,
@@ -27,7 +28,7 @@ import {
   Declaration,
   Scope,
   type SimpleSelector,
-  SelectorList,
+  type SelectorList,
   SelectorSequence,
   type Rules,
   Combinator,
@@ -45,7 +46,7 @@ import {
   QueryCondition,
   Token,
   Interpolated,
-  Name,
+  type Name,
   Reference,
   Extend,
   ExtendList,
@@ -54,7 +55,8 @@ import {
   Import,
   Condition,
   VarDeclaration,
-  DefaultGuard
+  DefaultGuard,
+  Lookup
 } from '@jesscss/core'
 
 const isEscapedString = function(this: P, T: TokenMap) {
@@ -117,7 +119,7 @@ export function declaration(this: P, T: TokenMap) {
     let result: RegExpExecArray | null
 
     let outputName = name
-    
+
     while (result = interpolatedRegex.exec(name)) {
       let [match, propOrVar, value] = result
       outputName = outputName.replace(match, charPlaceholder)
@@ -182,11 +184,11 @@ export function declaration(this: P, T: TokenMap) {
         if (!RECORDING_PHASE) {
           let location = $.endRule()
           let nameNode: Name
-          let nameValue = name!.image
+          let nameValue = name.image
           if (nameValue.includes('@') || nameValue.includes('$')) {
-            nameNode = getInterpolated(nameValue, $.getLocationInfo(name!))
+            nameNode = getInterpolated(nameValue, $.getLocationInfo(name))
           } else {
-            nameNode = $.wrap(new General(name!.image, { type: 'Name' }, $.getLocationInfo(name!), this.context), true)
+            nameNode = $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true)
           }
           let value = new Sequence(nodes!, undefined, location, this.context)
           return [nameNode, assign, value]
@@ -276,7 +278,7 @@ export function qualifiedRule(this: P, T: TokenMap) {
          *
          * @note - this should be tweaked so that each
          * complex selector in a list is required to
-         * have an extend in order to end in a semi-colon. 
+         * have an extend in order to end in a semi-colon.
          */
         GATE: () => !!ctx.hasExtend,
         ALT: () => semi = !!$.CONSUME(T.Semi)
@@ -344,7 +346,7 @@ export function complexSelector(this: P, T: TokenMap) {
     let extendSelector: SelectorList | SelectorSequence | undefined
     let extendFlag: IToken | undefined
     let extendLocation: LocationInfo | undefined
-    
+
     $.OPTION({
       GATE: () => !!ctx.qualifiedRule,
       DEF: () => {
@@ -357,7 +359,7 @@ export function complexSelector(this: P, T: TokenMap) {
         }
       }
     })
-  
+
     if (!RECORDING_PHASE) {
       let sequence = new SelectorSequence(selectors as Array<SimpleSelector | Combinator>, undefined, $.getLocationFromNodes(selectors), this.context)
       if (extendSelector) {
@@ -366,7 +368,7 @@ export function complexSelector(this: P, T: TokenMap) {
           ['extendList', extendSelector],
           /** @todo - should support more flags in the future? */
           ['flag', extendFlag ? '!all' : undefined]
-        ], undefined, extendLocation!, this.context)
+        ], undefined, extendLocation, this.context)
       }
       return sequence
     }
@@ -392,7 +394,7 @@ export function extend(this: P, T: TokenMap) {
 export function simpleSelector(this: P, T: TokenMap) {
   const $ = this
 
-  let selectorAlt = ((ctx: RuleContext) => [
+  let selectorAlt = (ctx: RuleContext) => [
     {
       /** In Less/Sass (and now CSS), the first inner selector can be an identifier */
       ALT: () => $.CONSUME(T.Ident)
@@ -411,8 +413,8 @@ export function simpleSelector(this: P, T: TokenMap) {
     { ALT: () => $.CONSUME(T.Star) },
     { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [ctx] }) },
     { ALT: () => $.SUBRULE($.attributeSelector) }
-  ])
-  
+  ]
+
   return cssSimpleSelector.call(this, T, selectorAlt)
 }
 
@@ -504,7 +506,7 @@ export function importAtRule(this: P, T: TokenMap) {
     ])
 
     let isAtRule = false
-    
+
     if (options!.includes('css')) {
       isAtRule = true
     } else {
@@ -585,6 +587,28 @@ export function importAtRule(this: P, T: TokenMap) {
   }
 }
 
+const getInterpolatedOrString = (name: string): Interpolated | string => {
+  let nextPos = name.indexOf('@', 1)
+  if (nextPos === -1) {
+    nextPos = name.indexOf('$', 1)
+  }
+  if (nextPos === -1) {
+    return name.slice(1)
+  }
+  let start = name.slice(1, nextPos)
+  let end = name.slice(nextPos)
+
+  return new Interpolated([
+    ['value', start + charPlaceholder],
+    ['replacements', [
+      new Reference(
+        getInterpolatedOrString(end),
+        { type: end.startsWith('@') ? 'variable' : 'property' }
+      )
+    ]]
+  ])
+}
+
 /** Less variables */
 export function unknownAtRule(this: P, T: TokenMap) {
   const $ = this
@@ -603,35 +627,15 @@ export function unknownAtRule(this: P, T: TokenMap) {
       !$.postSkippedTokenMap.has(token.endOffset!)
   }
 
-  const getNodeFromString = (name: string): Interpolated | string => {
-    let nextPos = name.indexOf('@', 1)
-    if (nextPos === -1) {
-      nextPos = name.indexOf('$', 1)
-    }
-    if (nextPos === -1) {
-      return name.slice(1)
-    }
-    let start = name.slice(1, nextPos)
-    let end = name.slice(nextPos)
-    
-    return new Interpolated([
-      ['value', start + charPlaceholder],
-      ['replacements', [
-        new Reference(
-          getNodeFromString(end),
-          { type: end === '@' ? 'property' : 'variable' }
-        )
-      ]]
-    ])
-  }
+  let nameAlt = [
+    { ALT: () => $.CONSUME(T.AtKeyword) },
+    { ALT: () => $.CONSUME(T.NestedReference) }
+  ]
 
   return () => {
     $.startRule()
 
-    let name = $.OR([
-      { ALT: () => $.CONSUME(T.AtKeyword) },
-      { ALT: () => $.CONSUME(T.NestedReference) }
-    ])
+    let name = $.OR(nameAlt)
     let value: Node | undefined
     let args: List | undefined
     let important: IToken | undefined
@@ -691,7 +695,7 @@ export function unknownAtRule(this: P, T: TokenMap) {
       if (returnVal instanceof AtRule) {
         return returnVal
       }
-      let nameVal: string | Interpolated = getNodeFromString(name.image)
+      let nameVal: string | Interpolated = getInterpolatedOrString(name.image)
       let nameNode: Interpolated | General<'Name'>
       if (!(nameVal instanceof Interpolated)) {
         nameNode = new General(nameVal, { type: 'Name' }, $.getLocationInfo(name), this.context)
@@ -709,7 +713,7 @@ export function unknownAtRule(this: P, T: TokenMap) {
 
       return new VarDeclaration([
         ['name', $.wrap(nameNode, true)],
-        ['value', $.wrap(value!, true)],
+        ['value', $.wrap(value, true)],
         ['important', important ? $.wrap(new General(important.image, { type: 'Flag' }, $.getLocationInfo(important), this.context), true) : undefined]
       ], undefined, location, this.context)
     }
@@ -778,7 +782,7 @@ export function expressionSum(this: P, T: TokenMap) {
     $.startRule()
 
     let left = $.SUBRULE($.expressionProduct, { ARGS: [ctx] })
-  
+
     $.MANY({
       /**
        * What this GATE does. We need to dis-ambiguate
@@ -854,13 +858,13 @@ export function expressionProduct(this: P, T: TokenMap) {
     $.startRule()
 
     let left = $.SUBRULE($.expressionValue, { ARGS: [ctx] })
-  
+
     $.MANY(() => {
       let op = $.OR(opAlt)
       let right: Node = $.SUBRULE2($.expressionValue, { ARGS: [ctx] })
 
       if (!RECORDING_PHASE) {
-        left = $.wrap(new Operation([$.wrap(left, true), op.image as Operator, $.wrap(right!)], undefined, 0, this.context))
+        left = $.wrap(new Operation([$.wrap(left, true), op.image as Operator, $.wrap(right)], undefined, 0, this.context))
       }
     })
 
@@ -1146,25 +1150,25 @@ export function mathValue(this: P, T: TokenMap) {
   return cssMathValue.call(this, T, valueAlt)
 }
 
-  /** @todo - add interpolation */
-  // $.OVERRIDE_RULE('string', () => {
-  //   $.OR([
-  //     {
-  //       ALT: () => {
-  //         $.CONSUME(T.SingleQuoteStart)
-  //         $.OPTION(() => $.CONSUME(T.SingleQuoteStringContents))
-  //         $.CONSUME(T.SingleQuoteEnd)
-  //       }
-  //     },
-  //     {
-  //       ALT: () => {
-  //         $.CONSUME(T.DoubleQuoteStart)
-  //         $.OPTION2(() => $.CONSUME(T.DoubleQuoteStringContents))
-  //         $.CONSUME(T.DoubleQuoteEnd)
-  //       }
-  //     }
-  //   ])
-  // })
+/** @todo - add interpolation */
+// $.OVERRIDE_RULE('string', () => {
+//   $.OR([
+//     {
+//       ALT: () => {
+//         $.CONSUME(T.SingleQuoteStart)
+//         $.OPTION(() => $.CONSUME(T.SingleQuoteStringContents))
+//         $.CONSUME(T.SingleQuoteEnd)
+//       }
+//     },
+//     {
+//       ALT: () => {
+//         $.CONSUME(T.DoubleQuoteStart)
+//         $.OPTION2(() => $.CONSUME(T.DoubleQuoteStringContents))
+//         $.CONSUME(T.DoubleQuoteEnd)
+//       }
+//     }
+//   ])
+// })
 
 export function guard(this: P, T: TokenMap) {
   const $ = this
@@ -1246,135 +1250,260 @@ export function guardAnd(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     let left: Node
+    let RECORDING_PHASE = $.RECORDING_PHASE
     $.MANY_SEP({
       SEP: T.And,
       DEF: () => {
         let not: IToken | undefined
-        $.OPTION(() => $.CONSUME(T.Not))
+        $.OPTION(() => not = $.CONSUME(T.Not))
         let right = $.SUBRULE($.guardInParens)
+        if (!RECORDING_PHASE && not) {
+          let [,,, endOffset, endLine, endColumn] = right.location!
+          let [startOffset, startLine, startColumn] = $.getLocationInfo(not)
+          right = new Condition(
+            right,
+            { negate: true },
+            [startOffset, startLine, startColumn, endOffset, endLine, endColumn],
+            this.context
+          )
+        }
+        if (!left) {
+          left = right
+          return
+        }
+        if (!RECORDING_PHASE) {
+          left = new Condition(
+            [$.wrap(left, true), 'and', $.wrap(right)],
+            undefined,
+            $.getLocationFromNodes([left, right]),
+            this.context
+          )
+        }
       }
     })
+    return left!
   }
 }
 
-  $.RULE('guardInParens', () => {
-    $.CONSUME(T.LParen)
-    $.OR([
-      { ALT: () => $.SUBRULE($.guardOr) },
-      { ALT: () => $.SUBRULE($.comparison) }
-    ])
-    $.CONSUME(T.RParen)
-  })
-
-  /** Currently, Less only allows a single comparison expression */
-  $.RULE('comparison', () => {
-    $.SUBRULE($.valueList, { LABEL: 'L' })
-    $.OPTION(() => {
-      $.OR([
-        { ALT: () => $.CONSUME(T.Eq) },
-        { ALT: () => $.CONSUME(T.Gt) },
-        { ALT: () => $.CONSUME(T.GtEq) },
-        { ALT: () => $.CONSUME(T.GtEqAlias) },
-        { ALT: () => $.CONSUME(T.Lt) },
-        { ALT: () => $.CONSUME(T.LtEq) },
-        { ALT: () => $.CONSUME(T.LtEqAlias) }
-      ])
-      $.SUBRULE2($.valueList, { LABEL: 'R' })
-    })
-  })
-
-  $.RULE('comparison2', () => {
-    $.SUBRULE($.valueList, { LABEL: 'L' })
-    $.OPTION(() => {
-      $.OR([
-        { ALT: () => $.CONSUME(T.Eq) },
-        { ALT: () => $.CONSUME(T.Gt) },
-        { ALT: () => $.CONSUME(T.GtEq) },
-        { ALT: () => $.CONSUME(T.GtEqAlias) },
-        { ALT: () => $.CONSUME(T.Lt) },
-        { ALT: () => $.CONSUME(T.LtEq) },
-        { ALT: () => $.CONSUME(T.LtEqAlias) }
-      ])
-      $.SUBRULE2($.valueList, { LABEL: 'R' })
-    })
-  })
-}
-
-export function atRuleBubbling(this: LessParser, T: TokenMap) {
+export function guardInParens(this: P, T: TokenMap) {
   const $ = this
 
-  /**
-   * Less (perhaps unwisely) allows bubling of normally document-root
-   * at-rules, so we need to override CSS here.
-   */
-  $.OVERRIDE_RULE('innerAtRule', () => {
-    $.OR([
-      { ALT: () => $.SUBRULE($.mediaAtRule, { ARGS: [true] }) },
-      { ALT: () => $.SUBRULE($.supportsAtRule, { ARGS: [true] }) },
-      { ALT: () => $.SUBRULE($.importAtRule) },
-      { ALT: () => $.SUBRULE($.pageAtRule) },
-      { ALT: () => $.SUBRULE($.fontFaceAtRule) },
-      { ALT: () => $.SUBRULE($.nestedAtRule) },
-      { ALT: () => $.SUBRULE($.nonNestedAtRule) },
-      { ALT: () => $.SUBRULE($.unknownAtRule) }
-    ])
-  })
+  let guardAlt = [
+    { ALT: () => $.SUBRULE($.guardOr) },
+    { ALT: () => $.SUBRULE($.comparison) }
+  ]
+
+  return () => {
+    $.startRule()
+    $.CONSUME(T.LParen)
+    let node = $.OR(guardAlt)
+    $.CONSUME(T.RParen)
+    if (!$.RECORDING_PHASE) {
+      node = $.wrap(node, 'both')
+      return new Paren(node, undefined, $.endRule(), this.context)
+    }
+  }
 }
 
+/**
+ * Currently, Less only allows a single comparison expression,
+ * unlike Media Queries Level 4, which allows a left and right
+ * comparison.
+ */
+export function comparison(this: P, T: TokenMap) {
+  const $ = this
+
+  let opAlt = [
+    { ALT: () => $.CONSUME(T.Eq) },
+    { ALT: () => $.CONSUME(T.Gt) },
+    { ALT: () => $.CONSUME(T.GtEq) },
+    { ALT: () => $.CONSUME(T.GtEqAlias) },
+    { ALT: () => $.CONSUME(T.Lt) },
+    { ALT: () => $.CONSUME(T.LtEq) },
+    { ALT: () => $.CONSUME(T.LtEqAlias) }
+  ]
+
+  return () => {
+    let left = $.SUBRULE($.valueList)
+    $.OPTION(() => {
+      let op = $.OR(opAlt)
+      let right = $.SUBRULE2($.valueList)
+      if (!$.RECORDING_PHASE) {
+        let opStr = op.image
+        if (opStr === '=>') {
+          opStr = '>='
+        } else if (opStr === '=<') {
+          opStr = '<='
+        }
+        left = new Condition(
+          [$.wrap(left, true), opStr as Operator, $.wrap(right)],
+          undefined,
+          $.getLocationFromNodes([left, right]),
+          this.context
+        )
+      }
+    })
+    return left
+  }
+}
+
+/**
+ * Less (perhaps unwisely) allows bubling of normally document-root
+ * at-rules, so we need to override CSS here.
+ */
+export function innerAtRule(this: P, T: TokenMap) {
+  const $ = this
+
+  let ruleAlt = [
+    { ALT: () => $.SUBRULE($.mediaAtRule, { ARGS: [true] }) },
+    { ALT: () => $.SUBRULE($.supportsAtRule, { ARGS: [true] }) },
+    { ALT: () => $.SUBRULE($.importAtRule) },
+    { ALT: () => $.SUBRULE($.pageAtRule) },
+    { ALT: () => $.SUBRULE($.fontFaceAtRule) },
+    { ALT: () => $.SUBRULE($.nestedAtRule) },
+    { ALT: () => $.SUBRULE($.nonNestedAtRule) },
+    { ALT: () => $.SUBRULE($.unknownAtRule) }
+  ]
+
+  return cssInnerAtRule.call(this, T, ruleAlt)
+}
+
+/**
+ * One of the rare rules that returns a token, because
+ * other rules will transform it differently.
+ */
 export function mixinName(this: P, T: TokenMap) {
   const $ = this
 
+  let nameAlt = [
+    { ALT: () => $.CONSUME(T.HashName) },
+    { ALT: () => $.CONSUME(T.ColorIdentStart) },
+    { ALT: () => $.CONSUME(T.DotName) },
+    { ALT: () => $.CONSUME(T.InterpolatedIdent) }
+  ]
+
   /** e.g. .mixin, #mixin */
-  return () => {
-    $.OR([
-      { ALT: () => $.CONSUME(T.HashName) },
-      { ALT: () => $.CONSUME(T.ColorIdentStart) },
-      { ALT: () => $.CONSUME(T.DotName) },
-      { ALT: () => $.CONSUME(T.InterpolatedIdent) }
-    ])
-  }
+  return () => $.OR(nameAlt)
 }
 
+/** @todo - should these names be Jess-normalized when saved? */
 export function mixinReference(this: P, T: TokenMap) {
   const $ = this
 
   return () => {
-    $.SUBRULE($.mixinName)
+    let RECORDING_PHASE = $.RECORDING_PHASE
+    let left = $.SUBRULE($.mixinName)
+    let leftNode: Node
+    if (!RECORDING_PHASE) {
+      leftNode = new Reference(left.image, { type: 'mixin' }, $.getLocationInfo(left), this.context)
+    }
     $.MANY(() => {
       $.OPTION(() => $.CONSUME(T.Gt))
-      $.SUBRULE2($.mixinName)
+      let right = $.SUBRULE2($.mixinName)
+      if (!RECORDING_PHASE) {
+        let [,,, endOffset, endLine, endColumn] = leftNode.location
+        let [startOffset, startLine, startColumn] = $.getLocationInfo(right)
+        leftNode = new Lookup(
+          [
+            ['value', new Call([['name', leftNode]])],
+            ['key', right.image]
+          ],
+          { mixin: true },
+          [startOffset, startLine, startColumn, endOffset!, endLine!, endColumn!],
+          this.context
+        )
+      }
     })
+    return leftNode!
   }
 }
 
-  /** e.g. #ns > .mixin() */
-  $.RULE('mixinCall', () => {
-    $.SUBRULE($.mixinReference)
+/** e.g. #ns > .mixin() */
+export function mixinCall(this: P, T: TokenMap) {
+  const $ = this
 
+  return () => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
+    $.startRule()
+    let ref = $.SUBRULE($.mixinReference)
+    let semi: boolean | undefined
+    let argList: List | undefined
+    let important: IToken | undefined
     /** Either needs to end in parens or in a semi-colon (or both) */
     $.OR([
       {
         ALT: () => {
-          $.SUBRULE($.mixinArgs)
-          $.OPTION2(() => $.CONSUME(T.Important))
-          $.OPTION3(() => $.CONSUME(T.Semi))
+          argList = $.SUBRULE($.mixinArgs)
+          $.OPTION2(() => important = $.CONSUME(T.Important))
+          $.OPTION3(() => {
+            semi = true
+            $.CONSUME(T.Semi)
+          })
         }
       },
-      { ALT: () => $.CONSUME2(T.Semi) }
+      {
+        ALT: () => {
+          semi = true
+          $.CONSUME2(T.Semi)
+        }
+      }
     ])
-  })
+    if (!RECORDING_PHASE) {
+      let location = $.endRule()
+      let node = new Call([
+        ['name', ref],
+        ['args', argList],
+        ['important', !!important]
+      ], undefined, location, this.context)
+      if (semi) {
+        node.options.semi = true
+      }
+      return node
+    }
+  }
+}
 
-  /**
-   * Used within a value. These can be
-   * chained more recursively, unlike
-   * Less 1.x-4.x
-   *   e.g. .mixin1() > .mixin2[@val1].ns() > .sub-mixin[@val2]
-   */
-  $.RULE('inlineMixinCall', () => {
-    $.SUBRULE($.mixinReference)
-    $.OPTION(() => $.SUBRULE($.mixinArgs))
-    $.OPTION2(() => $.SUBRULE($.accessors))
-  })
+/**
+ * Used within a value. These can be
+ * chained more recursively, unlike
+ * Less 1.x-4.x
+ *   e.g. .mixin1() > .mixin2[@val1].ns() > .sub-mixin[@val2]
+ */
+export function inlineMixinCall(this: P, T: TokenMap) {
+  const $ = this
+
+  return (nodeContext: Node) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
+    let locationRetrieved = false
+    $.startRule()
+    let argList: List | undefined
+    let node: Node
+    let call: Call
+    let ref = $.SUBRULE($.mixinReference)
+    if (!RECORDING_PHASE) {
+      call = new Call([['name', ref]], undefined, ref.location, this.context)
+      node = call
+    }
+    $.OPTION(() => {
+      argList = $.SUBRULE($.mixinArgs)
+      if (!RECORDING_PHASE) {
+        let location = $.endRule()
+        locationRetrieved = true
+        call.args = argList
+        call.location[3] = location[3]
+        call.location[4] = location[4]
+        call.location[5] = location[5]
+      }
+    })
+    $.OPTION2(() => node = $.SUBRULE($.accessors, { ARGS: [node] }))
+    if (!RECORDING_PHASE) {
+      if (!locationRetrieved) {
+        $.endRule()
+      }
+      return node!
+    }
+  }
+}
 
   $.RULE('mixinDefinition', () => {
     $.SUBRULE($.mixinName)
@@ -1391,23 +1520,105 @@ export function mixinReference(this: P, T: TokenMap) {
     $.CONSUME(T.RParen)
   })
 
-  $.RULE('accessors', () => {
+export function accessors(this: P, T: TokenMap) {
+  const $ = this
+
+  // const getReferenceFromLookupToken = (token: IToken) => {
+  //   let tokenStr = token.image
+  //   let firstChar = tokenStr[0]
+  //   if (firstChar !== '$' && firstChar !== '@') {
+  //     /** Treat idents as property lookups */
+  //     tokenStr = '$' + tokenStr
+  //   }
+  //   let key = getInterpolatedOrString(tokenStr)
+  //   let type: 'variable' | 'property' = tokenStr.startsWith('@') ? 'variable' : 'property'
+
+  //   return new Reference(key, { type }, $.getLocationInfo(token), this.context)
+  // }
+
+  let keyAlt = [
+    { ALT: () => $.CONSUME(T.NestedReference) },
+    { ALT: () => $.CONSUME(T.AtKeyword) },
+    { ALT: () => $.CONSUME(T.PropertyReference) },
+    { ALT: () => $.CONSUME(T.Ident) }
+  ]
+
+  /** The node passed in is what we're looking up on */
+  return (nodeContext: Node) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
+    $.startRule()
+    let keyToken: IToken | undefined
+    let key: string | number | Interpolated
+    let returnNode: Node
+
     $.CONSUME(T.LSquare)
-    $.OPTION(() => $.OR([
-      { ALT: () => $.CONSUME(T.NestedReference) },
-      { ALT: () => $.CONSUME(T.AtKeyword) },
-      { ALT: () => $.CONSUME(T.PropertyReference) },
-      { ALT: () => $.CONSUME(T.Ident) }
-    ]))
+    $.OPTION(() => keyToken = $.OR(keyAlt))
     $.CONSUME(T.RSquare)
-    /** Allows chaining of lookups / calls */
+
+    if (!RECORDING_PHASE) {
+      if (keyToken) {
+        if (keyToken.tokenType === T.NestedReference) {
+          let tokenStr = keyToken.image
+          let inter = getInterpolatedOrString(tokenStr) as Interpolated
+          if (tokenStr.startsWith('@')) {
+            inter.value = '$' + inter.value
+          }
+        } else {
+          let tokenStr = keyToken.image
+          let tokenStart = tokenStr[0]
+          if (tokenStart === '@') {
+            key = '$' + tokenStr.slice(1)
+          } else if (tokenStart === '$') {
+            key = tokenStr.slice(1)
+          } else {
+            key = tokenStr
+          }
+        }
+      } else {
+        key = -1
+      }
+      let location = $.endRule()
+      returnNode = new Lookup(
+        [
+          ['value', nodeContext],
+          ['key', key!]
+        ],
+        undefined,
+        location,
+        this.context
+      )
+    }
+    /**
+     * Allows chaining of lookups / calls
+     * @note - In Less, an additional call or accessor implies
+     * that the previous accessor is a mixin call, therefore
+     * it should be returned as a Call node. 
+     */
     $.OPTION2(() => {
       $.OR2([
-        { ALT: () => $.SUBRULE($.inlineMixinCall) },
-        { ALT: () => $.SUBRULE($.accessors) }
+        {
+          ALT: () => {
+            let args = $.SUBRULE($.mixinArgs)
+            if (!RECORDING_PHASE) {
+              returnNode = new Call(
+                [
+                  ['name', returnNode],
+                  ['args', args]
+                ],
+                undefined,
+                $.getLocationFromNodes([returnNode, args]),
+                this.context
+              )
+            }
+          }
+        },
+        { ALT: () => returnNode = $.SUBRULE($.inlineMixinCall, { ARGS: [returnNode] }) },
+        { ALT: () => returnNode = $.SUBRULE($.accessors, { ARGS: [returnNode] }) }
       ])
     })
-  })
+    return returnNode!
+  }
+}
 
   /**
    * @see https://lesscss.org/features/#mixins-feature-mixins-parametric-feature

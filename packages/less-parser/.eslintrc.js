@@ -3,5 +3,8 @@ module.exports = {
   root: true,
   parserOptions: {
     project: './tsconfig.json'
+  },
+  rules: {
+    'no-return-assign': 'off'
   }
 }

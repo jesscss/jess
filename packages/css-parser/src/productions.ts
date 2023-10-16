@@ -1425,10 +1425,10 @@ export function atRule(this: C, T: TokenMap, alt?: Alt) {
 }
 
 /**
-    Inner rules are mostly the same except they have a declarationList
-    instead of a main block within {}
-    @todo - Add `@container` `@layer` `@scope`
-  */
+  Inner rules are mostly the same except they have a declarationList
+  instead of a main block within {}
+  @todo - Add `@container` `@layer` `@scope`
+*/
 // innerAtRule
 //   : innerMediaAtRule
 //   | unknownAtRule

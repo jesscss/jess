@@ -1,15 +1,25 @@
 import { defineType, Node } from './node'
-import { type Interpolated } from './interpolated'
 import { type Context } from '../context'
 import isPlainObject from 'lodash-es/isPlainObject'
 import { Rules } from './rules'
+import { Reference } from './reference'
 
 export type LookupValue = {
   /** This is the reference value to resolve first */
   value: Node
-  key: string | Interpolated
+  /**
+   * Number is the (0-based) position in rules.
+   * Negative numbers are from the end.
+   */
+  key: string | number | Node
 }
 
+/**
+ * Unlike references, lookups between props and vars
+ * are distinguished by a preceding '$' or not.
+ *
+ * This is done for interoperability with JavaScript.
+ */
 export type LookupOptions = {
   mixin?: boolean
 }
@@ -28,7 +38,7 @@ export class Lookup extends Node<LookupValue, LookupOptions> {
     return this.data.get('key')
   }
 
-  set key(v: string | Interpolated) {
+  set key(v: string | number | Node) {
     this.data.set('key', v)
   }
 
@@ -49,21 +59,44 @@ export class Lookup extends Node<LookupValue, LookupOptions> {
 
   async eval(context: Context) {
     let { value, key } = this
-    let keyStr: string = key instanceof Node ? (await key.eval(context)).value : key
+    let initialScope = context.scope
     value = await value.eval(context)
+
     if (value instanceof Rules) {
-      if (this.options?.mixin) {
-        return value._scope.getMixin(keyStr)
+      context.scope = value._scope
+
+      if (typeof key === 'string') {
+        key = new Reference(key)
+      } else if (typeof key === 'number') {
+        let nodes = value.value
+        if (key < 0) {
+          key += nodes.length
+        }
+        return nodes[key]
       }
-      if (keyStr.charAt(0) === '$') {
-        return value._scope.getVar(keyStr)
-      }
-      return value._scope.getProp(keyStr)
+
+      let returnVal = key instanceof Node ? (await key.eval(context)).value : key
+      context.scope = initialScope
+      return returnVal
     } else if (isPlainObject(value)) {
-      return (value as Record<string, any>)[keyStr]
+      if (typeof key === 'number') {
+        let nodes = Object.values(value)
+        if (key < 0) {
+          key += nodes.length
+        }
+        return nodes[key]
+      } else if (key instanceof Node) {
+        let keyValue = (await key.eval(context)).value
+        if (typeof keyValue !== 'string') {
+          let keyType = keyValue.type ?? typeof keyValue
+          throw new Error(`Cannot look up non-string key "${keyType}" on object`)
+        }
+        return (value as Record<string, any>)[keyValue]
+      }
+      return (value as Record<string, any>)[key]
     } else {
       const type = value.type ?? typeof value
-      throw new Error(`Cannot look up "${keyStr}" on value of type "${type}}"`)
+      throw new Error(`Cannot look up "${key}" on value of type "${type}}"`)
     }
   }
 }
