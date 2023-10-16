@@ -16,16 +16,6 @@ export type LookupValue = {
 }
 
 /**
- * Unlike references, lookups between props and vars
- * are distinguished by a preceding '$' or not.
- *
- * This is done for interoperability with JavaScript.
- */
-export type LookupOptions = {
-  mixin?: boolean
-}
-
-/**
  * Like object property lookup, but for other values too.
  * Lookups are not "chained"; like calls, they are
  * recursive nodes.
@@ -34,7 +24,7 @@ export type LookupOptions = {
  *     (Lookup
  *       (value Lookup(value Reference($foo), key 'one'), key 'two')
  */
-export class Lookup extends Node<LookupValue, LookupOptions> {
+export class Lookup extends Node<LookupValue> {
   get key() {
     return this.data.get('key')
   }
@@ -45,7 +35,7 @@ export class Lookup extends Node<LookupValue, LookupOptions> {
 
   toTrimmedString(): string {
     let { value, key } = this
-    let mixin = this.options?.mixin
+    let mixin = key instanceof Reference && key.options.type === 'mixin'
     const keyIsBracketed = typeof key !== 'string'
     if (keyIsBracketed) {
       key = `[${key}]`

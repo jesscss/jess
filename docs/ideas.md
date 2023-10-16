@@ -4,6 +4,7 @@
 - Should execute in an isolated VM? https://www.npmjs.com/package/isolated-vm
 - In addition, function calls to Jess functions should receive plain arguments with primitive values, but when called internally, should bind to a `this` object that has AST arguments. Each function, therefore should call something like `getArguments(this, args)` and either parse primitives or get the passed arguments.
 - For interoperability with JavaScript, Jess mixins should return serialized plain objects, but have a non-enumerable property with an AST return UNLESS they were passed a `this` object with AST args, in which case they should return AST nodes
+- Jess function / mixin args should always have semi-colon separators
 
 ## TypeScript / JavaScript calls
 
@@ -41,6 +42,8 @@ $count: $count + 1;
 
 // To dis-ambiguate mixin calls for Less, Sass, they need `@include`
 @-include mixin();
+// or???
+$ -> mixin();
 
 // #() to wrap expressions, to avoid repeating `$`
 .bar {
@@ -73,7 +76,7 @@ $count: $count + 1;
 
 ## Features
 - Mixin guards (like Less)
-- `@if` / `@else` (like Sass)
+- `@-if` / `@-else` (like Sass)
 - All Less / Sass functions available
 - Extend
 
@@ -81,7 +84,7 @@ $count: $count + 1;
 .foo {
   // Glob expression to limit extend
   // '~' is compilation root
-  // @todo - remove?
+  // @todo - remove? limit to @-use?
   :extend(.bar '~/*');
 }
 ```
@@ -94,13 +97,13 @@ Sass is an overly-complex stylesheet language. Jess aims to be:
 - 100% compatible with Less
 - Compatible with a common subset of Sass called Sass+ (to be defined)
 
-### `@use ('(' type ')')? [file|object|map] [namespace|'(' imports ')']? ('with' reference|declarationList)?`
+### `@-use ('(' type ')')? [file|object|map] [namespace|'(' imports ')']? ('with' reference|declarationList)?`
 
 Non-leaky replacement for `@import`. Will import the scope (mixins, variables, and selector references) of the object, as well as render rules.
 
 Can be at the root or nested.
 
-### `@ref ('(' type ')')? [file|object|map] [namespace|'(' imports ')']? ('with' reference|declarationList)?`
+### `@-ref ('(' type ')')? [file|object|map] [namespace|'(' imports ')']? ('with' reference|declarationList)?`
 
 (In Less, this will be `@reference`)
 
@@ -173,7 +176,7 @@ They would be subject to evaluation order.
 
 Q: What if you don't want to forward variables / mixins?
 
-You can use the `@private` at-rule:
+You can use the `@-private` at-rule:
 
 ```scss
 // This is a private `@use`
@@ -201,7 +204,7 @@ Would be converted to:
 
 
 
-## `@include [file|object|selector|mixin] ('with' reference|declarationList)?`
+## `@-include [file|object|selector|mixin] ('with' reference|declarationList)?`
 
 Will import the rules (but not pollute the variable scope).
 
@@ -247,7 +250,7 @@ You could also do the above like:
 
 ## Mixins are functions, and functions are called with a consistent signature
 ```scss
-call: $my-func(one: $value, $two, $three);
+call: $my-func(one: $value; $two; $three);
 ```
 JS representation:
 
@@ -276,7 +279,7 @@ function myFunc(one: Color, two?: any, three?: any) {}
 }
 
 // How do we get this to just return class names and var() injections?
-@-mixin my-component(<Props> (size, color)) {
+@-mixin my-component(<Props> ($size; $color)) {
 
 }
 ```

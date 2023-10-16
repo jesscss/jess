@@ -1395,7 +1395,8 @@ export function mixinReference(this: P, T: TokenMap) {
     let left = $.SUBRULE($.mixinName)
     let leftNode: Node
     if (!RECORDING_PHASE) {
-      leftNode = new Reference(left.image, { type: 'mixin' }, $.getLocationInfo(left), this.context)
+      let location = $.getLocationInfo(left)
+      leftNode = new Reference(left.image, { type: 'mixin' }, location, this.context)
     }
     $.MANY(() => {
       $.OPTION(() => $.CONSUME(T.Gt))
@@ -1406,9 +1407,9 @@ export function mixinReference(this: P, T: TokenMap) {
         leftNode = new Lookup(
           [
             ['value', new Call([['name', leftNode]])],
-            ['key', right.image]
+            ['key', new Reference(right.image, { type: 'mixin' }, $.getLocationInfo(right), this.context)]
           ],
-          { mixin: true },
+          undefined,
           [startOffset, startLine, startColumn, endOffset!, endLine!, endColumn!],
           this.context
         )
@@ -1481,6 +1482,14 @@ export function inlineMixinCall(this: P, T: TokenMap) {
     let call: Call
     let ref = $.SUBRULE($.mixinReference)
     if (!RECORDING_PHASE) {
+      if (nodeContext) {
+        ref = new Lookup(
+          [
+            ['value', new Call([['name', nodeContext]])],
+            ['key', ref]
+          ]
+        )
+      }
       call = new Call([['name', ref]], undefined, ref.location, this.context)
       node = call
     }
@@ -1505,36 +1514,46 @@ export function inlineMixinCall(this: P, T: TokenMap) {
   }
 }
 
-  $.RULE('mixinDefinition', () => {
-    $.SUBRULE($.mixinName)
+export function mixinDefinition(this: P, T: TokenMap) {
+  const $ = this
+
+  return () => {
+    let name = $.SUBRULE($.mixinName)
     $.SUBRULE($.mixinArgs, { ARGS: [{ isDefinition: true }] })
     $.OPTION(() => $.SUBRULE($.guard))
     $.CONSUME(T.LCurly)
     $.SUBRULE($.declarationList)
     $.CONSUME(T.RCurly)
-  })
+  }
+}
 
-  $.RULE('mixinArgs', (ctx: RuleContext = {}) => {
+export function mixinArgs(this: P, T: TokenMap) {
+  const $ = this
+
+  return (ctx: RuleContext = {}) => {
+    let args: List | undefined
     $.CONSUME(T.LParen)
-    $.OPTION(() => $.SUBRULE($.mixinArgList, { ARGS: [ctx] }))
+    $.OPTION(() => args = $.SUBRULE($.mixinArgList, { ARGS: [ctx] }))
     $.CONSUME(T.RParen)
-  })
+    return args
+  }
+}
 
 export function accessors(this: P, T: TokenMap) {
   const $ = this
 
-  // const getReferenceFromLookupToken = (token: IToken) => {
-  //   let tokenStr = token.image
-  //   let firstChar = tokenStr[0]
-  //   if (firstChar !== '$' && firstChar !== '@') {
-  //     /** Treat idents as property lookups */
-  //     tokenStr = '$' + tokenStr
-  //   }
-  //   let key = getInterpolatedOrString(tokenStr)
-  //   let type: 'variable' | 'property' = tokenStr.startsWith('@') ? 'variable' : 'property'
+  const getReferenceFromLookupToken = (token: IToken) => {
+    let tokenStr = token.image
+    let firstChar = tokenStr[0]
+    if (firstChar !== '$' && firstChar !== '@') {
+      /** Treat idents as property lookups */
+      tokenStr = '$' + tokenStr
+    }
+    let key = getInterpolatedOrString(tokenStr)
+    let type: 'variable' | 'property' = tokenStr.startsWith('@') ? 'variable' : 'property'
 
-  //   return new Reference(key, { type }, $.getLocationInfo(token), this.context)
-  // }
+    return new Reference(key, { type }, $.getLocationInfo(token), this.context)
+  }
 
   let keyAlt = [
     { ALT: () => $.CONSUME(T.NestedReference) },
@@ -1548,7 +1567,7 @@ export function accessors(this: P, T: TokenMap) {
     let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
     let keyToken: IToken | undefined
-    let key: string | number | Interpolated
+    let key: string | number | Reference
     let returnNode: Node
 
     $.CONSUME(T.LSquare)
@@ -1558,20 +1577,15 @@ export function accessors(this: P, T: TokenMap) {
     if (!RECORDING_PHASE) {
       if (keyToken) {
         if (keyToken.tokenType === T.NestedReference) {
-          let tokenStr = keyToken.image
-          let inter = getInterpolatedOrString(tokenStr) as Interpolated
-          if (tokenStr.startsWith('@')) {
-            inter.value = '$' + inter.value
-          }
+          key = getReferenceFromLookupToken(keyToken)
         } else {
           let tokenStr = keyToken.image
           let tokenStart = tokenStr[0]
           if (tokenStart === '@') {
-            key = '$' + tokenStr.slice(1)
-          } else if (tokenStart === '$') {
-            key = tokenStr.slice(1)
+            key = new Reference(tokenStr.slice(1), { type: 'variable' }, $.getLocationInfo(keyToken), this.context)
           } else {
-            key = tokenStr
+            key = tokenStart === '$' ? tokenStr.slice(1) : tokenStr
+            key = new Reference(tokenStr, { type: 'property' }, $.getLocationInfo(keyToken), this.context)
           }
         }
       } else {
@@ -1620,14 +1634,28 @@ export function accessors(this: P, T: TokenMap) {
   }
 }
 
-  /**
-   * @see https://lesscss.org/features/#mixins-feature-mixins-parametric-feature
-   *
-   * Less allows separating with commas or semi-colons, so we sort out
-   * the bounds of each argument in the CST Visitor.
-   */
-  $.RULE('mixinArgList', (ctx: RuleContext = {}) => {
-    $.SUBRULE($.mixinArg, { ARGS: [ctx] })
+/**
+ * @see https://lesscss.org/features/#mixins-feature-mixins-parametric-feature
+ *
+ * Less allows separating with commas or semi-colons, so we sort out
+ * the bounds of each argument in the CST Visitor.
+ */
+export function mixinArgList(this: P, T: TokenMap) {
+  const $ = this
+
+  return (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
+  
+    let node = $.SUBRULE($.mixinArg, { ARGS: [ctx] })
+
+    let commaNodes: Node[]
+    let semiNodes: Node[]
+    if (!RECORDING_PHASE) {
+      commaNodes = [$.wrap(node, true)]
+      semiNodes = []
+    }
+    let isSemiList = false
+
     $.MANY(() => {
       $.OR([
         {
@@ -1644,7 +1672,8 @@ export function accessors(this: P, T: TokenMap) {
         }
       ])
     })
-  })
+  }
+}
 
   $.RULE('mixinArg', (ctx: RuleContext = {}) => {
     const definition = !!ctx.isDefinition
