@@ -3,6 +3,7 @@ import { type Context } from '../context'
 import isPlainObject from 'lodash-es/isPlainObject'
 import { Rules } from './rules'
 import { Reference } from './reference'
+import { cast } from './util/cast'
 
 export type LookupValue = {
   /** This is the reference value to resolve first */
@@ -45,13 +46,13 @@ export class Lookup extends Node<LookupValue, LookupOptions> {
   toTrimmedString(): string {
     let { value, key } = this
     let mixin = this.options?.mixin
-    const keyIsNode = key instanceof Node
-    if (keyIsNode) {
+    const keyIsBracketed = typeof key !== 'string'
+    if (keyIsBracketed) {
       key = `[${key}]`
     }
     if (mixin) {
       return `${value} -> ${key}`
-    } else if (keyIsNode) {
+    } else if (keyIsBracketed) {
       return `${value}${key}`
     }
     return `${value}.${key}`
@@ -95,8 +96,18 @@ export class Lookup extends Node<LookupValue, LookupOptions> {
       }
       return (value as Record<string, any>)[key]
     } else {
-      const type = value.type ?? typeof value
-      throw new Error(`Cannot look up "${key}" on value of type "${type}}"`)
+      let keyValue: number | string
+      if (value instanceof Node) {
+        value = value.value
+      }
+      if (key instanceof Node) {
+        keyValue = (await key.eval(context)).value
+      } else {
+        keyValue = key
+      }
+      return cast((value as any)[keyValue])
+      // const type = value.type ?? typeof value
+      // throw new Error(`Cannot look up "${key}" on value of type "${type}}"`)
     }
   }
 }
