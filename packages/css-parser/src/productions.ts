@@ -1261,18 +1261,7 @@ export function mathValue(this: C, T: TokenMap, alt?: Alt) {
     { ALT: () => $.CONSUME(T.Dimension) },
     { ALT: () => $.CONSUME(T.MathConstant) },
     { ALT: () => $.SUBRULE($.knownFunctions) },
-    {
-      ALT: () => {
-        $.startRule()
-        $.CONSUME(T.LParen)
-        let node = $.SUBRULE($.mathSum)
-        $.CONSUME(T.RParen)
-        if (!$.RECORDING_PHASE) {
-          let location = $.endRule()
-          return new Paren(node, undefined, location, this.context)
-        }
-      }
-    }
+    { ALT: () => $.SUBRULE($.mathParen) }
   ]
 
   return () => {
@@ -1283,6 +1272,21 @@ export function mathValue(this: C, T: TokenMap, alt?: Alt) {
         node = $.processValueToken(node)
       }
       return $.wrap(node, 'both')
+    }
+  }
+}
+
+export function mathParen(this: C, T: TokenMap) {
+  const $ = this
+
+  return () => {
+    $.startRule()
+    $.CONSUME(T.LParen)
+    let node = $.SUBRULE($.mathSum)
+    $.CONSUME(T.RParen)
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      return new Paren(node, undefined, location, this.context)
     }
   }
 }

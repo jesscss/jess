@@ -1,7 +1,15 @@
-import type { TokenVocabulary, TokenType } from 'chevrotain'
+import type { TokenVocabulary, TokenType, IToken } from 'chevrotain'
 // import { LLStarLookaheadStrategy } from 'chevrotain-allstar'
-import type { Rule, RuleContext as CssRuleContext, CssParserConfig } from '@jesscss/css-parser'
-import { CssActionsParser, productions as cssProductions } from '@jesscss/css-parser'
+import {
+  type Rule,
+  type RuleContext as CssRuleContext,
+  type CssParserConfig,
+  CssActionsParser,
+  productions as cssProductions
+} from '@jesscss/css-parser'
+
+import { Reference } from '@jesscss/core'
+
 import { type LessTokenType } from './lessTokens'
 import * as productions from './productions'
 
@@ -106,5 +114,12 @@ export class LessActionsParser extends CssActionsParser {
     if ($.constructor === LessActionsParser) {
       $.performSelfAnalysis()
     }
+  }
+
+  protected processValueToken(token: IToken) {
+    if (token.tokenType === this.T.AtKeyword) {
+      return new Reference(token.image.slice(1), { type: 'variable' }, this.getLocationInfo(token), this.context)
+    }
+    return super.processValueToken(token)
   }
 }

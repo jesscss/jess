@@ -114,6 +114,7 @@ export class CssActionsParser extends AdvancedActionsParser {
   mathSum: Rule
   mathProduct: Rule
   mathValue: Rule
+  mathParen: Rule
 
   /** At Rules */
   innerAtRule: Rule
@@ -314,7 +315,7 @@ export class CssActionsParser extends AdvancedActionsParser {
 
   protected processValueToken(
     token: IToken
-  ) {
+  ): Node {
     let tokValue = token.image
     let tokType = token.tokenType
     let tokName = tokType.name

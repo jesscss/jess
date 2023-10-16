@@ -2,7 +2,7 @@ import { type Context } from '../context'
 import { Node, defineType } from './node'
 import { Bool } from './bool'
 
-export class DefaultGuard extends Node {
+export class DefaultGuard extends Node<string> {
   toTrimmedString() {
     return 'default'
   }

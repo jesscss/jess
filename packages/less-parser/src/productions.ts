@@ -11,6 +11,7 @@ import {
   unknownAtRule as cssUnknownAtRule,
   nthValue as cssNthValue,
   knownFunctions as cssKnownFunctions,
+  mathValue as cssMathValue
 } from '@jesscss/css-parser'
 
 import {
@@ -52,9 +53,9 @@ import {
   Mixin,
   Import,
   Condition,
-  VarDeclaration
+  VarDeclaration,
+  DefaultGuard
 } from '@jesscss/core'
-
 
 const isEscapedString = function(this: P, T: TokenMap) {
   const next = this.LA(1)
@@ -965,14 +966,16 @@ export function ifFunction(this: P, T: TokenMap) {
   return () => {
     let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
+
     $.CONSUME(T.IfFunction)
+
     $.startRule()
 
     let node: Node = $.SUBRULE($.guardOr, { ARGS: [{ inValueList: true }] })
-    let values: Node[]
+    let args: Node[]
 
     if (!RECORDING_PHASE) {
-      values = [node]
+      args = [node]
     }
 
     $.OR([
@@ -981,13 +984,13 @@ export function ifFunction(this: P, T: TokenMap) {
           $.CONSUME(T.Semi)
           node = $.SUBRULE($.valueList, { ARGS: [{ allowAnonymousMixins: true }] })
           if (!RECORDING_PHASE) {
-            values.push(node)
+            args.push(node)
           }
           $.OPTION(() => {
             $.CONSUME2(T.Semi)
             node = $.SUBRULE2($.valueList, { ARGS: [{ allowAnonymousMixins: true }] })
             if (!RECORDING_PHASE) {
-              values.push(node)
+              args.push(node)
             }
           })
         }
@@ -997,42 +1000,71 @@ export function ifFunction(this: P, T: TokenMap) {
           $.CONSUME(T.Comma)
           node = $.SUBRULE($.valueSequence, { ARGS: [{ allowAnonymousMixins: true }] })
           if (!RECORDING_PHASE) {
-            values.push(node)
+            args.push(node)
           }
           $.OPTION2(() => {
             $.CONSUME2(T.Comma)
             node = $.SUBRULE2($.valueSequence, { ARGS: [{ allowAnonymousMixins: true }] })
             if (!RECORDING_PHASE) {
-              values.push(node)
+              args.push(node)
             }
           })
         }
       }
     ])
+    let argsLocation: LocationInfo | undefined
+    if (!RECORDING_PHASE) {
+      argsLocation = $.endRule()
+    }
+
     $.CONSUME(T.RParen)
+
+    if (!RECORDING_PHASE) {
+      let location = $.endRule()
+      return new Call([
+        ['name', 'if'],
+        ['args', new List(args!, undefined, argsLocation, this.context)]
+      ], undefined, location, this.context)
+    }
   }
 }
 
-  $.RULE('booleanFunction', () => {
+export function booleanFunction(this: P, T: TokenMap) {
+  const $ = this
+
+  return () => {
+    $.startRule()
     $.CONSUME(T.BooleanFunction)
-    $.SUBRULE($.guardOr, { ARGS: [{ inValueList: true }] })
+    let arg: Condition = $.SUBRULE($.guardOr, { ARGS: [{ inValueList: true }] })
     $.CONSUME(T.RParen)
-  })
 
-  /** At AST time, join comma-lists together if separated by semis */
-  $.RULE('functionValueList', (ctx: RuleContext = {}) => {
-    ctx.allowAnonymousMixins = true
-    $.SUBRULE($.valueSequence, { ARGS: [ctx] })
-    $.MANY(() => {
-      $.OR([
-        { ALT: () => $.CONSUME(T.Comma) },
-        { ALT: () => $.CONSUME(T.Semi) }
-      ])
-      $.SUBRULE2($.valueSequence, { ARGS: [ctx] })
-    })
-  })
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      return new Call([
+        ['name', 'boolean'],
+        ['args', new List([arg], undefined, arg.location as LocationInfo, this.context)]
+      ], undefined, location, this.context)
+    }
+  }
+}
 
-  $.RULE('valueReference', () => {
+/** At AST time, join comma-lists together if separated by semis */
+// $.RULE('functionValueList', (ctx: RuleContext = {}) => {
+//   ctx.allowAnonymousMixins = true
+//   $.SUBRULE($.valueSequence, { ARGS: [ctx] })
+//   $.MANY(() => {
+//     $.OR([
+//       { ALT: () => $.CONSUME(T.Comma) },
+//       { ALT: () => $.CONSUME(T.Semi) }
+//     ])
+//     $.SUBRULE2($.valueSequence, { ARGS: [ctx] })
+//   })
+// })
+
+export function valueReference(this: P, T: TokenMap) {
+  const $ = this
+
+  return () => {
     $.OR([
       {
         ALT: () => {
@@ -1048,14 +1080,18 @@ export function ifFunction(this: P, T: TokenMap) {
         }
       }
     ])
-  })
+  }
+}
 
-  $.OVERRIDE_RULE('value', (ctx: RuleContext = {}) => {
+export function value(this: P, T: TokenMap) {
+  const $ = this
+
+  return (ctx: RuleContext = {}) => {
     $.OR({
       IGNORE_AMBIGUITIES: true,
       DEF: [
         /** Function should appear before Ident */
-        { ALT: () => $.SUBRULE($.function) },
+        { ALT: () => $.SUBRULE($.functionCall) },
         { ALT: () => $.SUBRULE($.inlineMixinCall) },
         /**
          * Functions can pass anonymous mixin definitions
@@ -1075,13 +1111,7 @@ export function ifFunction(this: P, T: TokenMap) {
         { ALT: () => $.CONSUME(T.Value) },
         /** Explicitly not marked as an ident */
         { ALT: () => $.CONSUME(T.When) },
-        {
-          ALT: () => {
-            $.CONSUME(T.LSquare)
-            $.CONSUME2(T.Ident)
-            $.CONSUME(T.RSquare)
-          }
-        },
+        { ALT: () => $.SUBRULE($.squareValue) },
         {
           /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
           GATE: () => $.legacyMode,
@@ -1089,33 +1119,32 @@ export function ifFunction(this: P, T: TokenMap) {
         }
       ]
     })
-  })
+  }
+}
 
-  $.OVERRIDE_RULE('mathValue', () => {
-    $.OR([
-      { ALT: () => $.CONSUME(T.AtKeyword) },
-      { ALT: () => $.CONSUME(T.Number) },
-      { ALT: () => $.CONSUME(T.Dimension) },
-      { ALT: () => $.SUBRULE($.function) },
-      {
-        /** Only allow escaped strings in calc */
-        GATE: () => $.LA(1).image.startsWith('~'),
-        ALT: () => $.SUBRULE($.string)
-      },
-      {
-        /** For some reason, e() goes here instead of $.function */
-        GATE: () => $.LA(2).tokenType !== T.LParen,
-        ALT: () => $.CONSUME(T.MathConstant)
-      },
-      {
-        ALT: () => {
-          $.CONSUME(T.LParen)
-          $.SUBRULE($.mathSum)
-          $.CONSUME(T.RParen)
-        }
-      }
-    ])
-  })
+export function mathValue(this: P, T: TokenMap) {
+  const $ = this
+
+  let valueAlt = [
+    { ALT: () => $.CONSUME(T.AtKeyword) },
+    { ALT: () => $.CONSUME(T.Number) },
+    { ALT: () => $.CONSUME(T.Dimension) },
+    { ALT: () => $.SUBRULE($.functionCall) },
+    {
+      /** Only allow escaped strings in calc */
+      GATE: () => $.LA(1).image.startsWith('~'),
+      ALT: () => $.SUBRULE($.string)
+    },
+    {
+      /** For some reason, e() goes here instead of $.function */
+      GATE: () => $.LA(2).tokenType !== T.LParen,
+      ALT: () => $.CONSUME(T.MathConstant)
+    },
+    { ALT: () => $.SUBRULE($.mathParen) }
+  ]
+
+  return cssMathValue.call(this, T, valueAlt)
+}
 
   /** @todo - add interpolation */
   // $.OVERRIDE_RULE('string', () => {
@@ -1136,14 +1165,13 @@ export function ifFunction(this: P, T: TokenMap) {
   //     }
   //   ])
   // })
-}
 
-export function guards(this: LessParser, T: TokenMap) {
+export function guard(this: P, T: TokenMap) {
   const $ = this
 
-  $.RULE('guard', (ctx: RuleContext = {}) => {
+  return (ctx: RuleContext = {}) => {
     $.CONSUME(T.When)
-    $.OR([
+    return $.OR([
       {
         GATE: () => !!ctx.inValueList,
         ALT: () => $.SUBRULE($.comparison)
@@ -1152,54 +1180,82 @@ export function guards(this: LessParser, T: TokenMap) {
         ALT: () => $.SUBRULE($.guardOr, { ARGS: [{ ...ctx, allowComma: true }] })
       }
     ])
-  })
+  }
+}
 
-  /**
-   * 'or' expression
-   * Allows an (outer) comma like historical media queries
-   */
-  $.RULE('guardOr', (ctx: RuleContext = {}) => {
-    $.OR([
-      { ALT: () => $.CONSUME(T.DefaultGuard) },
+/**
+ * 'or' expression
+ * Allows an (outer) comma like historical media queries
+ */
+export function guardOr(this: P, T: TokenMap) {
+  const $ = this
+
+  return (ctx: RuleContext = {}) => {
+    return $.OR([
       {
         ALT: () => {
-          $.SUBRULE($.guardAnd, { ARGS: [ctx] })
+          let guard = $.CONSUME(T.DefaultGuard)
+          return new DefaultGuard(guard.image, undefined, $.getLocationInfo(guard), this.context)
+        }
+      },
+      {
+        ALT: () => {
+          let RECORDING_PHASE = $.RECORDING_PHASE
+          $.startRule()
+
+          let left = $.SUBRULE($.guardAnd, { ARGS: [ctx] })
           $.MANY({
             GATE: () => !!ctx.allowComma || $.LA(1).tokenType !== T.Comma,
             DEF: () => {
               /**
-                     * Nest expressions within expressions for correct
-                     * order of operations.
-                     */
+               * Nest expressions within expressions for correct
+               * order of operations.
+               */
               $.OR2([
                 { ALT: () => $.CONSUME($.T.Comma) },
                 { ALT: () => $.CONSUME($.T.Or) }
               ])
-              $.SUBRULE2($.guardAnd, { ARGS: [ctx] })
+              let right = $.SUBRULE2($.guardAnd, { ARGS: [ctx] })
+              if (!RECORDING_PHASE) {
+                let location = $.endRule()
+                left = new Condition(
+                  [$.wrap(left, true), 'or', $.wrap(right)],
+                  undefined,
+                  location,
+                  this.context
+                )
+              }
             }
           })
         }
       }
     ])
-  })
+  }
+}
 
-  /**
-   * 'and' and 'or' expressions
-   *
-   *  In Media queries level 4, you cannot have
-   *  `([expr]) or ([expr]) and ([expr])` because
-   *  of evaluation order ambiguity.
-   *  However, Less allows it.
-   */
-  $.RULE('guardAnd', (ctx: RuleContext = {}) => {
+/**
+ * 'and' and 'or' expressions
+ *
+ *  In Media queries level 4, you cannot have
+ *  `([expr]) or ([expr]) and ([expr])` because
+ *  of evaluation order ambiguity.
+ *  However, Less allows it.
+ */
+export function guardAnd(this: P, T: TokenMap) {
+  const $ = this
+
+  return (ctx: RuleContext = {}) => {
+    let left: Node
     $.MANY_SEP({
       SEP: T.And,
       DEF: () => {
+        let not: IToken | undefined
         $.OPTION(() => $.CONSUME(T.Not))
-        $.SUBRULE($.guardInParens)
+        let right = $.SUBRULE($.guardInParens)
       }
     })
-  })
+  }
+}
 
   $.RULE('guardInParens', () => {
     $.CONSUME(T.LParen)
@@ -1265,24 +1321,31 @@ export function atRuleBubbling(this: LessParser, T: TokenMap) {
   })
 }
 
-export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
+export function mixinName(this: P, T: TokenMap) {
   const $ = this
 
   /** e.g. .mixin, #mixin */
-  $.RULE('mixinName', () => {
+  return () => {
     $.OR([
-      { ALT: () => $.SUBRULE($.classSelector) },
-      { ALT: () => $.SUBRULE($.idSelector) }
+      { ALT: () => $.CONSUME(T.HashName) },
+      { ALT: () => $.CONSUME(T.ColorIdentStart) },
+      { ALT: () => $.CONSUME(T.DotName) },
+      { ALT: () => $.CONSUME(T.InterpolatedIdent) }
     ])
-  })
+  }
+}
 
-  $.RULE('mixinReference', () => {
+export function mixinReference(this: P, T: TokenMap) {
+  const $ = this
+
+  return () => {
     $.SUBRULE($.mixinName)
     $.MANY(() => {
       $.OPTION(() => $.CONSUME(T.Gt))
       $.SUBRULE2($.mixinName)
     })
-  })
+  }
+}
 
   /** e.g. #ns > .mixin() */
   $.RULE('mixinCall', () => {

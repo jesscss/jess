@@ -35,7 +35,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     let [left, op, right] = this.value
     let output = `${left}${op ? ` ${op} ${right}` : ''}`
     if (this.options?.negate) {
-      return `not(${output})`
+      return `not${output}`
     }
     return output
   }
