@@ -96,6 +96,7 @@ export class Lookup extends Node<LookupValue, LookupOptions> {
       }
       return (value as Record<string, any>)[key]
     } else {
+      /** Try to look up the key and see what happens? */
       let keyValue: number | string
       if (value instanceof Node) {
         value = value.value
@@ -105,9 +106,12 @@ export class Lookup extends Node<LookupValue, LookupOptions> {
       } else {
         keyValue = key
       }
+      let keyType = typeof keyValue
+      if (keyType !== 'string' && keyType !== 'number') {
+        const type = value.type ?? typeof value
+        throw new Error(`Cannot look up type "${keyType}" on value of type "${type}}"`)
+      }
       return cast((value as any)[keyValue])
-      // const type = value.type ?? typeof value
-      // throw new Error(`Cannot look up "${key}" on value of type "${type}}"`)
     }
   }
 }
