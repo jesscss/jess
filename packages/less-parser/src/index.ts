@@ -2,7 +2,7 @@ import { type IToken, type CstNode, Lexer } from 'chevrotain'
 import { lessTokens, lessFragments } from './lessTokens'
 import type { IParseResult } from '@jesscss/css-parser'
 import { createLexerDefinition } from '@jesscss/css-parser'
-import { LessParser, type LessParserConfig, type TokenMap } from './lessActionsParser'
+import { LessActionsParser, type LessParserConfig, type TokenMap } from './lessActionsParser'
 import { LessErrorMessageProvider } from './lessErrorMessageProvider'
 import type { ConditionalPick } from 'type-fest'
 
@@ -11,12 +11,12 @@ export * from './lessTokens'
 
 const errorMessageProvider = new LessErrorMessageProvider()
 
-type LessRules = keyof ConditionalPick<LessParser, () => CstNode>
+type LessRules = keyof ConditionalPick<LessActionsParser, () => CstNode>
 
 export class Parser {
   lexer: Lexer
   /** @todo - return Jess AST as parser */
-  parser: LessParser
+  parser: LessActionsParser
 
   constructor(
     config: LessParserConfig = {}
@@ -37,19 +37,25 @@ export class Parser {
       ensureOptimizations: true,
       skipValidations: process.env.TEST !== 'true'
     })
-    this.parser = new LessParser(lexer, T as TokenMap, config)
+    this.parser = new LessActionsParser(lexer, T as TokenMap, config)
     /** Not sure why this is necessary, but Less tests were a problem */
     this.parse = this.parse.bind(this)
   }
 
-  parse<T extends LessRules = LessRules>(text: string, rule: T = 'stylesheet' as T, ...args: Parameters<LessParser[T]>): IParseResult<LessParser> {
+  parse<T extends LessRules = LessRules>(text: string, rule: T = 'stylesheet' as T, ...args: Parameters<LessActionsParser[T]>): IParseResult<LessActionsParser> {
     const parser = this.parser
     const lexerResult = this.lexer.tokenize(text)
     const lexedTokens: IToken[] = lexerResult.tokens
     parser.input = lexedTokens
     // @ts-expect-error - This is fine
-    const cst = parser[rule](args)
+    const tree = parser[rule](args)
 
-    return { cst, lexerResult, errors: parser.errors }
+    let contents: string[] | undefined
+
+    if (!lexerResult.errors.length && !parser.errors.length) {
+      contents = text.split('\n')
+    }
+
+    return { tree, contents, lexerResult, errors: parser.errors }
   }
 }

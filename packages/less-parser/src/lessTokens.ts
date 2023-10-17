@@ -192,7 +192,13 @@ function $preBuildTokens() {
        */
       case 'Ampersand':
         copyToken()
-        token.pattern = '&{{nmchar}}*'
+        /**
+         * e.g. &-foo or &(foo)
+         * @note - &1 will be gobbled to not throw an error,
+         * but may output a warning that this will now be
+         * an invalid selector.
+         */
+        token.pattern = '&(?:\\({{nmchar}}*\\)|{{nmchar}}*)'
         break
       case 'Divide':
         copyToken()

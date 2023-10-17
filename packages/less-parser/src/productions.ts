@@ -1,3 +1,4 @@
+/* eslint-disable no-cond-assign */
 import type { LessActionsParser as P, TokenMap, RuleContext } from './lessActionsParser'
 import {
   tokenMatcher,
@@ -16,35 +17,23 @@ import {
 } from '@jesscss/css-parser'
 
 import {
-  TreeContext,
   type Node,
   type LocationInfo,
-  type AssignmentType,
   type Operator,
   General,
-  Block,
-  Anonymous,
   Ruleset,
-  Declaration,
-  Scope,
   type SimpleSelector,
   type SelectorList,
   SelectorSequence,
   type Rules,
   Combinator,
-  BasicSelector,
-  Ampersand,
   List,
   Sequence,
   Call,
   Paren,
   Operation,
   Quoted,
-  PseudoSelector,
-  AttributeSelector,
   AtRule,
-  QueryCondition,
-  Token,
   Interpolated,
   type Name,
   Reference,
@@ -347,7 +336,7 @@ export function complexSelector(this: P, T: TokenMap) {
     let extendFlag: IToken | undefined
     let extendLocation: LocationInfo | undefined
 
-    $.OPTION({
+    $.OPTION2({
       GATE: () => !!ctx.qualifiedRule,
       DEF: () => {
         $.startRule()
@@ -507,11 +496,13 @@ export function importAtRule(this: P, T: TokenMap) {
 
     let isAtRule = false
 
-    if (options!.includes('css')) {
-      isAtRule = true
-    } else {
-      let url = getUrlFromNode(urlNode)
-      isAtRule = isCssUrl(url)
+    if (!RECORDING_PHASE) {
+      if (options!.includes('css')) {
+        isAtRule = true
+      } else {
+        let url = getUrlFromNode(urlNode)
+        isAtRule = isCssUrl(url)
+      }
     }
 
     let preludeNodes: Node[]
@@ -640,7 +631,7 @@ export function unknownAtRule(this: P, T: TokenMap) {
     let args: List | undefined
     let important: IToken | undefined
 
-    let returnVal: Node = $.OR([
+    let returnVal: Node = $.OR2([
       {
         /**
          * This is a variable declaration
@@ -649,7 +640,7 @@ export function unknownAtRule(this: P, T: TokenMap) {
         GATE: isVariableLike,
         ALT: () => {
           $.CONSUME(T.Colon)
-          return $.OR2([
+          return $.OR3([
             {
               ALT: () => {
                 value = $.SUBRULE($.anonymousMixinDefinition)
@@ -1595,7 +1586,7 @@ export function accessors(this: P, T: TokenMap) {
       returnNode = new Lookup(
         [
           ['value', nodeContext],
-          ['key', key!]
+          ['key', key]
         ],
         undefined,
         location,
@@ -1606,7 +1597,7 @@ export function accessors(this: P, T: TokenMap) {
      * Allows chaining of lookups / calls
      * @note - In Less, an additional call or accessor implies
      * that the previous accessor is a mixin call, therefore
-     * it should be returned as a Call node. 
+     * it should be returned as a Call node.
      */
     $.OPTION2(() => {
       $.OR2([
@@ -1637,45 +1628,120 @@ export function accessors(this: P, T: TokenMap) {
 /**
  * @see https://lesscss.org/features/#mixins-feature-mixins-parametric-feature
  *
- * Less allows separating with commas or semi-colons, so we sort out
- * the bounds of each argument in the CST Visitor.
+ * This rule is recursive to allow chevrotain-allstar (hopefully) to lookahead
+ * and find semi-colon separators vs. commas.
  */
 export function mixinArgList(this: P, T: TokenMap) {
   const $ = this
 
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE
-  
-    let node = $.SUBRULE($.mixinArg, { ARGS: [ctx] })
 
-    let commaNodes: Node[]
-    let semiNodes: Node[]
+    let nodes: Node[]
+
     if (!RECORDING_PHASE) {
-      commaNodes = [$.wrap(node, true)]
-      semiNodes = []
+      nodes = []
     }
-    let isSemiList = false
 
-    $.MANY(() => {
-      $.OR([
-        {
-          ALT: () => {
+    $.OR([
+      {
+        GATE: () => !ctx.allowComma,
+        ALT: () => {
+          let node = $.SUBRULE($.mixinArg, { ARGS: [ctx] })
+          if (!RECORDING_PHASE) {
+            nodes!.push(node)
+          }
+          $.OPTION(() => {
             $.CONSUME(T.Comma)
-            $.SUBRULE2($.mixinArg, { ARGS: [ctx] })
-          }
-        },
-        {
-          ALT: () => {
-            $.CONSUME(T.Semi)
-            $.OPTION(() => $.SUBRULE3($.mixinArg, { ARGS: [ctx] }))
-          }
+            let returnNodes = $.SUBRULE($.mixinArgList, { ARGS: [ctx] })
+            if (!RECORDING_PHASE) {
+              nodes!.push(...returnNodes)
+            }
+          })
         }
-      ])
-    })
+      },
+      {
+        ALT: () => {
+          let node = $.SUBRULE2($.mixinArg, { ARGS: [{ ...ctx, allowComma: true }] })
+          $.CONSUME(T.Semi)
+          $.OPTION2(() => {
+            let returnNodes = $.SUBRULE2($.mixinArgList, { ARGS: [{ ...ctx, allowComma: true }] })
+            if (!RECORDING_PHASE) {
+              nodes!.push(node, ...returnNodes)
+            }
+          })
+        }
+      }
+    ])
+
+    return nodes!
   }
 }
 
-  $.RULE('mixinArg', (ctx: RuleContext = {}) => {
+// function oldMixinArgList(this: P, T: TokenMap) {
+//   const $ = this
+
+//   return (ctx: RuleContext = {}) => {
+//     let RECORDING_PHASE = $.RECORDING_PHASE
+
+//     let node = $.SUBRULE($.mixinArg, { ARGS: [ctx] })
+
+//     let commaNodes: Node[]
+//     let semiNodes: Node[][]
+//     if (!RECORDING_PHASE) {
+//       commaNodes = [$.wrap(node, true)]
+//       semiNodes = []
+//     }
+//     let isSemiList = false
+//     let finished = false
+
+//     $.MANY(() => {
+//       $.OR([
+//         {
+//           GATE: () => !finished,
+//           ALT: () => {
+//             $.CONSUME(T.Comma)
+//             let node = $.SUBRULE2($.mixinArg, { ARGS: [ctx] })
+//             if (!RECORDING_PHASE) {
+//               commaNodes!.push($.wrap(node, true))
+//             }
+//           }
+//         },
+//         {
+//           ALT: () => {
+//             isSemiList = true
+//             finished = true
+//             $.CONSUME(T.Semi)
+//             let node: Node
+//             $.OPTION(() => {
+//               node = $.SUBRULE3($.mixinArg, { ARGS: [ctx] })
+//               finished = false
+//             })
+//             if (!RECORDING_PHASE) {
+//               semiNodes.push(commaNodes)
+//               commaNodes = []
+//             }
+//           }
+//         }
+//       ])
+//     })
+
+//     if (!RECORDING_PHASE) {
+//       if (isSemiList) {
+//         if (commaNodes!.length) {
+//           semiNodes!.push(commaNodes!)
+//         }
+//         let sequenceNodes: Sequence[] = []
+//         semiNodes.forEach()
+//       }
+//     }
+//   }
+// }
+
+export function mixinArg(this: P, T: TokenMap) {
+  const $ = this
+
+  return (ctx: RuleContext = {}) => {
     const definition = !!ctx.isDefinition
     $.OR([
       {
@@ -1686,7 +1752,7 @@ export function mixinArgList(this: P, T: TokenMap) {
               {
                 ALT: () => {
                   $.CONSUME(T.Colon)
-                  $.SUBRULE($.mixinValue)
+                  $.SUBRULE($.mixinValue, { ARGS: [ctx] })
                 }
               },
               /**
@@ -1708,15 +1774,19 @@ export function mixinArgList(this: P, T: TokenMap) {
           })
         }
       },
-      { ALT: () => $.SUBRULE2($.mixinValue) },
+      { ALT: () => $.SUBRULE2($.mixinValue, { ARGS: [ctx] }) },
       {
         GATE: () => definition,
         ALT: () => $.CONSUME2(T.Ellipsis)
       }
     ])
-  })
+  }
+}
 
-  $.RULE('mixinValue', () => {
+export function mixinValue(this: P, T: TokenMap) {
+  const $ = this
+
+  return (ctx: RuleContext = {}) => {
     $.OR([
       {
         ALT: () => {
@@ -1725,7 +1795,14 @@ export function mixinArgList(this: P, T: TokenMap) {
           $.CONSUME(T.RCurly)
         }
       },
-      { ALT: () => $.SUBRULE($.valueSequence) }
+      {
+        GATE: () => !ctx.allowComma,
+        ALT: () => $.SUBRULE($.valueSequence)
+      },
+      {
+        GATE: () => !!ctx.allowComma,
+        ALT: () => $.SUBRULE($.valueList)
+      }
     ])
-  })
+  }
 }
