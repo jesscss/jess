@@ -1770,7 +1770,7 @@ export function mediaInParens(this: C, T: TokenMap, alt?: Alt) {
      * parsing would not be possible. So we only parse
      * "known" media queries.
      */
-    let node = $.OR(conditionAlt)
+    let node = $.OR2(conditionAlt)
     $.CONSUME(T.RParen)
 
     if (!RECORDING_PHASE) {

@@ -36,6 +36,7 @@ export type LessParserConfig = CssParserConfig & {
 export type TokenMap = Record<LessTokenType, TokenType>
 
 export type RuleContext = CssRuleContext & {
+  hasDefault?: boolean
   hasExtend?: boolean
   /** Mixin definition */
   isDefinition?: boolean
@@ -81,7 +82,7 @@ export class LessActionsParser extends CssActionsParser {
   // namespaces
   accessors: Rule<(nodeContext?: Node) => void>
 
-  comparison: Rule
+  comparison: Rule<(ctx?: RuleContext) => void>
   guard: Rule<(ctx?: RuleContext) => void>
   guardOr: Rule<(ctx?: RuleContext) => void>
   guardAnd: Rule<(ctx?: RuleContext) => void>

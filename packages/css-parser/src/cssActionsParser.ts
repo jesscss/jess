@@ -194,7 +194,12 @@ export class CssActionsParser extends AdvancedActionsParser {
     let lastNode = nodes[nodes.length - 1]!
     let [startOffset, startLine, startColumn] = startNode.location
     let [,,,endOffset, endLine, endColumn] = lastNode.location
-    let location: LocationInfo = [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!]
+    if (startOffset === undefined) {
+      throw new Error(`Node "${startNode.type}" has no location info`)
+    } else if (endOffset === undefined) {
+      throw new Error(`Node "${lastNode.type}" has no location info`)
+    }
+    let location: LocationInfo = [startOffset, startLine!, startColumn!, endOffset, endLine!, endColumn!]
     return location
   }
 

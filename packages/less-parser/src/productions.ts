@@ -211,7 +211,7 @@ export function mediaInParens(this: P, T: TokenMap) {
        */
       { ALT: () => $.SUBRULE($.valueReference) },
       {
-        ALT: cssMediaInParens.bind(this, T)
+        ALT: cssMediaInParens.call(this, T)
       }
     ])
 }
@@ -561,19 +561,24 @@ export function importAtRule(this: P, T: TokenMap) {
           ['prelude', new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context)]
         ], undefined, location, this.context)
       }
-      return new Import([
-        ['path', getUrlFromNode(urlNode)],
-        ['importType', 'less'],
-        /**
-         * If this is inline, it will end up using Jess's text plugin,
-         * but the Less plugin handles url resolving.
-         */
-        ['pluginOptions', options!.includes('inline') ? { inline: true } : {}]
-      ], {
-        reference: true,
-        include: !options!.includes('reference'),
-        useParentScope: true
-      })
+      return new Import(
+        [
+          ['path', getUrlFromNode(urlNode)],
+          ['importType', 'less'],
+          /**
+           * If this is inline, it will end up using Jess's text plugin,
+           * but the Less plugin handles url resolving.
+           */
+          ['pluginOptions', options!.includes('inline') ? { inline: true } : {}]
+        ],
+        {
+          reference: true,
+          include: !options!.includes('reference'),
+          useParentScope: true
+        },
+        location,
+        this.context
+      )
     }
   }
 }
@@ -823,7 +828,15 @@ export function expressionSum(this: P, T: TokenMap) {
         ])
 
         if (!RECORDING_PHASE) {
-          left = $.wrap(new Operation([$.wrap(left, true), op as Operator, $.wrap(right!)], undefined, 0, this.context))
+          left = $.wrap(
+            new Operation(
+              [$.wrap(left, true), op as Operator, $.wrap(right!)],
+              undefined,
+              $.getLocationFromNodes([left, right!]),
+              this.context
+            )
+          )
+          return left
         }
       }
     })
@@ -855,7 +868,14 @@ export function expressionProduct(this: P, T: TokenMap) {
       let right: Node = $.SUBRULE2($.expressionValue, { ARGS: [ctx] })
 
       if (!RECORDING_PHASE) {
-        left = $.wrap(new Operation([$.wrap(left, true), op.image as Operator, $.wrap(right)], undefined, 0, this.context))
+        left = $.wrap(
+          new Operation(
+            [$.wrap(left, true), op.image as Operator, $.wrap(right)],
+            undefined,
+            $.getLocationFromNodes([left, right]),
+            this.context
+          )
+        )
       }
     })
 
@@ -1169,10 +1189,13 @@ export function guard(this: P, T: TokenMap) {
     return $.OR([
       {
         GATE: () => !!ctx.inValueList,
-        ALT: () => $.SUBRULE($.comparison)
+        ALT: () => $.SUBRULE($.comparison, { ARGS: [ctx] })
       },
       {
-        ALT: () => $.SUBRULE($.guardOr, { ARGS: [{ ...ctx, allowComma: true }] })
+        ALT: () => {
+          ctx.allowComma = true
+          $.SUBRULE($.guardOr, { ARGS: [ctx] })
+        }
       }
     ])
   }
@@ -1190,6 +1213,7 @@ export function guardOr(this: P, T: TokenMap) {
       {
         ALT: () => {
           let guard = $.CONSUME(T.DefaultGuard)
+          ctx.hasDefault = true
           return new DefaultGuard(guard.image, undefined, $.getLocationInfo(guard), this.context)
         }
       },
@@ -1247,7 +1271,10 @@ export function guardAnd(this: P, T: TokenMap) {
       DEF: () => {
         let not: IToken | undefined
         $.OPTION(() => not = $.CONSUME(T.Not))
-        let right = $.SUBRULE($.guardInParens)
+        let allowComma = ctx.allowComma
+        ctx.allowComma = false
+        let right = $.SUBRULE($.guardInParens, { ARGS: [ctx] })
+        ctx.allowComma = allowComma
         if (!RECORDING_PHASE && not) {
           let [,,, endOffset, endLine, endColumn] = right.location!
           let [startOffset, startLine, startColumn] = $.getLocationInfo(not)
@@ -1279,15 +1306,13 @@ export function guardAnd(this: P, T: TokenMap) {
 export function guardInParens(this: P, T: TokenMap) {
   const $ = this
 
-  let guardAlt = [
-    { ALT: () => $.SUBRULE($.guardOr) },
-    { ALT: () => $.SUBRULE($.comparison) }
-  ]
-
-  return () => {
+  return (ctx: RuleContext) => {
     $.startRule()
     $.CONSUME(T.LParen)
-    let node = $.OR(guardAlt)
+    let node = $.OR([
+      { ALT: () => $.SUBRULE($.guardOr, { ARGS: [ctx] }) },
+      { ALT: () => $.SUBRULE($.comparison, { ARGS: [ctx] }) }
+    ])
     $.CONSUME(T.RParen)
     if (!$.RECORDING_PHASE) {
       node = $.wrap(node, 'both')
@@ -1509,12 +1534,30 @@ export function mixinDefinition(this: P, T: TokenMap) {
   const $ = this
 
   return () => {
+    $.startRule()
     let name = $.SUBRULE($.mixinName)
-    $.SUBRULE($.mixinArgs, { ARGS: [{ isDefinition: true }] })
-    $.OPTION(() => $.SUBRULE($.guard))
+    let params = $.SUBRULE($.mixinArgs, { ARGS: [{ isDefinition: true }] })
+    let guard: Condition | undefined
+    let ctx: RuleContext = {}
+
+    $.OPTION(() => guard = $.SUBRULE($.guard, { ARGS: [ctx] }))
     $.CONSUME(T.LCurly)
-    $.SUBRULE($.declarationList)
+    let rules = $.SUBRULE($.declarationList)
     $.CONSUME(T.RCurly)
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      return new Mixin(
+        [
+          ['name', name],
+          ['params', params],
+          ['rules', rules],
+          ['guard', guard]
+        ],
+        { hasDefault: !!ctx.hasDefault },
+        location,
+        this.context
+      )
+    }
   }
 }
 

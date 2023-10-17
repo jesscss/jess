@@ -45,7 +45,7 @@ export class Call<T extends CallValue = CallValue> extends Node<T> {
 
   toTrimmedString() {
     let { name, args, important } = this
-    return `${name}(${args ?? ''})${important ? ' !important' : ''}}`
+    return `${name}(${args ?? ''})${important ? ' !important' : ''}`
   }
 
   async eval(context: Context): Promise<Node> {

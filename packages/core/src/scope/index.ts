@@ -653,7 +653,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     evalCandidates = mixinCandidates
       .map<[MixinEntry, number]>(
       (candidate, i) => {
-        let isDefault = candidate.options?.default
+        let isDefault = candidate.options?.hasDefault
         if (isDefault) {
           if (hasDefault) {
             throw new Error('Ambiguous use of default guard found')
@@ -668,8 +668,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       evalCandidates = evalCandidates.slice(0).sort((a, b) => {
         let aNode = a[0]
         let bNode = b[0]
-        let aDefault = aNode.options?.default
-        let bDefault = bNode.options?.default
+        let aDefault = aNode.options?.hasDefault
+        let bDefault = bNode.options?.hasDefault
         /** No guard (or is just a plain ruleset) */
         if (!aDefault && !bDefault) {
           return 0

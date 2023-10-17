@@ -15,7 +15,7 @@ export type MixinValue = {
 
 export type MixinOptions = {
   /** This is a flag that will set during parsing */
-  default?: boolean
+  hasDefault?: boolean
 }
 
 /**
