@@ -12,7 +12,7 @@ import {
 import type { ParserMethodInternal } from 'chevrotain/src/parse/parser/types'
 
 import {
-  type TreeContext,
+  TreeContext,
   type LocationInfo
 } from '@jesscss/core'
 
@@ -43,13 +43,25 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
   /** Boolean flag for used in post node */
   usedSkippedTokens: Set<IToken[]>
 
-  context: TreeContext
+  _context: TreeContext
   locationStack: LocationInfo[] = []
   // captureStack: number[]
   originalInput: IToken[]
 
   /** Exposed from Chevrotain */
   currIdx: number
+
+  get context() {
+    let context = this._context
+    if (!context) {
+      context = this._context = new TreeContext()
+    }
+    return context
+  }
+
+  set context(c: TreeContext) {
+    this._context = c
+  }
 
   subruleInternal: <ARGS extends unknown[], R>(
     ruleToCall: ParserMethodInternal<ARGS, R>,

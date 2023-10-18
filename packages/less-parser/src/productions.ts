@@ -241,6 +241,7 @@ export function qualifiedRule(this: P, T: TokenMap) {
   const $ = this
 
   return (ctx: RuleContext = {}) => {
+    $.startRule()
     ctx.qualifiedRule = true
     let selectorList: SelectorList = $.OR([
       {
@@ -609,19 +610,26 @@ const getInterpolatedOrString = (name: string): Interpolated | string => {
 export function unknownAtRule(this: P, T: TokenMap) {
   const $ = this
 
-  /** Starts with a colon, followed by white space */
+  let isVariable: boolean | undefined
+
+  /**
+   * Starts with a colon, with these conditions
+   *  1. It is not preceded by a space or
+   *  2. If it is preceded by a space, then it is
+   *     followed by a space.
+   */
   const isVariableLike = () => {
     let token = $.LA(1)
-    return token.tokenType === T.Colon &&
+    let isColon = token.tokenType === T.Colon
+    if (!isColon) {
+      return false
+    }
+    isVariable = !$.preSkippedTokenMap.has(token.startOffset) ||
       $.postSkippedTokenMap.has(token.endOffset!)
+    return isVariable
   }
 
-  /** Doesn't start with a colon or DOES, but it is NOT followed by a space */
-  const isNotVariableLike = () => {
-    let token = $.LA(1)
-    return token.tokenType !== T.Colon ||
-      !$.postSkippedTokenMap.has(token.endOffset!)
-  }
+  const isNotVariableLike = () => !isVariable
 
   let nameAlt = [
     { ALT: () => $.CONSUME(T.AtKeyword) },
@@ -647,6 +655,10 @@ export function unknownAtRule(this: P, T: TokenMap) {
           $.CONSUME(T.Colon)
           return $.OR3([
             {
+              // GATE: () => {
+              //   let type = $.LA(1).tokenType
+              //   return type === T.AnonMixinStart || type === T.LCurly
+              // },
               ALT: () => {
                 value = $.SUBRULE($.anonymousMixinDefinition)
                 $.OPTION2(() => $.CONSUME(T.Semi))
@@ -654,6 +666,10 @@ export function unknownAtRule(this: P, T: TokenMap) {
               }
             },
             {
+              // GATE: () => {
+              //   let type = $.LA(1).tokenType
+              //   return type !== T.AnonMixinStart && type !== T.LCurly
+              // },
               ALT: () => {
                 value = $.SUBRULE($.valueList)
                 $.OPTION(() => {
@@ -1102,7 +1118,7 @@ export function value(this: P, T: TokenMap) {
   const $ = this
 
   return (ctx: RuleContext = {}) => {
-    $.OR({
+    return $.OR({
       IGNORE_AMBIGUITIES: true,
       DEF: [
         /** Function should appear before Ident */
@@ -1706,12 +1722,14 @@ export function mixinArgList(this: P, T: TokenMap) {
       {
         ALT: () => {
           let node = $.SUBRULE2($.mixinArg, { ARGS: [{ ...ctx, allowComma: true }] })
-          $.CONSUME(T.Semi)
           $.OPTION2(() => {
-            let returnNodes = $.SUBRULE2($.mixinArgList, { ARGS: [{ ...ctx, allowComma: true }] })
-            if (!RECORDING_PHASE) {
-              nodes!.push(node, ...returnNodes)
-            }
+            $.CONSUME(T.Semi)
+            $.OPTION3(() => {
+              let returnNodes = $.SUBRULE2($.mixinArgList, { ARGS: [{ ...ctx, allowComma: true }] })
+              if (!RECORDING_PHASE) {
+                nodes!.push(node, ...returnNodes)
+              }
+            })
           })
         }
       }

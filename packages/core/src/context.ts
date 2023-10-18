@@ -52,6 +52,12 @@ export interface TreeContextOptions {
 
   mathMode?: MathMode
   unitMode?: UnitMode
+
+  /**
+   * For instances where a new tree needs to inherit from scope
+   * (like Less / SCSS `@import` rule)
+   */
+  scope?: Scope
 }
 
 const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('')
@@ -105,7 +111,7 @@ export class TreeContext implements TreeContextOptions {
     this.leakVariablesIntoScope = opts.leakVariablesIntoScope ?? false
     this.mathMode = opts.mathMode ?? MathMode.PARENS_DIVISION
     this.unitMode = opts.unitMode ?? UnitMode.STRICT
-    this.scope = new Scope()
+    this.scope = new Scope(opts.scope)
   }
 }
 let code1 = 0

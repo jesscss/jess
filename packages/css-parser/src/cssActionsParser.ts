@@ -300,6 +300,7 @@ export class CssActionsParser extends AdvancedActionsParser {
       if (node.post === 0) {
         let offset = node.location[3]
         if (offset === undefined && !skipValidations) {
+          console.log(`${node}`)
           throw new Error(`Node "${node.type}" can't be wrapped`)
         }
         node.post = this.getPrePost(offset!, true)

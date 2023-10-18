@@ -8,7 +8,7 @@
  */
 
 /** Base classes - keep these on top */
-import type { TreeContext, LocationInfo } from './node'
+import { TreeContext, type LocationInfo } from './node'
 import { Node } from './node'
 import { type Operator } from './util/calculate'
 import { Anonymous } from './anonymous'
@@ -32,7 +32,7 @@ Node.prototype.operate = function(b: Node, op: Operator) {
   throw new Error(`Cannot operate on ${this.type}`)
 }
 
-export { Node, type TreeContext, type LocationInfo }
+export { Node, TreeContext, type LocationInfo }
 
 export * from './at-rule'
 export * from './block'

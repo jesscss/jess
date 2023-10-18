@@ -52,7 +52,6 @@ export function stylesheet(this: C, T: TokenMap) {
     let context: TreeContext
     let initialScope: Scope
     if (!RECORDING_PHASE) {
-      // @ts-expect-error - Not exported with `export type`
       context = this.context = new TreeContext()
       initialScope = context.scope
     }
@@ -94,8 +93,8 @@ export function main(this: C, T: TokenMap, alt?: Alt) {
     let RECORDING_PHASE = $.RECORDING_PHASE
 
     const isRoot = !!ctx.isRoot
-    let context = this.context
     let initialScope: Scope
+    let context: TreeContext
 
     if (!RECORDING_PHASE) {
       context = this.context
@@ -147,7 +146,7 @@ export function main(this: C, T: TokenMap, alt?: Alt) {
       let returnNode = $.getRulesWithComments(rules!, $.getLocationInfo($.LA(1)), isRoot)
 
       if (!isRoot) {
-        context.scope = initialScope!
+        context!.scope = initialScope!
       }
       // Attaches remaining whitespace at the end of rules
       return $.wrap(returnNode!, true)
