@@ -265,10 +265,6 @@ export function qualifiedRule(this: P, T: TokenMap) {
       {
         /**
          * :extend at the end of a qualified rule selector
-         *
-         * @note - this should be tweaked so that each
-         * complex selector in a list is required to
-         * have an extend in order to end in a semi-colon.
          */
         GATE: () => !!ctx.hasExtend,
         ALT: () => semi = !!$.CONSUME(T.Semi)
@@ -293,6 +289,43 @@ export function qualifiedRule(this: P, T: TokenMap) {
         ['rules', rules!],
         ['guard', guard]
       ], undefined, location, this.context)
+    }
+  }
+}
+
+export function selectorList(this: P, T: TokenMap) {
+  const $ = this
+
+  return (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
+    $.startRule()
+    let sequences: SelectorSequence[]
+    let sel = $.SUBRULE($.complexSelector, { ARGS: [ctx] })
+    let extendSel: Node | undefined
+    let extendFlag: IToken | undefined
+
+    $.OPTION(() => {
+      let value = $.SUBRULE($.extend, { ARGS: [ctx] })
+    })
+
+    if (!RECORDING_PHASE) {
+      sequences = [$.wrap(sel, true)]
+    }
+
+    $.MANY(() => {
+      $.CONSUME(T.Comma)
+      let sel = $.SUBRULE2($.complexSelector, { ARGS: [ctx] })
+      if (!RECORDING_PHASE) {
+        sequences.push($.wrap(sel, 'both'))
+      }
+    })
+
+    if (!RECORDING_PHASE) {
+      let location = $.endRule()
+      if (sequences!.length === 1) {
+        return sequences![0]!
+      }
+      return new SelectorList(sequences!, undefined, location, this.context)
     }
   }
 }
@@ -610,8 +643,6 @@ const getInterpolatedOrString = (name: string): Interpolated | string => {
 export function unknownAtRule(this: P, T: TokenMap) {
   const $ = this
 
-  let isVariable: boolean | undefined
-
   /**
    * Starts with a colon, with these conditions
    *  1. It is not preceded by a space or
@@ -624,12 +655,12 @@ export function unknownAtRule(this: P, T: TokenMap) {
     if (!isColon) {
       return false
     }
-    isVariable = !$.preSkippedTokenMap.has(token.startOffset) ||
+    let isVariable = !$.preSkippedTokenMap.has(token.startOffset) ||
       $.postSkippedTokenMap.has(token.endOffset!)
     return isVariable
   }
 
-  const isNotVariableLike = () => !isVariable
+  const isNotVariableLike = () => !isVariableLike()
 
   let nameAlt = [
     { ALT: () => $.CONSUME(T.AtKeyword) },
