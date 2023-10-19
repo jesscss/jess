@@ -29,6 +29,15 @@ export class VarDeclaration<N extends Name = Name> extends Declaration<VarDeclar
   // register(context: Context, name: string, node: Declaration<string>): void {
   //   context.scope.setVar(name, node, this.options)
   // }
+  constructor(
+    ...args: ConstructorParameters<typeof Declaration<VarDeclarationOptions, N>>
+  ) {
+    super(...args)
+    if (isNode(this.value, 'Mixin')) {
+      this.requiredSemi = false
+    }
+  }
+
   toTrimmedString(depth?: number): string {
     const rule = this.options?.setDefined || this.options?.paramVar ? '$' : '@let '
     const { name, value } = this

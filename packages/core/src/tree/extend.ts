@@ -5,8 +5,10 @@ import { type Context } from '../context'
 import { Ampersand } from './ampersand'
 
 export type ExtendValue = {
-  target?: SelectorSequence
-  extendList: SelectorSequence | SelectorList
+  /** The preceding selector */
+  selector?: SelectorSequence
+  /** The selector within () */
+  target: SelectorSequence | SelectorList
   flag?: '!all'
 }
 /**
@@ -18,41 +20,50 @@ export type ExtendValue = {
  * registers selectors by a string code.
  */
 export class Extend extends Node<ExtendValue> {
+  get flag() {
+    return this.data.get('flag')
+  }
+
   get target() {
     return this.data.get('target')
   }
 
-  set target(v: SelectorSequence | undefined) {
+  set target(v: SelectorSequence | SelectorList) {
     this.data.set('target', v)
   }
 
-  get extendList() {
-    return this.data.get('extendList')
+  get selector() {
+    let sel = this.data.get('selector')
+    if (!sel) {
+      sel = new SelectorSequence([new Ampersand()])
+      this.data.set('selector', sel)
+    }
+    return sel
   }
 
-  set extendList(v: SelectorSequence | SelectorList) {
-    this.data.set('extendList', v)
+  set selector(v: SelectorSequence) {
+    this.data.set('selector', v)
   }
 
-  get value() {
-    return this.data.get('target')?.value
+  get value(): SelectorSequence['value'] {
+    return this.data.get('selector').value
   }
 
   toTrimmedString(depth?: number | undefined): string {
-    let { target, extendList } = this
-    let output = target ? `${target}` : ''
-    output += `:extend(${extendList})`
+    let { target } = this
+    let selector = this.data.get('selector')
+    let output = selector ? `${selector}` : ''
+    output += `:extend(${target})`
     return output
   }
 
   async eval(context: Context): Promise<SelectorSequence> {
-    let { target, extendList } = this
-    target ??= new SelectorSequence([new Ampersand()])
-    target = await target.eval(context) as SelectorSequence
-    /** @todo - register extendList */
-    target.inherit(this)
-    target.evaluated = true
-    return target
+    let { selector } = this
+    selector = await selector.eval(context) as SelectorSequence
+    /** @todo - register target */
+    selector.inherit(this)
+    selector.evaluated = true
+    return selector
   }
 }
 export const extend = defineType(Extend, 'Extend')

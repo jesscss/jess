@@ -8,7 +8,7 @@ const testData = path.dirname(require.resolve('@less/test-data'))
 const lessParser = new Parser()
 const parse = lessParser.parse
 
-describe.skip('can parse any rule', () => {
+describe('can parse any rule', () => {
   test('qualified rule with interpolation', () => {
     const { errors } = parse(
       'qw@{ident} { foo: bar }',
@@ -211,11 +211,10 @@ describe.skip('can parse any rule', () => {
     // expect(parser.errors.length).to.equal(0)
 
     const { errors } = parse(
-      `@ruleset: {
-        color: red;
-      }`,
+      `@ruleset: {}
+      @a: 1px;`,
       /** @todo - add `variableDeclaration` as sugar */
-      'unknownAtRule'
+      'stylesheet'
     )
     expect(errors.length).toBe(0)
   })

@@ -290,20 +290,24 @@ export class CssActionsParser extends AdvancedActionsParser {
   /**
    * Attaches pre / post whitespace and comments.
    * Note that nodes can be wrapped more than once.
+   *
+   * @note Some nodes can't be wrapped because they
+   * don't represent a location. For instance, a
+   * Rules node may be empty, and hence doesn't
+   * have a location.
    */
   protected wrap<T extends Node = Node>(node: T, post?: boolean | 'both'): T {
     if (!(node instanceof Node)) {
       return node
     }
-    let skipValidations = this.skipValidations
+    // let skipValidations = this.skipValidations
     if (post) {
       if (node.post === 0) {
         let offset = node.location[3]
-        if (offset === undefined && !skipValidations) {
-          console.log(`${node}`)
-          throw new Error(`Node "${node.type}" can't be wrapped`)
+        if (offset !== undefined) {
+          node.post = this.getPrePost(offset, true)
+          // throw new Error(`Node "${node.type}" can't be wrapped`)
         }
-        node.post = this.getPrePost(offset!, true)
       }
       if (post !== 'both') {
         return node
@@ -311,10 +315,10 @@ export class CssActionsParser extends AdvancedActionsParser {
     }
     if (node.pre === 0) {
       let offset = node.location[0]
-      if (offset === undefined && !skipValidations) {
-        throw new Error(`Node "${node.type}" can't be wrapped`)
+      if (offset !== undefined) {
+        node.pre = this.getPrePost(offset)
+        // throw new Error(`Node "${node.type}" can't be wrapped`)
       }
-      node.pre = this.getPrePost(offset!)
     }
     return node
   }

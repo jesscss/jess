@@ -17,14 +17,15 @@ import {
 } from '@jesscss/css-parser'
 
 import {
+  isNode,
   type Node,
   type LocationInfo,
   type Operator,
   General,
   Ruleset,
   type SimpleSelector,
-  type SelectorList,
-  SelectorSequence,
+  SelectorList,
+  type SelectorSequence,
   type Rules,
   Combinator,
   List,
@@ -241,21 +242,25 @@ export function qualifiedRule(this: P, T: TokenMap) {
   const $ = this
 
   return (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
     ctx.qualifiedRule = true
-    let selectorList: SelectorList = $.OR([
+    let selector: SelectorList | SelectorSequence = $.OR([
       {
         GATE: () => !ctx.inner,
         ALT: () => $.SUBRULE($.selectorList, { ARGS: [ctx] })
       },
       {
         GATE: () => !!ctx.inner,
-        ALT: () => {
-          ctx.firstSelector = true
-          $.SUBRULE($.forgivingSelectorList, { ARGS: [ctx] })
-        }
+        ALT: () => $.SUBRULE($.forgivingSelectorList, { ARGS: [ctx] })
       }
     ])
+
+    let isList: boolean
+
+    if (!RECORDING_PHASE) {
+      isList = selector instanceof SelectorList
+    }
 
     let guard: Condition | undefined
     let semi = false
@@ -266,15 +271,47 @@ export function qualifiedRule(this: P, T: TokenMap) {
         /**
          * :extend at the end of a qualified rule selector
          */
-        GATE: () => !!ctx.hasExtend,
-        ALT: () => semi = !!$.CONSUME(T.Semi)
+        ALT: () => {
+          let lastSeq: SelectorSequence | undefined
+          if (!RECORDING_PHASE) {
+            if (isList) {
+              lastSeq = selector.value.pop() as SelectorSequence
+            } else {
+              lastSeq = selector as SelectorSequence
+            }
+          }
+          let extendValue = $.SUBRULE($.extend, { ARGS: [lastSeq] })
+          if (isList) {
+            selector.value.push(extendValue)
+          } else {
+            selector = extendValue
+          }
+          // Maybe add support for a guard later, but not necessary
+          // $.OPTION(() => guard = $.SUBRULE($.guard))
+          $.OR3([
+            {
+              GATE: () => !!ctx.allExtended,
+              ALT: () => {
+                $.CONSUME(T.Semi)
+                semi = true
+              }
+            },
+            {
+              ALT: () => {
+                $.CONSUME(T.LCurly)
+                rules = $.SUBRULE($.declarationList)
+                $.CONSUME(T.RCurly)
+              }
+            }
+          ])
+        }
       },
       {
         ALT: () => {
-          $.OPTION(() => guard = $.SUBRULE($.guard))
-          $.CONSUME(T.LCurly)
-          rules = $.SUBRULE($.declarationList)
-          $.CONSUME(T.RCurly)
+          $.OPTION2(() => guard = $.SUBRULE2($.guard))
+          $.CONSUME2(T.LCurly)
+          rules = $.SUBRULE2($.declarationList)
+          $.CONSUME2(T.RCurly)
         }
       }
     ])
@@ -282,13 +319,66 @@ export function qualifiedRule(this: P, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
       let location = $.endRule()
       if (semi) {
-        return new ExtendList(selectorList, undefined, location, this.context)
+        return new ExtendList(selector, undefined, location, this.context)
       }
       return new Ruleset([
-        ['selector', selectorList],
+        ['selector', selector],
         ['rules', rules!],
         ['guard', guard]
       ], undefined, location, this.context)
+    }
+  }
+}
+
+export function forgivingSelectorList(this: P, T: TokenMap) {
+  const $ = this
+
+  return (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
+    $.startRule()
+    let isQualifiedRule = !!ctx.qualifiedRule
+
+    let sequences: Array<Extend | SelectorSequence>
+    let sel = $.SUBRULE($.relativeSelector, { ARGS: [ctx] })
+    let allExtended: boolean | undefined
+
+    if (!RECORDING_PHASE) {
+      sequences = [$.wrap(sel, true)]
+    }
+
+    $.MANY(() => {
+      let extendValue: Extend | undefined
+      $.OPTION({
+        GATE: () => isQualifiedRule,
+        DEF: () => {
+          let sel: SelectorSequence | undefined
+          if (!RECORDING_PHASE) {
+            sel = sequences!.pop() as SelectorSequence
+          }
+          extendValue = $.SUBRULE($.extend, { ARGS: [sel] })
+          if (!RECORDING_PHASE) {
+            allExtended = allExtended === undefined ? true : allExtended && true
+            sequences.push(extendValue!)
+          }
+        }
+      })
+      if (!RECORDING_PHASE && !extendValue) {
+        allExtended = false
+      }
+      $.CONSUME(T.Comma)
+      let sel = $.SUBRULE2($.relativeSelector, { ARGS: [ctx] })
+      if (!RECORDING_PHASE) {
+        sequences.push($.wrap(sel, 'both'))
+      }
+    })
+
+    if (!RECORDING_PHASE) {
+      let location = $.endRule()
+      if (sequences!.length === 1) {
+        return sequences![0]!
+      }
+      ctx.allExtended = allExtended
+      return new SelectorList(sequences!, undefined, location, this.context)
     }
   }
 }
@@ -299,20 +389,35 @@ export function selectorList(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
-    let sequences: SelectorSequence[]
-    let sel = $.SUBRULE($.complexSelector, { ARGS: [ctx] })
-    let extendSel: Node | undefined
-    let extendFlag: IToken | undefined
+    let isQualifiedRule = !!ctx.qualifiedRule
 
-    $.OPTION(() => {
-      let value = $.SUBRULE($.extend, { ARGS: [ctx] })
-    })
+    let sequences: Array<Extend | SelectorSequence>
+    let sel = $.SUBRULE($.complexSelector, { ARGS: [ctx] })
+    let allExtended: boolean | undefined
 
     if (!RECORDING_PHASE) {
       sequences = [$.wrap(sel, true)]
     }
 
     $.MANY(() => {
+      let extendValue: Extend | undefined
+      $.OPTION({
+        GATE: () => isQualifiedRule,
+        DEF: () => {
+          let sel: SelectorSequence | undefined
+          if (!RECORDING_PHASE) {
+            sel = sequences!.pop() as SelectorSequence
+          }
+          extendValue = $.SUBRULE($.extend, { ARGS: [sel] })
+          if (!RECORDING_PHASE) {
+            allExtended = allExtended === undefined ? true : allExtended && true
+            sequences.push(extendValue!)
+          }
+        }
+      })
+      if (!RECORDING_PHASE && !extendValue) {
+        allExtended = false
+      }
       $.CONSUME(T.Comma)
       let sel = $.SUBRULE2($.complexSelector, { ARGS: [ctx] })
       if (!RECORDING_PHASE) {
@@ -325,75 +430,8 @@ export function selectorList(this: P, T: TokenMap) {
       if (sequences!.length === 1) {
         return sequences![0]!
       }
+      ctx.allExtended = allExtended
       return new SelectorList(sequences!, undefined, location, this.context)
-    }
-  }
-}
-
-/** Mostly copied from the CSS production, with alterations */
-export function complexSelector(this: P, T: TokenMap) {
-  const $ = this
-
-  return (ctx: RuleContext = {}) => {
-    let RECORDING_PHASE = $.RECORDING_PHASE
-
-    let selectors: Node[] = $.SUBRULE($.compoundSelector, { ARGS: [ctx] })
-
-    $.MANY({
-      GATE: () => $.hasWS() || $.LA(1).tokenType === T.Combinator,
-      DEF: () => {
-        let co: IToken | undefined
-        let combinator: Node
-        $.OPTION(() => {
-          co = $.CONSUME(T.Combinator)
-        })
-        if (!RECORDING_PHASE) {
-          if (co) {
-            combinator = $.wrap(new Combinator(co.image, undefined, $.getLocationInfo(co), this.context), 'both')
-          } else {
-            let startOffset = this.LA(1).startOffset
-            combinator = new Combinator('', undefined, 0, this.context)
-            combinator.pre = $.getPrePost(startOffset)
-          }
-        }
-        let compound = $.SUBRULE2($.compoundSelector, { ARGS: [{ ...ctx, firstSelector: false }] })
-        if (!RECORDING_PHASE) {
-          selectors.push(
-            combinator!,
-            ...compound
-          )
-        }
-      }
-    })
-
-    let extendSelector: SelectorList | SelectorSequence | undefined
-    let extendFlag: IToken | undefined
-    let extendLocation: LocationInfo | undefined
-
-    $.OPTION2({
-      GATE: () => !!ctx.qualifiedRule,
-      DEF: () => {
-        $.startRule()
-        let value = $.SUBRULE($.extend, { ARGS: [ctx] })
-        if (!RECORDING_PHASE) {
-          extendLocation = $.endRule()
-          extendSelector = value[0]
-          extendFlag = value[1]
-        }
-      }
-    })
-
-    if (!RECORDING_PHASE) {
-      let sequence = new SelectorSequence(selectors as Array<SimpleSelector | Combinator>, undefined, $.getLocationFromNodes(selectors), this.context)
-      if (extendSelector) {
-        return new Extend([
-          ['target', sequence],
-          ['extendList', extendSelector],
-          /** @todo - should support more flags in the future? */
-          ['flag', extendFlag ? '!all' : undefined]
-        ], undefined, extendLocation, this.context)
-      }
-      return sequence
     }
   }
 }
@@ -401,15 +439,38 @@ export function complexSelector(this: P, T: TokenMap) {
 export function extend(this: P, T: TokenMap) {
   const $ = this
 
-  return (ctx: RuleContext = {}) => {
-    ctx.hasExtend = true
-    $.CONSUME(T.Extend)
-    let selector = $.SUBRULE($.selectorList)
+  return (selector: SelectorSequence | undefined) => {
+    let start = $.CONSUME(T.Extend)
+    let target = $.SUBRULE($.selectorList)
     let flag: IToken | undefined
     $.OPTION(() => flag = $.CONSUME(T.All))
-    $.CONSUME(T.RParen)
+    let end = $.CONSUME(T.RParen)
     if (!$.RECORDING_PHASE) {
-      return [selector, flag]
+      let startOffset: number
+      let startLine: number
+      let startColumn: number
+      if (selector) {
+        let location = selector.location
+        startOffset = location[0]!
+        startLine = location[1]!
+        startColumn = location[2]!
+      } else {
+        let loc = start
+        startOffset = loc.startOffset
+        startLine = loc.startLine!
+        startColumn = loc.startColumn!
+      }
+      let { endOffset, endLine, endColumn } = end
+      return new Extend(
+        [
+          ['selector', selector],
+          ['target', target],
+          ['flag', flag ? '!all' : undefined]
+        ],
+        undefined,
+        [startOffset, startLine, startColumn, endOffset!, endLine!, endColumn!],
+        this.context
+      )
     }
   }
 }
@@ -685,11 +746,16 @@ export function unknownAtRule(this: P, T: TokenMap) {
         ALT: () => {
           $.CONSUME(T.Colon)
           return $.OR3([
+            /**
+             * This needs to be gated early, even though it is
+             * gated again in the valueList production, because
+             * chevrotain-allstar needs to pick a path first.
+             */
             {
-              // GATE: () => {
-              //   let type = $.LA(1).tokenType
-              //   return type === T.AnonMixinStart || type === T.LCurly
-              // },
+              GATE: () => {
+                let type = $.LA(1).tokenType
+                return type === T.AnonMixinStart || type === T.LCurly
+              },
               ALT: () => {
                 value = $.SUBRULE($.anonymousMixinDefinition)
                 $.OPTION2(() => $.CONSUME(T.Semi))
@@ -697,10 +763,10 @@ export function unknownAtRule(this: P, T: TokenMap) {
               }
             },
             {
-              // GATE: () => {
-              //   let type = $.LA(1).tokenType
-              //   return type !== T.AnonMixinStart && type !== T.LCurly
-              // },
+              GATE: () => {
+                let type = $.LA(1).tokenType
+                return type !== T.AnonMixinStart && type !== T.LCurly
+              },
               ALT: () => {
                 value = $.SUBRULE($.valueList)
                 $.OPTION(() => {

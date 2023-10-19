@@ -57,23 +57,23 @@ export function stylesheet(this: C, T: TokenMap) {
     }
 
     let charset: IToken | undefined
-    let root: Node | undefined
 
     $.OPTION(() => {
       charset = $.CONSUME(T.Charset)
     })
-    $.OPTION2(() => {
-      root = $.SUBRULE($.main, { ARGS: [{ isRoot: true }] })
-    })
+
+    let root: Node = $.SUBRULE($.main, { ARGS: [{ isRoot: true }] })
 
     if (!RECORDING_PHASE) {
-      let rules: Node[] = root ? root.value : []
+      let rules: Node[] = root.value
 
       if (charset) {
-        rules.unshift(new Token(charset.image, { type: 'Charset' }, $.getLocationInfo(charset), context!))
-      }
-      if (!root) {
-        root = $.getRulesWithComments(rules, undefined, true)
+        let loc = $.getLocationInfo(charset)
+        let rootLoc = root.location
+        rules.unshift(new Token(charset.image, { type: 'Charset' }, loc, context!))
+        rootLoc[0] = loc[0]
+        rootLoc[1] = loc[1]
+        rootLoc[2] = loc[2]
       }
 
       this.context.scope = initialScope!
@@ -223,7 +223,6 @@ export function simpleSelector(this: C, T: TokenMap, altContext?: AltContext) {
        *
        * @see: https://github.com/w3c/csswg-drafts/issues/9317
        */
-      // GATE: () => !ctx.firstSelector,
       ALT: () => $.CONSUME(T.Ident)
     },
     {
@@ -514,7 +513,7 @@ export function compoundSelector(this: C, T: TokenMap) {
       /** Make sure we don't ignore space combinators */
       GATE: () => !$.hasWS(),
       DEF: () => {
-        sel = $.SUBRULE2($.simpleSelector, { ARGS: [{ ...ctx, firstSelector: false }] })
+        sel = $.SUBRULE2($.simpleSelector, { ARGS: [ctx] })
         if (!RECORDING_PHASE) {
           selectors.push(sel)
         }
@@ -560,7 +559,7 @@ export function complexSelector(this: C, T: TokenMap) {
             combinator.pre = $.getPrePost(startOffset)
           }
         }
-        let compound = $.SUBRULE2($.compoundSelector, { ARGS: [{ ...ctx, firstSelector: false }] })
+        let compound = $.SUBRULE2($.compoundSelector, { ARGS: [ctx] })
         if (!RECORDING_PHASE) {
           selectors.push(
             combinator!,
@@ -592,7 +591,7 @@ export function relativeSelector(this: C, T: TokenMap) {
       {
         ALT: () => {
           let co = $.CONSUME(T.Combinator)
-          let sequence: SelectorSequence = $.SUBRULE($.complexSelector, { ARGS: [{ ...ctx, firstSelector: false }] })
+          let sequence: SelectorSequence = $.SUBRULE($.complexSelector, { ARGS: [ctx] })
 
           if (!$.RECORDING_PHASE) {
             sequence.value.unshift(new Combinator(co.image, undefined, $.getLocationInfo(co), this.context))
@@ -635,7 +634,7 @@ export function forgivingSelectorList(this: C, T: TokenMap) {
 
     $.MANY(() => {
       $.CONSUME(T.Comma)
-      let selector = $.SUBRULE2($.relativeSelector, { ARGS: [{ ...ctx, firstSelector: false }] })
+      let selector = $.SUBRULE2($.relativeSelector, { ARGS: [ctx] })
       if (!RECORDING_PHASE) {
         sequences.push($.wrap(selector, 'both'))
       }

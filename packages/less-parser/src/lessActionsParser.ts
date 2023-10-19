@@ -8,7 +8,7 @@ import {
   productions as cssProductions
 } from '@jesscss/css-parser'
 
-import { Reference, type Node } from '@jesscss/core'
+import { Reference, type Node, type SelectorSequence } from '@jesscss/core'
 
 import { type LessTokenType } from './lessTokens'
 import * as productions from './productions'
@@ -37,7 +37,8 @@ export type TokenMap = Record<LessTokenType, TokenType>
 
 export type RuleContext = CssRuleContext & {
   hasDefault?: boolean
-  hasExtend?: boolean
+  /** All selectors in a selector list are extended */
+  allExtended?: boolean
   /** Mixin definition */
   isDefinition?: boolean
   // isCompareExpression?: boolean
@@ -77,7 +78,7 @@ export class LessActionsParser extends CssActionsParser {
   mixinValue: Rule<(ctx?: RuleContext) => void>
   anonymousMixinDefinition: Rule
 
-  extend: Rule<(ctx?: RuleContext) => void>
+  extend: Rule<(selector?: SelectorSequence) => void>
 
   // namespaces
   accessors: Rule<(nodeContext?: Node) => void>

@@ -78,7 +78,8 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
     return hoistToRoot ?? value ? `&(${value ?? ''})` : '&'
   }
 
-  async eval(context: Context): Promise<SelectorList | SelectorSequence | Ampersand | Nil> {
+  /** Hmm this should never return Extend */
+  async eval(context: Context): Promise<SelectorList | SelectorSequence | Ampersand | Extend | Nil> {
     return await this.evalIfNot(context, () => {
       if (this.value ?? this.options?.hoistToRoot ?? context.opts.collapseNesting) {
         let frame = context.frames[0]
