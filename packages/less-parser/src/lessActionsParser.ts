@@ -43,11 +43,14 @@ export type RuleContext = CssRuleContext & {
   isDefinition?: boolean
   // isCompareExpression?: boolean
   allowAnonymousMixins?: boolean
+  allowMixinCallWithoutAccessor?: boolean
   // boolean() and if() do not need parens around compare expressions
   // additionally, they do not allow outer commas
   inValueList?: boolean
   // An outer guard allows a comma
   allowComma?: boolean
+  /** Allow passing in the currently constructed Node */
+  node?: Node
 }
 /**
  * Unlike the historical Less parser, this parser
@@ -71,7 +74,7 @@ export class LessActionsParser extends CssActionsParser {
   mixinName: Rule
   mixinDefinition: Rule
   mixinCall: Rule
-  inlineMixinCall: Rule<(nodeContext?: Node) => void>
+  inlineMixinCall: Rule<(ctx?: RuleContext) => void>
   mixinArgs: Rule<(ctx?: RuleContext) => void>
   mixinArgList: Rule<(ctx?: RuleContext) => void>
   mixinArg: Rule<(ctx?: RuleContext) => void>
@@ -81,7 +84,7 @@ export class LessActionsParser extends CssActionsParser {
   extend: Rule<(selector?: SelectorSequence) => void>
 
   // namespaces
-  accessors: Rule<(nodeContext?: Node) => void>
+  accessors: Rule<(ctx?: RuleContext) => void>
 
   comparison: Rule<(ctx?: RuleContext) => void>
   guard: Rule<(ctx?: RuleContext) => void>

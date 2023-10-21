@@ -1224,7 +1224,8 @@ export function valueReference(this: P, T: TokenMap) {
                 )
             }
           })
-          return $.SUBRULE($.accessors, { ARGS: [node] })
+          ctx.node = node
+          return $.SUBRULE($.accessors, { ARGS: [ctx] })
         }
       },
       {
@@ -1234,7 +1235,10 @@ export function valueReference(this: P, T: TokenMap) {
           if (!RECORDING_PHASE) {
             node = new Reference(token.image, { type: 'variable' }, $.getLocationInfo(token), this.context)
           }
-          $.OPTION3(() => node = $.SUBRULE2($.accessors, { ARGS: [node] }))
+          $.OPTION3(() => {
+            ctx.node = node
+            node = $.SUBRULE2($.accessors, { ARGS: [ctx] })
+          })
           return node!
         }
       }
@@ -1277,14 +1281,16 @@ export function varReference(this: P, T: TokenMap) {
               GATE: () => allowMixinCallWithoutAccessor,
               ALT: () => {
                 $.OPTION2(() => {
-                  node = $.SUBRULE($.accessors, { ARGS: [node] })
+                  ctx.node = node
+                  node = $.SUBRULE($.accessors, { ARGS: [ctx] })
                 })
               }
             },
             {
               GATE: () => !allowMixinCallWithoutAccessor,
               ALT: () => {
-                node = $.SUBRULE2($.accessors, { ARGS: [node] })
+                ctx.node = node
+                node = $.SUBRULE2($.accessors, { ARGS: [ctx] })
               }
             }
           ])
@@ -1298,7 +1304,10 @@ export function varReference(this: P, T: TokenMap) {
           if (!RECORDING_PHASE) {
             node = new Reference(token.image, { type: 'variable' }, $.getLocationInfo(token), this.context)
           }
-          $.OPTION3(() => node = $.SUBRULE3($.accessors, { ARGS: [node] }))
+          $.OPTION3(() => {
+            ctx.node = node
+            node = $.SUBRULE3($.accessors, { ARGS: [ctx] })
+          })
           return node!
         }
       }
@@ -1316,7 +1325,7 @@ export function value(this: P, T: TokenMap) {
       DEF: [
         /** Function should appear before Ident */
         { ALT: () => $.SUBRULE($.functionCall) },
-        { ALT: () => $.SUBRULE($.inlineMixinCall) },
+        { ALT: () => $.SUBRULE($.inlineMixinCall, { ARGS: [ctx] }) },
         /**
          * Functions can pass anonymous mixin definitions
          * as arguments. (Used with `each`)
@@ -1708,7 +1717,8 @@ export function mixinCall(this: P, T: TokenMap) {
 export function inlineMixinCall(this: P, T: TokenMap) {
   const $ = this
 
-  return (nodeContext: Node) => {
+  return (ctx: RuleContext = {}) => {
+    let nodeContext = ctx.node
     let RECORDING_PHASE = $.RECORDING_PHASE
     let locationRetrieved = false
     $.startRule()
@@ -1739,7 +1749,10 @@ export function inlineMixinCall(this: P, T: TokenMap) {
         call.location[5] = location[5]
       }
     })
-    $.OPTION2(() => node = $.SUBRULE($.accessors, { ARGS: [node] }))
+    $.OPTION2(() => {
+      ctx.node = node
+      node = $.SUBRULE($.accessors, { ARGS: [ctx] })
+    })
     if (!RECORDING_PHASE) {
       if (!locationRetrieved) {
         $.endRule()
@@ -1816,7 +1829,8 @@ export function accessors(this: P, T: TokenMap) {
   ]
 
   /** The node passed in is what we're looking up on */
-  return (nodeContext: Node) => {
+  return (ctx: RuleContext = {}) => {
+    let nodeContext = ctx.node
     let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
     let keyToken: IToken | undefined
@@ -1867,20 +1881,35 @@ export function accessors(this: P, T: TokenMap) {
           ALT: () => {
             let args = $.SUBRULE($.mixinArgs)
             if (!RECORDING_PHASE) {
+              let [startOffset, startLine, startColumn] = returnNode.location
+              let { endOffset, endLine, endColumn } = $.LA(0)
               returnNode = new Call(
                 [
                   ['name', returnNode],
                   ['args', args]
                 ],
                 undefined,
-                $.getLocationFromNodes([returnNode, args]),
+                [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!],
                 this.context
               )
             }
           }
         },
-        { ALT: () => returnNode = $.SUBRULE($.inlineMixinCall, { ARGS: [returnNode] }) },
-        { ALT: () => returnNode = $.SUBRULE($.accessors, { ARGS: [returnNode] }) }
+        {
+          GATE: () => !!ctx.allowMixinCallWithoutAccessor,
+          ALT: () => {
+            ctx.node = returnNode
+            returnNode = $.SUBRULE($.inlineMixinCall, { ARGS: [ctx] })
+            return returnNode
+          }
+        },
+        {
+          ALT: () => {
+            ctx.node = returnNode
+            returnNode = $.SUBRULE($.accessors, { ARGS: [ctx] })
+            return returnNode
+          }
+        }
       ])
     })
     return returnNode!
@@ -1924,11 +1953,11 @@ export function mixinArgList(this: P, T: TokenMap) {
       },
       {
         ALT: () => {
-          let node = $.SUBRULE2($.mixinArg, { ARGS: [{ ...ctx, allowComma: true }] })
+          let node = $.SUBRULE2($.mixinArg, { ARGS: [{ ...ctx, allowComma: true } as RuleContext] })
           $.OPTION2(() => {
             $.CONSUME(T.Semi)
             $.OPTION3(() => {
-              let returnNodes = $.SUBRULE2($.mixinArgList, { ARGS: [{ ...ctx, allowComma: true }] })
+              let returnNodes = $.SUBRULE2($.mixinArgList, { ARGS: [{ ...ctx, allowComma: true } as RuleContext] })
               if (!RECORDING_PHASE) {
                 nodes!.push(node, ...returnNodes)
               }
