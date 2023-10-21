@@ -1,6 +1,6 @@
 /* eslint-disable no-return-assign */
 import type { CssActionsParser, TokenMap, RuleContext } from './cssActionsParser'
-import { EMPTY_ALT, type IToken, type IOrAlt, type OrMethodOpts } from 'chevrotain'
+import { EMPTY_ALT, type IToken, type IOrAlt, type OrMethodOpts, tokenMatcher } from 'chevrotain'
 import {
   TreeContext,
   Node,
@@ -243,7 +243,7 @@ export function simpleSelector(this: C, T: TokenMap, altContext?: AltContext) {
     if (!$.RECORDING_PHASE) {
       if ($.isToken(selector)) {
         if (selector.tokenType.name === 'Ampersand') {
-          return new Ampersand(selector.image, undefined, $.getLocationInfo(selector), this.context)
+          return new Ampersand(undefined, undefined, $.getLocationInfo(selector), this.context)
         }
         return new BasicSelector(selector.image, undefined, $.getLocationInfo(selector), this.context)
       }
@@ -543,7 +543,7 @@ export function complexSelector(this: C, T: TokenMap) {
      * Only space combinators and specified combinators will enter the MANY
      */
     $.MANY({
-      GATE: () => $.hasWS() || $.LA(1).tokenType === T.Combinator,
+      GATE: () => $.hasWS() || tokenMatcher($.LA(1), T.Combinator),
       DEF: () => {
         let co: IToken | undefined
         let combinator: Node
@@ -626,17 +626,19 @@ export function forgivingSelectorList(this: C, T: TokenMap) {
     $.startRule()
 
     let sequences: SelectorSequence[]
-    let selector = $.SUBRULE($.relativeSelector, { ARGS: [ctx] })
+    let i = 0
 
     if (!RECORDING_PHASE) {
-      sequences = [$.wrap(selector, true)]
+      sequences = []
     }
 
-    $.MANY(() => {
-      $.CONSUME(T.Comma)
-      let selector = $.SUBRULE2($.relativeSelector, { ARGS: [ctx] })
-      if (!RECORDING_PHASE) {
-        sequences.push($.wrap(selector, 'both'))
+    $.AT_LEAST_ONE_SEP({
+      SEP: T.Comma,
+      DEF: () => {
+        let selector = $.SUBRULE($.relativeSelector, { ARGS: [ctx] })
+        if (!RECORDING_PHASE) {
+          sequences.push($.wrap(selector, ++i === 0 ? true : 'both'))
+        }
       }
     })
 
@@ -658,18 +660,20 @@ export function selectorList(this: C, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
+    let i = 0
     let sequences: SelectorSequence[]
-    let sel = $.SUBRULE($.complexSelector, { ARGS: [ctx] })
 
     if (!RECORDING_PHASE) {
-      sequences = [$.wrap(sel, true)]
+      sequences = []
     }
 
-    $.MANY(() => {
-      $.CONSUME(T.Comma)
-      let sel = $.SUBRULE2($.complexSelector, { ARGS: [ctx] })
-      if (!RECORDING_PHASE) {
-        sequences.push($.wrap(sel, 'both'))
+    $.AT_LEAST_ONE_SEP({
+      SEP: T.Comma,
+      DEF: () => {
+        let sel = $.SUBRULE2($.complexSelector, { ARGS: [ctx] })
+        if (!RECORDING_PHASE) {
+          sequences.push($.wrap(sel, ++i === 0 ? true : 'both'))
+        }
       }
     })
 

@@ -67,6 +67,8 @@ export class LessActionsParser extends CssActionsParser {
   ifFunction: Rule
   booleanFunction: Rule
 
+  wrappedDeclarationList: Rule
+
   valueReference: Rule<(ctx?: RuleContext) => void>
 
   // mixins
@@ -82,6 +84,8 @@ export class LessActionsParser extends CssActionsParser {
   anonymousMixinDefinition: Rule
 
   extend: Rule<(selector?: SelectorSequence) => void>
+  extendRules: Rule<(ctx?: RuleContext) => void>
+  forgivingExtendRules: Rule<(ctx?: RuleContext) => void>
 
   // namespaces
   accessors: Rule<(ctx?: RuleContext) => void>

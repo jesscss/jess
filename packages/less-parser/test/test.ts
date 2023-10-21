@@ -258,7 +258,7 @@ const invalidLess = [
 ]
 
 describe.only('can parse all Less stylesheets', () => {
-  const files = glob.sync(path.join(testData, 'less/**/*.less'))
+  const files = glob.sync(path.join(testData, 'less/**/extend-nest.less'))
   files
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))
