@@ -43,7 +43,6 @@ export type RuleContext = CssRuleContext & {
   isDefinition?: boolean
   // isCompareExpression?: boolean
   allowAnonymousMixins?: boolean
-  allowMixinCallWithoutAccessor?: boolean
   // boolean() and if() do not need parens around compare expressions
   // additionally, they do not allow outer commas
   inValueList?: boolean

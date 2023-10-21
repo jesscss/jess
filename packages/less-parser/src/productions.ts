@@ -2,7 +2,8 @@
 import type { LessActionsParser as P, TokenMap, RuleContext } from './lessActionsParser'
 import {
   tokenMatcher,
-  type IToken
+  type IToken,
+  TokenType
 } from 'chevrotain'
 import {
   main as cssMain,
@@ -98,7 +99,7 @@ export function declarationList(this: P, T: TokenMap) {
   return cssMain.call(this, T, ruleAlt)
 }
 
-let interpolatedRegex = /([$@]){([^}]+)}/
+let interpolatedRegex = /([$@]){([^}]+)}/g
 let charPlaceholder = String.fromCharCode(0)
 
 export function declaration(this: P, T: TokenMap) {
@@ -165,6 +166,7 @@ export function declaration(this: P, T: TokenMap) {
           { ALT: () => $.CONSUME(T.CustomProperty) }
         ])
         let assign = $.CONSUME2(T.Assign)
+        $.startRule()
         $.MANY(() => {
           let val = $.SUBRULE($.customValue)
           if (!RECORDING_PHASE) {
@@ -711,7 +713,7 @@ export function unknownAtRule(this: P, T: TokenMap) {
    *     followed by a space.
    */
   const isVariableLike = () => {
-    let token = $.LA(1)
+    let token = $.LA(2)
     let isColon = token.tokenType === T.Colon
     if (!isColon) {
       return false
@@ -724,19 +726,19 @@ export function unknownAtRule(this: P, T: TokenMap) {
   const isNotVariableLike = () => !isVariableLike()
 
   let nameAlt = [
-    { ALT: () => $.CONSUME(T.AtKeyword) },
+    { ALT: () => $.CONSUME2(T.AtKeyword) },
     { ALT: () => $.CONSUME(T.NestedReference) }
   ]
 
   return () => {
     $.startRule()
 
-    let name = $.OR(nameAlt)
+    let name: IToken
     let value: Node | undefined
     let args: List | undefined
     let important: IToken | undefined
 
-    let returnVal: Node = $.OR2([
+    let returnVal: Node | undefined = $.OR2([
       {
         /**
          * This is a variable declaration
@@ -744,8 +746,9 @@ export function unknownAtRule(this: P, T: TokenMap) {
          */
         GATE: isVariableLike,
         ALT: () => {
+          name = $.OR3(nameAlt)
           $.CONSUME(T.Colon)
-          return $.OR3([
+          return $.OR4([
             /**
              * This needs to be gated early, even though it is
              * gated again in the valueList production, because
@@ -758,7 +761,7 @@ export function unknownAtRule(this: P, T: TokenMap) {
               },
               ALT: () => {
                 value = $.SUBRULE($.anonymousMixinDefinition)
-                $.OPTION2(() => $.CONSUME(T.Semi))
+                $.OPTION2(() => $.CONSUME2(T.Semi))
                 return value
               }
             },
@@ -768,7 +771,7 @@ export function unknownAtRule(this: P, T: TokenMap) {
                 return type !== T.AnonMixinStart && type !== T.LCurly
               },
               ALT: () => {
-                value = $.SUBRULE($.valueList, { ARGS: [{ allowMixinCallWithoutAccessor: true }] })
+                value = $.SUBRULE($.valueList)
                 $.OPTION(() => {
                   important = $.CONSUME(T.Important)
                 })
@@ -780,7 +783,7 @@ export function unknownAtRule(this: P, T: TokenMap) {
       },
       /** This is a variable call */
       {
-        GATE: () => $.noSep() && $.LA(1).tokenType === T.LParen,
+        GATE: () => $.noSep(1) && $.LA(2).tokenType === T.LParen,
         /**
          * This is a change from Less 1.x-4.x
          * e.g.
@@ -790,12 +793,16 @@ export function unknownAtRule(this: P, T: TokenMap) {
          * }
          * @dr(arg1, arg2);
          */
-        ALT: () => args = $.SUBRULE($.mixinArgs)
+        ALT: () => {
+          name = $.CONSUME3(T.AtKeyword)
+          args = $.SUBRULE($.mixinArgs)
+          return args
+        }
       },
       /** Just a regular unknown at-rule */
       {
         GATE: isNotVariableLike,
-        ALT: cssUnknownAtRule.bind(this, T)
+        ALT: cssUnknownAtRule.call(this, T)
       }
     ])
 
@@ -804,10 +811,10 @@ export function unknownAtRule(this: P, T: TokenMap) {
       if (returnVal instanceof AtRule) {
         return returnVal
       }
-      let nameVal: string | Interpolated = getInterpolatedOrString(name.image)
+      let nameVal: string | Interpolated = getInterpolatedOrString(name!.image)
       let nameNode: Interpolated | General<'Name'>
       if (!(nameVal instanceof Interpolated)) {
-        nameNode = new General(nameVal, { type: 'Name' }, $.getLocationInfo(name), this.context)
+        nameNode = new General(nameVal, { type: 'Name' }, $.getLocationInfo(name!), this.context)
       } else {
         nameNode = nameVal
       }
@@ -1198,6 +1205,53 @@ export function valueReference(this: P, T: TokenMap) {
     let returnNode = $.OR([
       {
         ALT: () => {
+          let node: Node = $.SUBRULE($.mixinReference)
+          $.OPTION(() => {
+            let args: List = $.SUBRULE($.mixinArgs)
+            if (!RECORDING_PHASE) {
+              let RParen = $.LA(0)
+              let [startOffset, startLine, startColumn] = node.location
+              let { endOffset, endLine, endColumn } = RParen
+              node =
+                new Call(
+                  [
+                    ['name', node],
+                    ['args', args]
+                  ],
+                  undefined,
+                  [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!],
+                  this.context
+                )
+            }
+          })
+          return $.SUBRULE($.accessors, { ARGS: [node] })
+        }
+      },
+      {
+        ALT: () => {
+          let token = $.CONSUME(T.AtKeyword)
+          let node: Node
+          if (!RECORDING_PHASE) {
+            node = new Reference(token.image, { type: 'variable' }, $.getLocationInfo(token), this.context)
+          }
+          $.OPTION3(() => node = $.SUBRULE2($.accessors, { ARGS: [node] }))
+          return node!
+        }
+      }
+    ])
+    return $.wrap(returnNode)
+  }
+}
+
+export function varReference(this: P, T: TokenMap) {
+  const $ = this
+
+  return (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
+
+    let returnNode = $.OR([
+      {
+        ALT: () => {
           let allowMixinCallWithoutAccessor = !!ctx.allowMixinCallWithoutAccessor
           let node: Node = $.SUBRULE($.mixinReference)
           $.OPTION(() => {
@@ -1262,6 +1316,7 @@ export function value(this: P, T: TokenMap) {
       DEF: [
         /** Function should appear before Ident */
         { ALT: () => $.SUBRULE($.functionCall) },
+        { ALT: () => $.SUBRULE($.inlineMixinCall) },
         /**
          * Functions can pass anonymous mixin definitions
          * as arguments. (Used with `each`)
@@ -1270,7 +1325,7 @@ export function value(this: P, T: TokenMap) {
           GATE: () => !!ctx.allowAnonymousMixins,
           ALT: () => $.SUBRULE($.anonymousMixinDefinition)
         },
-        { ALT: () => $.SUBRULE($.valueReference, { ARGS: [ctx] }) },
+        { ALT: () => $.SUBRULE($.valueReference) },
         { ALT: () => $.SUBRULE($.string) },
         { ALT: () => $.CONSUME(T.Value) },
         /** Explicitly not marked as an ident */
@@ -1393,6 +1448,7 @@ export function guardOr(this: P, T: TokenMap) {
               right = $.SUBRULE2($.guardAnd, { ARGS: [ctx] })
               if (!RECORDING_PHASE) {
                 let location = $.endRule()
+                $.startRule()
                 left = new Condition(
                   [$.wrap(left, true), 'or', $.wrap(right!)],
                   undefined,
@@ -1402,7 +1458,7 @@ export function guardOr(this: P, T: TokenMap) {
               }
             }
           })
-          if (!RECORDING_PHASE && !right) {
+          if (!RECORDING_PHASE) {
             $.endRule()
           }
           return left
@@ -1645,6 +1701,9 @@ export function mixinCall(this: P, T: TokenMap) {
  * chained more recursively, unlike
  * Less 1.x-4.x
  *   e.g. .mixin1() > .mixin2[@val1].ns() > .sub-mixin[@val2]
+ *
+ * Note: unlike valueReference, an inline mixin call doesn't
+ * needs args or accessors.
  */
 export function inlineMixinCall(this: P, T: TokenMap) {
   const $ = this

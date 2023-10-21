@@ -257,7 +257,7 @@ const invalidLess = [
   'less/_main/selectors.less'
 ]
 
-describe('can parse all Less stylesheets', () => {
+describe.only('can parse all Less stylesheets', () => {
   const files = glob.sync(path.join(testData, 'less/**/*.less'))
   files
     .map(value => path.relative(testData, value))
