@@ -18,7 +18,7 @@ import {
 
 import {
   isNode,
-  type Node,
+  Node,
   type LocationInfo,
   type Operator,
   General,
@@ -768,7 +768,7 @@ export function unknownAtRule(this: P, T: TokenMap) {
                 return type !== T.AnonMixinStart && type !== T.LCurly
               },
               ALT: () => {
-                value = $.SUBRULE($.valueList)
+                value = $.SUBRULE($.valueList, { ARGS: [{ allowMixinCallWithoutAccessor: true }] })
                 $.OPTION(() => {
                   important = $.CONSUME(T.Important)
                 })
@@ -1192,22 +1192,64 @@ export function booleanFunction(this: P, T: TokenMap) {
 export function valueReference(this: P, T: TokenMap) {
   const $ = this
 
-  return () => {
-    $.OR([
+  return (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
+
+    let returnNode = $.OR([
       {
         ALT: () => {
-          $.SUBRULE($.mixinReference)
-          $.OPTION(() => $.SUBRULE($.mixinArgs))
-          $.SUBRULE($.accessors)
+          let allowMixinCallWithoutAccessor = !!ctx.allowMixinCallWithoutAccessor
+          let node: Node = $.SUBRULE($.mixinReference)
+          $.OPTION(() => {
+            let args: List = $.SUBRULE($.mixinArgs)
+            if (!RECORDING_PHASE) {
+              let RParen = $.LA(0)
+              let [startOffset, startLine, startColumn] = node.location
+              let { endOffset, endLine, endColumn } = RParen
+              node =
+                new Call(
+                  [
+                    ['name', node],
+                    ['args', args]
+                  ],
+                  undefined,
+                  [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!],
+                  this.context
+                )
+            }
+          })
+          $.OR2([
+            {
+              GATE: () => allowMixinCallWithoutAccessor,
+              ALT: () => {
+                $.OPTION2(() => {
+                  node = $.SUBRULE($.accessors, { ARGS: [node] })
+                })
+              }
+            },
+            {
+              GATE: () => !allowMixinCallWithoutAccessor,
+              ALT: () => {
+                node = $.SUBRULE2($.accessors, { ARGS: [node] })
+              }
+            }
+          ])
+          return node
         }
       },
       {
         ALT: () => {
-          $.CONSUME(T.AtKeyword)
-          $.OPTION2(() => $.SUBRULE2($.accessors))
+          let token = $.CONSUME(T.AtKeyword)
+          let node: Node
+          if (!RECORDING_PHASE) {
+            node = new Reference(token.image, { type: 'variable' }, $.getLocationInfo(token), this.context)
+          }
+          $.OPTION3(() => node = $.SUBRULE3($.accessors, { ARGS: [node] }))
+          return node!
         }
       }
     ])
+    return $.wrap(returnNode)
   }
 }
 
@@ -1215,12 +1257,11 @@ export function value(this: P, T: TokenMap) {
   const $ = this
 
   return (ctx: RuleContext = {}) => {
-    return $.OR({
+    let node: Node = $.OR({
       IGNORE_AMBIGUITIES: true,
       DEF: [
         /** Function should appear before Ident */
         { ALT: () => $.SUBRULE($.functionCall) },
-        { ALT: () => $.SUBRULE($.inlineMixinCall) },
         /**
          * Functions can pass anonymous mixin definitions
          * as arguments. (Used with `each`)
@@ -1229,12 +1270,7 @@ export function value(this: P, T: TokenMap) {
           GATE: () => !!ctx.allowAnonymousMixins,
           ALT: () => $.SUBRULE($.anonymousMixinDefinition)
         },
-        {
-          ALT: () => {
-            $.CONSUME(T.AtKeyword)
-            $.OPTION(() => $.SUBRULE($.accessors))
-          }
-        },
+        { ALT: () => $.SUBRULE($.valueReference, { ARGS: [ctx] }) },
         { ALT: () => $.SUBRULE($.string) },
         { ALT: () => $.CONSUME(T.Value) },
         /** Explicitly not marked as an ident */
@@ -1247,6 +1283,12 @@ export function value(this: P, T: TokenMap) {
         }
       ]
     })
+    if (!$.RECORDING_PHASE) {
+      if (!(node instanceof Node)) {
+        node = $.processValueToken(node)
+      }
+      return $.wrap(node)
+    }
   }
 }
 
@@ -1336,6 +1378,7 @@ export function guardOr(this: P, T: TokenMap) {
           $.startRule()
 
           let left = $.SUBRULE($.guardAnd, { ARGS: [ctx] })
+          let right: Node | undefined
           $.MANY({
             GATE: () => !!ctx.allowComma || $.LA(1).tokenType !== T.Comma,
             DEF: () => {
@@ -1347,11 +1390,11 @@ export function guardOr(this: P, T: TokenMap) {
                 { ALT: () => $.CONSUME($.T.Comma) },
                 { ALT: () => $.CONSUME($.T.Or) }
               ])
-              let right = $.SUBRULE2($.guardAnd, { ARGS: [ctx] })
+              right = $.SUBRULE2($.guardAnd, { ARGS: [ctx] })
               if (!RECORDING_PHASE) {
                 let location = $.endRule()
                 left = new Condition(
-                  [$.wrap(left, true), 'or', $.wrap(right)],
+                  [$.wrap(left, true), 'or', $.wrap(right!)],
                   undefined,
                   location,
                   this.context
@@ -1359,6 +1402,10 @@ export function guardOr(this: P, T: TokenMap) {
               }
             }
           })
+          if (!RECORDING_PHASE && !right) {
+            $.endRule()
+          }
+          return left
         }
       }
     ])
