@@ -258,7 +258,7 @@ const invalidLess = [
 ]
 
 describe.only('can parse all Less stylesheets', () => {
-  const files = glob.sync(path.join(testData, 'less/**/extend-nest.less'))
+  const files = glob.sync(path.join(testData, 'less/**/*.less'))
   files
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))
@@ -267,10 +267,10 @@ describe.only('can parse all Less stylesheets', () => {
       it(`${file}`, () => {
         const result = fs.readFileSync(path.join(testData, file))
         const contents = result.toString()
-        const parseStart = performance.now()
+        // const parseStart = performance.now()
         const { lexerResult, errors } = lessParser.parse(contents)
-        const parseEnd = performance.now()
-        console.log(`${file} parse time: ${Math.round(parseEnd - parseStart)}ms`)
+        // const parseEnd = performance.now()
+        // console.log(`${file} parse time: ${Math.round(parseEnd - parseStart)}ms`)
         // expect(`(${Math.round(parseEnd - parseStart)}ms)`).toBeDefined()
         if (lexerResult.errors.length || errors.length) {
           console.log('oops')

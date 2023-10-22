@@ -255,197 +255,124 @@ export function wrappedDeclarationList(this: P, T: TokenMap) {
 export function qualifiedRule(this: P, T: TokenMap) {
   const $ = this
 
-  return (ctx: RuleContext = {}) =>
-    $.OR([
-      {
-        GATE: () => !ctx.inner,
-        ALT: () => $.SUBRULE($.extendRules, { ARGS: [ctx] })
-      },
-      {
-        GATE: () => !!ctx.inner,
-        ALT: () => $.SUBRULE($.forgivingExtendRules, { ARGS: [ctx] })
-      }
-    ])
-}
-
-export function extendRules(this: P, T: TokenMap) {
-  const $ = this
-
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE
-    $.startRule()
 
-    let sequences: Array<Extend | SelectorSequence>
-    let allExtended: boolean | undefined
-    let i = 0
-    let guard: Condition | undefined
-    let semi = false
-    let rules: Rules | undefined
+    ctx = { ...ctx, allExtended: true } as RuleContext
 
     if (!RECORDING_PHASE) {
-      sequences = []
+      ctx.sequences = []
     }
 
-    $.AT_LEAST_ONE_SEP({
-      SEP: T.Comma,
+    let returnVal = $.SUBRULE($.extendedSelector, { ARGS: [ctx] })
+
+    $.MANY({
+      GATE: () => !ctx.ruleIsFinished,
       DEF: () => {
-        let sel: SelectorSequence | Extend
-
-        $.OR2([
-          {
-            ALT: () => {
-              $.OPTION(() => {
-                sel = $.SUBRULE($.complexSelector, { ARGS: [ctx] })
-              })
-              sel = $.SUBRULE($.extend, { ARGS: [sel! as SelectorSequence] })
-              allExtended = allExtended === undefined ? true : allExtended && true
-              $.OR3([
-                {
-                  GATE: () => allExtended!,
-                  ALT: () => {
-                    $.CONSUME(T.Semi)
-                    semi = true
-                  }
-                },
-                {
-                  ALT: () => {
-                    $.OPTION2(() => guard = $.SUBRULE($.guard))
-                    rules = $.SUBRULE($.wrappedDeclarationList)
-                  }
-                },
-                { ALT: EMPTY_ALT() }
-              ])
-            }
-          },
-          {
-            ALT: () => {
-              sel = $.SUBRULE2($.complexSelector, { ARGS: [ctx] })
-              $.OPTION3(() => {
-                $.OPTION4(() => guard = $.SUBRULE2($.guard))
-                $.SUBRULE2($.wrappedDeclarationList)
-              })
-            }
-          }
-        ])
-
-        if (!RECORDING_PHASE) {
-          sequences.push($.wrap(sel!, ++i === 0 ? true : 'both'))
-        }
+        $.CONSUME(T.Comma)
+        returnVal = $.SUBRULE2($.extendedSelector, { ARGS: [ctx] })
       }
     })
 
     if (!RECORDING_PHASE) {
-      let location = $.endRule()
-      let selector: SelectorSequence | SelectorList | Extend
-      if (sequences!.length === 1) {
-        selector = sequences![0]!
-      } else {
-        selector = new SelectorList(sequences!, undefined, $.getLocationFromNodes(sequences!), this.context)
-      }
-      if (semi) {
-        return new ExtendList(selector as SelectorList | Extend, undefined, location, this.context)
-      }
-      return new Ruleset(
-        [
-          ['selector', selector],
-          ['rules', rules!],
-          ['guard', guard]
-        ],
-        undefined,
-        location,
-        this.context
-      )
+      return returnVal
     }
   }
 }
 
-export function forgivingExtendRules(this: P, T: TokenMap) {
+/**
+ * This either adds a selector sequence (with or without an extend)
+ * or a finished qualified rule. This is re-structured from the
+ * CSS qualified rule because we need an optional semi after an
+ * extend, if that was implemented using only a gate in the
+ * qualified rule, then chevrotain-allstar will treat the differences
+ * between a qualified rule and declaration as ambiguous.
+ */
+export function extendedSelector(this: P, T: TokenMap) {
   const $ = this
 
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
+    let sequences = ctx.sequences!
 
-    let sequences: Array<Extend | SelectorSequence>
-    let allExtended: boolean | undefined
-    let i = 0
+    let sel: SelectorSequence | Extend
     let guard: Condition | undefined
     let semi = false
     let rules: Rules | undefined
 
-    if (!RECORDING_PHASE) {
-      sequences = []
-    }
-
-    $.AT_LEAST_ONE_SEP({
-      SEP: T.Comma,
-      DEF: () => {
-        let sel: SelectorSequence | Extend
-
-        $.OR2([
-          {
-            ALT: () => {
-              $.OPTION(() => {
-                sel = $.SUBRULE($.relativeSelector, { ARGS: [ctx] })
-              })
-              sel = $.SUBRULE($.extend, { ARGS: [sel! as SelectorSequence] })
-              allExtended = allExtended === undefined ? true : allExtended && true
-              $.OR3([
-                {
-                  GATE: () => allExtended!,
-                  ALT: () => {
-                    $.CONSUME(T.Semi)
-                    semi = true
-                  }
-                },
-                {
-                  ALT: () => {
-                    $.OPTION2(() => guard = $.SUBRULE($.guard))
-                    rules = $.SUBRULE($.wrappedDeclarationList)
-                  }
-                },
-                { ALT: EMPTY_ALT() }
-              ])
+    $.OR([
+      {
+        ALT: () => {
+          $.OPTION(() => {
+            let co: IToken | undefined
+            $.OPTION5({
+              GATE: () => !ctx.inner,
+              DEF: () => {
+                co = $.CONSUME(T.Combinator)
+              }
+            })
+            sel = $.SUBRULE($.complexSelector, { ARGS: [ctx] })
+            if (!RECORDING_PHASE && co) {
+              let coNode = new Combinator(co.image, undefined, $.getLocationInfo(co), this.context)
+              sel.location = $.getLocationFromNodes([coNode, sel])
+              ;(sel as SelectorSequence).value = [coNode, ...sel.value]
             }
-          },
-          {
-            ALT: () => {
-              sel = $.SUBRULE2($.relativeSelector, { ARGS: [ctx] })
-              $.OPTION3(() => {
-                $.OPTION4(() => guard = $.SUBRULE2($.guard))
-                $.SUBRULE2($.wrappedDeclarationList)
-              })
-            }
-          }
-        ])
-
-        if (!RECORDING_PHASE) {
-          sequences.push($.wrap(sel!, ++i === 0 ? true : 'both'))
+          })
+          sel = $.SUBRULE($.extend, { ARGS: [sel! as SelectorSequence] })
+          ctx.allExtended &&= true
+          $.OR3([
+            {
+              GATE: () => !!ctx.allExtended,
+              ALT: () => {
+                $.CONSUME(T.Semi)
+                semi = true
+              }
+            },
+            {
+              ALT: () => {
+                $.OPTION2(() => guard = $.SUBRULE($.guard))
+                rules = $.SUBRULE($.wrappedDeclarationList)
+              }
+            },
+            { ALT: EMPTY_ALT() }
+          ])
+        }
+      },
+      {
+        ALT: () => {
+          ctx.allExtended = false
+          sel = $.SUBRULE2($.complexSelector, { ARGS: [ctx] })
+          $.OPTION3(() => {
+            $.OPTION4(() => guard = $.SUBRULE2($.guard))
+            rules = $.SUBRULE2($.wrappedDeclarationList)
+          })
         }
       }
-    })
+    ])
 
     if (!RECORDING_PHASE) {
       let location = $.endRule()
-      let selector: SelectorSequence | SelectorList | Extend
-      if (sequences!.length === 1) {
-        selector = sequences![0]!
-      } else {
-        selector = new SelectorList(sequences!, undefined, $.getLocationFromNodes(sequences!), this.context)
+      sequences.push($.wrap(sel!, sequences.length === 0 ? true : 'both'))
+
+      if (rules ?? semi) {
+        ctx.ruleIsFinished = true
+        let selector = sequences.length === 1 ? sequences[0]! : new SelectorList(sequences, undefined, $.getLocationFromNodes(sequences), this.context)
+        if (rules) {
+          return new Ruleset(
+            [
+              ['selector', selector],
+              ['rules', rules],
+              ['guard', guard]
+            ],
+            undefined,
+            location,
+            this.context
+          )
+        } else if (semi) {
+          return new ExtendList(selector as SelectorList | Extend, undefined, location, this.context)
+        }
       }
-      if (semi) {
-        return new ExtendList(selector as SelectorList | Extend, undefined, location, this.context)
-      }
-      return new Ruleset(
-        [
-          ['selector', selector],
-          ['rules', rules!],
-          ['guard', guard]
-        ],
-        undefined,
-        location,
-        this.context
-      )
     }
   }
 }

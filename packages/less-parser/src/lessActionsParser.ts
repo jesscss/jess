@@ -8,7 +8,7 @@ import {
   productions as cssProductions
 } from '@jesscss/css-parser'
 
-import { Reference, type Node, type SelectorSequence } from '@jesscss/core'
+import { Reference, type Node, type SelectorSequence, type Extend } from '@jesscss/core'
 
 import { type LessTokenType } from './lessTokens'
 import * as productions from './productions'
@@ -37,7 +37,7 @@ export type TokenMap = Record<LessTokenType, TokenType>
 
 export type RuleContext = CssRuleContext & {
   hasDefault?: boolean
-  /** All selectors in a selector list are extended */
+  /** Selectors in a selector sequence are extended */
   allExtended?: boolean
   /** Mixin definition */
   isDefinition?: boolean
@@ -51,6 +51,8 @@ export type RuleContext = CssRuleContext & {
   allowComma?: boolean
   /** Allow passing in the currently constructed Node */
   node?: Node
+  ruleIsFinished?: boolean
+  sequences?: Array<SelectorSequence | Extend>
 }
 /**
  * Unlike the historical Less parser, this parser
@@ -84,8 +86,7 @@ export class LessActionsParser extends CssActionsParser {
   anonymousMixinDefinition: Rule
 
   extend: Rule<(selector?: SelectorSequence) => void>
-  extendRules: Rule<(ctx?: RuleContext) => void>
-  forgivingExtendRules: Rule<(ctx?: RuleContext) => void>
+  extendedSelector: Rule<(ctx?: RuleContext) => void>
 
   // namespaces
   accessors: Rule<(ctx?: RuleContext) => void>

@@ -189,15 +189,32 @@ export class CssActionsParser extends AdvancedActionsParser {
     }
   }
 
-  protected getLocationFromNodes(nodes: Node[]) {
+  protected getLocationFromNodes(nodes: Array<IToken | Node>) {
     let startNode = nodes[0]!
     let lastNode = nodes[nodes.length - 1]!
-    let [startOffset, startLine, startColumn] = startNode.location
-    let [,,,endOffset, endLine, endColumn] = lastNode.location
+    let startOffset: number
+    let startLine: number
+    let startColumn: number
+    let endOffset: number
+    let endLine: number
+    let endColumn: number
+
+    if (startNode instanceof Node) {
+      ([startOffset, startLine, startColumn] = startNode.location as LocationInfo)
+    } else {
+      ({ startOffset, startLine, startColumn } = startNode as Required<IToken>)
+    }
+
+    if (lastNode instanceof Node) {
+      ([endOffset, endLine, endColumn] = lastNode.location as LocationInfo)
+    } else {
+      ({ endOffset, endLine, endColumn } = lastNode as Required<IToken>)
+    }
+
     if (startOffset === undefined) {
-      throw new Error(`Node "${startNode.type}" has no location info`)
+      throw new Error(`Node "${startNode instanceof Node ? startNode.type : startNode.tokenType.name}" has no location info`)
     } else if (endOffset === undefined) {
-      throw new Error(`Node "${lastNode.type}" has no location info`)
+      throw new Error(`Node "${lastNode instanceof Node ? lastNode.type : lastNode.tokenType.name}" has no location info`)
     }
     let location: LocationInfo = [startOffset, startLine!, startColumn!, endOffset, endLine!, endColumn!]
     return location
