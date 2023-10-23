@@ -87,7 +87,7 @@ export class LessActionsParser extends CssActionsParser {
   anonymousMixinDefinition: Rule
 
   extend: Rule<(selector?: SelectorSequence) => void>
-  extendedSelector: Rule<(ctx?: RuleContext) => void>
+  extendList: Rule<(ctx?: RuleContext) => void>
 
   // namespaces
   accessors: Rule<(ctx?: RuleContext) => void>

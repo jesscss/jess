@@ -1,8 +1,5 @@
 import { Node, defineType } from './node'
-// import type { OutputCollector } from '../output'
-import type { SelectorList } from './selector-list'
 import type { Extend } from './extend'
-import type { Nil } from './nil'
 
 /**
  * An extend statement list with no rules
@@ -10,7 +7,7 @@ import type { Nil } from './nil'
  * e.g.
  *  .a:extend(.b), .c:extend(.d);
  */
-export class ExtendList extends Node<SelectorList | Extend | Nil> {
+export class ExtendList extends Node<Extend[]> {
   toTrimmedString(depth?: number | undefined): string {
     const output = super.toTrimmedString(depth)
     return output + ';'

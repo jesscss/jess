@@ -117,8 +117,14 @@ function $preBuildTokens() {
         categories: ['BlockMarker', 'Function']
       },
       {
-        name: 'DefaultGuard',
-        pattern: /default(?:\(\))?/
+        name: 'DefaultGuardIdent',
+        pattern: /default/,
+        longer_alt: 'PlainIdent',
+        categories: ['Ident']
+      },
+      {
+        name: 'DefaultGuardFunc',
+        pattern: /default(?:\(\))/
       }
     ],
     UrlStart: [

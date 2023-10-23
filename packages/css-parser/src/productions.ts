@@ -643,10 +643,10 @@ export function forgivingSelectorList(this: C, T: TokenMap) {
     })
 
     if (!RECORDING_PHASE) {
+      let location = $.endRule()
       if (sequences!.length === 1) {
         return sequences![0]
       }
-      let location = $.endRule()
       return new SelectorList(sequences!, undefined, location, this.context)
     }
   }

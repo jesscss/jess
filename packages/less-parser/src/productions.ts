@@ -1,5 +1,5 @@
 /* eslint-disable no-cond-assign */
-import type { LessActionsParser as P, TokenMap, RuleContext } from './lessActionsParser'
+import { type LessActionsParser as P, type TokenMap, type RuleContext } from './lessActionsParser'
 import {
   tokenMatcher,
   type IToken,
@@ -25,9 +25,8 @@ import {
   type Operator,
   General,
   Ruleset,
-  type SimpleSelector,
-  SelectorList,
-  type SelectorSequence,
+  type SimpleSelector, SelectorList,
+  SelectorSequence,
   type Rules,
   Combinator,
   List,
@@ -63,6 +62,7 @@ export function main(this: P, T: TokenMap) {
   let ruleAlt = [
     { ALT: () => $.SUBRULE($.mixinDefinition) },
     { ALT: () => $.SUBRULE($.functionCall) },
+    { ALT: () => $.SUBRULE($.extendList) },
     { ALT: () => $.SUBRULE($.qualifiedRule) },
     { ALT: () => $.SUBRULE($.atRule) },
 
@@ -94,6 +94,7 @@ export function declarationList(this: P, T: TokenMap) {
     { ALT: () => $.SUBRULE($.functionCall) },
     { ALT: () => $.SUBRULE($.mixinDefinition) },
     { ALT: () => $.SUBRULE($.innerAtRule) },
+    { ALT: () => $.SUBRULE($.extendList) },
     { ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [{ inner: true }] }) },
     { ALT: () => $.CONSUME2(T.Semi) }
   ]
@@ -247,136 +248,152 @@ export function wrappedDeclarationList(this: P, T: TokenMap) {
 export function qualifiedRule(this: P, T: TokenMap) {
   const $ = this
 
+  // qualifiedRule
+  //   : selectorList WS* LCURLY declarationList RCURLY
+  //   ;
   return (ctx: RuleContext = {}) => {
-    let RECORDING_PHASE = $.RECORDING_PHASE
+    $.startRule()
 
-    ctx = { ...ctx, allExtended: true } as RuleContext
-
-    if (!RECORDING_PHASE) {
-      ctx.sequences = []
-    }
-
-    let returnVal = $.SUBRULE($.extendedSelector, { ARGS: [ctx] })
-
-    $.MANY({
-      GATE: () => !ctx.ruleIsFinished,
-      DEF: () => {
-        $.CONSUME(T.Comma)
-        returnVal = $.SUBRULE2($.extendedSelector, { ARGS: [ctx] })
+    let selector = $.OR([
+      {
+        GATE: () => !ctx.inner,
+        ALT: () => $.SUBRULE($.selectorList, { ARGS: [{ ...ctx, qualifiedRule: true }] })
+      },
+      {
+        GATE: () => !!ctx.inner,
+        ALT: () => $.SUBRULE($.forgivingSelectorList, { ARGS: [{ ...ctx, firstSelector: true, qualifiedRule: true }] })
       }
+    ])
+
+    let guard: Condition | undefined
+
+    $.OPTION(() => {
+      guard = $.SUBRULE($.guard)
     })
 
-    if (!RECORDING_PHASE) {
-      return returnVal
+    $.CONSUME(T.LCurly)
+    let rules = $.SUBRULE($.declarationList)
+    $.CONSUME(T.RCurly)
+
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      return new Ruleset([
+        ['selector', selector],
+        ['rules', rules],
+        ['guard', guard]
+      ], undefined, location, this.context)
     }
   }
 }
 
+export function complexSelector(this: P, T: TokenMap) {
+  const $ = this
+
+  /**
+      A sequence of one or more simple and/or compound selectors
+      that are separated by combinators.
+        .e.g. a#selected > .icon
+    */
+  // complexSelector
+  //   : compoundSelector (WS* (combinator WS*)? compoundSelector)*
+  //   ;
+  return (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
+    $.startRule()
+    let selectors: Node[] = $.SUBRULE($.compoundSelector, { ARGS: [ctx] })
+
+    /**
+     * Only space combinators and specified combinators will enter the MANY
+     */
+    $.MANY({
+      GATE: () => $.hasWS() || tokenMatcher($.LA(1), T.Combinator),
+      DEF: () => {
+        let co: IToken | undefined
+        let combinator: Node
+        $.OPTION(() => {
+          co = $.CONSUME(T.Combinator)
+        })
+        if (!RECORDING_PHASE) {
+          if (co) {
+            combinator = $.wrap(new Combinator(co.image, undefined, $.getLocationInfo(co), this.context), 'both')
+          } else {
+            let startOffset = this.LA(1).startOffset
+            combinator = new Combinator('', undefined, 0, this.context)
+            combinator.pre = $.getPrePost(startOffset)
+          }
+        }
+        let compound = $.SUBRULE2($.compoundSelector, { ARGS: [ctx] })
+        if (!RECORDING_PHASE) {
+          selectors.push(
+            combinator!,
+            ...compound
+          )
+        }
+      }
+    })
+
+    let node: SelectorSequence | Extend
+
+    if (!RECORDING_PHASE) {
+      let location = $.endRule()
+      node = new SelectorSequence(selectors as Array<SimpleSelector | Combinator>, undefined, location, this.context)
+    }
+
+    $.OPTION2({
+      GATE: () => !!ctx.qualifiedRule,
+      DEF: () => {
+        node = $.SUBRULE($.extend, { ARGS: [node as SelectorSequence] })
+      }
+    })
+    return node!
+  }
+}
+
 /**
- * This either adds a selector sequence (with or without an extend)
- * or a finished qualified rule. This is re-structured from the
- * CSS qualified rule because we need an optional semi after an
- * extend, if that was implemented using only a gate in the
- * qualified rule, then chevrotain-allstar will treat the differences
- * between a qualified rule and declaration as ambiguous.
+ * A list of selectors, all with extends, ending with
+ * a semi-colon.
  */
-export function extendedSelector(this: P, T: TokenMap) {
+export function extendList(this: P, T: TokenMap) {
   const $ = this
 
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
-    let sequences = ctx.sequences!
 
-    let sel: SelectorSequence | Extend
-    let guard: Condition | undefined
-    let semi = false
-    let rules: Rules | undefined
+    let nodes: Array<SelectorSequence | Extend>
 
-    $.OR([
-      {
-        ALT: () => {
-          $.OPTION(() => {
-            let co: IToken | undefined
-            $.OPTION5({
+    if (!RECORDING_PHASE) {
+      nodes = []
+    }
+
+    $.AT_LEAST_ONE_SEP({
+      SEP: T.Comma,
+      DEF: () => {
+        let node: SelectorSequence | Extend | undefined
+        $.OPTION(() => {
+          node = $.OR([
+            {
               GATE: () => !!ctx.inner,
-              DEF: () => {
-                co = $.CONSUME(T.Combinator)
-              }
-            })
-            sel = $.SUBRULE($.complexSelector, { ARGS: [ctx] })
-            if (!RECORDING_PHASE && co) {
-              let coNode = new Combinator(co.image, undefined, $.getLocationInfo(co), this.context)
-              sel.location = $.getLocationFromNodes([coNode, sel])
-              ;(sel as SelectorSequence).value = [coNode, ...sel.value]
+              ALT: () => $.SUBRULE($.relativeSelector, { ARGS: [ctx] })
+            },
+            {
+              GATE: () => !ctx.inner,
+              ALT: () => $.SUBRULE($.complexSelector, { ARGS: [ctx] })
             }
-          })
-          sel = $.SUBRULE($.extend, { ARGS: [sel! as SelectorSequence] })
-          ctx.allExtended &&= true
-          $.OR3([
-            {
-              GATE: () => !!ctx.allExtended,
-              ALT: () => {
-                $.CONSUME(T.Semi)
-                semi = true
-              }
-            },
-            {
-              ALT: () => {
-                $.OPTION2(() => guard = $.SUBRULE($.guard))
-                rules = $.SUBRULE($.wrappedDeclarationList)
-              }
-            },
-            { ALT: EMPTY_ALT() }
           ])
-        }
-      },
-      {
-        ALT: () => {
-          ctx.allExtended = false
-          let co: IToken | undefined
-          $.OPTION6({
-            GATE: () => !!ctx.inner,
-            DEF: () => {
-              co = $.CONSUME2(T.Combinator)
-            }
-          })
-          sel = $.SUBRULE2($.complexSelector, { ARGS: [ctx] })
-          if (!RECORDING_PHASE && co) {
-            let coNode = new Combinator(co.image, undefined, $.getLocationInfo(co), this.context)
-            sel.location = $.getLocationFromNodes([coNode, sel])
-            ;(sel as SelectorSequence).value = [coNode, ...sel.value]
-          }
-          $.OPTION3(() => {
-            $.OPTION4(() => guard = $.SUBRULE2($.guard))
-            rules = $.SUBRULE2($.wrappedDeclarationList)
-          })
+        })
+        node = $.SUBRULE($.extend, { ARGS: [node as SelectorSequence | undefined] })
+        if (!RECORDING_PHASE) {
+          nodes.push(node as Extend)
         }
       }
-    ])
+    })
+
+    $.CONSUME(T.Semi)
 
     if (!RECORDING_PHASE) {
       let location = $.endRule()
-      sequences.push($.wrap(sel!, sequences.length === 0 ? true : 'both'))
-
-      if (rules ?? semi) {
-        ctx.ruleIsFinished = true
-        let selector = sequences.length === 1 ? sequences[0]! : new SelectorList(sequences, undefined, $.getLocationFromNodes(sequences), this.context)
-        if (rules) {
-          return new Ruleset(
-            [
-              ['selector', selector],
-              ['rules', rules],
-              ['guard', guard]
-            ],
-            undefined,
-            location,
-            this.context
-          )
-        } else if (semi) {
-          return new ExtendList(selector as SelectorList | Extend, undefined, location, this.context)
-        }
-      }
+      return new ExtendList(nodes! as Extend[], undefined, location, this.context)
     }
   }
 }
@@ -1316,7 +1333,10 @@ export function guardOr(this: P, T: TokenMap) {
     return $.OR([
       {
         ALT: () => {
-          let guard = $.CONSUME(T.DefaultGuard)
+          let guard = $.OR2([
+            { ALT: () => $.CONSUME(T.DefaultGuardIdent) },
+            { ALT: () => $.CONSUME(T.DefaultGuardFunc) }
+          ])
           ctx.hasDefault = true
           return new DefaultGuard(guard.image, undefined, $.getLocationInfo(guard), this.context)
         }
@@ -1335,7 +1355,7 @@ export function guardOr(this: P, T: TokenMap) {
                * Nest expressions within expressions for correct
                * order of operations.
                */
-              $.OR2([
+              $.OR3([
                 { ALT: () => $.CONSUME($.T.Comma) },
                 { ALT: () => $.CONSUME($.T.Or) }
               ])
@@ -1826,44 +1846,54 @@ export function mixinArgList(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE
 
-    let nodes: Node[]
+    let node = $.SUBRULE($.mixinArg, { ARGS: [ctx] })
 
+    let commaNodes: Node[]
+    let semiNodes: Node[]
     if (!RECORDING_PHASE) {
-      nodes = []
+      commaNodes = [$.wrap(node, true)]
+      semiNodes = []
     }
+    let isSemiList = false
 
-    $.OR([
-      {
-        GATE: () => !ctx.allowComma,
-        ALT: () => {
-          let node = $.SUBRULE($.mixinArg, { ARGS: [ctx] })
-          if (!RECORDING_PHASE) {
-            nodes!.push(node)
-          }
-          $.OPTION(() => {
+    $.MANY(() => {
+      $.OR([
+        {
+          GATE: () => !isSemiList,
+          ALT: () => {
             $.CONSUME(T.Comma)
-            let returnNodes = $.SUBRULE($.mixinArgList, { ARGS: [ctx] })
+            let node = $.SUBRULE2($.mixinArg, { ARGS: [ctx] })
             if (!RECORDING_PHASE) {
-              nodes!.push(...returnNodes)
+              commaNodes!.push($.wrap(node, true))
             }
-          })
-        }
-      },
-      {
-        ALT: () => {
-          let node = $.SUBRULE2($.mixinArg, { ARGS: [{ ...ctx, allowComma: true } as RuleContext] })
-          $.OPTION2(() => {
+          }
+        },
+        {
+          ALT: () => {
+            isSemiList = true
+
             $.CONSUME(T.Semi)
-            $.OPTION3(() => {
-              let returnNodes = $.SUBRULE2($.mixinArgList, { ARGS: [{ ...ctx, allowComma: true } as RuleContext] })
-              if (!RECORDING_PHASE) {
-                nodes!.push(node, ...returnNodes)
+
+            if (!RECORDING_PHASE) {
+              /**
+               * Aggregate the previous set of comma-nodes
+               * @todo - attach nodes to single declaration.
+              */
+              if (commaNodes.length > 1) {
+                let commaList = new List(commaNodes, undefined, $.getLocationFromNodes(commaNodes), this.context)
+                semiNodes.push(commaList)
+              } else {
+                semiNodes.push(commaNodes[0]!)
               }
-            })
-          })
+            }
+            node = $.SUBRULE3($.mixinArg, { ARGS: [{ ...ctx, allowComma: true }] })
+            if (!RECORDING_PHASE) {
+              semiNodes.push($.wrap(node, true))
+            }
+          }
         }
-      }
-    ])
+      ])
+    })
 
     return nodes!
   }

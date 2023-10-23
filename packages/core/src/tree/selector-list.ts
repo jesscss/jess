@@ -6,14 +6,16 @@ import { type Extend } from './extend'
 import { type Context } from '../context'
 
 /** Constructs */
-export class SelectorList extends Node<Array<SelectorSequence | Extend>> {
+export class SelectorList<
+  T extends Node = SelectorSequence | Extend
+> extends Node<T[]> {
   toTrimmedString() {
     return this.value.map(v => v.toString()).join(',')
   }
 
-  async eval(context: Context): Promise<SelectorList | SelectorSequence | Extend> {
-    return await this.evalIfNot(context, async () => {
-      const list = await (super.eval(context) as Promise<SelectorList>)
+  async eval(context: Context): Promise<SelectorList<T> | T> {
+    return await this.evalIfNot<SelectorList<T> | T>(context, async () => {
+      const list = await (super.eval(context) as Promise<SelectorList<T>>)
       const { value } = list
       if (value.length === 1) {
         return value[0]!
