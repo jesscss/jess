@@ -51,7 +51,6 @@ import {
   Lookup,
   Token
 } from '@jesscss/core'
-import { c } from 'vitest/dist/reporters-7bd09217'
 
 const isEscapedString = function(this: P, T: TokenMap) {
   const next = this.LA(1)
@@ -215,7 +214,7 @@ export function mediaInParens(this: P, T: TokenMap) {
        * After Less evaluation, should throw an error
        * if the value of `@myvar` is a ruleset
        */
-      { ALT: () => $.SUBRULE($.valueReference) },
+      { ALT: () => $.SUBRULE($.valueReference, { ARGS: [{ requireAccessorsAfterMixinCall: true }] }) },
       {
         ALT: cssMediaInParens.call(this, T)
       }
@@ -235,13 +234,6 @@ export function mfValue(this: P, T: TokenMap) {
     $.SUBRULE($.expressionSum)
 }
 
-// const getRuleContext = (ctx: RuleContext): RuleContext => ({
-//   mixinCandidate: {
-//     call: false,
-//     definition: false
-//   },
-//   ...ctx
-// })
 export function wrappedDeclarationList(this: P, T: TokenMap) {
   const $ = this
   return () => {
@@ -307,7 +299,7 @@ export function extendedSelector(this: P, T: TokenMap) {
           $.OPTION(() => {
             let co: IToken | undefined
             $.OPTION5({
-              GATE: () => !ctx.inner,
+              GATE: () => !!ctx.inner,
               DEF: () => {
                 co = $.CONSUME(T.Combinator)
               }
@@ -342,7 +334,19 @@ export function extendedSelector(this: P, T: TokenMap) {
       {
         ALT: () => {
           ctx.allExtended = false
+          let co: IToken | undefined
+          $.OPTION6({
+            GATE: () => !!ctx.inner,
+            DEF: () => {
+              co = $.CONSUME2(T.Combinator)
+            }
+          })
           sel = $.SUBRULE2($.complexSelector, { ARGS: [ctx] })
+          if (!RECORDING_PHASE && co) {
+            let coNode = new Combinator(co.image, undefined, $.getLocationInfo(co), this.context)
+            sel.location = $.getLocationFromNodes([coNode, sel])
+            ;(sel as SelectorSequence).value = [coNode, ...sel.value]
+          }
           $.OPTION3(() => {
             $.OPTION4(() => guard = $.SUBRULE2($.guard))
             rules = $.SUBRULE2($.wrappedDeclarationList)
@@ -528,60 +532,58 @@ export function importAtRule(this: P, T: TokenMap) {
       { ALT: () => $.SUBRULE($.string) }
     ])
 
-    let isAtRule = false
+    let isAtRule: boolean | undefined
 
     if (!RECORDING_PHASE) {
       if (options!.includes('css')) {
         isAtRule = true
       } else {
         let url = getUrlFromNode(urlNode)
-        isAtRule = isCssUrl(url)
+        if (isCssUrl(url)) {
+          isAtRule = true
+        }
       }
     }
 
     let preludeNodes: Node[]
 
-    if (isAtRule) {
+    if (!RECORDING_PHASE) {
       preludeNodes = [$.wrap(urlNode)]
     }
 
-    $.OPTION2({
-      GATE: () => isAtRule,
-      DEF: () => {
-        let start = $.CONSUME(T.Supports)
-        let value = $.OR2([
-          { ALT: () => $.SUBRULE($.supportsCondition) },
-          { ALT: () => $.SUBRULE($.declaration) }
-        ])
-        let end = $.CONSUME2(T.RParen)
+    $.OPTION2(() => {
+      isAtRule = true
+      let start = $.CONSUME(T.Supports)
+      let value = $.OR2([
+        { ALT: () => $.SUBRULE($.supportsCondition) },
+        { ALT: () => $.SUBRULE($.declaration) }
+      ])
+      let end = $.CONSUME2(T.RParen)
 
-        if (!RECORDING_PHASE) {
-          let { startOffset, startLine, startColumn } = start
-          let { endOffset, endLine, endColumn } = end
-          preludeNodes.push(
-            $.wrap(
-              new Call(
-                [
-                  ['name', 'supports'],
-                  ['args', $.wrap(value, 'both')]
-                ],
-                undefined,
-                [startOffset, startLine!, startColumn!, endOffset!, endLine!, endColumn!],
-                this.context
-              )
+      if (!RECORDING_PHASE) {
+        let { startOffset, startLine, startColumn } = start
+        let { endOffset, endLine, endColumn } = end
+        preludeNodes.push(
+          $.wrap(
+            new Call(
+              [
+                ['name', 'supports'],
+                ['args', $.wrap(value, 'both')]
+              ],
+              undefined,
+              [startOffset, startLine!, startColumn!, endOffset!, endLine!, endColumn!],
+              this.context
             )
           )
-        }
+        )
       }
     })
 
-    $.OPTION3({
-      GATE: () => isAtRule,
-      DEF: () => {
-        let node = $.SUBRULE($.mediaQuery)
-        if (!RECORDING_PHASE) {
-          preludeNodes!.push(node)
-        }
+    $.OPTION3(() => {
+      isAtRule = true
+      let node = $.SUBRULE($.mediaQuery)
+      if (!RECORDING_PHASE) {
+        preludeNodes.push(node)
       }
     })
 
@@ -708,7 +710,7 @@ export function unknownAtRule(this: P, T: TokenMap) {
                 return type !== T.AnonMixinStart && type !== T.LCurly
               },
               ALT: () => {
-                value = $.SUBRULE($.valueList)
+                value = $.SUBRULE($.valueList, { ARGS: [{ allowMixinCallWithoutAccessor: true }] })
                 $.OPTION(() => {
                   important = $.CONSUME(T.Important)
                 })
@@ -1133,124 +1135,70 @@ export function booleanFunction(this: P, T: TokenMap) {
 //   })
 // })
 
-export function valueReference(this: P, T: TokenMap) {
-  const $ = this
-
-  return (ctx: RuleContext = {}) => {
-    let RECORDING_PHASE = $.RECORDING_PHASE
-
-    let returnNode = $.OR([
-      {
-        ALT: () => {
-          let node: Node = $.SUBRULE($.mixinReference)
-          $.OPTION(() => {
-            let args: List = $.SUBRULE($.mixinArgs)
-            if (!RECORDING_PHASE) {
-              let RParen = $.LA(0)
-              let [startOffset, startLine, startColumn] = node.location
-              let { endOffset, endLine, endColumn } = RParen
-              node =
-                new Call(
-                  [
-                    ['name', node],
-                    ['args', args]
-                  ],
-                  undefined,
-                  [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!],
-                  this.context
-                )
-            }
-          })
-          ctx.node = node
-          return $.SUBRULE($.accessors, { ARGS: [ctx] })
-        }
-      },
-      {
-        ALT: () => {
-          let token = $.CONSUME(T.AtKeyword)
-          let node: Node
-          if (!RECORDING_PHASE) {
-            node = new Reference(token.image, { type: 'variable' }, $.getLocationInfo(token), this.context)
-          }
-          $.OPTION3(() => {
-            ctx.node = node
-            node = $.SUBRULE2($.accessors, { ARGS: [ctx] })
-          })
-          return node!
-        }
-      }
-    ])
-    return $.wrap(returnNode)
-  }
-}
-
 export function varReference(this: P, T: TokenMap) {
   const $ = this
 
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE
 
-    let returnNode = $.OR([
-      {
-        ALT: () => {
-          let allowMixinCallWithoutAccessor = !!ctx.allowMixinCallWithoutAccessor
-          let node: Node = $.SUBRULE($.mixinReference)
-          $.OPTION(() => {
-            let args: List = $.SUBRULE($.mixinArgs)
-            if (!RECORDING_PHASE) {
-              let RParen = $.LA(0)
-              let [startOffset, startLine, startColumn] = node.location
-              let { endOffset, endLine, endColumn } = RParen
-              node =
-                new Call(
-                  [
-                    ['name', node],
-                    ['args', args]
-                  ],
-                  undefined,
-                  [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!],
-                  this.context
-                )
-            }
-          })
-          $.OR2([
-            {
-              GATE: () => allowMixinCallWithoutAccessor,
-              ALT: () => {
-                $.OPTION2(() => {
-                  ctx.node = node
-                  node = $.SUBRULE($.accessors, { ARGS: [ctx] })
-                })
-              }
-            },
-            {
-              GATE: () => !allowMixinCallWithoutAccessor,
-              ALT: () => {
-                ctx.node = node
-                node = $.SUBRULE2($.accessors, { ARGS: [ctx] })
-              }
-            }
-          ])
-          return node
-        }
-      },
-      {
-        ALT: () => {
-          let token = $.CONSUME(T.AtKeyword)
-          let node: Node
-          if (!RECORDING_PHASE) {
-            node = new Reference(token.image, { type: 'variable' }, $.getLocationInfo(token), this.context)
+    let token = $.CONSUME(T.AtKeyword)
+    let node: Node
+    if (!RECORDING_PHASE) {
+      node = new Reference(token.image, { type: 'variable' }, $.getLocationInfo(token), this.context)
+    }
+    $.OPTION3(() => {
+      ctx.node = node
+      node = $.SUBRULE2($.accessors, { ARGS: [ctx] })
+    })
+
+    return $.wrap(node!)
+  }
+}
+
+export function valueReference(this: P, T: TokenMap) {
+  const $ = this
+
+  return (ctx: RuleContext = {}) => {
+    return $.OR([
+      { ALT: () => $.SUBRULE($.varReference, { ARGS: [ctx] }) },
+      { ALT: () => $.SUBRULE($.inlineMixinCall, { ARGS: [ctx] }) }
+    ])
+  }
+}
+
+export function functionCall(this: P, T: TokenMap) {
+  const $ = this
+
+  let funcAlt = [
+    { ALT: () => $.SUBRULE($.knownFunctions) },
+    {
+      ALT: () => {
+        $.startRule()
+
+        let name = $.CONSUME(T.Ident)
+        let args: List | undefined
+
+        $.OR2([{
+          GATE: $.noSep,
+          ALT: () => {
+            $.CONSUME(T.LParen)
+            $.OPTION(() => args = $.SUBRULE($.functionCallArgs, { ARGS: [{ allowAnonymousMixins: true }] }))
+            $.CONSUME(T.RParen)
           }
-          $.OPTION3(() => {
-            ctx.node = node
-            node = $.SUBRULE3($.accessors, { ARGS: [ctx] })
-          })
-          return node!
+        }])
+
+        if (!$.RECORDING_PHASE) {
+          let location = $.endRule()
+          return new Call([
+            ['name', name.image],
+            ['args', args]
+          ], undefined, location, this.context)
         }
       }
-    ])
-    return $.wrap(returnNode)
-  }
+    }
+  ]
+
+  return () => $.OR(funcAlt)
 }
 
 export function value(this: P, T: TokenMap) {
@@ -1271,7 +1219,7 @@ export function value(this: P, T: TokenMap) {
           GATE: () => !!ctx.allowAnonymousMixins,
           ALT: () => $.SUBRULE($.anonymousMixinDefinition)
         },
-        { ALT: () => $.SUBRULE($.valueReference) },
+        { ALT: () => $.SUBRULE($.varReference, { ARGS: [ctx] }) },
         { ALT: () => $.SUBRULE($.string) },
         { ALT: () => $.CONSUME(T.Value) },
         /** Explicitly not marked as an ident */
@@ -1657,8 +1605,7 @@ export function inlineMixinCall(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     let nodeContext = ctx.node
     let RECORDING_PHASE = $.RECORDING_PHASE
-    let locationRetrieved = false
-    $.startRule()
+
     let argList: List | undefined
     let node: Node
     let call: Call
@@ -1675,27 +1622,43 @@ export function inlineMixinCall(this: P, T: TokenMap) {
       call = new Call([['name', ref]], undefined, ref.location, this.context)
       node = call
     }
-    $.OPTION(() => {
-      argList = $.SUBRULE($.mixinArgs)
-      if (!RECORDING_PHASE) {
-        let location = $.endRule()
-        locationRetrieved = true
-        call.args = argList
-        call.location[3] = location[3]
-        call.location[4] = location[4]
-        call.location[5] = location[5]
+    $.OR([
+      {
+        ALT: () => {
+          argList = $.SUBRULE($.mixinArgs)
+          if (!RECORDING_PHASE) {
+            call.args = argList
+            let RParen = $.LA(0)
+            let [startOffset, startLine, startColumn] = node.location
+            let { endOffset, endLine, endColumn } = RParen
+            call.location = [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!]
+          }
+          $.OPTION2(() => {
+            ctx.node = node
+            node = $.SUBRULE($.accessors, { ARGS: [ctx] })
+          })
+        }
+      },
+      {
+        GATE: () => !!ctx.requireAccessorsAfterMixinCall,
+        ALT: () => {
+          $.OPTION3(() => {
+            argList = $.SUBRULE2($.mixinArgs)
+            if (!RECORDING_PHASE) {
+              call.args = argList
+              let RParen = $.LA(0)
+              let [startOffset, startLine, startColumn] = node.location
+              let { endOffset, endLine, endColumn } = RParen
+              call.location = [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!]
+            }
+          })
+          ctx.node = node
+          node = $.SUBRULE2($.accessors, { ARGS: [ctx] })
+        }
       }
-    })
-    $.OPTION2(() => {
-      ctx.node = node
-      node = $.SUBRULE($.accessors, { ARGS: [ctx] })
-    })
-    if (!RECORDING_PHASE) {
-      if (!locationRetrieved) {
-        $.endRule()
-      }
-      return node!
-    }
+    ])
+
+    return node!
   }
 }
 
@@ -1766,7 +1729,7 @@ export function accessors(this: P, T: TokenMap) {
 
   /** The node passed in is what we're looking up on */
   return (ctx: RuleContext = {}) => {
-    let nodeContext = ctx.node
+    let nodeContext = ctx.node!
     let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
     let keyToken: IToken | undefined
@@ -1832,7 +1795,6 @@ export function accessors(this: P, T: TokenMap) {
           }
         },
         {
-          GATE: () => !!ctx.allowMixinCallWithoutAccessor,
           ALT: () => {
             ctx.node = returnNode
             returnNode = $.SUBRULE($.inlineMixinCall, { ARGS: [ctx] })

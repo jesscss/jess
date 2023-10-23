@@ -50,7 +50,7 @@ export type RuleContext = {
   /** If downstream selector rules are part of a qualified rule */
   qualifiedRule?: boolean
 
-  [k: string]: boolean | undefined
+  [k: string]: object | boolean | string | object[] | undefined
 }
 
 /**

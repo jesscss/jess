@@ -50,6 +50,8 @@ export interface TreeContextOptions {
   /** In Less 1.x-5.x, Less sets this to true */
   leakVariablesIntoScope?: boolean
 
+  inlineJavaScript?: boolean
+
   mathMode?: MathMode
   unitMode?: UnitMode
 

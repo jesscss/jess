@@ -43,7 +43,7 @@ export type RuleContext = CssRuleContext & {
   isDefinition?: boolean
   // isCompareExpression?: boolean
   allowAnonymousMixins?: boolean
-  allowMixinCallWithoutAccessor?: boolean
+  requireAccessorsAfterMixinCall?: boolean
   // boolean() and if() do not need parens around compare expressions
   // additionally, they do not allow outer commas
   inValueList?: boolean
@@ -72,6 +72,7 @@ export class LessActionsParser extends CssActionsParser {
   wrappedDeclarationList: Rule
 
   valueReference: Rule<(ctx?: RuleContext) => void>
+  varReference: Rule<(ctx?: RuleContext) => void>
 
   // mixins
   mixinReference: Rule

@@ -125,7 +125,6 @@ function $preBuildTokens() {
       {
         name: 'JavaScript',
         pattern: /`[^`]*`/,
-        group: LexerType.SKIPPED,
         line_breaks: true
       }
     ],
