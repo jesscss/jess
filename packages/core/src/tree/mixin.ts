@@ -3,12 +3,19 @@ import type { Rules } from './rules'
 import type { Condition } from './condition'
 import type { List } from './list'
 import type { Rest } from './rest'
+import type { General } from './general'
 import { type Name, BaseDeclaration } from './base-declaration'
 import { type VarDeclarationOptions, type VarDeclaration } from './var-declaration'
 
 export type MixinValue = {
   name?: Name
-  params?: List<Node | VarDeclaration<string> | Rest>
+  /**
+   * - A plain node is a kind of value guard.
+   * - A name is just a named variable.
+   * - A var declaration is a named variable with a default value.
+   * - A rest is a rest parameter.
+   */
+  params?: List<Node | General<'Name'> | VarDeclaration<string> | Rest>
   guard?: Condition
   rules: Rules
 }

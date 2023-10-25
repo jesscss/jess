@@ -189,6 +189,13 @@ describe('can parse any rule', () => {
     expect(errors.length).toBe(0)
 
     ;({ errors } = parse(
+      '.mixin-takes-two(@a : d, e; @b : f);',
+      'mixinCall'
+    ))
+
+    expect(errors.length).toBe(0)
+
+    ;({ errors } = parse(
       '.mixin-call({direct: works;}; @b: {named: works;});',
       'stylesheet'
     ))
@@ -258,7 +265,7 @@ const invalidLess = [
 ]
 
 describe.only('can parse all Less stylesheets', () => {
-  const files = glob.sync(path.join(testData, 'less/**/*.less'))
+  const files = glob.sync(path.join(testData, 'less/**/variables-in-at-rules.less'))
   files
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))

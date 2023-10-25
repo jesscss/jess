@@ -48,7 +48,9 @@ import {
   VarDeclaration,
   DefaultGuard,
   Lookup,
-  Token
+  Token,
+  Declaration,
+  Rest
 } from '@jesscss/core'
 
 const isEscapedString = function(this: P, T: TokenMap) {
@@ -894,10 +896,17 @@ export function expressionSum(this: P, T: TokenMap) {
               if (!RECORDING_PHASE) {
                 let str = signed.image
                 op = str[0]
+                /** Alter the token (removing the sign) and continue processing */
                 signed.image = str.slice(1)
+                signed.payload[0] = signed.payload[0].slice(1)
                 signed.startOffset += 1
                 signed.startColumn! += 1
-                right = $.processValueToken(signed)
+                /**
+                 * Back up the parser and re-parse the value
+                 * with the sign removed
+                 */
+                $.currIdx -= 1
+                right = $.SUBRULE3($.expressionProduct, { ARGS: [ctx] })
               }
             }
           }
@@ -1046,6 +1055,7 @@ export function knownFunctions(this: P, T: TokenMap) {
     { ALT: () => $.SUBRULE($.calcFunction) },
     { ALT: () => $.SUBRULE($.ifFunction) },
     { ALT: () => $.SUBRULE($.booleanFunction) }
+    /** @todo - add custom() and selector() */
   ]
 
   return cssKnownFunctions.call(this, T, functions)
@@ -1845,57 +1855,92 @@ export function mixinArgList(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE
+    $.startRule()
 
     let node = $.SUBRULE($.mixinArg, { ARGS: [ctx] })
 
-    let commaNodes: Node[]
+    let commaNodes: Node[] | undefined
     let semiNodes: Node[]
     if (!RECORDING_PHASE) {
       commaNodes = [$.wrap(node, true)]
       semiNodes = []
     }
     let isSemiList = false
+    let moreArgs = true
 
-    $.MANY(() => {
-      $.OR([
-        {
-          GATE: () => !isSemiList,
-          ALT: () => {
-            $.CONSUME(T.Comma)
-            let node = $.SUBRULE2($.mixinArg, { ARGS: [ctx] })
-            if (!RECORDING_PHASE) {
-              commaNodes!.push($.wrap(node, true))
-            }
-          }
-        },
-        {
-          ALT: () => {
-            isSemiList = true
-
-            $.CONSUME(T.Semi)
-
-            if (!RECORDING_PHASE) {
-              /**
-               * Aggregate the previous set of comma-nodes
-               * @todo - attach nodes to single declaration.
-              */
-              if (commaNodes.length > 1) {
-                let commaList = new List(commaNodes, undefined, $.getLocationFromNodes(commaNodes), this.context)
-                semiNodes.push(commaList)
-              } else {
-                semiNodes.push(commaNodes[0]!)
+    $.MANY({
+      GATE: () => moreArgs,
+      DEF: () => {
+        $.OR([
+          {
+            GATE: () => !isSemiList,
+            ALT: () => {
+              $.CONSUME(T.Comma)
+              let node = $.SUBRULE2($.mixinArg, { ARGS: [ctx] })
+              if (!RECORDING_PHASE) {
+                commaNodes!.push($.wrap(node, true))
               }
             }
-            node = $.SUBRULE3($.mixinArg, { ARGS: [{ ...ctx, allowComma: true }] })
-            if (!RECORDING_PHASE) {
-              semiNodes.push($.wrap(node, true))
+          },
+          {
+            ALT: () => {
+              isSemiList = true
+
+              $.CONSUME(T.Semi)
+
+              if (!RECORDING_PHASE) {
+                /**
+                 * Aggregate the previous set of comma-nodes
+                 */
+                if (commaNodes) {
+                  if (commaNodes.length > 1) {
+                    let [first, ...rest] = commaNodes
+                    if (first instanceof VarDeclaration) {
+                      let nodes = [first.value, ...rest]
+                      first.value = new List(nodes, undefined, $.getLocationFromNodes(nodes), this.context)
+                      semiNodes.push(first)
+                    } else {
+                      if (!commaNodes[0]) {
+                        console.log('oops')
+                      }
+                      let commaList = new List(commaNodes, undefined, $.getLocationFromNodes(commaNodes), this.context)
+                      semiNodes.push(commaList)
+                    }
+                  } else {
+                    semiNodes.push(commaNodes[0]!)
+                  }
+                  commaNodes = undefined
+                }
+              }
+              $.OR2([
+                {
+                  GATE: () => $.LA(1).tokenType !== T.RParen,
+                  ALT: () => {
+                    node = $.SUBRULE3($.mixinArg, { ARGS: [{ ...ctx, allowComma: true }] })
+                    if (!RECORDING_PHASE) {
+                      semiNodes.push($.wrap(node, true))
+                    }
+                  }
+                },
+                {
+                  ALT: () => {
+                    moreArgs = false
+                    EMPTY_ALT()
+                  }
+                }
+              ])
             }
           }
-        }
-      ])
+        ])
+      }
     })
 
-    return nodes!
+    if (!RECORDING_PHASE) {
+      let location = $.endRule()
+      let nodes = isSemiList ? semiNodes! : commaNodes!
+      let sep: ';' | ',' = isSemiList ? ';' : ','
+      return $.wrap(new List(nodes, { sep }, location, this.context), 'both')
+    }
   }
 }
 
@@ -1964,41 +2009,81 @@ export function mixinArg(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     const definition = !!ctx.isDefinition
-    $.OR([
+    let RECORDING_PHASE = $.RECORDING_PHASE
+
+    return $.OR([
       {
         ALT: () => {
-          $.CONSUME(T.AtKeyword)
-          $.OPTION(() => {
-            $.OR2([
-              {
-                ALT: () => {
-                  $.CONSUME(T.Colon)
-                  $.SUBRULE($.mixinValue, { ARGS: [ctx] })
+          $.startRule()
+          let name = $.CONSUME(T.AtKeyword)
+          return $.OR2([
+            {
+              ALT: () => {
+                return $.OR3([
+                  {
+                    ALT: () => {
+                      $.CONSUME(T.Colon)
+                      let value = $.SUBRULE($.mixinValue, { ARGS: [ctx] })
+                      if (!RECORDING_PHASE) {
+                        let location = $.endRule()
+                        return new VarDeclaration(
+                          [
+                            ['name', name.image.slice(1)],
+                            ['value', value]
+                          ],
+                          { paramVar: true },
+                          location,
+                          this.context
+                        )
+                      }
+                    }
+                  },
+                  /**
+                   * Mixin definitions can have a spread parameter, which
+                   * means it will match a variable number of elements
+                   * at the end.
+                   *
+                   * However, mixin calls can have a spread argument,
+                   * which means it will expand a variable representing
+                   * a list, which, to my knowledge, is an undocumented
+                   * feature of Less (and only exists in mixin calls?)
+                   *
+                   * @todo - Intuitively, shouldn't this be available
+                   * elsewhere in the language? Or would there be no
+                   * reason?
+                   */
+                  {
+                    ALT: () => {
+                      $.CONSUME(T.Ellipsis)
+                      if (!RECORDING_PHASE) {
+                        $.endRule()
+                        return new Rest(name.image.slice(1), undefined, $.getLocationInfo(name), this.context)
+                      }
+                    }
+                  }
+                ])
+              }
+            },
+            {
+              ALT: () => {
+                EMPTY_ALT()
+                /** This is a named variable */
+                if (!RECORDING_PHASE) {
+                  $.endRule()
+                  return new General(name.image.slice(1), { type: 'Name' }, $.getLocationInfo(name), this.context)
                 }
-              },
-              /**
-               * Mixin definitions can spread variables, which
-               * means it will match a variable number of elements
-               * at the end.
-               *
-               * However, mixin calls can also spread variables,
-               * which means it will expand a variable representing
-               * a list, which, to my knowledge, is an undocumented
-               * feature of Less (and only exists in mixin calls?)
-               *
-               * @todo - Intuitively, shouldn't this be available
-               * elsewhere in the language? Or would there be no
-               * reason?
-               */
-              { ALT: () => $.CONSUME(T.Ellipsis) }
-            ])
-          })
+              }
+            }
+          ])
         }
       },
       { ALT: () => $.SUBRULE2($.mixinValue, { ARGS: [ctx] }) },
       {
         GATE: () => definition,
-        ALT: () => $.CONSUME2(T.Ellipsis)
+        ALT: () => {
+          let ellipsis = $.CONSUME2(T.Ellipsis)
+          return new Rest(undefined, undefined, $.getLocationInfo(ellipsis), this.context)
+        }
       }
     ])
   }

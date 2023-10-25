@@ -26,6 +26,12 @@ const fragments = () => [
   ['nmstart', '[_a-zA-Z]|{{nonascii}}|{{escape}}'],
   ['nmchar', '[_a-zA-Z0-9-]|{{nonascii}}|{{escape}}'],
   ['ident', '-?{{nmstart}}{{nmchar}}*'],
+  /**
+   * This diverts from spec -- we narrow units to not contain dashes or numbers
+   * This prevents 6px-1px from being parsed as '6' as number and 'px-1px' as unit,
+   * which causes problems for Less / Sass.
+   */
+  ['unit', '(?:[a-zA-Z]|{{nonascii}}|{{escape}})+'],
   ['string1', '\\"(\\\\"|[^\\n\\r\\f\\"]|{{newline}}|{{escape}})*\\"'],
   ['string2', "\\'(\\\\'|[^\\n\\r\\f\\']|{{newline}}|{{escape}})*\\'"],
 
@@ -318,7 +324,7 @@ const tokens = () => ({
       { name: 'Signed', pattern: LexerType.NA },
       {
         name: 'DimensionNum',
-        pattern: ['({{number}})({{ident}}|%)', groupCapture],
+        pattern: ['({{number}})({{unit}}|%)', groupCapture],
         start_chars_hint: [
           '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
         ],
@@ -327,7 +333,7 @@ const tokens = () => ({
       },
       {
         name: 'DimensionInt',
-        pattern: ['({{integer}})({{ident}}|%)', groupCapture],
+        pattern: ['({{integer}})({{unit}}|%)', groupCapture],
         start_chars_hint: [
           '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
         ],
@@ -336,14 +342,14 @@ const tokens = () => ({
       },
       {
         name: 'SignedDimensionNum',
-        pattern: ['([+-]{{number}})({{ident}}|%)', groupCapture],
+        pattern: ['([+-]{{number}})({{unit}}|%)', groupCapture],
         start_chars_hint: ['-', '+'],
         line_breaks: false,
         categories: ['Dimension', 'Signed']
       },
       {
         name: 'SignedDimensionInt',
-        pattern: ['([+-]{{integer}})({{ident}}|%)', groupCapture],
+        pattern: ['([+-]{{integer}})({{unit}}|%)', groupCapture],
         start_chars_hint: ['-', '+'],
         line_breaks: false,
         categories: ['Dimension', 'Integer', 'Signed']
