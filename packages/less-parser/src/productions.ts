@@ -2137,9 +2137,12 @@ export function mixinArg(this: P, T: TokenMap) {
       firstToken.tokenType === T.AtKeywordLessExtension
     )
 
+    /**
+     * @todo - determine _values_ (variable references)
+     * vs _names_ (variable declarations)
+    */
     return $.OR([
       {
-        GATE: () => isDefinition,
         ALT: () => {
           $.startRule()
           let name = $.CONSUME(T.AtKeyword)
