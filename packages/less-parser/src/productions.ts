@@ -22,6 +22,7 @@ import {
   type Scope,
   Node,
   Block,
+  Token,
   type LocationInfo,
   type Operator,
   General,
@@ -72,9 +73,29 @@ export function stylesheet(this: P, T: TokenMap) {
       initialScope = context.scope
     }
 
+    let charset: IToken | undefined
+
+    $.OPTION({
+      GATE: () => !$.looseMode,
+      DEF: () => {
+        charset = $.CONSUME(T.Charset)
+      }
+    })
+
     let root: Node = $.SUBRULE($.main, { ARGS: [{ isRoot: true }] })
 
     if (!RECORDING_PHASE) {
+      let rules: Node[] = root.value
+
+      if (charset) {
+        let loc = $.getLocationInfo(charset)
+        let rootLoc = root.location
+        rules.unshift(new Token(charset.image, { type: 'Charset' }, loc, context!))
+        rootLoc[0] = loc[0]
+        rootLoc[1] = loc[1]
+        rootLoc[2] = loc[2]
+      }
+
       this.context.scope = initialScope!
       return root
     }
@@ -1066,7 +1087,7 @@ export function expressionValue(this: P, T: TokenMap) {
           })
 
           $.CONSUME(T.LParen)
-          let node = $.SUBRULE($.valueList, { ARGS: [ctx] })
+          let node = $.SUBRULE($.valueList, { ARGS: [{ ...ctx, inner: true }] })
           $.CONSUME(T.RParen)
 
           if (!RECORDING_PHASE) {
@@ -1254,12 +1275,28 @@ export function varReference(this: P, T: TokenMap) {
     if (!RECORDING_PHASE) {
       node = new Reference(token.image, { type: 'variable' }, $.getLocationInfo(token), this.context)
     }
-    $.OPTION3(() => {
-      ctx.node = node
-      node = $.SUBRULE2($.accessors, { ARGS: [ctx] })
-    })
+    $.OR([
+      {
+        ALT: () => {
+          /** This spreads a (list) value within a containing list when evaluated */
+          token = $.CONSUME(T.Ellipsis)
+          if (!RECORDING_PHASE) {
+            node = new Rest(node, undefined, $.getLocationFromNodes([node, token]), this.context)
+          }
+        }
+      },
+      {
+        ALT: () => {
+          ctx.node = node
+          node = $.SUBRULE2($.accessors, { ARGS: [ctx] })
+        }
+      },
+      { ALT: EMPTY_ALT() }
+    ])
 
-    return $.wrap(node!)
+    if (!RECORDING_PHASE) {
+      return $.wrap(node!)
+    }
   }
 }
 
@@ -1274,39 +1311,101 @@ export function valueReference(this: P, T: TokenMap) {
   }
 }
 
-export function functionCall(this: P, T: TokenMap) {
+// export function functionCall(this: P, T: TokenMap) {
+//   const $ = this
+
+//   let funcAlt = [
+//     { ALT: () => $.SUBRULE($.knownFunctions) },
+//     {
+//       ALT: () => {
+//         $.startRule()
+
+//         let name = $.CONSUME(T.Ident)
+//         let args: List | undefined
+
+//         $.OR2([{
+//           GATE: $.noSep,
+//           ALT: () => {
+//             $.CONSUME(T.LParen)
+//             $.OPTION(() => args = $.SUBRULE($.functionCallArgs, { ARGS: [{ allowAnonymousMixins: true }] }))
+//             $.CONSUME(T.RParen)
+//           }
+//         }])
+
+//         if (!$.RECORDING_PHASE) {
+//           let location = $.endRule()
+//           return new Call([
+//             ['name', name.image],
+//             ['args', args]
+//           ], undefined, location, this.context)
+//         }
+//       }
+//     }
+//   ]
+
+//   return () => $.OR(funcAlt)
+// }
+
+export function functionCallArgs(this: P, T: TokenMap) {
   const $ = this
 
-  let funcAlt = [
-    { ALT: () => $.SUBRULE($.knownFunctions) },
-    {
-      ALT: () => {
-        $.startRule()
+  return (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
+    $.startRule()
 
-        let name = $.CONSUME(T.Ident)
-        let args: List | undefined
+    let node = $.SUBRULE($.callArgument, { ARGS: [ctx] })
 
-        $.OR2([{
-          GATE: $.noSep,
-          ALT: () => {
-            $.CONSUME(T.LParen)
-            $.OPTION(() => args = $.SUBRULE($.functionCallArgs, { ARGS: [{ allowAnonymousMixins: true }] }))
-            $.CONSUME(T.RParen)
-          }
-        }])
-
-        if (!$.RECORDING_PHASE) {
-          let location = $.endRule()
-          return new Call([
-            ['name', name.image],
-            ['args', args]
-          ], undefined, location, this.context)
-        }
-      }
+    let commaNodes: Node[]
+    let semiNodes: Node[]
+    if (!RECORDING_PHASE) {
+      commaNodes = [$.wrap(node, true)]
+      semiNodes = []
     }
-  ]
+    let isSemiList = false
 
-  return () => $.OR(funcAlt)
+    $.MANY(() => {
+      $.OR([
+        {
+          GATE: () => !isSemiList,
+          ALT: () => {
+            $.CONSUME(T.Comma)
+            node = $.SUBRULE2($.callArgument, { ARGS: [ctx] })
+            if (!RECORDING_PHASE) {
+              commaNodes!.push($.wrap(node, true))
+            }
+          }
+        },
+        {
+          ALT: () => {
+            isSemiList = true
+
+            $.CONSUME(T.Semi)
+
+            if (!RECORDING_PHASE) {
+              /** Aggregate the previous set of comma-nodes */
+              if (commaNodes.length > 1) {
+                let commaList = new List(commaNodes, undefined, $.getLocationFromNodes(commaNodes), this.context)
+                semiNodes.push(commaList)
+              } else {
+                semiNodes.push(commaNodes[0]!)
+              }
+            }
+            node = $.SUBRULE3($.callArgument, { ARGS: [{ ...ctx, allowComma: true }] })
+            if (!RECORDING_PHASE) {
+              semiNodes.push($.wrap(node, true))
+            }
+          }
+        }
+      ])
+    })
+
+    if (!RECORDING_PHASE) {
+      let location = $.endRule()
+      let nodes = isSemiList ? semiNodes! : commaNodes!
+      let sep: ';' | ',' = isSemiList ? ';' : ','
+      return $.wrap(new List(nodes, { sep }, location, this.context), 'both')
+    }
+  }
 }
 
 export function value(this: P, T: TokenMap) {
@@ -1319,14 +1418,6 @@ export function value(this: P, T: TokenMap) {
         /** Function should appear before Ident */
         { ALT: () => $.SUBRULE($.functionCall) },
         { ALT: () => $.SUBRULE($.inlineMixinCall, { ARGS: [ctx] }) },
-        /**
-         * Functions can pass anonymous mixin definitions
-         * as arguments. (Used with `each`)
-         */
-        {
-          GATE: () => !!ctx.allowAnonymousMixins,
-          ALT: () => $.SUBRULE($.anonymousMixinDefinition)
-        },
         { ALT: () => $.SUBRULE($.varReference, { ARGS: [ctx] }) },
         { ALT: () => $.SUBRULE($.string) },
         { ALT: () => $.CONSUME(T.Value) },
@@ -1334,7 +1425,7 @@ export function value(this: P, T: TokenMap) {
         { ALT: () => $.CONSUME(T.When) },
         { ALT: () => $.SUBRULE($.squareValue) },
         {
-          GATE: () => $.looseMode,
+          GATE: () => $.looseMode && !!ctx.inner,
           ALT: () => $.CONSUME(T.Colon)
         },
         {
@@ -2033,75 +2124,22 @@ export function mixinArgList(this: P, T: TokenMap) {
   }
 }
 
-// function oldMixinArgList(this: P, T: TokenMap) {
-//   const $ = this
-
-//   return (ctx: RuleContext = {}) => {
-//     let RECORDING_PHASE = $.RECORDING_PHASE
-
-//     let node = $.SUBRULE($.mixinArg, { ARGS: [ctx] })
-
-//     let commaNodes: Node[]
-//     let semiNodes: Node[][]
-//     if (!RECORDING_PHASE) {
-//       commaNodes = [$.wrap(node, true)]
-//       semiNodes = []
-//     }
-//     let isSemiList = false
-//     let finished = false
-
-//     $.MANY(() => {
-//       $.OR([
-//         {
-//           GATE: () => !finished,
-//           ALT: () => {
-//             $.CONSUME(T.Comma)
-//             let node = $.SUBRULE2($.mixinArg, { ARGS: [ctx] })
-//             if (!RECORDING_PHASE) {
-//               commaNodes!.push($.wrap(node, true))
-//             }
-//           }
-//         },
-//         {
-//           ALT: () => {
-//             isSemiList = true
-//             finished = true
-//             $.CONSUME(T.Semi)
-//             let node: Node
-//             $.OPTION(() => {
-//               node = $.SUBRULE3($.mixinArg, { ARGS: [ctx] })
-//               finished = false
-//             })
-//             if (!RECORDING_PHASE) {
-//               semiNodes.push(commaNodes)
-//               commaNodes = []
-//             }
-//           }
-//         }
-//       ])
-//     })
-
-//     if (!RECORDING_PHASE) {
-//       if (isSemiList) {
-//         if (commaNodes!.length) {
-//           semiNodes!.push(commaNodes!)
-//         }
-//         let sequenceNodes: Sequence[] = []
-//         semiNodes.forEach()
-//       }
-//     }
-//   }
-// }
-
 export function mixinArg(this: P, T: TokenMap) {
   const $ = this
 
   return (ctx: RuleContext = {}) => {
-    const definition = !!ctx.isDefinition
+    const isDefinition = !!ctx.isDefinition
     let RECORDING_PHASE = $.RECORDING_PHASE
+    let firstToken = $.LA(1)
+
+    let atStart = (
+      firstToken.tokenType === T.AtKeyword ||
+      firstToken.tokenType === T.AtKeywordLessExtension
+    )
 
     return $.OR([
       {
+        GATE: () => isDefinition,
         ALT: () => {
           $.startRule()
           let name = $.CONSUME(T.AtKeyword)
@@ -2112,7 +2150,7 @@ export function mixinArg(this: P, T: TokenMap) {
                   {
                     ALT: () => {
                       $.CONSUME(T.Colon)
-                      let value = $.SUBRULE($.mixinValue, { ARGS: [ctx] })
+                      let value = $.SUBRULE($.callArgument, { ARGS: [ctx] })
                       if (!RECORDING_PHASE) {
                         let location = $.endRule()
                         return new VarDeclaration(
@@ -2166,9 +2204,12 @@ export function mixinArg(this: P, T: TokenMap) {
           ])
         }
       },
-      { ALT: () => $.SUBRULE2($.mixinValue, { ARGS: [ctx] }) },
       {
-        GATE: () => definition,
+        GATE: () => !isDefinition,
+        ALT: () => $.SUBRULE2($.callArgument, { ARGS: [ctx] })
+      },
+      {
+        GATE: () => isDefinition,
         ALT: () => {
           let ellipsis = $.CONSUME2(T.Ellipsis)
           return new Rest(undefined, undefined, $.getLocationInfo(ellipsis), this.context)
@@ -2178,12 +2219,12 @@ export function mixinArg(this: P, T: TokenMap) {
   }
 }
 
-export function mixinValue(this: P, T: TokenMap) {
+export function callArgument(this: P, T: TokenMap) {
   const $ = this
 
   return (ctx: RuleContext = {}) => {
     return $.OR([
-      { ALT: () => $.SUBRULE($.wrappedDeclarationList) },
+      { ALT: () => $.SUBRULE($.anonymousMixinDefinition) },
       {
         GATE: () => !ctx.allowComma,
         ALT: () => $.SUBRULE($.valueSequence)

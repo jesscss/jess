@@ -2167,6 +2167,7 @@ export function supportsCondition(this: C, T: TokenMap) {
 
   let conditionAlt = [
     {
+      GATE: () => $.LA(1).tokenType === T.Not,
       ALT: () => {
         $.startRule()
         let keyword = $.CONSUME(T.Not)
@@ -2182,6 +2183,7 @@ export function supportsCondition(this: C, T: TokenMap) {
       }
     },
     {
+      GATE: () => $.LA(1).tokenType !== T.Not,
       ALT: () => {
         let start = $.startRule()
         let RECORDING_PHASE = $.RECORDING_PHASE

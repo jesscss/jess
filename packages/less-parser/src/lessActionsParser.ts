@@ -83,8 +83,9 @@ export class LessActionsParser extends CssActionsParser {
   mixinArgs: Rule<(ctx?: RuleContext) => void>
   mixinArgList: Rule<(ctx?: RuleContext) => void>
   mixinArg: Rule<(ctx?: RuleContext) => void>
-  mixinValue: Rule<(ctx?: RuleContext) => void>
   anonymousMixinDefinition: Rule
+
+  callArgument: Rule<(ctx?: RuleContext) => void>
 
   extend: Rule<(selector?: SelectorSequence) => void>
   extendList: Rule<(ctx?: RuleContext) => void>

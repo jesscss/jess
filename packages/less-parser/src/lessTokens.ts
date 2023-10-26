@@ -46,7 +46,11 @@ function $preBuildTokens() {
   /** Keyed by what to insert after */
   const merges = {
     Assign: [
-      { name: 'Ellipsis', pattern: /\.\.\./ },
+      {
+        name: 'Ellipsis',
+        pattern: /\.\.\./,
+        categories: ['BlockMarker']
+      },
       /**
        * Less's historical parser unfortunately allows
        * at-keywords that are not valid in CSS. One is
