@@ -3,7 +3,6 @@ import { type LessActionsParser as P, type TokenMap, type RuleContext } from './
 import {
   tokenMatcher,
   type IToken,
-  TokenType,
   EMPTY_ALT
 } from 'chevrotain'
 import {
@@ -19,15 +18,16 @@ import {
 } from '@jesscss/css-parser'
 
 import {
-  isNode,
+  TreeContext,
+  type Scope,
   Node,
+  Block,
   type LocationInfo,
   type Operator,
   General,
   Ruleset,
-  type SimpleSelector, SelectorList,
+  type SimpleSelector,
   SelectorSequence,
-  type Rules,
   Combinator,
   List,
   Sequence,
@@ -48,14 +48,37 @@ import {
   VarDeclaration,
   DefaultGuard,
   Lookup,
-  Token,
-  Declaration,
   Rest
 } from '@jesscss/core'
 
 const isEscapedString = function(this: P, T: TokenMap) {
   const next = this.LA(1)
   return tokenMatcher(next, T.QuoteStart) && next.image.startsWith('~')
+}
+
+/** Charset moved within `main` (explained in that rule) */
+export function stylesheet(this: P, T: TokenMap) {
+  const $ = this
+
+  // stylesheet
+  //   : CHARSET? main EOF
+  //   ;
+  return () => {
+    let RECORDING_PHASE = $.RECORDING_PHASE
+    let context: TreeContext
+    let initialScope: Scope
+    if (!RECORDING_PHASE) {
+      context = this.context = new TreeContext()
+      initialScope = context.scope
+    }
+
+    let root: Node = $.SUBRULE($.main, { ARGS: [{ isRoot: true }] })
+
+    if (!RECORDING_PHASE) {
+      this.context.scope = initialScope!
+      return root
+    }
+  }
 }
 
 export function main(this: P, T: TokenMap) {
@@ -671,6 +694,9 @@ export function unknownAtRule(this: P, T: TokenMap) {
    *     followed by a space.
    */
   const isVariableLike = () => {
+    if ($.LA(1).tokenType === T.AtKeywordLessExtension) {
+      return true
+    }
     let token = $.LA(2)
     let isColon = token.tokenType === T.Colon
     if (!isColon) {
@@ -684,6 +710,7 @@ export function unknownAtRule(this: P, T: TokenMap) {
   const isNotVariableLike = () => !isVariableLike()
 
   let nameAlt = [
+    { ALT: () => $.CONSUME(T.AtKeywordLessExtension) },
     { ALT: () => $.CONSUME2(T.AtKeyword) },
     { ALT: () => $.CONSUME(T.NestedReference) }
   ]
@@ -752,7 +779,10 @@ export function unknownAtRule(this: P, T: TokenMap) {
          * @dr(arg1, arg2);
          */
         ALT: () => {
-          name = $.CONSUME3(T.AtKeyword)
+          name = $.OR5([
+            { ALT: () => $.CONSUME3(T.AtKeyword) },
+            { ALT: () => $.CONSUME2(T.AtKeywordLessExtension) }
+          ])
           args = $.SUBRULE($.mixinArgs)
           return args
         }
@@ -842,6 +872,50 @@ export function valueSequence(this: P, T: TokenMap) {
   }
 }
 
+export function squareValue(this: P, T: TokenMap) {
+  const $ = this
+
+  return (ctx: RuleContext = {}) => {
+    $.startRule()
+    let RECORDING_PHASE = $.RECORDING_PHASE
+    $.CONSUME(T.LSquare)
+    let node: Node = $.OR([
+      {
+        GATE: () => !$.looseMode,
+        ALT: () => {
+          let ident = $.CONSUME(T.Ident)
+          if (!RECORDING_PHASE) {
+            return new General(ident.image, { type: 'CustomIdent' }, $.getLocationInfo(ident), this.context)
+          }
+        }
+      },
+      {
+        GATE: () => !!$.looseMode,
+        ALT: () => {
+          let nodes: Node[]
+          if (!RECORDING_PHASE) {
+            nodes = []
+          }
+          $.MANY(() => {
+            let node = $.SUBRULE($.anyInnerValue)
+            if (!RECORDING_PHASE) {
+              nodes.push($.wrap(node))
+            }
+          })
+          if (!RECORDING_PHASE) {
+            return new Sequence(nodes!, undefined, $.getLocationFromNodes(nodes!), this.context)
+          }
+        }
+      }
+    ])
+    $.CONSUME(T.RSquare)
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule()
+      return new Block(node, { type: 'square' }, location, this.context)
+    }
+  }
+}
+
 /**
  * In CSS, would be a single value.
  * In Less, these are math expressions which
@@ -898,7 +972,10 @@ export function expressionSum(this: P, T: TokenMap) {
                 op = str[0]
                 /** Alter the token (removing the sign) and continue processing */
                 signed.image = str.slice(1)
-                signed.payload[0] = signed.payload[0].slice(1)
+                /** For dimensions with captured units */
+                if (signed.payload) {
+                  signed.payload[0] = signed.payload[0].slice(1)
+                }
                 signed.startOffset += 1
                 signed.startColumn! += 1
                 /**
@@ -983,15 +1060,19 @@ export function expressionValue(this: P, T: TokenMap) {
       {
         ALT: () => {
           $.startRule()
+          let escape: IToken | undefined
+          $.OPTION2(() => {
+            escape = $.CONSUME(T.Tilde)
+          })
 
           $.CONSUME(T.LParen)
-          let node = $.SUBRULE($.expressionSum, { ARGS: [ctx] })
+          let node = $.SUBRULE($.valueList, { ARGS: [ctx] })
           $.CONSUME(T.RParen)
 
           if (!RECORDING_PHASE) {
             let location = $.endRule()
             node = $.wrap(node, 'both')
-            return new Paren(node, undefined, location, this.context)
+            return new Paren(node, { escaped: !!escape }, location, this.context)
           }
         }
       },
@@ -1252,6 +1333,14 @@ export function value(this: P, T: TokenMap) {
         /** Explicitly not marked as an ident */
         { ALT: () => $.CONSUME(T.When) },
         { ALT: () => $.SUBRULE($.squareValue) },
+        {
+          GATE: () => $.looseMode,
+          ALT: () => $.CONSUME(T.Colon)
+        },
+        {
+          GATE: () => $.looseMode,
+          ALT: () => $.CONSUME(T.Unknown)
+        },
         {
           /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
           GATE: () => $.legacyMode,
@@ -1654,6 +1743,7 @@ export function inlineMixinCall(this: P, T: TokenMap) {
     }
     $.OR([
       {
+        GATE: () => !ctx.requireAccessorsAfterMixinCall,
         ALT: () => {
           argList = $.SUBRULE($.mixinArgs)
           if (!RECORDING_PHASE) {
@@ -1670,7 +1760,6 @@ export function inlineMixinCall(this: P, T: TokenMap) {
         }
       },
       {
-        GATE: () => !!ctx.requireAccessorsAfterMixinCall,
         ALT: () => {
           $.OPTION3(() => {
             argList = $.SUBRULE2($.mixinArgs)

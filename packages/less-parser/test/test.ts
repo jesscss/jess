@@ -95,6 +95,14 @@ describe('can parse any rule', () => {
     expect(errors.length).toBe(0)
   })
 
+  test('non-nested at-rule', () => {
+    const { errors } = parse(
+      '@namespace @ns "http://lesscss.org";',
+      'nonNestedAtRule'
+    )
+    expect(errors.length).toBe(0)
+  })
+
   test('mixin definition', () => {
     // let lexerResult = lessParser.lexer.tokenize(
     //   `.mixin_def_with_colors(@a: white, // in
@@ -246,26 +254,23 @@ const invalidLess = [
   'less/_main/permissive-parse.less',
   'less/_main/property-name-interp.less',
   'less/compression/compression.less',
-  'less/main/always/no-sm-operations.less',
 
-  /**
-   * This one uses a valid CSS number '+4' as a math expression.
-   * This is an ambiguous error in Less which doesn't recognize
-   * '+4' as a single unit.
-   */
-  'less/math/always/mixins-guards.less',
-
-  'less/math/always/no-sm-operations.less',
-  'less/math/parens-division/new-division.less',
+  // 'less/math/parens-division/new-division.less',
   'less/math/strict/css.less',
   'less/_main/import/invalid-css.less',
 
   /** Contains invalid `[prop=10%]` */
-  'less/_main/selectors.less'
+  'less/_main/selectors.less',
+
+  /**
+   * This has a variable in a `@charset`, which definitely
+   * should not be allowed.
+   */
+  'less/_main/variables-in-at-rules.less'
 ]
 
 describe.only('can parse all Less stylesheets', () => {
-  const files = glob.sync(path.join(testData, 'less/**/variables-in-at-rules.less'))
+  const files = glob.sync(path.join(testData, 'less/**/*.less'))
   files
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))

@@ -17,7 +17,7 @@ type IMerges = Partial<Record<CssTokenType, RawTokenConfig>>
 function $preBuildFragments() {
   const fragments = cssFragments()
   fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*'])
-  fragments.push(['interpolated', '[@$]\\{(?:{{ident}})\\}'])
+  fragments.push(['interpolated', '[@$]\\{(?:{{nmchar}}*)\\}'])
 
   return fragments
 }
@@ -46,7 +46,24 @@ function $preBuildTokens() {
   /** Keyed by what to insert after */
   const merges = {
     Assign: [
-      { name: 'Ellipsis', pattern: /\.\.\./ }
+      { name: 'Ellipsis', pattern: /\.\.\./ },
+      /**
+       * Less's historical parser unfortunately allows
+       * at-keywords that are not valid in CSS. One is
+       * that Less allows at-keywords to begin with numbers.
+       * Another is that it allows an at-rule that only
+       * contains a single dash. So we capture this as
+       * a separate token.
+       *
+       * We also do this later in the token stack so that we
+       * don't accidentally grab something like
+       * @-webkit-keyframes while looking for @-.
+       */
+      {
+        name: 'AtKeywordLessExtension',
+        pattern: '@(?:-|\\d(?:{{nmchar}})*)',
+        categories: ['BlockMarker', 'AtName']
+      }
     ],
     PlainIdent: [
       { name: 'Interpolated', pattern: LexerType.NA },
@@ -179,7 +196,7 @@ function $preBuildTokens() {
 
   let tokenLength = defaultTokens.length
   for (let i = 0; i < tokenLength; i++) {
-    let token: WritableDeep<RawToken> = defaultTokens[i]
+    let token: WritableDeep<RawToken> = defaultTokens[i]!
 
     const { name } = token
     const copyToken = () => {

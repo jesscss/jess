@@ -2659,17 +2659,27 @@ export function anyOuterValue(this: C, T: TokenMap) {
     },
     {
       ALT: () => {
+        let RECORDING_PHASE = $.RECORDING_PHASE
         $.startRule()
-        let nodes: Node[] = []
+        let nodes: Node[]
+
+        if (!RECORDING_PHASE) {
+          nodes = []
+        }
 
         $.CONSUME(T.LSquare)
-        $.MANY2(() => nodes.push($.wrap($.SUBRULE2($.anyInnerValue))))
+        $.MANY2(() => {
+          let node = $.SUBRULE2($.anyInnerValue)
+          if (!RECORDING_PHASE) {
+            nodes.push($.wrap(node))
+          }
+        })
         $.CONSUME(T.RSquare)
 
-        if (!$.RECORDING_PHASE) {
+        if (!RECORDING_PHASE) {
           let location = $.endRule()
           return new Paren(
-            $.wrap(new Sequence(nodes, undefined, $.getLocationFromNodes(nodes), this.context), true),
+            $.wrap(new Sequence(nodes!, undefined, $.getLocationFromNodes(nodes!), this.context), true),
             undefined,
             location,
             this.context
