@@ -731,8 +731,7 @@ export function unknownAtRule(this: P, T: TokenMap) {
   const isNotVariableLike = () => !isVariableLike()
 
   let nameAlt = [
-    { ALT: () => $.CONSUME(T.AtKeywordLessExtension) },
-    { ALT: () => $.CONSUME2(T.AtKeyword) },
+    { ALT: () => $.SUBRULE($.varName) },
     { ALT: () => $.CONSUME(T.NestedReference) }
   ]
 
@@ -800,10 +799,7 @@ export function unknownAtRule(this: P, T: TokenMap) {
          * @dr(arg1, arg2);
          */
         ALT: () => {
-          name = $.OR5([
-            { ALT: () => $.CONSUME3(T.AtKeyword) },
-            { ALT: () => $.CONSUME2(T.AtKeywordLessExtension) }
-          ])
+          name = $.SUBRULE2($.varName)
           args = $.SUBRULE($.mixinArgs)
           return args
         }
@@ -2124,6 +2120,15 @@ export function mixinArgList(this: P, T: TokenMap) {
   }
 }
 
+export function varName(this: P, T: TokenMap) {
+  const $ = this
+  let nameAlt = [
+    { ALT: () => $.CONSUME(T.AtKeyword) },
+    { ALT: () => $.CONSUME(T.AtKeywordLessExtension) }
+  ]
+  return () => $.OR(nameAlt)
+}
+
 export function mixinArg(this: P, T: TokenMap) {
   const $ = this
 
@@ -2137,78 +2142,81 @@ export function mixinArg(this: P, T: TokenMap) {
       firstToken.tokenType === T.AtKeywordLessExtension
     )
 
+    let isDeclaration = $.LA(2).tokenType === T.Colon
+
     /**
      * @todo - determine _values_ (variable references)
      * vs _names_ (variable declarations)
     */
     return $.OR([
       {
+        GATE: () => isDefinition && atStart,
         ALT: () => {
-          $.startRule()
-          let name = $.CONSUME(T.AtKeyword)
-          return $.OR2([
-            {
-              ALT: () => {
-                return $.OR3([
-                  {
-                    ALT: () => {
-                      $.CONSUME(T.Colon)
-                      let value = $.SUBRULE($.callArgument, { ARGS: [ctx] })
-                      if (!RECORDING_PHASE) {
-                        let location = $.endRule()
-                        return new VarDeclaration(
-                          [
-                            ['name', name.image.slice(1)],
-                            ['value', value]
-                          ],
-                          { paramVar: true },
-                          location,
-                          this.context
-                        )
-                      }
-                    }
-                  },
-                  /**
-                   * Mixin definitions can have a spread parameter, which
-                   * means it will match a variable number of elements
-                   * at the end.
-                   *
-                   * However, mixin calls can have a spread argument,
-                   * which means it will expand a variable representing
-                   * a list, which, to my knowledge, is an undocumented
-                   * feature of Less (and only exists in mixin calls?)
-                   *
-                   * @todo - Intuitively, shouldn't this be available
-                   * elsewhere in the language? Or would there be no
-                   * reason?
-                   */
-                  {
-                    ALT: () => {
-                      $.CONSUME(T.Ellipsis)
-                      if (!RECORDING_PHASE) {
-                        $.endRule()
-                        return new Rest(name.image.slice(1), undefined, $.getLocationInfo(name), this.context)
-                      }
-                    }
-                  }
-                ])
-              }
-            },
-            {
-              ALT: () => {
-                EMPTY_ALT()
-                /** This is a named variable */
-                if (!RECORDING_PHASE) {
-                  $.endRule()
-                  return new General(name.image.slice(1), { type: 'Name' }, $.getLocationInfo(name), this.context)
-                }
-              }
-            }
-          ])
+          let name = $.SUBRULE($.varName)
+          if (!RECORDING_PHASE) {
+            return new General(name.image.slice(1), { type: 'Name' }, $.getLocationInfo(name), this.context)
+          }
         }
       },
       {
-        GATE: () => !isDefinition,
+        GATE: () => isDefinition && !atStart,
+        ALT: () => $.SUBRULE($.value)
+      },
+      {
+        GATE: () => atStart && isDeclaration,
+        ALT: () => {
+          $.startRule()
+          let name = $.SUBRULE2($.varName)
+          $.CONSUME(T.Colon)
+          /** Default value */
+          let value = $.SUBRULE($.callArgument, { ARGS: [ctx] })
+
+          if (!RECORDING_PHASE) {
+            let location = $.endRule()
+            return new VarDeclaration(
+              [
+                ['name', name.image.slice(1)],
+                ['value', value]
+              ],
+              { paramVar: true },
+              location,
+              this.context
+            )
+          }
+        }
+      },
+      {
+        /**
+         * Mixin definitions can have a spread parameter, which
+         * means it will match a variable number of elements
+         * at the end.
+         *
+         * However, mixin calls can have a spread argument,
+         * which means it will expand a variable representing
+         * a list, which, to my knowledge, is an undocumented
+         * feature of Less (and only exists in mixin calls?)
+         *
+         * @todo - Intuitively, shouldn't this be available
+         * elsewhere in the language? Or would there be no
+         * reason?
+         */
+        GATE: () => isDefinition,
+        ALT: () => {
+          $.startRule()
+          let name = $.CONSUME(T.AtKeyword)
+          $.CONSUME(T.Ellipsis)
+          if (!RECORDING_PHASE) {
+            let location = $.endRule()
+            let varName = name.image.slice(1)
+            if (isDefinition) {
+              return new Rest(varName, undefined, location, this.context)
+            }
+            return new Rest(new Reference(varName, { type: 'variable' }, $.getLocationInfo(name), this.context), undefined, location, this.context)
+          }
+        }
+      },
+      {
+        GATE: () => !isDefinition && !isDeclaration,
         ALT: () => $.SUBRULE2($.callArgument, { ARGS: [ctx] })
       },
       {

@@ -71,6 +71,7 @@ export class LessActionsParser extends CssActionsParser {
 
   wrappedDeclarationList: Rule
 
+  varName: Rule
   valueReference: Rule<(ctx?: RuleContext) => void>
   varReference: Rule<(ctx?: RuleContext) => void>
 
