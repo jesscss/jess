@@ -8,7 +8,14 @@ import {
   productions as cssProductions
 } from '@jesscss/css-parser'
 
-import { Reference, type Node, type SelectorSequence, type Extend } from '@jesscss/core'
+import {
+  Reference,
+  DefaultGuard,
+  JsExpression,
+  type Node,
+  type SelectorSequence,
+  type Extend
+} from '@jesscss/core'
 
 import { type LessTokenType } from './lessTokens'
 import * as productions from './productions'
@@ -96,9 +103,12 @@ export class LessActionsParser extends CssActionsParser {
 
   comparison: Rule<(ctx?: RuleContext) => void>
   guard: Rule<(ctx?: RuleContext) => void>
+  guardDefault: Rule<(ctx?: RuleContext) => void>
   guardOr: Rule<(ctx?: RuleContext) => void>
   guardAnd: Rule<(ctx?: RuleContext) => void>
   guardInParens: Rule<(ctx?: RuleContext) => void>
+  guardWithCondition: Rule
+  guardWithConditionValue: Rule
 
   constructor(
     tokenVocabulary: TokenVocabulary,
@@ -129,8 +139,14 @@ export class LessActionsParser extends CssActionsParser {
   }
 
   protected processValueToken(token: IToken) {
-    if (token.tokenType === this.T.AtKeyword) {
+    let tokenType = token.tokenType
+    let T = this.T
+    if (tokenType === T.AtKeyword) {
       return new Reference(token.image.slice(1), { type: 'variable' }, this.getLocationInfo(token), this.context)
+    } else if (tokenType === T.DefaultGuardFunc) {
+      return new DefaultGuard(token.image, undefined, this.getLocationInfo(token), this.context)
+    } else if (tokenType === T.JavaScript) {
+      return new JsExpression(token.image, undefined, this.getLocationInfo(token), this.context)
     }
     return super.processValueToken(token)
   }

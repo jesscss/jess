@@ -266,7 +266,10 @@ const invalidLess = [
    * This has a variable in a `@charset`, which definitely
    * should not be allowed.
    */
-  'less/_main/variables-in-at-rules.less'
+  'less/_main/variables-in-at-rules.less',
+
+  /** Has an unsupported token - `alpha(opacity=@var)` */
+  'less/_main/variables.less'
 ]
 
 describe.only('can parse all Less stylesheets', () => {

@@ -151,7 +151,7 @@ function $preBuildTokens() {
     UrlStart: [
       {
         name: 'JavaScript',
-        pattern: /`[^`]*`/,
+        pattern: /~?`[^`]*`/,
         line_breaks: true
       }
     ],

@@ -1265,23 +1265,47 @@ export function varReference(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE
-
-    let token = $.CONSUME(T.AtKeyword)
-    let node: Node
-    if (!RECORDING_PHASE) {
-      node = new Reference(token.image, { type: 'variable' }, $.getLocationInfo(token), this.context)
-    }
-    $.OR([
+    let node: Node | undefined = $.OR([
       {
         ALT: () => {
-          /** This spreads a (list) value within a containing list when evaluated */
-          token = $.CONSUME(T.Ellipsis)
+          let token = $.CONSUME(T.PropertyReference)
           if (!RECORDING_PHASE) {
-            node = new Rest(node, undefined, $.getLocationFromNodes([node, token]), this.context)
+            return new Reference(token.image, { type: 'property' }, $.getLocationInfo(token), this.context)
           }
         }
       },
       {
+        ALT: () => {
+          let token = $.CONSUME(T.NestedReference)
+          if (!RECORDING_PHASE) {
+            let name = token.image
+            let type: 'variable' | 'property' = name.startsWith('@') ? 'variable' : 'property'
+            return new Reference(getInterpolatedOrString(token.image), { type }, $.getLocationInfo(token), this.context)
+          }
+        }
+      },
+      {
+        ALT: () => {
+          let token = $.CONSUME(T.AtKeyword)
+          if (!RECORDING_PHASE) {
+            return new Reference(token.image, { type: 'variable' }, $.getLocationInfo(token), this.context)
+          }
+        }
+      }
+    ])
+    $.OR2([
+      {
+        ALT: () => {
+          /** This spreads a (list) value within a containing list when evaluated */
+          let token = $.CONSUME(T.Ellipsis)
+          if (!RECORDING_PHASE) {
+            node = new Rest(node, undefined, $.getLocationFromNodes([node!, token]), this.context)
+          }
+        }
+      },
+      {
+        /** Only variables can have accessors */
+        GATE: () => node!.options.type === 'variable',
         ALT: () => {
           ctx.node = node
           node = $.SUBRULE2($.accessors, { ARGS: [ctx] })
@@ -1408,33 +1432,45 @@ export function value(this: P, T: TokenMap) {
   const $ = this
 
   return (ctx: RuleContext = {}) => {
-    let node: Node = $.OR({
-      IGNORE_AMBIGUITIES: true,
-      DEF: [
-        /** Function should appear before Ident */
-        { ALT: () => $.SUBRULE($.functionCall) },
-        { ALT: () => $.SUBRULE($.inlineMixinCall, { ARGS: [ctx] }) },
-        { ALT: () => $.SUBRULE($.varReference, { ARGS: [ctx] }) },
-        { ALT: () => $.SUBRULE($.string) },
-        { ALT: () => $.CONSUME(T.Value) },
-        /** Explicitly not marked as an ident */
-        { ALT: () => $.CONSUME(T.When) },
-        { ALT: () => $.SUBRULE($.squareValue) },
-        {
-          GATE: () => $.looseMode && !!ctx.inner,
-          ALT: () => $.CONSUME(T.Colon)
-        },
-        {
-          GATE: () => $.looseMode,
-          ALT: () => $.CONSUME(T.Unknown)
-        },
-        {
-          /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
-          GATE: () => $.legacyMode,
-          ALT: () => $.CONSUME(T.LegacyMSFilter)
-        }
-      ]
-    })
+    let node: Node = $.OR([
+      /** Function should appear before Ident */
+      { ALT: () => $.SUBRULE($.functionCall) },
+      { ALT: () => $.SUBRULE($.inlineMixinCall, { ARGS: [ctx] }) },
+      { ALT: () => $.SUBRULE($.varReference, { ARGS: [ctx] }) },
+      { ALT: () => $.CONSUME(T.Ident) },
+      { ALT: () => $.CONSUME(T.DefaultGuardFunc) },
+      { ALT: () => $.CONSUME(T.Dimension) },
+      { ALT: () => $.CONSUME(T.Number) },
+      { ALT: () => $.CONSUME(T.Color) },
+      { ALT: () => $.SUBRULE($.string) },
+      { ALT: () => $.CONSUME(T.JavaScript) },
+      /** Explicitly not marked as an ident */
+      { ALT: () => $.CONSUME(T.When) },
+      { ALT: () => $.SUBRULE($.squareValue) },
+      {
+        GATE: () => $.looseMode && !!ctx.inner,
+        ALT: () => $.CONSUME(T.Colon)
+      },
+      {
+        /** Allow plain classes */
+        GATE: () => $.looseMode,
+        ALT: () => $.CONSUME(T.DotName)
+      },
+      {
+        /** Allow plain Ids */
+        GATE: () => $.looseMode,
+        ALT: () => $.CONSUME(T.HashName)
+      },
+      {
+        GATE: () => $.looseMode,
+        ALT: () => $.CONSUME(T.Unknown)
+      },
+      {
+        /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
+        GATE: () => $.legacyMode,
+        ALT: () => $.CONSUME(T.LegacyMSFilter)
+      }
+    ])
     if (!$.RECORDING_PHASE) {
       if (!(node instanceof Node)) {
         node = $.processValueToken(node)
@@ -1516,55 +1552,56 @@ export function guardOr(this: P, T: TokenMap) {
   const $ = this
 
   return (ctx: RuleContext = {}) => {
-    return $.OR([
-      {
-        ALT: () => {
-          let guard = $.OR2([
-            { ALT: () => $.CONSUME(T.DefaultGuardIdent) },
-            { ALT: () => $.CONSUME(T.DefaultGuardFunc) }
-          ])
-          ctx.hasDefault = true
-          return new DefaultGuard(guard.image, undefined, $.getLocationInfo(guard), this.context)
-        }
-      },
-      {
-        ALT: () => {
-          let RECORDING_PHASE = $.RECORDING_PHASE
-          $.startRule()
+    let RECORDING_PHASE = $.RECORDING_PHASE
+    $.startRule()
 
-          let left = $.SUBRULE($.guardAnd, { ARGS: [ctx] })
-          let right: Node | undefined
-          $.MANY({
-            GATE: () => !!ctx.allowComma || $.LA(1).tokenType !== T.Comma,
-            DEF: () => {
-              /**
+    let left = $.SUBRULE($.guardAnd, { ARGS: [ctx] })
+    let right: Node | undefined
+    $.MANY({
+      GATE: () => !!ctx.allowComma || $.LA(1).tokenType !== T.Comma,
+      DEF: () => {
+        /**
                * Nest expressions within expressions for correct
                * order of operations.
                */
-              $.OR3([
-                { ALT: () => $.CONSUME($.T.Comma) },
-                { ALT: () => $.CONSUME($.T.Or) }
-              ])
-              right = $.SUBRULE2($.guardAnd, { ARGS: [ctx] })
-              if (!RECORDING_PHASE) {
-                let location = $.endRule()
-                $.startRule()
-                left = new Condition(
-                  [$.wrap(left, true), 'or', $.wrap(right!)],
-                  undefined,
-                  location,
-                  this.context
-                )
-              }
-            }
-          })
-          if (!RECORDING_PHASE) {
-            $.endRule()
-          }
-          return left
+        $.OR3([
+          { ALT: () => $.CONSUME($.T.Comma) },
+          { ALT: () => $.CONSUME($.T.Or) }
+        ])
+        right = $.SUBRULE2($.guardAnd, { ARGS: [ctx] })
+        if (!RECORDING_PHASE) {
+          let location = $.endRule()
+          $.startRule()
+          left = new Condition(
+            [$.wrap(left, true), 'or', $.wrap(right!)],
+            undefined,
+            location,
+            this.context
+          )
         }
       }
-    ])
+    })
+    if (!RECORDING_PHASE) {
+      $.endRule()
+    }
+    return left
+  }
+}
+
+export function guardDefault(this: P, T: TokenMap) {
+  const $ = this
+
+  let guardAlt = [
+    { ALT: () => $.CONSUME(T.DefaultGuardIdent) },
+    { ALT: () => $.CONSUME(T.DefaultGuardFunc) }
+  ]
+
+  return (ctx: RuleContext = {}) => {
+    let guard = $.OR(guardAlt)
+    ctx.hasDefault = true
+    if (!$.RECORDING_PHASE) {
+      return new DefaultGuard(guard.image, undefined, $.getLocationInfo(guard), this.context)
+    }
   }
 }
 
@@ -1624,16 +1661,69 @@ export function guardInParens(this: P, T: TokenMap) {
 
   return (ctx: RuleContext) => {
     $.startRule()
-    $.CONSUME(T.LParen)
     let node = $.OR([
-      { ALT: () => $.SUBRULE($.guardOr, { ARGS: [ctx] }) },
-      { ALT: () => $.SUBRULE($.comparison, { ARGS: [ctx] }) }
+      { ALT: () => $.SUBRULE($.guardDefault, { ARGS: [ctx] }) },
+      {
+        ALT: () => {
+          $.CONSUME(T.LParen)
+          let node = $.OR2([
+            { ALT: () => $.SUBRULE($.comparison, { ARGS: [ctx] }) },
+            {
+              GATE: () => {
+                let tokenType = $.LA(1).tokenType
+                return tokenType !== T.Not && tokenType !== T.DefaultGuardFunc && tokenType !== T.DefaultGuardIdent
+              },
+              ALT: () => $.SUBRULE($.value, { ARGS: [ctx] })
+            },
+            {
+              /**
+               * This is the only backtracked rule to dis-ambiguate
+               * nested parens with no and / or from nested parens
+               * in math expressions.
+               */
+              ALT: () => $.SUBRULE($.guardOr, { ARGS: [ctx] })
+            }
+          ])
+          $.CONSUME(T.RParen)
+          return node
+        }
+      }
     ])
-    $.CONSUME(T.RParen)
+
     if (!$.RECORDING_PHASE) {
       node = $.wrap(node, 'both')
       return new Paren(node, undefined, $.endRule(), this.context)
     }
+  }
+}
+
+export function guardWithConditionValue(this: P, T: TokenMap) {
+  const $ = this
+  return () => $.OR([
+    {
+      ALT: () => {
+        $.OR2([
+          { ALT: () => $.CONSUME(T.DefaultGuardIdent) },
+          { ALT: () => $.CONSUME(T.DefaultGuardFunc) }
+        ])
+      }
+    },
+    { ALT: () => $.SUBRULE($.guardInParens) }
+  ])
+}
+
+export function guardWithCondition(this: P, T: TokenMap) {
+  const $ = this
+  return () => {
+    $.SUBRULE($.guardWithConditionValue)
+    $.AT_LEAST_ONE(() => {
+      $.OR([
+        { ALT: () => $.CONSUME(T.Or) },
+        { ALT: () => $.CONSUME(T.And) },
+        { ALT: () => $.CONSUME(T.Comma) }
+      ])
+      $.SUBRULE2($.guardWithConditionValue)
+    })
   }
 }
 
@@ -1657,24 +1747,24 @@ export function comparison(this: P, T: TokenMap) {
 
   return () => {
     let left = $.SUBRULE($.valueList)
-    $.OPTION(() => {
-      let op = $.OR(opAlt)
-      let right = $.SUBRULE2($.valueList)
-      if (!$.RECORDING_PHASE) {
-        let opStr = op.image
-        if (opStr === '=>') {
-          opStr = '>='
-        } else if (opStr === '=<') {
-          opStr = '<='
-        }
-        left = new Condition(
-          [$.wrap(left, true), opStr as Operator, $.wrap(right)],
-          undefined,
-          $.getLocationFromNodes([left, right]),
-          this.context
-        )
+    // $.OPTION(() => {
+    let op = $.OR(opAlt)
+    let right = $.SUBRULE2($.valueList)
+    if (!$.RECORDING_PHASE) {
+      let opStr = op.image
+      if (opStr === '=>') {
+        opStr = '>='
+      } else if (opStr === '=<') {
+        opStr = '<='
       }
-    })
+      left = new Condition(
+        [$.wrap(left, true), opStr as Operator, $.wrap(right)],
+        undefined,
+        $.getLocationFromNodes([left, right]),
+        this.context
+      )
+    }
+    // })
     return left
   }
 }
