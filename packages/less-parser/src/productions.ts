@@ -1920,7 +1920,12 @@ export function inlineMixinCall(this: P, T: TokenMap) {
     }
     $.OR([
       {
-        GATE: () => !ctx.requireAccessorsAfterMixinCall,
+        ALT: () => {
+          ctx.node = node
+          node = $.SUBRULE($.accessors, { ARGS: [ctx] })
+        }
+      },
+      {
         ALT: () => {
           argList = $.SUBRULE($.mixinArgs)
           if (!RECORDING_PHASE) {
@@ -1930,26 +1935,18 @@ export function inlineMixinCall(this: P, T: TokenMap) {
             let { endOffset, endLine, endColumn } = RParen
             call.location = [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!]
           }
-          $.OPTION2(() => {
-            ctx.node = node
-            node = $.SUBRULE($.accessors, { ARGS: [ctx] })
-          })
-        }
-      },
-      {
-        ALT: () => {
-          $.OPTION3(() => {
-            argList = $.SUBRULE2($.mixinArgs)
-            if (!RECORDING_PHASE) {
-              call.args = argList
-              let RParen = $.LA(0)
-              let [startOffset, startLine, startColumn] = node.location
-              let { endOffset, endLine, endColumn } = RParen
-              call.location = [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!]
+          $.OR2([
+            {
+              ALT: () => {
+                ctx.node = node
+                node = $.SUBRULE2($.accessors, { ARGS: [ctx] })
+              }
+            },
+            {
+              GATE: () => !ctx.requireAccessorsAfterMixinCall,
+              ALT: () => EMPTY_ALT()
             }
-          })
-          ctx.node = node
-          node = $.SUBRULE2($.accessors, { ARGS: [ctx] })
+          ])
         }
       }
     ])
