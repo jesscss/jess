@@ -1,7 +1,6 @@
 {
   "extends": "../../tsconfig.json",
   "references": [
-    { "path" : "../core" },
     { "path" : "../css-parser" },
     { "path" : "../parser" },
     { "path" : "../patch-css" }
@@ -11,6 +10,6 @@
     "outDir": "./lib",
     "rootDir": "./src"
   },
-  "include": ["src/**/*", "test/**/*"],
+  "include": ["src/**/*", "scope/**/*"],
   "exclude": ["node_modules", "lib"]
 }

@@ -3,6 +3,7 @@ import type { Ruleset } from './tree/ruleset'
 import { Scope } from './scope'
 import type { Declaration } from './tree'
 import { type Operator } from './tree/util/calculate'
+import type { PluginObject } from './plugin'
 
 export const enum MathMode {
   /**
@@ -40,7 +41,7 @@ export interface ContextOptions {
   unitMode?: UnitMode
 }
 
-export interface TreeContextOptions {
+export interface TreeContextOptions extends ContextOptions {
   /**
    * Hoists variable declarations, so they can be
    * evaluated per scope. Less sets this to true.
@@ -51,9 +52,6 @@ export interface TreeContextOptions {
   leakVariablesIntoScope?: boolean
 
   inlineJavaScript?: boolean
-
-  mathMode?: MathMode
-  unitMode?: UnitMode
 
   /**
    * For instances where a new tree needs to inherit from scope
@@ -138,6 +136,7 @@ export class Context {
   static selectorKeys = new Map<string, string>()
   static keysFromSelector = new Map<string, string>()
 
+  readonly plugins: PluginObject[]
   readonly opts: ContextOptions
 
   /**
@@ -207,8 +206,9 @@ export class Context {
   /** A flag set when evaluating conditions */
   isDefault: boolean
 
-  constructor(opts: ContextOptions = {}) {
+  constructor(opts: ContextOptions = {}, plugins: PluginObject[]) {
     this.opts = opts
+    this.plugins = plugins
   }
 
   get pre() {
@@ -237,7 +237,10 @@ export class Context {
     return `.${mapVal}`
   }
 
-  /** This is only done for simple selectors and combinators */
+  /**
+   * This is only done for simple selectors and combinators
+   * to create a normalized key for searching / extends.
+   */
   registerSelectorElement(el: string) {
     let key = Context.selectorKeys.get(el)
     if (key) {

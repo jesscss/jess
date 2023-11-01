@@ -3,15 +3,15 @@ import forEach from 'lodash/forEach'
 
 /**
  * @example
- * @import { each } from '@jesscss/fns';
- * @let list: 1, 2, 3;
- * @mixin iterate (value, key) {
- *   .icon-$(value) {
+ * @-from '@jesscss/fns' import (each);
+ * @-let list: 1, 2, 3;
+ * @-mixin iterate (value, key) {
+ *   .icon-#($value) {
  *     width: $value;
  *     height: $key;
  *   }
  * }
- * @include $each(list, iterate);
+ * $each(list, iterate);
  */
 
 export function each(list: List | Expression | unknown, mixin: Function) {

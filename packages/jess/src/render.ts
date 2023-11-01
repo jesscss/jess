@@ -1,37 +1,15 @@
-import * as rollup from 'rollup'
 import * as path from 'path'
 import * as fs from 'fs'
-import commonJs from '@rollup/plugin-commonjs'
-import nodeResolve from '@rollup/plugin-node-resolve'
-import sucrase from '@rollup/plugin-sucrase'
-import jess from './plugin/compile'
-import { default as defaultConfig } from './config'
-import merge from 'lodash/merge'
+import { getConfig } from './config'
+import { getTree, type TreeContextOptions } from '@jesscss/core'
+import merge from 'lodash-es/merge'
 
 /**
  * Render CSS and (optionally) a runtime module
  */
-export const render = async (filePath: string, config = {}) => {
-  const opts = merge({}, defaultConfig, config)
-
-  const bundle = await rollup.rollup({
-    input: filePath,
-    plugins: [
-      // nodeResolve({
-      //   extensions: ['.js', '.ts']
-      // }),
-      // commonJs(),
-      jess(opts.options)
-      // sucrase({
-      //   exclude: ['node_modules/**'],
-      //   transforms: ['typescript']
-      // })
-    ],
-    external: [
-      /node_modules/,
-      'jess'
-    ]
-  })
+export const render = async (filePath: string, config: TreeContextOptions = {}) => {
+  const opts: TreeContextOptions = merge({}, getConfig(path.dirname(filePath)), config)
+  const tree = getTree(filePath, opts)
 
   let compilerFile = filePath.replace(/\.jess$/, '__.js')
   const { output } = await bundle.generate({

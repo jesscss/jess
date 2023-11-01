@@ -7,9 +7,11 @@ const explorerSync = cosmiconfigSync('jess', {
   ]
 })
 
-let result = explorerSync.search()?.config || { options: {} }
-if ('default' in result) {
-  result = result.default
+export const getConfig = (searchFrom?: string) => {
+  searchFrom ??= process.cwd()
+  let result = explorerSync.search(searchFrom)?.config || { options: {} }
+  if ('default' in result) {
+    result = result.default
+  }
+  return result
 }
-
-export default result
