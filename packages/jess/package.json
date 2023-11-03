@@ -28,7 +28,7 @@
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
     "compile": "tsc -b tsconfig.json",
     "dev": "tsc -b tsconfig.json -w",
-    "test": "jest",
+    "test": "cross-env TEST=true vitest --watch=false",
     "test:all": "pnpm benchmark && pnpm test",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
@@ -40,6 +40,7 @@
   },
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
+    "@jesscss/shared": "workspace:^2.0.0-alpha.1",
     "@types/cosmiconfig": "^6.0.0",
     "@types/lodash-es": "^4.17.8"
   },

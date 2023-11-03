@@ -25,7 +25,7 @@
     "chevrotain": "^11.0.3"
   },
   "devDependencies": {
-    "@less/test-data": "^4.1.0"
+    "@jesscss/shared": "workspace:^2.0.0-alpha.1"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",

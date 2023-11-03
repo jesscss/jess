@@ -1,7 +1,7 @@
 import * as glob from 'glob'
 import * as fs from 'fs'
 import * as path from 'path'
-import { render } from '../src/render'
+import { render } from '../src'
 
 describe('Output files', () => {
   const testData = path.join(__dirname, 'files')

@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@less/test-data':
+        specifier: ^4.2.0
+        version: 4.2.0
       '@rollup/plugin-commonjs':
         specifier: ^24.1.0
         version: 24.1.0(rollup@3.20.7)
@@ -96,6 +99,8 @@ importers:
         specifier: ~1.0.0-beta.0
         version: 1.0.0-beta.0(@types/node@18.15.13)
 
+  packages/_shared: {}
+
   packages/ast:
     dependencies:
       '@jesscss/core':
@@ -146,9 +151,6 @@ importers:
         specifier: ^5.1.1
         version: 5.1.1
     devDependencies:
-      '@less/test-data':
-        specifier: ^4.1.0
-        version: 4.1.0
       '@types/lodash-es':
         specifier: ~4.17.8
         version: 4.17.8
@@ -215,6 +217,9 @@ importers:
         specifier: ^17.7.1
         version: 17.7.1
     devDependencies:
+      '@jesscss/shared':
+        specifier: workspace:^2.0.0-alpha.1
+        version: link:../_shared
       '@types/cosmiconfig':
         specifier: ^6.0.0
         version: 6.0.0(typescript@5.1.6)
@@ -233,10 +238,6 @@ importers:
       chevrotain:
         specifier: ^11.0.3
         version: 11.0.3
-    devDependencies:
-      '@less/test-data':
-        specifier: ^4.1.0
-        version: 4.1.0
 
   packages/jess-plugin-less:
     dependencies:
@@ -250,9 +251,6 @@ importers:
         specifier: ^11.0.3
         version: 11.0.3
     devDependencies:
-      '@less/test-data':
-        specifier: ^4.1.0
-        version: 4.1.0
       jess-plugin:
         specifier: workspace:^2.0.0-alpha.1
         version: link:../jess-plugin
@@ -337,9 +335,9 @@ importers:
         specifier: ^11.0.3
         version: 11.0.3
     devDependencies:
-      '@less/test-data':
-        specifier: ^4.1.0
-        version: 4.1.0
+      '@jesscss/shared':
+        specifier: workspace:^2.0.0-alpha.1
+        version: link:../_shared
 
   packages/parser:
     dependencies:
@@ -373,10 +371,6 @@ importers:
       chevrotain:
         specifier: ^11.0.3
         version: 11.0.3
-    devDependencies:
-      '@less/test-data':
-        specifier: ^4.1.0
-        version: 4.1.0
 
 packages:
 
@@ -3063,8 +3057,8 @@ packages:
     resolution: {integrity: sha512-Hcv+nVC0kZnQ3tD9GVu5xSMR4VVYOteQIr/hwFPVEvPdlXqgGEuRjiheChHgdM+JyqdgNcmzZOX/tnl0JOiI7A==}
     dev: false
 
-  /@less/test-data@4.1.0:
-    resolution: {integrity: sha512-KX7O5DByhQU8GxGsA+NHo1d6qEKxj12nCdNL47enZa6bU09dLBffv+G7h04JGRUQ0JTEVANS7dKd62eI83RgRA==}
+  /@less/test-data@4.2.0:
+    resolution: {integrity: sha512-vXb3SWALOe93Kc3i+7JVkmVuhlia7xdljgkQ7FI65drwD/71iqFWipue7hlp+MMJWmeSW6F0wwZ+9wQGYSlaBw==}
     dev: true
 
   /@mdx-js/mdx@1.6.22:

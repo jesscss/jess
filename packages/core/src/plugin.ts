@@ -3,7 +3,7 @@ import type { Root } from './tree/root'
 import * as path from 'node:path'
 
 export abstract class FileManager {
-  abstract supportedExtensions: string[]
+  abstract supportedExtensions?: string[]
   /**
    * @param filePath Will be a partial path
    * @param paths The paths to search. This should always contain
@@ -28,7 +28,8 @@ export abstract class FileManager {
    * @param fullPath The fully resolved path
    */
   getTree(fullPath: string): Root | false {
-    if (!this.supportedExtensions.includes(path.extname(fullPath))) {
+    const supported = this.supportedExtensions
+    if (supported && !supported.includes(path.extname(fullPath))) {
       return false
     }
     return this._getTree(fullPath)
@@ -42,9 +43,9 @@ export type PluginObject = {
    * e.g. 'less'
    */
   name: string
-  /** e.g. '.less' */
-  ext: string
-  fileManager: FileManager
+  fileManager?: FileManager
 }
+
+export const definePlugin = (opts: TreeContextOptions) => opts
 
 export type Plugin = (opts: TreeContextOptions) => PluginObject

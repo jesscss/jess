@@ -1,9 +1,10 @@
 import { type Node } from './tree/node'
 import type { Ruleset } from './tree/ruleset'
 import { Scope } from './scope'
-import type { Declaration } from './tree'
+import type { Declaration, Root } from './tree'
 import { type Operator } from './tree/util/calculate'
 import type { PluginObject } from './plugin'
+import * as path from 'node:path'
 
 export const enum MathMode {
   /**
@@ -39,6 +40,9 @@ export interface ContextOptions {
 
   mathMode?: MathMode
   unitMode?: UnitMode
+
+  /** Directories to search to resolve files */
+  paths?: string[]
 }
 
 export interface TreeContextOptions extends ContextOptions {
@@ -122,6 +126,7 @@ let code2 = 0
  *
  * @note
  * Most of context represents "state" while evaluating.
+ * There should only ever be one Context object per
  */
 export class Context {
   /**
@@ -206,13 +211,52 @@ export class Context {
   /** A flag set when evaluating conditions */
   isDefault: boolean
 
-  constructor(opts: ContextOptions = {}, plugins: PluginObject[]) {
+  constructor(opts: ContextOptions = {}, plugins?: PluginObject[]) {
     this.opts = opts
-    this.plugins = plugins
+    this.plugins = plugins ?? []
   }
 
   get pre() {
     return Array(this.indent + 1).join('  ')
+  }
+
+  getTree(filePath: string, initialDirectory?: string) {
+    initialDirectory ??= path.dirname(filePath)
+    const paths = [initialDirectory].concat(this.opts.paths ?? [])
+
+    const plugins = this.plugins
+    const pluginLength = plugins.length
+    let fullPath: string | undefined
+    let resolvedTree: Root | undefined
+    /** Iterate in reverse, starting with last added plugin */
+    for (let i = pluginLength - 1; i >= 0; i--) {
+      const plugin = plugins[i]!
+      if (!plugin.fileManager) {
+        continue
+      }
+      const fullPath = plugin.fileManager.getPath(filePath, paths, this.opts)
+      if (fullPath) {
+        break
+      }
+    }
+    if (!fullPath) {
+      throw new Error('File not found')
+    }
+    for (let i = pluginLength - 1; i >= 0; i--) {
+      const plugin = plugins[i]!
+      if (!plugin.fileManager) {
+        continue
+      }
+      const tree = plugin.fileManager.getTree(fullPath)
+      if (tree) {
+        resolvedTree = tree
+        break
+      }
+    }
+    if (!resolvedTree) {
+      throw new Error(`File "${path.basename(filePath)}" not supported`)
+    }
+    return resolvedTree
   }
 
   /**

@@ -22,9 +22,7 @@
     "@jesscss/css-parser": "workspace:^2.0.0-alpha.1",
     "chevrotain": "^11.0.3"
   },
-  "devDependencies": {
-    "@less/test-data": "^4.1.0"
-  },
+  "devDependencies": {},
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",
   "bugs": {
