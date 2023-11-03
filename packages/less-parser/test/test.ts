@@ -2,7 +2,7 @@ import * as glob from 'glob'
 import * as fs from 'fs'
 import * as path from 'path'
 import { Parser } from '../src'
-import { invalidLess } from '../../../test/invalid-less'
+import { invalidLess } from '@jesscss/shared'
 
 const testData = path.dirname(require.resolve('@less/test-data'))
 
