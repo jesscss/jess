@@ -24,6 +24,8 @@ export const enum UnitMode {
   STRICT = 1
 }
 
+const { isArray } = Array
+
 export interface ContextOptions {
   /** Hash classes for module output */
   module?: boolean
@@ -110,6 +112,12 @@ export class TreeContext implements TreeContextOptions {
   /** Rules will inherit scope when created */
   scope: Scope
 
+  /**
+   * The plugin that created this tree. It will have first dibs
+   * to resolve any imports.
+   */
+  plugin?: PluginObject
+
   constructor(opts: TreeContextOptions = {}) {
     this.hoistDeclarations = opts.hoistDeclarations ?? false
     this.leakVariablesIntoScope = opts.leakVariablesIntoScope ?? false
@@ -143,6 +151,8 @@ export class Context {
 
   readonly plugins: PluginObject[]
   readonly opts: ContextOptions
+
+  currentTree: TreeContext
 
   /**
    * When getting vars, the current declaration is ommitted
@@ -220,34 +230,68 @@ export class Context {
     return Array(this.indent + 1).join('  ')
   }
 
-  getTree(filePath: string, initialDirectory?: string) {
+  async getTree(filePath: string, initialDirectory?: string, options?: Record<string, any>) {
     initialDirectory ??= path.dirname(filePath)
-    const paths = [initialDirectory].concat(this.opts.paths ?? [])
+    const paths = this.opts.paths ?? []
+    options ??= {}
+    options = { ...this.opts, ...options }
 
     const plugins = this.plugins
     const pluginLength = plugins.length
     let fullPath: string | undefined
-    let resolvedTree: Root | undefined
+    let resolvedTree: Root | false | undefined
+    const triedPaths: string[] = []
+
+    let rootPlugin = this.currentTree?.plugin
+
+    /** If we have a root plugin, try it first */
+    if (rootPlugin?.fileManager) {
+      const result = rootPlugin.fileManager.getPath(filePath, initialDirectory, paths, options)
+      if (isArray(result)) {
+        triedPaths.push(...result)
+      } else {
+        fullPath = result
+      }
+    }
+
     /** Iterate in reverse, starting with last added plugin */
     for (let i = pluginLength - 1; i >= 0; i--) {
       const plugin = plugins[i]!
+      if (plugin === rootPlugin) {
+        continue
+      }
       if (!plugin.fileManager) {
         continue
       }
-      const fullPath = plugin.fileManager.getPath(filePath, paths, this.opts)
-      if (fullPath) {
+      const result = plugin.fileManager.getPath(filePath, initialDirectory, paths, options)
+      if (isArray(result)) {
+        triedPaths.push(...result)
+      } else {
+        fullPath = result
         break
       }
     }
     if (!fullPath) {
       throw new Error('File not found')
     }
+
+    /** If we have a root plugin, try it first */
+    if (rootPlugin?.fileManager) {
+      const result = await rootPlugin.fileManager.getTree(fullPath, options)
+      if (result) {
+        return result
+      }
+    }
+
     for (let i = pluginLength - 1; i >= 0; i--) {
       const plugin = plugins[i]!
+      if (plugin === rootPlugin) {
+        continue
+      }
       if (!plugin.fileManager) {
         continue
       }
-      const tree = plugin.fileManager.getTree(fullPath)
+      const tree = await plugin.fileManager.getTree(fullPath, options)
       if (tree) {
         resolvedTree = tree
         break

@@ -275,6 +275,7 @@ export class CssActionsParser extends AdvancedActionsParser {
     let RulesConstructor = isRoot ? Root : Rules
     let returnRules =
       new RulesConstructor(rules, undefined, rules.length ? this.getLocationFromNodes(rules) : 0, this.context)
+    returnRules._scope = this.context.scope
     returnRules.post = remainder
     return returnRules
   }

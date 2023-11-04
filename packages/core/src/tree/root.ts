@@ -9,11 +9,6 @@ export class Root extends Rules {
   async eval(context: Context) {
     context.opts.mathMode = this.treeContext.mathMode
     context.opts.unitMode = this.treeContext.unitMode
-    /**
-     * We're evaluating asynchronously,
-     * so we need to evaluate rules out of order,
-     * then sort them into the correct order
-     */
     context.depth++
     let node = await super.eval(context)
     let rules = node.value

@@ -125,6 +125,7 @@ export class LessActionsParser extends CssActionsParser {
 
     /** Less extensions */
     for (let [key, value] of Object.entries(productions)) {
+      // @ts-expect-error - `this` is fine
       let rule = value.call(this, T)
       if (key in cssProductions) {
         this.OVERRIDE_RULE(key, rule)

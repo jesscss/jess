@@ -1270,7 +1270,7 @@ export function varReference(this: P, T: TokenMap) {
         ALT: () => {
           let token = $.CONSUME(T.PropertyReference)
           if (!RECORDING_PHASE) {
-            return new Reference(token.image, { type: 'property' }, $.getLocationInfo(token), this.context)
+            return new Reference(token.image.slice(1), { type: 'property' }, $.getLocationInfo(token), this.context)
           }
         }
       },
@@ -1288,7 +1288,7 @@ export function varReference(this: P, T: TokenMap) {
         ALT: () => {
           let token = $.CONSUME(T.AtKeyword)
           if (!RECORDING_PHASE) {
-            return new Reference(token.image, { type: 'variable' }, $.getLocationInfo(token), this.context)
+            return new Reference(token.image.slice(1), { type: 'variable' }, $.getLocationInfo(token), this.context)
           }
         }
       }

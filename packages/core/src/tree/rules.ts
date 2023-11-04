@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/prefer-readonly */
-import { Node, defineType, type LocationInfo, type TreeContext } from './node'
+import { Node, defineType } from './node'
 import { Declaration } from './declaration'
 import {
   BaseDeclaration,
@@ -9,7 +9,7 @@ import {
 import {
   type VarDeclarationOptions
 } from './var-declaration'
-import { Scope } from '../scope'
+import { type Scope } from '../scope'
 import type { Context } from '../context'
 import { isNode } from './util'
 import { type Ruleset } from './ruleset'
@@ -76,20 +76,6 @@ export class Rules extends Node<Node[]> {
   // _first: Node
   // _last: Node
   _scope: Scope
-
-  constructor(
-    value: Node[],
-    options?: undefined,
-    location?: LocationInfo | 0,
-    treeContext?: TreeContext
-  ) {
-    super(value, options, location, treeContext)
-    let scope = this.treeContext.scope
-    Object.defineProperty(this, '_scope', {
-      value: new Scope(scope),
-      writable: true
-    })
-  }
 
   // constructor(value: { scope: }) {
   //   super([])
@@ -523,7 +509,7 @@ export class Rules extends Node<Node[]> {
 const origRules = defineType(Rules, 'Rules')
 type Params = Parameters<typeof origRules>
 export const rules = (
-  value?: Params[0],
+  value?: Node[],
   options?: Params[1],
   location?: Params[2],
   treeContext?: Params[3]

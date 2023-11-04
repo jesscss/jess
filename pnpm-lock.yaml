@@ -198,9 +198,6 @@ importers:
       '@jesscss/core':
         specifier: workspace:2.0.0-alpha.1
         version: link:../core
-      '@jesscss/parser':
-        specifier: workspace:2.0.0-alpha.1
-        version: link:../parser
       '@jesscss/patch-css':
         specifier: workspace:2.0.0-alpha.1
         version: link:../patch-css
@@ -210,6 +207,9 @@ importers:
       cosmiconfig:
         specifier: ^8.3.6
         version: 8.3.6(typescript@5.1.6)
+      jess-plugin-less:
+        specifier: workspace:2.0.0-alpha.1
+        version: link:../jess-plugin-less
       lodash-es:
         specifier: ^4.17.21
         version: 4.17.21
@@ -247,13 +247,6 @@ importers:
       '@jesscss/less-parser':
         specifier: workspace:^2.0.0-alpha.1
         version: link:../less-parser
-      chevrotain:
-        specifier: ^11.0.3
-        version: 11.0.3
-    devDependencies:
-      jess-plugin:
-        specifier: workspace:^2.0.0-alpha.1
-        version: link:../jess-plugin
 
   packages/jess-plugin-scss:
     dependencies:

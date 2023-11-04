@@ -111,6 +111,7 @@ export type ScopeFilter = (
  * This should be extended by each language
  */
 export class Scope {
+  static allScopes: Scope[] = []
   /**
    * Includes vars but also
    * imported functions, JS identifiers, etc
@@ -142,6 +143,7 @@ export class Scope {
   static cachedKeys = new Map<string, string>()
 
   constructor(parent?: Scope) {
+    Scope.allScopes.push(this)
     this._parent = parent
     /**
      * Assign to parent entries at first.
@@ -176,17 +178,21 @@ export class Scope {
       /** Convert dash-case to camelCase, as well as leading '#' */
       .replace(/(^_)|(?:[#\-_])(.)/g, (_, p1 = '', p2 = '') => `${p1}${p2.toUpperCase()}`)
 
-    /**
-     * Quick way to identify a valid JS identifier -
-     * try to create a variable with it.
-     *
-     * @see https://stackoverflow.com/questions/2008279/validate-a-javascript-function-name
-     */
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new, no-new-func
-      new Function(`let ${normalKey}`)
-    } catch (err) {
-      throw new SyntaxError(`"${key}" is not a valid name, as it is not exportable`)
+    if (RESERVED.includes(normalKey)) {
+      logger.warn(`"${normalKey}" is a reserved identifier and is not exportable`)
+    } else {
+      /**
+       * Quick way to identify a valid JS identifier -
+       * try to create a variable with it.
+       *
+       * @see https://stackoverflow.com/questions/2008279/validate-a-javascript-function-name
+       */
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new, no-new-func
+        new Function(`let ${normalKey}`)
+      } catch (err) {
+        logger.warn(`"${key}" is not exportable`)
+      }
     }
 
     let lookupKey = Scope.entryKeys.get(normalKey)
@@ -300,9 +306,6 @@ export class Scope {
       normalKey = key
     } else {
       normalKey = this.normalizeKey(key)
-      if (RESERVED.includes(normalKey)) {
-        throw new SyntaxError(`"${normalKey}" is a reserved identifier`)
-      }
     }
     Scope.entryKeys.set(normalKey, key)
 
