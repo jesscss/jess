@@ -112,6 +112,7 @@ export type ScopeFilter = (
  */
 export class Scope {
   static allScopes: Scope[] = []
+  id = Scope.allScopes.length
   /**
    * Includes vars but also
    * imported functions, JS identifiers, etc
@@ -152,15 +153,15 @@ export class Scope {
      * If no keys are ever assigned, we can just lookup
      * keys from the parent scope.
      */
-    if (parent) {
-      this._vars = parent._vars
-      this._props = parent._props
-      this._mixins = parent._mixins
-    } else {
-      this._vars = Object.create(null)
-      this._props = Object.create(null)
-      this._mixins = Object.create(null)
-    }
+    // if (parent) {
+    //   this._vars = parent._vars
+    //   this._props = parent._props
+    //   this._mixins = parent._mixins
+    // } else {
+    //   this._vars = Object.create(null)
+    //   this._props = Object.create(null)
+    //   this._mixins = Object.create(null)
+    // }
   }
 
   /** Normalizes keys as valid JavaScript identifiers. */
@@ -209,14 +210,18 @@ export class Scope {
    * Lazily create prototype chains
    * for improved performance.
    */
-  getEntries(key: '_vars' | '_mixins'): ScopeEntryMap
-  getEntries(key: '_props'): PropMap
-  getEntries(key: '_vars' | '_props' | '_mixins'): ScopeEntryMap | PropMap {
-    let currentEntries = this[key]
-    if (currentEntries === this._parent?.[key]) {
-      let entries = Object.create(this._parent[key])
-      this[key] = entries
-      return entries
+  getEntries(key: 'vars' | 'mixins'): ScopeEntryMap
+  getEntries(key: 'props'): PropMap
+  getEntries(key: 'vars' | 'props' | 'mixins'): ScopeEntryMap | PropMap {
+    let privateKey = `_${key}`
+    let currentEntries = this[privateKey]
+    if (currentEntries) {
+      return currentEntries
+    }
+    if (this._parent) {
+      currentEntries = this[privateKey] = Object.create(this._parent[key])
+    } else {
+      currentEntries = this[privateKey] = Object.create(null)
     }
     return currentEntries
   }
@@ -231,10 +236,10 @@ export class Scope {
       this.setProp(key, props[key]!)
     }
     if (leakVariablesIntoScope) {
-      let leakVariables = (lookupKey: '_vars' | '_mixins') => {
+      let leakVariables = (lookupKey: 'vars' | 'mixins') => {
         let importedVars = scope[lookupKey]
         let localVars = this[lookupKey]
-        let setter = lookupKey === '_vars' ? this.setVar : this.setMixin
+        let setter = lookupKey === 'vars' ? this.setVar : this.setMixin
         let keys = Object.getOwnPropertyNames(importedVars)
         let keyLength = keys.length
         for (let i = 0; i < keyLength; i++) {
@@ -251,21 +256,21 @@ export class Scope {
           }
         }
       }
-      leakVariables('_vars')
-      leakVariables('_mixins')
+      leakVariables('vars')
+      leakVariables('mixins')
     }
   }
 
   get mixins(): ScopeEntryMap {
-    return this.getEntries('_mixins')
+    return this.getEntries('mixins')
   }
 
   get vars(): ScopeEntryMap {
-    return this.getEntries('_vars')
+    return this.getEntries('vars')
   }
 
   get props(): PropMap {
-    return this.getEntries('_props')
+    return this.getEntries('props')
   }
 
   setProp(key: string, value: Declaration | Declaration[]) {
@@ -358,18 +363,18 @@ export class Scope {
   }
 
   getVar(key: string, options?: GetterOptions) {
-    return this._getBase('_vars', key, options)
+    return this._getBase('vars', key, options)
   }
 
   getMixin(key: string, options?: GetterOptions) {
-    let mixins = this._getBase('_mixins', key, options)
+    let mixins = this._getBase('mixins', key, options)
     if (mixins) {
       return getFunctionFromMixins(mixins)
     }
   }
 
   getProp(key: string, options: GetterOptions = {}) {
-    let props: Declaration | Declaration[] = this._getBase('_props', key, {
+    let props: Declaration | Declaration[] = this._getBase('props', key, {
       filter(value: Declaration) {
         /**
          * Find all declarations, in case we need to merge
@@ -448,9 +453,9 @@ export class Scope {
    * We can pass in a filter to narrow the
    * entries.
    */
-  private _getBase(collection: '_mixins', baseKey: string, options?: GetterOptions): MixinEntry | MixinEntry[] | undefined
-  private _getBase(collection: '_vars' | '_props', baseKey: string, options?: GetterOptions): any
-  private _getBase(collection: '_vars' | '_props' | '_mixins', baseKey: string, options: GetterOptions = {}): any {
+  private _getBase(collection: 'mixins', baseKey: string, options?: GetterOptions): MixinEntry | MixinEntry[] | undefined
+  private _getBase(collection: 'vars' | 'props', baseKey: string, options?: GetterOptions): any
+  private _getBase(collection: 'vars' | 'props' | 'mixins', baseKey: string, options: GetterOptions = {}): any {
     let NONE = Scope.NONE
     let key = this.normalizeKey(baseKey)
     let {
@@ -478,7 +483,7 @@ export class Scope {
      * In Less / Jess, mixins are defined / merged per scope
      * We don't climb the prototype chain, and they aren't filtered.
      */
-    if (collection === '_mixins') {
+    if (collection === 'mixins') {
       let entry = current[key]
       if (!entry) {
         /** Needed? */
@@ -498,7 +503,7 @@ export class Scope {
         }
         throw new ReferenceError(`"${baseKey}" is not defined`)
       }
-      let entryValue: unknown = collection === '_vars'
+      let entryValue: unknown = collection === 'vars'
         ? (entry as unknown as ScopeEntryMap).value
         : entry
       let lastResult: FilterResult

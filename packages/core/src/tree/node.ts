@@ -134,7 +134,7 @@ export abstract class Node<
   M extends NodeTypeMap = NodeMapType<T>
 > {
   location: LocationInfo | []
-  readonly treeContext: TreeContext
+  _treeContext: TreeContext | undefined
 
   _options: Partial<O & AllNodeOptions> | undefined
 
@@ -183,11 +183,24 @@ export abstract class Node<
   ) {
     this.data = new Map(isNodeMap(value) ? value : [['value', value]]) as TypeMap<M>
     this.location = location || []
-    Object.defineProperty(this, 'treeContext', {
-      value: treeContext ?? new TreeContext(),
+    Object.defineProperty(this, '_treeContext', {
+      value: treeContext,
       writable: true
     })
+    if (treeContext) {
+      this.walkNodes(n => {
+        n._treeContext = treeContext
+      }, true)
+    }
     this._options = options
+  }
+
+  get treeContext() {
+    let context = this._treeContext
+    if (!context) {
+      context = this._treeContext = new TreeContext()
+    }
+    return context
   }
 
   get options(): Partial<O & AllNodeOptions> {
@@ -289,7 +302,7 @@ export abstract class Node<
   /**
    * Fire a function for each Node in the tree, recursively
    */
-  walkNodes(func: (n: Node) => void) {
+  walkNodes(func: (n: Node) => void, shallow?: boolean) {
     this.data.forEach(nodeVal => {
       /** Process Node arrays only */
       if (Array.isArray(nodeVal)) {
@@ -297,12 +310,16 @@ export abstract class Node<
           let node = nodeVal[i]
           if (node instanceof Node) {
             func(node)
-            node.walkNodes(func)
+            if (!shallow) {
+              node.walkNodes(func)
+            }
           }
         }
       } else if (nodeVal instanceof Node) {
         func(nodeVal)
-        nodeVal.walkNodes(func)
+        if (!shallow) {
+          nodeVal.walkNodes(func)
+        }
       }
     })
   }
@@ -385,7 +402,7 @@ export abstract class Node<
   /** Override normally readonly props to make them inheritable */
   inherit(node: Node) {
     (this as Writable<this>).location = node.location
-    ;(this as Writable<this>).treeContext = node.treeContext
+    ;(this as Writable<this>)._treeContext = node._treeContext
     this.evaluated = node.evaluated
     this.pre = node.pre
     this.post = node.post

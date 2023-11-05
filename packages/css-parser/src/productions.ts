@@ -2,7 +2,7 @@
 import type { CssActionsParser, TokenMap, RuleContext } from './cssActionsParser'
 import { EMPTY_ALT, type IToken, type IOrAlt, type OrMethodOpts, tokenMatcher } from 'chevrotain'
 import {
-  TreeContext,
+  type TreeContext,
   Node,
   type LocationInfo,
   type AssignmentType,
@@ -52,7 +52,8 @@ export function stylesheet(this: C, T: TokenMap) {
     let context: TreeContext
     let initialScope: Scope
     if (!RECORDING_PHASE) {
-      context = this.context = new TreeContext()
+      /** Auto-creates tree context */
+      context = this.context
       initialScope = context.scope
     }
 

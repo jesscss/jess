@@ -87,7 +87,7 @@ export class Ruleset extends Node<RulesetValue> {
       rule.selector = sels
 
       context.frames.unshift(rule)
-      rule.value = await this.rules.eval(context)
+      rule.rules = await this.rules.eval(context)
       context.frames.shift()
 
       /** Remove empty rules */

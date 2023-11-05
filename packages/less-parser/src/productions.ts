@@ -18,7 +18,7 @@ import {
 } from '@jesscss/css-parser'
 
 import {
-  TreeContext,
+  type TreeContext,
   type Scope,
   Node,
   Block,
@@ -69,7 +69,8 @@ export function stylesheet(this: P, T: TokenMap) {
     let context: TreeContext
     let initialScope: Scope
     if (!RECORDING_PHASE) {
-      context = this.context = new TreeContext()
+      /** Auto-creates tree context */
+      context = this.context
       initialScope = context.scope
     }
 
@@ -151,25 +152,25 @@ export function declarationList(this: P, T: TokenMap) {
 let interpolatedRegex = /([$@]){([^}]+)}/g
 let charPlaceholder = String.fromCharCode(0)
 
+const getInterpolated = (name: string, location: LocationInfo, context: TreeContext): Interpolated => {
+  let nodes: Node[] = []
+  let result: RegExpExecArray | null
+
+  let outputName = name
+
+  while (result = interpolatedRegex.exec(name)) {
+    let [match, propOrVar, value] = result
+    outputName = outputName.replace(match, charPlaceholder)
+    nodes.push(new Reference(value!, { type: propOrVar === '$' ? 'property' : 'variable' }))
+  }
+  return new Interpolated([
+    ['value', outputName],
+    ['replacements', nodes]
+  ], undefined, location, context)
+}
+
 export function declaration(this: P, T: TokenMap) {
   const $ = this
-
-  const getInterpolated = (name: string, location: LocationInfo): Interpolated => {
-    let nodes: Node[] = []
-    let result: RegExpExecArray | null
-
-    let outputName = name
-
-    while (result = interpolatedRegex.exec(name)) {
-      let [match, propOrVar, value] = result
-      outputName = outputName.replace(match, charPlaceholder)
-      nodes.push(new Reference(value!, { type: propOrVar === '$' ? 'property' : 'variable' }))
-    }
-    return new Interpolated([
-      ['value', outputName],
-      ['replacements', nodes]
-    ], undefined, location, this.context)
-  }
 
   let ruleAlt = [
     {
@@ -195,7 +196,7 @@ export function declaration(this: P, T: TokenMap) {
           let nameNode: Name
           let nameValue = name!.image
           if (nameValue.includes('@') || nameValue.includes('$')) {
-            nameNode = getInterpolated(nameValue, $.getLocationInfo(name!))
+            nameNode = getInterpolated(nameValue, $.getLocationInfo(name!), this.context)
           } else {
             nameNode = $.wrap(new General(name!.image, { type: 'Name' }, $.getLocationInfo(name!), this.context), true)
           }
@@ -227,7 +228,7 @@ export function declaration(this: P, T: TokenMap) {
           let nameNode: Name
           let nameValue = name.image
           if (nameValue.includes('@') || nameValue.includes('$')) {
-            nameNode = getInterpolated(nameValue, $.getLocationInfo(name))
+            nameNode = getInterpolated(nameValue, $.getLocationInfo(name), this.context)
           } else {
             nameNode = $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true)
           }
@@ -682,6 +683,7 @@ export function importAtRule(this: P, T: TokenMap) {
   }
 }
 
+/* This is for variable variables (e.g. `@id-@num`) */
 const getInterpolatedOrString = (name: string): Interpolated | string => {
   let nextPos = name.indexOf('@', 1)
   if (nextPos === -1) {
@@ -1805,7 +1807,27 @@ export function mixinName(this: P, T: TokenMap) {
   ]
 
   /** e.g. .mixin, #mixin */
-  return () => $.OR(nameAlt)
+  return (asReference?: boolean) => {
+    let name = $.OR(nameAlt)
+    if (!$.RECORDING_PHASE) {
+      let nameNode: Node
+      let nameValue = name.image
+      let location = $.getLocationInfo(name)
+      if (nameValue.includes('@') || nameValue.includes('$')) {
+        nameNode = getInterpolated(nameValue, location, this.context)
+        if (asReference) {
+          nameNode = new Reference(nameNode as Interpolated, { type: 'mixin' }, location, this.context)
+        }
+      } else {
+        if (asReference) {
+          nameNode = new Reference(nameValue, { type: 'mixin' }, location, this.context)
+        } else {
+          nameNode = $.wrap(new General(nameValue, { type: 'Name' }, $.getLocationInfo(name), this.context), true)
+        }
+      }
+      return nameNode
+    }
+  }
 }
 
 /** @todo - should these names be Jess-normalized when saved? */
@@ -1814,30 +1836,25 @@ export function mixinReference(this: P, T: TokenMap) {
 
   return () => {
     let RECORDING_PHASE = $.RECORDING_PHASE
-    let left = $.SUBRULE($.mixinName)
-    let leftNode: Node
-    if (!RECORDING_PHASE) {
-      let location = $.getLocationInfo(left)
-      leftNode = new Reference(left.image, { type: 'mixin' }, location, this.context)
-    }
+    let leftNode = $.SUBRULE($.mixinName, { ARGS: [true] })
     $.MANY(() => {
       $.OPTION(() => $.CONSUME(T.Gt))
-      let right = $.SUBRULE2($.mixinName)
+      let rightNode = $.SUBRULE2($.mixinName, { ARGS: [true] })
       if (!RECORDING_PHASE) {
-        let [,,, endOffset, endLine, endColumn] = leftNode.location
-        let [startOffset, startLine, startColumn] = $.getLocationInfo(right)
+        let [startOffset, startLine, startColumn] = leftNode.location
+        let [,,, endOffset, endLine, endColumn] = rightNode.location
         leftNode = new Lookup(
           [
             ['value', new Call([['name', leftNode]])],
-            ['key', new Reference(right.image, { type: 'mixin' }, $.getLocationInfo(right), this.context)]
+            ['key', rightNode]
           ],
           undefined,
-          [startOffset, startLine, startColumn, endOffset!, endLine!, endColumn!],
+          [startOffset, startLine, startColumn, endOffset, endLine, endColumn],
           this.context
         )
       }
     })
-    return leftNode!
+    return leftNode
   }
 }
 

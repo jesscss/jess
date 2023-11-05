@@ -1,4 +1,4 @@
-import { decl, any } from '../../tree'
+import { decl, any, AssignmentType } from '../../tree'
 import { Scope } from '../index'
 import { logger } from '../../logger'
 
@@ -90,9 +90,9 @@ describe('Scope', async () => {
     })
 
     it('can merge child scope into parent scope', () => {
-      scope.setProp('foo', decl({ name: 'foo', value: any('one') }, { merge: 'list' }))
+      scope.setProp('foo', decl({ name: 'foo', value: any('one') }, { assign: AssignmentType.MergeList }))
       let child = new Scope()
-      child.setProp('foo', decl({ name: 'foo', value: any('two') }, { merge: 'list' }))
+      child.setProp('foo', decl({ name: 'foo', value: any('two') }, { assign: AssignmentType.MergeList }))
       scope.merge(child)
       expect(`${scope.getProp('foo')}`).toEqual('foo: one, two;')
     })
