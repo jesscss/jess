@@ -213,7 +213,7 @@ export class Scope {
   getEntries(key: 'vars' | 'mixins'): ScopeEntryMap
   getEntries(key: 'props'): PropMap
   getEntries(key: 'vars' | 'props' | 'mixins'): ScopeEntryMap | PropMap {
-    let privateKey = `_${key}`
+    let privateKey: '_vars' | '_props' | '_mixins' = `_${key}`
     let currentEntries = this[privateKey]
     if (currentEntries) {
       return currentEntries
@@ -712,7 +712,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
        * a scope by the tree context, so we can use that to
        * create a new scope.
        */
-      let scope = new Scope(rules._scope)
+      let scope = new Scope(rules.scope)
 
       /** Now we need to add our parameters, if any */
       let params = candidate.params
@@ -740,7 +740,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       }
       if (passes) {
         let newRules = rules.clone()
-        newRules._scope = scope
+        newRules.scope = scope
         newRules = await newRules.eval(thisContext)
         outputRules.push([newRules, i])
       }
@@ -748,11 +748,12 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     }
     /**
      * Now that we have output rules, we sort them by
-     * their original order and wrap them in a final ruleset
+     * their original order
      */
-    let output = new Rules(
-      outputRules.sort((a, b) => a[1] - b[1]).map(r => r[0])
-    )
+    let rulesArr = outputRules.sort((a, b) => a[1] - b[1]).map(r => r[0])
+    /** Create a rules wrapper */
+    let output = new Rules([])
+    /** Now push all rules into the rules value */
     if (this instanceof Context) {
       return output
     } else {

@@ -9,7 +9,7 @@ import {
 import {
   type VarDeclarationOptions
 } from './var-declaration'
-import { type Scope } from '../scope'
+import { Scope } from '../scope'
 import type { Context } from '../context'
 import { isNode } from './util'
 import { type Ruleset } from './ruleset'
@@ -75,7 +75,19 @@ export class Rules extends Node<Node[]> {
   // rootRules: Node[] = []
   // _first: Node
   // _last: Node
-  _scope: Scope
+  private _scope: Scope
+
+  get scope() {
+    let scope = this._scope
+    if (!scope) {
+      scope = this._scope = new Scope()
+    }
+    return this._scope
+  }
+
+  set scope(s: Scope) {
+    this._scope = s
+  }
 
   // constructor(value: { scope: }) {
   //   super([])
@@ -103,16 +115,16 @@ export class Rules extends Node<Node[]> {
   async eval(context: Context): Promise<this> {
     return await this.evalIfNot(context, async () => {
       let inheritedScope = context.scope
-      context.scope = this._scope
+      context.scope = this.scope
       let { hoistDeclarations, leakVariablesIntoScope } = this.treeContext
-      let ruleset = this.clone()
-      ruleset._scope = this._scope
+      let rules = this.clone()
+      rules.scope = this.scope
       /**
        * Make a shallow copy of rules.
        * This is because we're going to replace
        * each item in the array when evaluating.
        */
-      let rules = ruleset.value = [...this.value]
+      let ruleValues = rules.value = [...this.value]
       let evalQueue: QueueMap = {}
 
       /**
@@ -121,7 +133,7 @@ export class Rules extends Node<Node[]> {
        * without mutating arrays.
        */
       // let prev: Node | undefined
-      let nodeLength = rules.length
+      let nodeLength = ruleValues.length
       /** Iterate in reverse order, to assign the _next node */
       // for (let i = nodeLength - 1; i >= 0; i--) {
       //   const n = value[i]
@@ -153,7 +165,7 @@ export class Rules extends Node<Node[]> {
        *   3. everything else
        */
       for (let i = 0; i < nodeLength; i++) {
-        let n = rules[i]!
+        let n = ruleValues[i]!
 
         if (n instanceof BaseDeclaration) {
           if (hoistDeclarations) {
@@ -212,7 +224,7 @@ export class Rules extends Node<Node[]> {
             if (!decl.allowRuleRoot) {
               decl.visible = false
             }
-            rules[pos] = decl
+            ruleValues[pos] = decl
             if (isNode(decl, 'Mixin')) {
               this._scope.setMixin(ident, decl, decl.options)
             } else if (isNode(decl, ['VarDeclaration', 'Func'])) {
@@ -237,7 +249,7 @@ export class Rules extends Node<Node[]> {
               let evald = await node.value.eval(context)
               context.declarationScope = undefined
               if (evald instanceof Nil) {
-                rules[pos] = evald
+                ruleValues[pos] = evald
               } else {
                 node.value = evald
               }
@@ -258,7 +270,7 @@ export class Rules extends Node<Node[]> {
               if (!result.allowRuleRoot) {
                 result.visible = false
               }
-              rules[pos] = result
+              ruleValues[pos] = result
 
               /** Set references linearly */
               if (!hoistDeclarations && result instanceof Declaration) {
@@ -352,9 +364,9 @@ export class Rules extends Node<Node[]> {
             ? rule.rules?.rootRules
             : rule.rootRules
         if (importedRoots) {
-          let { rootRules } = ruleset
+          let { rootRules } = rules
           if (!rootRules) {
-            ruleset.rootRules = importedRoots
+            rules.rootRules = importedRoots
           } else {
             rootRules.push(...importedRoots)
           }
@@ -365,13 +377,13 @@ export class Rules extends Node<Node[]> {
        */
       let tryAddToRoot = (rule: Ruleset | AtRule) => {
         if (
-          ruleset.type !== 'Root' &&
+          rules.type !== 'Root' &&
           (rule.options?.hoistToRoot || context.opts.collapseNesting)
         ) {
-          if (!ruleset.rootRules) {
-            ruleset.rootRules = [rule]
+          if (!rules.rootRules) {
+            rules.rootRules = [rule]
           } else {
-            ruleset.rootRules.push(rule)
+            rules.rootRules.push(rule)
           }
         } else {
           newRules.push(rule)
@@ -392,11 +404,11 @@ export class Rules extends Node<Node[]> {
           }
         })
       }
-      walkRules(rules)
-      ruleset.value = newRules
+      walkRules(ruleValues)
+      rules.value = newRules
       /** Restore scope */
       context.scope = inheritedScope
-      return ruleset
+      return rules
     })
   }
 
