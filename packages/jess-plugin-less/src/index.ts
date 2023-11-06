@@ -5,7 +5,10 @@ import {
   type FileManagerOptions,
   TreeContext,
   MathMode,
-  UnitMode
+  UnitMode,
+  JessError,
+  logger,
+  getErrorFromParser
 } from '@jesscss/core'
 import { Parser } from '@jesscss/less-parser'
 
@@ -20,7 +23,7 @@ export class LessFileManager extends FileManager<LessFileManagerOptions> {
   parser = new Parser()
 
   async _getTree(fullPath: string, options: Record<string, any>) {
-    const file = await this.loadFile(fullPath)
+    const source = await this.loadFile(fullPath)
     /**
      * @todo - handle / pretty print errors
      * @todo - add contents to Jess error handler
@@ -32,9 +35,14 @@ export class LessFileManager extends FileManager<LessFileManagerOptions> {
       mathMode: this.opts.mathMode ?? MathMode.PARENS_DIVISION,
       unitMode: this.opts.unitMode ?? UnitMode.LOOSE
     })
-    const { tree, contents } = this.parser.parse(file, 'stylesheet', { context })
-    tree.treeContext.plugin = this.opts.plugin
-    return tree
+    const { tree, errors, lexerResult } = this.parser.parse(source, 'stylesheet', { context })
+    if (errors.length || lexerResult.errors.length) {
+      const error = (lexerResult.errors[0] ?? errors[0])!
+      throw getErrorFromParser(error, fullPath, source)
+    } else {
+      tree.treeContext.plugin = this.opts.plugin
+      return tree
+    }
   }
 }
 

@@ -354,8 +354,8 @@ export class Context {
     if (mathMode === MathMode.ALWAYS || this.canOperate) {
       return true
     }
-    if (mathMode === MathMode.PARENS_DIVISION && op === '/') {
-      return false
+    if (mathMode === MathMode.PARENS_DIVISION) {
+      return op !== '/'
     }
     if (mathMode === MathMode.PARENS) {
       return false

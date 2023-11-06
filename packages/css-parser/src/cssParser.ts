@@ -10,7 +10,6 @@ export interface IParseResult<T extends Node = Node> {
   lexerResult: ILexingResult
   errors: IRecognitionException[]
   tree: T
-  contents?: string[]
 }
 
 const errorMessageProvider = new CssErrorMessageProvider()
@@ -62,15 +61,9 @@ export class CssParser {
     const lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
     const tree = parser[rule]() as Node
-    let contents: string[] | undefined
-
-    if (!lexerResult.errors.length && !parser.errors.length) {
-      contents = text.split('\n')
-    }
 
     return {
       tree,
-      contents,
       lexerResult,
       errors: parser.errors
     }

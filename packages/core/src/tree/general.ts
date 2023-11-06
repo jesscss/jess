@@ -20,9 +20,12 @@ export class General<
   T extends string = GeneralNodeType
 > extends Node<string, GeneralOptions<T>> {
   async eval() {
-    let node = this.clone()
-    node.evaluated = true
-    return node
+    if (!this.evaluated) {
+      let node = this.clone()
+      node.evaluated = true
+      return node
+    }
+    return this
   }
 }
 defineType(General, 'General')

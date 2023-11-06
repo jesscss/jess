@@ -39,11 +39,14 @@ export class Operation extends Node<OperationValue, OperationOptions> {
       if (context.shouldOperate(op)) {
         left = await left.eval(context)
         right = await right.eval(context)
-        return left.operate(right, op, context)
+        const result = left.operate(right, op, context)
+        /** Attach outer whitespace and comments */
+        result.pre = left.pre
+        result.post = right.post
+        result.evaluated = true
+        return result
       }
-      let node = this.clone()
-      node.evaluated = true
-      return node
+      return this.clone()
     })
   }
 }

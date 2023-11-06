@@ -3,7 +3,9 @@ import { getConfig } from './config'
 import {
   Context,
   type TreeContextOptions,
-  type PluginObject
+  type PluginObject,
+  type JessError,
+  logger
 } from '@jesscss/core'
 import merge from 'lodash-es/merge'
 import lessPlugin from 'jess-plugin-less'
@@ -38,9 +40,14 @@ export class JessCompiler {
     }
     const context = new Context(rest, [...pluginMap.values()])
     // eslint-disable-next-line @typescript-eslint/await-thenable
-    const tree = await context.getTree(filePath, process.cwd())
-    const evald = await tree.eval(context)
-    const css = evald.toString()
-    return css
+    try {
+      const tree = await context.getTree(filePath, process.cwd())
+      const evald = await tree.eval(context)
+      const css = evald.toString()
+      return css
+    } catch (err: any) {
+      logger.error(err.toString())
+      throw err
+    }
   }
 }

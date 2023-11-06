@@ -53,12 +53,6 @@ export class Parser {
     // @ts-expect-error - This is fine
     const tree = parser[rule](...args)
 
-    let contents: string[] | undefined
-
-    if (!lexerResult.errors.length && !parser.errors.length) {
-      contents = text.split('\n')
-    }
-
-    return { tree, contents, lexerResult, errors: parser.errors }
+    return { tree, lexerResult, errors: parser.errors }
   }
 }

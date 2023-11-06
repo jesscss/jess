@@ -8,7 +8,8 @@ import {
   type RawTokenConfig,
   type RawToken,
   type TokenNames,
-  type CssTokenType
+  type CssTokenType,
+  SKIPPED_LABEL
 } from '@jesscss/css-parser'
 import type { WritableDeep } from 'type-fest'
 
@@ -74,7 +75,7 @@ function $preBuildTokens() {
       {
         name: 'LineComment',
         pattern: '{{lineComment}}',
-        group: 'Skipped'
+        label: SKIPPED_LABEL
       },
       { name: 'PlusAssign', pattern: '\\+{{whitespace}}*:', categories: ['BlockMarker', 'Assign'] },
       {

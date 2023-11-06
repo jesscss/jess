@@ -54,6 +54,12 @@ function getNodeType(value: any): Node {
  */
 export function cast(value: any): Node {
   const node = getNodeType(value)
-  node.evaluated = true
+  /**
+   * If converting from a primitive, then
+   * the value should be considered evaluated.
+   */
+  if (!(value instanceof Node)) {
+    node.evaluated = true
+  }
   return node
 }

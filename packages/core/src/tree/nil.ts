@@ -13,7 +13,7 @@ import {
  * which need dynamically-linked nodes
  */
 export class Nil extends Node<undefined> {
-  evaluated: true = true
+  _evaluated: true = true
 
   constructor(
     value?: any,

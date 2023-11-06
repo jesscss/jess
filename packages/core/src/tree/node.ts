@@ -153,7 +153,16 @@ export abstract class Node<
 
   visible = true
 
-  evaluated: boolean
+  _evaluated: boolean
+
+  get evaluated() {
+    return this._evaluated
+  }
+
+  set evaluated(e: boolean) {
+    this._evaluated = e
+  }
+
   allowRoot: boolean
   allowRuleRoot: boolean
 
@@ -392,8 +401,10 @@ export abstract class Node<
   protected async evalIfNot<T extends Node = Node>(context: Context, func: () => T | Promise<T>): Promise<T> {
     if (!this.evaluated) {
       let node = await func()
-      node.inherit(this)
-      node.evaluated = true
+      if (!node.evaluated) {
+        node.inherit(this)
+        node.evaluated = true
+      }
       return node
     }
     return this as unknown as T
