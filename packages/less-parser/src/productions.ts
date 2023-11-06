@@ -64,13 +64,16 @@ export function stylesheet(this: P, T: TokenMap) {
   // stylesheet
   //   : CHARSET? main EOF
   //   ;
-  return () => {
+  return (options: Record<string, any> = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE
     let context: TreeContext
     let initialScope: Scope
     if (!RECORDING_PHASE) {
-      /** Auto-creates tree context */
-      context = this.context
+      if (options.context) {
+        context = this._context = options.context
+      } else {
+        context = this.context
+      }
       initialScope = context.scope
     }
 
@@ -1480,6 +1483,55 @@ export function value(this: P, T: TokenMap) {
       return $.wrap(node)
     }
   }
+}
+
+export function string(this: P, T: TokenMap) {
+  const $ = this
+
+  let stringAlt = [
+    {
+      ALT: () => {
+        $.startRule()
+        let quote = $.CONSUME(T.SingleQuoteStart)
+        let contents: IToken | undefined
+        $.OPTION(() => contents = $.CONSUME(T.SingleQuoteStringContents))
+        $.CONSUME(T.SingleQuoteEnd)
+        if (!$.RECORDING_PHASE) {
+          let quoteImg = quote.image
+          let escaped = false
+          if (quoteImg.startsWith('~')) {
+            escaped = true
+            quoteImg = quoteImg.slice(1)
+          }
+          let location = $.endRule()
+          let value = contents?.image
+          return new Quoted(new General(value ?? ''), { quote: quoteImg as '"' | "'", escaped }, location, this.context)
+        }
+      }
+    },
+    {
+      ALT: () => {
+        $.startRule()
+        let quote = $.CONSUME(T.DoubleQuoteStart)
+        let contents: IToken | undefined
+        $.OPTION2(() => contents = $.CONSUME(T.DoubleQuoteStringContents))
+        $.CONSUME(T.DoubleQuoteEnd)
+        if (!$.RECORDING_PHASE) {
+          let quoteImg = quote.image
+          let escaped = false
+          if (quoteImg.startsWith('~')) {
+            escaped = true
+            quoteImg = quoteImg.slice(1)
+          }
+          let location = $.endRule()
+          let value = contents?.image
+          return new Quoted(new General(value ?? ''), { quote: quoteImg as '"' | "'", escaped }, location, this.context)
+        }
+      }
+    }
+  ]
+
+  return () => $.OR(stringAlt)
 }
 
 export function mathValue(this: P, T: TokenMap) {

@@ -752,7 +752,11 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      */
     let rulesArr = outputRules.sort((a, b) => a[1] - b[1]).map(r => r[0])
     /** Create a rules wrapper */
-    let output = new Rules([])
+    let output = new Rules(rulesArr)
+    /** Assign vars to new scope */
+    rulesArr.forEach(r => {
+      output.scope.merge(r.scope)
+    })
     /** Now push all rules into the rules value */
     if (this instanceof Context) {
       return output

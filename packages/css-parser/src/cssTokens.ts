@@ -17,6 +17,8 @@ import { SKIPPED_LABEL } from './advancedCstParser'
 const fragments = () => [
   ['newline', '\\n|\\r\\n?|\\f'],
   ['whitespace', '[ ]|\\t|{{newline}}'],
+  /** @todo - use in order to attach newlines to node ends? */
+  ['sepws', '(?:[ ]|\\t)*{{newline}}|(?:[ ]|\\t)+'],
   ['ws', '{{whitespace}}+'],
   ['comment', '\\/\\*[^*]*\\*+(?:[^/*][^*]*\\*+)*\\/'],
   ['hex', '[\\da-fA-F]'],

@@ -63,7 +63,7 @@ export interface TreeContextOptions extends ContextOptions {
    * For instances where a new tree needs to inherit from scope
    * (like Less / SCSS `@import` rule)
    */
-  scope?: Scope
+  parentScope?: Scope
 }
 
 const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('')
@@ -123,7 +123,7 @@ export class TreeContext implements TreeContextOptions {
     this.leakVariablesIntoScope = opts.leakVariablesIntoScope ?? false
     this.mathMode = opts.mathMode ?? MathMode.PARENS_DIVISION
     this.unitMode = opts.unitMode ?? UnitMode.STRICT
-    this.scope = opts.scope ?? new Scope()
+    this.scope = new Scope(opts.parentScope)
   }
 }
 let code1 = 0

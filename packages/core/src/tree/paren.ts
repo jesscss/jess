@@ -1,12 +1,18 @@
 import { type Context } from '../context'
 import { Bool } from './bool'
 import { Expression } from './expression'
+import { Operation } from './operation'
 import { Node, defineType } from './node'
+import { Dimension } from './dimension'
 // import type { Context } from '../context'
 // import type { OutputCollector } from '../output'
 
 export type ParenOptions = {
   escaped: boolean
+}
+
+const isOpOrExpression = (node: Node): node is Operation | Expression => {
+  return node instanceof Operation || node instanceof Expression
 }
 
 /**
@@ -25,13 +31,16 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       context.canOperate = true
       let { value } = this
       if (value) {
-        let isExpression = value instanceof Expression
+        let isOp = isOpOrExpression(value)
         value = await value.eval(context)
-        if (value instanceof Bool) {
+        while (value instanceof Paren && value.value) {
+          value = value.value
+        }
+        if (value instanceof Bool || value instanceof Dimension) {
           return value
         }
         context.canOperate = canOperate
-        if (isExpression && !(value instanceof Expression)) {
+        if (isOp && !isOpOrExpression(value)) {
           return value
         }
       }

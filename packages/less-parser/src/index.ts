@@ -51,7 +51,7 @@ export class Parser {
     const lexedTokens: IToken[] = lexerResult.tokens
     parser.input = lexedTokens
     // @ts-expect-error - This is fine
-    const tree = parser[rule](args)
+    const tree = parser[rule](...args)
 
     let contents: string[] | undefined
 

@@ -54,7 +54,7 @@ export class Lookup extends Node<LookupValue> {
     value = await value.eval(context)
 
     if (value instanceof Rules) {
-      context.scope = value._scope
+      context.scope = value.scope
 
       if (typeof key === 'string') {
         key = new Reference(key)

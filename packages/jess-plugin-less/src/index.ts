@@ -2,12 +2,17 @@ import {
   type Plugin,
   type PluginObject,
   FileManager,
-  type FileManagerOptions
+  type FileManagerOptions,
+  TreeContext,
+  MathMode,
+  UnitMode
 } from '@jesscss/core'
 import { Parser } from '@jesscss/less-parser'
 
 export interface LessFileManagerOptions extends FileManagerOptions {
   plugin: PluginObject
+  mathMode?: TreeContext['mathMode']
+  unitMode?: TreeContext['unitMode']
 }
 
 export class LessFileManager extends FileManager<LessFileManagerOptions> {
@@ -20,7 +25,14 @@ export class LessFileManager extends FileManager<LessFileManagerOptions> {
      * @todo - handle / pretty print errors
      * @todo - add contents to Jess error handler
      */
-    const { tree, contents } = this.parser.parse(file, 'stylesheet')
+    const context = new TreeContext({
+      parentScope: options.parentScope,
+      hoistDeclarations: true,
+      leakVariablesIntoScope: true,
+      mathMode: this.opts.mathMode ?? MathMode.PARENS_DIVISION,
+      unitMode: this.opts.unitMode ?? UnitMode.LOOSE
+    })
+    const { tree, contents } = this.parser.parse(file, 'stylesheet', { context })
     tree.treeContext.plugin = this.opts.plugin
     return tree
   }
@@ -33,7 +45,7 @@ const lessPlugin: Plugin = (opts?: LessOptions) => {
   const plugin: PluginObject = {
     name: 'less'
   }
-  plugin.fileManager = new LessFileManager({ plugin })
+  plugin.fileManager = new LessFileManager({ ...opts, plugin })
   return plugin
 }
 

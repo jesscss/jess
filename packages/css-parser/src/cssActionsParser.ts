@@ -74,7 +74,7 @@ export class CssActionsParser extends AdvancedActionsParser {
   skipValidations: boolean
 
   /** Rewire, declaring class fields in constructor with `public` */
-  stylesheet: Rule
+  stylesheet: Rule<(options?: Record<string, any>) => void>
   main: Rule<(ctx?: RuleContext) => void>
   qualifiedRule: Rule<(ctx?: RuleContext) => void>
   atRule: Rule
@@ -275,7 +275,7 @@ export class CssActionsParser extends AdvancedActionsParser {
     let RulesConstructor = isRoot ? Root : Rules
     let returnRules =
       new RulesConstructor(rules, undefined, rules.length ? this.getLocationFromNodes(rules) : 0, this.context)
-    returnRules._scope = this.context.scope
+    returnRules.scope = this.context.scope
     returnRules.post = remainder
     return returnRules
   }
