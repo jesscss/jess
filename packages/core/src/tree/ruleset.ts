@@ -73,11 +73,12 @@ export class Ruleset extends Node<RulesetValue> {
         /** Remove once evaluated */
         rule.guard = undefined
       }
+      /** Allow a selector to signal that nesting should be collapsed */
       const collapseNesting = context.opts.collapseNesting
       let sels = await this.selector.eval(context)
-      let hoistToRoot = this.options?.hoistToRoot ?? context.opts.collapseNesting
-      if (hoistToRoot) {
-        rule.options.hoistToRoot = true
+      let hoistToParent = this.options?.hoistToParent ?? context.opts.collapseNesting
+      if (hoistToParent) {
+        rule.options.hoistToParent = true
       }
       context.opts.collapseNesting = collapseNesting
 

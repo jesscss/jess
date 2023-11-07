@@ -11,6 +11,7 @@ export { TreeContext }
 
 type AllNodeOptions = {
   hoistToRoot?: boolean
+  hoistToParent?: boolean
 
   /**
    * For statements with optional semis,
@@ -153,15 +154,7 @@ export abstract class Node<
 
   visible = true
 
-  _evaluated: boolean
-
-  get evaluated() {
-    return this._evaluated
-  }
-
-  set evaluated(e: boolean) {
-    this._evaluated = e
-  }
+  evaluated: boolean
 
   allowRoot: boolean
   allowRuleRoot: boolean

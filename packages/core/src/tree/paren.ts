@@ -33,15 +33,22 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       if (value) {
         let isOp = isOpOrExpression(value)
         value = await value.eval(context)
+        /**
+         * Removing nested parens or parens around a single
+         * dimension is a bit presumptuous, but I think Less's
+         * argument is that it's unnecessary at runtime,
+         * so it's really just a DX tool that can be ignored
+         * on output.
+         */
         while (value instanceof Paren && value.value) {
-          value = value.value
+          value = value.value.inherit(value)
         }
         if (value instanceof Bool || value instanceof Dimension) {
-          return value
+          return value.inherit(this)
         }
         context.canOperate = canOperate
         if (isOp && !isOpOrExpression(value)) {
-          return value
+          return value.inherit(this)
         }
       }
       let node = this.clone()

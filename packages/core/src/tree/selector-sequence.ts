@@ -29,20 +29,23 @@ export class SelectorSequence extends Node<Array<SimpleSelector | Combinator>> {
     let elements = [...selector.value]
     selector.value = elements
 
-    let hasAmp = elements.find(el => el instanceof Ampersand)
-    /**
-     * Try to evaluate all selectors as if they are prepended by `&`
-     *
-     * @todo - An initial plain identifier should be wrapped in `:is()`
-     * for outputting to CSS -- this is done in the ToCssVisitor?
-     *
-     * @todo - we should not push an ampersand if we're not collapsing nesting
-     */
-    if (!hasAmp && context.frames.length > 0) {
-      if (elements[0] instanceof Combinator) {
-        elements.unshift(new Ampersand())
-      } else {
-        elements.unshift(new Ampersand(), new Combinator(' '))
+    let collapseNesting = context.opts.collapseNesting
+    if (collapseNesting) {
+      let hasAmp = elements.find(el => el instanceof Ampersand)
+      /**
+       * Try to evaluate all selectors as if they are prepended by `&`
+       *
+       * @todo - An initial plain identifier should be wrapped in `:is()`
+       * for outputting to CSS -- this is done in the ToCssVisitor?
+       *
+       * @todo - we should not push an ampersand if we're not collapsing nesting
+       */
+      if (!hasAmp && context.frames.length > 0) {
+        if (elements[0] instanceof Combinator) {
+          elements.unshift(new Ampersand())
+        } else {
+          elements.unshift(new Ampersand(), new Combinator(' '))
+        }
       }
     }
 
@@ -56,9 +59,8 @@ export class SelectorSequence extends Node<Array<SimpleSelector | Combinator>> {
           (
             value instanceof SelectorSequence &&
             value.value.length === 0
-          ) ||
-          value instanceof Nil ||
-          value instanceof Combinator
+          ) || value instanceof Nil ||
+          (collapseNesting && (value instanceof Ampersand || value instanceof Combinator))
         ) {
           elements.shift()
           elementsLength -= 1

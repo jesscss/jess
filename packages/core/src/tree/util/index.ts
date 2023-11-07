@@ -46,7 +46,7 @@ export function isNode(value: any, type: 'SelectorList'): value is SelectorList
 export function isNode(value: any, type: 'Ruleset'): value is Ruleset
 export function isNode(value: any, type: 'Rules'): value is Rules
 export function isNode(value: any, type: 'AtRule'): value is AtRule
-export function isNode(value: any, type: ['Rule', 'AtRule']): value is Ruleset | AtRule
+export function isNode(value: any, type: ['Ruleset', 'AtRule']): value is Ruleset | AtRule
 export function isNode(value: any, type: 'Import'): value is Import
 export function isNode(value: any, type: 'Nil'): value is Nil
 export function isNode(value: any, type: 'Collection'): value is Collection

@@ -21,6 +21,7 @@ import {
   type TreeContext,
   type Scope,
   Node,
+  Ampersand,
   Block,
   Token,
   type LocationInfo,
@@ -501,7 +502,14 @@ export function simpleSelector(this: P, T: TokenMap) {
        * to have `&`, and it is just silently absorbed if there
        * is no parent selector.
        */
-      ALT: () => $.CONSUME(T.Ampersand)
+      ALT: () => {
+        let amp = $.CONSUME(T.Ampersand)
+        if (!$.RECORDING_PHASE) {
+          let ampImg = amp.image
+          let value = ampImg.slice(1)
+          return new Ampersand(value || undefined, undefined, $.getLocationInfo(amp), this.context)
+        }
+      }
     },
     { ALT: () => $.CONSUME(T.InterpolatedSelector) },
     { ALT: () => $.SUBRULE($.classSelector) },

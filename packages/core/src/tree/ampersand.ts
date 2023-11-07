@@ -59,7 +59,7 @@ export type AmpersandValue = {
      }
 
    */
-  value: string | undefined
+  value?: string
 }
 
 /**
@@ -74,14 +74,13 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
 
   toTrimmedString(): string {
     let { value } = this
-    let hoistToRoot = this.options?.hoistToRoot
-    return hoistToRoot ?? value ? `&(${value ?? ''})` : '&'
+    return value !== undefined ? `&(${value ?? ''})` : '&'
   }
 
   /** Hmm this should never return Extend */
   async eval(context: Context): Promise<SelectorList | SelectorSequence | Ampersand | Extend | Nil> {
     return await this.evalIfNot(context, () => {
-      if (this.value ?? this.options?.hoistToRoot ?? context.opts.collapseNesting) {
+      if (this.value ?? context.opts.collapseNesting) {
         let frame = context.frames[0]
         if (frame) {
           let selector = frame.selector.clone(true)

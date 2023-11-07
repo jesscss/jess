@@ -23,7 +23,7 @@ export class Quoted extends Node<General | Interpolated, QuotedOptions> {
     return await this.evalIfNot(context, async () => {
       let value = await this.value.eval(context)
       if (this.options.escaped) {
-        return value
+        return value.inherit(this)
       }
       let quoted = this.clone()
       quoted.value = value

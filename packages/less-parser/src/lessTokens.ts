@@ -221,9 +221,8 @@ function $preBuildTokens() {
         copyToken()
         /**
          * e.g. &-foo or &(foo)
-         * @note - &1 will be gobbled to not throw an error,
-         * but may output a warning that this will now be
-         * an invalid selector.
+         * @note Jess parsing won't absorb the post-ampersand
+         * characters, so will properly support the ampersand
          */
         token.pattern = '&(?:\\({{nmchar}}*\\)|{{nmchar}}*)'
         break

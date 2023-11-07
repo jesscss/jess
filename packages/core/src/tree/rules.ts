@@ -358,17 +358,28 @@ export class Rules extends Node<Node[]> {
         // }
       }
 
+      let newRules: Node[] = []
+
       let bubbleRootRules = (rule: Node) => {
         let importedRoots =
           (isNode(rule, 'Ruleset') || isNode(rule, 'AtRule'))
             ? rule.rules?.rootRules
             : rule.rootRules
         if (importedRoots) {
+          const newImportedRoots: Node[] = []
+          for (let r of importedRoots) {
+            if (r.options.hoistToParent) {
+              r.options.hoistToParent = false
+              newRules.push(r)
+              continue
+            }
+            newImportedRoots.push(r)
+          }
           let { rootRules } = rules
           if (!rootRules) {
-            rules.rootRules = importedRoots
+            rules.rootRules = newImportedRoots
           } else {
-            rootRules.push(...importedRoots)
+            rootRules.push(...newImportedRoots)
           }
         }
       }
@@ -378,7 +389,11 @@ export class Rules extends Node<Node[]> {
       let tryAddToRoot = (rule: Ruleset | AtRule) => {
         if (
           rules.type !== 'Root' &&
-          (rule.options?.hoistToRoot || context.opts.collapseNesting)
+          (
+            rule.options.hoistToRoot ||
+            rule.options.hoistToParent ||
+            context.opts.collapseNesting
+          )
         ) {
           if (!rules.rootRules) {
             rules.rootRules = [rule]
@@ -389,13 +404,12 @@ export class Rules extends Node<Node[]> {
           newRules.push(rule)
         }
       }
-      let newRules: Node[] = []
 
       let walkRules = (rules: Node[]) => {
         rules.forEach(rule => {
-          if (isNode(rule, ['Rule', 'AtRule'])) {
-            bubbleRootRules(rule)
+          if (isNode(rule, ['Ruleset', 'AtRule'])) {
             tryAddToRoot(rule)
+            bubbleRootRules(rule)
           } else if (rule instanceof Rules) {
             bubbleRootRules(rule)
             walkRules(rule.value)
