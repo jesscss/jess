@@ -64,6 +64,11 @@ export interface TreeContextOptions extends ContextOptions {
    * (like Less / SCSS `@import` rule)
    */
   parentScope?: Scope
+  scope?: Scope
+
+  isModule?: boolean
+
+  [k: string]: any
 }
 
 const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('')
@@ -97,16 +102,17 @@ export const generateId = (length = 8) => {
  * unique to the tree, such as the math mode.
  */
 export class TreeContext implements TreeContextOptions {
-  hoistDeclarations?: boolean
-  leakVariablesIntoScope?: boolean
-  mathMode?: MathMode
-  unitMode?: UnitMode
+  opts: Record<string, any>
+  hoistDeclarations: boolean
+  leakVariablesIntoScope: boolean
+  mathMode: MathMode
+  unitMode: UnitMode
+  isModule: boolean
 
   file?: {
     name: string
     path: string
-    /** Contents of the file, separated into lines */
-    contents: string[]
+    // contents: string[]
   }
 
   /** Rules will inherit scope when created */
@@ -119,11 +125,27 @@ export class TreeContext implements TreeContextOptions {
   plugin?: PluginObject
 
   constructor(opts: TreeContextOptions = {}) {
-    this.hoistDeclarations = opts.hoistDeclarations ?? false
-    this.leakVariablesIntoScope = opts.leakVariablesIntoScope ?? false
-    this.mathMode = opts.mathMode ?? MathMode.PARENS_DIVISION
-    this.unitMode = opts.unitMode ?? UnitMode.STRICT
-    this.scope = new Scope(opts.parentScope)
+    /**
+     * Known options are attached to the instance.
+     * Unknown options are assigned to `opts`
+     */
+    let {
+      scope,
+      parentScope,
+      hoistDeclarations,
+      leakVariablesIntoScope,
+      mathMode,
+      unitMode,
+      isModule,
+      ...rest
+    } = opts
+    this.hoistDeclarations = hoistDeclarations ?? false
+    this.leakVariablesIntoScope = leakVariablesIntoScope ?? false
+    this.mathMode = mathMode ?? MathMode.PARENS_DIVISION
+    this.unitMode = unitMode ?? UnitMode.STRICT
+    this.isModule = isModule ?? false
+    this.scope = scope ?? new Scope(parentScope)
+    this.opts = rest
   }
 }
 let code1 = 0

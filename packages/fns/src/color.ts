@@ -1,5 +1,9 @@
-import type { Node } from 'jess'
-import { Color, Dimension } from 'jess'
+import {
+  type Node,
+  Color,
+  Dimension,
+  ColorFormat
+} from '@jesscss/core'
 
 type RGBValue = Dimension | number
 
@@ -9,29 +13,27 @@ type RGBValue = Dimension | number
 
 export function rgba(...values: [RGBValue, RGBValue, RGBValue, RGBValue]) {
   const rgba = values.map(v => Number(v))
-  return new Color({ value: 'rgba', rgba })
+  return new Color(rgba)
 }
 
 export function rgb(...values: [RGBValue, RGBValue, RGBValue]) {
   const rgb = values.map(v => Number(v))
   rgb.push(1)
-  const color = rgba(rgb[0], rgb[1], rgb[2], rgb[3])
-  color.value = 'rgb'
-  return color
+  return rgba(rgb[0]!, rgb[1]!, rgb[2]!, rgb[3]!)
 }
 
-function getHue(h: number, m1: number, m2: number) {
-  h = h < 0 ? h + 1 : (h > 1 ? h - 1 : h)
-  if (h * 6 < 1) {
-    return m1 + (m2 - m1) * h * 6
-  } else if (h * 2 < 1) {
-    return m2
-  } else if (h * 3 < 2) {
-    return m1 + (m2 - m1) * (2 / 3 - h) * 6
-  } else {
-    return m1
-  }
-}
+// function getHue(h: number, m1: number, m2: number) {
+//   h = h < 0 ? h + 1 : (h > 1 ? h - 1 : h)
+//   if (h * 6 < 1) {
+//     return m1 + (m2 - m1) * h * 6
+//   } else if (h * 2 < 1) {
+//     return m2
+//   } else if (h * 3 < 2) {
+//     return m1 + (m2 - m1) * (2 / 3 - h) * 6
+//   } else {
+//     return m1
+//   }
+// }
 
 function clamp(val: number) {
   return Math.min(1, Math.max(0, val))
@@ -39,20 +41,19 @@ function clamp(val: number) {
 
 function number(n: RGBValue) {
   if (n instanceof Dimension) {
-    return n.unit === '%' ? n.value / 100 : n.value
+    return n.unit === '%' ? n.number / 100 : n.number
   } else if (n.constructor === Number) {
     return n
   } else {
-    throw {
-      type: 'Argument',
-      message: 'color functions take numbers as parameters'
-    }
+    throw new Error('color functions take numbers as parameters')
   }
 }
 
 function toHSL(color: Color) {
   if (color instanceof Color) {
-    return color.toHSL()
+    const [h, s, l] = color.toHSL()
+    const a = color.alpha
+    return { h, s, l, a }
   } else {
     throw new Error('Argument cannot be evaluated to a color')
   }
@@ -90,45 +91,39 @@ function toHSV(color: Color) {
       case g: h = (b - r) / d + 2; break
       case b: h = (r - g) / d + 4; break
     }
-    h /= 6
+    h! /= 6
   }
-  return { h: h * 360, s, v, a }
+  return { h: h! * 360, s, v, a }
 }
 
 export function hsla(h: RGBValue, s: RGBValue, l: RGBValue, a: RGBValue) {
-  let m1: number
-  let m2: number
-
-  const value = 'hsla'
+  // let m1: number
+  // let m2: number
 
   h = (number(h) % 360) / 360
   s = clamp(number(s))
   l = clamp(number(l))
   a = clamp(number(a))
 
-  m2 = l <= 0.5 ? l * (s + 1) : l + s - l * s
-  m1 = l * 2 - m2
+  // m2 = l <= 0.5 ? l * (s + 1) : l + s - l * s
+  // m1 = l * 2 - m2
 
-  const rgba = [
-    getHue(h + 1 / 3, m1, m2) * 255,
-    getHue(h, m1, m2) * 255,
-    getHue(h - 1 / 3, m1, m2) * 255,
-    a
-  ]
-  return new Color({
-    value,
-    rgba
-  })
+  // const rgba = [
+  //   getHue(h + 1 / 3, m1, m2) * 255,
+  //   getHue(h, m1, m2) * 255,
+  //   getHue(h - 1 / 3, m1, m2) * 255,
+  //   a
+  // ]
+  const color = new Color(ColorFormat.HSL)
+  color.hsla = [h, s, l, a]
+  return color
 }
 
 export function hsl(h: RGBValue, s: RGBValue, l: RGBValue) {
-  const value = 'hsl'
   h = number(h)
   s = number(s)
   l = number(l)
-  const color = hsla(h, s, l, 1)
-  color.value = value
-  return color
+  return hsla(h, s, l, 1)
 }
 
 export function hsva(h: RGBValue, s: RGBValue, v: RGBValue, a: RGBValue) {
@@ -157,9 +152,9 @@ export function hsva(h: RGBValue, s: RGBValue, v: RGBValue, a: RGBValue) {
   ]
 
   return rgba(
-    vs[perm[i][0]] * 255,
-    vs[perm[i][1]] * 255,
-    vs[perm[i][2]] * 255,
+    vs[perm[i]![0]!]! * 255,
+    vs[perm[i]![1]!]! * 255,
+    vs[perm[i]![2]!]! * 255,
     a
   )
 }
@@ -169,50 +164,50 @@ export function hsv(h: RGBValue, s: RGBValue, v: RGBValue) {
 }
 
 export function hue(color: Color) {
-  return new Dimension(toHSL(color).h)
+  return new Dimension([toHSL(color).h])
 }
 
 export function saturation(color: Color) {
-  return new Dimension({
-    value: toHSL(color).s * 100,
-    unit: '%'
-  })
+  return new Dimension([
+    toHSL(color).s * 100,
+    '%'
+  ])
 }
 
 export function lightness(color: Color) {
-  return new Dimension({
-    value: toHSL(color).l * 100,
-    unit: '%'
-  })
+  return new Dimension([
+    toHSL(color).l * 100,
+    '%'
+  ])
 }
 
 export function hsvhue(color: Color) {
-  return new Dimension(toHSV(color).h)
+  return new Dimension([toHSV(color).h])
 }
 
 export function hsvsaturation(color: Color) {
-  return new Dimension({
-    value: toHSV(color).s * 100,
-    unit: '%'
-  })
+  return new Dimension([
+    toHSV(color).s * 100,
+    '%'
+  ])
 }
 export function hsvvalue(color: Color) {
-  return new Dimension({
-    value: toHSV(color).v * 100,
-    unit: '%'
-  })
+  return new Dimension([
+    toHSV(color).v * 100,
+    '%'
+  ])
 }
 export function red(color: Color) {
-  return new Dimension(color.rgb[0])
+  return new Dimension([color.rgb[0]])
 }
 export function green(color: Color) {
-  return new Dimension(color.rgb[1])
+  return new Dimension([color.rgb[1]])
 }
 export function blue(color: Color) {
-  return new Dimension(color.rgb[2])
+  return new Dimension([color.rgb[2]])
 }
 export function alpha(color: Color) {
-  return new Dimension(toHSL(color).a)
+  return new Dimension([color.alpha])
 }
 
 function getLuma(color: Color) {
@@ -228,10 +223,10 @@ function getLuma(color: Color) {
 }
 
 export function luma(color: Color) {
-  return new Dimension({
-    value: getLuma(color) * color.alpha * 100,
-    unit: '%'
-  })
+  return new Dimension([
+    getLuma(color) * color.alpha * 100,
+    '%'
+  ])
 }
 
 export function luminance(color: Color) {
@@ -240,27 +235,27 @@ export function luminance(color: Color) {
     (0.7152 * color.rgb[1] / 255) +
     (0.0722 * color.rgb[2] / 255)
 
-  return new Dimension({
-    value: luminance * color.alpha * 100,
-    unit: '%'
-  })
+  return new Dimension([
+    luminance * color.alpha * 100,
+    '%'
+  ])
 }
 
 interface HSLA {
   h: number
   s: number
   l: number
-  a: number
+  a?: number
 }
 
 function getHsla(origColor: Color, hsl: HSLA) {
-  const color = hsla(hsl.h, hsl.s, hsl.l, hsl.a)
+  const color = hsla(hsl.h, hsl.s, hsl.l, hsl.a ?? 1)
   if (color) {
-    if (origColor.value &&
-      /^(rgb|hsl)/.test(origColor.value)) {
-      color.value = origColor.value
+    const value = origColor.value
+    if (typeof value === 'number') {
+      color.value = value
     } else {
-      color.value = 'rgb'
+      color.value = ColorFormat.RGB
     }
     return color
   }
@@ -276,9 +271,9 @@ export function saturate(color: Color, amount: Dimension, method?: Node) {
   const hsl = toHSL(color)
 
   if (method && method.value === 'relative') {
-    hsl.s += hsl.s * amount.value / 100
+    hsl.s += hsl.s * amount.number / 100
   } else {
-    hsl.s += amount.value / 100
+    hsl.s += amount.number / 100
   }
   hsl.s = clamp(hsl.s)
   return getHsla(color, hsl)
@@ -288,9 +283,9 @@ export function desaturate(color: Color, amount: Dimension, method?: Node) {
   const hsl = toHSL(color)
 
   if (method && method.value === 'relative') {
-    hsl.s -= hsl.s * amount.value / 100
+    hsl.s -= hsl.s * amount.number / 100
   } else {
-    hsl.s -= amount.value / 100
+    hsl.s -= amount.number / 100
   }
   hsl.s = clamp(hsl.s)
   return getHsla(color, hsl)
@@ -300,9 +295,9 @@ export function lighten(color: Color, amount: Dimension, method?: Node) {
   const hsl = toHSL(color)
 
   if (method && method.value === 'relative') {
-    hsl.l += hsl.l * amount.value / 100
+    hsl.l += hsl.l * amount.number / 100
   } else {
-    hsl.l += amount.value / 100
+    hsl.l += amount.number / 100
   }
   hsl.l = clamp(hsl.l)
   return getHsla(color, hsl)
@@ -312,9 +307,9 @@ export function darken(color: Color, amount: Dimension, method?: Node) {
   const hsl = toHSL(color)
 
   if (method && method.value === 'relative') {
-    hsl.l -= hsl.l * amount.value / 100
+    hsl.l -= hsl.l * amount.number / 100
   } else {
-    hsl.l -= amount.value / 100
+    hsl.l -= amount.number / 100
   }
   hsl.l = clamp(hsl.l)
   return getHsla(color, hsl)
@@ -324,9 +319,9 @@ export function fadein(color: Color, amount: Dimension, method?: Node) {
   const hsl = toHSL(color)
 
   if (method && method.value === 'relative') {
-    hsl.a += hsl.a * amount.value / 100
+    hsl.a += hsl.a * amount.number / 100
   } else {
-    hsl.a += amount.value / 100
+    hsl.a += amount.number / 100
   }
   hsl.a = clamp(hsl.a)
   return getHsla(color, hsl)
@@ -336,9 +331,9 @@ export function fadeout(color: Color, amount: Dimension, method?: Node) {
   const hsl = toHSL(color)
 
   if (method && method.value === 'relative') {
-    hsl.a -= hsl.a * amount.value / 100
+    hsl.a -= hsl.a * amount.number / 100
   } else {
-    hsl.a -= amount.value / 100
+    hsl.a -= amount.number / 100
   }
   hsl.a = clamp(hsl.a)
   return getHsla(color, hsl)
@@ -347,14 +342,14 @@ export function fadeout(color: Color, amount: Dimension, method?: Node) {
 export function fade(color: Color, amount: Dimension) {
   const hsl = toHSL(color)
 
-  hsl.a = amount.value / 100
+  hsl.a = amount.number / 100
   hsl.a = clamp(hsl.a)
   return getHsla(color, hsl)
 }
 
 export function spin(color: Color, amount: Dimension) {
   const hsl = toHSL(color)
-  const hue = (hsl.h + amount.value) % 360
+  const hue = (hsl.h + amount.number) % 360
 
   hsl.h = hue < 0 ? 360 + hue : hue
 
@@ -367,13 +362,13 @@ export function spin(color: Color, amount: Dimension) {
 //
 export function mix(color1: Color, color2: Color, weight?: Dimension) {
   if (!weight) {
-    weight = new Dimension(50)
+    weight = new Dimension([50])
   }
-  const p = weight.value / 100.0
+  const p = weight.number / 100.0
   const w = p * 2 - 1
   const a = toHSL(color1).a - toHSL(color2).a
 
-  const w1 = (((w * a == -1) ? w : (w + a) / (1 + w * a)) + 1) / 2.0
+  const w1 = (((w * a === -1) ? w : (w + a) / (1 + w * a)) + 1) / 2.0
   const w2 = 1 - w1
 
   const rgba = [
@@ -383,14 +378,11 @@ export function mix(color1: Color, color2: Color, weight?: Dimension) {
     color1.alpha * p + color2.alpha * (1 - p)
   ]
 
-  return new Color({
-    value: '',
-    rgba
-  })
+  return new Color(rgba)
 }
 
 export function greyscale(color: Color) {
-  return desaturate(color, new Dimension(100))
+  return desaturate(color, new Dimension([100]))
 }
 
 export function contrast(

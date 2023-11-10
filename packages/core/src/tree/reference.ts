@@ -3,6 +3,8 @@ import type { Interpolated } from './interpolated'
 import { type Context } from '../context'
 import { cast } from './util/cast'
 import { Declaration } from './declaration'
+import type { GetterOptions } from '../scope'
+import { General } from './general'
 
 /**
  * The type is determined by syntax
@@ -18,6 +20,13 @@ import { Declaration } from './declaration'
  */
 export type ReferenceOptions = {
   type: 'variable' | 'property' | 'mixin'
+  /**
+   * Optional references just resolve to the string
+   * representation of the reference if not found.
+   *
+   * (Used by Less for functions.)
+   */
+  optional?: boolean
 }
 
 type NodeType = typeof Node<string | Interpolated, ReferenceOptions>
@@ -52,22 +61,35 @@ export class Reference extends Node<string | Interpolated, ReferenceOptions> {
    */
   async eval(context: Context): Promise<Node> {
     let { value } = this
-    let { type } = this.options
+    let { type, optional } = this.options
+    let name: string
     if (value instanceof Node) {
-      const resolved = await value.eval(context)
-      value = resolved.value
+      value = await value.eval(context)
+      name = value.value
+    } else {
+      name = value
     }
-    let opts = context.declarationScope ? { filter: context.declarationScope } : {}
+    let opts: GetterOptions = context.declarationScope ? { filter: context.declarationScope } : {}
+    if (optional) {
+      opts.suppressUndefinedError = true
+    }
     let returnVal: any
     switch (type) {
       case 'variable':
-        returnVal = context.scope.getVar(value, opts)
+        returnVal = context.scope.getVar(name, opts)
         break
       case 'property':
-        returnVal = context.scope.getProp(value, opts)
+        returnVal = context.scope.getProp(name, opts)
         break
       case 'mixin':
-        returnVal = context.scope.getMixin(value, opts)
+        returnVal = context.scope.getMixin(name, opts)
+    }
+
+    if (returnVal === undefined && optional) {
+      if (typeof value === 'string') {
+        return new General(value, { type: 'Name' }).inherit(this)
+      }
+      return value.inherit(this)
     }
     if (returnVal instanceof Declaration) {
       context.declarationScope = returnVal

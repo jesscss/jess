@@ -13,16 +13,19 @@
   "scripts": {
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "npm run build",
-    "build": "pnpm clean && pnpm compile",
-    "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
-    "compile": "tsc -b tsconfig.json",
-    "test": "jest",
+    "build": "pnpm compile",
+    "compile": "tsc -b tsconfig.build.json",
+    "test": "cross-env TEST=true vitest",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
-    "jess": "workspace:^2.0.0-alpha.1",
-    "lodash": "^4.17.21"
+    "@jesscss/core": "workspace:^2.0.0-alpha.1",
+    "lodash-es": "^4.17.21",
+    "typia": "~5.2.6"
+  },
+  "devDependencies": {
+    "@types/lodash-es": "^4.17.8"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",

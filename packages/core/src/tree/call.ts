@@ -66,7 +66,7 @@ export class Call<T extends CallValue = CallValue> extends Node<T> {
           args = await args?.eval(context)
         }
         if (args) {
-          result = await name.value.call(context, ...args)
+          result = await name.value.call(context, ...args.value)
         } else {
           result = await name.value.call(context)
         }

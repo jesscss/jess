@@ -1,3 +1,4 @@
+export { default as floor } from './floor'
 
 export * from './each'
 export * from './iif'

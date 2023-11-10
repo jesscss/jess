@@ -90,15 +90,14 @@ type FilterResult = {
   done: boolean
 }
 
-type GetterOptions = {
+export type GetterOptions = {
   /** Filter is a function or value to compare when looking up values */
   filter?: Node | ((value: any, foundValues?: any[]) => FilterResult)
 
   /** Only return local values, not all scope values */
   local?: boolean
   /**
-   * Not sure this is a good option, as it maybe makes more
-   * sense to throw an error if not found? Depends on user expectations.
+   * Right now used by Less for functions
    */
   suppressUndefinedError?: boolean
 }
@@ -228,7 +227,7 @@ export class Scope {
 
   /** Merges a scope (usually child) into this scope object */
   merge(scope: Scope, leakVariablesIntoScope?: boolean) {
-    let props = scope._props
+    let props = scope.props
     let keys = Object.getOwnPropertyNames(props)
     let keyLength = keys.length
     for (let i = 0; i < keyLength; i++) {
@@ -486,7 +485,6 @@ export class Scope {
     if (collection === 'mixins') {
       let entry = current[key]
       if (!entry) {
-        /** Needed? */
         if (options.suppressUndefinedError) {
           return undefined
         }
@@ -497,7 +495,6 @@ export class Scope {
     while (current) {
       let entry = (options.local && !Object.prototype.hasOwnProperty.call(current, key)) ? undefined : current[key]
       if (!entry) {
-        /** Needed? */
         if (options.suppressUndefinedError) {
           return undefined
         }

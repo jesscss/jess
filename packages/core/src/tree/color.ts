@@ -16,6 +16,9 @@ function clamp(v: number, max: number) {
   return Math.min(Math.max(v, 0), max)
 }
 
+const { isArray } = Array
+
+type ColorParameters = ConstructorParameters<typeof Node<string | ColorFormat>>
 /**
  * Color's `value` will either be the parsed value,
  * or, when constructed with a function, the preferred
@@ -25,6 +28,27 @@ export class Color extends Node<string | ColorFormat> {
   private _rgb: [number, number, number] | undefined
   private _hsl: [number, number, number] | undefined
   private _alpha: number = 1
+
+  constructor(
+    value: ColorParameters[0] | ColorValues,
+    options?: ColorParameters[1],
+    location?: ColorParameters[2],
+    context?: ColorParameters[3]
+  ) {
+    let r: number
+    let g: number
+    let b: number
+    let a: number
+    if (isArray(value)) {
+      ;([r, g, b, a] = value as [number, number, number, number])
+      value = ColorFormat.RGB
+    }
+    super(value, options, location, context)
+    if (r! !== undefined) {
+      this._rgb = [r, g!, b!]
+      this._alpha = a! ?? 1
+    }
+  }
 
   /** Create an rgba map only if we need it */
   get rgba(): ColorValues {
@@ -60,11 +84,13 @@ export class Color extends Node<string | ColorFormat> {
     /** Make sure an alpha value is present */
     if (rgba.length === 3) {
       this._rgb = rgba as [number, number, number]
+      this._hsl = undefined
       this._alpha = 1
       rgba.push(1)
     } else {
       let [r, g, b, a] = rgba
       this._rgb = [r!, g!, b!]
+      this._hsl = undefined
       this._alpha = a!
     }
     return rgba as ColorValues
@@ -74,6 +100,7 @@ export class Color extends Node<string | ColorFormat> {
     let [r, g, b, a] = rgba
     this._rgb = [r, g, b]
     this._alpha = a
+    this._hsl = undefined
   }
 
   get hsla(): ColorValues {
@@ -81,14 +108,16 @@ export class Color extends Node<string | ColorFormat> {
     if (this._hsl) {
       return [...this._hsl, a]
     }
-    let [h, s, l] = this.toHSL()
-    return [h, s, l, a]
+    let hsl = this.toHSL()
+    this._hsl = hsl
+    return [...hsl, a]
   }
 
   set hsla(hsla: ColorValues) {
     let [h, s, l, a] = hsla
     this._hsl = [h, s, l]
     this._alpha = a
+    this._rgb = undefined
   }
 
   get rgb(): [number, number, number] {
@@ -98,6 +127,7 @@ export class Color extends Node<string | ColorFormat> {
 
   set rgb(rgb: [number, number, number]) {
     this._rgb = rgb
+    this._hsl = undefined
   }
 
   get alpha(): number {

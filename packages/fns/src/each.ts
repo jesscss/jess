@@ -1,5 +1,5 @@
-import { List, Expression, Ruleset } from 'jess'
-import forEach from 'lodash/forEach'
+import { List, Sequence, Rules, type Mixin } from '@jesscss/core'
+import forEach from 'lodash-es/forEach'
 
 /**
  * @example
@@ -12,19 +12,21 @@ import forEach from 'lodash/forEach'
  *   }
  * }
  * $each(list, iterate);
+ *
+ * @todo - Fix
  */
 
-export function each(list: List | Expression | unknown, mixin: Function) {
-  let collection: any
-  const rules = new Ruleset([])
-  if (list instanceof List || list instanceof Expression) {
-    collection = list.toArray()
-  } else {
-    collection = list
-  }
-  forEach(collection, (value, key) => {
-    rules.value.push(mixin(value, key))
-  })
+// export function each(list: List | Sequence | unknown, mixin: Mixin) {
+//   let collection: any
+//   const rules = new Rules([])
+//   if (list instanceof List || list instanceof Sequence) {
+//     collection = list.value
+//   } else {
+//     collection = list
+//   }
+//   forEach(collection, (value, key) => {
+//     rules.value.push(mixin(value, key))
+//   })
 
-  return rules
-}
+//   return rules
+// }

@@ -1179,7 +1179,7 @@ export function ifFunction(this: P, T: TokenMap) {
     let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
 
-    $.CONSUME(T.IfFunction)
+    let name = $.CONSUME(T.IfFunction)
 
     $.startRule()
 
@@ -1233,8 +1233,9 @@ export function ifFunction(this: P, T: TokenMap) {
 
     if (!RECORDING_PHASE) {
       let location = $.endRule()
+      let nameNode = new Reference('if', { type: 'variable', optional: true }, $.getLocationInfo(name), this.context)
       return new Call([
-        ['name', 'if'],
+        ['name', nameNode],
         ['args', new List(args!, undefined, argsLocation, this.context)]
       ], undefined, location, this.context)
     }
@@ -1246,14 +1247,15 @@ export function booleanFunction(this: P, T: TokenMap) {
 
   return () => {
     $.startRule()
-    $.CONSUME(T.BooleanFunction)
+    let name = $.CONSUME(T.BooleanFunction)
     let arg: Condition = $.SUBRULE($.guardOr, { ARGS: [{ inValueList: true }] })
     $.CONSUME(T.RParen)
 
     if (!$.RECORDING_PHASE) {
       let location = $.endRule()
+      let nameNode = new Reference('boolean', { type: 'variable', optional: true }, $.getLocationInfo(name), this.context)
       return new Call([
-        ['name', 'boolean'],
+        ['name', nameNode],
         ['args', new List([arg], undefined, arg.location as LocationInfo, this.context)]
       ], undefined, location, this.context)
     }
@@ -1344,40 +1346,41 @@ export function valueReference(this: P, T: TokenMap) {
   }
 }
 
-// export function functionCall(this: P, T: TokenMap) {
-//   const $ = this
+export function functionCall(this: P, T: TokenMap) {
+  const $ = this
 
-//   let funcAlt = [
-//     { ALT: () => $.SUBRULE($.knownFunctions) },
-//     {
-//       ALT: () => {
-//         $.startRule()
+  let funcAlt = [
+    { ALT: () => $.SUBRULE($.knownFunctions) },
+    {
+      ALT: () => {
+        $.startRule()
 
-//         let name = $.CONSUME(T.Ident)
-//         let args: List | undefined
+        let name = $.CONSUME(T.Ident)
+        let args: List | undefined
 
-//         $.OR2([{
-//           GATE: $.noSep,
-//           ALT: () => {
-//             $.CONSUME(T.LParen)
-//             $.OPTION(() => args = $.SUBRULE($.functionCallArgs, { ARGS: [{ allowAnonymousMixins: true }] }))
-//             $.CONSUME(T.RParen)
-//           }
-//         }])
+        $.OR2([{
+          GATE: $.noSep,
+          ALT: () => {
+            $.CONSUME(T.LParen)
+            $.OPTION(() => args = $.SUBRULE($.functionCallArgs))
+            $.CONSUME(T.RParen)
+          }
+        }])
 
-//         if (!$.RECORDING_PHASE) {
-//           let location = $.endRule()
-//           return new Call([
-//             ['name', name.image],
-//             ['args', args]
-//           ], undefined, location, this.context)
-//         }
-//       }
-//     }
-//   ]
+        if (!$.RECORDING_PHASE) {
+          let location = $.endRule()
+          let nameNode = new Reference(name.image, { type: 'variable', optional: true }, $.getLocationInfo(name), this.context)
+          return new Call([
+            ['name', nameNode],
+            ['args', args]
+          ], undefined, location, this.context)
+        }
+      }
+    }
+  ]
 
-//   return () => $.OR(funcAlt)
-// }
+  return () => $.OR(funcAlt)
+}
 
 export function functionCallArgs(this: P, T: TokenMap) {
   const $ = this

@@ -1,11 +1,11 @@
-import { Color } from 'jess'
+import { Color } from '@jesscss/core'
 
 // Color Blending
 // ref: http://www.w3.org/TR/compositing-1
 
-function colorBlend(mode: Function, color1: Color, color2: Color) {
+function colorBlend(mode: (c1: number, c2: number) => number, color1: Color, color2: Color) {
   if (!(color1 instanceof Color) || !(color2 instanceof Color)) {
-    throw { message: 'Both arguments must be colors.' }
+    throw new Error('Both arguments must be colors.')
   }
   // result
   const ab = color1.alpha
@@ -19,8 +19,8 @@ function colorBlend(mode: Function, color1: Color, color2: Color) {
 
   const ar = as + ab * (1 - as)
   for (let i = 0; i < 3; i++) {
-    cb = color1.rgb[i] / 255
-    cs = color2.rgb[i] / 255
+    cb = color1.rgb[i]! / 255
+    cs = color2.rgb[i]! / 255
     cr = mode(cb, cs)
     if (ar) {
       cr = (as * cs + ab * (cb -
@@ -30,10 +30,7 @@ function colorBlend(mode: Function, color1: Color, color2: Color) {
   }
   rgba[3] = ar
 
-  return new Color({
-    value: '',
-    rgba
-  })
+  return new Color(rgba)
 }
 
 const colorBlendModeFunctions = {
