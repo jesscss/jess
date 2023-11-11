@@ -11,6 +11,6 @@
     "outDir": "./lib",
     "rootDir": "./src"
   },
-  "include": ["src/**/*", "test/**/*"],
+  "include": ["src/**/*", "test/**/*", "vitest.config.ts", "../../vitest.d.ts"],
   "exclude": ["node_modules", "lib"]
 }

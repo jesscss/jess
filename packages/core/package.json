@@ -24,7 +24,7 @@
     "build": "pnpm compile",
     "compile": "tsc -b tsconfig.build.json",
     "dev": "tsc -b tsconfig.build.json -w",
-    "test": "cross-env TEST=true vitest --watch=false",
+    "test": "cross-env TEST=true vitest",
     "test:coverage": "cross-env TEST=true vitest --coverage",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"

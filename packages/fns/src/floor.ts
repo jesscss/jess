@@ -1,20 +1,14 @@
-import { Dimension } from '@jesscss/core'
+import { Dimension, type Node } from '@jesscss/core'
+import { validate } from './_util'
 
-export default function floor(n: Dimension) {
-  return new Dimension([Math.floor(n.number), n.unit])
+import { type } from 'arktype'
+const validateFloor = type({
+  0: ['instanceof', Dimension]
+})
+
+function floor(value: Dimension) {
+  validate(floor, validateFloor(arguments))
+  return new Dimension([Math.floor(value.number), value.unit])
 }
 
-if (import.meta.vitest) {
-  const { it, expect, describe } = import.meta.vitest
-
-  describe('floor', () => {
-    it('rejects a non-dimension', () => {
-      // @ts-expect-error - incorrect type
-      expect(() => floor('1')).toThrow()
-    })
-
-    it('floors correctly', () => {
-      expect(floor(new Dimension([1.1]))).toEqual(new Dimension([1]))
-    })
-  })
-}
+export default floor

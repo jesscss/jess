@@ -3,8 +3,10 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     name: '@jesscss/fns',
-    // include: ['**/__tests__/**/*.ts'],
-    includeSource: ['**/src/**/*.ts'],
+    watch: false,
+    include: ['src/__tests__/**/*.ts'],
+    exclude: ['**/node_modules/**', '**/dist/**'],
+    // includeSource: ['**/src/**/*.ts'],
     globals: true
     // coverage: {
     //   enabled: true,

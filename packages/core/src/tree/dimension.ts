@@ -27,6 +27,7 @@ type UnitMapEntries = Array<[ConversionUnit, ConversionGroup]>
  */
 export class Dimension extends Node<DimensionValue> {
   _unitToGroup: Map<string, ConversionGroup> | undefined
+
   get number() {
     return this.data.get('value')[0]
   }
