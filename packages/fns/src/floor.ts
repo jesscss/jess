@@ -1,13 +1,15 @@
-import { Dimension, type Node } from '@jesscss/core'
+import { Dimension } from '@jesscss/core'
 import { validate } from './_util'
 
 import { type } from 'arktype'
-const validateFloor = type({
+const argsType = type({
   0: ['instanceof', Dimension]
 })
 
+const validateFloor = (...args: any[]) => validate(floor, ['value'], argsType(...args))
+
 function floor(value: Dimension) {
-  validate(floor, validateFloor(arguments))
+  validateFloor(arguments)
   return new Dimension([Math.floor(value.number), value.unit])
 }
 

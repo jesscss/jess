@@ -21,7 +21,11 @@ export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...a
 
 type CheckResult = ReturnType<ReturnType<typeof type>>
 
-export function validate(fn: ExtendedFn<any[], any>, ...args: CheckResult[]) {
+export function validate(
+  fn: ExtendedFn<any[], any>,
+  paramNames: string[],
+  ...args: CheckResult[]
+) {
   const success = args.some(arg => !arg.problems)
   if (!success) {
     for (let i = 0; i < args.length; i++) {
