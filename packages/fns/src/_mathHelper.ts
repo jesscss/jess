@@ -1,14 +1,14 @@
 import { Dimension } from '@jesscss/core'
 
-const MathHelper = (
+export const mathHelper = (
   fn: (num: number) => number,
   unit: string | undefined,
-  n: Dimension
+  n: Dimension | number
 ) => {
-  if (!(n instanceof Dimension)) {
-    throw new TypeError('argument must be a number')
+  if (!(n instanceof Dimension) && typeof n !== 'number') {
+    throw new TypeError('"value" argument must be numeric')
   }
-  return new Dimension([fn(n.number), unit])
+  let num = n instanceof Dimension ? n.number : n
+  unit ??= n instanceof Dimension ? n.unit : ''
+  return new Dimension([fn(num), unit])
 }
-
-export default MathHelper

@@ -3,9 +3,6 @@
   "compilerOptions": {
     "outDir": "./lib",
     "rootDir": ".",
-    "plugins": [
-      { "transform": "typia/lib/transform" }
-    ],
     "types": [
       "vitest/importMeta" 
     ]

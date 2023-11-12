@@ -18,8 +18,8 @@
     "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
-    "@jesscss/core": "workspace:^2.0.0-alpha.1",
-    "@jesscss/parser": "workspace:^2.0.0-alpha.1",
+    "@jesscss/core": "workspace:*",
+    "@jesscss/parser": "workspace:*",
     "chevrotain": "^11.0.3"
   },
   "devDependencies": {},

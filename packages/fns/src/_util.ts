@@ -1,5 +1,5 @@
 import type { Context } from '@jesscss/core'
-import type { type } from 'arktype'
+import type { CheckResult } from 'arktype/dist/types/traverse/traverse'
 
 export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...args: T) => R) & {
   suppressError?: boolean
@@ -19,8 +19,6 @@ export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...a
 //   return returnFn
 // }
 
-type CheckResult = ReturnType<ReturnType<typeof type>>
-
 export function validate(
   fn: ExtendedFn<any[], any>,
   paramNames: string[],
@@ -35,7 +33,8 @@ export function validate(
       }
       if (!fn.suppressError) {
         let error = validatorResult.problems[0]!
-        throw new Error(error.reason)
+        let name = paramNames[i]!
+        throw new Error(`"${name}" argument ${error.reason}`)
       }
     }
   }

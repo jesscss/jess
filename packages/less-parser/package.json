@@ -20,12 +20,12 @@
     "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
-    "@jesscss/core": "workspace:^2.0.0-alpha.1",
-    "@jesscss/css-parser": "workspace:^2.0.0-alpha.1",
+    "@jesscss/core": "workspace:*",
+    "@jesscss/css-parser": "workspace:*",
     "chevrotain": "^11.0.3"
   },
   "devDependencies": {
-    "@jesscss/shared": "workspace:^2.0.0-alpha.1"
+    "@jesscss/shared": "workspace:*"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",

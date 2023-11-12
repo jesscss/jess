@@ -20,9 +20,9 @@
     "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
-    "@jesscss/core": "workspace:^2.0.0-alpha.1",
-    "@jesscss/fns": "workspace:^2.0.0-alpha.1",
-    "@jesscss/less-parser": "workspace:^2.0.0-alpha.1"
+    "@jesscss/core": "workspace:*",
+    "@jesscss/fns": "workspace:*",
+    "@jesscss/less-parser": "workspace:*"
   },
   "devDependencies": {},
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",

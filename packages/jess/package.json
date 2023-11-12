@@ -39,7 +39,7 @@
   },
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
-    "@jesscss/shared": "workspace:^2.0.0-alpha.1",
+    "@jesscss/shared": "workspace:*",
     "@types/cosmiconfig": "^6.0.0",
     "@types/lodash-es": "^4.17.8"
   },
