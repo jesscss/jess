@@ -2,7 +2,15 @@ import type { Context } from '@jesscss/core'
 import type { CheckResult } from 'arktype/dist/types/traverse/traverse'
 
 export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...args: T) => R) & {
-  suppressError?: boolean
+  /**
+   * Allow for optional calling, which means an optional
+   * reference to a function will output a stringified
+   * function representation if there's an evaluation error.
+   *
+   * This is done for Less, which sets this for functions
+   * that have a CSS equivalent.
+   */
+  allowOptional?: boolean
   evalArgs?: boolean
 }
 
@@ -20,23 +28,21 @@ export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...a
 // }
 
 export function validate(
-  fn: ExtendedFn<any[], any>,
-  paramNames: string[],
   ...args: CheckResult[]
 ) {
   const success = args.some(arg => !arg.problems)
+  const errors: Error[] = []
   if (!success) {
     for (let i = 0; i < args.length; i++) {
       let validatorResult = args[i]!
       if (!validatorResult.problems) {
         continue
       }
-      if (!fn.suppressError) {
-        let error = validatorResult.problems[0]!
-        let name = paramNames[i]!
-        throw new Error(`"${name}" argument ${error.reason}`)
-      }
+
+      let error = validatorResult.problems[0]!
+      errors.push(new Error(error.reason))
     }
+    return errors
   }
   return true
 }

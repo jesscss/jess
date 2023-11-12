@@ -1,3 +1,3 @@
 import { mathHelper } from './_mathHelper'
 
-export default mathHelper.bind(null, Math.sin, '')
+export default mathHelper.bind(null, Math.sin, ['value'], '')
