@@ -22,7 +22,7 @@
   "dependencies": {
     "@jesscss/core": "workspace:*",
     "lodash-es": "^4.17.21",
-    "superstruct": "~1.0.3"
+    "superstruct": "1.0.3"
   },
   "devDependencies": {
     "@types/lodash-es": "^4.17.8"

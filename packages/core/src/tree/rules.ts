@@ -108,8 +108,12 @@ export class Rules extends Node<Node[]> {
     let outputs = this.value
       .filter(n => n.visible)
       .map(n => n.toString(depth))
-    output += outputs.join('')
+    output += outputs.join('').replace(/\n+/g, '\n')
     return output
+  }
+
+  visibleRules() {
+    return this.value.filter(n => n.visible)
   }
 
   async eval(context: Context): Promise<this> {
@@ -395,6 +399,7 @@ export class Rules extends Node<Node[]> {
             context.opts.collapseNesting
           )
         ) {
+          /** Remove empty rules */
           if (!rules.rootRules) {
             rules.rootRules = [rule]
           } else {

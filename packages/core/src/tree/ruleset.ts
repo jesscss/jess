@@ -92,8 +92,8 @@ export class Ruleset extends Node<RulesetValue> {
       context.frames.shift()
 
       /** Remove empty rules */
-      if (rule.rules.value.length === 0) {
-        return new Nil().inherit(this)
+      if (rule.rules.visibleRules().length === 0) {
+        rule.visible = false
       }
       return rule
     })

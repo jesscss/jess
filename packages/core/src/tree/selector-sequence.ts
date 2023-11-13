@@ -75,11 +75,12 @@ export class SelectorSequence extends Node<Array<SimpleSelector | Combinator>> {
           ])
         }
       }
-      elements.sort((a, b) => {
-        const aVal = a instanceof BasicSelector && a.isTag ? -1 : 0
-        const bVal = b instanceof BasicSelector && b.isTag ? -1 : 0
-        return aVal - bVal
-      })
+      // This can/should only happen with compound selectors
+      // elements.sort((a, b) => {
+      //   const aVal = a instanceof BasicSelector && a.isTag ? -1 : 0
+      //   const bVal = b instanceof BasicSelector && b.isTag ? -1 : 0
+      //   return aVal - bVal
+      // })
     }
 
     if (isNode(selector, 'SelectorList')) {

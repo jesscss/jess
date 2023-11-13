@@ -1,5 +1,5 @@
 import type { Context } from '@jesscss/core'
-import type { CheckResult } from 'arktype/dist/types/traverse/traverse'
+import type { validate } from 'superstruct'
 
 export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...args: T) => R) & {
   /**
@@ -27,20 +27,22 @@ export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...a
 //   return returnFn
 // }
 
-export function validate(
+type CheckResult = ReturnType<typeof validate>
+
+export function wrapValidate(
   ...args: CheckResult[]
 ) {
-  const success = args.some(arg => !arg.problems)
+  const success = args.some(([err]) => !err)
   const errors: Error[] = []
   if (!success) {
     for (let i = 0; i < args.length; i++) {
-      let validatorResult = args[i]!
-      if (!validatorResult.problems) {
+      let [err] = args[i]!
+      if (!err) {
         continue
       }
 
-      let error = validatorResult.problems[0]!
-      errors.push(new Error(error.reason))
+      let error = err.failures()[0]!
+      errors.push(new Error(error.message))
     }
     return errors
   }

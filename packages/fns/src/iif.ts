@@ -1,17 +1,18 @@
-import { type ExtendedFn, validate } from './_util'
-import { Node, Condition } from '@jesscss/core'
-import { type, union, instance } from 'superstruct'
+import { type ExtendedFn } from './_util'
+import { Node, Condition, Bool } from '@jesscss/core'
+import { type, instance, union, assert, optional } from 'superstruct'
 
 const Struct = type({
-  condition: instance(Condition),
-  trueValue: instance(Node)
+  condition: union([instance(Condition), instance(Bool)]),
+  trueValue: instance(Node),
+  falseValue: optional(instance(Node))
 })
 
 /**
  * if condition, return ifValue, else return elseValue
  */
-const iif: ExtendedFn = async function iif(condition: Condition, trueValue: Node, falseValue?: Node) {
-  validate(validateArgs({ condition, trueValue }))
+const iif: ExtendedFn = async function iif(condition: Condition | Bool, trueValue: Node, falseValue?: Node) {
+  assert({ condition, trueValue, falseValue }, Struct)
   const bool = typeof condition === 'boolean' ? condition : (await condition.eval(this)).value
   if (bool) {
     return await trueValue.eval(this)

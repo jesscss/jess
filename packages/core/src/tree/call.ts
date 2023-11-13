@@ -72,7 +72,7 @@ export class Call<T extends CallValue = CallValue> extends Node<T> {
         }
 
         /** @todo - mark results as important */
-        return cast(result)
+        return cast(result).inherit(this)
         // } catch (e) {
         /** Do something with JS errors */
         // console.log(e)

@@ -53,5 +53,10 @@
   "bugs": {
     "url": "https://github.com/matthew-dean/jess/issues"
   },
-  "homepage": "https://github.com/matthew-dean/jess#readme"
+  "homepage": "https://github.com/matthew-dean/jess#readme",
+  "pnpm": {
+    "patchedDependencies": {
+      "superstruct@1.0.3": "patches/superstruct@1.0.3.patch"
+    }
+  }
 }

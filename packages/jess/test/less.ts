@@ -8,6 +8,7 @@ import lessPlugin from 'jess-plugin-less'
 const testData = path.dirname(require.resolve('@less/test-data'))
 
 const compiler = new JessCompiler({
+  collapseNesting: true,
   plugins: [
     lessPlugin({
       mathMode: 0

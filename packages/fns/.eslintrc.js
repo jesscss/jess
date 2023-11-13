@@ -3,5 +3,8 @@ module.exports = {
   root: true,
   parserOptions: {
     project: './tsconfig.json'
+  },
+  rules: {
+    '@typescript-eslint/return-await': 'off'
   }
 }

@@ -14,6 +14,13 @@ export { default as tan } from './tan'
 /** Logic */
 export { default as iif } from './iif'
 
+/** String */
+export { default as e } from './e'
+
+/** Number */
+export { default as min } from './min'
+export { default as max } from './max'
+
 export * from './each'
 // export * from './iif'
 export * from './color'

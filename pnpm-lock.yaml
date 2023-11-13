@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  superstruct@1.0.3:
+    hash: yw7l4yujuzgyn2yu6vvqqe6xmq
+    path: patches/superstruct@1.0.3.patch
+
 importers:
 
   .:
@@ -181,8 +186,8 @@ importers:
         specifier: ^4.17.21
         version: 4.17.21
       superstruct:
-        specifier: ~1.0.3
-        version: 1.0.3
+        specifier: 1.0.3
+        version: 1.0.3(patch_hash=yw7l4yujuzgyn2yu6vvqqe6xmq)
     devDependencies:
       '@types/lodash-es':
         specifier: ^4.17.8
@@ -11051,10 +11056,11 @@ packages:
       pirates: 4.0.5
       ts-interface-checker: 0.1.13
 
-  /superstruct@1.0.3:
+  /superstruct@1.0.3(patch_hash=yw7l4yujuzgyn2yu6vvqqe6xmq):
     resolution: {integrity: sha512-8iTn3oSS8nRGn+C2pgXSKPI3jmpm6FExNazNpjvqS6ZUJQCej3PUXEKM8NjHBOs54ExM+LPW/FBRhymrdcCiSg==}
     engines: {node: '>=14.0.0'}
     dev: false
+    patched: true
 
   /supports-color@5.5.0:
     resolution: {integrity: sha512-QjVjwdXIt408MIiAqCX4oUKsgU2EqAGzs2Ppkm4aQYbjm+ZEWEcW4SfFNTr4uMNZma0ey4f5lgLrkB0aX0QMow==}

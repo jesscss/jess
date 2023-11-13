@@ -7,6 +7,12 @@
       "vitest/importMeta" 
     ]
   },
-  "include": ["src/**/*", "test/**/*", "vite.config.ts", "vitest.config.ts", "../../vitest.d.ts"],
+  "include": [
+    "src/**/*",
+    "test/**/*",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "../../vitest.d.ts"
+  ],
   "exclude": ["node_modules", "lib"]
 }
