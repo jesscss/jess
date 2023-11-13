@@ -331,7 +331,7 @@ export class CssActionsParser extends AdvancedActionsParser {
         return node
       }
     }
-    if (node.pre === 0) {
+    if ((!post || post === 'both') && node.pre === 0) {
       let offset = node.location[0]
       if (offset !== undefined) {
         node.pre = this.getPrePost(offset)
