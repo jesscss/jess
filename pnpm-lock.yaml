@@ -177,12 +177,12 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
-      arktype:
-        specifier: 1.0.27-alpha
-        version: 1.0.27-alpha
       lodash-es:
         specifier: ^4.17.21
         version: 4.17.21
+      superstruct:
+        specifier: ~1.0.3
+        version: 1.0.3
     devDependencies:
       '@types/lodash-es':
         specifier: ^4.17.8
@@ -4315,10 +4315,6 @@ packages:
 
   /argparse@2.0.1:
     resolution: {integrity: sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==}
-
-  /arktype@1.0.27-alpha:
-    resolution: {integrity: sha512-IGoOTif9W6y2folO1+JoPEffZwO56NSuxb7n4C/iYymKluGek1Z1W6Rsi2P3L27SuQpke3DdsjUxW2ABBhH4hQ==}
-    dev: false
 
   /array-buffer-byte-length@1.0.0:
     resolution: {integrity: sha512-LPuwb2P+NrQw3XhxGc36+XSvuBPopovXYTR9Ew++Du9Yb/bx5AzBfrIsBoj0EZUifjQU+sHL21sseZ3jerWO/A==}
@@ -11054,6 +11050,11 @@ packages:
       mz: 2.7.0
       pirates: 4.0.5
       ts-interface-checker: 0.1.13
+
+  /superstruct@1.0.3:
+    resolution: {integrity: sha512-8iTn3oSS8nRGn+C2pgXSKPI3jmpm6FExNazNpjvqS6ZUJQCej3PUXEKM8NjHBOs54ExM+LPW/FBRhymrdcCiSg==}
+    engines: {node: '>=14.0.0'}
+    dev: false
 
   /supports-color@5.5.0:
     resolution: {integrity: sha512-QjVjwdXIt408MIiAqCX4oUKsgU2EqAGzs2Ppkm4aQYbjm+ZEWEcW4SfFNTr4uMNZma0ey4f5lgLrkB0aX0QMow==}

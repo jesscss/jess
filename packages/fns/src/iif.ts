@@ -1,11 +1,10 @@
 import { type ExtendedFn, validate } from './_util'
 import { Node, Condition } from '@jesscss/core'
+import { type, union, instance } from 'superstruct'
 
-import { type } from 'arktype'
-
-const validateArgs = type({
-  condition: ['instanceof', Condition],
-  trueValue: ['instanceof', Node]
+const Struct = type({
+  condition: instance(Condition),
+  trueValue: instance(Node)
 })
 
 /**

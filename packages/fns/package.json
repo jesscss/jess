@@ -21,8 +21,8 @@
   },
   "dependencies": {
     "@jesscss/core": "workspace:*",
-    "arktype": "1.0.27-alpha",
-    "lodash-es": "^4.17.21"
+    "lodash-es": "^4.17.21",
+    "superstruct": "~1.0.3"
   },
   "devDependencies": {
     "@types/lodash-es": "^4.17.8"
