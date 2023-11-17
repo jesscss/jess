@@ -5,18 +5,8 @@ import {
   Dimension,
   ColorFormat
 } from '@jesscss/core'
-import { ExtendedFn } from './util'
 
 type RGBValue = Dimension | number
-
-/**
- * Color functions, imported from Less
- */
-
-export function rgba(...values: [RGBValue, RGBValue, RGBValue, RGBValue]) {
-  const rgba = values.map(v => Number(v))
-  return new Color(rgba)
-}
 
 // function getHue(h: number, m1: number, m2: number) {
 //   h = h < 0 ? h + 1 : (h > 1 ? h - 1 : h)
