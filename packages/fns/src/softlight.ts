@@ -1,4 +1,4 @@
-import { colorBlend } from './_colorHelper'
+import { colorBlend } from './util/colorHelper'
 
 export function softlightBase(cb: number, cs: number) {
   let d = 1

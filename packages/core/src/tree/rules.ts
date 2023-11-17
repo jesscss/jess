@@ -93,14 +93,20 @@ export class Rules extends Node<Node[]> {
   //   super([])
   // }
 
-  /** Allows array spreading of nodes */
-  // * [Symbol.iterator]() {
-  //   let current = this._first
-  //   while (current) {
-  //     yield current
-  //     current = current._next
-  //   }
-  // }
+  /** Allows iterating with the each() function */
+  * [Symbol.iterator](): Generator<[string, Node]> {
+    for (let item of this.value) {
+      if (!(item instanceof Declaration)) {
+        continue
+      }
+      let name = typeof item.name === 'string' ? item.name : item.name.value
+      yield [name, item]
+    }
+  }
+
+  entries() {
+    return this[Symbol.iterator]()
+  }
 
   toTrimmedString(depth: number = 0) {
     // let space = ''.padStart(depth * 2)

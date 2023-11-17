@@ -1,4 +1,4 @@
-import { colorBlend } from './_colorHelper'
+import { colorBlend } from './util/colorHelper'
 import { multiplyBase } from './multiply'
 import { screenBase } from './screen'
 

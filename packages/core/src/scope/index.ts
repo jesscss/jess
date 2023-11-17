@@ -553,7 +553,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
    * @note - Mixins resolve to async functions because they
    * can contain dynamic imports.
    */
-  return async function(this: Context | unknown, ...args: any[]) {
+  async function returnFunc(this: unknown, ...args: any[]): Promise<Rules | Record<string, string>>
+  async function returnFunc(this: Context, ...args: any[]): Promise<Rules>
+  async function returnFunc(this: Context | unknown, ...args: any[]) {
     const mixinLength = mixinArr.length
     let mixinCandidates: MixinEntry[] = []
     let evalCandidates: Array<[MixinEntry, number]>
@@ -761,4 +763,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       return output.toObject()
     }
   }
+
+  return returnFunc
 }

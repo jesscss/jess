@@ -1,4 +1,4 @@
-import { colorBlend } from './_colorHelper'
+import { colorBlend } from './util/colorHelper'
 
 export function exclusionBase(cb: number, cs: number) {
   return cb + cs - 2 * cb * cs

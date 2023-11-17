@@ -1,4 +1,4 @@
-import { type ExtendedFn } from './_util'
+import { type ExtendedFn } from './util'
 import { Node, Condition, Bool } from '@jesscss/core'
 import { type, instance, union, assert, optional } from 'superstruct'
 

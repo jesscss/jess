@@ -1,4 +1,4 @@
-import { colorBlend } from './_colorHelper'
+import { colorBlend } from './util/colorHelper'
 
 export function screenBase(cb: number, cs: number) {
   return cb + cs - cb * cs

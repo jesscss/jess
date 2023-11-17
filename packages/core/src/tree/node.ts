@@ -491,6 +491,10 @@ export abstract class Node<
     return output
   }
 
+  entries(): IterableIterator<[string | number, NodeValue]> | undefined {
+    return this.data.get('value').entries?.()
+  }
+
   /**
    * Individual node types will override this.
    *

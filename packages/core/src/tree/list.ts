@@ -28,6 +28,10 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     }
   }
 
+  entries() {
+    return this[Symbol.iterator]()
+  }
+
   get length() {
     return this.value.length
   }

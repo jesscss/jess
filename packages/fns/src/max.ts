@@ -1,4 +1,4 @@
-import { type ExtendedFn } from './_util'
+import { type ExtendedFn } from './util'
 import { Node } from '@jesscss/core'
 import { array, instance, assert } from 'superstruct'
 
