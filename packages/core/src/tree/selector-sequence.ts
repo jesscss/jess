@@ -7,7 +7,7 @@ import {
 import type { Context } from '../context'
 import { Nil } from './nil'
 import { type SimpleSelector } from './selector-simple'
-import { BasicSelector } from './selector-basic'
+// import { BasicSelector } from './selector-basic'
 import { isNode } from './util'
 import { PseudoSelector } from './selector-pseudo'
 import { type SelectorList } from './selector-list'
@@ -54,16 +54,24 @@ export class SelectorSequence extends Node<Array<SimpleSelector | Combinator>> {
     let cleanElements = (elements: Node[]) => {
       let elementsLength = elements.length
       for (let i = 0; i < elementsLength; i++) {
-        let value = elements[0]
+        let value = elements[i]!
+
         if (
+          i === 0 &&
           (
-            value instanceof SelectorSequence &&
-            value.value.length === 0
-          ) || value instanceof Nil ||
-          (collapseNesting && (value instanceof Ampersand || value instanceof Combinator))
+            (
+              value instanceof SelectorSequence &&
+              value.value.length === 0
+            ) || value instanceof Nil ||
+            (collapseNesting && (value instanceof Ampersand || value instanceof Combinator))
+          )
         ) {
           elements.shift()
           elementsLength -= 1
+          i -= 1
+        } else if (value instanceof SelectorSequence) {
+          elements = elements.slice(0, i).concat(value.value).concat(elements.slice(i + 1))
+          elementsLength += value.value.length - 1
         } else if (isNode(value, 'SelectorList') && elementsLength > 1) {
           /**
            * Wrap returned lists with :is(), if
@@ -75,6 +83,7 @@ export class SelectorSequence extends Node<Array<SimpleSelector | Combinator>> {
           ])
         }
       }
+      return elements
       // This can/should only happen with compound selectors
       // elements.sort((a, b) => {
       //   const aVal = a instanceof BasicSelector && a.isTag ? -1 : 0
@@ -84,9 +93,9 @@ export class SelectorSequence extends Node<Array<SimpleSelector | Combinator>> {
     }
 
     if (isNode(selector, 'SelectorList')) {
-      (selector as SelectorList).value.forEach(sel => { cleanElements(sel.value) })
+      (selector as SelectorList).value.forEach(sel => { (sel as any).value = cleanElements(sel.value) })
     } else {
-      cleanElements(selector.value)
+      selector.value = cleanElements(selector.value)
     }
 
     if (elements.length === 0) {
