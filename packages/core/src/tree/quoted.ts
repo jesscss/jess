@@ -19,6 +19,10 @@ export class Quoted extends Node<General | Interpolated, QuotedOptions> {
     return `${escapeChar}${quote}${output}${quote}`
   }
 
+  valueOf() {
+    return this.value.value
+  }
+
   async eval(context: Context): Promise<Node> {
     return await this.evalIfNot(context, async () => {
       let value = await this.value.eval(context)

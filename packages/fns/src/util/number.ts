@@ -1,5 +1,11 @@
 import { Dimension, type Node } from '@jesscss/core'
 
+export type ColorValue = Dimension | number
+
+export function clamp(val: number) {
+  return Math.min(1, Math.max(0, val))
+}
+
 export function getNumber(n: Node | number) {
   if (n instanceof Dimension) {
     let unit = n.unit

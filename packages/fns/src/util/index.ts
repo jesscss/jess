@@ -1,18 +1,7 @@
-import type { Context } from '@jesscss/core'
+import type { ExtendedFn } from '@jesscss/core'
 import type { validate } from 'superstruct'
 
-export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...args: T) => R) & {
-  /**
-   * Allow for optional calling, which means an optional
-   * reference to a function will output a stringified
-   * function representation if there's an evaluation error.
-   *
-   * This is done for Less, which sets this for functions
-   * that have a CSS equivalent.
-   */
-  allowOptional?: boolean
-  evalArgs?: boolean
-}
+export type { ExtendedFn }
 
 // export function createFn<Args extends any[], F, R>(fn: F extends ExtendedFn<infer Args, infer R> ? ExtendedFn<Args, R> : ExtendedFn<any[], any>) {
 //   const returnFn: ExtendedFn<Args, R> = function(this: Context, ...args: Args) {

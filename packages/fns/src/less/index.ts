@@ -32,5 +32,7 @@ export { default as exclusion } from './exclusion'
 export { default as average } from './average'
 export { default as negation } from './negation'
 
+/** Color functions */
+export { default as color } from './color'
+
 export { default as each } from './each'
-export * from './color'

@@ -19,6 +19,23 @@ export type CallValue = {
 }
 
 /**
+ * This is an exported type that allows extra properties
+ * and specifies the shape of `this` for a function call.
+ */
+export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...args: T) => R) & {
+  /**
+   * Allow for optional calling, which means an optional
+   * reference to a function will output a stringified
+   * function representation if there's an evaluation error.
+   *
+   * This is done for Less, which sets this for functions
+   * that have a CSS equivalent.
+   */
+  allowOptional?: boolean
+  evalArgs?: boolean
+}
+
+/**
  * @note In Less, the ref for something like `rgb`
  * is not a string, but is an (optional) variable reference.
  */

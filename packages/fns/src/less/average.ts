@@ -1,4 +1,4 @@
-import { colorBlend } from './util/colorHelper'
+import { colorBlend } from '../util/colorHelper'
 
 export function averageBase(cb: number, cs: number) {
   return (cb + cs) / 2
