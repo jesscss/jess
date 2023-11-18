@@ -6,7 +6,7 @@ import {
   General,
   getFunctionFromMixins
 } from '@jesscss/core'
-import { type ExtendedFn } from './util'
+import { type ExtendedFn } from '../util'
 import { type, instance, union, assert } from 'superstruct'
 
 const Struct = type({

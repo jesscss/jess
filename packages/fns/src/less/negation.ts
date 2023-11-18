@@ -1,4 +1,4 @@
-import { colorBlend } from './util/colorHelper'
+import { colorBlend } from '../util/colorHelper'
 
 export function negationBase(cb: number, cs: number) {
   return 1 - Math.abs(cb + cs - 1)

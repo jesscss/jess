@@ -7,7 +7,7 @@ import {
 } from '@jesscss/core'
 import { toHSL } from './to-hsl'
 import { clamp } from './number'
-import hsla from '../hsla'
+import hsla from '../less/hsla'
 
 interface HSLA {
   h: number

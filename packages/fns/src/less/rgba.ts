@@ -1,9 +1,9 @@
 import {
   Color
 } from '@jesscss/core'
-import { type ExtendedFn } from './util'
+import { type ExtendedFn } from '../util'
 import { type, assert, number } from 'superstruct'
-import { getNumber, type ColorValue } from './util/number'
+import { getNumber, type ColorValue } from '../util/number'
 
 const Struct = type({
   r: number(),

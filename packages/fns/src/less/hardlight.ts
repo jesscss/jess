@@ -1,4 +1,4 @@
-import { colorBlend } from './util/colorHelper'
+import { colorBlend } from '../util/colorHelper'
 import { overlayBase } from './overlay'
 
 export function hardLightBase(cb: number, cs: number) {

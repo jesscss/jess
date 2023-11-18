@@ -1,4 +1,4 @@
-import { colorBlend } from './util/colorHelper'
+import { colorBlend } from '../util/colorHelper'
 
 export function multiplyBase(cb: number, cs: number) {
   return cb * cs

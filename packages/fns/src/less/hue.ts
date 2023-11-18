@@ -1,4 +1,4 @@
-import { toHSL } from './util/to-hsl'
+import { toHSL } from '../util/to-hsl'
 import { type Color, Dimension } from '@jesscss/core'
 
 export default function hue(color: Color) {

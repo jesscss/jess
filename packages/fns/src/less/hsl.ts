@@ -1,6 +1,6 @@
 
-import { getNumber, type ColorValue } from './util/number'
-import { type ExtendedFn } from './util'
+import { getNumber, type ColorValue } from '../util/number'
+import { type ExtendedFn } from '../util'
 import hsla from './hsla'
 
 const hsl: ExtendedFn = function hsl(h: ColorValue, s: ColorValue, l: ColorValue) {

@@ -2,7 +2,7 @@ import {
   Color,
   Dimension
 } from '@jesscss/core'
-import { toHSL } from './util/to-hsl'
+import { toHSL } from '../util/to-hsl'
 
 //
 // Copyright (c) 2006-2009 Hampton Catlin, Natalie Weizenbaum, and Chris Eppstein

@@ -3,8 +3,8 @@ import {
   type Color,
   type Dimension
 } from '@jesscss/core'
-import { getHsla } from './util/get-hsla'
-import { toHSL } from './util/to-hsl'
+import { getHsla } from '../util/get-hsla'
+import { toHSL } from '../util/to-hsl'
 
 export default function spin(this: Context, color: Color, amount: Dimension) {
   const hsl = toHSL(color)

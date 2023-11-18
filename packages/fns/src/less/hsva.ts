@@ -1,7 +1,7 @@
-import { getNumber, type ColorValue } from './util/number'
+import { getNumber, type ColorValue } from '../util/number'
 import { type, assert, number } from 'superstruct'
 import rgba from './rgba'
-import { type ExtendedFn } from './util'
+import { type ExtendedFn } from '../util'
 
 const Struct = type({
   h: number(),

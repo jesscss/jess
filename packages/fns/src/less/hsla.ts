@@ -1,7 +1,7 @@
 import { Color, ColorFormat } from '@jesscss/core'
-import { type ColorValue, clamp, getNumber } from './util/number'
+import { type ColorValue, clamp, getNumber } from '../util/number'
 import { type, assert, number } from 'superstruct'
-import { type ExtendedFn } from './util'
+import { type ExtendedFn } from '../util'
 
 const Struct = type({
   h: number(),

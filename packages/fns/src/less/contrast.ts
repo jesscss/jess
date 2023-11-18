@@ -5,9 +5,9 @@ import {
 } from '@jesscss/core'
 import { getNumber } from '../util/number'
 import { getLuma } from '../util/get-luma'
-import rgba from '../rgba'
+import rgba from './rgba'
 
-export function contrast(
+export default function contrast(
   this: Context,
   color: Color,
   dark?: Color,
