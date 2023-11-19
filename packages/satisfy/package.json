@@ -21,9 +21,12 @@
   },
   "dependencies": {
     "@jesscss/css-parser": "workspace:*",
+    "@jesscss/core": "workspace:*",
+    "jsdom": "~22.1.0",
     "lodash-es": "^4.17.21"
   },
   "devDependencies": {
+    "@types/jsdom": "~21.1.5",
     "@types/lodash-es": "^4.17.8"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",

@@ -53,6 +53,7 @@ export class CssParser {
     this.parser = new CssActionsParser(lexer, T as TokenMap, config)
   }
 
+  parse(text: string): IParseResult<Root>
   parse(text: string, rule: 'stylesheet'): IParseResult<Root>
   parse(text: string, rule?: CssRules): IParseResult
   parse(text: string, rule: CssRules = 'stylesheet'): IParseResult {

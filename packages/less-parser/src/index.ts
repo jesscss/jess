@@ -43,6 +43,7 @@ export class Parser {
     this.parse = this.parse.bind(this)
   }
 
+  parse(text: string): IParseResult<Root>
   parse(text: string, rule: 'stylesheet', ...args: Parameters<LessActionsParser['stylesheet']>): IParseResult<Root>
   parse<T extends LessRules = LessRules>(text: string, rule?: T, ...args: Parameters<LessActionsParser[T]>): IParseResult
   parse<T extends LessRules = LessRules>(text: string, rule: T = 'stylesheet' as T, ...args: Parameters<LessActionsParser[T]>): IParseResult {
