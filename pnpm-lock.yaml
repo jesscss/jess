@@ -361,6 +361,19 @@ importers:
         specifier: ^3.20.7
         version: 3.20.7
 
+  packages/satisfy:
+    dependencies:
+      '@jesscss/css-parser':
+        specifier: workspace:*
+        version: link:../css-parser
+      lodash-es:
+        specifier: ^4.17.21
+        version: 4.17.21
+    devDependencies:
+      '@types/lodash-es':
+        specifier: ^4.17.8
+        version: 4.17.8
+
   packages/scss-parser:
     dependencies:
       '@jesscss/core':

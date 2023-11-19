@@ -109,12 +109,20 @@ export class Rules extends Node<Node[]> {
   }
 
   toTrimmedString(depth: number = 0) {
-    // let space = ''.padStart(depth * 2)
+    let space = ''.padStart(depth * 2)
     let output = ''
     let outputs = this.value
-      .filter(n => n.visible)
-      .map(n => n.toString(depth))
-    output += outputs.join('').replace(/\n+/g, '\n')
+      .map(n =>
+        n.toString(depth)
+          .replace(/^\n[ \t]+/gm, `\n${space}`)
+      )
+    output += outputs
+      .join('')
+      /**
+       * Replace multiple newlines with single newlines
+       * (Remove empty lines)
+       */
+      .replace(/\n+/g, '\n')
     return output
   }
 

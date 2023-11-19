@@ -1,6 +1,7 @@
 import { defineType } from './node'
 import { Rules } from './rules'
 import type { Context } from '../context'
+import { type Opaque } from 'type-fest'
 
 /**
  * The root node. Contains a collection of nodes
@@ -16,6 +17,11 @@ export class Root extends Rules {
     context.depth--
     node.value = rules
     return node
+  }
+
+  toString(depth?: number | undefined) {
+    /** Remove leading newlines */
+    return super.toString(depth).replace(/^\n+/, '') as Opaque<string>
   }
 
   /** @todo - move to visitors */

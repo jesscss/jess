@@ -28,6 +28,10 @@ describe('Can render Less files to CSS', () => {
         const cssPath = lessPath.replace(/\.less$/, '.css').replace('/less/', '/css/')
         const css = fs.readFileSync(cssPath).toString()
         const output = await compiler.render(lessPath)
+        /**
+         * Newer CSS output and older Less CSS output are not going
+         * to be identical. How do we make sure they match?
+         */
         expect(output).toBe(css)
       })
     })

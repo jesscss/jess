@@ -461,6 +461,9 @@ export abstract class Node<
    * make sure we don't override
    */
   toString(depth?: number): Opaque<string> { // eslint-disable-line @typescript-eslint/naming-convention
+    if (!this.visible) {
+      return '' as Opaque<string>
+    }
     let output = ''
     output += this.processPrePost('pre')
     output += this.toTrimmedString(depth)
