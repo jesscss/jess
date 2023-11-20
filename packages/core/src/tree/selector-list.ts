@@ -13,6 +13,10 @@ export class SelectorList<
     return this.value.map(v => v.toString()).join(',')
   }
 
+  normalizedSelector() {
+
+  }
+
   async eval(context: Context): Promise<SelectorList<T> | T> {
     return await this.evalIfNot<SelectorList<T> | T>(context, async () => {
       const list = await (super.eval(context) as Promise<SelectorList<T>>)

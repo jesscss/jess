@@ -24,6 +24,14 @@ import { type SelectorList } from './selector-list'
  * [Element, Combinator, Element, Element]
  */
 export class SelectorSequence extends Node<Array<SimpleSelector | Combinator>> {
+  normalizedSelector() {
+    return {
+      '.class': ['.class', 'div', '#id'],
+      '#id': ['.class', 'div', '#id'],
+      div: ['.class', 'div', '#id']
+    }
+  }
+
   async eval(context: Context): Promise<SelectorSequence | SelectorList | Nil> {
     let selector: SelectorSequence = this.clone()
     let elements = [...selector.value]
