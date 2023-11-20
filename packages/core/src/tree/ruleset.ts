@@ -53,6 +53,10 @@ export class Ruleset extends Node<RulesetValue> {
     this.data.set('guard', v)
   }
 
+  normalizedSelector() {
+    return this.selector.normalizedSelector()
+  }
+
   toTrimmedString(depth: number = 0): string {
     // let space = ''.padStart(depth * 2)
     let output = ''
