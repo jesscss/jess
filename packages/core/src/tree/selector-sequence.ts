@@ -25,10 +25,30 @@ import { type SelectorList } from './selector-list'
  */
 export class SelectorSequence extends Node<Array<SimpleSelector | Combinator>> {
   normalizedSelector() {
+    /**
+     *
+     * So what we should do here is have a kind of tree for looking up
+     * sets of selectors. Each selector should be a set (maybe?). And each
+     * compound selector should be a set. Extending a single selector would
+     * wrap the selector in a set. Extending a compound selector would
+     * wrap the compound selector in a set. Wrapping a set with another
+     * set is dependent on the extend properties.
+     *
+     div.class#id > em#id2.class2
+
+     Set([
+      Set(['.class', 'div', '#id']),
+      '>',
+      Set(['.class2', 'em', '#id2'])
+     ])
+     */
     return {
-      '.class': ['.class', 'div', '#id'],
+      '.class': [
+        [Set(['.class', 'div', '#id']), '>', Set(['.class2', 'em', '#id2'])]
+      ],
       '#id': ['.class', 'div', '#id'],
-      div: ['.class', 'div', '#id']
+      div: ['.class', 'div', '#id'],
+      ['.class', 'div', '#id']: [['.class', 'div', '#id'], '>', ['.class2', 'em', '#id2']]
     }
   }
 
