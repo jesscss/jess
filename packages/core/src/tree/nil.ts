@@ -2,9 +2,9 @@ import {
   Node,
   defineType,
   type LocationInfo,
-  type NodeOptions,
-  type TreeContext
+  type NodeOptions
 } from './node'
+import type { TreeContext } from '../context'
 
 /**
  * A Node type that outputs nothing.

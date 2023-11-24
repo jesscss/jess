@@ -1,13 +1,16 @@
 /* eslint-disable @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/restrict-plus-operands */
 import isPlainObject from 'lodash-es/isPlainObject'
-import { type Context, TreeContext } from '../context'
+import {
+  type Context,
+  type TreeContext
+} from '../context'
 import type { Visitor } from '../visitor'
 import type { Comment } from './comment'
 import { type Operator } from './util/calculate'
 // import type { OutputCollector } from '../output'
 import type { Constructor, Writable, Class, ValueOf, Opaque, IsUnknown } from 'type-fest'
 
-export { TreeContext }
+export type { TreeContext }
 
 type AllNodeOptions = {
   hoistToRoot?: boolean
@@ -136,6 +139,7 @@ export abstract class Node<
 > {
   location: LocationInfo | []
   _treeContext: TreeContext | undefined
+  readonly treeContext: TreeContext
 
   _options: Partial<O & AllNodeOptions> | undefined
 
@@ -195,14 +199,6 @@ export abstract class Node<
       }, true)
     }
     this._options = options
-  }
-
-  get treeContext() {
-    let context = this._treeContext
-    if (!context) {
-      context = this._treeContext = new TreeContext()
-    }
-    return context
   }
 
   get options(): Partial<O & AllNodeOptions> {

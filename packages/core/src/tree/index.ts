@@ -8,21 +8,17 @@
  */
 
 /** Base classes - keep these on top */
-import { TreeContext, type LocationInfo } from './node'
+import { type LocationInfo } from './node'
 import { Node } from './node'
 import { type Operator } from './util/calculate'
 import { Anonymous } from './anonymous'
+import { TreeContext } from '../context'
 // import { Context } from '../context'
 // import { OutputCollector } from '../output'
 /**
- * We bind this here to avoid circular dependencies
+ * We bind these here to avoid circular dependencies
  * between Context and Node
  */
-// Node.prototype.toString = function() {
-//   const out = new OutputCollector()
-//   this.toCSS(new Context(), out)
-//   return out.toString()
-// }
 Node.prototype.operate = function(b: Node, op: Operator) {
   let aVal = this.toString()
   let bVal = b.toString()
@@ -31,6 +27,16 @@ Node.prototype.operate = function(b: Node, op: Operator) {
   }
   throw new Error(`Cannot operate on ${this.type}`)
 }
+
+Object.defineProperty(Node.prototype, 'treeContext', {
+  get() {
+    let context = this._treeContext
+    if (!context) {
+      context = this._treeContext = new TreeContext()
+    }
+    return context
+  }
+})
 
 export { Node, TreeContext, type LocationInfo }
 

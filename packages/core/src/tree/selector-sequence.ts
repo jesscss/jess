@@ -42,14 +42,14 @@ export class SelectorSequence extends Node<Array<SimpleSelector | Combinator>> {
       Set(['.class2', 'em', '#id2'])
      ])
      */
-    return {
-      '.class': [
-        [Set(['.class', 'div', '#id']), '>', Set(['.class2', 'em', '#id2'])]
-      ],
-      '#id': ['.class', 'div', '#id'],
-      div: ['.class', 'div', '#id'],
-      ['.class', 'div', '#id']: [['.class', 'div', '#id'], '>', ['.class2', 'em', '#id2']]
-    }
+    // return {
+    //   '.class': [
+    //     [Set(['.class', 'div', '#id']), '>', Set(['.class2', 'em', '#id2'])]
+    //   ],
+    //   '#id': ['.class', 'div', '#id'],
+    //   div: ['.class', 'div', '#id'],
+    //   ['.class', 'div', '#id']: [['.class', 'div', '#id'], '>', ['.class2', 'em', '#id2']]
+    // }
   }
 
   async eval(context: Context): Promise<SelectorSequence | SelectorList | Nil> {

@@ -1,5 +1,7 @@
-import { defineType, type TreeContext, type LocationInfo, type Node } from './node'
+import { defineType, type LocationInfo, type Node } from './node'
+import { type TreeContext } from '../context'
 import { SimpleSelector } from './selector-simple'
+import { Quoted } from './quoted'
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */
@@ -34,8 +36,12 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     this.data.set('op', v)
   }
 
-  get mod() {
-    return this.data.get('mod')
+  get mod(): string {
+    const thisMod = this.data.get('mod')
+    if (thisMod) {
+      return thisMod
+    }
+    return ''
   }
 
   set mod(v: string | undefined) {
@@ -45,6 +51,30 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   toTrimmedString() {
     let { key, op, value, mod } = this
     return `[${key}${op ?? ''}${value ?? ''}${mod ? ` ${mod}` : ''}]`
+  }
+
+  compare(other: Node) {
+    const getValue = (val: string | Node) => {
+      if (typeof val === 'string') {
+        return val
+      }
+      if (val instanceof Quoted) {
+        return val.valueOf()
+      }
+      return val.toTrimmedString()
+    }
+
+    if (other instanceof AttributeSelector) {
+      if (
+        (getValue(this.key) === getValue(other.key)) &&
+        (this.op === other.op) &&
+        (this.mod === other.mod) &&
+        (getValue(this.value ?? '') === getValue(other.value ?? ''))
+      ) {
+        return 0
+      }
+    }
+    return super.compare(other)
   }
 }
 
