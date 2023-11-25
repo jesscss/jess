@@ -1,21 +1,22 @@
 import {
-  Node, defineType
+  type Node, defineType
 } from './node'
 import { type SelectorSequence } from './selector-sequence'
 import { type Extend } from './extend'
 import { type Context } from '../context'
 import { compareNodeArray } from './util/compare'
+import { Selector } from './selector'
 
 /** Constructs */
 export class SelectorList<
   T extends Node = SelectorSequence | Extend
-> extends Node<T[]> {
+> extends Selector<T[]> {
   toTrimmedString() {
     return this.value.map(v => v.toString()).join(',')
   }
 
-  normalizedSelector() {
-
+  normalizeSelector() {
+    return this
   }
 
   compare(other: Node) {

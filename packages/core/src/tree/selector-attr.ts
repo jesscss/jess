@@ -2,6 +2,7 @@ import { defineType, type LocationInfo, type Node } from './node'
 import { type TreeContext } from '../context'
 import { SimpleSelector } from './selector-simple'
 import { Quoted } from './quoted'
+import { SelectorList } from './selector-list'
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */
@@ -51,6 +52,10 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   toTrimmedString() {
     let { key, op, value, mod } = this
     return `[${key}${op ?? ''}${value ?? ''}${mod ? ` ${mod}` : ''}]`
+  }
+
+  normalizeSelector() {
+    return new SelectorList([this])
   }
 
   compare(other: Node) {

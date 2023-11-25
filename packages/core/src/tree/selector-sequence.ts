@@ -2,7 +2,7 @@ import { Combinator } from './combinator'
 import { Ampersand } from './ampersand'
 import {
   defineType,
-  Node
+  type Node
 } from './node'
 import type { Context } from '../context'
 import { Nil } from './nil'
@@ -12,6 +12,8 @@ import { isNode } from './util'
 import { compareNodeArray } from './util/compare'
 import { PseudoSelector } from './selector-pseudo'
 import { type SelectorList } from './selector-list'
+import { Selector } from './selector'
+import { Set } from 'immutable'
 
 /**
  * This is a complex selector. However, instead of storing
@@ -24,8 +26,8 @@ import { type SelectorList } from './selector-list'
  * Stored as:
  * [Element, Combinator, Element, Element]
  */
-export class SelectorSequence extends Node<Array<SimpleSelector | Combinator>> {
-  normalizedSelector() {
+export class SelectorSequence extends Selector<Array<SimpleSelector | Combinator>> {
+  normalizeSelector() {
     /**
      *
      * So what we should do here is have a kind of tree for looking up
