@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
-    name: '@jesscss/fns',
+    name: '@jesscss/satisfy',
     watch: false,
     include: ['src/__tests__/**/*.ts'],
     exclude: ['**/node_modules/**', '**/dist/**'],

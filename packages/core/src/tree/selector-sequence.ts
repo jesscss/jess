@@ -9,6 +9,7 @@ import { Nil } from './nil'
 import { type SimpleSelector } from './selector-simple'
 // import { BasicSelector } from './selector-basic'
 import { isNode } from './util'
+import { compareNodeArray } from './util/compare'
 import { PseudoSelector } from './selector-pseudo'
 import { type SelectorList } from './selector-list'
 
@@ -50,6 +51,13 @@ export class SelectorSequence extends Node<Array<SimpleSelector | Combinator>> {
     //   div: ['.class', 'div', '#id'],
     //   ['.class', 'div', '#id']: [['.class', 'div', '#id'], '>', ['.class2', 'em', '#id2']]
     // }
+  }
+
+  compare(other: Node) {
+    if (other instanceof SelectorSequence) {
+      return compareNodeArray(this.value, other.value)
+    }
+    return super.compare(other)
   }
 
   async eval(context: Context): Promise<SelectorSequence | SelectorList | Nil> {

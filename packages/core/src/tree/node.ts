@@ -504,8 +504,8 @@ export abstract class Node<
    * undefined = not comparable
    */
   compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
-    let aVal = this.toString()
-    let bVal = b.toString()
+    let aVal = this.toTrimmedString()
+    let bVal = b.toTrimmedString()
     if (aVal === bVal) {
       return 0
     } else if (aVal > bVal) {

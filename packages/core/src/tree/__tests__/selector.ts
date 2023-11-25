@@ -72,5 +72,22 @@ describe('Selector', () => {
       ])
       expect(sel1.compare(sel2)).toBe(0)
     })
+
+    test.only(':is() should match w/o :is()', () => {
+      // .foo, .bar {}
+      // :is(.foo), .bar {}
+      const sel1 = el('.foo')
+      const sel2 = pseudo({
+        name: ':is',
+        value: el('.foo')
+      })
+      expect(sel1.compare(sel2)).toBe(0)
+    })
+
+    // :is(a, b) :is(.c, .d) {}
+    // a .c {}
+    // a .d {}  --> a :is(.c, .d) {}
+    // b .c {}  --> b .c, a :is(.c, .d) {}
+    // b .d {}  --> :is(a, b) :is(.c, .d) {}
   })
 })

@@ -4,6 +4,7 @@ import { List } from './list'
 import type { Context } from '../context'
 import combinate from 'combinate'
 import { cast } from './util/cast'
+import { compareNodeArray } from './util/compare'
 
 export type SequenceOptions = {
   /**
@@ -34,6 +35,13 @@ export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> 
   //     value: values
   //   }, location)
   // }
+
+  compare(other: Node) {
+    if (other instanceof Sequence) {
+      return compareNodeArray(this.value, other.value)
+    }
+    return super.compare(other)
+  }
 
   operate(b: Node, op: string): Sequence | List {
     if (op !== '+') {

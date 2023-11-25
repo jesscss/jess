@@ -50,4 +50,4 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   }
 }
 
-export const pseudo = defineType(PseudoSelector, 'PseudoSelector', 'pseudo')
+export const pseudo = defineType<PseudoSelectorValue>(PseudoSelector, 'PseudoSelector', 'pseudo')

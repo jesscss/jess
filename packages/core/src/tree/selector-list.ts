@@ -4,6 +4,7 @@ import {
 import { type SelectorSequence } from './selector-sequence'
 import { type Extend } from './extend'
 import { type Context } from '../context'
+import { compareNodeArray } from './util/compare'
 
 /** Constructs */
 export class SelectorList<
@@ -15,6 +16,13 @@ export class SelectorList<
 
   normalizedSelector() {
 
+  }
+
+  compare(other: Node) {
+    if (other instanceof SelectorList) {
+      return compareNodeArray(this.value, other.value)
+    }
+    return super.compare(other)
   }
 
   async eval(context: Context): Promise<SelectorList<T> | T> {
