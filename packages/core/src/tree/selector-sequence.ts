@@ -28,6 +28,7 @@ import { Set } from 'immutable'
  */
 export class SelectorSequence extends Selector<Array<SimpleSelector | Combinator>> {
   normalizeSelector() {
+    return Set([])
     /**
      *
      * So what we should do here is have a kind of tree for looking up
