@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/require-array-sort-compare */
 import { Combinator } from './combinator'
 import { Ampersand } from './ampersand'
 import {
@@ -9,11 +10,11 @@ import { Nil } from './nil'
 import { type SimpleSelector } from './selector-simple'
 // import { BasicSelector } from './selector-basic'
 import { isNode } from './util'
-import { compareNodeArray } from './util/compare'
+import { compare } from './util/compare'
 import { PseudoSelector } from './selector-pseudo'
 import { type SelectorList } from './selector-list'
 import { Selector } from './selector'
-import { Set } from 'immutable'
+import { Tuple, type tuple } from '@bloomberg/record-tuple-polyfill'
 
 /**
  * This is a complex selector. However, instead of storing
@@ -27,8 +28,49 @@ import { Set } from 'immutable'
  * [Element, Combinator, Element, Element]
  */
 export class SelectorSequence extends Selector<Array<SimpleSelector | Combinator>> {
-  normalizeSelector() {
-    return Set([])
+  /**
+   * Essentially, a#id.class === a.class#id as being identical selectors,
+   * so we normalize groups and combinators to be in Immutable Sets,
+   * which ignores order when comparing
+   *
+   * @todo - we need to normalize :is() and :where()
+   */
+  toNormalizedSelector() {
+    let { value } = this
+    let length = value.length
+
+    let groups: Array<tuple | string> = []
+    let compoundSelector = []
+
+    for (let i = 0; i < length; i++) {
+      let node = value[i]!
+      if (node instanceof Combinator) {
+        if (compoundSelector.length > 0) {
+          /**
+           * Selectors are sorted because reversing the order
+           * should not affect the comparison.
+           * e.g. .class#id === #id.class
+           */
+          groups.push(
+            Tuple.from(
+              compoundSelector.map(v => v.toNormalizedSelector()).sort()
+            )
+          )
+          compoundSelector = []
+        }
+        groups.push(node.toTrimmedString())
+      } else {
+        compoundSelector.push(node)
+      }
+    }
+    if (compoundSelector.length > 0) {
+      groups.push(
+        Tuple.from(
+          compoundSelector.map(v => v.toNormalizedSelector()).sort()
+        )
+      )
+    }
+    return Tuple.from(groups)
     /**
      *
      * So what we should do here is have a kind of tree for looking up
@@ -58,7 +100,7 @@ export class SelectorSequence extends Selector<Array<SimpleSelector | Combinator
 
   compare(other: Node) {
     if (other instanceof SelectorSequence) {
-      return compareNodeArray(this.value, other.value)
+      return compare(this.toNormalizedSelector(), other.toNormalizedSelector())
     }
     return super.compare(other)
   }
@@ -90,7 +132,7 @@ export class SelectorSequence extends Selector<Array<SimpleSelector | Combinator
 
     selector = await super.eval.call(selector, context) as SelectorSequence
 
-    let cleanElements = (elements: Node[]) => {
+    let cleanElements = (elements: Array<Selector | Combinator | Nil>): Array<SimpleSelector | Combinator> => {
       let elementsLength = elements.length
       for (let i = 0; i < elementsLength; i++) {
         let value = elements[i]!
@@ -122,7 +164,7 @@ export class SelectorSequence extends Selector<Array<SimpleSelector | Combinator
           ])
         }
       }
-      return elements
+      return elements as Array<SimpleSelector | Combinator>
       // This can/should only happen with compound selectors
       // elements.sort((a, b) => {
       //   const aVal = a instanceof BasicSelector && a.isTag ? -1 : 0

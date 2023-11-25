@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/require-array-sort-compare */
 import {
   type Node, defineType
 } from './node'
@@ -15,13 +16,13 @@ export class SelectorList<
     return this.value.map(v => v.toString()).join(',')
   }
 
-  normalizeSelector() {
-    return this
-  }
-
   compare(other: Node) {
     if (other instanceof SelectorList) {
-      return compareNodeArray(this.value, other.value)
+      const getValue = (v: Node) => v instanceof Selector ? v.toNormalizedSelector() : v.toTrimmedString()
+      return compareNodeArray(
+        this.value.map(v => getValue(v)).sort(),
+        other.value.map(v => getValue(v)).sort()
+      )
     }
     return super.compare(other)
   }

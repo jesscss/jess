@@ -19,6 +19,7 @@ import type { SelectorList } from '../selector-list'
 import type { Collection } from '../collection'
 import type { VarDeclaration } from '../var-declaration'
 import type { Rest } from '../rest'
+import type { SimpleSelector } from '../selector-simple'
 
 /**
  * This utility function prevents circular dependencies,
@@ -36,6 +37,7 @@ export function isNode(value: any, type: 'VarDeclaration'): value is VarDeclarat
 export function isNode(value: any, type: ['Declaration', 'VarDeclaration', 'Mixin', 'Func']): value is Declaration | VarDeclaration | Mixin | Func
 export function isNode(value: any, type: 'Dimension'): value is Dimension
 export function isNode(value: any, type: 'BasicSelector'): value is BasicSelector
+export function isNode(value: any, type: 'SimpleSelector'): value is SimpleSelector
 export function isNode(value: any, type: 'List'): value is List
 export function isNode(value: any, type: 'Mixin'): value is Mixin
 export function isNode(value: any, type: 'Func'): value is Func

@@ -3,6 +3,7 @@ import { type TreeContext } from '../context'
 import { SimpleSelector } from './selector-simple'
 import { Quoted } from './quoted'
 import { SelectorList } from './selector-list'
+import { compare } from './util/compare'
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */
@@ -54,32 +55,26 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     return `[${key}${op ?? ''}${value ?? ''}${mod ? ` ${mod}` : ''}]`
   }
 
+  toNormalizedSelector() {
+    let { key, op, value, mod } = this
+    let keyStr = typeof key === 'string' ? key : key.toTrimmedString()
+    if (!op) {
+      return `[${keyStr}]`
+    }
+    let valueStr = value instanceof Quoted ? value.valueOf() : value?.toTrimmedString() ?? ''
+    return `[${key}${op}"${valueStr}"${mod ? ` ${mod}` : ''}]`
+  }
+
   normalizeSelector() {
     return new SelectorList([this])
   }
 
   compare(other: Node) {
-    const getValue = (val: string | Node) => {
-      if (typeof val === 'string') {
-        return val
-      }
-      if (val instanceof Quoted) {
-        return val.valueOf()
-      }
-      return val.toTrimmedString()
-    }
-
+    const thisValue = this.toNormalizedSelector()
     if (other instanceof AttributeSelector) {
-      if (
-        (getValue(this.key) === getValue(other.key)) &&
-        (this.op === other.op) &&
-        (this.mod === other.mod) &&
-        (getValue(this.value ?? '') === getValue(other.value ?? ''))
-      ) {
-        return 0
-      }
+      return compare(thisValue, other.toNormalizedSelector())
     }
-    return super.compare(other)
+    return compare(thisValue, other)
   }
 }
 

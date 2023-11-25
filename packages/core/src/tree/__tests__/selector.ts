@@ -1,5 +1,5 @@
 // import { Selector } from '../selector-sequence'
-import { sel, el, co, pseudo, attr, any, quoted } from '..'
+import { sel, el, co, pseudo, attr, any, quoted, sellist } from '..'
 // import type { Class } from 'type-fest'
 // import type { Node } from '../node'
 
@@ -52,7 +52,7 @@ describe('Selector', () => {
         op: '=',
         value: any('bar')
       })
-      const attr2 = any('[foo=bar]')
+      const attr2 = any('[foo="bar"]')
       expect(attr1.compare(attr2)).toBe(0)
     })
 
@@ -73,7 +73,33 @@ describe('Selector', () => {
       expect(sel1.compare(sel2)).toBe(0)
     })
 
-    test.only(':is() should match w/o :is()', () => {
+    test('inverted selector sequences are equal', () => {
+      const sel1 = sel([
+        el('.foo'),
+        el('#bar')
+      ])
+      const sel2 = sel([
+        el('#bar'),
+        el('.foo')
+      ])
+      expect(sel1.compare(sel2)).toBe(0)
+    })
+
+    test('out of order lists are equal', () => {
+      const list1 = sellist([
+        sel([el('.foo')]),
+        sel([el('#bar')])
+      ])
+
+      const list2 = sellist([
+        sel([el('#bar')]),
+        sel([el('.foo')])
+      ])
+
+      expect(list1.compare(list2)).toBe(0)
+    })
+
+    test(':is() should match w/o :is()', () => {
       // .foo, .bar {}
       // :is(.foo), .bar {}
       const sel1 = el('.foo')
