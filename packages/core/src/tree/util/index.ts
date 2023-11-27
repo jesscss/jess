@@ -45,6 +45,7 @@ export function isNode(value: any, type: 'FunctionValue'): value is FunctionValu
 export function isNode(value: any, type: ['Mixin', 'Func']): value is Mixin | Func
 export function isNode(value: any, type: 'SelectorSequence'): value is SelectorSequence
 export function isNode(value: any, type: 'SelectorList'): value is SelectorList
+export function isNode(value: any, type: ['SelectorSequence', 'SelectorList']): value is SelectorList
 export function isNode(value: any, type: 'Ruleset'): value is Ruleset
 export function isNode(value: any, type: 'Rules'): value is Rules
 export function isNode(value: any, type: 'AtRule'): value is AtRule

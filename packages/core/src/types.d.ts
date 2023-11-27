@@ -4,10 +4,14 @@
  */
 declare module '@bloomberg/record-tuple-polyfill' {
   export type record<T> = T extends Record<string, infer V> ? Record<string, V> : never
-  export function Record<T extends Record<string, any>>(t: T): record<T>
+  export const Record: (<T extends Record<string, any>>(t: T) => record<T>) & {
+    from<T extends object>(t: T): record<T>
+    isRecord<T>(t: T): t is record<T>
+  }
 
-  export type tuple<T = any> = T[]
+  export type tuple<T = any> = readonly T[]
   export const Tuple: (<T>(...ts: T[]) => tuple<T>) & {
     from<T>(ts: T[]): tuple<T>
+    isTuple<T>(t: T): t is tuple<T>
   }
 }

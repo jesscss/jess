@@ -1,7 +1,6 @@
 import type { Context } from '../context'
 import { defineType } from './node'
 import { SimpleSelector } from './selector-simple'
-import { SelectorList } from './selector-list'
 
 /**
  * A basic selector
@@ -22,8 +21,8 @@ export class BasicSelector extends SimpleSelector<string> {
     return /^[^.#*]/.test(this.value)
   }
 
-  normalizeSelector() {
-    return new SelectorList([this])
+  toPrimitiveSelector() {
+    return this.value
   }
 
   async eval(context: Context): Promise<BasicSelector> {

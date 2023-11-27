@@ -1,8 +1,9 @@
-import { Node, defineType } from './node'
+import { defineType } from './node'
 import { type SelectorList } from './selector-list'
 import { SelectorSequence } from './selector-sequence'
 import { type Context } from '../context'
 import { Ampersand } from './ampersand'
+import { Selector } from './selector'
 
 export type ExtendValue = {
   /** The preceding selector */
@@ -19,7 +20,7 @@ export type ExtendValue = {
  * @note - there is some pseudo-code somewhere that smartly
  * registers selectors by a string code.
  */
-export class Extend extends Node<ExtendValue> {
+export class Extend extends Selector<ExtendValue> {
   get flag() {
     return this.data.get('flag')
   }
@@ -55,6 +56,10 @@ export class Extend extends Node<ExtendValue> {
     let output = selector ? `${selector}` : ''
     output += `:extend(${target})`
     return output
+  }
+
+  toPrimitiveSelector() {
+    return this.data.get('selector').toPrimitiveSelector()
   }
 
   async eval(context: Context): Promise<SelectorSequence> {

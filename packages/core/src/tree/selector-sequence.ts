@@ -33,9 +33,19 @@ export class SelectorSequence extends Selector<Array<SimpleSelector | Combinator
    * so we normalize groups and combinators to be in Immutable Sets,
    * which ignores order when comparing
    *
-   * @todo - we need to normalize :is() and :where()
+   * @note sequences return the same tuple structure as lists,
+   *       because :is() and :where() can resolve to lists
+   *
+   *  e.g. .class#id > a
+   *   -> #[#['.class', '#id'], '>', #['a']]
+   *
+   *  e.g. :is(a, b, c) d, #is(e > f) g {}
+   *   -> #[
+   *         #[ #[ #['a'], #['b'], #['c'] ], #['d'] ],
+   *         #[ #['e', '>', 'f'], #['g'] ]
+   *      ]
    */
-  toNormalizedSelector() {
+  toPrimitiveSelector() {
     let { value } = this
     let length = value.length
 
@@ -44,6 +54,10 @@ export class SelectorSequence extends Selector<Array<SimpleSelector | Combinator
 
     for (let i = 0; i < length; i++) {
       let node = value[i]!
+      /**
+       * @note - Combinators are not part of sorting,
+       * because their order matters.
+       */
       if (node instanceof Combinator) {
         if (compoundSelector.length > 0) {
           /**
@@ -53,7 +67,7 @@ export class SelectorSequence extends Selector<Array<SimpleSelector | Combinator
            */
           groups.push(
             Tuple.from(
-              compoundSelector.map(v => v.toNormalizedSelector()).sort()
+              compoundSelector.map(v => v.toPrimitiveSelector()).sort()
             )
           )
           compoundSelector = []
@@ -66,7 +80,7 @@ export class SelectorSequence extends Selector<Array<SimpleSelector | Combinator
     if (compoundSelector.length > 0) {
       groups.push(
         Tuple.from(
-          compoundSelector.map(v => v.toNormalizedSelector()).sort()
+          compoundSelector.map(v => v.toPrimitiveSelector()).sort()
         )
       )
     }
@@ -100,7 +114,7 @@ export class SelectorSequence extends Selector<Array<SimpleSelector | Combinator
 
   compare(other: Node) {
     if (other instanceof SelectorSequence) {
-      return compare(this.toNormalizedSelector(), other.toNormalizedSelector())
+      return compare(this.toPrimitiveSelector(), other.toPrimitiveSelector())
     }
     return super.compare(other)
   }

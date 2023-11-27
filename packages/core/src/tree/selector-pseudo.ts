@@ -1,6 +1,7 @@
 import { defineType, type Node } from './node'
 import { SimpleSelector } from './selector-simple'
 import { type Context } from '../context'
+import { type Selector } from './selector'
 
 export type PseudoSelectorValue = {
   /**
@@ -32,6 +33,14 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     return `${name}${value ? `(${value})` : ''}`
   }
 
+  toPrimitiveSelector() {
+    let { name, value } = this
+    if (/:(is|where)/.test(name)) {
+      return (value as Selector).toPrimitiveSelector()
+    }
+    return this.toTrimmedString()
+  }
+
   async eval(context: Context) {
     return await this.evalIfNot(context, async () => {
       let { value } = this
@@ -50,4 +59,4 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   }
 }
 
-export const pseudo = defineType<PseudoSelectorValue>(PseudoSelector, 'PseudoSelector', 'pseudo')
+export const pseudo = defineType<PseudoSelectorValue, typeof PseudoSelector>(PseudoSelector, 'PseudoSelector', 'pseudo')

@@ -1,5 +1,7 @@
 // import { Selector } from '../selector-sequence'
 import { sel, el, co, pseudo, attr, any, quoted, sellist } from '..'
+import { Tuple, type tuple } from '@bloomberg/record-tuple-polyfill'
+import { isNode } from '../util'
 // import type { Class } from 'type-fest'
 // import type { Node } from '../node'
 
@@ -28,6 +30,35 @@ describe('Selector', () => {
         el('#bar')
       ])
       expect(`${rule}`).toBe('.foo #bar')
+    })
+  })
+
+  describe.only('normalization', () => {
+    test('normalizes sequences / lists / single selectors as tuple lists', () => {
+      const sel1 = el('.foo')
+      const sel2 = sel([el('.foo')])
+      const sel3 = sellist([sel([el('.foo')])])
+
+      const match = Tuple(Tuple(Tuple('.foo')))
+
+      expect(sel1.toNormalizedSelector()).toBe(match)
+      expect(sel2.toNormalizedSelector()).toBe(match)
+      expect(sel3.toNormalizedSelector()).toBe(match)
+    })
+
+    test('converts :is()', () => {
+      const sel1 = pseudo({
+        name: ':is',
+        value: el('.foo')
+      })
+      const sel2 = pseudo({
+        name: ':is',
+        value: sel([el('.foo')])
+      })
+      const match = Tuple(Tuple(Tuple('.foo')))
+
+      expect(sel1.toNormalizedSelector()).toBe(match)
+      expect(sel2.toNormalizedSelector()).toBe(match)
     })
   })
 

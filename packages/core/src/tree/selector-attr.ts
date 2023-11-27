@@ -2,7 +2,6 @@ import { defineType, type LocationInfo, type Node } from './node'
 import { type TreeContext } from '../context'
 import { SimpleSelector } from './selector-simple'
 import { Quoted } from './quoted'
-import { SelectorList } from './selector-list'
 import { compare } from './util/compare'
 
 export type AttributeSelectorValue = {
@@ -55,7 +54,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     return `[${key}${op ?? ''}${value ?? ''}${mod ? ` ${mod}` : ''}]`
   }
 
-  toNormalizedSelector() {
+  toPrimitiveSelector() {
     let { key, op, value, mod } = this
     let keyStr = typeof key === 'string' ? key : key.toTrimmedString()
     if (!op) {
@@ -65,14 +64,10 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     return `[${key}${op}"${valueStr}"${mod ? ` ${mod}` : ''}]`
   }
 
-  normalizeSelector() {
-    return new SelectorList([this])
-  }
-
   compare(other: Node) {
-    const thisValue = this.toNormalizedSelector()
+    const thisValue = this.toPrimitiveSelector()
     if (other instanceof AttributeSelector) {
-      return compare(thisValue, other.toNormalizedSelector())
+      return compare(thisValue, other.toPrimitiveSelector())
     }
     return compare(thisValue, other)
   }
