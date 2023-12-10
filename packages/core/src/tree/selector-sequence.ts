@@ -54,6 +54,16 @@ export class SelectorSequence extends Selector<Array<SimpleSelector | Combinator
 
     for (let i = 0; i < length; i++) {
       let node = value[i]!
+      if (node instanceof PseudoSelector && node.value) {
+        let innerValue = node.value
+        if (!(isNode(innerValue, 'SelectorList'))) {
+          if (isNode(innerValue, 'SelectorSequence')) {
+            value.splice(i, 0, ...innerValue.value)
+          } else {
+            value.splice(i, 0, innerValue as SimpleSelector)
+          }
+        }
+      }
       /**
        * @note - Combinators are not part of sorting,
        * because their order matters.
