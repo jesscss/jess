@@ -17,7 +17,7 @@ const compiler = new JessCompiler({
 })
 
 describe('Can render Less files to CSS', () => {
-  const files = glob.sync(path.join(testData, 'less/*/calc.less'))
+  const files = glob.sync(path.join(testData, 'less/*/charsets.less'))
   files
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))
@@ -32,7 +32,7 @@ describe('Can render Less files to CSS', () => {
          * Newer CSS output and older Less CSS output are not going
          * to be identical. How do we make sure they match?
          */
-        expect(output).toBe(css)
+        expect(output).toMatchCss(css)
       })
     })
 })

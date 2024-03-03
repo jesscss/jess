@@ -21,6 +21,9 @@ export { default as e } from './e'
 export { default as min } from './min'
 export { default as max } from './max'
 
+/** Misc */
+export { default as unit } from './unit'
+
 /** Color blending */
 export { default as multiply } from './multiply'
 export { default as screen } from './screen'

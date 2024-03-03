@@ -4,7 +4,7 @@ expect.extend({
   /** Normalizes CSS-ish strings */
   toMatchCss(received: string, expected: string) {
     let replaceWS = (str: string) =>
-      str.replace(/\s+/g, ' ').replace(/:\s*/, ':').replace(/;/, '')
+      str.replace(/\s+/g, ' ').replace(/:\s*/g, ':').replace(/;/g, '')
 
     received = replaceWS(received)
     expected = replaceWS(expected)

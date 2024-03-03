@@ -5,7 +5,8 @@ export default defineConfig({
     name: 'jess',
     watch: false,
     include: ['test/**/*.ts', '**/__tests__/**/*.ts'],
-    globals: true
+    globals: true,
+    setupFiles: ['../../test/setup.ts']
     // coverage: {
     //   enabled: true,
     //   include: ['src/**/*.ts'],
