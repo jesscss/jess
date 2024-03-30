@@ -53,7 +53,5 @@ export abstract class Selector<T = any> extends Node<T> {
     return Tuple(Tuple(Tuple(this.toPrimitiveSelector())))
   }
 
-  compare(other: Node): 0 | 1 | -1 | undefined {
-
-  }
+  abstract compare(other: Node): 0 | 1 | -1 | undefined
 }

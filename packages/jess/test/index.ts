@@ -1,7 +1,9 @@
 import * as glob from 'glob'
 import * as fs from 'fs'
 import * as path from 'path'
-import { render } from '../src'
+import { JessCompiler } from '../src'
+
+const compiler = new JessCompiler()
 
 describe('Output files', () => {
   const testData = path.join(__dirname, 'files')
@@ -14,9 +16,9 @@ describe('Output files', () => {
         const jessFile = path.join(testData, file)
         const cssFile = jessFile.replace(/\.jess$/, '.css')
 
-        const output = await render(jessFile)
+        const output = await compiler.render(jessFile)
         const referenceCss = (await fs.promises.readFile(cssFile)).toString()
-        expect(output.$toCSS()).toBe(referenceCss.toString())
+        expect(output).toBe(referenceCss.toString())
       })
     })
 })

@@ -4,7 +4,7 @@ import {
   Context,
   type TreeContextOptions,
   type PluginObject,
-  type JessError,
+  // type JessError,
   logger
 } from '@jesscss/core'
 import merge from 'lodash-es/merge'

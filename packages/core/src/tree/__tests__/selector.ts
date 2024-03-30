@@ -131,14 +131,45 @@ describe('Selector', () => {
     })
 
     test(':is() should match w/o :is()', () => {
-      // .foo, .bar {}
-      // :is(.foo), .bar {}
+      // .foo {}
+      // :is(.foo) {}
       const sel1 = el('.foo')
       const sel2 = pseudo({
         name: ':is',
         value: el('.foo')
       })
       expect(sel1.compare(sel2)).toBe(0)
+    })
+
+    test(':is() should match w/o :is()', () => {
+      // .foo, .bar {}
+      const sel1 = sellist([el('.foo'), el('.bar')])
+      // :is(.foo, .bar) {}
+      const sel2 = pseudo({
+        name: ':is',
+        value: sellist([el('.foo'), el('.bar')])
+      })
+      // :is(.foo), .bar {}
+      const sel3 = sellist([
+        pseudo({
+          name: ':is',
+          value: el('.foo')
+        }),
+        el('.bar')
+      ])
+
+      // .foo, .bar {}
+      // :is(.foo, .bar) {}
+      // match .foo w/ .foo
+      // .bar {}
+      // :is(.bar) {}
+      // match .bar w/ .bar
+      // {}
+      // :is() {} is reduced to {}
+      // matches are exhausted, so the selectors are equal
+      expect(sel1.compare(sel2)).toBe(0)
+      expect(sel1.compare(sel3)).toBe(0)
+      expect(sel2.compare(sel3)).toBe(0)
     })
 
     // :is(a, b) :is(.c, .d) {}
