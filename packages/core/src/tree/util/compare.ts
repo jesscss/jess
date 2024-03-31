@@ -1,10 +1,12 @@
 import { isNode } from '.'
 import { cast } from './cast'
 import { Selector } from '../selector'
+import { SelectorList } from '../selector-list'
 import { Tuple, type tuple } from '@bloomberg/record-tuple-polyfill'
-import { type Combinator } from '../combinator'
+import { Combinator } from '../combinator'
 import { type Node } from '../node'
 import isSupersetOf from 'set.prototype.issupersetof'
+import { type SelectorSequence } from '../selector-sequence'
 
 export function compare(a: any, b: any) {
   if (typeof a === 'string' && typeof b === 'string') {
@@ -75,7 +77,33 @@ export function compareSelectors(a: Selector, b: Selector): 0 | 1 | -1 | undefin
 }
 
 function getLinkedLists(selector: Selector) {
+  /** */
+  if (isNode(selector, 'SelectorSequence')) {
+    return walkSelectorSequence(selector)
+  }
+}
 
+function walkSelectorSequence(seq: SelectorSequence) {
+  const { value } = seq
+  let elLength = value.length
+  const normalMap = new Map<Selector, string>()
+  const linkedLists: string[][] = [[]]
+  let listIndex = 0
+  for (let i = 0; i < elLength; i++) {
+    const list = linkedLists[listIndex]!
+    const el = value[i]!
+    if (el instanceof Combinator) {
+      list.push(el)
+    } else {
+      const normalVal = normalMap.get(el)
+      if (normalVal) {
+        list.push(normalVal)
+      } else {
+
+      }
+      list.push(normalMap.get())
+    }
+  }
 }
 
 Selector.prototype.compare = function(other: Node) {

@@ -54,7 +54,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     return `[${key}${op ?? ''}${value ?? ''}${mod ? ` ${mod}` : ''}]`
   }
 
-  toPrimitiveSelector() {
+  toNormalizedString() {
     let { key, op, value, mod } = this
     let keyStr = typeof key === 'string' ? key : key.toTrimmedString()
     if (!op) {

@@ -21,10 +21,6 @@ export class BasicSelector extends SimpleSelector<string> {
     return /^[^.#*]/.test(this.value)
   }
 
-  toPrimitiveSelector() {
-    return this.value
-  }
-
   async eval(context: Context): Promise<BasicSelector> {
     return await this.evalIfNot(context, async () => {
       let node = await super.eval(context) as BasicSelector

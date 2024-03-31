@@ -13,48 +13,9 @@ export interface Selector<T = any> extends Node<T> {
 
 export abstract class Selector<T = any> extends Node<T> {
   /**
-   * Turn everything into a normalized tuple,
-   * including selector lists.
+   * Turn everything into a normalized string.
    */
-  toPrimitiveSelector(): tuple | string {
+  toNormalizedString(): string {
     return this.toTrimmedString()
-  }
-
-  /**
-   * Always creates a 3-layer tuple
-   *  1. simple selectors are strings
-   *  2. compound selectors are (unordered) tuples
-   *  3. sequences (complex selectors) are (ordered) tuples of
-   *     compound selectors, complex selectors, relative selectors,
-   *     or lists, separated by combinators (strings).
-   *  4. lists are tuples of sequences
-   *
-   * @note A list that contains sequences with no lists will be reduced
-   * to a single sequence with a single list within it.
-   *
-   * @todo - it's possible we'll have to rethink this when working out :extend
-   */
-  toNormalizedSelector(): tuple {
-    if (isNode(this, 'SelectorList')) {
-      let list = (this as SelectorList).toPrimitiveSelector() as tuple<tuple>
-      /**
-       a, b, c {}
-       */
-      let newList: tuple[] = []
-      for (let seq of list) {
-        let hasTuple = seq.some(isTuple)
-        if (hasTuple) {
-          newList.push(seq)
-        } else {
-          newList.push(Tuple(seq))
-        }
-      }
-      return tuple
-    }
-    if (isNode(this, 'SelectorSequence')) {
-      return Tuple((this as SelectorSequence).toPrimitiveSelector())
-    }
-    /** Create a 3-layer tuple from a simple selector */
-    return Tuple(Tuple(Tuple(this.toPrimitiveSelector())))
   }
 }
