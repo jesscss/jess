@@ -172,10 +172,40 @@ describe('Selector', () => {
       expect(sel2.compare(sel3)).toBe(0)
     })
 
-    // :is(a, b) :is(.c, .d) {}
-    // a .c {}
-    // a .d {}  --> a :is(.c, .d) {}
-    // b .c {}  --> b .c, a :is(.c, .d) {}
-    // b .d {}  --> :is(a, b) :is(.c, .d) {}
+    test(':is() should match w/o :is()', () => {
+      // a b, a c {}
+      const sel1 = sellist([
+        sel([el('a'), co(' '), el('b')]),
+        sel([el('a'), co(' '), el('c')])
+      ])
+      // a :is(b, c) {}
+      const sel2 = sel([
+        el('a'),
+        pseudo({
+          name: ':is',
+          value: sellist([el('b'), el('c')])
+        })
+      ])
+
+      /**
+       * Given:
+       * A. a b, a c {}
+       * B. a :is(b, c) {}
+       *
+       * Test for exhaustiveness of combinations. i.e.
+       *   1. First, we test if element 'a' from A is within B. If not, exit.
+       *      (During eval, should we build a map of all simple selectors?)
+       *   2. We collect all complex selectors from each selector list,
+       *      including within :is() (but not :where(), which is matched on its own)
+       *      Note, we don't want to create a new list of cloned selectors,
+       *      but instead a "linked list" (or tuple?) of all complex selector combinations.
+       *   3. Starting with A, test each complex selector (linked list) against each
+       *      complex selector (linked list) in B. If a match is found, remove it from
+       *      the list of linked lists.
+       *   4. If all linked lists are exhausted, the selectors are equal.
+       */
+
+      expect(sel1.compare(sel2)).toBe(0)
+    })
   })
 })

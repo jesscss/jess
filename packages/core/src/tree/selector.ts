@@ -6,6 +6,11 @@ import { type SelectorSequence } from './selector-sequence'
 
 const { isTuple } = Tuple
 
+/** Will be bound in ./util/compare.ts */
+export interface Selector<T = any> extends Node<T> {
+  compare(other: Node): 0 | 1 | -1 | undefined
+}
+
 export abstract class Selector<T = any> extends Node<T> {
   /**
    * Turn everything into a normalized tuple,
@@ -52,6 +57,4 @@ export abstract class Selector<T = any> extends Node<T> {
     /** Create a 3-layer tuple from a simple selector */
     return Tuple(Tuple(Tuple(this.toPrimitiveSelector())))
   }
-
-  abstract compare(other: Node): 0 | 1 | -1 | undefined
 }

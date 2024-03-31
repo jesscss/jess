@@ -71,4 +71,4 @@ Output:
 }
 ```
 
-When converting Less to Jess, Jess hoists variables.
+When converting Less to Jess, Jess hoists variables (maybe?)

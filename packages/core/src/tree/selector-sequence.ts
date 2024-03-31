@@ -27,7 +27,7 @@ import { Tuple, type tuple } from '@bloomberg/record-tuple-polyfill'
  * Stored as:
  * [Element, Combinator, Element, Element]
  */
-export class SelectorSequence extends Selector<Array<SimpleSelector | Combinator>> {
+export class SelectorSequence extends Selector<Array<SimpleSelector | PseudoSelector | Combinator>> {
   /**
    * Essentially, a#id.class === a.class#id as being identical selectors,
    * so we normalize groups and combinators to be in Immutable Sets,

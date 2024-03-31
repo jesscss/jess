@@ -15,3 +15,8 @@ declare module '@bloomberg/record-tuple-polyfill' {
     isTuple<T>(t: T): t is tuple<T>
   }
 }
+
+declare module 'set.prototype.issupersetof' {
+  const isSuperSetOf: (a: Set<any>, b: Set<any>) => boolean
+  export default isSuperSetOf
+}
