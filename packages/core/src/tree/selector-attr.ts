@@ -54,7 +54,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     return `[${key}${op ?? ''}${value ?? ''}${mod ? ` ${mod}` : ''}]`
   }
 
-  toNormalizedString() {
+  toNormalPrimitive() {
     let { key, op, value, mod } = this
     let keyStr = typeof key === 'string' ? key : key.toTrimmedString()
     if (!op) {
@@ -65,9 +65,9 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   }
 
   compare(other: Node) {
-    const thisValue = this.toPrimitiveSelector()
+    const thisValue = this.toNormalPrimitive()
     if (other instanceof AttributeSelector) {
-      return compare(thisValue, other.toPrimitiveSelector())
+      return compare(thisValue, other.toNormalPrimitive())
     }
     return compare(thisValue, other)
   }

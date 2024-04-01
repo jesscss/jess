@@ -17,8 +17,8 @@ export class SelectorList<
     return this.value.map(v => v.toString()).join(',')
   }
 
-  toPrimitiveSelector() {
-    return Tuple.from(this.value.map(v => v.toPrimitiveSelector()))
+  toNormalPrimitive() {
+
   }
 
   compare(other: Node) {

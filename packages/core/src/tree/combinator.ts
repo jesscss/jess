@@ -2,8 +2,8 @@ import { Node, defineType } from './node'
 
 export class Combinator extends Node<string> {
   /** To make forming Sets easier */
-  toNormalizedSelector() {
-    return this.toTrimmedString()
+  toNormalPrimitive() {
+    return this.value
   }
   // toTrimmedString() {
   //   let { value } = this

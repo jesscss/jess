@@ -1,7 +1,9 @@
 import { defineType, type Node } from './node'
 import { SimpleSelector } from './selector-simple'
 import { type Context } from '../context'
-import { type Selector } from './selector'
+import { Selector } from './selector'
+import { Tuple } from '@bloomberg/record-tuple-polyfill'
+import { isNode } from './util'
 
 export type PseudoSelectorValue = {
   /**
@@ -33,12 +35,16 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     return `${name}${value ? `(${value})` : ''}`
   }
 
-  toPrimitiveSelector() {
+  toNormalPrimitive() {
     let { name, value } = this
-    if (/:(is|where)/.test(name)) {
-      return (value as Selector).toPrimitiveSelector()
+    if (value && value instanceof Selector) {
+      if (name === ':is') {
+        return value.toNormalPrimitive()
+      }
+      return Tuple.from([`${name}(`, value.toNormalPrimitive(), ')'])
     }
-    return this.toTrimmedString()
+    /** Normalizes :nth-child(n + 1) to match :nth-child(n+1) */
+    return `${name}${value ? `(${value.toTrimmedString().replace(/\s+/, '')})` : ''}`
   }
 
   async eval(context: Context) {

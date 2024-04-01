@@ -3,16 +3,16 @@ import { cast } from './cast'
 import { Selector } from '../selector'
 import { SelectorList } from '../selector-list'
 import { Tuple, type tuple } from '@bloomberg/record-tuple-polyfill'
-import { Combinator } from '../combinator'
+import { type Combinator } from '../combinator'
 import { type Node } from '../node'
 import isSupersetOf from 'set.prototype.issupersetof'
 import { type SelectorSequence } from '../selector-sequence'
 
 export function compare(a: any, b: any) {
+  if (a === b) {
+    return 0
+  }
   if (typeof a === 'string' && typeof b === 'string') {
-    if (a === b) {
-      return 0
-    }
     return a > b ? 1 : -1
   }
   let aNode = isNode(a) ? a : cast(a)
@@ -77,32 +77,47 @@ export function compareSelectors(a: Selector, b: Selector): 0 | 1 | -1 | undefin
 }
 
 function getLinkedLists(selector: Selector) {
-  /** */
+  let linkedLists: Array<tuple<string | tuple>>
   if (isNode(selector, 'SelectorSequence')) {
-    return walkSelectorSequence(selector)
+    linkedLists = walkSelectorSequence(selector)
+  } else {
+
   }
+  return Tuple.from(linkedLists)
 }
 
-function walkSelectorSequence(seq: SelectorSequence) {
+function walkSelectorSequence(seq: SelectorSequence): Array<tuple<string | tuple>> {
   const { value } = seq
   let elLength = value.length
-  const normalMap = new Map<Selector, string>()
-  const linkedLists: string[][] = [[]]
+  const normalMap = new Map<Selector, string | tuple>()
+  const linkedLists: Array<Array<string | tuple>> = [[]]
   let listIndex = 0
   for (let i = 0; i < elLength; i++) {
     const list = linkedLists[listIndex]!
     const el = value[i]!
-    if (el instanceof Combinator) {
-      list.push(el)
+    if (isNode(el, 'Combinator')) {
+      list.push(el.value)
     } else {
-      const normalVal = normalMap.get(el)
+      let normalVal = normalMap.get(el)
       if (normalVal) {
         list.push(normalVal)
       } else {
-
+        normalVal = el.toNormalPrimitive()
+        normalMap.set(el, normalVal)
+        list.push(normalVal)
       }
-      list.push(normalMap.get())
     }
+  }
+  return linkedLists
+}
+
+/**
+ * Collapse selectors / selector lists into :is()-like
+ * patterns.
+ */
+function simplifySelector(selector: Selector) {
+  if (isNode(selector, 'SelectorList')) {
+    return selector
   }
 }
 

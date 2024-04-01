@@ -16,6 +16,14 @@ import { type SelectorList } from './selector-list'
 import { Selector } from './selector'
 import { Tuple, type tuple } from '@bloomberg/record-tuple-polyfill'
 
+type SelectorValue = [
+  first: SimpleSelector | PseudoSelector,
+  ...rest: Array<Combinator | SimpleSelector | PseudoSelector>
+] | [
+  first: Combinator,
+  second: SimpleSelector | PseudoSelector,
+  ...rest: Array<Combinator | SimpleSelector | PseudoSelector>
+]
 /**
  * This is a complex selector. However, instead of storing
  * "compound selectors" as a distinct class, we just store
@@ -27,7 +35,7 @@ import { Tuple, type tuple } from '@bloomberg/record-tuple-polyfill'
  * Stored as:
  * [Element, Combinator, Element, Element]
  */
-export class SelectorSequence extends Selector<Array<SimpleSelector | PseudoSelector | Combinator>> {
+export class SelectorSequence extends Selector<SelectorValue> {
   /**
    * Essentially, a#id.class === a.class#id as being identical selectors,
    * so we normalize groups and combinators to be in Immutable Sets,
@@ -45,93 +53,107 @@ export class SelectorSequence extends Selector<Array<SimpleSelector | PseudoSele
    *         #[ #['e', '>', 'f'], #['g'] ]
    *      ]
    */
-  toPrimitiveSelector() {
-    let { value } = this
-    let length = value.length
+  toNormalPrimitive() {
+    const { value } = this
+    let elLength = value.length
+    let list: Array<string | tuple | Combinator> = []
+    for (let i = 0; i < elLength; i++) {
+      const el = value[i]!
+      const val = el.value
+      /** Given .a > :is(.b.c), result should be .a > .b.c */
+      if (
+        el instanceof PseudoSelector
+        && el.name === ':is'
+        && !isNode(val, 'SelectorList')
+      ) {
+        /**
+         * Merge :is-list into this sequence
+         * @note If :is() starts with a combinator, it's relative
+         * to the parent selector, so it can't be merged into the
+         * current sequence.
+         */
+        if (val instanceof SelectorSequence && !(val.value[0] instanceof Combinator)) {
+          list.push(...val.value.map(v => v.toNormalPrimitive()))
+        } else {
+          /** :is contains a selector of some kind */
+          list.push((val as Selector).toNormalPrimitive())
+        }
+      } else {
+        if (el instanceof Combinator) {
+          list.push(el)
+        } else {
+          list.push(el.toNormalPrimitive())
+        }
+      }
+    }
 
-    let groups: Array<tuple | string> = []
-    let compoundSelector = []
+    if (list.length > 1) {
+      const finalList: Array<string | tuple> = []
+      const compoundList: Array<string | tuple<string | tuple>> = []
 
-    for (let i = 0; i < length; i++) {
-      let node = value[i]!
-      if (node instanceof PseudoSelector && node.value) {
-        let innerValue = node.value
-        if (!(isNode(innerValue, 'SelectorList'))) {
-          if (isNode(innerValue, 'SelectorSequence')) {
-            value.splice(i, 0, ...innerValue.value)
-          } else {
-            value.splice(i, 0, innerValue as SimpleSelector)
+      const pushCompound = () => {
+        if (compoundList.length > 0) {
+          finalList.push(Tuple.from(compoundList.sort()))
+          compoundList.length = 0
+        }
+      }
+
+      for (let el of list) {
+        if (el instanceof Combinator) {
+          pushCompound()
+          finalList.push(el.value)
+        } else {
+          compoundList.push(el)
+        }
+      }
+      pushCompound()
+      return Tuple.from(finalList)
+    }
+    return Tuple.from(list as Array<string | tuple>)
+  }
+
+  /**
+   * @todo - Can we do this without Tuples?
+   */
+  compare(other: Node) {
+    if (other instanceof SelectorSequence || other instanceof Selector) {
+      const firstSelector = other instanceof SelectorSequence
+        ? other.value[0]
+        : other
+      if (!firstSelector) {
+        return undefined
+      }
+
+      const thisNormal = this.toNormalPrimitive()
+      const otherNormal = other instanceof SelectorSequence
+        ? other.toNormalPrimitive()
+        : Tuple([other.toNormalPrimitive()])
+
+      if (thisNormal === otherNormal) {
+        return 0
+      }
+
+      const { isTuple } = Tuple
+
+      /** Find partial matches */
+      for (let i = 0; i < otherNormal.length; i++) {
+        const el = otherNormal[i]!
+        if (isTuple(el)) {
+          const thisEl = thisNormal[i]
+          if (!thisEl) {
+            /** Not even a partial match */
+            return undefined
           }
         }
       }
-      /**
-       * @note - Combinators are not part of sorting,
-       * because their order matters.
-       */
-      if (node instanceof Combinator) {
-        if (compoundSelector.length > 0) {
-          /**
-           * Selectors are sorted because reversing the order
-           * should not affect the comparison.
-           * e.g. .class#id === #id.class
-           */
-          groups.push(
-            Tuple.from(
-              compoundSelector.map(v => v.toPrimitiveSelector()).sort()
-            )
-          )
-          compoundSelector = []
-        }
-        groups.push(node.toTrimmedString())
-      } else {
-        compoundSelector.push(node)
-      }
-    }
-    if (compoundSelector.length > 0) {
-      groups.push(
-        Tuple.from(
-          compoundSelector.map(v => v.toPrimitiveSelector()).sort()
-        )
-      )
-    }
-    return Tuple.from(groups)
-    /**
-     *
-     * So what we should do here is have a kind of tree for looking up
-     * sets of selectors. Each selector should be a set (maybe?). And each
-     * compound selector should be a set. Extending a single selector would
-     * wrap the selector in a set. Extending a compound selector would
-     * wrap the compound selector in a set. Wrapping a set with another
-     * set is dependent on the extend properties.
-     *
-     div.class#id > em#id2.class2
-
-     Set([
-      Set(['.class', 'div', '#id']),
-      '>',
-      Set(['.class2', 'em', '#id2'])
-     ])
-     */
-    // return {
-    //   '.class': [
-    //     [Set(['.class', 'div', '#id']), '>', Set(['.class2', 'em', '#id2'])]
-    //   ],
-    //   '#id': ['.class', 'div', '#id'],
-    //   div: ['.class', 'div', '#id'],
-    //   ['.class', 'div', '#id']: [['.class', 'div', '#id'], '>', ['.class2', 'em', '#id2']]
-    // }
-  }
-
-  compare(other: Node) {
-    if (other instanceof SelectorSequence) {
-      return compare(this.toPrimitiveSelector(), other.toPrimitiveSelector())
+      return compare(this.toNormalPrimitive(), other.toNormalPrimitive())
     }
     return super.compare(other)
   }
 
   async eval(context: Context): Promise<SelectorSequence | SelectorList | Nil> {
     let selector: SelectorSequence = this.clone()
-    let elements = [...selector.value]
+    let elements = [...selector.value] as SelectorValue
     selector.value = elements
 
     let collapseNesting = context.opts.collapseNesting
@@ -156,19 +178,20 @@ export class SelectorSequence extends Selector<Array<SimpleSelector | PseudoSele
 
     selector = await super.eval.call(selector, context) as SelectorSequence
 
-    let cleanElements = (elements: Array<Selector | Combinator | Nil>): Array<SimpleSelector | Combinator> => {
+    let cleanElements = (elements: Array<Selector | Combinator | Nil>): SelectorValue => {
       let elementsLength = elements.length
       for (let i = 0; i < elementsLength; i++) {
         let value = elements[i]!
 
         if (
-          i === 0 &&
-          (
+          i === 0
+          && (
             (
-              value instanceof SelectorSequence &&
-              value.value.length === 0
-            ) || value instanceof Nil ||
-            (collapseNesting && (value instanceof Ampersand || value instanceof Combinator))
+              value instanceof SelectorSequence
+              && value.value.length === 0
+            )
+            || value instanceof Nil
+            || (collapseNesting && (value instanceof Ampersand || value instanceof Combinator))
           )
         ) {
           elements.shift()
@@ -188,7 +211,7 @@ export class SelectorSequence extends Selector<Array<SimpleSelector | PseudoSele
           ])
         }
       }
-      return elements as Array<SimpleSelector | Combinator>
+      return elements as SelectorValue
       // This can/should only happen with compound selectors
       // elements.sort((a, b) => {
       //   const aVal = a instanceof BasicSelector && a.isTag ? -1 : 0
