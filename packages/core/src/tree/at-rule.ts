@@ -1,5 +1,5 @@
 import { Node, defineType } from './node'
-import { SelectorSequence } from './selector-sequence'
+import { ComplexSelector } from './selector-complex'
 import { Ampersand } from './ampersand'
 import { Ruleset } from './ruleset'
 import type { General } from './general'
@@ -69,7 +69,7 @@ export class AtRule extends Node<AtRuleValue> {
        */
       if (context.frames.length !== 0) {
         let rule = await new Ruleset([
-          ['selector', new SelectorSequence([new Ampersand()])],
+          ['selector', new ComplexSelector([new Ampersand()])],
           ['rules', rules]
         ])
           .inherit(this)

@@ -12,7 +12,8 @@ import type { FunctionValue } from '../function-value'
 import { Node } from '../node'
 import type { Ruleset } from '../ruleset'
 import type { Rules } from '../rules'
-import type { SelectorSequence } from '../selector-sequence'
+import type { ComplexSelector } from '../selector-complex'
+import type { CompoundSelector } from '../selector-compound'
 import type { Import } from '../import'
 import type { Nil } from '../nil'
 import type { SelectorList } from '../selector-list'
@@ -41,15 +42,16 @@ export function isNode(value: any, type: 'Dimension'): value is Dimension
 export function isNode(value: any, type: 'BasicSelector'): value is BasicSelector
 export function isNode(value: any, type: 'SimpleSelector'): value is SimpleSelector
 export function isNode(value: any, type: 'PseudoSelector'): value is PseudoSelector
+export function isNode(value: any, type: 'ComplexSelector'): value is ComplexSelector
+export function isNode(value: any, type: 'CompoundSelector'): value is CompoundSelector
+export function isNode(value: any, type: 'SelectorList'): value is SelectorList
+export function isNode(value: any, type: ['ComplexSelector', 'SelectorList']): value is SelectorList
 export function isNode(value: any, type: 'Combinator'): value is Combinator
 export function isNode(value: any, type: 'List'): value is List
 export function isNode(value: any, type: 'Mixin'): value is Mixin
 export function isNode(value: any, type: 'Func'): value is Func
 export function isNode(value: any, type: 'FunctionValue'): value is FunctionValue
 export function isNode(value: any, type: ['Mixin', 'Func']): value is Mixin | Func
-export function isNode(value: any, type: 'SelectorSequence'): value is SelectorSequence
-export function isNode(value: any, type: 'SelectorList'): value is SelectorList
-export function isNode(value: any, type: ['SelectorSequence', 'SelectorList']): value is SelectorList
 export function isNode(value: any, type: 'Ruleset'): value is Ruleset
 export function isNode(value: any, type: 'Rules'): value is Rules
 export function isNode(value: any, type: 'AtRule'): value is AtRule
@@ -67,7 +69,7 @@ export function isNode(value: any, type?: string | string[]): value is Node {
   if (!type) {
     return value instanceof Node
   } else {
-    return value instanceof Node &&
-      (Array.isArray(type) ? type.includes(value.type) : value.type === type)
+    return value instanceof Node
+      && (Array.isArray(type) ? type.includes(value.type) : value.type === type)
   }
 }

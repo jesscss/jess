@@ -15,27 +15,23 @@ import { PseudoSelector } from './selector-pseudo'
 import { type SelectorList } from './selector-list'
 import { Selector } from './selector'
 import { Tuple, type tuple } from '@bloomberg/record-tuple-polyfill'
+import { type CompoundSelector } from './selector-compound'
 
 type SelectorValue = [
-  first: SimpleSelector | PseudoSelector,
-  ...rest: Array<Combinator | SimpleSelector | PseudoSelector>
+  first: SimpleSelector | CompoundSelector,
+  ...rest: Array<Combinator | SimpleSelector | CompoundSelector>
 ] | [
   first: Combinator,
-  second: SimpleSelector | PseudoSelector,
-  ...rest: Array<Combinator | SimpleSelector | PseudoSelector>
+  second: SimpleSelector | CompoundSelector,
+  ...rest: Array<Combinator | SimpleSelector | CompoundSelector>
 ]
 /**
- * This is a complex selector. However, instead of storing
- * "compound selectors" as a distinct class, we just store
- * the sequence of simple selectors and combinators.
+ * Selectors with combinators.
  *
  * @example
  * #id > .class.class
- *
- * Stored as:
- * [Element, Combinator, Element, Element]
  */
-export class SelectorSequence extends Selector<SelectorValue> {
+export class ComplexSelector extends Selector<SelectorValue> {
   /**
    * Essentially, a#id.class === a.class#id as being identical selectors,
    * so we normalize groups and combinators to be in Immutable Sets,
@@ -72,7 +68,7 @@ export class SelectorSequence extends Selector<SelectorValue> {
          * to the parent selector, so it can't be merged into the
          * current sequence.
          */
-        if (val instanceof SelectorSequence && !(val.value[0] instanceof Combinator)) {
+        if (val instanceof ComplexSelector && !(val.value[0] instanceof Combinator)) {
           list.push(...val.value.map(v => v.toNormalPrimitive()))
         } else {
           /** :is contains a selector of some kind */
@@ -116,8 +112,8 @@ export class SelectorSequence extends Selector<SelectorValue> {
    * @todo - Can we do this without Tuples?
    */
   compare(other: Node) {
-    if (other instanceof SelectorSequence || other instanceof Selector) {
-      const firstSelector = other instanceof SelectorSequence
+    if (other instanceof ComplexSelector || other instanceof Selector) {
+      const firstSelector = other instanceof ComplexSelector
         ? other.value[0]
         : other
       if (!firstSelector) {
@@ -125,7 +121,7 @@ export class SelectorSequence extends Selector<SelectorValue> {
       }
 
       const thisNormal = this.toNormalPrimitive()
-      const otherNormal = other instanceof SelectorSequence
+      const otherNormal = other instanceof ComplexSelector
         ? other.toNormalPrimitive()
         : Tuple([other.toNormalPrimitive()])
 
@@ -151,8 +147,11 @@ export class SelectorSequence extends Selector<SelectorValue> {
     return super.compare(other)
   }
 
-  async eval(context: Context): Promise<SelectorSequence | SelectorList | Nil> {
-    let selector: SelectorSequence = this.clone()
+  /**
+   * @todo - Re-write and simplify, now that we have a distinct CompoundSelector
+   */
+  async eval(context: Context): Promise<ComplexSelector | SelectorList | Nil> {
+    let selector: ComplexSelector = this.clone()
     let elements = [...selector.value] as SelectorValue
     selector.value = elements
 
@@ -176,7 +175,7 @@ export class SelectorSequence extends Selector<SelectorValue> {
       }
     }
 
-    selector = await super.eval.call(selector, context) as SelectorSequence
+    selector = await super.eval.call(selector, context) as ComplexSelector
 
     let cleanElements = (elements: Array<Selector | Combinator | Nil>): SelectorValue => {
       let elementsLength = elements.length
@@ -187,7 +186,7 @@ export class SelectorSequence extends Selector<SelectorValue> {
           i === 0
           && (
             (
-              value instanceof SelectorSequence
+              value instanceof ComplexSelector
               && value.value.length === 0
             )
             || value instanceof Nil
@@ -197,7 +196,10 @@ export class SelectorSequence extends Selector<SelectorValue> {
           elements.shift()
           elementsLength -= 1
           i -= 1
-        } else if (value instanceof SelectorSequence) {
+        /**
+         * @note The following two can occur because of evaluation of `&`
+         */
+        } else if (value instanceof ComplexSelector) {
           elements = elements.slice(0, i).concat(value.value).concat(elements.slice(i + 1))
           elementsLength += value.value.length - 1
         } else if (isNode(value, 'SelectorList') && elementsLength > 1) {
@@ -221,7 +223,7 @@ export class SelectorSequence extends Selector<SelectorValue> {
     }
 
     if (isNode(selector, 'SelectorList')) {
-      (selector as SelectorList).value.forEach(sel => { (sel as any).value = cleanElements(sel.value) })
+      (selector as SelectorList).value.forEach(sel => { (sel).value = cleanElements(sel.value) })
     } else {
       selector.value = cleanElements(selector.value)
     }
@@ -250,4 +252,4 @@ export class SelectorSequence extends Selector<SelectorValue> {
   // }
 }
 
-export const sel = defineType(SelectorSequence, 'SelectorSequence', 'sel')
+export const sel = defineType(ComplexSelector, 'ComplexSelector', 'sel')

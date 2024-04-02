@@ -1,12 +1,13 @@
 import { defineType } from './node'
 import { Nil } from './nil'
 import type { Context } from '../context'
-import { type SelectorSequence } from './selector-sequence'
+import { type ComplexSelector } from './selector-complex'
 import { type SelectorList } from './selector-list'
 import { SimpleSelector } from './selector-simple'
 import { BasicSelector } from './selector-basic'
 import { isNode } from './util'
 import { type Extend } from './extend'
+import { type Selector } from './selector'
 
 export type AmpersandValue = {
   /**
@@ -60,6 +61,7 @@ export type AmpersandValue = {
 
    */
   value?: string
+  selector?: Selector | Nil
 }
 
 /**
@@ -72,21 +74,29 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
     super(value, ...rest)
   }
 
+  get selector(): Selector | Nil | undefined {
+    return this.data.get('selector')
+  }
+
+  set selector(v: Selector | Nil | undefined) {
+    this.data.set('selector', v)
+  }
+
   toTrimmedString(): string {
     let { value } = this
     return value !== undefined ? `&(${value ?? ''})` : '&'
   }
 
   /** Hmm this should never return Extend */
-  async eval(context: Context): Promise<SelectorList | SelectorSequence | Ampersand | Extend | Nil> {
+  async eval(context: Context): Promise<SelectorList | ComplexSelector | Ampersand | Extend | Nil> {
     return await this.evalIfNot(context, () => {
-      if (this.value ?? context.opts.collapseNesting) {
+      const { value } = this
+      if (value ?? context.opts.collapseNesting) {
         let frame = context.frames[0]
         if (frame) {
           let selector = frame.selector.clone(true)
-          const { value } = this
           if (value && !isNode(selector, 'Nil')) {
-            let appendValue = (n: SelectorSequence | Extend) => {
+            let appendValue = (n: ComplexSelector | Extend) => {
               if (!n.value) {
                 throw new SyntaxError(`Cannot append "${value}" to this type of selector`)
               }
@@ -108,7 +118,12 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
         }
         return new Nil()
       }
-      return this.clone()
+      const amp = this.clone()
+      let frame = context.frames[0]
+      if (frame) {
+        amp.selector = frame.selector.clone(true)
+      }
+      return amp
     })
   }
 

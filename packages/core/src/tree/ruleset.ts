@@ -2,13 +2,13 @@ import { Node, defineType } from './node'
 import { type Rules } from './rules'
 import type { Context } from '../context'
 // import type { OutputCollector } from '../output'
-import type { SelectorSequence } from './selector-sequence'
+import type { ComplexSelector } from './selector-complex'
 import type { SelectorList } from './selector-list'
 import type { Extend } from './extend'
 import { Nil } from './nil'
 import type { Condition } from './condition'
 export type RulesetValue = {
-  selector: SelectorList | SelectorSequence | Extend | Nil
+  selector: SelectorList | ComplexSelector | Extend | Nil
   /**
    * It's important that any Node that defines a Rules
    * sets it to the `rules` property. This allows us to
@@ -33,7 +33,7 @@ export class Ruleset extends Node<RulesetValue> {
     return this.data.get('selector')
   }
 
-  set selector(v: SelectorList | SelectorSequence | Extend | Nil) {
+  set selector(v: SelectorList | ComplexSelector | Extend | Nil) {
     this.data.set('selector', v)
   }
 

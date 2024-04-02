@@ -2,7 +2,7 @@ import { Node } from './node'
 import { Tuple, type tuple } from '@bloomberg/record-tuple-polyfill'
 import { isNode } from './util'
 import { type SelectorList } from './selector-list'
-import { type SelectorSequence } from './selector-sequence'
+import { type ComplexSelector } from './selector-complex'
 
 /** Will be bound in ./util/compare.ts */
 export interface Selector<T = any> extends Node<T> {

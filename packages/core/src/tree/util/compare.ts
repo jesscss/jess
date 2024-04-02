@@ -6,7 +6,7 @@ import { Tuple, type tuple } from '@bloomberg/record-tuple-polyfill'
 import { type Combinator } from '../combinator'
 import { type Node } from '../node'
 import isSupersetOf from 'set.prototype.issupersetof'
-import { type SelectorSequence } from '../selector-sequence'
+import { type ComplexSelector } from '../selector-complex'
 
 export function compare(a: any, b: any) {
   if (a === b) {
@@ -78,15 +78,15 @@ export function compareSelectors(a: Selector, b: Selector): 0 | 1 | -1 | undefin
 
 function getLinkedLists(selector: Selector) {
   let linkedLists: Array<tuple<string | tuple>>
-  if (isNode(selector, 'SelectorSequence')) {
-    linkedLists = walkSelectorSequence(selector)
+  if (isNode(selector, 'ComplexSelector')) {
+    linkedLists = walkComplexSelector(selector)
   } else {
 
   }
   return Tuple.from(linkedLists)
 }
 
-function walkSelectorSequence(seq: SelectorSequence): Array<tuple<string | tuple>> {
+function walkComplexSelector(seq: ComplexSelector): Array<tuple<string | tuple>> {
   const { value } = seq
   let elLength = value.length
   const normalMap = new Map<Selector, string | tuple>()

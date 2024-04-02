@@ -2,7 +2,7 @@
 import {
   type Node, defineType
 } from './node'
-import { type SelectorSequence } from './selector-sequence'
+import { type ComplexSelector } from './selector-complex'
 import { type Extend } from './extend'
 import { type Context } from '../context'
 import { compareNodeArray } from './util/compare'
@@ -11,15 +11,15 @@ import { Tuple } from '@bloomberg/record-tuple-polyfill'
 
 /** Constructs */
 export class SelectorList<
-  T extends Selector = SelectorSequence | Extend
+  T extends Selector = ComplexSelector | Extend
 > extends Selector<T[]> {
   toTrimmedString() {
     return this.value.map(v => v.toString()).join(',')
   }
 
-  toNormalPrimitive() {
+  // toNormalPrimitive() {
 
-  }
+  // }
 
   compare(other: Node) {
     if (other instanceof SelectorList) {

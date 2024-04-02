@@ -1,6 +1,6 @@
 import {
   root, amp, rules, sel, el, spaced, any, sellist, ruleset, decl, attr,
-  type SimpleSelector, type Combinator, type SelectorSequence
+  type SimpleSelector, type Combinator, type ComplexSelector
 } from '..'
 import { Context } from '../../context'
 
@@ -26,7 +26,7 @@ describe('Ampersand', () => {
     })
   ])
 
-  let wrapAmpList = (selectors: SelectorSequence[]) => root([
+  let wrapAmpList = (selectors: ComplexSelector[]) => root([
     ruleset({
       selector: sellist([sel([el('.one')]), sel([el('.two')])]),
       value: rules([
