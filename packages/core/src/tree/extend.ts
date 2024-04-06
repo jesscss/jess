@@ -1,15 +1,15 @@
 import { defineType } from './node'
 import { type SelectorList } from './selector-list'
-import { ComplexSelector } from './selector-complex'
+import { type ComplexSelector } from './selector-complex'
 import { type Context } from '../context'
-import { Ampersand } from './ampersand'
 import { Selector } from './selector'
+import { type Nil } from './nil'
 
 export type ExtendValue = {
   /** The preceding selector */
-  selector?: ComplexSelector
+  value: Selector | Nil
   /** The selector within () */
-  target: ComplexSelector | SelectorList
+  target: Selector
   flag?: '!all'
 }
 /**
@@ -33,21 +33,8 @@ export class Extend extends Selector<ExtendValue> {
     this.data.set('target', v)
   }
 
-  get selector() {
-    let sel = this.data.get('selector')
-    if (!sel) {
-      sel = new ComplexSelector([new Ampersand()])
-      this.data.set('selector', sel)
-    }
-    return sel
-  }
-
-  set selector(v: ComplexSelector) {
-    this.data.set('selector', v)
-  }
-
-  get value(): ComplexSelector['value'] {
-    return this.data.get('selector').value
+  get value(): Selector | Nil {
+    return this.data.get('value')
   }
 
   toTrimmedString(depth?: number | undefined): string {
@@ -59,16 +46,16 @@ export class Extend extends Selector<ExtendValue> {
   }
 
   toPrimitiveSelector() {
-    return this.data.get('selector').toPrimitiveSelector()
+    return this.data.get('value').toPrimitiveSelector()
   }
 
-  async eval(context: Context): Promise<ComplexSelector> {
-    let { selector } = this
-    selector = await selector.eval(context) as ComplexSelector
+  async eval(context: Context): Promise<Selector> {
+    let { value } = this
+    value = await value.eval(context) as Selector
     /** @todo - register target */
-    selector.inherit(this)
-    selector.evaluated = true
-    return selector
+    value.inherit(this)
+    value.evaluated = true
+    return value
   }
 }
 export const extend = defineType(Extend, 'Extend')

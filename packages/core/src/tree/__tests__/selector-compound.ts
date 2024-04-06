@@ -1,5 +1,4 @@
-import { compound, el, co, pseudo } from '..'
-import { Tuple } from '@bloomberg/record-tuple-polyfill'
+import { compound, el, pseudo } from '..'
 
 /**
  * @todo - add tests for list bubbling
@@ -30,6 +29,20 @@ describe('Compound Selector', () => {
         el('a'),
         el('.class'),
         el('#id')
+      ]).toNormalPrimitive()
+      expect(sel1).toEqual(sel2)
+    })
+
+    test('pseudo sorting', () => {
+      /** :is(.a):is(.b) */
+      let sel1 = compound([
+        pseudo({ name: ':is', value: el('.a') }),
+        pseudo({ name: ':is', value: el('.b') })
+      ]).toNormalPrimitive()
+      /** :is(.b):is(.a) */
+      let sel2 = compound([
+        pseudo({ name: ':is', value: el('.b') }),
+        pseudo({ name: ':is', value: el('.a') })
       ]).toNormalPrimitive()
       expect(sel1).toEqual(sel2)
     })

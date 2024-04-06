@@ -47,61 +47,9 @@ export class ComplexSelector extends Selector<SelectorValue> {
    */
   toNormalPrimitive() {
     const { value } = this
-    let elLength = value.length
-    let list: Array<string | tuple | Combinator> = []
-    for (let i = 0; i < elLength; i++) {
-      const el = value[i]!
-      const val = el.value
-      /** Given .a > :is(.b.c), result should be .a > .b.c */
-      if (
-        el instanceof PseudoSelector
-        && el.name === ':is'
-        && !isNode(val, 'SelectorList')
-      ) {
-        /**
-         * Merge :is-list into this sequence
-         * @note If :is() starts with a combinator, it's relative
-         * to the parent selector, so it can't be merged into the
-         * current sequence.
-         */
-        if (val instanceof ComplexSelector && !(val.value[0] instanceof Combinator)) {
-          list.push(...val.value.map(v => v.toNormalPrimitive()))
-        } else {
-          /** :is contains a selector of some kind */
-          list.push((val as Selector).toNormalPrimitive())
-        }
-      } else {
-        if (el instanceof Combinator) {
-          list.push(el)
-        } else {
-          list.push(el.toNormalPrimitive())
-        }
-      }
-    }
-
-    if (list.length > 1) {
-      const finalList: Array<string | tuple> = []
-      const compoundList: Array<string | tuple<string | tuple>> = []
-
-      const pushCompound = () => {
-        if (compoundList.length > 0) {
-          finalList.push(Tuple.from(compoundList.sort()))
-          compoundList.length = 0
-        }
-      }
-
-      for (let el of list) {
-        if (el instanceof Combinator) {
-          pushCompound()
-          finalList.push(el.value)
-        } else {
-          compoundList.push(el)
-        }
-      }
-      pushCompound()
-      return Tuple.from(finalList)
-    }
-    return Tuple.from(list as Array<string | tuple>)
+    return Tuple.from(
+      value.map(v => v.toNormalPrimitive())
+    )
   }
 
   /**
