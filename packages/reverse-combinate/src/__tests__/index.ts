@@ -2,6 +2,18 @@ import combine from '../index'
 import { expect, describe, it } from 'vitest'
 
 describe('Combine', () => {
+  it('partially combines arrays', () => {
+    const combinations = [
+      ['a', 'b'],
+      ['a', 'c']
+    ]
+    const combined = [
+      ['a'],
+      ['b', 'c']
+    ]
+    expect(combine(combinations)).toEqual(combined)
+  })
+
   it('combines arrays', () => {
     const combinations = [
       [true, 'red', 'light'],
