@@ -38,7 +38,14 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   toNormalPrimitive() {
     let { name, value } = this
     if (value && value instanceof Selector) {
-      if (name === ':is') {
+      if (
+        name === ':is'
+        && !isNode(value, 'SelectorList')
+        && (
+          !isNode(value, 'ComplexSelector')
+          || !isNode(value.value[0], 'Combinator')
+        )
+      ) {
         return value.toNormalPrimitive()
       }
       return Tuple.from([`${name}(`, value.toNormalPrimitive(), ')'])

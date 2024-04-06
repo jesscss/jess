@@ -1,36 +1,36 @@
 /* eslint-disable @typescript-eslint/require-array-sort-compare */
-import { Combinator } from './combinator'
-import { Ampersand } from './ampersand'
 import {
   defineType,
   type Node
 } from './node'
 import type { Context } from '../context'
-import { type Nil } from './nil'
-import { type SimpleSelector } from './selector-simple'
-// import { BasicSelector } from './selector-basic'
+import { Nil } from './nil'
 import { isNode } from './util'
-import { compare } from './util/compare'
-import { PseudoSelector } from './selector-pseudo'
-import { type SelectorList } from './selector-list'
 import { Selector } from './selector'
 import { Tuple, type tuple } from '@bloomberg/record-tuple-polyfill'
 
+type SelectorValue = [Selector, Selector, ...Selector[]]
 /**
  * @example
  * .class#id
  *
  * Must have at least 2 selectors. Otherwise it would be collapsed.
  */
-export class CompoundSelector extends Selector<[Selector, Selector, ...Selector[]]> {
+export class CompoundSelector extends Selector<SelectorValue> {
   /**
    */
   toNormalPrimitive() {
-    return Tuple.from(
-      this.value
-        .map(v => v.toNormalPrimitive())
-        .sort()
-    )
+    const list: Array<string | tuple> = []
+    for (const node of this.value) {
+      const primitive = node.toNormalPrimitive()
+      if (Tuple.isTuple(primitive)) {
+        list.push(...primitive)
+      } else {
+        list.push(primitive)
+      }
+    }
+
+    return Tuple.from(list.sort())
   }
 
   /**
@@ -77,8 +77,26 @@ export class CompoundSelector extends Selector<[Selector, Selector, ...Selector[
     return super.compare(other)
   }
 
-  async eval(context: Context): Promise<CompoundSelector | SelectorList | Nil> {
+  async eval(context: Context): Promise<CompoundSelector | Selector | Nil> {
+    return await this.evalIfNot(context, async () => {
+      const sel = this.clone()
+      let valuePromises = sel.value
+        .map(async n => await n.eval(context))
 
+      const returnVal = (
+        (await Promise.all(valuePromises)).filter(n => n && !(n instanceof Nil))
+      )
+      if (returnVal.length === 0) {
+        return (new Nil()).inherit(this)
+      }
+      if (returnVal.length === 1) {
+        return returnVal[0]!.inherit(this) as Selector
+      }
+
+      sel.value = returnVal as SelectorValue
+
+      return sel
+    })
   }
 
   /** @todo move to visitors */

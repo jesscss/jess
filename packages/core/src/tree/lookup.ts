@@ -11,6 +11,7 @@ export type LookupValue = {
   /**
    * Number is the (0-based) position in rules.
    * Negative numbers are from the end.
+   * @todo - Add tests for this
    */
   key: string | number | Node
 }

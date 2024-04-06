@@ -17,14 +17,10 @@ import { Selector } from './selector'
 import { Tuple, type tuple } from '@bloomberg/record-tuple-polyfill'
 import { type CompoundSelector } from './selector-compound'
 
-type SelectorValue = [
-  first: SimpleSelector | CompoundSelector,
-  ...rest: Array<Combinator | SimpleSelector | CompoundSelector>
-] | [
-  first: Combinator,
-  second: SimpleSelector | CompoundSelector,
-  ...rest: Array<Combinator | SimpleSelector | CompoundSelector>
-]
+// TODO - fix later
+// type Component = SimpleSelector | CompoundSelector | Combinator | Ampersand
+// type SelectorValue = Component[]
+type SelectorValue = Array<Selector | Combinator>
 /**
  * Selectors with combinators.
  *
@@ -252,4 +248,11 @@ export class ComplexSelector extends Selector<SelectorValue> {
   // }
 }
 
-export const sel = defineType(ComplexSelector, 'ComplexSelector', 'sel')
+type SelectorParams = ConstructorParameters<typeof ComplexSelector>
+
+export const sel = defineType<SelectorValue>(ComplexSelector, 'ComplexSelector', 'sel') as (
+  value: SelectorValue,
+  options?: SelectorParams[1],
+  location?: SelectorParams[2],
+  treeContext?: SelectorParams[3]
+) => ComplexSelector

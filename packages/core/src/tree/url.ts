@@ -15,4 +15,4 @@ export class Url extends Call<UrlValue> {
    */
 }
 
-export const call = defineType<UrlValue>(Url, 'Call')
+export const url = defineType<UrlValue>(Url, 'Url')

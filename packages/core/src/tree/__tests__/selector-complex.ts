@@ -4,7 +4,7 @@ import { Tuple } from '@bloomberg/record-tuple-polyfill'
 /**
  * @todo - add tests for list bubbling
  */
-describe('Selector Sequence', () => {
+describe('Complex selector', () => {
   describe('normalization', () => {
     test('same value (sorted)', () => {
       let sel1 = sel([

@@ -23,7 +23,8 @@ export class SelectorList<
 
   compare(other: Node) {
     if (other instanceof SelectorList) {
-      const getValue = (v: Node) => v instanceof Selector ? v.toPrimitiveSelector() : v.toTrimmedString()
+      const getValue = (v: Node) => v instanceof Selector ? v.toNormalPrimitive() : v.toTrimmedString()
+      /** @todo - Lists may not be sortable, they should be matched and reduced */
       return compareNodeArray(
         this.value.map(v => getValue(v)).sort(),
         other.value.map(v => getValue(v)).sort()
