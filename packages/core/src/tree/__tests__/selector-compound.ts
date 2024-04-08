@@ -10,12 +10,12 @@ describe('Compound Selector', () => {
         el('a'),
         el('#id'),
         el('.class')
-      ]).toNormalPrimitive()
+      ]).valueOf()
       let sel2 = compound([
         el('a'),
         el('#id'),
         el('.class')
-      ]).toNormalPrimitive()
+      ]).valueOf()
       expect(sel1).toEqual(sel2)
     })
 
@@ -24,12 +24,12 @@ describe('Compound Selector', () => {
         el('a'),
         el('#id'),
         el('.class')
-      ]).toNormalPrimitive()
+      ]).valueOf()
       let sel2 = compound([
         el('a'),
         el('.class'),
         el('#id')
-      ]).toNormalPrimitive()
+      ]).valueOf()
       expect(sel1).toEqual(sel2)
     })
 
@@ -38,12 +38,12 @@ describe('Compound Selector', () => {
       let sel1 = compound([
         pseudo({ name: ':is', value: el('.a') }),
         pseudo({ name: ':is', value: el('.b') })
-      ]).toNormalPrimitive()
+      ]).valueOf()
       /** :is(.b):is(.a) */
       let sel2 = compound([
         pseudo({ name: ':is', value: el('.b') }),
         pseudo({ name: ':is', value: el('.a') })
-      ]).toNormalPrimitive()
+      ]).valueOf()
       expect(sel1).toEqual(sel2)
     })
 
@@ -54,13 +54,13 @@ describe('Compound Selector', () => {
         el('#id'),
         el('.one'),
         el('.two')
-      ]).toNormalPrimitive()
+      ]).valueOf()
       /** :is(a)#id:is(.one.two) */
       let sel2 = compound([
         pseudo({ name: ':is', value: el('a') }),
         el('#id'),
         pseudo({ name: ':is', value: compound([el('.two'), el('.one')]) })
-      ]).toNormalPrimitive()
+      ]).valueOf()
       expect(sel1).toEqual(sel2)
     })
   })

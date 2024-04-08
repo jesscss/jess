@@ -2,7 +2,6 @@ import { defineType, type Node } from './node'
 import { SimpleSelector } from './selector-simple'
 import { type Context } from '../context'
 import { Selector } from './selector'
-import { Tuple } from '@bloomberg/record-tuple-polyfill'
 import { isNode } from './util'
 
 export type PseudoSelectorValue = {
@@ -35,7 +34,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     return `${name}${value ? `(${value})` : ''}`
   }
 
-  toNormalPrimitive() {
+  valueOf() {
     let { name, value } = this
     if (value && value instanceof Selector) {
       if (
@@ -46,12 +45,16 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
           || !isNode(value.value[0], 'Combinator')
         )
       ) {
-        return value.toNormalPrimitive()
+        return value.valueOf()
       }
-      return Tuple.from([`${name}(`, value.toNormalPrimitive(), ')'])
+      return `${name}(${value.valueOf()})`
     }
-    /** Normalizes :nth-child(n + 1) to match :nth-child(n+1) */
-    return `${name}${value ? `(${value.toTrimmedString().replace(/\s+/, '')})` : ''}`
+    /**
+     * Normalizes :nth-child(n + 1) to match :nth-child(n+1)
+     * That is, anything that doesn't hold a selector as a value
+     * is, by definition, not space-sensitive.
+     */
+    return `${name}${value ? `(${value.valueOf().replace(/\s+/, '')})` : ''}`
   }
 
   async eval(context: Context) {

@@ -1,12 +1,10 @@
 import { isNode } from '.'
 import { cast } from './cast'
-import { Selector } from '../selector'
-import { SelectorList } from '../selector-list'
-import { Tuple, type tuple } from '@bloomberg/record-tuple-polyfill'
-import { type Combinator } from '../combinator'
-import { type Node } from '../node'
-import isSupersetOf from 'set.prototype.issupersetof'
-import { type ComplexSelector } from '../selector-complex'
+// import { Selector } from '../selector'
+// import { type Combinator } from '../combinator'
+// import { type Node } from '../node'
+// import isSupersetOf from 'set.prototype.issupersetof'
+// import { type ComplexSelector } from '../selector-complex'
 
 export function compare(a: any, b: any) {
   if (a === b) {
@@ -62,68 +60,68 @@ export function compareNodeArray(a: any[], b: any[]): 0 | 1 | -1 | undefined {
  *      the list of linked lists.
  *   4. If all linked lists are exhausted, the selectors are equal.
  */
-export function compareSelectors(a: Selector, b: Selector): 0 | 1 | -1 | undefined {
-  const complexSelector: Array<Selector | Combinator> = []
-  const normalizedSelectorMap = new Map<Selector, tuple<Selector | Combinator>>()
+// export function compareSelectors(a: Selector, b: Selector): 0 | 1 | -1 | undefined {
+//   const complexSelector: Array<Selector | Combinator> = []
+//   const normalizedSelectorMap = new Map<Selector, tuple<Selector | Combinator>>()
 
-  const AlinkedLists = new Set<tuple<Selector | Combinator>>(getLinkedLists(a))
-  const BlinkedLists = new Set<tuple<Selector | Combinator>>(getLinkedLists(b))
+//   const AlinkedLists = new Set<tuple<Selector | Combinator>>(getLinkedLists(a))
+//   const BlinkedLists = new Set<tuple<Selector | Combinator>>(getLinkedLists(b))
 
-  if (AlinkedLists.size === BlinkedLists.size && isSupersetOf(AlinkedLists, BlinkedLists)) {
-    return 0
-  }
+//   if (AlinkedLists.size === BlinkedLists.size && isSupersetOf(AlinkedLists, BlinkedLists)) {
+//     return 0
+//   }
 
-  return undefined
-}
+//   return undefined
+// }
 
-function getLinkedLists(selector: Selector) {
-  let linkedLists: Array<tuple<string | tuple>>
-  if (isNode(selector, 'ComplexSelector')) {
-    linkedLists = walkComplexSelector(selector)
-  } else {
+// function getLinkedLists(selector: Selector) {
+//   let linkedLists: Array<tuple<string | tuple>>
+//   if (isNode(selector, 'ComplexSelector')) {
+//     linkedLists = walkComplexSelector(selector)
+//   } else {
 
-  }
-  return Tuple.from(linkedLists)
-}
+//   }
+//   return Tuple.from(linkedLists)
+// }
 
-function walkComplexSelector(seq: ComplexSelector): Array<tuple<string | tuple>> {
-  const { value } = seq
-  let elLength = value.length
-  const normalMap = new Map<Selector, string | tuple>()
-  const linkedLists: Array<Array<string | tuple>> = [[]]
-  let listIndex = 0
-  for (let i = 0; i < elLength; i++) {
-    const list = linkedLists[listIndex]!
-    const el = value[i]!
-    if (isNode(el, 'Combinator')) {
-      list.push(el.value)
-    } else {
-      let normalVal = normalMap.get(el)
-      if (normalVal) {
-        list.push(normalVal)
-      } else {
-        normalVal = el.toNormalPrimitive()
-        normalMap.set(el, normalVal)
-        list.push(normalVal)
-      }
-    }
-  }
-  return linkedLists
-}
+// function walkComplexSelector(seq: ComplexSelector): Array<tuple<string | tuple>> {
+//   const { value } = seq
+//   let elLength = value.length
+//   const normalMap = new Map<Selector, string | tuple>()
+//   const linkedLists: Array<Array<string | tuple>> = [[]]
+//   let listIndex = 0
+//   for (let i = 0; i < elLength; i++) {
+//     const list = linkedLists[listIndex]!
+//     const el = value[i]!
+//     if (isNode(el, 'Combinator')) {
+//       list.push(el.value)
+//     } else {
+//       let normalVal = normalMap.get(el)
+//       if (normalVal) {
+//         list.push(normalVal)
+//       } else {
+//         normalVal = el.toNormalPrimitive()
+//         normalMap.set(el, normalVal)
+//         list.push(normalVal)
+//       }
+//     }
+//   }
+//   return linkedLists
+// }
 
-/**
- * Collapse selectors / selector lists into :is()-like
- * patterns.
- */
-function simplifySelector(selector: Selector) {
-  if (isNode(selector, 'SelectorList')) {
-    return selector
-  }
-}
+// /**
+//  * Collapse selectors / selector lists into :is()-like
+//  * patterns.
+//  */
+// function simplifySelector(selector: Selector) {
+//   if (isNode(selector, 'SelectorList')) {
+//     return selector
+//   }
+// }
 
-Selector.prototype.compare = function(other: Node) {
-  if (other instanceof Selector) {
-    return compareSelectors(this, other)
-  }
-  return undefined
-}
+// Selector.prototype.compare = function(other: Node) {
+//   if (other instanceof Selector) {
+//     return compareSelectors(this, other)
+//   }
+//   return undefined
+// }

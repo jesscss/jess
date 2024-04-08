@@ -1,4 +1,3 @@
-import { type tuple } from '@bloomberg/record-tuple-polyfill'
 import type { Context } from '../context'
 import { defineType } from './node'
 import { SimpleSelector } from './selector-simple'
@@ -32,7 +31,8 @@ export class BasicSelector extends SimpleSelector<string> {
     })
   }
 
-  toNormalPrimitive(): string | tuple {
+  valueOf(): string {
+    /** Tags are not case-sensitive, but other selectors are */
     return this.isTag ? this.value.toLowerCase() : this.value
   }
 

@@ -410,16 +410,19 @@ export abstract class Node<
   }
 
   /**
-   * @todo - it's not clear this needs to be in the
-   * root Node class, except it can be then generally
-   * called on any node.
+   * Represents the normalized string value of the node,
+   * for the purposes of comparison with other nodes,
+   * regardless of type.
+   *
+   * Derived nodes will override this with different
+   * normalization algorithms.
    */
-  valueOf(): any {
+  valueOf(): string {
     let values = [...this.data.values()]
     if (values.length === 1) {
-      return values[0]
+      return `${values[0]}`
     }
-    return values
+    return `${values}`
   }
 
   processPrePost(key: 'pre' | 'post') {
@@ -504,15 +507,12 @@ export abstract class Node<
    * undefined = not comparable
    */
   compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
-    let aVal = this.toTrimmedString()
-    let bVal = b.toTrimmedString()
+    let aVal = this.valueOf()
+    let bVal = b.valueOf()
     if (aVal === bVal) {
       return 0
-    } else if (aVal > bVal) {
-      return 1
-    } else if (aVal < bVal) {
-      return -1
     }
+    return aVal > bVal ? 1 : -1
   }
 
   /** Overridden in index.ts to avoid circularity */

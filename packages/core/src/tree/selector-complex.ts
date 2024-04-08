@@ -2,17 +2,14 @@
 import { Combinator } from './combinator'
 import { Ampersand } from './ampersand'
 import {
-  defineType,
-  type Node
+  defineType
 } from './node'
 import type { Context } from '../context'
 import { Nil } from './nil'
 import { isNode } from './util'
-import { compare } from './util/compare'
 import { PseudoSelector } from './selector-pseudo'
 import { type SelectorList } from './selector-list'
 import { Selector } from './selector'
-import { Tuple } from '@bloomberg/record-tuple-polyfill'
 
 // TODO - fix later
 // type Component = SimpleSelector | CompoundSelector | Combinator | Ampersand
@@ -42,11 +39,8 @@ export class ComplexSelector extends Selector<SelectorValue> {
    *         #[ #['e', '>', 'f'], #['g'] ]
    *      ]
    */
-  toNormalPrimitive() {
-    const { value } = this
-    return Tuple.from(
-      value.map(v => v.toNormalPrimitive())
-    )
+  valueOf() {
+    return this.value.map(n => n.valueOf()).join('')
   }
 
   toTrimmedString(depth?: number | undefined): string {
@@ -68,45 +62,6 @@ export class ComplexSelector extends Selector<SelectorValue> {
   }
 
   /**
-   * @todo - Can we do this without Tuples?
-   */
-  compare(other: Node) {
-    if (other instanceof ComplexSelector || other instanceof Selector) {
-      const firstSelector = other instanceof ComplexSelector
-        ? other.value[0]
-        : other
-      if (!firstSelector) {
-        return undefined
-      }
-
-      const thisNormal = this.toNormalPrimitive()
-      const otherNormal = other instanceof ComplexSelector
-        ? other.toNormalPrimitive()
-        : Tuple([other.toNormalPrimitive()])
-
-      if (thisNormal === otherNormal) {
-        return 0
-      }
-
-      const { isTuple } = Tuple
-
-      /** Find partial matches */
-      for (let i = 0; i < otherNormal.length; i++) {
-        const el = otherNormal[i]!
-        if (isTuple(el)) {
-          const thisEl = thisNormal[i]
-          if (!thisEl) {
-            /** Not even a partial match */
-            return undefined
-          }
-        }
-      }
-      return compare(this.toNormalPrimitive(), other.toNormalPrimitive())
-    }
-    return super.compare(other)
-  }
-
-  /**
    * @todo - Re-write and simplify, now that we have a distinct CompoundSelector
    */
   async eval(context: Context): Promise<ComplexSelector | SelectorList | Nil> {
@@ -119,9 +74,6 @@ export class ComplexSelector extends Selector<SelectorValue> {
       let hasAmp = elements.find(el => el instanceof Ampersand)
       /**
        * Try to evaluate all selectors as if they are prepended by `&`
-       *
-       * @todo - An initial plain identifier should be wrapped in `:is()`
-       * for outputting to CSS -- this is done in the ToCssVisitor?
        *
        * @todo - we should not push an ampersand if we're not collapsing nesting
        */

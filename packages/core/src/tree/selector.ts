@@ -1,5 +1,5 @@
 import { Node } from './node'
-import { type tuple } from '@bloomberg/record-tuple-polyfill'
+import { compare } from './util/compare'
 
 /** Will be bound in ./util/compare.ts */
 export interface Selector<T = any> extends Node<T> {
@@ -7,6 +7,21 @@ export interface Selector<T = any> extends Node<T> {
 }
 
 export abstract class Selector<T = any> extends Node<T> {
+  protected _keys: Set<string> | undefined
+
+  get keys(): Set<string> {
+    let keys = this._keys
+    if (!keys) {
+      this._keys = keys = new Set([this.valueOf()])
+    }
+    return keys
+  }
+
+  /** @todo - Assign while parsing simple selectors */
+  set keys(v: Set<string>) {
+    this._keys = v
+  }
+
   /**
    * Normalize for comparison
    *
@@ -37,11 +52,18 @@ export abstract class Selector<T = any> extends Node<T> {
    * {
    *   // We can use this with extend sets to determine a disjoint
    *   keys: Set { .one, .two, .three, .four },
-   *   map: Map { [0, 0], [1, 1], 2, 3] }
+   *   selector: Selector
    * }
    *
    */
-  toNormalPrimitive(): string | tuple {
+  /** The normalized value */
+  valueOf(): string {
     return this.toTrimmedString()
+  }
+
+  compare(other: Node) {
+    const thisValue = this.valueOf()
+    const otherValue = other.valueOf()
+    return compare(thisValue, otherValue)
   }
 }

@@ -1,13 +1,10 @@
 /* eslint-disable @typescript-eslint/require-array-sort-compare */
 import {
-  defineType,
-  type Node
+  defineType
 } from './node'
 import type { Context } from '../context'
 import { Nil } from './nil'
-import { isNode } from './util'
 import { Selector } from './selector'
-import { Tuple, type tuple } from '@bloomberg/record-tuple-polyfill'
 
 type SelectorValue = [Selector, Selector, ...Selector[]]
 /**
@@ -16,65 +13,26 @@ type SelectorValue = [Selector, Selector, ...Selector[]]
  *
  * Must have at least 2 selectors. Otherwise it would be collapsed.
  */
+const nonElementRegex = /^[.#:*[]/
 export class CompoundSelector extends Selector<SelectorValue> {
   /**
    */
-  toNormalPrimitive() {
-    const list: Array<string | tuple> = []
-    for (const node of this.value) {
-      const primitive = node.toNormalPrimitive()
-      if (Tuple.isTuple(primitive)) {
-        list.push(...primitive)
-      } else {
-        list.push(primitive)
-      }
-    }
-
-    return Tuple.from(list.sort())
-  }
-
-  /**
-   * @todo - Can we do this without Tuples?
-   */
-  compare(other: Node) {
-    if (isNode(other, 'ComplexSelector')) {
-      const result = other.compare(this)
-      return result !== undefined ? (-result as 0 | 1 | -1) : undefined
-    }
-    if (other instanceof CompoundSelector || other instanceof Selector) {
-      const firstSelector = (
-        other instanceof CompoundSelector
-          ? other.value[0]
-          : other
-      ).toNormalPrimitive()
-      const thisNormal = this.toNormalPrimitive()
-      if (!thisNormal.includes(firstSelector)) {
-        return undefined
-      }
-      const otherNormal = other instanceof CompoundSelector
-        ? other.toNormalPrimitive()
-        : Tuple([other.toNormalPrimitive()])
-
-      if (thisNormal === otherNormal) {
-        return 0
-      }
-
-      const thisBucket = [...thisNormal]
-      const otherLength = otherNormal.length
-      /** Find partial matches */
-      for (let i = 0; i < otherLength; i++) {
-        const otherEl = otherNormal[i]!
-        const index = thisBucket.indexOf(otherEl)
-        if (index === -1) {
-          /** Not a complete partial match */
-          return undefined
+  valueOf() {
+    return this.value
+      .map(n => n.valueOf())
+      .sort((a, b) => {
+        /** Elements come first */
+        if (!nonElementRegex.test(a)) {
+          if (!nonElementRegex.test(b)) {
+            return a < b ? -1 : 1
+          }
+          return -1
+        } else if (!nonElementRegex.test(b)) {
+          return 1
         }
-        thisBucket.splice(index, 1)
-      }
-      /** Partial match */
-      return -1
-    }
-    return super.compare(other)
+        return a < b ? -1 : 1
+      })
+      .join('')
   }
 
   async eval(context: Context): Promise<CompoundSelector | Selector | Nil> {

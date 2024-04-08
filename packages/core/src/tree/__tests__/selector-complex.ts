@@ -13,7 +13,7 @@ describe('Complex selector', () => {
         ]),
         co('>'),
         el('.three')
-      ]).toNormalPrimitive()
+      ]).valueOf()
 
       let sel2 = sel([
         compound([
@@ -22,7 +22,7 @@ describe('Complex selector', () => {
         ]),
         co('>'),
         el('.three')
-      ]).toNormalPrimitive()
+      ]).valueOf()
 
       let sel3 = sel([
         el('.one'),
@@ -31,7 +31,7 @@ describe('Complex selector', () => {
           el('.two'),
           el('.three')
         ])
-      ]).toNormalPrimitive()
+      ]).valueOf()
       expect(sel1).toEqual(sel2)
       expect(sel1).not.toEqual(sel3)
     })
@@ -45,15 +45,15 @@ describe('Complex selector', () => {
           el('.one'),
           el('.two')
         ])
-      ]).toNormalPrimitive()
-      /** :is(a)#id:is(.one.two) */
+      ]).valueOf()
+      /** :is(a)#id:is(.two.one) */
       let sel2 = sel([
         compound([
           pseudo({ name: ':is', value: el('a') }),
           el('#id'),
-          pseudo({ name: ':is', value: sel([el('.two'), el('.one')]) })
+          pseudo({ name: ':is', value: compound([el('.two'), el('.one')]) })
         ])
-      ]).toNormalPrimitive()
+      ]).valueOf()
       expect(sel1).toEqual(sel2)
     })
 
@@ -69,7 +69,7 @@ describe('Complex selector', () => {
           el('.one'),
           el('.two')
         ])
-      ]).toNormalPrimitive()
+      ]).valueOf()
       /** :is(a)#id > :is(.one.two) */
       let sel2 = sel([
         compound([
@@ -83,7 +83,7 @@ describe('Complex selector', () => {
             el('.two'), el('.one')
           ])
         })
-      ]).toNormalPrimitive()
+      ]).valueOf()
       expect(sel1).toEqual(sel2)
     })
 
@@ -99,7 +99,7 @@ describe('Complex selector', () => {
           el('.one'),
           el('.two')
         ])
-      ]).toNormalPrimitive()
+      ]).valueOf()
       /** :is(a)#id:is(> .one.two) */
       let sel2 = sel([
         compound([
@@ -107,7 +107,7 @@ describe('Complex selector', () => {
           el('#id'),
           pseudo({ name: ':is', value: sel([co('>'), compound([el('.two'), el('.one')])]) })
         ])
-      ]).toNormalPrimitive()
+      ]).valueOf()
       expect(sel1).not.toEqual(sel2)
     })
   })

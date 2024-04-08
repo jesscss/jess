@@ -1,7 +1,6 @@
 import { defineType, type LocationInfo, type Node } from './node'
 import { type TreeContext } from '../context'
 import { SimpleSelector } from './selector-simple'
-import { Quoted } from './quoted'
 import { compare } from './util/compare'
 
 export type AttributeSelectorValue = {
@@ -54,20 +53,21 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     return `[${key}${op ?? ''}${value ?? ''}${mod ? ` ${mod}` : ''}]`
   }
 
-  toNormalPrimitive() {
+  valueOf() {
     let { key, op, value, mod } = this
-    let keyStr = typeof key === 'string' ? key : key.toTrimmedString()
+    /** Attributes are case-insensitive */
+    let keyStr = (typeof key === 'string' ? key : key.toTrimmedString()).toLowerCase()
     if (!op) {
       return `[${keyStr}]`
     }
-    let valueStr = value instanceof Quoted ? value.valueOf() : value?.toTrimmedString() ?? ''
+    let valueStr = value?.valueOf() ?? ''
     return `[${key}${op}"${valueStr}"${mod ? ` ${mod}` : ''}]`
   }
 
   compare(other: Node) {
-    const thisValue = this.toNormalPrimitive()
+    const thisValue = this.valueOf()
     if (other instanceof AttributeSelector) {
-      return compare(thisValue, other.toNormalPrimitive())
+      return compare(thisValue, other.valueOf())
     }
     return compare(thisValue, other)
   }

@@ -51,8 +51,9 @@ export class Ruleset extends Node<RulesetValue> {
     this.data.set('guard', v)
   }
 
-  toNormalPrimitive() {
-    return this.selector instanceof Nil ? this.selector : this.selector.toNormalPrimitive()
+  /** @todo - remove? */
+  valueOf() {
+    return this.selector instanceof Nil ? '' : this.selector.valueOf()
   }
 
   toTrimmedString(depth: number = 0): string {

@@ -1,5 +1,4 @@
-import { sel, sellist, compound, el, co, pseudo } from '..'
-import { Tuple } from '@bloomberg/record-tuple-polyfill'
+import { sel, sellist, el, co } from '..'
 
 /**
  * @todo - add tests for list bubbling
@@ -19,14 +18,23 @@ describe('Selector list', () => {
           co(' '),
           el('c')
         ])
-      ]).toNormalPrimitive()
-      let compare = Tuple.from([
-        'a',
-        ' ',
-        Tuple.from(['b', 'c'])
-      ])
+      ]).valueOf()
 
-      expect(sel1).toEqual(compare)
+      let sel2 = sellist([
+        sel([
+          el('a'),
+          co(' '),
+          el('c')
+        ]),
+        sel([
+          el('a'),
+          co(' '),
+          el('b')
+        ])
+      ]).valueOf()
+
+      expect(sel1).toEqual(sel2)
+      expect(sel1).toEqual('a b,a c')
     })
   })
 })
