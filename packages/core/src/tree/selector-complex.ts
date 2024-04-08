@@ -7,15 +7,12 @@ import {
 } from './node'
 import type { Context } from '../context'
 import { Nil } from './nil'
-import { type SimpleSelector } from './selector-simple'
-// import { BasicSelector } from './selector-basic'
 import { isNode } from './util'
 import { compare } from './util/compare'
 import { PseudoSelector } from './selector-pseudo'
 import { type SelectorList } from './selector-list'
 import { Selector } from './selector'
-import { Tuple, type tuple } from '@bloomberg/record-tuple-polyfill'
-import { type CompoundSelector } from './selector-compound'
+import { Tuple } from '@bloomberg/record-tuple-polyfill'
 
 // TODO - fix later
 // type Component = SimpleSelector | CompoundSelector | Combinator | Ampersand
@@ -50,6 +47,24 @@ export class ComplexSelector extends Selector<SelectorValue> {
     return Tuple.from(
       value.map(v => v.toNormalPrimitive())
     )
+  }
+
+  toTrimmedString(depth?: number | undefined): string {
+    let output = ''
+    let { value } = this
+    let length = value.length
+    for (let i = 0; i < length; i++) {
+      let component = value[i]!
+      /** Add some combinator spacing */
+      if (isNode(component, 'Combinator') && component.value !== ' ') {
+        output += !component.pre ? ' ' : component.processPrePost('pre')
+        output += component.toTrimmedString(depth)
+        output += !component.post ? ' ' : component.processPrePost('post')
+      } else {
+        output += component.toString()
+      }
+    }
+    return output
   }
 
   /**

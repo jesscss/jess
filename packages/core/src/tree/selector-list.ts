@@ -2,16 +2,13 @@
 import {
   type Node, defineType
 } from './node'
-import { type ComplexSelector } from './selector-complex'
-import { type Extend } from './extend'
 import { type Context } from '../context'
-import { compareNodeArray } from './util/compare'
 import { Selector } from './selector'
 import { Tuple, type tuple } from '@bloomberg/record-tuple-polyfill'
 
 /** Constructs */
 export class SelectorList<
-  T extends Selector = Selector | Extend
+  T extends Selector = Selector
 > extends Selector<T[]> {
   toTrimmedString() {
     return this.value.map(v => v.toString()).join(',')

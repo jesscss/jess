@@ -1,14 +1,12 @@
 import { Node, defineType } from './node'
 import { type Rules } from './rules'
 import type { Context } from '../context'
-// import type { OutputCollector } from '../output'
-import type { ComplexSelector } from './selector-complex'
-import type { SelectorList } from './selector-list'
-import type { Extend } from './extend'
 import { Nil } from './nil'
 import type { Condition } from './condition'
+import type { Selector } from './selector'
+
 export type RulesetValue = {
-  selector: SelectorList | ComplexSelector | Extend | Nil
+  selector: Selector | Nil
   /**
    * It's important that any Node that defines a Rules
    * sets it to the `rules` property. This allows us to
@@ -33,7 +31,7 @@ export class Ruleset extends Node<RulesetValue> {
     return this.data.get('selector')
   }
 
-  set selector(v: SelectorList | ComplexSelector | Extend | Nil) {
+  set selector(v: Selector | Nil) {
     this.data.set('selector', v)
   }
 
@@ -53,8 +51,8 @@ export class Ruleset extends Node<RulesetValue> {
     this.data.set('guard', v)
   }
 
-  normalizedSelector() {
-    return this.selector.normalizedSelector()
+  toNormalPrimitive() {
+    return this.selector instanceof Nil ? this.selector : this.selector.toNormalPrimitive()
   }
 
   toTrimmedString(depth: number = 0): string {
@@ -79,7 +77,7 @@ export class Ruleset extends Node<RulesetValue> {
       }
       /** Allow a selector to signal that nesting should be collapsed */
       const collapseNesting = context.opts.collapseNesting
-      let sels = await this.selector.eval(context)
+      let sels = (await this.selector.eval(context)) as Selector | Nil
       let hoistToParent = this.options?.hoistToParent ?? context.opts.collapseNesting
       if (hoistToParent) {
         rule.options.hoistToParent = true

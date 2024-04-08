@@ -15,6 +15,7 @@ import { isNode } from './util'
 import { type Ruleset } from './ruleset'
 import { type AtRule } from './at-rule'
 import { Nil } from './nil'
+import { type Root } from './root'
 
 export const enum Priority {
   None = 0,
@@ -130,7 +131,7 @@ export class Rules extends Node<Node[]> {
     return this.value.filter(n => n.visible)
   }
 
-  async eval(context: Context): Promise<this> {
+  async eval(context: Context): Promise<Rules | Root> {
     return await this.evalIfNot(context, async () => {
       let inheritedScope = context.scope
       context.scope = this.scope
@@ -406,11 +407,11 @@ export class Rules extends Node<Node[]> {
        */
       let tryAddToRoot = (rule: Ruleset | AtRule) => {
         if (
-          rules.type !== 'Root' &&
-          (
-            rule.options.hoistToRoot ||
-            rule.options.hoistToParent ||
-            context.opts.collapseNesting
+          rules.type !== 'Root'
+          && (
+            rule.options.hoistToRoot
+            || rule.options.hoistToParent
+            || context.opts.collapseNesting
           )
         ) {
           /** Remove empty rules */

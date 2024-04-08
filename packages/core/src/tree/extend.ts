@@ -5,12 +5,16 @@ import { type Context } from '../context'
 import { Selector } from './selector'
 import { type Nil } from './nil'
 
+export const enum ExtendFlag {
+  All = 1
+}
+
 export type ExtendValue = {
   /** The preceding selector */
   value: Selector | Nil
   /** The selector within () */
   target: Selector
-  flag?: '!all'
+  flag?: ExtendFlag
 }
 /**
  * Extends selectors
@@ -21,7 +25,7 @@ export type ExtendValue = {
  * registers selectors by a string code.
  */
 export class Extend extends Selector<ExtendValue> {
-  get flag() {
+  get flag(): ExtendFlag | undefined {
     return this.data.get('flag')
   }
 

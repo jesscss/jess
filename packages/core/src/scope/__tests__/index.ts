@@ -120,9 +120,13 @@ describe('Scope', async () => {
     it('changes a starting dash to underscore', () => {
       expect(scope.normalizeKey('-foo-bar')).toBe('_fooBar')
     })
+    /**
+     * Okay what about #FooBar and .FooBar?
+     */
     it('replaces a leading "." or "#"', () => {
       expect(scope.normalizeKey('.foo-bar')).toBe('fooBar')
       expect(scope.normalizeKey('#foo-bar')).toBe('FooBar')
+      expect(scope.normalizeKey('.Foo-bar')).toBe('fooBar')
     })
   })
 

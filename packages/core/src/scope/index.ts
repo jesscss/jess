@@ -13,6 +13,8 @@ import type { Bool } from '../tree/bool'
 import type { Condition } from '../tree/condition'
 import { Context } from '../context'
 import type { General } from '../tree/general'
+import type { Selector } from '../tree/selector'
+import { SimpleSelector } from '../tree'
 /**
  * The Scope object is meant to be an efficient
  * lookup mechanism for variables, mixins,
@@ -48,6 +50,7 @@ export type ScopeEntryOptions = {
   private?: boolean
 }
 
+const { isArray } = Array
 /**
  * We use this to store meta-information
  * about keys / values. For example, values
@@ -126,6 +129,16 @@ export class Scope {
   _props: PropMap
   _parent?: Scope
 
+  _extendMap = new Map<string, { all: string[], partial: string[], continue: string[] }>()
+  /**
+   * We store a set (copy) of all extended selectors
+   * so that we can quickly do Set.prototype.isDisjointFrom
+   * for selectors to see if they can be extended.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Set/isDisjointFrom
+   */
+  _extendSet = new Set<string>()
+
   /**
    * For none found. Use this to distinguish from
    * found but has a value of undefined.
@@ -162,6 +175,88 @@ export class Scope {
     //   this._mixins = Object.create(null)
     // }
   }
+
+  /**
+   * 1. .one>.two.three
+   *    i -> .two:extend(.three)
+   *    o -> .one>.two[.three, .two]
+   *
+   * 2. .one>.two.three
+   *    Given: we extend one element
+   *    i -> .four:extend(.three)
+   *    Then: we need to wrap that in an :is()
+   *    o -> .one>.two[.three, .four]
+   *
+   *    Given: we extend two elements that overlaps an :is()
+   *    i -> .five:extend(.two.three)
+   *    Then: we need to extend the :is() and distribute
+   *    o -> .one>[.two[.three,.four],.five]
+   *
+   *    i -> .six:extend(.two)
+   *    o -> .one>[[.two,.six][.three,.four],.five]
+   *
+   *    i -> .seven:extend(.one>.two)
+   *    o -> [[.one>[.two,.six],.seven][.three,.four],.five]
+   *
+   * 3. .one[.two.three, .four]
+   *    Given: a partial overlap of an :is()
+   *    i -> .five:extend(.one.two)
+   *    Then: wrap the last complete match
+   *    o -> .one[[.two,.five].three, .four]
+   */
+  extendSelector(target: string | [string, ...string[]], selector: string, all?: boolean) {
+    if (isArray(target)) {
+      for (let i = 0; i < target.length - 1; i++) {
+        let sel = target[i]!
+        let mapEntry = this._extendMap.get(sel)
+        let map = mapEntry ?? {
+          continue: [],
+          all: [],
+          partial: []
+        }
+        map.continue.push(target[i + 1]!)
+        if (!mapEntry) {
+          this._extendMap.set(sel, map)
+          this._extendSet.add(sel)
+        }
+      }
+      target = target.join('')
+    }
+    let mapEntry = this._extendMap.get(target)
+    let map = mapEntry ?? {
+      continue: [],
+      all: [],
+      partial: []
+    }
+    let mapArr = all ? map.all : map.partial
+    mapArr.push(selector)
+    if (!mapEntry) {
+      this._extendMap.set(target, map)
+      this._extendSet.add(target)
+    }
+  }
+
+  private _processSelector(input: Selector) {
+    input.walkNodes(n => {
+      if (n instanceof SimpleSelector) {
+        let primitive = n.toNormalPrimitive()
+      }
+    })
+  }
+
+  /** Get a selector, considering the extend map */
+  getExtendedSelector(input: Selector): Selector {
+    /** @todo - Determine if */
+    if (isNode(input, 'SelectorList')) {
+      return
+    }
+    return input
+  }
+
+  // addSelector(selector: string) {
+  //   const map = this._extendMap.get(selector)
+  //   this._extendMap.set(selector, { extendedBy: [] })
+  // }
 
   /** Normalizes keys as valid JavaScript identifiers. */
   normalizeKey(key: string) {

@@ -1,5 +1,6 @@
 import {
   root, amp, rules, sel, el, spaced, any, sellist, ruleset, decl, attr,
+  compound,
   type SimpleSelector, type Combinator, type ComplexSelector
 } from '..'
 import { Context } from '../../context'
@@ -13,12 +14,15 @@ describe('Ampersand', () => {
   /** We need a root node to bubble rules */
   let wrapAmp = (selectors: Array<SimpleSelector | Combinator>) => root([
     ruleset({
-      selector: sellist([[el('.one'), el('.two')]]),
-      value: rules([
+      selector: compound([
+        el('.one'),
+        el('.two')
+      ]),
+      rules: rules([
         decl({ name: 'chungus', value: spaced([el('foo'), el('bar')]) }),
         ruleset({
           selector: sel(selectors),
-          value: ruleset([
+          rules: rules([
             decl({ name: 'inner', value: spaced([el('one'), el('two')]) })
           ])
         })
@@ -29,11 +33,11 @@ describe('Ampersand', () => {
   let wrapAmpList = (selectors: ComplexSelector[]) => root([
     ruleset({
       selector: sellist([sel([el('.one')]), sel([el('.two')])]),
-      value: rules([
+      rules: rules([
         decl({ name: 'chungus', value: spaced([any('foo'), any('bar')]) }),
         ruleset({
           selector: sellist(selectors),
-          value: rules([
+          rules: rules([
             decl({ name: 'inner', value: spaced([any('one'), any('two')]) })
           ])
         })
@@ -43,6 +47,7 @@ describe('Ampersand', () => {
 
   it('should output valid CSS Nesting as-is', async () => {
   /** We need a root node to bubble rules */
+    // @ts-expect-error - Figure out how this is a type problem
     let node = wrapAmp([amp()])
     let evald = await node.eval(context)
     console.log(`${evald}`.charCodeAt(0))
