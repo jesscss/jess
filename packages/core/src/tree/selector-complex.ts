@@ -6,7 +6,7 @@ import {
 } from './node'
 import type { Context } from '../context'
 import { Nil } from './nil'
-import { isNode } from './util'
+import { isNode, combineKeys } from './util'
 import { PseudoSelector } from './selector-pseudo'
 import { type SelectorList } from './selector-list'
 import { Selector } from './selector'
@@ -41,6 +41,23 @@ export class ComplexSelector extends Selector<SelectorValue> {
    */
   valueOf() {
     return this.value.map(n => n.valueOf()).join('')
+  }
+
+  get keys() {
+    let keys = this._keys
+    if (!keys) {
+      let { value } = this
+      let valueLength = value.length
+      let keySet = new Set<string>()
+      for (let i = 0; i < valueLength; i++) {
+        const item = value[i]!
+        if (!(item instanceof Combinator)) {
+          keySet = combineKeys(keySet, item.keys)
+        }
+      }
+      keys = this._keys = keySet
+    }
+    return keys
   }
 
   toTrimmedString(depth?: number | undefined): string {

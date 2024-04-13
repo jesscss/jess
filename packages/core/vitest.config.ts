@@ -6,7 +6,7 @@ export default defineConfig({
     watch: false,
     include: ['test/**/*.ts', '!test/setup.ts', '**/__tests__/**/*.ts', '!src/old_tree/**/*'],
     globals: true,
-    setupFiles: ['../../test/setup.ts'],
+    setupFiles: ['../../test/setup.ts', './test/setup.ts'],
     coverage: {
       reporter: ['text'],
       include: ['src/**/*.ts'],

@@ -5,6 +5,7 @@ import {
 import type { Context } from '../context'
 import { Nil } from './nil'
 import { Selector } from './selector'
+import { combineKeys } from './util'
 
 type SelectorValue = [Selector, Selector, ...Selector[]]
 /**
@@ -15,6 +16,23 @@ type SelectorValue = [Selector, Selector, ...Selector[]]
  */
 const nonElementRegex = /^[.#:*[]/
 export class CompoundSelector extends Selector<SelectorValue> {
+  get keys() {
+    let keys = this._keys
+    if (!keys) {
+      let { value } = this
+      if (value.length === 1) {
+        return value[0].keys
+      }
+      let valueLength = value.length
+      let keySet = new Set<string>()
+      for (let i = 0; i < valueLength; i++) {
+        keySet = combineKeys(keySet, value[i]!.keys)
+      }
+      keys = this._keys = keySet
+    }
+    return keys
+  }
+
   /**
    */
   valueOf() {

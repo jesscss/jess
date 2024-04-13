@@ -14,9 +14,11 @@
     "node": ">=16"
   },
   "dependencies": {
+    "@ungap/set-methods": "~0.1.1",
     "chalk": "^5.2.0",
     "combinate": "^1.1.11",
     "lodash-es": "^4.17.21",
+    "set.prototype.intersection": "~1.1.5",
     "set.prototype.issupersetof": "~1.1.2"
   },
   "scripts": {

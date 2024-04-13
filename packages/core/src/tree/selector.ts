@@ -7,19 +7,34 @@ export interface Selector<T = any> extends Node<T> {
 }
 
 export abstract class Selector<T = any> extends Node<T> {
-  protected _keys: Set<string> | undefined
+  protected _keys: Set<string> | string | undefined
+  protected _keySet: Set<string>
 
-  get keys(): Set<string> {
+  get keys(): Set<string> | string {
     let keys = this._keys
     if (!keys) {
-      this._keys = keys = new Set([this.valueOf()])
+      this._keys = keys = this.valueOf()
     }
     return keys
   }
 
   /** @todo - Assign while parsing simple selectors */
-  set keys(v: Set<string>) {
+  set keys(v: Set<string> | string) {
     this._keys = v
+  }
+
+  /**
+   * A Set representing all simple selectors.
+   * This is calculated once and allows for quick
+   * lookup for extend.
+   */
+  get keySet(): Set<string> {
+    let keySet = this._keySet
+    if (!keySet) {
+      let keys = this.keys
+      keySet = this._keySet = keys instanceof Set ? keys : new Set([keys])
+    }
+    return keySet
   }
 
   /**
@@ -45,7 +60,7 @@ export abstract class Selector<T = any> extends Node<T> {
    *        ])
    *        -> ['.one', '.two', '.three', '.four'] (flat list)
    *        -> [
-   *             [0, [0, 1]],
+   *             [<Compound>, ['.one', '.two']],
    *           ]
    *         0, 1, [2, 3]]
    *

@@ -23,6 +23,11 @@ describe('BasicSelector', () => {
     let rule = el('\\.foo')
     expect(rule.isTag).toBe(true)
   })
+  test('keys', () => {
+    let rule = el('.foo')
+    expect(rule.keys).toEqual('.foo')
+    expect(rule.keySet()).toEqual(new Set(['.foo']))
+  })
   // it('should serialize a module', () => {
   //   let rule = el('foo')
   //   rule.toModule(context, out)

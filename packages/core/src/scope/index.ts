@@ -14,7 +14,11 @@ import type { Condition } from '../tree/condition'
 import { Context } from '../context'
 import type { General } from '../tree/general'
 import type { Selector } from '../tree/selector'
-import { SimpleSelector } from '../tree'
+import { PseudoSelector } from '../tree/selector-pseudo'
+import { SimpleSelector } from '../tree/selector-simple'
+import { SelectorList } from '../tree/selector-list'
+import { CompoundSelector } from '../tree/selector-compound'
+import { type ComplexSelector } from '../tree/selector-complex'
 /**
  * The Scope object is meant to be an efficient
  * lookup mechanism for variables, mixins,
@@ -129,7 +133,12 @@ export class Scope {
   _props: PropMap
   _parent?: Scope
 
-  _extendMap = new Map<string, { all: string[], partial: string[], continue: string[] }>()
+  _extendMap = new Map<string, {
+    all: Array<SimpleSelector | CompoundSelector | ComplexSelector>
+    partial: Array<SimpleSelector | CompoundSelector | ComplexSelector>
+    continue: string[]
+  }>()
+
   /**
    * We store a set (copy) of all extended selectors
    * so that we can quickly do Set.prototype.isDisjointFrom
@@ -177,6 +186,8 @@ export class Scope {
   }
 
   /**
+   * This just "registers" extend statements.
+   *
    * 1. .one>.two.three
    *    i -> .two:extend(.three)
    *    o -> .one>.two[.three, .two]
@@ -204,53 +215,92 @@ export class Scope {
    *    Then: wrap the last complete match
    *    o -> .one[[.two,.five].three, .four]
    */
-  extendSelector(target: string | [string, ...string[]], selector: string, all?: boolean) {
-    if (isArray(target)) {
-      for (let i = 0; i < target.length - 1; i++) {
-        let sel = target[i]!
-        let mapEntry = this._extendMap.get(sel)
-        let map = mapEntry ?? {
-          continue: [],
-          all: [],
-          partial: []
-        }
-        map.continue.push(target[i + 1]!)
-        if (!mapEntry) {
-          this._extendMap.set(sel, map)
-          this._extendSet.add(sel)
-        }
+  extendSelector(
+    /** Given .a:extend(.b.c) {} */
+    target: SimpleSelector | CompoundSelector | ComplexSelector /* .b.c */,
+    extendWith: SimpleSelector | CompoundSelector | ComplexSelector /* .a */,
+    all?: boolean
+  ) {
+    /** no, wrong... we need a linear array with duplicates and nested :is */
+    let targetSet = target.keySet // ['.b', '.c']
+    /** no, wrong, it's just one entry for .b */
+    for (let key of targetSet) {
+      let mapEntry = this._extendMap.get(key)
+      let map = mapEntry ?? {
+        continue: [],
+        all: [],
+        partial: []
       }
-      target = target.join('')
-    }
-    let mapEntry = this._extendMap.get(target)
-    let map = mapEntry ?? {
-      continue: [],
-      all: [],
-      partial: []
-    }
-    let mapArr = all ? map.all : map.partial
-    mapArr.push(selector)
-    if (!mapEntry) {
-      this._extendMap.set(target, map)
-      this._extendSet.add(target)
+      let mapArr = all ? map.all : map.partial
+      mapArr.push(selector)
+      /**
+       * Should end up with:
+       * Map {
+       *   '.b' => { all: [], partial: [], continue: ['.c'] }
+       *   '.b.c' => { all: [], partial: [el('.a')], continue: [] }
+       * }
+       */
+      if (!mapEntry) {
+        this._extendMap.set(key, map)
+        this._extendSet.add(key)
+      }
     }
   }
 
-  private _processSelector(input: Selector) {
-    input.walkNodes(n => {
-      if (n instanceof SimpleSelector) {
-        let primitive = n.toNormalPrimitive()
+  private _processSelector(input: Selector, matchSequence?: Selector): Selector | false {
+    const extendMap = this._extendMap
+    /**
+     * .a {}
+     * .b:extend(.a);
+     * .c:extend(.a.b);
+     *
+     * okay... Given:
+     *   1. input is .a
+     *   2. extendMap has:
+     *     Map {
+     *       '.a' => { all: [], partial: ['.b'], continue: ['.b'] }
+     *       '.a.b' => { all: [], partial: ['.c'], continue: [] }
+     *     }
+     */
+    if (input instanceof SimpleSelector) {
+      let primitive = input.valueOf() // .a
+      let ref = extendMap.get(primitive)
+      if (!ref) {
+        return false
       }
-    })
+
+      if (ref.partial.length || ref.all.length) {
+        let selector = input.clone()
+        const list: Array<Selector<any>> = [selector]
+        let container = new PseudoSelector([
+          ['name', ':is'],
+          ['value', new SelectorList(list)]
+        ])
+        if (ref.partial.length) {
+          list.push(...ref.partial)
+        }
+        if (ref.all.length) {
+          list.push(...ref.partial)
+        }
+        return container
+      }
+    } else if (input instanceof CompoundSelector) {
+      for (let selector of input.value) {
+        let processed = this._processSelector(selector)
+        if (processed) {
+          return processed
+        }
+      }
+    }
   }
 
   /** Get a selector, considering the extend map */
   getExtendedSelector(input: Selector): Selector {
-    /** @todo - Determine if */
-    if (isNode(input, 'SelectorList')) {
-      return
+    const extendSet = this._extendSet
+    if (extendSet.size === 0 || input.keySet.isDisjointFrom(extendSet)) {
+      return input
     }
-    return input
+    return this._processSelector(input, seek)
   }
 
   // addSelector(selector: string) {

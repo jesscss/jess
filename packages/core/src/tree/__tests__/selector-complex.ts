@@ -111,4 +111,28 @@ describe('Complex selector', () => {
       expect(sel1).not.toEqual(sel2)
     })
   })
+
+  describe('keys', () => {
+    test('simple complex', () => {
+      let sel1 = sel([
+        compound([
+          el('.one'),
+          el('.two')
+        ]),
+        co('>'),
+        el('.three')
+      ])
+      expect(sel1.keys).toEqual(new Set(['.one', '.two', '.three']))
+    })
+    test('nested complex', () => {
+      let sel2 = sel([
+        compound([
+          pseudo({ name: ':is', value: el('a') }),
+          el('#id'),
+          pseudo({ name: ':is', value: sel([co('>'), compound([el('.two'), el('.one')])]) })
+        ])
+      ])
+      expect(sel2.keys).toEqual(new Set(['a', '#id', '.one', '.two']))
+    })
+  })
 })

@@ -64,4 +64,27 @@ describe('Compound Selector', () => {
       expect(sel1).toEqual(sel2)
     })
   })
+  describe('keys', () => {
+    test('simple compound', () => {
+      let sel1 = compound([
+        el('a'),
+        el('#id'),
+        el('.class')
+      ])
+      expect(sel1.keys).toEqual(new Set(['a', '#id', '.class']))
+    })
+
+    test('nested compound', () => {
+      /** :is(a)#id:is(.one.two) */
+      const sel1 = pseudo({ name: ':is', value: el('a') })
+      let sel2 = compound([
+        sel1,
+        el('#id'),
+        pseudo({ name: ':is', value: compound([el('.two'), el('.one')]) })
+      ])
+
+      expect(sel1.keys).toEqual('a')
+      expect(sel2.keys).toEqual(new Set(['a', '#id', '.one', '.two']))
+    })
+  })
 })

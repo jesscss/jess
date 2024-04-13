@@ -34,6 +34,18 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     return `${name}${value ? `(${value})` : ''}`
   }
 
+  get keys() {
+    let keys = this._keys
+    if (!keys) {
+      let { value } = this
+      if (value && value instanceof Selector) {
+        return value.keys
+      }
+      keys = this._keys = this.valueOf()
+    }
+    return keys
+  }
+
   valueOf() {
     let { name, value } = this
     if (value && value instanceof Selector) {
