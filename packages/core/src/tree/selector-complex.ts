@@ -46,16 +46,7 @@ export class ComplexSelector extends Selector<SelectorValue> {
   get keys() {
     let keys = this._keys
     if (!keys) {
-      let { value } = this
-      let valueLength = value.length
-      let keySet = new Set<string>()
-      for (let i = 0; i < valueLength; i++) {
-        const item = value[i]!
-        if (!(item instanceof Combinator)) {
-          keySet = combineKeys(keySet, item.keys)
-        }
-      }
-      keys = this._keys = keySet
+      keys = this._keys = this.value.map(n => n.keys)
     }
     return keys
   }

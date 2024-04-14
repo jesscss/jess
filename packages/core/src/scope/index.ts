@@ -187,27 +187,79 @@ export class Scope {
 
   /**
    * This just "registers" extend statements.
+   * #0[] = compound array
+   * #1[] = complex array
+   * #2[] = selector list
    *
    * 1. .one>.two.three
-   *    i -> .two:extend(.three)
-   *    o -> .one>.two[.three, .two]
+   *    #1[.one, >, #0[.two, .three]]
+   *    i -> .two:extend(.three !all)
+   *    o -> #1[.one, > , #0[.two, #2[.three, .two]]]
+   *    o -> .one>:is(.two, .three)
    *
-   * 2. .one>.two.three
+   * 2. #1[.one, >, #0[.two, .three]]
+   *    .one>.two.three
    *    Given: we extend one element
-   *    i -> .four:extend(.three)
+   *    i -> .four:extend(.three !all)
    *    Then: we need to wrap that in an :is()
-   *    o -> .one>.two[.three, .four]
+   *    o -> #1[.one, >, #0[.two, #2[.three, .four]]]
+   *    0 -> .one>.two:is(.three, .four)
    *
    *    Given: we extend two elements that overlaps an :is()
-   *    i -> .five:extend(.two.three)
+   *    i -> .five:extend(.two.three !all)
    *    Then: we need to extend the :is() and distribute
-   *    o -> .one>[.two[.three,.four],.five]
+   *    o -> #1[.one, >, #2[#0[.two, #2[.three,.four]], .five]]
+   *    o -> .one>:is(.two:is(.three, .four), .five)
    *
-   *    i -> .six:extend(.two)
-   *    o -> .one>[[.two,.six][.three,.four],.five]
+   *    i -> .six:extend(.two !all)
+   *    o -> #1[.one, >, #2[#0[#2[.two, .six], #2[.three, .four]]], .five]]
+   *    o -> .one>:is(:is(.two, .six):is(.three, .four), .five)
    *
-   *    i -> .seven:extend(.one>.two)
-   *    o -> [[.one>[.two,.six],.seven][.three,.four],.five]
+   *    i -> .seven:extend(.one>.two !all)
+   *    Not sure how to do this, but it should be:
+   *    o -> .one>:is(:is(.two, .six):is(.three, .four), .five), .seven:is(.three, .four)
+   *      OR
+   *    :is(.one>.two, .seven):is(.three, .four), .one > :is(.six:is(.three, .four), .five)
+   *      The second is probably easiest - if the extend doesn't match the whole list,
+   *      then duplicate the first part of the list and add it to the outer list....
+   *      No... the first is easiest. Grab the remainder of the match and attach to .seven?
+   *      ... except, what if .two is extended again?
+   *
+   * Map would be:
+   *    Map {
+   *      .three => { complete: [], partial: [.four], continue: [] }
+   *      .two => { complete: [], partial: [.six], continue: [.three] }
+   *      .two.three => { complete: [], partial: [.five], continue: [] }
+   *      .one => { complete: [], partial: [], continue: [>] }
+   *      .one> => { complete: [], partial: [], continue: [.two] }
+   *      .one>.two => { complete: [], partial: [.seven], continue: [] }
+   *    }
+   *    Render .one > .two.three {}
+   *      1. Look up .one
+   *      2. Match > to continue, look up .one>
+   *      3. Match .two to continue, look up .one>.two
+   *      4. Wrap .one>.two with .seven :is(.one>.two, .seven)
+   *      5. Continue on modified selector from '>'
+   *      6. Look up .two
+   *      7.
+   *
+   *    Render .one > .two.three {}
+   *      1. Start with simple selectors
+   *      2. Look up .one (none)
+   *      3. Look up .two (match)
+   *      4. Extend .two with .six -> .one > :is(.two, .six).three
+   *      5. Look up .three (match)
+   *      6. Extend .three with .four -> .one > :is(.two, .six):is(.three, .four)
+   *      7. Match sequences (on original selector?)
+   *      8. Look up .one
+   *      9. Match > to continue, look up .one>
+   *      10. Look up continue, match .one>two
+   *      11. Extend .one>.two with .seven -> :is(.one > :is(.two, .six), .seven):is(.three, .four)
+   *      12. Continue to next sequence (skip combinators)
+   *      13. Look up .two
+   *      14. Match .three to continue, look up .two.three
+   *      15. Extend .two.three with .five -> :is(.one > :is(.two, .six), .seven):is(.three, .four)
+   *          ...shit ... how do we get to :is(.one>.two, .seven):is(.three, .four), .one > :is(.six:is(.three, .four), .five)
    *
    * 3. .one[.two.three, .four]
    *    Given: a partial overlap of an :is()
@@ -222,29 +274,37 @@ export class Scope {
     all?: boolean
   ) {
     /** no, wrong... we need a linear array with duplicates and nested :is */
-    let targetSet = target.keySet // ['.b', '.c']
+    let targetKeyList = target.keys // target.keySet // ['.b', '.c']
     /** no, wrong, it's just one entry for .b */
-    for (let key of targetSet) {
-      let mapEntry = this._extendMap.get(key)
+    let next = targetKeyList[0]!
+    let compositeKey = next
+    for (let i = 0; i < targetSet.length; i++) {
+      // while (first = targetSet.shift()) {
+      let mapEntry = this._extendMap.get(compositeKey)
       let map = mapEntry ?? {
         continue: [],
         all: [],
         partial: []
       }
-      let mapArr = all ? map.all : map.partial
-      mapArr.push(selector)
-      /**
-       * Should end up with:
-       * Map {
-       *   '.b' => { all: [], partial: [], continue: ['.c'] }
-       *   '.b.c' => { all: [], partial: [el('.a')], continue: [] }
-       * }
-       */
-      if (!mapEntry) {
-        this._extendMap.set(key, map)
-        this._extendSet.add(key)
+      next = targetSet[i + 1]!
+      if (!next) {
+        let list = all ? map.all : map.partial
+        list.push(extendWith)
+        if (!mapEntry) {
+          this._extendMap.set(compositeKey, map)
+          this._extendSet.add(compositeKey)
+        }
+      } else {
+        compositeKey += next
       }
     }
+    /**
+     * Should end up with:
+     * Map {
+     *   '.b' => { all: [], partial: [], continue: ['.c'] }
+     *   '.b.c' => { all: [], partial: [el('.a')], continue: [] }
+     * }
+     */
   }
 
   private _processSelector(input: Selector, matchSequence?: Selector): Selector | false {
@@ -300,7 +360,7 @@ export class Scope {
     if (extendSet.size === 0 || input.keySet.isDisjointFrom(extendSet)) {
       return input
     }
-    return this._processSelector(input, seek)
+    // return this._processSelector(input, seek)
   }
 
   // addSelector(selector: string) {

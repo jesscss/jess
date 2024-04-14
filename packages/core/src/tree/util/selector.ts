@@ -18,5 +18,7 @@ export function combineKeys(
   }
 }
 
-export class SelectorArray<T> extends Array<T> {}
-export class IsArray<T> extends Array<T> {}
+/** For selector lists */
+export class ListArray<T> extends Array<T> {}
+/** For complex selectors */
+export class ComplexArray<T> extends Array<T> {}

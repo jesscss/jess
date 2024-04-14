@@ -2,7 +2,11 @@ import { Node, defineType } from './node'
 
 export class Combinator extends Node<string> {
   /** To make forming Sets easier */
-  toNormalPrimitive() {
+  valueOf() {
+    return this.value
+  }
+
+  get keys() {
     return this.value
   }
   // toTrimmedString() {

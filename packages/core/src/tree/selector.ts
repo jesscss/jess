@@ -6,11 +6,15 @@ export interface Selector<T = any> extends Node<T> {
   compare(other: Node): 0 | 1 | -1 | undefined
 }
 
+export type NestedKeys = Array<string | NestedKeys>
+
+const { isArray } = Array
+
 export abstract class Selector<T = any> extends Node<T> {
-  protected _keys: Set<string> | string | undefined
+  protected _keys: NestedKeys | string | undefined
   protected _keySet: Set<string>
 
-  get keys(): Set<string> | string {
+  get keys(): NestedKeys | string {
     let keys = this._keys
     if (!keys) {
       this._keys = keys = this.valueOf()
@@ -19,9 +23,17 @@ export abstract class Selector<T = any> extends Node<T> {
   }
 
   /** @todo - Assign while parsing simple selectors */
-  set keys(v: Set<string> | string) {
+  set keys(v: NestedKeys | string) {
     this._keys = v
   }
+
+  // get keySet(): Set<string> {
+  //   let flatKeys = this._flatKeys
+  //   if (!flatKeys) {
+  //     let keys = this.keys
+  //     flatKeys = this._flatKeys = Array.isArray(keys) ? keys : [keys]
+  //   }
+  // }
 
   /**
    * A Set representing all simple selectors.
@@ -32,7 +44,8 @@ export abstract class Selector<T = any> extends Node<T> {
     let keySet = this._keySet
     if (!keySet) {
       let keys = this.keys
-      keySet = this._keySet = keys instanceof Set ? keys : new Set([keys])
+      let flatKeys = isArray(keys) ? (keys.flat() as string[]) : [keys]
+      keySet = this._keySet = new Set(flatKeys)
     }
     return keySet
   }
