@@ -15,6 +15,8 @@ export type PseudoSelectorValue = {
   value?: Node
 }
 
+const { isArray } = Array
+
 /**
  * A pseudo selector
  * @see https://developer.mozilla.org/en-US/docs/Web/CSS/Attribute_selectors
@@ -37,9 +39,25 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   get keys() {
     let keys = this._keys
     if (!keys) {
-      let { value } = this
+      let { value, name } = this
       if (value && value instanceof Selector) {
-        return value.keys
+        if (name === ':is') {
+          if (isNode(value, 'SelectorList')) {
+            if (value.value.every(sel => sel.value[0].type !== 'Combinator')) {
+              return value
+            }
+            return this.valueOf()
+          } else if (isNode(value, 'ComplexSelector')) {
+            if (value.value[0]!.type !== 'Combinator') {
+              return value.keys
+            }
+            return this.valueOf()
+          }
+          return value.keys
+        }
+        let newKeys = value.keys
+
+        return isArray(newKeys) ? [name, ...newKeys] : [name, newKeys]
       }
       keys = this._keys = this.valueOf()
     }

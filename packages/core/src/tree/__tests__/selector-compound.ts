@@ -71,7 +71,7 @@ describe('Compound Selector', () => {
         el('#id'),
         el('.class')
       ])
-      expect(sel1.keys).toEqual(new Set(['a', '#id', '.class']))
+      expect(sel1.keys).toEqual(['a', '#id', '.class'])
     })
 
     test('nested compound', () => {
@@ -84,7 +84,7 @@ describe('Compound Selector', () => {
       ])
 
       expect(sel1.keys).toEqual('a')
-      expect(sel2.keys).toEqual(new Set(['a', '#id', '.one', '.two']))
+      expect(sel2.keys).toEqual(['a', '#id', '.two', '.one'])
     })
   })
 })

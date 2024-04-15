@@ -17,8 +17,3 @@ export function combineKeys(
     }
   }
 }
-
-/** For selector lists */
-export class ListArray<T> extends Array<T> {}
-/** For complex selectors */
-export class ComplexArray<T> extends Array<T> {}

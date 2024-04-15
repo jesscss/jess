@@ -13,7 +13,7 @@ import type { Bool } from '../tree/bool'
 import type { Condition } from '../tree/condition'
 import { Context } from '../context'
 import type { General } from '../tree/general'
-import type { Selector } from '../tree/selector'
+import type { Keys, Selector } from '../tree/selector'
 import { PseudoSelector } from '../tree/selector-pseudo'
 import { SimpleSelector } from '../tree/selector-simple'
 import { SelectorList } from '../tree/selector-list'
@@ -134,7 +134,7 @@ export class Scope {
   _parent?: Scope
 
   _extendMap = new Map<string, {
-    all: Array<SimpleSelector | CompoundSelector | ComplexSelector>
+    complete: Array<SimpleSelector | CompoundSelector | ComplexSelector>
     partial: Array<SimpleSelector | CompoundSelector | ComplexSelector>
     continue: string[]
   }>()
@@ -267,26 +267,36 @@ export class Scope {
    *    Then: wrap the last complete match
    *    o -> .one[[.two,.five].three, .four]
    */
-  extendSelector(
+  registerExtend(
     /** Given .a:extend(.b.c) {} */
     target: SimpleSelector | CompoundSelector | ComplexSelector /* .b.c */,
     extendWith: SimpleSelector | CompoundSelector | ComplexSelector /* .a */,
     all?: boolean
   ) {
     /** no, wrong... we need a linear array with duplicates and nested :is */
-    let targetKeyList = target.keys // target.keySet // ['.b', '.c']
+    let targetKeyList = target.keyList // target.keySet // ['.b', '.c']
     /** no, wrong, it's just one entry for .b */
     let next = targetKeyList[0]!
-    let compositeKey = next
-    for (let i = 0; i < targetSet.length; i++) {
-      // while (first = targetSet.shift()) {
-      let mapEntry = this._extendMap.get(compositeKey)
+    // let pos: Selector
+
+    const iteratePosition = (next: string | SelectorList): void => {
+      if (next instanceof SelectorList) {
+        return next.keyList.forEach(n => iteratePosition(n))
+      }
+      let mapEntry = this._extendMap.get(next)
       let map = mapEntry ?? {
         continue: [],
-        all: [],
+        complete: [],
         partial: []
       }
-      next = targetSet[i + 1]!
+      let list = all ? map.partial : map.complete
+      list.push(extendWith)
+    }
+
+    for (let i = 0; i < targetKeyList.length; i++) {
+      iteratePosition(targetKeyList[i]!)
+
+      next = targetKeyList[i + 1]!
       if (!next) {
         let list = all ? map.all : map.partial
         list.push(extendWith)

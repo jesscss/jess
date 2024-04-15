@@ -6,7 +6,7 @@ import {
 } from './node'
 import type { Context } from '../context'
 import { Nil } from './nil'
-import { isNode, combineKeys } from './util'
+import { isNode } from './util'
 import { PseudoSelector } from './selector-pseudo'
 import { type SelectorList } from './selector-list'
 import { Selector } from './selector'
@@ -46,7 +46,7 @@ export class ComplexSelector extends Selector<SelectorValue> {
   get keys() {
     let keys = this._keys
     if (!keys) {
-      keys = this._keys = this.value.map(n => n.keys)
+      keys = this._keys = this.value.flatMap(n => n.keys)
     }
     return keys
   }

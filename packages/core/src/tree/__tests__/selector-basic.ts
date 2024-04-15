@@ -26,7 +26,7 @@ describe('BasicSelector', () => {
   test('keys', () => {
     let rule = el('.foo')
     expect(rule.keys).toEqual('.foo')
-    expect(rule.keySet()).toEqual(new Set(['.foo']))
+    expect(rule.keyList).toEqual(['.foo'])
   })
   // it('should serialize a module', () => {
   //   let rule = el('foo')

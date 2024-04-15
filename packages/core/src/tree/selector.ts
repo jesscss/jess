@@ -1,20 +1,21 @@
 import { Node } from './node'
 import { compare } from './util/compare'
+import type { SelectorList } from './selector-list'
 
 /** Will be bound in ./util/compare.ts */
 export interface Selector<T = any> extends Node<T> {
   compare(other: Node): 0 | 1 | -1 | undefined
 }
 
-export type NestedKeys = Array<string | NestedKeys>
+export type Keys = string | SelectorList | Array<string | SelectorList>
 
 const { isArray } = Array
 
 export abstract class Selector<T = any> extends Node<T> {
-  protected _keys: NestedKeys | string | undefined
-  protected _keySet: Set<string>
+  protected _keys: Keys | undefined
+  protected _keyList: Array<string | SelectorList>
 
-  get keys(): NestedKeys | string {
+  get keys(): Keys {
     let keys = this._keys
     if (!keys) {
       this._keys = keys = this.valueOf()
@@ -22,9 +23,20 @@ export abstract class Selector<T = any> extends Node<T> {
     return keys
   }
 
-  /** @todo - Assign while parsing simple selectors */
-  set keys(v: NestedKeys | string) {
+  /**
+   * Nested keys represent lists.
+   */
+  set keys(v: Keys) {
     this._keys = v
+  }
+
+  get keyList(): Array<string | SelectorList> {
+    let keyList = this._keyList
+    if (!keyList) {
+      let keys = this.keys
+      keyList = this._keyList = isArray(keys) ? keys : [keys]
+    }
+    return keyList
   }
 
   // get keySet(): Set<string> {
@@ -40,15 +52,15 @@ export abstract class Selector<T = any> extends Node<T> {
    * This is calculated once and allows for quick
    * lookup for extend.
    */
-  get keySet(): Set<string> {
-    let keySet = this._keySet
-    if (!keySet) {
-      let keys = this.keys
-      let flatKeys = isArray(keys) ? (keys.flat() as string[]) : [keys]
-      keySet = this._keySet = new Set(flatKeys)
-    }
-    return keySet
-  }
+  // get keySet(): Set<string> {
+  //   let keySet = this._keySet
+  //   if (!keySet) {
+  //     let keys = this.keys
+  //     let flatKeys = isArray(keys) ? (keys.flat() as string[]) : [keys]
+  //     keySet = this._keySet = new Set(flatKeys)
+  //   }
+  //   return keySet
+  // }
 
   /**
    * Normalize for comparison

@@ -19,7 +19,7 @@ export class CompoundSelector extends Selector<SelectorValue> {
     let keys = this._keys
     if (!keys) {
       let { value } = this
-      keys = this._keys = value.map(n => n.keys)
+      keys = this._keys = value.flatMap(n => n.keys)
     }
     return keys
   }
