@@ -109,6 +109,8 @@ export type GetterOptions = {
   suppressUndefinedError?: boolean
 }
 
+export type ExtendMap = Map<'complete' | 'partial' | 'continue', Selector[]>
+
 export type ScopeFilter = (
   entry: ScopeEntry | undefined,
   valueFilter: (value: any, index?: number, entryValue?: any[]) => boolean
@@ -133,11 +135,7 @@ export class Scope {
   _props: PropMap
   _parent?: Scope
 
-  _extendMap = new Map<string, {
-    complete: Array<SimpleSelector | CompoundSelector | ComplexSelector>
-    partial: Array<SimpleSelector | CompoundSelector | ComplexSelector>
-    continue: string[]
-  }>()
+  _extendMap = new Map<string, ExtendObject>()
 
   /**
    * We store a set (copy) of all extended selectors
@@ -186,133 +184,94 @@ export class Scope {
   }
 
   /**
-   * This just "registers" extend statements.
-   * #0[] = compound array
-   * #1[] = complex array
-   * #2[] = selector list
+   * This registers extend statements as a kind of
+   * state machine, where matches are progressively
+   * found and extended. This allows for complex
+   * matching of nested :is() selectors, and matching
+   * selectors within compound selectors vs. Less 2-4's
+   * more naïve approach which does a simple find/replace.
    *
-   * 1. .one>.two.three
-   *    #1[.one, >, #0[.two, .three]]
-   *    i -> .two:extend(.three !all)
-   *    o -> #1[.one, > , #0[.two, #2[.three, .two]]]
-   *    o -> .one>:is(.two, .three)
    *
-   * 2. #1[.one, >, #0[.two, .three]]
-   *    .one>.two.three
-   *    Given: we extend one element
-   *    i -> .four:extend(.three !all)
-   *    Then: we need to wrap that in an :is()
-   *    o -> #1[.one, >, #0[.two, #2[.three, .four]]]
-   *    0 -> .one>.two:is(.three, .four)
-   *
-   *    Given: we extend two elements that overlaps an :is()
-   *    i -> .five:extend(.two.three !all)
-   *    Then: we need to extend the :is() and distribute
-   *    o -> #1[.one, >, #2[#0[.two, #2[.three,.four]], .five]]
-   *    o -> .one>:is(.two:is(.three, .four), .five)
-   *
-   *    i -> .six:extend(.two !all)
-   *    o -> #1[.one, >, #2[#0[#2[.two, .six], #2[.three, .four]]], .five]]
-   *    o -> .one>:is(:is(.two, .six):is(.three, .four), .five)
-   *
-   *    i -> .seven:extend(.one>.two !all)
-   *    Not sure how to do this, but it should be:
-   *    o -> .one>:is(:is(.two, .six):is(.three, .four), .five), .seven:is(.three, .four)
-   *      OR
-   *    :is(.one>.two, .seven):is(.three, .four), .one > :is(.six:is(.three, .four), .five)
-   *      The second is probably easiest - if the extend doesn't match the whole list,
-   *      then duplicate the first part of the list and add it to the outer list....
-   *      No... the first is easiest. Grab the remainder of the match and attach to .seven?
-   *      ... except, what if .two is extended again?
+   * 2. Given
+   *     .one>.two.three
+   *     .four:extend(.three !all)
+   *     .five:extend(.two.three !all)
+   *     .six:extend(.two !all)
+   *     .seven:extend(.one>.two !all)
    *
    * Map would be:
    *    Map {
-   *      .three => { complete: [], partial: [.four], continue: [] }
    *      .two => { complete: [], partial: [.six], continue: [.three] }
    *      .two.three => { complete: [], partial: [.five], continue: [] }
+   *      .three => { complete: [], partial: [.four], continue: [] }
    *      .one => { complete: [], partial: [], continue: [>] }
    *      .one> => { complete: [], partial: [], continue: [.two] }
    *      .one>.two => { complete: [], partial: [.seven], continue: [] }
    *    }
-   *    Render .one > .two.three {}
-   *      1. Look up .one
-   *      2. Match > to continue, look up .one>
-   *      3. Match .two to continue, look up .one>.two
-   *      4. Wrap .one>.two with .seven :is(.one>.two, .seven)
-   *      5. Continue on modified selector from '>'
-   *      6. Look up .two
-   *      7.
-   *
-   *    Render .one > .two.three {}
-   *      1. Start with simple selectors
-   *      2. Look up .one (none)
-   *      3. Look up .two (match)
-   *      4. Extend .two with .six -> .one > :is(.two, .six).three
-   *      5. Look up .three (match)
-   *      6. Extend .three with .four -> .one > :is(.two, .six):is(.three, .four)
-   *      7. Match sequences (on original selector?)
-   *      8. Look up .one
-   *      9. Match > to continue, look up .one>
-   *      10. Look up continue, match .one>two
-   *      11. Extend .one>.two with .seven -> :is(.one > :is(.two, .six), .seven):is(.three, .four)
-   *      12. Continue to next sequence (skip combinators)
-   *      13. Look up .two
-   *      14. Match .three to continue, look up .two.three
-   *      15. Extend .two.three with .five -> :is(.one > :is(.two, .six), .seven):is(.three, .four)
-   *          ...shit ... how do we get to :is(.one>.two, .seven):is(.three, .four), .one > :is(.six:is(.three, .four), .five)
-   *
-   * 3. .one[.two.three, .four]
-   *    Given: a partial overlap of an :is()
-   *    i -> .five:extend(.one.two)
-   *    Then: wrap the last complete match
-   *    o -> .one[[.two,.five].three, .four]
    */
   registerExtend(
     /** Given .a:extend(.b.c) {} */
-    target: SimpleSelector | CompoundSelector | ComplexSelector /* .b.c */,
-    extendWith: SimpleSelector | CompoundSelector | ComplexSelector /* .a */,
+    target: Selector /* .b.c */,
+    extendWith: Selector /* .a */,
     all?: boolean
   ) {
-    /** no, wrong... we need a linear array with duplicates and nested :is */
+    /** linear flat array of selector values and nested selector lists */
     let targetKeyList = target.keyList // target.keySet // ['.b', '.c']
-    /** no, wrong, it's just one entry for .b */
-    let next = targetKeyList[0]!
-    // let pos: Selector
+    let i = 0
 
-    const iteratePosition = (next: string | SelectorList): void => {
+    const iterateContinue = (next: string | SelectorList, continueArr: string[]): void => {
       if (next instanceof SelectorList) {
-        return next.keyList.forEach(n => iteratePosition(n))
+        return next.keyList.forEach(n => iterateContinue(n, continueArr))
       }
-      let mapEntry = this._extendMap.get(next)
-      let map = mapEntry ?? {
-        continue: [],
-        complete: [],
-        partial: []
-      }
-      let list = all ? map.partial : map.complete
-      list.push(extendWith)
+      continueArr.push(next)
     }
 
-    for (let i = 0; i < targetKeyList.length; i++) {
-      iteratePosition(targetKeyList[i]!)
-
-      next = targetKeyList[i + 1]!
+    const iteratePosition = (current: string | SelectorList, compositeKey: string): void => {
+      if (current instanceof SelectorList) {
+        return current.keyList.forEach(n => iteratePosition(n, compositeKey))
+      }
+      compositeKey += current
+      let mapEntry = this._extendMap.get(current)
+      let map = mapEntry ?? {}
+      const next = targetKeyList[i + 1]!
       if (!next) {
-        let list = all ? map.all : map.partial
-        list.push(extendWith)
+        if (all) {
+          if (map.partial) {
+            map.partial.push(extendWith)
+          } else {
+            map.partial = [extendWith]
+          }
+        } else {
+          if (map.complete) {
+            map.complete.push(extendWith)
+          } else {
+            map.complete = [extendWith]
+          }
+        }
         if (!mapEntry) {
           this._extendMap.set(compositeKey, map)
           this._extendSet.add(compositeKey)
         }
       } else {
-        compositeKey += next
+        let continueArr = map.continue
+        if (!continueArr) {
+          continueArr = map.continue = []
+        }
+        iterateContinue(next, continueArr)
+        if (!mapEntry) {
+          this._extendMap.set(compositeKey, map)
+        }
+        i++
+        iteratePosition(next, compositeKey)
       }
     }
+    iteratePosition(targetKeyList[0]!, '')
+
     /**
      * Should end up with:
      * Map {
-     *   '.b' => { all: [], partial: [], continue: ['.c'] }
-     *   '.b.c' => { all: [], partial: [el('.a')], continue: [] }
+     *   '.b' => { complete: [], partial: [], continue: ['.c'] }
+     *   '.b.c' => { complete: [], partial: [el('.a')], continue: [] }
      * }
      */
   }
