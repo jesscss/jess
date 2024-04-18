@@ -2,7 +2,10 @@ import {
   sel,
   compound,
   co,
-  el
+  el,
+  type Selector,
+  sellist,
+  pseudo
 } from '../../tree'
 import { Scope } from '../index'
 import { logger } from '../../logger'
@@ -10,6 +13,8 @@ import { logger } from '../../logger'
 vi.spyOn(logger, 'warn')
 
 let scope: Scope
+
+type SimpleExtendMap = Map<string, string[] | Selector[]>
 
 describe('Scope selectors', async () => {
   beforeEach(() => {
@@ -22,13 +27,11 @@ describe('Scope selectors', async () => {
      */
     it('simple selectors', () => {
       scope.registerExtend(el('.three'), el('.two'))
-      expect(scope._extendMap).toEqual(new Map([
+      expect(scope._extendMap).toEqual(new Map<string, SimpleExtendMap>([
         [
-          '.three', {
-            complete: [el('.two')],
-            partial: [],
-            continue: []
-          }
+          '.three', new Map([
+            ['complete', [el('.two')]]
+          ])
         ]
       ]))
     })
@@ -45,17 +48,76 @@ describe('Scope selectors', async () => {
         ])
       ])
       scope.registerExtend(sel1, el('.four'))
-      expect(scope._extendMap).toEqual(new Map([
+      expect(scope._extendMap).toEqual(new Map<string, SimpleExtendMap>([
         [
-          '.one', {
-            complete: [],
-            continue: []
-          },
-          '.three', {
-            complete: [el('.two')],
-            partial: [],
-            continue: []
-          }
+          '.one', new Map([
+            ['continue', ['>']]
+          ])
+        ],
+        [
+          '.one>', new Map([
+            ['continue', ['.two']]
+          ])
+        ],
+        [
+          '.one>.two', new Map([
+            ['continue', ['.three']]
+          ])
+        ],
+        [
+          '.one>.two.three', new Map([
+            ['complete', [el('.four')]]
+          ])
+        ]
+      ]))
+    })
+    it.only('registers selector lists', () => {
+      let sel1 = sel([
+        pseudo([
+          ['name', ':is'],
+          ['value', sellist([
+            el('.one'),
+            el('.two')
+          ])]
+        ]),
+        co('>'),
+        compound([
+          el('.three'),
+          el('.four')
+        ])
+      ])
+      const extendWith = el('.five')
+      scope.registerExtend(sel1, extendWith)
+      /** Exact (normalized) match */
+      let complete = new Map([
+        ['[.one,.two]>.four.three', [extendWith]]
+      ])
+      scope.registerExtend(sel1, extendWith, true)
+      let partial = new Map([
+        /** Start key - either matches a simple selector or one of the elements of a compound selector */
+        ['.one', /* (string | Selector)[] */ [sel1, extendWith]],
+        ['.two', /* reference to above */ [sel1, extendWith]]
+      ])
+      expect(scope._extendMap).toEqual(new Map<string, SimpleExtendMap>([
+        [
+          '.one', new Map([
+            ['continue', ['>']]
+          ])
+        ],
+        [
+          '.one>', new Map([
+            ['continue', ['.three']]
+          ])
+        ],
+        [
+          '.one>.three', new Map([
+            ['continue', ['.four']]
+          ])
+        ],
+        [
+          '.one>.two.four', new Map([
+            ['complete', [el('.five')]]
+          ])
         ]
       ]))
     })

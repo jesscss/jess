@@ -3,6 +3,9 @@ import { SimpleSelector } from './selector-simple'
 import { type Context } from '../context'
 import { Selector } from './selector'
 import { isNode } from './util'
+import { type SelectorList } from './selector-list'
+import { Ampersand } from './ampersand'
+import { Combinator } from './combinator'
 
 export type PseudoSelectorValue = {
   /**
@@ -42,49 +45,80 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       let { value, name } = this
       if (value && value instanceof Selector) {
         if (name === ':is') {
-          if (isNode(value, 'SelectorList')) {
-            if (value.value.every(sel => sel.value[0].type !== 'Combinator')) {
-              return value
-            }
-            return this.valueOf()
-          } else if (isNode(value, 'ComplexSelector')) {
-            if (value.value[0]!.type !== 'Combinator') {
-              return value.keys
-            }
-            return this.valueOf()
+          const isNotRelative = (sel: Selector) => {
+            let match = false
+            sel.walkNodes(node => {
+            /** Stop at the first simple selector or combinator */
+              if (node instanceof SimpleSelector) {
+                if (node instanceof Ampersand) {
+                  match = true
+                }
+                return false
+              } else if (node instanceof Combinator) {
+                match = true
+                return false
+              }
+            })
+            return !match
           }
-          return value.keys
+          if (isNode(value, 'SelectorList')) {
+            if (
+              /**
+               * If an :is starts with an ampersand or combinator,
+               * it's relative, and can't be flattened.
+               */
+              (value as SelectorList).value.every(isNotRelative)
+            ) {
+              keys = (value as SelectorList).value.flatMap(sel => sel.keys)
+            } else {
+              keys = this.valueOf()
+            }
+          } else if (isNotRelative(value)) {
+            keys = value.keys
+          } else {
+            keys = this.valueOf()
+          }
+          this._keys = keys
+          return keys
+        } else {
+          keys = this.valueOf()
         }
-        let newKeys = value.keys
-
-        return isArray(newKeys) ? [name, ...newKeys] : [name, newKeys]
+      } else {
+        keys = this.valueOf()
       }
-      keys = this._keys = this.valueOf()
+      this._keys = keys
     }
     return keys
   }
 
   valueOf() {
-    let { name, value } = this
-    if (value && value instanceof Selector) {
-      if (
-        name === ':is'
-        && !isNode(value, 'SelectorList')
-        && (
-          !isNode(value, 'ComplexSelector')
-          || !isNode(value.value[0], 'Combinator')
-        )
-      ) {
-        return value.valueOf()
+    let valueOf = this._value
+    if (!valueOf) {
+      let { name, value } = this
+      if (value && value instanceof Selector) {
+        if (
+          name === ':is'
+          && !isNode(value, 'SelectorList')
+          && (
+            !isNode(value, 'ComplexSelector')
+            || !isNode(value.value[0], 'Combinator')
+          )
+        ) {
+          valueOf = value.valueOf()
+        } else {
+          valueOf = `${name}(${value.valueOf()})`
+        }
+      } else {
+        /**
+         * Normalizes :nth-child(n + 1) to match :nth-child(n+1)
+         * That is, anything that doesn't hold a selector as a value
+         * is, by definition, not space-sensitive.
+         */
+        valueOf = `${name}${value ? `(${value.valueOf().replace(/\s+/, '')})` : ''}`
       }
-      return `${name}(${value.valueOf()})`
+      this._value = valueOf
     }
-    /**
-     * Normalizes :nth-child(n + 1) to match :nth-child(n+1)
-     * That is, anything that doesn't hold a selector as a value
-     * is, by definition, not space-sensitive.
-     */
-    return `${name}${value ? `(${value.valueOf().replace(/\s+/, '')})` : ''}`
+    return valueOf
   }
 
   async eval(context: Context) {

@@ -1,21 +1,22 @@
 import { Node } from './node'
 import { compare } from './util/compare'
-import type { SelectorList } from './selector-list'
 
 /** Will be bound in ./util/compare.ts */
 export interface Selector<T = any> extends Node<T> {
   compare(other: Node): 0 | 1 | -1 | undefined
 }
 
-export type Keys = string | SelectorList | Array<string | SelectorList>
+// export type KeyList = Array<string | SelectorList>
+// export type Keys = string | SelectorList | KeyList
 
 const { isArray } = Array
 
 export abstract class Selector<T = any> extends Node<T> {
-  protected _keys: Keys | undefined
-  protected _keyList: Array<string | SelectorList>
+  protected _value: string
+  protected _keys: string | string[]
+  protected _keyList: Set<string>
 
-  get keys(): Keys {
+  get keys(): string | string[] {
     let keys = this._keys
     if (!keys) {
       this._keys = keys = this.valueOf()
@@ -24,17 +25,18 @@ export abstract class Selector<T = any> extends Node<T> {
   }
 
   /**
-   * Nested keys represent lists.
+   * All simple (normalized) selectors.
    */
-  set keys(v: Keys) {
+  set keys(v: string | string[]) {
     this._keys = v
   }
 
-  get keyList(): Array<string | SelectorList> {
+  /** Always a Set, for normalization */
+  get keyList(): Set<string> {
     let keyList = this._keyList
     if (!keyList) {
       let keys = this.keys
-      keyList = this._keyList = isArray(keys) ? keys : [keys]
+      keyList = this._keyList = new Set(isArray(keys) ? keys : [keys])
     }
     return keyList
   }

@@ -3,7 +3,7 @@ import { Declaration } from '../tree/declaration'
 import { AssignmentType } from '../tree/base-declaration'
 import { List } from '../tree/list'
 import { Spaced } from '../tree/spaced'
-import type { Node } from '../tree/node'
+import type { Node, TypedMap } from '../tree/node'
 import type { Mixin } from '../tree/mixin'
 import isPlainObject from 'lodash-es/isPlainObject'
 import { isNode } from '../tree/util'
@@ -13,12 +13,13 @@ import type { Bool } from '../tree/bool'
 import type { Condition } from '../tree/condition'
 import { Context } from '../context'
 import type { General } from '../tree/general'
-import type { Keys, Selector } from '../tree/selector'
+import type { KeyList, Selector } from '../tree/selector'
 import { PseudoSelector } from '../tree/selector-pseudo'
 import { SimpleSelector } from '../tree/selector-simple'
 import { SelectorList } from '../tree/selector-list'
 import { CompoundSelector } from '../tree/selector-compound'
 import { type ComplexSelector } from '../tree/selector-complex'
+
 /**
  * The Scope object is meant to be an efficient
  * lookup mechanism for variables, mixins,
@@ -109,8 +110,6 @@ export type GetterOptions = {
   suppressUndefinedError?: boolean
 }
 
-export type ExtendMap = Map<'complete' | 'partial' | 'continue', Selector[]>
-
 export type ScopeFilter = (
   entry: ScopeEntry | undefined,
   valueFilter: (value: any, index?: number, entryValue?: any[]) => boolean
@@ -135,7 +134,27 @@ export class Scope {
   _props: PropMap
   _parent?: Scope
 
-  _extendMap = new Map<string, ExtendObject>()
+  /**
+   * Exact (normalized) extend match
+   *   e.g.
+   *     .five:extend(:is(.one, .two) > .three.four)
+   *       Map {
+   *         '[.one,.two]>.four.three' => [el('.five)]
+   *       }
+   */
+  _extendComplete = new Map<string, Selector[]>()
+
+  /**
+   * Partial extend match. The key is the starting key
+   * for matches.
+   *   e.g.
+   *     .five:extend(:is(.one, .two) > .three.four !all)
+   *       Map {
+   *         '.one' => [sel(':is(.one, .two) > .three.four'), el('.five)]
+   *         '.two' => pointer to same array -> [sel(':is(.one, .two) > .three.four'), el('.five)]
+   *       }
+   */
+  _extendPartial = new Map<string, [Selector, Selector]>()
 
   /**
    * We store a set (copy) of all extended selectors
@@ -215,57 +234,72 @@ export class Scope {
     extendWith: Selector /* .a */,
     all?: boolean
   ) {
-    /** linear flat array of selector values and nested selector lists */
-    let targetKeyList = target.keyList // target.keySet // ['.b', '.c']
-    let i = 0
-
-    const iterateContinue = (next: string | SelectorList, continueArr: string[]): void => {
-      if (next instanceof SelectorList) {
-        return next.keyList.forEach(n => iterateContinue(n, continueArr))
-      }
-      continueArr.push(next)
+    if (!all) {
+      this._extendComplete.set(target.valueOf(), [extendWith])
+      return
     }
+    this._extendPartial.set(target.keyList[0]!, [target, extendWith])
+    // let targetKeyList = target.keyList
 
-    const iteratePosition = (current: string | SelectorList, compositeKey: string): void => {
-      if (current instanceof SelectorList) {
-        return current.keyList.forEach(n => iteratePosition(n, compositeKey))
-      }
-      compositeKey += current
-      let mapEntry = this._extendMap.get(current)
-      let map = mapEntry ?? {}
-      const next = targetKeyList[i + 1]!
-      if (!next) {
-        if (all) {
-          if (map.partial) {
-            map.partial.push(extendWith)
-          } else {
-            map.partial = [extendWith]
-          }
-        } else {
-          if (map.complete) {
-            map.complete.push(extendWith)
-          } else {
-            map.complete = [extendWith]
-          }
-        }
-        if (!mapEntry) {
-          this._extendMap.set(compositeKey, map)
-          this._extendSet.add(compositeKey)
-        }
-      } else {
-        let continueArr = map.continue
-        if (!continueArr) {
-          continueArr = map.continue = []
-        }
-        iterateContinue(next, continueArr)
-        if (!mapEntry) {
-          this._extendMap.set(compositeKey, map)
-        }
-        i++
-        iteratePosition(next, compositeKey)
-      }
-    }
-    iteratePosition(targetKeyList[0]!, '')
+    // const iterateContinue = (next: string | SelectorList, continueArr: string[]): void => {
+    //   if (next instanceof SelectorList) {
+    //     return next.keyList.forEach(n => iterateContinue(n, continueArr))
+    //   }
+    //   continueArr.push(next)
+    // }
+
+    // const iteratePosition = (list: KeyList, pos: number, compositeKey: string, current?: KeyList[number]): void => {
+    //   current ??= list[pos]!
+    //   if (current instanceof SelectorList) {
+    //     return current.value.forEach(n => iterateList(n, compositeKey))
+    //   }
+    //   compositeKey += current
+    //   let mapEntry = this._extendMap.get(current)
+    //   let map: ExtendMap = mapEntry ?? new Map()
+    //   const next = list[++pos]!
+    //   if (list === targetKeyList && !next) {
+    //     if (all) {
+    //       let partial = map.get('partial')
+    //       if (partial) {
+    //         partial.push(extendWith)
+    //       } else {
+    //         map.set('partial', [extendWith])
+    //       }
+    //     } else {
+    //       let complete = map.get('complete')
+    //       if (complete) {
+    //         complete.push(extendWith)
+    //       } else {
+    //         map.set('complete', [extendWith])
+    //       }
+    //     }
+    //     if (!mapEntry) {
+    //       this._extendMap.set(compositeKey, map)
+    //       this._extendSet.add(compositeKey)
+    //     }
+    //   } else {
+    //     let continueArr = map.get('continue')
+    //     if (!continueArr) {
+    //       continueArr = []
+    //       map.set('continue', continueArr)
+    //     }
+    //     if (next) {
+    //       iterateContinue(next, continueArr)
+    //     }
+    //     if (!mapEntry) {
+    //       this._extendMap.set(compositeKey, map)
+    //     }
+    //     if (next) {
+    //       iteratePosition(list, pos, compositeKey, next)
+    //     }
+    //   }
+    // }
+
+    // const iterateList = (sel: Selector, compositeKey: string = '') => {
+    //   iteratePosition(sel.keyList, 0, compositeKey)
+    // }
+
+    // iterateList(target)
 
     /**
      * Should end up with:

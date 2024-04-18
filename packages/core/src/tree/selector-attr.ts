@@ -54,14 +54,18 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   }
 
   valueOf() {
-    let { key, op, value, mod } = this
-    /** Attributes are case-insensitive */
-    let keyStr = (typeof key === 'string' ? key : key.toTrimmedString()).toLowerCase()
-    if (!op) {
-      return `[${keyStr}]`
+    let valueOf = this._value
+    if (!valueOf) {
+      let { key, op, value, mod } = this
+      /** Attributes are case-insensitive */
+      let keyStr = (typeof key === 'string' ? key : key.toTrimmedString()).toLowerCase()
+      if (!op) {
+        return `[${keyStr}]`
+      }
+      let valueStr = value?.valueOf() ?? ''
+      valueOf = this._value = `[${key}${op}"${valueStr}"${mod ? ` ${mod}` : ''}]`
     }
-    let valueStr = value?.valueOf() ?? ''
-    return `[${key}${op}"${valueStr}"${mod ? ` ${mod}` : ''}]`
+    return valueOf
   }
 
   compare(other: Node) {

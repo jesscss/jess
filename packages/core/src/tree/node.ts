@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/restrict-plus-operands */
+/* eslint-disable @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/restrict-plus-operands, @typescript-eslint/no-invalid-void-type */
 import isPlainObject from 'lodash-es/isPlainObject'
 import {
   type Context,
@@ -62,8 +62,8 @@ export const defineType = <
     shortType?: string
   ) => {
   shortType ??= type.toLowerCase()
-  ;(Clazz.prototype as Writable<InstanceType<T>>).type = type
-  ;(Clazz.prototype as Writable<InstanceType<T>>).shortType = shortType
+  ;(Clazz.prototype as Writable<typeof Clazz.prototype>).type = type
+  ;(Clazz.prototype as Writable<typeof Clazz.prototype>).shortType = shortType
 
   type Args = [value?: P[0] | V, location?: P[1], options?: P[2], treeContext?: P[3]]
   return (...args: Args) => {
@@ -81,7 +81,7 @@ export const defineType = <
  * This strongly binds Map keys to values based
  * on a passed-in interface.
  */
-export type TypeMap<
+export type TypedMap<
   T extends NodeTypeMap = NodeTypeMap,
   K extends keyof T = keyof T,
   V = ValueOf<T>
@@ -91,12 +91,12 @@ export type TypeMap<
    * about whether or not get / set will exist,
    * so this fixes it.
    */
-  get(key: any): any
-  set(key: any, value: any): any
+  get(key: K): any
+  set(key: K, value: V): any
 } & {
   [P in K as 'get']: <U extends P>(key: U) => T[U]
 } & {
-  [P in K as 'set']: <U extends P>(key: U, value: T[U]) => TypeMap<T>
+  [P in K as 'set']: <U extends P>(key: U, value: T[U]) => TypedMap<T>
 }
 
 /**
@@ -127,8 +127,8 @@ type NodeValueArray<T extends NodeTypeMap> = Array<Values<{
 
 type NodeValueArg<M extends NodeTypeMap> =
   IsUnknown<M['value']> extends true
-    ? TypeMap<M> | NodeValueArray<M>
-    : TypeMap<M> | NodeValueArray<M> | M['value']
+    ? TypedMap<M> | NodeValueArray<M>
+    : TypedMap<M> | NodeValueArray<M> | M['value']
 /**
  * The underlying type for all Jess nodes
  */
@@ -179,7 +179,7 @@ export abstract class Node<
   /**
    * This should always represent the `data` of the Node
    */
-  protected readonly data: TypeMap<M>
+  protected readonly data: TypedMap<M>
 
   constructor(
     value: NodeValueArg<M>,
@@ -187,7 +187,7 @@ export abstract class Node<
     location?: LocationInfo | 0,
     treeContext?: TreeContext
   ) {
-    this.data = new Map(isNodeMap(value) ? value : [['value', value]]) as TypeMap<M>
+    this.data = new Map(isNodeMap(value) ? value : [['value', value]]) as TypedMap<M>
     this.location = location || []
     Object.defineProperty(this, '_treeContext', {
       value: treeContext,
@@ -300,26 +300,32 @@ export abstract class Node<
   /**
    * Fire a function for each Node in the tree, recursively
    */
-  walkNodes(func: (n: Node) => void, shallow?: boolean) {
-    this.data.forEach(nodeVal => {
+  walkNodes(func: (n: Node) => void | false, shallow?: boolean) {
+    for (const nodeVal of this.data.values()) {
       /** Process Node arrays only */
       if (Array.isArray(nodeVal)) {
         for (let i = 0; i < nodeVal.length; i++) {
           let node = nodeVal[i]
           if (node instanceof Node) {
-            func(node)
+            let returnVal = func(node)
+            if (returnVal === false) {
+              return
+            }
             if (!shallow) {
               node.walkNodes(func)
             }
           }
         }
       } else if (nodeVal instanceof Node) {
-        func(nodeVal)
+        let returnVal = func(nodeVal)
+        if (returnVal === false) {
+          return
+        }
         if (!shallow) {
           nodeVal.walkNodes(func)
         }
       }
-    })
+    }
   }
 
   collectRoots(): Node[] {
@@ -491,10 +497,6 @@ export abstract class Node<
       }
     })
     return output
-  }
-
-  entries(): IterableIterator<[string | number, NodeValue]> | undefined {
-    return this.data.get('value').entries?.()
   }
 
   /**
