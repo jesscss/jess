@@ -32,12 +32,13 @@ export class BasicSelector extends SimpleSelector<string> {
   }
 
   valueOf(): string {
-    let valueOf = this._value
-    if (!valueOf) {
+    let value = this._value
+    if (!value) {
       /** Tags are not case-sensitive, but other selectors are */
-      valueOf = this._value = this.isTag ? this.value.toLowerCase() : this.value
+      value = this.isTag ? this.value.toLowerCase() : this.value
+      Object.defineProperty(this, '_value', { value })
     }
-    return valueOf
+    return value
   }
 
   /** @todo - move to visitors */

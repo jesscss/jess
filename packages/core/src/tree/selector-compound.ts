@@ -4,9 +4,11 @@ import {
 } from './node'
 import type { Context } from '../context'
 import { Nil } from './nil'
-import { Selector } from './selector'
+import { Selector, type Keys } from './selector'
+import type { SimpleSelector } from './selector-simple'
 
-type SelectorValue = [Selector, Selector, ...Selector[]]
+type SelectorValue = [SimpleSelector, SimpleSelector, ...SimpleSelector[]]
+
 /**
  * @example
  * .class#id
@@ -19,7 +21,7 @@ export class CompoundSelector extends Selector<SelectorValue> {
     let keys = this._keys
     if (!keys) {
       let { value } = this
-      keys = this._keys = value.flatMap(n => n.keys)
+      Object.defineProperty(this, '_keys', { value: keys = value.flatMap(n => n.keys) as Keys })
     }
     return keys
   }
@@ -27,21 +29,26 @@ export class CompoundSelector extends Selector<SelectorValue> {
   /**
    */
   valueOf() {
-    return this.value
-      .map(n => n.valueOf())
-      .sort((a, b) => {
-        /** Elements come first */
-        if (!nonElementRegex.test(a)) {
-          if (!nonElementRegex.test(b)) {
-            return a < b ? -1 : 1
+    let value = this._value
+    if (!value) {
+      value = this.value
+        .map(n => n.valueOf())
+        .sort((a, b) => {
+          /** Elements come first */
+          if (!nonElementRegex.test(a)) {
+            if (!nonElementRegex.test(b)) {
+              return a < b ? -1 : 1
+            }
+            return -1
+          } else if (!nonElementRegex.test(b)) {
+            return 1
           }
-          return -1
-        } else if (!nonElementRegex.test(b)) {
-          return 1
-        }
-        return a < b ? -1 : 1
-      })
-      .join('')
+          return a < b ? -1 : 1
+        })
+        .join('')
+      Object.defineProperty(this, '_value', { value })
+    }
+    return value
   }
 
   async eval(context: Context): Promise<CompoundSelector | Selector | Nil> {

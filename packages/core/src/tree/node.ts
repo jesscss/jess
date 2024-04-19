@@ -85,7 +85,7 @@ export type TypedMap<
   T extends NodeTypeMap = NodeTypeMap,
   K extends keyof T = keyof T,
   V = ValueOf<T>
-> = Omit<Map<K, V>, 'get' | 'set'> & {
+> = Omit<Map<any, any>, 'get' | 'set'> & {
   /**
    * TypeScript sometimes gets confused
    * about whether or not get / set will exist,
@@ -423,7 +423,7 @@ export abstract class Node<
    * Derived nodes will override this with different
    * normalization algorithms.
    */
-  valueOf(): string {
+  valueOf(): string | number {
     let values = [...this.data.values()]
     if (values.length === 1) {
       return `${values[0]}`

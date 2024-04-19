@@ -11,34 +11,46 @@ export interface Selector<T = any> extends Node<T> {
 
 const { isArray } = Array
 
+/** If it's an array, only the first element can optionally be a string array */
+export type Keys = string | [(string | string[]), ...string[]]
+
 export abstract class Selector<T = any> extends Node<T> {
   protected _value: string
-  protected _keys: string | string[]
-  protected _keyList: Set<string>
+  protected _keys: Keys
+  protected _keySet: Set<string>
 
-  get keys(): string | string[] {
+  get keys(): Keys {
     let keys = this._keys
     if (!keys) {
-      this._keys = keys = this.valueOf()
+      Object.defineProperty(this, '_keys', { value: keys = this.valueOf() })
     }
     return keys
   }
 
   /**
-   * All simple (normalized) selectors.
+   * All simple (normalized) selectors. The only keys
+   * that should not be flattened are those at the start
+   * of an :is() SelectorList
    */
-  set keys(v: string | string[]) {
+  set keys(v: Keys) {
     this._keys = v
   }
 
+  /** Normalized as Array */
+  get keyList(): Exclude<Keys, string> {
+    return isArray(this.keys) ? this.keys : [this.keys]
+  }
+
   /** Always a Set, for normalization */
-  get keyList(): Set<string> {
-    let keyList = this._keyList
-    if (!keyList) {
+  get keySet(): Set<string> {
+    let keySet = this._keySet
+    if (!keySet) {
       let keys = this.keys
-      keyList = this._keyList = new Set(isArray(keys) ? keys : [keys])
+      Object.defineProperty(this, '_keySet', {
+        value: keySet = new Set(isArray(keys) ? keys.flat() : [keys])
+      })
     }
-    return keyList
+    return keySet
   }
 
   // get keySet(): Set<string> {

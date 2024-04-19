@@ -19,6 +19,7 @@ import { SimpleSelector } from '../tree/selector-simple'
 import { SelectorList } from '../tree/selector-list'
 import { CompoundSelector } from '../tree/selector-compound'
 import { type ComplexSelector } from '../tree/selector-complex'
+import { e } from 'vitest/dist/reporters-50c2bd49'
 
 /**
  * The Scope object is meant to be an efficient
@@ -150,14 +151,14 @@ export class Scope {
    *   e.g.
    *     .five:extend(:is(.one, .two) > .three.four !all)
    *       Map {
-   *         '.one' => [sel(':is(.one, .two) > .three.four'), el('.five)]
-   *         '.two' => pointer to same array -> [sel(':is(.one, .two) > .three.four'), el('.five)]
+   *         '.one' => [[sel(':is(.one, .two) > .three.four'), el('.five)]]
+   *         '.two' => pointer to same array -> [[sel(':is(.one, .two) > .three.four'), el('.five)]]
    *       }
    */
-  _extendPartial = new Map<string, [Selector, Selector]>()
+  _extendPartial = new Map<string, Array<[Selector, Selector]>>()
 
   /**
-   * We store a set (copy) of all extended selectors
+   * We store a set (copy) of the starting match of all extended selectors
    * so that we can quickly do Set.prototype.isDisjointFrom
    * for selectors to see if they can be extended.
    *
@@ -238,7 +239,25 @@ export class Scope {
       this._extendComplete.set(target.valueOf(), [extendWith])
       return
     }
-    this._extendPartial.set(target.keyList[0]!, [target, extendWith])
+    const [first] = target.keyList
+
+    const registration: [Selector, Selector] = [target, extendWith]
+
+    const register = (key: string) => {
+      const existing = this._extendPartial.get(key)
+      if (existing) {
+        existing.push(registration)
+        return
+      }
+      this._extendPartial.set(key, [registration])
+      this._extendSet.add(key)
+    }
+
+    if (isArray(first)) {
+      first.forEach(register)
+    } else {
+      register(first)
+    }
     // let targetKeyList = target.keyList
 
     // const iterateContinue = (next: string | SelectorList, continueArr: string[]): void => {

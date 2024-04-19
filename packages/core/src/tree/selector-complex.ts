@@ -9,7 +9,7 @@ import { Nil } from './nil'
 import { isNode } from './util'
 import { PseudoSelector } from './selector-pseudo'
 import { type SelectorList } from './selector-list'
-import { Selector } from './selector'
+import { Selector, type Keys } from './selector'
 
 // TODO - fix later
 // type Component = SimpleSelector | CompoundSelector | Combinator | Ampersand
@@ -40,13 +40,22 @@ export class ComplexSelector extends Selector<SelectorValue> {
    *      ]
    */
   valueOf() {
-    return this.value.map(n => n.valueOf()).join('')
+    let value = this._value
+    if (!value) {
+      value = this.value.map(n => n.valueOf()).join('')
+      Object.defineProperty(this, '_value', { value })
+    }
+    return value
   }
 
   get keys() {
     let keys = this._keys
     if (!keys) {
-      keys = this._keys = this.value.flatMap(n => n.keys)
+      Object.defineProperty(this, '_keys', {
+        value: keys = this.value.flatMap(n => {
+          return n instanceof Combinator ? [] : n.keys
+        }) as Keys
+      })
     }
     return keys
   }

@@ -1,4 +1,4 @@
-import { compound, el, pseudo } from '..'
+import { compound, el, pseudo, type SimpleSelector } from '..'
 
 /**
  * @todo - add tests for list bubbling

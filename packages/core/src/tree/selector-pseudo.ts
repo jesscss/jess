@@ -69,7 +69,21 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
                */
               (value as SelectorList).value.every(isNotRelative)
             ) {
-              keys = (value as SelectorList).value.flatMap(sel => sel.keys)
+              /**
+               * Push the first selectors of the inner list to an array
+               * at the front of the return array.
+               */
+              const selKeys = (value as SelectorList).value.map(sel => {
+                const childKeys = sel.keys
+                return isArray(childKeys) ? childKeys.flat(Infinity) : [childKeys]
+              }) as string[][]
+              const returnKeys: [string[], ...string[]] = [[]]
+              selKeys.forEach(keys => {
+                const [first, ...rest] = keys
+                returnKeys[0].push(first!)
+                returnKeys.push(...rest)
+              })
+              keys = returnKeys
             } else {
               keys = this.valueOf()
             }
@@ -78,7 +92,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
           } else {
             keys = this.valueOf()
           }
-          this._keys = keys
+          Object.defineProperty(this, '_keys', { value: keys })
           return keys
         } else {
           keys = this.valueOf()
@@ -86,7 +100,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       } else {
         keys = this.valueOf()
       }
-      this._keys = keys
+      Object.defineProperty(this, '_keys', { value: keys })
     }
     return keys
   }
@@ -114,9 +128,9 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
          * That is, anything that doesn't hold a selector as a value
          * is, by definition, not space-sensitive.
          */
-        valueOf = `${name}${value ? `(${value.valueOf().replace(/\s+/, '')})` : ''}`
+        valueOf = `${name}${value ? `(${value.toTrimmedString().replace(/\s+/, '')})` : ''}`
       }
-      this._value = valueOf
+      Object.defineProperty(this, '_value', { value: valueOf })
     }
     return valueOf
   }

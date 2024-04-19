@@ -1,4 +1,4 @@
-import { sel, compound, el, co, pseudo } from '..'
+import { sel, compound, el, co, pseudo, sellist } from '..'
 
 /**
  * @todo - add tests for list bubbling
@@ -122,7 +122,7 @@ describe('Complex selector', () => {
         co('>'),
         el('.three')
       ])
-      expect(sel1.keys).toEqual(['.one', '.two', '>', '.three'])
+      expect(sel1.keys).toEqual(['.one', '.two', '.three'])
     })
     test('nested complex (w/ relative :is)', () => {
       let sel2 = sel([
@@ -143,6 +143,33 @@ describe('Complex selector', () => {
         ])
       ])
       expect(sel2.keys).toEqual(['a', '#id', '.two', '.one'])
+    })
+    test(':is w/ selector list', () => {
+      let sel2 = sel([
+        compound([
+          pseudo({ name: ':is', value: sellist([el('a'), el('b')]) }),
+          el('#id'),
+          pseudo({ name: ':is', value: sel([compound([el('.two'), el('.one')])]) })
+        ])
+      ])
+      expect(sel2.keys).toEqual([['a', 'b'], '#id', '.two', '.one'])
+    })
+
+    test(':is w/ complex selector list', () => {
+      let sel2 = sel([
+        compound([
+          pseudo({
+            name: ':is',
+            value: sellist([
+              sel([el('a'), co('>'), el('b')]),
+              sel([el('c'), co('>'), el('d')])
+            ])
+          }),
+          el('#id'),
+          pseudo({ name: ':is', value: sel([compound([el('.two'), el('.one')])]) })
+        ])
+      ])
+      expect(sel2.keys).toEqual([['a', 'c'], 'b', 'd', '#id', '.two', '.one'])
     })
   })
 })
