@@ -28,11 +28,11 @@ $include './file.css' (type: 'less');
 $let count; // a Node of `Nil`
 
 // setting vars - note, this avoids the need for !global in Sass
-// Note also that this will throw an error in Jess without `@let count`
+// Note also that this will throw an error in Jess without `$let count`
 $count: 1;
 
 // `$` is a referencer, to reduce ambiguity
-$count: $count + 1;
+$count: $(count + 1); // expression 
 
 // allow destructuring
 $let list: one, two;
@@ -112,6 +112,9 @@ $ref 'colors.less';
 // or override variables
 $ref 'colors.less' with {
   // should throw an error if primary-color is not defined
+  // overrides the outer $let statement e.g. $let primary-color: #333;
+  // TODO - should these be implicitly typed and throw an error when a mis-matched type?
+  // No, not unless it is $let <color> primary-color: #333;
   $primary-color: #333;
 }
 // or
@@ -269,10 +272,35 @@ function myFunc(one: Color, two?: any, three?: any) {}
 
 ## Limiting types for a design system (Experimental)
 ```scss
-$type Size: 1rem, 1.2rem, 1.4rem;
-$type Props:
-  <Size> size,
-  <color> color;
+// @see https://developer.mozilla.org/en-US/docs/Web/CSS/@property/syntax
+// @see https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Types
+// Built in types:
+//   <string>               "A string"
+//   <integer>              1
+//   <number>               1.1
+//   <number>#              comma-separated list of numbers
+//   <dimension>            2px or 100ms
+//   <percentage>           10%
+//   <ratio>                1 / 2
+//   <flex>                 2fr
+//   <length>               3em
+//   <url>                  url(./image.png)
+//   <angle>                90deg
+//   <time>                 150ms
+//   <frequency>            40kHz
+//   <resolution>           300dpi
+//   <length | percentage>  type that accepts length or percentage
+//   <color>                #FFF
+//   <hue>                  100deg or 100 (<number | angle>)
+//   <image>                gradient or url to an image
+//   <0..1 | 0%..100%>      Any number between 0 and 1 or percent betwen 0% and 100%
+
+//   To create a tuple of numbers:
+$type Num2or4: <number#2 | number#4>; // maybe?
+// accepts one of these values
+$type Size: 1rem | 1.2rem | 1.4rem;
+// accepts a list with these specific values (defines a tuple)
+$type Props: <Size> size, <color> color; 
 
 $mixin set-size(<Size> size) {
   font-size: $size;
