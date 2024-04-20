@@ -19,6 +19,8 @@ export abstract class Selector<T = any> extends Node<T> {
   protected _keys: Keys
   protected _keySet: Set<string>
 
+  extended: boolean = false
+
   get keys(): Keys {
     let keys = this._keys
     if (!keys) {
@@ -112,7 +114,12 @@ export abstract class Selector<T = any> extends Node<T> {
    */
   /** The normalized value */
   valueOf(): string {
-    return this.toTrimmedString()
+    let value = this._value
+    if (!value) {
+      value = this.toTrimmedString()
+      Object.defineProperty(this, '_value', { value })
+    }
+    return value
   }
 
   compare(other: Node) {

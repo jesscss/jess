@@ -45,6 +45,10 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       let { value, name } = this
       if (value && value instanceof Selector) {
         if (name === ':is') {
+          /**
+           * @todo - Remove, we should be able to use relative
+           * selectors just like we can extend other `&` selectors.
+           */
           const isNotRelative = (sel: Selector) => {
             let match = false
             sel.walkNodes(node => {

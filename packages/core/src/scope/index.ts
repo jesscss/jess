@@ -18,7 +18,7 @@ import { PseudoSelector } from '../tree/selector-pseudo'
 import { SimpleSelector } from '../tree/selector-simple'
 import { SelectorList } from '../tree/selector-list'
 import { CompoundSelector } from '../tree/selector-compound'
-import { type ComplexSelector } from '../tree/selector-complex'
+import { ComplexSelector } from '../tree/selector-complex'
 import { e } from 'vitest/dist/reporters-50c2bd49'
 
 /**
@@ -236,7 +236,13 @@ export class Scope {
     all?: boolean
   ) {
     if (!all) {
-      this._extendComplete.set(target.valueOf(), [extendWith])
+      const value = target.valueOf()
+      const existing = this._extendComplete.get(value)
+      if (existing) {
+        existing.push(extendWith)
+        return
+      }
+      this._extendComplete.set(value, [extendWith])
       return
     }
     const [first] = target.keyList
@@ -329,60 +335,79 @@ export class Scope {
      */
   }
 
-  private _processSelector(input: Selector, matchSequence?: Selector): Selector | false {
-    const extendMap = this._extendMap
+  private _applyCompleteExtend(input: Selector): Selector | Selector[] {
     /**
-     * .a {}
-     * .b:extend(.a);
-     * .c:extend(.a.b);
-     *
-     * okay... Given:
-     *   1. input is .a
-     *   2. extendMap has:
-     *     Map {
-     *       '.a' => { all: [], partial: ['.b'], continue: ['.b'] }
-     *       '.a.b' => { all: [], partial: ['.c'], continue: [] }
-     *     }
+     * Map {
+     *   .a => [el(.b)]
+     *   .c => [el(.a)]
+     * }
      */
-    if (input instanceof SimpleSelector) {
-      let primitive = input.valueOf() // .a
-      let ref = extendMap.get(primitive)
-      if (!ref) {
-        return false
-      }
+    let match = this._extendComplete.get(input.valueOf())
 
-      if (ref.partial.length || ref.all.length) {
-        let selector = input.clone()
-        const list: Array<Selector<any>> = [selector]
-        let container = new PseudoSelector([
-          ['name', ':is'],
-          ['value', new SelectorList(list)]
-        ])
-        if (ref.partial.length) {
-          list.push(...ref.partial)
-        }
-        if (ref.all.length) {
-          list.push(...ref.partial)
-        }
-        return container
-      }
-    } else if (input instanceof CompoundSelector) {
-      for (let selector of input.value) {
-        let processed = this._processSelector(selector)
-        if (processed) {
-          return processed
+    if (match) {
+      /**
+       * Make sure that we've already extended selectors that
+       * we'll be extending with.
+       */
+      for (const [i, item] of match.entries()) {
+        if (!item.extended) {
+          const newItem = item.copy()
+          newItem.extended = true
+          match[i] = this.getExtendedSelector(newItem)
         }
       }
+      return [input, ...match]
     }
+
+    return input
+  }
+
+  /**
+   * Okay, selector has a possible match
+   * @see https://gist.github.com/matthew-dean/cb9173dcdd35ee88c4173bf9f2ca32da?fbclid=IwAR1RwYZs0PUdRaKEAoetsXGSTEHnX7sINhhkcnEPi0SuvHqVJq9OBsyodfo
+   */
+  private _applyPartialExtend(input: Selector): Selector | Selector[] {
+    input.walkNodes((node) => {
+      if (
+        node instanceof ComplexSelector
+        || node instanceof CompoundSelector
+        || (node instanceof PseudoSelector && node.name === ':is')
+      ) {
+        parentQueue.unshift(node)
+      } else if (node instanceof SimpleSelector) {
+        const possibleMatch = complete.get(node.valueOf())
+        if (possibleMatch) {
+
+        }
+        current = node
+      }
+    })
   }
 
   /** Get a selector, considering the extend map */
-  getExtendedSelector(input: Selector): Selector {
+  getExtendedSelector(input: Selector | SelectorList): Selector | SelectorList {
     const extendSet = this._extendSet
+
     if (extendSet.size === 0 || input.keySet.isDisjointFrom(extendSet)) {
+      /**
+       * Either:
+       *   a) no extends were registered or
+       *   b) the selector contains no simple selectors or starts of simple
+       *      selectors that have been extended, so return as-is
+       */
       return input
     }
-    // return this._processSelector(input, seek)
+
+    if (input instanceof SelectorList) {
+      const outerList = input.value as Selector[]
+      const inputLength = outerList.length
+      for (let i = 0; i < inputLength; i++) {
+
+      }
+      let newList: Selector[] = this._applyCompleteExtend()
+    } else {
+
+    }
   }
 
   // addSelector(selector: string) {
@@ -400,9 +425,9 @@ export class Scope {
     let normalKey = key
       /** Replace initial dash with underscore */
       .replace(/^-/, '_')
-      /** Remove initial . (used by Less) */
-      .replace(/^\./, '')
-      /** Convert dash-case to camelCase, as well as leading '#' */
+      /** Replace dot-name to lowerCamelCase */
+      .replace(/^\.(.+)/g, (_, p1 = '') => `${p1.toLowerCase()}`)
+      /** Convert dash-case to camelCase, as well as leading '#' to UpperCamelCase */
       .replace(/(^_)|(?:[#\-_])(.)/g, (_, p1 = '', p2 = '') => `${p1}${p2.toUpperCase()}`)
 
     if (RESERVED.includes(normalKey)) {

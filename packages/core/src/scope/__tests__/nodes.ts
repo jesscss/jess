@@ -22,13 +22,13 @@ describe('Scope - Nodes', async () => {
       scope.setProp('foo', decl({ name: 'prop', value: any('one') }))
       scope.setProp('foo', decl({ name: 'prop', value: any('two') }, { assign: AssignmentType.MergeList }))
       scope.setProp('foo', decl({ name: 'prop', value: any('three') }))
-      expect(`${scope.getProp('foo')}`).toBe('prop: three;')
+      expect(`${scope.getProp('foo')}`).toBe('prop: three')
     })
 
     it('will return a merged declaration', () => {
       scope.setProp('prop', decl({ name: 'prop', value: any('one') }, { assign: AssignmentType.MergeList }))
       scope.setProp('prop', decl({ name: 'prop', value: any('two') }, { assign: AssignmentType.MergeList }))
-      expect(`${scope.getProp('prop')}`).toBe('prop: one, two;')
+      expect(`${scope.getProp('prop')}`).toBe('prop: one, two')
     })
 
     it('will return a space-merged declaration', () => {
@@ -36,7 +36,7 @@ describe('Scope - Nodes', async () => {
       scope.setProp('prop', decl({ name: 'prop', value: any('two') }))
       let inherited = new Scope(scope)
       inherited.setProp('prop', decl({ name: 'prop', value: any('three') }, { assign: AssignmentType.MergeSequence }))
-      expect(`${inherited.getProp('prop')}`).toBe('prop: one three;')
+      expect(`${inherited.getProp('prop')}`).toBe('prop: one three')
     })
 
     it('does not return parent mixins if shadowed', async () => {

@@ -14,7 +14,7 @@ describe('Scope', async () => {
   describe('set / get', () => {
     it('can do a normal get / set of properties', () => {
       scope.setProp('foo', decl({ name: 'foo', value: any('bar') }))
-      expect(`${scope.getProp('foo')}`).toBe('foo: bar;')
+      expect(`${scope.getProp('foo')}`).toBe('foo: bar')
     })
 
     it('can do a normal get / set of variables', () => {
@@ -94,7 +94,7 @@ describe('Scope', async () => {
       let child = new Scope()
       child.setProp('foo', decl({ name: 'foo', value: any('two') }, { assign: AssignmentType.MergeList }))
       scope.merge(child)
-      expect(`${scope.getProp('foo')}`).toEqual('foo: one, two;')
+      expect(`${scope.getProp('foo')}`).toEqual('foo: one, two')
     })
 
     it('will leak undefined vars', () => {

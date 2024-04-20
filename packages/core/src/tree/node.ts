@@ -12,6 +12,8 @@ import type { Constructor, Writable, Class, ValueOf, Opaque, IsUnknown } from 't
 
 export type { TreeContext }
 
+const { isArray } = Array
+
 type AllNodeOptions = {
   hoistToRoot?: boolean
   hoistToParent?: boolean
@@ -49,7 +51,7 @@ export type LocationInfo = [
  * This just checks that it can be safely passed to `new Map()`
  */
 export const isNodeMap = (val: any): val is NodeMap | NodeMapArray => {
-  return val instanceof Map || (Array.isArray(val) && Array.isArray(val[0]))
+  return val instanceof Map || (isArray(val) && isArray(val[0]))
 }
 
 export const defineType = <
@@ -228,7 +230,7 @@ export abstract class Node<
   processNodes(func: (n: Node) => NodeValue) {
     this.data.forEach((nodeVal, key, map) => {
       /** Process Node arrays only */
-      if (Array.isArray(nodeVal)) {
+      if (isArray(nodeVal)) {
         let out = []
         for (let i = 0; i < nodeVal.length; i++) {
           let node = nodeVal[i]
@@ -279,7 +281,7 @@ export abstract class Node<
        * like async file operations and dynamic imports.
        */
       /** Process Node arrays only */
-      if (Array.isArray(nodeVal)) {
+      if (isArray(nodeVal)) {
         let out = []
         for (let i = 0; i < nodeVal.length; i++) {
           let node = nodeVal[i]
@@ -303,7 +305,7 @@ export abstract class Node<
   walkNodes(func: (n: Node) => void | false, shallow?: boolean) {
     for (const nodeVal of this.data.values()) {
       /** Process Node arrays only */
-      if (Array.isArray(nodeVal)) {
+      if (isArray(nodeVal)) {
         for (let i = 0; i < nodeVal.length; i++) {
           let node = nodeVal[i]
           if (node instanceof Node) {
@@ -347,11 +349,8 @@ export abstract class Node<
 
   /**
    * Creates a copy of the current node.
-   *
-   * @todo - Cloning should strip comments, except in the
-   * case of custom declaration values.
    */
-  clone(deep?: boolean): this {
+  clone(deep?: boolean, cloneFn?: (n: Node) => NodeValue): this {
     let Class: Constructor<this> = Object.getPrototypeOf(this).constructor
 
     let newNode = new Class(
@@ -366,12 +365,43 @@ export abstract class Node<
       this.treeContext
     )
 
+    cloneFn ??= n => n.clone(deep)
+
     if (deep) {
-      newNode.processNodes(n => n.clone(deep))
+      newNode.processNodes(cloneFn)
     }
     newNode.pre = this.pre
     newNode.post = this.post
     newNode.evaluated = this.evaluated
+
+    return newNode
+  }
+
+  /** Remove comments from pre/post */
+  stripPrePost(prePost: Node['pre']) {
+    if (isArray(prePost)) {
+      return prePost.filter(p => !(p instanceof Node && p.type === 'Comment'))
+    }
+    return prePost
+  }
+
+  /**
+   * Same as clone except comments are stripped.
+   * This is used for variable referencing and
+   * selector extending.
+   */
+  copy(deep?: boolean): this {
+    const newNode = this.clone(
+      deep,
+      n => {
+        if (n.type !== 'Comment') {
+          const copy = n.copy(deep)
+          return copy
+        }
+      }
+    )
+    newNode.pre = this.stripPrePost(this.pre)
+    newNode.post = this.stripPrePost(this.post)
 
     return newNode
   }
@@ -490,7 +520,7 @@ export abstract class Node<
   toTrimmedString(depth?: number) {
     let output = ''
     this.data.forEach(value => {
-      if (Array.isArray(value)) {
+      if (isArray(value)) {
         output += value.join('')
       } else {
         output += `${value}`
@@ -544,7 +574,7 @@ export abstract class Node<
   // toCSS(context: Context, out: OutputCollector): void {
   //   const value = this.value
   //   const loc = this.location
-  //   if (Array.isArray(value)) {
+  //   if (isArray(value)) {
   //     value.forEach(n => {
   //       if (n instanceof Node) {
   //         n.toCSS(context, out)

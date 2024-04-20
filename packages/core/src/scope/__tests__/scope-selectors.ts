@@ -23,7 +23,7 @@ describe('Scope selectors', async () => {
     /**
      * .two:extend(.three)
      */
-    it('simple selectors', () => {
+    test('simple selectors', () => {
       scope.registerExtend(el('.three'), el('.two'))
       expect(scope._extendComplete).toEqual(new Map([
         ['.three', [el('.two')]]
@@ -37,7 +37,7 @@ describe('Scope selectors', async () => {
     /**
      * .four:extend(.one > .two.three)
      */
-    it('complex selectors', () => {
+    test('complex selectors', () => {
       let sel1 = sel([
         el('.one'),
         co('>'),
@@ -53,7 +53,7 @@ describe('Scope selectors', async () => {
         ]
       ]))
     })
-    it('registers selector lists', () => {
+    test('registers selector lists', () => {
       let sel1 = sel([
         pseudo([
           ['name', ':is'],
@@ -85,14 +85,14 @@ describe('Scope selectors', async () => {
     })
   })
 
-  /**
-   *   i -> .six:extend(.two)
-  *    o -> .one>[[.two,.six][.three,.four],.five]
-  *
-  *    i -> .seven:extend(.one>.two)
-  *    o -> [[.one>[.two,.six],.seven][.three,.four],.five]
-  */
-  it.skip('registers a compound extend', () => {
+  describe('extend evaluation', () => {
+    /**
+     *   i -> .six:extend(.two)
+     *    o -> .one>[[.two,.six][.three,.four],.five]
+     *
+     *    i -> .seven:extend(.one>.two)
+     *    o -> [[.one>[.two,.six],.seven][.three,.four],.five]
+     */
     /** 2. .one>.two.three
       *    Given: we extend one element
       *    i -> .four:extend(.three)
@@ -104,40 +104,18 @@ describe('Scope selectors', async () => {
       *    Then: we need to extend the :is() and distribute
       *    o -> .one>[.two[.three,.four],.five]
       */
-    let sel1 = sel([
-      el('.one'),
-      co('>'),
-      compound([
-        el('.two'),
-        el('.three')
-      ])
-    ])
-    scope.registerExtend(el('.three'), el('.four'))
-    expect(`${scope.getExtendedSelector(sel1)}`).toBe('.one > .two:is(.three, .four)')
-    // scope.extendSelector(['.two', '.three'], '.five')
-    // expect(scope._extendMap).toEqual(new Map([
-    //   [
-    //     '.three', {
-    //       continue: [],
-    //       partial: ['.four'],
-    //       all: []
-    //     }
-    //   ],
-    //   [
-    //     '.two', {
-    //       continue: ['.three'],
-    //       partial: [],
-    //       all: []
-    //     }
-    //   ],
-    //   [
-    //     '.two.three', {
-    //       continue: [],
-    //       partial: ['.five'],
-    //       all: []
-    //     }
-    //   ]
-    // ]))
+    test('no matches', () => {
+      let sel1 = el('.one')
+      expect(`${scope.getExtendedSelector(sel1)}`).toBe('.one')
+      scope.registerExtend(el('.three'), el('.two'))
+      expect(`${scope.getExtendedSelector(sel1)}`).toBe('.one')
+    })
+
+    test('extend simple', () => {
+      let sel1 = el('.one')
+      scope.registerExtend(el('.one'), el('.two'))
+      expect(`${scope.getExtendedSelector(sel1)}`).toBe('.one, .two')
+    })
   })
 
   /**
