@@ -1,6 +1,5 @@
 // import { Selector } from '../selector-sequence'
-import { sel, el, co, pseudo, attr, any, quoted, sellist } from '..'
-import { Tuple, type tuple } from '@bloomberg/record-tuple-polyfill'
+import { sel, el, co, pseudo, attr, any, quoted, sellist, compound } from '..'
 import { isNode } from '../util'
 // import type { Class } from 'type-fest'
 // import type { Node } from '../node'
@@ -18,7 +17,7 @@ describe('Selector', () => {
         co('>'),
         el('#bar')
       ])
-      expect(`${rule}`).toBe('.foo>#bar')
+      expect(`${rule}`).toBe('.foo > #bar')
       rule = sel([
         el('.foo'),
         el('#bar')
@@ -33,33 +32,7 @@ describe('Selector', () => {
     })
   })
 
-  describe.only('normalization', () => {
-    test('normalizes sequences / lists / single selectors as tuple lists', () => {
-      const sel1 = el('.foo')
-      const sel2 = sel([el('.foo')])
-      const sel3 = sellist([sel([el('.foo')])])
-
-      const match = Tuple(Tuple(Tuple('.foo')))
-
-      expect(sel1.toNormalizedSelector()).toBe(match)
-      expect(sel2.toNormalizedSelector()).toBe(match)
-      expect(sel3.toNormalizedSelector()).toBe(match)
-    })
-
-    test('converts :is()', () => {
-      const sel1 = pseudo({
-        name: ':is',
-        value: el('.foo')
-      })
-      const sel2 = pseudo({
-        name: ':is',
-        value: sel([el('.foo')])
-      })
-      const match = Tuple(Tuple(Tuple('.foo')))
-
-      expect(sel1.toNormalizedSelector()).toBe(match)
-      expect(sel2.toNormalizedSelector()).toBe(match)
-    })
+  describe('normalization', () => {
   })
 
   describe('equality', () => {
@@ -105,11 +78,11 @@ describe('Selector', () => {
     })
 
     test('inverted selector sequences are equal', () => {
-      const sel1 = sel([
+      const sel1 = compound([
         el('.foo'),
         el('#bar')
       ])
-      const sel2 = sel([
+      const sel2 = compound([
         el('#bar'),
         el('.foo')
       ])
@@ -118,13 +91,13 @@ describe('Selector', () => {
 
     test('out of order lists are equal', () => {
       const list1 = sellist([
-        sel([el('.foo')]),
-        sel([el('#bar')])
+        el('.foo'),
+        el('#bar')
       ])
 
       const list2 = sellist([
-        sel([el('#bar')]),
-        sel([el('.foo')])
+        el('#bar'),
+        el('.foo')
       ])
 
       expect(list1.compare(list2)).toBe(0)
@@ -181,6 +154,7 @@ describe('Selector', () => {
       // a :is(b, c) {}
       const sel2 = sel([
         el('a'),
+        co(' '),
         pseudo({
           name: ':is',
           value: sellist([el('b'), el('c')])

@@ -1,9 +1,6 @@
+import { ComplexSelector } from '../tree'
 import type { Selector } from '../tree/selector'
-import { PseudoSelector } from '../tree/selector-pseudo'
-import { SimpleSelector } from '../tree/selector-simple'
 import { SelectorList } from '../tree/selector-list'
-import { CompoundSelector } from '../tree/selector-compound'
-import { ComplexSelector } from '../tree/selector-complex'
 
 const { isArray } = Array
 
@@ -214,21 +211,38 @@ export class ExtendScope {
    * @see https://gist.github.com/matthew-dean/cb9173dcdd35ee88c4173bf9f2ca32da?fbclid=IwAR1RwYZs0PUdRaKEAoetsXGSTEHnX7sINhhkcnEPi0SuvHqVJq9OBsyodfo
    */
   private _applyPartial(input: Selector): Selector | Selector[] {
-    input.walkNodes((node) => {
-      if (
-        node instanceof ComplexSelector
-        || node instanceof CompoundSelector
-        || (node instanceof PseudoSelector && node.name === ':is')
-      ) {
-        parentQueue.unshift(node)
-      } else if (node instanceof SimpleSelector) {
-        const possibleMatch = complete.get(node.valueOf())
-        if (possibleMatch) {
+    const { partialMap } = this
 
+    const keySet = input.keySet
+
+    // const matchGroups: Array<[Selector, Selector]> = []
+
+    /**
+     * Given:
+     *   1. input is .a.b.c.d
+     *   2. partialMap has
+     *      Map {
+     *        .a => [[.a.b.c, .h]] -- h:extends(.a.b.c)
+     *      }
+     */
+    for (const key of keySet) {
+      const group = partialMap.get(key)
+      if (group) {
+        /**
+         * Now, for each match group, we need to match the input
+         * against targets. Input needs to have _all_ parts of the
+         * target in order to be extended.
+         */
+        for (const [target, extendWith] of group) {
+          if (input instanceof ComplexSelector) {
+            let first = input.value[0]!
+            if (first.compare(target) === 0) {
+              return [extendWith]
+            }
+          }
         }
-        current = node
       }
-    })
+    }
   }
 
   /** Get a selector, considering the extend map */

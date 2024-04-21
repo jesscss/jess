@@ -55,63 +55,45 @@ export abstract class Selector<T = any> extends Node<T> {
     return keySet
   }
 
-  // get keySet(): Set<string> {
-  //   let flatKeys = this._flatKeys
-  //   if (!flatKeys) {
-  //     let keys = this.keys
-  //     flatKeys = this._flatKeys = Array.isArray(keys) ? keys : [keys]
-  //   }
-  // }
-
   /**
-   * A Set representing all simple selectors.
-   * This is calculated once and allows for quick
-   * lookup for extend.
+   * If found, will return the container? and the
+   * preceding and following selectors?
    */
-  // get keySet(): Set<string> {
-  //   let keySet = this._keySet
-  //   if (!keySet) {
-  //     let keys = this.keys
-  //     let flatKeys = isArray(keys) ? (keys.flat() as string[]) : [keys]
-  //     keySet = this._keySet = new Set(flatKeys)
-  //   }
-  //   return keySet
-  // }
+  find(sel: Selector): any {
+    /**
+     * Return the tree depth and position of start and end
+     * Given:
+     *   this = .one
+     *   this.find(.one) => [[0, 0], [0, 0]]
+     *
+     * Given:
+     *   this = .one.two
+     *   this.find(.one) => [[0, 0], [0, 0]]
+     *
+     * Given:
+     *   this = .one.two
+     *   this.find(.two) => [[0, 1], [0, 1]]
+     *
+     * Given:
+     *  this = .one.two
+     *  this.find(.one.two) => [[0, 0], [0, 1]]
+     *
+     * Given:
+     *  this = .one
+     *  this.find(.three) => undefined
+     *
+     * Given:
+     *  this = :is(.one, .two)
+     *  this.find(.one) => [[0, 0, 0, 0], [0, 0, 0, 0]]
+     *
+     *
+    */
+  }
 
-  /**
-   * Normalize for comparison
-   *
-   * ...Okay, maybe what this structure should be is:
-   * 1. A list (Set) of all simple selectors
-   * 2. A map of those sets to positions
-   *   e.g. ['.foo', '#bar', 'a'] => [1, 2, 0]
-   *
-   * An :is() within is just a list of lists like
-   *   e.g. .one.two:is(.three, .four)
-   *        compound([
-   *          el('.one'),
-   *          el('.two'),
-   *          pseudo({
-   *            name: 'is',
-   *            value: sellist([
-   *              el('.three'),
-   *              el('.four')
-   *            ])
-   *          })
-   *        ])
-   *        -> ['.one', '.two', '.three', '.four'] (flat list)
-   *        -> [
-   *             [<Compound>, ['.one', '.two']],
-   *           ]
-   *         0, 1, [2, 3]]
-   *
-   * {
-   *   // We can use this with extend sets to determine a disjoint
-   *   keys: Set { .one, .two, .three, .four },
-   *   selector: Selector
-   * }
-   *
-   */
+  asComplex(sel: Selector) {
+    /** :is(a, b) */
+  }
+
   /** The normalized value */
   valueOf(): string {
     let value = this._value

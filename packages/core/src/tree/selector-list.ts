@@ -16,7 +16,7 @@ export class SelectorList<
   }
 
   valueOf() {
-    return this.value.map(v => v.valueOf()).sort().join(',')
+    return `[${this.value.map(v => v.valueOf()).sort().join(',')}]`
   }
 
   async eval(context: Context): Promise<SelectorList<T> | T> {

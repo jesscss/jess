@@ -73,6 +73,11 @@ export interface TreeContextOptions extends ContextOptions {
 
 const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('')
 
+/**
+ * @todo - Redo:
+ *   1. Create a hash of the file that is filename + file bytes
+ *   2. Append file (module) hash after class name
+ */
 export const generateId = (length = 8) => {
   let str = ''
   let idCharsLength = idChars.length
@@ -148,8 +153,20 @@ export class TreeContext implements TreeContextOptions {
     this.opts = rest
   }
 }
-let code1 = 0
-let code2 = 0
+let classInts = BigInt(0)
+let inc = BigInt(1)
+
+/**
+ * .a.b.c
+ * simple = 0b1
+ * compound = 0b10
+ * complex = 0b100
+ * a = 0b1000
+ * b = 0b10000
+ * c = 0b100000
+ *
+ * .a.b.c.c = 0b111010
+ */
 
 /**
  * This is the context object used for evaluation.
@@ -161,15 +178,17 @@ let code2 = 0
 export class Context {
   /**
    * Selector elements (simple selectors and combinators)
-   * mapped to incremented char codes.
+   * mapped to incremented bigint
    *
    * When extending, we can use this to search for
    * matches within a selector sequence, and then
    * map the match position (and range) back to the
    * selector sequence.
+   *
+   * @todo - probably abandon?
    */
-  static selectorKeys = new Map<string, string>()
-  static keysFromSelector = new Map<string, string>()
+  static selectorKeys = new Map<string, bigint>()
+  static keysFromSelector = new Map<bigint, string | bigint>()
 
   readonly plugins: PluginObject[]
   readonly opts: ContextOptions
@@ -194,8 +213,15 @@ export class Context {
   id = generateId()
   varCounter: number = 0
 
-  /** @todo - change to Map() */
-  classMap = new Map<string, string>()
+  _classMap: Map<string, string> | undefined
+  get classMap() {
+    let value = this._classMap
+    if (!value) {
+      value = new Map<string, string>()
+      Object.defineProperty(this, '_classMap', { value })
+    }
+    return value
+  }
 
   /**
    * The ruleset (qualified rule) frames. This is used to resolve
@@ -356,13 +382,10 @@ export class Context {
     if (key) {
       return key
     }
-    key = String.fromCharCode(code1, code2++)
-    if (code2 > 65535) {
-      code2 = 0
-      code1++
-    }
-    Context.selectorKeys.set(key, el)
-    Context.keysFromSelector.set(el, key)
+    key = (classInts + inc)
+
+    Context.selectorKeys.set(el, key)
+    Context.keysFromSelector.set(key, el)
     return key
   }
 

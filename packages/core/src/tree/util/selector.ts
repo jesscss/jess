@@ -1,3 +1,9 @@
+import type { Selector } from '../selector'
+import { SimpleSelector } from '../selector-simple'
+import { Ampersand } from '../ampersand'
+import { Combinator } from '../combinator'
+import { SelectorList } from '../selector-list'
+
 export function combineKeys(
   a: Set<string> | string,
   b: Set<string> | string
@@ -16,4 +22,28 @@ export function combineKeys(
       return new Set([a, b])
     }
   }
+}
+
+function _isRelative(sel: Selector) {
+  let match = false
+  sel.walkNodes(node => {
+  /** Stop at the first simple selector or combinator */
+    if (node instanceof SimpleSelector) {
+      if (node instanceof Ampersand) {
+        match = true
+      }
+      return false
+    } else if (node instanceof Combinator) {
+      match = true
+      return false
+    }
+  })
+  return match
+}
+
+export function isRelative(sel: Selector | SelectorList) {
+  if (sel instanceof SelectorList) {
+    return sel.value.some(_isRelative)
+  }
+  return _isRelative(sel)
 }

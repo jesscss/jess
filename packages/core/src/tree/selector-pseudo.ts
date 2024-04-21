@@ -2,10 +2,7 @@ import { defineType, type Node } from './node'
 import { SimpleSelector } from './selector-simple'
 import { type Context } from '../context'
 import { Selector } from './selector'
-import { isNode } from './util'
-import { type SelectorList } from './selector-list'
-import { Ampersand } from './ampersand'
-import { Combinator } from './combinator'
+import { isNode, isRelative } from './util'
 
 export type PseudoSelectorValue = {
   /**
@@ -49,35 +46,19 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
            * @todo - Remove, we should be able to use relative
            * selectors just like we can extend other `&` selectors.
            */
-          const isNotRelative = (sel: Selector) => {
-            let match = false
-            sel.walkNodes(node => {
-            /** Stop at the first simple selector or combinator */
-              if (node instanceof SimpleSelector) {
-                if (node instanceof Ampersand) {
-                  match = true
-                }
-                return false
-              } else if (node instanceof Combinator) {
-                match = true
-                return false
-              }
-            })
-            return !match
-          }
           if (isNode(value, 'SelectorList')) {
             if (
               /**
                * If an :is starts with an ampersand or combinator,
                * it's relative, and can't be flattened.
                */
-              (value as SelectorList).value.every(isNotRelative)
+              !isRelative(value)
             ) {
               /**
                * Push the first selectors of the inner list to an array
                * at the front of the return array.
                */
-              const selKeys = (value as SelectorList).value.map(sel => {
+              const selKeys = value.value.map(sel => {
                 const childKeys = sel.keys
                 return isArray(childKeys) ? childKeys.flat(Infinity) : [childKeys]
               }) as string[][]
@@ -91,7 +72,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
             } else {
               keys = this.valueOf()
             }
-          } else if (isNotRelative(value)) {
+          } else if (!isRelative(value)) {
             keys = value.keys
           } else {
             keys = this.valueOf()
@@ -114,14 +95,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     if (!valueOf) {
       let { name, value } = this
       if (value && value instanceof Selector) {
-        if (
-          name === ':is'
-          && !isNode(value, 'SelectorList')
-          && (
-            !isNode(value, 'ComplexSelector')
-            || !isNode(value.value[0], 'Combinator')
-          )
-        ) {
+        if (name === ':is') {
           valueOf = value.valueOf()
         } else {
           valueOf = `${name}(${value.valueOf()})`
