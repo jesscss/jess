@@ -3,7 +3,7 @@ import { Declaration } from '../tree/declaration'
 import { AssignmentType } from '../tree/base-declaration'
 import { List } from '../tree/list'
 import { Spaced } from '../tree/spaced'
-import type { Node, TypedMap } from '../tree/node'
+import type { Node } from '../tree/node'
 import type { Mixin } from '../tree/mixin'
 import isPlainObject from 'lodash-es/isPlainObject'
 import { isNode } from '../tree/util'
@@ -13,13 +13,6 @@ import type { Bool } from '../tree/bool'
 import type { Condition } from '../tree/condition'
 import { Context } from '../context'
 import type { General } from '../tree/general'
-import type { KeyList, Selector } from '../tree/selector'
-import { PseudoSelector } from '../tree/selector-pseudo'
-import { SimpleSelector } from '../tree/selector-simple'
-import { SelectorList } from '../tree/selector-list'
-import { CompoundSelector } from '../tree/selector-compound'
-import { ComplexSelector } from '../tree/selector-complex'
-import { e } from 'vitest/dist/reporters-50c2bd49'
 
 /**
  * The Scope object is meant to be an efficient
@@ -56,7 +49,6 @@ export type ScopeEntryOptions = {
   private?: boolean
 }
 
-const { isArray } = Array
 /**
  * We use this to store meta-information
  * about keys / values. For example, values
@@ -136,37 +128,6 @@ export class Scope {
   _parent?: Scope
 
   /**
-   * Exact (normalized) extend match
-   *   e.g.
-   *     .five:extend(:is(.one, .two) > .three.four)
-   *       Map {
-   *         '[.one,.two]>.four.three' => [el('.five)]
-   *       }
-   */
-  _extendComplete = new Map<string, Selector[]>()
-
-  /**
-   * Partial extend match. The key is the starting key
-   * for matches.
-   *   e.g.
-   *     .five:extend(:is(.one, .two) > .three.four !all)
-   *       Map {
-   *         '.one' => [[sel(':is(.one, .two) > .three.four'), el('.five)]]
-   *         '.two' => pointer to same array -> [[sel(':is(.one, .two) > .three.four'), el('.five)]]
-   *       }
-   */
-  _extendPartial = new Map<string, Array<[Selector, Selector]>>()
-
-  /**
-   * We store a set (copy) of the starting match of all extended selectors
-   * so that we can quickly do Set.prototype.isDisjointFrom
-   * for selectors to see if they can be extended.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Set/isDisjointFrom
-   */
-  _extendSet = new Set<string>()
-
-  /**
    * For none found. Use this to distinguish from
    * found but has a value of undefined.
    *
@@ -185,235 +146,7 @@ export class Scope {
   constructor(parent?: Scope) {
     Scope.allScopes.push(this)
     this._parent = parent
-    /**
-     * Assign to parent entries at first.
-     * This allows us to lazily extend the prototype chain.
-     *
-     * If no keys are ever assigned, we can just lookup
-     * keys from the parent scope.
-     */
-    // if (parent) {
-    //   this._vars = parent._vars
-    //   this._props = parent._props
-    //   this._mixins = parent._mixins
-    // } else {
-    //   this._vars = Object.create(null)
-    //   this._props = Object.create(null)
-    //   this._mixins = Object.create(null)
-    // }
   }
-
-  /**
-   * This registers extend statements as a kind of
-   * state machine, where matches are progressively
-   * found and extended. This allows for complex
-   * matching of nested :is() selectors, and matching
-   * selectors within compound selectors vs. Less 2-4's
-   * more naïve approach which does a simple find/replace.
-   *
-   *
-   * 2. Given
-   *     .one>.two.three
-   *     .four:extend(.three !all)
-   *     .five:extend(.two.three !all)
-   *     .six:extend(.two !all)
-   *     .seven:extend(.one>.two !all)
-   *
-   * Map would be:
-   *    Map {
-   *      .two => { complete: [], partial: [.six], continue: [.three] }
-   *      .two.three => { complete: [], partial: [.five], continue: [] }
-   *      .three => { complete: [], partial: [.four], continue: [] }
-   *      .one => { complete: [], partial: [], continue: [>] }
-   *      .one> => { complete: [], partial: [], continue: [.two] }
-   *      .one>.two => { complete: [], partial: [.seven], continue: [] }
-   *    }
-   */
-  registerExtend(
-    /** Given .a:extend(.b.c) {} */
-    target: Selector /* .b.c */,
-    extendWith: Selector /* .a */,
-    all?: boolean
-  ) {
-    if (!all) {
-      const value = target.valueOf()
-      const existing = this._extendComplete.get(value)
-      if (existing) {
-        existing.push(extendWith)
-        return
-      }
-      this._extendComplete.set(value, [extendWith])
-      return
-    }
-    const [first] = target.keyList
-
-    const registration: [Selector, Selector] = [target, extendWith]
-
-    const register = (key: string) => {
-      const existing = this._extendPartial.get(key)
-      if (existing) {
-        existing.push(registration)
-        return
-      }
-      this._extendPartial.set(key, [registration])
-      this._extendSet.add(key)
-    }
-
-    if (isArray(first)) {
-      first.forEach(register)
-    } else {
-      register(first)
-    }
-    // let targetKeyList = target.keyList
-
-    // const iterateContinue = (next: string | SelectorList, continueArr: string[]): void => {
-    //   if (next instanceof SelectorList) {
-    //     return next.keyList.forEach(n => iterateContinue(n, continueArr))
-    //   }
-    //   continueArr.push(next)
-    // }
-
-    // const iteratePosition = (list: KeyList, pos: number, compositeKey: string, current?: KeyList[number]): void => {
-    //   current ??= list[pos]!
-    //   if (current instanceof SelectorList) {
-    //     return current.value.forEach(n => iterateList(n, compositeKey))
-    //   }
-    //   compositeKey += current
-    //   let mapEntry = this._extendMap.get(current)
-    //   let map: ExtendMap = mapEntry ?? new Map()
-    //   const next = list[++pos]!
-    //   if (list === targetKeyList && !next) {
-    //     if (all) {
-    //       let partial = map.get('partial')
-    //       if (partial) {
-    //         partial.push(extendWith)
-    //       } else {
-    //         map.set('partial', [extendWith])
-    //       }
-    //     } else {
-    //       let complete = map.get('complete')
-    //       if (complete) {
-    //         complete.push(extendWith)
-    //       } else {
-    //         map.set('complete', [extendWith])
-    //       }
-    //     }
-    //     if (!mapEntry) {
-    //       this._extendMap.set(compositeKey, map)
-    //       this._extendSet.add(compositeKey)
-    //     }
-    //   } else {
-    //     let continueArr = map.get('continue')
-    //     if (!continueArr) {
-    //       continueArr = []
-    //       map.set('continue', continueArr)
-    //     }
-    //     if (next) {
-    //       iterateContinue(next, continueArr)
-    //     }
-    //     if (!mapEntry) {
-    //       this._extendMap.set(compositeKey, map)
-    //     }
-    //     if (next) {
-    //       iteratePosition(list, pos, compositeKey, next)
-    //     }
-    //   }
-    // }
-
-    // const iterateList = (sel: Selector, compositeKey: string = '') => {
-    //   iteratePosition(sel.keyList, 0, compositeKey)
-    // }
-
-    // iterateList(target)
-
-    /**
-     * Should end up with:
-     * Map {
-     *   '.b' => { complete: [], partial: [], continue: ['.c'] }
-     *   '.b.c' => { complete: [], partial: [el('.a')], continue: [] }
-     * }
-     */
-  }
-
-  private _applyCompleteExtend(input: Selector): Selector | Selector[] {
-    /**
-     * Map {
-     *   .a => [el(.b)]
-     *   .c => [el(.a)]
-     * }
-     */
-    let match = this._extendComplete.get(input.valueOf())
-
-    if (match) {
-      /**
-       * Make sure that we've already extended selectors that
-       * we'll be extending with.
-       */
-      for (const [i, item] of match.entries()) {
-        if (!item.extended) {
-          const newItem = item.copy()
-          newItem.extended = true
-          match[i] = this.getExtendedSelector(newItem)
-        }
-      }
-      return [input, ...match]
-    }
-
-    return input
-  }
-
-  /**
-   * Okay, selector has a possible match
-   * @see https://gist.github.com/matthew-dean/cb9173dcdd35ee88c4173bf9f2ca32da?fbclid=IwAR1RwYZs0PUdRaKEAoetsXGSTEHnX7sINhhkcnEPi0SuvHqVJq9OBsyodfo
-   */
-  private _applyPartialExtend(input: Selector): Selector | Selector[] {
-    input.walkNodes((node) => {
-      if (
-        node instanceof ComplexSelector
-        || node instanceof CompoundSelector
-        || (node instanceof PseudoSelector && node.name === ':is')
-      ) {
-        parentQueue.unshift(node)
-      } else if (node instanceof SimpleSelector) {
-        const possibleMatch = complete.get(node.valueOf())
-        if (possibleMatch) {
-
-        }
-        current = node
-      }
-    })
-  }
-
-  /** Get a selector, considering the extend map */
-  getExtendedSelector(input: Selector | SelectorList): Selector | SelectorList {
-    const extendSet = this._extendSet
-
-    if (extendSet.size === 0 || input.keySet.isDisjointFrom(extendSet)) {
-      /**
-       * Either:
-       *   a) no extends were registered or
-       *   b) the selector contains no simple selectors or starts of simple
-       *      selectors that have been extended, so return as-is
-       */
-      return input
-    }
-
-    if (input instanceof SelectorList) {
-      const outerList = input.value as Selector[]
-      const inputLength = outerList.length
-      for (let i = 0; i < inputLength; i++) {
-
-      }
-      let newList: Selector[] = this._applyCompleteExtend()
-    } else {
-
-    }
-  }
-
-  // addSelector(selector: string) {
-  //   const map = this._extendMap.get(selector)
-  //   this._extendMap.set(selector, { extendedBy: [] })
-  // }
 
   /** Normalizes keys as valid JavaScript identifiers. */
   normalizeKey(key: string) {

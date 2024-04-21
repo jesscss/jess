@@ -10,8 +10,9 @@ export class SelectorList<
   T extends Selector = Selector
 > extends Selector<T[]> {
   /** @todo - put in whitespace and line breaks */
-  toTrimmedString() {
-    return this.value.map(v => v.toString()).join(',')
+  toTrimmedString(depth: number = 0) {
+    let space = ''.padStart(depth * 2)
+    return this.value.map(v => v.toString(depth)).join(`,\n${space}`)
   }
 
   valueOf() {

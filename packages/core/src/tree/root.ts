@@ -4,7 +4,8 @@ import type { Context } from '../context'
 import { type Opaque } from 'type-fest'
 
 /**
- * The root node. Contains a collection of nodes
+ * The root node. Contains a collection of nodes.
+ * The tree will have a root, but each file will have its own root.
  */
 export class Root extends Rules {
   async eval(context: Context): Promise<Root> {

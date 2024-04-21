@@ -7,16 +7,16 @@ import {
   sellist,
   pseudo
 } from '../../tree'
-import { Scope } from '../index'
+import { ExtendScope } from '../extend'
 import { logger } from '../../logger'
 
 vi.spyOn(logger, 'warn')
 
-let scope: Scope
+let extend: ExtendScope
 
 describe('Scope selectors', async () => {
   beforeEach(() => {
-    scope = new Scope()
+    extend = new ExtendScope()
   })
 
   describe('extend registration', () => {
@@ -24,15 +24,15 @@ describe('Scope selectors', async () => {
      * .two:extend(.three)
      */
     test('simple selectors', () => {
-      scope.registerExtend(el('.three'), el('.two'))
-      expect(scope._extendComplete).toEqual(new Map([
+      extend.register(el('.three'), el('.two'))
+      expect(extend.completeMap).toEqual(new Map([
         ['.three', [el('.two')]]
       ]))
-      scope.registerExtend(el('.three'), el('.two'), true)
-      expect(scope._extendPartial).toEqual(new Map([
+      extend.register(el('.three'), el('.two'), true)
+      expect(extend.partialMap).toEqual(new Map([
         ['.three', [[el('.three'), el('.two')]]]
       ]))
-      expect(scope._extendSet).toEqual(new Set(['.three']))
+      expect(extend.selectorSet).toEqual(new Set(['.three']))
     })
     /**
      * .four:extend(.one > .two.three)
@@ -46,8 +46,8 @@ describe('Scope selectors', async () => {
           el('.three')
         ])
       ])
-      scope.registerExtend(sel1, el('.four'), true)
-      expect(scope._extendPartial).toEqual(new Map([
+      extend.register(sel1, el('.four'), true)
+      expect(extend.partialMap).toEqual(new Map([
         [
           '.one', [[sel1, el('.four')]]
         ]
@@ -69,23 +69,23 @@ describe('Scope selectors', async () => {
         ])
       ])
       const extendWith = el('.five')
-      scope.registerExtend(sel1, extendWith)
+      extend.register(sel1, extendWith)
       /** Exact (normalized) match */
       let complete = new Map([
         [':is(.one,.two)>.four.three', [extendWith]]
       ])
-      scope.registerExtend(sel1, extendWith, true)
+      extend.register(sel1, extendWith, true)
       let partial = new Map([
         /** Start key - either matches a simple selector or one of the elements of a compound selector */
         ['.one', /* (string | Selector)[] */ [[sel1, extendWith]]],
         ['.two', /* reference to above */ [[sel1, extendWith]]]
       ])
-      expect(scope._extendComplete).toEqual(complete)
-      expect(scope._extendPartial).toEqual(partial)
+      expect(extend.completeMap).toEqual(complete)
+      expect(extend.partialMap).toEqual(partial)
     })
   })
 
-  describe('extend evaluation', () => {
+  describe.only('extend evaluation', () => {
     /**
      *   i -> .six:extend(.two)
      *    o -> .one>[[.two,.six][.three,.four],.five]
@@ -106,15 +106,33 @@ describe('Scope selectors', async () => {
       */
     test('no matches', () => {
       let sel1 = el('.one')
-      expect(`${scope.getExtendedSelector(sel1)}`).toBe('.one')
-      scope.registerExtend(el('.three'), el('.two'))
-      expect(`${scope.getExtendedSelector(sel1)}`).toBe('.one')
+      expect(`${extend.getExtendedSelector(sel1)}`).toBe('.one')
+      extend.register(el('.three'), el('.two'))
+      expect(`${extend.getExtendedSelector(sel1)}`).toBe('.one')
     })
 
-    test('extend simple', () => {
+    test('complete - simple', () => {
       let sel1 = el('.one')
-      scope.registerExtend(el('.one'), el('.two'))
-      expect(`${scope.getExtendedSelector(sel1)}`).toBe('.one, .two')
+      extend.register(el('.one'), el('.two'))
+      expect(`${extend.getExtendedSelector(sel1)}`).toBe('.one,\n.two')
+    })
+
+    test('complete - equivalent', () => {
+      /** :is(.one) */
+      let sel1 = pseudo([['name', ':is'], ['value', el('.one')]])
+      let sel2 = pseudo([['name', ':is'], ['value', sel1]])
+      /** Make sure compound wrapping makes no difference */
+      let sel3 = pseudo([['name', ':is'], ['value', sel([sel1])]])
+      extend.register(el('.one'), el('.two'))
+      expect(`${extend.getExtendedSelector(sel1)}`).toBe(':is(.one),\n.two')
+      expect(`${extend.getExtendedSelector(sel2)}`).toBe(':is(:is(.one)),\n.two')
+      expect(`${extend.getExtendedSelector(sel3)}`).toBe(':is(:is(.one)),\n.two')
+    })
+
+    test('partial - simple', () => {
+      let sel1 = el('.one')
+      extend.register(el('.one'), el('.two'), true)
+      expect(`${extend.getExtendedSelector(sel1)}`).toBe('.one,\n.two')
     })
   })
 
