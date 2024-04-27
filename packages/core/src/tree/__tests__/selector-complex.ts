@@ -36,7 +36,7 @@ describe('Complex selector', () => {
       expect(sel1).not.toEqual(sel3)
     })
 
-    test('un-wrap is', () => {
+    test('un-wrap :is', () => {
       /** a#id.one.two */
       let sel1 = sel([
         compound([
@@ -57,7 +57,7 @@ describe('Complex selector', () => {
       expect(sel1).toEqual(sel2)
     })
 
-    test('un-wrap is with combinator', () => {
+    test('un-wrap :is with combinator', () => {
       /** a#id > .one.two */
       let sel1 = sel([
         compound([
@@ -85,6 +85,17 @@ describe('Complex selector', () => {
         })
       ]).valueOf()
       expect(sel1).toEqual(sel2)
+    })
+
+    test('un-wrap :is with inner combinator', () => {
+      let sel1 = sel([
+        compound([
+          el('.a'),
+          pseudo({ name: ':is', value: sel([el('.b'), co('>'), el('.c')]) }),
+          el('.d')
+        ])
+      ]).valueOf()
+      expect(sel1).toEqual('.b>.a.c.d')
     })
 
     test('don\'t un-wrap with complex in :is()', () => {

@@ -10,11 +10,13 @@ import { isNode } from './util'
 import { PseudoSelector } from './selector-pseudo'
 import { type SelectorList } from './selector-list'
 import { Selector, type Keys } from './selector'
+import type { SimpleSelector } from './selector-simple'
+import type { CompoundSelector } from './selector-compound'
 
 // TODO - fix later
-// type Component = SimpleSelector | CompoundSelector | Combinator | Ampersand
+export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand
 // type SelectorValue = Component[]
-type SelectorValue = Array<Selector | Combinator>
+type SelectorValue = ComplexSelectorComponent[]
 /**
  * Selectors with combinators.
  *

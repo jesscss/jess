@@ -1,4 +1,7 @@
-import { ComplexSelector } from '../tree'
+import { ComplexSelector, type ComplexSelectorComponent } from '../tree/selector-complex'
+import { CompoundSelector } from '../tree/selector-compound'
+import { SimpleSelector } from '../tree/selector-simple'
+import { PseudoSelector } from '../tree/selector-pseudo'
 import type { Selector } from '../tree/selector'
 import { SelectorList } from '../tree/selector-list'
 
@@ -206,6 +209,31 @@ export class ExtendScope {
     return input
   }
 
+  /** We're only going to return compounds and simples */
+  private * _iterateTarget(container: Selector) {
+    if (container instanceof ComplexSelector) {
+      for (const item of container.value) {
+        yield item
+      }
+    } else {
+      yield container as (SimpleSelector | CompoundSelector)
+    }
+  }
+
+  /** Recursively iterate :is() */
+  private * _iterateInput(container: Selector) {
+    if (container instanceof ComplexSelector) {
+      for (const item of container.value) {
+        yield item
+      }
+    } else if (container instanceof PseudoSelector) {
+      if (container.name === ':is') {
+        if (container.value instanceof SelectorList) {
+        }
+        yield container as (SimpleSelector | CompoundSelector)
+    }
+  }
+
   /**
    * Okay, selector has a possible match
    * @see https://gist.github.com/matthew-dean/cb9173dcdd35ee88c4173bf9f2ca32da?fbclid=IwAR1RwYZs0PUdRaKEAoetsXGSTEHnX7sINhhkcnEPi0SuvHqVJq9OBsyodfo
@@ -227,18 +255,37 @@ export class ExtendScope {
      */
     for (const key of keySet) {
       const group = partialMap.get(key)
+      /**
+       * Starting selector (key) matches some part of
+       * the input selector, so let's search the whole
+       * input for matches.
+       */
       if (group) {
         /**
          * Now, for each match group, we need to match the input
          * against targets. Input needs to have _all_ parts of the
-         * target in order to be extended.
+         * target in order to be extended, except in the case where
+         * a target is an :is() selector with a selector list inside,
+         * as an selector list implies "OR", so the input only needs
+         * to match one of the possible selector paths.
+         *
+         * We do this with each match group.
          */
         for (const [target, extendWith] of group) {
-          if (input instanceof ComplexSelector) {
-            let first = input.value[0]!
-            if (first.compare(target) === 0) {
-              return [extendWith]
-            }
+          /**
+           * Now let's iterate through the input and find and extend matches.
+           * As we traverse the input, we dynamically build a cloned selector
+           * in preparation for extending.
+           *
+           * Let's say
+           *   - input is :is(.g.a, .b.c) .c
+           *   - target is .a. .c
+           *   - extendWith is .d
+           */
+          let targetComponent = this._iterateTarget(target).next()
+
+          for (const inputComponent of this._iterateInput(input)) {
+
           }
         }
       }
