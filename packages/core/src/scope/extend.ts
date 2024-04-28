@@ -273,7 +273,7 @@ export class ExtendScope {
      * the input selector, so let's search the whole
      * input for matches.
      */
-    if (matchGroups.length) {
+    if (longMatchGroups.length) {
       /**
        * Now, for each match group, we need to match the input
        * against targets. Input needs to have _all_ parts of the
@@ -284,7 +284,7 @@ export class ExtendScope {
        *
        * We do this with each match group.
        */
-      for (const [target, extendWith] of matchGroups) {
+      for (const [target, extendWith] of longMatchGroups) {
         /**
          * Now let's iterate through the input and find and extend matches.
          * As we traverse the input, we dynamically build a cloned selector
