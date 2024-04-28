@@ -9,6 +9,10 @@ export class Combinator extends Node<string> {
   get keys() {
     return this.value
   }
+
+  normalize() {
+    return this
+  }
   // toTrimmedString() {
   //   let { value } = this
   //   return value === ' ' ? value : ` ${value} `

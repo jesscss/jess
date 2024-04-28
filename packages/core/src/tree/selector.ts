@@ -2,8 +2,12 @@ import { Node } from './node'
 import { compare } from './util/compare'
 
 /** Will be bound in ./util/compare.ts */
-export interface Selector<T = any> extends Node<T> {
+export interface Selector<T extends SelectorValue = SelectorValue> extends Node<T> {
   compare(other: Node): 0 | 1 | -1 | undefined
+}
+
+export type SelectorValue = {
+  value: string | Node | Node[]
 }
 
 // export type KeyList = Array<string | SelectorList>
@@ -14,7 +18,7 @@ const { isArray } = Array
 /** If it's an array, only the first element can optionally be a string array */
 export type Keys = string | [(string | string[]), ...string[]]
 
-export abstract class Selector<T = any> extends Node<T> {
+export abstract class Selector<T extends SelectorValue = SelectorValue> extends Node<T> {
   protected _value: string
   protected _keys: Keys
   protected _keySet: Set<string>
@@ -53,6 +57,10 @@ export abstract class Selector<T = any> extends Node<T> {
       })
     }
     return keySet
+  }
+
+  normalize(): Selector {
+    return this
   }
 
   /**

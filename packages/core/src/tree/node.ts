@@ -123,11 +123,11 @@ type CollectionPair<T> =
 
 type Values<T, K extends keyof T = keyof T> = T[K]
 
-type NodeValueArray<T extends NodeTypeMap> = Array<Values<{
+export type NodeValueArray<T extends NodeTypeMap> = Array<Values<{
   [K in keyof T]: [K, T[K]]
 }>>
 
-type NodeValueArg<M extends NodeTypeMap> =
+export type NodeValueArg<M extends NodeTypeMap> =
   IsUnknown<M['value']> extends true
     ? TypedMap<M> | NodeValueArray<M>
     : TypedMap<M> | NodeValueArray<M> | M['value']
@@ -135,7 +135,7 @@ type NodeValueArg<M extends NodeTypeMap> =
  * The underlying type for all Jess nodes
  */
 export abstract class Node<
-  T = any,
+  T = unknown,
   O extends NodeOptions = NodeOptions,
   M extends NodeTypeMap = NodeMapType<T>
 > {

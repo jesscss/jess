@@ -7,7 +7,7 @@ import { SimpleSelector } from './selector-simple'
  * @see https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_selectors/Selectors_and_combinators#basic_selectors
  *   e.g. div, .foo, #bar
 */
-export class BasicSelector extends SimpleSelector<string> {
+export class BasicSelector extends SimpleSelector<{ value: string }> {
   get isClass() {
     return /^\./.test(this.value)
   }

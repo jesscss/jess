@@ -16,14 +16,14 @@ import type { CompoundSelector } from './selector-compound'
 // TODO - fix later
 export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand
 // type SelectorValue = Component[]
-type SelectorValue = ComplexSelectorComponent[]
+type ComplexSelectorValue = ComplexSelectorComponent[]
 /**
  * Selectors with combinators.
  *
  * @example
  * #id > .class.class
  */
-export class ComplexSelector extends Selector<SelectorValue> {
+export class ComplexSelector extends Selector<{ value: ComplexSelectorValue }> {
   /**
    * Essentially, a#id.class === a.class#id as being identical selectors,
    * so we normalize groups and combinators to be in Immutable Sets,
@@ -85,7 +85,7 @@ export class ComplexSelector extends Selector<SelectorValue> {
    */
   async eval(context: Context): Promise<ComplexSelector | SelectorList | Nil> {
     let selector: ComplexSelector = this.clone()
-    let elements = [...selector.value] as SelectorValue
+    let elements = [...selector.value] as ComplexSelectorValue
     selector.value = elements
 
     let collapseNesting = context.opts.collapseNesting
@@ -107,7 +107,7 @@ export class ComplexSelector extends Selector<SelectorValue> {
 
     selector = await super.eval.call(selector, context) as ComplexSelector
 
-    let cleanElements = (elements: Array<Selector | Combinator | Nil>): SelectorValue => {
+    let cleanElements = (elements: Array<Selector | Combinator | Nil>): ComplexSelectorValue => {
       let elementsLength = elements.length
       for (let i = 0; i < elementsLength; i++) {
         let value = elements[i]!
@@ -138,12 +138,12 @@ export class ComplexSelector extends Selector<SelectorValue> {
            * there are more elements in the sequence
            */
           elements[i] = new PseudoSelector([
-            ['name', ':is'],
-            ['value', value]
+            ['value', ':is'],
+            ['arg', value]
           ])
         }
       }
-      return elements as SelectorValue
+      return elements as ComplexSelectorValue
       // This can/should only happen with compound selectors
       // elements.sort((a, b) => {
       //   const aVal = a instanceof BasicSelector && a.isTag ? -1 : 0
@@ -152,6 +152,7 @@ export class ComplexSelector extends Selector<SelectorValue> {
       // })
     }
 
+    /** @todo - Selector lists can have basic selectors */
     if (isNode(selector, 'SelectorList')) {
       (selector as SelectorList).value.forEach(sel => { (sel).value = cleanElements(sel.value) })
     } else {
@@ -184,8 +185,8 @@ export class ComplexSelector extends Selector<SelectorValue> {
 
 type SelectorParams = ConstructorParameters<typeof ComplexSelector>
 
-export const sel = defineType<SelectorValue>(ComplexSelector, 'ComplexSelector', 'sel') as (
-  value: SelectorValue,
+export const sel = defineType<ComplexSelectorValue>(ComplexSelector, 'ComplexSelector', 'sel') as (
+  value: ComplexSelectorValue,
   options?: SelectorParams[1],
   location?: SelectorParams[2],
   treeContext?: SelectorParams[3]

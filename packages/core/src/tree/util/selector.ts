@@ -1,8 +1,13 @@
-import type { Selector } from '../selector'
+import { type Selector } from '../selector'
 import { SimpleSelector } from '../selector-simple'
 import { Ampersand } from '../ampersand'
 import { Combinator } from '../combinator'
 import { SelectorList } from '../selector-list'
+import { ComplexSelector } from '../selector-complex'
+import { CompoundSelector } from '../selector-compound'
+import { PseudoSelector } from '../selector-pseudo'
+import { PseudoFunction } from '../selector-pseudofn'
+import { BasicSelector } from '../selector-basic'
 
 export function combineKeys(
   a: Set<string> | string,
@@ -46,4 +51,34 @@ export function isRelative(sel: Selector | SelectorList) {
     return sel.value.some(_isRelative)
   }
   return _isRelative(sel)
+}
+
+export function normalize(selector: Selector | SelectorList) {
+  if (selector instanceof SelectorList) {
+    const sel = selector.clone()
+    sel.value = sel.value.map(normalize)
+    return sel
+  }
+  if (
+    selector instanceof ComplexSelector
+    || selector instanceof CompoundSelector
+  ) {
+    const { value } = selector
+    let length = value.length
+
+    let paths: Selector[] = []
+    let topCompound: CompoundSelector = new CompoundSelector([['value', [new BasicSelector([['value', 'a']])]]])
+    /** Iterate backwards; it's easier to build from :is() statements */
+    for (let i = length - 1; i >= 0; i--) {
+      let node = value[i]!.normalize()
+      if (node instanceof BasicSelector) {
+        paths.unshift(node)
+      }
+      if (node instanceof PseudoSelector && node.value === ':is') {
+        let path = node.arg as Selector | SelectorList
+      } else {
+
+      }
+    }
+  }
 }

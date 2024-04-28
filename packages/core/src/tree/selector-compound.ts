@@ -7,7 +7,7 @@ import { Nil } from './nil'
 import { Selector, type Keys } from './selector'
 import type { SimpleSelector } from './selector-simple'
 
-type SelectorValue = [SimpleSelector, SimpleSelector, ...SimpleSelector[]]
+export type CompoundSelectorValue = [SimpleSelector, SimpleSelector, ...SimpleSelector[]]
 
 /**
  * @example
@@ -16,7 +16,7 @@ type SelectorValue = [SimpleSelector, SimpleSelector, ...SimpleSelector[]]
  * Must have at least 2 selectors. Otherwise it would be collapsed.
  */
 const nonElementRegex = /^[.#:*[]/
-export class CompoundSelector extends Selector<SelectorValue> {
+export class CompoundSelector extends Selector<{ value: CompoundSelectorValue }> {
   get keys() {
     let keys = this._keys
     if (!keys) {
@@ -67,7 +67,7 @@ export class CompoundSelector extends Selector<SelectorValue> {
         return returnVal[0]!.inherit(this) as Selector
       }
 
-      sel.value = returnVal as SelectorValue
+      sel.value = returnVal as CompoundSelectorValue
 
       return sel
     })

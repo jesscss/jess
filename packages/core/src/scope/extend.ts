@@ -14,7 +14,7 @@ export class ExtendScope {
    *   e.g.
    *     .five:extend(:is(.one, .two) > .three.four)
    *       Map {
-   *         '[.one,.two]>.four.three' => [el('.five)]
+   *         '.one' => [el('.five)]
    *       }
    */
   _completeMap: Map<string, Selector[]> | undefined
@@ -24,6 +24,30 @@ export class ExtendScope {
     if (!value) {
       value = new Map<string, Selector[]>()
       Object.defineProperty(this, '_completeMap', { value })
+    }
+    return value
+  }
+
+  /**
+   * This is a way to render faster, by doing all simple selector swaps during searches
+   *
+   * e.g.
+   *     .a { color: blue; }
+   *     .b:extend(.a all) {}
+   *     .c:extend(.b all) {}
+   *   Map {
+   *     .a -> [el('.b')]
+   *     .b -> [el('.c')]
+   *   }
+   *   when rendering '.a', get value, then lookup map, then continue with simple extends
+   */
+  _partialSimpleMap: Map<string, Selector[]> | undefined
+
+  get partialSimpleMap() {
+    let value = this._partialSimpleMap
+    if (!value) {
+      value = new Map<string, Selector[]>()
+      Object.defineProperty(this, '_partialSimpleMap', { value })
     }
     return value
   }
@@ -172,16 +196,11 @@ export class ExtendScope {
     // }
 
     // iterateList(target)
-
-    /**
-     * Should end up with:
-     * Map {
-     *   '.b' => { complete: [], partial: [], continue: ['.c'] }
-     *   '.b.c' => { complete: [], partial: [el('.a')], continue: [] }
-     * }
-     */
   }
 
+  /**
+   * @todo - Redo with only storing starting selector, then finding matches
+   */
   private _applyComplete(input: Selector): Selector | Selector[] {
     /**
      * Map {
@@ -209,41 +228,13 @@ export class ExtendScope {
     return input
   }
 
-  /** We're only going to return compounds and simples */
-  private * _iterateTarget(container: Selector) {
-    if (container instanceof ComplexSelector) {
-      for (const item of container.value) {
-        yield item
-      }
-    } else {
-      yield container as (SimpleSelector | CompoundSelector)
-    }
-  }
-
-  /** Recursively iterate :is() */
-  private * _iterateInput(container: Selector) {
-    if (container instanceof ComplexSelector) {
-      for (const item of container.value) {
-        yield item
-      }
-    } else if (container instanceof PseudoSelector) {
-      if (container.name === ':is') {
-        if (container.value instanceof SelectorList) {
-        }
-        yield container as (SimpleSelector | CompoundSelector)
-    }
-  }
-
   /**
    * Okay, selector has a possible match
    * @see https://gist.github.com/matthew-dean/cb9173dcdd35ee88c4173bf9f2ca32da?fbclid=IwAR1RwYZs0PUdRaKEAoetsXGSTEHnX7sINhhkcnEPi0SuvHqVJq9OBsyodfo
    */
   private _applyPartial(input: Selector): Selector | Selector[] {
-    const { partialMap } = this
-
+    const { _partialMap, _partialSimpleMap } = this
     const keySet = input.keySet
-
-    // const matchGroups: Array<[Selector, Selector]> = []
 
     /**
      * Given:
@@ -253,43 +244,61 @@ export class ExtendScope {
      *        .a => [[.a.b.c, .h]] -- h:extends(.a.b.c)
      *      }
      */
+    const longMatchGroups: Array<[Selector, Selector]> = []
+    const shortMatchGroups: Selector[] = []
+
     for (const key of keySet) {
-      const group = partialMap.get(key)
+      const longGroups = _partialMap?.get(key)
+      const shortGroups = _partialSimpleMap?.get(key)
+
       /**
-       * Starting selector (key) matches some part of
-       * the input selector, so let's search the whole
-       * input for matches.
+       * Get each set of groups by key (simple selector),
+       * and assemble groups where the target has all the keys
+       * of the input.
        */
-      if (group) {
+      longGroups?.forEach(group => {
+        if (!longMatchGroups.includes(group) && group[0].keySet.isSubsetOf(keySet)) {
+          longMatchGroups.push(group)
+        }
+      })
+
+      shortGroups?.forEach(group => {
+        if (!shortMatchGroups.includes(group)) {
+          shortMatchGroups.push(group)
+        }
+      })
+    }
+    /**
+     * Starting selector (key) matches some part of
+     * the input selector, so let's search the whole
+     * input for matches.
+     */
+    if (matchGroups.length) {
+      /**
+       * Now, for each match group, we need to match the input
+       * against targets. Input needs to have _all_ parts of the
+       * target in order to be extended, except in the case where
+       * a target is an :is() selector with a selector list inside,
+       * as an selector list implies "OR", so the input only needs
+       * to match one of the possible selector paths.
+       *
+       * We do this with each match group.
+       */
+      for (const [target, extendWith] of matchGroups) {
         /**
-         * Now, for each match group, we need to match the input
-         * against targets. Input needs to have _all_ parts of the
-         * target in order to be extended, except in the case where
-         * a target is an :is() selector with a selector list inside,
-         * as an selector list implies "OR", so the input only needs
-         * to match one of the possible selector paths.
-         *
-         * We do this with each match group.
+         * Now let's iterate through the input and find and extend matches.
+         * As we traverse the input, we dynamically build a cloned selector
+         * in preparation for extending.
          */
-        for (const [target, extendWith] of group) {
-          /**
-           * Now let's iterate through the input and find and extend matches.
-           * As we traverse the input, we dynamically build a cloned selector
-           * in preparation for extending.
-           *
-           * Let's say
-           *   - input is :is(.g.a, .b.c) .c
-           *   - target is .a. .c
-           *   - extendWith is .d
-           */
-          let targetComponent = this._iterateTarget(target).next()
-
-          for (const inputComponent of this._iterateInput(input)) {
-
+        if (input instanceof SimpleSelector) {
+          // this is easy
+          if (input.valueOf() === target.valueOf()) {
+            return extendWith
           }
         }
       }
     }
+    return input
   }
 
   /** Get a selector, considering the extend map */
@@ -303,6 +312,13 @@ export class ExtendScope {
        *   b) the selector contains no simple selectors or starts of simple
        *      selectors that have been extended, so return as-is
        */
+      return input
+    }
+
+    /** We should do partials first */
+
+    /** Then do completes */
+    if (this._completeMap && this._completeMap.size !== 0) {
       return input
     }
 
