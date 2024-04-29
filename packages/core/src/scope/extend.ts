@@ -1,11 +1,128 @@
-import { ComplexSelector, type ComplexSelectorComponent } from '../tree/selector-complex'
-import { CompoundSelector } from '../tree/selector-compound'
-import { SimpleSelector } from '../tree/selector-simple'
-import { PseudoSelector } from '../tree/selector-pseudo'
-import type { Selector } from '../tree/selector'
+import * as tree from '../tree'
+
 import { SelectorList } from '../tree/selector-list'
+import { Selector } from '../tree/selector'
+import { TreeVisitor } from '../visitor'
+import { PseudoSelector } from '../tree/selector-pseudo'
 
 const { isArray } = Array
+
+/**
+ * Visits inputs, and only extends simple selectors
+ */
+class ExtendSimpleVisitor extends TreeVisitor {
+  private _list: tree.Selector[]
+  selectorMap = new Map<string, Container>()
+  listParent: tree.Node | undefined
+
+  enter(startNode: tree.Selector | tree.SelectorList) {
+    this._list = startNode instanceof SelectorList ? startNode.value : [startNode]
+  }
+
+  exit() {
+    if (this.startNode instanceof SelectorList) {
+      /** We're good, this was modified in place */
+      return
+    }
+    if (this._list.length) {
+      /**
+       * We started out with a single selector, but now we have a list, so
+       * let's return a selector list.
+       */
+      return new SelectorList(this._list).inherit(this.startNode!)
+    }
+  }
+
+  private _getSimpleSelectors(sel: tree.SimpleSelector): tree.SimpleSelector | tree.SimpleSelector[] {
+    const { selectorMap } = this
+    const match = selectorMap.get(sel.valueOf())
+    if (match?.containers.length) {
+      return match.containers.flatMap(c => c.toSelectors())
+    }
+    return sel
+  }
+
+  private _simpleSelector(n: tree.SimpleSelector) {
+    const selectors = this._getSimpleSelectors(n)
+    if (isArray(selectors)) {
+      if (this.startNode === (this.listParent ?? n)) {
+        /**
+         * This simple selector consumes the entire selector
+         * in part of a selector list, OR was the entire
+         * selector to begin with, so we can add to
+         * the outer list.
+         */
+        this._list.push(...selectors)
+      } else {
+        return new PseudoSelector([
+          ['value', ':is'],
+          ['arg', new SelectorList(selectors)]
+        ])
+      }
+    }
+  }
+
+  selectorList(n: tree.SelectorList) {
+    this.listParent = n
+  }
+
+  complexSelector(n: tree.ComplexSelector) {
+    this.listParent = n
+  }
+
+  compoundSelector(n: tree.CompoundSelector) {
+    this.listParent = n
+  }
+
+  basicSelector(n: tree.BasicSelector) {
+    return this._simpleSelector(n)
+  }
+
+  attributeSelector(n: tree.AttributeSelector) {
+    return this._simpleSelector(n)
+  }
+
+  pseudoSelector(n: tree.PseudoSelector) {
+    if (n.arg && n.arg instanceof Selector) {
+      let returnVal = this.visit(n.arg)
+      if (returnVal) {
+        n.arg = returnVal
+        return n
+      }
+    }
+    return this._simpleSelector(n)
+  }
+}
+
+/** An object class for tracking extended selectors */
+export class Container {
+  /** Tracks references to prevent recursion */
+  static referencedContainers: Container[] = []
+
+  constructor(
+    public selector?: tree.SimpleSelector,
+    public containers: Container[] = []
+  ) {}
+
+  /**
+   * @param input - Should already match the selector in value
+   */
+  toSelectors(): tree.SimpleSelector | tree.SimpleSelector[] {
+    const { containers } = this
+    const { referencedContainers } = Container
+
+    const newContainers = containers.length && containers.filter(c => !referencedContainers.includes(c))
+    // eslint-disable-next-line @typescript-eslint/prefer-optional-chain
+    if (!newContainers || !newContainers.length) {
+      if (referencedContainers.length) {
+        Container.referencedContainers = []
+      }
+      return this.selector!
+    }
+    referencedContainers.push(this)
+    return [this.selector!, ...containers.flatMap(c => c.toSelectors())]
+  }
+}
 
 /** Extend scope, gets attached to the Root node */
 export class ExtendScope {
@@ -16,13 +133,16 @@ export class ExtendScope {
    *       Map {
    *         '.one' => [el('.five)]
    *       }
+   * @todo - This needs to be re-done, because we need to
+   * first extend partial selectors to determine complete
+   * selectors.
    */
-  _completeMap: Map<string, Selector[]> | undefined
+  _completeMap: Map<string, tree.Selector[]> | undefined
 
   get completeMap() {
     let value = this._completeMap
     if (!value) {
-      value = new Map<string, Selector[]>()
+      value = new Map<string, tree.Selector[]>()
       Object.defineProperty(this, '_completeMap', { value })
     }
     return value
@@ -36,17 +156,25 @@ export class ExtendScope {
    *     .b:extend(.a all) {}
    *     .c:extend(.b all) {}
    *   Map {
-   *     .a -> [el('.b')]
-   *     .b -> [el('.c')]
+   *     .a -> { selector: el('.a'), continue: [[['>', '.q'], sel(['.x'])]], containers: [{ .b }] }
+   *     .b -> { selector: el('.b'), containers: [{ .c }] }
+   *     .c -> { selector: el('.c'), containers: [] }
    *   }
-   *   when rendering '.a', get value, then lookup map, then continue with simple extends
+   *   Map {
+   *     .a -> { selector: el('.a'), containers: [{ .b }] }
+   *     .b -> { selector: el('.b'), containers: [{ .c }] }
+   *     .c -> { selector: el('.c'), containers: [] }
+   *   }
+   *   when rendering '.a', render
    */
-  _partialSimpleMap: Map<string, Selector[]> | undefined
+  _partialSimpleMap: Map<string, Container> | undefined
+  extendSimpleVisitor: ExtendSimpleVisitor
 
   get partialSimpleMap() {
     let value = this._partialSimpleMap
     if (!value) {
-      value = new Map<string, Selector[]>()
+      this.extendSimpleVisitor = new ExtendSimpleVisitor()
+      value = this.extendSimpleVisitor.selectorMap
       Object.defineProperty(this, '_partialSimpleMap', { value })
     }
     return value
@@ -62,12 +190,12 @@ export class ExtendScope {
    *         '.two' => pointer to same array -> [[sel(':is(.one, .two) > .three.four'), el('.five)]]
    *       }
    */
-  _partialMap: Map<string, Array<[Selector, Selector]>> | undefined
+  _partialMap: Map<string, Array<[tree.Selector, tree.Selector]>> | undefined
 
   get partialMap() {
     let value = this._partialMap
     if (!value) {
-      value = new Map<string, Array<[Selector, Selector]>>()
+      value = new Map<string, Array<[tree.Selector, tree.Selector]>>()
       Object.defineProperty(this, '_partialMap', { value })
     }
     return value
@@ -96,8 +224,8 @@ export class ExtendScope {
    */
   register(
     /** Given .a:extend(.b.c) {} */
-    target: Selector /* .b.c */,
-    extendWith: Selector /* .a */,
+    target: tree.Selector /* .b.c */,
+    extendWith: tree.Selector /* .a */,
     all?: boolean
   ) {
     const [first] = target.keyList
@@ -118,17 +246,40 @@ export class ExtendScope {
       return
     }
 
-    const registration: [Selector, Selector] = [target, extendWith]
+    const registration: [tree.Selector, tree.Selector] = [target, extendWith]
 
     const register = (key: string) => {
-      const existing = this.partialMap.get(key)
-      if (existing) {
-        existing.push(registration)
-        return
+      let get = this.partialSimpleMap.get(key) as Container
+      if (!get) {
+        get = new Container()
+        // @ts-expect-error Fix later
+        get.selector = target
+        this.partialSimpleMap.set(key, get)
       }
-      this.partialMap.set(key, [registration])
+      let extender = extendWith.valueOf()
+      let extenderRecord = this.partialSimpleMap.get(extender)
+      if (!extenderRecord) {
+        extenderRecord = new Container()
+        // @ts-expect-error Fix later
+        extenderRecord.selector = extendWith
+        this.partialSimpleMap.set(extender, extenderRecord)
+      }
+      if (!get.containers.includes(extenderRecord)) {
+        get.containers.push(extenderRecord)
+      }
       this.selectorSet.add(key)
     }
+
+    // Partial maps
+    // const register = (key: string) => {
+    //   const existing = this.partialMap.get(key)
+    //   if (existing) {
+    //     existing.push(registration)
+    //     return
+    //   }
+    //   this.partialMap.set(key, [registration])
+    //   this.selectorSet.add(key)
+    // }
 
     if (isArray(first)) {
       first.forEach(register)
@@ -201,7 +352,7 @@ export class ExtendScope {
   /**
    * @todo - Redo with only storing starting selector, then finding matches
    */
-  private _applyComplete(input: Selector): Selector | Selector[] {
+  private _applyComplete(input: tree.Selector): tree.Selector | tree.Selector[] {
     /**
      * Map {
      *   .a => [el(.b)]
@@ -232,7 +383,7 @@ export class ExtendScope {
    * Okay, selector has a possible match
    * @see https://gist.github.com/matthew-dean/cb9173dcdd35ee88c4173bf9f2ca32da?fbclid=IwAR1RwYZs0PUdRaKEAoetsXGSTEHnX7sINhhkcnEPi0SuvHqVJq9OBsyodfo
    */
-  private _applyPartial(input: Selector): Selector | Selector[] {
+  private _applyPartial(input: tree.Selector): tree.Selector | tree.Selector[] {
     const { _partialMap, _partialSimpleMap } = this
     const keySet = input.keySet
 
@@ -244,8 +395,8 @@ export class ExtendScope {
      *        .a => [[.a.b.c, .h]] -- h:extends(.a.b.c)
      *      }
      */
-    const longMatchGroups: Array<[Selector, Selector]> = []
-    const shortMatchGroups: Selector[] = []
+    const longMatchGroups: Array<[tree.Selector, tree.Selector]> = []
+    const shortMatchGroups: tree.Selector[] = []
 
     for (const key of keySet) {
       const longGroups = _partialMap?.get(key)
@@ -290,7 +441,7 @@ export class ExtendScope {
          * As we traverse the input, we dynamically build a cloned selector
          * in preparation for extending.
          */
-        if (input instanceof SimpleSelector) {
+        if (input instanceof tree.SimpleSelector) {
           // this is easy
           if (input.valueOf() === target.valueOf()) {
             return extendWith
@@ -301,8 +452,44 @@ export class ExtendScope {
     return input
   }
 
-  /** Get a selector, considering the extend map */
-  getExtendedSelector(input: Selector | SelectorList): Selector | SelectorList {
+  private _applySimple(input: tree.Selector | SelectorList) {
+    return this.extendSimpleVisitor.visit(input)
+    // const list = input instanceof SelectorList ? input.value : [input]
+
+    // for (const sel of list) {
+    //   if (sel instanceof tree.SimpleSelector) {
+    //     const selectors = this._getSimpleSelectors(sel)
+    //     if (isArray(selectors)) {
+    //       list.push(...selectors)
+    //     }
+    //   }
+    //   let parent: tree.Node[] = [sel]
+    //   sel.accept()
+    //   sel.walkNodes(node => {
+    //     if (node instanceof tree.SimpleSelector) {
+    //       const selectors = this._getSimpleSelectors(node)
+    //       if (isArray(selectors)) {
+    //         list.push(...selectors)
+    //       }
+    //     } else {
+    //       parent.unshift(node)
+    //     }
+    //   })
+    // }
+    // if (input instanceof SelectorList) {
+    //   return input
+    // }
+  }
+
+  /**
+   * Get a selector, considering the extend map. When we render a selector,
+   * we need to do the following:
+   *   1. First, extend simple selectors, including nested selectors within
+   *      pseudo selectors.
+   *   2. Then, extend partial selector sequences, using the results from #1.
+   *   3. Finally, extend complete selector sequences, using the results from #2.
+   */
+  getExtendedSelector(input: tree.Selector | SelectorList): tree.Selector | SelectorList {
     const { selectorSet } = this
 
     if (selectorSet.size === 0 || input.keySet.isDisjointFrom(selectorSet)) {
@@ -314,6 +501,8 @@ export class ExtendScope {
        */
       return input
     }
+    /** Extend simple selectors */
+    input = this._applySimple(input)
 
     /** We should do partials first */
 
@@ -323,7 +512,7 @@ export class ExtendScope {
     }
 
     if (input instanceof SelectorList) {
-      const outerList = input.value as Selector[]
+      const outerList = input.value
       const inputLength = outerList.length
       for (let i = 0; i < inputLength; i++) {
         let newList = this._applyComplete(outerList[i]!)

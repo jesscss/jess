@@ -4,7 +4,7 @@ import { Ampersand } from '../ampersand'
 import { Combinator } from '../combinator'
 import { SelectorList } from '../selector-list'
 import { ComplexSelector } from '../selector-complex'
-import { CompoundSelector } from '../selector-compound'
+import { CompoundSelector, type CompoundSelectorValue } from '../selector-compound'
 import { PseudoSelector } from '../selector-pseudo'
 import { PseudoFunction } from '../selector-pseudofn'
 import { BasicSelector } from '../selector-basic'
@@ -53,12 +53,19 @@ export function isRelative(sel: Selector | SelectorList) {
   return _isRelative(sel)
 }
 
+/**
+ *
+ *  1. Each list in each :is is a start of a new search in a selector.
+ *  2. Flatten :is() only if it contains simple selectors or compounds.
+ *
+ */
 export function normalize(selector: Selector | SelectorList) {
   if (selector instanceof SelectorList) {
     const sel = selector.clone()
     sel.value = sel.value.map(normalize)
     return sel
   }
+
   if (
     selector instanceof ComplexSelector
     || selector instanceof CompoundSelector
@@ -67,7 +74,7 @@ export function normalize(selector: Selector | SelectorList) {
     let length = value.length
 
     let paths: Selector[] = []
-    let topCompound: CompoundSelector = new CompoundSelector([['value', [new BasicSelector([['value', 'a']])]]])
+    let topCompound: SimpleSelector[] = []
     /** Iterate backwards; it's easier to build from :is() statements */
     for (let i = length - 1; i >= 0; i--) {
       let node = value[i]!.normalize()

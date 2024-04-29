@@ -3,6 +3,8 @@ import { compare } from './util/compare'
 
 /** Will be bound in ./util/compare.ts */
 export interface Selector<T extends SelectorValue = SelectorValue> extends Node<T> {
+  get value(): SelectorValue['value']
+  set value(v: SelectorValue['value'])
   compare(other: Node): 0 | 1 | -1 | undefined
 }
 

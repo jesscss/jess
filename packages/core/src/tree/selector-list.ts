@@ -3,12 +3,18 @@ import {
   defineType
 } from './node'
 import { type Context } from '../context'
-import { Selector } from './selector'
+import { type Selector } from './selector'
+import { List } from './list'
+
+export interface SelectorList<T extends Selector = Selector> extends List<T> {
+  get value(): T[]
+  set value(v: T[])
+}
 
 /** Constructs */
 export class SelectorList<
   T extends Selector = Selector
-> extends Selector<T[]> {
+> extends List<T> {
   /** @todo - put in whitespace and line breaks */
   toTrimmedString(depth: number = 0) {
     let space = ''.padStart(depth * 2)

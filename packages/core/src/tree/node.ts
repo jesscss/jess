@@ -25,6 +25,10 @@ type AllNodeOptions = {
   semi?: boolean
 }
 
+export const ABORT: unique symbol = Symbol('ABORT')
+export const REMOVE: unique symbol = Symbol('REMOVE')
+export type NodeVisitReturn = void | Node | symbol
+export type NodeVisitFunction = (n: Node) => NodeVisitReturn
 export type NodeOptions = Record<string, boolean | string | number> & AllNodeOptions
 export type NodeValue = unknown
 export type NodeMap = Map<string, NodeValue>
@@ -299,29 +303,57 @@ export abstract class Node<
     })
   }
 
+  /** Mutate nodes in place, used in walkNodes */
+  private _processValueArray(arr: any[], fn: NodeVisitFunction, shallow?: boolean) {
+    const length = arr.length
+    for (let i = 0; i < length; i++) {
+      let node = arr[i]
+      if (node instanceof Node) {
+        let returnVal = fn(node)
+        if (returnVal === ABORT) {
+          return ABORT
+        } else if (returnVal === REMOVE) {
+          arr.splice(i, 1)
+          i--
+        } else if (returnVal instanceof Node && returnVal !== node) {
+          arr[i] = returnVal
+        }
+        if (!shallow) {
+          node.walkNodes(fn)
+        }
+      }
+    }
+  }
+
   /**
-   * Fire a function for each Node in the tree, recursively
+   * Fire a function for each Node in the tree, recursively.
+   * This method can optionally mutate the tree in place,
+   * if the callback function returns a Node.
+   *
+   * @note
+   * A Node return value is intended to be a mutation.
+   * A return value of `false` (ABORT) means to abort the walk.
+   * A return value of `null` (REMOVE) means to remove the current node.
    */
-  walkNodes(func: (n: Node) => void | false, shallow?: boolean) {
-    for (const nodeVal of this.data.values()) {
+  walkNodes(func: NodeVisitFunction, shallow?: boolean, visitPrePost?: boolean) {
+    if (visitPrePost) {
+      let { pre, post } = this
+      isArray(pre) && this._processValueArray(pre, func, true)
+      isArray(post) && this._processValueArray(post, func, true)
+    }
+    for (const [key, nodeVal] of this.data.entries()) {
       /** Process Node arrays only */
       if (isArray(nodeVal)) {
-        for (let i = 0; i < nodeVal.length; i++) {
-          let node = nodeVal[i]
-          if (node instanceof Node) {
-            let returnVal = func(node)
-            if (returnVal === false) {
-              return
-            }
-            if (!shallow) {
-              node.walkNodes(func)
-            }
-          }
-        }
+        return this._processValueArray(nodeVal, func, shallow)
       } else if (nodeVal instanceof Node) {
         let returnVal = func(nodeVal)
-        if (returnVal === false) {
-          return
+        if (returnVal === ABORT) {
+          return ABORT
+        } else if (returnVal === REMOVE) {
+          /** @note It's up to the author to make sure this key can be set to unddefined! */
+          this.data.set(key, undefined as M[typeof key])
+        } else if (returnVal instanceof Node && returnVal !== nodeVal) {
+          this.data.set(key, returnVal as M[typeof key])
         }
         if (!shallow) {
           nodeVal.walkNodes(func)

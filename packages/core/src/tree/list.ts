@@ -64,7 +64,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   }
 
   /** @todo? Lists should collapse nested lists? */
-  async eval(context: Context) {
+  async eval(context: Context): Promise<List<T> | T> {
     return await (super.eval(context) as Promise<List<T>>)
   }
 

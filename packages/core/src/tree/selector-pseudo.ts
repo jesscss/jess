@@ -25,6 +25,11 @@ export type PseudoSelectorValue = {
 
 const { isArray } = Array
 
+export interface PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorValue> extends Selector<T> {
+  get value(): string
+  set value(v: string)
+}
+
 /**
  * A pseudo selector
  * @see https://developer.mozilla.org/en-US/docs/Learn/CSS/Building_blocks/Selectors/Pseudo-classes_and_pseudo-elements
