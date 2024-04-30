@@ -100,7 +100,7 @@ export class Container {
   static referencedContainers: Container[] = []
 
   constructor(
-    public selector?: tree.SimpleSelector,
+    public selector: tree.SimpleSelector,
     public containers: Container[] = []
   ) {}
 
@@ -117,10 +117,10 @@ export class Container {
       if (referencedContainers.length) {
         Container.referencedContainers = []
       }
-      return this.selector!
+      return this.selector
     }
     referencedContainers.push(this)
-    return [this.selector!, ...containers.flatMap(c => c.toSelectors())]
+    return [this.selector, ...containers.flatMap(c => c.toSelectors())]
   }
 }
 
@@ -251,7 +251,7 @@ export class ExtendScope {
     const register = (key: string) => {
       let get = this.partialSimpleMap.get(key) as Container
       if (!get) {
-        get = new Container()
+        get = new Container(target)
         // @ts-expect-error Fix later
         get.selector = target
         this.partialSimpleMap.set(key, get)

@@ -65,3 +65,46 @@ sets
   - B: .b > {A}
   - C: .e {A}
   - D: .g{.a, .c. .f}
+
+
+
+Notes 29 Apr, 2024
+----
+What if sets were tuples of
+not classes but sets
+
+.a:is(.b > .c):is(.e .f).d .q {}
+.g:extend(.b > .d .q) {}
+
+1. Search .q
+   a. Find .q,' ',.d,>,.b
+   b. Match .q
+   c. Match ' '
+   d. Match .d.f.c.a
+   e. Match .d.f.c.a --> parent is compound 1
+   f. Match > --> parent is compound 2
+   g. Match .b
+   h. We've crossed an :is() boundary, so let's absorb the whole :is() with all :is() expressions:
+        :is(.b > .c.a.f.d .q):is(.e .c.a.f.d .q) 
+          We should have kept track of the matching :is(), so let's do the extend
+        :is(.b > .c.a.f.d .q, .g):is(.e .c.a.f.d .q)
+          So... technically, we could match .g.q, but fuck that...
+
+2. We never finished...
+
+  3. Search .d
+  4. Search .f
+  5. Search .c
+  6. Search .a
+
+
+paths: [
+  :is([.b, >, .c.a.f.d .q]),
+  :is([.e, ' ', .c.a.f.d .q])
+]
+
+.g:extend(.b > .d !all) {}
+
+Map {
+  .b -> { selector: sel([.b, >, .d]) }
+}
