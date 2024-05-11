@@ -9,6 +9,11 @@ import type { SimpleSelector } from './selector-simple'
 
 export type CompoundSelectorValue = [SimpleSelector, SimpleSelector, ...SimpleSelector[]]
 
+export interface CompoundSelector extends Selector<{ value: CompoundSelectorValue }> {
+  get value(): CompoundSelectorValue
+  set value(v: CompoundSelectorValue)
+}
+
 /**
  * @example
  * .class#id

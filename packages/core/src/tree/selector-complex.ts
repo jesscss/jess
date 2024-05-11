@@ -17,6 +17,11 @@ import type { CompoundSelector } from './selector-compound'
 export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand
 // type SelectorValue = Component[]
 type ComplexSelectorValue = ComplexSelectorComponent[]
+
+export interface ComplexSelector extends Selector<{ value: ComplexSelectorValue }> {
+  get value(): ComplexSelectorValue
+  set value(v: ComplexSelectorValue)
+}
 /**
  * Selectors with combinators.
  *

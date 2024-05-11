@@ -6,15 +6,13 @@ import { type Context } from '../context'
 import { type Selector } from './selector'
 import { List } from './list'
 
-export interface SelectorList<T extends Selector = Selector> extends List<T> {
-  get value(): T[]
-  set value(v: T[])
-}
+// export interface SelectorList extends List<Selector> {
+//   get value(): []
+//   set value(v: T[])
+// }
 
 /** Constructs */
-export class SelectorList<
-  T extends Selector = Selector
-> extends List<T> {
+export class SelectorList extends List<Selector> {
   /** @todo - put in whitespace and line breaks */
   toTrimmedString(depth: number = 0) {
     let space = ''.padStart(depth * 2)
@@ -25,9 +23,9 @@ export class SelectorList<
     return `[${this.value.map(v => v.valueOf()).sort().join(',')}]`
   }
 
-  async eval(context: Context): Promise<SelectorList<T> | T> {
-    return await this.evalIfNot<SelectorList<T> | T>(context, async () => {
-      const list = await (super.eval(context) as Promise<SelectorList<T>>)
+  async eval(context: Context): Promise<SelectorList | Selector> {
+    return await this.evalIfNot<SelectorList | Selector>(context, async () => {
+      const list = await (super.eval(context) as Promise<SelectorList>)
       const { value } = list
       if (value.length === 1) {
         return value[0]!

@@ -6,8 +6,8 @@ import { SelectorList } from '../selector-list'
 import { ComplexSelector } from '../selector-complex'
 import { CompoundSelector, type CompoundSelectorValue } from '../selector-compound'
 import { PseudoSelector } from '../selector-pseudo'
-import { PseudoFunction } from '../selector-pseudofn'
 import { BasicSelector } from '../selector-basic'
+import { TreeNode } from '../tree'
 
 export function combineKeys(
   a: Set<string> | string,
@@ -87,5 +87,44 @@ export function normalize(selector: Selector | SelectorList) {
 
       }
     }
+  }
+}
+
+function getTreeNodes(sel: Selector | Combinator): TreeNode[] {
+  if (sel instanceof PseudoSelector && sel.value === ':is') {
+    let value = sel.arg as Selector
+    if (value instanceof SelectorList) {
+      return value.value.map(getTreeNodes).flat(1)
+    } else {
+      return getTreeNodes(value)
+    }
+  }
+}
+
+export function getPaths(sel: Selector): ComplexSelector[] {
+  if (sel instanceof CompoundSelector) {
+    let { value } = sel
+    let length = value.length
+    let children: TreeNode[] = []
+    /** Iterate back to front */
+    for (let i = length - 1; i >= 0; i--) {
+      let node = value[i]!
+      children.push(...getTreeNodes(node))
+    }
+    const tree = new TreeNode(sel, children)
+    /** Wrap each one in a compound */
+    return tree.getPaths().map(path => new ComplexSelector([new CompoundSelector(path)]))
+  } else if (sel instanceof ComplexSelector) {
+    let { value } = sel
+    let length = value.length
+    let children: TreeNode[] = []
+    /** Iterate back to front */
+    for (let i = length - 1; i >= 0; i--) {
+      let node = value[i]!
+      children.push(...getTreeNodes(node))
+    }
+    const tree = new TreeNode(sel, children)
+    /** Each path is a complex */
+    return tree.getPaths().map(path => new ComplexSelector(path))
   }
 }

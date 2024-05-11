@@ -1,5 +1,6 @@
 import { Node } from './node'
-import { compare } from './util/compare'
+import type { ComplexSelector } from './selector-complex'
+import { compare, isNode } from './util'
 
 /** Will be bound in ./util/compare.ts */
 export interface Selector<T extends SelectorValue = SelectorValue> extends Node<T> {
@@ -24,6 +25,7 @@ export abstract class Selector<T extends SelectorValue = SelectorValue> extends 
   protected _value: string
   protected _keys: Keys
   protected _keySet: Set<string>
+  protected _paths: ComplexSelector[]
 
   extended: boolean = false
 
@@ -59,6 +61,11 @@ export abstract class Selector<T extends SelectorValue = SelectorValue> extends 
       })
     }
     return keySet
+  }
+
+  /** Normalization to lists of complex selectors for searching / matching */
+  getPaths(): ComplexSelector[] {
+
   }
 
   normalize(): Selector {
