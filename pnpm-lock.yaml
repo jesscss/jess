@@ -120,6 +120,9 @@ importers:
       combinate:
         specifier: ^1.1.11
         version: 1.1.11
+      data-structure-typed:
+        specifier: ~1.52.0
+        version: 1.52.0
       lodash-es:
         specifier: ^4.17.21
         version: 4.17.21
@@ -5683,6 +5686,10 @@ packages:
 
   /csstype@3.1.2:
     resolution: {integrity: sha512-I7K1Uu0MBPzaFKg4nI5Q7Vs2t+3gWWW648spaF+Rg7pI9ds18Ugn+lvg4SHczUdKlHI5LWBXyqfS8+DufyBsgQ==}
+    dev: false
+
+  /data-structure-typed@1.52.0:
+    resolution: {integrity: sha512-jJhARI44PxwvSIHaTl0FyzrlmJodInT+RiVCSZ1l9WqzENQNrupnzCukmmp7OW1/TQE2d17mQvbdrno/ohFn9Q==}
     dev: false
 
   /data-view-buffer@1.0.1:

@@ -1,55 +1,58 @@
-import { TreeNode, CompoundTreeNode, ComplexTreeNode } from '../tree'
+import { SelectorTree } from '../tree'
 import { sellist, sel, compound, el, pseudo, co } from '..'
-import { getPaths, getTreeNode } from '../util/selector'
+import { getPaths, getSelectorFromTree, getTreeNode } from '../util/selector'
 
-describe('Tree', () => {
-  test.skip('get all tree paths', () => {
-    let tree = new TreeNode('.a', [
-      new TreeNode('.b', [
-        new TreeNode('.c', []),
-        new TreeNode('.d', [])
-      ]),
-      new TreeNode('.e', [
-        new TreeNode('.f', []),
-        new TreeNode('.g', [])
-      ])
-    ])
-    expect(tree.getPaths()).toEqual([
-      ['.a', '.b', '.c'],
-      ['.a', '.b', '.d'],
-      ['.a', '.e', '.f'],
-      ['.a', '.e', '.g']
-    ])
-  })
+describe('Selector tree', () => {
+  // test.skip('get all tree paths', () => {
+  //   let tree = new TreeNode('.a', [
+  //     new TreeNode('.b', [
+  //       new TreeNode('.c', []),
+  //       new TreeNode('.d', [])
+  //     ]),
+  //     new TreeNode('.e', [
+  //       new TreeNode('.f', []),
+  //       new TreeNode('.g', [])
+  //     ])
+  //   ])
+  //   expect(tree.getPaths()).toEqual([
+  //     ['.a', '.b', '.c'],
+  //     ['.a', '.b', '.d'],
+  //     ['.a', '.e', '.f'],
+  //     ['.a', '.e', '.g']
+  //   ])
+  // })
 
   describe('Tree nodes', () => {
     test('simple selector', () => {
       const sel1 = el('.a')
-      expect(getTreeNode(sel1)).toEqual(new TreeNode(sel1))
+      expect(getTreeNode(sel1)).toEqual(new SelectorTree(sel1))
+      expect(getSelectorFromTree(getTreeNode(sel1))).toEqual(sel1)
     })
 
     test('compound selector', () => {
       const sel1 = compound([el('.a'), el('.b'), el('.c')])
       expect(getTreeNode(sel1)).toEqual(
-        new CompoundTreeNode(sel1, [
-          new TreeNode(el('.a')),
-          new TreeNode(el('.b')),
-          new TreeNode(el('.c'))
-        ])
+        new SelectorTree(sel1, [
+          new SelectorTree(el('.a')),
+          new SelectorTree(el('.b')),
+          new SelectorTree(el('.c'))
+        ], 'compound')
       )
+      expect(getSelectorFromTree(getTreeNode(sel1))).toEqual(sel1)
     })
 
     test('complex selector', () => {
       const sel1 = sel([el('.a'), co('+'), el('.b')])
       expect(getTreeNode(sel1)).toEqual(
-        new ComplexTreeNode(sel1, [
-          new TreeNode(el('.b'), [
-            new TreeNode(co('+'), [
-              new TreeNode(el('.a'))
+        new SelectorTree(sel1, [
+          new SelectorTree(el('.b'), [
+            new SelectorTree(co('+'), [
+              new SelectorTree(el('.a'))
             ])
           ])
-        ])
+        ], 'complex')
       )
+      expect(getSelectorFromTree(getTreeNode(sel1))).toEqual(sel1)
     })
 
     test(':is selector', () => {
@@ -64,13 +67,14 @@ describe('Tree', () => {
         ]
       )
       expect(getTreeNode(sel1)).toEqual(
-        new CompoundTreeNode(sel1, [
-          new TreeNode(p, [
-            new TreeNode(el('.a'))
-          ]),
-          new TreeNode(el('.b'))
-        ])
+        new SelectorTree(sel1, [
+          new SelectorTree(p, [
+            new SelectorTree(el('.a'))
+          ], 'is'),
+          new SelectorTree(el('.b'))
+        ], 'compound')
       )
+      expect(getSelectorFromTree(getTreeNode(sel1))).toEqual(sel1)
     })
 
     test(':is selector w/ list', () => {
@@ -85,20 +89,21 @@ describe('Tree', () => {
         ]
       )
       expect(getTreeNode(p)).toEqual(
-        new TreeNode(p, [
-          new TreeNode(el('.a')),
-          new TreeNode(el('.b'))
-        ])
+        new SelectorTree(p, [
+          new SelectorTree(el('.a')),
+          new SelectorTree(el('.b'))
+        ], 'is')
       )
       expect(getTreeNode(sel1)).toEqual(
-        new CompoundTreeNode(sel1, [
-          new TreeNode(p, [
-            new TreeNode(el('.a')),
-            new TreeNode(el('.b'))
-          ]),
-          new TreeNode(el('.c'))
-        ])
+        new SelectorTree(sel1, [
+          new SelectorTree(p, [
+            new SelectorTree(el('.a')),
+            new SelectorTree(el('.b'))
+          ], 'is'),
+          new SelectorTree(el('.c'))
+        ], 'compound')
       )
+      expect(getSelectorFromTree(getTreeNode(sel1))).toEqual(sel1)
     })
 
     test(':is selector w/ compound', () => {
@@ -114,21 +119,91 @@ describe('Tree', () => {
         ]
       )
       expect(getTreeNode(sel1)).toEqual(
-        new CompoundTreeNode(sel1, [
-          new TreeNode(p, [
-            new CompoundTreeNode(innerCompound, [
-              new TreeNode(el('.a')),
-              new TreeNode(el('.b'))
-            ])
-          ]),
-          new TreeNode(el('.c'))
-        ])
+        new SelectorTree(sel1, [
+          new SelectorTree(p, [
+            new SelectorTree(innerCompound, [
+              new SelectorTree(el('.a')),
+              new SelectorTree(el('.b'))
+            ], 'compound')
+          ], 'is'),
+          new SelectorTree(el('.c'))
+        ], 'compound')
       )
+      expect(getSelectorFromTree(getTreeNode(sel1))).toEqual(sel1)
+    })
+  })
+
+  describe('Find tree within tree', () => {
+    test('match simple within simple', () => {
+      const needle = getTreeNode(el('.a'))
+      const haystack = getTreeNode(el('.a'))
+      const result = haystack.find(needle)
+      expect(result.matchEnd).toBe(haystack)
     })
 
-    test('turn a compound into complex paths', () => {
-      const sel1 = compound([el('.a'), el('.b'), el('.c')])
-      expect(getPaths(sel1)).toEqual([sel([sel1])])
+    test('does not match simple within simple', () => {
+      const needle = getTreeNode(el('.b'))
+      const haystack = getTreeNode(el('.a'))
+      const result = haystack.find(needle)
+      expect(result.matchEnd).toBeUndefined()
+    })
+
+    test('match simple within compound', () => {
+      const needle = getTreeNode(el('.a'))
+      const haystack = getTreeNode(compound([el('.a'), el('.b')]))
+      const result = haystack.find(needle)
+      expect(result.matchEnd).toBe(haystack)
+    })
+
+    test('does not match simple within compound', () => {
+      const needle = getTreeNode(el('.c'))
+      const haystack = getTreeNode(compound([el('.a'), el('.b')]))
+      const result = haystack.find(needle)
+      expect(result.matchEnd).toBeUndefined()
+    })
+
+    test('match compound within compound', () => {
+      const needle = getTreeNode(compound([el('.a'), el('.b')]))
+      const haystack = getTreeNode(compound([el('.a'), el('.b')]))
+      const result = haystack.find(needle)
+      expect(result.matchEnd).toBe(haystack)
+    })
+
+    test('does match compound within compound', () => {
+      const needle = getTreeNode(compound([el('.a'), el('.b'), el('.c')]))
+      const haystack = getTreeNode(compound([el('.a'), el('.b')]))
+      const result = haystack.find(needle)
+      expect(result.matchEnd).toBeUndefined()
+    })
+
+    test('match simple within :is()', () => {
+      const needle = getTreeNode(el('.a'))
+      const haystack = getTreeNode(pseudo([
+        ['value', ':is'],
+        ['arg', el('.a')]
+      ]))
+      const result = haystack.find(needle)
+      expect(result.matchEnd).toBe(haystack)
+    })
+
+    test('match simple within compound within :is()', () => {
+      const needle = getTreeNode(el('.a'))
+      const haystack = getTreeNode(pseudo([
+        ['value', ':is'],
+        ['arg', compound([el('.a'), el('.b')])]
+      ]))
+      const result = haystack.find(needle)
+      expect(result.matchEnd).toBe(haystack.children.first)
+    })
+
+    test('does not match simple within :is()', () => {
+      const needle = getTreeNode(el('.a'))
+      const haystack = getTreeNode(pseudo([
+        ['value', ':is'],
+        ['arg', el('.b')]
+      ]))
+      const result = haystack.find(needle)
+      expect(result.matchEnd).toBeUndefined()
     })
   })
 })

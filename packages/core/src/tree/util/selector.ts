@@ -3,11 +3,11 @@ import { SimpleSelector } from '../selector-simple'
 import { Ampersand } from '../ampersand'
 import { Combinator } from '../combinator'
 import { SelectorList } from '../selector-list'
-import { ComplexSelector } from '../selector-complex'
+import { ComplexSelector, type ComplexSelectorValue } from '../selector-complex'
 import { CompoundSelector, type CompoundSelectorValue } from '../selector-compound'
 import { PseudoSelector } from '../selector-pseudo'
 import { BasicSelector } from '../selector-basic'
-import { TreeNode, ComplexTreeNode, CompoundTreeNode } from '../tree'
+import { SelectorTree } from '../tree'
 
 export function combineKeys(
   a: Set<string> | string,
@@ -90,17 +90,17 @@ export function normalize(selector: Selector | SelectorList) {
   }
 }
 
-export function getTreeNode(sel: Selector | Combinator): TreeNode {
+export function getTreeNode(sel: Selector | Combinator): SelectorTree {
   if (sel instanceof PseudoSelector && sel.value === ':is') {
     let value = sel.arg as Selector
     if (value instanceof SelectorList) {
       const list = value.value.map(getTreeNode)
-      return new TreeNode(sel, list)
+      return new SelectorTree(sel, list, 'is')
     } else {
-      return new TreeNode(sel, [getTreeNode(value)])
+      return new SelectorTree(sel, [getTreeNode(value)], 'is')
     }
   } else if (sel instanceof CompoundSelector) {
-    return new CompoundTreeNode(sel, sel.value.map(getTreeNode).flat(1))
+    return new SelectorTree(sel, sel.value.map(getTreeNode).flat(1), 'compound')
   } else if (sel instanceof ComplexSelector) {
     let { value } = sel
     let length = value.length
@@ -109,15 +109,41 @@ export function getTreeNode(sel: Selector | Combinator): TreeNode {
     for (let i = length - 2; i >= 0; i--) {
       let node = value[i]!
       let childrenTree = getTreeNode(node)
-      currentTree.children = [childrenTree]
+      currentTree.children.push(childrenTree)
       currentTree = childrenTree
     }
-    return new ComplexTreeNode(sel, [tree])
+    return new SelectorTree(sel, [tree], 'complex')
   }
-  return new TreeNode(sel)
+  return new SelectorTree(sel)
 }
 
-export function getPaths(sel: Selector) {
-  const tree = getTreeNode(sel)
-  return tree.getPaths()
+export function getSelectorFromTree(tree: SelectorTree): Selector | Combinator {
+  let { type, value, children } = tree
+
+  switch (type) {
+    case 'compound': {
+      return (
+        new CompoundSelector([...tree.children].map(getSelectorFromTree) as CompoundSelectorValue)
+      ).inherit(value)
+    }
+    case 'complex': {
+      let current = children
+      let nodes = []
+      while (current.size) {
+        let branch = current.first!
+        nodes.unshift(getSelectorFromTree(branch))
+        current = branch.children
+      }
+      return new ComplexSelector(nodes as ComplexSelectorValue).inherit(value)
+    }
+    case 'is': {
+      const selectorsFromTree = children.toArray().map(getSelectorFromTree)
+      return new PseudoSelector([
+        ['value', ':is'],
+        ['arg', selectorsFromTree.length === 1 ? selectorsFromTree[0] : new SelectorList(selectorsFromTree as Selector[])]
+      ]).inherit(value)
+    }
+    default:
+      return value
+  }
 }
