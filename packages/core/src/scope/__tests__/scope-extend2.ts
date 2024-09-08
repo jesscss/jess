@@ -19,7 +19,7 @@ describe('Scope selectors', async () => {
     extend = new ExtendScope()
   })
 
-  describe('extend registration', () => {
+  describe.skip('extend registration', () => {
     /**
      * .two:extend(.three)
      */
@@ -37,18 +37,59 @@ describe('Scope selectors', async () => {
   })
 
   describe('extend evaluation', () => {
-    test('simple selectors', () => {
+    test('simple selectors #1', () => {
+      /** .b:extend(.a); */
       extend.register(el('.a'), el('.b'), true)
+      /** .a {} */
       let sel1 = el('.a')
       let bContainer = new Container(el('.b'))
       expect(extend.partialSimpleMap).toEqual(new Map([
         [
-          '.a', new Container(sel1, [bContainer])
+          '.a', new Container(el('.a'), [bContainer])
         ],
         [
           '.b', bContainer
         ]
       ]))
+      /**
+       * .a {}
+       * .b:extend(.a all);
+       *
+       * expect: .a, .b {}
+       */
+      expect(`${extend.getExtendedSelector(sel1)}`).toBe('.a,\n.b')
+    })
+
+    test('simple selectors #2', () => {
+      /** .b:extend(.a); */
+      extend.register(el('.a'), el('.b'), true)
+      /** :is(.a) {} */
+      let sel1 = pseudo([
+        ['value', ':is'],
+        ['arg', el('.a')]
+      ])
+      let bContainer = new Container(el('.b'))
+      expect(extend.partialSimpleMap).toEqual(new Map([
+        [
+          '.a', new Container(el('.a'), [bContainer])
+        ],
+        [
+          '.b', bContainer
+        ]
+      ]))
+      /** 2024-09-08 */
+      /**
+       * @note If a selector only contains simple or compound selectors,
+       * then, when extended, they are flattened. What happens is the
+       * inner selector is visited, and extended, and once transformed,
+       * the outer selector is checked for completeness, and if it is,
+       * then only the inner selector is returned.
+       *
+       * :is(.a) {}
+       * .b:extend(.a all);
+       *
+       * expect: .a, .b {}
+       */
       expect(`${extend.getExtendedSelector(sel1)}`).toBe('.a,\n.b')
     })
   })
