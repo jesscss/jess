@@ -11,25 +11,42 @@ const { isArray } = Array
  * Visits inputs, and only extends simple selectors
  */
 class ExtendSimpleVisitor extends TreeVisitor {
-  private _list: tree.Selector[]
+  private readonly _lists: Array<{
+    selectors: tree.Selector[]
+    parent: tree.Node | undefined
+  }> = []
+
   selectorMap = new Map<string, Container>()
-  listParent: tree.Node | undefined
+
+  get _list() {
+    return this._lists[0]!.selectors
+  }
+
+  get listParent() {
+    return this._lists[0]!.parent
+  }
 
   enter(startNode: tree.Selector | tree.SelectorList) {
-    this._list = startNode instanceof SelectorList ? startNode.value : [startNode]
+    this._lists.unshift({
+      selectors: startNode instanceof SelectorList ? startNode.value : [startNode],
+      parent: undefined
+    })
   }
 
   exit() {
     if (this.startNode instanceof SelectorList) {
+      this._lists.length = 0
       /** We're good, this was modified in place */
       return
     }
     if (this._list.length) {
+      const list = this._list
+      this._lists.length = 0
       /**
        * We started out with a single selector, but now we have a list, so
        * let's return a selector list.
        */
-      return new SelectorList(this._list).inherit(this.startNode!)
+      return new SelectorList(list).inherit(this.startNode!)
     }
   }
 
@@ -45,7 +62,7 @@ class ExtendSimpleVisitor extends TreeVisitor {
   private _simpleSelector(n: tree.SimpleSelector) {
     const selectors = this._getSimpleSelectors(n)
     if (isArray(selectors)) {
-      if (this.startNode === (this.listParent ?? n)) {
+      if (!this.listParent || this.listParent === n) {
         /**
          * This simple selector consumes the entire selector
          * in part of a selector list, OR was the entire
@@ -63,16 +80,19 @@ class ExtendSimpleVisitor extends TreeVisitor {
   }
 
   selectorList(n: tree.SelectorList) {
-    this.listParent = n
+    this._lists.unshift({
+      selectors: n.value,
+      parent: n
+    })
   }
 
-  complexSelector(n: tree.ComplexSelector) {
-    this.listParent = n
-  }
+  // complexSelector(n: tree.ComplexSelector) {
+  //   this.listParent = n
+  // }
 
-  compoundSelector(n: tree.CompoundSelector) {
-    this.listParent = n
-  }
+  // compoundSelector(n: tree.CompoundSelector) {
+  //   this.listParent = n
+  // }
 
   basicSelector(n: tree.BasicSelector) {
     return this._simpleSelector(n)
@@ -84,7 +104,12 @@ class ExtendSimpleVisitor extends TreeVisitor {
 
   pseudoSelector(n: tree.PseudoSelector) {
     if (n.arg && n.arg instanceof Selector) {
+      this._lists.unshift({
+        selectors: [],
+        parent: n.arg
+      })
       let returnVal = this.visit(n.arg)
+      this._lists.shift()
       if (returnVal) {
         n.arg = returnVal
         return n
@@ -505,6 +530,7 @@ export class ExtendScope {
     input = this._applySimple(input)
 
     /** We should do partials first */
+    // input = this._applyPartial(input)
 
     /** Then do completes */
     if (this._completeMap && this._completeMap.size !== 0) {

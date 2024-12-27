@@ -8,6 +8,7 @@ import { CompoundSelector, type CompoundSelectorValue } from '../selector-compou
 import { PseudoSelector } from '../selector-pseudo'
 import { BasicSelector } from '../selector-basic'
 import { SelectorTree } from '../tree'
+import { ABORT } from '../node'
 
 export function combineKeys(
   a: Set<string> | string,
@@ -29,18 +30,34 @@ export function combineKeys(
   }
 }
 
+function _hasUnevaldAmpersand(sel: Selector) {
+  let match = false
+  sel.walkNodes(node => {
+    if (node instanceof Ampersand && !node.value) {
+      match = true
+      return ABORT
+    }
+  })
+  return match
+}
+
+export function hasUnevaldAmpersand(sel: Selector | SelectorList) {
+  if (sel instanceof SelectorList) {
+    return sel.value.some(_hasUnevaldAmpersand)
+  }
+  return _hasUnevaldAmpersand(sel)
+}
+
+/** Selector starts with a combinator */
 function _isRelative(sel: Selector) {
   let match = false
   sel.walkNodes(node => {
-  /** Stop at the first simple selector or combinator */
+    /** Stop at the first simple selector or combinator */
     if (node instanceof SimpleSelector) {
-      if (node instanceof Ampersand) {
-        match = true
-      }
-      return false
+      return ABORT
     } else if (node instanceof Combinator) {
       match = true
-      return false
+      return ABORT
     }
   })
   return match
@@ -48,7 +65,7 @@ function _isRelative(sel: Selector) {
 
 export function isRelative(sel: Selector | SelectorList) {
   if (sel instanceof SelectorList) {
-    return sel.value.some(_isRelative)
+    return sel.value.every(_isRelative)
   }
   return _isRelative(sel)
 }

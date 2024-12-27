@@ -37,7 +37,7 @@ describe('Scope selectors', async () => {
   })
 
   describe('extend evaluation', () => {
-    test('simple selectors #1', () => {
+    test('simple selectors', () => {
       /** .b:extend(.a); */
       extend.register(el('.a'), el('.b'), true)
       /** .a {} */
@@ -60,7 +60,7 @@ describe('Scope selectors', async () => {
       expect(`${extend.getExtendedSelector(sel1)}`).toBe('.a,\n.b')
     })
 
-    test('simple selectors #2', () => {
+    test('simple selectors with :is() match', () => {
       /** .b:extend(.a); */
       extend.register(el('.a'), el('.b'), true)
       /** :is(.a) {} */
@@ -68,19 +68,13 @@ describe('Scope selectors', async () => {
         ['value', ':is'],
         ['arg', el('.a')]
       ])
-      let bContainer = new Container(el('.b'))
-      expect(extend.partialSimpleMap).toEqual(new Map([
-        [
-          '.a', new Container(el('.a'), [bContainer])
-        ],
-        [
-          '.b', bContainer
-        ]
-      ]))
       /** 2024-09-08 */
       /**
        * @note If a selector only contains simple or compound selectors,
-       * then, when extended, they are flattened. What happens is the
+       * then, when extended, they are flattened before being added to the
+       * extend list.
+       *
+       * What happens is the
        * inner selector is visited, and extended, and once transformed,
        * the outer selector is checked for completeness, and if it is,
        * then only the inner selector is returned.
@@ -88,9 +82,50 @@ describe('Scope selectors', async () => {
        * :is(.a) {}
        * .b:extend(.a all);
        *
+       * expect: :is(.a), .b {}
+       */
+      /**
+       * @note Make sure even if we match, we don't alter original selector
+       * if we don't have to.
+       */
+      expect(`${extend.getExtendedSelector(sel1)}`).toBe(':is(.a),\n.b')
+    })
+
+    test.only('inner :is() match', () => {
+      /** .b:extend(.a); */
+      extend.register(el('.a'), el('.b'), true)
+      /** :is(.a) {} */
+      let sel1 = pseudo([
+        ['value', ':is'],
+        ['arg', sellist([el('.a'), el('.c')])]
+      ])
+      /**
+       * :is(.a, .c) {}
+       * .b:extend(.a all);
+       *
+       * expect: :is(.a, .c, .b) {}
+       */
+      expect(`${extend.getExtendedSelector(sel1)}`).toBe(':is(.a, .c, .b)')
+    })
+
+    test.skip('compound selector', () => {
+      /** .b:extend(.a); */
+      extend.register(el('.a'), el('.b'), true)
+      /** :is(.a).c {} */
+      let sel1 = compound([
+        pseudo([
+          ['value', ':is'],
+          ['arg', el('.a')]
+        ]),
+        el('.c')
+      ])
+      /**
+       * .a {}
+       * .b:extend(.a all);
+       *
        * expect: .a, .b {}
        */
-      expect(`${extend.getExtendedSelector(sel1)}`).toBe('.a,\n.b')
+      expect(`${extend.getExtendedSelector(sel1)}`).toBe(':is(.a).c,\n.b.c')
     })
   })
 

@@ -9,7 +9,7 @@ import {
 // import { SimpleSelector } from './selector-simple'
 import { type Context } from '../context'
 import { Selector } from './selector'
-import { isNode, isRelative } from './util'
+import { isNode } from './util'
 // import { BasicSelector } from './selector-basic'
 // import { type Class, type TupleToUnion } from 'type-fest'
 
@@ -52,49 +52,43 @@ export class PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorValue>
   get keys() {
     let keys = this._keys
     if (!keys) {
-      let { value, arg } = this
-      if (arg && arg instanceof Selector) {
-        if (value === ':is') {
+      let { arg } = this
+      if (arg && (arg instanceof Selector || isNode(arg, 'SelectorList'))) {
+        if (isNode(arg, 'SelectorList')) {
           /**
-           * @todo - Remove, we should be able to use relative
-           * selectors just like we can extend other `&` selectors.
+           * If an :is starts with an ampersand with no eval'd selector,
+           * it's relative, and can't be flattened.
+           *
+           * @note As far as I can tell, starting with a combinator
+           * is allowed / legal for :is() and :where() but won't
+           * actually apply to anything.
            */
-          if (isNode(arg, 'SelectorList')) {
-            if (
-              /**
-               * If an :is starts with an ampersand or combinator,
-               * it's relative, and can't be flattened.
-               */
-              !isRelative(arg)
-            ) {
-              /**
-               * Push the first selectors of the inner list to an array
-               * at the front of the return array.
-               */
-              const selKeys = arg.value.map(sel => {
-                const childKeys = sel.keys
-                return isArray(childKeys) ? childKeys.flat(Infinity) : [childKeys]
-              }) as string[][]
-              const returnKeys: [string[], ...string[]] = [[]]
-              selKeys.forEach(keys => {
-                const [first, ...rest] = keys
-                returnKeys[0].push(first!)
-                returnKeys.push(...rest)
-              })
-              keys = returnKeys
-            } else {
-              keys = this.valueOf()
-            }
-          } else if (!isRelative(arg)) {
-            keys = arg.keys
+          if (!relative) {
+            /**
+             * Push the first selectors of the inner list to an array
+             * at the front of the return array.
+             */
+            const selKeys = arg.value.map(sel => {
+              const childKeys = sel.keys
+              return isArray(childKeys) ? childKeys.flat(Infinity) : [childKeys]
+            }) as string[][]
+            const returnKeys: [string[], ...string[]] = [[]]
+            selKeys.forEach(keys => {
+              const [first, ...rest] = keys
+              returnKeys[0].push(first!)
+              returnKeys.push(...rest)
+            })
+            keys = returnKeys
           } else {
             keys = this.valueOf()
           }
-          Object.defineProperty(this, '_keys', { value: keys })
-          return keys
+        } else if (!relative) {
+          keys = arg.keys
         } else {
           keys = this.valueOf()
         }
+        Object.defineProperty(this, '_keys', { value: keys })
+        return keys
       } else {
         keys = this.valueOf()
       }
