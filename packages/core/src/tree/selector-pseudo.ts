@@ -46,7 +46,15 @@ export class PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorValue>
 
   toTrimmedString() {
     let { value, arg } = this
-    return `${value}${arg ? `(${arg})` : ''}`
+    let argString = ''
+    if (arg) {
+      if (isNode(arg, 'SelectorList')) {
+        argString = `(${arg.value.map(v => v.toString()).join(', ')})`
+      } else {
+        argString = `(${arg.toString()})`
+      }
+    }
+    return `${value}${argString}`
   }
 
   get keys() {
@@ -95,20 +103,12 @@ export class PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorValue>
     let valueOf = this._value
     if (!valueOf) {
       let { value, arg } = this
-      if (arg && arg instanceof Selector) {
-        if (value === ':is') {
-          valueOf = arg.valueOf()
-        } else {
-          valueOf = `${value}(${arg.valueOf()})`
-        }
-      } else {
-        /**
-         * Normalizes :nth-child(n + 1) to match :nth-child(n+1)
-         * That is, anything that doesn't hold a selector as a value
-         * is, by definition, not space-sensitive.
-         */
-        valueOf = `${value}${arg ? `(${arg.toTrimmedString().replace(/\s+/, '')})` : ''}`
-      }
+      /**
+       * Normalizes :nth-child(n + 1) to match :nth-child(n+1)
+       * That is, anything that doesn't hold a selector as a value
+       * is, by definition, not space-sensitive.
+       */
+      valueOf = `${value}${arg ? `(${arg.toTrimmedString().replace(/\s+/, '')})` : ''}`
       Object.defineProperty(this, '_value', { value: valueOf })
     }
     return valueOf

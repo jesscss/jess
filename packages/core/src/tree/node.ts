@@ -4,7 +4,7 @@ import {
   type Context,
   type TreeContext
 } from '../context'
-import type { Visitor, VisitorContext } from '../visitor'
+import type { Visitor } from '../visitor'
 import type { Comment } from './comment'
 import { type Operator } from './util/calculate'
 // import type { OutputCollector } from '../output'
@@ -28,7 +28,7 @@ type AllNodeOptions = {
 export const ABORT: unique symbol = Symbol('ABORT')
 export const REMOVE: unique symbol = Symbol('REMOVE')
 export type NodeVisitReturn = void | Node | symbol
-export type NodeVisitFunction = (n: Node, ctx?: VisitorContext) => NodeVisitReturn
+export type NodeVisitFunction = (n: Node) => NodeVisitReturn
 export type NodeOptions = Record<string, boolean | string | number> & AllNodeOptions
 export type NodeValue = unknown
 export type NodeMap = Map<string, NodeValue>
@@ -309,10 +309,7 @@ export abstract class Node<
     for (let i = 0; i < length; i++) {
       let node = arr[i]
       if (node instanceof Node) {
-        const ctx: VisitorContext = {
-          visitDeeper: !shallow
-        }
-        let returnVal = fn(node, ctx)
+        let returnVal = fn(node)
         if (returnVal === ABORT) {
           return ABORT
         } else if (returnVal === REMOVE) {
@@ -321,7 +318,7 @@ export abstract class Node<
         } else if (returnVal instanceof Node && returnVal !== node) {
           arr[i] = returnVal
         }
-        if (ctx.visitDeeper) {
+        if (!shallow) {
           node.walkNodes(fn)
         }
       }
@@ -345,14 +342,11 @@ export abstract class Node<
       isArray(post) && this._processValueArray(post, func, true)
     }
     for (const [key, nodeVal] of this.data.entries()) {
-      const ctx: VisitorContext = {
-        visitDeeper: !shallow
-      }
       /** Process Node arrays only */
       if (isArray(nodeVal)) {
         return this._processValueArray(nodeVal, func, shallow)
       } else if (nodeVal instanceof Node) {
-        let returnVal = func(nodeVal, ctx)
+        let returnVal = func(nodeVal)
         if (returnVal === ABORT) {
           return ABORT
         } else if (returnVal === REMOVE) {
@@ -361,7 +355,7 @@ export abstract class Node<
         } else if (returnVal instanceof Node && returnVal !== nodeVal) {
           this.data.set(key, returnVal as M[typeof key])
         }
-        if (ctx.visitDeeper) {
+        if (!shallow) {
           nodeVal.walkNodes(func)
         }
       }

@@ -2,8 +2,9 @@ import * as tree from '../tree'
 
 import { SelectorList } from '../tree/selector-list'
 import { Selector } from '../tree/selector'
-import { TreeVisitor } from '../visitor'
+import { TreeVisitor, type VisitorContext } from '../visitor'
 import { PseudoSelector } from '../tree/selector-pseudo'
+import type { NodeVisitReturn } from '../tree/node'
 
 const { isArray } = Array
 
@@ -31,6 +32,7 @@ class ExtendSimpleVisitor extends TreeVisitor {
       selectors: startNode instanceof SelectorList ? startNode.value : [startNode],
       parent: undefined
     })
+    super.enter(startNode)
   }
 
   exit() {
@@ -62,7 +64,7 @@ class ExtendSimpleVisitor extends TreeVisitor {
   private _simpleSelector(n: tree.SimpleSelector) {
     const selectors = this._getSimpleSelectors(n)
     if (isArray(selectors)) {
-      if (!this.listParent || this.listParent === n) {
+      if (!this.listParent || this.listParent.type === 'SelectorList') {
         /**
          * This simple selector consumes the entire selector
          * in part of a selector list, OR was the entire
@@ -73,8 +75,8 @@ class ExtendSimpleVisitor extends TreeVisitor {
       } else {
         return new PseudoSelector([
           ['value', ':is'],
-          ['arg', new SelectorList(selectors)]
-        ])
+          ['arg', new SelectorList([n, ...selectors])]
+        ]).inherit(n)
       }
     }
   }
@@ -86,17 +88,31 @@ class ExtendSimpleVisitor extends TreeVisitor {
     })
   }
 
+  complexSelector(n: tree.ComplexSelector) {
+    this._lists.unshift({
+      selectors: this._list,
+      parent: n
+    })
+  }
+
+  compoundSelector(n: tree.CompoundSelector) {
+    this._lists.unshift({
+      selectors: this._list,
+      parent: n
+    })
+  }
+
   selectorListExit() {
     this._lists.shift()
   }
 
-  // complexSelector(n: tree.ComplexSelector) {
-  //   this.listParent = n
-  // }
+  complexSelectorExit() {
+    this._lists.shift()
+  }
 
-  // compoundSelector(n: tree.CompoundSelector) {
-  //   this.listParent = n
-  // }
+  compoundSelectorExit(): void {
+    this._lists.shift()
+  }
 
   basicSelector(n: tree.BasicSelector) {
     return this._simpleSelector(n)
@@ -107,18 +123,18 @@ class ExtendSimpleVisitor extends TreeVisitor {
   }
 
   pseudoSelector(n: tree.PseudoSelector) {
-    if (n.arg && n.arg instanceof Selector) {
-      this._lists.unshift({
-        selectors: [],
-        parent: n.arg
-      })
-      let returnVal = this.visit(n.arg)
-      this._lists.shift()
-      if (returnVal) {
-        n.arg = returnVal
-        return n
-      }
-    }
+    // if (n.arg && (n.arg instanceof Selector || n.arg.type === 'SelectorList')) {
+    //   this._lists.unshift({
+    //     selectors: n.arg instanceof SelectorList ? n.arg.value : [n.arg] as tree.Selector[],
+    //     parent: undefined
+    //   })
+    //   let returnVal = this.visit(n.arg)
+    //   this._lists.shift()
+    //   if (returnVal) {
+    //     n.arg = returnVal
+    //     return n
+    //   }
+    // }
     return this._simpleSelector(n)
   }
 }

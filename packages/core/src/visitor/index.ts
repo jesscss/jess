@@ -2,7 +2,6 @@
 import {
   Node,
   type NodeOptions,
-  type NodeVisitFunction,
   type NodeVisitReturn,
   ABORT,
   REMOVE
@@ -140,7 +139,7 @@ export interface Visitor {
 }
 
 export abstract class Visitor {
-  private readonly _methodMap = new Map<string, NodeVisitFunction | false>()
+  private readonly _methodMap = new Map<string, ((n: Node, ctx?: VisitorContext) => VisitorReturn) | false>()
   /** Temporary state, set on first visit and later un-set when exiting */
   protected startNode: Node | undefined
 
@@ -161,15 +160,7 @@ export abstract class Visitor {
   protected _visit(n: Node, ctx?: VisitorContext): VisitorReturn {
     let fn = this.getMethod(n.type)
     if (fn) {
-      let returnVal = fn.call(this, n, ctx)
-      /**
-       * If we don't explicitly abort or remove,
-       * preserve the node.
-       */
-      if (returnVal !== ABORT && returnVal !== REMOVE) {
-        return n
-      }
-      return returnVal
+      return fn.call(this, n, ctx) ?? n
     }
     return n
   }
@@ -216,10 +207,19 @@ export abstract class Visitor {
  */
 export abstract class TreeVisitor extends Visitor {
   visitChildren: 'pre' | 'post' = 'post'
+  visitedNodes = new Set<Node>()
 
-  _visit(n: Node, ctx: VisitorContext = { visitDeeper: true }) {
-    if (ctx?.visitDeeper && this.visitChildren === 'pre') {
-      n.walkNodes((node, ctx) => this._visit(node, ctx), true)
+  enter(n: tree.Node) {
+    this.visitedNodes.clear()
+  }
+
+  _visit(n: Node, ctx: VisitorContext) {
+    if (this.visitedNodes.has(n)) {
+      return n
+    }
+    this.visitedNodes.add(n)
+    if (this.visitChildren === 'pre') {
+      n.walkNodes((node) => this._visit(node, ctx), true)
       const returnVal = super._visit(n, ctx)
       /** @node The exit function passes in the original node */
       this.visitExit(n, ctx)
@@ -230,9 +230,8 @@ export abstract class TreeVisitor extends Visitor {
       return returnVal
     }
 
-    if (ctx?.visitDeeper) {
-      returnVal.walkNodes((node, ctx) => this._visit(node, ctx), true)
-    }
+    returnVal.walkNodes((node) => this._visit(node, ctx), true)
+
     this.visitExit(n, ctx)
     return returnVal
   }
