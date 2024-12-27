@@ -91,7 +91,7 @@ describe('Scope selectors', async () => {
       expect(`${extend.getExtendedSelector(sel1)}`).toBe(':is(.a),\n.b')
     })
 
-    test.only('inner :is() match', () => {
+    test('inner :is() match', () => {
       /** .b:extend(.a); */
       extend.register(el('.a'), el('.b'), true)
       /** :is(.a) {} */

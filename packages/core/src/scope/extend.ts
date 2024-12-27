@@ -86,6 +86,10 @@ class ExtendSimpleVisitor extends TreeVisitor {
     })
   }
 
+  selectorListExit() {
+    this._lists.shift()
+  }
+
   // complexSelector(n: tree.ComplexSelector) {
   //   this.listParent = n
   // }

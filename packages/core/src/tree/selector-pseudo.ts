@@ -63,29 +63,23 @@ export class PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorValue>
            * is allowed / legal for :is() and :where() but won't
            * actually apply to anything.
            */
-          if (!relative) {
-            /**
-             * Push the first selectors of the inner list to an array
-             * at the front of the return array.
-             */
-            const selKeys = arg.value.map(sel => {
-              const childKeys = sel.keys
-              return isArray(childKeys) ? childKeys.flat(Infinity) : [childKeys]
-            }) as string[][]
-            const returnKeys: [string[], ...string[]] = [[]]
-            selKeys.forEach(keys => {
-              const [first, ...rest] = keys
-              returnKeys[0].push(first!)
-              returnKeys.push(...rest)
-            })
-            keys = returnKeys
-          } else {
-            keys = this.valueOf()
-          }
-        } else if (!relative) {
-          keys = arg.keys
+          /**
+           * Push the first selectors of the inner list to an array
+           * at the front of the return array.
+           */
+          const selKeys = arg.value.map(sel => {
+            const childKeys = sel.keys
+            return isArray(childKeys) ? childKeys.flat(Infinity) : [childKeys]
+          }) as string[][]
+          const returnKeys: [string[], ...string[]] = [[]]
+          selKeys.forEach(keys => {
+            const [first, ...rest] = keys
+            returnKeys[0].push(first!)
+            returnKeys.push(...rest)
+          })
+          keys = returnKeys
         } else {
-          keys = this.valueOf()
+          keys = arg.keys
         }
         Object.defineProperty(this, '_keys', { value: keys })
         return keys
