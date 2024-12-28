@@ -37,95 +37,134 @@ describe('Scope selectors', async () => {
   })
 
   describe('extend evaluation', () => {
-    test('simple selectors', () => {
-      /** .b:extend(.a); */
-      extend.register(el('.a'), el('.b'), true)
-      /** .a {} */
-      let sel1 = el('.a')
-      let bContainer = new Container(el('.b'))
-      expect(extend.partialSimpleMap).toEqual(new Map([
-        [
-          '.a', new Container(el('.a'), [bContainer])
-        ],
-        [
-          '.b', bContainer
-        ]
-      ]))
-      /**
-       * .a {}
-       * .b:extend(.a all);
-       *
-       * expect: .a, .b {}
-       */
-      expect(`${extend.getExtendedSelector(sel1)}`).toBe('.a,\n.b')
-    })
+    describe('partial simple extends', () => {
+      test('simple selectors', () => {
+        /** .b:extend(.a); */
+        extend.register(el('.a'), el('.b'), true)
+        /** .a {} */
+        let sel1 = el('.a')
+        let bContainer = new Container(el('.b'))
+        expect(extend.partialSimpleMap).toEqual(new Map([
+          [
+            '.a', new Container(el('.a'), [bContainer])
+          ],
+          [
+            '.b', bContainer
+          ]
+        ]))
+        /**
+         * .a {}
+         * .b:extend(.a all);
+         *
+         * expect: .a, .b {}
+         */
+        expect(`${extend.getExtendedSelector(sel1)}`).toBe('.a,\n.b')
+      })
 
-    test('simple selectors with :is() match', () => {
-      /** .b:extend(.a); */
-      extend.register(el('.a'), el('.b'), true)
-      /** :is(.a) {} */
-      let sel1 = pseudo([
-        ['value', ':is'],
-        ['arg', el('.a')]
-      ])
-      /** 2024-09-08 */
-      /**
-       * @note If a selector only contains simple or compound selectors,
-       * then, when extended, they are flattened before being added to the
-       * extend list.
-       *
-       * What happens is the
-       * inner selector is visited, and extended, and once transformed,
-       * the outer selector is checked for completeness, and if it is,
-       * then only the inner selector is returned.
-       *
-       * :is(.a) {}
-       * .b:extend(.a all);
-       *
-       * expect: :is(.a), .b {}
-       */
-      /**
-       * @note Make sure even if we match, we don't alter original selector
-       * if we don't have to.
-       */
-      expect(`${extend.getExtendedSelector(sel1)}`).toBe(':is(.a),\n.b')
-    })
+      test('multiple extends', () => {
+        /** .b:extend(.a); */
+        extend.register(el('.a'), el('.b'), true)
+        extend.register(el('.a'), el('.c'), true)
+        /** .a {} */
+        let sel1 = el('.a')
+        /**
+         * .a {}
+         * .b:extend(.a all);
+         * .c:extend(.a all);
+         */
+        expect(`${extend.getExtendedSelector(sel1)}`).toBe('.a,\n.b,\n.c')
+      })
 
-    test('inner :is() match', () => {
-      /** .b:extend(.a); */
-      extend.register(el('.a'), el('.b'), true)
-      /** :is(.a) {} */
-      let sel1 = pseudo([
-        ['value', ':is'],
-        ['arg', sellist([el('.a'), el('.c')])]
-      ])
-      /**
-       * :is(.a, .c) {}
-       * .b:extend(.a all);
-       *
-       * expect: :is(.a, .c, .b) {}
-       */
-      expect(`${extend.getExtendedSelector(sel1)}`).toBe(':is(.a, .c, .b)')
-    })
-
-    test.skip('compound selector', () => {
-      /** .b:extend(.a); */
-      extend.register(el('.a'), el('.b'), true)
-      /** :is(.a).c {} */
-      let sel1 = compound([
-        pseudo([
+      test('simple selectors with :is() match', () => {
+        /** .b:extend(.a); */
+        extend.register(el('.a'), el('.b'), true)
+        /** :is(.a) {} */
+        let sel1 = pseudo([
           ['value', ':is'],
           ['arg', el('.a')]
-        ]),
-        el('.c')
-      ])
-      /**
-       * .a {}
-       * .b:extend(.a all);
-       *
-       * expect: .a, .b {}
-       */
-      expect(`${extend.getExtendedSelector(sel1)}`).toBe(':is(.a).c,\n.b.c')
+        ])
+        expect(`${extend.getExtendedSelector(sel1)}`).toBe(':is(.a, .b)')
+      })
+
+      test('inner :is() match', () => {
+        /** .b:extend(.a); */
+        extend.register(el('.a'), el('.b'), true)
+        /** :is(.a) {} */
+        let sel1 = pseudo([
+          ['value', ':is'],
+          ['arg', sellist([el('.a'), el('.c')])]
+        ])
+        expect(`${extend.getExtendedSelector(sel1)}`).toBe(':is(.a, .c, .b)')
+      })
+
+      test('compound selector #1', () => {
+        /** .b:extend(.a); */
+        extend.register(el('.a'), el('.b'), true)
+        /** :is(.a).c {} */
+        let sel1 = compound([
+          pseudo([
+            ['value', ':is'],
+            ['arg', el('.a')]
+          ]),
+          el('.c')
+        ])
+        expect(`${extend.getExtendedSelector(sel1)}`).toBe(':is(.a, .b).c')
+      })
+
+      test('compound selector #2', () => {
+        /** .b:extend(.a); */
+        extend.register(el('.a'), el('.b'), true)
+        /** .a.c {} */
+        let sel1 = compound([
+          el('.a'),
+          el('.c')
+        ])
+        expect(`${extend.getExtendedSelector(sel1)}`).toBe(':is(.a, .b).c')
+      })
+
+      test('multiple compound selectors', () => {
+        /** .b:extend(.a); */
+        extend.register(el('.a'), el('.b'), true)
+        /** .d:extend(.c); */
+        extend.register(el('.c'), el('.d'), true)
+        /** .a.c.e {} */
+        let sel1 = compound([
+          el('.a'),
+          el('.c'),
+          el('.e')
+        ])
+        expect(`${extend.getExtendedSelector(sel1)}`).toBe(':is(.a, .b):is(.c, .d).e')
+      })
+
+      test('recursion prevention #1', () => {
+        /** .b:extend(.a); */
+        extend.register(el('.a'), el('.b'), true)
+        /** .a:extend(.b); */
+        extend.register(el('.b'), el('.a'), true)
+        let sel1 = compound([
+          el('.a'),
+          el('.b')
+        ])
+        expect(`${extend.getExtendedSelector(sel1)}`).toBe(':is(.a, .b):is(.b, .a)')
+      })
+
+      test('recursion prevention #2', () => {
+        /** Can't extend element with itself */
+        expect(() => extend.register(el('.a'), el('.a'), true)).toThrowError()
+      })
+
+      test('recursion prevention #3', () => {
+        /** .a:extend(.b); */
+        extend.register(el('.b'), el('.a'), true)
+        /** .b:extend(.c); */
+        extend.register(el('.c'), el('.b'), true)
+        /** .c:extend(.a); */
+        extend.register(el('.a'), el('.c'), true)
+
+        expect(`${extend.getExtendedSelector(el('.a'))}`).toBe('.a,\n.c,\n.b')
+        expect(`${extend.getExtendedSelector(el('.b'))}`).toBe('.b,\n.a,\n.c')
+        expect(`${extend.getExtendedSelector(el('.c'))}`).toBe('.c,\n.b,\n.a')
+      })
     })
   })
 

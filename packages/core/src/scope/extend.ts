@@ -1,10 +1,11 @@
-import * as tree from '../tree'
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import type * as tree from '../tree'
 
 import { SelectorList } from '../tree/selector-list'
 import { Selector } from '../tree/selector'
-import { TreeVisitor, type VisitorContext } from '../visitor'
+import { TreeVisitor } from '../visitor'
 import { PseudoSelector } from '../tree/selector-pseudo'
-import type { NodeVisitReturn } from '../tree/node'
+import { isNode } from '../tree/util'
 
 const { isArray } = Array
 
@@ -12,66 +13,49 @@ const { isArray } = Array
  * Visits inputs, and only extends simple selectors
  */
 class ExtendSimpleVisitor extends TreeVisitor {
-  private readonly _lists: Array<{
-    selectors: tree.Selector[]
-    parent: tree.Node | undefined
-  }> = []
+  /** List parents */
+  private readonly _parents: Array<tree.Node | undefined> = []
 
   selectorMap = new Map<string, Container>()
 
-  get _list() {
-    return this._lists[0]!.selectors
-  }
-
-  get listParent() {
-    return this._lists[0]!.parent
+  get _parent() {
+    return this._parents[0]!
   }
 
   enter(startNode: tree.Selector | tree.SelectorList) {
-    this._lists.unshift({
-      selectors: startNode instanceof SelectorList ? startNode.value : [startNode],
-      parent: undefined
-    })
+    this._parents.unshift(undefined)
     super.enter(startNode)
   }
 
   exit() {
-    if (this.startNode instanceof SelectorList) {
-      this._lists.length = 0
-      /** We're good, this was modified in place */
-      return
-    }
-    if (this._list.length) {
-      const list = this._list
-      this._lists.length = 0
-      /**
-       * We started out with a single selector, but now we have a list, so
-       * let's return a selector list.
-       */
-      return new SelectorList(list).inherit(this.startNode!)
-    }
+    this._parents.length = 0
   }
 
-  private _getSimpleSelectors(sel: tree.SimpleSelector): tree.SimpleSelector | tree.SimpleSelector[] {
+  private _getSimpleExtends(sel: tree.SimpleSelector): tree.SimpleSelector | tree.SimpleSelector[] {
     const { selectorMap } = this
     const match = selectorMap.get(sel.valueOf())
-    if (match?.containers.length) {
-      return match.containers.flatMap(c => c.toSelectors())
+    if (match) {
+      return match.toSelectors()
     }
     return sel
   }
 
   private _simpleSelector(n: tree.SimpleSelector) {
-    const selectors = this._getSimpleSelectors(n)
+    const selectors = this._getSimpleExtends(n)
     if (isArray(selectors)) {
-      if (!this.listParent || this.listParent.type === 'SelectorList') {
+      const { _parent } = this
+      /** First element should always be a match to current selector */
+      selectors.shift()
+      if (!_parent) {
         /**
          * This simple selector consumes the entire selector
          * in part of a selector list, OR was the entire
          * selector to begin with, so we can add to
          * the outer list.
          */
-        this._list.push(...selectors)
+        return new SelectorList([n, ...selectors]).inherit(n)
+      } else if (isNode(_parent, 'SelectorList')) {
+        _parent.value.push(...selectors)
       } else {
         return new PseudoSelector([
           ['value', ':is'],
@@ -82,36 +66,27 @@ class ExtendSimpleVisitor extends TreeVisitor {
   }
 
   selectorList(n: tree.SelectorList) {
-    this._lists.unshift({
-      selectors: n.value,
-      parent: n
-    })
+    this._parents.unshift(n)
   }
 
   complexSelector(n: tree.ComplexSelector) {
-    this._lists.unshift({
-      selectors: this._list,
-      parent: n
-    })
+    this._parents.unshift(n)
   }
 
   compoundSelector(n: tree.CompoundSelector) {
-    this._lists.unshift({
-      selectors: this._list,
-      parent: n
-    })
+    this._parents.unshift(n)
   }
 
   selectorListExit() {
-    this._lists.shift()
+    this._parents.shift()
   }
 
   complexSelectorExit() {
-    this._lists.shift()
+    this._parents.shift()
   }
 
   compoundSelectorExit(): void {
-    this._lists.shift()
+    this._parents.shift()
   }
 
   basicSelector(n: tree.BasicSelector) {
@@ -123,19 +98,16 @@ class ExtendSimpleVisitor extends TreeVisitor {
   }
 
   pseudoSelector(n: tree.PseudoSelector) {
-    // if (n.arg && (n.arg instanceof Selector || n.arg.type === 'SelectorList')) {
-    //   this._lists.unshift({
-    //     selectors: n.arg instanceof SelectorList ? n.arg.value : [n.arg] as tree.Selector[],
-    //     parent: undefined
-    //   })
-    //   let returnVal = this.visit(n.arg)
-    //   this._lists.shift()
-    //   if (returnVal) {
-    //     n.arg = returnVal
-    //     return n
-    //   }
-    // }
+    if (n.arg instanceof Selector || isNode(n.arg, 'SelectorList')) {
+      this._parents.unshift(undefined)
+    }
     return this._simpleSelector(n)
+  }
+
+  pseudoSelectorExit(n: tree.PseudoSelector): void {
+    if (n.arg instanceof Selector || isNode(n.arg, 'SelectorList')) {
+      this._parents.shift()
+    }
   }
 }
 
@@ -165,7 +137,7 @@ export class Container {
       return this.selector
     }
     referencedContainers.push(this)
-    return [this.selector, ...containers.flatMap(c => c.toSelectors())]
+    return [this.selector, ...newContainers.flatMap(c => c.toSelectors())]
   }
 }
 
@@ -213,7 +185,7 @@ export class ExtendScope {
    *   when rendering '.a', render
    */
   _partialSimpleMap: Map<string, Container> | undefined
-  extendSimpleVisitor: ExtendSimpleVisitor
+  extendSimpleVisitor: ExtendSimpleVisitor | undefined
 
   get partialSimpleMap() {
     let value = this._partialSimpleMap
@@ -273,6 +245,9 @@ export class ExtendScope {
     extendWith: tree.Selector /* .a */,
     all?: boolean
   ) {
+    if (target.valueOf() === extendWith.valueOf()) {
+      throw new Error('Cannot extend a selector with itself')
+    }
     const [first] = target.keyList
     if (!all) {
       const { completeMap, selectorSet } = this
@@ -498,6 +473,9 @@ export class ExtendScope {
   }
 
   private _applySimple(input: tree.Selector | SelectorList) {
+    if (!this.extendSimpleVisitor) {
+      return input
+    }
     return this.extendSimpleVisitor.visit(input)
     // const list = input instanceof SelectorList ? input.value : [input]
 

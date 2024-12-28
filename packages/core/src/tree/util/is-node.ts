@@ -45,7 +45,7 @@ export function isNode(value: any, type: 'PseudoSelector'): value is PseudoSelec
 export function isNode(value: any, type: 'ComplexSelector'): value is ComplexSelector
 export function isNode(value: any, type: 'CompoundSelector'): value is CompoundSelector
 export function isNode(value: any, type: 'SelectorList'): value is SelectorList
-export function isNode(value: any, type: ['ComplexSelector', 'SelectorList']): value is SelectorList
+export function isNode(value: any, type: ['ComplexSelector', 'SelectorList']): value is ComplexSelector | SelectorList
 export function isNode(value: any, type: 'Combinator'): value is Combinator
 export function isNode(value: any, type: 'List'): value is List
 export function isNode(value: any, type: 'Mixin'): value is Mixin
@@ -69,7 +69,14 @@ export function isNode(value: any, type?: string | string[]): value is Node {
   if (!type) {
     return value instanceof Node
   } else {
-    return value instanceof Node
-      && (Array.isArray(type) ? type.includes(value.type) : value.type === type)
+    if (!(value instanceof Node)) {
+      return false
+    }
+    /** @todo - support inheritance chain? */
+    if (Array.isArray(type) ? type.includes(value.type) : value.type === type) {
+      return true
+    }
+
+    return false
   }
 }

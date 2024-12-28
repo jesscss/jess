@@ -223,6 +223,10 @@ export abstract class TreeVisitor extends Visitor {
       const returnVal = super._visit(n, ctx)
       /** @node The exit function passes in the original node */
       this.visitExit(n, ctx)
+      /** Don't visit new created nodes */
+      if (returnVal instanceof Node) {
+        this.visitedNodes.add(returnVal)
+      }
       return returnVal
     }
     let returnVal = super._visit(n, ctx)
@@ -230,7 +234,12 @@ export abstract class TreeVisitor extends Visitor {
       return returnVal
     }
 
-    returnVal.walkNodes((node) => this._visit(node, ctx), true)
+    if (returnVal !== n) {
+      /** Don't visit new created nodes */
+      this.visitedNodes.add(returnVal)
+    } else {
+      n.walkNodes((node) => this._visit(node, ctx), true)
+    }
 
     this.visitExit(n, ctx)
     return returnVal
