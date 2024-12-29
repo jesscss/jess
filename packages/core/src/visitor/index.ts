@@ -206,8 +206,15 @@ export abstract class Visitor {
  * manually visit children nodes. This class will do it for you.
  */
 export abstract class TreeVisitor extends Visitor {
-  visitChildren: 'pre' | 'post' = 'post'
+  /** Visit children nodes before or after visiting the parent node */
+  visitChildren: 'before' | 'after' = 'after'
   visitedNodes = new Set<Node>()
+
+  constructor(
+    public direction: 'ltr' | 'rtl' = 'ltr'
+  ) {
+    super()
+  }
 
   enter(n: tree.Node) {
     this.visitedNodes.clear()
@@ -218,8 +225,9 @@ export abstract class TreeVisitor extends Visitor {
       return n
     }
     this.visitedNodes.add(n)
-    if (this.visitChildren === 'pre') {
-      n.walkNodes((node) => this._visit(node, ctx), true)
+    const { direction } = this
+    if (this.visitChildren === 'before') {
+      n.walkNodes((node) => this._visit(node, ctx), true, direction, true)
       const returnVal = super._visit(n, ctx)
       /** @node The exit function passes in the original node */
       this.visitExit(n, ctx)
@@ -238,7 +246,7 @@ export abstract class TreeVisitor extends Visitor {
       /** Don't visit new created nodes */
       this.visitedNodes.add(returnVal)
     } else {
-      n.walkNodes((node) => this._visit(node, ctx), true)
+      n.walkNodes((node) => this._visit(node, ctx), true, direction, true)
     }
 
     this.visitExit(n, ctx)

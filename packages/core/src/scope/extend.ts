@@ -6,29 +6,34 @@ import { Selector } from '../tree/selector'
 import { TreeVisitor } from '../visitor'
 import { PseudoSelector } from '../tree/selector-pseudo'
 import { isNode } from '../tree/util'
+import { DirectedGraph, HashMap, Stack } from 'data-structure-typed'
 
 const { isArray } = Array
 
 /**
  * Visits inputs, and only extends simple selectors
  */
-class ExtendSimpleVisitor extends TreeVisitor {
+class ExtendVisitor extends TreeVisitor {
   /** List parents */
-  private readonly _parents: Array<tree.Node | undefined> = []
+  private readonly _parents = new Stack<tree.Node | undefined>()
 
-  selectorMap = new Map<string, Container>()
+  /**
+   * @todo - Add each vertex by valueOf key, and element as value
+   * Edges are the various paths to search for matches to extend a selector
+   */
+  _selectorGraph = new DirectedGraph<tree.Selector>()
 
   get _parent() {
-    return this._parents[0]!
+    return this._parents.peek()
   }
 
   enter(startNode: tree.Selector | tree.SelectorList) {
-    this._parents.unshift(undefined)
+    this._parents.push(undefined)
     super.enter(startNode)
   }
 
   exit() {
-    this._parents.length = 0
+    this._parents.clear()
   }
 
   private _getSimpleExtends(sel: tree.SimpleSelector): tree.SimpleSelector | tree.SimpleSelector[] {
@@ -66,27 +71,27 @@ class ExtendSimpleVisitor extends TreeVisitor {
   }
 
   selectorList(n: tree.SelectorList) {
-    this._parents.unshift(n)
+    this._parents.push(n)
   }
 
   complexSelector(n: tree.ComplexSelector) {
-    this._parents.unshift(n)
+    this._parents.push(n)
   }
 
   compoundSelector(n: tree.CompoundSelector) {
-    this._parents.unshift(n)
+    this._parents.push(n)
   }
 
   selectorListExit() {
-    this._parents.shift()
+    this._parents.pop()
   }
 
   complexSelectorExit() {
-    this._parents.shift()
+    this._parents.pop()
   }
 
   compoundSelectorExit(): void {
-    this._parents.shift()
+    this._parents.pop()
   }
 
   basicSelector(n: tree.BasicSelector) {
@@ -99,14 +104,14 @@ class ExtendSimpleVisitor extends TreeVisitor {
 
   pseudoSelector(n: tree.PseudoSelector) {
     if (n.arg instanceof Selector || isNode(n.arg, 'SelectorList')) {
-      this._parents.unshift(undefined)
+      this._parents.push(undefined)
     }
     return this._simpleSelector(n)
   }
 
   pseudoSelectorExit(n: tree.PseudoSelector): void {
     if (n.arg instanceof Selector || isNode(n.arg, 'SelectorList')) {
-      this._parents.shift()
+      this._parents.pop()
     }
   }
 }
@@ -118,7 +123,8 @@ export class Container {
 
   constructor(
     public selector: tree.SimpleSelector,
-    public containers: Container[] = []
+    public containers: Container[] = [],
+    public more?: Array<[string, tree.SimpleSelector]>
   ) {}
 
   /**
@@ -156,6 +162,8 @@ export class ExtendScope {
    */
   _completeMap: Map<string, tree.Selector[]> | undefined
 
+  selectorMap = new HashMap<string, Container>()
+
   get completeMap() {
     let value = this._completeMap
     if (!value) {
@@ -184,14 +192,16 @@ export class ExtendScope {
    *   }
    *   when rendering '.a', render
    */
-  _partialSimpleMap: Map<string, Container> | undefined
-  extendSimpleVisitor: ExtendSimpleVisitor | undefined
+  // _partialSimpleMap: Map<string, Container> | undefined
+  _selectorGraph: DirectedGraph<tree.Selector>
+
+  extendVisitor: ExtendVisitor | undefined
 
   get partialSimpleMap() {
-    let value = this._partialSimpleMap
+    let value = this._selectorGraph
     if (!value) {
-      this.extendSimpleVisitor = new ExtendSimpleVisitor()
-      value = this.extendSimpleVisitor.selectorMap
+      this.extendVisitor = new ExtendVisitor()
+      value = this.extendVisitor._selectorGraph
       Object.defineProperty(this, '_partialSimpleMap', { value })
     }
     return value
@@ -249,6 +259,11 @@ export class ExtendScope {
       throw new Error('Cannot extend a selector with itself')
     }
     const [first] = target.keyList
+    /**
+     * @todo - This doesn't constitute a full match
+     * because it should consume everything in a selector
+     * list.
+     */
     if (!all) {
       const { completeMap, selectorSet } = this
       const value = target.valueOf()
@@ -473,10 +488,10 @@ export class ExtendScope {
   }
 
   private _applySimple(input: tree.Selector | SelectorList) {
-    if (!this.extendSimpleVisitor) {
+    if (!this.extendVisitor) {
       return input
     }
-    return this.extendSimpleVisitor.visit(input)
+    return this.extendVisitor.visit(input)
     // const list = input instanceof SelectorList ? input.value : [input]
 
     // for (const sel of list) {

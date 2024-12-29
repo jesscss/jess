@@ -304,8 +304,13 @@ export abstract class Node<
   }
 
   /** Mutate nodes in place, used in walkNodes */
-  private _processValueArray(arr: any[], fn: NodeVisitFunction, shallow?: boolean) {
-    const length = arr.length
+  private _processValueArray(
+    arr: any[],
+    fn: NodeVisitFunction,
+    shallow?: boolean,
+    visitPrePost?: boolean
+  ) {
+    let length = arr.length
     for (let i = 0; i < length; i++) {
       let node = arr[i]
       if (node instanceof Node) {
@@ -315,11 +320,39 @@ export abstract class Node<
         } else if (returnVal === REMOVE) {
           arr.splice(i, 1)
           i--
+          length--
         } else if (returnVal instanceof Node && returnVal !== node) {
           arr[i] = returnVal
         }
         if (!shallow) {
-          node.walkNodes(fn)
+          node.walkNodes(fn, false, 'ltr', visitPrePost)
+        }
+      }
+    }
+  }
+
+  private _processValueArrayReverse(
+    arr: any[],
+    fn: NodeVisitFunction,
+    shallow?: boolean,
+    visitPrePost?: boolean
+  ) {
+    let length = arr.length
+    for (let i = length - 1; i >= 0; i--) {
+      let node = arr[i]
+      if (node instanceof Node) {
+        let returnVal = fn(node)
+        if (returnVal === ABORT) {
+          return ABORT
+        } else if (returnVal === REMOVE) {
+          arr.splice(i, 1)
+          i++
+          length--
+        } else if (returnVal instanceof Node && returnVal !== node) {
+          arr[i] = returnVal
+        }
+        if (!shallow) {
+          node.walkNodes(fn, false, 'rtl', visitPrePost)
         }
       }
     }
@@ -335,16 +368,36 @@ export abstract class Node<
    * A return value of `false` (ABORT) means to abort the walk.
    * A return value of `null` (REMOVE) means to remove the current node.
    */
-  walkNodes(func: NodeVisitFunction, shallow?: boolean, visitPrePost?: boolean) {
+  walkNodes(
+    func: NodeVisitFunction,
+    shallow?: boolean,
+    direction?: 'ltr' | 'rtl',
+    visitPrePost?: boolean
+  ) {
     if (visitPrePost) {
       let { pre, post } = this
-      isArray(pre) && this._processValueArray(pre, func, true)
-      isArray(post) && this._processValueArray(post, func, true)
+      if (isArray(pre)) {
+        if (direction === 'rtl') {
+          this._processValueArrayReverse(pre, func, true)
+        } else {
+          this._processValueArray(pre, func, true)
+        }
+      }
+      if (isArray(post)) {
+        if (direction === 'rtl') {
+          this._processValueArrayReverse(post, func, true)
+        } else {
+          this._processValueArray(post, func, true)
+        }
+      }
     }
     for (const [key, nodeVal] of this.data.entries()) {
       /** Process Node arrays only */
       if (isArray(nodeVal)) {
-        return this._processValueArray(nodeVal, func, shallow)
+        if (direction === 'rtl') {
+          return this._processValueArrayReverse(nodeVal, func, shallow, visitPrePost)
+        }
+        return this._processValueArray(nodeVal, func, shallow, visitPrePost)
       } else if (nodeVal instanceof Node) {
         let returnVal = func(nodeVal)
         if (returnVal === ABORT) {
@@ -356,7 +409,7 @@ export abstract class Node<
           this.data.set(key, returnVal as M[typeof key])
         }
         if (!shallow) {
-          nodeVal.walkNodes(func)
+          nodeVal.walkNodes(func, false, direction, visitPrePost)
         }
       }
     }

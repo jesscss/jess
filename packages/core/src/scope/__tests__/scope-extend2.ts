@@ -170,11 +170,4 @@ describe('Extend evaluation', async () => {
       expect(`${extend.getExtendedSelector(el('.c'))}`).toBe('.c,\n.b,\n.a')
     })
   })
-
-  describe('extend normalization', () => {
-    test('attribute selector', () => {
-      /** .a:extend(.b); */
-      extend.register(el('.b'), el('.a'), true)
-    })
-  })
 })
