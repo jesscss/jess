@@ -1,5 +1,5 @@
 import { type Interpolated } from './interpolated'
-import { type General } from './general'
+import { General } from './general'
 import { Node, defineType } from './node'
 import type { Context } from '../context'
 
@@ -11,7 +11,7 @@ export type QuotedOptions = {
 /**
  * An quoted value
  */
-export class Quoted extends Node<General | Interpolated, QuotedOptions> {
+export class Quoted extends Node<string | Interpolated, QuotedOptions> {
   toTrimmedString() {
     let { quote = '"', escaped } = this.options ?? {}
     let output = super.toTrimmedString()
@@ -20,14 +20,21 @@ export class Quoted extends Node<General | Interpolated, QuotedOptions> {
   }
 
   valueOf() {
-    return this.value.value
+    const { value } = this
+    return value instanceof Node ? value.value : value
   }
 
   async eval(context: Context): Promise<Node> {
     return await this.evalIfNot(context, async () => {
-      let value = await this.value.eval(context)
+      let { value } = this
+      if (value instanceof Node) {
+        value = await value.eval(context)
+      }
       if (this.options.escaped) {
-        return value.inherit(this)
+        if (value instanceof Node) {
+          return value.inherit(this)
+        }
+        return new General<'Anonymous'>(value).inherit(this)
       }
       let quoted = this.clone()
       quoted.value = value

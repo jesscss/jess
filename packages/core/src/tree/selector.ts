@@ -1,6 +1,6 @@
 import { Node } from './node'
 import type { ComplexSelector } from './selector-complex'
-import { compare, isNode } from './util'
+import { compare } from './util'
 
 /** Will be bound in ./util/compare.ts */
 export interface Selector<T extends SelectorValue = SelectorValue> extends Node<T> {
