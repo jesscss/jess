@@ -6,7 +6,7 @@ import { Selector } from '../tree/selector'
 import { TreeVisitor } from '../visitor'
 import { PseudoSelector } from '../tree/selector-pseudo'
 import { isNode } from '../tree/util'
-import { DirectedGraph, HashMap, Stack } from 'data-structure-typed'
+import { DirectedGraph, HashMap, Stack, type DirectedVertex } from 'data-structure-typed'
 
 const { isArray } = Array
 
@@ -17,11 +17,31 @@ class ExtendVisitor extends TreeVisitor {
   /** List parents */
   private readonly _parents = new Stack<tree.Node | undefined>()
 
+  constructor() {
+    /**
+     * @note we traverse the selector values in reverse order
+     * The reason is: say we want to extend `.d > .b` with `.c`
+     *   e.g. .c:extend(.d > .b) {}
+     *
+     * In the tree we find:
+     *  :is(.d > .a).b {}
+     *
+     * This contains .d > .b, but finding it forwards would be
+     * difficult, because of the nested :is(). If we search
+     * backwards, we can find `.b` then `:is()` then `>`, and `.d` ending
+     * up with:
+     *  :is(.d > .a).b,
+     *  .c.a {}
+     */
+    super('rtl')
+  }
+
   /**
    * @todo - Add each vertex by valueOf key, and element as value
    * Edges are the various paths to search for matches to extend a selector
    */
-  _selectorGraph = new DirectedGraph<tree.Selector>()
+  _extendGraph = new DirectedGraph<tree.Selector>()
+  _matchGraph = new DirectedGraph<tree.Selector>()
 
   get _parent() {
     return this._parents.peek()
@@ -193,16 +213,52 @@ export class ExtendScope {
    *   when rendering '.a', render
    */
   // _partialSimpleMap: Map<string, Container> | undefined
-  _selectorGraph: DirectedGraph<tree.Selector>
-
   extendVisitor: ExtendVisitor | undefined
+  _extendGraph: DirectedGraph<tree.Selector>
+  _matchGraph: DirectedGraph<tree.Selector>
 
-  get partialSimpleMap() {
-    let value = this._selectorGraph
+  addNode(
+    src: tree.SimpleSelector,
+    dest: tree.SimpleSelector,
+    edgeValue?: tree.Selector
+  ) {
+    const { extendGraph } = this
+    let srcKey = src.valueOf()
+    let destKey = dest.valueOf()
+    if (srcKey === destKey) {
+      throw new Error('Cannot extend a selector with itself')
+    }
+    if (!extendGraph.hasVertex(srcKey)) {
+      extendGraph.addVertex(srcKey, src)
+    }
+    let srcVertex = extendGraph.getVertex(srcKey)!
+    if (!extendGraph.hasVertex(destKey)) {
+      extendGraph.addVertex(destKey, dest)
+    }
+    let destVertex = extendGraph.getVertex(destKey)!
+    extendGraph.addEdge(srcVertex, destVertex, 1, edgeValue)
+  }
+
+  get extendGraph() {
+    let value = this._extendGraph
     if (!value) {
-      this.extendVisitor = new ExtendVisitor()
-      value = this.extendVisitor._selectorGraph
-      Object.defineProperty(this, '_partialSimpleMap', { value })
+      if (!this.extendVisitor) {
+        this.extendVisitor = new ExtendVisitor()
+      }
+      value = this.extendVisitor._extendGraph
+      Object.defineProperty(this, '_extendGraph', { value })
+    }
+    return value
+  }
+
+  get matchGraph() {
+    let value = this._matchGraph
+    if (!value) {
+      if (!this.extendVisitor) {
+        this.extendVisitor = new ExtendVisitor()
+      }
+      value = this.extendVisitor._matchGraph
+      Object.defineProperty(this, '_matchGraph', { value })
     }
     return value
   }
@@ -255,9 +311,10 @@ export class ExtendScope {
     extendWith: tree.Selector /* .a */,
     all?: boolean
   ) {
-    if (target.valueOf() === extendWith.valueOf()) {
-      throw new Error('Cannot extend a selector with itself')
-    }
+    target.walkNodes(node => {
+
+    }, true, 'rtl')
+
     const [first] = target.keyList
     /**
      * @todo - This doesn't constitute a full match
