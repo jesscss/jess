@@ -12,7 +12,6 @@
     "lib": ["es6"],
     "baseUrl": "./packages",
     "strict": true,
-    "strictPropertyInitialization": false,
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
     "paths": {

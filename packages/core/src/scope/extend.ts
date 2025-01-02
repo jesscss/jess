@@ -136,6 +136,56 @@ class ExtendVisitor extends TreeVisitor {
   }
 }
 
+class SelectorTreeNode {
+  previous: SelectorTreeNode | undefined = undefined
+  next: SelectorTreeNode | undefined = undefined
+
+  constructor(
+    public selector: tree.Selector | tree.Combinator,
+    public key: string = selector.valueOf(),
+    public parent: tree.Selector | tree.SelectorList | undefined = undefined
+  ) {}
+}
+
+/** Linked tree representing a selector for easier replacement */
+class SelectorTree {
+  current: SelectorTreeNode | undefined = undefined
+
+  constructor(sel: tree.Selector | tree.SelectorList) {
+    this.add(sel)
+  }
+
+  add(n: tree.Selector | tree.Combinator | tree.SelectorList, parent?: tree.Selector | tree.SelectorList) {
+    if (isNode(n, 'SelectorList')) {
+      n.value.forEach(s => this.add(s, n))
+    } else if (isNode(n, 'Combinator')) {
+      this.addSimple(n, parent)
+    } else if (isNode(n, 'ComplexSelector')) {
+      this.addComplexSelector(n)
+    } else if (isNode(n, 'CompoundSelector')) {
+      this.addCompoundSelector(n)
+    }
+  }
+
+  addSimple(n: tree.SimpleSelector | tree.Combinator, parent?: tree.Selector | tree.SelectorList) {
+    const key = n.valueOf()
+    const node = new SelectorTreeNode(n, key, parent)
+    if (this.current) {
+      this.current.next = node
+      node.previous = this.current
+    }
+    this.current = node
+  }
+
+  addComplexSelector(sel: tree.ComplexSelector) {
+    sel.value.forEach(s => this.add(s, sel))
+  }
+
+  addCompoundSelector(sel: tree.CompoundSelector) {
+    sel.value.forEach(s => this.add(s, sel))
+  }
+}
+
 /** An object class for tracking extended selectors */
 export class Container {
   /** Tracks references to prevent recursion */
@@ -180,7 +230,7 @@ export class ExtendScope {
    * first extend partial selectors to determine complete
    * selectors.
    */
-  _completeMap: Map<string, tree.Selector[]> | undefined
+  _completeMap: Map<string, tree.Selector[]> | undefined = undefined
 
   selectorMap = new HashMap<string, Container>()
 
@@ -194,33 +244,16 @@ export class ExtendScope {
   }
 
   /**
-   * This is a way to render faster, by doing all simple selector swaps during searches
    *
-   * e.g.
-   *     .a { color: blue; }
-   *     .b:extend(.a all) {}
-   *     .c:extend(.b all) {}
-   *   Map {
-   *     .a -> { selector: el('.a'), continue: [[['>', '.q'], sel(['.x'])]], containers: [{ .b }] }
-   *     .b -> { selector: el('.b'), containers: [{ .c }] }
-   *     .c -> { selector: el('.c'), containers: [] }
-   *   }
-   *   Map {
-   *     .a -> { selector: el('.a'), containers: [{ .b }] }
-   *     .b -> { selector: el('.b'), containers: [{ .c }] }
-   *     .c -> { selector: el('.c'), containers: [] }
-   *   }
-   *   when rendering '.a', render
    */
-  // _partialSimpleMap: Map<string, Container> | undefined
-  extendVisitor: ExtendVisitor | undefined
-  _extendGraph: DirectedGraph<tree.Selector>
-  _matchGraph: DirectedGraph<tree.Selector>
+  extendVisitor: ExtendVisitor | undefined = undefined
+  _extendGraph: DirectedGraph<tree.Selector> | undefined = undefined
+  _matchGraph: DirectedGraph<tree.Selector> | undefined = undefined
 
   addNode(
     src: tree.SimpleSelector,
     dest: tree.SimpleSelector,
-    edgeValue?: tree.Selector
+    edgeValue?: 'continue' | 'extend'
   ) {
     const { extendGraph } = this
     let srcKey = src.valueOf()
@@ -273,7 +306,7 @@ export class ExtendScope {
    *         '.two' => pointer to same array -> [[sel(':is(.one, .two) > .three.four'), el('.five)]]
    *       }
    */
-  _partialMap: Map<string, Array<[tree.Selector, tree.Selector]>> | undefined
+  _partialMap: Map<string, Array<[tree.Selector, tree.Selector]>> | undefined = undefined
 
   get partialMap() {
     let value = this._partialMap
@@ -291,7 +324,7 @@ export class ExtendScope {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Set/isDisjointFrom
    */
-  _selectorSet: Set<string> | undefined
+  _selectorSet: Set<string> | undefined = undefined
 
   get selectorSet() {
     let value = this._selectorSet

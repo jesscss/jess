@@ -3,8 +3,8 @@
   "compilerOptions": {
     "composite": true,
     "outDir": "./lib",
-    "rootDir": "./src"
+    "rootDir": "."
   },
-  "include": ["src/**/*", "test/**/*", "vitest.config.ts", "../ast/src/cstVisitor.ts", "../../vitest.d.ts", "../../test/setup.ts"],
+  "include": ["src/**/*", "test/**/*", "vitest.config.ts"],
   "exclude": ["node_modules", "lib"]
 }

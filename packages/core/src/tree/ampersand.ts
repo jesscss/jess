@@ -61,6 +61,7 @@ export type AmpersandValue = {
      }
 
    */
+  /** @todo - change to arg to align with pseudo? */
   appendValue?: string
   value?: Selector | Nil
 }
