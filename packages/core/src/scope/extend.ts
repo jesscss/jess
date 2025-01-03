@@ -138,14 +138,16 @@ class ExtendVisitor extends TreeVisitor {
 
 class SelectorTreeNode {
   previous: SelectorTreeNode | undefined = undefined
-  next: SelectorTreeNode | undefined = undefined
+  next: SelectorTreeNode | SelectorTreeNode[] | undefined = undefined
 
   constructor(
     public selector: tree.Selector | tree.Combinator,
     public key: string = selector.valueOf(),
-    public parent: tree.Selector | tree.SelectorList | undefined = undefined
+    public parents: Array<tree.Selector | tree.SelectorList> | undefined = undefined
   ) {}
 }
+
+type Parents = Array<tree.Selector | tree.SelectorList>
 
 /** Linked tree representing a selector for easier replacement */
 class SelectorTree {
@@ -155,21 +157,24 @@ class SelectorTree {
     this.add(sel)
   }
 
-  add(n: tree.Selector | tree.Combinator | tree.SelectorList, parent?: tree.Selector | tree.SelectorList) {
+  add(n: tree.Selector | tree.Combinator | tree.SelectorList, parents?: Parents) {
+    const mergedParents = parents ? [n, ...parents] : [n]
     if (isNode(n, 'SelectorList')) {
-      n.value.forEach(s => this.add(s, n))
+      n.value.forEach(s => this.add(s, mergedParents as Parents))
     } else if (isNode(n, 'Combinator')) {
-      this.addSimple(n, parent)
+      this.addSimple(n, parents)
     } else if (isNode(n, 'ComplexSelector')) {
-      this.addComplexSelector(n)
+      this.addComplexSelector(n, mergedParents as Parents)
     } else if (isNode(n, 'CompoundSelector')) {
-      this.addCompoundSelector(n)
+      this.addCompoundSelector(n, mergedParents as Parents)
+    } else if (isNode(n, 'PseudoSelector') && (n.arg instanceof Selector || isNode(n.arg, 'SelectorList'))) {
+      this.addPseudoSelector(n, mergedParents as Parents)
     }
   }
 
-  addSimple(n: tree.SimpleSelector | tree.Combinator, parent?: tree.Selector | tree.SelectorList) {
+  addSimple(n: tree.SimpleSelector | tree.Combinator, parents?: Parents) {
     const key = n.valueOf()
-    const node = new SelectorTreeNode(n, key, parent)
+    const node = new SelectorTreeNode(n, key, parents)
     if (this.current) {
       this.current.next = node
       node.previous = this.current
@@ -177,12 +182,19 @@ class SelectorTree {
     this.current = node
   }
 
-  addComplexSelector(sel: tree.ComplexSelector) {
-    sel.value.forEach(s => this.add(s, sel))
+  addComplexSelector(n: tree.ComplexSelector, parents?: Parents) {
+    const mergedParents = parents ? [n, ...parents] : [n]
+    n.value.forEach(s => this.add(s, mergedParents))
   }
 
-  addCompoundSelector(sel: tree.CompoundSelector) {
-    sel.value.forEach(s => this.add(s, sel))
+  addCompoundSelector(n: tree.CompoundSelector, parents?: Parents) {
+    const mergedParents = parents ? [n, ...parents] : [n]
+    n.value.forEach(s => this.add(s, mergedParents))
+  },
+
+  addPseudoSelector(n: tree.PseudoSelector<{ value: string, arg: tree.Node }>, parents?: Parents) {
+    const mergedParents = parents ? [n, ...parents] : [n]
+    this.add(n.arg, mergedParents)
   }
 }
 

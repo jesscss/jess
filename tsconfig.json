@@ -8,10 +8,11 @@
     "esModuleInterop": true,
     "module": "ES2020",
     "moduleResolution": "node",
-    "target": "es6",
+    "target": "ES2022",
     "lib": ["es6"],
     "baseUrl": "./packages",
     "strict": true,
+    "useDefineForClassFields": true,
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
     "paths": {
