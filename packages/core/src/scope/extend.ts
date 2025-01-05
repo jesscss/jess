@@ -190,7 +190,7 @@ class SelectorTree {
   addCompoundSelector(n: tree.CompoundSelector, parents?: Parents) {
     const mergedParents = parents ? [n, ...parents] : [n]
     n.value.forEach(s => this.add(s, mergedParents))
-  },
+  }
 
   addPseudoSelector(n: tree.PseudoSelector<{ value: string, arg: tree.Node }>, parents?: Parents) {
     const mergedParents = parents ? [n, ...parents] : [n]

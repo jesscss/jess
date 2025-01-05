@@ -7,13 +7,7 @@ type SimpleSelectorValue = {
 }
 
 export abstract class SimpleSelector<T extends SimpleSelectorValue = SimpleSelectorValue> extends Selector<T> {
-  get value(): string {
-    return this.data.get('value')
-  }
-
-  set value(v: string) {
-    this.data.set('value', v)
-  }
+  declare value: string
 
   async eval(context: Context): Promise<Node> {
     return this
