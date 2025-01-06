@@ -29,6 +29,7 @@ export class VarDeclaration<N extends Name = Name> extends Declaration<VarDeclar
   // register(context: Context, name: string, node: Declaration<string>): void {
   //   context.scope.setVar(name, node, this.options)
   // }
+  requiredSemi = true
   constructor(
     ...args: ConstructorParameters<typeof Declaration<VarDeclarationOptions, N>>
   ) {
@@ -41,9 +42,9 @@ export class VarDeclaration<N extends Name = Name> extends Declaration<VarDeclar
   toTrimmedString(depth?: number): string {
     const rule = this.options?.setDefined || this.options?.paramVar ? '$' : '@let '
     const { name, value } = this
-    const semi = this.options?.paramVar ||
-      isNode(value, 'Collection') ||
-      this.options?.semi !== true
+    const semi = this.options?.paramVar
+      || isNode(value, 'Collection')
+      || this.options?.semi !== true
       ? ''
       : ';'
     return `${rule}${name}:${value.toString(depth)}${semi}`

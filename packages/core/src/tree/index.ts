@@ -9,7 +9,7 @@
 
 /** Base classes - keep these on top */
 import { type LocationInfo } from './node'
-import { Node } from './node'
+import { Node, NodeList } from './node'
 import { type Operator } from './util/calculate'
 import { Anonymous } from './anonymous'
 import { TreeContext } from '../context'
@@ -38,7 +38,7 @@ Object.defineProperty(Node.prototype, 'treeContext', {
   }
 })
 
-export { Node, TreeContext, type LocationInfo }
+export { Node, NodeList, TreeContext, type LocationInfo }
 
 export * from './at-rule'
 export * from './block'
