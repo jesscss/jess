@@ -5,11 +5,11 @@ import { compare } from './util/compare'
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */
-  key: string | Node
+  value: string | Node
   /** The operator */
   op?: string
   /** The value of the attribute */
-  value?: Node
+  attrValue?: Node
   /** The modifier (case insensitivity) */
   mod?: string
 }
@@ -20,49 +20,21 @@ export type AttributeSelectorValue = {
  *   e.g. [id="foo"]
 */
 export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
-  get key() {
-    return this.data.get('key')
-  }
-
-  set key(v: string | Node) {
-    this.data.set('key', v)
-  }
-
-  get op() {
-    return this.data.get('op')
-  }
-
-  set op(v: string | undefined) {
-    this.data.set('op', v)
-  }
-
-  get mod(): string {
-    const thisMod = this.data.get('mod')
-    if (thisMod) {
-      return thisMod
-    }
-    return ''
-  }
-
-  set mod(v: string | undefined) {
-    this.data.set('mod', v)
-  }
-
   toTrimmedString() {
-    let { key, op, value, mod } = this
-    return `[${key}${op ?? ''}${value ?? ''}${mod ? ` ${mod}` : ''}]`
+    let { value, op, attrValue, mod } = this.values
+    return `[${value}${op ?? ''}${attrValue ?? ''}${mod ? ` ${mod}` : ''}]`
   }
 
   valueOf() {
     let valueOf = this._value
     if (!valueOf) {
-      let { key, op, value, mod } = this
+      let { value, op, attrValue, mod } = this.values
       /** Attributes are case-insensitive */
-      let keyStr = (typeof key === 'string' ? key : key.toTrimmedString()).toLowerCase()
+      let keyStr = (typeof value === 'string' ? value : value.toTrimmedString()).toLowerCase()
       if (!op) {
         return `[${keyStr}]`
       }
-      let valueStr = value?.valueOf() ?? ''
+      let valueStr = attrValue?.valueOf() ?? ''
       valueOf = this._value = `[${keyStr}${op}"${valueStr}"${mod ? ` ${mod}` : ''}]`
     }
     return valueOf

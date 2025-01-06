@@ -9,6 +9,7 @@ import type { Comment } from './comment'
 import { type Operator } from './util/calculate'
 // import type { OutputCollector } from '../output'
 import type { Constructor, Writable, Class, ValueOf, Opaque, IsUnknown } from 'type-fest'
+import type { S } from 'vitest/dist/reporters-50c2bd49'
 
 export type { TreeContext }
 
@@ -135,6 +136,7 @@ export type NodeValueArg<M extends NodeTypeMap> =
   IsUnknown<M['value']> extends true
     ? TypedMap<M> | NodeValueArray<M>
     : TypedMap<M> | NodeValueArray<M> | M['value']
+
 /**
  * The underlying type for all Jess nodes
  */
@@ -152,6 +154,9 @@ export abstract class Node<
   /** Assigned on the prototype */
   type!: string
   shortType!: string
+
+  /** Indicates if this can be used wherever a selector is used */
+  isSelector = false
 
   /**
    * Whitespace or comments before or after a Node.
@@ -190,17 +195,14 @@ export abstract class Node<
   protected readonly data: TypedMap<M>
 
   constructor(
-    value: NodeValueArg<M>,
+    value: T extends NodeTypeMap ? NodeValueArg<T> : T,
     options?: O,
     location?: LocationInfo | 0,
     treeContext?: TreeContext
   ) {
     this.data = new Map(isNodeMap(value) ? value : [['value', value]]) as TypedMap<M>
     this.location = location || []
-    Object.defineProperty(this, '_treeContext', {
-      value: treeContext,
-      writable: true
-    })
+    this._treeContext = treeContext
     if (treeContext) {
       this.walkNodes(n => {
         n._treeContext = treeContext
@@ -229,6 +231,10 @@ export abstract class Node<
     throw new Error('Cannot set the "value" property of this node.')
   }
 
+  get values(): M {
+    return Object.fromEntries(this.data)
+  }
+
   /** NodeList-related properties */
   private _lists: NodeList<NodeList> | undefined
   get lists() {
@@ -246,6 +252,8 @@ export abstract class Node<
   /**
    * Mutates node children in place. Used by eval()
    * which first makes a shallow clone before mutating.
+   *
+   * @todo - Rewrite to use NodeList
    */
   processNodes(func: (n: Node) => NodeValue) {
     this.data.forEach((nodeVal, key, map) => {
@@ -319,7 +327,11 @@ export abstract class Node<
     })
   }
 
-  /** Mutate nodes in place, used in walkNodes */
+  /**
+   * Mutate nodes in place, used in walkNodes
+   *
+   * @todo - rewrite to use NodeList
+   */
   private _processValueArray(
     arr: any[],
     fn: NodeVisitFunction,
@@ -347,6 +359,7 @@ export abstract class Node<
     }
   }
 
+  /** @todo - rewrite to use NodeList */
   private _processValueArrayReverse(
     arr: any[],
     fn: NodeVisitFunction,
@@ -693,28 +706,29 @@ class ListPos<T extends Node = Node> {
  * in a list are managed by the list, much like an array.
  */
 export class NodeList<
-  T extends Node = Node,
+  U extends Node[] = Node[],
   O extends NodeOptions = NodeOptions
-> extends Node {
-  first: T | undefined
-  last: T | undefined
-  private _current: T | undefined
-  items = new Map<T, ListPos<T>>()
+> extends Node<{ value: U }, O> {
+  first: U[number] | undefined
+  last: U[number] | undefined
+  private _current: U[number] | undefined
+  items = new Map<U[number], ListPos<U[number]>>()
 
   constructor(
-    items: T[] = [],
+    items: NodeValueArg<{ value: U }>,
     options?: O,
     location?: LocationInfo | 0,
     treeContext?: TreeContext
   ) {
-    super([['value', items]], options, location, treeContext)
-    if (items) {
-      let currentItem: T | undefined
-      let currentPos: ListPos<T> | undefined
-      if (items.length) {
-        this.first = items[0]
+    super(items, options, location, treeContext)
+    const value = this.value
+    if (value) {
+      let currentItem: U[number] | undefined
+      let currentPos: ListPos<U[number]> | undefined
+      if (value.length) {
+        this.first = value[0]
       }
-      for (let item of items) {
+      for (let item of value) {
         if (currentPos) {
           currentPos[1] = item
         }
@@ -735,7 +749,7 @@ export class NodeList<
     return this.items.size
   }
 
-  add(item: T) {
+  add(item: U[number]) {
     if (this.items.has(item)) {
       return
     }
@@ -750,7 +764,7 @@ export class NodeList<
     this.last = item
   }
 
-  insertBefore(before: T, item: T) {
+  insertBefore(before: U[number], item: U[number]) {
     if (this.items.has(item)) {
       return
     }
@@ -768,7 +782,7 @@ export class NodeList<
     }
   }
 
-  insertAfter(after: T, item: T) {
+  insertAfter(after: U[number], item: U[number]) {
     if (this.items.has(item)) {
       return
     }
@@ -815,7 +829,7 @@ export class NodeList<
     }
   }
 
-  removeItem(item: T) {
+  removeItem(item: U[number]) {
     let pos = this.items.get(item)
     if (pos) {
       let previous = pos[0]

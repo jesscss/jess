@@ -32,7 +32,7 @@ $let count; // a Node of `Nil`
 $count: 1;
 
 // `$` is a referencer, to reduce ambiguity
-$count: $(count + 1); // expression 
+$count: #($count + 1); // expression 
 
 // allow destructuring
 $let list: one, two;
@@ -45,22 +45,22 @@ $include mixin();
 // or???
 $ -> mixin();
 
-// $() to wrap expressions
+// #() to wrap expressions
 .bar {
-  foo: $(count + 1);
+  foo: #($count + 1);
 }
 
 // var expressions will be re-output as "live" expression functions
 // i.e. changing the value of `count` will update `--live`
 .bar {
-  foo: var(--live, $count + 1);
+  foo: var(--live, #($count + 1));
 }
 
 // Function calls can use $
 .bar {
   // You can write this in two ways:
-  value: $myFunction(sass-var);
-  value: $(myFunction(sass-var));
+  value: $myFunction($sass-var);
+  value: #($myFunction($sass-var));
 }
 
 // you can also do:
@@ -69,8 +69,8 @@ $ -> mixin();
 }
 
 // Parenthesized expressions
-.selector$(expr) {
-  prop: $(value + 1);
+.selector#(expr) {
+  prop: #($value + 1);
 }
 ```
 
@@ -209,7 +209,7 @@ $use './file2.jess';
 
 ## `$include [file|object|selector|mixin] ('with' reference|declarationList)?`
 
-Will import the rules (but not pollute the variable scope).
+Will import the rules (but not pollute the variable scope) TODO -- will this also prevent extends?.
 
 Can be at the root or nested.
 
@@ -223,9 +223,9 @@ $include 'rules.jess' with colors;
 $use 'main.jess';
 // this would include the vars in colors.jess
 ```
-Using an `@include` that's the _result_ of a `@ref`:
+Using an `include` that's the _result_ of a `ref`:
 ```scss
-$ref 'theme.jess' theme with {
+$ref 'theme.jess' (theme) with {
   // Using +: with a collection will merge values
   $colors +: {
     primary: #3a3a3a;

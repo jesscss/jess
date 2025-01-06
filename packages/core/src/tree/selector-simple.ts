@@ -1,15 +1,20 @@
 import { type Context } from '../context'
-import { type Node } from './node'
-import { Selector } from './selector'
+import { Node } from './node'
+import type { Selector } from './selector'
 
 type SimpleSelectorValue = {
-  value: string
+  value: string | Node
 }
 
-export abstract class SimpleSelector<T extends SimpleSelectorValue = SimpleSelectorValue> extends Selector<T> {
-  declare value: string
+export abstract class SimpleSelector<T extends SimpleSelectorValue = SimpleSelectorValue> extends Node<T> implements Selector {
+  declare isSelector: true
+
+  /** The cached key value */
+  _value: string | undefined
 
   async eval(context: Context): Promise<Node> {
     return this
   }
 }
+
+SimpleSelector.prototype.isSelector = true

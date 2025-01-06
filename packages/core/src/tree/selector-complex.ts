@@ -2,14 +2,15 @@
 import { Combinator } from './combinator'
 import { Ampersand } from './ampersand'
 import {
-  defineType
+  defineType,
+  NodeList
 } from './node'
 import type { Context } from '../context'
 import { Nil } from './nil'
 import { isNode } from './util'
 import { PseudoSelector } from './selector-pseudo'
 import { type SelectorList } from './selector-list'
-import { Selector, type Keys } from './selector'
+import { type Selector } from './selector'
 import type { SimpleSelector } from './selector-simple'
 import type { CompoundSelector } from './selector-compound'
 
@@ -18,17 +19,18 @@ export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combi
 // type SelectorValue = Component[]
 export type ComplexSelectorValue = ComplexSelectorComponent[]
 
-export interface ComplexSelector extends Selector<{ value: ComplexSelectorValue }> {
-  get value(): ComplexSelectorValue
-  set value(v: ComplexSelectorValue)
-}
+// export interface ComplexSelector extends NodeList<{ value: ComplexSelectorValue }> {
+//   get value(): ComplexSelectorValue
+//   set value(v: ComplexSelectorValue)
+// }
 /**
  * Selectors with combinators.
  *
  * @example
  * #id > .class.class
  */
-export class ComplexSelector extends Selector<{ value: ComplexSelectorValue }> {
+export class ComplexSelector extends NodeList<ComplexSelectorValue> implements Selector {
+  declare isSelector: true
   /**
    * Essentially, a#id.class === a.class#id as being identical selectors,
    * so we normalize groups and combinators to be in Immutable Sets,

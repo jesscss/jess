@@ -12,7 +12,7 @@ import { General } from './general'
  *   e.g. in Jess
  *    - `$foo` (or #($foo)) refers to a variable
  *    - `$.foo` (or #($.foo) refers to a property
- *    - in `@include foo()`, `foo` refers to a mixin
+ *    - in `$ -> .foo()`, `.foo` refers to a mixin
  *   in Less
  *   - `@foo` refers to a variable
  *   - `$foo` refers to a property
