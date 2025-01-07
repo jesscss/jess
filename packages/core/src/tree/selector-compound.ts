@@ -1,18 +1,12 @@
 /* eslint-disable @typescript-eslint/require-array-sort-compare */
 import {
-  defineType
+  defineType,
+  NodeList
 } from './node'
 import type { Context } from '../context'
 import { Nil } from './nil'
-import { Selector, type Keys } from './selector'
+import { type Selector } from './selector'
 import type { SimpleSelector } from './selector-simple'
-
-export type CompoundSelectorValue = [SimpleSelector, SimpleSelector, ...SimpleSelector[]]
-
-export interface CompoundSelector extends Selector<{ value: CompoundSelectorValue }> {
-  get value(): CompoundSelectorValue
-  set value(v: CompoundSelectorValue)
-}
 
 /**
  * @example
@@ -21,20 +15,21 @@ export interface CompoundSelector extends Selector<{ value: CompoundSelectorValu
  * Must have at least 2 selectors. Otherwise it would be collapsed.
  */
 const nonElementRegex = /^[.#:*[]/
-export class CompoundSelector extends Selector<{ value: CompoundSelectorValue }> {
-  get keys() {
-    let keys = this._keys
-    if (!keys) {
-      let { value } = this
-      Object.defineProperty(this, '_keys', { value: keys = value.flatMap(n => n.keys) as Keys })
-    }
-    return keys
-  }
+export class CompoundSelector extends NodeList<SimpleSelector> implements Selector {
+  declare isSelector: true
 
-  /**
-   */
+  // get keys() {
+  //   let keys = this._keys
+  //   if (!keys) {
+  //     let { value } = this
+  //     Object.defineProperty(this, '_keys', { value: keys = value.flatMap(n => n.keys) as Keys })
+  //   }
+  //   return keys
+  // }
+
+  _valueOf: string | undefined
   valueOf() {
-    let value = this._value
+    let value = this._valueOf
     if (!value) {
       value = this.value
         .map(n => n.valueOf())
@@ -51,7 +46,7 @@ export class CompoundSelector extends Selector<{ value: CompoundSelectorValue }>
           return a < b ? -1 : 1
         })
         .join('')
-      Object.defineProperty(this, '_value', { value })
+      this._valueOf = value
     }
     return value
   }
@@ -72,7 +67,7 @@ export class CompoundSelector extends Selector<{ value: CompoundSelectorValue }>
         return returnVal[0]!.inherit(this) as Selector
       }
 
-      sel.value = returnVal as CompoundSelectorValue
+      this.setMany(returnVal as SimpleSelector[])
 
       return sel
     })
@@ -95,5 +90,7 @@ export class CompoundSelector extends Selector<{ value: CompoundSelectorValue }>
   //   out.add('])')
   // }
 }
+
+CompoundSelector.prototype.isSelector = true
 
 export const compound = defineType(CompoundSelector, 'CompoundSelector', 'compound')

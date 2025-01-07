@@ -29,7 +29,7 @@ export type ComplexSelectorValue = ComplexSelectorComponent[]
  * @example
  * #id > .class.class
  */
-export class ComplexSelector extends NodeList<ComplexSelectorValue> implements Selector {
+export class ComplexSelector extends NodeList<ComplexSelectorComponent> implements Selector {
   declare isSelector: true
   /**
    * Essentially, a#id.class === a.class#id as being identical selectors,

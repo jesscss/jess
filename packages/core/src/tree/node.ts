@@ -9,7 +9,6 @@ import type { Comment } from './comment'
 import { type Operator } from './util/calculate'
 // import type { OutputCollector } from '../output'
 import type { Constructor, Writable, Class, ValueOf, Opaque, IsUnknown } from 'type-fest'
-import type { S } from 'vitest/dist/reporters-50c2bd49'
 
 export type { TreeContext }
 
@@ -34,7 +33,11 @@ export type NodeOptions = Record<string, boolean | string | number> & AllNodeOpt
 export type NodeValue = unknown
 export type NodeMap = Map<string, NodeValue>
 export type NodeInValue = NodeValue | NodeMapArray | NodeMap
-export type NodeTypeMap = Record<string, NodeValue>
+export type NodeTypeMap = {
+  value: unknown
+  [k: string]: unknown
+}
+
 export type NodeMapArray<
   T extends NodeTypeMap = NodeTypeMap,
   K = keyof T,
@@ -195,7 +198,7 @@ export abstract class Node<
   protected readonly data: TypedMap<M>
 
   constructor(
-    value: T extends NodeTypeMap ? NodeValueArg<T> : T,
+    value: NodeValueArg<M>,
     options?: O,
     location?: LocationInfo | 0,
     treeContext?: TreeContext
@@ -237,7 +240,7 @@ export abstract class Node<
 
   /** NodeList-related properties */
   private _lists: NodeList<NodeList> | undefined
-  get lists() {
+  get lists(): NodeList<NodeList> {
     return (this._lists ??= new NodeList())
   }
 
@@ -706,39 +709,83 @@ class ListPos<T extends Node = Node> {
  * in a list are managed by the list, much like an array.
  */
 export class NodeList<
-  U extends Node[] = Node[],
+  T extends Node = Node,
   O extends NodeOptions = NodeOptions
-> extends Node<{ value: U }, O> {
-  first: U[number] | undefined
-  last: U[number] | undefined
-  private _current: U[number] | undefined
-  items = new Map<U[number], ListPos<U[number]>>()
+> extends Node<{ value: T[] }, O> {
+  first: T | undefined
+  last: T | undefined
+  private _current: T | undefined
+  items = new Map<T, ListPos<T>>()
 
   constructor(
-    items: NodeValueArg<{ value: U }>,
+    values: T[] = [],
     options?: O,
     location?: LocationInfo | 0,
     treeContext?: TreeContext
   ) {
-    super(items, options, location, treeContext)
-    const value = this.value
-    if (value) {
-      let currentItem: U[number] | undefined
-      let currentPos: ListPos<U[number]> | undefined
-      if (value.length) {
-        this.first = value[0]
-      }
-      for (let item of value) {
-        if (currentPos) {
-          currentPos[1] = item
-        }
-        currentPos = new ListPos(currentItem, undefined)
-        currentItem = item
-        this.items.set(item, currentPos)
-        item.lists.add(this)
-      }
-      this.last = currentItem
+    /** There's a custom getter for `value` */
+    super(undefined as unknown as T[], options, location, treeContext)
+    /**
+     * Passing a Map should really only be done when
+     * cloning, which we will override.
+     */
+    if (isArray(values)) {
+      this.setMany(values)
     }
+  }
+
+  /** Return an array */
+  get value() {
+    return [...this]
+  }
+
+  setMany(values: T[]) {
+    let currentItem: T | undefined
+    let currentPos: ListPos<T> | undefined
+    if (values.length) {
+      this.first = values[0]
+    }
+    const { items } = this
+    items.clear()
+    for (let item of values) {
+      if (currentPos) {
+        currentPos[1] = item
+      }
+      currentPos = new ListPos(currentItem, undefined)
+      currentItem = item
+      items.set(item, currentPos)
+      item.lists.add(this)
+    }
+    this.last = currentItem
+  }
+
+  /** Clones of node lists need to be a bit different */
+  clone(deep?: boolean, cloneFn?: (n: Node) => NodeValue): this {
+    let Class: Constructor<this> = Object.getPrototypeOf(this).constructor
+
+    let newNode = new Class(
+      /**
+       * Creates a new Map object instance.
+       * Otherwise, replacing nodes would replace them
+       * in the old map.
+       */
+      undefined,
+      this._options,
+      this.location,
+      this.treeContext
+    )
+
+    cloneFn ??= n => n.clone(deep)
+
+    if (deep) {
+      const nodes = [...this]
+      newNode.setMany(nodes.map(n => n.clone(deep, cloneFn)))
+    }
+    newNode.pre = this.pre
+    newNode.post = this.post
+    newNode.evaluated = this.evaluated
+
+    return newNode
   }
 
   get has() {
@@ -749,7 +796,7 @@ export class NodeList<
     return this.items.size
   }
 
-  add(item: U[number]) {
+  add(item: T) {
     if (this.items.has(item)) {
       return
     }
@@ -764,7 +811,7 @@ export class NodeList<
     this.last = item
   }
 
-  insertBefore(before: U[number], item: U[number]) {
+  insertBefore(before: T, item: T) {
     if (this.items.has(item)) {
       return
     }
@@ -782,7 +829,7 @@ export class NodeList<
     }
   }
 
-  insertAfter(after: U[number], item: U[number]) {
+  insertAfter(after: T, item: T) {
     if (this.items.has(item)) {
       return
     }
@@ -829,7 +876,7 @@ export class NodeList<
     }
   }
 
-  removeItem(item: U[number]) {
+  removeItem(item: T) {
     let pos = this.items.get(item)
     if (pos) {
       let previous = pos[0]

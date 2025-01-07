@@ -61,9 +61,10 @@ export type AmpersandValue = {
      }
 
    */
-  /** @todo - change to arg to align with pseudo? */
   appendValue?: string
-  value?: Selector | Nil
+  value: '&'
+  /** The evaluated selector */
+  selector?: Selector | Nil
 }
 
 /**
@@ -72,35 +73,19 @@ export type AmpersandValue = {
 export class Ampersand extends SimpleSelector<AmpersandValue> {
   constructor(...args: Partial<ConstructorParameters<typeof SimpleSelector<AmpersandValue>>>) {
     let [value, ...rest] = args
-    value ??= [['value', undefined]]
+    value ??= [['value', '&']]
     super(value, ...rest)
   }
 
-  get appendValue(): string | undefined {
-    return this.data.get('appendValue')
-  }
-
-  set appendValue(v: string | undefined) {
-    this.data.set('appendValue', v)
-  }
-
   toTrimmedString(): string {
-    let { appendValue } = this
+    let { appendValue } = this.values
     return appendValue !== undefined ? `&(${appendValue ?? ''})` : '&'
-  }
-
-  toNormalPrimitive(): string | tuple {
-    const { value } = this
-    if (value && !(value instanceof Nil)) {
-      return value.toNormalPrimitive()
-    }
-    return this.toTrimmedString()
   }
 
   /** Hmm this should never return Extend */
   async eval(context: Context): Promise<SelectorList | ComplexSelector | Ampersand | Extend | Nil> {
     return await this.evalIfNot(context, () => {
-      const { appendValue } = this
+      const { appendValue } = this.values
       if (appendValue ?? context.opts.collapseNesting) {
         let frame = context.frames[0]
         if (frame) {
@@ -131,7 +116,7 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
       const amp = this.clone()
       let frame = context.frames[0]
       if (frame) {
-        amp.value = frame.selector.clone(true)
+        amp.data.set('selector', frame.selector.clone(true))
       }
       return amp
     })

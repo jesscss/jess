@@ -1,8 +1,6 @@
-import { defineType } from './node'
-import { type SelectorList } from './selector-list'
-import { type ComplexSelector } from './selector-complex'
+import { defineType, Node } from './node'
 import { type Context } from '../context'
-import { Selector } from './selector'
+import { type Selector } from './selector'
 import { type Nil } from './nil'
 
 export const enum ExtendFlag {
@@ -24,27 +22,12 @@ export type ExtendValue = {
  * @note - there is some pseudo-code somewhere that smartly
  * registers selectors by a string code.
  */
-export class Extend extends Selector<ExtendValue> {
-  get flag(): ExtendFlag | undefined {
-    return this.data.get('flag')
-  }
-
-  get target() {
-    return this.data.get('target')
-  }
-
-  set target(v: ComplexSelector | SelectorList) {
-    this.data.set('target', v)
-  }
-
-  get value(): Selector | Nil {
-    return this.data.get('value')
-  }
+export class Extend extends Node<ExtendValue> implements Selector {
+  declare isSelector: true
 
   toTrimmedString(depth?: number | undefined): string {
-    let { target } = this
-    let selector = this.data.get('selector')
-    let output = selector ? `${selector}` : ''
+    let { target, value } = this.values
+    let output = value ? `${value}` : ''
     output += `:extend(${target})`
     return output
   }
@@ -62,4 +45,5 @@ export class Extend extends Selector<ExtendValue> {
     return value
   }
 }
+Extend.prototype.isSelector = true
 export const extend = defineType(Extend, 'Extend')

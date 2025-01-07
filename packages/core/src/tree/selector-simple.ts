@@ -8,6 +8,7 @@ type SimpleSelectorValue = {
 
 export abstract class SimpleSelector<T extends SimpleSelectorValue = SimpleSelectorValue> extends Node<T> implements Selector {
   declare isSelector: true
+  declare valueOf: () => string
 
   /** The cached key value */
   _value: string | undefined
