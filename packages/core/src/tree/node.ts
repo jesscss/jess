@@ -789,6 +789,9 @@ export class NodeList<
   }
 
   private _writePos(nodeRef: number, previous: number | undefined, next: number | undefined) {
+    if (nodeRef === previous || nodeRef === next) {
+      throw new Error('Linking a node to itself would cause an infinite loop.')
+    }
     this._pos.set(nodeRef, (previous ?? 0) << 16 | (next ?? 0))
   }
 
@@ -796,7 +799,7 @@ export class NodeList<
     let pos = this._pos.get(nodeRef)
     if (pos !== undefined) {
       /** Read previous, and write next */
-      this._pos.set(nodeRef, pos | (next ?? 0))
+      this._writePos(nodeRef, this._getPrevFromBits(pos), next)
     }
   }
 
@@ -804,7 +807,7 @@ export class NodeList<
     let pos = this._pos.get(nodeRef)
     if (pos !== undefined) {
       /** Read next, and write previous */
-      this._pos.set(nodeRef, ((previous ?? 0) << 16) | pos)
+      this._writePos(nodeRef, previous, this._getNextFromBits(pos))
     }
   }
 
@@ -823,18 +826,6 @@ export class NodeList<
     let next = pos & 0xffff // Extract the lower 16 bits
     return next === 0 ? undefined : next
   }
-
-  // readPos(nodeRef: number): [previous: number | undefined, next: number | undefined] {
-  //   let pos = this._pos.get(nodeRef)
-  //   if (!pos) {
-  //     return [undefined, undefined]
-  //   }
-  //   let previous: number | undefined = (pos >>> 16) & 0xFFFF // extract the upper 16 bits
-  //   previous = previous === 0 ? undefined : previous
-  //   let next: number | undefined = pos & 0xffff // extract the lower 16 bits
-  //   next = next === 0 ? undefined : next
-  //   return [previous, next]
-  // }
 
   /** Return an array */
   get value() {
@@ -967,23 +958,21 @@ export class NodeList<
     if (currentIndex === undefined) {
       return
     }
-    let current = this._items.get(currentIndex)
+    let currentItem = this._items.get(currentIndex)
 
-    while (current !== undefined) {
-      yield current
+    while (currentItem !== undefined) {
+      yield currentItem
       /**
        * this._current pointer may change because of deletions,
        * but if it's still the same pointer, then increment it
        * to the next position.
        */
-      currentIndex = this._current
-      if (currentIndex !== undefined) {
-        const nextPos = this._getNextFromBits(this._pos.get(currentIndex))
-        current = nextPos ? this._items.get(nextPos) : undefined
-        this._current = nextPos
-      } else {
-        current = undefined
-      }
+      const nextIndex: number | undefined = currentIndex === this._current
+        ? this._getNextFromBits(this._pos.get(currentIndex!))
+        : this._current
+
+      currentItem = nextIndex ? this._items.get(nextIndex) : undefined
+      currentIndex = this._current = nextIndex
     }
   }
 
@@ -992,22 +981,21 @@ export class NodeList<
     if (currentIndex === undefined) {
       return
     }
-    let current = this._items.get(currentIndex)
-    while (current !== undefined) {
-      yield current
+    let currentItem = this._items.get(currentIndex)
+
+    while (currentItem !== undefined) {
+      yield currentItem
       /**
-     * this._current pointer may change because of deletions,
-     * but if it's still the same pointer, then decrement it
-     * to the previous position.
-     */
-      currentIndex = this._current
-      if (currentIndex !== undefined) {
-        const prevPos = this._getPrevFromBits(this._pos.get(currentIndex))
-        current = prevPos ? this._items.get(prevPos) : undefined
-        this._current = prevPos
-      } else {
-        current = undefined
-      }
+       * this._current pointer may change because of deletions,
+       * but if it's still the same pointer, then decrement it
+       * to the previous position.
+       */
+      let prevIndex: number | undefined = currentIndex === this._current
+        ? this._getPrevFromBits(this._pos.get(currentIndex!))
+        : this._current
+
+      currentItem = prevIndex ? this._items.get(prevIndex) : undefined
+      currentIndex = this._current = prevIndex
     }
   }
 
@@ -1026,6 +1014,7 @@ export class NodeList<
       this._writePrevPos(next, previous)
     }
     this._items.delete(index)
+    this._pos.delete(index)
     if (index === this.first) {
       this.first = next
     }

@@ -83,7 +83,7 @@ describe('Linked list', () => {
     expect([...list2]).toStrictEqual([two])
   })
 
-  it.only('should remove itself from two lists', () => {
+  it('should remove itself from two lists', () => {
     let one = num(1)
     let two = num(2)
     let list1 = new NodeList([two])

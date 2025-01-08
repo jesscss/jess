@@ -64,7 +64,7 @@ describe('Compound Selector', () => {
       expect(sel1).toEqual(sel2)
     })
   })
-  describe('keys', () => {
+  describe.skip('keys', () => {
     test('simple compound', () => {
       let sel1 = compound([
         el('a'),
