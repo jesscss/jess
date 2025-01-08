@@ -154,9 +154,11 @@ export abstract class Node<
 
   _options: Partial<O & AllNodeOptions> | undefined
 
-  /** Assigned on the prototype */
-  type!: string
-  shortType!: string
+  /**
+   * Assigned on the prototype, make sure we don't initialize
+   */
+  declare type: string
+  declare shortType: string
 
   /** Indicates if this can be used wherever a selector is used */
   isSelector = false
@@ -176,9 +178,9 @@ export abstract class Node<
   evaluated = false
 
   /** Assigned on the prototype */
-  allowRoot!: boolean
+  declare allowRoot: boolean
   /** Assigned on the prototype */
-  allowRuleRoot!: boolean
+  declare allowRuleRoot: boolean
 
   /**
    * If the node must have a semi separator before
@@ -187,7 +189,7 @@ export abstract class Node<
    *
    * Defined on the prototype
    */
-  requiredSemi!: boolean
+  declare requiredSemi: boolean
 
   /** Used by Rules */
   rootRules: Node[] | undefined
@@ -781,35 +783,58 @@ export class NodeList<
     }
   }
 
-  writePos(nodeRef: number, previous: number | undefined, next: number | undefined) {
+  /** This is just so debugging isn't confusing */
+  toString() {
+    return 'NodeList' as Opaque<string>
+  }
+
+  private _writePos(nodeRef: number, previous: number | undefined, next: number | undefined) {
     this._pos.set(nodeRef, (previous ?? 0) << 16 | (next ?? 0))
   }
 
-  writeNextPos(nodeRef: number, next: number | undefined) {
+  private _writeNextPos(nodeRef: number, next: number | undefined) {
     let pos = this._pos.get(nodeRef)
     if (pos !== undefined) {
-      this._pos.set(nodeRef, pos & 0xffff | (next ?? 0) << 16)
+      /** Read previous, and write next */
+      this._pos.set(nodeRef, pos | (next ?? 0))
     }
   }
 
-  writePrevPos(nodeRef: number, previous: number | undefined) {
+  private _writePrevPos(nodeRef: number, previous: number | undefined) {
     let pos = this._pos.get(nodeRef)
     if (pos !== undefined) {
-      this._pos.set(nodeRef, (previous ?? 0) << 16 | pos & 0xffff)
+      /** Read next, and write previous */
+      this._pos.set(nodeRef, ((previous ?? 0) << 16) | pos)
     }
   }
 
-  readPos(nodeRef: number): [previous: number | undefined, next: number | undefined] {
-    let pos = this._pos.get(nodeRef)
-    if (!pos) {
-      return [undefined, undefined]
+  private _getPrevFromBits(pos: number | undefined): number | undefined {
+    if (pos === undefined) {
+      return undefined
     }
-    let previous: number | undefined = pos >>> 16
-    previous = previous === 0 ? undefined : previous
-    let next: number | undefined = pos & 0xffff
-    next = next === 0 ? undefined : next
-    return [previous, next]
+    let previous = (pos >>> 16) & 0xFFFF // Extract the upper 16 bits
+    return previous === 0 ? undefined : previous
   }
+
+  private _getNextFromBits(pos: number | undefined): number | undefined {
+    if (pos === undefined) {
+      return undefined
+    }
+    let next = pos & 0xffff // Extract the lower 16 bits
+    return next === 0 ? undefined : next
+  }
+
+  // readPos(nodeRef: number): [previous: number | undefined, next: number | undefined] {
+  //   let pos = this._pos.get(nodeRef)
+  //   if (!pos) {
+  //     return [undefined, undefined]
+  //   }
+  //   let previous: number | undefined = (pos >>> 16) & 0xFFFF // extract the upper 16 bits
+  //   previous = previous === 0 ? undefined : previous
+  //   let next: number | undefined = pos & 0xffff // extract the lower 16 bits
+  //   next = next === 0 ? undefined : next
+  //   return [previous, next]
+  // }
 
   /** Return an array */
   get value() {
@@ -820,24 +845,25 @@ export class NodeList<
     let index = 1
     let lastIndex: number | undefined
     if (values.length) {
-      this.first = 0
+      this.first = 1
     }
     const { _items, _pos } = this
     _items.clear()
     _pos.clear()
     let length = values.length
-    for (; index < length; index++) {
+    for (; index <= length; index++) {
       if (lastIndex) {
-        this.writeNextPos(lastIndex, index)
+        this._writeNextPos(lastIndex, index)
       }
       let item = values[index - 1]!
       lastIndex = index
       _items.set(index, item)
-      this.writePos(index, index - 1, 0)
+      this._writePos(index, index - 1, 0)
       item.lists.add(this)
     }
-    this._index = index
-    this.last = index
+    /** The last thing a for loop does is increment, so subtract the last iteration */
+    this._index = index - 1
+    this.last = lastIndex
   }
 
   /** Clones of node lists need to be a bit different */
@@ -878,16 +904,16 @@ export class NodeList<
   }
 
   add(item: T) {
-    let index = this._index++
+    let index = ++this._index
     if (!this.first) {
       this.first = index
     }
     let last = this.last
     if (last) {
-      this.writeNextPos(last, index)
+      this._writeNextPos(last, index)
     }
     this._items.set(index, item)
-    this.writePos(index, last, 0)
+    this._writePos(index, last, 0)
     this.last = index
   }
 
@@ -896,9 +922,17 @@ export class NodeList<
     if (index === undefined) {
       return
     }
-    let [previous] = this.readPos(index)
-    let insertionIndex = this._index++
-    this.writePos(insertionIndex, previous, index)
+    if (this._items.getValue(item) !== undefined) {
+      /**
+       * Item already exists, no duplicates
+       * Should we test this, since this is an error?
+       */
+      return
+    }
+    let pos = this._pos.get(index)!
+    let previous = this._getPrevFromBits(pos)
+    let insertionIndex = ++this._index
+    this._writePos(insertionIndex, previous, index)
     this._items.set(insertionIndex, item)
     if (index === this.first) {
       this.first = insertionIndex
@@ -910,10 +944,18 @@ export class NodeList<
     if (index === undefined) {
       return
     }
-    let [,next] = this.readPos(index)
-    let insertionIndex = this._index++
-    this.writeNextPos(index, insertionIndex)
-    this.writePos(insertionIndex, index, next)
+    if (this._items.getValue(item) !== undefined) {
+      /**
+       * Item already exists, no duplicates
+       * Should we test this, since this is an error?
+       */
+      return
+    }
+    let pos = this._pos.get(index)!
+    let next = this._getNextFromBits(pos)
+    let insertionIndex = ++this._index
+    this._writeNextPos(index, insertionIndex)
+    this._writePos(insertionIndex, index, next)
     this._items.set(insertionIndex, item)
     if (index === this.last) {
       this.last = insertionIndex
@@ -926,6 +968,7 @@ export class NodeList<
       return
     }
     let current = this._items.get(currentIndex)
+
     while (current !== undefined) {
       yield current
       /**
@@ -935,9 +978,9 @@ export class NodeList<
        */
       currentIndex = this._current
       if (currentIndex !== undefined) {
-        const nextPos = this.readPos(currentIndex)[1]
-        console.log(nextPos)
+        const nextPos = this._getNextFromBits(this._pos.get(currentIndex))
         current = nextPos ? this._items.get(nextPos) : undefined
+        this._current = nextPos
       } else {
         current = undefined
       }
@@ -945,7 +988,7 @@ export class NodeList<
   }
 
   * reverse() {
-    let currentIndex = this._current = this.first
+    let currentIndex = this._current = this.last
     if (currentIndex === undefined) {
       return
     }
@@ -954,13 +997,14 @@ export class NodeList<
       yield current
       /**
      * this._current pointer may change because of deletions,
-     * but if it's still the same pointer, then increment it
-     * to the next position.
+     * but if it's still the same pointer, then decrement it
+     * to the previous position.
      */
       currentIndex = this._current
       if (currentIndex !== undefined) {
-        const prevPos = this.readPos(currentIndex)[0]
+        const prevPos = this._getPrevFromBits(this._pos.get(currentIndex))
         current = prevPos ? this._items.get(prevPos) : undefined
+        this._current = prevPos
       } else {
         current = undefined
       }
@@ -972,12 +1016,14 @@ export class NodeList<
     if (index === undefined) {
       return
     }
-    let [previous, next] = this.readPos(index)
+    let pos = this._pos.get(index)!
+    let previous = this._getPrevFromBits(pos)
+    let next = this._getNextFromBits(pos)
     if (previous) {
-      this.writeNextPos(previous, next)
+      this._writeNextPos(previous, next)
     }
     if (next) {
-      this.writePrevPos(next, previous)
+      this._writePrevPos(next, previous)
     }
     this._items.delete(index)
     if (index === this.first) {
