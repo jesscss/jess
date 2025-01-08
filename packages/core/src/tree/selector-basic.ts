@@ -31,8 +31,9 @@ export class BasicSelector extends SimpleSelector<{ value: string }> {
     })
   }
 
+  _valueOf: string | undefined
   valueOf(): string {
-    return (this._value ??= (this.isTag ? this.value.toLowerCase() : this.value))
+    return (this._valueOf ??= (this.isTag ? this.value.toLowerCase() : this.value))
   }
 
   /** @todo - move to visitors */

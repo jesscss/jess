@@ -8,12 +8,14 @@ type SimpleSelectorValue = {
 
 export abstract class SimpleSelector<T extends SimpleSelectorValue = SimpleSelectorValue> extends Node<T> implements Selector {
   declare isSelector: true
-  declare valueOf: () => string
+  _valueOf: string | undefined
 
-  /** The cached key value */
-  _value: string | undefined
-
+  /**
+   * We shouldn't need to clone when eval-ing in simple cases
+   * but we override in complex cases.
+   */
   async eval(context: Context): Promise<Node> {
+    this.evaluated = true
     return this
   }
 }

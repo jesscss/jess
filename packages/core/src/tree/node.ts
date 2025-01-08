@@ -687,19 +687,57 @@ export abstract class Node<
   // toModule?(context: Context, out: OutputCollector): void
 }
 
-/**
- * This is an array-like object but without the overhead of an array.
- * In JS, numbered properties tend to be faster than named properties.
- */
-class ListPos<T extends Node = Node> {
-  0: T | undefined
-  1: T | undefined
-  constructor(
-    previous: T | undefined,
-    next: T | undefined
-  ) {
-    this[0] = previous
-    this[1] = next
+/** Simple bi-directional map */
+class BiMap<K, V> {
+  private readonly _map!: Map<K, V>
+  private readonly _reverse!: Map<V, K>
+
+  constructor(map?: BiMap<K, V>) {
+    if (map) {
+      this._map = new Map(map._map)
+      this._reverse = new Map(map._reverse)
+    } else {
+      this._map = new Map()
+      this._reverse = new Map()
+    }
+  }
+
+  get [Symbol.iterator]() {
+    return this._map[Symbol.iterator]
+  }
+
+  values() {
+    return this._map.values()
+  }
+
+  get(key: K) {
+    return this._map.get(key)
+  }
+
+  getValue(value: V) {
+    return this._reverse.get(value)
+  }
+
+  set(key: K, value: V) {
+    this._map.set(key, value)
+    this._reverse.set(value, key)
+  }
+
+  clear() {
+    this._map.clear()
+    this._reverse.clear()
+  }
+
+  delete(key: K) {
+    let value = this._map.get(key)
+    if (value) {
+      this._map.delete(key)
+      this._reverse.delete(value)
+    }
+  }
+
+  get size() {
+    return this._map.size
   }
 }
 
@@ -712,10 +750,19 @@ export class NodeList<
   T extends Node = Node,
   O extends NodeOptions = NodeOptions
 > extends Node<{ value: T[] }, O> {
-  first: T | undefined
-  last: T | undefined
-  private _current: T | undefined
-  items = new Map<T, ListPos<T>>()
+  first: number | undefined
+  last: number | undefined
+  private _current: number | undefined
+  /**
+   * These maps are designed for fast lookups,
+   * map cloning, and replacing Nodes.
+   */
+
+  /** A map of numbers to nodes */
+  private _items = new BiMap<number, T>()
+  /** A map of a numbered node to the before / after as a joined number */
+  private _pos = new Map<number, number>()
+  private _index = 0
 
   constructor(
     values: T[] = [],
@@ -734,29 +781,63 @@ export class NodeList<
     }
   }
 
+  writePos(nodeRef: number, previous: number | undefined, next: number | undefined) {
+    this._pos.set(nodeRef, (previous ?? 0) << 16 | (next ?? 0))
+  }
+
+  writeNextPos(nodeRef: number, next: number | undefined) {
+    let pos = this._pos.get(nodeRef)
+    if (pos !== undefined) {
+      this._pos.set(nodeRef, pos & 0xffff | (next ?? 0) << 16)
+    }
+  }
+
+  writePrevPos(nodeRef: number, previous: number | undefined) {
+    let pos = this._pos.get(nodeRef)
+    if (pos !== undefined) {
+      this._pos.set(nodeRef, (previous ?? 0) << 16 | pos & 0xffff)
+    }
+  }
+
+  readPos(nodeRef: number): [previous: number | undefined, next: number | undefined] {
+    let pos = this._pos.get(nodeRef)
+    if (!pos) {
+      return [undefined, undefined]
+    }
+    let previous: number | undefined = pos >>> 16
+    previous = previous === 0 ? undefined : previous
+    let next: number | undefined = pos & 0xffff
+    next = next === 0 ? undefined : next
+    return [previous, next]
+  }
+
   /** Return an array */
   get value() {
     return [...this]
   }
 
   setMany(values: T[]) {
-    let currentItem: T | undefined
-    let currentPos: ListPos<T> | undefined
+    let index = 1
+    let lastIndex: number | undefined
     if (values.length) {
-      this.first = values[0]
+      this.first = 0
     }
-    const { items } = this
-    items.clear()
-    for (let item of values) {
-      if (currentPos) {
-        currentPos[1] = item
+    const { _items, _pos } = this
+    _items.clear()
+    _pos.clear()
+    let length = values.length
+    for (; index < length; index++) {
+      if (lastIndex) {
+        this.writeNextPos(lastIndex, index)
       }
-      currentPos = new ListPos(currentItem, undefined)
-      currentItem = item
-      items.set(item, currentPos)
+      let item = values[index - 1]!
+      lastIndex = index
+      _items.set(index, item)
+      this.writePos(index, index - 1, 0)
       item.lists.add(this)
     }
-    this.last = currentItem
+    this._index = index
+    this.last = index
   }
 
   /** Clones of node lists need to be a bit different */
@@ -776,10 +857,14 @@ export class NodeList<
     )
 
     cloneFn ??= n => n.clone(deep)
+    newNode._items = new BiMap(this._items)
+    newNode._pos = new Map(this._pos)
 
     if (deep) {
-      const nodes = [...this]
-      newNode.setMany(nodes.map(n => n.clone(deep, cloneFn)))
+      for (let [index, node] of newNode._items) {
+        /** @todo - deal with deletions or NodeList returns */
+        newNode._items.set(index, node.clone(deep, cloneFn))
+      }
     }
     newNode.pre = this.pre
     newNode.post = this.post
@@ -788,67 +873,59 @@ export class NodeList<
     return newNode
   }
 
-  get has() {
-    return this.items.has
-  }
-
   get size() {
-    return this.items.size
+    return this._items.size
   }
 
   add(item: T) {
-    if (this.items.has(item)) {
-      return
-    }
+    let index = this._index++
     if (!this.first) {
-      this.first = item
+      this.first = index
     }
     let last = this.last
     if (last) {
-      this.items.get(last)![1] = item
+      this.writeNextPos(last, index)
     }
-    this.items.set(item, new ListPos(last, undefined))
-    this.last = item
+    this._items.set(index, item)
+    this.writePos(index, last, 0)
+    this.last = index
   }
 
   insertBefore(before: T, item: T) {
-    if (this.items.has(item)) {
+    let index = this._items.getValue(before)
+    if (index === undefined) {
       return
     }
-    let pos = this.items.get(before)
-    if (pos) {
-      let previous = pos[0]
-      if (previous) {
-        this.items.get(previous)![1] = item
-      }
-      pos[0] = item
-      this.items.set(item, new ListPos(previous, before))
-      if (before === this.first) {
-        this.first = item
-      }
+    let [previous] = this.readPos(index)
+    let insertionIndex = this._index++
+    this.writePos(insertionIndex, previous, index)
+    this._items.set(insertionIndex, item)
+    if (index === this.first) {
+      this.first = insertionIndex
     }
   }
 
   insertAfter(after: T, item: T) {
-    if (this.items.has(item)) {
+    let index = this._items.getValue(after)
+    if (index === undefined) {
       return
     }
-    let pos = this.items.get(after)
-    if (pos) {
-      let next = pos[1]
-      if (next) {
-        this.items.get(next)![0] = item
-      }
-      pos[1] = item
-      this.items.set(item, new ListPos(after, next))
-      if (after === this.last) {
-        this.last = item
-      }
+    let [,next] = this.readPos(index)
+    let insertionIndex = this._index++
+    this.writeNextPos(index, insertionIndex)
+    this.writePos(insertionIndex, index, next)
+    this._items.set(insertionIndex, item)
+    if (index === this.last) {
+      this.last = insertionIndex
     }
   }
 
   * [Symbol.iterator]() {
-    let current = this._current = this.first
+    let currentIndex = this._current = this.first
+    if (currentIndex === undefined) {
+      return
+    }
+    let current = this._items.get(currentIndex)
     while (current !== undefined) {
       yield current
       /**
@@ -856,51 +933,65 @@ export class NodeList<
        * but if it's still the same pointer, then increment it
        * to the next position.
        */
-      if (current === this._current) {
-        current = this._current = this.items.get(current)?.[1]
+      currentIndex = this._current
+      if (currentIndex !== undefined) {
+        const nextPos = this.readPos(currentIndex)[1]
+        console.log(nextPos)
+        current = nextPos ? this._items.get(nextPos) : undefined
       } else {
-        current = this._current
+        current = undefined
       }
     }
   }
 
   * reverse() {
-    let current = this._current = this.last
+    let currentIndex = this._current = this.first
+    if (currentIndex === undefined) {
+      return
+    }
+    let current = this._items.get(currentIndex)
     while (current !== undefined) {
       yield current
-      if (current === this._current) {
-        current = this._current = this.items.get(current)?.[0]
+      /**
+     * this._current pointer may change because of deletions,
+     * but if it's still the same pointer, then increment it
+     * to the next position.
+     */
+      currentIndex = this._current
+      if (currentIndex !== undefined) {
+        const prevPos = this.readPos(currentIndex)[0]
+        current = prevPos ? this._items.get(prevPos) : undefined
       } else {
-        current = this._current
+        current = undefined
       }
     }
   }
 
   removeItem(item: T) {
-    let pos = this.items.get(item)
-    if (pos) {
-      let previous = pos[0]
-      let next = pos[1]
-      if (previous) {
-        this.items.get(previous)![1] = next
-      }
-      if (next) {
-        this.items.get(next)![0] = previous
-      }
-      this.items.delete(item)
-      if (item === this.first) {
-        this.first = next
-      }
-      if (item === this.last) {
-        this.last = previous
-      }
-      if (item === this._current) {
-        this._current = next
-      }
-      item.lists.removeItem(this)
-      if (this.items.size === 0) {
-        this.remove()
-      }
+    let index = this._items.getValue(item)
+    if (index === undefined) {
+      return
+    }
+    let [previous, next] = this.readPos(index)
+    if (previous) {
+      this.writeNextPos(previous, next)
+    }
+    if (next) {
+      this.writePrevPos(next, previous)
+    }
+    this._items.delete(index)
+    if (index === this.first) {
+      this.first = next
+    }
+    if (index === this.last) {
+      this.last = previous
+    }
+    if (index === this._current) {
+      this._current = next
+    }
+    item.lists.removeItem(this)
+    if (this._items.size === 0) {
+      this.remove()
     }
   }
 }

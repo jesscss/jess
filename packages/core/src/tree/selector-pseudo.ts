@@ -1,17 +1,10 @@
 import {
   defineType,
   type Node
-  // type NodeValueArg,
-  // type NodeOptions,
-  // type TypedMap,
-  // type NodeValueArray
 } from './node'
-// import { SimpleSelector } from './selector-simple'
+import { SimpleSelector } from './selector-simple'
 import { type Context } from '../context'
-import { Selector } from './selector'
 import { isNode } from './util'
-// import { BasicSelector } from './selector-basic'
-// import { type Class, type TupleToUnion } from 'type-fest'
 
 export type PseudoSelectorValue = {
   /**
@@ -25,7 +18,7 @@ export type PseudoSelectorValue = {
 
 const { isArray } = Array
 
-export interface PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorValue> extends Selector<T> {
+export interface PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorValue> extends SimpleSelector<T> {
   get value(): string
   set value(v: string)
 }
@@ -35,17 +28,11 @@ export interface PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorVa
  * @see https://developer.mozilla.org/en-US/docs/Learn/CSS/Building_blocks/Selectors/Pseudo-classes_and_pseudo-elements
  *   e.g. :hover, :focus, :active
 */
-export class PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorValue> extends Selector<T> {
-  get arg(): PseudoSelectorValue['arg'] {
-    return this.data.get('arg')
-  }
-
-  set arg(v: PseudoSelectorValue['arg']) {
-    this.data.set('arg', v)
-  }
+export class PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorValue> extends SimpleSelector<T> {
+  declare isSelector: true
 
   toTrimmedString() {
-    let { value, arg } = this
+    let { value, arg } = this.values
     let argString = ''
     if (arg) {
       if (isNode(arg, 'SelectorList')) {
@@ -100,23 +87,26 @@ export class PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorValue>
   }
 
   valueOf() {
-    let valueOf = this._value
+    let valueOf = this._valueOf
     if (!valueOf) {
-      let { value, arg } = this
+      let value = this.data.get('value')
+      let arg = this.data.get('arg')
       /**
        * Normalizes :nth-child(n + 1) to match :nth-child(n+1)
        * That is, anything that doesn't hold a selector as a value
        * is, by definition, not space-sensitive.
+       *
+       * @todo 1n === n, 2n + 0 === 2n
        */
       valueOf = `${value}${arg ? `(${arg.toTrimmedString().replace(/\s+/, '')})` : ''}`
-      Object.defineProperty(this, '_value', { value: valueOf })
+      this._valueOf = valueOf
     }
     return valueOf
   }
 
   async eval(context: Context) {
     return await this.evalIfNot(context, async () => {
-      let { arg } = this
+      let arg = this.data.get('arg')
       let node = this.clone()
       if (!arg) {
         return node
@@ -126,11 +116,13 @@ export class PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorValue>
       context.canOperate = false
       arg = await arg.eval(context)
       context.canOperate = canOperate
-      node.arg = arg
+      node.data.set('arg', arg)
       return node
     })
   }
 }
+
+PseudoSelector.prototype.isSelector = true
 
 // Some experiments with type narrowing
 // type SelectorValue = {

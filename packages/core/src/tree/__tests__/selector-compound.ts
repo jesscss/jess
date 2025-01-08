@@ -36,13 +36,13 @@ describe('Compound Selector', () => {
     test('pseudo sorting', () => {
       /** :is(.a):is(.b) */
       let sel1 = compound([
-        pseudo({ name: ':is', value: el('.a') }),
-        pseudo({ name: ':is', value: el('.b') })
+        pseudo({ value: ':is', arg: el('.a') }),
+        pseudo({ value: ':is', arg: el('.b') })
       ]).valueOf()
       /** :is(.b):is(.a) */
       let sel2 = compound([
-        pseudo({ name: ':is', value: el('.b') }),
-        pseudo({ name: ':is', value: el('.a') })
+        pseudo({ value: ':is', arg: el('.b') }),
+        pseudo({ value: ':is', arg: el('.a') })
       ]).valueOf()
       expect(sel1).toEqual(sel2)
     })
@@ -57,9 +57,9 @@ describe('Compound Selector', () => {
       ]).valueOf()
       /** :is(a)#id:is(.one.two) */
       let sel2 = compound([
-        pseudo({ name: ':is', value: el('a') }),
+        pseudo({ value: ':is', arg: el('a') }),
         el('#id'),
-        pseudo({ name: ':is', value: compound([el('.two'), el('.one')]) })
+        pseudo({ value: ':is', arg: compound([el('.two'), el('.one')]) })
       ]).valueOf()
       expect(sel1).toEqual(sel2)
     })
@@ -76,11 +76,11 @@ describe('Compound Selector', () => {
 
     test('nested compound', () => {
       /** :is(a)#id:is(.one.two) */
-      const sel1 = pseudo({ name: ':is', value: el('a') })
+      const sel1 = pseudo({ value: ':is', arg: el('a') })
       let sel2 = compound([
         sel1,
         el('#id'),
-        pseudo({ name: ':is', value: compound([el('.two'), el('.one')]) })
+        pseudo({ value: ':is', arg: compound([el('.two'), el('.one')]) })
       ])
 
       expect(sel1.keys).toEqual('a')
