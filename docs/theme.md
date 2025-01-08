@@ -1,6 +1,6 @@
 ```less
-@use './my-vars.jess' (config);
-@use 'library/variables.jess' theme with config;
+@--use './my-vars.jess' (config);
+@--use 'library/variables.jess' (theme) with $config;
 
 
 .box {
@@ -10,7 +10,7 @@
 Hmmm....
 ```less
 // library/box.jess
-@import { theme } from 'library/variables.jess';
+@--from 'library/variables.jess' import (theme);
 // ^^ theme needs to be inherited / over-written? 
 
 .box {
