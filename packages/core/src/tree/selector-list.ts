@@ -12,15 +12,24 @@ import { List } from './list'
 // }
 
 /** Constructs */
-export class SelectorList extends List<Selector> {
+export class SelectorList extends List<Selector> implements Selector {
+  declare isSelector: true
+
+  _keySet: Set<string> | undefined
+  get keySet(): Set<string> {
+    /** @todo - build key set */
+    return (this._keySet ??= new Set())
+  }
+
   /** @todo - put in whitespace and line breaks */
   toTrimmedString(depth: number = 0) {
     let space = ''.padStart(depth * 2)
     return this.value.map(v => v.toString(depth)).join(`,\n${space}`)
   }
 
+  _valueOf: string | undefined
   valueOf() {
-    return `[${this.value.map(v => v.valueOf()).sort().join(',')}]`
+    return this.value.map(v => v.valueOf()).sort().join(',')
   }
 
   async eval(context: Context): Promise<SelectorList | Selector> {
@@ -34,5 +43,7 @@ export class SelectorList extends List<Selector> {
     })
   }
 }
+
+SelectorList.prototype.isSelector = true
 
 export const sellist = defineType(SelectorList, 'SelectorList', 'sellist')

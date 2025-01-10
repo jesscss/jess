@@ -18,19 +18,12 @@ export type PseudoSelectorValue = {
 
 const { isArray } = Array
 
-export interface PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorValue> extends SimpleSelector<T> {
-  get value(): string
-  set value(v: string)
-}
-
 /**
  * A pseudo selector
  * @see https://developer.mozilla.org/en-US/docs/Learn/CSS/Building_blocks/Selectors/Pseudo-classes_and_pseudo-elements
  *   e.g. :hover, :focus, :active
 */
 export class PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorValue> extends SimpleSelector<T> {
-  declare isSelector: true
-
   toTrimmedString() {
     let { value, arg } = this.values
     let argString = ''
@@ -44,6 +37,11 @@ export class PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorValue>
     return `${value}${argString}`
   }
 
+  /**
+   * @todo - This should be vastly simplifiable. For
+   *
+   * Also, :is()
+   */
   get keys() {
     let keys = this._keys
     if (!keys) {

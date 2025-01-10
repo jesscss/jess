@@ -48,13 +48,15 @@ export class ComplexSelector extends NodeList<ComplexSelectorComponent> implemen
    *         #[ #['e', '>', 'f'], #['g'] ]
    *      ]
    */
+  _valueOf: string | undefined
   valueOf() {
-    let value = this._value
-    if (!value) {
-      value = this.value.map(n => n.valueOf()).join('')
-      Object.defineProperty(this, '_value', { value })
-    }
-    return value
+    return (this._valueOf ??= this.value.map(n => n.valueOf()).join(''))
+  }
+
+  _keySet: Set<string> | undefined
+  get keySet() {
+    /** @todo - iterate and add keys from children keys */
+    return (this._keySet ??= new Set())
   }
 
   get keys() {
@@ -189,6 +191,8 @@ export class ComplexSelector extends NodeList<ComplexSelectorComponent> implemen
   //   out.add('])')
   // }
 }
+
+ComplexSelector.prototype.isSelector = true
 
 type SelectorParams = ConstructorParameters<typeof ComplexSelector>
 

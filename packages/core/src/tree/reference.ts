@@ -5,13 +5,14 @@ import { cast } from './util/cast'
 import { Declaration } from './declaration'
 import type { GetterOptions } from '../scope'
 import { General } from './general'
+import { type Selector } from './selector'
 
 /**
  * The type is determined by syntax
  * and location.
  *   e.g. in Jess
- *    - `$foo` (or #($foo)) refers to a variable
- *    - `$.foo` (or #($.foo) refers to a property
+ *    - `$foo` (or $(foo)) refers to a variable
+ *    - `$.foo` (or $(.foo) refers to a property
  *    - in `$ -> .foo()`, `.foo` refers to a mixin
  *   in Less
  *   - `@foo` refers to a variable
@@ -35,12 +36,16 @@ type ReferenceParams = ConstructorParameters<NodeType>
  * This is a variable or property reference,
  * which can itself contain a reference (a variable variable).
  */
-export class Reference extends Node<string | Interpolated, ReferenceOptions> {
+export class Reference extends Node<string | Interpolated, ReferenceOptions> implements Selector {
+  declare isSelector: true
+
   constructor(...args: ReferenceParams) {
     /** Default to a variable-type reference */
     args[1] ??= { type: 'variable' }
     super(...args)
   }
+  _valueOf: string | undefined
+  keySet: Set<string>
 
   toTrimmedString(): string {
     const { type } = this.options
@@ -102,5 +107,7 @@ export class Reference extends Node<string | Interpolated, ReferenceOptions> {
     }
   }
 }
+
+Reference.prototype.isSelector = true
 
 export const ref = defineType(Reference, 'Reference', 'ref')

@@ -18,6 +18,11 @@ const nonElementRegex = /^[.#:*[]/
 export class CompoundSelector extends NodeList<SimpleSelector> implements Selector {
   declare isSelector: true
 
+  _keySet: Set<string> | undefined
+  get keySet() {
+    /** @todo - build key set */
+    return (this._keySet ??= new Set())
+  }
   // get keys() {
   //   let keys = this._keys
   //   if (!keys) {

@@ -26,7 +26,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   }
 
   valueOf() {
-    let valueOf = this._value
+    let valueOf = this._valueOf
     if (!valueOf) {
       let { value, op, attrValue, mod } = this.values
       /** Attributes are case-insensitive */
@@ -35,7 +35,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
         return `[${keyStr}]`
       }
       let valueStr = attrValue?.valueOf() ?? ''
-      valueOf = this._value = `[${keyStr}${op}"${valueStr}"${mod ? ` ${mod}` : ''}]`
+      valueOf = this._valueOf = `[${keyStr}${op}"${valueStr}"${mod ? ` ${mod}` : ''}]`
     }
     return valueOf
   }

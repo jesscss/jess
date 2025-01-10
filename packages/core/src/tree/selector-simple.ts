@@ -10,6 +10,13 @@ export abstract class SimpleSelector<T extends SimpleSelectorValue = SimpleSelec
   declare isSelector: true
   _valueOf: string | undefined
 
+  abstract valueOf(): string
+
+  _keySet: Set<string> | undefined
+  get keySet(): Set<string> {
+    return (this._keySet ??= new Set([this.valueOf()]))
+  }
+
   /**
    * We shouldn't need to clone when eval-ing in simple cases
    * but we override in complex cases.

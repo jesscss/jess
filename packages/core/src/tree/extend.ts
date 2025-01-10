@@ -25,6 +25,16 @@ export type ExtendValue = {
 export class Extend extends Node<ExtendValue> implements Selector {
   declare isSelector: true
 
+  _valueOf: string | undefined
+  valueOf() {
+    return `:extend(${this.value.valueOf()})`
+  }
+
+  /** The preceding selector is the keyset */
+  get keySet() {
+    return this.data.get('value').keySet
+  }
+
   toTrimmedString(depth?: number | undefined): string {
     let { target, value } = this.values
     let output = value ? `${value}` : ''
