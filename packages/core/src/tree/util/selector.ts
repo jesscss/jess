@@ -71,40 +71,13 @@ export function isRelative(sel: Selector | SelectorList) {
 }
 
 /**
- *
- *  1. Each list in each :is is a start of a new search in a selector.
- *  2. Flatten :is() only if it contains simple selectors or compounds.
- *
+ * It would be easy to be over-simplistic here and just check if the selectors
+ * are the same. But we need to be more nuanced than that because of the
+ * `:is()` pseudo-class, and because compound selectors can be in any order,
+ * yet represent the same match.
  */
-export function normalize(selector: Selector | SelectorList) {
-  if (selector instanceof SelectorList) {
-    const sel = selector.clone()
-    sel.value = sel.value.map(normalize)
-    return sel
-  }
+export function matchSelectors(a: Selector, b: Selector, partial = false) {
 
-  if (
-    selector instanceof ComplexSelector
-    || selector instanceof CompoundSelector
-  ) {
-    const { value } = selector
-    let length = value.length
-
-    let paths: Selector[] = []
-    let topCompound: SimpleSelector[] = []
-    /** Iterate backwards; it's easier to build from :is() statements */
-    for (let i = length - 1; i >= 0; i--) {
-      let node = value[i]!.normalize()
-      if (node instanceof BasicSelector) {
-        paths.unshift(node)
-      }
-      if (node instanceof PseudoSelector && node.value === ':is') {
-        let path = node.arg as Selector | SelectorList
-      } else {
-
-      }
-    }
-  }
 }
 
 export function getTreeNode(sel: Selector | Combinator): SelectorTree {

@@ -6,9 +6,9 @@ import {
 } from '../context'
 import type { Visitor } from '../visitor'
 import type { Comment } from './comment'
+import type { Token } from './token'
 import { type Operator } from './util/calculate'
-// import type { OutputCollector } from '../output'
-import type { Constructor, Writable, Class, ValueOf, Opaque, IsUnknown } from 'type-fest'
+import type { Constructor, Writable, Class, ValueOf, Opaque, IsUnknown, UnionToTuple } from 'type-fest'
 
 export type { TreeContext }
 
@@ -30,7 +30,7 @@ export const REMOVE: unique symbol = Symbol('REMOVE')
 export type NodeVisitReturn = void | Node | symbol
 export type NodeVisitFunction = (n: Node) => NodeVisitReturn
 export type NodeOptions = Record<string, boolean | string | number> & AllNodeOptions
-export type NodeValue = unknown
+export type NodeValue = undefined | boolean | string | number | Node
 export type NodeMap = Map<string, NodeValue>
 export type NodeInValue = NodeValue | NodeMapArray | NodeMap
 export type NodeTypeMap = {
@@ -77,11 +77,6 @@ export const defineType = <
 
   type Args = [value?: P[0] | V, location?: P[1], options?: P[2], treeContext?: P[3]]
   return (...args: Args) => {
-    /** Allow objects to be passed into the public form */
-    let value = args[0]
-    if (isPlainObject(value)) {
-      args[0] = new Map(Object.entries(value as Record<string, any>))
-    }
     return new Clazz(...args) as T extends Class<infer C> ? InstanceType<Class<C, Args>> : never
   }
 }
@@ -131,7 +126,7 @@ type CollectionPair<T> =
 
 type Values<T, K extends keyof T = keyof T> = T[K]
 
-export type NodeValueArray<T extends NodeTypeMap> = Array<Values<{
+export type NodeValueArray<T extends NodeTypeMap> = UnionToTuple<Values<{
   [K in keyof T]: [K, T[K]]
 }>>
 
@@ -168,10 +163,11 @@ export abstract class Node<
    *
    * If this is `1`, it represents a single space character (' ').
    * If it's 0, it means there were no tokens whatsoever.
-   * In array, if it's whitespace, it's representing literal whitespace.
+   * In a NodeList, any whitespace tokens outside of comments are individually represented,
+   * because they are preserved while the comment may not be.
    */
-  pre: Array<string | Comment> | 1 | 0 = 0
-  post: Array<string | Comment> | 1 | 0 = 0
+  pre: NodeList<Comment | Token> | 1 | 0 = 0
+  post: NodeList<Comment | Token> | 1 | 0 = 0
 
   visible = true
 
@@ -205,7 +201,13 @@ export abstract class Node<
     location?: LocationInfo | 0,
     treeContext?: TreeContext
   ) {
-    this.data = new Map(isNodeMap(value) ? value : [['value', value]]) as TypedMap<M>
+    this.data = new Map(
+      isNodeMap(value)
+        ? value
+        : value !== undefined && isPlainObject(value)
+          ? Object.entries(value as Record<string, NodeValue>)
+          : [['value', value]]
+    ) as TypedMap<M>
     this.location = location || []
     this._treeContext = treeContext
     if (treeContext) {
@@ -262,19 +264,7 @@ export abstract class Node<
    */
   processNodes(func: (n: Node) => NodeValue) {
     this.data.forEach((nodeVal, key, map) => {
-      /** Process Node arrays only */
-      if (isArray(nodeVal)) {
-        let out = []
-        for (let i = 0; i < nodeVal.length; i++) {
-          let node = nodeVal[i]
-          let result = node instanceof Node ? func(node) : node
-          if (result ?? false) {
-            out.push(result)
-          }
-        }
-        /** Assume that the type will still be valid */
-        map.set(key, out as M[typeof key])
-      } else if (nodeVal instanceof Node) {
+      if (nodeVal instanceof Node) {
         /** Assume that the type will still be valid */
         map.set(key, func(nodeVal) as typeof nodeVal)
       }
@@ -337,57 +327,25 @@ export abstract class Node<
    *
    * @todo - rewrite to use NodeList
    */
-  private _processValueArray(
-    arr: any[],
+  private _processNodeList(
+    list: NodeList,
     fn: NodeVisitFunction,
     shallow?: boolean,
-    visitPrePost?: boolean
+    visitPrePost?: boolean,
+    direction?: 'ltr' | 'rtl'
   ) {
-    let length = arr.length
-    for (let i = 0; i < length; i++) {
-      let node = arr[i]
-      if (node instanceof Node) {
-        let returnVal = fn(node)
-        if (returnVal === ABORT) {
-          return ABORT
-        } else if (returnVal === REMOVE) {
-          arr.splice(i, 1)
-          i--
-          length--
-        } else if (returnVal instanceof Node && returnVal !== node) {
-          arr[i] = returnVal
-        }
-        if (!shallow) {
-          node.walkNodes(fn, false, 'ltr', visitPrePost)
-        }
+    let method: 'entries' | 'reverseEntries' = direction === 'rtl' ? 'reverseEntries' : 'entries'
+    for (let [key, node] of list[method]()) {
+      let returnVal = fn(node)
+      if (returnVal === ABORT) {
+        return ABORT
+      } else if (returnVal === REMOVE) {
+        node.remove()
+      } else if (returnVal instanceof Node && returnVal !== node) {
+        list.set(key, returnVal)
       }
-    }
-  }
-
-  /** @todo - rewrite to use NodeList */
-  private _processValueArrayReverse(
-    arr: any[],
-    fn: NodeVisitFunction,
-    shallow?: boolean,
-    visitPrePost?: boolean
-  ) {
-    let length = arr.length
-    for (let i = length - 1; i >= 0; i--) {
-      let node = arr[i]
-      if (node instanceof Node) {
-        let returnVal = fn(node)
-        if (returnVal === ABORT) {
-          return ABORT
-        } else if (returnVal === REMOVE) {
-          arr.splice(i, 1)
-          i++
-          length--
-        } else if (returnVal instanceof Node && returnVal !== node) {
-          arr[i] = returnVal
-        }
-        if (!shallow) {
-          node.walkNodes(fn, false, 'rtl', visitPrePost)
-        }
+      if (!shallow) {
+        node.walkNodes(fn, false, direction, visitPrePost)
       }
     }
   }
@@ -410,29 +368,15 @@ export abstract class Node<
   ) {
     if (visitPrePost) {
       let { pre, post } = this
-      if (isArray(pre)) {
-        if (direction === 'rtl') {
-          this._processValueArrayReverse(pre, func, true)
-        } else {
-          this._processValueArray(pre, func, true)
-        }
+      if (pre instanceof NodeList) {
+        this._processNodeList(pre, func, true, false, direction)
       }
-      if (isArray(post)) {
-        if (direction === 'rtl') {
-          this._processValueArrayReverse(post, func, true)
-        } else {
-          this._processValueArray(post, func, true)
-        }
+      if (post instanceof NodeList) {
+        this._processNodeList(post, func, true, false, direction)
       }
     }
     for (const [key, nodeVal] of this.data.entries()) {
-      /** Process Node arrays only */
-      if (isArray(nodeVal)) {
-        if (direction === 'rtl') {
-          return this._processValueArrayReverse(nodeVal, func, shallow, visitPrePost)
-        }
-        return this._processValueArray(nodeVal, func, shallow, visitPrePost)
-      } else if (nodeVal instanceof Node) {
+      if (nodeVal instanceof Node) {
         let returnVal = func(nodeVal)
         if (returnVal === ABORT) {
           return ABORT
@@ -498,10 +442,13 @@ export abstract class Node<
 
   /** Remove comments from pre/post */
   stripPrePost(prePost: Node['pre']) {
-    if (isArray(prePost)) {
-      return prePost.filter(p => !(p instanceof Node && p.type === 'Comment'))
+    if (prePost instanceof NodeList) {
+      for (let n of prePost) {
+        if (n.type === 'Comment') {
+          n.remove()
+        }
+      }
     }
-    return prePost
   }
 
   /**
@@ -519,8 +466,8 @@ export abstract class Node<
         }
       }
     )
-    newNode.pre = this.stripPrePost(this.pre)
-    newNode.post = this.stripPrePost(this.post)
+    this.stripPrePost(this.pre)
+    this.stripPrePost(this.post)
 
     return newNode
   }
@@ -587,11 +534,7 @@ export abstract class Node<
     } else if (value === 1) {
       return ' '
     } else {
-      let output = ''
-      output += value
-        .map(v => `${v}`)
-        .join('')
-      return output
+      return value.toString()
     }
   }
 
@@ -784,8 +727,12 @@ export class NodeList<
   }
 
   /** This is just so debugging isn't confusing */
-  toString() {
-    return 'NodeList' as Opaque<string>
+  toString(depth?: number | undefined) {
+    let output = ''
+    for (let item of this) {
+      output += item.toString(depth)
+    }
+    return output as Opaque<string>
   }
 
   private _writePos(nodeRef: number, previous: number | undefined, next: number | undefined) {
@@ -830,6 +777,10 @@ export class NodeList<
   /** Return an array */
   get value() {
     return [...this]
+  }
+
+  set(key: number, value: T) {
+    this._items.set(key, value)
   }
 
   setMany(values: T[]) {
@@ -954,6 +905,12 @@ export class NodeList<
   }
 
   * [Symbol.iterator]() {
+    yield * this._values()
+  }
+
+  private _values(): Generator<T, void, any>
+  private _values(asEntries: true): Generator<[number, T], void, any>
+  private * _values(asEntries = false) {
     let currentIndex = this._current = this.first
     if (currentIndex === undefined) {
       return
@@ -961,7 +918,7 @@ export class NodeList<
     let currentItem = this._items.get(currentIndex)
 
     while (currentItem !== undefined) {
-      yield currentItem
+      yield asEntries ? [currentIndex, currentItem] : currentItem
       /**
        * this._current pointer may change because of deletions,
        * but if it's still the same pointer, then increment it
@@ -976,7 +933,17 @@ export class NodeList<
     }
   }
 
-  * reverse() {
+  * entries() {
+    yield * this._values(true)
+  }
+
+  * reverseEntries() {
+    yield * this.reverse(true)
+  }
+
+  reverse(): Generator<T, void, any>
+  reverse(asEntries: true): Generator<[number, T], void, any>
+  * reverse(asEntries = false) {
     let currentIndex = this._current = this.last
     if (currentIndex === undefined) {
       return
@@ -984,7 +951,7 @@ export class NodeList<
     let currentItem = this._items.get(currentIndex)
 
     while (currentItem !== undefined) {
-      yield currentItem
+      yield asEntries ? [currentIndex, currentItem] : currentItem
       /**
        * this._current pointer may change because of deletions,
        * but if it's still the same pointer, then decrement it
