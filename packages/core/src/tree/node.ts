@@ -582,11 +582,7 @@ export abstract class Node<
   toTrimmedString(depth?: number) {
     let output = ''
     this.data.forEach(value => {
-      if (isArray(value)) {
-        output += value.join('')
-      } else {
-        output += `${value}`
-      }
+      output += `${value}`
     })
     return output
   }
