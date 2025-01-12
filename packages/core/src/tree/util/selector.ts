@@ -76,7 +76,7 @@ export function isRelative(sel: Selector | SelectorList) {
  * `:is()` pseudo-class, and because compound selectors can be in any order,
  * yet represent the same match.
  */
-export function matchSelectors(a: Selector, b: Selector, partial = false) {
+export function matchSelectors(target: Selector, find: Selector, partial = false) {
 
 }
 

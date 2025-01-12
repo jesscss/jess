@@ -3,20 +3,21 @@ import { Node, defineType } from './node'
 export type GeneralNodeType =
   'Name'
   | 'Keyword'
-  | 'Url'
+  | 'UrlValue'
   | 'Flag'
   | 'CustomProp'
   | 'CustomIdent'
   | 'Anonymous'
 
+/** Doesn't get assigned but can be used for inference? */
 export type GeneralOptions<T extends string> = {
   type: T
 }
 /**
- * Any general value that doesn't have a specific Jess node.
- * Has a `type` option to specify the general node type.
+ * Any general value is a simple token that doesn't need to do much.
+ * It holds a string, but can have pre/post nodes
  */
-export class General<
+export abstract class General<
   T extends string = GeneralNodeType
 > extends Node<string, GeneralOptions<T>> {
   async eval() {
@@ -28,4 +29,28 @@ export class General<
     return this
   }
 }
-defineType(General, 'General')
+
+export class Name extends General<'Name'> {}
+defineType(Name, 'Name')
+
+export class Keyword extends General<'Keyword'> {}
+defineType(Keyword, 'Keyword')
+
+export class UrlValue extends General<'UrlValue'> {}
+defineType(UrlValue, 'UrlValue')
+
+export class Flag extends General<'Flag'> {}
+defineType(Flag, 'Flag')
+
+export class CustomProp extends General<'CustomProp'> {}
+defineType(CustomProp, 'CustomProp')
+
+export class CustomIdent extends General<'CustomIdent'> {}
+defineType(CustomIdent, 'CustomIdent')
+
+/**
+ * "Anonymous" is from Less's original definition to mean
+ * an unspecified token.
+ */
+export class Anonymous extends General<'Anonymous'> {}
+export const anon = defineType(Anonymous, 'Anonymous', 'anon')

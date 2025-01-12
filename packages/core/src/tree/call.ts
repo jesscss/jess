@@ -9,7 +9,7 @@ export type CallValue = {
    * Can be an identifier or something like a mixin or variable lookup
    *   e.g. #mixin > .class() is [Call (#mixin ())] -> [Call (class ())]
    */
-  name: string | Node
+  value: string | Node
   args?: List
   /**
    * Legacy Less feature -- if a ruleset is returned,
@@ -40,29 +40,9 @@ export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...a
  * is not a string, but is an (optional) variable reference.
  */
 export class Call<T extends CallValue = CallValue> extends Node<T> {
-  get name() {
-    return this.data.get('name')
-  }
-
-  set name(v: string | Node) {
-    this.data.set('name', v)
-  }
-
-  get args() {
-    return this.data.get('args')
-  }
-
-  set args(v: List | undefined) {
-    this.data.set('args', v)
-  }
-
-  get important(): boolean {
-    return this.data.get('important')
-  }
-
   toTrimmedString() {
-    let { name, args, important } = this
-    return `${name}(${args ?? ''})${important ? ' !important' : ''}`
+    let { value, args, important } = this.values
+    return `${value}(${args ?? ''})${important ? ' !important' : ''}`
   }
 
   async eval(context: Context): Promise<Node> {
@@ -70,22 +50,24 @@ export class Call<T extends CallValue = CallValue> extends Node<T> {
       let canOperate = context.canOperate
       /** Reset parentheses "state" */
       context.canOperate = false
-      let { name, args } = this
-      if (name instanceof Node) {
-        name = await name.eval(context)
+      let { value, args } = this.values
+      if (value instanceof Node) {
+        value = await value.eval(context)
       }
 
-      if (isNode(name, 'FunctionValue')) {
+      if (isNode(value, 'FunctionValue')) {
         // try {
-        const func = name.value
+        const func = value.value
         let result: any
         if (func.evalArgs !== false) {
-          args = await args?.eval(context)
+          if (args) {
+            args = await args?.eval(context)
+          }
         }
         if (args) {
-          result = await name.value.call(context, ...args.value)
+          result = await value.value.call(context, ...args.value)
         } else {
-          result = await name.value.call(context)
+          result = await value.value.call(context)
         }
 
         /** @todo - mark results as important */
@@ -99,8 +81,8 @@ export class Call<T extends CallValue = CallValue> extends Node<T> {
       }
       context.canOperate = canOperate
       let node = this.clone()
-      node.name = name
-      node.args = args
+      node.value = value
+      node.data.set('args', args)
       return node
     })
   }

@@ -89,6 +89,13 @@ export class PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorValue>
     if (!valueOf) {
       let value = this.data.get('value')
       let arg = this.data.get('arg')
+      /** Simplify wrapped :is when it can be */
+      if (
+        value === ':is'
+        && (isNode(arg, 'CompoundSelector') || arg instanceof SimpleSelector)
+      ) {
+        return arg.valueOf()
+      }
       /**
        * Normalizes :nth-child(n + 1) to match :nth-child(n+1)
        * That is, anything that doesn't hold a selector as a value

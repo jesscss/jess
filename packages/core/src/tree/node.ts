@@ -9,6 +9,7 @@ import type { Comment } from './comment'
 import type { Token } from './token'
 import { type Operator } from './util/calculate'
 import type { Constructor, Writable, Class, ValueOf, Opaque, IsUnknown, UnionToTuple } from 'type-fest'
+import { LinkedList } from './util/collections'
 
 export type { TreeContext }
 
@@ -25,12 +26,14 @@ type AllNodeOptions = {
   semi?: boolean
 }
 
+export type Primitive = undefined | boolean | string | number
+
 export const ABORT: unique symbol = Symbol('ABORT')
 export const REMOVE: unique symbol = Symbol('REMOVE')
 export type NodeVisitReturn = void | Node | symbol
 export type NodeVisitFunction = (n: Node) => NodeVisitReturn
 export type NodeOptions = Record<string, boolean | string | number> & AllNodeOptions
-export type NodeValue = undefined | boolean | string | number | Node
+export type NodeValue = Primitive | Node
 export type NodeMap = Map<string, NodeValue>
 export type NodeInValue = NodeValue | NodeMapArray | NodeMap
 export type NodeTypeMap = {
@@ -188,7 +191,7 @@ export abstract class Node<
   declare requiredSemi: boolean
 
   /** Used by Rules */
-  rootRules: Node[] | undefined
+  rootRules: NodeList | undefined
 
   /**
    * This should always represent the `data` of the Node
@@ -243,9 +246,9 @@ export abstract class Node<
   }
 
   /** NodeList-related properties */
-  private _lists: NodeList<NodeList> | undefined
-  get lists(): NodeList<NodeList> {
-    return (this._lists ??= new NodeList())
+  private _lists: LinkedList<LinkedList> | undefined
+  get lists(): LinkedList<LinkedList> {
+    return (this._lists ??= new LinkedList())
   }
 
   remove() {
@@ -332,9 +335,9 @@ export abstract class Node<
     fn: NodeVisitFunction,
     shallow?: boolean,
     visitPrePost?: boolean,
-    direction?: 'ltr' | 'rtl'
+    reverse?: boolean
   ) {
-    let method: 'entries' | 'reverseEntries' = direction === 'rtl' ? 'reverseEntries' : 'entries'
+    let method: 'entries' | 'reverseEntries' = reverse ? 'reverseEntries' : 'entries'
     for (let [key, node] of list[method]()) {
       let returnVal = fn(node)
       if (returnVal === ABORT) {
@@ -345,7 +348,30 @@ export abstract class Node<
         list.set(key, returnVal)
       }
       if (!shallow) {
-        node.walkNodes(fn, false, direction, visitPrePost)
+        node.walkNodes(fn, false, reverse, visitPrePost)
+      }
+    }
+  }
+
+  /**
+   * Return an iterator for all nodes / children nodes, including this one
+   */
+  * nodes() {
+    yield this
+    yield * this.children(true)
+  }
+
+  * children(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
+    let iterator = this.data.values()
+    /**
+     * Currently, we only reverse for Nodelists
+     */
+    for (let nodeVal of iterator) {
+      if (nodeVal instanceof Node) {
+        yield nodeVal
+        if (deep) {
+          yield * nodeVal.children(deep, reverse)
+        }
       }
     }
   }
@@ -360,19 +386,25 @@ export abstract class Node<
    * A return value of `false` (ABORT) means to abort the walk.
    * A return value of `null` (REMOVE) means to remove the current node.
    */
+  // * children(): Generator<[NodeValue, string, Map<any, any>], void, any> {
+  //   for (const [key, nodeVal] of this.data.entries()) {
+  //     yield [nodeVal, key, this.data]
+  //   }
+  // }
+
   walkNodes(
     func: NodeVisitFunction,
     shallow?: boolean,
-    direction?: 'ltr' | 'rtl',
+    reverse?: boolean,
     visitPrePost?: boolean
   ) {
     if (visitPrePost) {
       let { pre, post } = this
       if (pre instanceof NodeList) {
-        this._processNodeList(pre, func, true, false, direction)
+        this._processNodeList(pre, func, true, false, reverse)
       }
       if (post instanceof NodeList) {
-        this._processNodeList(post, func, true, false, direction)
+        this._processNodeList(post, func, true, false, reverse)
       }
     }
     for (const [key, nodeVal] of this.data.entries()) {
@@ -387,23 +419,26 @@ export abstract class Node<
           this.data.set(key, returnVal as M[typeof key])
         }
         if (!shallow) {
-          nodeVal.walkNodes(func, false, direction, visitPrePost)
+          nodeVal.walkNodes(func, false, reverse, visitPrePost)
         }
       }
     }
   }
 
-  collectRoots(): Node[] {
-    let nodes = new Set<Node>()
+  collectRoots(): NodeList<Node> {
+    let list = new NodeList<Node>()
     this.walkNodes(n => {
       if (n.type === 'Rules') {
-        if (n.rootRules) {
-          n.rootRules.forEach(n => nodes.add(n))
-          n.rootRules = []
+        const rules = n.rootRules
+        if (rules) {
+          for (let n of rules) {
+            list.add(n)
+          }
+          rules.clear()
         }
       }
     })
-    return Array.from(nodes)
+    return list
   }
 
   accept(visitor: Visitor) {
@@ -628,59 +663,12 @@ export abstract class Node<
   // toModule?(context: Context, out: OutputCollector): void
 }
 
-/** Simple bi-directional map */
-class BiMap<K, V> {
-  private readonly _map!: Map<K, V>
-  private readonly _reverse!: Map<V, K>
-
-  constructor(map?: BiMap<K, V>) {
-    if (map) {
-      this._map = new Map(map._map)
-      this._reverse = new Map(map._reverse)
-    } else {
-      this._map = new Map()
-      this._reverse = new Map()
-    }
-  }
-
-  get [Symbol.iterator]() {
-    return this._map[Symbol.iterator]
-  }
-
-  values() {
-    return this._map.values()
-  }
-
-  get(key: K) {
-    return this._map.get(key)
-  }
-
-  getValue(value: V) {
-    return this._reverse.get(value)
-  }
-
-  set(key: K, value: V) {
-    this._map.set(key, value)
-    this._reverse.set(value, key)
-  }
-
-  clear() {
-    this._map.clear()
-    this._reverse.clear()
-  }
-
-  delete(key: K) {
-    let value = this._map.get(key)
-    if (value) {
-      this._map.delete(key)
-      this._reverse.delete(value)
-    }
-  }
-
-  get size() {
-    return this._map.size
-  }
-}
+// interface MapLike<K, V> {
+//   get(key: K): any
+//   set(key: K, value: V): any
+//   entries(): IterableIterator<[string, V]>
+//   size: number
+// }
 
 /**
  * A dynamic linked list useful for managing items in multiple lists.
@@ -691,19 +679,7 @@ export class NodeList<
   T extends Node = Node,
   O extends NodeOptions = NodeOptions
 > extends Node<{ value: T[] }, O> {
-  first: number | undefined
-  last: number | undefined
-  private _current: number | undefined
-  /**
-   * These maps are designed for fast lookups,
-   * map cloning, and replacing Nodes.
-   */
-
-  /** A map of numbers to nodes */
-  private _items = new BiMap<number, T>()
-  /** A map of a numbered node to the before / after as a joined number */
-  private _pos = new Map<number, number>()
-  private _index = 0
+  private _list = new LinkedList<T>()
 
   constructor(
     values: T[] = [],
@@ -718,7 +694,7 @@ export class NodeList<
      * cloning, which we will override.
      */
     if (isArray(values)) {
-      this.setMany(values)
+      this._list.push(...values)
     }
   }
 
@@ -731,77 +707,13 @@ export class NodeList<
     return output as Opaque<string>
   }
 
-  private _writePos(nodeRef: number, previous: number | undefined, next: number | undefined) {
-    if (nodeRef === previous || nodeRef === next) {
-      throw new Error('Linking a node to itself would cause an infinite loop.')
-    }
-    this._pos.set(nodeRef, (previous ?? 0) << 16 | (next ?? 0))
-  }
-
-  private _writeNextPos(nodeRef: number, next: number | undefined) {
-    let pos = this._pos.get(nodeRef)
-    if (pos !== undefined) {
-      /** Read previous, and write next */
-      this._writePos(nodeRef, this._getPrevFromBits(pos), next)
-    }
-  }
-
-  private _writePrevPos(nodeRef: number, previous: number | undefined) {
-    let pos = this._pos.get(nodeRef)
-    if (pos !== undefined) {
-      /** Read next, and write previous */
-      this._writePos(nodeRef, previous, this._getNextFromBits(pos))
-    }
-  }
-
-  private _getPrevFromBits(pos: number | undefined): number | undefined {
-    if (pos === undefined) {
-      return undefined
-    }
-    let previous = (pos >>> 16) & 0xFFFF // Extract the upper 16 bits
-    return previous === 0 ? undefined : previous
-  }
-
-  private _getNextFromBits(pos: number | undefined): number | undefined {
-    if (pos === undefined) {
-      return undefined
-    }
-    let next = pos & 0xffff // Extract the lower 16 bits
-    return next === 0 ? undefined : next
-  }
-
   /** Return an array */
   get value() {
     return [...this]
   }
 
-  set(key: number, value: T) {
-    this._items.set(key, value)
-  }
-
-  setMany(values: T[]) {
-    let index = 1
-    let lastIndex: number | undefined
-    if (values.length) {
-      this.first = 1
-    }
-    const { _items, _pos } = this
-    _items.clear()
-    _pos.clear()
-    let length = values.length
-    for (; index <= length; index++) {
-      if (lastIndex) {
-        this._writeNextPos(lastIndex, index)
-      }
-      let item = values[index - 1]!
-      lastIndex = index
-      _items.set(index, item)
-      this._writePos(index, index - 1, 0)
-      item.lists.add(this)
-    }
-    /** The last thing a for loop does is increment, so subtract the last iteration */
-    this._index = index - 1
-    this.last = lastIndex
+  clear() {
+    this._list.clear()
   }
 
   /** Clones of node lists need to be a bit different */
@@ -821,8 +733,7 @@ export class NodeList<
     )
 
     cloneFn ??= n => n.clone(deep)
-    newNode._items = new BiMap(this._items)
-    newNode._pos = new Map(this._pos)
+    newNode._list = new LinkedList([...this])
 
     if (deep) {
       for (let [index, node] of newNode._items) {
@@ -921,11 +832,22 @@ export class NodeList<
        * to the next position.
        */
       const nextIndex: number | undefined = currentIndex === this._current
-        ? this._getNextFromBits(this._pos.get(currentIndex!))
+        ? this._getNextFromBits(this._pos.get(currentIndex))
         : this._current
 
       currentItem = nextIndex ? this._items.get(nextIndex) : undefined
       currentIndex = this._current = nextIndex
+    }
+  }
+
+  * children(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
+    const iterator = reverse ? this.reverse() : this
+
+    for (let nodeVal of iterator) {
+      yield nodeVal
+      if (deep) {
+        yield * nodeVal.children(deep, reverse)
+      }
     }
   }
 
@@ -954,7 +876,7 @@ export class NodeList<
        * to the previous position.
        */
       let prevIndex: number | undefined = currentIndex === this._current
-        ? this._getPrevFromBits(this._pos.get(currentIndex!))
+        ? this._getPrevFromBits(this._pos.get(currentIndex))
         : this._current
 
       currentItem = prevIndex ? this._items.get(prevIndex) : undefined

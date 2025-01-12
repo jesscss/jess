@@ -259,7 +259,7 @@ $custom-color: #3a3a3a;
 @--include .root-mixin;
 
 // this will ONLY call mixins and ignore selectors
-// Note: this is how converted Sass would look
+// Note: this is how converted Sass would look (except without the `.`)
 $ -> .root-mixin();
 ```
 
