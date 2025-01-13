@@ -9,7 +9,8 @@ import type { Comment } from './comment'
 import type { Token } from './token'
 import { type Operator } from './util/calculate'
 import type { Constructor, Writable, Class, ValueOf, Opaque, IsUnknown, UnionToTuple } from 'type-fest'
-import { LinkedList } from './util/collections'
+import { BiMap } from './util/collections'
+import { isMap } from 'util/types'
 
 export type { TreeContext }
 
@@ -26,23 +27,19 @@ type AllNodeOptions = {
   semi?: boolean
 }
 
-export type Primitive = undefined | boolean | string | number
+export type Primitive = boolean | string | number
 
 export const ABORT: unique symbol = Symbol('ABORT')
 export const REMOVE: unique symbol = Symbol('REMOVE')
 export type NodeVisitReturn = void | Node | symbol
 export type NodeVisitFunction = (n: Node) => NodeVisitReturn
 export type NodeOptions = Record<string, boolean | string | number> & AllNodeOptions
-export type NodeValue = Primitive | Node
+export type NodeValue = Primitive | Primitive[] | Node
 export type NodeMap = Map<string, NodeValue>
-export type NodeInValue = NodeValue | NodeMapArray | NodeMap
-export type NodeTypeMap = {
-  value: unknown
-  [k: string]: unknown
-}
+export type NodeValueObject = Record<string, NodeValue>
 
 export type NodeMapArray<
-  T extends NodeTypeMap = NodeTypeMap,
+  T extends NodeValueObject = NodeValueObject,
   K = keyof T,
   V = T[string]
 > = Array<[K, V]>
@@ -90,16 +87,16 @@ export const defineType = <
  * on a passed-in interface.
  */
 export type TypedMap<
-  T extends NodeTypeMap = NodeTypeMap,
+  T extends NodeValueObject = NodeValueObject,
   K extends keyof T = keyof T,
   V = ValueOf<T>
-> = Omit<Map<any, any>, 'get' | 'set'> & {
+> = Map<K, V> & Omit<Map<any, any>, 'get' | 'set'> & {
   /**
    * TypeScript sometimes gets confused
    * about whether or not get / set will exist,
    * so this fixes it.
    */
-  get(key: K): any
+  get(key: K): V
   set(key: K, value: V): any
 } & {
   [P in K as 'get']: <U extends P>(key: U) => T[U]
@@ -111,7 +108,7 @@ export type TypedMap<
  * @todo - this allows excess properties on T,
  * but using `Exact` from type-fest caused other issues
  */
-type NodeMapType<T> = T extends NodeTypeMap ? T : { value: T }
+type NodeMapType<T> = T extends NodeValueObject ? T : { value: T }
 
 type CollectionType<T> =
   T extends Array<infer U>
@@ -121,30 +118,59 @@ type CollectionType<T> =
       : T extends Set<infer U> ? Set<U> : never
 
 type CollectionPair<T> =
-  T extends Array<infer U>
-    ? [number, U]
-    : T extends Map<infer K, infer V>
-      ? [K, V]
-      : T extends Set<infer U> ? [U, U] : never
+  T extends Map<infer K, infer V>
+    ? [K, V]
+    : T extends NodeList<infer N> ? [number, N] : never
 
 type Values<T, K extends keyof T = keyof T> = T[K]
 
-export type NodeValueArray<T extends NodeTypeMap> = UnionToTuple<Values<{
+export type NodeValueArray<T extends NodeValueObject> = UnionToTuple<Values<{
   [K in keyof T]: [K, T[K]]
 }>>
 
-export type NodeValueArg<M extends NodeTypeMap> =
+export type NodeValueArg<M extends NodeValueObject> =
   IsUnknown<M['value']> extends true
     ? TypedMap<M> | NodeValueArray<M>
     : TypedMap<M> | NodeValueArray<M> | M['value']
 
+export type NodeData<T> =
+  T extends Node[]
+    ? NodeList<T[0]>
+    : T extends NodeValueObject
+      ? TypedMap<T>
+      : T
+
+export type NodeInValue<T> =
+  T extends Node[]
+    ? NodeList<T[0]>
+    : T extends NodeValueObject
+      ? TypedMap<T> | T
+      : T
+
+export type NodeOutValue<T> =
+  T extends Node[]
+    ? Node[]
+    : T extends NodeValueObject
+      ? T
+      : T extends Primitive
+        ? Primitive
+        : T extends Primitive[]
+          ? Primitive[]
+          : never
+
+type NodeTypes = Primitive | Primitive[] | Node[] | NodeValueObject
+
+/**
+ * @todo - This should narrow to Map | NodeList but currently
+ * only narrows to Map... which is okay for how it's used
+*/
+const isMapLike = (val: unknown): val is Map<string | number, NodeValue> => val instanceof Map || val instanceof NodeList
 /**
  * The underlying type for all Jess nodes
  */
 export abstract class Node<
-  T = unknown,
-  O extends NodeOptions = NodeOptions,
-  M extends NodeTypeMap = NodeMapType<T>
+  T extends NodeTypes = NodeTypes,
+  O extends NodeOptions = NodeOptions
 > {
   location: LocationInfo | []
   _treeContext: TreeContext | undefined
@@ -196,21 +222,44 @@ export abstract class Node<
   /**
    * This should always represent the `data` of the Node
    */
-  protected readonly data: TypedMap<M>
+  protected _data: NodeData<T>
+
+  get data() {
+    const self = this
+    const { _data } = self
+    if (isMapLike(_data)) {
+      return _data
+    }
+    return {
+      get(key: 'value') {
+        return _data
+      },
+      set(key: 'value', value: T) {
+        self._data = value as NodeData<T>
+      },
+      * entries() {
+        yield ['value', _data]
+      }
+    }
+  }
 
   constructor(
-    value: NodeValueArg<M>,
+    value: NodeInValue<T>,
     options?: O,
     location?: LocationInfo | 0,
     treeContext?: TreeContext
   ) {
-    this.data = new Map(
-      isNodeMap(value)
-        ? value
-        : value !== undefined && isPlainObject(value)
-          ? Object.entries(value as Record<string, NodeValue>)
-          : [['value', value]]
-    ) as TypedMap<M>
+    const isMap = value instanceof Map
+    this._data = (value instanceof NodeList
+      ? value
+      : isPlainObject(value) || isMap
+        ? new Map(
+          isMap
+            ? value
+            : Object.entries(value as Record<string, NodeValue>)
+        ) as TypedMap<NodeValueObject>
+        : value) as NodeData<T>
+
     this.location = location || []
     this._treeContext = treeContext
     if (treeContext) {
@@ -229,26 +278,22 @@ export abstract class Node<
     return opts
   }
 
-  get value() {
-    return this.data.get('value')
-  }
-
-  set value(n: M['value']) {
-    if (this.data.has('value')) {
-      this.data.set('value', n)
-      return
+  get value(): T {
+    const data = this.data
+    if (data instanceof NodeList) {
+      return [...data] as T
     }
-    throw new Error('Cannot set the "value" property of this node.')
-  }
+    if (data instanceof Map) {
+      return Object.fromEntries(data) as T
+    }
 
-  get values(): M {
-    return Object.fromEntries(this.data)
+    return data as T
   }
 
   /** NodeList-related properties */
-  private _lists: LinkedList<LinkedList> | undefined
-  get lists(): LinkedList<LinkedList> {
-    return (this._lists ??= new LinkedList())
+  private _lists: NodeList<NodeList> | undefined
+  get lists(): NodeList<NodeList> {
+    return (this._lists ??= new NodeList())
   }
 
   remove() {
@@ -263,15 +308,18 @@ export abstract class Node<
    * Mutates node children in place. Used by eval()
    * which first makes a shallow clone before mutating.
    *
-   * @todo - Rewrite to use NodeList
+   * Processed nodes must always return a Node.
    */
-  processNodes(func: (n: Node) => NodeValue) {
-    this.data.forEach((nodeVal, key, map) => {
-      if (nodeVal instanceof Node) {
-        /** Assume that the type will still be valid */
-        map.set(key, func(nodeVal) as typeof nodeVal)
+  processNodes(func: (n: Node) => Node) {
+    const data = this.data
+    if (isMapLike(data)) {
+      for (let [key, nodeVal] of data.entries()) {
+        if (nodeVal instanceof Node) {
+          /** Assume that the type will still be valid */
+          data.set(key, func(nodeVal))
+        }
       }
-    })
+    }
   }
 
   /**
@@ -280,49 +328,52 @@ export abstract class Node<
    * and finally awaits the Promise.all of results.
    */
   async forEachPromise<
-    T extends any[] | Map<any, any> | Set<any>,
-    P extends CollectionPair<T> = CollectionPair<T>,
-    I extends CollectionType<T> = CollectionType<T>
-  >(iterable: T, func: (value: P[1], key: P[0], container: I) => Promise<void>) {
+    T extends Map<string, NodeValue> | NodeList,
+    P extends CollectionPair<T> = CollectionPair<T>
+  >(iterable: T, func: (value: P[1], key: P[0], container: T) => Promise<void>) {
     let promises: Array<Promise<void>> = []
-    iterable.forEach((value, key, container) => {
-      promises.push(func(value, key, container as I))
-    })
+    for (let [key, value] of iterable.entries()) {
+      promises.push(func(value, key, iterable))
+    }
     await Promise.all(promises)
   }
 
   /**
    * Mutates node children in place. Used by eval()
    * which first makes a shallow clone before mutating.
+   *
+   * @todo - There should be no node arrays
    */
-  async processNodesAsync(func: (n: Node) => NodeValue | Promise<NodeValue>) {
-    let map = this.data as Map<string, any>
-    await this.forEachPromise(map, async (nodeVal, key) => {
-      /**
-       * For each member of the map, we create an async function
-       * that we call, which returns a promise.
-       *
-       * This allows calls like eval() to resolve in parallel,
-       * which means some nodes can be evaluated after things
-       * like async file operations and dynamic imports.
-       */
-      /** Process Node arrays only */
-      if (isArray(nodeVal)) {
-        let out = []
-        for (let i = 0; i < nodeVal.length; i++) {
-          let node = nodeVal[i]
-          let result = node instanceof Node ? await func(node) : node
-          if (result ?? false) {
-            out.push(result)
+  async processNodesAsync(func: (n: Node) => Node | Promise<Node>) {
+    let map = this.data
+    if (isMapLike(map)) {
+      await this.forEachPromise(map, async (nodeVal, key) => {
+        /**
+         * For each member of the map, we create an async function
+         * that we call, which returns a promise.
+         *
+         * This allows calls like eval() to resolve in parallel,
+         * which means some nodes can be evaluated after things
+         * like async file operations and dynamic imports.
+         */
+        /** Process Node arrays only */
+        if (isArray(nodeVal)) {
+          let out = []
+          for (let i = 0; i < nodeVal.length; i++) {
+            let node = nodeVal[i]
+            let result = node instanceof Node ? await func(node) : node
+            if (result ?? false) {
+              out.push(result)
+            }
           }
+          /** Assume that the type will still be valid */
+          map.set(key, out)
+        } else if (nodeVal instanceof Node) {
+          /** Assume that the type will still be valid */
+          map.set(key, await func(nodeVal))
         }
-        /** Assume that the type will still be valid */
-        map.set(key, out)
-      } else if (nodeVal instanceof Node) {
-        /** Assume that the type will still be valid */
-        map.set(key, await func(nodeVal))
-      }
-    })
+      })
+    }
   }
 
   /**
@@ -678,8 +729,20 @@ export abstract class Node<
 export class NodeList<
   T extends Node = Node,
   O extends NodeOptions = NodeOptions
-> extends Node<{ value: T[] }, O> {
-  private _list = new LinkedList<T>()
+> extends Node<T[], O> {
+  first: number | undefined
+  last: number | undefined
+  private _current: number | undefined
+  /**
+   * These maps are designed for fast lookups,
+   * map cloning, and replacing Nodes.
+   */
+
+  /** A map of numbers to nodes */
+  private _items = new BiMap<number, T>()
+  /** A map of a numbered node to the before / after as a joined number */
+  private _pos = new Map<number, number>()
+  private _index = 0
 
   constructor(
     values: T[] = [],
@@ -688,14 +751,15 @@ export class NodeList<
     treeContext?: TreeContext
   ) {
     /** There's a custom getter for `value` */
-    super(undefined as unknown as T[], options, location, treeContext)
+    super(undefined as unknown as NodeInValue<T[]>, options, location, treeContext)
     /**
      * Passing a Map should really only be done when
      * cloning, which we will override.
      */
     if (isArray(values)) {
-      this._list.push(...values)
+      this.setMany(values)
     }
+    this.data = this as unknown as NodeData<T[]>
   }
 
   /** This is just so debugging isn't confusing */
@@ -707,13 +771,77 @@ export class NodeList<
     return output as Opaque<string>
   }
 
+  private _writePos(nodeRef: number, previous: number | undefined, next: number | undefined) {
+    if (nodeRef === previous || nodeRef === next) {
+      throw new Error('Linking a node to itself would cause an infinite loop.')
+    }
+    this._pos.set(nodeRef, (previous ?? 0) << 16 | (next ?? 0))
+  }
+
+  private _writeNextPos(nodeRef: number, next: number | undefined) {
+    let pos = this._pos.get(nodeRef)
+    if (pos !== undefined) {
+      /** Read previous, and write next */
+      this._writePos(nodeRef, this._getPrevFromBits(pos), next)
+    }
+  }
+
+  private _writePrevPos(nodeRef: number, previous: number | undefined) {
+    let pos = this._pos.get(nodeRef)
+    if (pos !== undefined) {
+      /** Read next, and write previous */
+      this._writePos(nodeRef, previous, this._getNextFromBits(pos))
+    }
+  }
+
+  private _getPrevFromBits(pos: number | undefined): number | undefined {
+    if (pos === undefined) {
+      return undefined
+    }
+    let previous = (pos >>> 16) & 0xFFFF // Extract the upper 16 bits
+    return previous === 0 ? undefined : previous
+  }
+
+  private _getNextFromBits(pos: number | undefined): number | undefined {
+    if (pos === undefined) {
+      return undefined
+    }
+    let next = pos & 0xffff // Extract the lower 16 bits
+    return next === 0 ? undefined : next
+  }
+
   /** Return an array */
   get value() {
     return [...this]
   }
 
-  clear() {
-    this._list.clear()
+  set(key: number, value: T) {
+    this._items.set(key, value)
+  }
+
+  setMany(values: T[]) {
+    let index = 1
+    let lastIndex: number | undefined
+    if (values.length) {
+      this.first = 1
+    }
+    const { _items, _pos } = this
+    _items.clear()
+    _pos.clear()
+    let length = values.length
+    for (; index <= length; index++) {
+      if (lastIndex) {
+        this._writeNextPos(lastIndex, index)
+      }
+      let item = values[index - 1]!
+      lastIndex = index
+      _items.set(index, item)
+      this._writePos(index, index - 1, 0)
+      item.lists.add(this)
+    }
+    /** The last thing a for loop does is increment, so subtract the last iteration */
+    this._index = index - 1
+    this.last = lastIndex
   }
 
   /** Clones of node lists need to be a bit different */
@@ -733,7 +861,8 @@ export class NodeList<
     )
 
     cloneFn ??= n => n.clone(deep)
-    newNode._list = new LinkedList([...this])
+    newNode._items = new BiMap(this._items)
+    newNode._pos = new Map(this._pos)
 
     if (deep) {
       for (let [index, node] of newNode._items) {
@@ -832,22 +961,11 @@ export class NodeList<
        * to the next position.
        */
       const nextIndex: number | undefined = currentIndex === this._current
-        ? this._getNextFromBits(this._pos.get(currentIndex))
+        ? this._getNextFromBits(this._pos.get(currentIndex!))
         : this._current
 
       currentItem = nextIndex ? this._items.get(nextIndex) : undefined
       currentIndex = this._current = nextIndex
-    }
-  }
-
-  * children(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
-    const iterator = reverse ? this.reverse() : this
-
-    for (let nodeVal of iterator) {
-      yield nodeVal
-      if (deep) {
-        yield * nodeVal.children(deep, reverse)
-      }
     }
   }
 
@@ -876,7 +994,7 @@ export class NodeList<
        * to the previous position.
        */
       let prevIndex: number | undefined = currentIndex === this._current
-        ? this._getPrevFromBits(this._pos.get(currentIndex))
+        ? this._getPrevFromBits(this._pos.get(currentIndex!))
         : this._current
 
       currentItem = prevIndex ? this._items.get(prevIndex) : undefined
