@@ -279,7 +279,7 @@ export abstract class Node<
   }
 
   get value(): T {
-    const data = this.data
+    const data = this._data
     if (data instanceof NodeList) {
       return [...data] as T
     }
