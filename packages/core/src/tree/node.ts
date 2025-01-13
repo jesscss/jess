@@ -140,6 +140,13 @@ export type NodeData<T> =
       ? TypedMap<T>
       : T
 
+export type NodeDataOut<T> =
+  T extends Node[]
+    ? NodeList<T[0]>
+    : T extends NodeValueObject
+      ? TypedMap<T>
+      : T
+
 export type NodeInValue<T> =
   T extends Node[]
     ? NodeList<T[0]>
@@ -224,7 +231,7 @@ export abstract class Node<
    */
   protected _data: NodeData<T>
 
-  get data() {
+  get data(): MapLike<any, any> {
     const self = this
     const { _data } = self
     if (isMapLike(_data)) {
@@ -239,7 +246,8 @@ export abstract class Node<
       },
       * entries() {
         yield ['value', _data]
-      }
+      },
+      size: 1
     }
   }
 
@@ -311,13 +319,10 @@ export abstract class Node<
    * Processed nodes must always return a Node.
    */
   processNodes(func: (n: Node) => Node) {
-    const data = this.data
-    if (isMapLike(data)) {
-      for (let [key, nodeVal] of data.entries()) {
-        if (nodeVal instanceof Node) {
-          /** Assume that the type will still be valid */
-          data.set(key, func(nodeVal))
-        }
+    for (let [key, nodeVal] of this.data.entries()) {
+      if (nodeVal instanceof Node) {
+        /** Assume that the type will still be valid */
+        this.data.set(key, func(nodeVal))
       }
     }
   }
@@ -714,12 +719,12 @@ export abstract class Node<
   // toModule?(context: Context, out: OutputCollector): void
 }
 
-// interface MapLike<K, V> {
-//   get(key: K): any
-//   set(key: K, value: V): any
-//   entries(): IterableIterator<[string, V]>
-//   size: number
-// }
+interface MapLike<K, V> {
+  get(key: K): any
+  set(key: K, value: V): any
+  entries(): IterableIterator<[string, V]>
+  size: number
+}
 
 /**
  * A dynamic linked list useful for managing items in multiple lists.
