@@ -8,9 +8,10 @@ import type { Visitor } from '../visitor'
 import type { Comment } from './comment'
 import type { Token } from './token'
 import { type Operator } from './util/calculate'
-import type { Constructor, Writable, Class, ValueOf, Opaque, IsUnknown, UnionToTuple } from 'type-fest'
+import type { Constructor, Writable, Class, ValueOf, Opaque, IsUnknown, UnionToTuple, Entries } from 'type-fest'
 import { BiMap } from './util/collections'
 import { isMap } from 'util/types'
+import { Nil } from './nil'
 
 export type { TreeContext }
 
@@ -90,14 +91,16 @@ export type TypedMap<
   T extends NodeValueObject = NodeValueObject,
   K extends keyof T = keyof T,
   V = ValueOf<T>
-> = Map<K, V> & Omit<Map<any, any>, 'get' | 'set'> & {
+> = MapLike<K, V> & Omit<Map<any, any>, 'get' | 'set'> & {
   /**
    * TypeScript sometimes gets confused
    * about whether or not get / set will exist,
    * so this fixes it.
    */
-  get(key: K): V
-  set(key: K, value: V): any
+  get(key: any): any
+  set(key: any, value: any): any
+  entries(): IterableIterator<[K, V]>
+  values(): IterableIterator<V>
 } & {
   [P in K as 'get']: <U extends P>(key: U) => T[U]
 } & {
@@ -128,6 +131,10 @@ export type NodeValueArray<T extends NodeValueObject> = UnionToTuple<Values<{
   [K in keyof T]: [K, T[K]]
 }>>
 
+export type NodeValueItem<T extends NodeValueObject> = Values<{
+  [K in keyof T]: [K, T[K]]
+}>
+
 export type NodeValueArg<M extends NodeValueObject> =
   IsUnknown<M['value']> extends true
     ? TypedMap<M> | NodeValueArray<M>
@@ -140,44 +147,69 @@ export type NodeData<T> =
       ? TypedMap<T>
       : T
 
-export type NodeDataOut<T> =
+type NodeDataKey<T> =
   T extends Node[]
-    ? NodeList<T[0]>
+    ? number
     : T extends NodeValueObject
-      ? TypedMap<T>
+      ? keyof T
+      : 'value'
+
+type NodeOutValue<T, K> =
+  T extends Node[]
+    ? T | undefined
+    : T extends NodeValueObject
+      ? K extends keyof T
+        ? T[K]
+        : never
       : T
 
-export type NodeInValue<T> =
+type EntriesOf<T> =
+  T extends Node[]
+    ? [number, Node]
+    : T extends NodeValueObject
+      ? NodeValueItem<T>
+      : ['value', T]
+
+type NodeInValue<T> =
   T extends Node[]
     ? NodeList<T[0]>
     : T extends NodeValueObject
       ? TypedMap<T> | T
       : T
 
-export type NodeOutValue<T> =
-  T extends Node[]
-    ? Node[]
-    : T extends NodeValueObject
-      ? T
-      : T extends Primitive
-        ? Primitive
-        : T extends Primitive[]
-          ? Primitive[]
-          : never
-
 type NodeTypes = Primitive | Primitive[] | Node[] | NodeValueObject
+
+type NarrowTypes<T> =
+  IsUnknown<T> extends true
+    ? NodeTypes
+    : T extends NodeTypes
+      ? T
+      : never
+
+type CreateMapLike<T> =
+  T extends Node[]
+    ? NodeList<T[0]>
+    : T extends NodeValueObject
+      ? TypedMap<T>
+      : {
+          get(key: 'value'): T
+          set(key: 'value', value: T): any
+          entries(): IterableIterator<['value', T]>
+          values(): IterableIterator<T>
+        }
 
 /**
  * @todo - This should narrow to Map | NodeList but currently
  * only narrows to Map... which is okay for how it's used
 */
-const isMapLike = (val: unknown): val is Map<string | number, NodeValue> => val instanceof Map || val instanceof NodeList
+const isMapLike = (val: unknown): val is MapLike<any, any> => val instanceof Map || val instanceof NodeList
 /**
  * The underlying type for all Jess nodes
  */
 export abstract class Node<
-  T extends NodeTypes = NodeTypes,
-  O extends NodeOptions = NodeOptions
+  Type = unknown,
+  O extends NodeOptions = NodeOptions,
+  T extends NarrowTypes<Type> = NarrowTypes<Type>,
 > {
   location: LocationInfo | []
   _treeContext: TreeContext | undefined
@@ -231,25 +263,40 @@ export abstract class Node<
    */
   protected _data: NodeData<T>
 
-  get data(): MapLike<any, any> {
-    const self = this
-    const { _data } = self
+  // private _getData<K = NodeDataKey<T>>(key: K): NodeOutValue<T, K>
+  private _getData(key: NodeDataKey<T>): any {
+    const { _data } = this
     if (isMapLike(_data)) {
-      return _data
+      return _data.get(key as number) as NodeOutValue<T, typeof key>
     }
-    return {
-      get(key: 'value') {
-        return _data
-      },
-      set(key: 'value', value: T) {
-        self._data = value as NodeData<T>
-      },
-      * entries() {
-        yield ['value', _data]
-      },
-      size: 1
-    }
+    return _data as unknown as NodeOutValue<T, typeof key>
   }
+
+  private _setData<const K extends NodeDataKey<T>>(key: K, value: NodeOutValue<T, K>) {
+    const { _data } = this
+    if (isMapLike(_data)) {
+      _data.set(key as number, value as Node)
+    }
+    this._data = value as unknown as NodeData<T>
+  }
+
+  private * _dataEntries(): Generator<[number | string, NodeValue]> {
+    const { _data } = this
+    if (isMapLike(_data)) {
+      yield * _data.entries() as Generator<EntriesOf<T>>
+    }
+    yield (['value', _data] as EntriesOf<T>)
+  }
+
+  private * _dataValues(): Generator<Node> {
+
+  }
+
+  data = {
+    get: this._getData.bind(this),
+    set: this._setData.bind(this),
+    entries: this._dataEntries.bind(this)
+  } as CreateMapLike<T>
 
   constructor(
     value: NodeInValue<T>,
@@ -322,7 +369,7 @@ export abstract class Node<
     for (let [key, nodeVal] of this.data.entries()) {
       if (nodeVal instanceof Node) {
         /** Assume that the type will still be valid */
-        this.data.set(key, func(nodeVal))
+        (this.data as MapLike<any, any>).set(key, func(nodeVal))
       }
     }
   }
@@ -333,7 +380,7 @@ export abstract class Node<
    * and finally awaits the Promise.all of results.
    */
   async forEachPromise<
-    T extends Map<string, NodeValue> | NodeList,
+    T extends MapLike<any, any>,
     P extends CollectionPair<T> = CollectionPair<T>
   >(iterable: T, func: (value: P[1], key: P[0], container: T) => Promise<void>) {
     let promises: Array<Promise<void>> = []
@@ -351,34 +398,32 @@ export abstract class Node<
    */
   async processNodesAsync(func: (n: Node) => Node | Promise<Node>) {
     let map = this.data
-    if (isMapLike(map)) {
-      await this.forEachPromise(map, async (nodeVal, key) => {
-        /**
-         * For each member of the map, we create an async function
-         * that we call, which returns a promise.
-         *
-         * This allows calls like eval() to resolve in parallel,
-         * which means some nodes can be evaluated after things
-         * like async file operations and dynamic imports.
-         */
-        /** Process Node arrays only */
-        if (isArray(nodeVal)) {
-          let out = []
-          for (let i = 0; i < nodeVal.length; i++) {
-            let node = nodeVal[i]
-            let result = node instanceof Node ? await func(node) : node
-            if (result ?? false) {
-              out.push(result)
-            }
+    await this.forEachPromise(map, async (nodeVal, key) => {
+      /**
+       * For each member of the map, we create an async function
+       * that we call, which returns a promise.
+       *
+       * This allows calls like eval() to resolve in parallel,
+       * which means some nodes can be evaluated after things
+       * like async file operations and dynamic imports.
+       */
+      /** Process Node arrays only */
+      if (isArray(nodeVal)) {
+        let out = []
+        for (let i = 0; i < nodeVal.length; i++) {
+          let node = nodeVal[i]
+          let result = node instanceof Node ? await func(node) : node
+          if (result ?? false) {
+            out.push(result)
           }
-          /** Assume that the type will still be valid */
-          map.set(key, out)
-        } else if (nodeVal instanceof Node) {
-          /** Assume that the type will still be valid */
-          map.set(key, await func(nodeVal))
         }
-      })
-    }
+        /** Assume that the type will still be valid */
+        map.set(key, out)
+      } else if (nodeVal instanceof Node) {
+        /** Assume that the type will still be valid */
+        map.set(key, await func(nodeVal))
+      }
+    })
   }
 
   /**
@@ -504,7 +549,7 @@ export abstract class Node<
   /**
    * Creates a copy of the current node.
    */
-  clone(deep?: boolean, cloneFn?: (n: Node) => NodeValue): this {
+  clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     let Class: Constructor<this> = Object.getPrototypeOf(this).constructor
 
     let newNode = new Class(
@@ -513,7 +558,7 @@ export abstract class Node<
        * Otherwise, replacing nodes would replace them
        * in the old map.
        */
-      new Map(this.data),
+      this.data,
       this._options,
       this.location,
       this.treeContext
@@ -555,6 +600,7 @@ export abstract class Node<
           const copy = n.copy(deep)
           return copy
         }
+        return new Nil()
       }
     )
     this.stripPrePost(this.pre)
@@ -720,10 +766,9 @@ export abstract class Node<
 }
 
 interface MapLike<K, V> {
-  get(key: K): any
+  get(key: K): V
   set(key: K, value: V): any
-  entries(): IterableIterator<[string, V]>
-  size: number
+  entries(): IterableIterator<[K, V]>
 }
 
 /**
@@ -734,7 +779,7 @@ interface MapLike<K, V> {
 export class NodeList<
   T extends Node = Node,
   O extends NodeOptions = NodeOptions
-> extends Node<T[], O> {
+> extends Node<T[], O> implements MapLike<number, T | undefined> {
   first: number | undefined
   last: number | undefined
   private _current: number | undefined
@@ -764,7 +809,7 @@ export class NodeList<
     if (isArray(values)) {
       this.setMany(values)
     }
-    this.data = this as unknown as NodeData<T[]>
+    this._data = this as unknown as NodeData<T[]>
   }
 
   /** This is just so debugging isn't confusing */
@@ -818,6 +863,10 @@ export class NodeList<
   /** Return an array */
   get value() {
     return [...this]
+  }
+
+  get(key: number): T | undefined {
+    return this._items.get(key)
   }
 
   set(key: number, value: T) {
