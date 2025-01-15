@@ -31,45 +31,51 @@ $count; // a Node of `Nil`
 // Note also that this will throw an error in Jess without `$let count`
 $count: 1;
 
-// to import a var into this scope rather than shadow it
-// equivalent to Sass !global (sort of)
+// equivalent to Sass !global, will throw an error if not defined
 .rule {
-  @--use count;
-  $count: 2;
+  $$count: 2;
 }
+
+// variable variables
+$#($var): foo;
+
+// variable mixins
+@@ #($var) () {}
 
 .something {
   
 }
 
 // `$` is a referencer, to reduce ambiguity
-// note: keywords treated as vars -- if you really need to, you can write `red` as a keyword
-$count: $(count + 1); // expression 
+// #() is an expression
+$count: #($count + 1); // expression 
 
 // allow destructuring
-$list: one, two;
-
+// $list: one, two;
 // This avoids the need for extract() in Less
 // $(one, two): $list;
 
-$ -> mixin();
+// Mixin definition / call
+@@ .mixin() {};
+$ > .mixin();
 
-// $() to wrap expressions
+// #() to wrap expressions
 .bar {
-  foo: $(count + 1);
+  foo: #($count + 1);
+  deeper: #($>mixin().$my-var)
 }
 
 // var expressions will be re-output as "live" expression functions
 // i.e. changing the value of `count` will update `--live`
 .bar {
-  foo: var(--live, $(count + 1));
+  foo: var(--live, #($count + 1));
 }
 
 // Function calls can use $
 .bar {
   // You can write this in two ways:
   value: $myFunction($sass-var); 
-  value: $(myFunction(sass-var)); // inside expressions, sass-var is a variable reference, not a keyword
+  value: #($myFunction($sass-var));
 }
 
 // you can also do:
@@ -78,14 +84,23 @@ $ -> mixin();
 }
 
 // Parenthesized expressions
-.selector$(expr) {
-  prop: $(value + 1);
+.selector#($expr) {
+  prop: #($value + 1);
 }
 ```
 
 ## Features
 - Mixin guards (like Less)
-- `@--if` / `@--else` (like Sass)
+- `@--if` / `@--else` are not needed
+```
+.box {
+  $when () {
+    $$foo: 
+  }
+}
+```
+
+
 - All Less / Sass functions available
 - Extend
 
@@ -106,13 +121,13 @@ Sass is an overly-complex stylesheet language. Jess aims to be:
 - 100% compatible with Less
 - Compatible with a common subset of Sass called Sass+ (to be defined)
 
-### `@--use ('(' type ')')? [file|object|map] [namespace|'(' imports ')']? ('with' reference|declarationList)?`
+### `@--use ('(' type ')')? [file|object|map] (as [namespace])? ('with' reference|declarationList)?`
 
 Non-leaky replacement for `@import`. Will import the scope (mixins, variables, and selector references) of the object, as well as render rules.
 
 Can be at the root or nested.
 
-### `@--ref ('(' type ')')? [file|object|map] [namespace|'(' imports ')']? ('with' reference|declarationList)?`
+### `@--ref ('(' type ')')? [file|object|map] ('as' [namespace])? ('with' reference|declarationList)?`
 
 (In Less, this will be `@reference`)
 
@@ -127,10 +142,10 @@ Can be at the root or nested.
   $primary-color: #333;
 }
 // or
-@--ref 'colors.less' colors;
+@--ref 'colors.less' as colors;
 
 //or
-@--ref 'colors.less' (primary-color);
+@--ref 'colors.less';
 ```
 
 
@@ -223,7 +238,7 @@ Can be at the root or nested.
 
 ```scss
 // main.jess
-@--ref 'colors.jess' (colors);
+@--ref 'colors.jess';
 @--include 'rules.jess' with $colors;
 
 // rules.jess
@@ -233,13 +248,13 @@ Can be at the root or nested.
 ```
 Using an `include` that's the _result_ of a `ref`:
 ```scss
-@--ref 'theme.jess' (theme) with {
+@--ref 'theme.jess' as theme with {
   // Using +: with a collection will merge values
   $colors +: {
     primary: #3a3a3a;
   }
 }
-@--include theme();
+@--include theme;
 ```
 You could also do the above like:
 ```scss
@@ -260,7 +275,7 @@ $custom-color: #3a3a3a;
 
 // this will ONLY call mixins and ignore selectors
 // Note: this is how converted Sass would look (except without the `.`)
-$ -> .root-mixin();
+$ > .root-mixin();
 ```
 
 ## Mixins are functions, and functions are called with a consistent signature

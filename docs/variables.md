@@ -4,74 +4,80 @@
 
 ### Less
 
-Evaluates per scope.
+Evaluates per scope, like CSS variables.
 ```scss
 .box {
-  @color: red;
-  background-color: @color;
-  @color: blue;
+  @padding-var: 1px;
+  padding: @padding-var;
+  @padding-var: 2px;
+  padding: @padding-var;
 }
 ```
 Output:
 ```css
 .box {
-  background-color: blue;
+  padding: 2px;
+  padding: 2px;
 }
 ```
 
 ### Sass
 
-Evaluates linearly.
+Evaluates linearly (like PHP).
 
 ```scss
 .box {
-  @color: red;
-  background-color: @color;
-  @color: blue;
+  $padding-var: 1px;
+  padding: $padding-var;
+  $padding-var: 2px;
+  padding: $padding-var;
 }
 ```
 Output:
 ```css
 .box {
-  background-color: red;
+  padding: 1px;
+  padding: 2px;
 }
 ```
 
 ### Jess
 
-Evaluates linearly and per scope
+Evaluates per scope unless referenced with `$$`, which is a linear lookup (Sass-style).
 
 ```scss
 .box {
-  background-color: $color; // loops to bottom of scope for final value
-  $color: red;
-  background-color: $color; // starts traversing upwards and finds last set value
-  $color: blue;
+  $padding-var: 1px;
+  padding: $padding-var $$padding-var;
+  $padding-var: 2px;
+  padding: $padding-var $$padding-var;
 }
 ```
 Output:
 ```css
 .box {
-  background-color: blue;
-  background-color: red;
+  padding: 2px 1px;
+  padding: 2px 2px;
 }
 ```
 
-In the case of props, they are accessed like Less's, because CSS props follow "last one wins".
+Props are evaluated the same way.
 
 ```scss
 .box {
-  color: red;
-  background-color: $.color;
-  color: blue;
+  padding: 1px;
+  margin: $.padding $$.padding;
+  padding: 2px;
+  margin: $.padding $$.padding;
 }
 ```
 Output:
 ```css
 .box {
-  color: red;
-  background-color: blue;
-  color: blue;
+  padding: 1px;
+  margin: 2px 1px;
+  padding: 2px;
+  margin: 2px 2px;
 }
 ```
 
@@ -92,7 +98,7 @@ $map: {
   }
   $somevar: red;
 
-  @--mixin my-mixin {
+  @: my-mixin {
     //
   }
 }
@@ -104,11 +110,11 @@ $map: {
   $dynamic: subvalue;
   look-4: $map[$dynamic].foo;
 
-  $map -> my-mixin();
+  $map > my-mixin();
 
   // you can also do by list index or negative list index
   look-5: $map[0]; // value is `value`
-  $map -> [-1](); // get the mixin at 1 from bottom and call it
+  $map > [-1](); // get the mixin at 1 from bottom and call it
 }
 ```
 

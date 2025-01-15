@@ -230,12 +230,14 @@ export abstract class Node<
    * Whitespace or comments before or after a Node.
    *
    * If this is `1`, it represents a single space character (' ').
-   * If it's 0, it means there were no tokens whatsoever.
+   * If it's 0, it means there were no pre/post tokens when parsed.
+   * If undefined, it means this was created using the API, and default
+   * formatting can be used.
    * In a NodeList, any whitespace tokens outside of comments are individually represented,
    * because they are preserved while the comment may not be.
    */
-  pre: NodeList<Comment | Token> | 1 | 0 = 0
-  post: NodeList<Comment | Token> | 1 | 0 = 0
+  pre: NodeList<Comment | Token> | 1 | 0 | undefined
+  post: NodeList<Comment | Token> | 1 | 0 | undefined
 
   visible = true
 
