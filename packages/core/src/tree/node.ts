@@ -262,6 +262,8 @@ export abstract class Node<
 
   /**
    * This should always represent the `data` of the Node
+   *
+   * @todo revert to just `data` property which can be a TypedMap or a NodeList
    */
   protected _data: NodeData<T>
 
@@ -668,7 +670,7 @@ export abstract class Node<
 
   processPrePost(key: 'pre' | 'post') {
     let value = this[key]
-    if (value === 0) {
+    if (!value) {
       return ''
     } else if (value === 1) {
       return ' '
