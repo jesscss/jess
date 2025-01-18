@@ -410,15 +410,9 @@ export abstract class Node<
    *
    * @note
    * A Node return value is intended to be a mutation.
-   * A return value of `false` (ABORT) means to abort the walk.
-   * A return value of `null` (REMOVE) means to remove the current node.
+   * A return value of ABORT means to abort the walk.
+   * A return value of REMOVE means to remove the current node.
    */
-  // * children(): Generator<[NodeValue, string, Map<any, any>], void, any> {
-  //   for (const [key, nodeVal] of this.data.entries()) {
-  //     yield [nodeVal, key, this.data]
-  //   }
-  // }
-
   walkNodes(
     func: NodeVisitFunction,
     shallow?: boolean,
