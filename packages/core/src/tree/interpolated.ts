@@ -1,5 +1,5 @@
-import { Node, defineType, type NodeOptions } from './node'
-import { General } from './general'
+import { Node, defineType } from './node'
+import { General, type GeneralNodeType, type GeneralOptions } from './general'
 import type { Context } from '../context'
 
 export type InterpolatedValue = {
@@ -19,16 +19,20 @@ export type InterpolatedValue = {
  *     - `@@foo` is an interpolated variable
  *     - `--prop-@{foo}` is an interpolated property
  */
-export class Interpolated<O extends NodeOptions = NodeOptions> extends Node<InterpolatedValue, O> {
-  async eval(context: Context): Promise<General> {
-    let replacements = this.data.get('replacements')
+export class Interpolated<
+  T extends string = GeneralNodeType
+> extends Node<InterpolatedValue, GeneralOptions<T>> {
+  async eval(context: Context): Promise<General<T>> {
+    const data = this.data
+    let replacements = data.get('replacements')
+    let value = data.get('value')
     if (!replacements) {
-      return new General(this.value, { type: 'Anonymous' }).inherit(this)
+      return new General<T>(value).inherit(this)
     }
     replacements = await Promise.all(replacements.map(async (n: Node) => await n.eval(context)))
     // eslint-disable-next-line no-control-regex
-    let value = this.value.replace(/\x00/g, _ => String(replacements.shift()))
-    let node = new General(value, { type: 'Anonymous' }).inherit(this)
+    value = value.replace(/\x00/g, _ => String(replacements.shift()))
+    let node = new General<T>(value).inherit(this)
     return node
   }
 }

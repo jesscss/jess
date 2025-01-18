@@ -10,7 +10,7 @@ import type { Token } from './token'
 import { type Operator } from './util/calculate'
 import type { Constructor, Writable, Class, ValueOf, Opaque, IsUnknown, UnionToTuple } from 'type-fest'
 import { BiMap } from './util/collections'
-import { Nil } from './nil'
+import { type Nil } from './nil'
 
 export type { TreeContext }
 
@@ -27,15 +27,15 @@ type AllNodeOptions = {
   semi?: boolean
 }
 
-export type Primitive = boolean | string | number
+export type Primitive = boolean | string | number | ((...args: any[]) => any)
 
 export const ABORT: unique symbol = Symbol('ABORT')
 export const REMOVE: unique symbol = Symbol('REMOVE')
-const CREATE_LIST: unique symbol = Symbol('CREATE_LIST')
+export const CREATE_LIST: unique symbol = Symbol('CREATE_LIST')
 export type NodeVisitReturn = void | Node | symbol
 type NodeVisitFunction = (n: Node) => NodeVisitReturn
 export type NodeOptions = Record<string, boolean | string | number> & AllNodeOptions
-export type NodeValue = Primitive | Primitive[] | Node
+export type NodeValue = Primitive | Node | Node[]
 export type NodeMap = Map<string, NodeValue>
 export type NodeValueObject = Record<string, NodeValue>
 
@@ -92,6 +92,10 @@ type TypedMap<
   K extends keyof T = keyof T,
   V = ValueOf<T>
 > = Omit<Map<any, any>, 'get' | 'set'> & {
+  [P in K as 'get']: <U extends P>(key: U) => T[U]
+} & {
+  [P in K as 'set']: <U extends P>(key: U, value: T[U]) => TypedMap<T>
+} & {
   /**
    * TypeScript sometimes gets confused
    * about whether or not get / set will exist,
@@ -101,17 +105,13 @@ type TypedMap<
   set(key: any, value: any): any
   entries(): IterableIterator<[K, V]>
   values(): IterableIterator<V>
-} & {
-  [P in K as 'get']: <U extends P>(key: U) => T[U]
-} & {
-  [P in K as 'set']: <U extends P>(key: U, value: T[U]) => TypedMap<T>
 }
 
 /**
  * @todo - this allows excess properties on T,
  * but using `Exact` from type-fest caused other issues
  */
-type NodeMapType<T> = T extends NodeValueObject ? T : { _value: T }
+export type NodeMapType<T> = T extends NodeValueObject ? T : { _value: T }
 
 type CollectionPair<T> =
   T extends Map<infer K, infer V>
@@ -149,7 +149,7 @@ type NodeInValue<T> =
       ? TypedMap<T> | T
       : T
 
-type NodeTypes = Primitive | Primitive[] | Node[] | NodeValueObject
+type NodeTypes = Primitive | Node[] | NodeValueObject
 
 type NarrowTypes<T> =
   IsUnknown<T> extends true
@@ -220,13 +220,15 @@ export abstract class Node<
    */
   protected data!: NodeData<T>
 
+  nil!: () => Nil
+
   constructor(
-    value: NodeInValue<T> | typeof CREATE_LIST,
+    value: NodeInValue<T>,
     options?: O,
     location?: LocationInfo | 0,
     treeContext?: TreeContext
   ) {
-    if (value !== CREATE_LIST) {
+    if ((value as any) !== CREATE_LIST) {
       this._setUpNode(value, options, location, treeContext)
     }
   }
@@ -442,7 +444,7 @@ export abstract class Node<
           if (data instanceof NodeList) {
             data.removeItem(nodeVal)
           } else {
-            data.set(key, new Nil())
+            data.set(key, this.nil().inherit(nodeVal))
           }
         } else if (returnVal instanceof Node && returnVal !== nodeVal) {
           this.data.set(key, returnVal)
@@ -528,7 +530,7 @@ export abstract class Node<
           const copy = n.copy(deep)
           return copy
         }
-        return new Nil()
+        return this.nil().inherit(this)
       }
     )
     this.stripPrePost(this.pre)
@@ -728,6 +730,7 @@ export class NodeList<
     location?: LocationInfo | 0,
     treeContext?: TreeContext
   ) {
+    /** @ts-expect-error This is specially over-ridden for this class type */
     super(CREATE_LIST)
     /**
      * Passing a Map should really only be done when

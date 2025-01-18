@@ -38,12 +38,12 @@ describe('Selector', () => {
   describe('equality', () => {
     test('normalized attribute selectors should be equal', () => {
       const attr1 = attr({
-        key: 'foo',
+        name: 'foo',
         op: '=',
         value: any('bar')
       })
       const attr2 = attr({
-        key: 'foo',
+        name: 'foo',
         op: '=',
         value: quoted(any('bar'))
       })
@@ -52,7 +52,7 @@ describe('Selector', () => {
 
     test('equivalent node strings should be equal', () => {
       const attr1 = attr({
-        key: 'foo',
+        name: 'foo',
         op: '=',
         value: any('bar')
       })
@@ -109,7 +109,7 @@ describe('Selector', () => {
       const sel1 = el('.foo')
       const sel2 = pseudo({
         name: ':is',
-        value: el('.foo')
+        arg: el('.foo')
       })
       expect(sel1.compare(sel2)).toBe(0)
     })
@@ -120,13 +120,13 @@ describe('Selector', () => {
       // :is(.foo, .bar) {}
       const sel2 = pseudo({
         name: ':is',
-        value: sellist([el('.foo'), el('.bar')])
+        arg: sellist([el('.foo'), el('.bar')])
       })
       // :is(.foo), .bar {}
       const sel3 = sellist([
         pseudo({
           name: ':is',
-          value: el('.foo')
+          arg: el('.foo')
         }),
         el('.bar')
       ])
@@ -157,7 +157,7 @@ describe('Selector', () => {
         co(' '),
         pseudo({
           name: ':is',
-          value: sellist([el('b'), el('c')])
+          arg: sellist([el('b'), el('c')])
         })
       ])
 

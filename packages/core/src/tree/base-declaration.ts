@@ -4,9 +4,9 @@ import {
 import { type Interpolated } from './interpolated'
 import type { General } from './general'
 
-export type Name = Interpolated | General<'Name'> | string
+export type DeclarationName = Interpolated<'Name'> | General<'Name'> | string
 
-export type BaseDeclarationValue<N extends Name = Name> = {
+export type BaseDeclarationValue<N extends DeclarationName = DeclarationName> = {
   name?: N
 }
 
@@ -33,7 +33,7 @@ export type BaseDeclarationOptions = {
    * requires a variable to previously be explicitly
    * declared within scope.
    *
-   * Used by SCSS (!global) and Jess's (@set)
+   * Used by SCSS (!global) and Jess's ($${var}:)
    */
   setDefined?: boolean
 
@@ -46,7 +46,7 @@ export type BaseDeclarationOptions = {
    * Throw if already defined in the immediate scope
    * Will not throw if defined in a parent scope.
    *
-   * Used by Jess (@let) and SCSS in the case of mixins
+   * Used by SCSS in the case of mixins... not Jess?
    */
   throwIfDefined?: boolean
 }
@@ -55,15 +55,7 @@ export type BaseDeclarationOptions = {
  * A base class with a name / value pair
  */
 export abstract class BaseDeclaration<
-  N extends Name = Name,
+  N extends DeclarationName = DeclarationName,
   T extends BaseDeclarationValue = BaseDeclarationValue<N>,
   O extends BaseDeclarationOptions = BaseDeclarationOptions,
-> extends Node<T, O> {
-  get name(): Name | undefined {
-    return this.data.get('name')
-  }
-
-  set name(v: Name | undefined) {
-    this.data.set('name', v)
-  }
-}
+> extends Node<T, O> {}

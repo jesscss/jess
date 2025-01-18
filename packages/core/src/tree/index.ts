@@ -11,10 +11,9 @@
 import { type LocationInfo } from './node'
 import { Node, NodeList } from './node'
 import { type Operator } from './util/calculate'
-import { Anonymous } from './anonymous'
+import { Anonymous } from './general'
 import { TreeContext } from '../context'
-// import { Context } from '../context'
-// import { OutputCollector } from '../output'
+import { Nil } from './nil'
 /**
  * We bind these here to avoid circular dependencies
  * between Context and Node
@@ -26,6 +25,9 @@ Node.prototype.operate = function(b: Node, op: Operator) {
     return new Anonymous(aVal + bVal).inherit(this)
   }
   throw new Error(`Cannot operate on ${this.type}`)
+}
+Node.prototype.nil = function() {
+  return new Nil()
 }
 
 Object.defineProperty(Node.prototype, 'treeContext', {
@@ -44,7 +46,6 @@ export * from './at-rule'
 export * from './block'
 export * from './bool'
 export * from './ampersand'
-export * from './anonymous'
 export * from './general'
 export * from './call'
 export * from './collection'

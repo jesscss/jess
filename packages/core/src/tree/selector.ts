@@ -7,6 +7,8 @@ export interface Selector extends Node {
   _valueOf: string | undefined
   valueOf(): string
 
+  find(needle: Selector): Selector[] | undefined
+
   /**
    * A set of all simplified (valueOf) selectors,
    * for easy lookup to see if the selector is extendable

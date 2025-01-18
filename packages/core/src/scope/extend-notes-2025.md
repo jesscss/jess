@@ -8,4 +8,7 @@
        `.a.c > .b, .z.c` because that's illogical. `.c` is not "joining" `.a > .b`; it
        only joins `.a` so `.z` must replace the entire match.
 4. `div:extend(.a)` will NOT match `span.a` because `:is(span):is(div)` does not make sense.
-
+5. When a target crosses an `:is()` boundary, then the `:is()` has to be flattened and then
+   extended.
+   e.g. `.z:extend-all(.a > .b > .c)` matches `:is(.a > .b, .d) > .c`, but first we turn it
+     into `.a > .b > .c, .d > .c` and then extend `.a > .b > .c`

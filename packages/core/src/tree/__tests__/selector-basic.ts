@@ -1,4 +1,4 @@
-import { el } from '..'
+import { el, compound, sel } from '..'
 import { Context } from '../../context'
 
 let context: Context
@@ -7,6 +7,26 @@ describe('BasicSelector', () => {
   beforeEach(() => {
     context = new Context()
   })
+
+  describe('lists', () => {
+    test('basic selectors are part of lists', () => {
+      let a = el('a')
+      let id = el('#id')
+      let one = el('.one')
+      let two = el('.two')
+
+      let sel1 = compound([
+        a,
+        id,
+        one,
+        two
+      ])
+      let sel2 = sel([sel1])
+      expect([...a.lists]).toEqual([sel1])
+      expect([...sel1.lists]).toEqual([sel2])
+    })
+  })
+
   it('should identify a class', () => {
     let rule = el('.foo')
     expect(rule.isClass).toBe(true)

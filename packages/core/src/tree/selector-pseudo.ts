@@ -12,7 +12,7 @@ export type PseudoSelectorValue = {
    * @note - this will contain the `:` prefix,
    * to support `::before` and `::after`
    */
-  value: string
+  name: string
   arg?: Node
 }
 
@@ -23,9 +23,9 @@ const { isArray } = Array
  * @see https://developer.mozilla.org/en-US/docs/Learn/CSS/Building_blocks/Selectors/Pseudo-classes_and_pseudo-elements
  *   e.g. :hover, :focus, :active
 */
-export class PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorValue> extends SimpleSelector<T> {
+export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   toTrimmedString() {
-    let { value, arg } = this.values
+    let { name, arg } = this.value
     let argString = ''
     if (arg) {
       if (isNode(arg, 'SelectorList')) {
@@ -34,7 +34,7 @@ export class PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorValue>
         argString = `(${arg.toString()})`
       }
     }
-    return `${value}${argString}`
+    return `${name}${argString}`
   }
 
   /**
@@ -87,7 +87,7 @@ export class PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorValue>
   valueOf() {
     let valueOf = this._valueOf
     if (!valueOf) {
-      let value = this.data.get('value')
+      let value = this.data.get('name')
       let arg = this.data.get('arg')
       /** Simplify wrapped :is when it can be */
       if (

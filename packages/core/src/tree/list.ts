@@ -1,11 +1,13 @@
 import { type Context } from '../context'
-import { defineType, Node } from './node'
+import { defineType, NodeList, type Node } from './node'
 import { compareNodeArray } from './util/compare'
 
 export type ListOptions = {
   /**
    * Lists can be separated by comma, semi-colon,
    * or slash, depending on the type of list.
+   *
+   * @todo - Is there a more CSS-y way to define this?
    */
   sep?: ',' | ';' | '/'
 }
@@ -17,26 +19,7 @@ export type ListOptions = {
  * or .sel, #id.class, [attr]
  * or one / two / three
  */
-export class List<T extends Node = Node> extends Node<T[], ListOptions> {
-  /**
-   * Allow for..of and destructuring for lists
-   * @note Unlike arrays, this will return the index
-   */
-  * [Symbol.iterator](): Generator<[number, T]> {
-    let i = 0
-    for (let item of this.value) {
-      yield [i++, item]
-    }
-  }
-
-  entries() {
-    return this[Symbol.iterator]()
-  }
-
-  get length() {
-    return this.value.length
-  }
-
+export class List<T extends Node = Node> extends NodeList<T, ListOptions> {
   toTrimmedString() {
     let { sep = ',' } = this.options ?? {}
     return this.value.map(v => v.toString()).join(`${sep}`)

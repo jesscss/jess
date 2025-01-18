@@ -5,11 +5,11 @@ import { compare } from './util/compare'
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */
-  value: string | Node
+  name: string | Node
   /** The operator */
   op?: string
   /** The value of the attribute */
-  attrValue?: Node
+  value?: Node
   /** The modifier (case insensitivity) */
   mod?: string
 }
@@ -21,20 +21,20 @@ export type AttributeSelectorValue = {
 */
 export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   toTrimmedString() {
-    let { value, op, attrValue, mod } = this.values
-    return `[${value}${op ?? ''}${attrValue ?? ''}${mod ? ` ${mod}` : ''}]`
+    let { name, op, value, mod } = this.value
+    return `[${name}${op ?? ''}${value ?? ''}${mod ? ` ${mod}` : ''}]`
   }
 
   valueOf() {
     let valueOf = this._valueOf
     if (!valueOf) {
-      let { value, op, attrValue, mod } = this.values
+      let { name, op, value, mod } = this.value
       /** Attributes are case-insensitive */
-      let keyStr = (typeof value === 'string' ? value : value.toTrimmedString()).toLowerCase()
+      let keyStr = (typeof name === 'string' ? name : name.toTrimmedString()).toLowerCase()
       if (!op) {
         return `[${keyStr}]`
       }
-      let valueStr = attrValue?.valueOf() ?? ''
+      let valueStr = value?.valueOf() ?? ''
       valueOf = this._valueOf = `[${keyStr}${op}"${valueStr}"${mod ? ` ${mod}` : ''}]`
     }
     return valueOf

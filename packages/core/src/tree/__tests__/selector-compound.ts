@@ -1,4 +1,4 @@
-import { compound, el, pseudo, type SimpleSelector } from '..'
+import { compound, sel, el, pseudo, type SimpleSelector } from '..'
 
 /**
  * @todo - add tests for list bubbling
@@ -36,13 +36,13 @@ describe('Compound Selector', () => {
     test('pseudo sorting', () => {
       /** :is(.a):is(.b) */
       let sel1 = compound([
-        pseudo({ value: ':is', arg: el('.a') }),
-        pseudo({ value: ':is', arg: el('.b') })
+        pseudo({ name: ':is', arg: el('.a') }),
+        pseudo({ name: ':is', arg: el('.b') })
       ]).valueOf()
       /** :is(.b):is(.a) */
       let sel2 = compound([
-        pseudo({ value: ':is', arg: el('.b') }),
-        pseudo({ value: ':is', arg: el('.a') })
+        pseudo({ name: ':is', arg: el('.b') }),
+        pseudo({ name: ':is', arg: el('.a') })
       ]).valueOf()
       expect(sel1).toEqual(sel2)
     })
@@ -57,13 +57,14 @@ describe('Compound Selector', () => {
       ]).valueOf()
       /** :is(a)#id:is(.one.two) */
       let sel2 = compound([
-        pseudo({ value: ':is', arg: el('a') }),
+        pseudo({ name: ':is', arg: el('a') }),
         el('#id'),
-        pseudo({ value: ':is', arg: compound([el('.two'), el('.one')]) })
+        pseudo({ name: ':is', arg: compound([el('.two'), el('.one')]) })
       ]).valueOf()
       expect(sel1).toEqual(sel2)
     })
   })
+
   describe.skip('keys', () => {
     test('simple compound', () => {
       let sel1 = compound([

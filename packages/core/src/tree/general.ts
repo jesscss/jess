@@ -17,7 +17,7 @@ export type GeneralOptions<T extends string> = {
  * Any general value is a simple token that doesn't need to do much.
  * It holds a string, but can have pre/post nodes
  */
-export abstract class General<
+export class General<
   T extends string = GeneralNodeType
 > extends Node<string, GeneralOptions<T>> {
   async eval() {
@@ -53,4 +53,4 @@ defineType(CustomIdent, 'CustomIdent')
  * an unspecified token.
  */
 export class Anonymous extends General<'Anonymous'> {}
-export const anon = defineType(Anonymous, 'Anonymous', 'anon')
+export const any = defineType(Anonymous, 'Anonymous', 'any')

@@ -82,10 +82,10 @@ class ExtendVisitor extends TreeVisitor {
       } else if (isNode(_parent, 'SelectorList')) {
         _parent.value.push(...selectors)
       } else {
-        return new PseudoSelector([
-          ['value', ':is'],
-          ['arg', new SelectorList([n, ...selectors])]
-        ]).inherit(n)
+        return new PseudoSelector({
+          name: ':is',
+          arg: new SelectorList([n, ...selectors])
+        }).inherit(n)
       }
     }
   }

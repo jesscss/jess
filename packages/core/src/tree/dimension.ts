@@ -11,10 +11,10 @@ import round from 'lodash-es/round'
 // import type { Context } from '../context'
 // import type { OutputCollector } from '../output'
 
-export type DimensionValue = [
-  number: number,
+export type DimensionValue = {
+  number: number
   unit?: string
-]
+}
 
 type LengthUnit = 'm' | 'cm' | 'mm' | 'in' | 'px' | 'pt' | 'pc'
 type DurationUnit = 's' | 'ms'
@@ -27,24 +27,6 @@ type UnitMapEntries = Array<[ConversionUnit, ConversionGroup]>
  */
 export class Dimension extends Node<DimensionValue> {
   _unitToGroup: Map<string, ConversionGroup> | undefined
-
-  get number() {
-    return this.data.get('value')[0]
-  }
-
-  set number(v: number) {
-    const value = this.data.get('value')
-    this.data.set('value', [v, value[1]])
-  }
-
-  get unit() {
-    return this.data.get('value')[1] ?? ''
-  }
-
-  set unit(v: string) {
-    const value = this.data.get('value')
-    this.data.set('value', [value[0], v])
-  }
 
   get unitToGroup() {
     let unitToGroup = this._unitToGroup
@@ -59,7 +41,7 @@ export class Dimension extends Node<DimensionValue> {
   }
 
   valueOf() {
-    let { number, unit } = this
+    let { number, unit } = this.value
     return unit ? `${number}${unit}` : number
   }
 
@@ -69,15 +51,16 @@ export class Dimension extends Node<DimensionValue> {
     }
     let unitToGroup = this.unitToGroup
     if (b instanceof Color) {
-      if (this.unit) {
+      let { number, unit } = this.value
+      if (unit) {
         throw new TypeError(`Cannot convert "${this}" to a color`)
       }
       let thisColor = new Color(ColorFormat.RGB).inherit(this)
-      thisColor.rgb = [this.number, this.number, this.number]
-      return thisColor.operate(b, op, context)
+      thisColor.rgb = [number, number, number]
+      return thisColor.operate(b, op, context).inherit(this)
     }
-    let [aVal, aUnit] = this.value
-    let [bVal, bUnit] = b.value
+    let { number: aVal, unit: aUnit } = this.value
+    let { number: bVal, unit: bUnit } = b.value
     let isStrictMode = context?.opts.unitMode === UnitMode.STRICT
 
     if (bVal === 0 && op === '/') {
@@ -89,23 +72,23 @@ export class Dimension extends Node<DimensionValue> {
       if (isStrictMode && bUnit && op === '/') {
         throw new TypeError('Cannot divide a number by a unit')
       }
-      return new Dimension([calculate(aVal, op, bVal), outUnit])
+      return new Dimension({ number: calculate(aVal, op, bVal), unit: outUnit }).inherit(this)
     }
 
     if (aUnit === bUnit) {
       /** Both units match, so the now we have some choices */
       if (op === '+' || op === '-') {
-        return new Dimension([calculate(aVal, op, bVal), aUnit])
+        return new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }).inherit(this)
       }
       if (isStrictMode) {
         if (op === '*') {
           throw new TypeError('Cannot multiply two units together')
         } else {
           /** Cancel units during division */
-          return new Dimension([calculate(aVal, op, bVal)])
+          return new Dimension({ number: calculate(aVal, op, bVal) }).inherit(this)
         }
       } else {
-        return new Dimension([calculate(aVal, op, bVal), aUnit])
+        return new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }).inherit(this)
       }
     }
     const aGroup = unitToGroup.get(aUnit)
@@ -117,7 +100,7 @@ export class Dimension extends Node<DimensionValue> {
         throw new TypeError('Incompatible units. Change the units or use the unit function')
       }
       /** Just coerce to the left-hand unit */
-      return new Dimension([calculate(aVal, op, bVal), aUnit])
+      return new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }).inherit(this)
     }
     const group = conversions[bGroup]
     // @ts-expect-error - set up proper indexing later
@@ -126,7 +109,7 @@ export class Dimension extends Node<DimensionValue> {
     let targetUnit = group[bUnit] as number
 
     bVal = bVal / (atomicUnit / targetUnit)
-    return new Dimension([calculate(aVal, op, bVal), aUnit])
+    return new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }).inherit(this)
   }
 
   compare(b: Node, context: Context): 0 | 1 | -1 | undefined {
@@ -136,8 +119,9 @@ export class Dimension extends Node<DimensionValue> {
     }
     let unitToGroup = this.unitToGroup
     let isStrictMode = context?.opts.unitMode === UnitMode.STRICT
+    let { number: aVal, unit: aUnit } = this.value
     if (b instanceof Color) {
-      if (this.unit) {
+      if (aUnit) {
         let msg = `Cannot convert "${this}" to a color`
         if (isStrictMode) {
           throw new TypeError(msg)
@@ -147,15 +131,14 @@ export class Dimension extends Node<DimensionValue> {
         return super.compare(b, context)
       }
       let thisColor = new Color(ColorFormat.RGB).inherit(this)
-      thisColor.rgb = [this.number, this.number, this.number]
+      thisColor.rgb = [aVal, aVal, aVal]
       return thisColor.compare(b)
     }
-    let [aVal, aUnit] = this.value
-    let [bVal, bUnit] = b.value
+    let { number: bVal, unit: bUnit } = b.value
 
     if (
-      (!aUnit && !bUnit) ||
-      (aUnit && bUnit)
+      (!aUnit && !bUnit)
+      || (aUnit && bUnit)
     ) {
       /** These are the only truly comparable dimensions */
       if (!aUnit) {
@@ -187,7 +170,7 @@ export class Dimension extends Node<DimensionValue> {
   }
 
   toTrimmedString() {
-    let [number, unit = ''] = this.value
+    let { number, unit = '' } = this.value
     /**
      * Rounding numbers to a particular precision in JavaScript
      * is extremely non-trivial. Lodash has a solution for this.
@@ -247,4 +230,4 @@ export const num = (
   location?: DimensionShortParams[1],
   options?: DimensionShortParams[2],
   treeContext?: DimensionShortParams[3]
-) => dimension([value], location, options, treeContext)
+) => dimension({ number: value }, location, options, treeContext)

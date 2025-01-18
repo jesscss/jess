@@ -2,7 +2,7 @@ import { Node } from '../node'
 import { Nil } from '../nil'
 import { List } from '../list'
 import { Dimension } from '../dimension'
-import { Anonymous } from '../anonymous'
+import { Anonymous } from '../general'
 import { Color } from '../color'
 import { FunctionValue } from '../function-value'
 import isPlainObject from 'lodash-es/isPlainObject'
@@ -31,7 +31,7 @@ function getNodeType(value: any): Node {
     return new List(value.map(val => cast(val)))
   }
   if (value.constructor === Number) {
-    return new Dimension([value as number])
+    return new Dimension({ number: value as number })
   }
   if (typeof value === 'string') {
     if (value.startsWith('#')) {
@@ -39,7 +39,7 @@ function getNodeType(value: any): Node {
     } else {
       let result = value.match(/^(\d*(?:\.\d+))([a-z]*)$/i)
       if (result) {
-        return new Dimension([parseFloat(result[1]!), result[2] || undefined])
+        return new Dimension({ number: parseFloat(result[1]!), unit: result[2] })
       }
     }
   }

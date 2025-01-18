@@ -1,12 +1,17 @@
 import { type Context } from '../context'
-import { Node } from './node'
+import { Node, type NodeValueObject } from './node'
 import type { Selector } from './selector'
 
-type SimpleSelectorValue = {
-  value: string | Node
-}
+type SimpleSelectorValue = string | NodeValueObject
 
-export abstract class SimpleSelector<T extends SimpleSelectorValue = SimpleSelectorValue> extends Node<T> implements Selector {
+type NarrowType<T> =
+  T extends string
+    ? string
+    : T extends NodeValueObject
+      ? T
+      : never
+
+export abstract class SimpleSelector<T extends SimpleSelectorValue = SimpleSelectorValue> extends Node<NarrowType<T>> implements Selector {
   declare isSelector: true
   _valueOf: string | undefined
 
@@ -15,6 +20,14 @@ export abstract class SimpleSelector<T extends SimpleSelectorValue = SimpleSelec
   _keySet: Set<string> | undefined
   get keySet(): Set<string> {
     return (this._keySet ??= new Set([this.valueOf()]))
+  }
+
+  find(needle: Selector): Selector[] | undefined {
+    if (needle.keySet.isDisjointFrom(this.keySet)) {
+      return
+    }
+
+    return this === needle ? [this] : undefined
   }
 
   /**

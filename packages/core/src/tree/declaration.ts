@@ -9,7 +9,7 @@ import { Interpolated } from './interpolated'
 import type { General } from './general'
 import {
   type BaseDeclarationValue,
-  type Name,
+  type DeclarationName,
   BaseDeclaration,
   type BaseDeclarationOptions
 } from './base-declaration'
@@ -30,33 +30,9 @@ export type DeclarationValue = BaseDeclarationValue & {
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
-export class Declaration<O extends DeclarationOptions = DeclarationOptions, N extends Name = Name> extends BaseDeclaration<N, DeclarationValue, O> {
-  get name(): N {
-    return this.data.get('name')
-  }
-
-  set name(v: N) {
-    this.data.set('name', v)
-  }
-
-  get value(): Node {
-    return this.data.get('value')
-  }
-
-  set value(v: Node) {
-    this.data.set('value', v)
-  }
-
-  get important() {
-    return this.data.get('important')
-  }
-
-  set important(v: General<'Flag'> | undefined) {
-    this.data.set('important', v)
-  }
-
+export class Declaration<O extends DeclarationOptions = DeclarationOptions, N extends DeclarationName = DeclarationName> extends BaseDeclaration<N, DeclarationValue, O> {
   toTrimmedString(depth?: number) {
-    const { name, value, important } = this
+    const { name, value, important } = this.value
     const { assign = ':' } = this.options
     let a = assign === ':' ? ':' : ` ${assign}`
     if (isNode(value, 'Collection')) {
@@ -69,23 +45,23 @@ export class Declaration<O extends DeclarationOptions = DeclarationOptions, N ex
     return await this.evalIfNot(context, async () => {
       let node = this.clone()
       node.evaluated = true
-      let { name, value } = node
+      let { name, value } = node.value
       /**
        * Name may be a variable or a sequence containing a variable
        *
        * @todo - is this valid if rulesets pre-emptively evaluate names?
        */
       if (name instanceof Interpolated) {
-        node.name = await name.eval(context) as N
+        node.data.set('name', await name.eval(context) as N)
       } else {
-        node.name = name
+        node.data.set('name', name)
       }
       if (value instanceof Node) {
         let newValue = await value.eval(context)
         if (newValue instanceof Nil) {
           return newValue.inherit(node)
         } else {
-          node.value = newValue
+          node.data.set('value', newValue)
         }
       }
       return node
@@ -142,7 +118,8 @@ export const decl = (
    * @todo - for custom properties, this should be handled differently
   */
   const node = origDefine(value, options, location, treeContext)
-  node.value.pre = 1
+  /** @ts-expect-error data is protected */
+  node.data.get('value').pre = 1
   return node
 }
 
