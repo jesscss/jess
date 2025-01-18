@@ -8,9 +8,8 @@ import type { Visitor } from '../visitor'
 import type { Comment } from './comment'
 import type { Token } from './token'
 import { type Operator } from './util/calculate'
-import type { Constructor, Writable, Class, ValueOf, Opaque, IsUnknown, UnionToTuple, Entries } from 'type-fest'
+import type { Constructor, Writable, Class, ValueOf, Opaque, IsUnknown, UnionToTuple } from 'type-fest'
 import { BiMap } from './util/collections'
-import { isMap } from 'util/types'
 import { Nil } from './nil'
 
 export type { TreeContext }
@@ -32,8 +31,9 @@ export type Primitive = boolean | string | number
 
 export const ABORT: unique symbol = Symbol('ABORT')
 export const REMOVE: unique symbol = Symbol('REMOVE')
+const CREATE_LIST: unique symbol = Symbol('CREATE_LIST')
 export type NodeVisitReturn = void | Node | symbol
-export type NodeVisitFunction = (n: Node) => NodeVisitReturn
+type NodeVisitFunction = (n: Node) => NodeVisitReturn
 export type NodeOptions = Record<string, boolean | string | number> & AllNodeOptions
 export type NodeValue = Primitive | Primitive[] | Node
 export type NodeMap = Map<string, NodeValue>
@@ -87,11 +87,11 @@ export const defineType = <
  * This strongly binds Map keys to values based
  * on a passed-in interface.
  */
-export type TypedMap<
+type TypedMap<
   T extends NodeValueObject = NodeValueObject,
   K extends keyof T = keyof T,
   V = ValueOf<T>
-> = MapLike<K, V> & Omit<Map<any, any>, 'get' | 'set'> & {
+> = Omit<Map<any, any>, 'get' | 'set'> & {
   /**
    * TypeScript sometimes gets confused
    * about whether or not get / set will exist,
@@ -111,14 +111,7 @@ export type TypedMap<
  * @todo - this allows excess properties on T,
  * but using `Exact` from type-fest caused other issues
  */
-type NodeMapType<T> = T extends NodeValueObject ? T : { value: T }
-
-type CollectionType<T> =
-  T extends Array<infer U>
-    ? U[]
-    : T extends Map<infer K, infer V>
-      ? Map<K, V>
-      : T extends Set<infer U> ? Set<U> : never
+type NodeMapType<T> = T extends NodeValueObject ? T : { _value: T }
 
 type CollectionPair<T> =
   T extends Map<infer K, infer V>
@@ -145,30 +138,9 @@ export type NodeData<T> =
     ? NodeList<T[0]>
     : T extends NodeValueObject
       ? TypedMap<T>
-      : T
-
-type NodeDataKey<T> =
-  T extends Node[]
-    ? number
-    : T extends NodeValueObject
-      ? keyof T
-      : 'value'
-
-type NodeOutValue<T, K> =
-  T extends Node[]
-    ? T | undefined
-    : T extends NodeValueObject
-      ? K extends keyof T
-        ? T[K]
+      : T extends NodeValue
+        ? TypedMap<NodeMapType<T>>
         : never
-      : T
-
-type EntriesOf<T> =
-  T extends Node[]
-    ? [number, Node]
-    : T extends NodeValueObject
-      ? NodeValueItem<T>
-      : ['value', T]
 
 type NodeInValue<T> =
   T extends Node[]
@@ -186,23 +158,6 @@ type NarrowTypes<T> =
       ? T
       : never
 
-type CreateMapLike<T> =
-  T extends Node[]
-    ? NodeList<T[0]>
-    : T extends NodeValueObject
-      ? TypedMap<T>
-      : {
-          get(key: 'value'): T
-          set(key: 'value', value: T): any
-          entries(): IterableIterator<['value', T]>
-          values(): IterableIterator<T>
-        }
-
-/**
- * @todo - This should narrow to Map | NodeList but currently
- * only narrows to Map... which is okay for how it's used
-*/
-const isMapLike = (val: unknown): val is MapLike<any, any> => val instanceof Map || val instanceof NodeList
 /**
  * The underlying type for all Jess nodes
  */
@@ -211,7 +166,7 @@ export abstract class Node<
   O extends NodeOptions = NodeOptions,
   T extends NarrowTypes<Type> = NarrowTypes<Type>,
 > {
-  location: LocationInfo | []
+  location!: LocationInfo | []
   _treeContext: TreeContext | undefined
   readonly treeContext!: TreeContext
 
@@ -262,62 +217,36 @@ export abstract class Node<
 
   /**
    * This should always represent the `data` of the Node
-   *
-   * @todo revert to just `data` property which can be a TypedMap or a NodeList
    */
-  protected _data: NodeData<T>
-
-  // private _getData<K = NodeDataKey<T>>(key: K): NodeOutValue<T, K>
-  private _getData(key: NodeDataKey<T>): any {
-    const { _data } = this
-    if (isMapLike(_data)) {
-      return _data.get(key as number) as NodeOutValue<T, typeof key>
-    }
-    return _data as unknown as NodeOutValue<T, typeof key>
-  }
-
-  private _setData<const K extends NodeDataKey<T>>(key: K, value: NodeOutValue<T, K>) {
-    const { _data } = this
-    if (isMapLike(_data)) {
-      _data.set(key as number, value as Node)
-    }
-    this._data = value as unknown as NodeData<T>
-  }
-
-  private * _dataEntries(): Generator<[number | string, NodeValue]> {
-    const { _data } = this
-    if (isMapLike(_data)) {
-      yield * _data.entries() as Generator<EntriesOf<T>>
-    }
-    yield (['value', _data] as EntriesOf<T>)
-  }
-
-  private * _dataValues(): Generator<Node> {
-
-  }
-
-  data = {
-    get: this._getData.bind(this),
-    set: this._setData.bind(this),
-    entries: this._dataEntries.bind(this)
-  } as CreateMapLike<T>
+  protected data!: NodeData<T>
 
   constructor(
-    value: NodeInValue<T>,
+    value: NodeInValue<T> | typeof CREATE_LIST,
     options?: O,
     location?: LocationInfo | 0,
     treeContext?: TreeContext
   ) {
-    const isMap = value instanceof Map
-    this._data = (value instanceof NodeList
+    if (value !== CREATE_LIST) {
+      this._setUpNode(value, options, location, treeContext)
+    }
+  }
+
+  protected _setUpNode(
+    value: unknown,
+    options?: O,
+    location?: LocationInfo | 0,
+    treeContext?: TreeContext
+  ) {
+    this.data = (value instanceof NodeList
       ? value
-      : isPlainObject(value) || isMap
-        ? new Map(
-          isMap
-            ? value
-            : Object.entries(value as Record<string, NodeValue>)
-        ) as TypedMap<NodeValueObject>
-        : value) as NodeData<T>
+      : new Map(
+        isPlainObject(value)
+          ? Object.entries(value as Record<string, NodeValue>)
+          : isNodeMap(value)
+            ? value as Map<any, any>
+            : [['_value', value]]
+      )
+    ) as NodeData<T>
 
     this.location = location || []
     this._treeContext = treeContext
@@ -337,16 +266,15 @@ export abstract class Node<
     return opts
   }
 
-  get value(): T {
-    const data = this._data
+  get value(): Type {
+    const data = this.data
     if (data instanceof NodeList) {
-      return [...data] as T
+      return [...data] as Type
     }
-    if (data instanceof Map) {
-      return Object.fromEntries(data) as T
+    if (data.has('_value')) {
+      return data.get('_value') as Type
     }
-
-    return data as T
+    return Object.fromEntries(data)
   }
 
   /** NodeList-related properties */
@@ -411,19 +339,8 @@ export abstract class Node<
        * which means some nodes can be evaluated after things
        * like async file operations and dynamic imports.
        */
-      /** Process Node arrays only */
-      if (isArray(nodeVal)) {
-        let out = []
-        for (let i = 0; i < nodeVal.length; i++) {
-          let node = nodeVal[i]
-          let result = node instanceof Node ? await func(node) : node
-          if (result ?? false) {
-            out.push(result)
-          }
-        }
-        /** Assume that the type will still be valid */
-        map.set(key, out)
-      } else if (nodeVal instanceof Node) {
+      /** Process Nodes only */
+      if ((nodeVal as any) instanceof Node) {
         /** Assume that the type will still be valid */
         map.set(key, await func(nodeVal))
       }
@@ -461,16 +378,21 @@ export abstract class Node<
   /**
    * Return an iterator for all nodes / children nodes, including this one
    */
-  * nodes() {
+  * nodes(): Generator<Node, void, unknown> {
     yield this
     yield * this.children(true)
   }
 
+  /** An iterator for all node children */
   * children(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
-    let iterator = this.data.values()
+    const data = this.data
     /**
      * Currently, we only reverse for Nodelists
      */
+    let iterator = data instanceof NodeList
+      ? reverse ? data.reverse() : data
+      : data.values()
+
     for (let nodeVal of iterator) {
       if (nodeVal instanceof Node) {
         yield nodeVal
@@ -503,6 +425,7 @@ export abstract class Node<
     reverse?: boolean,
     visitPrePost?: boolean
   ) {
+    const data = this.data
     if (visitPrePost) {
       let { pre, post } = this
       if (pre instanceof NodeList) {
@@ -512,16 +435,23 @@ export abstract class Node<
         this._processNodeList(post, func, true, false, reverse)
       }
     }
-    for (const [key, nodeVal] of this.data.entries()) {
+    let entriesMethod = data instanceof NodeList
+      ? reverse ? data.reverseEntries : data.entries
+      : data.entries
+
+    for (const [key, nodeVal] of entriesMethod()) {
       if (nodeVal instanceof Node) {
         let returnVal = func(nodeVal)
         if (returnVal === ABORT) {
           return ABORT
         } else if (returnVal === REMOVE) {
-          /** @note It's up to the author to make sure this key can be set to undefined! */
-          this.data.set(key, undefined as M[typeof key])
+          if (data instanceof NodeList) {
+            data.removeItem(nodeVal)
+          } else {
+            data.set(key, new Nil())
+          }
         } else if (returnVal instanceof Node && returnVal !== nodeVal) {
-          this.data.set(key, returnVal as M[typeof key])
+          this.data.set(key, returnVal)
         }
         if (!shallow) {
           nodeVal.walkNodes(func, false, reverse, visitPrePost)
@@ -722,9 +652,9 @@ export abstract class Node<
    */
   toTrimmedString(depth?: number) {
     let output = ''
-    this.data.forEach(value => {
-      output += `${value}`
-    })
+    for (let value of this.data.values()) {
+      output += value.toString(depth)
+    }
     return output
   }
 
@@ -793,9 +723,9 @@ export class NodeList<
    */
 
   /** A map of numbers to nodes */
-  private _items = new BiMap<number, T>()
+  private readonly _items = new BiMap<number, T>()
   /** A map of a numbered node to the before / after as a joined number */
-  private _pos = new Map<number, number>()
+  private readonly _pos = new Map<number, number>()
   private _index = 0
 
   constructor(
@@ -804,8 +734,7 @@ export class NodeList<
     location?: LocationInfo | 0,
     treeContext?: TreeContext
   ) {
-    /** There's a custom getter for `value` */
-    super(undefined as unknown as NodeInValue<T[]>, options, location, treeContext)
+    super(CREATE_LIST)
     /**
      * Passing a Map should really only be done when
      * cloning, which we will override.
@@ -813,7 +742,7 @@ export class NodeList<
     if (isArray(values)) {
       this.setMany(values)
     }
-    this._data = this as unknown as NodeData<T[]>
+    this._setUpNode(this, options, location, treeContext)
   }
 
   /** This is just so debugging isn't confusing */
@@ -903,27 +832,20 @@ export class NodeList<
   }
 
   /** Clones of node lists need to be a bit different */
-  clone(deep?: boolean, cloneFn?: (n: Node) => NodeValue): this {
+  clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     let Class: Constructor<this> = Object.getPrototypeOf(this).constructor
 
     let newNode = new Class(
-      /**
-       * Creates a new Map object instance.
-       * Otherwise, replacing nodes would replace them
-       * in the old map.
-       */
-      undefined,
+      [...this],
       this._options,
       this.location,
       this.treeContext
     )
 
     cloneFn ??= n => n.clone(deep)
-    newNode._items = new BiMap(this._items)
-    newNode._pos = new Map(this._pos)
 
     if (deep) {
-      for (let [index, node] of newNode._items) {
+      for (let [index, node] of newNode.entries()) {
         /** @todo - deal with deletions or NodeList returns */
         newNode._items.set(index, node.clone(deep, cloneFn))
       }
@@ -999,6 +921,10 @@ export class NodeList<
   }
 
   * [Symbol.iterator]() {
+    yield * this._values()
+  }
+
+  * values() {
     yield * this._values()
   }
 
@@ -1089,5 +1015,13 @@ export class NodeList<
     if (this._items.size === 0) {
       this.remove()
     }
+  }
+
+  clear() {
+    this._items.clear()
+    this._pos.clear()
+    this.first = undefined
+    this.last = undefined
+    this._current = undefined
   }
 }

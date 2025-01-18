@@ -72,7 +72,7 @@ time.
 ```scss
 // file.jess
 .test {
-  $ -> #ns.class();
+  $ > #ns.class();
 }
 ```
 
@@ -80,9 +80,9 @@ time.
 ```scss
 // file.jess
 // ALL valid
-$mixin #foo () {}
-$mixin .foo () {}
-$mixin foo () {}
+@@#foo () {}
+@@.foo () {}
+@@foo () {}
 ```
 
 
