@@ -13,7 +13,11 @@ import { List } from './list'
 
 /** Constructs */
 export class SelectorList extends List<Selector> implements Selector {
-  declare isSelector: true
+  find(needle: Selector): Selector[] | undefined {
+    throw new Error('Method not implemented.')
+  }
+
+  declare _isSelector: true
 
   _keySet: Set<string> | undefined
   get keySet(): Set<string> {
@@ -44,6 +48,6 @@ export class SelectorList extends List<Selector> implements Selector {
   }
 }
 
-SelectorList.prototype.isSelector = true
+SelectorList.prototype._isSelector = true
 
 export const sellist = defineType(SelectorList, 'SelectorList', 'sellist')

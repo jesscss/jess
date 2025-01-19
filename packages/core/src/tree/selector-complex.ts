@@ -30,7 +30,7 @@ export type ComplexSelectorValue = ComplexSelectorComponent[]
  * #id > .class.class
  */
 export class ComplexSelector extends NodeList<ComplexSelectorComponent> implements Selector {
-  declare isSelector: true
+  declare _isSelector: true
   /**
    * Essentially, a#id.class === a.class#id as being identical selectors,
    * so we normalize groups and combinators to be in Immutable Sets,
@@ -192,7 +192,7 @@ export class ComplexSelector extends NodeList<ComplexSelectorComponent> implemen
   // }
 }
 
-ComplexSelector.prototype.isSelector = true
+ComplexSelector.prototype._isSelector = true
 
 type SelectorParams = ConstructorParameters<typeof ComplexSelector>
 

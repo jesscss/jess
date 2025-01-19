@@ -128,6 +128,4 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
   // }
 }
 
-Ampersand.prototype.isSelector = true
-
 export const amp = defineType(Ampersand, 'Ampersand', 'amp')

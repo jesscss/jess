@@ -8,25 +8,6 @@ describe('BasicSelector', () => {
     context = new Context()
   })
 
-  describe('lists', () => {
-    test('basic selectors are part of lists', () => {
-      let a = el('a')
-      let id = el('#id')
-      let one = el('.one')
-      let two = el('.two')
-
-      let sel1 = compound([
-        a,
-        id,
-        one,
-        two
-      ])
-      let sel2 = sel([sel1])
-      expect([...a.lists]).toEqual([sel1])
-      expect([...sel1.lists]).toEqual([sel2])
-    })
-  })
-
   it('should identify a class', () => {
     let rule = el('.foo')
     expect(rule.isClass).toBe(true)
@@ -43,10 +24,34 @@ describe('BasicSelector', () => {
     let rule = el('\\.foo')
     expect(rule.isTag).toBe(true)
   })
+
   test('keys', () => {
     let rule = el('.foo')
-    expect(rule.keys).toEqual('.foo')
-    expect(rule.keyList).toEqual(['.foo'])
+    expect(rule.keySet).toEqual(new Set(['.foo']))
+  })
+
+  describe('lists', () => {
+    test('basic selectors are part of lists', () => {
+      let a = el('a')
+      let id = el('#id')
+      let one = el('.one')
+      let two = el('.two')
+
+      let sel1 = compound([
+        a,
+        id,
+        one,
+        two
+      ])
+      let sel2 = sel([sel1])
+      expect([...sel1.nodes()].map(n => n.valueOf())).toEqual(['a#id.one.two', 'a', '#id', '.one', '.two'])
+      expect([...a.lists]).toEqual([sel1])
+      expect([...a.clone().lists]).toEqual([sel1])
+      expect([...sel1.lists]).toEqual([sel2])
+      let clone = sel2.clone(true)
+      /** Check that cloned nodes have list references */
+      expect([...[...clone][0]!.lists][0]?.type).toEqual('ComplexSelector')
+    })
   })
   // it('should serialize a module', () => {
   //   let rule = el('foo')

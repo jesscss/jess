@@ -1,13 +1,10 @@
 import { type Node } from './node'
 
 /** This represents anything that is valid in a selector */
-export interface Selector extends Node {
-  isSelector: true
 
+export interface Selector extends Node {
   _valueOf: string | undefined
   valueOf(): string
-
-  find(needle: Selector): Selector[] | undefined
 
   /**
    * A set of all simplified (valueOf) selectors,

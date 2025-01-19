@@ -12,7 +12,7 @@ type NarrowType<T> =
       : never
 
 export abstract class SimpleSelector<T extends SimpleSelectorValue = SimpleSelectorValue> extends Node<NarrowType<T>> implements Selector {
-  declare isSelector: true
+  declare _isSelector: true
   _valueOf: string | undefined
 
   abstract valueOf(): string
@@ -40,4 +40,4 @@ export abstract class SimpleSelector<T extends SimpleSelectorValue = SimpleSelec
   }
 }
 
-SimpleSelector.prototype.isSelector = true
+SimpleSelector.prototype._isSelector = true

@@ -108,8 +108,8 @@ export interface Visitor {
   basicSelectorExit?(n: tree.BasicSelector, ctx?: VisitorContext): void
   selectorList?(n: tree.SelectorList, ctx?: VisitorContext): VisitorReturn
   selectorListExit?(n: tree.SelectorList, ctx?: VisitorContext): void
-  pseudoSelector?(n: tree.PseudoSelector<tree.PseudoSelectorValue>, ctx?: VisitorContext): VisitorReturn
-  pseudoSelectorExit?(n: tree.PseudoSelector<tree.PseudoSelectorValue>, ctx?: VisitorContext): void
+  pseudoSelector?(n: tree.PseudoSelector, ctx?: VisitorContext): VisitorReturn
+  pseudoSelectorExit?(n: tree.PseudoSelector, ctx?: VisitorContext): void
   compoundSelector?(n: tree.CompoundSelector, ctx?: VisitorContext): VisitorReturn
   compoundSelectorExit?(n: tree.CompoundSelector, ctx?: VisitorContext): void
   complexSelector?(n: tree.ComplexSelector, ctx?: VisitorContext): VisitorReturn
@@ -128,8 +128,8 @@ export interface Visitor {
   lookupExit?(n: tree.Lookup, ctx?: VisitorContext): void
   import?(n: tree.Import, ctx?: VisitorContext): VisitorReturn
   importExit?(n: tree.Import, ctx?: VisitorContext): void
-  interpolated?(n: tree.Interpolated<NodeOptions>, ctx?: VisitorContext): VisitorReturn
-  interpolatedExit?(n: tree.Interpolated<NodeOptions>, ctx?: VisitorContext): void
+  interpolated?(n: tree.Interpolated, ctx?: VisitorContext): VisitorReturn
+  interpolatedExit?(n: tree.Interpolated, ctx?: VisitorContext): void
   defaultGuard?(n: tree.DefaultGuard, ctx?: VisitorContext): VisitorReturn
   defaultGuardExit?(n: tree.DefaultGuard, ctx?: VisitorContext): void
   jsExpression?(n: tree.JsExpression, ctx?: VisitorContext): VisitorReturn
@@ -211,7 +211,7 @@ export abstract class TreeVisitor extends Visitor {
   visitedNodes = new Set<Node>()
 
   constructor(
-    public direction: 'ltr' | 'rtl' = 'ltr'
+    public reverse?: boolean
   ) {
     super()
   }
@@ -225,9 +225,9 @@ export abstract class TreeVisitor extends Visitor {
       return n
     }
     this.visitedNodes.add(n)
-    const { direction } = this
+    const { reverse } = this
     if (this.visitChildren === 'before') {
-      n.walkNodes((node) => this._visit(node, ctx), true, direction, true)
+      n.walkNodes((node) => this._visit(node, ctx), true, reverse, true)
       const returnVal = super._visit(n, ctx)
       /** @node The exit function passes in the original node */
       this.visitExit(n, ctx)
@@ -246,7 +246,7 @@ export abstract class TreeVisitor extends Visitor {
       /** Don't visit new created nodes */
       this.visitedNodes.add(returnVal)
     } else {
-      n.walkNodes((node) => this._visit(node, ctx), true, direction, true)
+      n.walkNodes((node) => this._visit(node, ctx), true, reverse, true)
     }
 
     this.visitExit(n, ctx)

@@ -11,6 +11,7 @@ import { type Operator } from './util/calculate'
 import type { Constructor, Writable, Class, ValueOf, Opaque, IsUnknown, UnionToTuple } from 'type-fest'
 import { BiMap } from './util/collections'
 import { type Nil } from './nil'
+import type { Selector } from './selector'
 
 export type { TreeContext }
 
@@ -34,7 +35,7 @@ export const REMOVE: unique symbol = Symbol('REMOVE')
 export const CREATE_LIST: unique symbol = Symbol('CREATE_LIST')
 export type NodeVisitReturn = void | Node | symbol
 type NodeVisitFunction = (n: Node) => NodeVisitReturn
-export type NodeOptions = Record<string, boolean | string | number> & AllNodeOptions
+export type NodeOptions = Record<string, boolean | string | number | undefined> & AllNodeOptions
 export type NodeValue = Primitive | Node | Node[]
 export type NodeMap = Map<string, NodeValue>
 export type NodeValueObject = Record<string, NodeValue>
@@ -177,9 +178,11 @@ export abstract class Node<
    */
   declare type: string
   declare shortType: string
-
+  declare _isSelector: boolean
   /** Indicates if this can be used wherever a selector is used */
-  isSelector = false
+  isSelector(): this is Selector {
+    return this._isSelector
+  }
 
   /**
    * Whitespace or comments before or after a Node.
@@ -282,7 +285,7 @@ export abstract class Node<
   /** NodeList-related properties */
   private _lists: NodeList<NodeList> | undefined
   get lists(): NodeList<NodeList> {
-    return (this._lists ??= new NodeList())
+    return (this._lists ??= new NodeList(undefined, { disableTracking: true }))
   }
 
   remove() {
@@ -380,9 +383,9 @@ export abstract class Node<
   /**
    * Return an iterator for all nodes / children nodes, including this one
    */
-  * nodes(): Generator<Node, void, unknown> {
+  * nodes(reverse?: boolean): Generator<Node, void, unknown> {
     yield this
-    yield * this.children(true)
+    yield * this.children(true, reverse)
   }
 
   /** An iterator for all node children */
@@ -463,7 +466,7 @@ export abstract class Node<
         const rules = n.rootRules
         if (rules) {
           for (let n of rules) {
-            list.add(n)
+            list.push(n)
           }
           rules.clear()
         }
@@ -502,6 +505,7 @@ export abstract class Node<
     newNode.pre = this.pre
     newNode.post = this.post
     newNode.evaluated = this.evaluated
+    newNode._lists = this._lists
 
     return newNode
   }
@@ -701,6 +705,10 @@ interface MapLike<K, V> {
   entries(): IterableIterator<[K, V]>
 }
 
+export interface NodeListOptions extends NodeOptions {
+  /** Don't add list to node lists */
+  disableTracking?: boolean
+}
 /**
  * A dynamic linked list useful for managing items in multiple lists.
  * In other words, rather than linking items together, their positions
@@ -708,7 +716,7 @@ interface MapLike<K, V> {
  */
 export class NodeList<
   T extends Node = Node,
-  O extends NodeOptions = NodeOptions
+  O extends NodeListOptions = NodeListOptions
 > extends Node<T[], O> implements MapLike<number, T | undefined> {
   first: number | undefined
   last: number | undefined
@@ -801,6 +809,9 @@ export class NodeList<
 
   set(key: number, value: T) {
     this._items.set(key, value)
+    if (!this.options?.disableTracking) {
+      value.lists.push(this)
+    }
   }
 
   setMany(values: T[]) {
@@ -819,9 +830,8 @@ export class NodeList<
       }
       let item = values[index - 1]!
       lastIndex = index
-      _items.set(index, item)
+      this.set(index, item)
       this._writePos(index, index - 1, 0)
-      item.lists.add(this)
     }
     /** The last thing a for loop does is increment, so subtract the last iteration */
     this._index = index - 1
@@ -844,7 +854,7 @@ export class NodeList<
     if (deep) {
       for (let [index, node] of newNode.entries()) {
         /** @todo - deal with deletions or NodeList returns */
-        newNode._items.set(index, node.clone(deep, cloneFn))
+        newNode.set(index, node.clone(deep, cloneFn))
       }
     }
     newNode.pre = this.pre
@@ -858,7 +868,7 @@ export class NodeList<
     return this._items.size
   }
 
-  add(item: T) {
+  push(item: T) {
     let index = ++this._index
     if (!this.first) {
       this.first = index
@@ -866,10 +876,26 @@ export class NodeList<
     let last = this.last
     if (last) {
       this._writeNextPos(last, index)
+    } else {
+      this.last = index
     }
-    this._items.set(index, item)
+    this.set(index, item)
     this._writePos(index, last, 0)
-    this.last = index
+  }
+
+  unshift(item: T) {
+    let index = ++this._index
+    if (!this.last) {
+      this.last = index
+    }
+    let first = this.first
+    if (first) {
+      this._writePrevPos(first, index)
+    } else {
+      this.first = index
+    }
+    this.set(index, item)
+    this._writePos(index, first, 0)
   }
 
   insertBefore(before: T, item: T) {

@@ -11,9 +11,12 @@ import { type Selector } from './selector'
  * The type is determined by syntax
  * and location.
  *   e.g. in Jess
- *    - `$foo` (or $(foo)) refers to a variable
- *    - `$.foo` (or $(.foo) refers to a property
- *    - in `$ -> .foo()`, `.foo` refers to a mixin
+ *    - `$foo` refers to a variable
+ *    - `$.foo` refers to a property
+ *    - in `$ > .foo()`, `.foo` refers to a mixin
+ *    - Resolution:
+ *      - `$` searches scope,
+ *      - `$$` searches in declaration order
  *   in Less
  *   - `@foo` refers to a variable
  *   - `$foo` refers to a property
@@ -21,6 +24,7 @@ import { type Selector } from './selector'
  */
 export type ReferenceOptions = {
   type: 'variable' | 'property' | 'mixin'
+  resolution?: 'scope' | 'linear'
   /**
    * Optional references just resolve to the string
    * representation of the reference if not found.
@@ -44,17 +48,27 @@ export class Reference extends Node<string | Interpolated, ReferenceOptions> imp
     args[1] ??= { type: 'variable' }
     super(...args)
   }
+
+  find(needle: Selector): Selector[] | undefined {
+    throw new Error('Method not implemented.')
+  }
+
   _valueOf: string | undefined
-  keySet: Set<string>
+  valueOf() {
+    return ''
+  }
+
+  keySet!: Set<string>
 
   toTrimmedString(): string {
-    const { type } = this.options
+    const { type, resolution } = this.options
     const { value } = this
+    const preChar = resolution === 'linear' ? '$$' : '$'
     switch (type!) {
       case 'variable':
-        return `$${value}`
+        return `${preChar}${value}`
       case 'property':
-        return `$.${value}`
+        return `${preChar}.${value}`
       case 'mixin':
         return `${value}`
     }
