@@ -1,140 +1,98 @@
-// import type { Primitive, Node } from '../node'
-// import isObject from 'lodash-es/isObject'
+import { type Node } from '../node'
 
-// type ListNodeValue = Primitive | Node | LinkedListNode | NodeWithLists
+type IndexedTrieNodeValue = string | Node
 
-// /**
-//  * Object wrapper for primitives
-//  */
-// class LinkedListNode<T extends Primitive = Primitive> implements NodeWithLists {
-//   private _lists: LinkedList<LinkedList> | undefined
-//   get lists(): LinkedList<LinkedList> {
-//     return (this._lists ??= new LinkedList())
-//   }
+function getTrieKey(value: IndexedTrieNodeValue) {
+  return typeof value === 'string' ? value : value.valueOf()
+}
 
-//   constructor(public value: T) {}
-// }
+export const ROOT = Symbol('ROOT')
+/**
+ * I tried to find something like this that could sufficiently represent
+ * a trie that was indexable by key, to make lookups faster for selectors,
+ * for the case of mixin calls and extends.
+ */
+export class IndexedTrie<
+  T extends Node = Node,
+  S extends symbol = symbol
+> {
+  static readonly ROOT = ROOT
 
-// interface NodeWithLists {
-//   get lists(): LinkedList<LinkedList>
-// }
+  _keySet: Set<string | number> | undefined
+  get keySet() {
+    return (this._keySet ??= new Set())
+  }
 
-// /** We have to account for a type of undefined */
-// type ListKey<T> =
-//   undefined extends T
-//     ? string
-//     : T extends Primitive ? string : number
+  /** This is useful for limiting searches to certain keys */
+  _keyMap: BiMap<string | number, Set<T>> | undefined
+  get keyMap() {
+    return (this._keyMap ??= new BiMap())
+  }
 
-// type PrimitiveSet<T extends ListNodeValue> = Exclude<T, Node | NodeWithLists>
+  _edgeMaps: Map<T | typeof ROOT, Set<IndexedTrieEdge<T, S>>> | undefined
+  get edgeMaps(): Map<T | typeof ROOT, Set<IndexedTrieEdge<T, S>>> {
+    return (this._edgeMaps ??= new Map())
+  }
 
-// export class LinkedList<
-//   T extends ListNodeValue = ListNodeValue,
-//   Key extends string | number = ListKey<T>
-// > implements NodeWithLists {
-//   /**
-//    * These maps are designed for fast lookups,
-//    * map cloning, and replacing items.
-//    */
+  push(value: T) {
+    let k = getTrieKey(value)
+    this.keySet.add(k)
+    let set = this.keyMap.get(k) ?? new Set()
+    set.add(value)
+    this.keyMap.set(k, set)
+  }
 
-//   /** A map of numbers to nodes */
-//   private readonly _items = new BiMap<number, T | LinkedListNode<PrimitiveSet<T>>>()
-//   /** A map of a numbered node to the before / after as a joined number */
-//   private readonly _pos = new Map<number, number>()
-//   first: number | undefined
-//   last: number | undefined
-//   private _current: number | undefined
-//   private _index = 0
+  get(key: T | string) {
+    let k = getTrieKey(key)
+    return this.keyMap.get(k)
+  }
 
-//   private _lists: LinkedList<LinkedList> | undefined
-//   get lists(): LinkedList<LinkedList> {
-//     return (this._lists ??= new LinkedList())
-//   }
+  private _addEdge(src: T | typeof ROOT, target: T | IndexedTrie<T, S>, type?: S, value?: IndexedTrieNodeValue) {
+    let edge = new IndexedTrieEdge(src, target, type, value)
+    let edgeSet = this.edgeMaps.get(src) ?? new Set()
+    edgeSet.add(edge)
+    this.edgeMaps.set(src, edgeSet)
+    return edge
+  }
 
-//   constructor(items?: T[]) {
-//     if (items?.length) {
-//       this.push(...items)
-//     }
-//   }
+  edgesOf(src: T | typeof ROOT) {
+    return this.edgeMaps.get(src)
+  }
 
-//   clear() {
-//     this._items.clear()
-//     this._pos.clear()
-//     this.first = undefined
-//     this.last = undefined
-//     this._current = undefined
-//   }
+  addEdge(src: T | typeof ROOT, target: T | IndexedTrie<T, S> | string, type?: S, value?: IndexedTrieNodeValue) {
+    if (src !== ROOT && !(src instanceof IndexedTrie)) {
+      this.push(src)
+    }
+    if (target instanceof IndexedTrie) {
+      this._keySet = this.keySet.intersection(target.keySet)
+      return this._addEdge(src, target, type, value)
+    }
+    if (typeof target === 'string') {
+      let set = this.keyMap.get(target)
+      if (set) {
+        for (let t of set) {
+          this._addEdge(src, t, type, value)
+        }
+        return this.edgesOf(src)
+      }
+      return
+    }
 
-//   set(key: Key, value: T) {
-//     this._items.set(key as number, value)
-//   }
+    return this._addEdge(src, target, type, value)
+  }
+}
 
-//   push(...items: T[]) {
-//     let index = ++this._index
-//     let lastIndex: number | undefined
-//     if (items.length) {
-//       this.first = 1
-//     }
-//     const { _items, _pos } = this
-//     _items.clear()
-//     _pos.clear()
-//     let length = items.length
-//     for (; index <= length; index++) {
-//       if (lastIndex) {
-//         this._writeNextPos(lastIndex, index)
-//       }
-//       let item: T | LinkedListNode = items[index - 1]!
-//       if (!isObject(item)) {
-//         item = new LinkedListNode(item)
-//       }
-//       lastIndex = index
-//       _items.set(index, item as T)
-//       this._writePos(index, index - 1, 0)
-//       item.lists.push(this)
-//     }
-//     /** The last thing a for loop does is increment, so subtract the last iteration */
-//     this._index = index - 1
-//     this.last = lastIndex
-//   }
-
-//   private _writePos(nodeRef: number, previous: number | undefined, next: number | undefined) {
-//     if (nodeRef === previous || nodeRef === next) {
-//       throw new Error('Linking a node to itself would cause an infinite loop.')
-//     }
-//     this._pos.set(nodeRef, (previous ?? 0) << 16 | (next ?? 0))
-//   }
-
-//   private _writeNextPos(nodeRef: number, next: number | undefined) {
-//     let pos = this._pos.get(nodeRef)
-//     if (pos !== undefined) {
-//       /** Read previous, and write next */
-//       this._writePos(nodeRef, this._getPrevFromBits(pos), next)
-//     }
-//   }
-
-//   private _writePrevPos(nodeRef: number, previous: number | undefined) {
-//     let pos = this._pos.get(nodeRef)
-//     if (pos !== undefined) {
-//       /** Read next, and write previous */
-//       this._writePos(nodeRef, previous, this._getNextFromBits(pos))
-//     }
-//   }
-
-//   private _getPrevFromBits(pos: number | undefined): number | undefined {
-//     if (pos === undefined) {
-//       return undefined
-//     }
-//     let previous = (pos >>> 16) & 0xFFFF // Extract the upper 16 bits
-//     return previous === 0 ? undefined : previous
-//   }
-
-//   private _getNextFromBits(pos: number | undefined): number | undefined {
-//     if (pos === undefined) {
-//       return undefined
-//     }
-//     let next = pos & 0xffff // Extract the lower 16 bits
-//     return next === 0 ? undefined : next
-//   }
-// }
+export class IndexedTrieEdge<
+  T extends Node = Node,
+  S extends symbol = symbol
+> {
+  constructor(
+    public src: T | typeof ROOT | IndexedTrie<T, S>,
+    public target: T | IndexedTrie<T, S>,
+    public type?: S,
+    public value?: IndexedTrieNodeValue
+  ) {}
+}
 
 /** Simple bi-directional map */
 export class BiMap<K, V> {

@@ -159,6 +159,9 @@ type NarrowTypes<T> =
       ? T
       : never
 
+// eslint-disable-next-line @typescript-eslint/naming-convention
+let NODE_INDEX = 0
+
 /**
  * The underlying type for all Jess nodes
  */
@@ -198,7 +201,7 @@ export abstract class Node<
   post: NodeList<Comment | Token> | 1 | 0 | undefined
 
   visible = true
-
+  index = ++NODE_INDEX
   evaluated = false
 
   /** Assigned on the prototype */
@@ -505,6 +508,7 @@ export abstract class Node<
     newNode.pre = this.pre
     newNode.post = this.post
     newNode.evaluated = this.evaluated
+    newNode.index = this.index
     newNode._lists = this._lists
 
     return newNode
@@ -539,7 +543,8 @@ export abstract class Node<
     )
     this.stripPrePost(this.pre)
     this.stripPrePost(this.post)
-
+    /** Copied nodes are assigned a new index */
+    newNode.index = ++NODE_INDEX
     return newNode
   }
 
@@ -572,13 +577,17 @@ export abstract class Node<
     return this as unknown as T
   }
 
-  /** Override normally readonly props to make them inheritable */
+  /**
+   * Override normally readonly props to make them inheritable
+   * This is used when a Node will replace another node.
+   */
   inherit(node: Node) {
     (this as Writable<this>).location = node.location
     ;(this as Writable<this>)._treeContext = node._treeContext
     this.evaluated = node.evaluated
     this.pre = node.pre
     this.post = node.post
+    this.index = node.index
     return this
   }
 
@@ -709,6 +718,131 @@ export interface NodeListOptions extends NodeOptions {
   /** Don't add list to node lists */
   disableTracking?: boolean
 }
+
+export class NodeTreeEdge<
+  S extends symbol = symbol
+> {
+  constructor(
+    public node: typeof NODE_INDEX,
+    public type?: S,
+    public value?: string
+  ) {}
+}
+
+/**
+ * @note All Node references in the tree are indirect and are done by number.
+ * This is so replacements
+ */
+export class NodeTreeNode {
+  constructor(
+    public node: typeof NODE_INDEX,
+    public previous?: typeof NODE_INDEX | NodeTreeEdge,
+    public next?: typeof NODE_INDEX | NodeTreeEdge
+  ) {}
+}
+
+/**
+ * A dynamically linked list tree, which is also indexed.
+ * This is a kind of trie structure for fast, indexed string
+ * lookups, as well as fast iteration, insertion, and deletion.
+ *
+ * It's easier to think of this as a "nested list" than a "tree",
+ * because lists can be iterated linearly.
+ */
+export class NodeTree {
+  static indexMap = new Map<typeof NODE_INDEX, Node | NodeTree>()
+  static nodeMap = new Map<typeof NODE_INDEX, NodeTreeNode>()
+  index = ++NODE_INDEX
+
+  private readonly _first: typeof NODE_INDEX | undefined
+  private readonly _last: typeof NODE_INDEX | undefined
+  /** Represents the parent of all nodes */
+  private readonly _root: typeof NODE_INDEX | undefined
+
+  /** Remember to update keys when Node is eval'd */
+  _keySet: Set<string | number> | undefined
+  get keySet() {
+    return (this._keySet ??= new Set())
+  }
+
+  /** This is useful for limiting searches to certain keys */
+  _keyMap: BiMap<string | number, Set<NodeTreeNode>> | undefined
+  get keyMap() {
+    return (this._keyMap ??= new BiMap())
+  }
+
+  push(n: Node | NodeTree, key = n.valueOf()) {
+    let index = n.index
+    if (NodeTree.nodeMap.has(index)) {
+      return
+    }
+    if (n instanceof NodeTree) {
+      this._keySet = this.keySet.intersection(n.keySet)
+    } else {
+      this.keySet.add(key as string | number)
+    }
+    let { _last } = this
+    let treeNode = new NodeTreeNode(index, _last)
+    if (_last !== undefined) {
+      let lastNode = NodeTree.nodeMap.get(_last)!
+      lastNode.next = treeNode.node
+    }
+
+    NodeTree.indexMap.set(index, n)
+    NodeTree.nodeMap.set(index, treeNode)
+  }
+
+  set(index: number, node: Node) {
+    NodeTree.indexMap.set(index, node)
+  }
+
+  private _reverseList(asEntries: false, fromNode?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<Node>
+  private _reverseList(asEntries: true, fromNode?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<[number, Node]>
+  private _reverseList(asEntries: boolean, fromNode?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<Node | [number, Node]>
+  private * _reverseList(
+    asEntries: boolean,
+    fromNode?: typeof NODE_INDEX | undefined,
+    includeParents?: boolean
+  ) {
+    let start = fromNode ?? this._last
+    if (start) {
+      let node = NodeTree.nodeMap.get(start)
+      while (node) {
+        let currentIndex = node.node
+        let current = NodeTree.indexMap.get(currentIndex)!
+        if (current instanceof NodeTree) {
+          yield * current._reverseList(asEntries, currentIndex, includeParents)
+        } else {
+          yield asEntries ? [currentIndex, current] : current
+        }
+        let { previous } = node
+        if (previous) {
+          if (previous instanceof NodeTreeEdge) {
+            node = NodeTree.nodeMap.get(previous.node)
+          } else {
+            node = NodeTree.nodeMap.get(previous)
+          }
+        } else {
+          node = undefined
+        }
+      }
+      if (includeParents) {
+        let parent = this._root
+        if (parent) {
+          let parentTree = NodeTree.indexMap.get(parent)
+          if (parentTree instanceof NodeTree) {
+            yield * parentTree._reverseList(asEntries, fromNode ? parent : undefined, includeParents)
+          }
+        }
+      }
+    }
+  }
+
+  * findNodes(currentNode: Node, key: string | number, type?: symbol | symbol[], resolution?: 'scope' | 'linear') {
+
+  }
+}
+
 /**
  * A dynamic linked list useful for managing items in multiple lists.
  * In other words, rather than linking items together, their positions

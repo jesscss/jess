@@ -56,13 +56,36 @@ export class SelectorMatchVisitor extends Visitor {
 let needleVisitor: SelectorMatchVisitor
 let haystackVisitor: SelectorMatchVisitor
 
-// export function findNeedleInHaystack(needle: Selector, haystack: Selector, partial = false): Selector[] | undefined {
-//   needleVisitor ??= new SelectorMatchVisitor()
-//   haystackVisitor ??= new SelectorMatchVisitor()
+export function findNeedleInHaystack(needle: Selector, haystack: Selector, partial = false) {
+  /** No overlapping elements */
+  if (needle.keySet.isDisjointFrom(haystack.keySet)) {
+    return false
+  }
+  needleVisitor ??= new SelectorMatchVisitor()
+  haystackVisitor ??= new SelectorMatchVisitor()
 
-//   let matchList = new NodeList(undefined, { disableTracking: true })
-//   let haystackResult = haystackIterator.next()
-//   let needleResult = needleIterator.next()
-//   while ()
-//   return haystack.visit(needleVisitor, needle)
-// }
+  haystackVisitor.start(haystack)
+  needleVisitor.start(needle)
+  let haystackComponents = haystackVisitor.components()
+  let needleComponents = needleVisitor.components()
+
+  let matchList = new NodeList(undefined, { disableTracking: true })
+  let haystackPosition = haystackComponents.next()
+  let needleNextSearch = needleComponents.next()
+  let searching = true
+  while (searching) {
+    if (needleNextSearch.done || haystackPosition.done) {
+      searching = false
+      break
+    }
+    let needleComponent = needleNextSearch.value
+    let haystackComponent = haystackPosition.value
+
+    if (needleComponent.valueOf() === haystackComponent.valueOf()) {
+      matchList.push(needleComponent)
+      needleNextSearch = needleComponents.next()
+    }
+    haystackPosition = haystackComponents.next()
+  }
+  return matchList
+}
