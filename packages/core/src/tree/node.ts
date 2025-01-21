@@ -165,6 +165,12 @@ let NODE_INDEX = 0
 
 const NODE_TYPE = Symbol('NODE_TYPE')
 const SHORT_NODE_TYPE = Symbol('SHORT_NODE_TYPE')
+
+type NodeMeta = {
+  node: Node
+  parentIndex?: typeof NODE_INDEX | undefined
+}
+
 /**
  * The underlying type for all Jess nodes
  */
@@ -173,6 +179,9 @@ export abstract class Node<
   O extends NodeOptions = NodeOptions,
   T extends NarrowTypes<Type> = NarrowTypes<Type>,
 > {
+  /** Tracks all created Nodes by their indices */
+  static indexMap = new Map<typeof NODE_INDEX, NodeMeta>()
+
   location!: LocationInfo | []
   _treeContext: TreeContext | undefined
   readonly treeContext!: TreeContext
@@ -186,6 +195,21 @@ export abstract class Node<
   static [SHORT_NODE_TYPE] = 'node'
   get type() {
     return (this.constructor as typeof Node)[NODE_TYPE]
+  }
+
+  /** All types of the prototype chain */
+  _types: Set<string> | undefined
+  get types() {
+    let types = this._types
+    if (!types) {
+      let node = this
+      this._types = types = new Set()
+      while (node?.type) {
+        types.add(node.type)
+        node = Object.getPrototypeOf(node.constructor)
+      }
+    }
+    return types
   }
 
   declare _isSelector: boolean
@@ -760,33 +784,49 @@ export type LookupTypes = typeof lookupTypes[number]
  * It's easier to think of this as a "nested list" than a "tree",
  * because lists can be iterated linearly.
  */
-export class NodeTree {
-  static indexMap = new Map<typeof NODE_INDEX, Node | NodeTree>()
+export class NodeData {
   index = ++NODE_INDEX
 
   /** Nodes can be indexed into lists for fast iteration */
-  lists = new Map<0 | LookupTypes, LinkedList>([
-    [0, new LinkedList<number>()]
-  ])
+  private readonly _list = new LinkedList()
 
   // private readonly _first: typeof NODE_INDEX | undefined
   // private readonly _last: typeof NODE_INDEX | undefined
   /** Represents the parent of all nodes */
   // readonly parent: typeof NODE_INDEX | undefined
 
-  /** Remember to update keys when Node is eval'd */
-  _keySet: Set<string | number> | undefined
+  /**
+   * The keySet allows an early exit from a search. In the case
+   * of selectors, we don't need to find matches if the overall
+   * selector doesn't have that key in it.
+   * 
+   * In the case of searching in a set of rules for a variable
+   * reference, we can skip rulesets that don't have that variable.
+   * 
+   * In both the cases of variable names and selector keys, the
+   * keySet must be updated when a new node is created or a node
+   * is evaluated which changes its key.
+   * 
+   * @note - Keys will be stored like this:
+   *  - for ruleset children, the first simple selectors will be added
+   *  - for mixin children, the mixin name will be added
+   *  - for declaration children, the declaration name will be added
+   *    as `!${name}` e.g. `!width` - this is just to disambiguate from
+   *    other keys.
+   */
+  _keySet: Set<string> | undefined
   get keySet() {
     return (this._keySet ??= new Set())
   }
 
-  constructor(
-    nodes?: Node[],
-    /** Represents the parent of all nodes */
-    public readonly parent?: typeof NODE_INDEX
+  constructor<L extends boolean>(
+    /** The Node index this is getting attached to */
+    public readonly nodeIndex: typeof NODE_INDEX,
+    public readonly isList?: L,
+    value?: L extends true ? Node[] : Node
   ) {
-    if (nodes) {
-      for (let n of nodes) {
+    if (isList && value) {
+      for (let n of value as Node[]) {
         this.push(n)
       }
     }
@@ -798,73 +838,64 @@ export class NodeTree {
   //   return (this._keyMap ??= new BiMap())
   // }
 
-  push(n: Node | NodeTree, key = n.valueOf()) {
-    let index = n.index
-    if (NodeTree.indexMap.has(index)) {
-      return
-    }
-    if (n instanceof NodeTree) {
-      this._keySet = this.keySet.intersection(n.keySet)
-    } else {
-      this.keySet.add(key as string | number)
-    }
-    this.lists.get(0)!.push(index)
-    let matches = matchesNode(n, lookupTypes)
-    if (matches) {
-      for (let type of matches) {
-        let list = this.lists.get(type) ?? new LinkedList()
-        list.push(index)
-        this.lists.set(type, list)
+  push(...nodes: Node[]) {
+    let list = this._list
+    let parentIndex = this.nodeIndex
+    for (let n of nodes) {
+      let index = n.index
+      if (Node.indexMap.has(index)) {
+        throw new Error('Node already exists in the tree.')
       }
-    }
+      let key = n.valueOf()
+      list.push(index)
+      if (n instanceof NodeTree) {
+        this._keySet = this.keySet.intersection(n.keySet)
+      } else {
+        this.keySet.add(key)
+      }
 
-    NodeTree.indexMap.set(index, n)
+      Node.indexMap.set(index, {
+        node: n,
+        parentIndex
+      })
+    }
   }
 
   set(index: number, node: Node) {
-    NodeTree.indexMap.set(index, node)
+    let meta = Node.indexMap.get(index)
+    if (!meta) {
+      throw new Error('Node does not exist in the tree.')
+    }
+    meta.node = node
   }
 
-  private _reverseList(asEntries: false, fromNode?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<Node | typeof PARENT_NODE>
-  private _reverseList(asEntries: true, fromNode?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<[number, Node | typeof PARENT_NODE]>
-  private _reverseList(asEntries: boolean, fromNode?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<Node | typeof PARENT_NODE | [number, Node | typeof PARENT_NODE]>
+  private _reverseList(asEntries: false, start?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<Node | typeof PARENT_NODE>
+  private _reverseList(asEntries: true, start?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<[number, Node | typeof PARENT_NODE]>
+  private _reverseList(asEntries: boolean, start?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<Node | typeof PARENT_NODE | [number, Node | typeof PARENT_NODE]>
   private * _reverseList(
     asEntries: boolean,
-    fromNode?: typeof NODE_INDEX | undefined,
+    start?: typeof NODE_INDEX | undefined,
     includeParents?: boolean
   ) {
-    let start = fromNode ?? this._last
-    if (start) {
-      let node = NodeTree.nodeMap.get(start)
-      while (node) {
-        let currentIndex = node.node
-        let current = NodeTree.indexMap.get(currentIndex)!
-        if (current instanceof NodeTree) {
-          yield * current._reverseList(asEntries, currentIndex, includeParents)
-        } else {
-          yield asEntries ? [currentIndex, current] : current
-        }
-        let { previous } = node
-        if (previous) {
-          node = NodeTree.nodeMap.get(previous)
-        } else {
-          node = undefined
-        }
-      }
-      if (includeParents) {
-        let parent = this._root
-        /**
-         * Yield back that we're going to start navigating the parent.
-         * This can be used to make decisions about whether or not
-         * current conditions are satisfied (and whether to continue).
-         */
-        yield asEntries ? [parent, PARENT_NODE] : PARENT_NODE
-        if (parent) {
-          let parentTree = NodeTree.indexMap.get(parent)
-          if (parentTree instanceof NodeTree) {
-            yield * parentTree._reverseList(asEntries, fromNode ? parent : undefined, includeParents)
-          }
-        }
+    let list = this._list
+
+    for (let index of list.reverse(start)) {
+      let node = Node.indexMap.get(index)!
+      yield asEntries ? [index, node] : node
+    }
+
+    if (includeParents) {
+      let nodeMeta = Node.indexMap.get(this.nodeIndex)!
+      let parentIndex = nodeMeta?.parentIndex
+      /**
+       * Yield back that we're going to start navigating the parent.
+       * This can be used to make decisions about whether or not
+       * current conditions are satisfied (and whether to continue).
+       */
+      if (parentIndex) {
+        yield asEntries ? [parentIndex, PARENT_NODE] : PARENT_NODE
+        let parentMeta = Node.indexMap.get(parentIndex)!
+        if (parentMeta.node.data)
       }
     }
   }
