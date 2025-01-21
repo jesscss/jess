@@ -26,31 +26,7 @@ export type RulesetValue = {
  *   color: black;
  * }
  */
-export class Ruleset extends Node<RulesetValue> {
-  get selector() {
-    return this.data.get('selector')
-  }
-
-  set selector(v: Selector | Nil) {
-    this.data.set('selector', v)
-  }
-
-  get rules() {
-    return this.data.get('rules')
-  }
-
-  set rules(v: Rules) {
-    this.data.set('rules', v)
-  }
-
-  get guard() {
-    return this.data.get('guard')
-  }
-
-  set guard(v: Condition | undefined) {
-    this.data.set('guard', v)
-  }
-
+export class Ruleset<T extends RulesetValue = RulesetValue> extends Node<T> {
   /** @todo - remove? */
   valueOf() {
     return this.selector instanceof Nil ? '' : this.selector.valueOf()
@@ -58,9 +34,10 @@ export class Ruleset extends Node<RulesetValue> {
 
   toTrimmedString(depth: number = 0): string {
     // let space = ''.padStart(depth * 2)
+    let { selector, rules } = this.value
     let output = ''
-    output += `${this.selector.toString()}{`
-    output += `${this.rules.toString(depth + 1)}`
+    output += `${selector.toString()}{`
+    output += `${rules.toString(depth + 1)}`
     output += '}'
     return output
   }

@@ -14,6 +14,9 @@ export class SelectorMatchVisitor extends Visitor {
 
   private _iterator!: Generator<Node>
 
+  /** Position is the order of */
+  position = 0
+
   visit(n: Node) {
     let fn = this.getMethod(n.type)
     if (fn) {
@@ -80,6 +83,10 @@ export function findNeedleInHaystack(needle: Selector, haystack: Selector, parti
     }
     let needleComponent = needleNextSearch.value
     let haystackComponent = haystackPosition.value
+
+    if (isNode(needleComponent, 'CompoundSelector')) {
+      needleComponent
+    }
 
     if (needleComponent.valueOf() === haystackComponent.valueOf()) {
       matchList.push(needleComponent)

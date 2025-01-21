@@ -1,23 +1,20 @@
 import { type Node, defineType } from './node'
-import type { Rules } from './rules'
+import { Ruleset, type RulesetValue } from './ruleset'
 import type { Condition } from './condition'
 import type { List } from './list'
 import type { Rest } from './rest'
-import type { General } from './general'
-import { type Name, BaseDeclaration } from './base-declaration'
-import { type VarDeclarationOptions, type VarDeclaration } from './var-declaration'
+import type { Name } from './general'
+import { type VarDeclaration } from './var-declaration'
 
-export type MixinValue = {
-  name?: Name
+export type MixinValue = RulesetValue & {
   /**
    * - A plain node is a kind of value guard.
    * - A name is just a named variable.
    * - A var declaration is a named variable with a default value.
    * - A rest is a rest parameter.
    */
-  params?: List<Node | General<'Name'> | VarDeclaration<string> | Rest>
+  params?: List<Node | Name | VarDeclaration<string> | Rest>
   guard?: Condition
-  rules: Rules
 }
 
 export type MixinOptions = {
@@ -26,7 +23,7 @@ export type MixinOptions = {
 }
 
 /**
- * @mixin someMixin (arg1, arg2: 10px) {
+ * @@ someMixin (arg1; arg2: 10px) {
  *   color: black;
  *   background-color: white;
  *   border-radius: $arg2;
@@ -38,46 +35,28 @@ export type MixinOptions = {
  * as the first argument, representing named arguments,
  * followed by positional arguments.
  *
- * e.g. `@ mixin foo($a, $b) { ... }`
+ * e.g. `@@ foo($a; $b) { ... }`
  *   can be called from JS like:
  *     foo(1, 2) or
  *     foo({ a: 1, b: 2 }) or
  *     foo({ b: 2 }, 1)
  */
-export class Mixin extends BaseDeclaration<Name, MixinValue, VarDeclarationOptions & MixinOptions> {
-  get params(): List<Node | VarDeclaration<string> | Rest> {
-    return this.data.get('params')
-  }
 
-  set params(v: List<Node | VarDeclaration<string> | Rest>) {
-    this.data.set('params', v)
-  }
-
-  get guard(): Condition | undefined {
-    return this.data.get('guard')
-  }
-
-  get rules() {
-    return this.data.get('rules')
-  }
-
-  set rules(v: Rules) {
-    this.data.set('rules', v)
-  }
-
+export class Mixin extends Ruleset<MixinValue> {
   toTrimmedString(depth: number = 0): string {
+    let { selector, rules, params, guard } = this.value
     let space = ''.padStart(depth * 2)
-    let output = `@mixin ${this.name}`
-    if (this.params) {
+    let output = `@@ ${selector}`
+    if (params) {
       output += '('
-      output += this.params.toString(depth)
+      output += params.toString(depth)
       output += ')'
     }
-    if (this.guard) {
-      output += ` when ${this.guard}`
+    if (guard) {
+      output += ` when ${guard}`
     }
     output += ' {\n'
-    output += this.rules.toString(depth + 1) as string
+    output += rules.toString(depth + 1) as string
     output += `${space}}`
     return output
   }

@@ -15,6 +15,8 @@ export abstract class SimpleSelector<T extends SimpleSelectorValue = SimpleSelec
   declare _isSelector: true
   _valueOf: string | undefined
 
+  static type = 'SimpleSelector'
+
   abstract valueOf(): string
 
   _keySet: Set<string> | undefined

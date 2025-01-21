@@ -71,21 +71,23 @@ export type AmpersandValue = {
  * The '&' selector element
  */
 export class Ampersand extends SimpleSelector<AmpersandValue> {
-  constructor(...args: Partial<ConstructorParameters<typeof SimpleSelector<AmpersandValue>>>) {
-    let [value, ...rest] = args
-    value ??= [['value', '&']]
-    super(value, ...rest)
+  valueOf() {
+    const { selector } = this.value
+    if (selector) {
+      return selector.valueOf()
+    }
+    return '&'
   }
 
   toTrimmedString(): string {
-    let { appendValue } = this.values
+    let { appendValue } = this.value
     return appendValue !== undefined ? `&(${appendValue ?? ''})` : '&'
   }
 
   /** Hmm this should never return Extend */
   async eval(context: Context): Promise<SelectorList | ComplexSelector | Ampersand | Extend | Nil> {
     return await this.evalIfNot(context, () => {
-      const { appendValue } = this.values
+      const { appendValue } = this.value
       if (appendValue ?? context.opts.collapseNesting) {
         let frame = context.frames[0]
         if (frame) {

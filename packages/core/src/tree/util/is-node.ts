@@ -9,7 +9,7 @@ import type { List } from '../list'
 import type { Mixin } from '../mixin'
 import type { Func } from '../function'
 import type { FunctionValue } from '../function-value'
-import { Node } from '../node'
+import type { Node } from '../node'
 import type { Ruleset } from '../ruleset'
 import type { Rules } from '../rules'
 import type { ComplexSelector } from '../selector-complex'
@@ -23,7 +23,9 @@ import type { Rest } from '../rest'
 import type { SimpleSelector } from '../selector-simple'
 import type { PseudoSelector } from '../selector-pseudo'
 import type { Combinator } from '../combinator'
+import type { Nodes } from '../tree'
 
+const { isArray } = Array
 /**
  * This utility function prevents circular dependencies,
  * in case we need to. It examines the `type` property
@@ -61,22 +63,26 @@ export function isNode(value: any, type: 'Nil'): value is Nil
 export function isNode(value: any, type: 'Collection'): value is Collection
 export function isNode(value: any, type: 'Rest'): value is Rest
 export function isNode(value: any, type: ['VarDeclaration', 'Rest']): value is Rest | VarDeclaration
-export function isNode(value: any, type?: string | string[]): value is Node
-export function isNode(value: any, type?: string | string[]): value is Node {
-  if (!(value ?? false)) {
-    return false
-  }
-  if (!type) {
-    return value instanceof Node
-  } else {
-    if (!(value instanceof Node)) {
-      return false
-    }
-    /** @todo - support inheritance chain? */
-    if (Array.isArray(type) ? type.includes(value.type) : value.type === type) {
-      return true
-    }
+export function isNode(value: any, type?: keyof Nodes | ReadonlyArray<keyof Nodes>): value is Node
+export function isNode(value: any, type?: keyof Nodes | ReadonlyArray<keyof Nodes>): value is Node {
+  return matchesNode(value, type, true)
+}
 
-    return false
+export function matchesNode(value: any, type: keyof Nodes | ReadonlyArray<keyof Nodes> | undefined, returnBool: true): true
+export function matchesNode<T extends keyof Nodes>(value: any, type: T | readonly T[], returnBool?: boolean): false | Set<T>
+export function matchesNode<T extends keyof Nodes>(value: any, type: T | readonly T[] | 'Node' = 'Node', returnBool?: boolean): boolean | Set<T> {
+  let set: Set<string> | undefined
+
+  while (value?.type) {
+    if (isArray(type) ? type.includes(value.type) : value.type === type) {
+      if (returnBool) {
+        return true
+      }
+      set ??= new Set()
+      set.add(value.type)
+    }
+    value = Object.getPrototypeOf(value.constructor)
   }
+
+  return set ?? false
 }

@@ -9,7 +9,8 @@ import type { Comment } from './comment'
 import type { Token } from './token'
 import { type Operator } from './util/calculate'
 import type { Constructor, Writable, Class, ValueOf, Opaque, IsUnknown, UnionToTuple } from 'type-fest'
-import { BiMap } from './util/collections'
+import { BiMap, LinkedList } from './util/collections'
+import { matchesNode } from './util/is-node'
 import { type Nil } from './nil'
 import type { Selector } from './selector'
 
@@ -74,8 +75,8 @@ export const defineType = <
     shortType?: string
   ) => {
   shortType ??= type.toLowerCase()
-  ;(Clazz.prototype as Writable<typeof Clazz.prototype>).type = type
-  ;(Clazz.prototype as Writable<typeof Clazz.prototype>).shortType = shortType
+  ;(Clazz as any)[NODE_TYPE] = type
+  ;(Clazz as any)[SHORT_NODE_TYPE] = shortType
 
   type Args = [value?: P[0] | V, location?: P[1], options?: P[2], treeContext?: P[3]]
   return (...args: Args) => {
@@ -162,6 +163,8 @@ type NarrowTypes<T> =
 // eslint-disable-next-line @typescript-eslint/naming-convention
 let NODE_INDEX = 0
 
+const NODE_TYPE = Symbol('NODE_TYPE')
+const SHORT_NODE_TYPE = Symbol('SHORT_NODE_TYPE')
 /**
  * The underlying type for all Jess nodes
  */
@@ -179,8 +182,12 @@ export abstract class Node<
   /**
    * Assigned on the prototype, make sure we don't initialize
    */
-  declare type: string
-  declare shortType: string
+  static [NODE_TYPE] = 'Node'
+  static [SHORT_NODE_TYPE] = 'node'
+  get type() {
+    return (this.constructor as typeof Node)[NODE_TYPE]
+  }
+
   declare _isSelector: boolean
   /** Indicates if this can be used wherever a selector is used */
   isSelector(): this is Selector {
@@ -719,16 +726,17 @@ export interface NodeListOptions extends NodeOptions {
   disableTracking?: boolean
 }
 
-export class NodeTreeEdge<
-  S extends symbol = symbol
-> {
-  constructor(
-    public node: typeof NODE_INDEX,
-    public type?: S,
-    public value?: string
-  ) {}
-}
+// export class NodeTreeEdge<
+//   S extends symbol = symbol
+// > {
+//   constructor(
+//     public node: typeof NODE_INDEX,
+//     public type?: S,
+//     public value?: string
+//   ) {}
+// }
 
+export const PARENT_NODE: unique symbol = Symbol('PARENT_NODE')
 /**
  * @note All Node references in the tree are indirect and are done by number.
  * This is so replacements
@@ -736,10 +744,13 @@ export class NodeTreeEdge<
 export class NodeTreeNode {
   constructor(
     public node: typeof NODE_INDEX,
-    public previous?: typeof NODE_INDEX | NodeTreeEdge,
-    public next?: typeof NODE_INDEX | NodeTreeEdge
+    public previous?: typeof NODE_INDEX,
+    public next?: typeof NODE_INDEX
   ) {}
 }
+
+const lookupTypes = ['Ruleset', 'Mixin', 'VarDeclaration', 'Declaration'] as const
+export type LookupTypes = typeof lookupTypes[number]
 
 /**
  * A dynamically linked list tree, which is also indexed.
@@ -751,13 +762,17 @@ export class NodeTreeNode {
  */
 export class NodeTree {
   static indexMap = new Map<typeof NODE_INDEX, Node | NodeTree>()
-  static nodeMap = new Map<typeof NODE_INDEX, NodeTreeNode>()
   index = ++NODE_INDEX
 
-  private readonly _first: typeof NODE_INDEX | undefined
-  private readonly _last: typeof NODE_INDEX | undefined
+  /** Nodes can be indexed into lists for fast iteration */
+  lists = new Map<0 | LookupTypes, LinkedList>([
+    [0, new LinkedList<number>()]
+  ])
+
+  // private readonly _first: typeof NODE_INDEX | undefined
+  // private readonly _last: typeof NODE_INDEX | undefined
   /** Represents the parent of all nodes */
-  private readonly _root: typeof NODE_INDEX | undefined
+  // readonly parent: typeof NODE_INDEX | undefined
 
   /** Remember to update keys when Node is eval'd */
   _keySet: Set<string | number> | undefined
@@ -765,15 +780,27 @@ export class NodeTree {
     return (this._keySet ??= new Set())
   }
 
-  /** This is useful for limiting searches to certain keys */
-  _keyMap: BiMap<string | number, Set<NodeTreeNode>> | undefined
-  get keyMap() {
-    return (this._keyMap ??= new BiMap())
+  constructor(
+    nodes?: Node[],
+    /** Represents the parent of all nodes */
+    public readonly parent?: typeof NODE_INDEX
+  ) {
+    if (nodes) {
+      for (let n of nodes) {
+        this.push(n)
+      }
+    }
   }
+
+  // /** This is useful for limiting searches to certain keys */
+  // _keyMap: BiMap<string | number, Set<NodeTreeNode>> | undefined
+  // get keyMap() {
+  //   return (this._keyMap ??= new BiMap())
+  // }
 
   push(n: Node | NodeTree, key = n.valueOf()) {
     let index = n.index
-    if (NodeTree.nodeMap.has(index)) {
+    if (NodeTree.indexMap.has(index)) {
       return
     }
     if (n instanceof NodeTree) {
@@ -781,24 +808,26 @@ export class NodeTree {
     } else {
       this.keySet.add(key as string | number)
     }
-    let { _last } = this
-    let treeNode = new NodeTreeNode(index, _last)
-    if (_last !== undefined) {
-      let lastNode = NodeTree.nodeMap.get(_last)!
-      lastNode.next = treeNode.node
+    this.lists.get(0)!.push(index)
+    let matches = matchesNode(n, lookupTypes)
+    if (matches) {
+      for (let type of matches) {
+        let list = this.lists.get(type) ?? new LinkedList()
+        list.push(index)
+        this.lists.set(type, list)
+      }
     }
 
     NodeTree.indexMap.set(index, n)
-    NodeTree.nodeMap.set(index, treeNode)
   }
 
   set(index: number, node: Node) {
     NodeTree.indexMap.set(index, node)
   }
 
-  private _reverseList(asEntries: false, fromNode?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<Node>
-  private _reverseList(asEntries: true, fromNode?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<[number, Node]>
-  private _reverseList(asEntries: boolean, fromNode?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<Node | [number, Node]>
+  private _reverseList(asEntries: false, fromNode?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<Node | typeof PARENT_NODE>
+  private _reverseList(asEntries: true, fromNode?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<[number, Node | typeof PARENT_NODE]>
+  private _reverseList(asEntries: boolean, fromNode?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<Node | typeof PARENT_NODE | [number, Node | typeof PARENT_NODE]>
   private * _reverseList(
     asEntries: boolean,
     fromNode?: typeof NODE_INDEX | undefined,
@@ -817,17 +846,19 @@ export class NodeTree {
         }
         let { previous } = node
         if (previous) {
-          if (previous instanceof NodeTreeEdge) {
-            node = NodeTree.nodeMap.get(previous.node)
-          } else {
-            node = NodeTree.nodeMap.get(previous)
-          }
+          node = NodeTree.nodeMap.get(previous)
         } else {
           node = undefined
         }
       }
       if (includeParents) {
         let parent = this._root
+        /**
+         * Yield back that we're going to start navigating the parent.
+         * This can be used to make decisions about whether or not
+         * current conditions are satisfied (and whether to continue).
+         */
+        yield asEntries ? [parent, PARENT_NODE] : PARENT_NODE
         if (parent) {
           let parentTree = NodeTree.indexMap.get(parent)
           if (parentTree instanceof NodeTree) {
