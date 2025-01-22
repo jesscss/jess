@@ -13,6 +13,7 @@ import { BiMap, LinkedList } from './util/collections'
 import { matchesNode } from './util/is-node'
 import { type Nil } from './nil'
 import type { Selector } from './selector'
+import { Stack } from 'data-structure-typed'
 
 export type { TreeContext }
 
@@ -166,11 +167,33 @@ let NODE_INDEX = 0
 const NODE_TYPE = Symbol('NODE_TYPE')
 const SHORT_NODE_TYPE = Symbol('SHORT_NODE_TYPE')
 
-type NodeMeta = {
-  node: Node
-  parentIndex?: typeof NODE_INDEX | undefined
+interface FinalizationRegistry {
+  register(target: any, value: any): void
 }
 
+interface FinalizationRegistryClass {
+  new (callback: (value: any) => void): FinalizationRegistry
+}
+
+declare const FinalizationRegistry: FinalizationRegistryClass
+
+/**
+ * @note Do we need this? It's still fairly new
+ * and maybe this will avoid a browser issue? 
+ */
+if (!('FinalizationRegistry' in globalThis)) {
+  (globalThis as any).FinalizationRegistry = class FinalizationRegistry {
+    register() {}
+  }
+}
+
+class NodeMeta {
+  constructor(
+    public index: number,
+    public version: number,
+    public parentIndex?: typeof NODE_INDEX | undefined
+  ) {}
+}
 /**
  * The underlying type for all Jess nodes
  */
@@ -180,7 +203,32 @@ export abstract class Node<
   T extends NarrowTypes<Type> = NarrowTypes<Type>,
 > {
   /** Tracks all created Nodes by their indices */
-  static indexMap = new Map<typeof NODE_INDEX, NodeMeta>()
+  static indexMap = new BiMap<typeof NODE_INDEX, Node>()
+  static metaMap = new Map<typeof NODE_INDEX, NodeMeta>()
+  /** For re-using indices so we don't exceed the maximum number */
+  static availableIndices = new Stack<number>()
+  static cleanupIndex = (index: number) => {
+    Node.indexMap.delete(index)
+    Node.metaMap.delete(index)
+    Node.availableIndices.push(index)
+  }
+
+  /** Prevent memory leaks by cleaning up node registry */
+  static _registry: FinalizationRegistry | undefined
+  static get registry() {
+    return (
+      this._registry ??= new FinalizationRegistry(([index, version]: [index: number, version: number]) => {
+        let meta = Node.metaMap.get(index)
+        if (meta?.version === version) {
+          Node.cleanupIndex(index)
+        }
+      })
+    )
+  }
+
+  static getIndex() {
+    return Node.availableIndices.pop() ?? ++NODE_INDEX
+  }
 
   location!: LocationInfo | []
   _treeContext: TreeContext | undefined
@@ -232,7 +280,47 @@ export abstract class Node<
   post: NodeList<Comment | Token> | 1 | 0 | undefined
 
   visible = true
-  index = ++NODE_INDEX
+  private _index: number | undefined
+  /**
+   * The first time we get the index, we register it
+   * in the indexMap. This is done lazily so we can
+   * create nodes that have no side effects until
+   * they are added to lists / trees, which requires
+   * tracking.
+   */
+  get index() {
+    if (this._index) {
+      return this._index
+    }
+    let { index, version } = this._setIndex(Node.getIndex())
+    Node.registry.register(this, [index, version])
+    return index
+  }
+
+  private _setIndex(val: number) {
+    /** Remove previous registered index */
+    let currentIndex = this._index
+    if (currentIndex) {
+      Node.cleanupIndex(currentIndex)
+    }
+    let meta = Node.metaMap.get(val)
+    if (meta) {
+      meta.version++
+    } else {
+      meta = new NodeMeta(val, 1)
+      Node.metaMap.set(val, meta)
+    }
+    this._index = val
+    Node.indexMap.set(val, this)
+    return meta
+  }
+
+  set index(val: number) {
+    if (this._index === val) {
+      return
+    }
+    this._setIndex(val)
+  }
   evaluated = false
 
   /** Assigned on the prototype */
