@@ -4,7 +4,7 @@ import {
   type Context,
   type TreeContext
 } from '../context'
-import type { Visitor } from '../visitor'
+import { SKIP, type Visitor } from '../visitor'
 import type { Comment } from './comment'
 import type { Token } from './token'
 import { type Operator } from './util/calculate'
@@ -34,7 +34,7 @@ export type Primitive = boolean | string | number | ((...args: any[]) => any)
 
 export const ABORT: unique symbol = Symbol('ABORT')
 export const REMOVE: unique symbol = Symbol('REMOVE')
-export const CREATE_LIST: unique symbol = Symbol('CREATE_LIST')
+export const SKIP_SETUP: unique symbol = Symbol('SKIP_SETUP')
 export type NodeVisitReturn = void | Node | symbol
 type NodeVisitFunction = (n: Node) => NodeVisitReturn
 export type NodeOptions = Record<string, boolean | string | number | undefined> & AllNodeOptions
@@ -136,7 +136,7 @@ export type NodeValueArg<M extends NodeValueObject> =
     ? TypedMap<M> | NodeValueArray<M>
     : TypedMap<M> | NodeValueArray<M> | M['value']
 
-export type NodeData<T> =
+export type NodeDataOld<T> =
   T extends Node[]
     ? NodeList<T[0]>
     : T extends NodeValueObject
@@ -171,15 +171,13 @@ interface FinalizationRegistry {
   register(target: any, value: any): void
 }
 
-interface FinalizationRegistryClass {
-  new (callback: (value: any) => void): FinalizationRegistry
-}
+type FinalizationRegistryClass = new (callback: (value: any) => void) => FinalizationRegistry
 
 declare const FinalizationRegistry: FinalizationRegistryClass
 
 /**
  * @note Do we need this? It's still fairly new
- * and maybe this will avoid a browser issue? 
+ * and maybe this will avoid a browser issue?
  */
 if (!('FinalizationRegistry' in globalThis)) {
   (globalThis as any).FinalizationRegistry = class FinalizationRegistry {
@@ -260,6 +258,8 @@ export abstract class Node<
     return types
   }
 
+  isNodeList = false
+
   declare _isSelector: boolean
   /** Indicates if this can be used wherever a selector is used */
   isSelector(): this is Selector {
@@ -303,6 +303,7 @@ export abstract class Node<
     if (currentIndex) {
       Node.cleanupIndex(currentIndex)
     }
+    this.data.nodeIndex = val
     let meta = Node.metaMap.get(val)
     if (meta) {
       meta.version++
@@ -321,6 +322,7 @@ export abstract class Node<
     }
     this._setIndex(val)
   }
+
   evaluated = false
 
   /** Assigned on the prototype */
@@ -344,16 +346,17 @@ export abstract class Node<
    * This should always represent the `data` of the Node
    */
   protected data!: NodeData<T>
+  parentData: NodeData | undefined
 
   nil!: () => Nil
 
   constructor(
-    value: NodeInValue<T>,
+    value: NodeInValue<T> | typeof SKIP_SETUP,
     options?: O,
     location?: LocationInfo | 0,
     treeContext?: TreeContext
   ) {
-    if ((value as any) !== CREATE_LIST) {
+    if (value !== SKIP_SETUP) {
       this._setUpNode(value, options, location, treeContext)
     }
   }
@@ -364,6 +367,8 @@ export abstract class Node<
     location?: LocationInfo | 0,
     treeContext?: TreeContext
   ) {
+    this.data = new NodeData(this.index, this.isNodeList, value as T)
+
     this.data = (value instanceof NodeList
       ? value
       : new Map(
@@ -607,17 +612,8 @@ export abstract class Node<
   clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     let Class: Constructor<this> = Object.getPrototypeOf(this).constructor
 
-    let newNode = new Class(
-      /**
-       * Creates a new Map object instance.
-       * Otherwise, replacing nodes would replace them
-       * in the old map.
-       */
-      this.data,
-      this._options,
-      this.location,
-      this.treeContext
-    )
+    let newNode = new Class(SKIP_SETUP)
+    newNode.inherit(this)
 
     cloneFn ??= n => n.clone(deep)
 
@@ -872,9 +868,7 @@ export type LookupTypes = typeof lookupTypes[number]
  * It's easier to think of this as a "nested list" than a "tree",
  * because lists can be iterated linearly.
  */
-export class NodeData {
-  index = ++NODE_INDEX
-
+export class NodeData<T = unknown> {
   /** Nodes can be indexed into lists for fast iteration */
   private readonly _list = new LinkedList()
 
@@ -887,14 +881,14 @@ export class NodeData {
    * The keySet allows an early exit from a search. In the case
    * of selectors, we don't need to find matches if the overall
    * selector doesn't have that key in it.
-   * 
+   *
    * In the case of searching in a set of rules for a variable
    * reference, we can skip rulesets that don't have that variable.
-   * 
+   *
    * In both the cases of variable names and selector keys, the
    * keySet must be updated when a new node is created or a node
    * is evaluated which changes its key.
-   * 
+   *
    * @note - Keys will be stored like this:
    *  - for ruleset children, the first simple selectors will be added
    *  - for mixin children, the mixin name will be added
@@ -902,21 +896,19 @@ export class NodeData {
    *    as `!${name}` e.g. `!width` - this is just to disambiguate from
    *    other keys.
    */
-  _keySet: Set<string> | undefined
+  _keySet: Set<string | number> | undefined
   get keySet() {
     return (this._keySet ??= new Set())
   }
 
-  constructor<L extends boolean>(
+  constructor(
     /** The Node index this is getting attached to */
     public readonly nodeIndex: typeof NODE_INDEX,
-    public readonly isList?: L,
-    value?: L extends true ? Node[] : Node
+    public readonly isList?: boolean,
+    value?: Node[] | Node
   ) {
     if (isList && value) {
-      for (let n of value as Node[]) {
-        this.push(n)
-      }
+      this.push(...(value as Node[]))
     }
   }
 
@@ -928,34 +920,29 @@ export class NodeData {
 
   push(...nodes: Node[]) {
     let list = this._list
-    let parentIndex = this.nodeIndex
     for (let n of nodes) {
       let index = n.index
+      n.parentData = this
       if (Node.indexMap.has(index)) {
         throw new Error('Node already exists in the tree.')
       }
       let key = n.valueOf()
       list.push(index)
-      if (n instanceof NodeTree) {
-        this._keySet = this.keySet.intersection(n.keySet)
-      } else {
-        this.keySet.add(key)
-      }
-
-      Node.indexMap.set(index, {
-        node: n,
-        parentIndex
-      })
+      // if (n instanceof NodeTree) {
+      //   this._keySet = this.keySet.intersection(n.keySet)
+      // } else {
+      this.keySet.add(key)
     }
   }
 
-  set(index: number, node: Node) {
-    let meta = Node.indexMap.get(index)
-    if (!meta) {
-      throw new Error('Node does not exist in the tree.')
-    }
-    meta.node = node
-  }
+  /** A setter for */
+  // set(index: number, node: Node) {
+  //   let meta = Node.indexMap.get(index)
+  //   if (!meta) {
+  //     throw new Error('Node does not exist in the tree.')
+  //   }
+  //   meta.node = node
+  // }
 
   private _reverseList(asEntries: false, start?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<Node | typeof PARENT_NODE>
   private _reverseList(asEntries: true, start?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<[number, Node | typeof PARENT_NODE]>
@@ -973,17 +960,17 @@ export class NodeData {
     }
 
     if (includeParents) {
-      let nodeMeta = Node.indexMap.get(this.nodeIndex)!
-      let parentIndex = nodeMeta?.parentIndex
+      let node = Node.indexMap.get(this.nodeIndex)!
+      let parentData = node.parentData
       /**
        * Yield back that we're going to start navigating the parent.
        * This can be used to make decisions about whether or not
        * current conditions are satisfied (and whether to continue).
        */
-      if (parentIndex) {
+      if (parentData) {
+        let parentIndex = parentData.nodeIndex
         yield asEntries ? [parentIndex, PARENT_NODE] : PARENT_NODE
-        let parentMeta = Node.indexMap.get(parentIndex)!
-        if (parentMeta.node.data)
+        yield * parentData._reverseList(asEntries, start ? parentIndex : undefined, includeParents)
       }
     }
   }
@@ -1022,8 +1009,7 @@ export class NodeList<
     location?: LocationInfo | 0,
     treeContext?: TreeContext
   ) {
-    /** @ts-expect-error This is specially over-ridden for this class type */
-    super(CREATE_LIST)
+    super(SKIP_SETUP)
     /**
      * Passing a Map should really only be done when
      * cloning, which we will override.
@@ -1126,12 +1112,8 @@ export class NodeList<
   clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     let Class: Constructor<this> = Object.getPrototypeOf(this).constructor
 
-    let newNode = new Class(
-      [...this],
-      this._options,
-      this.location,
-      this.treeContext
-    )
+    let newNode = new Class(SKIP_SETUP)
+    newNode.inherit(this)
 
     cloneFn ??= n => n.clone(deep)
 
@@ -1141,9 +1123,6 @@ export class NodeList<
         newNode.set(index, node.clone(deep, cloneFn))
       }
     }
-    newNode.pre = this.pre
-    newNode.post = this.post
-    newNode.evaluated = this.evaluated
 
     return newNode
   }

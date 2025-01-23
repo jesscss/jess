@@ -317,6 +317,10 @@ export class BiMap<K, V> {
     return this._map.get(key)
   }
 
+  has(key: K) {
+    return this._map.has(key)
+  }
+
   getValue(value: V) {
     return this._reverse.get(value)
   }
