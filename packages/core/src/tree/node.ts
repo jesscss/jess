@@ -147,10 +147,8 @@ export type NodeDataOld<T> =
 
 type NodeInValue<T> =
   T extends Node[]
-    ? NodeList<T[0]>
-    : T extends NodeValueObject
-      ? TypedMap<T> | T
-      : T
+    ? T | NodeData<T, true>
+    : T | NodeData<T, false>
 
 type NodeTypes = Primitive | Node[] | NodeValueObject
 
@@ -167,11 +165,11 @@ let NODE_INDEX = 0
 const NODE_TYPE = Symbol('NODE_TYPE')
 const SHORT_NODE_TYPE = Symbol('SHORT_NODE_TYPE')
 
-interface FinalizationRegistry {
+interface FinalizationRegistryInterface {
   register(target: any, value: any): void
 }
 
-type FinalizationRegistryClass = new (callback: (value: any) => void) => FinalizationRegistry
+type FinalizationRegistryClass = new (callback: (value: any) => void) => FinalizationRegistryInterface
 
 declare const FinalizationRegistry: FinalizationRegistryClass
 
@@ -212,7 +210,7 @@ export abstract class Node<
   }
 
   /** Prevent memory leaks by cleaning up node registry */
-  static _registry: FinalizationRegistry | undefined
+  static _registry: FinalizationRegistryInterface | undefined
   static get registry() {
     return (
       this._registry ??= new FinalizationRegistry(([index, version]: [index: number, version: number]) => {
@@ -297,6 +295,13 @@ export abstract class Node<
     return index
   }
 
+  set index(val: number) {
+    if (this._index === val) {
+      return
+    }
+    this._setIndex(val)
+  }
+
   private _setIndex(val: number) {
     /** Remove previous registered index */
     let currentIndex = this._index
@@ -314,13 +319,6 @@ export abstract class Node<
     this._index = val
     Node.indexMap.set(val, this)
     return meta
-  }
-
-  set index(val: number) {
-    if (this._index === val) {
-      return
-    }
-    this._setIndex(val)
   }
 
   evaluated = false
@@ -857,8 +855,61 @@ export class NodeTreeNode {
   ) {}
 }
 
+class NodeRef {
+  constructor(
+    public index: typeof NODE_INDEX
+  ) {}
+}
+
 const lookupTypes = ['Ruleset', 'Mixin', 'VarDeclaration', 'Declaration'] as const
 export type LookupTypes = typeof lookupTypes[number]
+
+interface NodeDataMap extends Map<any, any> {
+  reverse(): Generator<number>
+}
+
+const createNodeMap = (parentData: NodeData): Class<NodeDataMap> => {
+  return class extends Map {
+    // private readonly _keys = new LinkedList<string>()
+
+    set(key: string, val: any) {
+      // if (!this._keys.has(key)) {
+      //   this._keys.push(key)
+      // }
+
+      if (val instanceof Node) {
+        super.set(key, new NodeRef(val.index))
+        val.parentData = parentData
+      } else if (isArray(val)) {
+        super.set(key, val.map(n => {
+          if (n instanceof Node) {
+            return new NodeRef(n.index)
+          }
+          return n
+        }))
+      }
+      return this
+    }
+
+    /** For parity, this only returns node indices */
+    * reverse() {
+      for (let value of this.values()) {
+        if (isArray(value)) {
+          for (let i = value.length - 1; i--; i >= 0) {
+            let item = value[i]!
+            if (item instanceof NodeRef) {
+              yield item.index
+            }
+          }
+        } else {
+          if (value instanceof NodeRef) {
+            yield value.index
+          }
+        }
+      }
+    }
+  }
+}
 
 /**
  * A dynamically linked list tree, which is also indexed.
@@ -868,9 +919,14 @@ export type LookupTypes = typeof lookupTypes[number]
  * It's easier to think of this as a "nested list" than a "tree",
  * because lists can be iterated linearly.
  */
-export class NodeData<T = unknown> {
+export class NodeData<
+  T extends NodeTypes = NodeTypes,
+  List extends boolean = boolean,
+  M extends NodeMapType<T> = NodeMapType<T>
+> {
   /** Nodes can be indexed into lists for fast iteration */
-  private readonly _list = new LinkedList()
+  private _list: LinkedList | undefined
+  private readonly _items: NodeDataMap | undefined
 
   // private readonly _first: typeof NODE_INDEX | undefined
   // private readonly _last: typeof NODE_INDEX | undefined
@@ -901,25 +957,35 @@ export class NodeData<T = unknown> {
     return (this._keySet ??= new Set())
   }
 
+  private _nodeMap: Class<NodeDataMap> | undefined
+
+  get NodeMap() {
+    return (this._nodeMap ??= createNodeMap(this))
+  }
+
   constructor(
     /** The Node index this is getting attached to */
     public readonly nodeIndex: typeof NODE_INDEX,
-    public readonly isList?: boolean,
-    value?: Node[] | Node
+    public readonly isList?: List,
+    value?: NodeInValue<T>
   ) {
-    if (isList && value) {
-      this.push(...(value as Node[]))
+    if (value) {
+      if (isList) {
+        this.push(...(value as Node[]))
+      } else if (isPlainObject(value)) {
+        let map = this._items = new this.NodeMap()
+        for (let [key, val] of Object.entries(value)) {
+          map.set(key, val)
+        }
+      } else {
+        let map = this._items = new this.NodeMap()
+        map.set('_value', value)
+      }
     }
   }
 
-  // /** This is useful for limiting searches to certain keys */
-  // _keyMap: BiMap<string | number, Set<NodeTreeNode>> | undefined
-  // get keyMap() {
-  //   return (this._keyMap ??= new BiMap())
-  // }
-
   push(...nodes: Node[]) {
-    let list = this._list
+    let list = (this._list ??= new LinkedList())
     for (let n of nodes) {
       let index = n.index
       n.parentData = this
@@ -928,9 +994,6 @@ export class NodeData<T = unknown> {
       }
       let key = n.valueOf()
       list.push(index)
-      // if (n instanceof NodeTree) {
-      //   this._keySet = this.keySet.intersection(n.keySet)
-      // } else {
       this.keySet.add(key)
     }
   }
@@ -952,7 +1015,7 @@ export class NodeData<T = unknown> {
     start?: typeof NODE_INDEX | undefined,
     includeParents?: boolean
   ) {
-    let list = this._list
+    let list = this.isList ? this._list! : this._items!
 
     for (let index of list.reverse(start)) {
       let node = Node.indexMap.get(index)!
