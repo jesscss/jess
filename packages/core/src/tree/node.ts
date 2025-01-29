@@ -226,11 +226,19 @@ export abstract class Node<
     return Node.availableIndices.pop() ?? ++NODE_INDEX
   }
 
-  location!: LocationInfo | []
-  _treeContext: TreeContext | undefined
-  readonly treeContext!: TreeContext
+  private _location: LocationInfo | [] | undefined
+  get location() {
+    return (this._location ??= [])
+  }
+  private _treeContext: TreeContext | undefined
+  get treeContext() {
+    return this._treeContext ?? {}
+  }
 
-  _options: Partial<O & AllNodeOptions> | undefined
+  private _options: Partial<O & AllNodeOptions> | undefined
+  get options() {
+    return this._options ??= {}
+  }
 
   /**
    * Assigned on the prototype, make sure we don't initialize
@@ -349,7 +357,7 @@ export abstract class Node<
   constructor(
     value: NodeInValue<T> | typeof SKIP_SETUP,
     options?: O,
-    location?: LocationInfo | 0,
+    location?: LocationInfo,
     treeContext?: TreeContext
   ) {
     if (value !== SKIP_SETUP) {
@@ -360,28 +368,16 @@ export abstract class Node<
   protected _setUpNode(
     value: NodeInValue<T>,
     options?: O,
-    location?: LocationInfo | 0,
+    location?: LocationInfo,
     treeContext?: TreeContext
   ) {
     this.data = new NodeData(this.index, value)
-    this.location = location || []
+    this._location = location
     this._treeContext = treeContext
-    if (treeContext) {
-      this.walkNodes(n => {
-        n._treeContext = treeContext
-      }, true)
-    }
     this._options = options
   }
 
-  get options(): Partial<O & AllNodeOptions> {
-    let opts = this._options
-    if (!opts) {
-      opts = this._options = {} as Partial<O & AllNodeOptions>
-    }
-    return opts
-  }
-
+  /** Get the values back in the same format they went in */
   get value(): Type {
     const data = this.data
     if (data instanceof NodeList) {
