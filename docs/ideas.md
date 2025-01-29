@@ -32,8 +32,12 @@ $count; // a Node of `Nil`
 $count: 1;
 
 // equivalent to Sass !global, will throw an error if not defined
+// `$$` essentially searches (linearly) and sets the value
 .rule {
   $$count: 2;
+  // If the variable exists globally, set it to 2
+  // If not, declare a local variable equal to 2
+  $$count?: 2;
 }
 
 // variable variables
@@ -57,7 +61,14 @@ $count: #($count + 1); // expression
 
 // Mixin definition / call
 @@ .mixin() {};
-$ > .mixin();
+$ > .mixin(); // (Sass style)
+
+// mixin a ruleset
+// should allow any selector?
+$ > .rule;
+
+// mixin a ruleset or mixin
+$ > .rule/(); // (Less style)
 
 // #() to wrap expressions
 .bar {
@@ -90,12 +101,36 @@ $ > .mixin();
 ```
 
 ## Features
-- Mixin guards (like Less)
-- `@--if` / `@--else` are not needed
-```
+
+### Control Flow
+- when guard (like Less)
+```scss
 .box {
-  $when () {
-    $$foo: 
+  $when ($a = 1) {
+    $$foo: one;
+  } $else {
+    $$foo: two;
+  }
+  // or
+  $$foo: $when ($a = 1) { one } $else { two };
+}
+```
+-for 
+Selectors parsed / wrapped with `*()` in value,
+except in Less where we do looser values
+```scss
+$items: *(.box) 1 / *(.foo) 2;
+$for (($item, $i) of $items) {
+  #($item[0]) {
+    number: $item[1]
+  }
+}
+```
+A range is done like
+```scss
+$for ($i of 1 to 3) {
+  .box-#($i) {
+    value: $i;
   }
 }
 ```
@@ -132,7 +167,7 @@ Can be at the root or nested.
 (In Less, this will be `@reference`)
 
 ```scss
-@--ref 'colors.less';
+@--ref 'colors.less'; // "as colors" is implied
 // or override variables
 @--ref 'colors.less' with {
   // should throw an error if primary-color is not defined
@@ -163,11 +198,11 @@ Can be at the root or nested.
 }
 
 .foo {
-  color: $colors.primary-color;
+  color: $colors.$primary-color;
 }
 // or
 .foo {
-  @--use 'colors.less';
+  @--use 'colors.less' as *;
   color: $primary-color;
 }
 
@@ -203,13 +238,13 @@ They would be subject to evaluation order.
 
 Q: What if you don't want to forward variables / mixins?
 
-You can use the `$private` keyword:
+You can use the `@--private` at-rule:
 
 ```scss
 // This is a private `@use`
 @--private @--ref './somefile.jess';
 // can also be used with variables
-@--private -private: var;
+@--private $-private: var;
 ```
 
 
@@ -222,10 +257,10 @@ $-private: var;
 ```
 Would be converted to:
 ```scss
-@--private @--use './file1.jess';
+@--private @--use './file1.jess' as *;
 $not-private: var;
-@--private -private: var;
-@--use './file2.jess';
+@--private $-private: var;
+@--use './file2.jess' as *;
 ```
 
 
@@ -254,14 +289,15 @@ Using an `include` that's the _result_ of a `ref`:
     primary: #3a3a3a;
   }
 }
-@--include theme;
+@--include $theme;
 ```
 You could also do the above like:
 ```scss
 $custom-color: #3a3a3a;
 @--include 'theme.jess' with {
   $colors +: {
-    primary: $custom-color;
+    // Here, it will reference the outer $custom-color
+    primary: $$custom-color;
   }
 }
 ```
@@ -271,16 +307,19 @@ $custom-color: #3a3a3a;
 
 // This will include ALL mixins named `.root-mixin` AND all selectors labeled `.root-mixin`
 // Note: this is how converted Less would look
-@--include .root-mixin;
+$ > .root-mixin/();
 
 // this will ONLY call mixins and ignore selectors
 // Note: this is how converted Sass would look (except without the `.`)
 $ > .root-mixin();
+
+// This will only mixin selectors
+$ > .root-mixin;
 ```
 
 ## Mixins are functions, and functions are called with a consistent signature
 ```scss
-call: $my-func(one: $value; $two; $three);
+call: $my-func($one: $value; $two; $three);
 ```
 JS representation:
 

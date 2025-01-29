@@ -925,10 +925,10 @@ export class NodeData<
   ) {
     if (value && isPlainObject(value)) {
       for (let [key, val] of Object.entries(value)) {
-        this.items.set(key, val)
+        this.set(key as keyof M, val)
       }
     }
-    this.items.set('_value', value)
+    this.set('_value', value as M['_value'])
   }
 
   push(...nodes: Node[]) {

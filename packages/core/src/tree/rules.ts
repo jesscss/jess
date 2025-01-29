@@ -73,53 +73,44 @@ export type RulesValue = {
  * color: black;
  * background-color: white;
  */
+/** Arbitrary prefixes to disambiguate names within maps */
+export const enum Prefix {
+  MIXIN            = '>',
+  RULESET          = '*',
+  MIXIN_OR_RULESET = '|',
+  PROPERTY         = '.',
+  VAR_OR_PROP      = '?',
+  /** No prefix */
+  VARIABLE         = '',
+}
+
 export class Rules extends Node<Node[]> {
   private _scope: Scope
 
   /**
    * All indexed collections, keyed
+   * 
+   * @note - Types are stored differently for disambiguation
+   *         See the Prefix enum.
    */
-  private _scopeRulesets: Map<string, LinkedList> | undefined
-  private _scopeMixins: Map<string, LinkedList> | undefined
-  private _scopeVariables: Map<string, LinkedList> | undefined
-  private _scopeProperties: Map<string, LinkedList> | undefined
-
-  private get scopeRulesets() {
-    return (this._scopeRulesets ??= new Map())
+  private _scopeMap: Map<string, LinkedList> | undefined
+  private get scopeMap() {
+    return (this._scopeMap ??= new Map())
   }
-
-  private get scopeMixins() {
-    return (this._scopeMixins ??= new Map())
-  }
-
-  private get scopeVariables() {
-    return (this._scopeVariables ??= new Map())
-  }
-
-  private get scopeProperties() {
-    return (this._scopeProperties ??= new Map())
-  }
-
+  
   /** Added in evaluation order, accessed by $$ */
-  private _linearRulesets: Map<string, LinkedList> | undefined
-  private _linearMixins: Map<string, LinkedList> | undefined
-  private _linearVariables: Map<string, LinkedList> | undefined
-  private _linearProperties: Map<string, LinkedList> | undefined
-
-  private get linearRulesets() {
-    return (this._linearRulesets ??= new Map())
+  private _linearMap: Map<string, LinkedList> | undefined
+  private get linearMap() {
+    return (this._linearMap ??= new Map())
   }
 
-  private get linearMixins() {
-    return (this._linearMixins ??= new Map())
-  }
-
-  private get linearVariables() {
-    return (this._linearVariables ??= new Map())
-  }
-
-  private get linearProperties() {
-    return (this._linearProperties ??= new Map())
+  /**
+   * A map of selector keys anywhere in a ruleset to contained ruleset selectors
+   * (This is used for partial extends)
+   */
+  private _partialSelectorMap: Map<string, LinkedList> | undefined
+  private get partialSelectorMap() {
+    return (this._partialSelectorMap ??= new Map())
   }
 
   get scope() {
