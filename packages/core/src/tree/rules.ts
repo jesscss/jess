@@ -16,6 +16,7 @@ import { type Ruleset } from './ruleset'
 import { type AtRule } from './at-rule'
 import { Nil } from './nil'
 import { type Root } from './root'
+import { LinkedList } from './util/collections'
 
 export const enum Priority {
   None = 0,
@@ -73,10 +74,53 @@ export type RulesValue = {
  * background-color: white;
  */
 export class Rules extends Node<Node[]> {
-  // rootRules: Node[] = []
-  // _first: Node
-  // _last: Node
   private _scope: Scope
+
+  /**
+   * All indexed collections, keyed
+   */
+  private _scopeRulesets: Map<string, LinkedList> | undefined
+  private _scopeMixins: Map<string, LinkedList> | undefined
+  private _scopeVariables: Map<string, LinkedList> | undefined
+  private _scopeProperties: Map<string, LinkedList> | undefined
+
+  private get scopeRulesets() {
+    return (this._scopeRulesets ??= new Map())
+  }
+
+  private get scopeMixins() {
+    return (this._scopeMixins ??= new Map())
+  }
+
+  private get scopeVariables() {
+    return (this._scopeVariables ??= new Map())
+  }
+
+  private get scopeProperties() {
+    return (this._scopeProperties ??= new Map())
+  }
+
+  /** Added in evaluation order, accessed by $$ */
+  private _linearRulesets: Map<string, LinkedList> | undefined
+  private _linearMixins: Map<string, LinkedList> | undefined
+  private _linearVariables: Map<string, LinkedList> | undefined
+  private _linearProperties: Map<string, LinkedList> | undefined
+
+  private get linearRulesets() {
+    return (this._linearRulesets ??= new Map())
+  }
+
+  private get linearMixins() {
+    return (this._linearMixins ??= new Map())
+  }
+
+  private get linearVariables() {
+    return (this._linearVariables ??= new Map())
+  }
+
+  private get linearProperties() {
+    return (this._linearProperties ??= new Map())
+  }
 
   get scope() {
     let scope = this._scope

@@ -256,8 +256,6 @@ export abstract class Node<
     return types
   }
 
-  isNodeList = false
-
   declare _isSelector: boolean
   /** Indicates if this can be used wherever a selector is used */
   isSelector(): this is Selector {
@@ -360,24 +358,12 @@ export abstract class Node<
   }
 
   protected _setUpNode(
-    value: unknown,
+    value: NodeInValue<T>,
     options?: O,
     location?: LocationInfo | 0,
     treeContext?: TreeContext
   ) {
-    this.data = new NodeData(this.index, this.isNodeList, value as T)
-
-    this.data = (value instanceof NodeList
-      ? value
-      : new Map(
-        isPlainObject(value)
-          ? Object.entries(value as Record<string, NodeValue>)
-          : isNodeMap(value)
-            ? value as Map<any, any>
-            : [['_value', value]]
-      )
-    ) as NodeData<T>
-
+    this.data = new NodeData(this.index, value)
     this.location = location || []
     this._treeContext = treeContext
     if (treeContext) {
@@ -864,52 +850,34 @@ class NodeRef {
 const lookupTypes = ['Ruleset', 'Mixin', 'VarDeclaration', 'Declaration'] as const
 export type LookupTypes = typeof lookupTypes[number]
 
-interface NodeDataMap extends Map<any, any> {
-  reverse(): Generator<number>
-}
+/**
+ * The inner collection of a NodeData instance, which can also contain linked lists of nodes.
+ */
+export class NodeDataMap {
+  parentData: NodeData | undefined
+  private items = new Map<string, any>()
 
-const createNodeMap = (parentData: NodeData): Class<NodeDataMap> => {
-  return class extends Map {
-    // private readonly _keys = new LinkedList<string>()
+  
 
-    set(key: string, val: any) {
-      // if (!this._keys.has(key)) {
-      //   this._keys.push(key)
-      // }
-
-      if (val instanceof Node) {
-        super.set(key, new NodeRef(val.index))
-        val.parentData = parentData
-      } else if (isArray(val)) {
-        super.set(key, val.map(n => {
-          if (n instanceof Node) {
-            return new NodeRef(n.index)
-          }
-          return n
-        }))
-      }
-      return this
+  addNode(key: string, val: Node) {
+    let list = this.items.get(key)
+    if (list instanceof LinkedList) {
+      list.push(val.index)
+    } else {
+      this.items.set(key, new LinkedList([val.index]))
     }
+  }
 
-    /** For parity, this only returns node indices */
-    * reverse() {
-      for (let value of this.values()) {
-        if (isArray(value)) {
-          for (let i = value.length - 1; i--; i >= 0) {
-            let item = value[i]!
-            if (item instanceof NodeRef) {
-              yield item.index
-            }
-          }
-        } else {
-          if (value instanceof NodeRef) {
-            yield value.index
-          }
-        }
+  /** For parity, this only returns node indices */
+  * reverse() {
+    for (let value of this.items.values()) {
+      if (value instanceof LinkedList) {
+        yield * value.reverse()
       }
     }
   }
 }
+
 
 /**
  * A dynamically linked list tree, which is also indexed.
@@ -921,91 +889,71 @@ const createNodeMap = (parentData: NodeData): Class<NodeDataMap> => {
  */
 export class NodeData<
   T extends NodeTypes = NodeTypes,
-  List extends boolean = boolean,
   M extends NodeMapType<T> = NodeMapType<T>
 > {
   /** Nodes can be indexed into lists for fast iteration */
-  private _list: LinkedList | undefined
-  private readonly _items: NodeDataMap | undefined
+  private readonly items = new Map<any, any>()
 
-  // private readonly _first: typeof NODE_INDEX | undefined
-  // private readonly _last: typeof NODE_INDEX | undefined
-  /** Represents the parent of all nodes */
-  // readonly parent: typeof NODE_INDEX | undefined
-
-  /**
-   * The keySet allows an early exit from a search. In the case
-   * of selectors, we don't need to find matches if the overall
-   * selector doesn't have that key in it.
-   *
-   * In the case of searching in a set of rules for a variable
-   * reference, we can skip rulesets that don't have that variable.
-   *
-   * In both the cases of variable names and selector keys, the
-   * keySet must be updated when a new node is created or a node
-   * is evaluated which changes its key.
-   *
-   * @note - Keys will be stored like this:
-   *  - for ruleset children, the first simple selectors will be added
-   *  - for mixin children, the mixin name will be added
-   *  - for declaration children, the declaration name will be added
-   *    as `!${name}` e.g. `!width` - this is just to disambiguate from
-   *    other keys.
-   */
-  _keySet: Set<string | number> | undefined
-  get keySet() {
-    return (this._keySet ??= new Set())
+  has(key: string) {
+    return this.items.has(key)
   }
 
-  private _nodeMap: Class<NodeDataMap> | undefined
-
-  get NodeMap() {
-    return (this._nodeMap ??= createNodeMap(this))
+  get<K extends keyof M = keyof M>(key: K): M[K] {
+    return this.items.get(key)
   }
 
-  constructor(
-    /** The Node index this is getting attached to */
-    public readonly nodeIndex: typeof NODE_INDEX,
-    public readonly isList?: List,
-    value?: NodeInValue<T>
-  ) {
-    if (value) {
-      if (isList) {
-        this.push(...(value as Node[]))
-      } else if (isPlainObject(value)) {
-        let map = this._items = new this.NodeMap()
-        for (let [key, val] of Object.entries(value)) {
-          map.set(key, val)
+  set<K extends keyof M = keyof M>(key: K, val: M[K]) {
+    if (val instanceof Node) {
+      this.items.set(key, new LinkedList([val.index]))
+      val.parentData = this
+    } else if (isArray(val)) {
+      let nodes = val.filter(n => n instanceof Node)
+      if (nodes.length) {
+        if (nodes.length !== val.length) {
+          throw new Error('Cannot mix nodes and non-nodes in a list.')
         }
+        nodes.forEach(n => {
+          n.parentData = this
+        })
+        this.items.set(key, new LinkedList(nodes.map(n => n.index)))
       } else {
-        let map = this._items = new this.NodeMap()
-        map.set('_value', value)
+        this.items.set(key, val)
       }
     }
   }
 
+  constructor(
+    /** The Node index this is getting attached to */
+    public nodeIndex: typeof NODE_INDEX,
+    value?: NodeInValue<T>
+  ) {
+    if (value && isPlainObject(value)) {
+      for (let [key, val] of Object.entries(value)) {
+        this.items.set(key, val)
+      }
+    }
+    this.items.set('_value', value)
+  }
+
   push(...nodes: Node[]) {
-    let list = (this._list ??= new LinkedList())
+    const items = this.items
+    if (!items.has('_value')) {
+      throw new Error('The node data is not a list of nodes.')
+    }
+    let list = items.get('_value') ?? new LinkedList()
     for (let n of nodes) {
       let index = n.index
       n.parentData = this
       if (Node.indexMap.has(index)) {
         throw new Error('Node already exists in the tree.')
       }
-      let key = n.valueOf()
+      /** @todo - Add key? */
+      // let key = n.valueOf()
       list.push(index)
-      this.keySet.add(key)
+      // this.keySet.add(key)
     }
+    items.set('_value', list)
   }
-
-  /** A setter for */
-  // set(index: number, node: Node) {
-  //   let meta = Node.indexMap.get(index)
-  //   if (!meta) {
-  //     throw new Error('Node does not exist in the tree.')
-  //   }
-  //   meta.node = node
-  // }
 
   private _reverseList(asEntries: false, start?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<Node | typeof PARENT_NODE>
   private _reverseList(asEntries: true, start?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<[number, Node | typeof PARENT_NODE]>
@@ -1015,11 +963,15 @@ export class NodeData<
     start?: typeof NODE_INDEX | undefined,
     includeParents?: boolean
   ) {
-    let list = this.isList ? this._list! : this._items!
+    let list = this.items
 
-    for (let index of list.reverse(start)) {
-      let node = Node.indexMap.get(index)!
-      yield asEntries ? [index, node] : node
+    for (let group of list.values()) {
+      if (group instanceof LinkedList) {
+        for (let index of group.reverse()) {
+          let node = Node.indexMap.get(index)!
+          yield asEntries ? [index, node] : node
+        }
+      }
     }
 
     if (includeParents) {

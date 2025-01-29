@@ -85,10 +85,10 @@ module.exports = {
         '@typescript-eslint/no-this-alias': 0,
         '@typescript-eslint/naming-convention': [
           'error',
-          // {
-          //   selector: 'default',
-          //   format: ['camelCase']
-          // },
+          {
+            selector: 'default',
+            format: ['camelCase']
+          },
 
           {
             selector: 'variable',
@@ -102,9 +102,12 @@ module.exports = {
 
           {
             selector: 'memberLike',
+            format: ['camelCase', 'PascalCase']
+          },
+          {
+            selector: 'memberLike',
             modifiers: ['private'],
-            format: ['camelCase'],
-            leadingUnderscore: 'require'
+            leadingUnderscore: 'allowSingleOrDouble'
           },
 
           {
