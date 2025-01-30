@@ -107,6 +107,8 @@ export class Rules extends Node<Node[]> {
   /**
    * A map of selector keys anywhere in a ruleset to contained ruleset selectors
    * (This is used for partial extends)
+   * 
+   * @
    */
   private _partialSelectorMap: Map<string, LinkedList> | undefined
   private get partialSelectorMap() {
