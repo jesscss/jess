@@ -494,15 +494,7 @@ export abstract class Node<
 
   /** An iterator for all node children */
   * children(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
-    const data = this.data
-    /**
-     * Currently, we only reverse for Nodelists
-     */
-    let iterator = data instanceof NodeList
-      ? reverse ? data.reverse() : data
-      : data.values()
-
-    for (let nodeVal of iterator) {
+    for (let nodeVal of this.data.reverse()) {
       if (nodeVal instanceof Node) {
         yield nodeVal
         if (deep) {
