@@ -76,12 +76,15 @@ export const defineType = <
     shortType?: string
   ) => {
   shortType ??= type.toLowerCase()
-  ;(Clazz as any)[NODE_TYPE] = type
-  ;(Clazz as any)[SHORT_NODE_TYPE] = shortType
+  ;(Clazz as any).type = type
+  ;(Clazz as any).shortType = shortType
 
   type Args = [value?: P[0] | V, location?: P[1], options?: P[2], treeContext?: P[3]]
   return (...args: Args) => {
-    return new Clazz(...args) as T extends Class<infer C> ? InstanceType<Class<C, Args>> : never
+    const node = new Clazz(...args) as T extends Class<infer C> ? InstanceType<Class<C, Args>> : never
+    ;(node as any).type = type
+    ;(node as any).shortType = shortType
+    return node
   }
 }
 
@@ -162,9 +165,6 @@ type NarrowTypes<T> =
 // eslint-disable-next-line @typescript-eslint/naming-convention
 let NODE_INDEX = 0
 
-const NODE_TYPE = Symbol('NODE_TYPE')
-const SHORT_NODE_TYPE = Symbol('SHORT_NODE_TYPE')
-
 interface FinalizationRegistryInterface {
   register(target: any, value: any): void
 }
@@ -243,11 +243,8 @@ export abstract class Node<
   /**
    * Assigned on the prototype, make sure we don't initialize
    */
-  static [NODE_TYPE] = 'Node'
-  static [SHORT_NODE_TYPE] = 'node'
-  get type() {
-    return (this.constructor as typeof Node)[NODE_TYPE]
-  }
+  type = 'Node'
+  shortType = 'node'
 
   /** All types of the prototype chain */
   _types: Set<string> | undefined
@@ -386,7 +383,7 @@ export abstract class Node<
     if (data.has('_value')) {
       return data.get('_value') as Type
     }
-    return Object.fromEntries(data)
+    return Object.fromEntries(data.entries())
   }
 
   /** NodeList-related properties */
@@ -853,8 +850,6 @@ export class NodeDataMap {
   parentData: NodeData | undefined
   private items = new Map<string, any>()
 
-  
-
   addNode(key: string, val: Node) {
     let list = this.items.get(key)
     if (list instanceof LinkedList) {
@@ -984,6 +979,10 @@ export class NodeData<
         yield * parentData._reverseList(asEntries, start ? parentIndex : undefined, includeParents)
       }
     }
+  }
+
+  * entries() {
+    yield * this.items.entries()
   }
 
   * findNodes(currentNode: Node, key: string | number, type?: symbol | symbol[], resolution?: 'scope' | 'linear') {
