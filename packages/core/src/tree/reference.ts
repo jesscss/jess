@@ -12,8 +12,11 @@ import { type Selector } from './selector'
  * and location.
  *   e.g. in Jess
  *    - `$foo` refers to a variable
- *    - `$.foo` refers to a property
+ *    - `$.foo` refers to a propert
+ *    - `$foo$bar` refers to a variable in a variable
+ *    - `$foo.bar` refers to a property in a variable
  *    - in `$ > .foo()`, `.foo` refers to a mixin
+ *    - in `$foo > .mixin()` `.mixin` refers to a mixin in `$foo`
  *    - Resolution:
  *      - `$` searches scope,
  *      - `$$` searches in declaration order

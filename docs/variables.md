@@ -91,6 +91,8 @@ Like JavaScript, namespaces / objects are done by dot lookup
   border: $.color;  // property access
 }
 
+// From an IDE perspective, the difference between a map and an anonymous mixin
+// is how to interpret "properties". In a map, properties can be arbitrary.
 $map: {
   key: value;
   subvalue: {
@@ -98,7 +100,7 @@ $map: {
   }
   $somevar: red;
 
-  @: my-mixin {
+  @@ my-mixin {
     //
   }
 }
@@ -114,7 +116,8 @@ $map: {
 
   // you can also do by list index or negative list index
   look-5: $map[0]; // value is `value`
-  $map > [-1](); // get the mixin at 1 from bottom and call it
+  $map[-1](); // get the mixin at 1 from bottom and call it
+  $map[](); // get the last item (the mixin) and call it
 }
 ```
 

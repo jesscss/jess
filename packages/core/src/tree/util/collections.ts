@@ -156,6 +156,31 @@ export class LinkedList {
     this._push(0, after, ...items)
   }
 
+  removeItem(item: NODE_INDEX) {
+    let pos = this._items.get(item)
+    if (pos === undefined) {
+      return
+    }
+    let previous = this._getPrevFromBits(pos)
+    let next = this._getNextFromBits(pos)
+    if (previous) {
+      this._writeNextPos(previous, next)
+    }
+    if (next) {
+      this._writePrevPos(next, previous)
+    }
+    this._items.delete(pos)
+    if (item === this.first) {
+      this.first = next
+    }
+    if (item === this.last) {
+      this.last = previous
+    }
+    if (item === this._current) {
+      this._current = next
+    }
+  }
+
   private _writePos(nodeRef: NODE_INDEX, previous: NODE_INDEX | undefined, next: NODE_INDEX | undefined) {
     if (nodeRef === previous || nodeRef === next) {
       throw new Error('Linking a node to itself would cause an infinite loop.')

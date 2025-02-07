@@ -44,20 +44,26 @@ Mixins must have semi-colon-separated parameters (and can have optional final se
   // ...
 }
 
+// called like
+$>my-mixin(20px; 40px);
+
 // mixins can be anonymous
 $my-mixin: @@($width; $height) {
   // ...
 }
 // called like:
-$ > $my-mixin(20px; 40px);
+$my-mixin(20px; 40px);
 ```
 
 ## Functions
 
-Functions are just anonymous mixins with an assigned value defined with `@@`
+Functions are just anonymous mixins with the value assigned to `@@`
 
 ```less
 $my-func: @@($width; $height) {
-  @@: value;
+  @@: $width;
+}
+.box {
+  value: $my-func(10px, 20px);
 }
 ```

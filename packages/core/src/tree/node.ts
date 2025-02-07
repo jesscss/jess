@@ -148,10 +148,7 @@ export type NodeDataOld<T> =
         ? TypedMap<NodeMapType<T>>
         : never
 
-type NodeInValue<T> =
-  T extends Node[]
-    ? T | NodeData<T, true>
-    : T | NodeData<T, false>
+type NodeInValue<T extends NodeTypes> = T | NodeData<T>
 
 type NodeTypes = Primitive | Node[] | NodeValueObject
 
@@ -174,6 +171,9 @@ type FinalizationRegistryClass = new (callback: (value: any) => void) => Finaliz
 declare const FinalizationRegistry: FinalizationRegistryClass
 
 /**
+ * 
+ * @todo - remove all this index abstraction, it's too hard to reason about :(
+ *
  * @note Do we need this? It's still fairly new
  * and maybe this will avoid a browser issue?
  */
@@ -236,7 +236,7 @@ export abstract class Node<
   }
 
   private _options: Partial<O & AllNodeOptions> | undefined
-  get options() {
+  get options(): Partial<O & AllNodeOptions> {
     return this._options ??= {}
   }
 
@@ -277,8 +277,8 @@ export abstract class Node<
    * In a NodeList, any whitespace tokens outside of comments are individually represented,
    * because they are preserved while the comment may not be.
    */
-  pre: NodeList<Comment | Token> | 1 | 0 | undefined
-  post: NodeList<Comment | Token> | 1 | 0 | undefined
+  pre: NodeData | 1 | 0 | undefined
+  post: NodeData | 1 | 0 | undefined
 
   visible = true
   private _index: number | undefined
@@ -386,20 +386,6 @@ export abstract class Node<
     return Object.fromEntries(data.entries())
   }
 
-  /** NodeList-related properties */
-  private _lists: NodeList<NodeList> | undefined
-  get lists(): NodeList<NodeList> {
-    return (this._lists ??= new NodeList(undefined, { disableTracking: true }))
-  }
-
-  remove() {
-    if (this._lists) {
-      for (let list of this.lists) {
-        list.removeItem(this)
-      }
-    }
-  }
-
   /**
    * Mutates node children in place. Used by eval()
    * which first makes a shallow clone before mutating.
@@ -416,44 +402,19 @@ export abstract class Node<
   }
 
   /**
-   * Like a forEach, but calls each function
-   * for the iterable, resolves it in parallel,
-   * and finally awaits the Promise.all of results.
-   */
-  async forEachPromise<
-    T extends MapLike<any, any>,
-    P extends CollectionPair<T> = CollectionPair<T>
-  >(iterable: T, func: (value: P[1], key: P[0], container: T) => Promise<void>) {
-    let promises: Array<Promise<void>> = []
-    for (let [key, value] of iterable.entries()) {
-      promises.push(func(value, key, iterable))
-    }
-    await Promise.all(promises)
-  }
-
-  /**
-   * Mutates node children in place. Used by eval()
-   * which first makes a shallow clone before mutating.
-   *
-   * @todo - There should be no node arrays
+   * Mutates node children in place, asynchronously
    */
   async processNodesAsync(func: (n: Node) => Node | Promise<Node>) {
-    let map = this.data
-    await this.forEachPromise(map, async (nodeVal, key) => {
-      /**
-       * For each member of the map, we create an async function
-       * that we call, which returns a promise.
-       *
-       * This allows calls like eval() to resolve in parallel,
-       * which means some nodes can be evaluated after things
-       * like async file operations and dynamic imports.
-       */
-      /** Process Nodes only */
-      if ((nodeVal as any) instanceof Node) {
+    let promises: Array<Promise<void>> = []
+    for (let [key, nodeVal] of this.data.entries()) {
+      if (nodeVal instanceof Node) {
         /** Assume that the type will still be valid */
-        map.set(key, await func(nodeVal))
+        promises.push(
+          (async () => this.data.set(key, await func(nodeVal)))()
+        )
       }
-    })
+    }
+    await Promise.all(promises)
   }
 
   /**
@@ -461,8 +422,8 @@ export abstract class Node<
    *
    * @todo - rewrite to use NodeList
    */
-  private _processNodeList(
-    list: NodeList,
+  private _processNodeData(
+    list: NodeData,
     fn: NodeVisitFunction,
     shallow?: boolean,
     visitPrePost?: boolean,
@@ -523,16 +484,24 @@ export abstract class Node<
     const data = this.data
     if (visitPrePost) {
       let { pre, post } = this
-      if (pre instanceof NodeList) {
-        this._processNodeList(pre, func, true, false, reverse)
+      if (pre instanceof NodeData) {
+        this._processNodeData(pre, func, true, false, reverse)
       }
-      if (post instanceof NodeList) {
-        this._processNodeList(post, func, true, false, reverse)
+      if (post instanceof NodeData) {
+        this._processNodeData(post, func, true, false, reverse)
       }
     }
-    let entriesMethod = data instanceof NodeList
+    let entriesMethod = data instanceof NodeData
       ? reverse ? data.reverseEntries : data.entries
       : data.entries
+
+    for (const [key, val] of this.data.entries()) {
+      if (val instanceof LinkedList) {
+        for (let nodeIndex of val.reverse()) {
+          let returnVal = func(Node.indexMap.get(nodeIndex)!)
+        }
+      }
+    }
 
     for (const [key, nodeVal] of entriesMethod()) {
       if (nodeVal instanceof Node) {
@@ -589,23 +558,14 @@ export abstract class Node<
     if (deep) {
       newNode.processNodes(cloneFn)
     }
-    newNode.pre = this.pre
-    newNode.post = this.post
-    newNode.evaluated = this.evaluated
-    newNode.index = this.index
-    newNode._lists = this._lists
 
     return newNode
   }
 
   /** Remove comments from pre/post */
   stripPrePost(prePost: Node['pre']) {
-    if (prePost instanceof NodeList) {
-      for (let n of prePost) {
-        if (n.type === 'Comment') {
-          n.remove()
-        }
-      }
+    if (prePost instanceof NodeData) {
+      prePost.removeNode(this)
     }
   }
 
@@ -667,7 +627,7 @@ export abstract class Node<
    */
   inherit(node: Node) {
     (this as Writable<this>).location = node.location
-    ;(this as Writable<this>)._treeContext = node._treeContext
+    ;(this as Writable<this>).treeContext = node.treeContext
     this.evaluated = node.evaluated
     this.pre = node.pre
     this.post = node.post
@@ -875,7 +835,7 @@ export class NodeData<
   M extends NodeMapType<T> = NodeMapType<T>
 > {
   /** Nodes can be indexed into lists for fast iteration */
-  private readonly items = new Map<any, any>()
+  private readonly items = new Map<any, any>() as TypedMap<M>
 
   has(key: string) {
     return this.items.has(key)
@@ -918,24 +878,33 @@ export class NodeData<
     this.set('_value', value as M['_value'])
   }
 
-  push(...nodes: Node[]) {
-    const items = this.items
-    if (!items.has('_value')) {
-      throw new Error('The node data is not a list of nodes.')
-    }
-    let list = items.get('_value') ?? new LinkedList()
-    for (let n of nodes) {
-      let index = n.index
-      n.parentData = this
-      if (Node.indexMap.has(index)) {
-        throw new Error('Node already exists in the tree.')
+  * values() {
+    for (let value of this.items.values()) {
+      if (value instanceof LinkedList) {
+        yield * value
+      } else {
+        yield value
       }
-      /** @todo - Add key? */
-      // let key = n.valueOf()
-      list.push(index)
-      // this.keySet.add(key)
     }
-    items.set('_value', list)
+  }
+
+  removeNode(n: Node) {
+    for (let list of this.items.values()) {
+      if (list instanceof LinkedList) {
+        list.removeItem(n.index)
+      }
+    }
+  }
+
+  /** Like values() but reverse */
+  * reverse() {
+    for (let value of this.items.values()) {
+      if (value instanceof LinkedList) {
+        yield * value.reverse()
+      } else {
+        yield value
+      }
+    }
   }
 
   private _reverseList(asEntries: false, start?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<Node | typeof PARENT_NODE>

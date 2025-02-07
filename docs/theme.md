@@ -1,6 +1,6 @@
 ```less
-@--use './my-vars.jess' (config);
-@--use 'library/variables.jess' (theme) with $config;
+@--use './my-vars.jess' as config;
+@--use 'library/variables.jess' as theme with $config;
 
 
 .box {

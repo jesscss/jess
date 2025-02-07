@@ -1,4 +1,4 @@
-TODO: Align with CSS Nesting (do not allow plain identifiers)
+TODO: Align with CSS Nesting (maintain rule order)
 
 ```less
 .box {

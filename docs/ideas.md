@@ -1,7 +1,7 @@
 ## Changes to make for 2.0 release
 
 - Jess is a common runtime for CSS pre-processors
-- Should execute in an isolated VM? https://www.npmjs.com/package/isolated-vm
+- Should execute in an isolated VM? https://www.npmjs.com/package/isolated-vm - (No, use Deno)
 - In addition, function calls to Jess functions should receive plain arguments with primitive values, but when called internally, should bind to a `this` object that has AST arguments. Each function, therefore should call something like `getArguments(this, args)` and either parse primitives or get the passed arguments.
 - For interoperability with JavaScript, Jess mixins should return serialized plain objects, but have a non-enumerable property with an AST return UNLESS they were passed a `this` object with AST args, in which case they should return AST nodes
 - Jess function / mixin args should always have semi-colon separators
@@ -25,7 +25,7 @@
 @--include './file.css' (type: 'less');
 
 // declaring vars
-$count; // a Node of `Nil`
+$count:; // a Node of `Nil`
 
 // setting vars - note, this avoids the need for !global in Sass
 // Note also that this will throw an error in Jess without `$let count`
@@ -158,16 +158,23 @@ Sass is an overly-complex stylesheet language. Jess aims to be:
 
 ### `@--use ('(' type ')')? [file|object|map] (as [namespace])? ('with' reference|declarationList)?`
 
-Non-leaky replacement for `@import`. Will import the scope (mixins, variables, and selector references) of the object, as well as render rules.
+Non-leaky replacement for `@import`. Will import the scope (mixins, variables, and selector references) of the object. If a namespace is specified, will wrap rules in a mixin name. If it's imported `as *`,
+will render rules.
+
+Unlike Sass, `as` is required, to encourage namespacing and improve readability.
 
 Can be at the root or nested.
 
 ### `@--ref ('(' type ')')? [file|object|map] ('as' [namespace])? ('with' reference|declarationList)?`
 
-(In Less, this will be `@reference`)
+(In Less, this will be `@reference`) - This is the same as `@--use` except:
+1. `@--ref` rules will not be extended,
+2. `@--ref` variables are not forwarded.
+
+This is more like Sass's `@use`.
 
 ```scss
-@--ref 'colors.less'; // "as colors" is implied
+@--ref 'colors.less' as colors; // "as colors" is implied
 // or override variables
 @--ref 'colors.less' with {
   // should throw an error if primary-color is not defined
@@ -236,13 +243,15 @@ They would be subject to evaluation order.
 }
 ```
 
-Q: What if you don't want to forward variables / mixins?
+Q: What if you don't want to forward variables / mixins from `@--use`?
 
-You can use the `@--private` at-rule:
+You can use the `@--ref` at-rule or mark things as `@--private`:
 
 ```scss
 // This is a private `@use`
-@--private @--ref './somefile.jess';
+@--ref './somefile.jess';
+// This is almost identical except the file is still subject to :extend()
+@--private @--use './somefile.jess';
 // can also be used with variables
 @--private $-private: var;
 ```
