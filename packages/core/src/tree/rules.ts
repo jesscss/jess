@@ -137,7 +137,9 @@ export class Rules extends Node<Node[]> {
       if (!(item instanceof Declaration)) {
         continue
       }
-      let name = typeof item.name === 'string' ? item.name : item.name.value
+      let { name } = item.value
+      /** This only works if the name has been eval'd */
+      name = typeof name === 'string' ? name : String(name.value)
       yield [name, item]
     }
   }

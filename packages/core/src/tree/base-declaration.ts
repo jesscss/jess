@@ -7,7 +7,7 @@ import type { General } from './general'
 export type DeclarationName = Interpolated<'Name'> | General<'Name'> | string
 
 export type BaseDeclarationValue<N extends DeclarationName = DeclarationName> = {
-  name?: N
+  name: N
 }
 
 export const enum AssignmentType {

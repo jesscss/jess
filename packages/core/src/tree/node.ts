@@ -1,9 +1,8 @@
 /* eslint-disable @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/restrict-plus-operands, @typescript-eslint/no-invalid-void-type */
 import isPlainObject from 'lodash-es/isPlainObject'
 import {
-  type Context,
-  type TreeContext
-} from '../context'
+  TreeContext,
+  type Context} from '../context'
 import { SKIP, type Visitor } from '../visitor'
 import type { Comment } from './comment'
 import type { Token } from './token'
@@ -113,11 +112,13 @@ type TypedMap<
   values(): IterableIterator<V>
 }
 
+const ROOT_DATA = '__root'
+
 /**
  * @todo - this allows excess properties on T,
  * but using `Exact` from type-fest caused other issues
  */
-export type NodeMapType<T> = T extends NodeValueObject ? T : { _value: T }
+export type NodeMapType<T> = T extends NodeValueObject ? T : { __root: T }
 
 type CollectionPair<T> =
   T extends Map<infer K, infer V>
@@ -231,8 +232,8 @@ export abstract class Node<
     return (this._location ??= [])
   }
   private _treeContext: TreeContext | undefined
-  get treeContext() {
-    return this._treeContext ?? {}
+  get treeContext(): TreeContext {
+    return this._treeContext ?? new TreeContext()
   }
 
   private _options: Partial<O & AllNodeOptions> | undefined
@@ -277,8 +278,8 @@ export abstract class Node<
    * In a NodeList, any whitespace tokens outside of comments are individually represented,
    * because they are preserved while the comment may not be.
    */
-  pre: NodeData | 1 | 0 | undefined
-  post: NodeData | 1 | 0 | undefined
+  pre: NodeList | 1 | 0 | undefined
+  post: NodeList | 1 | 0 | undefined
 
   visible = true
   private _index: number | undefined
@@ -346,7 +347,7 @@ export abstract class Node<
   /**
    * This should always represent the `data` of the Node
    */
-  protected data!: NodeData<T>
+  data!: NodeData<T>
   parentData: NodeData | undefined
 
   nil!: () => Nil
@@ -368,7 +369,7 @@ export abstract class Node<
     location?: LocationInfo,
     treeContext?: TreeContext
   ) {
-    this.data = new NodeData(this.index, value)
+    this.data = new NodeData(this, value)
     this._location = location
     this._treeContext = treeContext
     this._options = options
@@ -380,10 +381,10 @@ export abstract class Node<
     if (data instanceof NodeList) {
       return [...data] as Type
     }
-    if (data.has('_value')) {
-      return data.get('_value') as Type
+    if (data.has(ROOT_DATA)) {
+      return data.get(ROOT_DATA) as Type
     }
-    return Object.fromEntries(data.entries())
+    return Object.fromEntries(data.entries()) as Type
   }
 
   /**
@@ -546,6 +547,10 @@ export abstract class Node<
 
   /**
    * Creates a copy of the current node.
+   * 
+   * @todo - Node data has changed a lot. Write tests to
+   * make sure nodes are cleanly cloned and that they don't have
+   * any references to the original node / nested objects.
    */
   clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     let Class: Constructor<this> = Object.getPrototypeOf(this).constructor
@@ -821,6 +826,12 @@ export class NodeDataMap {
   }
 }
 
+type NodeDataData<T extends NodeTypes> =
+  T extends NodeValueObject
+    ? TypedMap<NodeMapType<T>>
+    : T extends Node[]
+      ? NodeList<T[0]> | undefined
+      : T | undefined
 
 /**
  * A dynamically linked list tree, which is also indexed.
@@ -835,21 +846,38 @@ export class NodeData<
   M extends NodeMapType<T> = NodeMapType<T>
 > {
   /** Nodes can be indexed into lists for fast iteration */
-  private readonly items = new Map<any, any>() as TypedMap<M>
+  private data!: NodeDataData<T>
 
+  /** Get / has / set only deal with map data */
   has(key: string) {
-    return this.items.has(key)
+    const data = this.data
+    if (data instanceof Map) {
+      if (key === ROOT_DATA) {
+        return false
+      }
+      return data.has(key)
+    }
+    return key === ROOT_DATA
   }
 
   get<K extends keyof M = keyof M>(key: K): M[K] {
-    return this.items.get(key)
+    const data = this.data
+    if (data instanceof Map) {
+      if (key === ROOT_DATA) {
+        throw new Error('Cannot get root data from a Map NodeData.')
+      }
+      return data.get(key)
+    }
+    return data as M[K]
   }
 
-  set<K extends keyof M = keyof M>(key: K, val: M[K]) {
+  /** Process nodes if they exist */
+  private _getNodeValue(val: any) {
     if (val instanceof Node) {
-      this.items.set(key, new LinkedList([val.index]))
       val.parentData = this
-    } else if (isArray(val)) {
+      return val
+    }
+    if (isArray(val)) {
       let nodes = val.filter(n => n instanceof Node)
       if (nodes.length) {
         if (nodes.length !== val.length) {
@@ -858,16 +886,46 @@ export class NodeData<
         nodes.forEach(n => {
           n.parentData = this
         })
-        this.items.set(key, new LinkedList(nodes.map(n => n.index)))
+        return new NodeList(nodes)
       } else {
-        this.items.set(key, val)
+        /** Treat empty arrays as undefined */
+        return undefined
       }
+    }
+    return val
+  }
+
+  set(key: string, val: Node, nodeListIndex: number): void
+  set<K extends keyof M = keyof M>(key: K, val: M[K]): void
+  set(key: string, val: NodeValue, nodeListIndex?: number) {
+    let data = this.data as Map<any, any> | NodeList
+    let rootData = key === ROOT_DATA
+
+    if (!rootData) {
+      if (!data) {
+        data = (this.data as any) = new Map() 
+      } else {
+        throw new Error('Cannot set map data without a map.')
+      }
+      if (nodeListIndex !== undefined) {
+        let list = data.get(key)
+        if (list instanceof NodeList) {
+          /** Assume this is a Node */
+          list.set(nodeListIndex, this._getNodeValue(val))
+        } else {
+          throw new Error('Cannot push to a non-NodeList.')
+        }  
+      }
+      data.set(key, this._getNodeValue(val))
+    } else {
+      (this.data as any) = this._getNodeValue(val)
+      return
     }
   }
 
   constructor(
-    /** The Node index this is getting attached to */
-    public nodeIndex: typeof NODE_INDEX,
+    /** The Node this is getting attached to */
+    public parentNode: Node,
     value?: NodeInValue<T>
   ) {
     if (value && isPlainObject(value)) {
@@ -875,79 +933,106 @@ export class NodeData<
         this.set(key as keyof M, val)
       }
     }
-    this.set('_value', value as M['_value'])
+    if (value !== undefined) {
+      if (value instanceof NodeData) {
+        this.data = value.data
+      } else {
+        this.set(ROOT_DATA, value as M[typeof ROOT_DATA])
+      }
+    }
+  }
+
+
+  private _dataValues(asEntries?: false, reverse?: boolean): Generator<NodeValue | undefined>
+  private _dataValues(asEntries: true, reverse?: boolean): Generator<[string | number, NodeValue | undefined]>
+  private * _dataValues(
+    asEntries?: boolean,
+    reverse?: boolean
+  ): Generator<NodeValue | undefined | [string | number, NodeValue | undefined]> {
+    const data = this.data
+    if (data instanceof Map) {
+      asEntries ? yield * data.entries() : yield * data.values()
+    } else if (data instanceof NodeList) {
+      if (asEntries) {
+        reverse ? yield * data.reverseEntries() : yield * data.entries()
+      } else {
+        reverse ? yield * data.reverse() : yield * data.values()
+      }
+    } else {
+      asEntries ? yield [ROOT_DATA, data as NodeValue] : yield data as NodeValue
+    }
   }
 
   * values() {
-    for (let value of this.items.values()) {
-      if (value instanceof LinkedList) {
-        yield * value
-      } else {
+    for (let value of this._dataValues()) {
+      /** Exclude `undefined` as a value */
+      if (value !== undefined) {
         yield value
       }
     }
   }
 
   removeNode(n: Node) {
-    for (let list of this.items.values()) {
-      if (list instanceof LinkedList) {
-        list.removeItem(n.index)
+    for (let list of this._dataValues()) {
+      if (list instanceof NodeList) {
+        list.removeItem(n)
       }
     }
   }
 
   /** Like values() but reverse */
   * reverse() {
-    for (let value of this.items.values()) {
-      if (value instanceof LinkedList) {
-        yield * value.reverse()
-      } else {
+    for (let value of this._dataValues(false, true)) {
+      /** Exclude `undefined` as a value */
+      if (value !== undefined) {
         yield value
       }
     }
   }
 
-  private _reverseList(asEntries: false, start?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<Node | typeof PARENT_NODE>
-  private _reverseList(asEntries: true, start?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<[number, Node | typeof PARENT_NODE]>
-  private _reverseList(asEntries: boolean, start?: typeof NODE_INDEX | undefined, includeParents?: boolean): Generator<Node | typeof PARENT_NODE | [number, Node | typeof PARENT_NODE]>
-  private * _reverseList(
-    asEntries: boolean,
-    start?: typeof NODE_INDEX | undefined,
-    includeParents?: boolean
-  ) {
-    let list = this.items
+  /**
+   * Iterates through nodes and parent nodes.
+   * This is used for value lookups
+   * 
+   * @note - When walking upward, if node.parentData has changed,
+   * then we've stepped into the next parent node.
+   */
+  private * _reverseWalk(
+    includeParents?: boolean,
+    start?: Node | undefined
+  ): Generator<Node> {
+    let data = this.data
 
-    for (let group of list.values()) {
-      if (group instanceof LinkedList) {
-        for (let index of group.reverse()) {
-          let node = Node.indexMap.get(index)!
-          yield asEntries ? [index, node] : node
-        }
-      }
+    if (!(data instanceof NodeList)) {
+      throw new Error('Cannot walk a non-NodeList.')
     }
 
+    let startIndex = start ? data.getNodeIndex(start) : undefined
+    yield * data.reverse(startIndex)
+
     if (includeParents) {
-      let node = Node.indexMap.get(this.nodeIndex)!
+      let node = this.parentNode
       let parentData = node.parentData
       /**
        * Yield back that we're going to start navigating the parent.
        * This can be used to make decisions about whether or not
        * current conditions are satisfied (and whether to continue).
        */
-      if (parentData) {
-        let parentIndex = parentData.nodeIndex
-        yield asEntries ? [parentIndex, PARENT_NODE] : PARENT_NODE
-        yield * parentData._reverseList(asEntries, start ? parentIndex : undefined, includeParents)
+      if (parentData && parentData.data instanceof NodeList) {
+        start = start ? node : undefined
+        yield * parentData._reverseWalk(includeParents, start)
       }
     }
   }
 
+  /** @todo - return string key or ROOT_DATA key, not string | number */
   * entries() {
-    yield * this.items.entries()
-  }
-
-  * findNodes(currentNode: Node, key: string | number, type?: symbol | symbol[], resolution?: 'scope' | 'linear') {
-
+    for (let value of this._dataValues(true)) {
+      /** Exclude `undefined` as a value */
+      if (value !== undefined) {
+        yield value
+      }
+    }
   }
 }
 
@@ -957,9 +1042,8 @@ export class NodeData<
  * in a list are managed by the list, much like an array.
  */
 export class NodeList<
-  T extends Node = Node,
-  O extends NodeListOptions = NodeListOptions
-> extends Node<T[], O> implements MapLike<number, T | undefined> {
+  T extends Node = Node
+> {
   first: number | undefined
   last: number | undefined
   private _current: number | undefined
@@ -974,30 +1058,16 @@ export class NodeList<
   private readonly _pos = new Map<number, number>()
   private _index = 0
 
+  keySet = new Set<string>()
+
   constructor(
-    values: T[] = [],
-    options?: O,
-    location?: LocationInfo | 0,
-    treeContext?: TreeContext
+    values: T[] = []
   ) {
-    super(SKIP_SETUP)
     /**
      * Passing a Map should really only be done when
      * cloning, which we will override.
      */
-    if (isArray(values)) {
-      this.setMany(values)
-    }
-    this._setUpNode(this, options, location, treeContext)
-  }
-
-  /** This is just so debugging isn't confusing */
-  toString(depth?: number | undefined) {
-    let output = ''
-    for (let item of this) {
-      output += item.toString(depth)
-    }
-    return output as Opaque<string>
+    this.setMany(values)
   }
 
   private _writePos(nodeRef: number, previous: number | undefined, next: number | undefined) {
@@ -1048,11 +1118,16 @@ export class NodeList<
     return this._items.get(key)
   }
 
+  getNodeIndex(n: T) {
+    return this._items.getValue(n)
+  }
+
   set(key: number, value: T) {
     this._items.set(key, value)
-    if (!this.options?.disableTracking) {
-      value.lists.push(this)
-    }
+  }
+
+  has(key: number) {
+    return this._items.has(key)
   }
 
   setMany(values: T[]) {
@@ -1077,25 +1152,6 @@ export class NodeList<
     /** The last thing a for loop does is increment, so subtract the last iteration */
     this._index = index - 1
     this.last = lastIndex
-  }
-
-  /** Clones of node lists need to be a bit different */
-  clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    let Class: Constructor<this> = Object.getPrototypeOf(this).constructor
-
-    let newNode = new Class(SKIP_SETUP)
-    newNode.inherit(this)
-
-    cloneFn ??= n => n.clone(deep)
-
-    if (deep) {
-      for (let [index, node] of newNode.entries()) {
-        /** @todo - deal with deletions or NodeList returns */
-        newNode.set(index, node.clone(deep, cloneFn))
-      }
-    }
-
-    return newNode
   }
 
   get size() {
@@ -1214,20 +1270,21 @@ export class NodeList<
     yield * this._values(true)
   }
 
-  * reverseEntries() {
-    yield * this.reverse(true)
+  * reverseEntries(start?: number) {
+    yield * this._reverse(true, start)
   }
 
-  reverse(): Generator<T, void, any>
-  reverse(asEntries: true): Generator<[number, T], void, any>
-  * reverse(asEntries = false) {
-    let currentIndex = this._current = this.last
+  _reverse(asEntries: false, start?: number): Generator<T>
+  _reverse(asEntries: true, start?: number): Generator<[number, T]>
+  _reverse(asEntries?: boolean, start?: number): Generator<T>
+  * _reverse(asEntries: boolean = false, start = this.last): Generator<T | [number, T]> {
+    let currentIndex = this._current = start
     if (currentIndex === undefined) {
       return
     }
     let currentItem = this._items.get(currentIndex)
 
-    while (currentItem !== undefined) {
+    while (currentItem !== undefined && currentIndex !== undefined) {
       yield asEntries ? [currentIndex, currentItem] : currentItem
       /**
        * this._current pointer may change because of deletions,
@@ -1241,6 +1298,10 @@ export class NodeList<
       currentItem = prevIndex ? this._items.get(prevIndex) : undefined
       currentIndex = this._current = prevIndex
     }
+  }
+
+  * reverse(start?: number) {
+    yield * this._reverse(false, start)
   }
 
   removeItem(item: T) {
@@ -1267,10 +1328,6 @@ export class NodeList<
     }
     if (index === this._current) {
       this._current = next
-    }
-    item.lists.removeItem(this)
-    if (this._items.size === 0) {
-      this.remove()
     }
   }
 
