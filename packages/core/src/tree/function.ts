@@ -14,7 +14,7 @@ import { Mixin } from './mixin'
  * Used by Jess / Sass
  */
 export class Func extends Mixin {
-  async eval(context: Context): Promise<Node> {
+  override async evalNode(context: Context): Promise<Node> {
     let result = await super.eval(context)
     if (result instanceof Rules) {
       let value = result.value

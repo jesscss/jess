@@ -1,6 +1,6 @@
-import { defineType, Node } from './node'
+import { defineType } from './node'
 import { type Context } from '../context'
-import { type Selector } from './selector'
+import { Selector } from './selector'
 import { type Nil } from './nil'
 
 export const enum ExtendFlag {
@@ -9,7 +9,7 @@ export const enum ExtendFlag {
 
 export type ExtendValue = {
   /** The preceding selector */
-  value: Selector | Nil
+  selector: Selector
   /** The selector within () */
   target: Selector
   flag?: ExtendFlag
@@ -17,43 +17,35 @@ export type ExtendValue = {
 /**
  * Extends selectors
  *
- * @todo - figure out eval -- extend should just "register"
- * selectors, to be used later in the ToCssVisitor
+ * @todo - figure out eval -- use Rules lookups
  * @note - there is some pseudo-code somewhere that smartly
  * registers selectors by a string code.
  */
-export class Extend extends Node<ExtendValue> implements Selector {
-  declare isSelector: true
+export class Extend extends Selector<ExtendValue> {
+  type = 'Extend'
+  shortType = 'extend'
 
-  _valueOf: string | undefined
-  valueOf() {
+  override valueOf() {
     return `:extend(${this.value.valueOf()})`
   }
 
   /** The preceding selector is the keyset */
   get keySet() {
-    return this.data.get('value').keySet
+    return this.data.get('selector').keySet
   }
 
-  toTrimmedString(depth?: number | undefined): string {
-    let { target, value } = this.values
-    let output = value ? `${value}` : ''
+  override toTrimmedString(depth?: number | undefined): string {
+    let { target, selector } = this.value
+    let output = selector ? `${selector}` : ''
     output += `:extend(${target})`
     return output
   }
 
-  toPrimitiveSelector() {
-    return this.data.get('value').toPrimitiveSelector()
-  }
-
-  async eval(context: Context): Promise<Selector> {
-    let { value } = this
-    value = await value.eval(context) as Selector
+  override async evalNode(context: Context): Promise<Selector> {
+    let { selector, target } = this.value
+    selector = await selector.eval(context) as Selector
     /** @todo - register target */
-    value.inherit(this)
-    value.evaluated = true
-    return value
+    return selector
   }
 }
-Extend.prototype.isSelector = true
 export const extend = defineType(Extend, 'Extend')

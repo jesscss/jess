@@ -17,32 +17,13 @@ export type AtRuleValue = {
  * A rule like @charset or @media
  */
 export class AtRule extends Node<AtRuleValue> {
-  get prelude() {
-    return this.data.get('prelude')
-  }
+  type = 'AtRule'
+  shortType = 'atrule'
+  override allowRoot = true
 
-  set prelude(v: Node | undefined) {
-    this.data.set('prelude', v)
-  }
 
-  get name() {
-    return this.data.get('name')
-  }
-
-  set name(v: General) {
-    this.data.set('name', v)
-  }
-
-  get rules() {
-    return this.data.get('rules')
-  }
-
-  set rules(v: Rules | undefined) {
-    this.data.set('rules', v)
-  }
-
-  toTrimmedString(depth: number = 0): string {
-    let { name, prelude, rules } = this
+  override toTrimmedString(depth: number = 0): string {
+    let { name, prelude, rules } = this.value
     /** The ruleset will have already indented the first line */
     let output = `${name}`
     if (prelude) {
@@ -56,7 +37,7 @@ export class AtRule extends Node<AtRuleValue> {
     return output
   }
 
-  async eval(context: Context) {
+  override async evalNode(context: Context) {
     let node = await super.eval(context) as AtRule
     /** Don't let rooted rules bubble past an at-rule */
     if (node.rules) {
@@ -68,10 +49,10 @@ export class AtRule extends Node<AtRuleValue> {
        * this probably has to be re-written
        */
       if (context.frames.length !== 0) {
-        let rule = await new Ruleset([
-          ['selector', new ComplexSelector([new Ampersand()])],
-          ['rules', rules]
-        ])
+        let rule = await new Ruleset({
+          selector: new ComplexSelector([new Ampersand()]),
+          rules: rules
+        })
           .inherit(this)
           .eval(context)
         node.rules.value = [rule]
@@ -116,6 +97,5 @@ export class AtRule extends Node<AtRuleValue> {
   //   out.add(`\n${pre}},${JSON.stringify(this.location)})`)
   // }
 }
-AtRule.prototype.allowRoot = true
 
 export const atrule = defineType(AtRule, 'AtRule')

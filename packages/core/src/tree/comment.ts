@@ -9,8 +9,12 @@ export type CommentOptions = {
  * A comment node
  */
 export class Comment extends Node<string, CommentOptions> {
-  async eval(context: Context): Promise<Comment> {
-    this.evaluated = true
+  type = 'Comment'
+  shortType = 'comment'
+  override allowRoot = true
+  override allowRuleRoot = true
+
+  override async evalNode(context: Context): Promise<Comment> {
     this.visible = !this.options.lineComment
     return this
   }

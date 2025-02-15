@@ -7,5 +7,10 @@ type FunctionValueValue = ((...args: any[]) => any) & {
  * A node representing an external function, or another node
  * that resolves to a function value, such as a mixin reference.
  */
-export class FunctionValue extends Node<FunctionValueValue> {}
+export class FunctionValue extends Node<FunctionValueValue> {
+  type = 'FunctionValue'
+  shortType = 'functionvalue'
+  override allowRoot = true
+  override allowRuleRoot = true
+}
 export const functionvalue = defineType(FunctionValue, 'FunctionValue')

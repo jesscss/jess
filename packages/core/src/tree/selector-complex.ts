@@ -10,7 +10,7 @@ import { Nil } from './nil'
 import { isNode } from './util'
 import { PseudoSelector } from './selector-pseudo'
 import { type SelectorList } from './selector-list'
-import { type Selector } from './selector'
+import { Selector } from './selector'
 import type { SimpleSelector } from './selector-simple'
 import type { CompoundSelector } from './selector-compound'
 
@@ -29,8 +29,7 @@ export type ComplexSelectorValue = ComplexSelectorComponent[]
  * @example
  * #id > .class.class
  */
-export class ComplexSelector extends NodeList<ComplexSelectorComponent> implements Selector {
-  declare _isSelector: true
+export class ComplexSelector extends Selector<ComplexSelectorComponent> {
   /**
    * Essentially, a#id.class === a.class#id as being identical selectors,
    * so we normalize groups and combinators to be in Immutable Sets,

@@ -1,7 +1,6 @@
-import { defineType } from './node'
+import { defineType, type NoOverride } from './node'
 import { Rules } from './rules'
 import type { Context } from '../context'
-import { type Opaque } from 'type-fest'
 
 /**
  * The root node. Contains a collection of nodes.
@@ -22,7 +21,7 @@ export class Root extends Rules {
 
   toString(depth?: number | undefined) {
     /** Remove leading newlines */
-    return super.toString(depth).replace(/^\n+/, '') as Opaque<string>
+    return super.toString(depth).replace(/^\n+/, '') as NoOverride<string>
   }
 
   /** @todo - move to visitors */

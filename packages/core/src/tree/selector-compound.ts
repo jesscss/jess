@@ -5,7 +5,7 @@ import {
 } from './node'
 import type { Context } from '../context'
 import { Nil } from './nil'
-import { type Selector } from './selector'
+import { Selector } from './selector'
 import type { SimpleSelector } from './selector-simple'
 
 /**
@@ -15,33 +15,31 @@ import type { SimpleSelector } from './selector-simple'
  * Must have at least 2 selectors. Otherwise it would be collapsed.
  */
 const nonElementRegex = /^[.#:*[]/
-export class CompoundSelector extends NodeList<SimpleSelector> implements Selector {
-  declare _isSelector: true
+export class CompoundSelector extends Selector<SimpleSelector[]> {
 
-  find(needle: Selector): Selector[] | undefined {
-    if (needle.keySet.isDisjointFrom(this.keySet)) {
-      return
-    }
-    let haystackIterator = this.nodes(true)
-    let needleIterator = needle.nodes(true)
-    let searching = true
-    let matchList = new NodeList(undefined, { disableTracking: true })
+  // find(needle: Selector): Selector[] | undefined {
+  //   if (needle.keySet.isDisjointFrom(this.keySet)) {
+  //     return
+  //   }
+  //   let haystackIterator = this.nodes(true)
+  //   let needleIterator = needle.nodes(true)
+  //   let searching = true
+  //   let matchList = new NodeList(undefined, { disableTracking: true })
 
-    let haystackResult = haystackIterator.next()
-    let needleResult = needleIterator.next()
-    let haystackCompoundParent: CompoundSelector | undefined
-    let needleCompoundParent: CompoundSelector | undefined
-    while (searching) {
-      if (needleResult.done) {
-        searching = false
-        break
-      }
-    }
+  //   let haystackResult = haystackIterator.next()
+  //   let needleResult = needleIterator.next()
+  //   let haystackCompoundParent: CompoundSelector | undefined
+  //   let needleCompoundParent: CompoundSelector | undefined
+  //   while (searching) {
+  //     if (needleResult.done) {
+  //       searching = false
+  //       break
+  //     }
+  //   }
 
-    return this === needle ? [this] : undefined
-  }
+  //   return this === needle ? [this] : undefined
+  // }
 
-  _keySet: Set<string> | undefined
   get keySet() {
     /** @todo - build key set */
     return (this._keySet ??= new Set())

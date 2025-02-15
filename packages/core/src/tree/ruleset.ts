@@ -1,4 +1,4 @@
-import { Node, defineType } from './node'
+import { Node, SKIP_SETUP, defineType } from './node'
 import { type Rules } from './rules'
 import type { Context } from '../context'
 import { Nil } from './nil'
@@ -27,12 +27,21 @@ export type RulesetValue = {
  * }
  */
 export class Ruleset<T extends RulesetValue = RulesetValue> extends Node<T> {
+  type = 'Ruleset'
+  shortType = 'ruleset'
+  override allowRuleRoot = true
+  override allowRoot = true
+
+  get selector() {
+    return this.data.get('selector')
+  }
+
   /** @todo - remove? */
-  valueOf() {
+  override valueOf() {
     return this.selector instanceof Nil ? '' : this.selector.valueOf()
   }
 
-  toTrimmedString(depth: number = 0): string {
+  override toTrimmedString(depth: number = 0): string {
     // let space = ''.padStart(depth * 2)
     let { selector, rules } = this.value
     let output = ''
@@ -42,41 +51,40 @@ export class Ruleset<T extends RulesetValue = RulesetValue> extends Node<T> {
     return output
   }
 
-  async eval(context: Context): Promise<Ruleset | Nil> {
-    return await this.evalIfNot(context, async () => {
-      let rule = this.clone()
-      if (rule.guard) {
-        let guard = await rule.guard.eval(context)
-        if (!guard.value) {
-          return new Nil().inherit(this)
-        }
-        /** Remove once evaluated */
-        rule.guard = undefined
+  override async evalNode(context: Context): Promise<Ruleset | Nil> {
+    let rule = this.clone()
+    let guard = rule.data.get('guard')
+    if (guard) {
+      let bool = await guard.eval(context)
+      if (!bool.value) {
+        return new Nil()
       }
-      /** Allow a selector to signal that nesting should be collapsed */
-      const collapseNesting = context.opts.collapseNesting
-      let sels = (await this.selector.eval(context)) as Selector | Nil
-      let hoistToParent = this.options?.hoistToParent ?? context.opts.collapseNesting
-      if (hoistToParent) {
-        rule.options.hoistToParent = true
-      }
-      context.opts.collapseNesting = collapseNesting
+      /** Remove once evaluated */
+      rule.data.set('guard', undefined)
+    }
+    /** Allow a selector to signal that nesting should be collapsed */
+    const collapseNesting = context.opts.collapseNesting
+    let sels = (await this.selector.eval(context)) as Selector | Nil
+    let hoistToParent = this.options?.hoistToParent ?? context.opts.collapseNesting
+    if (hoistToParent) {
+      rule.options.hoistToParent = true
+    }
+    context.opts.collapseNesting = collapseNesting
 
-      if (sels instanceof Nil) {
-        return sels
-      }
-      rule.selector = sels
+    if (sels instanceof Nil) {
+      return sels
+    }
+    rule.data.set('selector', sels)
 
-      context.frames.unshift(rule)
-      rule.rules = await this.rules.eval(context)
-      context.frames.shift()
+    context.frames.unshift(rule)
+    rule.data.set('rules', await this.data.get('rules').eval(context))
+    context.frames.shift()
 
-      /** Remove empty rules */
-      if (rule.rules.visibleRules().length === 0) {
-        rule.visible = false
-      }
-      return rule
-    })
+    /** Remove empty rules */
+    if (rule.rules.visibleRules().length === 0) {
+      rule.visible = false
+    }
+    return rule
   }
 
   /** @todo move to ToCssVisitor */
@@ -102,8 +110,6 @@ export class Ruleset<T extends RulesetValue = RulesetValue> extends Node<T> {
   //   out.add(`},${JSON.stringify(this.location)})`)
   // }
 }
-Ruleset.prototype.allowRuleRoot = true
-Ruleset.prototype.allowRoot = true
 
 type RulesetParams = ConstructorParameters<typeof Ruleset>
 

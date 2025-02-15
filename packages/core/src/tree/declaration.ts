@@ -31,7 +31,12 @@ export type DeclarationValue = BaseDeclarationValue & {
  * Once evaluated, name must be a string
  */
 export class Declaration<O extends DeclarationOptions = DeclarationOptions, N extends DeclarationName = DeclarationName> extends BaseDeclaration<N, DeclarationValue, O> {
-  toTrimmedString(depth?: number) {
+  type = 'Declaration'
+  shortType = 'decl'
+  override allowRuleRoot = true
+  override requiredSemi = true
+
+  override toTrimmedString(depth?: number) {
     const { name, value, important } = this.value
     const { assign = ':' } = this.options
     let a = assign === ':' ? ':' : ` ${assign}`
@@ -41,31 +46,30 @@ export class Declaration<O extends DeclarationOptions = DeclarationOptions, N ex
     return `${name}${a}${value.toString(depth)}${important ? `${important}` : ''}`
   }
 
-  async eval(context: Context): Promise<Node> {
-    return await this.evalIfNot(context, async () => {
-      let node = this.clone()
-      node.evaluated = true
-      let { name, value } = node.value
-      /**
-       * Name may be a variable or a sequence containing a variable
-       *
-       * @todo - is this valid if rulesets pre-emptively evaluate names?
-       */
-      if (name instanceof Interpolated) {
-        node.data.set('name', await name.eval(context) as N)
+  override async evalNode(context: Context): Promise<Node> {
+    /** @todo - don't clone */
+    let node = this.clone()
+    node.evaluated = true
+    let { name, value } = node.value
+    /**
+     * Name may be a variable or a sequence containing a variable
+     *
+     * @todo - is this valid if rulesets pre-emptively evaluate names?
+     */
+    if (name instanceof Interpolated) {
+      node.data.set('name', await name.eval(context) as N)
+    } else {
+      node.data.set('name', name)
+    }
+    if (value instanceof Node) {
+      let newValue = await value.eval(context)
+      if (newValue instanceof Nil) {
+        return newValue.inherit(node)
       } else {
-        node.data.set('name', name)
+        node.data.set('value', newValue)
       }
-      if (value instanceof Node) {
-        let newValue = await value.eval(context)
-        if (newValue instanceof Nil) {
-          return newValue.inherit(node)
-        } else {
-          node.data.set('value', newValue)
-        }
-      }
-      return node
-    })
+    }
+    return node
   }
 
   /** @todo - move to visitors */
@@ -118,10 +122,6 @@ export const decl = (
    * @todo - for custom properties, this should be handled differently
   */
   const node = origDefine(value, options, location, treeContext)
-  /** @ts-expect-error data is protected */
   node.data.get('value').pre = 1
   return node
 }
-
-Declaration.prototype.requiredSemi = true
-Declaration.prototype.allowRuleRoot = true

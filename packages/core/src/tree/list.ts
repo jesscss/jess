@@ -1,6 +1,7 @@
 import { type Context } from '../context'
-import { defineType, NodeList, type Node } from './node'
+import { defineType, Node } from './node'
 import { compareNodeArray } from './util/compare'
+import { type Operator } from './util/calculate'
 
 export type ListOptions = {
   /**
@@ -19,20 +20,23 @@ export type ListOptions = {
  * or .sel, #id.class, [attr]
  * or one / two / three
  */
-export class List<T extends Node = Node> extends NodeList<T, ListOptions> {
-  toTrimmedString() {
+export class List<T extends Node = Node> extends Node<T[], ListOptions> {
+  type = 'List'
+  shortType = 'list'
+
+  override toTrimmedString() {
     let { sep = ',' } = this.options ?? {}
     return this.value.map(v => v.toString()).join(`${sep}`)
   }
 
-  compare(other: Node) {
+  override compare(other: Node) {
     if (other instanceof List) {
       return compareNodeArray(this.value, other.value)
     }
     return super.compare(other)
   }
 
-  operate(b: Node, op: string) {
+  override operate(b: Node, op: Operator) {
     if (op !== '+') {
       throw new Error(`List operation "${op}" not supported`)
     }
@@ -47,9 +51,7 @@ export class List<T extends Node = Node> extends NodeList<T, ListOptions> {
   }
 
   /** @todo? Lists should collapse nested lists? */
-  async eval(context: Context): Promise<List<T>> {
-    return await (super.eval(context) as Promise<List<T>>)
-  }
+  // override async evalNode(context: Context): Promise<List<T>>
 
   /** @todo move to ToCssVisitor */
   // toCSS(context: Context, out: OutputCollector) {

@@ -1,5 +1,5 @@
 import { type Context } from '../context'
-import { Node, defineType } from './node'
+import { Node, defineType, ROOT_DATA } from './node'
 import { Bool } from './bool'
 import { Nil } from './nil'
 
@@ -19,19 +19,10 @@ export type ConditionOptions = {
 }
 
 export class Condition extends Node<ConditionValue, ConditionOptions> {
-  get left() {
-    return this.data.get('value')[0]
-  }
+  type = 'Condition'
+  shortType = 'condition'
 
-  get op() {
-    return this.data.get('value')[1]
-  }
-
-  get right() {
-    return this.data.get('value')[2]
-  }
-
-  toTrimmedString() {
+  override toTrimmedString() {
     let [left, op, right] = this.value
     let output = `${left}${op ? ` ${op} ${right}` : ''}`
     if (this.options?.negate) {
@@ -40,7 +31,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     return output
   }
 
-  async eval(context: Context): Promise<Bool> {
+  override async evalNode(context: Context): Promise<Bool> {
     let [left, op, right] = this.value
     let negated = !!this.options?.negate
 
@@ -49,7 +40,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     const getBool = (node: Node) => {
       if (node instanceof Bool) {
         if (negated) {
-          node.value = !node.value
+          node.data.set(ROOT_DATA, !node.value)
         }
         return node
       }
@@ -87,7 +78,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
       }
     }
     let result = getResult()
-    return new Bool(negated ? !result : result).inherit(this)
+    return new Bool(negated ? !result : result)
   }
 }
 export const condition = defineType(Condition, 'Condition')

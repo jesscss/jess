@@ -3,8 +3,7 @@ import {
   defineType
 } from './node'
 import { type Context } from '../context'
-import { type Selector } from './selector'
-import { List } from './list'
+import { Selector } from './selector'
 
 // export interface SelectorList extends List<Selector> {
 //   get value(): []
@@ -12,39 +11,35 @@ import { List } from './list'
 // }
 
 /** Constructs */
-export class SelectorList extends List<Selector> implements Selector {
+export class SelectorList extends Selector<Selector[]> {
   find(needle: Selector): Selector[] | undefined {
     throw new Error('Method not implemented.')
   }
 
   declare _isSelector: true
 
-  _keySet: Set<string> | undefined
   get keySet(): Set<string> {
     /** @todo - build key set */
     return (this._keySet ??= new Set())
   }
 
   /** @todo - put in whitespace and line breaks */
-  toTrimmedString(depth: number = 0) {
+  override toTrimmedString(depth: number = 0) {
     let space = ''.padStart(depth * 2)
     return this.value.map(v => v.toString(depth)).join(`,\n${space}`)
   }
 
-  _valueOf: string | undefined
-  valueOf() {
+  override valueOf() {
     return this.value.map(v => v.valueOf()).sort().join(',')
   }
 
-  async eval(context: Context): Promise<SelectorList | Selector> {
-    return await this.evalIfNot<SelectorList | Selector>(context, async () => {
-      const list = await (super.eval(context) as Promise<SelectorList>)
-      const { value } = list
-      if (value.length === 1) {
-        return value[0]!
-      }
-      return list
-    })
+  override async evalNode(context: Context): Promise<SelectorList | Selector> {
+    const list = await (super.eval(context) as Promise<SelectorList>)
+    const { value } = list
+    if (value.length === 1) {
+      return value[0]!
+    }
+    return list
   }
 }
 

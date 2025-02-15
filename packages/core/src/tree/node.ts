@@ -7,7 +7,7 @@ import { SKIP, type Visitor } from '../visitor'
 import type { Comment } from './comment'
 import type { Token } from './token'
 import { type Operator } from './util/calculate'
-import type { Constructor, Writable, Class, ValueOf, Opaque, IsUnknown, UnionToTuple } from 'type-fest'
+import type { Constructor, Writable, Class, ValueOf, Tagged, IsUnknown, UnionToTuple, OmitIndexSignature, Exact, ConditionalExcept } from 'type-fest'
 import { BiMap, LinkedList } from './util/collections'
 import { matchesNode } from './util/is-node'
 import { type Nil } from './nil'
@@ -39,7 +39,7 @@ type NodeVisitFunction = (n: Node) => NodeVisitReturn
 export type NodeOptions = Record<string, boolean | string | number | undefined> & AllNodeOptions
 export type NodeValue = Primitive | Node | Node[]
 export type NodeMap = Map<string, NodeValue>
-export type NodeValueObject = Record<string, NodeValue>
+export type NodeValueObject = Record<string, NodeValue | undefined>
 
 export type NodeMapArray<
   T extends NodeValueObject = NodeValueObject,
@@ -112,7 +112,25 @@ type TypedMap<
   values(): IterableIterator<V>
 }
 
-const ROOT_DATA = '__root'
+
+/**
+ * Removes NodeValue from the type if it has a defined object type
+ */
+type TypedNodeData<
+  T extends Record<string, any> = Record<string, any>,
+  K extends keyof T = keyof T
+> = {
+    get<U extends K>(key: U): NodeValue extends T[U] ? never : T[U]
+    set<U extends K>(key: U, value: NodeValue | undefined, nodeIndex?: number): void
+  }
+  // & {
+  //   [P in K as 'set']: <U extends P>(key: U, value: T[U], nodeIndex?: number) => void
+  // }
+
+type GetTypedNodeData<T extends NodeTypes> =
+  Omit<NodeData<T>, 'get' | 'set'> & TypedNodeData<NodeMapType<T>>
+
+export const ROOT_DATA = '__root'
 
 /**
  * @todo - this allows excess properties on T,
@@ -120,34 +138,11 @@ const ROOT_DATA = '__root'
  */
 export type NodeMapType<T> = T extends NodeValueObject ? T : { __root: T }
 
-type CollectionPair<T> =
-  T extends Map<infer K, infer V>
-    ? [K, V]
-    : T extends NodeList<infer N> ? [number, N] : never
-
 type Values<T, K extends keyof T = keyof T> = T[K]
 
 export type NodeValueArray<T extends NodeValueObject> = UnionToTuple<Values<{
   [K in keyof T]: [K, T[K]]
 }>>
-
-export type NodeValueItem<T extends NodeValueObject> = Values<{
-  [K in keyof T]: [K, T[K]]
-}>
-
-export type NodeValueArg<M extends NodeValueObject> =
-  IsUnknown<M['value']> extends true
-    ? TypedMap<M> | NodeValueArray<M>
-    : TypedMap<M> | NodeValueArray<M> | M['value']
-
-export type NodeDataOld<T> =
-  T extends Node[]
-    ? NodeList<T[0]>
-    : T extends NodeValueObject
-      ? TypedMap<T>
-      : T extends NodeValue
-        ? TypedMap<NodeMapType<T>>
-        : never
 
 type NodeInValue<T extends NodeTypes> = T | NodeData<T>
 
@@ -160,37 +155,8 @@ type NarrowTypes<T> =
       ? T
       : never
 
-// eslint-disable-next-line @typescript-eslint/naming-convention
-let NODE_INDEX = 0
+export type NoOverride<T> = Tagged<T, 'NoOverride'>
 
-interface FinalizationRegistryInterface {
-  register(target: any, value: any): void
-}
-
-type FinalizationRegistryClass = new (callback: (value: any) => void) => FinalizationRegistryInterface
-
-declare const FinalizationRegistry: FinalizationRegistryClass
-
-/**
- * 
- * @todo - remove all this index abstraction, it's too hard to reason about :(
- *
- * @note Do we need this? It's still fairly new
- * and maybe this will avoid a browser issue?
- */
-if (!('FinalizationRegistry' in globalThis)) {
-  (globalThis as any).FinalizationRegistry = class FinalizationRegistry {
-    register() {}
-  }
-}
-
-class NodeMeta {
-  constructor(
-    public index: number,
-    public version: number,
-    public parentIndex?: typeof NODE_INDEX | undefined
-  ) {}
-}
 /**
  * The underlying type for all Jess nodes
  */
@@ -199,34 +165,6 @@ export abstract class Node<
   O extends NodeOptions = NodeOptions,
   T extends NarrowTypes<Type> = NarrowTypes<Type>,
 > {
-  /** Tracks all created Nodes by their indices */
-  static indexMap = new BiMap<typeof NODE_INDEX, Node>()
-  static metaMap = new Map<typeof NODE_INDEX, NodeMeta>()
-  /** For re-using indices so we don't exceed the maximum number */
-  static availableIndices = new Stack<number>()
-  static cleanupIndex = (index: number) => {
-    Node.indexMap.delete(index)
-    Node.metaMap.delete(index)
-    Node.availableIndices.push(index)
-  }
-
-  /** Prevent memory leaks by cleaning up node registry */
-  static _registry: FinalizationRegistryInterface | undefined
-  static get registry() {
-    return (
-      this._registry ??= new FinalizationRegistry(([index, version]: [index: number, version: number]) => {
-        let meta = Node.metaMap.get(index)
-        if (meta?.version === version) {
-          Node.cleanupIndex(index)
-        }
-      })
-    )
-  }
-
-  static getIndex() {
-    return Node.availableIndices.pop() ?? ++NODE_INDEX
-  }
-
   private _location: LocationInfo | [] | undefined
   get location() {
     return (this._location ??= [])
@@ -244,8 +182,8 @@ export abstract class Node<
   /**
    * Assigned on the prototype, make sure we don't initialize
    */
-  type = 'Node'
-  shortType = 'node'
+  abstract type: string
+  abstract shortType: string
 
   /** All types of the prototype chain */
   _types: Set<string> | undefined
@@ -262,12 +200,6 @@ export abstract class Node<
     return types
   }
 
-  declare _isSelector: boolean
-  /** Indicates if this can be used wherever a selector is used */
-  isSelector(): this is Selector {
-    return this._isSelector
-  }
-
   /**
    * Whitespace or comments before or after a Node.
    *
@@ -282,55 +214,9 @@ export abstract class Node<
   post: NodeList | 1 | 0 | undefined
 
   visible = true
-  private _index: number | undefined
-  /**
-   * The first time we get the index, we register it
-   * in the indexMap. This is done lazily so we can
-   * create nodes that have no side effects until
-   * they are added to lists / trees, which requires
-   * tracking.
-   */
-  get index() {
-    if (this._index) {
-      return this._index
-    }
-    let { index, version } = this._setIndex(Node.getIndex())
-    Node.registry.register(this, [index, version])
-    return index
-  }
-
-  set index(val: number) {
-    if (this._index === val) {
-      return
-    }
-    this._setIndex(val)
-  }
-
-  private _setIndex(val: number) {
-    /** Remove previous registered index */
-    let currentIndex = this._index
-    if (currentIndex) {
-      Node.cleanupIndex(currentIndex)
-    }
-    this.data.nodeIndex = val
-    let meta = Node.metaMap.get(val)
-    if (meta) {
-      meta.version++
-    } else {
-      meta = new NodeMeta(val, 1)
-      Node.metaMap.set(val, meta)
-    }
-    this._index = val
-    Node.indexMap.set(val, this)
-    return meta
-  }
-
   evaluated = false
-
-  /** Assigned on the prototype */
-  declare allowRoot: boolean
-  /** Assigned on the prototype */
-  declare allowRuleRoot: boolean
+  allowRoot = false
+  allowRuleRoot = false
 
   /**
    * If the node must have a semi separator before
@@ -339,7 +225,7 @@ export abstract class Node<
    *
    * Defined on the prototype
    */
-  declare requiredSemi: boolean
+  requiredSemi = false
 
   /** Used by Rules */
   rootRules: NodeList | undefined
@@ -347,7 +233,7 @@ export abstract class Node<
   /**
    * This should always represent the `data` of the Node
    */
-  data!: NodeData<T>
+  data!: GetTypedNodeData<T>
   parentData: NodeData | undefined
 
   nil!: () => Nil
@@ -369,8 +255,7 @@ export abstract class Node<
     location?: LocationInfo,
     treeContext?: TreeContext
   ) {
-    this.data = new NodeData(this, value)
-    this._location = location
+    this.data = new NodeData(this, value) as unknown as GetTypedNodeData<T>
     this._treeContext = treeContext
     this._options = options
   }
@@ -385,6 +270,10 @@ export abstract class Node<
       return data.get(ROOT_DATA) as Type
     }
     return Object.fromEntries(data.entries()) as Type
+  }
+
+  set value(val: NodeInValue<T>) {
+    this.data.setAllData(val)
   }
 
   /**
@@ -407,11 +296,12 @@ export abstract class Node<
    */
   async processNodesAsync(func: (n: Node) => Node | Promise<Node>) {
     let promises: Array<Promise<void>> = []
-    for (let [key, nodeVal] of this.data.entries()) {
+    const data = this.data
+    for (let [key, nodeVal, nodeIndex] of this.data.entries()) {
       if (nodeVal instanceof Node) {
         /** Assume that the type will still be valid */
         promises.push(
-          (async () => this.data.set(key, await func(nodeVal)))()
+          (async () => (data as any).set(key, await func(nodeVal), nodeIndex))()
         )
       }
     }
@@ -419,12 +309,10 @@ export abstract class Node<
   }
 
   /**
-   * Mutate nodes in place, used in walkNodes
-   *
-   * @todo - rewrite to use NodeList
+   * Mutate nodes in place, used in... just pre and post now?
    */
-  private _processNodeData(
-    list: NodeData,
+  private _processNodeList(
+    list: NodeList,
     fn: NodeVisitFunction,
     shallow?: boolean,
     visitPrePost?: boolean,
@@ -436,7 +324,7 @@ export abstract class Node<
       if (returnVal === ABORT) {
         return ABORT
       } else if (returnVal === REMOVE) {
-        node.remove()
+        list.removeItem(node)
       } else if (returnVal instanceof Node && returnVal !== node) {
         list.set(key, returnVal)
       }
@@ -456,7 +344,7 @@ export abstract class Node<
 
   /** An iterator for all node children */
   * children(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
-    for (let nodeVal of this.data.reverse()) {
+    for (let nodeVal of this.data.values(reverse)) {
       if (nodeVal instanceof Node) {
         yield nodeVal
         if (deep) {
@@ -485,26 +373,15 @@ export abstract class Node<
     const data = this.data
     if (visitPrePost) {
       let { pre, post } = this
-      if (pre instanceof NodeData) {
-        this._processNodeData(pre, func, true, false, reverse)
+      if (pre instanceof NodeList) {
+        this._processNodeList(pre, func, true, false, reverse)
       }
-      if (post instanceof NodeData) {
-        this._processNodeData(post, func, true, false, reverse)
-      }
-    }
-    let entriesMethod = data instanceof NodeData
-      ? reverse ? data.reverseEntries : data.entries
-      : data.entries
-
-    for (const [key, val] of this.data.entries()) {
-      if (val instanceof LinkedList) {
-        for (let nodeIndex of val.reverse()) {
-          let returnVal = func(Node.indexMap.get(nodeIndex)!)
-        }
+      if (post instanceof NodeList) {
+        this._processNodeList(post, func, true, false, reverse)
       }
     }
 
-    for (const [key, nodeVal] of entriesMethod()) {
+    for (const [key, nodeVal, nodeIndex] of data.entries(reverse)) {
       if (nodeVal instanceof Node) {
         let returnVal = func(nodeVal)
         if (returnVal === ABORT) {
@@ -513,10 +390,10 @@ export abstract class Node<
           if (data instanceof NodeList) {
             data.removeItem(nodeVal)
           } else {
-            data.set(key, this.nil().inherit(nodeVal))
+            (data as any).set(key, this.nil().inherit(nodeVal), nodeIndex)
           }
         } else if (returnVal instanceof Node && returnVal !== nodeVal) {
-          this.data.set(key, returnVal)
+          (data as any).set(key, returnVal, nodeIndex)
         }
         if (!shallow) {
           nodeVal.walkNodes(func, false, reverse, visitPrePost)
@@ -592,21 +469,27 @@ export abstract class Node<
     )
     this.stripPrePost(this.pre)
     this.stripPrePost(this.post)
-    /** Copied nodes are assigned a new index */
-    newNode.index = ++NODE_INDEX
     return newNode
   }
 
   /**
-   * Individual nodes will specify type
-   * when overriding eval()
+   * This is the method all nodes will override.
+   * Individual nodes will specify / narrow return type
+   */
+  async evalNode(context: Context): Promise<Node> {
+    return this
+  }
+
+  /**
+   * DO NOT OVERRIDE THIS METHOD
    */
   async eval(context: Context): Promise<Node> {
-    return await this.evalIfNot(context, async () => {
-      let node = this.clone()
-      await node.processNodesAsync(async (n) => await n.eval(context))
-      return node
-    })
+    if (!this.evaluated) {
+      const returnNode = await this.evalNode(context)
+      returnNode.inherit(this)
+      returnNode.evaluated = true
+    }
+    return this
   }
 
   /**
@@ -636,7 +519,6 @@ export abstract class Node<
     this.evaluated = node.evaluated
     this.pre = node.pre
     this.post = node.post
-    this.index = node.index
     return this
   }
 
@@ -682,13 +564,10 @@ export abstract class Node<
    * @note toString() will, by default, include pre/post
    * white-space and comments, to make serialization
    * easy.
-   *
-   * @note The Opaque type is just a sanity check to
-   * make sure we don't override
    */
-  toString(depth?: number): Opaque<string> { // eslint-disable-line @typescript-eslint/naming-convention
+  toString(depth?: number): NoOverride<string> {
     if (!this.visible) {
-      return '' as Opaque<string>
+      return '' as NoOverride<string>
     }
     let output = ''
     output += this.processPrePost('pre')
@@ -697,7 +576,7 @@ export abstract class Node<
     if (this.options?.semi === true) {
       output += ';'
     }
-    return output as Opaque<string>
+    return output as NoOverride<string>
   }
 
   /**
@@ -778,54 +657,6 @@ export interface NodeListOptions extends NodeOptions {
 //   ) {}
 // }
 
-export const PARENT_NODE: unique symbol = Symbol('PARENT_NODE')
-/**
- * @note All Node references in the tree are indirect and are done by number.
- * This is so replacements
- */
-export class NodeTreeNode {
-  constructor(
-    public node: typeof NODE_INDEX,
-    public previous?: typeof NODE_INDEX,
-    public next?: typeof NODE_INDEX
-  ) {}
-}
-
-class NodeRef {
-  constructor(
-    public index: typeof NODE_INDEX
-  ) {}
-}
-
-const lookupTypes = ['Ruleset', 'Mixin', 'VarDeclaration', 'Declaration'] as const
-export type LookupTypes = typeof lookupTypes[number]
-
-/**
- * The inner collection of a NodeData instance, which can also contain linked lists of nodes.
- */
-export class NodeDataMap {
-  parentData: NodeData | undefined
-  private items = new Map<string, any>()
-
-  addNode(key: string, val: Node) {
-    let list = this.items.get(key)
-    if (list instanceof LinkedList) {
-      list.push(val.index)
-    } else {
-      this.items.set(key, new LinkedList([val.index]))
-    }
-  }
-
-  /** For parity, this only returns node indices */
-  * reverse() {
-    for (let value of this.items.values()) {
-      if (value instanceof LinkedList) {
-        yield * value.reverse()
-      }
-    }
-  }
-}
-
 type NodeDataData<T extends NodeTypes> =
   T extends NodeValueObject
     ? TypedMap<NodeMapType<T>>
@@ -860,15 +691,15 @@ export class NodeData<
     return key === ROOT_DATA
   }
 
-  get<K extends keyof M = keyof M>(key: K): M[K] {
+  get(key: string): any {
     const data = this.data
     if (data instanceof Map) {
       if (key === ROOT_DATA) {
         throw new Error('Cannot get root data from a Map NodeData.')
       }
-      return data.get(key)
+      return data.get(key) as never
     }
-    return data as M[K]
+    return data as never
   }
 
   /** Process nodes if they exist */
@@ -895,9 +726,8 @@ export class NodeData<
     return val
   }
 
-  set(key: string, val: Node, nodeListIndex: number): void
-  set<K extends keyof M = keyof M>(key: K, val: M[K]): void
-  set(key: string, val: NodeValue, nodeListIndex?: number) {
+  /** @todo - fix type to string type the setter */
+  set(key: string, val: NodeValue | undefined, nodeListIndex?: number) {
     let data = this.data as Map<any, any> | NodeList
     let rootData = key === ROOT_DATA
 
@@ -928,9 +758,13 @@ export class NodeData<
     public parentNode: Node,
     value?: NodeInValue<T>
   ) {
+    this.setAllData(value)
+  }
+
+  setAllData(value?: NodeInValue<T>) {
     if (value && isPlainObject(value)) {
       for (let [key, val] of Object.entries(value)) {
-        this.set(key as keyof M, val)
+        this.set(key, val)
       }
     }
     if (value !== undefined) {
@@ -944,27 +778,34 @@ export class NodeData<
 
 
   private _dataValues(asEntries?: false, reverse?: boolean): Generator<NodeValue | undefined>
-  private _dataValues(asEntries: true, reverse?: boolean): Generator<[string | number, NodeValue | undefined]>
+  private _dataValues(asEntries: true, reverse?: boolean): Generator<[string, NodeValue | undefined, nodeIndex?: number]>
   private * _dataValues(
     asEntries?: boolean,
     reverse?: boolean
-  ): Generator<NodeValue | undefined | [string | number, NodeValue | undefined]> {
+  ): Generator<NodeValue | undefined | [string, NodeValue | undefined, nodeIndex?: number]> {
     const data = this.data
+    const listMethod = reverse ? 'reverseEntries' : 'entries'
     if (data instanceof Map) {
-      asEntries ? yield * data.entries() : yield * data.values()
+      for (let [key, val] of data.entries()) {
+        if (val instanceof NodeList) {
+          for (let [nodeIndex, node] of val[listMethod]()) {
+            yield asEntries ? [key, node, nodeIndex] : node
+          }
+        } else {
+          yield asEntries ? [key, val] : val
+        }
+      }
     } else if (data instanceof NodeList) {
-      if (asEntries) {
-        reverse ? yield * data.reverseEntries() : yield * data.entries()
-      } else {
-        reverse ? yield * data.reverse() : yield * data.values()
+      for (let [nodeIndex, node] of data[listMethod]()) {
+        yield asEntries ? [ROOT_DATA, node, nodeIndex] : node
       }
     } else {
       asEntries ? yield [ROOT_DATA, data as NodeValue] : yield data as NodeValue
     }
   }
 
-  * values() {
-    for (let value of this._dataValues()) {
+  * values(reverse?: boolean) {
+    for (let value of this._dataValues(false, reverse)) {
       /** Exclude `undefined` as a value */
       if (value !== undefined) {
         yield value
@@ -976,16 +817,6 @@ export class NodeData<
     for (let list of this._dataValues()) {
       if (list instanceof NodeList) {
         list.removeItem(n)
-      }
-    }
-  }
-
-  /** Like values() but reverse */
-  * reverse() {
-    for (let value of this._dataValues(false, true)) {
-      /** Exclude `undefined` as a value */
-      if (value !== undefined) {
-        yield value
       }
     }
   }
@@ -1025,9 +856,8 @@ export class NodeData<
     }
   }
 
-  /** @todo - return string key or ROOT_DATA key, not string | number */
-  * entries() {
-    for (let value of this._dataValues(true)) {
+  * entries(reverse?: boolean) {
+    for (let value of this._dataValues(true, reverse)) {
       /** Exclude `undefined` as a value */
       if (value !== undefined) {
         yield value

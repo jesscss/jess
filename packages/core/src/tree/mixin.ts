@@ -43,7 +43,12 @@ export type MixinOptions = {
  */
 
 export class Mixin extends Ruleset<MixinValue> {
-  toTrimmedString(depth: number = 0): string {
+  type = 'Mixin'
+  shortType = 'mixin'
+  allowRuleRoot = false
+  allowRoot = false
+
+  override toTrimmedString(depth: number = 0): string {
     let { selector, rules, params, guard } = this.value
     let space = ''.padStart(depth * 2)
     let output = `@@ ${selector}`
@@ -99,8 +104,6 @@ export class Mixin extends Ruleset<MixinValue> {
   //   }
   // }
 }
-Mixin.prototype.allowRuleRoot = false
-Mixin.prototype.allowRoot = false
 
 /** Not sure why the Class<Node> assertion was necessary */
 

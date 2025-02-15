@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "composite": true,
+    "noImplicitOverride": true,
     "outDir": "./lib",
     "rootDir": "."
   },

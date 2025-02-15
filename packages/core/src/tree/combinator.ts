@@ -1,13 +1,17 @@
-import { Node, defineType } from './node'
+import { defineType } from './node'
+import { Selector } from './selector'
 
-export class Combinator extends Node<string> {
+export class Combinator extends Selector<string> {
+  type = 'Combinator'
+  shortType = 'co'
+
   /** To make forming Sets easier */
-  valueOf() {
+  override valueOf() {
     return this.value
   }
 
-  get keys() {
-    return this.value
+  get keySet() {
+    return new Set([this.value])
   }
 
   normalize() {

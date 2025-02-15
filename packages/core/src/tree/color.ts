@@ -25,6 +25,9 @@ type ColorParameters = ConstructorParameters<typeof Node<string | ColorFormat>>
  * output type.
  */
 export class Color extends Node<string | ColorFormat> {
+  type = 'Color'
+  shortType = 'color'
+
   private _rgb: [number, number, number] | undefined
   private _hsl: [number, number, number] | undefined
   private _alpha: number = 1
@@ -184,7 +187,7 @@ export class Color extends Node<string | ColorFormat> {
     return [h! * 360, s, l]
   }
 
-  toTrimmedString() {
+  override toTrimmedString() {
     let { value } = this
     /** This is a hex value or keyword, output as-is */
     if (typeof value === 'string') {
@@ -235,7 +238,7 @@ export class Color extends Node<string | ColorFormat> {
     return `${colorFunction}(${args.join(', ')})`
   }
 
-  operate(b: Node, op: Operator, context?: Context | undefined): Color {
+  override operate(b: Node, op: Operator, context?: Context | undefined): Color {
     let bNode = b
     if (isNode(b, 'Dimension')) {
       const [bVal, bUnit] = b.value

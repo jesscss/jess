@@ -17,20 +17,20 @@ export interface Nil extends Node<''> {
  * which need dynamically-linked nodes
  */
 export class Nil extends Node<''> {
-  _evaluated: true = true
+  type = 'Nil'
+  shortType = 'nil'
+  allowRoot = true
+  allowRuleRoot = true
 
   constructor(
     value?: any,
     options?: NodeOptions,
-    location?: LocationInfo | 0,
+    location?: LocationInfo,
     treeContext?: TreeContext) {
     super('', options, location, treeContext)
   }
 
-  async eval() { return this }
-  toTrimmedString() { return '' }
+  override toTrimmedString() { return '' }
 }
-Nil.prototype.allowRoot = true
-Nil.prototype.allowRuleRoot = true
 
 export const nil = defineType(Nil, 'Nil')
