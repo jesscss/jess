@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/require-array-sort-compare */
 import {
   defineType,
-  NodeList
+  ROOT_DATA
 } from './node'
 import type { Context } from '../context'
 import { Nil } from './nil'
@@ -16,45 +16,15 @@ import type { SimpleSelector } from './selector-simple'
  */
 const nonElementRegex = /^[.#:*[]/
 export class CompoundSelector extends Selector<SimpleSelector[]> {
-
-  // find(needle: Selector): Selector[] | undefined {
-  //   if (needle.keySet.isDisjointFrom(this.keySet)) {
-  //     return
-  //   }
-  //   let haystackIterator = this.nodes(true)
-  //   let needleIterator = needle.nodes(true)
-  //   let searching = true
-  //   let matchList = new NodeList(undefined, { disableTracking: true })
-
-  //   let haystackResult = haystackIterator.next()
-  //   let needleResult = needleIterator.next()
-  //   let haystackCompoundParent: CompoundSelector | undefined
-  //   let needleCompoundParent: CompoundSelector | undefined
-  //   while (searching) {
-  //     if (needleResult.done) {
-  //       searching = false
-  //       break
-  //     }
-  //   }
-
-  //   return this === needle ? [this] : undefined
-  // }
+  type = 'CompoundSelector'
+  shortType = 'compound'
 
   get keySet() {
     /** @todo - build key set */
     return (this._keySet ??= new Set())
   }
-  // get keys() {
-  //   let keys = this._keys
-  //   if (!keys) {
-  //     let { value } = this
-  //     Object.defineProperty(this, '_keys', { value: keys = value.flatMap(n => n.keys) as Keys })
-  //   }
-  //   return keys
-  // }
 
-  _valueOf: string | undefined
-  valueOf() {
+  override valueOf() {
     let value = this._valueOf
     if (!value) {
       value = this.value
@@ -77,26 +47,24 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return value
   }
 
-  async eval(context: Context): Promise<CompoundSelector | Selector | Nil> {
-    return await this.evalIfNot(context, async () => {
-      const sel = this.clone()
-      let valuePromises = sel.value
-        .map(async n => await n.eval(context))
+  override async evalNode(context: Context): Promise<CompoundSelector | Selector | Nil> {
+    const sel = this.clone()
+    let valuePromises = sel.value
+      .map(async n => await n.eval(context))
 
-      const returnVal = (
-        (await Promise.all(valuePromises)).filter(n => n && !(n instanceof Nil))
-      )
-      if (returnVal.length === 0) {
-        return (new Nil()).inherit(this)
-      }
-      if (returnVal.length === 1) {
-        return returnVal[0]!.inherit(this) as Selector
-      }
+    const returnVal = (
+      (await Promise.all(valuePromises)).filter(n => n && !(n instanceof Nil))
+    )
+    if (returnVal.length === 0) {
+      return (new Nil()).inherit(this)
+    }
+    if (returnVal.length === 1) {
+      return returnVal[0]!.inherit(this) as Selector
+    }
 
-      this.setMany(returnVal as SimpleSelector[])
+    this.data.set(ROOT_DATA, returnVal as SimpleSelector[])
 
-      return sel
-    })
+    return sel
   }
 
   /** @todo move to visitors */
@@ -116,7 +84,5 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   //   out.add('])')
   // }
 }
-
-CompoundSelector.prototype._isSelector = true
 
 export const compound = defineType(CompoundSelector, 'CompoundSelector', 'compound')

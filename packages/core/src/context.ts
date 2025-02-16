@@ -5,6 +5,7 @@ import type { Declaration, Root } from './tree'
 import { type Operator } from './tree/util/calculate'
 import type { PluginObject } from './plugin'
 import * as path from 'node:path'
+import { Stack } from 'data-structure-typed'
 
 export const enum MathMode {
   /**
@@ -36,6 +37,8 @@ export interface ContextOptions {
    * the runtime module to generate CSS patches."
    *
    * @todo - Change this behavior to "live expressions"
+   * i.e. change compilation to always be static, but
+   * generate a separate module for calculated CSS variables.
    */
   dynamic?: boolean
   collapseNesting?: boolean
@@ -75,7 +78,8 @@ const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('')
 
 /**
  * @todo - Redo:
- *   1. Create a hash of the file that is filename + file bytes
+ *   1. Create a hash of the file path; that way hashes
+ *      are unique per file, but also repeatable / predictable.
  *   2. Append file (module) hash after class name
  */
 export const generateId = (length = 8) => {
@@ -153,8 +157,6 @@ export class TreeContext implements TreeContextOptions {
     this.opts = rest
   }
 }
-let classInts = BigInt(0)
-let inc = BigInt(1)
 
 /**
  * .a.b.c
@@ -176,20 +178,6 @@ let inc = BigInt(1)
  * There should only ever be one Context object per
  */
 export class Context {
-  /**
-   * Selector elements (simple selectors and combinators)
-   * mapped to incremented bigint
-   *
-   * When extending, we can use this to search for
-   * matches within a selector sequence, and then
-   * map the match position (and range) back to the
-   * selector sequence.
-   *
-   * @todo - probably abandon?
-   */
-  static selectorKeys = new Map<string, bigint>()
-  static keysFromSelector = new Map<bigint, string | bigint>()
-
   readonly plugins: PluginObject[]
   readonly opts: ContextOptions
 
@@ -198,6 +186,8 @@ export class Context {
   /**
    * When getting vars, the current declaration is ommitted
    * to prevent recursion errors
+   *
+   * @todo - This needs to be a Set, and should be used in the lookup resolver
    */
   declarationScope: Declaration | undefined
 
@@ -213,21 +203,16 @@ export class Context {
   id = generateId()
   varCounter: number = 0
 
-  _classMap: Map<string, string> | undefined
+  private _classMap: Map<string, string> | undefined
   get classMap() {
-    let value = this._classMap
-    if (!value) {
-      value = new Map<string, string>()
-      Object.defineProperty(this, '_classMap', { value })
-    }
-    return value
+    return (this._classMap ??= new Map())
   }
 
   /**
    * The ruleset (qualified rule) frames. This is used to resolve
    * '&' when we need to.
    */
-  frames: Ruleset[] = []
+  frames = new Stack<Ruleset<any>>()
 
   /** Keeps track of the indention level */
   indent = 0
@@ -255,7 +240,7 @@ export class Context {
    * be preserved as-is and not evaluated, except for
    * interpolated expressions.
   */
-  inCustom: boolean
+  inCustom: boolean | undefined
 
   /**
    * In a selector
@@ -264,10 +249,10 @@ export class Context {
   // inSelector: boolean
 
   /** A flag set by expressions */
-  canOperate: boolean
+  canOperate: boolean | undefined
 
   /** A flag set when evaluating conditions */
-  isDefault: boolean
+  isDefault: boolean | undefined
 
   constructor(opts: ContextOptions = {}, plugins?: PluginObject[]) {
     this.opts = opts
@@ -371,22 +356,6 @@ export class Context {
     }
     this.classMap.set(name, mapVal)
     return `.${mapVal}`
-  }
-
-  /**
-   * This is only done for simple selectors and combinators
-   * to create a normalized key for searching / extends.
-   */
-  registerSelectorElement(el: string) {
-    let key = Context.selectorKeys.get(el)
-    if (key) {
-      return key
-    }
-    key = (classInts + inc)
-
-    Context.selectorKeys.set(el, key)
-    Context.keysFromSelector.set(key, el)
-    return key
   }
 
   getVar() {

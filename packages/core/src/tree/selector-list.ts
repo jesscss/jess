@@ -5,18 +5,14 @@ import {
 import { type Context } from '../context'
 import { Selector } from './selector'
 
-// export interface SelectorList extends List<Selector> {
-//   get value(): []
-//   set value(v: T[])
-// }
-
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
+  type = 'SelectorList'
+  shortType = 'sellist'
+
   find(needle: Selector): Selector[] | undefined {
     throw new Error('Method not implemented.')
   }
-
-  declare _isSelector: true
 
   get keySet(): Set<string> {
     /** @todo - build key set */
@@ -42,7 +38,5 @@ export class SelectorList extends Selector<Selector[]> {
     return list
   }
 }
-
-SelectorList.prototype._isSelector = true
 
 export const sellist = defineType(SelectorList, 'SelectorList', 'sellist')

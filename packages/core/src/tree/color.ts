@@ -241,7 +241,7 @@ export class Color extends Node<string | ColorFormat> {
   override operate(b: Node, op: Operator, context?: Context | undefined): Color {
     let bNode = b
     if (isNode(b, 'Dimension')) {
-      const [bVal, bUnit] = b.value
+      const { number: bVal, unit: bUnit } = b.value
       if (bUnit) {
         throw new TypeError(`Cannot convert "${b}" to a color`)
       }

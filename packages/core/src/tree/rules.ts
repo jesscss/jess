@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/prefer-readonly */
-import { Node, defineType } from './node'
+import { Node, type NodeList, defineType } from './node'
 import { Declaration } from './declaration'
 import {
   BaseDeclaration,
   type BaseDeclarationValue,
-  type Name
+  type DeclarationName
 } from './base-declaration'
 import {
   type VarDeclarationOptions
@@ -16,7 +16,7 @@ import { type Ruleset } from './ruleset'
 import { type AtRule } from './at-rule'
 import { Nil } from './nil'
 import { type Root } from './root'
-import { LinkedList } from './util/collections'
+// import { LinkedList } from './util/collections'
 
 export const enum Priority {
   None = 0,
@@ -33,7 +33,7 @@ type QueueItem = {
   pos: number
   nameOnly?: true
 } | {
-  node: BaseDeclaration<Name, AnyDeclarationValue>
+  node: BaseDeclaration<DeclarationName, AnyDeclarationValue>
   pos: number
   /** If we're just evaluating a declaration's name */
   nameOnly: true
@@ -47,7 +47,7 @@ type QueueMap = {
 }
 
 function assign(map: QueueMap, key: Priority, value: Node, pos: number): void
-function assign(map: QueueMap, key: Priority, value: BaseDeclaration<Name, AnyDeclarationValue>, pos: number, nameOnly?: true): void
+function assign(map: QueueMap, key: Priority, value: BaseDeclaration<DeclarationName, AnyDeclarationValue>, pos: number, nameOnly?: true): void
 function assign(map: QueueMap, key: Priority, value: Node, pos: number, nameOnly?: true | undefined) {
   let set = map[key]
   if (set) {
@@ -83,8 +83,8 @@ export const enum Prefix {
 export class Rules extends Node<Node[]> {
   type = 'Rules'
   shortType = 'rules'
-  allowRuleRoot = true
-  allowRoot = true
+  override allowRuleRoot = true
+  override allowRoot = true
 
   private _scope: Scope
 
@@ -94,13 +94,13 @@ export class Rules extends Node<Node[]> {
    * @note - Types are stored differently for disambiguation
    *         See the Prefix enum.
    */
-  private _scopeMap: Map<string, LinkedList> | undefined
+  private _scopeMap: Map<string, NodeList> | undefined
   private get scopeMap() {
     return (this._scopeMap ??= new Map())
   }
   
   /** Added in evaluation order, accessed by $$ */
-  private _linearMap: Map<string, LinkedList> | undefined
+  private _linearMap: Map<string, NodeList> | undefined
   private get linearMap() {
     return (this._linearMap ??= new Map())
   }
@@ -108,10 +108,8 @@ export class Rules extends Node<Node[]> {
   /**
    * A map of selector keys anywhere in a ruleset to contained ruleset selectors
    * (This is used for partial extends)
-   * 
-   * @
    */
-  private _partialSelectorMap: Map<string, LinkedList> | undefined
+  private _partialSelectorMap: Map<string, NodeList> | undefined
   private get partialSelectorMap() {
     return (this._partialSelectorMap ??= new Map())
   }
@@ -226,8 +224,9 @@ export class Rules extends Node<Node[]> {
       let n = ruleValues[i]!
 
       if (n instanceof BaseDeclaration) {
+        const { name } = n.value
         if (hoistDeclarations) {
-          if (n.name instanceof Node) {
+          if (name instanceof Node) {
             /** Evaluate these names after evaluating static names */
             assign(evalQueue, Priority.Medium, n, i, true)
           } else {
@@ -235,7 +234,7 @@ export class Rules extends Node<Node[]> {
             assign(evalQueue, Priority.High, n, i, true)
           }
         } else if (isNode(n, ['Mixin', 'Func'])) {
-          if (n.name instanceof Node) {
+          if (name instanceof Node) {
             assign(evalQueue, Priority.Medium, n, i, true)
           } else {
             assign(evalQueue, Priority.High, n, i, true)
@@ -496,7 +495,8 @@ export class Rules extends Node<Node[]> {
       let value = rules.value
       value.forEach(n => {
         if (n instanceof Declaration) {
-          output.set(n.name.toString(), `${n.value.valueOf()}${n.important ? ` ${n.important}` : ''}`)
+          let { name, value, important } = n
+          output.set(name.toString(), `${n.value.valueOf()}${n.important ? ` ${n.important}` : ''}`)
         } else if (n instanceof Rules) {
           iterateRules(n)
         }

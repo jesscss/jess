@@ -2,17 +2,13 @@
 import isPlainObject from 'lodash-es/isPlainObject'
 import {
   TreeContext,
-  type Context} from '../context'
+  type Context
+} from '../context'
 import { SKIP, type Visitor } from '../visitor'
-import type { Comment } from './comment'
-import type { Token } from './token'
 import { type Operator } from './util/calculate'
-import type { Constructor, Writable, Class, ValueOf, Tagged, IsUnknown, UnionToTuple, OmitIndexSignature, Exact, ConditionalExcept } from 'type-fest'
-import { BiMap, LinkedList } from './util/collections'
-import { matchesNode } from './util/is-node'
+import type { Constructor, Writable, Class, ValueOf, Tagged, IsUnknown, UnionToTuple, ConditionalPick } from 'type-fest'
+import { BiMap } from './util/collections'
 import { type Nil } from './nil'
-import type { Selector } from './selector'
-import { Stack } from 'data-structure-typed'
 
 export type { TreeContext }
 
@@ -29,17 +25,16 @@ type AllNodeOptions = {
   semi?: boolean
 }
 
-export type Primitive = boolean | string | number | ((...args: any[]) => any)
+export type Primitive = undefined | boolean | string | number | ((...args: any[]) => any)
 
 export const ABORT: unique symbol = Symbol('ABORT')
 export const REMOVE: unique symbol = Symbol('REMOVE')
-export const SKIP_SETUP: unique symbol = Symbol('SKIP_SETUP')
 export type NodeVisitReturn = void | Node | symbol
 type NodeVisitFunction = (n: Node) => NodeVisitReturn
 export type NodeOptions = Record<string, boolean | string | number | undefined> & AllNodeOptions
 export type NodeValue = Primitive | Node | Node[]
 export type NodeMap = Map<string, NodeValue>
-export type NodeValueObject = Record<string, NodeValue | undefined>
+export type NodeValueObject = Record<string, NodeValue>
 
 export type NodeMapArray<
   T extends NodeValueObject = NodeValueObject,
@@ -117,18 +112,28 @@ type TypedMap<
  * Removes NodeValue from the type if it has a defined object type
  */
 type TypedNodeData<
-  T extends Record<string, any> = Record<string, any>,
-  K extends keyof T = keyof T
+  T extends NodeValueObject = NodeValueObject,
+  K extends (string | keyof T) = (string | keyof T)
 > = {
+    // [P in (K | string) as 'get']: (key: P) =>T[P]
+    // get<U extends string>(key: U): T[U]
+  } & {
     get<U extends K>(key: U): NodeValue extends T[U] ? never : T[U]
-    set<U extends K>(key: U, value: NodeValue | undefined, nodeIndex?: number): void
+    set<U extends K>(key: U, value: NodeValue, nodeIndex?: number): void
   }
   // & {
   //   [P in K as 'set']: <U extends P>(key: U, value: T[U], nodeIndex?: number) => void
   // }
 
 type GetTypedNodeData<T extends NodeTypes> =
-  Omit<NodeData<T>, 'get' | 'set'> & TypedNodeData<NodeMapType<T>>
+  Omit<NodeData, 'get' | 'set'> & ( // TypedNodeData<NodeMapType<T>>
+    T extends NodeValueObject
+      ? TypedNodeData<T>
+      : {
+        get(key: string): never
+        set(key: string, value: any, nodeIndex?: number): void
+      }
+  )
 
 export const ROOT_DATA = '__root'
 
@@ -136,7 +141,7 @@ export const ROOT_DATA = '__root'
  * @todo - this allows excess properties on T,
  * but using `Exact` from type-fest caused other issues
  */
-export type NodeMapType<T> = T extends NodeValueObject ? T : { __root: T }
+export type NodeMapType<T extends NodeTypes> = T extends NodeValueObject ? T : { __root: T }
 
 type Values<T, K extends keyof T = keyof T> = T[K]
 
@@ -184,6 +189,12 @@ export abstract class Node<
    */
   abstract type: string
   abstract shortType: string
+
+  /**
+   * Track the original source when cloned / copied,
+   * rather than keeping the entire tree
+   */
+  sourceNode: Node = this
 
   /** All types of the prototype chain */
   _types: Set<string> | undefined
@@ -233,23 +244,12 @@ export abstract class Node<
   /**
    * This should always represent the `data` of the Node
    */
-  data!: GetTypedNodeData<T>
+  data!: GetTypedNodeData<T> // TypedNodeData<Type> // GetTypedNodeData<T>
   parentData: NodeData | undefined
 
   nil!: () => Nil
 
   constructor(
-    value: NodeInValue<T> | typeof SKIP_SETUP,
-    options?: O,
-    location?: LocationInfo,
-    treeContext?: TreeContext
-  ) {
-    if (value !== SKIP_SETUP) {
-      this._setUpNode(value, options, location, treeContext)
-    }
-  }
-
-  protected _setUpNode(
     value: NodeInValue<T>,
     options?: O,
     location?: LocationInfo,
@@ -257,6 +257,7 @@ export abstract class Node<
   ) {
     this.data = new NodeData(this, value) as unknown as GetTypedNodeData<T>
     this._treeContext = treeContext
+    this._location = location
     this._options = options
   }
 
@@ -432,7 +433,7 @@ export abstract class Node<
   clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     let Class: Constructor<this> = Object.getPrototypeOf(this).constructor
 
-    let newNode = new Class(SKIP_SETUP)
+    let newNode = new Class(this.value, this.options, this.location, this.treeContext)
     newNode.inherit(this)
 
     cloneFn ??= n => n.clone(deep)
@@ -519,6 +520,7 @@ export abstract class Node<
     this.evaluated = node.evaluated
     this.pre = node.pre
     this.post = node.post
+    this.sourceNode = node.sourceNode
     return this
   }
 

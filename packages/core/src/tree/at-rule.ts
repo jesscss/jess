@@ -48,7 +48,7 @@ export class AtRule extends Node<AtRuleValue> {
        * @todo - do not do this if we're outputting nesting
        * this probably has to be re-written
        */
-      if (context.frames.length !== 0) {
+      if (context.opts.collapseNesting && context.frames.length !== 0) {
         let rule = await new Ruleset({
           selector: new ComplexSelector([new Ampersand()]),
           rules: rules

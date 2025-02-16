@@ -8,6 +8,9 @@ import { SimpleSelector } from './selector-simple'
  *   e.g. div, .foo, #bar
 */
 export class BasicSelector extends SimpleSelector<string> {
+  type = 'BasicSelector'
+  shortType = 'el'
+
   get isClass() {
     return /^\./.test(this.value)
   }
@@ -21,17 +24,15 @@ export class BasicSelector extends SimpleSelector<string> {
     return /^[^.#*]/.test(this.value)
   }
 
-  async eval(context: Context): Promise<BasicSelector> {
-    return await this.evalIfNot(context, async () => {
-      let node = await super.eval(context) as BasicSelector
-      if (node.isClass) {
-        context.hashClass(node.value)
-      }
-      return node
-    })
+  override async evalNode(context: Context): Promise<BasicSelector> {
+    let node = await super.eval(context) as BasicSelector
+    if (node.isClass) {
+      context.hashClass(node.value)
+    }
+    return node
   }
 
-  valueOf(): string {
+  override valueOf(): string {
     return (this._valueOf ??= (this.isTag ? this.value.toLowerCase() : this.value))
   }
 

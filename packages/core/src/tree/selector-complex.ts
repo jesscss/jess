@@ -29,48 +29,24 @@ export type ComplexSelectorValue = ComplexSelectorComponent[]
  * @example
  * #id > .class.class
  */
-export class ComplexSelector extends Selector<ComplexSelectorComponent> {
+export class ComplexSelector extends Selector<ComplexSelectorValue> {
+  type = 'ComplexSelector'
+  shortType = 'sel'
   /**
    * Essentially, a#id.class === a.class#id as being identical selectors,
-   * so we normalize groups and combinators to be in Immutable Sets,
-   * which ignores order when comparing
+   * so we normalize groups and combinators 
    *
-   * @note sequences return the same tuple structure as lists,
-   *       because :is() and :where() can resolve to lists
-   *
-   *  e.g. .class#id > a
-   *   -> #[#['.class', '#id'], '>', #['a']]
-   *
-   *  e.g. :is(a, b, c) d, #is(e > f) g {}
-   *   -> #[
-   *         #[ #[ #['a'], #['b'], #['c'] ], #['d'] ],
-   *         #[ #['e', '>', 'f'], #['g'] ]
-   *      ]
    */
-  _valueOf: string | undefined
-  valueOf() {
+  override valueOf() {
     return (this._valueOf ??= this.value.map(n => n.valueOf()).join(''))
   }
 
-  _keySet: Set<string> | undefined
   get keySet() {
     /** @todo - iterate and add keys from children keys */
     return (this._keySet ??= new Set())
   }
 
-  get keys() {
-    let keys = this._keys
-    if (!keys) {
-      Object.defineProperty(this, '_keys', {
-        value: keys = this.value.flatMap(n => {
-          return n instanceof Combinator ? [] : n.keys
-        }) as Keys
-      })
-    }
-    return keys
-  }
-
-  toTrimmedString(depth?: number | undefined): string {
+  override toTrimmedString(depth?: number | undefined): string {
     let output = ''
     let { value } = this
     let length = value.length
@@ -91,7 +67,7 @@ export class ComplexSelector extends Selector<ComplexSelectorComponent> {
   /**
    * @todo - Re-write and simplify, now that we have a distinct CompoundSelector
    */
-  async eval(context: Context): Promise<ComplexSelector | SelectorList | Nil> {
+  async evalNode(context: Context): Promise<ComplexSelector | SelectorList | Nil> {
     let selector: ComplexSelector = this.clone()
     let elements = [...selector.value] as ComplexSelectorValue
     selector.value = elements
@@ -101,8 +77,6 @@ export class ComplexSelector extends Selector<ComplexSelectorComponent> {
       let hasAmp = elements.find(el => el instanceof Ampersand)
       /**
        * Try to evaluate all selectors as if they are prepended by `&`
-       *
-       * @todo - we should not push an ampersand if we're not collapsing nesting
        */
       if (!hasAmp && context.frames.length > 0) {
         if (elements[0] instanceof Combinator) {
@@ -145,10 +119,10 @@ export class ComplexSelector extends Selector<ComplexSelectorComponent> {
            * Wrap returned lists with :is(), if
            * there are more elements in the sequence
            */
-          elements[i] = new PseudoSelector([
-            ['value', ':is'],
-            ['arg', value]
-          ])
+          elements[i] = new PseudoSelector({
+            name: ':is',
+            arg: value
+          })
         }
       }
       return elements as ComplexSelectorValue

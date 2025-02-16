@@ -1,4 +1,4 @@
-import { Node, SKIP_SETUP, defineType } from './node'
+import { Node, defineType } from './node'
 import { type Rules } from './rules'
 import type { Context } from '../context'
 import { Nil } from './nil'
@@ -15,6 +15,8 @@ export type RulesetValue = {
   rules: Rules
   guard?: Condition
 }
+
+type NarrowRulesetValue<T> = T extends RulesetValue ? T : RulesetValue
 /**
  * A qualified rule. This is historically called a "Ruleset"
  * by older CSS documentation and by Less.
@@ -26,7 +28,7 @@ export type RulesetValue = {
  *   color: black;
  * }
  */
-export class Ruleset<T extends RulesetValue = RulesetValue> extends Node<T> {
+export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>> {
   type = 'Ruleset'
   shortType = 'ruleset'
   override allowRuleRoot = true
@@ -43,7 +45,7 @@ export class Ruleset<T extends RulesetValue = RulesetValue> extends Node<T> {
 
   override toTrimmedString(depth: number = 0): string {
     // let space = ''.padStart(depth * 2)
-    let { selector, rules } = this.value
+    let { selector = '', rules } = this.value
     let output = ''
     output += `${selector.toString()}{`
     output += `${rules.toString(depth + 1)}`
@@ -76,12 +78,13 @@ export class Ruleset<T extends RulesetValue = RulesetValue> extends Node<T> {
     }
     rule.data.set('selector', sels)
 
-    context.frames.unshift(rule)
+    context.frames.push(rule)
     rule.data.set('rules', await this.data.get('rules').eval(context))
-    context.frames.shift()
+    context.frames.pop()
 
     /** Remove empty rules */
-    if (rule.rules.visibleRules().length === 0) {
+    const rules = rule.data.get('rules')
+    if (rules.visibleRules().length === 0) {
       rule.visible = false
     }
     return rule

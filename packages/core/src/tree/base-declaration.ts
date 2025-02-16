@@ -13,14 +13,15 @@ export type BaseDeclarationValue<N extends DeclarationName = DeclarationName> = 
 export const enum AssignmentType {
   Default = ':',
   Add = '+:',           // similar to += in JS, but merges lists / sequences / collections
-  Subtract = '-:',      // math subtraction, like -= in JS
-  Multiply = '*:',      // math multiplication, like *= in JS
-  Divide = '/:',        // math division, like /= in JS
+  // Subtract = '-:',      // math subtraction, like -= in JS
+  // Multiply = '*:',      // math multiplication, like *= in JS
+  // Divide = '/:',        // math division, like /= in JS
   CondAssign = '?:',    // similar to ??= in JS or !default in Sass
-  CondAdd = '?+:',      // add if defined, otherwise assign
-  CondSubtract = '?-:', // subtract if defined, otherwise assign
-  CondMultiply = '?*:', // multiply if defined, otherwise assign
-  CondDivide = '?/:',   // divide if defined, otherwise assign
+  // CondAdd = '?+:',      // add if defined, otherwise assign
+  // CondSubtract = '?-:', // subtract if defined, otherwise assign
+  // CondMultiply = '?*:', // multiply if defined, otherwise assign
+  // CondDivide = '?/:',   // divide if defined, otherwise assign
+
   /** Legacy Less flags */
   MergeList = '+,:',    // merge into a list if another prop exists with this flag
   MergeSequence = '+_:' // merge into a sequence if another prop exists with this flag
@@ -37,7 +38,10 @@ export type BaseDeclarationOptions = {
    */
   setDefined?: boolean
 
-  /** Defined in a mixin definition */
+  /**
+   * Used for mixin / function parameters (and args). It's not the
+   * same kind of variable declaration.
+   */
   paramVar?: boolean
 
   /** Used by SCSS (!default) and Jess (?:) */

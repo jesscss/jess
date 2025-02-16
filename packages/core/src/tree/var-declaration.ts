@@ -26,10 +26,10 @@ export type VarDeclarationOptions = DeclarationOptions
  * e.g. `$(var1, var2): 1 2`
  */
 export class VarDeclaration<N extends DeclarationName = DeclarationName> extends Declaration<VarDeclarationOptions, N> {
-  // register(context: Context, name: string, node: Declaration<string>): void {
-  //   context.scope.setVar(name, node, this.options)
-  // }
-  requiredSemi = true
+  override requiredSemi = true
+  override allowRuleRoot = true
+  override allowRoot = true
+
   constructor(
     ...args: ConstructorParameters<typeof Declaration<VarDeclarationOptions, N>>
   ) {
@@ -39,7 +39,7 @@ export class VarDeclaration<N extends DeclarationName = DeclarationName> extends
     }
   }
 
-  toTrimmedString(depth?: number): string {
+  override toTrimmedString(depth?: number): string {
     const rule = this.options?.setDefined ? '$$' : '$'
     const { name, value } = this.value
     const semi = this.options?.paramVar
@@ -50,7 +50,5 @@ export class VarDeclaration<N extends DeclarationName = DeclarationName> extends
     return `${rule}${name}:${value.toString(depth)}${semi}`
   }
 }
-VarDeclaration.prototype.allowRuleRoot = false
-VarDeclaration.prototype.allowRoot = false
 
 export const vardecl = defineType<DeclarationValue>(VarDeclaration, 'VarDeclaration', 'vardecl')

@@ -1,12 +1,16 @@
-import { type Node, defineType } from './node'
-import { Ruleset, type RulesetValue } from './ruleset'
+import { Node, defineType } from './node'
 import type { Condition } from './condition'
 import type { List } from './list'
 import type { Rest } from './rest'
 import type { Name } from './general'
 import { type VarDeclaration } from './var-declaration'
+import type { Selector } from './selector'
+import type { Nil } from './nil'
+import type { Rules } from './rules'
 
-export type MixinValue = RulesetValue & {
+export type MixinValue = {
+  selector?: Selector | Nil
+  rules: Rules
   /**
    * - A plain node is a kind of value guard.
    * - A name is just a named variable.
@@ -42,11 +46,9 @@ export type MixinOptions = {
  *     foo({ b: 2 }, 1)
  */
 
-export class Mixin extends Ruleset<MixinValue> {
+export class Mixin extends Node<MixinValue> {
   type = 'Mixin'
   shortType = 'mixin'
-  allowRuleRoot = false
-  allowRoot = false
 
   override toTrimmedString(depth: number = 0): string {
     let { selector, rules, params, guard } = this.value

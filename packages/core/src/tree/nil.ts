@@ -19,8 +19,9 @@ export interface Nil extends Node<''> {
 export class Nil extends Node<''> {
   type = 'Nil'
   shortType = 'nil'
-  allowRoot = true
-  allowRuleRoot = true
+  override allowRoot = true
+  override allowRuleRoot = true
+  override visible = false
 
   constructor(
     value?: any,

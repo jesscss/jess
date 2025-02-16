@@ -1,4 +1,4 @@
-import { defineType } from './node'
+import { defineType, type NodeOptions, type LocationInfo, type TreeContext } from './node'
 import { Nil } from './nil'
 import type { Context } from '../context'
 import { type ComplexSelector } from './selector-complex'
@@ -70,7 +70,19 @@ export type AmpersandValue = {
  * The '&' selector element
  */
 export class Ampersand extends SimpleSelector<AmpersandValue> {
-  valueOf() {
+  override type = 'Ampersand'
+  shortType = 'amp'
+
+  constructor(
+    value?: AmpersandValue,
+    options?: NodeOptions,
+    location?: LocationInfo,
+    treeContext?: TreeContext
+  ) {
+    super(value ?? { value: '&' }, options, location, treeContext)
+  }
+
+  override valueOf() {
     const { selector } = this.value
     if (selector) {
       return selector.valueOf()
