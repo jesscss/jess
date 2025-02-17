@@ -42,6 +42,7 @@ export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...a
 export class Call<T extends CallValue = CallValue> extends Node<T> {
   type = 'Call'
   shortType = 'call'
+  override requiredSemi = true
 
   override toTrimmedString() {
     let { value, args, important } = this.value
@@ -88,7 +89,5 @@ export class Call<T extends CallValue = CallValue> extends Node<T> {
     return node
   }
 }
-
-Call.prototype.requiredSemi = true
 
 export const call = defineType<CallValue>(Call, 'Call')

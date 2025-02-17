@@ -9,7 +9,7 @@ import { Mixin } from './mixin'
  * Functions are mixins with a return value,
  * defined in a stylesheet.
  *
- *  e.g. `@--function ($a, $b) { ... }`
+ *  e.g. `@--function ($a; $b) { ... }`
  *
  * Used by Jess / Sass
  */

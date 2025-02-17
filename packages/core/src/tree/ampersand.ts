@@ -99,7 +99,7 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
   override async evalNode(context: Context): Promise<SelectorList | ComplexSelector | Ampersand | Extend | Nil> {
     const { appendValue } = this.value
     if (appendValue ?? context.opts.collapseNesting) {
-      let frame = context.frames[0]
+      let frame = context.frames.peek()
       if (frame) {
         let selector = frame.selector.clone(true)
         if (appendValue && !isNode(selector, 'Nil')) {
@@ -107,7 +107,7 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
             if (!n.value) {
               throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`)
             }
-            let last = n.value[n.value.length - 1]
+            let last = n.value
             if (last instanceof BasicSelector) {
               last.value += appendValue
             } else {

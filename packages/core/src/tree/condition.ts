@@ -7,7 +7,7 @@ import { Nil } from './nil'
 export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<='
 
 export type ConditionValue = [
-  left: Node
+  left: Node,
 ] | [
   left: Node,
   op: ConditionOperator,

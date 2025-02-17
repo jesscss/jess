@@ -6,7 +6,7 @@ import {
 } from '../context'
 import { SKIP, type Visitor } from '../visitor'
 import { type Operator } from './util/calculate'
-import type { Constructor, Writable, Class, ValueOf, Tagged, IsUnknown, UnionToTuple, ConditionalPick } from 'type-fest'
+import type { Constructor, Writable, Class, ValueOf, Tagged, IsUnknown, UnionToTuple, ConditionalPick, IfUnknown, IsAny } from 'type-fest'
 import { BiMap } from './util/collections'
 import { type Nil } from './nil'
 
@@ -151,14 +151,34 @@ export type NodeValueArray<T extends NodeValueObject> = UnionToTuple<Values<{
 
 type NodeInValue<T extends NodeTypes> = T | NodeData<T>
 
-type NodeTypes = Primitive | Node[] | NodeValueObject
+type NodeTypes = Primitive | Array<Primitive | Node> | NodeValueObject
 
 type NarrowTypes<T> =
-  IsUnknown<T> extends true
+  IsAny<T> extends true
     ? NodeTypes
     : T extends NodeTypes
       ? T
       : never
+
+export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<='
+
+type CallValue = {
+  /**
+   * Can be an identifier or something like a mixin or variable lookup
+   *   e.g. #mixin > .class() is [Call (#mixin ())] -> [Call (class ())]
+   */
+  value: string | Node
+  args?: Node
+  /**
+   * Legacy Less feature -- if a ruleset is returned,
+   * all the properties can be marked as important.
+   */
+  important?: boolean
+}
+
+type Call<T extends CallValue = CallValue> = T
+
+type Foo = NarrowTypes<Call>
 
 export type NoOverride<T> = Tagged<T, 'NoOverride'>
 
@@ -166,7 +186,7 @@ export type NoOverride<T> = Tagged<T, 'NoOverride'>
  * The underlying type for all Jess nodes
  */
 export abstract class Node<
-  Type = unknown,
+  Type extends any = any,
   O extends NodeOptions = NodeOptions,
   T extends NarrowTypes<Type> = NarrowTypes<Type>,
 > {
@@ -273,7 +293,7 @@ export abstract class Node<
     return Object.fromEntries(data.entries()) as Type
   }
 
-  set value(val: NodeInValue<T>) {
+  set value(val: any) {
     this.data.setAllData(val)
   }
 

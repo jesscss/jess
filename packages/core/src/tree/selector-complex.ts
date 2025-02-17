@@ -19,10 +19,6 @@ export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combi
 // type SelectorValue = Component[]
 export type ComplexSelectorValue = ComplexSelectorComponent[]
 
-// export interface ComplexSelector extends NodeList<{ value: ComplexSelectorValue }> {
-//   get value(): ComplexSelectorValue
-//   set value(v: ComplexSelectorValue)
-// }
 /**
  * Selectors with combinators.
  *
@@ -67,7 +63,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   /**
    * @todo - Re-write and simplify, now that we have a distinct CompoundSelector
    */
-  async evalNode(context: Context): Promise<ComplexSelector | SelectorList | Nil> {
+  override async evalNode(context: Context): Promise<ComplexSelector | SelectorList | Nil> {
     let selector: ComplexSelector = this.clone()
     let elements = [...selector.value] as ComplexSelectorValue
     selector.value = elements
@@ -78,7 +74,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       /**
        * Try to evaluate all selectors as if they are prepended by `&`
        */
-      if (!hasAmp && context.frames.length > 0) {
+      if (!hasAmp && context.frames.size > 0) {
         if (elements[0] instanceof Combinator) {
           elements.unshift(new Ampersand())
         } else {
@@ -164,8 +160,6 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   //   out.add('])')
   // }
 }
-
-ComplexSelector.prototype._isSelector = true
 
 type SelectorParams = ConstructorParameters<typeof ComplexSelector>
 
