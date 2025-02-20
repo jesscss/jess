@@ -3,7 +3,7 @@ import { Declaration } from '../tree/declaration'
 import { AssignmentType } from '../tree/base-declaration'
 import { List } from '../tree/list'
 import { Spaced } from '../tree/spaced'
-import type { Node } from '../tree/node'
+import { type Node, NodeList } from '../tree/node'
 import type { Mixin } from '../tree/mixin'
 import isPlainObject from 'lodash-es/isPlainObject'
 import { isNode } from '../tree/util'
@@ -13,6 +13,7 @@ import type { Bool } from '../tree/bool'
 import type { Condition } from '../tree/condition'
 import { Context } from '../context'
 import type { General } from '../tree/general'
+import { BiMap, LinkedList } from '../tree/util/collections'
 
 /**
  * The Scope object is meant to be an efficient
@@ -107,24 +108,70 @@ export type ScopeFilter = (
   entry: ScopeEntry | undefined,
   valueFilter: (value: any, index?: number, entryValue?: any[]) => boolean
 ) => ({ value: unknown, done: boolean })
+
+/** Arbitrary prefixes to disambiguate names within maps */
+export const enum NodeType {
+  MIXIN            = '>',
+  RULESET          = '*',
+  MIXIN_OR_RULESET = '|',
+  PROPERTY         = '.',
+  VAR_OR_PROP      = '?',
+  /** No prefix */
+  VARIABLE         = '',
+}
+
+class NodeTypeMap {
+  private _map: Map<string, LinkedList> = new Map()
+
+}
+
 /**
  * This should be extended by each language
  */
 export class Scope {
-  static allScopes: Scope[] = []
-  id = Scope.allScopes.length
+  private index = 0
+
+  nodeMap = new BiMap<number, Node>()
+
+  /**
+   * All indexed collections, keyed. These are the value
+   * per scope (like a set of rules).
+   * 
+   * @note - Types are stored differently for disambiguation
+   *         See the Prefix enum.
+   */
+  private _entryMap: Map<string, LinkedList> | undefined
+  private get entryMap(): Map<string, LinkedList> {
+    return (this._entryMap ??= new Map())
+  }
+
+  /** Added in linear (top-to-bottom) evaluation order, accessed by $$ */
+  private _linearMap: Map<string, LinkedList> | undefined
+  private get linearMap(): Map<string, LinkedList> {
+    return (this._linearMap ??= new Map())
+  }
+
+  /**
+   * A map of selector keys anywhere in a ruleset to contained ruleset selectors
+   * (This is used for partial extends)
+   */
+  private _partialSelectorMap: Map<string, LinkedList> | undefined
+  private get partialSelectorMap(): Map<string, LinkedList> {
+    return (this._partialSelectorMap ??= new Map())
+  }
+
   /**
    * Includes vars but also
    * imported functions, JS identifiers, etc
    */
-  _vars: ScopeEntryMap
+  // _vars: ScopeEntryMap
   /**
    * @note - For Jess, we could have stored all
    * mixins in the vars map, but other languages
    * need more dis-ambiguation.
    */
-  _mixins: ScopeEntryMap<MixinEntry>
-  _props: PropMap
+  // _mixins: ScopeEntryMap<MixinEntry>
+  // _props: PropMap
   _parent?: Scope
 
   /**
@@ -144,11 +191,16 @@ export class Scope {
   static cachedKeys = new Map<string, string>()
 
   constructor(parent?: Scope) {
-    Scope.allScopes.push(this)
     this._parent = parent
   }
 
-  /** Normalizes keys as valid JavaScript identifiers. */
+  /**
+   * Normalizes keys as valid JavaScript identifiers.
+   *
+   * @todo - I don't think we have to normalize storage / lookups. I think this
+   * is only a problem when we're exporting to JS, at which point the _lookup_
+   * can be normalized.
+   */
   normalizeKey(key: string) {
     let cachedKey = Scope.cachedKeys.get(key)
     if (cachedKey) {
@@ -192,25 +244,28 @@ export class Scope {
 
   /**
    * Lazily create prototype chains
-   * for improved performance.
    */
-  getEntries(key: 'vars' | 'mixins'): ScopeEntryMap
-  getEntries(key: 'props'): PropMap
-  getEntries(key: 'vars' | 'props' | 'mixins'): ScopeEntryMap | PropMap {
-    let privateKey: '_vars' | '_props' | '_mixins' = `_${key}`
-    let currentEntries = this[privateKey]
-    if (currentEntries) {
-      return currentEntries
-    }
-    if (this._parent) {
-      currentEntries = this[privateKey] = Object.create(this._parent[key])
+  entries(type: NodeType): Generator<[string, Node]>
+  entries(): Generator<[string, LinkedList]>
+  * entries(type?: NodeType): Generator<[string, Node | LinkedList]> {
+    const map = this.entryMap
+    if (!type) {
+      yield * map.entries()
     } else {
-      currentEntries = this[privateKey] = Object.create(null)
+      for (let [key, value] of map.entries()) {
+        if (key.startsWith(type)) {
+          for (let entry of value) {
+            yield [key, this.nodeMap.get(entry)!]
+          }
+        }
+      }
     }
-    return currentEntries
   }
 
-  /** Merges a scope (usually child) into this scope object */
+  /**
+   * Merges a scope (usually child) into this scope object
+   * @todo - Rewrite
+  */
   merge(scope: Scope, leakVariablesIntoScope?: boolean) {
     let props = scope.props
     let keys = Object.getOwnPropertyNames(props)
@@ -245,36 +300,31 @@ export class Scope {
     }
   }
 
-  get mixins(): ScopeEntryMap {
-    return this.getEntries('mixins')
+  * mixins() {
+    yield * this.entries(NodeType.MIXIN)
   }
 
-  get vars(): ScopeEntryMap {
-    return this.getEntries('vars')
+  * vars() {
+    yield * this.entries(NodeType.VARIABLE)
   }
 
-  get props(): PropMap {
-    return this.getEntries('props')
+  * props() {
+    yield * this.entries(NodeType.PROPERTY)
   }
 
-  setProp(key: string, value: Declaration | Declaration[]) {
-    let { props } = this
-    Scope.cachedKeys.set(key, key)
-    if (Object.prototype.hasOwnProperty.call(props, key)) {
-      /** Modify the local entry */
-      let entry = props[key]!
-
-      props[key] =
-        Array.isArray(entry)
-          ? Array.isArray(value)
-            ? [...value, ...entry]
-            : [value, ...entry]
-          : Array.isArray(value)
-            ? [...value, entry]
-            : [value, entry]
-    } else {
-      props[key] = value
+  add(key: NodeType, value: Node, scope: 'entry' | 'linear' = 'entry') {
+    let map = scope === 'entry' ? this.entryMap : this.linearMap
+    let list = map.get(key)
+    if (!list) {
+      list = new LinkedList()
+      map.set(key, list)
     }
+    let index = this.nodeMap.getValue(value)
+    if (index === undefined) {
+      index = ++this.index
+      this.nodeMap.set(index, value)
+    }
+    list.push(index)
   }
 
   /**
