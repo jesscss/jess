@@ -96,14 +96,14 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
   }
 
   /** Hmm this should never return Extend */
-  override async evalNode(context: Context): Promise<SelectorList | ComplexSelector | Ampersand | Extend | Nil> {
+  override async evalNode(context: Context): Promise<Selector | Nil> {
     const { appendValue } = this.value
     if (appendValue ?? context.opts.collapseNesting) {
       let frame = context.frames.peek()
       if (frame) {
         let selector = frame.selector.clone(true)
         if (appendValue && !isNode(selector, 'Nil')) {
-          let doAppendValue = (n: ComplexSelector | Extend) => {
+          let doAppendValue = (n: Selector) => {
             if (!n.value) {
               throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`)
             }
@@ -126,7 +126,7 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
       return new Nil()
     }
     const amp = this.clone()
-    let frame = context.frames[0]
+    let frame = context.frames.peek()
     if (frame) {
       amp.data.set('selector', frame.selector.clone(true))
     }

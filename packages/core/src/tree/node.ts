@@ -182,6 +182,16 @@ type Foo = NarrowTypes<Call>
 
 export type NoOverride<T> = Tagged<T, 'NoOverride'>
 
+export const enum NodeTypeIndex {
+  NONE             = 0b0000,
+  MIXIN            = 0b0001,
+  RULESET          = 0b0010,
+  MIXIN_OR_RULESET = 0b0011,
+  PROPERTY         = 0b0100,
+  VARIABLE         = 0b1000,
+  VAR_OR_PROP      = 0b1100,
+}
+
 /**
  * The underlying type for all Jess nodes
  */
@@ -793,7 +803,7 @@ export class NodeData<
       if (value instanceof NodeData) {
         this.data = value.data
       } else {
-        this.set(ROOT_DATA, value as M[typeof ROOT_DATA])
+        this.set(ROOT_DATA, value as any)
       }
     }
   }
@@ -888,16 +898,34 @@ export class NodeData<
   }
 }
 
+type Position = number
+type Index = number
+type NodeType = string
+
+const NO_TYPE = 'None'
+
 /**
  * A dynamic linked list useful for managing items in multiple lists.
  * In other words, rather than linking items together, their positions
  * in a list are managed by the list, much like an array.
+ * 
+ * The items before/after current items are linked multiple times by type.
+ * That is, you can think about it like each node setting a map like:
+ *   1. What is the next mixin? What is the previous mixin?
+ *   2. What is the next property? What is the previous property?
  */
 export class NodeList<
   T extends Node = Node
 > {
-  first: number | undefined
-  last: number | undefined
+  /** This is the first / last of the list without consideration for types */
+  first: Index | undefined
+  last: Index | undefined
+
+  static indexedTypes = ['mixin', 'ruleset', 'property', 'variable']
+
+  private _firstMap = new Map<NodeType, Index | undefined>()
+  private _lastMap = new Map<NodeType, Index | undefined>()
+
   private _current: number | undefined
   /**
    * These maps are designed for fast lookups,
@@ -905,9 +933,10 @@ export class NodeList<
    */
 
   /** A map of numbers to nodes */
-  private readonly _items = new BiMap<number, T>()
-  /** A map of a numbered node to the before / after as a joined number */
-  private readonly _pos = new Map<number, number>()
+  private readonly _items = new BiMap<Index, T>()
+
+  /** A map of a numbered node to the befores / afters as a joined number, segmented by type */
+  private readonly _pos = new Map<Index, Map<NodeType, Position>>()
   private _index = 0
 
   keySet = new Set<string>()
@@ -922,26 +951,32 @@ export class NodeList<
     this.setMany(values)
   }
 
-  private _writePos(nodeRef: number, previous: number | undefined, next: number | undefined) {
+  private _writePos(nodeRef: Index, nodeType: string, previous: Index | undefined, next: Index | undefined) {
     if (nodeRef === previous || nodeRef === next) {
       throw new Error('Linking a node to itself would cause an infinite loop.')
     }
-    this._pos.set(nodeRef, (previous ?? 0) << 16 | (next ?? 0))
+    let pos = this._pos.get(nodeRef)
+    if (!pos) {
+      pos = new Map()
+      this._pos.set(nodeRef, pos)
+    }
+    pos.set(nodeType, (previous ?? 0) << 16 | (next ?? 0))
+    return pos
   }
 
-  private _writeNextPos(nodeRef: number, next: number | undefined) {
-    let pos = this._pos.get(nodeRef)
+  private _writeNextPos(nodeRef: number, nodeType: string, next: number | undefined) {
+    let pos = this._pos.get(nodeRef)?.get(nodeType)
     if (pos !== undefined) {
       /** Read previous, and write next */
-      this._writePos(nodeRef, this._getPrevFromBits(pos), next)
+      this._writePos(nodeRef, nodeType, this._getPrevFromBits(pos), next)
     }
   }
 
-  private _writePrevPos(nodeRef: number, previous: number | undefined) {
-    let pos = this._pos.get(nodeRef)
+  private _writePrevPos(nodeRef: number, nodeType: string, previous: number | undefined) {
+    let pos = this._pos.get(nodeRef)?.get(nodeType)
     if (pos !== undefined) {
       /** Read next, and write previous */
-      this._writePos(nodeRef, previous, this._getNextFromBits(pos))
+      this._writePos(nodeRef, nodeType, previous, this._getNextFromBits(pos))
     }
   }
 
@@ -982,28 +1017,98 @@ export class NodeList<
     return this._items.has(key)
   }
 
+  clear() {
+    this._items.clear()
+    this._pos.clear()
+    this._firstMap.clear()
+    this._lastMap.clear()
+    this._index = 0
+    this.first = undefined
+    this.last = undefined
+    this._current = undefined
+  }
+
   setMany(values: T[]) {
-    let index = 1
+    this.clear()
+    this._push(undefined, undefined, ...values)
+  }
+
+  _push(before: T | undefined, after: T | undefined, ...values: T[]) {
+    let beforeIndex = before ? this._items.getValue(before) : undefined
+    let afterIndex = after ? this._items.getValue(after) : undefined
+    let thisIsFirst = beforeIndex === this.first
+    let thisIsLast = afterIndex === this.last
+
+    let index = ++this._index
+    let indexedTypes = NodeList.indexedTypes
+    let prevLoopMap: Map<NodeType, Index | undefined> | undefined
     let lastIndex: number | undefined
-    if (values.length) {
-      this.first = 1
+
+    if (values.length && thisIsFirst) {
+      this.first = index
     }
-    const { _items, _pos } = this
-    _items.clear()
-    _pos.clear()
+
+    const { _pos, _items, _firstMap, _lastMap } = this
     let length = values.length
     for (; index <= length; index++) {
-      if (lastIndex) {
-        this._writeNextPos(lastIndex, index)
-      }
       let item = values[index - 1]!
+      for (let type of item.types) {
+        if (indexedTypes.includes(type)) {
+          if (!_firstMap.has(type)) {
+            _firstMap.set(type, index)
+          }
+          if (!_lastMap.has(type)) {
+            _lastMap.set(type, index)
+          }
+          let lastIndex: number | undefined = 0
+          if (prevLoopMap && (lastIndex = prevLoopMap.get(type))) {
+            this._writeNextPos(lastIndex, type, index)
+          }
+          this._writePos(index, type, lastIndex, 0)
+        }
+      }
+
+      if (lastIndex) {
+        this._writeNextPos(lastIndex, NO_TYPE, index)
+      }
+      
       lastIndex = index
       this.set(index, item)
-      this._writePos(index, index - 1, 0)
+      prevLoopMap = this._writePos(index, NO_TYPE, index - 1, 0)
     }
     /** The last thing a for loop does is increment, so subtract the last iteration */
     this._index = index - 1
-    this.last = lastIndex
+    if (thisIsLast) {
+      this.last = lastIndex
+    }
+    /** 
+     * Update the next / previous of before / after nodes
+     * Oh man, this is complicated with types, need to document better
+    */
+    if (before) {
+      let posMap = _pos.get(beforeIndex!)
+      for (let type of before.types) {
+        let thisIsFirst = _firstMap.get(type) === beforeIndex
+        if (!thisIsFirst) {
+          let previous = this._getPrevFromBits(posMap!.get(type))
+          this._writeNextPos(previous!, type, index)
+        }
+        this._writePrevPos(beforeIndex!, type, lastIndex)
+      }
+      if (!thisIsFirst) {
+        let previous = this._getPrevFromBits(pos)!
+        this._writeNextPos(previous, firstIndex)
+      }
+      this._writePrevPos(before, lastIndex)
+    }
+    if (after) {
+      let pos = _items.get(after)!
+      if (!thisIsLast) {
+        let next = this._getNextFromBits(pos)!
+        this._writePrevPos(next, lastIndex)
+      }
+      this._writeNextPos(after, firstIndex)
+    }
   }
 
   get size() {
@@ -1181,13 +1286,5 @@ export class NodeList<
     if (index === this._current) {
       this._current = next
     }
-  }
-
-  clear() {
-    this._items.clear()
-    this._pos.clear()
-    this.first = undefined
-    this.last = undefined
-    this._current = undefined
   }
 }

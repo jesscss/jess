@@ -69,16 +69,6 @@ function assign(map: QueueMap, key: Priority, value: Node, pos: number, nameOnly
  * color: black;
  * background-color: white;
  */
-/** Arbitrary prefixes to disambiguate names within maps */
-export const enum Prefix {
-  MIXIN            = '>',
-  RULESET          = '*',
-  MIXIN_OR_RULESET = '|',
-  PROPERTY         = '.',
-  VAR_OR_PROP      = '?',
-  /** No prefix */
-  VARIABLE         = '',
-}
 
 export class Rules extends Node<Node[]> {
   type = 'Rules'
@@ -86,40 +76,9 @@ export class Rules extends Node<Node[]> {
   override allowRuleRoot = true
   override allowRoot = true
 
-  private _scope: Scope
-
-  /**
-   * All indexed collections, keyed
-   * 
-   * @note - Types are stored differently for disambiguation
-   *         See the Prefix enum.
-   */
-  private _scopeMap: Map<string, NodeList> | undefined
-  private get scopeMap() {
-    return (this._scopeMap ??= new Map())
-  }
-  
-  /** Added in evaluation order, accessed by $$ */
-  private _linearMap: Map<string, NodeList> | undefined
-  private get linearMap() {
-    return (this._linearMap ??= new Map())
-  }
-
-  /**
-   * A map of selector keys anywhere in a ruleset to contained ruleset selectors
-   * (This is used for partial extends)
-   */
-  private _partialSelectorMap: Map<string, NodeList> | undefined
-  private get partialSelectorMap() {
-    return (this._partialSelectorMap ??= new Map())
-  }
-
+  private _scope: Scope | undefined
   get scope() {
-    let scope = this._scope
-    if (!scope) {
-      scope = this._scope = new Scope()
-    }
-    return this._scope
+    return (this._scope ??= new Scope())
   }
 
   set scope(s: Scope) {
