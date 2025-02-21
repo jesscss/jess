@@ -9,7 +9,7 @@ import type { List } from '../list'
 import type { Mixin } from '../mixin'
 import type { Func } from '../function'
 import type { FunctionValue } from '../function-value'
-import type { Node } from '../node'
+import { Node } from '../node'
 import type { Ruleset } from '../ruleset'
 import type { Rules } from '../rules'
 import type { ComplexSelector } from '../selector-complex'
@@ -65,24 +65,14 @@ export function isNode(value: any, type: 'Rest'): value is Rest
 export function isNode(value: any, type: ['VarDeclaration', 'Rest']): value is Rest | VarDeclaration
 export function isNode(value: any, type?: keyof Nodes | ReadonlyArray<keyof Nodes>): value is Node
 export function isNode(value: any, type?: keyof Nodes | ReadonlyArray<keyof Nodes>): value is Node {
-  return matchesNode(value, type, true)
-}
-
-export function matchesNode(value: any, type: keyof Nodes | ReadonlyArray<keyof Nodes> | undefined, returnBool: true): true
-export function matchesNode<T extends keyof Nodes>(value: any, type: T | readonly T[], returnBool?: boolean): false | Set<T>
-export function matchesNode<T extends keyof Nodes>(value: any, type: T | readonly T[] | 'Node' = 'Node', returnBool?: boolean): boolean | Set<T> {
-  let set: Set<string> | undefined
-
-  while (value?.type) {
-    if (isArray(type) ? type.includes(value.type) : value.type === type) {
-      if (returnBool) {
-        return true
-      }
-      set ??= new Set()
-      set.add(value.type)
-    }
-    value = Object.getPrototypeOf(value.constructor)
+  if (!value || !(value instanceof Node)) {
+    return false
   }
-
-  return set ?? false
+  if (!type) {
+    return true
+  }
+  if (isArray(type)) {
+    return type.every(t => value.types.has(t))
+  }
+  return value.types.has(type as keyof Nodes)
 }

@@ -47,7 +47,6 @@ describe('Ampersand', () => {
 
   it('should output valid CSS Nesting as-is', async () => {
   /** We need a root node to bubble rules */
-    // @ts-expect-error - Figure out how this is a type problem
     let node = wrapAmp([amp()])
     let evald = await node.eval(context)
     console.log(`${evald}`.charCodeAt(0))

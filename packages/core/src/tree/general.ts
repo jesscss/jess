@@ -22,8 +22,6 @@ export class General<
 > extends Node<string, GeneralOptions<T>> {
   type = 'General'
   shortType = 'general'
-  allowRoot = false
-  allowRuleRoot = false
 }
 
 export class Name extends General<'Name'> {}

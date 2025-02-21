@@ -58,25 +58,8 @@ export type ImportValue = {
  * @see https://sass-lang.com/documentation/at-rules/import/
  */
 export class Import extends Node<ImportValue, ImportOptions> {
-  get path() {
-    return this.data.get('path')
-  }
-
-  set path(v: string) {
-    this.data.set('path', v)
-  }
-
-  get namespace() {
-    return this.data.get('namespace')
-  }
-
-  get imports() {
-    return this.data.get('imports')
-  }
-
-  get importType() {
-    return this.data.get('importType')
-  }
+  type = 'Import'
+  shortType = 'use'
 }
 
 export const use = defineType<ImportValue>(Import, 'Import', 'use')

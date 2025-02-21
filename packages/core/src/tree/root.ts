@@ -7,7 +7,7 @@ import type { Context } from '../context'
  * The tree will have a root, but each file will have its own root.
  */
 export class Root extends Rules {
-  async eval(context: Context): Promise<Root> {
+  override async evalNode(context: Context): Promise<Root> {
     context.opts.mathMode = this.treeContext.mathMode
     context.opts.unitMode = this.treeContext.unitMode
     context.depth++
@@ -19,7 +19,7 @@ export class Root extends Rules {
     return node
   }
 
-  toString(depth?: number | undefined) {
+  override toString(depth?: number | undefined) {
     /** Remove leading newlines */
     return super.toString(depth).replace(/^\n+/, '') as NoOverride<string>
   }
