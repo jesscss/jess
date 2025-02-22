@@ -49,7 +49,6 @@ describe('Ampersand', () => {
   /** We need a root node to bubble rules */
     let node = wrapAmp([amp()])
     let evald = await node.eval(context)
-    console.log(`${evald}`.charCodeAt(0))
     expect(`${evald}`).toBeString(`
       .one.two {
         chungus: foo bar;
@@ -61,7 +60,8 @@ describe('Ampersand', () => {
     node = wrapAmpList([sel([amp()])])
     evald = await node.eval(context)
     expect(`${evald}`).toBeString(`
-      .one, .two {
+      .one,
+      .two {
         chungus: foo bar;
         & {
           inner: one two;
@@ -183,18 +183,17 @@ describe('Ampersand', () => {
     let node = root([
       ruleset({
         selector: sel([
-          // @ts-expect-error - fix type
           attr({
-            key: 'data-prop',
+            name: 'data-prop',
             op: '=',
             value: any('foo')
           })
         ]),
-        value: rules([
+        rules: rules([
           decl({ name: 'chungus', value: spaced([el('foo'), el('bar')]) }),
           ruleset({
             selector: sel([amp('-1')]),
-            value: rules([
+            rules: rules([
               decl({ name: 'inner', value: spaced([el('one'), el('two')]) })
             ])
           })

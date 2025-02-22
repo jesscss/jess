@@ -104,24 +104,9 @@ export class Declaration<O extends DeclarationOptions = DeclarationOptions, N ex
 
 type DeclarationParams = ConstructorParameters<typeof Declaration>
 
-const origDefine = defineType<DeclarationValue>(Declaration, 'Declaration', 'decl') as (
+export const decl = defineType<DeclarationValue>(Declaration, 'Declaration', 'decl') as (
   value: DeclarationValue | DeclarationParams[0],
   options?: DeclarationParams[1],
   location?: DeclarationParams[2],
   treeContext?: DeclarationParams[3]
 ) => Declaration
-
-export const decl = (
-  value: DeclarationValue | DeclarationParams[0],
-  options?: DeclarationParams[1],
-  location?: DeclarationParams[2],
-  treeContext?: DeclarationParams[3]
-) => {
-  /**
-   * For convenience, add pre-whitespace to value node
-   * @todo - for custom properties, this should be handled differently
-  */
-  const node = origDefine(value, options, location, treeContext)
-  node.data.get('value').pre = 1
-  return node
-}

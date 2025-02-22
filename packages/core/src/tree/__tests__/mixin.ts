@@ -13,7 +13,7 @@ describe('Mixin', () => {
     it('should serialize a mixin', () => {
       const rule = mixin({
         name: 'myMixin',
-        value: rules([
+        rules: rules([
           decl({ name: 'color', value: any('black') }),
           decl({ name: 'background-color', value: any('white') })
         ])
@@ -33,7 +33,7 @@ describe('Mixin', () => {
           vardecl({ name: 'a', value: any('black') }, { paramVar: true }),
           vardecl({ name: 'b', value: any('white') }, { paramVar: true })
         ]),
-        value: rules([
+        rules: rules([
           decl({ name: 'color', value: any('black') }),
           decl({ name: 'background-color', value: any('white') })
         ])
@@ -54,7 +54,7 @@ describe('Mixin', () => {
           vardecl({ name: 'b', value: any('white') }, { paramVar: true })
         ]),
         guard: condition([paren(condition([ref('a'), '=', ref('b')]))]),
-        value: rules([
+        rules: rules([
           decl({ name: 'color', value: any('black') }),
           decl({ name: 'background-color', value: any('white') })
         ])

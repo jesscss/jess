@@ -21,29 +21,17 @@ export type SequenceOptions = {
  * actually be a sequence of values (like for shorthand)
  */
 export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> {
-  // constructor(
-  //   value: Array<string | Node> | NodeMap,
-  //   location?: LocationInfo,
-  //   options?: SequenceOptions
-  // ) {
-  //   if (isNodeMap(value)) {
-  //     super(value, location, options)
-  //     return
-  //   }
-  //   const values = value.map(v => v.constructor === String ? new Anonymous(v) : v)
-  //   super({
-  //     value: values
-  //   }, location)
-  // }
+  type = 'Sequence'
+  shortType = 'seq'
 
-  compare(other: Node) {
+  override compare(other: Node) {
     if (other instanceof Sequence) {
       return compareNodeArray(this.value, other.value)
     }
     return super.compare(other)
   }
 
-  operate(b: Node, op: string): Sequence | List {
+  override operate(b: Node, op: string): Sequence | List {
     if (op !== '+') {
       throw new Error(`Sequence operation "${op}" not supported`)
     }
@@ -73,7 +61,7 @@ export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> 
    *         evaluated an expression to an inner sequence,
    *         then we should be inserting white-space combinators?
    */
-  async eval(context: Context) {
+  override async evalNode(context: Context) {
     let node = this.clone()
     /** Convert all values to Nodes */
     let valuePromises = node.value
@@ -156,3 +144,15 @@ export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> 
 }
 
 export const seq = defineType(Sequence, 'Sequence', 'seq')
+
+export const spaced = (
+  value: Node[],
+  options?: SequenceOptions
+) => {
+  for (let i = 1; i < value.length; i++) {
+    value[i]!.pre = 1
+  }
+  const node = new Sequence(value, options)
+  node.pre = 1
+  return node
+}

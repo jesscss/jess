@@ -44,12 +44,21 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>> {
   }
 
   override toTrimmedString(depth: number = 0): string {
-    // let space = ''.padStart(depth * 2)
-    let { selector = '', rules } = this.value
+    let space = ''.padStart(depth * 2)
+    let { selector, rules } = this.value
+    if (selector instanceof Nil) {
+      return ''
+    }
     let output = ''
-    output += `${selector.toString()}{`
+    output += `${selector.toString(depth, undefined, ' ')}{`
+    if (rules.pre === undefined) {
+      output += '\n'
+    }
     output += `${rules.toString(depth + 1)}`
-    output += '}'
+    if (rules.post === undefined) {
+      output += '\n'
+    }
+    output += `${space}}\n`
     return output
   }
 

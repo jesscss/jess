@@ -20,12 +20,15 @@ export type AttributeSelectorValue = {
  *   e.g. [id="foo"]
 */
 export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
-  toTrimmedString() {
+  type = 'AttributeSelector'
+  shortType = 'attr'
+
+  override toTrimmedString() {
     let { name, op, value, mod } = this.value
     return `[${name}${op ?? ''}${value ?? ''}${mod ? ` ${mod}` : ''}]`
   }
 
-  valueOf() {
+  override valueOf() {
     let valueOf = this._valueOf
     if (!valueOf) {
       let { name, op, value, mod } = this.value
@@ -40,7 +43,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     return valueOf
   }
 
-  compare(other: Node) {
+  override compare(other: Node) {
     const thisValue = this.valueOf()
     if (other instanceof AttributeSelector) {
       return compare(thisValue, other.valueOf())

@@ -61,7 +61,6 @@ export type AmpersandValue = {
 
    */
   appendValue?: string
-  value: '&'
   /** The evaluated selector */
   selector?: Selector | Nil
 }
@@ -74,12 +73,19 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
   shortType = 'amp'
 
   constructor(
-    value?: AmpersandValue,
+    value?: AmpersandValue | string,
     options?: NodeOptions,
     location?: LocationInfo,
     treeContext?: TreeContext
   ) {
-    super(value ?? { value: '&' }, options, location, treeContext)
+    const finalValue: AmpersandValue = {}
+    if (typeof value === 'string') {
+      finalValue.appendValue = value
+    } else if (value) {
+      finalValue.appendValue = value.appendValue
+      finalValue.selector = value.selector
+    }
+    super(finalValue, options, location, treeContext)
   }
 
   override valueOf() {

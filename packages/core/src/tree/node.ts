@@ -296,8 +296,8 @@ export abstract class Node<
   /** Get the values back in the same format they went in */
   get value(): Type {
     const data = this.data
-    if (data instanceof NodeList) {
-      return [...data] as Type
+    if (data.data instanceof NodeList) {
+      return [...data.data] as Type
     }
     if (data.has(ROOT_DATA)) {
       return data.get(ROOT_DATA) as Type
@@ -573,9 +573,11 @@ export abstract class Node<
     return `${values}`
   }
 
-  processPrePost(key: 'pre' | 'post') {
+  processPrePost(key: 'pre' | 'post', defaultVal: string = '') {
     let value = this[key]
-    if (!value) {
+    if (value === undefined) {
+      return defaultVal
+    } else if (value === 0) {
       return ''
     } else if (value === 1) {
       return ' '
@@ -600,14 +602,14 @@ export abstract class Node<
    * white-space and comments, to make serialization
    * easy.
    */
-  toString(depth?: number): NoOverride<string> {
+  toString(depth?: number, defaultPre?: string, defaultPost?: string): NoOverride<string> {
     if (!this.visible) {
       return '' as NoOverride<string>
     }
     let output = ''
-    output += this.processPrePost('pre')
+    output += this.processPrePost('pre', defaultPre)
     output += this.toTrimmedString(depth)
-    output += this.processPrePost('post')
+    output += this.processPrePost('post', defaultPost)
     if (this.options?.semi === true) {
       output += ';'
     }
@@ -708,11 +710,10 @@ type NodeDataData<T extends NodeTypes> =
  * because lists can be iterated linearly.
  */
 export class NodeData<
-  T extends NodeTypes = NodeTypes,
-  M extends NodeMapType<T> = NodeMapType<T>
+  T extends NodeTypes = NodeTypes
 > {
   /** Nodes can be indexed into lists for fast iteration */
-  private data!: NodeDataData<T>
+  data!: NodeDataData<T>
 
   /** Get / has / set only deal with map data */
   has(key: string) {
@@ -953,16 +954,10 @@ export class NodeList<
     return result
   }
 
-  private _values(): Generator<T, void, any>
-  private _values(asEntries: true): Generator<[number, T], void, any>
-  private * _values(asEntries = false) {
+  * entries(): Generator<[number, T]> {
     for (let i = 0; i < this._length; ++i) {
-      yield asEntries ? [i, this.at(i)] : this.at(i)
+      yield [i, this.at(i)]
     }
-  }
-
-  * entries() {
-    yield * this._values(true)
   }
 
   removeItem(n: T) {

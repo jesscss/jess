@@ -109,11 +109,15 @@ export class Rules extends Node<Node[]> {
   override toTrimmedString(depth: number = 0) {
     let space = ''.padStart(depth * 2)
     let output = ''
-    let outputs = this.value
-      .map(n =>
-        n.toString(depth)
-          .replace(/^\n[ \t]+/gm, `\n${space}`)
-      )
+    let { value } = this
+    let outputs = value
+      .map((n, i) => {
+        let initial = n.toString(depth, '\n') as string
+        if (n.requiredSemi && n.options.semi !== false && value.length >= i) {
+          initial += ';'
+        }
+        return initial.replace(/^(\n?)[ \t]*/, `$1${space}`)
+      })
     output += outputs
       .join('')
       /**
@@ -549,22 +553,4 @@ export class Rules extends Node<Node[]> {
   //   context.depth = depth
   // }
 }
-const origRules = defineType(Rules, 'Rules')
-type Params = Parameters<typeof origRules>
-export const rules = (
-  value?: Node[],
-  options?: Params[1],
-  location?: Params[2],
-  treeContext?: Params[3]
-) => {
-  /**
-   * When using the simplified API, attach
-   * new-lines to each node.
-   */
-  if (value) {
-    value.forEach(n => {
-      n.post = ['\n']
-    })
-  }
-  return origRules(value, options, location, treeContext)
-}
+export const rules = defineType(Rules, 'Rules')

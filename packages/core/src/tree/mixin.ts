@@ -7,9 +7,10 @@ import { type VarDeclaration } from './var-declaration'
 import type { Selector } from './selector'
 import type { Nil } from './nil'
 import type { Rules } from './rules'
+import type { Interpolated } from './interpolated'
 
 export type MixinValue = {
-  selector?: Selector | Nil
+  name?: string | Name | Interpolated<'Name'>
   rules: Rules
   /**
    * - A plain node is a kind of value guard.
@@ -51,9 +52,9 @@ export class Mixin extends Node<MixinValue> {
   shortType = 'mixin'
 
   override toTrimmedString(depth: number = 0): string {
-    let { selector, rules, params, guard } = this.value
+    let { name, rules, params, guard } = this.value
     let space = ''.padStart(depth * 2)
-    let output = `@@ ${selector}`
+    let output = `@@ ${name}`
     if (params) {
       output += '('
       output += params.toString(depth)
