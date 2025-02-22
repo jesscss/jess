@@ -1,8 +1,8 @@
-import { Node } from './node'
+import { Node, NodeOptions } from './node'
 
 /** This represents anything that is valid in a selector */
 
-export abstract class Selector<T extends any = any> extends Node<T> {
+export abstract class Selector<T extends any = any, O extends NodeOptions = NodeOptions> extends Node<T, O> {
   isSelector = true
 
   _valueOf: string | undefined

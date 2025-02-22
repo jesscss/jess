@@ -39,23 +39,20 @@ export class AtRule extends Node<AtRuleValue> {
 
   override async evalNode(context: Context) {
     let node = await super.eval(context) as AtRule
+    let rules = node.data.get('rules')
     /** Don't let rooted rules bubble past an at-rule */
-    if (node.rules) {
-      let rules = node.rules
+    if (rules) {
       /**
        * Wrap sub-rules of a media query like Less
-       *
-       * @todo - do not do this if we're outputting nesting
-       * this probably has to be re-written
        */
-      if (context.opts.collapseNesting && context.frames.length !== 0) {
+      if (context.opts.collapseNesting && context.frames.size !== 0) {
         let rule = await new Ruleset({
           selector: new ComplexSelector([new Ampersand()]),
           rules: rules
         })
           .inherit(this)
           .eval(context)
-        node.rules.value = [rule]
+        node.data.set('rules', [rule])
       }
       let rootRules = this.collectRoots()
       rootRules.forEach(rule => rules.value.push(rule))

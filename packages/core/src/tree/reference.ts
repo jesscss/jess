@@ -5,7 +5,7 @@ import { cast } from './util/cast'
 import { Declaration } from './declaration'
 import type { GetterOptions } from '../scope'
 import { General } from './general'
-import { type Selector } from './selector'
+import { Selector } from './selector'
 
 /**
  * The type is determined by syntax
@@ -43,8 +43,9 @@ type ReferenceParams = ConstructorParameters<NodeType>
  * This is a variable or property reference,
  * which can itself contain a reference (a variable variable).
  */
-export class Reference extends Node<string | Interpolated, ReferenceOptions> implements Selector {
-  declare isSelector: true
+export class Reference extends Selector<string | Interpolated, ReferenceOptions> {
+  type = 'Reference'
+  shortType = 'ref'
 
   constructor(...args: ReferenceParams) {
     /** Default to a variable-type reference */
@@ -52,18 +53,19 @@ export class Reference extends Node<string | Interpolated, ReferenceOptions> imp
     super(...args)
   }
 
+  override get keySet(): Set<string> {
+    return (this._keySet ??= new Set())
+  }
+
   find(needle: Selector): Selector[] | undefined {
     throw new Error('Method not implemented.')
   }
 
-  _valueOf: string | undefined
-  valueOf() {
+  override valueOf() {
     return ''
   }
 
-  keySet!: Set<string>
-
-  toTrimmedString(): string {
+  override toTrimmedString(): string {
     const { type, resolution } = this.options
     const { value } = this
     const preChar = resolution === 'linear' ? '$$' : '$'
@@ -81,13 +83,12 @@ export class Reference extends Node<string | Interpolated, ReferenceOptions> imp
    * We don't need to mark evaluated, because a reference
    * should never resolve to another reference
    */
-  async eval(context: Context): Promise<Node> {
+  override async evalNode(context: Context): Promise<Node> {
     let { value } = this
     let { type, optional } = this.options
     let name: string
     if (value instanceof Node) {
-      value = await value.eval(context)
-      name = value.value
+      name = (await value.eval(context)).value
     } else {
       name = value
     }
@@ -109,22 +110,20 @@ export class Reference extends Node<string | Interpolated, ReferenceOptions> imp
 
     if (returnVal === undefined && optional) {
       if (typeof value === 'string') {
-        return new General(value, { type: 'Name' }).inherit(this)
+        return new General(value, { type: 'Name' })
       }
-      return value.inherit(this)
+      return value
     }
     if (returnVal instanceof Declaration) {
       context.declarationScope = returnVal
       returnVal = returnVal.value
       returnVal = await returnVal.eval(context)
       context.declarationScope = undefined
-      return returnVal.inherit(this)
+      return returnVal
     } else {
-      return cast(returnVal).inherit(this)
+      return cast(returnVal)
     }
   }
 }
-
-Reference.prototype.isSelector = true
 
 export const ref = defineType(Reference, 'Reference', 'ref')
