@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/prefer-readonly */
-import { Node, type NodeList, defineType } from './node'
+import { Node, NodeList, NodeTypeIndex, ROOT_DATA, defineType } from './node'
 import { Declaration } from './declaration'
 import {
   BaseDeclaration,
@@ -7,15 +7,18 @@ import {
   type DeclarationName
 } from './base-declaration'
 import {
+  VarDeclaration,
   type VarDeclarationOptions
 } from './var-declaration'
 import { Scope } from '../scope'
 import type { Context } from '../context'
 import { isNode } from './util'
-import { type Ruleset } from './ruleset'
+import { Ruleset } from './ruleset'
 import { type AtRule } from './at-rule'
 import { Nil } from './nil'
 import { type Root } from './root'
+import { Mixin } from './mixin'
+import { Interpolated } from './interpolated'
 // import { LinkedList } from './util/collections'
 
 export const enum Priority {
@@ -39,23 +42,7 @@ type QueueItem = {
   nameOnly: true
 }
 
-type QueueMap = {
-  [Priority.None]?: Set<QueueItem>
-  [Priority.Low]?: Set<QueueItem>
-  [Priority.Medium]?: Set<QueueItem>
-  [Priority.High]?: Set<QueueItem>
-}
-
-function assign(map: QueueMap, key: Priority, value: Node, pos: number): void
-function assign(map: QueueMap, key: Priority, value: BaseDeclaration<DeclarationName, AnyDeclarationValue>, pos: number, nameOnly?: true): void
-function assign(map: QueueMap, key: Priority, value: Node, pos: number, nameOnly?: true | undefined) {
-  let set = map[key]
-  if (set) {
-    set.add({ node: value, pos, nameOnly })
-  } else {
-    map[key] = new Set([{ node: value, pos, nameOnly }])
-  }
-}
+type QueueMap = Map<Priority, Set<QueueItem>>
 
 /**
  * The class representing a "declaration list".
@@ -76,6 +63,24 @@ export class Rules extends Node<Node[]> {
   override allowRuleRoot = true
   override allowRoot = true
 
+  /**
+   * All values, some with overlapping keys.
+   * This reduces some search time, and extra refining
+   * can be done by examining the node type.
+   */
+  private _valueMap: Map<string, NodeList> | undefined
+  get valueMap(): Map<string, NodeList> {
+    return (this._valueMap ??= new Map())
+  }
+
+  filter(name: string, type?: string) {
+    let map = this.valueMap
+    let list = map.get(name)
+    if (!list) {
+      return new NodeList()
+    }
+  }
+
   private _scope: Scope | undefined
   get scope() {
     return (this._scope ??= new Scope())
@@ -83,27 +88,6 @@ export class Rules extends Node<Node[]> {
 
   set scope(s: Scope) {
     this._scope = s
-  }
-
-  // constructor(value: { scope: }) {
-  //   super([])
-  // }
-
-  /** Allows iterating with the each() function */
-  * [Symbol.iterator](): Generator<[string, Node]> {
-    for (let item of this.value) {
-      if (!(item instanceof Declaration)) {
-        continue
-      }
-      let { name } = item.value
-      /** This only works if the name has been eval'd */
-      name = typeof name === 'string' ? name : String(name.value)
-      yield [name, item]
-    }
-  }
-
-  entries() {
-    return this[Symbol.iterator]()
   }
 
   override toTrimmedString(depth: number = 0) {
@@ -132,19 +116,29 @@ export class Rules extends Node<Node[]> {
     return this.value.filter(n => n.visible)
   }
 
+  assign(map: QueueMap, key: Priority, value: Node, pos: number, nameOnly?: true | undefined) {
+    let set = map.get(key)
+    if (set) {
+      set.add({ node: value, pos, nameOnly })
+    } else {
+      map.set(key, new Set([{ node: value, pos, nameOnly }]))
+    }
+  }
+
   override async evalNode(context: Context): Promise<Rules | Root> {
     let inheritedScope = context.scope
     context.scope = this.scope
-    let { hoistDeclarations, leakVariablesIntoScope } = this.treeContext
+    let { leakVariablesIntoScope } = this.treeContext
     let rules = this.clone()
     rules.scope = this.scope
+    let assign = this.assign
     /**
      * Make a shallow copy of rules.
      * This is because we're going to replace
      * each item in the array when evaluating.
      */
-    let ruleValues = rules.value = [...this.value]
-    let evalQueue: QueueMap = {}
+    rules.value = [...this.value]
+    let evalQueue: QueueMap = new Map()
 
     /**
      * First, create a linked list.
@@ -152,7 +146,7 @@ export class Rules extends Node<Node[]> {
      * without mutating arrays.
      */
     // let prev: Node | undefined
-    let nodeLength = ruleValues.length
+    // let nodeLength = ruleValues.length
     /** Iterate in reverse order, to assign the _next node */
     // for (let i = nodeLength - 1; i >= 0; i--) {
     //   const n = value[i]
@@ -176,45 +170,35 @@ export class Rules extends Node<Node[]> {
      *      contain variables). This includes mixin and qualified rule names
      *   2. variable declaration names
      *   3. mixin and function calls
-     *   3. everything else
+     *   3. everything else (declaration values, etc.)
      *
      * Everything else:
      *   1. static declaration names of mixins and functions
      *   2. variable declaration names of mixins and functions
      *   3. everything else
      */
-    for (let i = 0; i < nodeLength; i++) {
-      let n = ruleValues[i]!
-
-      if (n instanceof BaseDeclaration) {
+    let i = -1
+    for (let n of rules.data.list.values()) {
+      i++
+      /** Evaluate names */
+      if (n instanceof BaseDeclaration || n instanceof Mixin) {
         const { name } = n.value
-        if (hoistDeclarations) {
-          if (name instanceof Node) {
+        
+        if (name instanceof Node) {
+          if (name instanceof Interpolated) {
             /** Evaluate these names after evaluating static names */
             assign(evalQueue, Priority.Medium, n, i, true)
           } else {
             /** Evaluate static names first */
             assign(evalQueue, Priority.High, n, i, true)
           }
-        } else if (isNode(n, ['Mixin', 'Func'])) {
-          if (name instanceof Node) {
-            assign(evalQueue, Priority.Medium, n, i, true)
-          } else {
-            assign(evalQueue, Priority.High, n, i, true)
-          }
-        } else {
-          /**
-           * If we're not hoisting variables, evaluate
-           * declarations immediately.
-           */
-          assign(evalQueue, Priority.None, n, i)
         }
       /**
        * Hoist imports
        *
        * @note - this might need tweaking
        */
-      } else if (isNode(n, 'Use') || (hoistDeclarations && isNode(n, 'Call'))) {
+      } else if (isNode(n, 'Import')) {
         assign(evalQueue, Priority.Low, n, i)
       } else {
         assign(evalQueue, Priority.None, n, i)
@@ -223,7 +207,7 @@ export class Rules extends Node<Node[]> {
 
     /** Start with high priority */
     for (let i: Priority = Priority.High; i >= 0; i--) {
-      let set = evalQueue[i]
+      let set = evalQueue.get(i)
       if (!set) {
         continue
       }
@@ -233,81 +217,82 @@ export class Rules extends Node<Node[]> {
         if (nameOnly) {
           let decl = node.clone() as BaseDeclaration
           /** Everything in a ruleset root will have a name */
-          let name = decl.name!
+          let name = decl.data.get('name')
           let ident: string
           if (name instanceof Node) {
             ident = (await name.eval(context)).value
-            decl.name = ident
+            decl.data.set('name', ident)
           } else {
             ident = name
           }
           if (!decl.allowRuleRoot) {
             decl.visible = false
           }
-          ruleValues[pos] = decl
-          if (isNode(decl, 'Mixin')) {
-            this._scope.setMixin(ident, decl, decl.options)
-          } else if (isNode(decl, ['VarDeclaration', 'Func'])) {
-            this._scope.setVar(ident, decl, decl.options as VarDeclarationOptions)
-          } else {
-            this._scope.setProp(ident, decl as Declaration)
-          }
+          rules.data.set(ROOT_DATA, decl, pos)
+          let list = rules.valueMap.get(ident) ?? new NodeList()
+          list.push(decl)
+          rules.valueMap.set(ident, list)
+
+          // if (isNode(decl, 'Mixin')) {
+          //   this._scope.setMixin(ident, decl, decl.options)
+          // } else if (isNode(decl, ['VarDeclaration', 'Func'])) {
+          //   this._scope.setVar(ident, decl, decl.options as VarDeclarationOptions)
+          // } else {
+          //   this._scope.setProp(ident, decl as Declaration)
+          // }
           /**
            * Now that we've evaluated the name, add it to the evaluation queue.
            * (Variable values are not evaluated unless they are called)
            */
-          if (isNode(node, 'Declaration')) {
+          if (!(decl instanceof VarDeclaration)) {
             assign(evalQueue, Priority.None, decl, i)
           }
         } else {
-          if (hoistDeclarations && node instanceof Declaration) {
-            /**
-             * We've already cloned and partially evaluated this,
-             * so we only need to evaluate the value.
-             */
-            context.declarationScope = node
-            let evald = await node.value.eval(context)
-            context.declarationScope = undefined
-            if (evald instanceof Nil) {
-              ruleValues[pos] = evald
-            } else {
-              node.value = evald
-            }
-          } else {
-            let result: Node
-            /** Late evaluation of vars */
-            if (isNode(node, 'VarDeclaration')) {
-              result = node.clone()
-              if (node.name instanceof Node) {
-                node.name = await node.name.eval(context) as Name
-              }
-            } else {
-              if (node instanceof Declaration) {
-                context.declarationScope = node
-              }
-              result = await node.eval(context)
-            }
-            if (!result.allowRuleRoot) {
-              result.visible = false
-            }
-            ruleValues[pos] = result
+          /** Variable values are only evaluated if referenced */
+          if (!(node instanceof VarDeclaration)) {
+            if (node instanceof Declaration) {
+              /**
+               * We've already cloned and partially evaluated this,
+               * so we only need to evaluate the value.
+               */
+              context.declarationScope.push(node)
+              let evaldValue = await node.data.get('value').eval(context)
+              context.declarationScope.pop()
 
-            /** Set references linearly */
-            if (!hoistDeclarations && result instanceof Declaration) {
-              let ident = result.name instanceof Node ? result.name.value : result.name
-              if (isNode(node, 'VarDeclaration')) {
-                this._scope.setVar(ident, result, result.options)
-              } else if (isNode(node, 'Declaration')) {
-                this._scope.setProp(ident, result)
+              if (evaldValue instanceof Nil) {
+                rules.data.set(ROOT_DATA, evaldValue, pos)
+              } else {
+                node.data.set('value', evaldValue)
               }
-            }
-            /** Merge any scope that we need for lookups */
-            if (result instanceof Rules) {
-              this._scope.merge(result._scope, leakVariablesIntoScope)
+            } else {
+              let result = await node.eval(context)
+              
+              if (!result.allowRuleRoot) {
+                result.visible = false
+              }
+              if (result instanceof Rules) {
+                let returnRules = result.data.list
+                if (leakVariablesIntoScope) {
+                  rules.data.list.splice(pos, 1, ...returnRules)
+                } else {
+                  returnRules = returnRules.filter((current, i) => {
+
+                  })
+                }
+                
+              } else {
+                rules.data.set(ROOT_DATA, result, pos)
+              }
+
+              /** Merge any scope that we need for lookups */
+              if (result instanceof Rules) {
+                this._scope.merge(result._scope, leakVariablesIntoScope)
+              }
             }
           }
         }
       }
+    }
 
       // let current = map[0]
       // let prevEvald: Node | undefined
@@ -376,7 +361,6 @@ export class Rules extends Node<Node[]> {
       //   current = current._next
       //   prevEvald = evald
       // }
-    }
 
     let newRules: Node[] = []
 

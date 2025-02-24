@@ -1,4 +1,5 @@
 import type { Node } from '../node'
+import { Deque } from 'data-structure-typed'
 
 /** This is just to make the following class more readable */
 // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -218,6 +219,96 @@ export class LinkedList {
     }
     let next = pos & 0xffff // Extract the lower 16 bits
     return next === 0 ? undefined : next
+  }
+}
+
+
+
+/**
+ * A dynamic linked list useful for managing items in multiple lists.
+ * In other words, rather than linking items together, their positions
+ * in a list are managed by the list, much like an array.
+ * 
+ * The items before/after current items are linked multiple times by type.
+ * That is, you can think about it like each node setting a map like:
+ *   1. What is the next mixin? What is the previous mixin?
+ *   2. What is the next property? What is the previous property?
+ */
+export class NodeList<
+  T extends Node = Node
+> extends Deque<T> {
+
+  /** A map of nodes to their position in the list */
+  private _nodeToPosition = new WeakMap<T, number>()
+
+  constructor(
+    values: T[] = []
+  ) {
+    super(undefined, { bucketSize: 1 << 10 })
+    for (let value of values) {
+      this.push(value)
+    }
+  }
+
+  private _setNode(n: T, position: number) {
+    this._nodeToPosition.set(n, position)
+  }
+
+  reIndex(startIndex = 0) {
+    for (let i = startIndex; i < this._length; i++) {
+      this._setNode(this.at(i), i)
+    }
+  }
+
+  set(key: number, value: T) {
+    super.setAt(key, value)
+    this._setNode(value, key)
+  }
+
+  override push(element: T) {
+    super.push(element)
+    this._setNode(element, this._length - 1)
+    return true
+  }
+
+  override splice(start: number, deleteCount: number, ...items: T[]) {
+    let result = super.splice(start, deleteCount, ...items)
+    this.reIndex(start)
+    return result
+  }
+
+  * entries(): Generator<[number, T]> {
+    for (let i = 0; i < this._length; ++i) {
+      yield [i, this.at(i)]
+    }
+  }
+
+  removeItem(n: T) {
+    let index = this._nodeToPosition.get(n)
+    if (index !== undefined) {
+      this.splice(index, 1)
+    }
+  }
+  
+  
+  private _reverse(asEntries: false, start?: T): Generator<T>
+  private _reverse(asEntries: true, start?: T): Generator<[number, T]>
+  private _reverse(asEntries?: boolean, start?: T): Generator<T>
+  private * _reverse(asEntries: boolean = false, start = this.last): Generator<T | [number, T]> {
+    let startIndex = (!start || start === this.last)
+      ? this._length - 1
+      : this._nodeToPosition.get(start) ?? this.length - 1
+    for (let i = startIndex; i > -1; i--) {
+      yield asEntries ? [i, this.at(i)] : this.at(i);
+    }
+  }
+
+  * reverseValues(start?: T) {
+    yield * this._reverse(false, start)
+  }
+
+  * reverseEntries(start?: T) {
+    yield * this._reverse(true, start)
   }
 }
 

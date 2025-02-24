@@ -38,7 +38,7 @@ export class AtRule extends Node<AtRuleValue> {
   }
 
   override async evalNode(context: Context) {
-    let node = await super.eval(context) as AtRule
+    let node = await super.evalNode(context) as AtRule
     let rules = node.data.get('rules')
     /** Don't let rooted rules bubble past an at-rule */
     if (rules) {

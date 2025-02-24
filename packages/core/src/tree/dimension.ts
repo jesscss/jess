@@ -2,7 +2,10 @@ import { type Context, UnitMode } from '../context'
 import { Color, ColorFormat } from './color'
 import {
   Node,
-  defineType
+  defineType,
+  type LocationInfo,
+  type NodeOptions,
+  type TreeContext
 } from './node'
 import { type Operator, calculate } from './util/calculate'
 import { logger } from '../logger'
@@ -15,6 +18,8 @@ export type DimensionValue = {
   number: number
   unit?: string
 }
+
+const { isArray } = Array
 
 type LengthUnit = 'm' | 'cm' | 'mm' | 'in' | 'px' | 'pt' | 'pc'
 type DurationUnit = 's' | 'ms'
@@ -225,12 +230,23 @@ const conversions = {
   } satisfies Record<AngleUnit, number>
 }
 
-export const dimension = defineType(Dimension, 'Dimension')
-type DimensionShortParams = Parameters<typeof dimension>
+export const dimension = (
+  value: DimensionValue | [number, string] | number,
+  options?: NodeOptions,
+  location?: LocationInfo,
+  treeContext?: TreeContext
+) => {
+  if (isArray(value)) {
+    let [number, unit] = value
+    return new Dimension({ number, unit }, options, location, treeContext)
+  }
+  return new Dimension(typeof value === 'number' ? { number: value } : value, options, location, treeContext)
+}
+
 /** alias */
 export const num = (
   value: number,
-  location?: DimensionShortParams[1],
-  options?: DimensionShortParams[2],
-  treeContext?: DimensionShortParams[3]
-) => dimension({ number: value }, location, options, treeContext)
+  options?: NodeOptions,
+  location?: LocationInfo,
+  treeContext?: TreeContext
+) => dimension({ number: value }, options, location, treeContext)

@@ -83,7 +83,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       }
     }
 
-    selector = await super.eval.call(selector, context) as ComplexSelector
+    selector = await super.evalNode.call(selector, context) as ComplexSelector
 
     let cleanElements = (elements: Array<Selector | Combinator | Nil>): ComplexSelectorValue => {
       let elementsLength = elements.length

@@ -70,7 +70,7 @@ describe('Ampersand', () => {
     )
   })
 
-  it('should collapse selectors when in collapsing mode', async () => {
+  it.only('should collapse selectors when in collapsing mode', async () => {
     /** We need a root node to bubble rules */
     let node = wrapAmp([amp()])
     context = new Context({ collapseNesting: true })

@@ -15,7 +15,12 @@ import { Mixin } from './mixin'
  */
 export class Func extends Mixin {
   override async evalNode(context: Context): Promise<Node> {
-    let result = await super.eval(context)
+    /**
+     * @todo - this logic is incorrect. The FIRST evaluated
+     * at-rule or declaration with `return` should be the return value,
+     * and in fact it should immediately exit without evaluating the rest.
+     */
+    let result = await super.evalNode(context)
     if (result instanceof Rules) {
       let value = result.value
       let last = value[value.length - 1]

@@ -12,9 +12,9 @@ import type { Bool } from '../tree/bool'
 import type { Condition } from '../tree/condition'
 import { Context } from '../context'
 import type { General } from '../tree/general'
-import { BiMap, LinkedList, NodeList } from '../tree/util/collections'
+import { BiMap, LinkedList } from '../tree/util/collections'
 import { Queue } from 'data-structure-typed'
-import { type Ruleset } from '../tree'
+import type { Ruleset } from '../tree'
 
 /**
  * The Scope object is meant to be an efficient
@@ -220,92 +220,6 @@ export class Scope {
     }
   }
 
-  private _find(
-    key: string | symbol,
-    type: NodeTypeIndex | undefined,
-    includeParents = true,
-    start?: number
-  ) {
-    let scope: Scope | undefined = this
-    let nodes: NodeList | undefined
-    while (scope) {
-      let map = this.entryMap
-      /** Type will be defined if it's a key string */
-      let indexKey: IndexKey | symbol = typeof key === 'symbol' ? key : `${type!}${key}`
-      let list = map.get(indexKey)
-      if (!list) {
-        if (!includeParents) {
-          return
-        }
-        scope = scope._parent
-        continue
-      }
-      if (start !== undefined) {
-        /** Binary search the queue to find a starting position */
-        let left = 0, right = list.length - 1
-        let bestMatch: number | undefined
-
-        while (left <= right) {
-          let mid = Math.floor((left + right) / 2)
-          let midVal = list.at(mid)!
-          if (midVal === start) {
-            break
-          }
-          if (midVal < start) {
-            bestMatch = midVal
-            left = mid + 1
-          } else {
-            right = mid - 1
-          }
-        }
-        if (!bestMatch) {
-          if (!includeParents) {
-            return
-          }
-          scope = scope._parent
-          continue
-        }
-        nodes ??= new NodeList()
-        for (let i = bestMatch; i >= 0; i--) {
-          let index = list.at(i)!
-          let node = this.nodePositionMap.get(index)!
-          nodes.push(node)
-        }
-      }
-
-      if (!includeParents) {
-        return nodes
-      }
-      
-      scope = scope._parent
-    }
-    return nodes
-  }
-
-  /**
-   * Search scope chain for a variable
-   * THEN search any leaky rules
-   */
-  getVar(key: string, start?: number) {
-    let result = this._find(key, NodeTypeIndex.VARIABLE, true, start)
-    if (!result) {
-      const rules = this._find(LEAKY_RULES, undefined, false, start) as NodeList<Rules>
-      if (rules) {
-        for (let rule of rules) {
-          result = rule.scope.getLocal(key, NodeTypeIndex.VARIABLE)
-          if (result) {
-            break
-          }
-        }
-      }
-    }
-    return result?.last
-  }
-
-  getLocal(key: string, type: NodeTypeIndex, start?: number) {
-    return this._find(key, NodeTypeIndex.VARIABLE, false, start)?.last
-  }
-
   get(key: string, type: NodeTypeIndex, start?: number) {
     let scope: Scope | undefined = this
     while (scope) {
@@ -322,6 +236,12 @@ export class Scope {
       }
       scope = scope._parent
     }
+  }
+
+  /** Added in linear (top-to-bottom) evaluation order, accessed by $$ */
+  private _linearMap: Map<string, LinkedList> | undefined
+  private get linearMap(): Map<string, LinkedList> {
+    return (this._linearMap ??= new Map())
   }
 
   /**
@@ -417,6 +337,164 @@ export class Scope {
     return normalKey
   }
 
+  /**
+   * Lazily create prototype chains
+   */
+  entries(type: NodeType): Generator<[string, Node]>
+  entries(): Generator<[string, LinkedList]>
+  * entries(type?: NodeType): Generator<[string, Node | LinkedList]> {
+    const map = this.entryMap
+    if (!type) {
+      yield * map.entries()
+    } else {
+      for (let [key, value] of map.entries()) {
+        if (key.startsWith(type)) {
+          for (let entry of value) {
+            yield [key, this.nodeMap.get(entry)!]
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Merges a scope (usually child) into this scope object
+   * @todo - Rewrite
+  */
+  merge(scope: Scope, leakVariablesIntoScope?: boolean) {
+    let props = scope.props
+    let keys = Object.getOwnPropertyNames(props)
+    let keyLength = keys.length
+    for (let i = 0; i < keyLength; i++) {
+      let key = keys[i]!
+      this.setProp(key, props[key]!)
+    }
+    if (leakVariablesIntoScope) {
+      let leakVariables = (lookupKey: 'vars' | 'mixins') => {
+        let importedVars = scope[lookupKey]
+        let localVars = this[lookupKey]
+        let setter = lookupKey === 'vars' ? this.setVar : this.setMixin
+        let keys = Object.getOwnPropertyNames(importedVars)
+        let keyLength = keys.length
+        for (let i = 0; i < keyLength; i++) {
+          let key = keys[i]!
+          /** Only leak vars if they aren't defined */
+          if (key in localVars && localVars[key]?.options.preserve !== true) {
+            continue
+          }
+          let entry = importedVars[key]!
+          if (!entry.options.private) {
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment, @typescript-eslint/prefer-ts-expect-error
+            // @ts-ignore
+            setter.call(this, key, entry)
+          }
+        }
+      }
+      leakVariables('vars')
+      leakVariables('mixins')
+    }
+  }
+
+  * mixins() {
+    yield * this.entries(NodeType.MIXIN)
+  }
+
+  * vars() {
+    yield * this.entries(NodeType.VARIABLE)
+  }
+
+  * props() {
+    yield * this.entries(NodeType.PROPERTY)
+  }
+
+  add(key: NodeType, value: Node, scope: 'entry' | 'linear' = 'entry') {
+    let map = scope === 'entry' ? this.entryMap : this.linearMap
+    let list = map.get(key)
+    if (!list) {
+      list = new LinkedList()
+      map.set(key, list)
+    }
+    let index = this.nodeMap.getValue(value)
+    if (index === undefined) {
+      index = ++this.index
+      this.nodeMap.set(index, value)
+    }
+    list.push(index)
+  }
+
+  /**
+   * This will store a scoped identifier
+   * that is compatible with JS.
+   */
+  private _setVarOrMixin(lookupKey: 'var' | 'mixin', key: string, value: unknown, opts?: ScopeEntryOptions) {
+    let vars = this[`${lookupKey}s`]
+    if (value instanceof ScopeEntry) {
+      vars[key] = value
+      return
+    }
+    if (key.startsWith('$')) {
+      throw new SyntaxError(`"${key}" cannot start with "$"`)
+    }
+    let normalKey: string
+    if (opts?.isNormalized) {
+      normalKey = key
+    } else {
+      normalKey = this.normalizeKey(key)
+    }
+    Scope.entryKeys.set(normalKey, key)
+
+    if (normalKey in vars) {
+      if (opts?.setIfUndefined) {
+        return
+      }
+      let entry = vars[normalKey]!
+      /**
+       * These sort of do similar things, they just throw
+       * different errors.
+       */
+      if (entry.options.protected ?? opts?.protected) {
+        throw new SyntaxError(`Assignment to protected ${lookupKey} "${key}"`)
+      }
+      /** Set the already defined variable */
+      if (opts?.setDefined) {
+        entry.value = value
+        return
+      }
+    } else if (opts?.setDefined) {
+      throw new ReferenceError(`"${key}" is not defined`)
+    }
+    if (Object.prototype.hasOwnProperty.call(vars, normalKey)) {
+      /** Modify the local entry */
+      let entry = vars[normalKey]!
+
+      if (entry?.options.throwIfDefined ?? opts?.throwIfDefined) {
+        throw new SyntaxError(`"${key}" is already defined`)
+      }
+
+      if (lookupKey === 'var') {
+        entry.value = Array.isArray(entry.value) ? [value, ...entry.value] : [value, entry.value]
+      } else {
+        /** mixins are in linear order */
+        entry.value = Array.isArray(entry.value) ? [...entry.value, value] : [entry.value, value]
+      }
+    } else {
+      /** Shadow the variable within the local scope */
+      vars[normalKey] = new ScopeEntry(normalKey, value, opts)
+    }
+  }
+
+  setVar(key: string, value: unknown, opts?: ScopeEntryOptions) {
+    this._setVarOrMixin('var', key, value, opts)
+  }
+
+  setMixin(key: string, value: MixinEntry, opts?: ScopeEntryOptions) {
+    this._setVarOrMixin('mixin', key, value, opts)
+  }
+
+  getVar(key: string, options?: GetterOptions) {
+    return this._getBase('vars', key, options)
+  }
+
   getMixin(key: string, options?: GetterOptions) {
     let mixins = this._getBase('mixins', key, options)
     if (mixins) {
@@ -475,30 +553,30 @@ export class Scope {
     return props
   }
 
-  // getLocal(
-  //   collection: 'property' | 'mixin' | 'variable',
-  //   key: string,
-  //   options: GetterOptions = {}
-  // ) {
-  //   let getter: (key: string, options?: GetterOptions) => unknown
-  //   options = {
-  //     ...options,
-  //     local: true
-  //   }
+  getLocal(
+    collection: 'property' | 'mixin' | 'variable',
+    key: string,
+    options: GetterOptions = {}
+  ) {
+    let getter: (key: string, options?: GetterOptions) => unknown
+    options = {
+      ...options,
+      local: true
+    }
 
-  //   switch (collection) {
-  //     case 'property':
-  //       getter = this.getProp
-  //       break
-  //     case 'mixin':
-  //       getter = this.getMixin
-  //       break
-  //     case 'variable':
-  //       getter = this.getVar
-  //       break
-  //   }
-  //   return getter.call(this, key, options)
-  // }
+    switch (collection) {
+      case 'property':
+        getter = this.getProp
+        break
+      case 'mixin':
+        getter = this.getMixin
+        break
+      case 'variable':
+        getter = this.getVar
+        break
+    }
+    return getter.call(this, key, options)
+  }
 
   /**
    * We can pass in a filter to narrow the

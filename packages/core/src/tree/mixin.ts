@@ -4,8 +4,6 @@ import type { List } from './list'
 import type { Rest } from './rest'
 import type { Name } from './general'
 import { type VarDeclaration } from './var-declaration'
-import type { Selector } from './selector'
-import type { Nil } from './nil'
 import type { Rules } from './rules'
 import type { Interpolated } from './interpolated'
 
@@ -107,8 +105,6 @@ export class Mixin extends Node<MixinValue> {
   //   }
   // }
 }
-
-/** Not sure why the Class<Node> assertion was necessary */
 
 type MixinConstructorParams = ConstructorParameters<typeof Mixin>
 

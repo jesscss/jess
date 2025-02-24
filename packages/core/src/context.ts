@@ -185,11 +185,13 @@ export class Context {
 
   /**
    * When getting vars, the current declaration is ommitted
-   * to prevent recursion errors
-   *
-   * @todo - This needs to be a Set, and should be used in the lookup resolver
+   * to prevent recursion errors. Each subsequent declaration
+   * is then added to prevent back-references to this one.
    */
-  declarationScope: Declaration | undefined
+  _declarationScope: Stack<Declaration> | undefined
+  get declarationScope() {
+    return (this._declarationScope ??= new Stack())
+  }
 
   /**
    * This is set when entering rulesets so that child nodes

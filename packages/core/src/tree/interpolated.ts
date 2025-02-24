@@ -22,7 +22,14 @@ export type InterpolatedValue = {
 export class Interpolated<
   T extends string = GeneralNodeType
 > extends Node<InterpolatedValue, GeneralOptions<T>> {
-  async eval(context: Context): Promise<General<T>> {
+  type = 'Interpolated'
+  shortType = 'interpolated'
+
+  override valueOf(): string {
+    return this.data.get('value')
+  }
+
+  override async evalNode(context: Context): Promise<General<T>> {
     const data = this.data
     let replacements = data.get('replacements')
     let value = data.get('value')

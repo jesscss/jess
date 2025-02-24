@@ -13,9 +13,9 @@ import type { Context } from '../context'
  * @todo - is this used?
  */
 export class CustomDeclaration extends Declaration {
-  async eval(context: Context) {
+  override async evalNode(context: Context) {
     context.inCustom = true
-    let node = await super.eval(context)
+    let node = await super.evalNode(context)
     context.inCustom = false
     return node
   }

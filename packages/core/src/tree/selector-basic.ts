@@ -25,7 +25,7 @@ export class BasicSelector extends SimpleSelector<string> {
   }
 
   override async evalNode(context: Context): Promise<BasicSelector> {
-    let node = await super.eval(context) as BasicSelector
+    let node = await super.evalNode(context) as BasicSelector
     if (node.isClass) {
       context.hashClass(node.value)
     }

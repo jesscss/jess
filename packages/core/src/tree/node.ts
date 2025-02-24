@@ -8,7 +8,7 @@ import { SKIP, type Visitor } from '../visitor'
 import { type Operator } from './util/calculate'
 import type { Constructor, Writable, Class, ValueOf, Tagged, IsUnknown, UnionToTuple, ConditionalPick, IfUnknown, IsAny } from 'type-fest'
 import { type Nil } from './nil'
-import { Deque } from 'data-structure-typed'
+import { NodeList } from './util/collections'
 
 
 export type { TreeContext }
@@ -121,6 +121,7 @@ type TypedNodeData<
   } & {
     get<U extends K>(key: U): NodeValue extends T[U] ? never : T[U]
     set<U extends K>(key: U, value: NodeValue, nodeIndex?: number): void
+    values(): IterableIterator<Values<T>>
   }
   // & {
   //   [P in K as 'set']: <U extends P>(key: U, value: T[U], nodeIndex?: number) => void
@@ -130,10 +131,16 @@ type GetTypedNodeData<T extends NodeTypes> =
   Omit<NodeData, 'get' | 'set'> & ( // TypedNodeData<NodeMapType<T>>
     T extends NodeValueObject
       ? TypedNodeData<T>
-      : {
-        get(key: string): never
-        set(key: string, value: any, nodeIndex?: number): void
-      }
+      : T extends Node[] 
+        ? {
+          get(key: string): never
+          set(key: string, value: any, nodeIndex?: number): void
+          values(): IterableIterator<T>
+        }
+        : {
+          get(key: string): any
+          set(key: string, value: any): void
+        }
   )
 
 export const ROOT_DATA = '__root'
@@ -163,35 +170,7 @@ type NarrowTypes<T> =
 
 export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<='
 
-type CallValue = {
-  /**
-   * Can be an identifier or something like a mixin or variable lookup
-   *   e.g. #mixin > .class() is [Call (#mixin ())] -> [Call (class ())]
-   */
-  value: string | Node
-  args?: Node
-  /**
-   * Legacy Less feature -- if a ruleset is returned,
-   * all the properties can be marked as important.
-   */
-  important?: boolean
-}
-
-type Call<T extends CallValue = CallValue> = T
-
-type Foo = NarrowTypes<Call>
-
 export type NoOverride<T> = Tagged<T, 'NoOverride'>
-
-export const enum NodeTypeIndex {
-  NONE             = 0b0000,
-  MIXIN            = 0b0001,
-  RULESET          = 0b0010,
-  MIXIN_OR_RULESET = 0b0011,
-  PROPERTY         = 0b0100,
-  VARIABLE         = 0b1000,
-  VAR_OR_PROP      = 0b1100,
-}
 
 /**
  * The underlying type for all Jess nodes
@@ -515,6 +494,9 @@ export abstract class Node<
 
   /**
    * DO NOT OVERRIDE THIS METHOD
+   * 
+   * @note - Make sure you don't call super.eval while evaluating a node. Call it indirectly
+   * from another node.
    */
   async eval(context: Context): Promise<Node> {
     if (!this.evaluated) {
@@ -565,7 +547,14 @@ export abstract class Node<
    * Derived nodes will override this with different
    * normalization algorithms.
    */
-  valueOf(): string | number {
+  valueOf(): Type extends string ? string : string | number {
+    let value = this.data
+    if (typeof value === 'string') {
+      return value
+    }
+    if (typeof value === 'number') {
+      return value
+    }
     let values = [...this.data.values()]
     if (values.length === 1) {
       return `${values[0]}`
@@ -702,12 +691,7 @@ type NodeDataData<T extends NodeTypes> =
       : T | undefined
 
 /**
- * A dynamically linked list tree, which is also indexed.
- * This is a kind of trie structure for fast, indexed string
- * lookups, as well as fast iteration, insertion, and deletion.
- *
- * It's easier to think of this as a "nested list" than a "tree",
- * because lists can be iterated linearly.
+ * An abstracted representation of node data with a unified API
  */
 export class NodeData<
   T extends NodeTypes = NodeTypes
@@ -736,6 +720,22 @@ export class NodeData<
       return data.get(key) as never
     }
     return data as never
+  }
+
+  get list() {
+    type NodeListType = T extends Node[] ? NodeList<T[0]> : NodeList<Node>
+    const data = this.data
+    if (data instanceof Map) {
+      throw new Error('Cannot get list data from a Map NodeData.')
+    }
+    if (data instanceof NodeList) {
+      return data as unknown as NodeListType
+    }
+    if (isArray(data)) {
+      /** Presume this can be a NodeList */
+      return ((this.data as any) = new NodeList(data)) as NodeListType
+    }
+    throw new Error('Cannot get list data from a non-NodeList NodeData.')
   }
 
   /** Process nodes if they exist */
@@ -804,8 +804,7 @@ export class NodeData<
       for (let [key, val] of Object.entries(value)) {
         this.set(key, val)
       }
-    }
-    if (value !== undefined) {
+    } else if (value !== undefined) {
       if (value instanceof NodeData) {
         this.data = value.data
       } else {
@@ -902,389 +901,3 @@ export class NodeData<
     }
   }
 }
-
-
-
-/**
- * A dynamic linked list useful for managing items in multiple lists.
- * In other words, rather than linking items together, their positions
- * in a list are managed by the list, much like an array.
- * 
- * The items before/after current items are linked multiple times by type.
- * That is, you can think about it like each node setting a map like:
- *   1. What is the next mixin? What is the previous mixin?
- *   2. What is the next property? What is the previous property?
- */
-export class NodeList<
-  T extends Node = Node
-> extends Deque<T> {
-
-  /** A map of nodes to their index */
-  nodeMap = new WeakMap<T, number>()
-
-  constructor(
-    values: T[] = []
-  ) {
-    super()
-    for (let value of values) {
-      this.push(value)
-    }
-  }
-
-  reIndex(startIndex = 0) {
-    for (let i = startIndex; i < this._length; i++) {
-      this.nodeMap.set(this.at(i), i)
-    }
-  }
-
-  set(key: number, value: T) {
-    super.setAt(key, value)
-    this.nodeMap.set(value, key)
-  }
-
-  override push(element: T) {
-    super.push(element)
-    this.nodeMap.set(element, this._length - 1)
-    return true
-  }
-
-  override splice(start: number, deleteCount: number, ...items: T[]) {
-    let result = super.splice(start, deleteCount, ...items)
-    this.reIndex(start)
-    return result
-  }
-
-  * entries(): Generator<[number, T]> {
-    for (let i = 0; i < this._length; ++i) {
-      yield [i, this.at(i)]
-    }
-  }
-
-  removeItem(n: T) {
-    let index = this.nodeMap.get(n)
-    if (index !== undefined) {
-      this.splice(index, 1)
-    }
-  }
-  
-  
-  private _reverse(asEntries: false, start?: T): Generator<T>
-  private _reverse(asEntries: true, start?: T): Generator<[number, T]>
-  private _reverse(asEntries?: boolean, start?: T): Generator<T>
-  private * _reverse(asEntries: boolean = false, start = this.last): Generator<T | [number, T]> {
-    let startIndex = (!start || start === this.last)
-      ? this._length - 1
-      : this.nodeMap.get(start) ?? this.length - 1
-    for (let i = startIndex; i > -1; i--) {
-      yield asEntries ? [i, this.at(i)] : this.at(i);
-    }
-  }
-
-  * reverseValues(start?: T) {
-    yield * this._reverse(false, start)
-  }
-
-  * reverseEntries(start?: T) {
-    yield * this._reverse(true, start)
-  }
-}
-
-
-// export class NodeList<
-//   T extends Node = Node
-// > {
-//   first: number | undefined
-//   last: number | undefined
-//   private _current: number | undefined
-//   /**
-//    * These maps are designed for fast lookups,
-//    * map cloning, and replacing Nodes.
-//    */
-
-//   /** A map of numbers to nodes */
-//   private readonly _items = new BiMap<number, T>()
-//   /** A map of a numbered node to the before / after as a joined number */
-//   private readonly _pos = new Map<number, number>()
-//   private _index = 0
-
-//   keySet = new Set<string>()
-
-//   constructor(
-//     values: T[] = []
-//   ) {
-//     /**
-//      * Passing a Map should really only be done when
-//      * cloning, which we will override.
-//      */
-//     this.setMany(values)
-//   }
-
-//   private _writePos(nodeRef: number, previous: number | undefined, next: number | undefined) {
-//     if (nodeRef === previous || nodeRef === next) {
-//       throw new Error('Linking a node to itself would cause an infinite loop.')
-//     }
-//     this._pos.set(nodeRef, (previous ?? 0) << 16 | (next ?? 0))
-//   }
-
-//   private _writeNextPos(nodeRef: number, next: number | undefined) {
-//     let pos = this._pos.get(nodeRef)
-//     if (pos !== undefined) {
-//       /** Read previous, and write next */
-//       this._writePos(nodeRef, this._getPrevFromBits(pos), next)
-//     }
-//   }
-
-//   private _writePrevPos(nodeRef: number, previous: number | undefined) {
-//     let pos = this._pos.get(nodeRef)
-//     if (pos !== undefined) {
-//       /** Read next, and write previous */
-//       this._writePos(nodeRef, previous, this._getNextFromBits(pos))
-//     }
-//   }
-
-//   private _getPrevFromBits(pos: number | undefined): number | undefined {
-//     if (pos === undefined) {
-//       return undefined
-//     }
-//     let previous = (pos >>> 16) & 0xFFFF // Extract the upper 16 bits
-//     return previous === 0 ? undefined : previous
-//   }
-
-//   private _getNextFromBits(pos: number | undefined): number | undefined {
-//     if (pos === undefined) {
-//       return undefined
-//     }
-//     let next = pos & 0xffff // Extract the lower 16 bits
-//     return next === 0 ? undefined : next
-//   }
-
-//   /** Return an array */
-//   get value() {
-//     return [...this]
-//   }
-
-//   get(key: number): T | undefined {
-//     return this._items.get(key)
-//   }
-
-//   getNodeIndex(n: T) {
-//     return this._items.getValue(n)
-//   }
-
-//   set(key: number, value: T) {
-//     this._items.set(key, value)
-//   }
-
-//   has(key: number) {
-//     return this._items.has(key)
-//   }
-
-//   setMany(values: T[]) {
-//     let index = 1
-//     let lastIndex: number | undefined
-//     if (values.length) {
-//       this.first = 1
-//     }
-//     const { _items, _pos } = this
-//     _items.clear()
-//     _pos.clear()
-//     let length = values.length
-//     for (; index <= length; index++) {
-//       if (lastIndex) {
-//         this._writeNextPos(lastIndex, index)
-//       }
-//       let item = values[index - 1]!
-//       lastIndex = index
-//       this.set(index, item)
-//       this._writePos(index, index - 1, 0)
-//     }
-//     /** The last thing a for loop does is increment, so subtract the last iteration */
-//     this._index = index - 1
-//     this.last = lastIndex
-//   }
-
-//   get size() {
-//     return this._items.size
-//   }
-
-//   push(item: T) {
-//     let index = ++this._index
-//     if (!this.first) {
-//       this.first = index
-//     }
-//     let last = this.last
-//     if (last) {
-//       this._writeNextPos(last, index)
-//     } else {
-//       this.last = index
-//     }
-//     this.set(index, item)
-//     this._writePos(index, last, 0)
-//   }
-
-//   unshift(item: T) {
-//     let index = ++this._index
-//     if (!this.last) {
-//       this.last = index
-//     }
-//     let first = this.first
-//     if (first) {
-//       this._writePrevPos(first, index)
-//     } else {
-//       this.first = index
-//     }
-//     this.set(index, item)
-//     this._writePos(index, first, 0)
-//   }
-
-//   insertBefore(before: T, item: T) {
-//     let index = this._items.getValue(before)
-//     if (index === undefined) {
-//       return
-//     }
-//     if (this._items.getValue(item) !== undefined) {
-//       /**
-//        * Item already exists, no duplicates
-//        * Should we test this, since this is an error?
-//        */
-//       return
-//     }
-//     let pos = this._pos.get(index)!
-//     let previous = this._getPrevFromBits(pos)
-//     let insertionIndex = ++this._index
-//     this._writePos(insertionIndex, previous, index)
-//     this._items.set(insertionIndex, item)
-//     if (index === this.first) {
-//       this.first = insertionIndex
-//     }
-//   }
-
-//   insertAfter(after: T, item: T) {
-//     let index = this._items.getValue(after)
-//     if (index === undefined) {
-//       return
-//     }
-//     if (this._items.getValue(item) !== undefined) {
-//       /**
-//        * Item already exists, no duplicates
-//        * Should we test this, since this is an error?
-//        */
-//       return
-//     }
-//     let pos = this._pos.get(index)!
-//     let next = this._getNextFromBits(pos)
-//     let insertionIndex = ++this._index
-//     this._writeNextPos(index, insertionIndex)
-//     this._writePos(insertionIndex, index, next)
-//     this._items.set(insertionIndex, item)
-//     if (index === this.last) {
-//       this.last = insertionIndex
-//     }
-//   }
-
-//   * [Symbol.iterator]() {
-//     yield * this._values()
-//   }
-
-//   * values() {
-//     yield * this._values()
-//   }
-
-//   private _values(): Generator<T, void, any>
-//   private _values(asEntries: true): Generator<[number, T], void, any>
-//   private * _values(asEntries = false) {
-//     let currentIndex = this._current = this.first
-//     if (currentIndex === undefined) {
-//       return
-//     }
-//     let currentItem = this._items.get(currentIndex)
-
-//     while (currentItem !== undefined) {
-//       yield asEntries ? [currentIndex, currentItem] : currentItem
-//       /**
-//        * this._current pointer may change because of deletions,
-//        * but if it's still the same pointer, then increment it
-//        * to the next position.
-//        */
-//       const nextIndex: number | undefined = currentIndex === this._current
-//         ? this._getNextFromBits(this._pos.get(currentIndex!))
-//         : this._current
-
-//       currentItem = nextIndex ? this._items.get(nextIndex) : undefined
-//       currentIndex = this._current = nextIndex
-//     }
-//   }
-
-//   * entries() {
-//     yield * this._values(true)
-//   }
-
-//   * reverseEntries(start?: number) {
-//     yield * this._reverse(true, start)
-//   }
-
-//   _reverse(asEntries: false, start?: number): Generator<T>
-//   _reverse(asEntries: true, start?: number): Generator<[number, T]>
-//   _reverse(asEntries?: boolean, start?: number): Generator<T>
-//   * _reverse(asEntries: boolean = false, start = this.last): Generator<T | [number, T]> {
-//     let currentIndex = this._current = start
-//     if (currentIndex === undefined) {
-//       return
-//     }
-//     let currentItem = this._items.get(currentIndex)
-
-//     while (currentItem !== undefined && currentIndex !== undefined) {
-//       yield asEntries ? [currentIndex, currentItem] : currentItem
-//       /**
-//        * this._current pointer may change because of deletions,
-//        * but if it's still the same pointer, then decrement it
-//        * to the previous position.
-//        */
-//       let prevIndex: number | undefined = currentIndex === this._current
-//         ? this._getPrevFromBits(this._pos.get(currentIndex!))
-//         : this._current
-
-//       currentItem = prevIndex ? this._items.get(prevIndex) : undefined
-//       currentIndex = this._current = prevIndex
-//     }
-//   }
-
-//   * reverse(start?: number) {
-//     yield * this._reverse(false, start)
-//   }
-
-//   removeItem(item: T) {
-//     let index = this._items.getValue(item)
-//     if (index === undefined) {
-//       return
-//     }
-//     let pos = this._pos.get(index)!
-//     let previous = this._getPrevFromBits(pos)
-//     let next = this._getNextFromBits(pos)
-//     if (previous) {
-//       this._writeNextPos(previous, next)
-//     }
-//     if (next) {
-//       this._writePrevPos(next, previous)
-//     }
-//     this._items.delete(index)
-//     this._pos.delete(index)
-//     if (index === this.first) {
-//       this.first = next
-//     }
-//     if (index === this.last) {
-//       this.last = previous
-//     }
-//     if (index === this._current) {
-//       this._current = next
-//     }
-//   }
-
-//   clear() {
-//     this._items.clear()
-//     this._pos.clear()
-//     this.first = undefined
-//     this.last = undefined
-//     this._current = undefined
-//   }
-// }

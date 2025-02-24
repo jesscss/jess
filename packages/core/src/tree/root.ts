@@ -11,7 +11,7 @@ export class Root extends Rules {
     context.opts.mathMode = this.treeContext.mathMode
     context.opts.unitMode = this.treeContext.unitMode
     context.depth++
-    let node = (await super.eval(context)) as Root
+    let node = (await super.evalNode(context)) as Root
     let rules = node.value
     node.rootRules?.forEach(rule => rules.push(rule))
     context.depth--

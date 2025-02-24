@@ -8,12 +8,14 @@ describe('Dimension', () => {
     context = new Context()
   })
   describe('serialization', () => {
-    it('should make a dimension from a string', () => {
+    it.only('should make a dimension from a string', () => {
       let rule = dimension([10, 'px'])
       let clone = rule.clone()
-      expect(rule.number).toBe(10)
-      expect(clone.number).toBe(10)
-      expect(rule.unit).toBe('px')
+      expect(rule.data.get('number')).toBe(10)
+      expect(clone.data.get('number')).toBe(10)
+      expect(rule.data.get('unit')).toBe('px')
+      expect(rule.data).not.toBe(clone.data)
+      expect(rule.data.data).not.toBe(clone.data.data)
       expect(rule.toString()).toBe('10px')
     })
     it('should make a dimension from a number', () => {

@@ -30,7 +30,7 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   override async evalNode(context: Context): Promise<SelectorList | Selector> {
-    const list = await (super.eval(context) as Promise<SelectorList>)
+    const list = await (super.evalNode(context) as Promise<SelectorList>)
     const { value } = list
     if (value.length === 1) {
       return value[0]!
