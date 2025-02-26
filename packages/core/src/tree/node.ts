@@ -8,8 +8,7 @@ import { SKIP, type Visitor } from '../visitor'
 import { type Operator } from './util/calculate'
 import type { Constructor, Writable, Class, ValueOf, Tagged, IsUnknown, UnionToTuple, ConditionalPick, IfUnknown, IsAny } from 'type-fest'
 import { type Nil } from './nil'
-import { NodeList } from './util/collections'
-
+import { ArrayList, HashMap } from './util/collections'
 
 export type { TreeContext }
 
@@ -143,7 +142,7 @@ type GetTypedNodeData<T extends NodeTypes> =
         }
   )
 
-export const ROOT_DATA = '__root'
+export const DEFAULT_DATA = 'value'
 
 /**
  * @todo - this allows excess properties on T,
@@ -157,7 +156,7 @@ export type NodeValueArray<T extends NodeValueObject> = UnionToTuple<Values<{
   [K in keyof T]: [K, T[K]]
 }>>
 
-type NodeInValue<T extends NodeTypes> = T | NodeData<T>
+type NodeInValue<T extends NodeTypes> = T
 
 type NodeTypes = Primitive | Array<Primitive | Node> | NodeValueObject
 
@@ -232,8 +231,8 @@ export abstract class Node<
    * In a NodeList, any whitespace tokens outside of comments are individually represented,
    * because they are preserved while the comment may not be.
    */
-  pre: NodeList | 1 | 0 | undefined
-  post: NodeList | 1 | 0 | undefined
+  pre: ArrayList | 1 | 0 | undefined
+  post: ArrayList | 1 | 0 | undefined
 
   visible = true
   evaluated = false
@@ -250,12 +249,13 @@ export abstract class Node<
   requiredSemi = false
 
   /** Used by Rules */
-  rootRules: NodeList | undefined
+  rootRules: ArrayList | undefined
 
   /**
-   * This should always represent the `data` of the Node
+   * This is the internal `data` of the node, which is how its represented
+   * internally, and may be different from the `value` of the node.
    */
-  data!: GetTypedNodeData<T> // TypedNodeData<Type> // GetTypedNodeData<T>
+  data!: NodeData<T> // TypedNodeData<Type> // GetTypedNodeData<T>
   parentData: NodeData | undefined
 
   nil!: () => Nil
@@ -266,22 +266,25 @@ export abstract class Node<
     location?: LocationInfo,
     treeContext?: TreeContext
   ) {
-    this.data = new NodeData(this, value) as unknown as GetTypedNodeData<T>
+    this.data = new NodeData(this, value) as NodeData<T>
     this._treeContext = treeContext
     this._location = location
     this._options = options
   }
 
   /** Get the values back in the same format they went in */
-  get value(): Type {
-    const data = this.data
-    if (data.data instanceof NodeList) {
-      return [...data.data] as Type
+  get value(): NodeInValue<T> {
+    const data = this.data.data
+
+    if (data instanceof HashMap) {
+      return data.items as NodeInValue<T>
     }
-    if (data.has(ROOT_DATA)) {
-      return data.get(ROOT_DATA) as Type
+
+    if (data instanceof ArrayList) {
+      return data.items as NodeInValue<T>
     }
-    return Object.fromEntries(data.entries()) as Type
+
+    return data as NodeInValue<T>
   }
 
   set value(val: any) {
@@ -324,7 +327,7 @@ export abstract class Node<
    * Mutate nodes in place, used in... just pre and post now?
    */
   private _processNodeList(
-    list: NodeList,
+    list: ArrayList,
     fn: NodeVisitFunction,
     shallow?: boolean,
     visitPrePost?: boolean,
@@ -385,10 +388,10 @@ export abstract class Node<
     const data = this.data
     if (visitPrePost) {
       let { pre, post } = this
-      if (pre instanceof NodeList) {
+      if (pre instanceof ArrayList) {
         this._processNodeList(pre, func, true, false, reverse)
       }
-      if (post instanceof NodeList) {
+      if (post instanceof ArrayList) {
         this._processNodeList(post, func, true, false, reverse)
       }
     }
@@ -683,12 +686,31 @@ export interface NodeListOptions extends NodeOptions {
 //   ) {}
 // }
 
+/**
+ * It's important to note that any[] extends Record
+ * and `(...args: any[]) => any` extends Record,
+ * so we need to be careful about order.
+ */
 type NodeDataData<T extends NodeTypes> =
-  T extends NodeValueObject
-    ? TypedMap<NodeMapType<T>>
-    : T extends Node[]
-      ? NodeList<T[0]> | undefined
-      : T | undefined
+  T extends any[]
+    ? ArrayList<T[0]>
+    : T extends (...args: any[]) => any
+      ? T
+      : T extends Record<string, any>
+        ? HashMap<T>
+        : T
+
+type NodeDataObject<T extends NodeTypes> =
+  T extends any[]
+    ? { value: T }
+    : T extends Record<string, any>
+      ? T
+      : { value: T }
+
+type NodeDataKeys<T extends NodeTypes> =
+  keyof NodeDataObject<T> extends string
+    ? keyof NodeDataObject<T>
+    : never
 
 /**
  * An abstracted representation of node data with a unified API
@@ -696,120 +718,80 @@ type NodeDataData<T extends NodeTypes> =
 export class NodeData<
   T extends NodeTypes = NodeTypes
 > {
-  /** Nodes can be indexed into lists for fast iteration */
   data!: NodeDataData<T>
-
-  /** Get / has / set only deal with map data */
-  has(key: string) {
-    const data = this.data
-    if (data instanceof Map) {
-      if (key === ROOT_DATA) {
-        return false
-      }
-      return data.has(key)
-    }
-    return key === ROOT_DATA
-  }
-
-  get(key: string): any {
-    const data = this.data
-    if (data instanceof Map) {
-      if (key === ROOT_DATA) {
-        throw new Error('Cannot get root data from a Map NodeData.')
-      }
-      return data.get(key) as never
-    }
-    return data as never
-  }
-
-  get list() {
-    type NodeListType = T extends Node[] ? NodeList<T[0]> : NodeList<Node>
-    const data = this.data
-    if (data instanceof Map) {
-      throw new Error('Cannot get list data from a Map NodeData.')
-    }
-    if (data instanceof NodeList) {
-      return data as unknown as NodeListType
-    }
-    if (isArray(data)) {
-      /** Presume this can be a NodeList */
-      return ((this.data as any) = new NodeList(data)) as NodeListType
-    }
-    throw new Error('Cannot get list data from a non-NodeList NodeData.')
-  }
 
   /** Process nodes if they exist */
   private _getNodeValue(val: any) {
     if (val instanceof Node) {
       val.parentData = this
-      return val
-    }
-    if (isArray(val)) {
-      let nodes = val.filter(n => n instanceof Node)
-      if (nodes.length) {
-        if (nodes.length !== val.length) {
-          throw new Error('Cannot mix nodes and non-nodes in a list.')
-        }
-        nodes.forEach(n => {
+    } else if (isArray(val)) {
+      for (let n of val) {
+        if (n instanceof Node) {
           n.parentData = this
-        })
-        return new NodeList(nodes)
-      } else {
-        /** Treat empty arrays as undefined */
-        return undefined
+        }
       }
     }
     return val
   }
 
-  /** @todo - fix type to string type the setter */
-  set(key: string, val: NodeValue | undefined, nodeListIndex?: number) {
-    let data = this.data as Map<any, any> | NodeList
-    let rootData = key === ROOT_DATA
+  /** Get / has / set only deal with map data */
+  has(key: string) {
+    const data = this.data
+    if (data instanceof HashMap) {
+      return data.has(key)
+    }
+    if (key === 'value') {
+      return true
+    }
+    return false
+  }
 
-    if (!rootData) {
-      if (!data) {
-        data = (this.data as any) = new Map() 
-      }
-      if (!(data instanceof Map)) {
-        throw new Error('Cannot set map data without a map.')
-      }
-      if (nodeListIndex !== undefined) {
-        let list = data.get(key)
-        if (list instanceof NodeList) {
-          /** Assume this is a Node */
-          list.set(nodeListIndex, this._getNodeValue(val))
-        } else {
-          throw new Error('Cannot push to a non-NodeList.')
-        }  
-      } else {
-        data.set(key, this._getNodeValue(val))
-      }
-    } else {
+  get<K extends NodeDataKeys<T>>(key: K): NodeDataObject<T>[K] {
+    const data = this.data
+    if (data instanceof HashMap) {
+      return data.get(key) as NodeDataObject<T>[K]
+    }
+    return data as NodeDataObject<T>[K]
+  }
+
+  /** For map-like operations */
+  set<K extends NodeDataKeys<T>>(key: K, val: NodeDataObject<T>[K]) {
+    const data = this.data
+    if (data instanceof HashMap) {
+      data.set(key, val as any)
+    } else if (key === 'value') {
       (this.data as any) = this._getNodeValue(val)
-      return
+    } else {
+      throw new Error('Cannot set on non-HashMap data')
+    }
+  }
+
+  /** For list-like operations */
+  setAt(index: number, val: NodeDataObject<T>) {
+    const data = this.data
+    if (data instanceof ArrayList) {
+      data.set(index, val as any)
+    } else {
+      throw new Error('Cannot set at index on non-ArrayList data')
     }
   }
 
   constructor(
     /** The Node this is getting attached to */
     public parentNode: Node,
-    value?: NodeInValue<T>
+    value: NodeInValue<T>
   ) {
     this.setAllData(value)
   }
 
-  setAllData(value?: NodeInValue<T>) {
+  setAllData(value: NodeInValue<T>) {
+    const process = this._getNodeValue
     if (value && isPlainObject(value)) {
-      for (let [key, val] of Object.entries(value)) {
-        this.set(key, val)
-      }
-    } else if (value !== undefined) {
-      if (value instanceof NodeData) {
-        this.data = value.data
-      } else {
-        this.set(ROOT_DATA, value as any)
-      }
+      this.data = new HashMap(value as any, process) as NodeDataData<T>
+    } else if (isArray(value)) {
+      this.data = new ArrayList(value as any, process) as NodeDataData<T>
+    } else {
+      this.data = process(value) as NodeDataData<T>
     }
   }
 
@@ -822,9 +804,9 @@ export class NodeData<
   ): Generator<NodeValue | undefined | [string, NodeValue | undefined, nodeIndex?: number]> {
     const data = this.data
     const listMethod = reverse ? 'reverseEntries' : 'entries'
-    if (data instanceof Map) {
+    if (data instanceof HashMap) {
       for (let [key, val] of data.entries()) {
-        if (val instanceof NodeList) {
+        if (val instanceof ArrayList) {
           for (let [nodeIndex, node] of val[listMethod]()) {
             yield asEntries ? [key, node, nodeIndex] : node
           }
@@ -832,12 +814,12 @@ export class NodeData<
           yield asEntries ? [key, val] : val
         }
       }
-    } else if (data instanceof NodeList) {
+    } else if (data instanceof ArrayList) {
       for (let [nodeIndex, node] of data[listMethod]()) {
-        yield asEntries ? [ROOT_DATA, node, nodeIndex] : node
+        yield asEntries ? [DEFAULT_DATA, node, nodeIndex] : node
       }
     } else {
-      asEntries ? yield [ROOT_DATA, data as NodeValue] : yield data as NodeValue
+      asEntries ? yield [DEFAULT_DATA, data as NodeValue] : yield data as NodeValue
     }
   }
 
@@ -846,14 +828,6 @@ export class NodeData<
       /** Exclude `undefined` as a value */
       if (value !== undefined) {
         yield value
-      }
-    }
-  }
-
-  removeNode(n: Node) {
-    for (let list of this._dataValues()) {
-      if (list instanceof NodeList) {
-        list.removeItem(n)
       }
     }
   }
@@ -871,11 +845,11 @@ export class NodeData<
   ): Generator<Node> {
     let data = this.data
 
-    if (!(data instanceof NodeList)) {
-      throw new Error('Cannot walk a non-NodeList.')
+    if (!(data instanceof ArrayList)) {
+      throw new Error('Cannot walk a non-ArrayList.')
     }
 
-    yield * data.reverseValues(start)
+    yield * data.reverse(start)
 
     if (includeParents) {
       let node = this.parentNode

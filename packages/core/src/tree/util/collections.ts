@@ -1,3 +1,4 @@
+import type { ValueOf, IfNever } from 'type-fest'
 import type { Node } from '../node'
 import { Deque } from 'data-structure-typed'
 
@@ -222,7 +223,119 @@ export class LinkedList {
   }
 }
 
+/**
+ * An abstraction around an array with some useful helper methods,
+ * some of which are set-like.
+ */
+export class ArrayList<T = unknown> {
+  constructor(
+    public items: T[] = [],
+    public processValue?: (value: T) => T
+  ) {}
 
+  get size() {
+    return this.items.length
+  }
+
+  has(item: T) {
+    return this.items.includes(item)
+  }
+
+  set(index: number, value: T) {
+    this.items[index] = value
+  }
+
+  clear() {
+    this.items.length = 0
+  }
+
+  push(...items: T[]) {
+    this.items.push(...items)
+  }
+
+  pop() {
+    return this.items.pop()
+  }
+
+  * [Symbol.iterator](): Generator<T> {
+    yield * this.items
+  }
+
+  * entries(): Generator<[number, T]> {
+    let length = this.items.length
+    for (let i = 0; i < length; i++) {
+      yield [i, this.items[i]!]
+    }
+  }
+
+  * values(): Generator<T> {
+    yield * this.items
+  }
+
+  * reverse(start = this.items.length - 1): Generator<T> {
+    for (let i = start; i > -1; i--) {
+      yield this.items[i]!
+    }
+  }
+
+  * reverseEntries(start = this.items.length - 1): Generator<[number, T]> {
+    for (let i = start; i > -1; i--) {
+      yield [i, this.items[i]!]
+    }
+  }
+}
+
+/** A more efficient map (for our needs), with a simple object backing */
+export class HashMap<
+  T extends Record<string, unknown>
+> {
+  keys: ArrayList<keyof T>
+  size: number
+
+  constructor(
+    public items: T,
+    public processValue?: (value: ValueOf<T>) => ValueOf<T>
+  ) {
+    this.keys = new ArrayList(Object.keys(items)) as ArrayList<keyof T>
+    this.size = this.keys.size
+  }
+
+  * [Symbol.iterator](): Generator<ValueOf<T>> {
+    for (let key of this.keys) {
+      yield this.items[key]
+    }
+  }
+
+  * entries(): Generator<[keyof T, ValueOf<T>]> {
+    for (let key of this.keys) {
+      yield [key, this.items[key]]
+    }
+  }
+
+  * reverse(start = this.size): Generator<ValueOf<T>> {
+    for (let key of this.keys.reverse(start)) {
+      yield this.items[key]
+    }
+  }
+
+  has(key: string) {
+    return this.keys.has(key)
+  }
+
+  get(key: IfNever<keyof T, string, keyof T>): T[keyof T] {
+    return this.items[key]
+  }
+
+  set<K extends keyof T>(key: K, value: T[K]) {
+    const keys = this.keys
+    const processValue = this.processValue
+    this.items[key] = (processValue ? processValue(value) : value) as T[K]
+    if (!keys.has(key)) {   
+      keys.push(key)
+      this.size++
+    }
+  }
+}
 
 /**
  * A dynamic linked list useful for managing items in multiple lists.
