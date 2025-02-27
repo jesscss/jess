@@ -25,7 +25,7 @@ type AllNodeOptions = {
   semi?: boolean
 }
 
-export type Primitive = undefined | boolean | string | number | ((...args: any[]) => any)
+export type Primitive = boolean | string | number | ((...args: any[]) => any)
 
 export const ABORT: unique symbol = Symbol('ABORT')
 export const REMOVE: unique symbol = Symbol('REMOVE')
@@ -198,12 +198,6 @@ export abstract class Node<
   abstract type: string
   abstract shortType: string
 
-  /**
-   * Track the original source when cloned / copied,
-   * rather than keeping the entire tree
-   */
-  sourceNode: Node = this
-
   /** All types of the prototype chain */
   // declare _types: Set<string> | undefined
   get types(): Set<string> {
@@ -252,10 +246,16 @@ export abstract class Node<
   rootRules: ArrayList | undefined
 
   /**
+   * Track the original source when cloned / copied,
+   * rather than keeping the entire tree
+   */
+  sourceNode: Node = this as any
+
+  /**
    * This is the internal `data` of the node, which is how its represented
    * internally, and may be different from the `value` of the node.
    */
-  data!: NodeData<T> // TypedNodeData<Type> // GetTypedNodeData<T>
+  data!: NodeData<T>
   parentData: NodeData | undefined
 
   nil!: () => Nil
@@ -266,7 +266,7 @@ export abstract class Node<
     location?: LocationInfo,
     treeContext?: TreeContext
   ) {
-    this.data = new NodeData(this, value) as NodeData<T>
+    this.data = new NodeData(this as any, value)
     this._treeContext = treeContext
     this._location = location
     this._options = options
@@ -339,7 +339,7 @@ export abstract class Node<
       if (returnVal === ABORT) {
         return ABORT
       } else if (returnVal === REMOVE) {
-        list.removeItem(node)
+        list.set(key, this.nil())
       } else if (returnVal instanceof Node && returnVal !== node) {
         list.set(key, returnVal)
       }
@@ -715,9 +715,7 @@ type NodeDataKeys<T extends NodeTypes> =
 /**
  * An abstracted representation of node data with a unified API
  */
-export class NodeData<
-  T extends NodeTypes = NodeTypes
-> {
+export class NodeData<T extends NodeTypes = NodeTypes> {
   data!: NodeDataData<T>
 
   /** Process nodes if they exist */
@@ -849,7 +847,11 @@ export class NodeData<
       throw new Error('Cannot walk a non-ArrayList.')
     }
 
-    yield * data.reverse(start)
+    for (let item of data.reverse(start)) {
+      if (item instanceof Node) {
+        yield item
+      }
+    }
 
     if (includeParents) {
       let node = this.parentNode

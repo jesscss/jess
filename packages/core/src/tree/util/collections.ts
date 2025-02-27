@@ -1,6 +1,7 @@
 import type { ValueOf, IfNever } from 'type-fest'
 import type { Node } from '../node'
 import { Deque } from 'data-structure-typed'
+import isObject from 'lodash-es/isObject'
 
 /** This is just to make the following class more readable */
 // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -227,7 +228,27 @@ export class LinkedList {
  * An abstraction around an array with some useful helper methods,
  * some of which are set-like.
  */
-export class ArrayList<T = unknown> {
+export class ArrayList<T = any> {
+  /** Assumes unique objects in this array */
+  private _positionMap: WeakMap<object, number> | undefined
+  private get positionMap(): WeakMap<object, number> {
+    return (this._positionMap ??= new WeakMap())
+  }
+
+  setPosition(item: T, index: number) {
+    if (isObject(item)) {
+      this.positionMap.set(item, index)
+    }
+  }
+
+  reIndex(startIndex = 0) {
+    const length = this.items.length
+    for (let i = startIndex; i < length; i++) {
+      let item = this.items[i]!
+      this.setPosition(item, i)
+    }
+  }
+
   constructor(
     public items: T[] = [],
     public processValue?: (value: T) => T
@@ -243,6 +264,7 @@ export class ArrayList<T = unknown> {
 
   set(index: number, value: T) {
     this.items[index] = value
+    this.setPosition(value, index)
   }
 
   clear() {
@@ -251,6 +273,7 @@ export class ArrayList<T = unknown> {
 
   push(...items: T[]) {
     this.items.push(...items)
+    this.reIndex(this.items.length)
   }
 
   pop() {
