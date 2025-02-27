@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/prefer-readonly */
-import { Node, NodeList, NodeTypeIndex, ROOT_DATA, defineType } from './node'
+import { Node, defineType } from './node'
 import { Declaration } from './declaration'
 import {
   BaseDeclaration,
@@ -19,6 +19,7 @@ import { Nil } from './nil'
 import { type Root } from './root'
 import { Mixin } from './mixin'
 import { Interpolated } from './interpolated'
+import type { ArrayList } from './util/collections'
 // import { LinkedList } from './util/collections'
 
 export const enum Priority {
@@ -63,24 +64,6 @@ export class Rules extends Node<Node[]> {
   override allowRuleRoot = true
   override allowRoot = true
 
-  /**
-   * All values, some with overlapping keys.
-   * This reduces some search time, and extra refining
-   * can be done by examining the node type.
-   */
-  private _valueMap: Map<string, NodeList> | undefined
-  get valueMap(): Map<string, NodeList> {
-    return (this._valueMap ??= new Map())
-  }
-
-  filter(name: string, type?: string) {
-    let map = this.valueMap
-    let list = map.get(name)
-    if (!list) {
-      return new NodeList()
-    }
-  }
-
   private _scope: Scope | undefined
   get scope() {
     return (this._scope ??= new Scope())
@@ -88,6 +71,10 @@ export class Rules extends Node<Node[]> {
 
   set scope(s: Scope) {
     this._scope = s
+  }
+
+  * [Symbol.iterator]() {
+    yield * (this.data.data as ArrayList<Node>).entries()
   }
 
   override toTrimmedString(depth: number = 0) {
@@ -177,9 +164,7 @@ export class Rules extends Node<Node[]> {
      *   2. variable declaration names of mixins and functions
      *   3. everything else
      */
-    let i = -1
-    for (let n of rules.data.list.values()) {
-      i++
+    for (let [i, n] of rules) {
       /** Evaluate names */
       if (n instanceof BaseDeclaration || n instanceof Mixin) {
         const { name } = n.value

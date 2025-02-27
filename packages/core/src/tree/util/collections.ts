@@ -249,6 +249,17 @@ export class ArrayList<T = any> {
     }
   }
 
+  indexOf(item: T) {
+    let index: number | undefined
+    if (isObject(item)) {
+      index = this.positionMap.get(item)
+    }
+    if (index !== undefined) {
+      return index
+    }
+    return this.items.lastIndexOf(item)
+  }
+
   constructor(
     public items: T[] = [],
     public processValue?: (value: T) => T
@@ -265,15 +276,22 @@ export class ArrayList<T = any> {
   set(index: number, value: T) {
     this.items[index] = value
     this.setPosition(value, index)
+    if (index > this.items.length - 1) {
+      this.reIndex(index)
+    }
   }
 
   clear() {
     this.items.length = 0
+    if (this._positionMap) {
+      this._positionMap = new WeakMap()
+    }
   }
 
   push(...items: T[]) {
+    let index = this.items.length
     this.items.push(...items)
-    this.reIndex(this.items.length)
+    this.reIndex(index)
   }
 
   pop() {

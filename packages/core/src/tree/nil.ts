@@ -15,6 +15,9 @@ export interface Nil extends Node<''> {
  *
  * We need this for things like rulesets,
  * which need dynamically-linked nodes
+ *
+ * This is also the default value for declarations like:
+ * `$var:;`
  */
 export class Nil extends Node<''> {
   type = 'Nil'

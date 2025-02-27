@@ -25,7 +25,7 @@ type AllNodeOptions = {
   semi?: boolean
 }
 
-export type Primitive = boolean | string | number | ((...args: any[]) => any)
+export type Primitive = undefined | boolean | string | number | ((...args: any[]) => any)
 
 export const ABORT: unique symbol = Symbol('ABORT')
 export const REMOVE: unique symbol = Symbol('REMOVE')
@@ -255,7 +255,7 @@ export abstract class Node<
    * This is the internal `data` of the node, which is how its represented
    * internally, and may be different from the `value` of the node.
    */
-  data!: NodeData<T>
+  data!: NodeData
   parentData: NodeData | undefined
 
   nil!: () => Nil
@@ -266,7 +266,7 @@ export abstract class Node<
     location?: LocationInfo,
     treeContext?: TreeContext
   ) {
-    this.data = new NodeData(this as any, value)
+    this.data = new NodeData(this as any, value) as any
     this._treeContext = treeContext
     this._location = location
     this._options = options
@@ -402,13 +402,9 @@ export abstract class Node<
         if (returnVal === ABORT) {
           return ABORT
         } else if (returnVal === REMOVE) {
-          if (data instanceof NodeList) {
-            data.removeItem(nodeVal)
-          } else {
-            (data as any).set(key, this.nil().inherit(nodeVal), nodeIndex)
-          }
+          data.set(key, this.nil().inherit(nodeVal), nodeIndex)
         } else if (returnVal instanceof Node && returnVal !== nodeVal) {
-          (data as any).set(key, returnVal, nodeIndex)
+          data.set(key, returnVal, nodeIndex)
         }
         if (!shallow) {
           nodeVal.walkNodes(func, false, reverse, visitPrePost)
@@ -417,8 +413,8 @@ export abstract class Node<
     }
   }
 
-  collectRoots(): NodeList<Node> {
-    let list = new NodeList<Node>()
+  collectRoots(): ArrayList<Node> {
+    let list = new ArrayList<Node>()
     this.walkNodes(n => {
       if (n.type === 'Rules') {
         const rules = n.rootRules
@@ -461,8 +457,12 @@ export abstract class Node<
 
   /** Remove comments from pre/post */
   stripPrePost(prePost: Node['pre']) {
-    if (prePost instanceof NodeData) {
-      prePost.removeNode(this)
+    if (prePost instanceof ArrayList) {
+      for (let [key, node] of prePost.entries()) {
+        if (node.type === 'Comment') {
+          prePost.set(key, this.nil().inherit(node))
+        }
+      }
     }
   }
 
@@ -703,7 +703,7 @@ type NodeDataData<T extends NodeTypes> =
 type NodeDataObject<T extends NodeTypes> =
   T extends any[]
     ? { value: T }
-    : T extends Record<string, any>
+    : T extends NodeValueObject
       ? T
       : { value: T }
 
@@ -721,11 +721,11 @@ export class NodeData<T extends NodeTypes = NodeTypes> {
   /** Process nodes if they exist */
   private _getNodeValue(val: any) {
     if (val instanceof Node) {
-      val.parentData = this
+      val.parentData = this as any
     } else if (isArray(val)) {
       for (let n of val) {
         if (n instanceof Node) {
-          n.parentData = this
+          n.parentData = this as any
         }
       }
     }
@@ -752,13 +752,26 @@ export class NodeData<T extends NodeTypes = NodeTypes> {
     return data as NodeDataObject<T>[K]
   }
 
+  private _setInList(list: any, index: number, val: any) {
+    if (!(list instanceof ArrayList)) {
+      throw new Error('Cannot set at index on non-ArrayList data')
+    }
+    list.set(index, this._getNodeValue(val))
+  }
+
   /** For map-like operations */
-  set<K extends NodeDataKeys<T>>(key: K, val: NodeDataObject<T>[K]) {
+  set<K extends NodeDataKeys<T>>(key: K, val: NodeDataObject<T>[K], listIndex: number = -1) {
     const data = this.data
     if (data instanceof HashMap) {
-      data.set(key, val as any)
+      if (listIndex !== -1) {
+        this._setInList(data.get(key), listIndex, val)
+      } else {
+        data.set(key, val as any)
+      }
     } else if (key === 'value') {
-      (this.data as any) = this._getNodeValue(val)
+      if (listIndex !== -1) {
+        this._setInList(data, listIndex, val)
+      }
     } else {
       throw new Error('Cannot set on non-HashMap data')
     }
@@ -794,12 +807,12 @@ export class NodeData<T extends NodeTypes = NodeTypes> {
   }
 
 
-  private _dataValues(asEntries?: false, reverse?: boolean): Generator<NodeValue | undefined>
-  private _dataValues(asEntries: true, reverse?: boolean): Generator<[string, NodeValue | undefined, nodeIndex?: number]>
+  private _dataValues(asEntries?: false, reverse?: boolean): Generator<NodeValue>
+  private _dataValues(asEntries: true, reverse?: boolean): Generator<[NodeDataKeys<T>, NodeValue, listIndex: number]>
   private * _dataValues(
     asEntries?: boolean,
     reverse?: boolean
-  ): Generator<NodeValue | undefined | [string, NodeValue | undefined, nodeIndex?: number]> {
+  ): Generator<NodeValue | [string, NodeValue, listIndex: number]> {
     const data = this.data
     const listMethod = reverse ? 'reverseEntries' : 'entries'
     if (data instanceof HashMap) {
@@ -809,7 +822,7 @@ export class NodeData<T extends NodeTypes = NodeTypes> {
             yield asEntries ? [key, node, nodeIndex] : node
           }
         } else {
-          yield asEntries ? [key, val] : val
+          yield asEntries ? [key, val, -1] : val
         }
       }
     } else if (data instanceof ArrayList) {
@@ -817,11 +830,11 @@ export class NodeData<T extends NodeTypes = NodeTypes> {
         yield asEntries ? [DEFAULT_DATA, node, nodeIndex] : node
       }
     } else {
-      asEntries ? yield [DEFAULT_DATA, data as NodeValue] : yield data as NodeValue
+      asEntries ? yield [DEFAULT_DATA, data as NodeValue, -1] : yield data as NodeValue
     }
   }
 
-  * values(reverse?: boolean) {
+  * values(reverse?: boolean): Generator<Exclude<NodeValue, undefined>> {
     for (let value of this._dataValues(false, reverse)) {
       /** Exclude `undefined` as a value */
       if (value !== undefined) {
@@ -839,7 +852,7 @@ export class NodeData<T extends NodeTypes = NodeTypes> {
    */
   private * _reverseWalk(
     includeParents?: boolean,
-    start?: Node | undefined
+    startNode?: Node | undefined
   ): Generator<Node> {
     let data = this.data
 
@@ -847,6 +860,7 @@ export class NodeData<T extends NodeTypes = NodeTypes> {
       throw new Error('Cannot walk a non-ArrayList.')
     }
 
+    let start = data.indexOf(startNode)
     for (let item of data.reverse(start)) {
       if (item instanceof Node) {
         yield item
@@ -856,14 +870,10 @@ export class NodeData<T extends NodeTypes = NodeTypes> {
     if (includeParents) {
       let node = this.parentNode
       let parentData = node.parentData
-      /**
-       * Yield back that we're going to start navigating the parent.
-       * This can be used to make decisions about whether or not
-       * current conditions are satisfied (and whether to continue).
-       */
-      if (parentData && parentData.data instanceof NodeList) {
-        start = start ? node : undefined
-        yield * parentData._reverseWalk(includeParents, start)
+
+      if (parentData && parentData.data instanceof ArrayList) {
+        startNode = startNode ? node : undefined
+        yield * parentData._reverseWalk(includeParents, startNode)
       }
     }
   }
