@@ -8,12 +8,16 @@ import type { Extend } from './extend'
  *  .a:extend(.b), .c:extend(.d);
  */
 export class ExtendList extends Node<Extend[]> {
-  toTrimmedString(depth?: number | undefined): string {
+  declare value: Extend[]
+  type = 'ExtendList' as const
+  shortType = 'extendlist' as const
+  override allowRoot = true
+  override allowRuleRoot = true
+
+  override toTrimmedString(depth?: number | undefined): string {
     const output = super.toTrimmedString(depth)
     return output + ';'
   }
 }
-ExtendList.prototype.allowRuleRoot = true
-ExtendList.prototype.allowRoot = true
 
 export const extendList = defineType(ExtendList, 'ExtendList')

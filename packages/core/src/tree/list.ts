@@ -21,6 +21,7 @@ export type ListOptions = {
  * or one / two / three
  */
 export class List<T extends Node = Node> extends Node<T[], ListOptions> {
+  declare value: T[]
   type = 'List'
   shortType = 'list'
 
@@ -97,4 +98,11 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   // }
 }
 
-export const list = defineType(List, 'List')
+type Params = ConstructorParameters<typeof List>
+
+export const list = defineType(List, 'List') as (
+  value: Params[0],
+  options?: Params[1],
+  location?: Params[2],
+  treeContext?: Params[3]
+) => List

@@ -20,6 +20,7 @@ export type GeneralOptions<T extends string> = {
 export class General<
   T extends string = GeneralNodeType
 > extends Node<string, GeneralOptions<T>> {
+  declare value: string
   type = 'General'
   shortType = 'general'
 }

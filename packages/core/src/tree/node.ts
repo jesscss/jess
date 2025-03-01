@@ -6,7 +6,7 @@ import {
 } from '../context'
 import { SKIP, type Visitor } from '../visitor'
 import { type Operator } from './util/calculate'
-import type { Constructor, Writable, Class, ValueOf, Tagged, IsUnknown, UnionToTuple, ConditionalPick, IfUnknown, IsAny } from 'type-fest'
+import type { Constructor, Class, ValueOf, Tagged, UnionToTuple, IsAny } from 'type-fest'
 import { type Nil } from './nil'
 import { ArrayList, HashMap } from './util/collections'
 
@@ -34,7 +34,6 @@ type NodeVisitFunction = (n: Node) => NodeVisitReturn
 export type NodeOptions = Record<string, boolean | string | number | undefined> & AllNodeOptions
 export type NodeValue = Primitive | Node | Node[]
 export type NodeMap = Map<string, NodeValue>
-export type NodeValueObject = Record<string, NodeValue>
 
 export type NodeMapArray<
   T extends NodeValueObject = NodeValueObject,
@@ -158,7 +157,9 @@ export type NodeValueArray<T extends NodeValueObject> = UnionToTuple<Values<{
 
 type NodeInValue<T extends NodeTypes> = T
 
-type NodeTypes = Primitive | Array<Primitive | Node> | NodeValueObject
+type BasicNodeTypes = Primitive | Node
+export type NodeValueObject = Record<string, BasicNodeTypes | Array<BasicNodeTypes | Array<Primitive>> | Record<string, any>>
+type NodeTypes = BasicNodeTypes | Array<BasicNodeTypes> | NodeValueObject
 
 type NarrowTypes<T> =
   IsAny<T> extends true
@@ -272,24 +273,7 @@ export abstract class Node<
     this._options = options
   }
 
-  /** Get the values back in the same format they went in */
-  get value(): NodeInValue<T> {
-    const data = this.data.data
-
-    if (data instanceof HashMap) {
-      return data.items as NodeInValue<T>
-    }
-
-    if (data instanceof ArrayList) {
-      return data.items as NodeInValue<T>
-    }
-
-    return data as NodeInValue<T>
-  }
-
-  set value(val: any) {
-    this.data.setAllData(val)
-  }
+  declare value: NodeTypes
 
   /**
    * Mutates node children in place. Used by eval()
@@ -664,6 +648,28 @@ export abstract class Node<
   /** Move to ToModuleVisitor */
   // toModule?(context: Context, out: OutputCollector): void
 }
+
+/** Use an accessor, but _pretend_ that it's a plain property so we can override in other sub-classes */
+Object.defineProperty(Node.prototype, 'value', {
+  /** Get the values back in the same format they went in */
+  get() {
+    const data = this.data.data
+
+    if (data instanceof HashMap) {
+      return data.items
+    }
+
+    if (data instanceof ArrayList) {
+      return data.items
+    }
+
+    return data
+  },
+
+  set value(val: any) {
+    this.data.setAllData(val)
+  }
+})
 
 interface MapLike<K, V> {
   get(key: K): V

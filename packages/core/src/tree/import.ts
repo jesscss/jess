@@ -58,8 +58,9 @@ export type ImportValue = {
  * @see https://sass-lang.com/documentation/at-rules/import/
  */
 export class Import extends Node<ImportValue, ImportOptions> {
-  type = 'Import'
-  shortType = 'use'
+  declare value: ImportValue
+  type = 'Import' as const
+  shortType = 'use' as const
 }
 
 export const use = defineType<ImportValue>(Import, 'Import', 'use')

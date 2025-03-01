@@ -40,8 +40,9 @@ export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...a
  * is not a string, but is an (optional) variable reference.
  */
 export class Call<T extends CallValue = CallValue> extends Node<T> {
-  type = 'Call'
-  shortType = 'call'
+  declare value: T extends CallValue ? T : CallValue
+  type = 'Call' as const
+  shortType = 'call' as const
   override requiredSemi = true
 
   override toTrimmedString() {
@@ -90,4 +91,11 @@ export class Call<T extends CallValue = CallValue> extends Node<T> {
   }
 }
 
-export const call = defineType<CallValue>(Call, 'Call')
+type Params = ConstructorParameters<typeof Call>
+
+export const call = defineType(Call, 'Call') as (
+  value: Params[0],
+  options?: Params[1],
+  location?: Params[2],
+  treeContext?: Params[3]
+) => Call

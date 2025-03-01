@@ -69,8 +69,9 @@ export type AmpersandValue = {
  * The '&' selector element
  */
 export class Ampersand extends SimpleSelector<AmpersandValue> {
-  override type = 'Ampersand'
-  shortType = 'amp'
+  declare value: AmpersandValue
+  override type = 'Ampersand' as const
+  shortType = 'amp' as const
 
   constructor(
     value?: AmpersandValue | string,

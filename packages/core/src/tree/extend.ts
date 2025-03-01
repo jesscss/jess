@@ -22,8 +22,9 @@ export type ExtendValue = {
  * registers selectors by a string code.
  */
 export class Extend extends Selector<ExtendValue> {
-  type = 'Extend'
-  shortType = 'extend'
+  declare value: ExtendValue
+  type = 'Extend' as const
+  shortType = 'extend' as const
 
   override valueOf() {
     return `:extend(${this.value.valueOf()})`

@@ -18,7 +18,11 @@ export type OperationOptions = {
  * A math operation
  */
 export class Operation extends Node<OperationValue, OperationOptions> {
-  async eval(context: Context): Promise<Node> {
+  declare value: OperationValue
+  type = 'Operation' as const
+  shortType = 'op' as const
+
+  override async evalNode(context: Context): Promise<Node> {
     let [left, op, right] = this.value
     let inCalc = this.options?.inCalc
     if (inCalc) {

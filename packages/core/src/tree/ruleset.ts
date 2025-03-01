@@ -29,13 +29,14 @@ type NarrowRulesetValue<T> = T extends RulesetValue ? T : RulesetValue
  * }
  */
 export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>> {
+  declare value: NarrowRulesetValue<T>
   type = 'Ruleset'
   shortType = 'ruleset'
   override allowRuleRoot = true
   override allowRoot = true
 
   get selector() {
-    return this.data.get('selector')
+    return this.value.selector
   }
 
   /** @todo - remove? */
@@ -64,7 +65,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>> {
 
   override async evalNode(context: Context): Promise<Ruleset | Nil> {
     let rule = this.clone()
-    let guard = rule.data.get('guard')
+    let guard = rule.value.guard
     if (guard) {
       let bool = await guard.eval(context)
       if (!bool.value) {

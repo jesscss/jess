@@ -25,8 +25,10 @@ type ColorParameters = ConstructorParameters<typeof Node<string | ColorFormat>>
  * output type.
  */
 export class Color extends Node<string | ColorFormat> {
-  type = 'Color'
-  shortType = 'color'
+  declare value: string | ColorFormat
+
+  type = 'Color' as const
+  shortType = 'color' as const
 
   private _rgb: [number, number, number] | undefined
   private _hsl: [number, number, number] | undefined

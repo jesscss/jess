@@ -14,12 +14,17 @@ import { Mixin } from './mixin'
  * Used by Jess / Sass
  */
 export class Func extends Mixin {
+  override type = 'Func' as const
+  override shortType = 'fn' as const
+
+  /**
+   * @todo - this logic is incorrect. The FIRST evaluated
+   * at-rule or declaration with `return` should be the return value,
+   * and in fact it should immediately exit without evaluating the rest.
+   * 
+   * Probably don't override mixin?
+   */
   override async evalNode(context: Context): Promise<Node> {
-    /**
-     * @todo - this logic is incorrect. The FIRST evaluated
-     * at-rule or declaration with `return` should be the return value,
-     * and in fact it should immediately exit without evaluating the rest.
-     */
     let result = await super.evalNode(context)
     if (result instanceof Rules) {
       let value = result.value

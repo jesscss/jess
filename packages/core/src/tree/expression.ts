@@ -14,8 +14,20 @@ import { Node, defineType } from './node'
  *     the module. This is waaaay smarter than Vue's v-bind
  */
 export class Expression extends Node<Node> {
-  toTrimmedString(depth?: number): string {
+  declare value: Node
+  type = 'Expression' as const
+  shortType = 'expr' as const
+
+  override toTrimmedString(depth?: number): string {
     return `#(${this.value.toString(depth)})`
   }
 }
-export const expr = defineType(Expression, 'Expression', 'expr')
+
+type Params = ConstructorParameters<typeof Expression>
+
+export const expr = defineType(Expression, 'Expression', 'expr') as (
+  value: Params[0],
+  options?: Params[1],
+  location?: Params[2],
+  treeContext?: Params[3]
+) => Expression

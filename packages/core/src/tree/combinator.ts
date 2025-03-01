@@ -2,8 +2,9 @@ import { defineType } from './node'
 import { Selector } from './selector'
 
 export class Combinator extends Selector<string> {
-  type = 'Combinator'
-  shortType = 'co'
+  declare value: string
+  type = 'Combinator' as const
+  shortType = 'co' as const
 
   /** To make forming Sets easier */
   override valueOf() {

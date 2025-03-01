@@ -9,7 +9,11 @@ export type BlockOptions = {
  * for things like custom properties and unknown at-rules.
  */
 export class Block extends Node<Node, BlockOptions> {
-  toTrimmedString() {
+  declare value: Node
+  type = 'Block' as const
+  shortType = 'block' as const
+
+  override toTrimmedString() {
     let { type } = this.options ?? {}
     let output = super.toTrimmedString()
     let start = type === 'square' ? '[' : '{'
@@ -17,4 +21,12 @@ export class Block extends Node<Node, BlockOptions> {
     return `${start}${output}${end}`
   }
 }
-export const block = defineType(Block, 'Block')
+
+type BlockParams = ConstructorParameters<typeof Block>
+
+export const block = defineType(Block, 'Block') as (
+  value: BlockParams[0],
+  options?: BlockParams[1],
+  location?: BlockParams[2],
+  treeContext?: BlockParams[3]
+) => Block

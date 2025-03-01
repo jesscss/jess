@@ -3,11 +3,12 @@ import {
 } from './node'
 import { type Interpolated } from './interpolated'
 import type { General } from './general'
+import type { IsAny } from 'type-fest'
 
 export type DeclarationName = Interpolated<'Name'> | General<'Name'> | string
 
-export type BaseDeclarationValue<N extends DeclarationName = DeclarationName> = {
-  name: N
+export type BaseDeclarationValue<N = any> = {
+  name: IsAny<N> extends true ? DeclarationName : N
 }
 
 export const enum AssignmentType {
@@ -62,4 +63,6 @@ export abstract class BaseDeclaration<
   N extends DeclarationName = DeclarationName,
   T extends BaseDeclarationValue = BaseDeclarationValue<N>,
   O extends BaseDeclarationOptions = BaseDeclarationOptions,
-> extends Node<T, O> {}
+> extends Node<T, O> {
+  declare value: BaseDeclarationValue<N>
+}

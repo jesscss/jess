@@ -1,5 +1,5 @@
 import { type Context } from '../context'
-import { Node, defineType, ROOT_DATA } from './node'
+import { Node, defineType } from './node'
 import { Bool } from './bool'
 import { Nil } from './nil'
 
@@ -19,8 +19,9 @@ export type ConditionOptions = {
 }
 
 export class Condition extends Node<ConditionValue, ConditionOptions> {
-  type = 'Condition'
-  shortType = 'condition'
+  declare value: ConditionValue
+  type = 'Condition' as const
+  shortType = 'condition' as const
 
   override toTrimmedString() {
     let [left, op, right] = this.value
@@ -40,7 +41,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     const getBool = (node: Node) => {
       if (node instanceof Bool) {
         if (negated) {
-          node.data.set(ROOT_DATA, !node.value)
+          node.value = !node.value
         }
         return node
       }

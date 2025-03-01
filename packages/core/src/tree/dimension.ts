@@ -31,8 +31,9 @@ type UnitMapEntries = Array<[ConversionUnit, ConversionGroup]>
  * A number or dimension
  */
 export class Dimension extends Node<DimensionValue> {
-  type = 'Dimension'
-  shortType = 'dimension'
+  declare value: DimensionValue
+  type = 'Dimension' as const
+  shortType = 'dimension' as const
 
   _unitToGroup: Map<string, ConversionGroup> | undefined
 

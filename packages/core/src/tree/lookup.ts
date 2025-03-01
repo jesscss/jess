@@ -26,16 +26,12 @@ export type LookupValue = {
  *       (value Lookup(value Reference($foo), key 'one'), key 'two')
  */
 export class Lookup extends Node<LookupValue> {
-  get key() {
-    return this.data.get('key')
-  }
+  declare value: LookupValue
+  type = 'Lookup' as const
+  shortType = 'look' as const
 
-  set key(v: string | number | Node) {
-    this.data.set('key', v)
-  }
-
-  toTrimmedString(): string {
-    let { value, key } = this
+  override toTrimmedString(): string {
+    let { value, key } = this.value
     let mixin = key instanceof Reference && key.options.type === 'mixin'
     const keyIsBracketed = typeof key !== 'string'
     if (keyIsBracketed) {
@@ -49,8 +45,8 @@ export class Lookup extends Node<LookupValue> {
     return `${value}.${key}`
   }
 
-  async eval(context: Context) {
-    let { value, key } = this
+  override async evalNode(context: Context) {
+    let { value, key } = this.value
     let initialScope = context.scope
     value = await value.eval(context)
 

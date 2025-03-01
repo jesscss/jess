@@ -12,19 +12,23 @@ export type QuotedOptions = {
  * An quoted value
  */
 export class Quoted extends Node<string | Interpolated, QuotedOptions> {
-  toTrimmedString() {
+  declare value: string | Interpolated
+  type = 'Quoted' as const
+  shortType = 'quoted' as const
+
+  override toTrimmedString() {
     let { quote = '"', escaped } = this.options ?? {}
     let output = super.toTrimmedString()
     let escapeChar = escaped ? '~' : ''
     return `${escapeChar}${quote}${output}${quote}`
   }
 
-  valueOf() {
+  override valueOf() {
     const { value } = this
-    return value instanceof Node ? value.value : value
+    return value instanceof Node ? value.value.value : value
   }
 
-  async eval(context: Context): Promise<Node> {
+  override async evalNode(context: Context): Promise<Node> {
     return await this.evalIfNot(context, async () => {
       let { value } = this
       if (value instanceof Node) {

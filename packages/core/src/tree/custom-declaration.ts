@@ -1,6 +1,7 @@
 import { Declaration } from './declaration'
 import { defineType } from './node'
 import type { Context } from '../context'
+import type { Nil } from './nil'
 // import type { OutputCollector } from '../output'
 
 /**
@@ -13,7 +14,8 @@ import type { Context } from '../context'
  * @todo - is this used?
  */
 export class CustomDeclaration extends Declaration {
-  override async evalNode(context: Context) {
+  /** @todo fix */
+  override async evalNode(context: Context): Promise<CustomDeclaration | Nil> {
     context.inCustom = true
     let node = await super.evalNode(context)
     context.inCustom = false

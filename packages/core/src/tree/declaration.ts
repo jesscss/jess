@@ -30,9 +30,13 @@ export type DeclarationValue = BaseDeclarationValue & {
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
-export class Declaration<O extends DeclarationOptions = DeclarationOptions, N extends DeclarationName = DeclarationName> extends BaseDeclaration<N, DeclarationValue, O> {
-  type = 'Declaration'
-  shortType = 'decl'
+export class Declaration<
+  O extends DeclarationOptions = DeclarationOptions,
+  N extends DeclarationName = DeclarationName
+> extends BaseDeclaration<N, DeclarationValue, O> {
+  declare value: DeclarationValue
+  type = 'Declaration' as const
+  shortType = 'decl' as const
   override allowRuleRoot = true
   override requiredSemi = true
 
@@ -46,7 +50,7 @@ export class Declaration<O extends DeclarationOptions = DeclarationOptions, N ex
     return `${name}${a}${value.toString(depth)}${important ? `${important}` : ''}`
   }
 
-  override async evalNode(context: Context): Promise<Node> {
+  override async evalNode(context: Context) {
     /** @todo - don't clone */
     let node = this.clone()
     node.evaluated = true

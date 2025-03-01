@@ -9,8 +9,9 @@ export type CommentOptions = {
  * A comment node
  */
 export class Comment extends Node<string, CommentOptions> {
-  type = 'Comment'
-  shortType = 'comment'
+  declare value: string
+  type = 'Comment' as const
+  shortType = 'comment' as const
   override allowRoot = true
   override allowRuleRoot = true
 

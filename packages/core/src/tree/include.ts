@@ -14,9 +14,15 @@ export type IncludeValue = {
  * or a variable that returns a ruleset.
  *
  * Basically anything that returns a ruleset.
+ * 
+ * @todo - remove? Isn't this an import with options?
  */
 export class Include extends Node<IncludeValue> {
-  async eval(context: Context): Promise<Node> {
+  declare value: IncludeValue
+  type: 'Include' = 'Include'
+  shortType: 'include' = 'include'
+
+  override async evalNode(context: Context): Promise<Node> {
     let value = this.value
     if (value instanceof Call) {
       value = await value.eval(context)

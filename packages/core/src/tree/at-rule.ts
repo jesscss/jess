@@ -1,4 +1,4 @@
-import { Node, defineType } from './node'
+import { Node, defineType, type NodeData } from './node'
 import { ComplexSelector } from './selector-complex'
 import { Ampersand } from './ampersand'
 import { Ruleset } from './ruleset'
@@ -17,10 +17,10 @@ export type AtRuleValue = {
  * A rule like @charset or @media
  */
 export class AtRule extends Node<AtRuleValue> {
-  type = 'AtRule'
-  shortType = 'atrule'
+  declare value: AtRuleValue
+  type = 'AtRule' as const
+  shortType = 'atrule' as const
   override allowRoot = true
-
 
   override toTrimmedString(depth: number = 0): string {
     let { name, prelude, rules } = this.value
@@ -39,7 +39,7 @@ export class AtRule extends Node<AtRuleValue> {
 
   override async evalNode(context: Context) {
     let node = await super.evalNode(context) as AtRule
-    let rules = node.data.get('rules')
+    let rules = node.value.rules
     /** Don't let rooted rules bubble past an at-rule */
     if (rules) {
       /**

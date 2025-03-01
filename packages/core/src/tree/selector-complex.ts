@@ -26,6 +26,7 @@ export type ComplexSelectorValue = ComplexSelectorComponent[]
  * #id > .class.class
  */
 export class ComplexSelector extends Selector<ComplexSelectorValue> {
+  declare value: ComplexSelectorValue
   type = 'ComplexSelector'
   shortType = 'sel'
   /**

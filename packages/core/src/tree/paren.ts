@@ -19,13 +19,17 @@ const isOpOrExpression = (node: Node): node is Operation | Expression => {
  * An expression in parenthesis
  */
 export class Paren extends Node<Node | undefined, ParenOptions> {
-  toTrimmedString(): string {
+  declare value: Node | undefined
+  type = 'Paren' as const
+  shortType = 'paren' as const
+
+  override toTrimmedString(): string {
     let value = `${this.value ?? ''}`
     let escapeChar = this.options?.escaped ? '~' : ''
     return `${escapeChar}(${value})`
   }
 
-  async eval(context: Context): Promise<Node> {
+  override async evalNode(context: Context): Promise<Node> {
     return await this.evalIfNot(context, async () => {
       let canOperate = context.canOperate
       context.canOperate = true

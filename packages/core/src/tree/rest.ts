@@ -7,6 +7,10 @@ import { isNode } from './util'
  * lists / sequences, so this is mostly for serialization.
  */
 export class Rest extends Node<Node | string | undefined> {
+  declare value: Node | string | undefined
+  type = 'Rest' as const
+  shortType = 'rest' as const
+
   get name(): string {
     let { value } = this
     if (value) {
@@ -18,7 +22,7 @@ export class Rest extends Node<Node | string | undefined> {
     return ''
   }
 
-  toTrimmedString(): string {
+  override toTrimmedString(): string {
     let { name } = this
     return `...${name}`
   }

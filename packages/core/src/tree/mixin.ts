@@ -46,6 +46,8 @@ export type MixinOptions = {
  */
 
 export class Mixin extends Node<MixinValue> {
+  declare value: MixinValue
+
   type = 'Mixin'
   shortType = 'mixin'
 
