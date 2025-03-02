@@ -1,4 +1,4 @@
-import { Node, defineType } from './node'
+import { Node, defineType, type NodeData } from './node'
 import { Nil } from './nil'
 import { List } from './list'
 import type { Context } from '../context'
@@ -21,6 +21,8 @@ export type SequenceOptions = {
  * actually be a sequence of values (like for shorthand)
  */
 export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> {
+  declare value: T[]
+  declare data: NodeData<T[]>
   type = 'Sequence'
   shortType = 'seq'
 

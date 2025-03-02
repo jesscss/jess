@@ -4,6 +4,7 @@ import {
   Node,
   defineType,
   type LocationInfo,
+  type NodeData,
   type NodeOptions,
   type TreeContext
 } from './node'
@@ -32,6 +33,7 @@ type UnitMapEntries = Array<[ConversionUnit, ConversionGroup]>
  */
 export class Dimension extends Node<DimensionValue> {
   declare value: DimensionValue
+  declare data: NodeData<DimensionValue>
   type = 'Dimension' as const
   shortType = 'dimension' as const
 

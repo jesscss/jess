@@ -3,7 +3,7 @@ import { ComplexSelector } from './selector-complex'
 import { Ampersand } from './ampersand'
 import { Ruleset } from './ruleset'
 import type { General } from './general'
-import type { Rules } from './rules'
+import { Rules } from './rules'
 import type { Context } from '../context'
 
 export type AtRuleValue = {
@@ -18,6 +18,7 @@ export type AtRuleValue = {
  */
 export class AtRule extends Node<AtRuleValue> {
   declare value: AtRuleValue
+  declare data: NodeData<AtRuleValue>
   type = 'AtRule' as const
   shortType = 'atrule' as const
   override allowRoot = true
@@ -52,7 +53,7 @@ export class AtRule extends Node<AtRuleValue> {
         })
           .inherit(this)
           .eval(context)
-        node.data.set('rules', [rule])
+        node.data.set('rules', new Rules([rule]))
       }
       let rootRules = this.collectRoots()
       rootRules.forEach(rule => rules.value.push(rule))

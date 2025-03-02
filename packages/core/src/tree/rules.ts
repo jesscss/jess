@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/prefer-readonly */
-import { Node, defineType } from './node'
+import { Node, defineType, type NodeData } from './node'
 import { Declaration } from './declaration'
 import {
   BaseDeclaration,
@@ -59,6 +59,8 @@ type QueueMap = Map<Priority, Set<QueueItem>>
  */
 
 export class Rules extends Node<Node[]> {
+  declare value: Node[]
+  declare data: NodeData<Node[]>
   type = 'Rules'
   shortType = 'rules'
   override allowRuleRoot = true
@@ -213,7 +215,7 @@ export class Rules extends Node<Node[]> {
           if (!decl.allowRuleRoot) {
             decl.visible = false
           }
-          rules.data.set(ROOT_DATA, decl, pos)
+          rules.data.set('value', decl, pos)
           let list = rules.valueMap.get(ident) ?? new NodeList()
           list.push(decl)
           rules.valueMap.set(ident, list)

@@ -1,6 +1,7 @@
 import {
   Node,
-  defineType
+  defineType,
+  type NodeData
 } from './node'
 import { isNode } from './util'
 import { Nil } from './nil'
@@ -35,6 +36,8 @@ export class Declaration<
   N extends DeclarationName = DeclarationName
 > extends BaseDeclaration<N, DeclarationValue, O> {
   declare value: DeclarationValue
+  // declare data: NodeData<DeclarationValue>
+
   type = 'Declaration' as const
   shortType = 'decl' as const
   override allowRuleRoot = true

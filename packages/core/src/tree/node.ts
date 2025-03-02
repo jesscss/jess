@@ -6,7 +6,7 @@ import {
 } from '../context'
 import { SKIP, type Visitor } from '../visitor'
 import { type Operator } from './util/calculate'
-import type { Constructor, Class, ValueOf, Tagged, UnionToTuple, IsAny } from 'type-fest'
+import type { Constructor, Class, ValueOf, Tagged, IfAny, IsAny } from 'type-fest'
 import { type Nil } from './nil'
 import { ArrayList, HashMap } from './util/collections'
 
@@ -32,8 +32,14 @@ export const REMOVE: unique symbol = Symbol('REMOVE')
 export type NodeVisitReturn = void | Node | symbol
 type NodeVisitFunction = (n: Node) => NodeVisitReturn
 export type NodeOptions = Record<string, boolean | string | number | undefined> & AllNodeOptions
-export type NodeValue = Primitive | Node | Node[]
-export type NodeMap = Map<string, NodeValue>
+export const DEFAULT_DATA = 'value'
+
+type Values<T, K extends keyof T = keyof T> = T[K]
+type NodeInValue<T extends NodeValue> = T
+type BasicNodeTypes = Primitive | Node
+type NodeRecordValue = BasicNodeTypes | Array<BasicNodeTypes | Array<Primitive>> | Record<string, any>
+export type NodeValueObject = Record<string, NodeRecordValue>
+export type NodeValue = BasicNodeTypes | Array<BasicNodeTypes> | NodeValueObject
 
 export type NodeMapArray<
   T extends NodeValueObject = NodeValueObject,
@@ -49,15 +55,6 @@ export type LocationInfo = [
   endLine: number,
   endColumn: number,
 ]
-
-/**
- * Assume the value is a NodeMap if it's an array of arrays
- *
- * This just checks that it can be safely passed to `new Map()`
- */
-export const isNodeMap = (val: any): val is NodeMap | NodeMapArray => {
-  return val instanceof Map || (isArray(val) && isArray(val[0]))
-}
 
 export const defineType = <
   V = never,
@@ -106,65 +103,10 @@ type TypedMap<
   values(): IterableIterator<V>
 }
 
-
-/**
- * Removes NodeValue from the type if it has a defined object type
- */
-type TypedNodeData<
-  T extends NodeValueObject = NodeValueObject,
-  K extends (string | keyof T) = (string | keyof T)
-> = {
-    // [P in (K | string) as 'get']: (key: P) =>T[P]
-    // get<U extends string>(key: U): T[U]
-  } & {
-    get<U extends K>(key: U): NodeValue extends T[U] ? never : T[U]
-    set<U extends K>(key: U, value: NodeValue, nodeIndex?: number): void
-    values(): IterableIterator<Values<T>>
-  }
-  // & {
-  //   [P in K as 'set']: <U extends P>(key: U, value: T[U], nodeIndex?: number) => void
-  // }
-
-type GetTypedNodeData<T extends NodeTypes> =
-  Omit<NodeData, 'get' | 'set'> & ( // TypedNodeData<NodeMapType<T>>
-    T extends NodeValueObject
-      ? TypedNodeData<T>
-      : T extends Node[] 
-        ? {
-          get(key: string): never
-          set(key: string, value: any, nodeIndex?: number): void
-          values(): IterableIterator<T>
-        }
-        : {
-          get(key: string): any
-          set(key: string, value: any): void
-        }
-  )
-
-export const DEFAULT_DATA = 'value'
-
-/**
- * @todo - this allows excess properties on T,
- * but using `Exact` from type-fest caused other issues
- */
-export type NodeMapType<T extends NodeTypes> = T extends NodeValueObject ? T : { __root: T }
-
-type Values<T, K extends keyof T = keyof T> = T[K]
-
-export type NodeValueArray<T extends NodeValueObject> = UnionToTuple<Values<{
-  [K in keyof T]: [K, T[K]]
-}>>
-
-type NodeInValue<T extends NodeTypes> = T
-
-type BasicNodeTypes = Primitive | Node
-export type NodeValueObject = Record<string, BasicNodeTypes | Array<BasicNodeTypes | Array<Primitive>> | Record<string, any>>
-type NodeTypes = BasicNodeTypes | Array<BasicNodeTypes> | NodeValueObject
-
 type NarrowTypes<T> =
   IsAny<T> extends true
-    ? NodeTypes
-    : T extends NodeTypes
+    ? NodeValue
+    : T extends NodeValue
       ? T
       : never
 
@@ -273,7 +215,7 @@ export abstract class Node<
     this._options = options
   }
 
-  declare value: NodeTypes
+  declare value: any
 
   /**
    * Mutates node children in place. Used by eval()
@@ -697,32 +639,45 @@ export interface NodeListOptions extends NodeOptions {
  * and `(...args: any[]) => any` extends Record,
  * so we need to be careful about order.
  */
-type NodeDataData<T extends NodeTypes> =
+type NodeDataData<T extends NodeValue> =
   T extends any[]
     ? ArrayList<T[0]>
     : T extends (...args: any[]) => any
       ? T
-      : T extends Record<string, any>
-        ? HashMap<T>
-        : T
+      : T extends Node
+        ? T
+        : T extends Record<string, any>
+          ? HashMap<T>
+          : T
 
-type NodeDataObject<T extends NodeTypes> =
+type NodeDataObject<T extends NodeValue> =
   T extends any[]
     ? { value: T }
-    : T extends NodeValueObject
-      ? T
-      : { value: T }
+    : T extends Node
+      ? { value: T }
+      : T extends NodeValueObject
+        ? T
+        : { value: T }
 
-type NodeDataKeys<T extends NodeTypes> =
-  keyof NodeDataObject<T> extends string
-    ? keyof NodeDataObject<T>
-    : never
+type ValueOfNodeData<T extends NodeValue, K extends string> =
+  K extends keyof T
+    ? T[K]
+    : any
+
+type NodeDataKeys<T extends NodeValue> =
+  T extends any[]
+  ? 'value'
+  : T extends Node
+    ? 'value'
+    : T extends NodeValueObject
+      ? keyof T
+      : string
 
 /**
  * An abstracted representation of node data with a unified API
  */
-export class NodeData<T extends NodeTypes = NodeTypes> {
-  data!: NodeDataData<T>
+export class NodeData<Type = any, T extends IfAny<Type, any, NarrowTypes<Type>> = IfAny<Type, any, NarrowTypes<Type>>> {
+  data!: any
 
   /** Process nodes if they exist */
   private _getNodeValue(val: any) {
@@ -750,12 +705,12 @@ export class NodeData<T extends NodeTypes = NodeTypes> {
     return false
   }
 
-  get<K extends NodeDataKeys<T>>(key: K): NodeDataObject<T>[K] {
+  get<K extends NodeDataKeys<T>>(key: K): ValueOfNodeData<NodeDataObject<T>, K> {
     const data = this.data
     if (data instanceof HashMap) {
-      return data.get(key) as NodeDataObject<T>[K]
+      return data.get(key) as any
     }
-    return data as NodeDataObject<T>[K]
+    return data as any
   }
 
   private _setInList(list: any, index: number, val: any) {
@@ -766,7 +721,7 @@ export class NodeData<T extends NodeTypes = NodeTypes> {
   }
 
   /** For map-like operations */
-  set<K extends NodeDataKeys<T>>(key: K, val: NodeDataObject<T>[K], listIndex: number = -1) {
+  set<K extends NodeDataKeys<T>>(key: K, val: ValueOfNodeData<NodeDataObject<T>, K>, listIndex: number = -1) {
     const data = this.data
     if (data instanceof HashMap) {
       if (listIndex !== -1) {
@@ -813,12 +768,12 @@ export class NodeData<T extends NodeTypes = NodeTypes> {
   }
 
 
-  private _dataValues(asEntries?: false, reverse?: boolean): Generator<NodeValue>
-  private _dataValues(asEntries: true, reverse?: boolean): Generator<[NodeDataKeys<T>, NodeValue, listIndex: number]>
+  private _dataValues(asEntries?: false, reverse?: boolean): Generator<NodeRecordValue>
+  private _dataValues(asEntries: true, reverse?: boolean): Generator<[NodeDataKeys<T>, NodeRecordValue, listIndex: number]>
   private * _dataValues(
     asEntries?: boolean,
     reverse?: boolean
-  ): Generator<NodeValue | [string, NodeValue, listIndex: number]> {
+  ): Generator<NodeRecordValue | [string, NodeRecordValue, listIndex: number]> {
     const data = this.data
     const listMethod = reverse ? 'reverseEntries' : 'entries'
     if (data instanceof HashMap) {
@@ -836,11 +791,11 @@ export class NodeData<T extends NodeTypes = NodeTypes> {
         yield asEntries ? [DEFAULT_DATA, node, nodeIndex] : node
       }
     } else {
-      asEntries ? yield [DEFAULT_DATA, data as NodeValue, -1] : yield data as NodeValue
+      asEntries ? yield [DEFAULT_DATA, data as NodeRecordValue, -1] : yield data as NodeRecordValue
     }
   }
 
-  * values(reverse?: boolean): Generator<Exclude<NodeValue, undefined>> {
+  * values(reverse?: boolean): Generator<Exclude<NodeRecordValue, undefined>> {
     for (let value of this._dataValues(false, reverse)) {
       /** Exclude `undefined` as a value */
       if (value !== undefined) {

@@ -1,5 +1,5 @@
 
-import { Node, defineType } from './node'
+import { Node, defineType, type NodeData } from './node'
 import { type Reference } from './reference'
 import { type Rules } from './rules'
 
@@ -59,6 +59,7 @@ export type ImportValue = {
  */
 export class Import extends Node<ImportValue, ImportOptions> {
   declare value: ImportValue
+  declare data: NodeData<ImportValue>
   type = 'Import' as const
   shortType = 'use' as const
 }

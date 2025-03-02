@@ -1,6 +1,7 @@
 import {
   defineType,
-  type Node
+  type Node,
+  type NodeData
 } from './node'
 import { SimpleSelector } from './selector-simple'
 import { type Context } from '../context'
@@ -24,6 +25,8 @@ const { isArray } = Array
  *   e.g. :hover, :focus, :active
 */
 export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
+  declare value: PseudoSelectorValue
+  declare data: NodeData<PseudoSelectorValue>
   type = 'PseudoSelector'
   shortType = 'pseudo'
 

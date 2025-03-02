@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/require-array-sort-compare */
 import {
-  defineType,
-  ROOT_DATA
+  defineType
 } from './node'
 import type { Context } from '../context'
 import { Nil } from './nil'
@@ -16,8 +15,9 @@ import type { SimpleSelector } from './selector-simple'
  */
 const nonElementRegex = /^[.#:*[]/
 export class CompoundSelector extends Selector<SimpleSelector[]> {
-  type = 'CompoundSelector'
-  shortType = 'compound'
+  declare value: SimpleSelector[]
+  type = 'CompoundSelector' as const
+  shortType = 'compound' as const
 
   get keySet() {
     /** @todo - build key set */
@@ -62,7 +62,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
       return returnVal[0]!.inherit(this) as Selector
     }
 
-    this.data.set(ROOT_DATA, returnVal as SimpleSelector[])
+    this.data.set('value', returnVal as SimpleSelector[])
 
     return sel
   }

@@ -8,8 +8,9 @@ import { SimpleSelector } from './selector-simple'
  *   e.g. div, .foo, #bar
 */
 export class BasicSelector extends SimpleSelector<string> {
-  type = 'BasicSelector'
-  shortType = 'el'
+  declare value: string
+  type = 'BasicSelector' as const
+  shortType = 'el' as const
 
   get isClass() {
     return /^\./.test(this.value)

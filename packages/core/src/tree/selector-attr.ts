@@ -1,4 +1,4 @@
-import { defineType, type LocationInfo, type Node, type NodeValueArray } from './node'
+import { defineType, type LocationInfo, type Node } from './node'
 import { type TreeContext } from '../context'
 import { SimpleSelector } from './selector-simple'
 import { compare } from './util/compare'
@@ -20,8 +20,9 @@ export type AttributeSelectorValue = {
  *   e.g. [id="foo"]
 */
 export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
-  type = 'AttributeSelector'
-  shortType = 'attr'
+  declare value: AttributeSelectorValue
+  type = 'AttributeSelector' as const
+  shortType = 'attr' as const
 
   override toTrimmedString() {
     let { name, op, value, mod } = this.value
@@ -54,7 +55,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
 
 /** Not sure why types couldn't be properly inferred */
 export const attr = defineType<AttributeSelectorValue>(AttributeSelector, 'AttributeSelector', 'attr') as (
-  value: AttributeSelectorValue | Map<string, any> | NodeValueArray<AttributeSelectorValue>,
+  value: AttributeSelectorValue,
   options?: undefined,
   location?: LocationInfo | 0,
   treeContext?: TreeContext

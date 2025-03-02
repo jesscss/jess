@@ -1,4 +1,4 @@
-import { Node, defineType } from './node'
+import { Node, defineType, type NodeData } from './node'
 import type { Condition } from './condition'
 import type { List } from './list'
 import type { Rest } from './rest'
@@ -47,6 +47,7 @@ export type MixinOptions = {
 
 export class Mixin extends Node<MixinValue> {
   declare value: MixinValue
+  declare data: NodeData<MixinValue>
 
   type = 'Mixin'
   shortType = 'mixin'

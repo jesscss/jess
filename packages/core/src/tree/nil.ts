@@ -20,6 +20,7 @@ export interface Nil extends Node<''> {
  * `$var:;`
  */
 export class Nil extends Node<''> {
+  declare value: ''
   type = 'Nil'
   shortType = 'nil'
   override allowRoot = true

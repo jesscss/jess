@@ -1,4 +1,4 @@
-import { defineType, Node } from './node'
+import { defineType, Node, type NodeData } from './node'
 
 /**
  * A collection is essentially like an anonymous mixin,
@@ -10,6 +10,7 @@ import { defineType, Node } from './node'
  */
 export class Collection extends Node<Node[]> {
   declare value: Node[]
+  declare data: NodeData<Node[]>
   type = 'Collection' as const
   shortType = 'coll' as const
 

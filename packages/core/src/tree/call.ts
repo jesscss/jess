@@ -1,8 +1,9 @@
-import { Node, defineType } from './node'
+import { Node, defineType, type NodeData } from './node'
 import { type List } from './list'
 import { type Context } from '../context'
 import { isNode } from './util'
 import { cast } from './util/cast'
+import type { C } from 'vitest/dist/reporters-50c2bd49'
 
 export type CallValue = {
   /**
@@ -39,8 +40,9 @@ export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...a
  * @note In Less, the ref for something like `rgb`
  * is not a string, but is an (optional) variable reference.
  */
-export class Call<T extends CallValue = CallValue> extends Node<T> {
-  declare value: T extends CallValue ? T : CallValue
+export class Call extends Node<CallValue> {
+  declare value: CallValue
+  declare data: NodeData<CallValue>
   type = 'Call' as const
   shortType = 'call' as const
   override requiredSemi = true

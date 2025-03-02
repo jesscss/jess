@@ -1,8 +1,11 @@
-import { Node, NodeOptions } from './node'
+import { Node, NodeOptions, type NodeValue } from './node'
+import type { IfAny } from 'type-fest'
+
 
 /** This represents anything that is valid in a selector */
 
-export abstract class Selector<T extends any = any, O extends NodeOptions = NodeOptions> extends Node<T, O> {
+export abstract class Selector<T extends any = any, O extends NodeOptions = NodeOptions> extends Node<IfAny<T, NodeValue, T>, O> {
+  declare value: NodeValue
   isSelector = true
 
   _valueOf: string | undefined

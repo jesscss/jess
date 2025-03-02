@@ -1,4 +1,4 @@
-import { defineType, type NodeOptions, type LocationInfo, type TreeContext } from './node'
+import { defineType, type NodeOptions, type LocationInfo, type TreeContext, type NodeData } from './node'
 import { Nil } from './nil'
 import type { Context } from '../context'
 import { type ComplexSelector } from './selector-complex'
@@ -70,6 +70,7 @@ export type AmpersandValue = {
  */
 export class Ampersand extends SimpleSelector<AmpersandValue> {
   declare value: AmpersandValue
+  declare data: NodeData<AmpersandValue>
   override type = 'Ampersand' as const
   shortType = 'amp' as const
 
@@ -132,7 +133,7 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
       }
       return new Nil()
     }
-    const amp = this.clone()
+    const amp: Ampersand = this.clone()
     let frame = context.frames.peek()
     if (frame) {
       amp.data.set('selector', frame.selector.clone(true))

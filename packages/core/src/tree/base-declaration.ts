@@ -1,5 +1,6 @@
 import {
-  Node
+  Node,
+  type NodeData
 } from './node'
 import { type Interpolated } from './interpolated'
 import type { General } from './general'
@@ -65,4 +66,5 @@ export abstract class BaseDeclaration<
   O extends BaseDeclarationOptions = BaseDeclarationOptions,
 > extends Node<T, O> {
   declare value: BaseDeclarationValue<N>
+  declare data: NodeData<BaseDeclarationValue<N>>
 }
