@@ -36,7 +36,7 @@ export class Declaration<
   N extends DeclarationName = DeclarationName
 > extends BaseDeclaration<N, DeclarationValue, O> {
   declare value: DeclarationValue
-  // declare data: NodeData<DeclarationValue>
+  declare data: NodeData<DeclarationValue>
 
   type = 'Declaration' as const
   shortType = 'decl' as const

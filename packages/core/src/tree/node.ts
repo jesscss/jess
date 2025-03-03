@@ -739,7 +739,7 @@ export class NodeData<Type = any, T extends IfAny<Type, any, NarrowTypes<Type>> 
   }
 
   /** For list-like operations */
-  setAt(index: number, val: NodeDataObject<T>) {
+  setAt(index: number, val: T extends Array<infer U> ? U : never) {
     const data = this.data
     if (data instanceof ArrayList) {
       data.set(index, val as any)

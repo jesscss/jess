@@ -204,22 +204,19 @@ export class Rules extends Node<Node[]> {
         if (nameOnly) {
           let decl = node.clone() as BaseDeclaration
           /** Everything in a ruleset root will have a name */
-          let name = decl.data.get('name')
+          let name = decl.value.name
           let ident: string
           if (name instanceof Node) {
             ident = (await name.eval(context)).value
-            decl.data.set('name', ident)
+            decl.value.name = ident
           } else {
             ident = name
           }
           if (!decl.allowRuleRoot) {
             decl.visible = false
           }
-          rules.data.set('value', decl, pos)
-          let list = rules.valueMap.get(ident) ?? new NodeList()
-          list.push(decl)
-          rules.valueMap.set(ident, list)
-
+          rules.data.setAt(pos, decl)
+        
           // if (isNode(decl, 'Mixin')) {
           //   this._scope.setMixin(ident, decl, decl.options)
           // } else if (isNode(decl, ['VarDeclaration', 'Func'])) {
@@ -246,29 +243,42 @@ export class Rules extends Node<Node[]> {
               let evaldValue = await node.data.get('value').eval(context)
               context.declarationScope.pop()
 
+              /**
+               * If the eval'd value of the declaration is Nil, effectively
+               * remove the declaration from the ruleset by setting the entire
+               * declaration to Nil.
+               * 
+               * @todo - Is this correct? I'm not sure this is correct. 
+               */
               if (evaldValue instanceof Nil) {
-                rules.data.set(ROOT_DATA, evaldValue, pos)
+                rules.data.setAt(pos, evaldValue)
               } else {
+                /** Else set the value only of the (declaration) node */
                 node.data.set('value', evaldValue)
               }
             } else {
+              /**
+               * Not a VarDeclaration and not a declaration.
+               * What is it?
+               */
               let result = await node.eval(context)
               
               if (!result.allowRuleRoot) {
                 result.visible = false
               }
               if (result instanceof Rules) {
-                let returnRules = result.data.list
-                if (leakVariablesIntoScope) {
-                  rules.data.list.splice(pos, 1, ...returnRules)
-                } else {
-                  returnRules = returnRules.filter((current, i) => {
+                /** @todo Push inherited prop / ruleset references into parent scope */
+                // let returnRules = result.data.list
+                // if (leakVariablesIntoScope) {
+                //   rules.data.list.splice(pos, 1, ...returnRules)
+                // } else {
+                //   returnRules = returnRules.filter((current, i) => {
 
-                  })
-                }
+                //   })
+                // }
                 
               } else {
-                rules.data.set(ROOT_DATA, result, pos)
+                // rules.data.set(ROOT_DATA, result, pos)
               }
 
               /** Merge any scope that we need for lookups */
