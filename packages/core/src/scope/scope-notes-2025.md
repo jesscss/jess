@@ -80,9 +80,9 @@ time.
 ```scss
 // file.jess
 // ALL valid
-@@#foo () {}
-@@.foo () {}
-@@foo () {}
+@@ #foo () {}
+@@ .foo () {}
+@@ foo () {}
 ```
 
 

@@ -19,10 +19,10 @@
  *
  * @note `import` should not be needed, but provides intuitive symmetery with JS
  */
-@--from './foo.js' import (myFunction); // also allow `$from './foo.js' import { myFunction } ?
-@--from '#less' import * as less;
+@-from './foo.js' import (myFunction); // also allow `$from './foo.js' import { myFunction } ?
+@-from '#less' import * as less;
 
-@--include './file.css' (type: 'less');
+@-include './file.css' (type: 'less');
 
 // declaring vars
 $count:; // a Node of `Nil`
@@ -106,13 +106,13 @@ $ > .rule/(); // (Less style)
 - when guard (like Less)
 ```scss
 .box {
-  $when ($a = 1) {
+  @-when ($a = 1) {
     $$foo: one;
-  } $else {
+  } @-else {
     $$foo: two;
   }
   // or
-  $$foo: $when ($a = 1) { one } $else { two };
+  $$foo: @-when ($a = 1) { one } @-else { two };
 }
 ```
 -for 
@@ -156,47 +156,44 @@ Sass is an overly-complex stylesheet language. Jess aims to be:
 - 100% compatible with Less
 - Compatible with a common subset of Sass called Sass+ (to be defined)
 
-### `@--use ('(' type ')')? [file|object|map] (as [namespace])? ('with' reference|declarationList)?`
+### `@-use ('(' type ')')? [file|object|map] (as [namespace])? ('with' reference|declarationList)?`
 
-Non-leaky replacement for `@import`. Will import the scope (mixins, variables, and selector references) of the object. If a namespace is specified, will wrap rules in a mixin name. If it's imported `as *`,
-will render rules.
+Non-leaky replacement for `@import`. Will import the scope (mixins, variables, and selector references) of the object. If a namespace is specified, will wrap rules in a mixin name. If it's imported `as *` (the default), will render rules.
 
-Unlike Sass, `as` is required, to encourage namespacing and improve readability.
+Note: like Sass, `as` is not required, but whereas the default for Sass would be `as [filename]`, the default for Jess is `as *`.
 
 Can be at the root or nested.
 
-### `@--ref ('(' type ')')? [file|object|map] ('as' [namespace])? ('with' reference|declarationList)?`
+### `@-ref ('(' type ')')? [file|object|map] ('as' [namespace])? ('with' reference|declarationList)?`
 
-(In Less, this will be `@reference`) - This is the same as `@--use` except:
-1. `@--ref` rules will not be extended,
-2. `@--ref` variables are not forwarded.
+(In Less, this will be `@reference`) - This is the same as `@-use` except:
+1. `@-ref` rules will not be extended,
+2. rules imported with `as *` will not be rendered.
 
-This is more like Sass's `@use`.
+This is more like Sass's `@use` and somewhat like Less's `@import (reference)`
 
 ```scss
-@--ref 'colors.less' as colors; // "as colors" is implied
+@-ref 'colors.less' as colors;
 // or override variables
-@--ref 'colors.less' with {
+@-ref 'colors.less' with {
   // should throw an error if primary-color is not defined
   // overrides the outer $let statement e.g. $let primary-color: #333;
   // TODO - should these be implicitly typed and throw an error when a mis-matched type?
   // No, not unless it is $let <color> primary-color: #333;
   $primary-color: #333;
 }
-// or
-@--ref 'colors.less' as colors;
 
 //or
-@--ref 'colors.less';
+@-ref 'colors.less'; // implied `as *`
 ```
 
 
 ```less
 // or ultimate customization
-@--use 'bootstrap.scss' with {
+@-use 'bootstrap.scss' with {
   // Transitively apply a different use
-  @--ref 'variables.scss' with $variables;
-  @--use 'some-classes.scss' with {
+  @-ref 'variables.scss' with $variables;
+  @-use 'some-classes.scss' with {
     // Replace a class
     .class {
       color: blue;
@@ -209,55 +206,41 @@ This is more like Sass's `@use`.
 }
 // or
 .foo {
-  @--use 'colors.less' as *;
+  @-use 'colors.less';
   color: $primary-color;
 }
 
 //
 ```
 
-### `@--use` without `@--forward`
+### `@-use` without `@-forward`
 
-In Jess, variables defined or imported with `@--use` will be re-exported. This means you do not have to use the Sass `@forward` rule. Just `@--use` them.
+In Jess, variables defined or imported with `@-use export` or `@-export` will be re-exported. This is similar to Sass's `@-forward`.
 
-Q: what happens if a two files use `@--use` on the same file with different params?
+Q: what happens if a two files use `@-use` on the same file with different params?
 
 They would be subject to evaluation order.
 ```scss
 // use1.jess
-@--use './file.jess' with {
+@-use './file.jess' with {
   $foo: one;
 }
 
 // use2.jess
-@--use './file.jess' with {
+@-use './file.jess' with {
   $foo: two;
 }
 
 // final.jess
-@--use './use1.jess';
-@--use './use2.jess';
+@-use './use1.jess';
+@-use './use2.jess';
 
 .rule {
   value: $foo; // two
 }
 ```
 
-Q: What if you don't want to forward variables / mixins from `@--use`?
-
-You can use the `@--ref` at-rule or mark things as `@--private`:
-
-```scss
-// This is a private `@use`
-@--ref './somefile.jess';
-// This is almost identical except the file is still subject to :extend()
-@--private @--use './somefile.jess';
-// can also be used with variables
-@--private $-private: var;
-```
-
-
-Therefore, a SCSS file like this:
+In summary, a SCSS file like this:
 ```scss
 @use './file1.scss' as *;
 $not-private: var;
@@ -266,44 +249,42 @@ $-private: var;
 ```
 Would be converted to:
 ```scss
-@--private @--use './file1.jess' as *;
+@-use './file1.jess';
 $not-private: var;
-@--private $-private: var;
-@--use './file2.jess' as *;
+@-private $-private: var;
+@-export './file2.jess' as *;
 ```
 
+## `@-include [file|object|selector|mixin] ('(' vars ')')? ('with' reference|declarationList)?`
 
-
-## `@--include [file|object|selector|mixin] ('(' vars ')')? ('with' reference|declarationList)?`
-
-Will import the rules (but not pollute the variable scope) TODO -- will this also prevent extends?.
+Will import the rules (but not pollute the variable scope). It does not allow extending of the rules in the included file.
 
 Can be at the root or nested.
 
 ```scss
 // main.jess
-@--ref 'colors.jess';
-@--include 'rules.jess' with $colors;
+@-ref 'colors.jess';
+@-include 'rules.jess' with $colors;
 
 // rules.jess
 // Doesn't have access to vars in main.jess w/o:
-@--use 'main.jess';
+@-use 'main.jess';
 // this would include the vars in colors.jess
 ```
 Using an `include` that's the _result_ of a `ref`:
 ```scss
-@--ref 'theme.jess' as theme with {
+@-ref 'theme.jess' as theme with {
   // Using +: with a collection will merge values
   $colors +: {
     primary: #3a3a3a;
   }
 }
-@--include $theme;
+@-include $theme;
 ```
 You could also do the above like:
 ```scss
 $custom-color: #3a3a3a;
-@--include 'theme.jess' with {
+@-include 'theme.jess' with {
   $colors +: {
     // Here, it will reference the outer $custom-color
     primary: $$custom-color;
@@ -312,7 +293,7 @@ $custom-color: #3a3a3a;
 ```
 ### Include for mixins / inter-operability
 ```scss
-@--use 'mixins.less';
+@-use 'mixins.less';
 
 // This will include ALL mixins named `.root-mixin` AND all selectors labeled `.root-mixin`
 // Note: this is how converted Less would look
@@ -372,28 +353,28 @@ function myFunc(one: Color, two?: any, three?: any) {}
 
 // To create a tuple of numbers:
 // Note: custom types must start with a capital letter
-@--type Num2or4: <number#2 | number#4>; // maybe?
+@-type Num2or4: <number#2 | number#4>; // maybe?
 // accepts one of these values
-@--type Size: 1rem | 1.2rem | 1.4rem;
+@-type Size: 1rem | 1.2rem | 1.4rem;
 
-@--mixin set-size(<Size> size) {
+@-mixin set-size(<Size> size) {
   font-size: $size;
 }
 
 
 // design-system.jess
-@--property-types {
+@-property-types {
   width: <Size>;
 }
 
 // my-file
-@--use 'design-system.jess';
+@-use 'design-system.jess';
 
 // How do we get this to just return class names and var() injections?
 // 
 // jan-2025 -- I think the above question is around how we can do tree shaking
 //             to the minimum tree size
-@--mixin my-component(<Size> $size; <color> $color) {
+@@ my-component(<Size> $size; <color> $color) {
 
 }
 

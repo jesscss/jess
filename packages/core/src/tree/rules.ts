@@ -19,7 +19,7 @@ import { Nil } from './nil'
 import { type Root } from './root'
 import { Mixin } from './mixin'
 import { Interpolated } from './interpolated'
-import type { ArrayList } from './util/collections'
+import { ArrayList } from './util/collections'
 // import { LinkedList } from './util/collections'
 
 export const enum Priority {
@@ -282,9 +282,9 @@ export class Rules extends Node<Node[]> {
               }
 
               /** Merge any scope that we need for lookups */
-              if (result instanceof Rules) {
-                this._scope.merge(result._scope, leakVariablesIntoScope)
-              }
+              // if (result instanceof Rules) {
+              //   this._scope.merge(result._scope, leakVariablesIntoScope)
+              // }
             }
           }
         }
@@ -361,13 +361,14 @@ export class Rules extends Node<Node[]> {
 
     let newRules: Node[] = []
 
+    /** @todo - Probably need to re-write bubbling */
     let bubbleRootRules = (rule: Node) => {
       let importedRoots =
         (isNode(rule, 'Ruleset') || isNode(rule, 'AtRule'))
-          ? rule.rules?.rootRules
+          ? rule.value.rules?.rootRules
           : rule.rootRules
       if (importedRoots) {
-        const newImportedRoots: Node[] = []
+        const newImportedRoots = new ArrayList()
         for (let r of importedRoots) {
           if (r.options.hoistToParent) {
             r.options.hoistToParent = false
@@ -398,7 +399,7 @@ export class Rules extends Node<Node[]> {
       ) {
         /** Remove empty rules */
         if (!rules.rootRules) {
-          rules.rootRules = [rule]
+          rules.rootRules = new ArrayList([rule])
         } else {
           rules.rootRules.push(rule)
         }

@@ -57,13 +57,14 @@ $my-mixin(20px; 40px);
 
 ## Functions
 
-Functions are just anonymous mixins with the value assigned to `@@`
+~Functions are just anonymous mixins with the value assigned to `@@`.~
+TODO - this won't work, because they get returned in different places.
 
 ```less
-$my-func: @@($width; $height) {
-  @@: $width;
+@-fn foo ($width; $height) {
+  @ > $width;
 }
 .box {
-  value: $my-func(10px, 20px);
+  value: $foo(10px, 20px);
 }
 ```
