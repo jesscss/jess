@@ -147,6 +147,12 @@ interface NodeEntry<T extends Node = Node> {
   type: NodeTypeIndex | symbol
 }
 
+const enum SearchParents {
+  NEVER,
+  IF_NOT_FOUND,
+  ALWAYS
+}
+
 export class Scope {
   /** A map of positions to nodes */
   private nodePositionMap = new BiMap<number, Node>()
@@ -253,12 +259,14 @@ export class Scope {
   }
 
   /**
-   * Finds _all_ matching nodes in the scope chain.
+   * Finds _all_ matching nodes in the scope chain. We have to return
+   * all nodes because we may need to sort the order if we have nested
+   * rules, as well as evaluate cascading assignments, like ?: or +:
    */
   find(
     key: string,
     type: NodeTypeIndex,
-    includeParents = true,
+    searchParents: boolean = true,
     start?: number
   ) {
     let scope: Scope | undefined = this
@@ -269,10 +277,10 @@ export class Scope {
       let indexKey: IndexKey = `${genericType}${key}`
       let list = map.get(indexKey)
       if (!list) {
-        if (!includeParents) {
+        if (!searchParents) {
           return
         }
-        scope = scope._parent
+        scope = scope.parent
         continue
       }
       let bestMatch: number | undefined
@@ -294,10 +302,13 @@ export class Scope {
           }
         }
         if (!bestMatch) {
-          if (!includeParents) {
+          if (!searchParents) {
             return
           }
-          scope = scope._parent
+          scope = scope.parent
+          if (scope && start !== undefined) {
+            start = scope.nodePositionMap.getValue(this.node)
+          }
           continue
         }
       } else {
@@ -312,11 +323,14 @@ export class Scope {
         }
       }
 
-      if (!includeParents) {
+      if (!searchParents) {
         return nodes
       }
-      
-      scope = scope._parent
+
+      scope = scope.parent
+      if (scope && start !== undefined) {
+        start = scope.nodePositionMap.getValue(this.node)
+      }
     }
     return nodes
   }
@@ -327,34 +341,39 @@ export class Scope {
    */
   getVar(key: string, start?: number) {
     let result = this.find(key, NodeTypeIndex.VARIABLE, true, start)
+    /**
+     * If we have no (independent) results, Less allows us to look at any returned rules for
+     * the variable. The Less parser sets them as "leaky" rules.
+     */
     if (!result) {
       const entries = this.find('', NodeTypeIndex.LEAKY_RULES, false, start) as Queue<NodeEntry<Rules>>
       if (entries) {
         for (let entry of entries) {
           let localResult = entry.node.scope.find(key, NodeTypeIndex.VARIABLE, false, start)
           if (localResult) {
-            return localResult.last?.node
+            return localResult.first?.node
           }
         }
       }
     }
-    return result?.last?.node
+    return result?.first?.node
   }
 
-  /**
-   * Search local scope for a property, looking at any merging rules.
-   */
-  getProp(key: string, start?: number) {
-    let result = (this.find(key, NodeTypeIndex.PROPERTY, true, start) ?? new Queue()) as Queue<NodeEntry<Declaration>>
-    let rules = this.find('', NodeTypeIndex.RULES, false, start) as Queue<NodeEntry<Rules>>
+  private _get(context: Context, key: string, type: NodeTypeIndex, start?: number) {
+    let result = (this.find(key, type, true, start) ?? new Queue()) as Queue<NodeEntry>
+    let rulesType =
+      type === NodeTypeIndex.VARIABLE || NodeTypeIndex.MIXIN || NodeTypeIndex.RULESET
+        ? NodeTypeIndex.LEAKY_RULES
+        : NodeTypeIndex.RULES
+    let rules = this.find('', rulesType, false, start) as Queue<NodeEntry<Rules>>
     if (rules) {
       for (let entry of rules) {
-        let localResult = entry.node.scope.find(key, NodeTypeIndex.PROPERTY, false, start)
+        let localResult = entry.node.scope.find(key, type, false)
         if (localResult) {
           /** Add every entry of the queue in its current position */
           for (let item of localResult) {
             result.push({
-              node: item.node as Declaration,
+              node: item.node,
               position: entry.position,
               type: item.type
             })
@@ -362,41 +381,132 @@ export class Scope {
         }
       }
     }
-    /** If we only have 1 result, we're done */
-    if (result.length === 1) {
-      return result.first!.node
-    }
+
+    // let node = result?.first?.node
+
+    // if (isNode(node, 'Declaration')) {
+    //   let assignment = node.options?.assign
+    //   if (
+    //       Boolean(assignment) && (
+    //       assignment === AssignmentType.Default
+    //       || assignment === AssignmentType.CondAssign
+    //       || assignment === AssignmentType.MergeList
+    //       || assignment === AssignmentType.MergeSequence
+    //     )
+    //   ) {
+    //     return node
+    //   }
+    //   /** If it wasn't returnable and we still have one result, this is an error */
+    //   if (result.length === 1) {
+    //     throw new ReferenceError(`${key} is not defined`)
+    //   }
+    // }
+
+    // /** If we only have 1 result after the above, we can return it */
+    // if (result.length === 1) {
+    //   return node
+    // }
+
     /** Sort these so they are evaluated in the proper order */
     result.sort((a, b) => a.position - b.position)
+
+    return result
+
+    // if (isNode(node, 'Declaration')) {
+    //   /**
+    //    * If we're dealing with declarations, we need to evaluate all the
+    //    * assignment types. 
+    //    */
+
+    //   let length = result.length
+    //   let values: Queue<Node> = new Queue()
+    //   let important: General<'Flag'> | undefined
+    //   let merge: AssignmentType | undefined
+    //   /**
+    //    * Legacy property joining for Less -- note, we need to
+    //    * explicitly wrap values in a list() when parsing
+    //    */
+    //   for (let i = length - 1; i >= 0; i--) {
+    //     let decl = result.at(i)!.node
+    //     let assignment = decl.options?.assign
+    //     if (assignment === AssignmentType.MergeList || assignment === AssignmentType.MergeSequence) {
+    //       merge = assignment
+    //       values.push(decl.value.value)
+    //       if (decl.value.important) {
+    //         important = decl.value.important
+    //       }
+    //     }
+    //   }
+    //   key = result.first!.node.value.name.toString()
+    //   return new Declaration({
+    //     name: key,
+    //     value: merge === AssignmentType.MergeList ? new List(values.toArray()) : spaced(values.toArray()),
+    //     important
+    //   })
+    // }
+
+    // return node
+  }
+
+  /**
+   * Search local scope for a property, looking at any merging rules.
+   */
+  getProp(context: Context, key: string, start?: number) {
+    let result = this._get(context, key, NodeTypeIndex.PROPERTY, start) as Queue<NodeEntry<Declaration>>
+    if (!result) {
+      return
+    }
     
-    let node = result?.last!.node
+    let node = result?.first!.node
+
     /**
      * If the most recent value is not a merge value
      * return this as the only value.
      */
-    let assignment = node.options?.assign
-    if (!(assignment === AssignmentType.MergeList || assignment === AssignmentType.MergeSequence)) {
+    let assignment = node.options?.assign ?? AssignmentType.Default
+    
+    if (result.length === 1) {
+      if (
+        assignment !== AssignmentType.Default
+        && assignment !== AssignmentType.CondAssign
+        && assignment !== AssignmentType.MergeList
+        && assignment !== AssignmentType.MergeSequence
+      ) {
+        throw new ReferenceError(`${key} is not defined`)
+      } else {
+        return node
+      }
+    }
+
+    if (assignment === AssignmentType.Default) {
       return node
     }
 
+    /** Okay, we're dealing with some kind of "merging" assignment */
+
+    let firstAssignment = assignment
     let length = result.length
     let values: Queue<Node> = new Queue()
     let important: General<'Flag'> | undefined
-    let merge: AssignmentType | undefined
+    
+    let currentValue = node.value.value
     /**
      * Legacy property joining for Less -- note, we need to
      * explicitly wrap values in a list() when parsing
      */
-    for (let i = length - 1; i >= 0; i--) {
+    for (let i = 0; i < length; i++) {
       let decl = result.at(i)!.node
-      let assignment = decl.options?.assign
-      if (assignment === AssignmentType.MergeList || assignment === AssignmentType.MergeSequence) {
-        merge = assignment
-        values.push(decl.value.value)
-        if (decl.value.important) {
-          important = decl.value.important
+      if (decl.value.important) {
+        important = decl.value.important
+      }
+      let nextAssignment = decl.options?.assign ?? AssignmentType.Default
+      if (nextAssignment === AssignmentType.MergeList || nextAssignment === AssignmentType.MergeSequence) {
+        if (assignment === AssignmentType.MergeList || assignment === AssignmentType.MergeSequence) {
+          values.push(decl.value.value)
         }
       }
+      
+      assignment = nextAssignment
     }
     key = result.first!.node.value.name.toString()
     return new Declaration({
@@ -446,7 +556,6 @@ export class Scope {
    */
   // _mixins: ScopeEntryMap<MixinEntry>
   // _props: PropMap
-  _parent?: Scope
 
   /**
    * For none found. Use this to distinguish from
@@ -466,9 +575,10 @@ export class Scope {
 
   visibleScopes: Set<Scope> | undefined
 
-  constructor(parent?: Scope) {
-    this._parent = parent
-  }
+  constructor(
+    public node: Rules,
+    public parent?: Scope
+  ) {}
 
   /**
    * Normalizes keys as valid JavaScript identifiers.

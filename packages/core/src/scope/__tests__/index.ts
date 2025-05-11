@@ -23,22 +23,22 @@ describe('Scope', async () => {
       expect(`${scope.getVar('foo')}`).toBe('$foo: bar')
     })
 
-    // it('replaces variable values', () => {
-    //   scope.setVar('one', 'one')
-    //   scope.setVar('one', 'two')
-    //   expect(scope.getVar('one')).toBe('two')
-    // })
+    it('replaces variable values', () => {
+      scope.push(vardecl({ name: 'foo', value: any('one') }))
+      scope.push(vardecl({ name: 'foo', value: any('two') }))
+      expect(`${scope.getVar('foo')}`).toBe('$foo: two')
+    })
 
     // it('will skip normalization', () => {
     //   scope.setVar('one', 'one', { isNormalized: true, protected: true })
     //   expect(scope.getVar('one')).toEqual('one')
     // })
 
-    // it('will not set if defined', () => {
-    //   scope.setVar('one', 'one')
-    //   scope.setVar('one', 'two', { setIfUndefined: true })
-    //   expect(scope.getVar('one')).toEqual('one')
-    // })
+    it('will not set if defined', () => {
+      scope.push(vardecl({ name: 'one', value: any('one') }, { assign: AssignmentType.CondAssign}))
+      scope.push(vardecl({ name: 'one', value: any('two') }, { assign: AssignmentType.CondAssign}))
+      expect(`${scope.getVar('one')}`).toBe('$one: one')
+    })
 
     // it('doesn\'t throw error if suppressed', () => {
     //   expect(scope.getVar('one', { suppressUndefinedError: true })).toBeUndefined()

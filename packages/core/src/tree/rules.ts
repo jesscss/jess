@@ -68,7 +68,7 @@ export class Rules extends Node<Node[]> {
 
   private _scope: Scope | undefined
   get scope() {
-    return (this._scope ??= new Scope())
+    return (this._scope ??= new Scope(this))
   }
 
   set scope(s: Scope) {

@@ -803,6 +803,8 @@ export class NodeData<Type = any, T extends IfAny<Type, any, NarrowTypes<Type>> 
    * 
    * @note - When walking upward, if node.parentData has changed,
    * then we've stepped into the next parent node.
+   * 
+   * @todo - Is this used anywhere?
    */
   private * _reverseWalk(
     includeParents?: boolean,

@@ -14,19 +14,19 @@ export type BaseDeclarationValue<N = any> = {
 
 export const enum AssignmentType {
   Default = ':',
-  Add = '+:',           // similar to += in JS, but merges lists / sequences / collections
+  Add = '+:',              // similar to += in JS, but merges lists / sequences / collections
   // Subtract = '-:',      // math subtraction, like -= in JS
   // Multiply = '*:',      // math multiplication, like *= in JS
   // Divide = '/:',        // math division, like /= in JS
-  CondAssign = '?:',    // similar to ??= in JS or !default in Sass
+  CondAssign = '?:',       // similar to ??= in JS or !default in Sass
   // CondAdd = '?+:',      // add if defined, otherwise assign
   // CondSubtract = '?-:', // subtract if defined, otherwise assign
   // CondMultiply = '?*:', // multiply if defined, otherwise assign
   // CondDivide = '?/:',   // divide if defined, otherwise assign
 
   /** Legacy Less flags */
-  MergeList = '+,:',    // merge into a list if another prop exists with this flag
-  MergeSequence = '+_:' // merge into a sequence if another prop exists with this flag
+  MergeList = '&,:',    // merge into a list if another prop exists with this flag
+  MergeSequence = '&_:' // merge into a sequence if another prop exists with this flag
 }
 
 export type BaseDeclarationOptions = {
