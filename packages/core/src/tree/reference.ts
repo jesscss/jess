@@ -28,23 +28,22 @@ import { Selector } from './selector'
 export type ReferenceOptions = {
   type: 'variable' | 'property' | 'mixin'
   resolution?: 'scope' | 'linear'
-  /**
-   * Optional references just resolve to the string
-   * representation of the reference if not found.
-   *
-   * (Used by Less for functions.)
-   */
-  optional?: boolean
 }
 
-type NodeType = typeof Node<string | Interpolated, ReferenceOptions>
+/**
+ * Optional references just resolve to the string
+ * representation if the fallback is set to true.
+ * 
+ * @note - Used by Less for function references
+ */
+type NodeType = typeof Node<[key: string | Interpolated, fallback?: Node | true], ReferenceOptions>
 type ReferenceParams = ConstructorParameters<NodeType>
 /**
  * This is a variable or property reference,
  * which can itself contain a reference (a variable variable).
  */
-export class Reference extends Selector<string | Interpolated, ReferenceOptions> {
-  declare value: string | Interpolated
+export class Reference extends Selector<[key: string | Interpolated, fallback?: Node | true], ReferenceOptions> {
+  declare value: [key: string | Interpolated, fallback?: Node | true]
   type = 'Reference'
   shortType = 'ref'
 
@@ -86,41 +85,42 @@ export class Reference extends Selector<string | Interpolated, ReferenceOptions>
    */
   override async evalNode(context: Context): Promise<Node> {
     let { value } = this
-    let { type, optional } = this.options
-    let name: string
-    if (value instanceof Node) {
-      name = (await value.eval(context)).value
+    let { type } = this.options
+    let [name, fallback] = value
+    let key: string
+    if (name instanceof Node) {
+      key = (await name.eval(context)).value
     } else {
-      name = value
+      key = name
     }
-    let opts: GetterOptions = context.declarationScope ? { filter: context.declarationScope } : {}
-    if (optional) {
-      opts.suppressUndefinedError = true
-    }
+    let opts: GetterOptions = context.declarationScope
+    ? {
+      ignoreRules: context.declarationScope
+    } : {}
+
     let returnVal: any
     switch (type) {
       case 'variable':
-        returnVal = context.scope.getVar(name, opts)
+        returnVal = context.scope.getVar(key, opts)
         break
       case 'property':
-        returnVal = context.scope.getProp(name, opts)
+        returnVal = context.scope.getProp(key, opts)
         break
       case 'mixin':
-        returnVal = context.scope.getMixin(name, opts)
+        returnVal = context.scope.getMixin(key, opts)
     }
 
-    if (returnVal === undefined && optional) {
-      if (typeof value === 'string') {
-        return new General(value, { type: 'Name' })
+    if (returnVal === undefined && fallback) {
+      if (fallback === true) {
+        return new General(key, { type: 'Name' })
       }
-      return value
+      return fallback
     }
     if (returnVal instanceof Declaration) {
-      context.declarationScope = returnVal
-      returnVal = returnVal.value
-      returnVal = await returnVal.eval(context)
-      context.declarationScope = undefined
-      return returnVal
+      context.declarationScope.add(returnVal)
+      const evald = await returnVal.value.value.eval(context)
+      context.declarationScope.delete(returnVal)
+      return evald
     } else {
       return cast(returnVal)
     }

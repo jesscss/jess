@@ -1,14 +1,18 @@
-import { decl, vardecl, any, AssignmentType } from '../../tree'
+import { decl, vardecl, any, AssignmentType, rules } from '../../tree'
 import { Scope } from '../index'
 import { logger } from '../../logger'
+import { Context } from '../../context'
 
 vi.spyOn(logger, 'warn')
 
 let scope: Scope
+let context: Context
 
 describe('Scope', async () => {
   beforeEach(() => {
-    scope = new Scope()
+    scope = new Scope(rules())
+    context = new Context()
+    context.scope = scope
   })
 
   describe('set / get', () => {
@@ -29,16 +33,16 @@ describe('Scope', async () => {
       expect(`${scope.getVar('foo')}`).toBe('$foo: two')
     })
 
-    // it('will skip normalization', () => {
+    it('will not set if defined', async () => {
+      scope.push(vardecl({ name: 'one', value: any('one') }, { assign: AssignmentType.CondAssign}))
+      scope.push(vardecl({ name: 'one', value: any('two') }, { assign: AssignmentType.CondAssign}))
+      expect(`${await scope.getVar('one')!.eval(context)}`).toBe('$one: one')
+    })
+
+     // it('will skip normalization', () => {
     //   scope.setVar('one', 'one', { isNormalized: true, protected: true })
     //   expect(scope.getVar('one')).toEqual('one')
     // })
-
-    it('will not set if defined', () => {
-      scope.push(vardecl({ name: 'one', value: any('one') }, { assign: AssignmentType.CondAssign}))
-      scope.push(vardecl({ name: 'one', value: any('two') }, { assign: AssignmentType.CondAssign}))
-      expect(`${scope.getVar('one')}`).toBe('$one: one')
-    })
 
     // it('doesn\'t throw error if suppressed', () => {
     //   expect(scope.getVar('one', { suppressUndefinedError: true })).toBeUndefined()

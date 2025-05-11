@@ -13,9 +13,10 @@ import type { Condition } from '../tree/condition'
 import { Context } from '../context'
 import type { General } from '../tree/general'
 import { BiMap, LinkedList, NodeList } from '../tree/util/collections'
-import { Queue } from 'data-structure-typed'
-import { type Ruleset } from '../tree'
-import { spaced } from '../tree/sequence'
+import { Queue, Stack } from 'data-structure-typed'
+import { Operation } from '../tree/operation'
+import { Sequence, spaced } from '../tree/sequence'
+import { Reference, VarDeclaration } from '../tree'
 
 /**
  * The Scope object is meant to be an efficient
@@ -95,15 +96,7 @@ type FilterResult = {
 }
 
 export type GetterOptions = {
-  /** Filter is a function or value to compare when looking up values */
-  filter?: Node | ((value: any, foundValues?: any[]) => FilterResult)
-
-  /** Only return local values, not all scope values */
-  local?: boolean
-  /**
-   * Right now used by Less for functions
-   */
-  suppressUndefinedError?: boolean
+  ignoreRules?: Set<Node>
 }
 
 export type ScopeFilter = (
@@ -339,27 +332,27 @@ export class Scope {
    * Search scope chain for a variable
    * THEN search any leaky rules
    */
-  getVar(key: string, start?: number) {
-    let result = this.find(key, NodeTypeIndex.VARIABLE, true, start)
-    /**
-     * If we have no (independent) results, Less allows us to look at any returned rules for
-     * the variable. The Less parser sets them as "leaky" rules.
-     */
-    if (!result) {
-      const entries = this.find('', NodeTypeIndex.LEAKY_RULES, false, start) as Queue<NodeEntry<Rules>>
-      if (entries) {
-        for (let entry of entries) {
-          let localResult = entry.node.scope.find(key, NodeTypeIndex.VARIABLE, false, start)
-          if (localResult) {
-            return localResult.first?.node
-          }
-        }
-      }
-    }
-    return result?.first?.node
-  }
+  // getVar(key: string, opts: GetterOptions = {}, start?: number) {
+  //   let result = this.find(key, NodeTypeIndex.VARIABLE, true, start)
+  //   /**
+  //    * If we have no (independent) results, Less allows us to look at any returned rules for
+  //    * the variable. The Less parser sets them as "leaky" rules.
+  //    */
+  //   if (!result) {
+  //     const entries = this.find('', NodeTypeIndex.LEAKY_RULES, false, start) as Queue<NodeEntry<Rules>>
+  //     if (entries) {
+  //       for (let entry of entries) {
+  //         let localResult = entry.node.scope.find(key, NodeTypeIndex.VARIABLE, false, start)
+  //         if (localResult) {
+  //           return localResult.first?.node
+  //         }
+  //       }
+  //     }
+  //   }
+  //   return result?.first?.node
+  // }
 
-  private _get(context: Context, key: string, type: NodeTypeIndex, start?: number) {
+  private _get(key: string, type: NodeTypeIndex, opts?: GetterOptions, start?: number) {
     let result = (this.find(key, type, true, start) ?? new Queue()) as Queue<NodeEntry>
     let rulesType =
       type === NodeTypeIndex.VARIABLE || NodeTypeIndex.MIXIN || NodeTypeIndex.RULESET
@@ -380,6 +373,10 @@ export class Scope {
           }
         }
       }
+    }
+
+    if (opts?.ignoreRules) {
+      result = result.filter(entry => !opts.ignoreRules!.has(entry.node))
     }
 
     // let node = result?.first?.node
@@ -451,13 +448,19 @@ export class Scope {
   /**
    * Search local scope for a property, looking at any merging rules.
    */
-  getProp(context: Context, key: string, start?: number) {
-    let result = this._get(context, key, NodeTypeIndex.PROPERTY, start) as Queue<NodeEntry<Declaration>>
+  private _getDeclaration(
+    type: NodeTypeIndex.VARIABLE | NodeTypeIndex.PROPERTY,
+    key: string,
+    opts: GetterOptions = {},
+    start?: number
+  ) {
+    let result = this._get(key, type, opts, start) as Queue<NodeEntry<Declaration>>
     if (!result) {
       return
     }
+    let Class = type === NodeTypeIndex.VARIABLE ? VarDeclaration : Declaration
     
-    let node = result?.first!.node
+    let node = result?.last!.node
 
     /**
      * If the most recent value is not a merge value
@@ -483,38 +486,58 @@ export class Scope {
     }
 
     /** Okay, we're dealing with some kind of "merging" assignment */
-
-    let firstAssignment = assignment
+    let prevAssignment: AssignmentType = assignment
+    let prevValue = node.value.value
     let length = result.length
     let values: Queue<Node> = new Queue()
-    let important: General<'Flag'> | undefined
-    
-    let currentValue = node.value.value
+    let important = node.value.important
     /**
-     * Legacy property joining for Less -- note, we need to
-     * explicitly wrap values in a list() when parsing
+     * Declaration merging
      */
-    for (let i = 0; i < length; i++) {
+    for (let i = length - 1; i > 0; i--) {
       let decl = result.at(i)!.node
+      /** !important always "wins" */
       if (decl.value.important) {
         important = decl.value.important
       }
-      let nextAssignment = decl.options?.assign ?? AssignmentType.Default
-      if (nextAssignment === AssignmentType.MergeList || nextAssignment === AssignmentType.MergeSequence) {
-        if (assignment === AssignmentType.MergeList || assignment === AssignmentType.MergeSequence) {
-          values.push(decl.value.value)
+      let value = decl.value.value
+      let assignment = decl.options?.assign ?? AssignmentType.Default
+      if (assignment === AssignmentType.MergeList || assignment === AssignmentType.MergeSequence) {
+        if (prevAssignment === AssignmentType.MergeList || prevAssignment === AssignmentType.MergeSequence) {
+          const nodeList: List | Sequence = isNode(prevValue, ['List', 'Sequence'])
+            ? prevValue
+            : assignment === AssignmentType.MergeList
+              ? new List([prevValue])
+              : new Sequence([prevValue])
+          nodeList.value.unshift(value)
         }
+      } else if (assignment === AssignmentType.CondAssign) {
+        value = new Reference([decl.value.name.toString(), value])
+      } else if (prevAssignment === AssignmentType.Add) {
+        value = new Operation([new Reference([decl.value.name.toString()]), '+', decl.value.value])
       }
-      
-      assignment = nextAssignment
+ 
+      prevValue = value
+      prevAssignment = assignment
+
+      if (assignment === AssignmentType.Default) {
+        break
+      }
     }
-    key = result.first!.node.value.name.toString()
-    return new Declaration({
+    key = node.value.name.toString()
+    return new Class({
       name: key,
-      value: merge === AssignmentType.MergeList ? new List(values.toArray()) : spaced(values.toArray()),
+      value: prevValue,
       important
     })
+  }
 
+  getProp(key: string, opts: GetterOptions = {}, start?: number) {
+    return this._getDeclaration(NodeTypeIndex.PROPERTY, key, opts, start)
+  }
+
+  getVar(key: string, opts: GetterOptions = {}, start?: number) {
+    return this._getDeclaration(NodeTypeIndex.VARIABLE, key, opts, start)
   }
 
   // get(key: string, type: NodeTypeIndex, start?: number) {

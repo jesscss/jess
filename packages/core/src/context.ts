@@ -188,9 +188,9 @@ export class Context {
    * to prevent recursion errors. Each subsequent declaration
    * is then added to prevent back-references to this one.
    */
-  _declarationScope: Stack<Declaration> | undefined
+  _declarationScope: Set<Declaration> | undefined
   get declarationScope() {
-    return (this._declarationScope ??= new Stack())
+    return (this._declarationScope ??= new Set())
   }
 
   /**
