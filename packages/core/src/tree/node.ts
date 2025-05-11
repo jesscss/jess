@@ -69,6 +69,13 @@ export const defineType = <
   ;(Clazz as any).type = type
   ;(Clazz as any).shortType = shortType
 
+  let proto: any = Clazz
+  let types = proto.types = new Set()
+  while (proto?.type) {
+    types.add(proto.type)
+    proto = Object.getPrototypeOf(proto)
+  }
+
   type Args = [value?: P[0] | V, location?: P[1], options?: P[2], treeContext?: P[3]]
   return (...args: Args) => {
     const node = new Clazz(...args) as T extends Class<infer C> ? InstanceType<Class<C, Args>> : never
@@ -140,22 +147,8 @@ export abstract class Node<
    */
   abstract type: string
   abstract shortType: string
-
-  /** All types of the prototype chain */
-  // declare _types: Set<string> | undefined
   get types(): Set<string> {
-    /** Set on prototype object so we don't do this per instance */
-    let proto = Object.getPrototypeOf(this)
-    let types = proto._types
-    if (!types) {
-      let node = this
-      proto._types = types = new Set()
-      while (node?.type) {
-        types.add(node.type)
-        node = Object.getPrototypeOf(node.constructor)
-      }
-    }
-    return types
+    return (this.constructor as any).types
   }
 
   /**
@@ -608,7 +601,7 @@ Object.defineProperty(Node.prototype, 'value', {
     return data
   },
 
-  set value(val: any) {
+  set(val: any) {
     this.data.setAllData(val)
   }
 })

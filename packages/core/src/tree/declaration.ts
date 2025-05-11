@@ -43,14 +43,28 @@ export class Declaration<
   override allowRuleRoot = true
   override requiredSemi = true
 
-  override toTrimmedString(depth?: number) {
+  protected _declTrimmedString(depth?: number) {
     const { name, value, important } = this.value
     const { assign = ':' } = this.options
     let a = assign === ':' ? ':' : ` ${assign}`
-    if (isNode(value, 'Collection')) {
-      return `${name}${a}${value.toString(depth)}`
+    let returnVal = `${name}${a}${
+      value.processPrePost('pre', ' ')
+    }${
+      value.toTrimmedString(depth)
+    }${
+      value.processPrePost('post')
+    }`
+    if (!isNode(value, 'Collection')) {
+      returnVal += important ? `${important}` : ''
+      if (this.options?.semi === true) {
+        returnVal += ';'
+      }
     }
-    return `${name}${a}${value.toString(depth)}${important ? `${important}` : ''}`
+    return returnVal
+  }
+
+  override toTrimmedString(depth?: number) {
+    return this._declTrimmedString(depth)
   }
 
   override async evalNode(context: Context) {

@@ -72,7 +72,7 @@ export function isNode(value: any, type?: keyof Nodes | ReadonlyArray<keyof Node
     return true
   }
   if (isArray(type)) {
-    return type.every(t => value.types.has(t))
+    return type.some(t => value.types.has(t))
   }
-  return value.types.has(type as keyof Nodes)
+  return value.types?.has(type as keyof Nodes)
 }

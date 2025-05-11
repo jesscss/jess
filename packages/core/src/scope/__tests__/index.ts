@@ -1,4 +1,4 @@
-import { decl, any, AssignmentType } from '../../tree'
+import { decl, vardecl, any, AssignmentType } from '../../tree'
 import { Scope } from '../index'
 import { logger } from '../../logger'
 
@@ -12,15 +12,16 @@ describe('Scope', async () => {
   })
 
   describe('set / get', () => {
+
     it('can do a normal get / set of properties', () => {
-      scope.set(decl({ name: 'foo', value: any('bar') }), 0)
+      scope.push(decl({ name: 'foo', value: any('bar') }))
       expect(`${scope.getProp('foo')}`).toBe('foo: bar')
     })
 
-    // it('can do a normal get / set of variables', () => {
-    //   scope.setVar('foo', 'bar')
-    //   expect(scope.getVar('foo')).toBe('bar')
-    // })
+    it('can do a normal get / set of variables', () => {
+      scope.push(vardecl({ name: 'foo', value: any('bar') }))
+      expect(`${scope.getVar('foo')}`).toBe('$foo: bar')
+    })
 
     // it('replaces variable values', () => {
     //   scope.setVar('one', 'one')

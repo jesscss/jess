@@ -15,6 +15,7 @@ import type { General } from '../tree/general'
 import { BiMap, LinkedList, NodeList } from '../tree/util/collections'
 import { Queue } from 'data-structure-typed'
 import { type Ruleset } from '../tree'
+import { spaced } from '../tree/sequence'
 
 /**
  * The Scope object is meant to be an efficient
@@ -116,36 +117,41 @@ export const enum NodeType {
   RULESET          = '*',
   MIXIN_OR_RULESET = '|',
   PROPERTY         = '.',
-  VAR_OR_PROP      = '?',
+  VARIABLE         = '?',
   /** No prefix */
-  VARIABLE         = '',
-}
-
-class NodeTypeMap {
-  private _map: Map<string, LinkedList> = new Map()
-
+  VAR_OR_PROP      = '',
 }
 
 export const enum NodeTypeIndex {
-  NONE             = 0b0000,
-  MIXIN            = 0b0001,
-  RULESET          = 0b0010,
-  MIXIN_OR_RULESET = 0b0011,
-  PROPERTY         = 0b0100,
-  VARIABLE         = 0b1000,
-  VAR_OR_PROP      = 0b1100,
+  NONE             = 0b000000,
+  MIXIN            = 0b000001,
+  RULESET          = 0b000010,
+  MIXIN_OR_RULESET = 0b000011,
+  PROPERTY         = 0b000100,
+  VARIABLE         = 0b001000,
+  VAR_OR_PROP      = 0b001100,
+  /**
+   * Variables and mixins can leak
+  */
+  LEAKY_RULES      = 0b010000,
+  /** @note - Properties and rulesets are always visible. */
+  PRIVATE_RULES    = 0b100000,
+  RULES            = 0b110000
 }
 
 type IndexKey = `${NodeTypeIndex}${string}`
-/** Note: properties and rulesets are always visible */
-const PRIVATE_RULES = Symbol('PRIVATE_RULES')
-/** Less allows a person to look up mixins & vars */
-const LEAKY_RULES = Symbol('LEAKY_RULES')
+
+interface NodeEntry<T extends Node = Node> {
+  node: T
+  position: number
+  type: NodeTypeIndex | symbol
+}
 
 export class Scope {
   /** A map of positions to nodes */
   private nodePositionMap = new BiMap<number, Node>()
 
+  private counter = 0
   /**
    * All indexed collections, keyed. These are the value
    * per scope (like a set of rules).
@@ -153,52 +159,74 @@ export class Scope {
    * @note - Types are stored differently for disambiguation
    *         See the Prefix enum.
    */
-  private _entryMap: Map<IndexKey | symbol, Queue<number>> | undefined
-  private get entryMap(): Map<IndexKey | symbol, Queue<number>> {
+  private _entryMap: Map<IndexKey | symbol, Queue<NodeEntry>> | undefined
+  private get entryMap(): Map<IndexKey | symbol, Queue<NodeEntry>> {
     return (this._entryMap ??= new Map())
   }
 
-  private _addToIndex(index: NodeTypeIndex | symbol, n: Node, position: number) {
-    if (typeof index === 'symbol') {
-      let list = this.entryMap.get(index)
-      if (!list) {
-        list = new Queue()
-        this.entryMap.set(index, list)
-      }
-      list.push(position)
-      return
+  private _genericType(type: NodeTypeIndex): NodeTypeIndex {
+    let genericType = 0
+    if ((type & NodeTypeIndex.VAR_OR_PROP) === type) {
+      genericType = NodeTypeIndex.VAR_OR_PROP
+    } else if ((type & NodeTypeIndex.MIXIN_OR_RULESET) === type) {
+      genericType = NodeTypeIndex.MIXIN_OR_RULESET
+    } else if ((type & NodeTypeIndex.RULES) === type) {
+      genericType = NodeTypeIndex.RULES
     }
-    let key: string | Set<string> | undefined
-    if (n.data.has('name')) {
-      key = n.data.get('name')!.valueOf()
-    } else {
-      key = n.data.get('selector')!.valueOf()
+    return genericType
+  }
+
+  private _addToIndex(
+    type: NodeTypeIndex,
+    node: Node,
+    position: number
+  ) {
+    let genericType = this._genericType(type)
+    let key = ''
+
+    if (node.data.has('name')) {
+      key = node.data.get('name')!.valueOf()
+    } else if (node.data.has('selector')) {
+      key = node.data.get('selector')!.valueOf()
     }
-    let indexKey: IndexKey = `${index}${key}`
+    let indexKey: IndexKey = `${genericType}${key}`
     let list = this.entryMap.get(indexKey)
     if (!list) {
       list = new Queue()
       this.entryMap.set(indexKey, list)
     }
-    list.push(position)
+    list.push({ node, position, type })
   }
 
   private _setNode(n: Node, position: number) {
     if (isNode(n, ['Mixin', 'Declaration', 'Ruleset'])) {
       this.nodePositionMap.set(position, n)
       if (isNode(n, 'Declaration')) {
-        this._addToIndex(NodeTypeIndex.VAR_OR_PROP, n, position)
-        if (n.type === 'VarDeclaration') {
-          this._addToIndex(NodeTypeIndex.VARIABLE, n, position)
+        if (isNode(n, 'VarDeclaration')) {
+          this._addToIndex(
+            NodeTypeIndex.VARIABLE,
+            n,
+            position
+          )
         } else {
-          this._addToIndex(NodeTypeIndex.PROPERTY, n, position)
+          this._addToIndex(
+            NodeTypeIndex.PROPERTY,
+            n,
+            position
+          )
         }
       } else if (isNode(n, 'Mixin')) {
-        this._addToIndex(NodeTypeIndex.MIXIN, n, position)
-        this._addToIndex(NodeTypeIndex.MIXIN_OR_RULESET, n, position)
+        this._addToIndex(
+          NodeTypeIndex.MIXIN,
+          n,
+          position
+        )
       } else {
-        this._addToIndex(NodeTypeIndex.RULESET, n, position)
-        this._addToIndex(NodeTypeIndex.MIXIN_OR_RULESET, n, position)
+        this._addToIndex(
+          NodeTypeIndex.RULESET,
+          n,
+          position
+        )
       }
     }
   }
@@ -214,24 +242,31 @@ export class Scope {
   set(n: Node, position: number, allowRuleLookups = false) {
     if (isNode(n, 'Rules')) {
       this.nodePositionMap.set(position, n)
-      this._addToIndex(allowRuleLookups ? LEAKY_RULES : PRIVATE_RULES, n, position)
+      this._addToIndex(allowRuleLookups ? NodeTypeIndex.LEAKY_RULES : NodeTypeIndex.PRIVATE_RULES, n, position)
     } else {
       this._setNode(n, position)
     }
   }
 
-  private _find(
-    key: string | symbol,
-    type: NodeTypeIndex | undefined,
+  push(n: Node) {
+    this.set(n, this.counter++)
+  }
+
+  /**
+   * Finds _all_ matching nodes in the scope chain.
+   */
+  find(
+    key: string,
+    type: NodeTypeIndex,
     includeParents = true,
     start?: number
   ) {
     let scope: Scope | undefined = this
-    let nodes: NodeList | undefined
+    let nodes: Queue<NodeEntry> | undefined
+    let genericType = this._genericType(type)
     while (scope) {
       let map = this.entryMap
-      /** Type will be defined if it's a key string */
-      let indexKey: IndexKey | symbol = typeof key === 'symbol' ? key : `${type!}${key}`
+      let indexKey: IndexKey = `${genericType}${key}`
       let list = map.get(indexKey)
       if (!list) {
         if (!includeParents) {
@@ -240,14 +275,14 @@ export class Scope {
         scope = scope._parent
         continue
       }
+      let bestMatch: number | undefined
       if (start !== undefined) {
         /** Binary search the queue to find a starting position */
         let left = 0, right = list.length - 1
-        let bestMatch: number | undefined
 
         while (left <= right) {
           let mid = Math.floor((left + right) / 2)
-          let midVal = list.at(mid)!
+          let midVal = list.at(mid)!.position
           if (midVal === start) {
             break
           }
@@ -265,11 +300,15 @@ export class Scope {
           scope = scope._parent
           continue
         }
-        nodes ??= new NodeList()
-        for (let i = bestMatch; i >= 0; i--) {
-          let index = list.at(i)!
-          let node = this.nodePositionMap.get(index)!
-          nodes.push(node)
+      } else {
+        /** We didn't have a start position, so the whole list matches */
+        bestMatch = list.length - 1
+      }
+      nodes ??= new Queue()
+      for (let i = bestMatch; i >= 0; i--) {
+        let entry = list.at(i)!
+        if (entry.type === type) {
+          nodes.push(entry)
         }
       }
 
@@ -287,42 +326,104 @@ export class Scope {
    * THEN search any leaky rules
    */
   getVar(key: string, start?: number) {
-    let result = this._find(key, NodeTypeIndex.VARIABLE, true, start)
+    let result = this.find(key, NodeTypeIndex.VARIABLE, true, start)
     if (!result) {
-      const rules = this._find(LEAKY_RULES, undefined, false, start) as NodeList<Rules>
-      if (rules) {
-        for (let rule of rules) {
-          result = rule.scope.getLocal(key, NodeTypeIndex.VARIABLE)
-          if (result) {
-            break
+      const entries = this.find('', NodeTypeIndex.LEAKY_RULES, false, start) as Queue<NodeEntry<Rules>>
+      if (entries) {
+        for (let entry of entries) {
+          let localResult = entry.node.scope.find(key, NodeTypeIndex.VARIABLE, false, start)
+          if (localResult) {
+            return localResult.last?.node
           }
         }
       }
     }
-    return result?.last
+    return result?.last?.node
   }
 
-  getLocal(key: string, type: NodeTypeIndex, start?: number) {
-    return this._find(key, NodeTypeIndex.VARIABLE, false, start)?.last
-  }
-
-  get(key: string, type: NodeTypeIndex, start?: number) {
-    let scope: Scope | undefined = this
-    while (scope) {
-      let map = this.entryMap
-      let indexKey: IndexKey = `${type}${key}`
-      let list = map.get(indexKey)
-      if (!list && !map.get(RULES_SCOPE)) {
-        scope = scope._parent
-        continue
+  /**
+   * Search local scope for a property, looking at any merging rules.
+   */
+  getProp(key: string, start?: number) {
+    let result = (this.find(key, NodeTypeIndex.PROPERTY, true, start) ?? new Queue()) as Queue<NodeEntry<Declaration>>
+    let rules = this.find('', NodeTypeIndex.RULES, false, start) as Queue<NodeEntry<Rules>>
+    if (rules) {
+      for (let entry of rules) {
+        let localResult = entry.node.scope.find(key, NodeTypeIndex.PROPERTY, false, start)
+        if (localResult) {
+          /** Add every entry of the queue in its current position */
+          for (let item of localResult) {
+            result.push({
+              node: item.node as Declaration,
+              position: entry.position,
+              type: item.type
+            })
+          }
+        }
       }
-      let position = list.find(start)
-      if (position === undefined) {
-        return
-      }
-      scope = scope._parent
     }
+    /** If we only have 1 result, we're done */
+    if (result.length === 1) {
+      return result.first!.node
+    }
+    /** Sort these so they are evaluated in the proper order */
+    result.sort((a, b) => a.position - b.position)
+    
+    let node = result?.last!.node
+    /**
+     * If the most recent value is not a merge value
+     * return this as the only value.
+     */
+    let assignment = node.options?.assign
+    if (!(assignment === AssignmentType.MergeList || assignment === AssignmentType.MergeSequence)) {
+      return node
+    }
+
+    let length = result.length
+    let values: Queue<Node> = new Queue()
+    let important: General<'Flag'> | undefined
+    let merge: AssignmentType | undefined
+    /**
+     * Legacy property joining for Less -- note, we need to
+     * explicitly wrap values in a list() when parsing
+     */
+    for (let i = length - 1; i >= 0; i--) {
+      let decl = result.at(i)!.node
+      let assignment = decl.options?.assign
+      if (assignment === AssignmentType.MergeList || assignment === AssignmentType.MergeSequence) {
+        merge = assignment
+        values.push(decl.value.value)
+        if (decl.value.important) {
+          important = decl.value.important
+        }
+      }
+    }
+    key = result.first!.node.value.name.toString()
+    return new Declaration({
+      name: key,
+      value: merge === AssignmentType.MergeList ? new List(values.toArray()) : spaced(values.toArray()),
+      important
+    })
+
   }
+
+  // get(key: string, type: NodeTypeIndex, start?: number) {
+  //   let scope: Scope | undefined = this
+  //   while (scope) {
+  //     let map = this.entryMap
+  //     let indexKey: IndexKey = `${type}${key}`
+  //     let list = map.get(indexKey)
+  //     if (!list && !map.get(RULES_SCOPE)) {
+  //       scope = scope._parent
+  //       continue
+  //     }
+  //     let position = list.find(start)
+  //     if (position === undefined) {
+  //       return
+  //     }
+  //     scope = scope._parent
+  //   }
+  // }
 
   /**
    * A map of selector keys anywhere in a ruleset to contained ruleset selectors
@@ -424,56 +525,56 @@ export class Scope {
     }
   }
 
-  getProp(key: string, options: GetterOptions = {}) {
-    let props: Declaration | Declaration[] = this._getBase('props', key, {
-      filter(value: Declaration) {
-        /**
-         * Find all declarations, in case we need to merge
-         */
-        return { value, done: false }
-      },
-      ...options
-    })
-    /** Our last entry had a merge flag, so collect merges */
-    if (Array.isArray(props)) {
-      /**
-       * If the most recent value is not a merge value
-       * return this as the only value.
-       */
-      let assignment = props[0]!.options?.assign
-      if (!(assignment === AssignmentType.MergeList || assignment === AssignmentType.MergeSequence)) {
-        return props[0]
-      }
+  // getProp(key: string, options: GetterOptions = {}) {
+  //   let props: Declaration | Declaration[] = this._getBase('props', key, {
+  //     filter(value: Declaration) {
+  //       /**
+  //        * Find all declarations, in case we need to merge
+  //        */
+  //       return { value, done: false }
+  //     },
+  //     ...options
+  //   })
+  //   /** Our last entry had a merge flag, so collect merges */
+  //   if (Array.isArray(props)) {
+  //     /**
+  //      * If the most recent value is not a merge value
+  //      * return this as the only value.
+  //      */
+  //     let assignment = props[0]!.options?.assign
+  //     if (!(assignment === AssignmentType.MergeList || assignment === AssignmentType.MergeSequence)) {
+  //       return props[0]
+  //     }
 
-      let length = props.length
-      let values: Node[] = []
-      let important: General<'Flag'> | undefined
-      let merge: AssignmentType | undefined
-      /**
-       * Legacy property joining for Less -- note, we need to
-       * explicitly wrap values in a list() when parsing
-       */
-      for (let i = length - 1; i >= 0; i--) {
-        let decl = props[i]!
-        let assignment = decl.options?.assign
-        if (assignment === AssignmentType.MergeList || assignment === AssignmentType.MergeSequence) {
-          merge = assignment
-          values.push(decl.value)
-          if (decl.important) {
-            important = decl.important
-          }
-        }
-      }
-      key = props[0]!.name.toString()
-      return new Declaration([
-        ['name', key],
-        ['value', merge === AssignmentType.MergeList ? new List(values) : new Spaced(values)],
-        ['important', important]
-      ])
-    }
+  //     let length = props.length
+  //     let values: Node[] = []
+  //     let important: General<'Flag'> | undefined
+  //     let merge: AssignmentType | undefined
+  //     /**
+  //      * Legacy property joining for Less -- note, we need to
+  //      * explicitly wrap values in a list() when parsing
+  //      */
+  //     for (let i = length - 1; i >= 0; i--) {
+  //       let decl = props[i]!
+  //       let assignment = decl.options?.assign
+  //       if (assignment === AssignmentType.MergeList || assignment === AssignmentType.MergeSequence) {
+  //         merge = assignment
+  //         values.push(decl.value)
+  //         if (decl.important) {
+  //           important = decl.important
+  //         }
+  //       }
+  //     }
+  //     key = props[0]!.name.toString()
+  //     return new Declaration([
+  //       ['name', key],
+  //       ['value', merge === AssignmentType.MergeList ? new List(values) : new Spaced(values)],
+  //       ['important', important]
+  //     ])
+  //   }
 
-    return props
-  }
+  //   return props
+  // }
 
   // getLocal(
   //   collection: 'property' | 'mixin' | 'variable',

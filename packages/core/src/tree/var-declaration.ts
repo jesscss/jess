@@ -41,13 +41,7 @@ export class VarDeclaration<N extends DeclarationName = DeclarationName> extends
 
   override toTrimmedString(depth?: number): string {
     const rule = this.options?.setDefined ? '$$' : '$'
-    const { name, value } = this.value
-    const semi = this.options?.paramVar
-      || isNode(value, 'Collection')
-      || this.options?.semi !== true
-      ? ''
-      : ';'
-    return `${rule}${name}:${value.toString(depth)}${semi}`
+    return `${rule}${this._declTrimmedString(depth)}`
   }
 }
 
