@@ -7,19 +7,62 @@ import { isNode } from './util'
 import { Nil } from './nil'
 import type { Context } from '../context'
 import { Interpolated } from './interpolated'
-import type { General } from './general'
-import {
-  type BaseDeclarationValue,
-  type DeclarationName,
-  BaseDeclaration,
-  type BaseDeclarationOptions
-} from './base-declaration'
+import type { General, Name } from './general'
+import { Reference } from './reference'
+import { List } from './list'
+import { spaced } from './sequence'
+import { Operation } from './operation'
 
-export type DeclarationOptions = BaseDeclarationOptions & {
-  semi?: boolean
+export const enum AssignmentType {
+  Default = ':',
+  Add = '+:',              // similar to += in JS, but merges lists / sequences / collections
+  // Subtract = '-:',      // math subtraction, like -= in JS
+  // Multiply = '*:',      // math multiplication, like *= in JS
+  // Divide = '/:',        // math division, like /= in JS
+  CondAssign = '?:',       // similar to ??= in JS or !default in Sass
+  // CondAdd = '?+:',      // add if defined, otherwise assign
+  // CondSubtract = '?-:', // subtract if defined, otherwise assign
+  // CondMultiply = '?*:', // multiply if defined, otherwise assign
+  // CondDivide = '?/:',   // divide if defined, otherwise assign
+
+  /** Legacy Less flags */
+  MergeList = '&,:',    // merge into a list if another prop exists with this flag
+  MergeSequence = '&_:' // merge into a sequence if another prop exists with this flag
 }
 
-export type DeclarationValue = BaseDeclarationValue & {
+export type DeclarationOptions = {
+  assign?: AssignmentType
+  semi?: boolean
+  /**
+   * Instead of implicitly declaring or overriding,
+   * requires a variable to previously be explicitly
+   * declared within scope.
+   *
+   * Used by SCSS (!global) and Jess's ($${var}:)
+   */
+  setDefined?: boolean
+
+  /**
+   * Used for mixin / function parameters (and args). It's not the
+   * same kind of variable declaration.
+   */
+  paramVar?: boolean
+
+  /** Used by SCSS (!default) and Jess (?:) */
+  // setIfUndefined?: boolean
+  /**
+   * Throw if already defined in the immediate scope
+   * Will not throw if defined in a parent scope.
+   *
+   * Used by SCSS in the case of mixins... not Jess?
+   */
+  throwIfDefined?: boolean
+}
+
+type NameValue = string | Name | Interpolated<'Name'>
+
+export type DeclarationValue = {
+  name: NameValue
   value: Node
   /** The actual string representation of important, if it exists */
   important?: General<'Flag'>
@@ -31,15 +74,12 @@ export type DeclarationValue = BaseDeclarationValue & {
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
-export class Declaration<
-  O extends DeclarationOptions = DeclarationOptions,
-  N extends DeclarationName = DeclarationName
-> extends BaseDeclaration<N, DeclarationValue, O> {
+export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
   declare value: DeclarationValue
   declare data: NodeData<DeclarationValue>
 
-  type = 'Declaration' as const
-  shortType = 'decl' as const
+  type = 'Declaration'
+  shortType = 'decl'
   override allowRuleRoot = true
   override requiredSemi = true
 
@@ -67,10 +107,81 @@ export class Declaration<
     return this._declTrimmedString(depth)
   }
 
+  override async preEvalNode(context: Context): Promise<this> {
+    if (!this.preEvaluated) {
+      let node = this.clone()
+      node.options = { ...this.options }
+      node.originalNode ??= this
+      let { name, value } = node.value
+      let key: string | Name
+      if (name instanceof Interpolated) {
+        key = await name.eval(context) as Name
+        node.data.set('name', key)
+      } else {
+        key = name
+      }
+      /** Normalize assignment types */
+      let assign = node.options?.assign
+      if (assign) {
+        value = value.clone()
+        /** Reference type */
+        let type: 'property' | 'variable' =
+          node.type === 'Declaration' ? 'property' : 'variable'
+        switch (assign) {
+          case AssignmentType.MergeList:
+          case AssignmentType.MergeSequence: {
+            const ref = new Reference(key.toString(), {
+              type,
+              fallbackValue: new Nil(),
+              filter: n => {
+                const assign = n.options?.assign
+                return assign === AssignmentType.MergeList
+                  || assign === AssignmentType.MergeSequence
+              },
+            })
+            /**
+             * @note - It's up to Sequence and List to handle
+             *         the merging of the values, if Nil()
+             *         or a nested list.
+             */
+            value = assign === AssignmentType.MergeList
+              ? new List([ref, value])
+              : spaced([ref, value])
+            
+            node.data.set('value', value)
+            break
+          }
+          case AssignmentType.Add: {
+            node.data.set(
+              'value',
+              new Operation([
+                new Reference(key.toString(), { type }),
+                '+',
+                value
+              ])              
+            )
+            break
+          }
+          case AssignmentType.CondAssign: {
+            node.data.set(
+              'value',
+              new Reference(key.toString(), {
+                type,
+                fallbackValue: value
+              })
+            )
+            break
+          }
+        }
+        node.options.assign = AssignmentType.Default
+      }
+      return node
+    }
+    return this
+  }
+
   override async evalNode(context: Context) {
-    /** @todo - don't clone */
-    let node = this.clone()
-    node.evaluated = true
+    let node = await this.preEvalNode(context)
     let { name, value } = node.value
     /**
      * Name may be a variable or a sequence containing a variable
@@ -78,7 +189,7 @@ export class Declaration<
      * @todo - is this valid if rulesets pre-emptively evaluate names?
      */
     if (name instanceof Interpolated) {
-      node.data.set('name', await name.eval(context) as N)
+      node.data.set('name', await name.eval(context) as Name)
     } else {
       node.data.set('name', name)
     }

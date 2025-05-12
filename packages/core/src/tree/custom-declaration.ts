@@ -14,8 +14,7 @@ import type { Nil } from './nil'
  * @todo - is this used?
  */
 export class CustomDeclaration extends Declaration {
-  /** @todo fix */
-  override async evalNode(context: Context): Promise<CustomDeclaration | Nil> {
+  override async evalNode(context: Context): Promise<this | Nil> {
     context.inCustom = true
     let node = await super.evalNode(context)
     context.inCustom = false

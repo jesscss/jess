@@ -1,6 +1,6 @@
 import { logger } from '../logger'
 import { Declaration } from '../tree/declaration'
-import { AssignmentType } from '../tree/base-declaration'
+import { AssignmentType } from '../tree/declaration'
 import { List } from '../tree/list'
 import { type Node } from '../tree/node'
 import type { Mixin } from '../tree/mixin'
@@ -96,7 +96,7 @@ type FilterResult = {
 }
 
 export type GetterOptions = {
-  ignoreRules?: Set<Node>
+  filter?: (n: Node) => boolean
 }
 
 export type ScopeFilter = (
@@ -375,8 +375,8 @@ export class Scope {
       }
     }
 
-    if (opts?.ignoreRules) {
-      result = result.filter(entry => !opts.ignoreRules!.has(entry.node))
+    if (opts?.filter) {
+      result = result.filter(entry => opts.filter!(entry.node))
     }
 
     // let node = result?.first?.node
@@ -455,81 +455,21 @@ export class Scope {
     start?: number
   ) {
     let result = this._get(key, type, opts, start) as Queue<NodeEntry<Declaration>>
-    if (!result) {
+    if (!result.length) {
       return
     }
-    let Class = type === NodeTypeIndex.VARIABLE ? VarDeclaration : Declaration
     
-    let node = result?.last!.node
+    let node = result.last!.node
 
     /**
      * If the most recent value is not a merge value
      * return this as the only value.
      */
-    let assignment = node.options?.assign ?? AssignmentType.Default
-    
-    if (result.length === 1) {
-      if (
-        assignment !== AssignmentType.Default
-        && assignment !== AssignmentType.CondAssign
-        && assignment !== AssignmentType.MergeList
-        && assignment !== AssignmentType.MergeSequence
-      ) {
-        throw new ReferenceError(`${key} is not defined`)
-      } else {
-        return node
-      }
+    let assignment = node.options?.assign ?? AssignmentType.Default 
+    if (assignment !== AssignmentType.Default) {
+      throw new Error('Invalid assignment type. (Was this node pre-evaluated?)')
     }
-
-    if (assignment === AssignmentType.Default) {
-      return node
-    }
-
-    /** Okay, we're dealing with some kind of "merging" assignment */
-    let prevAssignment: AssignmentType = assignment
-    let prevValue = node.value.value
-    let length = result.length
-    let values: Queue<Node> = new Queue()
-    let important = node.value.important
-    /**
-     * Declaration merging
-     */
-    for (let i = length - 1; i > 0; i--) {
-      let decl = result.at(i)!.node
-      /** !important always "wins" */
-      if (decl.value.important) {
-        important = decl.value.important
-      }
-      let value = decl.value.value
-      let assignment = decl.options?.assign ?? AssignmentType.Default
-      if (assignment === AssignmentType.MergeList || assignment === AssignmentType.MergeSequence) {
-        if (prevAssignment === AssignmentType.MergeList || prevAssignment === AssignmentType.MergeSequence) {
-          const nodeList: List | Sequence = isNode(prevValue, ['List', 'Sequence'])
-            ? prevValue
-            : assignment === AssignmentType.MergeList
-              ? new List([prevValue])
-              : new Sequence([prevValue])
-          nodeList.value.unshift(value)
-        }
-      } else if (assignment === AssignmentType.CondAssign) {
-        value = new Reference([decl.value.name.toString(), value])
-      } else if (prevAssignment === AssignmentType.Add) {
-        value = new Operation([new Reference([decl.value.name.toString()]), '+', decl.value.value])
-      }
- 
-      prevValue = value
-      prevAssignment = assignment
-
-      if (assignment === AssignmentType.Default) {
-        break
-      }
-    }
-    key = node.value.name.toString()
-    return new Class({
-      name: key,
-      value: prevValue,
-      important
-    })
+    return node
   }
 
   getProp(key: string, opts: GetterOptions = {}, start?: number) {

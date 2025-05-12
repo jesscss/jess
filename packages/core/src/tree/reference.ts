@@ -28,22 +28,25 @@ import { Selector } from './selector'
 export type ReferenceOptions = {
   type: 'variable' | 'property' | 'mixin'
   resolution?: 'scope' | 'linear'
+  /**
+   * Optional references just resolve to the string
+   * representation if the fallback value is set to true.
+   * 
+   * @note - Used by Less for function references
+   */
+  fallbackValue?: Node | true
+  filter?: (node: Node) => boolean
 }
 
-/**
- * Optional references just resolve to the string
- * representation if the fallback is set to true.
- * 
- * @note - Used by Less for function references
- */
-type NodeType = typeof Node<[key: string | Interpolated, fallback?: Node | true], ReferenceOptions>
+
+type NodeType = typeof Node<string | Interpolated, ReferenceOptions>
 type ReferenceParams = ConstructorParameters<NodeType>
 /**
  * This is a variable or property reference,
  * which can itself contain a reference (a variable variable).
  */
-export class Reference extends Selector<[key: string | Interpolated, fallback?: Node | true], ReferenceOptions> {
-  declare value: [key: string | Interpolated, fallback?: Node | true]
+export class Reference extends Selector<string | Interpolated, ReferenceOptions> {
+  declare value: string | Interpolated
   type = 'Reference'
   shortType = 'ref'
 
@@ -85,18 +88,17 @@ export class Reference extends Selector<[key: string | Interpolated, fallback?: 
    */
   override async evalNode(context: Context): Promise<Node> {
     let { value } = this
-    let { type } = this.options
-    let [name, fallback] = value
+    let { type, fallbackValue, filter: originalFilter } = this.options
     let key: string
-    if (name instanceof Node) {
-      key = (await name.eval(context)).value
+    if (value instanceof Node) {
+      key = (await value.eval(context)).value
     } else {
-      key = name
+      key = value
     }
-    let opts: GetterOptions = context.declarationScope
-    ? {
-      ignoreRules: context.declarationScope
-    } : {}
+    originalFilter ??= () => true
+    let filter = (n: Node) => 
+      originalFilter(n) && !context.declarationScope.has(n as Declaration)
+    let opts = { filter }
 
     let returnVal: any
     switch (type) {
@@ -110,11 +112,11 @@ export class Reference extends Selector<[key: string | Interpolated, fallback?: 
         returnVal = context.scope.getMixin(key, opts)
     }
 
-    if (returnVal === undefined && fallback) {
-      if (fallback === true) {
+    if (returnVal === undefined && fallbackValue) {
+      if (fallbackValue === true) {
         return new General(key, { type: 'Name' })
       }
-      return fallback
+      return fallbackValue
     }
     if (returnVal instanceof Declaration) {
       context.declarationScope.add(returnVal)

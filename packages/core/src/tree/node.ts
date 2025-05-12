@@ -31,7 +31,7 @@ export const ABORT: unique symbol = Symbol('ABORT')
 export const REMOVE: unique symbol = Symbol('REMOVE')
 export type NodeVisitReturn = void | Node | symbol
 type NodeVisitFunction = (n: Node) => NodeVisitReturn
-export type NodeOptions = Record<string, boolean | string | number | undefined> & AllNodeOptions
+export type NodeOptions = Record<string, any> & AllNodeOptions
 export const DEFAULT_DATA = 'value'
 
 type Values<T, K extends keyof T = keyof T> = T[K]
@@ -141,6 +141,9 @@ export abstract class Node<
   get options(): Partial<O & AllNodeOptions> {
     return this._options ??= {}
   }
+  set options(options: Partial<O & AllNodeOptions>) {
+    this._options = options
+  }
 
   /**
    * Assigned on the prototype, make sure we don't initialize
@@ -166,8 +169,10 @@ export abstract class Node<
 
   visible = true
   evaluated = false
+  preEvaluated = false
   allowRoot = false
   allowRuleRoot = false
+  originalNode: Node | undefined
 
   /**
    * If the node must have a semi separator before
@@ -360,7 +365,7 @@ export abstract class Node<
    * any references to the original node / nested objects.
    */
   clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    let Class: Constructor<this> = Object.getPrototypeOf(this).constructor
+    let Class = this.constructor as Class<this>
 
     let newNode = new Class(this.value, this.options, this.location, this.treeContext)
     newNode.inherit(this)
@@ -407,6 +412,17 @@ export abstract class Node<
   }
 
   /**
+   * `preEvalNode` is used for things like interpolated variables
+   * in declaration names, mixin names, interpolated strings in imports etc.
+   * 
+   * In other words, values that must be evaluated before other nodes
+   * are evaluated.
+   */
+  async preEvalNode(context: Context): Promise<this> {
+    return this
+  }
+
+  /**
    * This is the method all nodes will override.
    * Individual nodes will specify / narrow return type
    */
@@ -421,13 +437,20 @@ export abstract class Node<
    * from another node.
    */
   async eval(context: Context): Promise<Node> {
-    if (!this.evaluated) {
-      this.evaluated = true
-      const returnNode = await this.evalNode(context)
-      returnNode.inherit(this)
-      returnNode.evaluated = true
+    let returnNode: Node = this
+    if (!this.preEvaluated) {
+      returnNode = await this.preEvalNode(context)
+      returnNode.preEvaluated = true
     }
-    return this
+    if (!returnNode.evaluated) {
+      returnNode = await returnNode.evalNode(context)
+      returnNode.inherit(this)
+      returnNode.preEvaluated = true
+      returnNode.evaluated = true
+      /** Save the original node in case we need to recreate the original tree */
+      returnNode.originalNode ??= this
+    }
+    return returnNode
   }
 
   /**

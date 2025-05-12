@@ -1,11 +1,10 @@
 /* eslint-disable @typescript-eslint/prefer-readonly */
 import { Node, defineType, type NodeData } from './node'
-import { Declaration } from './declaration'
 import {
-  BaseDeclaration,
-  type BaseDeclarationValue,
-  type DeclarationName
-} from './base-declaration'
+  Declaration,
+  type DeclarationOptions,
+  type DeclarationValue
+} from './declaration'
 import {
   VarDeclaration,
   type VarDeclarationOptions
@@ -29,7 +28,7 @@ export const enum Priority {
   High = 3
 }
 
-type AnyDeclarationValue = BaseDeclarationValue & Record<string, any>
+type AnyDeclarationValue = DeclarationValue & Record<string, any>
 
 type QueueItem = {
   node: Node
@@ -37,7 +36,7 @@ type QueueItem = {
   pos: number
   nameOnly?: true
 } | {
-  node: BaseDeclaration<DeclarationName, AnyDeclarationValue>
+  node: Declaration
   pos: number
   /** If we're just evaluating a declaration's name */
   nameOnly: true
@@ -168,7 +167,7 @@ export class Rules extends Node<Node[]> {
      */
     for (let [i, n] of rules) {
       /** Evaluate names */
-      if (n instanceof BaseDeclaration || n instanceof Mixin) {
+      if (n instanceof Declaration || n instanceof Mixin) {
         const { name } = n.value
         
         if (name instanceof Node) {
@@ -202,7 +201,7 @@ export class Rules extends Node<Node[]> {
       for (let item of set) {
         const { node, pos, nameOnly } = item
         if (nameOnly) {
-          let decl = node.clone() as BaseDeclaration
+          let decl = node.clone() as Declaration
           /** Everything in a ruleset root will have a name */
           let name = decl.value.name
           let ident: string

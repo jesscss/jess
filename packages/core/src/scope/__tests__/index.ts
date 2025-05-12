@@ -34,9 +34,13 @@ describe('Scope', async () => {
     })
 
     it('will not set if defined', async () => {
-      scope.push(vardecl({ name: 'one', value: any('one') }, { assign: AssignmentType.CondAssign}))
-      scope.push(vardecl({ name: 'one', value: any('two') }, { assign: AssignmentType.CondAssign}))
-      expect(`${await scope.getVar('one')!.eval(context)}`).toBe('$one: one')
+      let decl1 = vardecl({ name: 'first', value: any('one') }, { assign: AssignmentType.CondAssign})
+      let decl2 = vardecl({ name: 'first', value: any('two') }, { assign: AssignmentType.CondAssign})
+      decl1 = await decl1.preEvalNode(context)
+      decl2 = await decl2.preEvalNode(context)
+      scope.push(decl1)
+      scope.push(decl2)
+      expect(`${await scope.getVar('first')!.eval(context)}`).toBe('$first: one')
     })
 
      // it('will skip normalization', () => {

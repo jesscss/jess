@@ -1,13 +1,10 @@
 import {
   Declaration,
-  type DeclarationValue,
-  type DeclarationOptions
+  type DeclarationValue
 } from './declaration'
 import { defineType } from './node'
-import { isNode } from './util'
-import { type DeclarationName } from './base-declaration'
 
-export type VarDeclarationOptions = DeclarationOptions
+export { DeclarationOptions as VarDeclarationOptions } from './declaration'
 
 /**
  * @example
@@ -25,19 +22,12 @@ export type VarDeclarationOptions = DeclarationOptions
  * @todo Support destructuring
  * e.g. `$(var1, var2): 1 2`
  */
-export class VarDeclaration<N extends DeclarationName = DeclarationName> extends Declaration<VarDeclarationOptions, N> {
+export class VarDeclaration extends Declaration {
+  override type = 'VarDeclaration'
+  override shortType = 'vardecl'
   override requiredSemi = true
   override allowRuleRoot = true
   override allowRoot = true
-
-  constructor(
-    ...args: ConstructorParameters<typeof Declaration<VarDeclarationOptions, N>>
-  ) {
-    super(...args)
-    if (isNode(this.value, 'Mixin')) {
-      this.requiredSemi = false
-    }
-  }
 
   override toTrimmedString(depth?: number): string {
     const rule = this.options?.setDefined ? '$$' : '$'
