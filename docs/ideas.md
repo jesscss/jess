@@ -374,7 +374,7 @@ function myFunc(one: Color, two?: any, three?: any) {}
 // 
 // jan-2025 -- I think the above question is around how we can do tree shaking
 //             to the minimum tree size
-@@ my-component(<Size> $size; <color> $color) {
+@ my-component(<Size> $size; <color> $color) {
 
 }
 

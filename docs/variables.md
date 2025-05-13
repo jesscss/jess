@@ -100,7 +100,7 @@ $map: {
   }
   $somevar: red;
 
-  @@ my-mixin {
+  @ my-mixin {
     //
   }
 }

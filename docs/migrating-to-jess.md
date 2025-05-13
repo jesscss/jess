@@ -40,7 +40,7 @@ width: #{$width * 2};
 ```
 **Jess**
 ```scss
-width: #(width * 2);
+width: #($width * 2);
 ```
 
 ### Mixins
@@ -66,8 +66,8 @@ width: #(width * 2);
 ```
 **Jess**
 ```less
-@--mixin mixin($size) {
-  width: #(size * 1px);
+@ mixin($size) {
+  width: #($size * 1px);
 }
 .box {
   $ -> mixin(50);
@@ -102,8 +102,8 @@ each(@sizes, #(@size) {
 **Jess**
 
 ```less
-@--for ($size of $sizes) {
-  .icon-#(size) {
+@-for ($size of $sizes) {
+  .icon-#($size) {
     font-size: $size;
     height: $size;
     width: $size;
