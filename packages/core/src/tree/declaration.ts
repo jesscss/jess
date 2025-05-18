@@ -83,7 +83,7 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
   override allowRuleRoot = true
   override requiredSemi = true
 
-  protected _declTrimmedString(depth?: number) {
+  protected declTrimmedString(depth?: number) {
     const { name, value, important } = this.value
     const { assign = ':' } = this.options
     let a = assign === ':' ? ':' : ` ${assign}`
@@ -104,14 +104,14 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
   }
 
   override toTrimmedString(depth?: number) {
-    return this._declTrimmedString(depth)
+    return this.declTrimmedString(depth)
   }
 
-  override async preEvalNode(context: Context): Promise<this> {
+  override async preEval(context: Context): Promise<this> {
     if (!this.preEvaluated) {
       let node = this.clone()
       node.options = { ...this.options }
-      node.originalNode ??= this
+      node.sourceNode ??= this
       let { name, value } = node.value
       let key: string | Name
       if (name instanceof Interpolated) {
@@ -137,7 +137,7 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
                 const assign = n.options?.assign
                 return assign === AssignmentType.MergeList
                   || assign === AssignmentType.MergeSequence
-              },
+              }
             })
             /**
              * @note - It's up to Sequence and List to handle
@@ -147,7 +147,7 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
             value = assign === AssignmentType.MergeList
               ? new List([ref, value])
               : spaced([ref, value])
-            
+
             node.data.set('value', value)
             break
           }
@@ -158,7 +158,7 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
                 new Reference(key.toString(), { type }),
                 '+',
                 value
-              ])              
+              ])
             )
             break
           }
@@ -181,7 +181,7 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
   }
 
   override async evalNode(context: Context) {
-    let node = await this.preEvalNode(context)
+    let node = await this.preEval(context)
     let { name, value } = node.value
     /**
      * Name may be a variable or a sequence containing a variable

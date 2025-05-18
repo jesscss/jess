@@ -1,7 +1,5 @@
 import { logger } from '../logger'
-import { Declaration } from '../tree/declaration'
-import { AssignmentType } from '../tree/declaration'
-import { List } from '../tree/list'
+import { type Declaration, AssignmentType } from '../tree/declaration'
 import { type Node } from '../tree/node'
 import type { Mixin } from '../tree/mixin'
 import isPlainObject from 'lodash-es/isPlainObject'
@@ -11,12 +9,10 @@ import { Rules } from '../tree/rules'
 import type { Bool } from '../tree/bool'
 import type { Condition } from '../tree/condition'
 import { Context } from '../context'
-import type { General } from '../tree/general'
-import { BiMap, LinkedList, NodeList } from '../tree/util/collections'
-import { Queue, Stack } from 'data-structure-typed'
-import { Operation } from '../tree/operation'
-import { Sequence, spaced } from '../tree/sequence'
-import { Reference, VarDeclaration } from '../tree'
+import { BiMap, type LinkedList } from '../tree/util/collections'
+import { Queue } from 'data-structure-typed'
+import type { VarDeclaration } from '../tree/var-declaration'
+import type { Ruleset } from '../tree/ruleset'
 
 /**
  * The Scope object is meant to be an efficient
@@ -106,55 +102,72 @@ export type ScopeFilter = (
 
 /** Arbitrary prefixes to disambiguate names within maps */
 export const enum NodeType {
-  MIXIN            = '>',
-  RULESET          = '*',
-  MIXIN_OR_RULESET = '|',
-  PROPERTY         = '.',
-  VARIABLE         = '?',
+  MIXIN            = 'm',
+  RULESET          = 'r',
+  MIXIN_OR_RULESET = 'o',
+  PROPERTY         = 'p',
+  VARIABLE         = 'v',
   /** No prefix */
   VAR_OR_PROP      = '',
-}
-
-export const enum NodeTypeIndex {
-  NONE             = 0b000000,
-  MIXIN            = 0b000001,
-  RULESET          = 0b000010,
-  MIXIN_OR_RULESET = 0b000011,
-  PROPERTY         = 0b000100,
-  VARIABLE         = 0b001000,
-  VAR_OR_PROP      = 0b001100,
   /**
    * Variables and mixins can leak
-  */
-  LEAKY_RULES      = 0b010000,
+   */
+  LEAKY_RULES      = '?',
   /** @note - Properties and rulesets are always visible. */
-  PRIVATE_RULES    = 0b100000,
-  RULES            = 0b110000
+  PRIVATE_RULES    = '!',
+  RULES            = '&'
 }
 
-type IndexKey = `${NodeTypeIndex}${string}`
+const TypeToNodeType = new Map([
+  ['Mixin', NodeType.MIXIN],
+  ['Ruleset', NodeType.RULESET],
+  ['Declaration', NodeType.PROPERTY],
+  ['VarDeclaration', NodeType.VARIABLE],
+  ['Rules', NodeType.RULES]
+])
+
+// export const enum NodeTypeIndex {
+//   NONE             = 0b000000,
+//   MIXIN            = 0b000001,
+//   RULESET          = 0b000010,
+//   MIXIN_OR_RULESET = 0b000011,
+//   PROPERTY         = 0b000100,
+//   VARIABLE         = 0b001000,
+//   VAR_OR_PROP      = 0b001100,
+//   /**
+//    * Variables and mixins can leak
+//   */
+//   LEAKY_RULES      = 0b010000,
+//   /** @note - Properties and rulesets are always visible. */
+//   PRIVATE_RULES    = 0b100000,
+//   RULES            = 0b110000
+// }
+
+type IndexKey = `${NodeType}${string}`
 
 interface NodeEntry<T extends Node = Node> {
   node: T
   position: number
-  type: NodeTypeIndex | symbol
+  type: NodeType | symbol
+  /**
+   * These are from JS import statements
+   */
+  readonly?: boolean
 }
 
-const enum SearchParents {
-  NEVER,
-  IF_NOT_FOUND,
-  ALWAYS
-}
+/**
+ * Right now, the only nodes that can be registered to the scope for lookups
+ */
+type ScopeNodes = Declaration | VarDeclaration | Mixin | Ruleset | Rules
 
 export class Scope {
   /** A map of positions to nodes */
-  private nodePositionMap = new BiMap<number, Node>()
-
+  private readonly nodePositionMap = new BiMap<number, Node>()
   private counter = 0
   /**
    * All indexed collections, keyed. These are the value
    * per scope (like a set of rules).
-   * 
+   *
    * @note - Types are stored differently for disambiguation
    *         See the Prefix enum.
    */
@@ -163,92 +176,98 @@ export class Scope {
     return (this._entryMap ??= new Map())
   }
 
-  private _genericType(type: NodeTypeIndex): NodeTypeIndex {
-    let genericType = 0
-    if ((type & NodeTypeIndex.VAR_OR_PROP) === type) {
-      genericType = NodeTypeIndex.VAR_OR_PROP
-    } else if ((type & NodeTypeIndex.MIXIN_OR_RULESET) === type) {
-      genericType = NodeTypeIndex.MIXIN_OR_RULESET
-    } else if ((type & NodeTypeIndex.RULES) === type) {
-      genericType = NodeTypeIndex.RULES
+  private _genericType(type: NodeType): NodeType {
+    switch (type) {
+      case NodeType.VARIABLE:
+      case NodeType.PROPERTY:
+        return NodeType.VAR_OR_PROP
+      case NodeType.RULESET:
+      case NodeType.MIXIN:
+        return NodeType.MIXIN_OR_RULESET
+      case NodeType.LEAKY_RULES:
+      case NodeType.PRIVATE_RULES:
+        return NodeType.RULES
+      default:
+        return type
     }
-    return genericType
+  }
+
+  private _getType(n: ScopeNodes) {
+    return TypeToNodeType.get(n.type)!
+  }
+
+  private _getKey(n: Node) {
+    let type = this._getType(n)
+    switch (type) {
+      case NodeType.VARIABLE:
+      case NodeType.PROPERTY:
+        return `${NodeType.VAR_OR_PROP}${n.data.get('name')!.valueOf() ?? ''}`
+      case NodeType.RULESET:
+      case NodeType.MIXIN:
+        /** @todo - Different key lookup */
+        return `${NodeType.RULESET}${n.data.get('selector')!.valueOf() ?? ''}`
+      default:
+        return type
+    }
   }
 
   private _addToIndex(
-    type: NodeTypeIndex,
+    type: NodeType,
     node: Node,
-    position: number
+    position: number,
+    readonly?: boolean
   ) {
-    let genericType = this._genericType(type)
-    let key = ''
+    // let genericType = this._genericType(type)
+    let indexKey = this._getKey(node)
 
-    if (node.data.has('name')) {
-      key = node.data.get('name')!.valueOf()
-    } else if (node.data.has('selector')) {
-      key = node.data.get('selector')!.valueOf()
-    }
-    let indexKey: IndexKey = `${genericType}${key}`
     let list = this.entryMap.get(indexKey)
     if (!list) {
       list = new Queue()
       this.entryMap.set(indexKey, list)
     }
-    list.push({ node, position, type })
+    list.push({ node, position, type, readonly })
   }
 
-  private _setNode(n: Node, position: number) {
+  private _setNode(n: Node, position: number, readonly?: boolean) {
     if (isNode(n, ['Mixin', 'Declaration', 'Ruleset'])) {
       this.nodePositionMap.set(position, n)
-      if (isNode(n, 'Declaration')) {
-        if (isNode(n, 'VarDeclaration')) {
-          this._addToIndex(
-            NodeTypeIndex.VARIABLE,
-            n,
-            position
-          )
-        } else {
-          this._addToIndex(
-            NodeTypeIndex.PROPERTY,
-            n,
-            position
-          )
-        }
-      } else if (isNode(n, 'Mixin')) {
-        this._addToIndex(
-          NodeTypeIndex.MIXIN,
-          n,
-          position
-        )
-      } else {
-        this._addToIndex(
-          NodeTypeIndex.RULESET,
-          n,
-          position
-        )
-      }
+      this._addToIndex(this._getType(n), n, position, readonly)
     }
   }
 
   /**
-   * 
-   * @param n 
+   *
+   * @param n
    * @param position
-   * @param allowRuleLookups For rules, if we're allowed to look for vars and mixins here. 
+   * @param allowRuleLookups For rules, if we're allowed to look for vars and mixins here.
+   * @param readonly Variable is readonly (such as for a protected import)
    */
-  set(n: Mixin | Declaration, position: number): void
-  set(n: Rules, position: number, allowRuleLookups: boolean): void
-  set(n: Node, position: number, allowRuleLookups = false) {
+  set(n: Node, position?: number, allowRuleLookups = false, readonly: boolean = false) {
     if (isNode(n, 'Rules')) {
+      position ??= this.counter++
       this.nodePositionMap.set(position, n)
-      this._addToIndex(allowRuleLookups ? NodeTypeIndex.LEAKY_RULES : NodeTypeIndex.PRIVATE_RULES, n, position)
+      this._addToIndex(allowRuleLookups ? NodeType.LEAKY_RULES : NodeType.PRIVATE_RULES, n, position, readonly)
+    } else if (isNode(n, 'Declaration')) {
+      if (n.options?.setDefined) {
+        /** `setDefined` is an immediate mutation of the last found instance */
+        let key = this._getKey(n)
+        /** Don't set within sibling rules */
+        let result = this.find(key, this._getType(n), true, position)
+        if (result) {
+          let entry = result.first!
+          if (entry.readonly) {
+            throw new ReferenceError(`${key} is readonly`)
+          }
+          /** Over-write value */
+          entry.node.value = n.value
+        } else {
+          throw new ReferenceError(`${key} is not defined`)
+        }
+      }
+      this._setNode(n, position ?? this.counter++, readonly)
     } else {
-      this._setNode(n, position)
+      this._setNode(n, position ?? this.counter++, readonly)
     }
-  }
-
-  push(n: Node) {
-    this.set(n, this.counter++)
   }
 
   /**
@@ -258,15 +277,16 @@ export class Scope {
    */
   find(
     key: string,
-    type: NodeTypeIndex,
+    type: NodeType,
     searchParents: boolean = true,
     start?: number
   ) {
     let scope: Scope | undefined = this
-    let nodes: Queue<NodeEntry> | undefined
+    /** Return nodes */
+    let result: Queue<NodeEntry> | undefined
     let genericType = this._genericType(type)
     while (scope) {
-      let map = this.entryMap
+      let map = scope.entryMap
       let indexKey: IndexKey = `${genericType}${key}`
       let list = map.get(indexKey)
       if (!list) {
@@ -279,22 +299,24 @@ export class Scope {
       let bestMatch: number | undefined
       if (start !== undefined) {
         /** Binary search the queue to find a starting position */
-        let left = 0, right = list.length - 1
+        let left = 0
+        let right = list.length - 1
 
         while (left <= right) {
           let mid = Math.floor((left + right) / 2)
           let midVal = list.at(mid)!.position
           if (midVal === start) {
+            bestMatch = mid
             break
           }
           if (midVal < start) {
-            bestMatch = midVal
+            bestMatch = mid
             left = mid + 1
           } else {
             right = mid - 1
           }
         }
-        if (!bestMatch) {
+        if (bestMatch === undefined) {
           if (!searchParents) {
             return
           }
@@ -308,16 +330,16 @@ export class Scope {
         /** We didn't have a start position, so the whole list matches */
         bestMatch = list.length - 1
       }
-      nodes ??= new Queue()
+      result ??= new Queue()
       for (let i = bestMatch; i >= 0; i--) {
         let entry = list.at(i)!
         if (entry.type === type) {
-          nodes.push(entry)
+          result.push(entry)
         }
       }
 
       if (!searchParents) {
-        return nodes
+        return result
       }
 
       scope = scope.parent
@@ -325,7 +347,7 @@ export class Scope {
         start = scope.nodePositionMap.getValue(this.node)
       }
     }
-    return nodes
+    return result
   }
 
   /**
@@ -352,12 +374,12 @@ export class Scope {
   //   return result?.first?.node
   // }
 
-  private _get(key: string, type: NodeTypeIndex, opts?: GetterOptions, start?: number) {
-    let result = (this.find(key, type, true, start) ?? new Queue()) as Queue<NodeEntry>
+  private _get(key: string, type: NodeType, opts?: GetterOptions, start?: number) {
+    let result = (this.find(key, type, true, start) ?? new Queue())
     let rulesType =
-      type === NodeTypeIndex.VARIABLE || NodeTypeIndex.MIXIN || NodeTypeIndex.RULESET
-        ? NodeTypeIndex.LEAKY_RULES
-        : NodeTypeIndex.RULES
+      type === NodeType.VARIABLE || NodeType.MIXIN || NodeType.RULESET
+        ? NodeType.LEAKY_RULES
+        : NodeType.RULES
     let rules = this.find('', rulesType, false, start) as Queue<NodeEntry<Rules>>
     if (rules) {
       for (let entry of rules) {
@@ -373,6 +395,10 @@ export class Scope {
           }
         }
       }
+    }
+
+    if (!result.length) {
+      return result
     }
 
     if (opts?.filter) {
@@ -405,14 +431,14 @@ export class Scope {
     // }
 
     /** Sort these so they are evaluated in the proper order */
-    result.sort((a, b) => a.position - b.position)
+    result.sort((a, b) => b.position - a.position)
 
     return result
 
     // if (isNode(node, 'Declaration')) {
     //   /**
     //    * If we're dealing with declarations, we need to evaluate all the
-    //    * assignment types. 
+    //    * assignment types.
     //    */
 
     //   let length = result.length
@@ -449,7 +475,7 @@ export class Scope {
    * Search local scope for a property, looking at any merging rules.
    */
   private _getDeclaration(
-    type: NodeTypeIndex.VARIABLE | NodeTypeIndex.PROPERTY,
+    type: NodeType.VARIABLE | NodeType.PROPERTY,
     key: string,
     opts: GetterOptions = {},
     start?: number
@@ -458,14 +484,14 @@ export class Scope {
     if (!result.length) {
       return
     }
-    
-    let node = result.last!.node
+
+    let node = result.first!.node
 
     /**
      * If the most recent value is not a merge value
      * return this as the only value.
      */
-    let assignment = node.options?.assign ?? AssignmentType.Default 
+    let assignment = node.options?.assign ?? AssignmentType.Default
     if (assignment !== AssignmentType.Default) {
       throw new Error('Invalid assignment type. (Was this node pre-evaluated?)')
     }
@@ -473,11 +499,11 @@ export class Scope {
   }
 
   getProp(key: string, opts: GetterOptions = {}, start?: number) {
-    return this._getDeclaration(NodeTypeIndex.PROPERTY, key, opts, start)
+    return this._getDeclaration(NodeType.PROPERTY, key, opts, start)
   }
 
   getVar(key: string, opts: GetterOptions = {}, start?: number) {
-    return this._getDeclaration(NodeTypeIndex.VARIABLE, key, opts, start)
+    return this._getDeclaration(NodeType.VARIABLE, key, opts, start)
   }
 
   // get(key: string, type: NodeTypeIndex, start?: number) {

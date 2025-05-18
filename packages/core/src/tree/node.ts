@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/restrict-plus-operands, @typescript-eslint/no-invalid-void-type */
 import isPlainObject from 'lodash-es/isPlainObject'
 import {
-  TreeContext,
+  type TreeContext,
   type Context
 } from '../context'
-import { SKIP, type Visitor } from '../visitor'
+import { type Visitor } from '../visitor'
 import { type Operator } from './util/calculate'
-import type { Constructor, Class, ValueOf, Tagged, IfAny, IsAny } from 'type-fest'
+import type { Class, Tagged, IfAny, IsAny } from 'type-fest'
 import { type Nil } from './nil'
 import { ArrayList, HashMap } from './util/collections'
 
@@ -34,12 +34,11 @@ type NodeVisitFunction = (n: Node) => NodeVisitReturn
 export type NodeOptions = Record<string, any> & AllNodeOptions
 export const DEFAULT_DATA = 'value'
 
-type Values<T, K extends keyof T = keyof T> = T[K]
 type NodeInValue<T extends NodeValue> = T
 type BasicNodeTypes = Primitive | Node
-type NodeRecordValue = BasicNodeTypes | Array<BasicNodeTypes | Array<Primitive>> | Record<string, any>
+type NodeRecordValue = BasicNodeTypes | Array<BasicNodeTypes | Primitive[]> | Record<string, any>
 export type NodeValueObject = Record<string, NodeRecordValue>
-export type NodeValue = BasicNodeTypes | Array<BasicNodeTypes> | NodeValueObject
+export type NodeValue = BasicNodeTypes | BasicNodeTypes[] | NodeValueObject
 
 export type NodeMapArray<
   T extends NodeValueObject = NodeValueObject,
@@ -85,31 +84,6 @@ export const defineType = <
   }
 }
 
-/**
- * Couldn't find this elsewhere in the wild.
- * This strongly binds Map keys to values based
- * on a passed-in interface.
- */
-type TypedMap<
-  T extends NodeValueObject = NodeValueObject,
-  K extends keyof T = keyof T,
-  V = ValueOf<T>
-> = Omit<Map<any, any>, 'get' | 'set'> & {
-  [P in K as 'get']: <U extends P>(key: U) => T[U]
-} & {
-  [P in K as 'set']: <U extends P>(key: U, value: T[U]) => TypedMap<T>
-} & {
-  /**
-   * TypeScript sometimes gets confused
-   * about whether or not get / set will exist,
-   * so this fixes it.
-   */
-  get(key: any): any
-  set(key: any, value: any): any
-  entries(): IterableIterator<[K, V]>
-  values(): IterableIterator<V>
-}
-
 type NarrowTypes<T> =
   IsAny<T> extends true
     ? NodeValue
@@ -125,7 +99,7 @@ export type NoOverride<T> = Tagged<T, 'NoOverride'>
  * The underlying type for all Jess nodes
  */
 export abstract class Node<
-  Type extends any = any,
+  Type = any,
   O extends NodeOptions = NodeOptions,
   T extends NarrowTypes<Type> = NarrowTypes<Type>,
 > {
@@ -133,6 +107,7 @@ export abstract class Node<
   get location() {
     return (this._location ??= [])
   }
+
   private _treeContext: TreeContext | undefined
   /** Assigned in index to avoid circularity */
   declare readonly treeContext: TreeContext
@@ -141,6 +116,7 @@ export abstract class Node<
   get options(): Partial<O & AllNodeOptions> {
     return this._options ??= {}
   }
+
   set options(options: Partial<O & AllNodeOptions>) {
     this._options = options
   }
@@ -172,7 +148,6 @@ export abstract class Node<
   preEvaluated = false
   allowRoot = false
   allowRuleRoot = false
-  originalNode: Node | undefined
 
   /**
    * If the node must have a semi separator before
@@ -359,7 +334,7 @@ export abstract class Node<
 
   /**
    * Creates a copy of the current node.
-   * 
+   *
    * @todo - Node data has changed a lot. Write tests to
    * make sure nodes are cleanly cloned and that they don't have
    * any references to the original node / nested objects.
@@ -412,13 +387,13 @@ export abstract class Node<
   }
 
   /**
-   * `preEvalNode` is used for things like interpolated variables
+   * `preEval` is used for things like interpolated variables
    * in declaration names, mixin names, interpolated strings in imports etc.
-   * 
+   *
    * In other words, values that must be evaluated before other nodes
    * are evaluated.
    */
-  async preEvalNode(context: Context): Promise<this> {
+  async preEval(context: Context): Promise<this> {
     return this
   }
 
@@ -430,27 +405,30 @@ export abstract class Node<
     return this
   }
 
-  /**
-   * DO NOT OVERRIDE THIS METHOD
-   * 
-   * @note - Make sure you don't call super.eval while evaluating a node. Call it indirectly
-   * from another node.
-   */
-  async eval(context: Context): Promise<Node> {
-    let returnNode: Node = this
-    if (!this.preEvaluated) {
-      returnNode = await this.preEvalNode(context)
+  static async evalStatic(node: Node, context: Context): Promise<Node> {
+    let returnNode: Node = node
+    if (!node.preEvaluated) {
+      returnNode = await node.preEval(context)
       returnNode.preEvaluated = true
     }
     if (!returnNode.evaluated) {
       returnNode = await returnNode.evalNode(context)
-      returnNode.inherit(this)
+      returnNode.inherit(node)
       returnNode.preEvaluated = true
       returnNode.evaluated = true
-      /** Save the original node in case we need to recreate the original tree */
-      returnNode.originalNode ??= this
     }
     return returnNode
+  }
+
+  /**
+   * @note - Make sure you don't call super.eval while evaluating a node. Call it indirectly
+   * from another node.
+   */
+  async eval(context: Context): Promise<Node> {
+    if (Object.getPrototypeOf(this).eval !== Node.prototype.eval) {
+      throw new Error('Do not call super.eval() from a subclass.')
+    }
+    return await Node.evalStatic(this, context)
   }
 
   /**
@@ -682,12 +660,12 @@ type ValueOfNodeData<T extends NodeValue, K extends string> =
 
 type NodeDataKeys<T extends NodeValue> =
   T extends any[]
-  ? 'value'
-  : T extends Node
     ? 'value'
-    : T extends NodeValueObject
-      ? keyof T
-      : string
+    : T extends Node
+      ? 'value'
+      : T extends NodeValueObject
+        ? keyof T
+        : string
 
 /**
  * An abstracted representation of node data with a unified API
@@ -724,9 +702,9 @@ export class NodeData<Type = any, T extends IfAny<Type, any, NarrowTypes<Type>> 
   get<K extends NodeDataKeys<T>>(key: K): ValueOfNodeData<NodeDataObject<T>, K> {
     const data = this.data
     if (data instanceof HashMap) {
-      return data.get(key) as any
+      return data.get(key)
     }
-    return data as any
+    return data
   }
 
   private _setInList(list: any, index: number, val: any) {
@@ -783,7 +761,6 @@ export class NodeData<Type = any, T extends IfAny<Type, any, NarrowTypes<Type>> 
     }
   }
 
-
   private _dataValues(asEntries?: false, reverse?: boolean): Generator<NodeRecordValue>
   private _dataValues(asEntries: true, reverse?: boolean): Generator<[NodeDataKeys<T>, NodeRecordValue, listIndex: number]>
   private * _dataValues(
@@ -823,10 +800,10 @@ export class NodeData<Type = any, T extends IfAny<Type, any, NarrowTypes<Type>> 
   /**
    * Iterates through nodes and parent nodes.
    * This is used for value lookups
-   * 
+   *
    * @note - When walking upward, if node.parentData has changed,
    * then we've stepped into the next parent node.
-   * 
+   *
    * @todo - Is this used anywhere?
    */
   private * _reverseWalk(

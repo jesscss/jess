@@ -31,13 +31,12 @@ export type ReferenceOptions = {
   /**
    * Optional references just resolve to the string
    * representation if the fallback value is set to true.
-   * 
+   *
    * @note - Used by Less for function references
    */
   fallbackValue?: Node | true
   filter?: (node: Node) => boolean
 }
-
 
 type NodeType = typeof Node<string | Interpolated, ReferenceOptions>
 type ReferenceParams = ConstructorParameters<NodeType>
@@ -96,9 +95,9 @@ export class Reference extends Selector<string | Interpolated, ReferenceOptions>
       key = value
     }
     originalFilter ??= () => true
-    let filter = (n: Node) => 
+    let filter = (n: Node) =>
       originalFilter(n) && !context.declarationScope.has(n as Declaration)
-    let opts = { filter }
+    let opts: GetterOptions = { filter }
 
     let returnVal: any
     switch (type) {
@@ -112,7 +111,10 @@ export class Reference extends Selector<string | Interpolated, ReferenceOptions>
         returnVal = context.scope.getMixin(key, opts)
     }
 
-    if (returnVal === undefined && fallbackValue) {
+    if (returnVal === undefined) {
+      if (!fallbackValue) {
+        throw new ReferenceError(`"${key}" is not defined`)
+      }
       if (fallbackValue === true) {
         return new General(key, { type: 'Name' })
       }

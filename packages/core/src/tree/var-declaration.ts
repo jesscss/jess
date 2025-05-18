@@ -4,7 +4,7 @@ import {
 } from './declaration'
 import { defineType } from './node'
 
-export { DeclarationOptions as VarDeclarationOptions } from './declaration'
+export type { DeclarationOptions as VarDeclarationOptions } from './declaration'
 
 /**
  * @example
@@ -31,7 +31,7 @@ export class VarDeclaration extends Declaration {
 
   override toTrimmedString(depth?: number): string {
     const rule = this.options?.setDefined ? '$$' : '$'
-    return `${rule}${this._declTrimmedString(depth)}`
+    return `${rule}${this.declTrimmedString(depth)}`
   }
 }
 

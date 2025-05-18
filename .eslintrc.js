@@ -12,15 +12,18 @@ const jsRules = {
     ignoreDestructuring: true,
     properties: 'never'
   }],
-  'no-multi-spaces': [
-    'error', {
-      ignoreEOLComments: true
-    }
-  ],
+  /** I use this for enum alignment sometimes */
+  'no-multi-spaces': 0,
+  // [
+  //   'error', {
+  //     ignoreEOLComments: true
+  //   }
+  // ],
   /** Tweak for better readability */
   'operator-linebreak': ['error', 'before', { overrides: { '=': 'after' } }],
   /** Seems like a silly rule */
-  'eol-last': 0
+  'eol-last': 0,
+  'no-return-assign': 0
 }
 module.exports = {
   root: true,
@@ -83,6 +86,9 @@ module.exports = {
         '@typescript-eslint/consistent-type-definitions': 0,
         /** Chevrotain docs often alias $ to this */
         '@typescript-eslint/no-this-alias': 0,
+        /**
+         * @todo - Is there a way to simplify this?
+         */
         '@typescript-eslint/naming-convention': [
           'error',
           {
@@ -107,12 +113,21 @@ module.exports = {
           {
             selector: 'memberLike',
             modifiers: ['private'],
-            leadingUnderscore: 'allowSingleOrDouble'
+            leadingUnderscore: 'allowSingleOrDouble',
+            format: ['camelCase']
           },
-
           {
             selector: 'typeLike',
             format: ['PascalCase']
+          },
+          {
+            selector: 'parameter',
+            format: ['camelCase', 'PascalCase'],
+            leadingUnderscore: 'allow'
+          },
+          {
+            selector: 'enumMember',
+            format: ['PascalCase', 'UPPER_CASE']
           }
         ]
       }
