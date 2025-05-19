@@ -177,7 +177,7 @@ describe('Rules', () => {
         expect(`${await getVar(inherited, 'one')}`).toBe('$one: three')
       })
 
-      it.only('sets existing variables', async () => {
+      it('sets existing variables', async () => {
         let node = rules([
           vardecl({ name: 'one', value: any('one') }),
           rules([

@@ -1,3 +1,7 @@
+# May 19, 2025
+
+- Got stuck trying to understand how I broke the scope inheritance tests :(
+
 # May 18, 2025
 
 - Consider merging scope and rules somehow? There's an unfortunate duplication of "parentScope" and "parentNode" and all rules have scope.
