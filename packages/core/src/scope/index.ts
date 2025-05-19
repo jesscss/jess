@@ -163,7 +163,6 @@ type ScopeNodes = Declaration | VarDeclaration | Mixin | Ruleset | Rules
 export class Scope {
   /** A map of positions to nodes */
   private readonly nodePositionMap = new BiMap<number, Node>()
-  private counter = 0
   /**
    * All indexed collections, keyed. These are the value
    * per scope (like a set of rules).
@@ -238,13 +237,12 @@ export class Scope {
   /**
    *
    * @param n
-   * @param position
    * @param allowRuleLookups For rules, if we're allowed to look for vars and mixins here.
    * @param readonly Variable is readonly (such as for a protected import)
    */
-  set(n: Node, position?: number, allowRuleLookups = false, readonly: boolean = false) {
+  add(n: Node, allowRuleLookups = false, readonly: boolean = false) {
+    let position = this.context.ruleCounter++
     if (isNode(n, 'Rules')) {
-      position ??= this.counter++
       this.nodePositionMap.set(position, n)
       this._addToIndex(allowRuleLookups ? NodeType.LEAKY_RULES : NodeType.PRIVATE_RULES, n, position, readonly)
     } else if (isNode(n, 'Declaration')) {
@@ -264,9 +262,9 @@ export class Scope {
           throw new ReferenceError(`${key} is not defined`)
         }
       }
-      this._setNode(n, position ?? this.counter++, readonly)
+      this._setNode(n, position, readonly)
     } else {
-      this._setNode(n, position ?? this.counter++, readonly)
+      this._setNode(n, position, readonly)
     }
   }
 
@@ -322,7 +320,7 @@ export class Scope {
           }
           scope = scope.parent
           if (scope && start !== undefined) {
-            start = scope.nodePositionMap.getValue(this.node)
+            start = scope.nodePositionMap.getValue(this.rules)
           }
           continue
         }
@@ -344,7 +342,7 @@ export class Scope {
 
       scope = scope.parent
       if (scope && start !== undefined) {
-        start = scope.nodePositionMap.getValue(this.node)
+        start = scope.nodePositionMap.getValue(this.rules)
       }
     }
     return result
@@ -383,7 +381,7 @@ export class Scope {
     let rules = this.find('', rulesType, false, start) as Queue<NodeEntry<Rules>>
     if (rules) {
       for (let entry of rules) {
-        let localResult = entry.node.scope.find(key, type, false)
+        let localResult = entry.node.getScope(this.context).find(key, type, false)
         if (localResult) {
           /** Add every entry of the queue in its current position */
           for (let item of localResult) {
@@ -565,9 +563,16 @@ export class Scope {
   visibleScopes: Set<Scope> | undefined
 
   constructor(
-    public node: Rules,
+    public rules: Rules,
+    public context: Context,
     public parent?: Scope
-  ) {}
+  ) {
+    for (let [, n] of rules) {
+      if (TypeToNodeType.has(n.type)) {
+        this.add(n)
+      }
+    }
+  }
 
   /**
    * Normalizes keys as valid JavaScript identifiers.

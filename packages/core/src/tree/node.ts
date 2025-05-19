@@ -174,6 +174,13 @@ export abstract class Node<
   data!: NodeData
   parentData: NodeData | undefined
 
+  get parent(): Node | undefined {
+    let parentData = this.parentData
+    if (parentData) {
+      return parentData.parentNode
+    }
+  }
+
   nil!: () => Nil
 
   constructor(
@@ -751,7 +758,7 @@ export class NodeData<Type = any, T extends IfAny<Type, any, NarrowTypes<Type>> 
   }
 
   setAllData(value: NodeInValue<T>) {
-    const process = this._getNodeValue
+    const process = this._getNodeValue.bind(this)
     if (value && isPlainObject(value)) {
       this.data = new HashMap(value as any, process) as NodeDataData<T>
     } else if (isArray(value)) {

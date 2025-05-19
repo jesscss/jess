@@ -1,3 +1,10 @@
+# May 18, 2025
+
+- Consider merging scope and rules somehow? There's an unfortunate duplication of "parentScope" and "parentNode" and all rules have scope.
+  - Maybe "register" nodes on eval()? And have those registration structures within rules?
+- Was working on figuring out scope tests w.r.t. nested rules and trying to see if scope could just "work"
+  - Maybe rework evalNode() on Rules from scratch and just do registration
+
 # May 13, 2025
 
 - In the case of selectors, resolve that simple and compound can match partially, but complex selectors have to match exhaustively

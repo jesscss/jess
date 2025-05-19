@@ -1,6 +1,6 @@
 import { type Node } from './tree/node'
 import type { Ruleset } from './tree/ruleset'
-import { Scope } from './scope'
+import { type Scope } from './scope'
 import type { Declaration, Root } from './tree'
 import { type Operator } from './tree/util/calculate'
 import type { PluginObject } from './plugin'
@@ -124,8 +124,8 @@ export class TreeContext implements TreeContextOptions {
     // contents: string[]
   }
 
-  /** Rules will inherit scope when created */
-  scope: Scope
+  /** Current scope while evaluating */
+  scope: Scope | undefined
 
   /**
    * The plugin that created this tree. It will have first dibs
@@ -153,7 +153,7 @@ export class TreeContext implements TreeContextOptions {
     this.mathMode = mathMode ?? MathMode.PARENS_DIVISION
     this.unitMode = unitMode ?? UnitMode.STRICT
     this.isModule = isModule ?? false
-    this.scope = scope ?? new Scope(parentScope)
+    // this.scope = scope ?? new Scope(parentScope)
     this.opts = rest
   }
 }
@@ -188,7 +188,7 @@ export class Context {
    * to prevent recursion errors. Each subsequent declaration
    * is then added to prevent back-references to this one.
    */
-  _declarationScope: Set<Declaration> | undefined
+  private _declarationScope: Set<Declaration> | undefined
   get declarationScope() {
     return (this._declarationScope ??= new Set())
   }
@@ -197,13 +197,14 @@ export class Context {
    * This is set when entering rulesets so that child nodes
    * can use this to lookup values.
    */
-  scope: Scope
+  scope: Scope | undefined
   /**
    * The file (eval) context should have the same ID at compile-time
    * as run-time, so this ID will be set in `toModule()` output
    */
   id = generateId()
-  varCounter: number = 0
+  varCounter = 0
+  ruleCounter = 0
 
   private _classMap: Map<string, string> | undefined
   get classMap() {

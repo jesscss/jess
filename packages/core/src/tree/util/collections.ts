@@ -235,6 +235,9 @@ export class ArrayList<T = any> {
     return (this._positionMap ??= new WeakMap())
   }
 
+  items!: T[]
+  processValue?: (value: T) => T
+
   setPosition(item: T, index: number) {
     if (isObject(item)) {
       this.positionMap.set(item, index)
@@ -261,9 +264,13 @@ export class ArrayList<T = any> {
   }
 
   constructor(
-    public items: T[] = [],
-    public processValue?: (value: T) => T
-  ) {}
+    items: T[] = [],
+    processValue?: (value: T) => T
+  ) {
+    /** We do it this way to process items */
+    this.processValue = processValue
+    this.push(...items)
+  }
 
   get size() {
     return this.items.length
@@ -274,7 +281,8 @@ export class ArrayList<T = any> {
   }
 
   set(index: number, value: T) {
-    this.items[index] = value
+    let processValue = this.processValue
+    this.items[index] = processValue ? processValue(value) : value
     this.setPosition(value, index)
     if (index > this.items.length - 1) {
       this.reIndex(index)
@@ -289,9 +297,20 @@ export class ArrayList<T = any> {
   }
 
   push(...items: T[]) {
-    let index = this.items.length
-    this.items.push(...items)
-    this.reIndex(index)
+    let lastIndex = this.items?.length ?? 0
+    let processValue = this.processValue
+    if (processValue) {
+      for (let i = 0; i < items.length; i++) {
+        items[i] = processValue(items[i]!)
+      }
+    }
+    let currentItems = this.items
+    if (currentItems) {
+      currentItems.push(...items)
+    } else {
+      this.items = items
+    }
+    this.reIndex(lastIndex)
   }
 
   pop() {
@@ -332,13 +351,23 @@ export class HashMap<
 > {
   keys: ArrayList<keyof T>
   size: number
+  items: T
+  processValue?: (value: ValueOf<T>) => ValueOf<T>
 
   constructor(
-    public items: T,
-    public processValue?: (value: ValueOf<T>) => ValueOf<T>
+    items: T,
+    processValue?: (value: ValueOf<T>) => ValueOf<T>
   ) {
-    this.keys = new ArrayList(Object.keys(items)) as ArrayList<keyof T>
+    this.items = items
+    this.processValue = processValue
+    let keys: Array<keyof T> = Object.keys(items)
+    this.keys = new ArrayList(keys)
     this.size = this.keys.size
+    if (processValue) {
+      for (let key of keys) {
+        this.items[key] = processValue(this.items[key])
+      }
+    }
   }
 
   * [Symbol.iterator](): Generator<ValueOf<T>> {
@@ -371,7 +400,7 @@ export class HashMap<
     const keys = this.keys
     const processValue = this.processValue
     this.items[key] = (processValue ? processValue(value) : value) as T[K]
-    if (!keys.has(key)) {   
+    if (!keys.has(key)) {
       keys.push(key)
       this.size++
     }
@@ -382,7 +411,7 @@ export class HashMap<
  * A dynamic linked list useful for managing items in multiple lists.
  * In other words, rather than linking items together, their positions
  * in a list are managed by the list, much like an array.
- * 
+ *
  * The items before/after current items are linked multiple times by type.
  * That is, you can think about it like each node setting a map like:
  *   1. What is the next mixin? What is the previous mixin?
@@ -391,9 +420,8 @@ export class HashMap<
 export class NodeList<
   T extends Node = Node
 > extends Deque<T> {
-
   /** A map of nodes to their position in the list */
-  private _nodeToPosition = new WeakMap<T, number>()
+  private readonly _nodeToPosition = new WeakMap<T, number>()
 
   constructor(
     values: T[] = []
@@ -443,8 +471,7 @@ export class NodeList<
       this.splice(index, 1)
     }
   }
-  
-  
+
   private _reverse(asEntries: false, start?: T): Generator<T>
   private _reverse(asEntries: true, start?: T): Generator<[number, T]>
   private _reverse(asEntries?: boolean, start?: T): Generator<T>
@@ -453,7 +480,7 @@ export class NodeList<
       ? this._length - 1
       : this._nodeToPosition.get(start) ?? this.length - 1
     for (let i = startIndex; i > -1; i--) {
-      yield asEntries ? [i, this.at(i)] : this.at(i);
+      yield asEntries ? [i, this.at(i)] : this.at(i)
     }
   }
 

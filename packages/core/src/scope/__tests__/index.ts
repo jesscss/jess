@@ -9,13 +9,13 @@ let scope: Scope
 let context: Context
 
 function push(s: Scope, n: Node, { allowRuleLookups = false, readonly = false }: { allowRuleLookups?: boolean, readonly?: boolean } = {}) {
-  s.set(n, undefined, allowRuleLookups, readonly)
+  s.add(n, allowRuleLookups, readonly)
 }
 
 describe('Scope', async () => {
   beforeEach(() => {
-    scope = new Scope(rules())
     context = new Context()
+    scope = new Scope(rules(), context)
     context.scope = scope
   })
 
@@ -69,26 +69,26 @@ describe('Scope', async () => {
   describe('scope inheritance', () => {
     it('looks up parent scope', () => {
       push(scope, vardecl({ name: 'foo', value: any('bar') }))
-      let inherited = new Scope(rules(), scope)
+      let inherited = new Scope(rules(), context, scope)
       /** Pretend the rules came from the parent scope when evaluating */
       expect(`${inherited.getVar('foo')}`).toBe('$foo: bar')
     })
 
     it('inherits values when set after', () => {
-      let inherited = new Scope(rules(), scope)
+      let inherited = new Scope(rules(), context, scope)
       push(scope, vardecl({ name: 'foo', value: any('bar') }))
       expect(`${inherited.getVar('foo')}`).toBe('$foo: bar')
     })
 
     it('shadows variables #1', () => {
-      let inherited = new Scope(rules(), scope)
+      let inherited = new Scope(rules(), context, scope)
       push(scope, vardecl({ name: 'one', value: any('one') }))
       push(inherited, vardecl({ name: 'one', value: any('three') }))
       expect(`${inherited.getVar('one')}`).toBe('$one: three')
     })
 
     it('shadows variables #2', () => {
-      let inherited = new Scope(rules(), scope)
+      let inherited = new Scope(rules(), context, scope)
       push(scope, vardecl({ name: 'one', value: any('one') }))
       push(inherited, vardecl({ name: 'one', value: any('two') }))
       push(inherited, vardecl({ name: 'one', value: any('three') }))
@@ -96,7 +96,7 @@ describe('Scope', async () => {
     })
 
     it('sets existing variables', () => {
-      let inherited = new Scope(rules(), scope)
+      let inherited = new Scope(rules(), context, scope)
       push(scope, vardecl({ name: 'one', value: any('one') }))
       push(inherited, vardecl({ name: 'one', value: any('three') }, { setDefined: true }))
       expect(`${scope.getVar('one')}`).toBe('$one: three')
@@ -104,7 +104,7 @@ describe('Scope', async () => {
     })
 
     it('fails to set if existing variable is readonly', () => {
-      let inherited = new Scope(rules(), scope)
+      let inherited = new Scope(rules(), context, scope)
       push(scope, vardecl({ name: 'one', value: any('one') }), { readonly: true })
       expect(() =>
         push(inherited, vardecl({ name: 'one', value: any('three') }, { setDefined: true }))
@@ -112,22 +112,60 @@ describe('Scope', async () => {
     })
 
     it('looks upwards from position', () => {
-      scope.set(vardecl({ name: 'one', value: any('one') }), 0)
-      scope.set(vardecl({ name: 'one', value: any('two') }), 2)
-      scope.set(vardecl({ name: 'one', value: any('three') }), 4)
-      expect(`${scope.getVar('one', {}, 1)}`).toBe('$one: one')
-      expect(`${scope.getVar('one', {}, 3)}`).toBe('$one: two')
+      scope.add(vardecl({ name: 'one', value: any('one') }))
+      scope.add(vardecl({ name: 'one', value: any('two') }))
+      scope.add(vardecl({ name: 'one', value: any('three') }))
+      expect(`${scope.getVar('one', {}, 0)}`).toBe('$one: one')
+      expect(`${scope.getVar('one', {}, 1)}`).toBe('$one: two')
       expect(`${scope.getVar('one')}`).toBe('$one: three')
     })
 
+    it('sets upwards from position', () => {
+      scope.add(vardecl({ name: 'one', value: any('one') }))
+      scope.add(vardecl({ name: 'one', value: any('two') }, { setDefined: true }))
+      scope.add(vardecl({ name: 'one', value: any('three') }))
+      expect(`${scope.getVar('one', {}, 0)}`).toBe('$one: two')
+      expect(`${scope.getVar('one', {}, 1)}`).toBe('$$one: two')
+      expect(`${scope.getVar('one')}`).toBe('$one: three')
+    })
+
+    it('assigns position linearly for nested rules', () => {
+      let grandChild = rules([
+        vardecl({ name: 'one', value: any('three') })
+      ])
+      let child = rules([
+        vardecl({ name: 'foo', value: any('bar') }),
+        vardecl({ name: 'one', value: any('two') }),
+        grandChild
+      ])
+      let outer = rules([
+        vardecl({ name: 'one', value: any('one') }),
+        vardecl({ name: 'root', value: any('value') }),
+        child
+      ])
+      /** @todo - Add a bunch of parent tests elsewhere */
+      expect(grandChild.parent).toBe(child)
+      expect(child.parent).toBe(outer)
+      for (let [,rule] of outer) {
+        scope.add(rule)
+      }
+
+      expect(`${scope.getVar('one')}`).toBe('$one: one')
+      expect(`${grandChild.getScope(context).getVar('one')}`).toBe('$one: three')
+
+      /** @todo - Doesn't work yet. See NOTES.md */
+      // expect(`${grandChild.getScope(context).getVar('foo')}`).toBe('$foo: bar')
+      // expect(`${grandChild.getScope(context).getVar('root')}`).toBe('$root: value')
+    })
+
     // it('can deeply inherit scope', () => {
-    //   let child = new Scope(scope)
-    //   scope.setVar('one', 'one')
-    //   scope.setVar('root', 'value')
-    //   child.setVar('foo', 'bar')
-    //   child.setVar('one', 'two')
-    //   let grandChild = new Scope(child)
-    //   grandChild.setVar('one', 'three')
+    //   let child = new Scope(rules(), scope)
+    //   scope.set(vardecl({ name: 'one', value: any('one') }), 0)
+    //   scope.set(vardecl({ name: 'root', value: any('value') }), 1)
+    //   child.set(vardecl({ name: 'foo', value: any('bar') }), 2)
+    //   child.set(vardecl({ name: 'one', value: any('two') }), 3)
+    //   let grandChild = new Scope(rules(), child)
+    //   grandChild.set(vardecl({ name: 'one', value: any('three') }), 4)
 
     //   // inherited.setVar('one', 'three', { setDefined: true })
     //   expect(scope.getVar('one')).toBe('one')

@@ -1,18 +1,23 @@
 /* eslint-disable @typescript-eslint/prefer-readonly */
-import { Node, defineType, type NodeData } from './node'
+import {
+  Node,
+  defineType,
+  type NodeData,
+  type NodeOptions,
+  type LocationInfo,
+  type TreeContext
+} from './node'
 import {
   Declaration,
-  type DeclarationOptions,
   type DeclarationValue
 } from './declaration'
 import {
-  VarDeclaration,
-  type VarDeclarationOptions
+  VarDeclaration
 } from './var-declaration'
 import { Scope } from '../scope'
 import type { Context } from '../context'
 import { isNode } from './util'
-import { Ruleset } from './ruleset'
+import { type Ruleset } from './ruleset'
 import { type AtRule } from './at-rule'
 import { Nil } from './nil'
 import { type Root } from './root'
@@ -66,12 +71,22 @@ export class Rules extends Node<Node[]> {
   override allowRoot = true
 
   private _scope: Scope | undefined
-  get scope() {
-    return (this._scope ??= new Scope(this))
+
+  constructor(
+    value: Node[],
+    options?: NodeOptions,
+    location?: LocationInfo,
+    treeContext?: TreeContext
+  ) {
+    super(value ?? [], options, location, treeContext)
   }
 
-  set scope(s: Scope) {
-    this._scope = s
+  getScope(context: Context) {
+    let scope = this._scope
+    if (!scope) {
+      scope = this._scope = new Scope(this, context)
+    }
+    return scope
   }
 
   * [Symbol.iterator]() {
@@ -169,7 +184,7 @@ export class Rules extends Node<Node[]> {
       /** Evaluate names */
       if (n instanceof Declaration || n instanceof Mixin) {
         const { name } = n.value
-        
+
         if (name instanceof Node) {
           if (name instanceof Interpolated) {
             /** Evaluate these names after evaluating static names */
@@ -215,7 +230,7 @@ export class Rules extends Node<Node[]> {
             decl.visible = false
           }
           rules.data.setAt(pos, decl)
-        
+
           // if (isNode(decl, 'Mixin')) {
           //   this._scope.setMixin(ident, decl, decl.options)
           // } else if (isNode(decl, ['VarDeclaration', 'Func'])) {
@@ -246,8 +261,8 @@ export class Rules extends Node<Node[]> {
                * If the eval'd value of the declaration is Nil, effectively
                * remove the declaration from the ruleset by setting the entire
                * declaration to Nil.
-               * 
-               * @todo - Is this correct? I'm not sure this is correct. 
+               *
+               * @todo - Is this correct? I'm not sure this is correct.
                */
               if (evaldValue instanceof Nil) {
                 rules.data.setAt(pos, evaldValue)
@@ -261,7 +276,7 @@ export class Rules extends Node<Node[]> {
                * What is it?
                */
               let result = await node.eval(context)
-              
+
               if (!result.allowRuleRoot) {
                 result.visible = false
               }
@@ -275,7 +290,7 @@ export class Rules extends Node<Node[]> {
 
                 //   })
                 // }
-                
+
               } else {
                 // rules.data.set(ROOT_DATA, result, pos)
               }
@@ -290,10 +305,10 @@ export class Rules extends Node<Node[]> {
       }
     }
 
-      // let current = map[0]
-      // let prevEvald: Node | undefined
+    // let current = map[0]
+    // let prevEvald: Node | undefined
 
-      /**
+    /**
        * This will dynamically link rulesets like
        * [rule]._next = [ruleset]._first
        * [ruleset]._last = [rule]._next._next
@@ -301,62 +316,62 @@ export class Rules extends Node<Node[]> {
        * @todo Register declarations for languages
        *       that merge them in.
        */
-      // while (current) {
-      //   let evald: Node
+    // while (current) {
+    //   let evald: Node
 
-      //   if (current.nameOnly) {
-      //     const decl = current.node.clone() as Declaration<Node>
-      //     decl.name = decl.name.eval(context)
-      //     evald = decl
-      //   } else {
-      //     evald = current.node.eval(context)
-      //   }
-      //   const evaldIsRules = evald instanceof Rules
-      //   /**
-      //    * If previous iteration produced a ruleset, link its
-      //    * last value to the currently-evaluated rule
-      //    */
-      //   if (prevEvald) {
-      //     if (prevEvald instanceof Rules) {
-      //       prevEvald._last._next = evald
-      //     } else {
-      //       prevEvald._next = evald
-      //     }
-      //   }
+    //   if (current.nameOnly) {
+    //     const decl = current.node.clone() as Declaration<Node>
+    //     decl.name = decl.name.eval(context)
+    //     evald = decl
+    //   } else {
+    //     evald = current.node.eval(context)
+    //   }
+    //   const evaldIsRules = evald instanceof Rules
+    //   /**
+    //    * If previous iteration produced a ruleset, link its
+    //    * last value to the currently-evaluated rule
+    //    */
+    //   if (prevEvald) {
+    //     if (prevEvald instanceof Rules) {
+    //       prevEvald._last._next = evald
+    //     } else {
+    //       prevEvald._next = evald
+    //     }
+    //   }
 
-      //   /**
-      //    * If we're on the first node, and it evals to a ruleset,
-      //    * link this ruleset's first node to the first node of
-      //    * the ruleset.
-      //    */
-      //   if (this._first === current.node) {
-      //     if (evaldIsRules) {
-      //       this._first = (evald as Rules)._first
-      //     } else {
-      //       this._first = evald
-      //     }
-      //   }
+    //   /**
+    //    * If we're on the first node, and it evals to a ruleset,
+    //    * link this ruleset's first node to the first node of
+    //    * the ruleset.
+    //    */
+    //   if (this._first === current.node) {
+    //     if (evaldIsRules) {
+    //       this._first = (evald as Rules)._first
+    //     } else {
+    //       this._first = evald
+    //     }
+    //   }
 
-      //   if (evaldIsRules && prevEvald) {
-      //     prevEvald._next = (evald as Rules)._first
-      //   }
+    //   if (evaldIsRules && prevEvald) {
+    //     prevEvald._next = (evald as Rules)._first
+    //   }
 
-      //   /**
-      //    * If we're on the last node, and it evals to a ruleset,
-      //    * link this ruleset's last node to the last node of
-      //    * the ruleset.
-      //    */
-      //   if (this._last === current.node) {
-      //     if (evaldIsRules) {
-      //       this._last = (evald as Rules)._last
-      //     } else {
-      //       this._last = evald
-      //     }
-      //   }
+    //   /**
+    //    * If we're on the last node, and it evals to a ruleset,
+    //    * link this ruleset's last node to the last node of
+    //    * the ruleset.
+    //    */
+    //   if (this._last === current.node) {
+    //     if (evaldIsRules) {
+    //       this._last = (evald as Rules)._last
+    //     } else {
+    //       this._last = evald
+    //     }
+    //   }
 
-      //   current = current._next
-      //   prevEvald = evald
-      // }
+    //   current = current._next
+    //   prevEvald = evald
+    // }
 
     let newRules: Node[] = []
 
