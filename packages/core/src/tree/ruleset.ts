@@ -63,6 +63,18 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>> {
     return output
   }
 
+  override async preEval(context: Context): Promise<this> {
+    if (!this.preEvaluated) {
+      let node = this.clone()
+      node.preEvaluated = true
+      node.sourceNode ??= this
+      let { selector } = node.value
+      node.value.selector = await selector.eval(context) as Selector | Nil
+      return node
+    }
+    return this
+  }
+
   override async evalNode(context: Context): Promise<Ruleset | Nil> {
     let rule = this.clone()
     let guard = rule.value.guard

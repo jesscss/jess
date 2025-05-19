@@ -1,5 +1,6 @@
 import { type Node } from './tree/node'
 import type { Ruleset } from './tree/ruleset'
+import type { Rules } from './tree/rules'
 import { type Scope } from './scope'
 import type { Declaration, Root } from './tree'
 import { type Operator } from './tree/util/calculate'
@@ -175,13 +176,14 @@ export class TreeContext implements TreeContextOptions {
  *
  * @note
  * Most of context represents "state" while evaluating.
- * There should only ever be one Context object per
+ * There should only ever be one Context singleton per parse & evaluation.
  */
 export class Context {
   readonly plugins: PluginObject[]
   readonly opts: ContextOptions
 
-  currentTree: TreeContext
+  treeContext!: TreeContext
+  rulesContext!: Rules
 
   /**
    * When getting vars, the current declaration is ommitted

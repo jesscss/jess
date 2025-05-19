@@ -14,7 +14,7 @@ import {
 import {
   VarDeclaration
 } from './var-declaration'
-import { Scope } from '../scope'
+import { type Scope } from '../scope'
 import type { Context } from '../context'
 import { isNode } from './util'
 import { type Ruleset } from './ruleset'
@@ -24,13 +24,16 @@ import { type Root } from './root'
 import { Mixin } from './mixin'
 import { Interpolated } from './interpolated'
 import { ArrayList } from './util/collections'
+import { Queue } from 'data-structure-typed'
+import type { Selector } from './selector'
 // import { LinkedList } from './util/collections'
 
 export const enum Priority {
   None = 0,
   Low = 1,
   Medium = 2,
-  High = 3
+  High = 3,
+  Highest = 4
 }
 
 type AnyDeclarationValue = DeclarationValue & Record<string, any>
@@ -81,14 +84,6 @@ export class Rules extends Node<Node[]> {
     super(value ?? [], options, location, treeContext)
   }
 
-  getScope(context: Context) {
-    let scope = this._scope
-    if (!scope) {
-      scope = this._scope = new Scope(this, context)
-    }
-    return scope
-  }
-
   * [Symbol.iterator]() {
     yield * (this.data.data as ArrayList<Node>).entries()
   }
@@ -128,10 +123,10 @@ export class Rules extends Node<Node[]> {
     }
   }
 
-  override async evalNode(context: Context): Promise<Rules | Root> {
+  async evalNodeOld(context: Context): Promise<Rules | Root> {
     let inheritedScope = context.scope
     context.scope = this.scope
-    let { leakVariablesIntoScope } = this.treeContext
+    let { leakVariablesIntoScope } = context.treeContext
     let rules = this.clone()
     rules.scope = this.scope
     let assign = this.assign
@@ -465,6 +460,337 @@ export class Rules extends Node<Node[]> {
     return Object.fromEntries(output)
   }
 
+  /**
+   * SCOPING
+   * The scope part of rules. Originally, `Scope` this was a separate
+   * class, but making it part of the definition of rules reduces
+   * duplication of concepts like "scope parents" since they
+   * are just Rules parents.
+   */
+  /**
+   * All indexed collections, keyed. These are the value
+   * per scope (like a set of rules).
+   *
+   * @note - Types are stored differently for disambiguation
+   *         See the Prefix enum.
+   */
+  private _declarationMap: Map<string, Queue<Declaration>> | undefined
+  private get declarationMap(): Map<string, Queue<Declaration>> {
+    return (this._declarationMap ??= new Map())
+  }
+
+  /**
+   * Rulesets and mixins. These get indexed multiple times
+   * for each simple selector.
+   */
+  private _selectorMap: Map<string, Queue<Mixin | Ruleset>> | undefined
+  private get selectorMap(): Map<string, Queue<Mixin | Ruleset>> {
+    return (this._selectorMap ??= new Map())
+  }
+
+  private _rulesSet: Queue<RulesEntry> | undefined
+  private get rulesSet(): Queue<RulesEntry> {
+    return (this._rulesSet ??= new Queue())
+  }
+
+  /**
+   *
+   * @param n
+   * @param leaky For rules, if we're allowed to look for vars and mixins here.
+   * @param readonly Variable / rules are readonly (such as for a protected import)
+   *
+   * @todo - Figure out the readonly part
+   */
+  register(node: Node, leaky = false, readonly = false) {
+    if (isNode(node, 'Rules')) {
+      this.rulesSet.push({
+        node,
+        leaky,
+        readonly
+      })
+    } else if (isNode(node, 'Declaration')) {
+      /** `setDefined` is an immediate mutation of the last found instance */
+      if (node.options?.setDefined) {
+        let key = node.value.name.toString()
+        /** Don't set within sibling rules */
+        let result = this.find(key, node.type, true, node.index)
+        if (result) {
+          let entry = result.first!
+          if (entry.options?.readonly) {
+            throw new ReferenceError(`${key} is readonly`)
+          }
+          /** Over-write value */
+          entry.value.value = node.value.value.copy()
+          /** !important always wins */
+          let important = entry.value.important || node.value.important
+          entry.value.important = important
+        } else {
+          throw new ReferenceError(`${key} is not defined`)
+        }
+      }
+      let map = this.declarationMap
+      let key = node.value.name.toString()
+      let queue = map.get(key) ?? new Queue()
+      queue.push(node)
+      map.set(key, queue)
+    } else {
+      /** ? */
+    }
+  }
+
+  /**
+   * Finds _all_ matching nodes in the scope chain. We have to return
+   * all nodes because we may need to sort the order if we have nested
+   * rules, as well as evaluate cascading assignments, like ?: or +:
+   */
+  find(
+    key: string,
+    type: string,
+    searchParents: boolean = true,
+    start?: number
+  ) {
+    if (start !== undefined) {
+      /**
+       * We do this so we start looking above the given position and don't
+       * return the current node.
+       */
+      start -= 1
+    }
+    let rules: Node | undefined = this
+    /** Return nodes */
+    let result: Queue<Declaration> | undefined
+
+    while (rules) {
+      let list = (rules as Rules).declarationMap.get(key)
+      if (!list) {
+        if (!searchParents) {
+          return
+        }
+        do {
+          rules = rules?.parent
+        } while (rules && !(rules instanceof Rules))
+
+        continue
+      }
+      let bestMatch: number | undefined
+      if (start !== undefined) {
+        /** Binary search the queue to find a starting position */
+        let left = 0
+        let right = list.length - 1
+
+        while (left <= right) {
+          let mid = Math.floor((left + right) / 2)
+          let midVal = list.at(mid)!.index
+          if (midVal === start) {
+            bestMatch = mid
+            break
+          }
+          if (midVal < start) {
+            bestMatch = mid
+            left = mid + 1
+          } else {
+            right = mid - 1
+          }
+        }
+        if (bestMatch === undefined) {
+          if (!searchParents) {
+            return
+          }
+          do {
+            rules = rules?.parent
+          } while (rules && !(rules instanceof Rules))
+          continue
+        }
+      } else {
+        /** We didn't have a start position, so the whole list matches */
+        bestMatch = list.length - 1
+      }
+      result ??= new Queue()
+      for (let i = bestMatch; i >= 0; i--) {
+        let entry = list.at(i)!
+        if (entry.type === type) {
+          result.push(entry)
+        }
+      }
+
+      if (!searchParents) {
+        return result
+      }
+
+      do {
+        rules = rules?.parent
+      } while (rules && !(rules instanceof Rules))
+    }
+    return result
+  }
+
+  push(node: Node) {
+    (this.data.data as ArrayList<Node>).push(node)
+    this.register(node)
+  }
+
+  at(index: number) {
+    return (this.data.data as ArrayList<Node>).items[index]
+  }
+
+  private _get(key: string, type: string, opts?: GetterOptions, start?: number) {
+    let result = (this.find(key, type, true, start) ?? new Queue())
+    let searchLeaky = type === 'VarDeclaration' || 'Mixin' || 'Ruleset'
+
+    let rulesSet = this._rulesSet
+    if (rulesSet) {
+      for (let entry of rulesSet) {
+        if (start !== undefined && entry.node.index > start) {
+          continue
+        }
+        let localResult = entry.node.find(key, type, false)
+        if (localResult) {
+          /** Add every entry of the queue in its current position */
+          for (let item of localResult) {
+            result.push(item)
+          }
+        }
+      }
+    }
+
+    if (!result.length) {
+      return result
+    }
+
+    if (opts?.filter) {
+      result = result.filter(opts.filter)
+    }
+
+    /** Sort these so they are evaluated in the proper order */
+    result.sort((a, b) => b.index - a.index)
+
+    return result
+  }
+
+  /**
+   * Search local scope for a property, looking at any merging rules.
+   */
+  getDeclaration(
+    type: 'Declaration' | 'VarDeclaration',
+    key: string,
+    opts: GetterOptions = {},
+    start?: number
+  ) {
+    let result = this._get(key, type, opts, start)
+    if (!result.length) {
+      return
+    }
+
+    let node = result.first
+
+    return node
+  }
+
+  /**
+   * Returns an executable function
+   * @todo - Move from scope
+   */
+  getMixin(selector: Selector, opts: GetterOptions = {}) {
+    return () => {}
+  }
+
+  /* Unlike `eval`, preEval of rules within a Rules instance
+   * happens linearly, which helps us assign sequential indexes.
+   */
+  override async preEval(context: Context): Promise<this> {
+    if (!this.preEvaluated) {
+      let rules = this.clone()
+      rules.preEvaluated = true
+      if (rules.index === undefined) {
+        rules.index = context.ruleCounter++
+      }
+      for (let item of rules) {
+        let [i, node] = item
+        if (node.index === undefined) {
+          node.index = context.ruleCounter++
+        }
+        /** Register static keys earliest */
+        if (isNode(node, 'Declaration')) {
+          let name = node.value.name
+          if (!(name instanceof Interpolated)) {
+            node = await node.preEval(context)
+            rules.data.setAt(i, node)
+            rules.register(node)
+          }
+        }
+        rules.data.setAt(i, node)
+      }
+      return rules
+    }
+    return this
+  }
+
+  private _evalQueue: EvalQueueMap | undefined
+  private get evalQueue(): EvalQueueMap {
+    return (this._evalQueue ??= new Map())
+  }
+
+  override async evalNode(context: Context): Promise<this> {
+    let rules = this
+    if (!this.preEvaluated) {
+      rules = await this.preEval(context)
+    }
+
+    let rulesContext = context.rulesContext
+    context.rulesContext = rules
+    if (rules.type === 'Root') {
+      context.treeContext = rules.treeContext
+    }
+    let { leakVariablesIntoScope } = context.treeContext ?? {}
+    /**
+     * First, push rules onto an evaluation queue.
+     */
+    for (let item of rules) {
+      let [, rule] = item
+      let map = rules.evalQueue
+      let priority = NodeTypeToPriority.get(rule.type) ?? Priority.None
+      let queue = map.get(priority) ?? new Queue()
+      queue.push(item)
+      map.set(priority, queue)
+    }
+
+    /** Now, evaluate the queue in two rounds */
+    for (let method of ['preEval', 'eval'] as const) {
+      for (let i: Priority = Priority.Highest; i >= 0; i--) {
+        let queue = rules.evalQueue.get(i)
+        if (!queue) {
+          continue
+        }
+        for (let item of queue) {
+          let [i, rule] = item
+          try {
+            let result = await rule[method](context)
+            rules.data.setAt(i, result)
+
+            /** Register in an index - skip declarations already registered */
+            if (method === 'preEval' && !rule.preEvaluated) {
+              rules.register(result, leakVariablesIntoScope)
+            }
+          } catch (e) {
+            if (i === Priority.None) {
+              throw e
+            }
+            /** Try to evaluate later */
+            let lowQueue = rules.evalQueue.get(Priority.None) ?? new Queue()
+            lowQueue.push([i, rule])
+            rules.evalQueue.set(Priority.None, lowQueue)
+          }
+          // rules.data.setAt(i, rule)
+        }
+      }
+    }
+    /**
+     * Restore rules context
+     */
+    context.rulesContext = rulesContext
+    return rules
+  }
+
   /** @todo move to visitors */
   // toCSS(context: Context, out: OutputCollector) {
   //   const value = this.value
@@ -550,3 +876,79 @@ export class Rules extends Node<Node[]> {
   // }
 }
 export const rules = defineType(Rules, 'Rules')
+
+/**
+ * SCOPE types
+ */
+export type GetterOptions = {
+  filter?: (n: Node) => boolean
+}
+
+type EvalQueueMap = Map<Priority, Queue<[number, Node]>>
+
+/**
+ * @todo - Will need lots of massaging, to resolve things like
+ * mixins which rely on variables which have interpolated names,
+ * and variables with interpolated names that rely on mixins.
+ */
+const NodeTypeToPriority = new Map([
+  /** First, register vars */
+  ['VarDeclaration', Priority.Highest],
+  /** Then, register other items that can be "looked up" */
+  ['Mixin', Priority.High],
+  ['Ruleset', Priority.High],
+  /** Then, resolve imports */
+  ['Import', Priority.Medium],
+  /** Then, resolve any calls */
+  ['Call', Priority.Low]
+  /** Then, everything else? */
+])
+
+// const TypeToNodeType = new Map([
+//   ['Mixin', NodeType.MIXIN],
+//   ['Ruleset', NodeType.RULESET],
+//   ['Declaration', NodeType.PROPERTY],
+//   ['VarDeclaration', NodeType.VARIABLE],
+//   ['Rules', NodeType.RULES]
+// ])
+
+// export const enum NodeTypeIndex {
+//   NONE             = 0b000000,
+//   MIXIN            = 0b000001,
+//   RULESET          = 0b000010,
+//   MIXIN_OR_RULESET = 0b000011,
+//   PROPERTY         = 0b000100,
+//   VARIABLE         = 0b001000,
+//   VAR_OR_PROP      = 0b001100,
+//   /**
+//    * Variables and mixins can leak
+//   */
+//   LEAKY_RULES      = 0b010000,
+//   /** @note - Properties and rulesets are always visible. */
+//   PRIVATE_RULES    = 0b100000,
+//   RULES            = 0b110000
+// }
+
+type IndexKey = `${NodeType}${string}`
+
+interface RulesEntry {
+  node: Rules
+  /**
+   * Variables and mixins can leak (can be looked up / called)
+   */
+  leaky?: boolean
+  /**
+   * These are from JS import statements
+   */
+  readonly?: boolean
+}
+
+interface DeclarationEntry {
+  node: Declaration
+  readonly?: boolean
+}
+
+/**
+ * Right now, the only nodes that can be registered to the scope for lookups
+ */
+type ScopeNodes = Declaration | VarDeclaration | Mixin | Ruleset | Rules

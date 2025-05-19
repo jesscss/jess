@@ -34,6 +34,11 @@ export type DeclarationOptions = {
   assign?: AssignmentType
   semi?: boolean
   /**
+   * This doesn't prevent shadowing; it prevents declarations like:
+   *   $$overwrite: foo;
+   */
+  readonly?: boolean
+  /**
    * Instead of implicitly declaring or overriding,
    * requires a variable to previously be explicitly
    * declared within scope.
@@ -110,6 +115,7 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
   override async preEval(context: Context): Promise<this> {
     if (!this.preEvaluated) {
       let node = this.clone()
+      node.preEvaluated = true
       node.options = { ...this.options }
       node.sourceNode ??= this
       let { name, value } = node.value
@@ -190,10 +196,9 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
      */
     if (name instanceof Interpolated) {
       node.data.set('name', await name.eval(context) as Name)
-    } else {
-      node.data.set('name', name)
     }
-    if (value instanceof Node) {
+    /** Evaluate the value (unless it's a var declaration, which are evaluated lazily) */
+    if (value instanceof Node && node.type !== 'VarDeclaration') {
       let newValue = await value.eval(context)
       if (newValue instanceof Nil) {
         return newValue.inherit(node)

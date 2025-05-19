@@ -150,6 +150,12 @@ export abstract class Node<
   allowRuleRoot = false
 
   /**
+   * Nodes are assigned an initial index of 0, but when evaluating,
+   * they are assigned a new, sequential index.
+   */
+  index!: number
+
+  /**
    * If the node must have a semi separator before
    * the next node when in a declaration list or main
    * rules list.
@@ -416,11 +422,17 @@ export abstract class Node<
     let returnNode: Node = node
     if (!node.preEvaluated) {
       returnNode = await node.preEval(context)
+      if (returnNode !== node) {
+        returnNode.inherit(node)
+      }
       returnNode.preEvaluated = true
     }
     if (!returnNode.evaluated) {
-      returnNode = await returnNode.evalNode(context)
-      returnNode.inherit(node)
+      let evaldNode = await returnNode.evalNode(context)
+      if (evaldNode !== returnNode) {
+        evaldNode.inherit(returnNode)
+        returnNode = evaldNode
+      }
       returnNode.preEvaluated = true
       returnNode.evaluated = true
     }
@@ -456,16 +468,17 @@ export abstract class Node<
   }
 
   /**
-   * Override normally readonly props to make them inheritable
    * This is used when a Node will replace another node.
    */
   inherit(node: Node) {
     this._location = node.location
     this._treeContext = node.treeContext
     this.evaluated = node.evaluated
+    this.preEvaluated = node.preEvaluated
     this.pre = node.pre
     this.post = node.post
     this.sourceNode = node.sourceNode
+    this.index ??= node.index
     return this
   }
 
@@ -678,6 +691,7 @@ type NodeDataKeys<T extends NodeValue> =
  * An abstracted representation of node data with a unified API
  */
 export class NodeData<Type = any, T extends IfAny<Type, any, NarrowTypes<Type>> = IfAny<Type, any, NarrowTypes<Type>>> {
+  /** @todo - Figure out how to determine this type */
   data!: any
 
   /** Process nodes if they exist */

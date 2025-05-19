@@ -32,7 +32,7 @@ export class JessError extends Error {
     super(message)
   }
 
-  toString() {
+  override toString() {
     let { line, column, source, filePath } = this
     const lines = source.split('\n')
 

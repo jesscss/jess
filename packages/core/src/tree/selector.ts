@@ -1,17 +1,16 @@
-import { Node, NodeOptions, type NodeValue } from './node'
+import { Node, type NodeOptions, type NodeValue } from './node'
 import type { IfAny } from 'type-fest'
-
 
 /** This represents anything that is valid in a selector */
 
-export abstract class Selector<T extends any = any, O extends NodeOptions = NodeOptions> extends Node<IfAny<T, NodeValue, T>, O> {
+export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> extends Node<IfAny<T, NodeValue, T>, O> {
   declare value: NodeValue
   isSelector = true
 
   _valueOf: string | undefined
   /**
    * For selectors, this is a normalized value, not just
-   * a straight stringification like toTrimmedString 
+   * a straight stringification like toTrimmedString
    */
   override valueOf(): string {
     return ''

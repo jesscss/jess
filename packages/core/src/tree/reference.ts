@@ -102,13 +102,13 @@ export class Reference extends Selector<string | Interpolated, ReferenceOptions>
     let returnVal: any
     switch (type) {
       case 'variable':
-        returnVal = context.scope.getVar(key, opts)
+        returnVal = context.rulesContext.getDeclaration('VarDeclaration', key, opts)
         break
       case 'property':
-        returnVal = context.scope.getProp(key, opts)
+        returnVal = context.rulesContext.getDeclaration('Declaration', key, opts)
         break
-      case 'mixin':
-        returnVal = context.scope.getMixin(key, opts)
+      // case 'mixin':
+      //   returnVal = context.rulesContext.getMixin(key, opts)
     }
 
     if (returnVal === undefined) {
@@ -122,6 +122,10 @@ export class Reference extends Selector<string | Interpolated, ReferenceOptions>
     }
     if (returnVal instanceof Declaration) {
       context.declarationScope.add(returnVal)
+      /** Since we're referencing a variable value, we need to now evaluate its value */
+      if (returnVal.type === 'VarDeclaration') {
+        returnVal.data.set('value', await returnVal.data.get('value').eval(context))
+      }
       const evald = await returnVal.value.value.eval(context)
       context.declarationScope.delete(returnVal)
       return evald

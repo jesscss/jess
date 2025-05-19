@@ -2,7 +2,7 @@
 
 Named mixins start with an `@` followed by a space followed by the name.
 
-Mixins must have semi-colon-separated parameters (and can have optional final semi-colons)
+Mixins can have comma-separated or semi-colon-separated parameters (and can have optional final separators).
 
 ```scss
 // Plain mixin
@@ -48,6 +48,11 @@ Mixins must have semi-colon-separated parameters (and can have optional final se
 
 // called like
 $>my-mixin(20px; 40px);
+```
+
+Single values in parameter default values / arguments must be wrapped in `(` `)` with optional preceding `~`
+```scss
+$ > my-mixin($fonts: ('Times New Roman', serif));
 ```
 
 Anonymous mixins are started with `@(` or `@{` e.g.

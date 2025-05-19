@@ -7,7 +7,11 @@ import type { Context } from '../context'
  * The tree will have a root, but each file will have its own root.
  */
 export class Root extends Rules {
-  override async evalNode(context: Context): Promise<Root> {
+  /**
+   * @todo - Rewrite to handle "root rules" better.
+   * There shouldn't be root rules so much as parent / root rules.
+   */
+  override async evalNode(context: Context): Promise<this> {
     context.opts.mathMode = this.treeContext.mathMode
     context.opts.unitMode = this.treeContext.unitMode
     context.depth++

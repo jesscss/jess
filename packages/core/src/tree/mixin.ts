@@ -1,11 +1,12 @@
 import { Node, defineType, type NodeData } from './node'
 import type { Condition } from './condition'
-import type { List } from './list'
+import { type List } from './list'
 import type { Rest } from './rest'
 import type { Name } from './general'
 import { type VarDeclaration } from './var-declaration'
 import type { Rules } from './rules'
-import type { Interpolated } from './interpolated'
+import { Interpolated } from './interpolated'
+import type { Context } from '../context'
 
 export type MixinValue = {
   name?: string | Name | Interpolated<'Name'>
@@ -16,7 +17,7 @@ export type MixinValue = {
    * - A var declaration is a named variable with a default value.
    * - A rest is a rest parameter.
    */
-  params?: List<Node | Name | VarDeclaration<string> | Rest>
+  params?: List<Node | Name | VarDeclaration | Rest>
   guard?: Condition
 }
 
@@ -68,6 +69,20 @@ export class Mixin extends Node<MixinValue> {
     output += rules.toString(depth + 1) as string
     output += `${space}}`
     return output
+  }
+
+  override async preEval(context: Context): Promise<this> {
+    if (!this.preEvaluated) {
+      let node = this.clone()
+      node.preEvaluated = true
+      node.sourceNode ??= this
+      let { name } = node.value
+      if (name && name instanceof Interpolated) {
+        node.value.name = await name.eval(context) as Name
+      }
+      return node
+    }
+    return this
   }
   /**
    * @todo -
