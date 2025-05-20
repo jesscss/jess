@@ -188,7 +188,7 @@ describe('Rules', () => {
         node = await node.eval(context) as Rules
         let inherited = node.at(1) as Rules
         expect(`${await getVar(node, 'one')}`).toBe('$one: three')
-        expect(`${await getVar(inherited, 'one')}`).toBe('$one: three')
+        expect(`${await getVar(inherited, 'one')}`).toBe('$$one: three')
       })
 
       it('fails to set if existing variable is readonly', async () => {
@@ -210,9 +210,9 @@ describe('Rules', () => {
         ])
         node = await node.eval(context) as Rules
 
-        expect(`${await getVar(node, 'one', {}, 1)}`).toBe('$one: one')
-        expect(`${await getVar(node, 'one', {}, 2)}`).toBe('$one: two')
-        expect(`${await getVar(node, 'one', {}, 3)}`).toBe('$one: three')
+        expect(`${await getVar(node, 'one', {}, node.at(1)?.index)}`).toBe('$one: one')
+        expect(`${await getVar(node, 'one', {}, node.at(2)?.index)}`).toBe('$one: two')
+        expect(`${await getVar(node, 'one', {}, 10)}`).toBe('$one: three')
       })
 
       it('sets upwards from position', async () => {
@@ -223,9 +223,9 @@ describe('Rules', () => {
         ])
         node = await node.eval(context) as Rules
 
-        expect(`${await getVar(node, 'one', {}, 1)}`).toBe('$one: two')
-        expect(`${await getVar(node, 'one', {}, 2)}`).toBe('$$one: two')
-        expect(`${await getVar(node, 'one', {}, 3)}`).toBe('$one: three')
+        expect(`${await getVar(node, 'one', {}, node.at(1)?.index)}`).toBe('$one: two')
+        expect(`${await getVar(node, 'one', {}, node.at(2)?.index)}`).toBe('$$one: two')
+        expect(`${await getVar(node, 'one', {}, 10)}`).toBe('$one: three')
       })
     })
   })

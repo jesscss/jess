@@ -197,8 +197,8 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
     if (name instanceof Interpolated) {
       node.data.set('name', await name.eval(context) as Name)
     }
-    /** Evaluate the value (unless it's a var declaration, which are evaluated lazily) */
-    if (value instanceof Node && node.type !== 'VarDeclaration') {
+    /** Evaluate the value */
+    if (value instanceof Node) {
       let newValue = await value.eval(context)
       if (newValue instanceof Nil) {
         return newValue.inherit(node)

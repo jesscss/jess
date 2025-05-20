@@ -700,34 +700,26 @@ export class Rules extends Node<Node[]> {
   override async preEval(context: Context): Promise<this> {
     if (!this.preEvaluated) {
       let rules = this.clone()
+      /**
+       * Attach this early? Normally the parent will attach
+       * but this causes recursion issues with rules.
+       *
+       * @todo - Should this be added to node.clone()? I need
+       * to think about the implications.
+       */
+      rules.parentData = this.parentData
       rules.preEvaluated = true
       if (rules.index === undefined) {
         rules.index = context.ruleCounter++
       }
-      for (let item of rules) {
-        let [i, node] = item
+      for (let [, node] of rules) {
         if (node.index === undefined) {
           node.index = context.ruleCounter++
         }
-        /** Register static keys earliest */
-        if (isNode(node, 'Declaration')) {
-          let name = node.value.name
-          if (!(name instanceof Interpolated)) {
-            node = await node.preEval(context)
-            rules.data.setAt(i, node)
-            rules.register(node)
-          }
-        }
-        rules.data.setAt(i, node)
       }
       return rules
     }
     return this
-  }
-
-  private _evalQueue: EvalQueueMap | undefined
-  private get evalQueue(): EvalQueueMap {
-    return (this._evalQueue ??= new Map())
   }
 
   override async evalNode(context: Context): Promise<this> {
@@ -735,6 +727,7 @@ export class Rules extends Node<Node[]> {
     if (!this.preEvaluated) {
       rules = await this.preEval(context)
     }
+    let evalQueue: EvalQueueMap = new Map()
 
     let rulesContext = context.rulesContext
     context.rulesContext = rules
@@ -747,39 +740,55 @@ export class Rules extends Node<Node[]> {
      */
     for (let item of rules) {
       let [, rule] = item
-      let map = rules.evalQueue
       let priority = NodeTypeToPriority.get(rule.type) ?? Priority.None
-      let queue = map.get(priority) ?? new Queue()
+      let queue = evalQueue.get(priority) ?? new Queue()
       queue.push(item)
-      map.set(priority, queue)
+      evalQueue.set(priority, queue)
     }
 
     /** Now, evaluate the queue in two rounds */
     for (let method of ['preEval', 'eval'] as const) {
       for (let i: Priority = Priority.Highest; i >= 0; i--) {
-        let queue = rules.evalQueue.get(i)
+        let queue = evalQueue.get(i)
         if (!queue) {
           continue
         }
         for (let item of queue) {
           let [i, rule] = item
-          try {
-            let result = await rule[method](context)
-            rules.data.setAt(i, result)
-
-            /** Register in an index - skip declarations already registered */
-            if (method === 'preEval' && !rule.preEvaluated) {
-              rules.register(result, leakVariablesIntoScope)
-            }
-          } catch (e) {
-            if (i === Priority.None) {
-              throw e
-            }
-            /** Try to evaluate later */
-            let lowQueue = rules.evalQueue.get(Priority.None) ?? new Queue()
+          if (
+            i === Priority.Highest
+            && method === 'preEval'
+            && isNode(rule, 'Declaration')
+            && rule.value.name instanceof Interpolated
+          ) {
+            let lowQueue = evalQueue.get(Priority.High) ?? new Queue()
             lowQueue.push([i, rule])
-            rules.evalQueue.set(Priority.None, lowQueue)
+            evalQueue.set(Priority.High, lowQueue)
+            continue
           }
+          /** Only evaluated on reference */
+          if (method === 'eval' && isNode(rule, 'VarDeclaration')) {
+            continue
+          }
+          let result!: Node
+          result = await rule[method](context)
+          rules.data.setAt(i, result)
+          if (method === 'preEval' && !rule.preEvaluated) {
+            rules.register(result, leakVariablesIntoScope)
+          }
+          /**
+           * @todo - Figure out if I should try to evaluate again later?
+           * I had this in a try/catch block, but it had hard-to-reason about
+           * behavior.
+          */
+          // if (i === Priority.None) {
+          //   throw e
+          // }
+          // let lowQueue = rules.evalQueue.get(Priority.None) ?? new Queue()
+          // lowQueue.push([i, rule])
+          // rules.evalQueue.set(Priority.None, lowQueue)
+          /** Register in an index - skip declarations already registered */
+
           // rules.data.setAt(i, rule)
         }
       }
@@ -892,8 +901,9 @@ type EvalQueueMap = Map<Priority, Queue<[number, Node]>>
  * and variables with interpolated names that rely on mixins.
  */
 const NodeTypeToPriority = new Map([
-  /** First, register vars */
+  /** First, register vars and props */
   ['VarDeclaration', Priority.Highest],
+  ['Declaration', Priority.Highest],
   /** Then, register other items that can be "looked up" */
   ['Mixin', Priority.High],
   ['Ruleset', Priority.High],

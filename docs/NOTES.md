@@ -1,3 +1,7 @@
+# May 20, 2025
+
+- All tests passing!
+
 # May 19, 2025
 
 - Got stuck trying to understand how I broke the scope inheritance tests :(

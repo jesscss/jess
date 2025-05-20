@@ -407,6 +407,7 @@ export abstract class Node<
    * are evaluated.
    */
   async preEval(context: Context): Promise<this> {
+    this.preEvaluated = true
     return this
   }
 
@@ -422,17 +423,17 @@ export abstract class Node<
     let returnNode: Node = node
     if (!node.preEvaluated) {
       returnNode = await node.preEval(context)
-      if (returnNode !== node) {
-        returnNode.inherit(node)
-      }
+      // if (returnNode !== node) {
+      //   returnNode.inherit(node)
+      // }
       returnNode.preEvaluated = true
     }
     if (!returnNode.evaluated) {
-      let evaldNode = await returnNode.evalNode(context)
-      if (evaldNode !== returnNode) {
-        evaldNode.inherit(returnNode)
-        returnNode = evaldNode
-      }
+      returnNode = await returnNode.evalNode(context)
+      // if (evaldNode !== returnNode) {
+      //   evaldNode.inherit(returnNode)
+      //   returnNode = evaldNode
+      // }
       returnNode.preEvaluated = true
       returnNode.evaluated = true
     }
@@ -473,8 +474,8 @@ export abstract class Node<
   inherit(node: Node) {
     this._location = node.location
     this._treeContext = node.treeContext
-    this.evaluated = node.evaluated
-    this.preEvaluated = node.preEvaluated
+    this.evaluated &&= node.evaluated
+    this.preEvaluated &&= node.preEvaluated
     this.pre = node.pre
     this.post = node.post
     this.sourceNode = node.sourceNode

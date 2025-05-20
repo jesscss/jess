@@ -122,10 +122,6 @@ export class Reference extends Selector<string | Interpolated, ReferenceOptions>
     }
     if (returnVal instanceof Declaration) {
       context.declarationScope.add(returnVal)
-      /** Since we're referencing a variable value, we need to now evaluate its value */
-      if (returnVal.type === 'VarDeclaration') {
-        returnVal.data.set('value', await returnVal.data.get('value').eval(context))
-      }
       const evald = await returnVal.value.value.eval(context)
       context.declarationScope.delete(returnVal)
       return evald
