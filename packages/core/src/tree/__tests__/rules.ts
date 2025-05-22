@@ -1,3 +1,4 @@
+import { get } from 'node:http'
 import {
   root,
   ruleset,
@@ -14,24 +15,25 @@ import {
   type GetterOptions,
   type Node,
   type Rules,
-  AssignmentType
+  AssignmentType,
+  VarDeclaration
 } from '..'
 import { Context } from '../../context'
 
 let context: Context
 
-async function getPropWithContext(context: Context, n: Rules, key: string, opts: GetterOptions = {}, start?: number) {
+function getPropWithContext(context: Context, n: Rules, key: string, opts: GetterOptions = {}, start?: number) {
   context.rulesContext = n
-  return n.getDeclaration('Declaration', key, opts, start)
+  return n.findDeclaration(key, 'Declaration', opts, true, start)
 }
 
-async function getVarWithContext(context: Context, n: Rules, key: string, opts: GetterOptions = {}, start?: number) {
+function getVarWithContext(context: Context, n: Rules, key: string, opts: GetterOptions = {}, start?: number) {
   context.rulesContext = n
-  let decl = n.getDeclaration('VarDeclaration', key, opts, start)
-  if (decl) {
-    let evald = await decl.value.value.eval(context)
-    decl.data.set('value', evald)
-  }
+  let decl = n.findDeclaration(key, 'VarDeclaration', opts, true, start)
+  // if (decl) {
+  //   let evald = await decl.value.value.eval(context)
+  //   decl.data.set('value', evald)
+  // }
   return decl
 }
 
@@ -76,7 +78,7 @@ describe('Rules', () => {
         ])
         node = await node.eval(context) as Rules
 
-        expect(`${await getProp(node, 'foo')}`).toBe('foo: bar')
+        expect(`${getProp(node, 'foo')}`).toBe('foo: bar')
       })
 
       it('can do a normal get / set of variables', async () => {
@@ -84,7 +86,7 @@ describe('Rules', () => {
           vardecl({ name: 'foo', value: any('bar') })
         ])
         node = await node.eval(context) as Rules
-        expect(`${await getVar(node, 'foo')}`).toBe('$foo: bar')
+        expect(`${getVar(node, 'foo')}`).toBe('$foo: bar')
       })
 
       it('replaces variable values', async () => {
@@ -93,7 +95,7 @@ describe('Rules', () => {
           vardecl({ name: 'foo', value: any('two') })
         ])
         node = await node.eval(context) as Rules
-        expect(`${await getVar(node, 'foo')}`).toBe('$foo: two')
+        expect(`${getVar(node, 'foo')}`).toBe('$foo: two')
       })
 
       it('will not set if defined', async () => {
@@ -104,7 +106,10 @@ describe('Rules', () => {
           decl2
         ])
         node = await node.eval(context) as Rules
-        expect(`${await getVar(node, 'first')}`).toBe('$first: one')
+        /** This won't have been resolved, so we need to evaluate it. */
+        let result = await getVar(node, 'first')!.eval(context)
+
+        expect(`${result}`).toBe('$first: one')
       })
 
       // it('will skip normalization', () => {
@@ -136,7 +141,7 @@ describe('Rules', () => {
         ])
 
         node = await node.eval(context) as Rules
-        expect(`${await getVar(inherited, 'foo')}`).toBe('$foo: bar')
+        expect(`${getVar(inherited, 'foo')}`).toBe('$foo: bar')
       })
 
       it('inherits values when set after', async () => {
@@ -147,7 +152,49 @@ describe('Rules', () => {
         node.push(vardecl({ name: 'foo', value: any('bar') }))
 
         node = await node.eval(context) as Rules
-        expect(`${await getVar(inherited, 'foo')}`).toBe('$foo: bar')
+        expect(`${getVar(inherited, 'foo')}`).toBe('$foo: bar')
+      })
+
+      it('peeks into optional child scope', async () => {
+        let node = rules([
+          rules([
+            vardecl({ name: 'one', value: any('two') })
+          ], {
+            rulesVisibility: {
+              VarDeclaration: 'optional'
+            }
+          })
+        ])
+
+        node = await node.eval(context) as Rules
+        expect(`${getVar(node, 'one')}`).toBe('$one: two')
+      })
+
+      it('fails to get private child scope', async () => {
+        let node = rules([
+          rules([
+            vardecl({ name: 'one', value: any('two') })
+          ])
+        ])
+
+        node = await node.eval(context) as Rules
+        expect(getVar(node, 'one')).toBeUndefined()
+      })
+
+      it('skips an optional value', async () => {
+        let node = rules([
+          vardecl({ name: 'one', value: any('one') }),
+          rules([
+            vardecl({ name: 'one', value: any('two') })
+          ], {
+            rulesVisibility: {
+              VarDeclaration: 'optional'
+            }
+          })
+        ])
+
+        node = await node.eval(context) as Rules
+        expect(`${getVar(node, 'one')}`).toBe('$one: one')
       })
 
       it('shadows variables #1', async () => {
@@ -160,7 +207,7 @@ describe('Rules', () => {
 
         node = await node.eval(context) as Rules
         let inherited = node.at(1) as Rules
-        expect(`${await getVar(inherited, 'one')}`).toBe('$one: three')
+        expect(`${getVar(inherited, 'one')}`).toBe('$one: three')
       })
 
       it('shadows variables #2', async () => {
@@ -174,7 +221,7 @@ describe('Rules', () => {
 
         node = await node.eval(context) as Rules
         let inherited = node.at(1) as Rules
-        expect(`${await getVar(inherited, 'one')}`).toBe('$one: three')
+        expect(`${getVar(inherited, 'one')}`).toBe('$one: three')
       })
 
       it('sets existing variables', async () => {
@@ -187,8 +234,8 @@ describe('Rules', () => {
 
         node = await node.eval(context) as Rules
         let inherited = node.at(1) as Rules
-        expect(`${await getVar(node, 'one')}`).toBe('$one: three')
-        expect(`${await getVar(inherited, 'one')}`).toBe('$$one: three')
+        expect(`${getVar(node, 'one')}`).toBe('$one: three')
+        expect(`${getVar(inherited, 'one')}`).toBe('$$one: three')
       })
 
       it('fails to set if existing variable is readonly', async () => {
@@ -210,9 +257,9 @@ describe('Rules', () => {
         ])
         node = await node.eval(context) as Rules
 
-        expect(`${await getVar(node, 'one', {}, node.at(1)?.index)}`).toBe('$one: one')
-        expect(`${await getVar(node, 'one', {}, node.at(2)?.index)}`).toBe('$one: two')
-        expect(`${await getVar(node, 'one', {}, 10)}`).toBe('$one: three')
+        expect(`${getVar(node, 'one', {}, node.at(1)?.index)}`).toBe('$one: one')
+        expect(`${getVar(node, 'one', {}, node.at(2)?.index)}`).toBe('$one: two')
+        expect(`${getVar(node, 'one', {}, 10)}`).toBe('$one: three')
       })
 
       it('sets upwards from position', async () => {
@@ -223,9 +270,9 @@ describe('Rules', () => {
         ])
         node = await node.eval(context) as Rules
 
-        expect(`${await getVar(node, 'one', {}, node.at(1)?.index)}`).toBe('$one: two')
-        expect(`${await getVar(node, 'one', {}, node.at(2)?.index)}`).toBe('$$one: two')
-        expect(`${await getVar(node, 'one', {}, 10)}`).toBe('$one: three')
+        expect(`${getVar(node, 'one', {}, node.at(1)?.index)}`).toBe('$one: two')
+        expect(`${getVar(node, 'one', {}, node.at(2)?.index)}`).toBe('$$one: two')
+        expect(`${getVar(node, 'one', {}, 10)}`).toBe('$one: three')
       })
     })
   })

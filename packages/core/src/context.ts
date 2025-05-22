@@ -114,7 +114,8 @@ export const generateId = (length = 8) => {
 export class TreeContext implements TreeContextOptions {
   opts: Record<string, any>
   hoistDeclarations: boolean
-  leakVariablesIntoScope: boolean
+  // changed to `rulesVisiblity` set during parsing
+  // leakVariablesIntoScope: boolean
   mathMode: MathMode
   unitMode: UnitMode
   isModule: boolean

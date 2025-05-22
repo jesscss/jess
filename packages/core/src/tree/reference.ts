@@ -102,10 +102,10 @@ export class Reference extends Selector<string | Interpolated, ReferenceOptions>
     let returnVal: any
     switch (type) {
       case 'variable':
-        returnVal = context.rulesContext.getDeclaration('VarDeclaration', key, opts)
+        returnVal = context.rulesContext.findDeclaration(key, 'VarDeclaration', opts)
         break
       case 'property':
-        returnVal = context.rulesContext.getDeclaration('Declaration', key, opts)
+        returnVal = context.rulesContext.findDeclaration(key, 'Declaration', opts)
         break
       // case 'mixin':
       //   returnVal = context.rulesContext.getMixin(key, opts)

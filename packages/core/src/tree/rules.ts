@@ -52,6 +52,41 @@ type QueueItem = {
 
 type QueueMap = Map<Priority, Set<QueueItem>>
 
+export type RulesOptions = {
+  /**
+   * public   = all members are considered in lookup algorithms
+   * optional = members are only considered if not found in the lookup tree
+   * private  = can't be looked up
+   *
+   * Different types may have different defaults
+   *
+   * For Less:
+   *   - When mixins are parsed, their rules body is set to:
+   *     visibility: {
+   *       Ruleset: 'public',
+   *       Declaration: 'public',
+   *       VarDeclaration: 'optional',
+   *       Mixin: 'public'
+   *     }
+   *  - When detached rulesets are parsed, their rules body is set to:
+   *    visibility: {
+   *      Ruleset: 'public',
+   *      Declaration: 'public',
+   *      VarDeclaration: 'private', <-- the one notable difference
+   *      Mixin: 'public'
+   *    }
+   * @note - The reason Less has "optionality" is likely because it tries
+   * to eagerly resolve variables, so even though its in a
+   * child scope, it will still be considered if nothing else in the
+   * scope is found.
+   *
+   * Note that right now, only Declarations being set to "optional"
+   * are supported. Everything else must be public or private.
+   */
+  rulesVisibility?: Record<string, 'public' | 'optional' | 'private'>
+  readonly?: boolean
+}
+
 /**
  * The class representing a "declaration list".
  * CSS calls it this even though CSS Nesting
@@ -65,7 +100,7 @@ type QueueMap = Map<Priority, Set<QueueItem>>
  * background-color: white;
  */
 
-export class Rules extends Node<Node[]> {
+export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   declare value: Node[]
   declare data: NodeData<Node[]>
   type = 'Rules'
@@ -73,11 +108,9 @@ export class Rules extends Node<Node[]> {
   override allowRuleRoot = true
   override allowRoot = true
 
-  private _scope: Scope | undefined
-
   constructor(
     value: Node[],
-    options?: NodeOptions,
+    options?: RulesOptions & NodeOptions,
     location?: LocationInfo,
     treeContext?: TreeContext
   ) {
@@ -501,11 +534,19 @@ export class Rules extends Node<Node[]> {
    *
    * @todo - Figure out the readonly part
    */
-  register(node: Node, leaky = false, readonly = false) {
+  register(node: Node, options?: Record<string, any>) {
     if (isNode(node, 'Rules')) {
+      let rulesVisibility = options?.rulesVisibility ?? node.options?.rulesVisibility ?? {}
+
+      /** These are public by default */
+      rulesVisibility.Declaration ??= 'public'
+      rulesVisibility.Ruleset ??= 'public'
+
+      /** Either one set as readonly will win */
+      let readonly = Boolean(options?.readonly || node.options?.readonly)
       this.rulesSet.push({
         node,
-        leaky,
+        rulesVisibility,
         readonly
       })
     } else if (isNode(node, 'Declaration')) {
@@ -513,17 +554,16 @@ export class Rules extends Node<Node[]> {
       if (node.options?.setDefined) {
         let key = node.value.name.toString()
         /** Don't set within sibling rules */
-        let result = this.find(key, node.type, true, node.index)
+        let result = this.findDeclaration(key, node.type as 'Declaration', undefined, true, node.index)
         if (result) {
-          let entry = result.first!
-          if (entry.options?.readonly) {
+          if (result.options?.readonly) {
             throw new ReferenceError(`${key} is readonly`)
           }
           /** Over-write value */
-          entry.value.value = node.value.value.copy()
+          result.value.value = node.value.value.copy()
           /** !important always wins */
-          let important = entry.value.important || node.value.important
-          entry.value.important = important
+          let important = result.value.important || node.value.important
+          result.value.important = important
         } else {
           throw new ReferenceError(`${key} is not defined`)
         }
@@ -538,92 +578,6 @@ export class Rules extends Node<Node[]> {
     }
   }
 
-  /**
-   * Finds _all_ matching nodes in the scope chain. We have to return
-   * all nodes because we may need to sort the order if we have nested
-   * rules, as well as evaluate cascading assignments, like ?: or +:
-   */
-  find(
-    key: string,
-    type: string,
-    searchParents: boolean = true,
-    start?: number
-  ) {
-    if (start !== undefined) {
-      /**
-       * We do this so we start looking above the given position and don't
-       * return the current node.
-       */
-      start -= 1
-    }
-    let rules: Node | undefined = this
-    /** Return nodes */
-    let result: Queue<Declaration> | undefined
-
-    while (rules) {
-      let list = (rules as Rules).declarationMap.get(key)
-      if (!list) {
-        if (!searchParents) {
-          return
-        }
-        do {
-          rules = rules?.parent
-        } while (rules && !(rules instanceof Rules))
-
-        continue
-      }
-      let bestMatch: number | undefined
-      if (start !== undefined) {
-        /** Binary search the queue to find a starting position */
-        let left = 0
-        let right = list.length - 1
-
-        while (left <= right) {
-          let mid = Math.floor((left + right) / 2)
-          let midVal = list.at(mid)!.index
-          if (midVal === start) {
-            bestMatch = mid
-            break
-          }
-          if (midVal < start) {
-            bestMatch = mid
-            left = mid + 1
-          } else {
-            right = mid - 1
-          }
-        }
-        if (bestMatch === undefined) {
-          if (!searchParents) {
-            return
-          }
-          do {
-            rules = rules?.parent
-          } while (rules && !(rules instanceof Rules))
-          continue
-        }
-      } else {
-        /** We didn't have a start position, so the whole list matches */
-        bestMatch = list.length - 1
-      }
-      result ??= new Queue()
-      for (let i = bestMatch; i >= 0; i--) {
-        let entry = list.at(i)!
-        if (entry.type === type) {
-          result.push(entry)
-        }
-      }
-
-      if (!searchParents) {
-        return result
-      }
-
-      do {
-        rules = rules?.parent
-      } while (rules && !(rules instanceof Rules))
-    }
-    return result
-  }
-
   push(node: Node) {
     (this.data.data as ArrayList<Node>).push(node)
     this.register(node)
@@ -633,57 +587,127 @@ export class Rules extends Node<Node[]> {
     return (this.data.data as ArrayList<Node>).items[index]
   }
 
-  private _get(key: string, type: string, opts?: GetterOptions, start?: number) {
-    let result = (this.find(key, type, true, start) ?? new Queue())
-    let searchLeaky = type === 'VarDeclaration' || 'Mixin' || 'Ruleset'
+  /**
+   * Find the closest declaration from start, in reverse order,
+   * using a binary search
+   */
+  private _findClosestByStart(list: Queue<Declaration>, start?: number) {
+    if (start === undefined) {
+      return list.last
+    }
+    /**
+     * We do this so we start looking above the given position and don't
+     * return the current node.
+     */
+    start -= 1
+    let bestMatch: number | undefined
 
-    let rulesSet = this._rulesSet
-    if (rulesSet) {
-      for (let entry of rulesSet) {
-        if (start !== undefined && entry.node.index > start) {
-          continue
-        }
-        let localResult = entry.node.find(key, type, false)
-        if (localResult) {
-          /** Add every entry of the queue in its current position */
-          for (let item of localResult) {
-            result.push(item)
-          }
-        }
+    /** Binary search the queue to find a starting position */
+    let left = 0
+    let right = list.length - 1
+
+    while (left <= right) {
+      let mid = Math.floor((left + right) / 2)
+      let midVal = list.at(mid)!.index
+      if (midVal === start) {
+        bestMatch = mid
+        break
+      }
+      if (midVal < start) {
+        bestMatch = mid
+        left = mid + 1
+      } else {
+        right = mid - 1
       }
     }
 
-    if (!result.length) {
-      return result
-    }
-
-    if (opts?.filter) {
-      result = result.filter(opts.filter)
-    }
-
-    /** Sort these so they are evaluated in the proper order */
-    result.sort((a, b) => b.index - a.index)
-
-    return result
+    return bestMatch !== undefined ? list.at(bestMatch) : undefined
   }
 
   /**
-   * Search local scope for a property, looking at any merging rules.
+   * Get declarations from map and nested rulesets.
+   * This will return a list of all matching nodes.
+   *
+   * @todo - The pattern for mixins will be similar, no?
    */
-  getDeclaration(
-    type: 'Declaration' | 'VarDeclaration',
+  findDeclaration(
     key: string,
-    opts: GetterOptions = {},
+    type: 'VarDeclaration' | 'Declaration' = 'VarDeclaration',
+    opts?: GetterOptions,
+    searchParents: boolean = true,
     start?: number
-  ) {
-    let result = this._get(key, type, opts, start)
-    if (!result.length) {
-      return
+  ): Declaration | undefined {
+    let declCandidate: Declaration | undefined
+    let rules: Rules | undefined = this
+    let isPublic = false
+    while (rules) {
+      if (rules._declarationMap) {
+        let list = rules.declarationMap.get(key)
+        if (list) {
+          list = list.filter(
+            n =>
+              n.type === type
+              && (
+                !opts?.filter
+                || opts.filter(n)
+              )
+          )
+        }
+        if (list) {
+          declCandidate = rules._findClosestByStart(list, start)
+          isPublic = true
+        }
+      }
+
+      if (rules._rulesSet) {
+        let { rulesSet } = rules
+        /**
+         * Only consider rules after the last found declaration (if relevant)
+         * and before the start position (if relevant)
+         */
+        rulesSet = rulesSet.filter(n => {
+          return (!declCandidate || n.node.index > declCandidate.index)
+              && (start === undefined || n.node.index < start)
+              && (
+                n.rulesVisibility?.[type] === 'optional'
+                || n.rulesVisibility?.[type] === 'public'
+              )
+        })
+
+        let length = rulesSet.length
+        if (length) {
+          for (let i = length - 1; i >= 0; i--) {
+            let r = rulesSet.at(i)!
+            let result = r.node.findDeclaration(key, type, opts, false)
+            if (result) {
+              /**
+               * If it's public, and it's the lower-most declaration,
+               * it wins.
+               */
+              if (r.rulesVisibility?.[type] === 'public') {
+                return result
+              }
+              /**
+               * The declaration is optional, so we need to keep searching.
+               * If we already have a candidate, that means we have a local
+               * value which should win.
+               */
+              if (!declCandidate) {
+                declCandidate = result
+              }
+            }
+          }
+        }
+      }
+      if (isPublic || !searchParents) {
+        return declCandidate
+      }
+
+      do {
+        rules = rules?.parent as Rules
+      } while (rules && !(rules instanceof Rules))
     }
-
-    let node = result.first
-
-    return node
+    return declCandidate
   }
 
   /**
@@ -772,7 +796,10 @@ export class Rules extends Node<Node[]> {
           }
           let result!: Node
           result = await rule[method](context)
-          rules.data.setAt(i, result)
+          if (result !== rule) {
+            rules.data.setAt(i, result)
+            queue.setAt(i, [i, result])
+          }
           if (method === 'preEval' && !rule.preEvaluated) {
             rules.register(result, leakVariablesIntoScope)
           }
@@ -943,14 +970,12 @@ type IndexKey = `${NodeType}${string}`
 
 interface RulesEntry {
   node: Rules
+  rulesVisibility?: RulesOptions['rulesVisibility']
   /**
-   * Variables and mixins can leak (can be looked up / called)
+   * These are from use, from, and import statements. Can't be assigned with $$
+   * (verify that this is not possible with SCSS).
    */
-  leaky?: boolean
-  /**
-   * These are from JS import statements
-   */
-  readonly?: boolean
+  readonly?: RulesOptions['readonly']
 }
 
 interface DeclarationEntry {
