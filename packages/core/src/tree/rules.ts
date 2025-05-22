@@ -78,7 +78,10 @@ export type RulesOptions = {
    * @note - The reason Less has "optionality" is likely because it tries
    * to eagerly resolve variables, so even though its in a
    * child scope, it will still be considered if nothing else in the
-   * scope is found.
+   * scope is found. I'm guessing this is because "overwriting" a local
+   * variable from something like a mixin call would be counter-intuitive,
+   * but at the same time, I guess Alexis thought that eagerly resolving
+   * the variable might be useful.
    *
    * Note that right now, only Declarations being set to "optional"
    * are supported. Everything else must be public or private.
