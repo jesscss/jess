@@ -117,6 +117,12 @@ module.exports = {
             format: ['camelCase']
           },
           {
+            selector: 'memberLike',
+            modifiers: ['protected'],
+            leadingUnderscore: 'allow',
+            format: ['camelCase']
+          },
+          {
             selector: 'typeLike',
             format: ['PascalCase']
           },

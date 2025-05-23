@@ -1,7 +1,12 @@
+/**
+ * This file needs a lot of cleanup, as it has a lot of collection experiments.
+ */
+
 import type { ValueOf, IfNever } from 'type-fest'
 import type { Node } from '../node'
 import { Deque } from 'data-structure-typed'
 import isObject from 'lodash-es/isObject'
+import { isArray } from 'lodash-es'
 
 /** This is just to make the following class more readable */
 // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -77,9 +82,9 @@ export class LinkedList {
     yield * this._reverse(false, start)
   }
 
-  _reverse(asEntries?: false, start?: NODE_INDEX): Generator<NODE_INDEX, void, any>
-  _reverse(asEntries: true, start?: NODE_INDEX): Generator<[NODE_INDEX, NODE_INDEX], void, any>
-  * _reverse(asEntries = false, start = this.last) {
+  private _reverse(asEntries?: false, start?: NODE_INDEX): Generator<NODE_INDEX, void, any>
+  private _reverse(asEntries: true, start?: NODE_INDEX): Generator<[NODE_INDEX, NODE_INDEX], void, any>
+  private * _reverse(asEntries = false, start = this.last) {
     if (!this._items.has(start!)) {
       throw new Error('Invalid start index')
     }
@@ -228,7 +233,7 @@ export class LinkedList {
  * An abstraction around an array with some useful helper methods,
  * some of which are set-like.
  */
-export class ArrayList<T = any> {
+export class ArrayListOld<T = any> {
   /** Assumes unique objects in this array */
   private _positionMap: WeakMap<object, number> | undefined
   private get positionMap(): WeakMap<object, number> {
@@ -345,8 +350,259 @@ export class ArrayList<T = any> {
   }
 }
 
-/** A more efficient map (for our needs), with a simple object backing */
+interface DataCollection<
+  T,
+  Items,
+  K,
+  V,
+  P extends (value: V) => unknown = (value: V) => V
+> {
+  items: Items
+  toRaw(): T
+  clone(): this
+  clear(): void
+  [Symbol.iterator](): Generator<ReturnType<P>>
+  entries(): Generator<[K, ReturnType<P>]>
+  reverseEntries(start?: number): Generator<[K, ReturnType<P>]>
+}
+
+export class ArrayList<
+  T = any,
+  P extends (value: T) => unknown = (value: T) => T
+> implements DataCollection<T[], T[], number, T, P> {
+  private _items: T[] | undefined
+  get items(): T[] {
+    this._processValues()
+    return (this._items ??= [])
+  }
+
+  private _processValues() {
+    if (!this._processed) {
+      this._processed = true
+      let { _processValue } = this
+      if (_processValue) {
+        let { items } = this
+        let length = items.length
+        for (let i = 0; i < length; i++) {
+          let value = items[i]!
+          items[i] = _processValue(value) as T
+        }
+      }
+    }
+  }
+
+  private readonly _processValue: P
+  private _processed = false
+
+  constructor(items?: T[], processValue?: P) {
+    this._items = items
+    this._processValue = processValue ?? ((value: T) => value) as P
+  }
+
+  toRaw(): T[] {
+    return this.items
+  }
+
+  clone(): this {
+    let clone: this = this.constructor(
+      isArray(this._items) ? [...this._items] : this._items,
+      this._processValue
+    )
+    clone._processed = this._processed
+
+    return clone
+  }
+
+  [Symbol.iterator](): Generator<ReturnType<P>, any, any> {
+    throw new Error('Method not implemented.')
+  }
+
+  clear() {
+    this.items.length = 0
+  }
+
+  at(index: number) {
+    this._processValues()
+    return this.items[index]
+  }
+
+  set(index: number, value: T) {
+    this._processValues()
+    this.items[index] = this._processValue(value) as T
+  }
+
+  push(...items: T[]) {
+    for (let item of items) {
+      this.items.push(this._processValue(item) as T)
+    }
+  }
+
+  pop() {
+    return this.items.pop()
+  }
+
+  * entries(): Generator<[number, ReturnType<P>]> {
+    this._processValues()
+    let { items } = this
+    let length = items.length
+    for (let i = 0; i < length; i++) {
+      yield [i, items[i]! as ReturnType<P>]
+    }
+  }
+
+  * reverseEntries(start = this.items.length - 1): Generator<[number, ReturnType<P>]> {
+    this._processValues()
+    let { items } = this
+    for (let i = start; i > -1; i--) {
+      yield [i, items[i]! as ReturnType<P>]
+    }
+  }
+}
+
+/**
+ * Map backing of an object or map with lazy map creation and lazy processing.
+ */
 export class HashMap<
+  T extends Record<string, unknown>,
+  P extends (value: ValueOf<T>) => unknown = (value: ValueOf<T>) => ValueOf<T>
+> implements DataCollection<T, Map<keyof T, ReturnType<P>>, keyof T, ValueOf<T>, P> {
+  private _items: Map<keyof T, ReturnType<P>> | undefined
+  get items(): Map<keyof T, ReturnType<P>> {
+    this._processValues()
+    let { _items } = this
+    if (_items) {
+      return _items
+    }
+    let { _source } = this
+    /** Create map lazily */
+    return (this._items = _source instanceof Map
+      ? _source as Map<keyof T, ReturnType<P>>
+      : new Map(Object.entries(_source)) as Map<keyof T, ReturnType<P>>
+    )
+  }
+
+  private _keys: string[] | undefined
+  get keys(): string[] {
+    return (this._keys ??= [])
+  }
+
+  get size() {
+    return this._keys?.length ?? 0
+  }
+
+  private readonly _processValue: P
+  private readonly _source: T | Map<keyof T, ValueOf<T>>
+  private _modified = false
+  private _processed = false
+
+  constructor(
+    items: T | Map<keyof T, ValueOf<T>>,
+    processValue?: P
+  ) {
+    this._source = items
+    this._processValue = processValue ?? ((value: ValueOf<T>) => value) as P
+  }
+
+  clear(): void {
+    this._modified = false
+    this._processed = false
+    this._items?.clear()
+    let { _keys } = this
+    if (_keys) {
+      _keys.length = 0
+    }
+  }
+
+  /**
+   * This is run lazily for any get / set.
+   */
+  private _processValues() {
+    if (!this._processed) {
+      this._processed = true
+      let { _processValue } = this
+      if (_processValue) {
+        let i: IteratorResult<[keyof T, ValueOf<T>], undefined>
+        let map = this.items
+        let entries = (map as Map<keyof T, ValueOf<T>>).entries()
+        while ((i = entries.next(), i.done !== true)) {
+          let entry = i.value
+          map.set(entry[0], _processValue(entry[1]) as ReturnType<P>)
+        }
+      }
+    }
+  }
+
+  toRaw(): T {
+    let { _source, _modified, _items } = this
+    if (!_modified) {
+      return _source instanceof Map ? Object.fromEntries(_source) as T : _source
+    }
+    return Object.fromEntries(_items!) as T
+  }
+
+  clone(): this {
+    let clone: this = this.constructor(this._source, this._processValue)
+    let { _modified } = this
+    clone._modified = _modified
+    clone._processed = this._processed
+    clone._keys = this._keys
+
+    if (_modified) {
+      let i: IteratorResult<[keyof T, ReturnType<P>], undefined>
+      let map = this.items
+      let entries = map.entries()
+      while ((i = entries.next(), i.done !== true)) {
+        let [key, val] = i.value
+        /**
+         * @todo - Account for Queue
+         */
+        clone.set(key, (val instanceof ArrayList ? val.clone() : val as ValueOf<T>) as ValueOf<T>)
+      }
+    }
+    return clone
+  }
+
+  /** Since we are only allowing valid keys, then only actual value types are returned */
+  get(key: keyof T): ReturnType<P> {
+    this._processValues()
+    return this.items.get(key)!
+  }
+
+  set(key: keyof T, value: ValueOf<T>) {
+    this._modified = true
+    this._processValues()
+    if (!this.keys.includes(key as string)) {
+      this.keys.push(key as string)
+    }
+    this.items.set(key, this._processValue(value) as ReturnType<P>)
+  }
+
+  has(key: string) {
+    return this.items.has(key)
+  }
+
+  * [Symbol.iterator](): Generator<ReturnType<P>> {
+    this._processValues()
+    yield * this.items.values()
+  }
+
+  * entries(): Generator<[keyof T, ReturnType<P>]> {
+    this._processValues()
+    yield * this.items.entries()
+  }
+
+  * reverseEntries(start = this.size): Generator<[keyof T, ReturnType<P>]> {
+    this._processValues()
+    let { items } = this
+    for (let i = start; i > -1; i--) {
+      let key = this.keys[i] as keyof T
+      yield [key, items.get(key)!]
+    }
+  }
+}
+
+/** A more efficient map (for our needs), with a simple object backing */
+export class HashMapOld<
   T extends Record<string, unknown>
 > {
   keys: ArrayList<keyof T>
@@ -511,7 +767,7 @@ export class IndexedTrie<
 > {
   static readonly ROOT = ROOT
 
-  _keySet: Set<string | number> | undefined
+  private _keySet: Set<string | number> | undefined
   get keySet() {
     return (this._keySet ??= new Set())
   }

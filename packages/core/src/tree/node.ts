@@ -613,7 +613,7 @@ Object.defineProperty(Node.prototype, 'value', {
     const data = this.data.data
 
     if (data instanceof HashMap) {
-      return data.items
+      return data.toRaw()
     }
 
     if (data instanceof ArrayList) {
@@ -774,7 +774,7 @@ export class NodeData<Type = any, T extends IfAny<Type, any, NarrowTypes<Type>> 
 
   setAllData(value: NodeInValue<T>) {
     const process = this._getNodeValue.bind(this)
-    if (value && isPlainObject(value)) {
+    if (value && (value instanceof Map || isPlainObject(value))) {
       this.data = new HashMap(value as any, process) as NodeDataData<T>
     } else if (isArray(value)) {
       this.data = new ArrayList(value as any, process) as NodeDataData<T>

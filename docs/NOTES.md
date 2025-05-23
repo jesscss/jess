@@ -1,3 +1,8 @@
+# May 23, 2025
+
+- Replaced ArrayList and HashMap
+- All tests passing
+
 # May 22, 2025
 
 - Solved issues with evaluation
@@ -31,7 +36,7 @@ $if ($test = true) {
 
 $if ($test = true)
   width: 30px;
-$else
+$else <!-- add $else to parsing options after $if
   width: 40px;
 
 
