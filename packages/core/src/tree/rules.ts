@@ -54,9 +54,10 @@ type QueueMap = Map<Priority, Set<QueueItem>>
 
 export type RulesOptions = {
   /**
-   * public   = all members are considered in lookup algorithms
-   * optional = members are only considered if not found in the lookup tree
-   * private  = can't be looked up
+   * - public   = all members are considered in lookup algorithms
+   * - optional = members are only considered if not found in the lookup tree
+   * - private  = can't be looked up
+   * - local    = only visible in the current scope
    *
    * Different types may have different defaults
    *
@@ -85,9 +86,19 @@ export type RulesOptions = {
    *
    * Note that right now, only Declarations being set to "optional"
    * are supported. Everything else must be public or private.
+   *
+   * For Imports, the rules body is set to:
+   *     visibility: {
+   *       Ruleset: 'public',
+   *       Declaration: 'public',
+   *       VarDeclaration: 'public',
+   *       Mixin: 'public'
+   *    }
    */
   rulesVisibility?: Record<string, 'public' | 'optional' | 'private'>
   readonly?: boolean
+  /** all imports other than classic `@import` set returned rules to local */
+  local?: boolean
 }
 
 /**
@@ -130,7 +141,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let { value } = this
     let outputs = value
       .map((n, i) => {
-        let initial = n.toString(depth, '\n') as string
+        let initial = n.toString(depth, i === 0 && depth !== 0 ? '\n' : undefined) as string
         if (n.requiredSemi && n.options.semi !== false && value.length >= i) {
           initial += ';'
         }
@@ -631,14 +642,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * Get declarations from map and nested rulesets.
    * This will return a list of all matching nodes.
    *
-   * @todo - The pattern for mixins will be similar, no?
+   * @todo - The pattern for mixins will be similar, no? Can this be
+   * re-used / abstracted?
    */
   findDeclaration(
     key: string,
     type: 'VarDeclaration' | 'Declaration' = 'VarDeclaration',
     opts?: GetterOptions,
     searchParents: boolean = true,
-    start?: number
+    start?: number,
+    local: boolean = false
   ): Declaration | undefined {
     let declCandidate: Declaration | undefined
     let rules: Rules | undefined = this
@@ -671,6 +684,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         rulesSet = rulesSet.filter(n => {
           return (!declCandidate || n.node.index > declCandidate.index)
               && (start === undefined || n.node.index < start)
+              && (!(local && Boolean(n.node.options?.local)))
               && (
                 n.rulesVisibility?.[type] === 'optional'
                 || n.rulesVisibility?.[type] === 'public'
@@ -681,7 +695,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (length) {
           for (let i = length - 1; i >= 0; i--) {
             let r = rulesSet.at(i)!
-            let result = r.node.findDeclaration(key, type, opts, false)
+            /** Locals can be searched once but not twice */
+            let newLocal = local || Boolean(r.node.options?.local)
+            let result = r.node.findDeclaration(key, type, opts, false, undefined, newLocal)
             if (result) {
               /**
                * If it's public, and it's the lower-most declaration,
@@ -721,8 +737,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return () => {}
   }
 
-  /* Unlike `eval`, preEval of rules within a Rules instance
-   * happens linearly, which helps us assign sequential indexes.
+  /**
+   * Unlike `eval`, preEval of rules within a Rules instance
+   * happens linearly, which helps us assign sequential indexes
+   * while traversing nested rules. The indexes will help us
+   * when searching "upwards" (Sass-style).
    */
   override async preEval(context: Context): Promise<this> {
     if (!this.preEvaluated) {

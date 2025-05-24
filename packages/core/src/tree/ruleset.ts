@@ -52,9 +52,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>> {
     }
     let output = ''
     output += `${selector.toString(depth, undefined, ' ')}{`
-    if (rules.pre === undefined) {
-      output += '\n'
-    }
     output += `${rules.toString(depth + 1)}`
     if (rules.post === undefined) {
       output += '\n'

@@ -366,37 +366,33 @@ interface DataCollection<
   reverseEntries(start?: number): Generator<[K, ReturnType<P>]>
 }
 
+/**
+ * Not sure if this is still needed.
+ */
 export class ArrayList<
   T = any,
   P extends (value: T) => unknown = (value: T) => T
 > implements DataCollection<T[], T[], number, T, P> {
   private _items: T[] | undefined
   get items(): T[] {
-    this._processValues()
     return (this._items ??= [])
   }
 
-  private _processValues() {
-    if (!this._processed) {
-      this._processed = true
-      let { _processValue } = this
-      if (_processValue) {
-        let { items } = this
-        let length = items.length
-        for (let i = 0; i < length; i++) {
-          let value = items[i]!
-          items[i] = _processValue(value) as T
-        }
-      }
-    }
+  get length() {
+    return this._items?.length ?? 0
+  }
+
+  get size() {
+    return this._items?.length ?? 0
   }
 
   private readonly _processValue: P
-  private _processed = false
 
   constructor(items?: T[], processValue?: P) {
-    this._items = items
     this._processValue = processValue ?? ((value: T) => value) as P
+    if (items) {
+      this.push(...items)
+    }
   }
 
   toRaw(): T[] {
@@ -408,7 +404,6 @@ export class ArrayList<
       isArray(this._items) ? [...this._items] : this._items,
       this._processValue
     )
-    clone._processed = this._processed
 
     return clone
   }
@@ -422,12 +417,10 @@ export class ArrayList<
   }
 
   at(index: number) {
-    this._processValues()
-    return this.items[index]
+    return this._items?.[index]
   }
 
   set(index: number, value: T) {
-    this._processValues()
     this.items[index] = this._processValue(value) as T
   }
 
@@ -442,7 +435,6 @@ export class ArrayList<
   }
 
   * entries(): Generator<[number, ReturnType<P>]> {
-    this._processValues()
     let { items } = this
     let length = items.length
     for (let i = 0; i < length; i++) {
@@ -451,14 +443,21 @@ export class ArrayList<
   }
 
   * reverseEntries(start = this.items.length - 1): Generator<[number, ReturnType<P>]> {
-    this._processValues()
     let { items } = this
     for (let i = start; i > -1; i--) {
       yield [i, items[i]! as ReturnType<P>]
     }
   }
 }
-
+export const last = <T>(list: T[] | ArrayList<T>): T | undefined => {
+  if (isArray(list)) {
+    return list[list.length - 1]
+  }
+  if (list instanceof ArrayList) {
+    return list.at(list.size - 1)
+  }
+  return undefined
+}
 /**
  * Map backing of an object or map with lazy map creation and lazy processing.
  */
@@ -468,7 +467,6 @@ export class HashMap<
 > implements DataCollection<T, Map<keyof T, ReturnType<P>>, keyof T, ValueOf<T>, P> {
   private _items: Map<keyof T, ReturnType<P>> | undefined
   get items(): Map<keyof T, ReturnType<P>> {
-    this._processValues()
     let { _items } = this
     if (_items) {
       return _items
@@ -493,7 +491,6 @@ export class HashMap<
   private readonly _processValue: P
   private readonly _source: T | Map<keyof T, ValueOf<T>>
   private _modified = false
-  private _processed = false
 
   constructor(
     items: T | Map<keyof T, ValueOf<T>>,
@@ -501,11 +498,11 @@ export class HashMap<
   ) {
     this._source = items
     this._processValue = processValue ?? ((value: ValueOf<T>) => value) as P
+    this._processValues()
   }
 
   clear(): void {
     this._modified = false
-    this._processed = false
     this._items?.clear()
     let { _keys } = this
     if (_keys) {
@@ -513,21 +510,15 @@ export class HashMap<
     }
   }
 
-  /**
-   * This is run lazily for any get / set.
-   */
   private _processValues() {
-    if (!this._processed) {
-      this._processed = true
-      let { _processValue } = this
-      if (_processValue) {
-        let i: IteratorResult<[keyof T, ValueOf<T>], undefined>
-        let map = this.items
-        let entries = (map as Map<keyof T, ValueOf<T>>).entries()
-        while ((i = entries.next(), i.done !== true)) {
-          let entry = i.value
-          map.set(entry[0], _processValue(entry[1]) as ReturnType<P>)
-        }
+    let { _processValue } = this
+    if (_processValue) {
+      let i: IteratorResult<[keyof T, ValueOf<T>], undefined>
+      let map = this.items
+      let entries = (map as Map<keyof T, ValueOf<T>>).entries()
+      while ((i = entries.next(), i.done !== true)) {
+        let entry = i.value
+        map.set(entry[0], _processValue(entry[1]) as ReturnType<P>)
       }
     }
   }
@@ -544,7 +535,6 @@ export class HashMap<
     let clone: this = this.constructor(this._source, this._processValue)
     let { _modified } = this
     clone._modified = _modified
-    clone._processed = this._processed
     clone._keys = this._keys
 
     if (_modified) {
@@ -564,13 +554,11 @@ export class HashMap<
 
   /** Since we are only allowing valid keys, then only actual value types are returned */
   get(key: keyof T): ReturnType<P> {
-    this._processValues()
     return this.items.get(key)!
   }
 
   set(key: keyof T, value: ValueOf<T>) {
     this._modified = true
-    this._processValues()
     if (!this.keys.includes(key as string)) {
       this.keys.push(key as string)
     }
@@ -582,17 +570,14 @@ export class HashMap<
   }
 
   * [Symbol.iterator](): Generator<ReturnType<P>> {
-    this._processValues()
     yield * this.items.values()
   }
 
   * entries(): Generator<[keyof T, ReturnType<P>]> {
-    this._processValues()
     yield * this.items.entries()
   }
 
   * reverseEntries(start = this.size): Generator<[keyof T, ReturnType<P>]> {
-    this._processValues()
     let { items } = this
     for (let i = start; i > -1; i--) {
       let key = this.keys[i] as keyof T

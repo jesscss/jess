@@ -72,6 +72,13 @@ export interface TreeContextOptions extends ContextOptions {
 
   isModule?: boolean
 
+  file?: {
+    name: string
+    path: string
+    fullPath: string
+    // contents: string[]
+  }
+
   [k: string]: any
 }
 
@@ -120,15 +127,10 @@ export class TreeContext implements TreeContextOptions {
   unitMode: UnitMode
   isModule: boolean
 
-  file?: {
-    name: string
-    path: string
-    // contents: string[]
-  }
-
   /** Current scope while evaluating */
   scope: Scope | undefined
 
+  file?: TreeContextOptions['file']
   /**
    * The plugin that created this tree. It will have first dibs
    * to resolve any imports.
@@ -148,13 +150,15 @@ export class TreeContext implements TreeContextOptions {
       mathMode,
       unitMode,
       isModule,
+      file,
       ...rest
     } = opts
     this.hoistDeclarations = hoistDeclarations ?? false
-    this.leakVariablesIntoScope = leakVariablesIntoScope ?? false
+    // this.leakVariablesIntoScope = leakVariablesIntoScope ?? false
     this.mathMode = mathMode ?? MathMode.PARENS_DIVISION
     this.unitMode = unitMode ?? UnitMode.STRICT
     this.isModule = isModule ?? false
+    this.file = file
     // this.scope = scope ?? new Scope(parentScope)
     this.opts = rest
   }
@@ -218,7 +222,7 @@ export class Context {
    * The ruleset (qualified rule) frames. This is used to resolve
    * '&' when we need to.
    */
-  frames = new Stack<Ruleset<any>>()
+  frames: Array<Ruleset<any>> = []
 
   /** Keeps track of the indention level */
   indent = 0

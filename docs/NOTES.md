@@ -1,3 +1,8 @@
+# May 24, 2025
+- Added the ability to look in a `@use` but not a `@use` child of `@use`
+- Rules tests passing again, including basic nested rules serialization
+- Started back on Ampersand tests
+
 # May 23, 2025
 
 - Replaced ArrayList and HashMap

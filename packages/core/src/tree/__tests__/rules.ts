@@ -4,7 +4,7 @@ import {
   ruleset,
   sel,
   el,
-  list,
+  sellist,
   rules,
   decl,
   vardecl,
@@ -18,7 +18,7 @@ import {
   AssignmentType,
   VarDeclaration
 } from '..'
-import { Context } from '../../context'
+import { Context, TreeContext } from '../../context'
 
 let context: Context
 
@@ -274,46 +274,48 @@ describe('Rules', () => {
         expect(`${getVar(node, 'one', {}, node.at(2)?.index)}`).toBe('$$one: two')
         expect(`${getVar(node, 'one', {}, 10)}`).toBe('$one: three')
       })
+
+      it('won\'t find variables in sub-rules of local rules', async () => {
+        let node = rules([ // root.jess
+          rules([ // @use 'child1.jess'
+            vardecl({ name: 'foo', value: any('bar') }),
+            rules([ // @use 'child2.jess'
+              vardecl({ name: 'one', value: any('two') })
+            ], {
+              local: true,
+              rulesVisibility: { VarDeclaration: 'public' }
+            })
+          ], {
+            local: true,
+            rulesVisibility: { VarDeclaration: 'public' }
+          })
+        ])
+        node = await node.eval(context) as Rules
+
+        // child1.jess should see child2.jess's vars because it owns the `@use`
+        expect(`${getVar(node.at(0) as Rules, 'one')}`).toBe('$one: two')
+        // child1.jess can still see its own vars
+        expect(`${getVar(node.at(0) as Rules, 'foo')}`).toBe('$foo: bar')
+        // root.jess can see child1.jess's vars but not child2.jess's
+        expect(`${getVar(node, 'foo')}`).toBe('$foo: bar')
+        expect(getVar(node, 'one')).toBeUndefined()
+      })
     })
   })
 
-  // it('should merge rulesets into rules', async () => {
-  //   /** We need a root node to bubble rules */
-  //   let node = root([
-  //     ruleset({
-  //       selector: list([sel([el('.collapse')])]),
-  //       rules: rules([
-  //         decl({ name: 'chungus', value: spaced([any('foo'), any('bar')]) }),
-  //         rules([
-  //           decl({ name: 'bird', value: spaced([any('in'), any('hand')]) })
-  //         ])
-  //       ])
-  //     })
-  //   ])
-  //   let evald = await node.eval(context)
-  //   expect(`${evald}`).toBe('.collapse {\n  chungus: foo bar;\n  bird: in hand;\n}\n')
-  // })
-
-  // it('should output var() values', () => {
-  //   context.opts.dynamic = true
-  //   let node = rules([
-  //     decl({ name: 'a', value: spaced([js('obj.value'), call({ name: 'func', value: js('foo.bar') })]) })
-  //   ])
-  //   node.toModule(context, out)
-  //   expect(out.toString()).toBe(
-  //     '$J.rules(\n  (() => {\n    const $OUT = []\n    $OUT.push($J.decl({\n      name: $J.any("a"),\n      value: $J.spaced([$J.call({\n        name: "var",\n        value: $J.list([\n          "--vtesting-0",\n          obj.value\n        ]),\n      }), $J.call({\n        name: "var",\n        value: $J.list([\n          "--vtesting-1",\n          $J.call({\n            name: "func",\n            value: foo.bar,\n            ref: () => func,\n          })\n        ]),\n      })])\n    }))\n    return $OUT\n  })()\n)'
-  //   )
-  // })
-
-  // it('should output --var declarations', () => {
-  //   context.opts.dynamic = true
-  //   let node = rules([
-  //     decl({ name: 'a', value: spaced([js('obj.value'), call({ name: 'func', value: js('foo.bar') })]) })
-  //   ])
-  //   context.isRuntime = true
-  //   node.toModule(context, out)
-  //   expect(out.toString()).toBe(
-  //     '$J.rules(\n  (() => {\n    const $OUT = []\n    $OUT.push($J.decl({\n      name: $J.any("--vtesting-0"),\n      value: obj.value\n    }))\n$OUT.push($J.decl({\n      name: $J.any("--vtesting-1"),\n      value: $J.call({\n        name: "func",\n        value: foo.bar,\n        ref: () => func,\n      })\n    }))\n    return $OUT\n  })()\n)'
-  //   )
-  // })
+  it('should flatten rules when serializing', async () => {
+    let node = rules([
+      ruleset({
+        selector: sellist([sel([el('.collapse')])]),
+        rules: rules([
+          decl({ name: 'chungus', value: spaced([any('foo'), any('bar')]) }),
+          rules([
+            decl({ name: 'bird', value: spaced([any('in'), any('hand')]) })
+          ])
+        ])
+      })
+    ])
+    let evald = await node.eval(context)
+    expect(`${evald}`).toBe('.collapse {\n  chungus: foo bar;\n  bird: in hand;\n}\n')
+  })
 })
