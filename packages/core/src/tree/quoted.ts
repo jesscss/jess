@@ -12,7 +12,7 @@ export type QuotedOptions = {
  * An quoted value
  */
 export class Quoted extends Node<string | Interpolated, QuotedOptions> {
-  declare value: string | Interpolated
+  declare value: string | General | Interpolated
   type = 'Quoted' as const
   shortType = 'quoted' as const
 
@@ -25,25 +25,23 @@ export class Quoted extends Node<string | Interpolated, QuotedOptions> {
 
   override valueOf() {
     const { value } = this
-    return value instanceof Node ? value.value.value : value
+    return value instanceof Node ? value.valueOf() : value
   }
 
   override async evalNode(context: Context): Promise<Node> {
-    return await this.evalIfNot(context, async () => {
-      let { value } = this
+    let { value } = this
+    if (value instanceof Node) {
+      value = (await value.eval(context))
+    }
+    if (this.options.escaped) {
       if (value instanceof Node) {
-        value = await value.eval(context)
+        return value
       }
-      if (this.options.escaped) {
-        if (value instanceof Node) {
-          return value.inherit(this)
-        }
-        return new General<'Anonymous'>(value).inherit(this)
-      }
-      let quoted = this.clone()
-      quoted.value = value
-      return quoted
-    })
+      return new General<'Anonymous'>(value)
+    }
+    let quoted = this.maybeClone(context)
+    quoted.value = value
+    return quoted
   }
 }
 export const quoted = defineType(Quoted, 'Quoted')

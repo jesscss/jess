@@ -31,7 +31,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   shortType = 'sel'
   /**
    * Essentially, a#id.class === a.class#id as being identical selectors,
-   * so we normalize groups and combinators 
+   * so we normalize groups and combinators
    *
    */
   override valueOf() {
@@ -65,7 +65,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
    * @todo - Re-write and simplify, now that we have a distinct CompoundSelector
    */
   override async evalNode(context: Context): Promise<ComplexSelector | SelectorList | Nil> {
-    let selector: ComplexSelector = this.clone()
+    let selector: ComplexSelector = this.maybeClone(context)
     let elements = [...selector.value] as ComplexSelectorValue
     selector.value = elements
 
@@ -75,7 +75,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       /**
        * Try to evaluate all selectors as if they are prepended by `&`
        */
-      if (!hasAmp && context.frames.size > 0) {
+      if (!hasAmp && context.frames.length > 0) {
         if (elements[0] instanceof Combinator) {
           elements.unshift(new Ampersand())
         } else {
@@ -133,7 +133,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
 
     /** @todo - Selector lists can have basic selectors */
     if (isNode(selector, 'SelectorList')) {
-      (selector as SelectorList).value.forEach(sel => { (sel).value = cleanElements(sel.value) })
+      selector.value.forEach(sel => { (sel).value = cleanElements(sel.value) })
     } else {
       selector.value = cleanElements(selector.value)
     }

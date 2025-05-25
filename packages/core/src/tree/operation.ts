@@ -27,7 +27,7 @@ export class Operation extends Node<OperationValue, OperationOptions> {
     let inCalc = this.options?.inCalc
     if (inCalc) {
       if (!this.evaluated) {
-        let node = this.clone()
+        let node = this.maybeClone(context)
         left = await left.eval(context)
         right = await right.eval(context)
         node.value = [left, op, right]
@@ -50,7 +50,7 @@ export class Operation extends Node<OperationValue, OperationOptions> {
         result.evaluated = true
         return result
       }
-      return this.clone()
+      return this.maybeClone(context)
     })
   }
 }

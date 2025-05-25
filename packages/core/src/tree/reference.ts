@@ -1,4 +1,4 @@
-import { defineType, Node } from './node'
+import { defineType, type Node } from './node'
 import type { Interpolated } from './interpolated'
 import { type Context } from '../context'
 import { cast } from './util/cast'
@@ -6,6 +6,7 @@ import { Declaration } from './declaration'
 import type { GetterOptions } from '../scope'
 import { General } from './general'
 import { Selector } from './selector'
+import { isNode } from './util'
 
 /**
  * The type is determined by syntax
@@ -89,7 +90,7 @@ export class Reference extends Selector<string | Interpolated, ReferenceOptions>
     let { value } = this
     let { type, fallbackValue, filter: originalFilter } = this.options
     let key: string
-    if (value instanceof Node) {
+    if (isNode(value)) {
       key = (await value.eval(context)).value
     } else {
       key = value

@@ -13,6 +13,9 @@ export type ListOptions = {
   sep?: ',' | ';' | '/'
 }
 
+export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
+  value: T[]
+}
 /**
  * A list of expressions
  *
@@ -21,7 +24,6 @@ export type ListOptions = {
  * or one / two / three
  */
 export class List<T extends Node = Node> extends Node<T[], ListOptions> {
-  declare value: T[]
   type = 'List'
   shortType = 'list'
 
@@ -37,11 +39,11 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     return super.compare(other)
   }
 
-  override operate(b: Node, op: Operator) {
+  override operate(b: Node, op: Operator, context: Context): List<T> {
     if (op !== '+') {
       throw new Error(`List operation "${op}" not supported`)
     }
-    let newList = this.clone()
+    let newList = this.maybeClone(context)
     if (b instanceof List) {
       newList.value.push(...b.value)
     } else {

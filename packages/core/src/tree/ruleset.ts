@@ -29,7 +29,7 @@ type NarrowRulesetValue<T> = T extends RulesetValue ? T : RulesetValue
  * }
  */
 export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>> {
-  declare value: NarrowRulesetValue<T>
+  declare value: Readonly<NarrowRulesetValue<T>>
   type = 'Ruleset'
   shortType = 'ruleset'
   override allowRuleRoot = true
@@ -62,18 +62,18 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>> {
 
   override async preEval(context: Context): Promise<this> {
     if (!this.preEvaluated) {
-      let node = this.clone()
+      let node = this.maybeClone(context)
       node.preEvaluated = true
       node.sourceNode ??= this
       let { selector } = node.value
-      node.value.selector = await selector.eval(context) as Selector | Nil
+      node.data.set('selector', await selector.eval(context) as Selector | Nil)
       return node
     }
     return this
   }
 
   override async evalNode(context: Context): Promise<Ruleset | Nil> {
-    let rule = this.clone()
+    let rule = this.maybeClone(context)
     let guard = rule.value.guard
     if (guard) {
       let bool = await guard.eval(context)

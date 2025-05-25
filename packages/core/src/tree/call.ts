@@ -3,7 +3,6 @@ import { type List } from './list'
 import { type Context } from '../context'
 import { isNode } from './util'
 import { cast } from './util/cast'
-import type { C } from 'vitest/dist/reporters-50c2bd49'
 
 export type CallValue = {
   /**
@@ -86,8 +85,8 @@ export class Call extends Node<CallValue> {
       args = await args?.eval(context)
     }
     context.canOperate = canOperate
-    let node = this.clone()
-    node.value = value
+    let node = this.maybeClone(context)
+    node.data.set('value', value)
     node.data.set('args', args)
     return node
   }

@@ -15,7 +15,7 @@ export class Negative extends Node<Node> {
     if (!value.operate) {
       throw new TypeError(`Cannot operate on ${value.type}`)
     }
-    return value.operate(new Dimension({ number: -1 }), '*')
+    return value.operate(new Dimension({ number: -1 }), '*', context)
   }
 }
 

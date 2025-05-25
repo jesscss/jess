@@ -114,7 +114,7 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
 
   override async preEval(context: Context): Promise<this> {
     if (!this.preEvaluated) {
-      let node = this.clone()
+      let node = this.maybeClone(context)
       node.preEvaluated = true
       node.options = { ...this.options }
       node.sourceNode ??= this
@@ -129,7 +129,7 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
       /** Normalize assignment types */
       let assign = node.options?.assign
       if (assign) {
-        value = value.clone()
+        value = value.maybeClone(context)
         /** Reference type */
         let type: 'property' | 'variable' =
           node.type === 'Declaration' ? 'property' : 'variable'

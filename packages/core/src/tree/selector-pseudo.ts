@@ -117,7 +117,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
 
   override async evalNode(context: Context) {
     let arg = this.data.get('arg')
-    let node = this.clone()
+    let node = this.maybeClone(context)
     if (!arg) {
       return node
     }

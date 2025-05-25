@@ -9,6 +9,15 @@ export type InterpolatedValue = {
 }
 
 /**
+ * Merge an interface to declare the specific types
+ */
+export interface Interpolated<
+  T extends string = GeneralNodeType
+> extends Node<InterpolatedValue, GeneralOptions<T>> {
+  value: InterpolatedValue
+  eval(context: Context): Promise<General<T>>
+}
+/**
  * An interpolated value is one that contains
  * reference variables, or expressions, but
  * which MUST resolve to a node with a string value
@@ -22,7 +31,6 @@ export type InterpolatedValue = {
 export class Interpolated<
   T extends string = GeneralNodeType
 > extends Node<InterpolatedValue, GeneralOptions<T>> {
-  declare value: InterpolatedValue
   type = 'Interpolated' as const
   shortType = 'interpolated' as const
 

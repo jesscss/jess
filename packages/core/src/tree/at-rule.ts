@@ -45,11 +45,13 @@ export class AtRule extends Node<AtRuleValue> {
     if (rules) {
       /**
        * Wrap sub-rules of a media query like Less
+       *
+       * @todo - Make sure this works with and without collapsing
        */
-      if (context.opts.collapseNesting && context.frames.size !== 0) {
+      if (context.opts.collapseNesting && context.frames.length) {
         let rule = await new Ruleset({
           selector: new ComplexSelector([new Ampersand()]),
-          rules: rules
+          rules
         })
           .inherit(this)
           .eval(context)

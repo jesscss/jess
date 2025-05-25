@@ -6,7 +6,6 @@ import type { Declaration, Root } from './tree'
 import { type Operator } from './tree/util/calculate'
 import type { PluginObject } from './plugin'
 import * as path from 'node:path'
-import { Stack } from 'data-structure-typed'
 
 export const enum MathMode {
   /**
@@ -194,6 +193,8 @@ export class Context {
    * When getting vars, the current declaration is ommitted
    * to prevent recursion errors. Each subsequent declaration
    * is then added to prevent back-references to this one.
+   *
+   * We use a set here because we look it up for filtering
    */
   private _declarationScope: Set<Declaration> | undefined
   get declarationScope() {
@@ -224,17 +225,22 @@ export class Context {
    */
   frames: Array<Ruleset<any>> = []
 
-  /** Keeps track of the indention level */
-  indent = 0
-
   /**
    * Keys of @let variables --
    * We need this b/c we need to generate code
    * for over-riding in the exported function.
+   *
+   * @todo - remove?
    */
-  exports = new Set<string>()
+  private _exports: Set<string> | undefined
+  get exports(): Set<string> {
+    return (this._exports ??= new Set())
+  }
 
-  /** @todo - is this still used? */
+  /**
+   * @todo - is this still used? Or do all toString()
+   * and toTrimmedString() methods pass in depth?
+   */
   depth = 0
 
   rootRules: Node[] = []
@@ -248,15 +254,9 @@ export class Context {
   /**
    * In a custom declaration's value. All nodes should
    * be preserved as-is and not evaluated, except for
-   * interpolated expressions.
+   * #() expressions.
   */
   inCustom: boolean | undefined
-
-  /**
-   * In a selector
-   * @todo - remove?
-  */
-  // inSelector: boolean
 
   /** A flag set by expressions */
   canOperate: boolean | undefined
@@ -264,15 +264,23 @@ export class Context {
   /** A flag set when evaluating conditions */
   isDefault: boolean | undefined
 
+  /** A flag to clone nodes before mutating */
+  preserveOriginalNodes: boolean | undefined
+
   constructor(opts: ContextOptions = {}, plugins?: PluginObject[]) {
     this.opts = opts
     this.plugins = plugins ?? []
   }
 
-  get pre() {
-    return Array(this.indent + 1).join('  ')
-  }
-
+  /**
+   * @todo - What is this used for? I think I wrote this to resolve
+   * a tree context given a file path. Ohhhh I think, essentially,
+   * if something like a Less `@import` is used, we need to resolve
+   * what the tree context should be for the rules, which is up to
+   * the Less plugin to return.
+   *
+   * I'll revisit this when I finish imports.
+   */
   async getTree(filePath: string, initialDirectory?: string, options?: Record<string, any>) {
     initialDirectory ??= path.dirname(filePath)
     const paths = this.opts.paths ?? []
@@ -348,8 +356,9 @@ export class Context {
 
   /**
    * Hash a CSS class name or not depending on the `module` setting
-   * @todo - module files should have different contexts, therefore different
-   * hash maps.
+   *
+   * @todo - do module files have different contexts, therefore different
+   * hash maps?
    */
   hashClass(name: string) {
     /** Remove dot for mapping */

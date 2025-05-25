@@ -745,7 +745,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   override async preEval(context: Context): Promise<this> {
     if (!this.preEvaluated) {
-      let rules = this.clone()
+      let rules = this.maybeClone(context)
       /**
        * Attach this early? Normally the parent will attach
        * but this causes recursion issues with rules.
@@ -780,7 +780,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (rules.type === 'Root') {
       context.treeContext = rules.treeContext
     }
-    let { leakVariablesIntoScope } = context.treeContext ?? {}
+    // let { leakVariablesIntoScope } = context.treeContext ?? {}
     /**
      * First, push rules onto an evaluation queue.
      */
@@ -822,8 +822,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             rules.data.setAt(i, result)
             queue.setAt(i, [i, result])
           }
-          if (method === 'preEval' && !rule.preEvaluated) {
-            rules.register(result, leakVariablesIntoScope)
+          if (method === 'preEval') {
+            /** Do I need to pass in options? */
+            rules.register(result)
           }
           /**
            * @todo - Figure out if I should try to evaluate again later?

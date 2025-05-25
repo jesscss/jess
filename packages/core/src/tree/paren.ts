@@ -30,35 +30,33 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   }
 
   override async evalNode(context: Context): Promise<Node> {
-    return await this.evalIfNot(context, async () => {
-      let canOperate = context.canOperate
-      context.canOperate = true
-      let { value } = this
-      if (value) {
-        let isOp = isOpOrExpression(value)
-        value = await value.eval(context)
-        /**
-         * Removing nested parens or parens around a single
-         * dimension is a bit presumptuous, but I think Less's
-         * argument is that it's unnecessary at runtime,
-         * so it's really just a DX tool that can be ignored
-         * on output.
-         */
-        while (value instanceof Paren && value.value) {
-          value = value.value.inherit(value)
-        }
-        if (value instanceof Bool || value instanceof Dimension) {
-          return value.inherit(this)
-        }
-        context.canOperate = canOperate
-        if (isOp && !isOpOrExpression(value)) {
-          return value.inherit(this)
-        }
+    let canOperate = context.canOperate
+    context.canOperate = true
+    let { value } = this
+    if (value) {
+      let isOp = isOpOrExpression(value)
+      value = await value.eval(context)
+      /**
+       * Removing nested parens or parens around a single
+       * dimension is a bit presumptuous, but I think Less's
+       * argument is that it's unnecessary at runtime,
+       * so it's really just a DX tool that can be ignored
+       * on output.
+       */
+      while (value instanceof Paren && value.value) {
+        value = value.value
       }
-      let node = this.clone()
-      node.value = value
-      return node
-    })
+      if (value instanceof Bool || value instanceof Dimension) {
+        return value
+      }
+      context.canOperate = canOperate
+      if (isOp && !isOpOrExpression(value)) {
+        return value
+      }
+    }
+    let node = this.maybeClone(context)
+    node.value = value
+    return node
   }
 
   // toCSS(context: Context, out: OutputCollector) {

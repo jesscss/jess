@@ -1,4 +1,5 @@
 import { Node, defineType } from './node'
+import type { Context } from '../context'
 
 export type GeneralNodeType =
   'Name'
@@ -13,6 +14,13 @@ export type GeneralNodeType =
 export type GeneralOptions<T extends string> = {
   type: T
 }
+export interface General<
+  T extends string = GeneralNodeType
+> extends Node<string, GeneralOptions<T>> {
+  value: string
+  eval(context: Context): Promise<General<T>>
+}
+
 /**
  * Any general value is a simple token that doesn't need to do much.
  * It holds a string, but can have pre/post nodes
@@ -20,7 +28,6 @@ export type GeneralOptions<T extends string> = {
 export class General<
   T extends string = GeneralNodeType
 > extends Node<string, GeneralOptions<T>> {
-  declare value: string
   type = 'General'
   shortType = 'general'
 }

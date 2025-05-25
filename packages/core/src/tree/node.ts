@@ -6,7 +6,7 @@ import {
 } from '../context'
 import { type Visitor } from '../visitor'
 import { type Operator } from './util/calculate'
-import type { Class, Tagged, IfAny, IsAny } from 'type-fest'
+import type { Class, Tagged, IfAny, IsUnknown } from 'type-fest'
 import { type Nil } from './nil'
 import { ArrayList, HashMap } from './util/collections'
 
@@ -85,7 +85,7 @@ export const defineType = <
 }
 
 type NarrowTypes<T> =
-  IsAny<T> extends true
+  IsUnknown<T> extends true
     ? NodeValue
     : T extends NodeValue
       ? T
@@ -99,7 +99,7 @@ export type NoOverride<T> = Tagged<T, 'NoOverride'>
  * The underlying type for all Jess nodes
  */
 export abstract class Node<
-  Type = any,
+  Type = unknown,
   O extends NodeOptions = NodeOptions,
   T extends NarrowTypes<Type> = NarrowTypes<Type>,
 > {
@@ -345,12 +345,24 @@ export abstract class Node<
     this.processNodes(n => visitor.visit(n))
   }
 
+  maybeClone(context: Context, deep?: boolean, cloneFn?: (n: Node) => Node): this {
+    if (context.preserveOriginalNodes) {
+      return this.clone(deep, cloneFn)
+    }
+    return this
+  }
+
   /**
    * Creates a copy of the current node.
    *
-   * @todo - Node data has changed a lot. Write tests to
-   * make sure nodes are cleanly cloned and that they don't have
-   * any references to the original node / nested objects.
+   * @note - In the Less source, nodes were always cloned before
+   * mutating, which is why I did it here. However... the only
+   * utility for cloning is to preserve the original node,
+   * or (maybe?) to create a copy which is output differently.
+   *
+   * But... considering the high cost of cloning in terms of
+   * object creation, and the low utility of preserving the original
+   * node, I think we should just only clone when we need to.
    */
   clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     let Class = this.constructor as Class<this>
@@ -584,7 +596,7 @@ export abstract class Node<
   }
 
   /** Overridden in index.ts to avoid circularity */
-  operate(b: Node, op: Operator, context?: Context): Node {
+  operate(b: Node, op: Operator, context: Context): Node {
     return this
   }
 
@@ -815,43 +827,6 @@ export class NodeData<Type = any, T extends IfAny<Type, any, NarrowTypes<Type>> 
       /** Exclude `undefined` as a value */
       if (value !== undefined) {
         yield value
-      }
-    }
-  }
-
-  /**
-   * Iterates through nodes and parent nodes.
-   * This is used for value lookups
-   *
-   * @note - When walking upward, if node.parentData has changed,
-   * then we've stepped into the next parent node.
-   *
-   * @todo - Is this used anywhere?
-   */
-  private * _reverseWalk(
-    includeParents?: boolean,
-    startNode?: Node | undefined
-  ): Generator<Node> {
-    let data = this.data
-
-    if (!(data instanceof ArrayList)) {
-      throw new Error('Cannot walk a non-ArrayList.')
-    }
-
-    let start = data.indexOf(startNode)
-    for (let item of data.reverse(start)) {
-      if (item instanceof Node) {
-        yield item
-      }
-    }
-
-    if (includeParents) {
-      let node = this.parentNode
-      let parentData = node.parentData
-
-      if (parentData && parentData.data instanceof ArrayList) {
-        startNode = startNode ? node : undefined
-        yield * parentData._reverseWalk(includeParents, startNode)
       }
     }
   }

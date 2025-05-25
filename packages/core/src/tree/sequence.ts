@@ -5,6 +5,7 @@ import type { Context } from '../context'
 import combinate from 'combinate'
 import { cast } from './util/cast'
 import { compareNodeArray } from './util/compare'
+import { isNode } from '..'
 
 export type SequenceOptions = {
   /**
@@ -20,9 +21,9 @@ export type SequenceOptions = {
  * an expression will yield a value, and a CSS value can
  * actually be a sequence of values (like for shorthand)
  */
-export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> {
-  declare value: T[]
-  declare data: NodeData<T[]>
+export class Sequence extends Node<Node[], SequenceOptions> {
+  declare value: Node[]
+  declare data: NodeData<Node[]>
   type = 'Sequence'
   shortType = 'seq'
 
@@ -33,21 +34,24 @@ export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> 
     return super.compare(other)
   }
 
-  override operate(b: Node, op: string): Sequence | List {
+  override operate(b: Node, op: string, context: Context): Sequence | List {
     if (op !== '+') {
       throw new Error(`Sequence operation "${op}" not supported`)
     }
-    let newSequence = this.clone()
+    let newSequence = this.maybeClone(context)
     if (b instanceof List) {
       return new List([newSequence, ...b.value]).inherit(this)
-    } else if (b instanceof Sequence) {
-      const values = b.value.map(v => v.clone())
-      values[0].pre = 1
+    } else if (isNode(b, 'Sequence')) {
+      /** Inference not working in this class? */
+      const values = (b as Sequence).value.map(v => v.maybeClone(context))
+      if (values.length) {
+        values[0]!.pre = 1
+      }
       newSequence.value.push(...values)
     } else {
-      b = b.clone()
+      b = (b as Node).maybeClone(context)
       b.pre = 1
-      newSequence.value.push(b as T)
+      newSequence.value.push(b)
     }
     return newSequence
   }
@@ -64,12 +68,12 @@ export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> 
    *         then we should be inserting white-space combinators?
    */
   override async evalNode(context: Context) {
-    let node = this.clone()
+    let node = this.maybeClone(context)
     /** Convert all values to Nodes */
     let valuePromises = node.value
       .map(async n => await cast(n).eval(context))
 
-    node.value = (await Promise.all(valuePromises) as T[])
+    node.value = (await Promise.all(valuePromises))
       .filter(n => n && !(n instanceof Nil))
 
     let lists: Record<number, Node[]> | undefined
@@ -89,17 +93,19 @@ export class Sequence<T extends Node = Node> extends Node<T[], SequenceOptions> 
     if (lists) {
       /**
        * Create new sequences of the inherited type
+       * @todo - Rewrite -- Object.getPrototypeOf(this).constructor I think is wrong and maybe
+       * should be this.constructor.
        */
       let Class = Object.getPrototypeOf(this).constructor
       let combinations = combinate(lists)
-      let returnList = new List([] as T[]).inherit(this)
+      let returnList = new List([]).inherit(this)
 
       /** @todo - create :is() in selector */
       combinations.forEach(combo => {
         let expr = [...node.value]
         for (let pos in combo) {
           if (Object.prototype.hasOwnProperty.call(combo, pos)) {
-            expr[pos] = combo[pos] as T
+            expr[pos] = combo[pos] as Node
           }
         }
         returnList.value.push(new Class(expr))

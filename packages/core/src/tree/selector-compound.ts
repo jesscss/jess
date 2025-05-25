@@ -48,7 +48,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   }
 
   override async evalNode(context: Context): Promise<CompoundSelector | Selector | Nil> {
-    const sel = this.clone()
+    const sel = this.maybeClone(context)
     let valuePromises = sel.value
       .map(async n => await n.eval(context))
 

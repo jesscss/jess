@@ -1,12 +1,9 @@
 import { defineType, type NodeOptions, type LocationInfo, type TreeContext, type NodeData } from './node'
 import { Nil } from './nil'
 import type { Context } from '../context'
-import { type ComplexSelector } from './selector-complex'
-import { type SelectorList } from './selector-list'
 import { SimpleSelector } from './selector-simple'
 import { BasicSelector } from './selector-basic'
 import { isNode } from './util'
-import { type Extend } from './extend'
 import { type Selector } from './selector'
 import { last } from './util/collections'
 
@@ -134,7 +131,7 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
       }
       return new Nil()
     }
-    const amp: Ampersand = this.clone()
+    const amp: Ampersand = this.maybeClone(context)
     let frame = last(context.frames)
     if (frame) {
       amp.data.set('selector', frame.selector.clone(true))

@@ -47,7 +47,7 @@ export type MixinOptions = {
  */
 
 export class Mixin extends Node<MixinValue> {
-  declare value: MixinValue
+  declare value: Readonly<MixinValue>
   declare data: NodeData<MixinValue>
 
   type = 'Mixin'
@@ -73,12 +73,12 @@ export class Mixin extends Node<MixinValue> {
 
   override async preEval(context: Context): Promise<this> {
     if (!this.preEvaluated) {
-      let node = this.clone()
+      let node = this.maybeClone(context)
       node.preEvaluated = true
       node.sourceNode ??= this
       let { name } = node.value
       if (name && name instanceof Interpolated) {
-        node.value.name = await name.eval(context) as Name
+        node.data.set('name', await name.eval(context) as Name)
       }
       return node
     }
