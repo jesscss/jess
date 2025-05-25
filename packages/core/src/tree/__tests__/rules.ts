@@ -12,7 +12,7 @@ import {
   any,
   call,
   ref,
-  type GetterOptions,
+  type FindContext,
   type Node,
   type Rules,
   AssignmentType,
@@ -22,18 +22,14 @@ import { Context, TreeContext } from '../../context'
 
 let context: Context
 
-function getPropWithContext(context: Context, n: Rules, key: string, opts: GetterOptions = {}, start?: number) {
+function getPropWithContext(context: Context, n: Rules, key: string, opts: FindContext = {}, start?: number) {
   context.rulesContext = n
   return n.findDeclaration(key, 'Declaration', opts, true, start)
 }
 
-function getVarWithContext(context: Context, n: Rules, key: string, opts: GetterOptions = {}, start?: number) {
+function getVarWithContext(context: Context, n: Rules, key: string, opts: FindContext = {}, start?: number) {
   context.rulesContext = n
   let decl = n.findDeclaration(key, 'VarDeclaration', opts, true, start)
-  // if (decl) {
-  //   let evald = await decl.value.value.eval(context)
-  //   decl.data.set('value', evald)
-  // }
   return decl
 }
 
@@ -246,7 +242,85 @@ describe('Rules', () => {
           ])
         ])
 
-        await expect(node.eval(context)).rejects.toThrowError()
+        await expect(node.eval(context)).rejects.toThrowError('"one" is readonly')
+      })
+
+      it('fails to set if existing variable is in readonly rules', async () => {
+        let node = rules([
+          rules([
+            vardecl({ name: 'one', value: any('one') })
+          ], {
+            readonly: true,
+            rulesVisibility: { VarDeclaration: 'public' }
+          }),
+          rules([
+            vardecl({ name: 'one', value: any('three') }, { setDefined: true })
+          ])
+        ])
+
+        await expect(node.eval(context)).rejects.toThrowError('"one" is readonly')
+      })
+
+      it('fails to set if existing variable is in nested readonly rules #1', async () => {
+        let node = rules([
+          rules([
+            rules([
+              vardecl({ name: 'one', value: any('one') })
+            ], {
+              readonly: true,
+              rulesVisibility: { VarDeclaration: 'public' }
+            })
+          ], {
+            rulesVisibility: { VarDeclaration: 'public' }
+          }),
+          rules([
+            vardecl({ name: 'one', value: any('three') }, { setDefined: true })
+          ])
+        ])
+
+        await expect(node.eval(context)).rejects.toThrowError('"one" is readonly')
+      })
+
+      it('fails to set if existing variable is in nested readonly rules #2', async () => {
+        let node = rules([
+          rules([
+            rules([
+              vardecl({ name: 'one', value: any('one') })
+            ], {
+              rulesVisibility: { VarDeclaration: 'public' }
+            })
+          ], {
+            readonly: true,
+            rulesVisibility: { VarDeclaration: 'public' }
+          }),
+          rules([
+            vardecl({ name: 'one', value: any('three') }, { setDefined: true })
+          ])
+        ])
+
+        await expect(node.eval(context)).rejects.toThrowError('"one" is readonly')
+      })
+
+      it('doesn\'t preserve readonly later', async () => {
+        let node = rules([
+          rules([
+            vardecl({ name: 'one', value: any('one') })
+          ], {
+            readonly: true,
+            rulesVisibility: { VarDeclaration: 'public' }
+          }),
+          rules([
+            vardecl({ name: 'one', value: any('two') })
+          ], {
+            rulesVisibility: { VarDeclaration: 'public' }
+          }),
+          rules([
+            /** This will set the second rules value */
+            vardecl({ name: 'one', value: any('three') }, { setDefined: true })
+          ])
+        ])
+
+        await expect(node.eval(context)).resolves.not.toThrow()
       })
 
       it('looks upwards from position', async () => {

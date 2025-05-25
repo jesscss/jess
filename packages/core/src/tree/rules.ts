@@ -541,11 +541,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   /**
-   *
-   * @param n
-   * @param leaky For rules, if we're allowed to look for vars and mixins here.
-   * @param readonly Variable / rules are readonly (such as for a protected import)
-   *
    * @todo - Figure out the readonly part
    */
   register(node: Node, options?: Record<string, any>) {
@@ -568,10 +563,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (node.options?.setDefined) {
         let key = node.value.name.toString()
         /** Don't set within sibling rules */
-        let result = this.findDeclaration(key, node.type as 'Declaration', undefined, true, node.index)
+        let opts: FindContext = {}
+        let result = this.findDeclaration(key, node.type as 'Declaration', opts, true, node.index)
         if (result) {
-          if (result.options?.readonly) {
-            throw new ReferenceError(`${key} is readonly`)
+          if (result.options?.readonly || opts.readonly) {
+            throw new ReferenceError(`"${key}" is readonly`)
           }
           /** Over-write value */
           result.value.value = node.value.value.copy()
@@ -579,7 +575,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           let important = result.value.important || node.value.important
           result.value.important = important
         } else {
-          throw new ReferenceError(`${key} is not defined`)
+          throw new ReferenceError(`"${key}" is not defined`)
         }
       }
       let map = this.declarationMap
@@ -648,15 +644,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   findDeclaration(
     key: string,
     type: 'VarDeclaration' | 'Declaration' = 'VarDeclaration',
-    opts?: GetterOptions,
+    opts?: FindContext,
     searchParents: boolean = true,
     start?: number,
     local: boolean = false
   ): Declaration | undefined {
-    let declCandidate: Declaration | undefined
+    let declCandidate: [
+      declaration: Declaration,
+      read?: boolean
+    ] | undefined
     let rules: Rules | undefined = this
     let isPublic = false
     while (rules) {
+      let currentReadonly = opts?.readonly || rules.options?.readonly
       if (rules._declarationMap) {
         let list = rules.declarationMap.get(key)
         if (list) {
@@ -670,7 +670,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           )
         }
         if (list) {
-          declCandidate = rules._findClosestByStart(list, start)
+          let result = rules._findClosestByStart(list, start)
+          if (result) {
+            declCandidate = [result, result.options?.readonly || currentReadonly]
+          }
           isPublic = true
         }
       }
@@ -682,7 +685,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
          * and before the start position (if relevant)
          */
         rulesSet = rulesSet.filter(n => {
-          return (!declCandidate || n.node.index > declCandidate.index)
+          return (!declCandidate || n.node.index > declCandidate[0].index)
               && (start === undefined || n.node.index < start)
               && (!(local && Boolean(n.node.options?.local)))
               && (
@@ -697,13 +700,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             let r = rulesSet.at(i)!
             /** Locals can be searched once but not twice */
             let newLocal = local || Boolean(r.node.options?.local)
-            let result = r.node.findDeclaration(key, type, opts, false, undefined, newLocal)
+            let newOpts = opts ? { ...opts, readonly: currentReadonly || r.readonly } : { readonly: currentReadonly || r.readonly }
+            let result = r.node.findDeclaration(key, type, newOpts, false, undefined, newLocal)
             if (result) {
               /**
                * If it's public, and it's the lower-most declaration,
                * it wins.
                */
               if (r.rulesVisibility?.[type] === 'public') {
+                if (opts && newOpts.readonly) {
+                  opts.readonly = true
+                }
                 return result
               }
               /**
@@ -712,28 +719,34 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                * value which should win.
                */
               if (!declCandidate) {
-                declCandidate = result
+                declCandidate = [result, newOpts.readonly]
               }
             }
           }
         }
       }
       if (isPublic || !searchParents) {
-        return declCandidate
+        if (opts && declCandidate?.[1]) {
+          opts.readonly = true
+        }
+        return declCandidate?.[0]
       }
 
       do {
         rules = rules?.parent as Rules
       } while (rules && !(rules instanceof Rules))
     }
-    return declCandidate
+    if (opts && declCandidate?.[1]) {
+      opts.readonly = true
+    }
+    return declCandidate?.[0]
   }
 
   /**
    * Returns an executable function
    * @todo - Move from scope
    */
-  getMixin(selector: Selector, opts: GetterOptions = {}) {
+  getMixin(selector: Selector, opts: FindContext = {}) {
     return () => {}
   }
 
@@ -936,11 +949,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 }
 export const rules = defineType(Rules, 'Rules')
 
-/**
- * SCOPE types
- */
-export type GetterOptions = {
+export type FindContext = {
   filter?: (n: Node) => boolean
+  /** This gets set if any parent is set to readonly */
+  readonly?: boolean
 }
 
 type EvalQueueMap = Map<Priority, Queue<[number, Node]>>
@@ -999,11 +1011,6 @@ interface RulesEntry {
    * (verify that this is not possible with SCSS).
    */
   readonly?: RulesOptions['readonly']
-}
-
-interface DeclarationEntry {
-  node: Declaration
-  readonly?: boolean
 }
 
 /**
