@@ -2,8 +2,7 @@
 import { Combinator } from './combinator'
 import { Ampersand } from './ampersand'
 import {
-  defineType,
-  NodeList
+  defineType
 } from './node'
 import type { Context } from '../context'
 import { Nil } from './nil'
@@ -26,7 +25,6 @@ export type ComplexSelectorValue = ComplexSelectorComponent[]
  * #id > .class.class
  */
 export class ComplexSelector extends Selector<ComplexSelectorValue> {
-  declare value: ComplexSelectorValue
   type = 'ComplexSelector'
   shortType = 'sel'
   /**

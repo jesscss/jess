@@ -4,10 +4,9 @@ import type { IfAny } from 'type-fest'
 /** This represents anything that is valid in a selector */
 
 export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> extends Node<IfAny<T, NodeValue, T>, O> {
-  declare value: NodeValue
   isSelector = true
 
-  _valueOf: string | undefined
+  protected _valueOf: string | undefined
   /**
    * For selectors, this is a normalized value, not just
    * a straight stringification like toTrimmedString
@@ -21,6 +20,6 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
    * for easy lookup to see if the selector is extendable
    * by the key sets in the extend scope.
    */
-  _keySet: Set<string> | undefined
+  protected _keySet: Set<string> | undefined
   abstract keySet: Set<string>
 }

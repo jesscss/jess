@@ -15,7 +15,6 @@ import type { SimpleSelector } from './selector-simple'
  */
 const nonElementRegex = /^[.#:*[]/
 export class CompoundSelector extends Selector<SimpleSelector[]> {
-  declare value: SimpleSelector[]
   type = 'CompoundSelector' as const
   shortType = 'compound' as const
 

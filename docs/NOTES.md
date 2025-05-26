@@ -1,3 +1,12 @@
+# May 26, 2025
+- Am going to let the healing begin on complexity by removing all ArrayLists,
+  HashMaps, or other non-native collection structures. Types defined on the 
+  Node will be the type stored on the `value` prop, full stop. "Normalization",
+  where needed, will be supported by collection utility functions instead of
+  in custom array or object abstractions. Value assignment will be value assignment.
+  Processing of nodes will be handled by `set value()` in the Node class.
+- Updated all the nodes to use similar collections, but now there are compilation issues
+
 # May 24, 2025
 - Added the ability to look in a `@use` but not a `@use` child of `@use`
 - Rules tests passing again, including basic nested rules serialization

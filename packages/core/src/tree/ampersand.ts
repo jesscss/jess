@@ -1,11 +1,11 @@
-import { defineType, type NodeOptions, type LocationInfo, type TreeContext, type NodeData } from './node'
+import { defineType, type NodeOptions, type LocationInfo, type TreeContext } from './node'
 import { Nil } from './nil'
 import type { Context } from '../context'
 import { SimpleSelector } from './selector-simple'
 import { BasicSelector } from './selector-basic'
 import { isNode } from './util'
 import { type Selector } from './selector'
-import { last } from './util/collections'
+import { atIndex } from './util/collections'
 
 export type AmpersandValue = {
   /**
@@ -68,7 +68,6 @@ export type AmpersandValue = {
  */
 export class Ampersand extends SimpleSelector<AmpersandValue> {
   declare value: AmpersandValue
-  declare data: NodeData<AmpersandValue>
   override type = 'Ampersand' as const
   shortType = 'amp' as const
 
@@ -105,9 +104,9 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
   override async evalNode(context: Context): Promise<Selector | Nil> {
     const { appendValue } = this.value
     if (appendValue ?? context.opts.collapseNesting) {
-      let frame = last(context.frames)
+      let frame = atIndex(context.frames, -1)
       if (frame) {
-        let selector = frame.selector.clone(true)
+        let selector = frame.selector.copy(true)
         if (appendValue && !isNode(selector, 'Nil')) {
           let doAppendValue = (n: Selector) => {
             if (!n.value) {
@@ -132,9 +131,13 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
       return new Nil()
     }
     const amp: Ampersand = this.maybeClone(context)
-    let frame = last(context.frames)
+    let frame = atIndex(context.frames, -1)
+    /**
+     * Attach a pointer to the current context selector,
+     * if we need it later, for extends and such.
+     */
     if (frame) {
-      amp.data.set('selector', frame.selector.clone(true))
+      amp.value.selector = frame.selector
     }
     return amp
   }

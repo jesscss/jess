@@ -20,7 +20,6 @@ export interface Nil extends Node<''> {
  * `$var:;`
  */
 export class Nil extends Node<''> {
-  declare value: ''
   type = 'Nil'
   shortType = 'nil'
   override allowRoot = true
@@ -36,6 +35,7 @@ export class Nil extends Node<''> {
   }
 
   override toTrimmedString() { return '' }
+  override toString() { return '' }
 }
 
 export const nil = defineType(Nil, 'Nil')

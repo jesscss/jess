@@ -18,7 +18,6 @@ export type OperationOptions = {
  * A math operation
  */
 export class Operation extends Node<OperationValue, OperationOptions> {
-  declare value: OperationValue
   type = 'Operation' as const
   shortType = 'op' as const
 

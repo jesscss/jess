@@ -19,7 +19,6 @@ export type ConditionOptions = {
 }
 
 export class Condition extends Node<ConditionValue, ConditionOptions> {
-  declare value: ConditionValue
   type = 'Condition' as const
   shortType = 'condition' as const
 

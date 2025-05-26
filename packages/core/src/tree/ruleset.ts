@@ -29,7 +29,6 @@ type NarrowRulesetValue<T> = T extends RulesetValue ? T : RulesetValue
  * }
  */
 export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>> {
-  declare value: Readonly<NarrowRulesetValue<T>>
   type = 'Ruleset'
   shortType = 'ruleset'
   override allowRuleRoot = true
@@ -66,7 +65,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>> {
       node.preEvaluated = true
       node.sourceNode ??= this
       let { selector } = node.value
-      node.data.set('selector', await selector.eval(context) as Selector | Nil)
+      node.value.selector = await selector.eval(context) as Selector | Nil
       return node
     }
     return this

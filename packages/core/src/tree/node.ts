@@ -6,9 +6,9 @@ import {
 } from '../context'
 import { type Visitor } from '../visitor'
 import { type Operator } from './util/calculate'
-import type { Class, Tagged, IfAny, IsUnknown } from 'type-fest'
+import type { Class, Tagged } from 'type-fest'
 import { type Nil } from './nil'
-import { ArrayList, HashMap } from './util/collections'
+import { getEntriesFromNode, getValues } from './util'
 
 export type { TreeContext }
 
@@ -25,16 +25,17 @@ type AllNodeOptions = {
   semi?: boolean
 }
 
+/**
+ * @todo - Clean up and delete these types and symbols, if not used.
+ */
 export type Primitive = undefined | boolean | string | number | ((...args: any[]) => any)
 
 export const ABORT: unique symbol = Symbol('ABORT')
 export const REMOVE: unique symbol = Symbol('REMOVE')
 export type NodeVisitReturn = void | Node | symbol
-type NodeVisitFunction = (n: Node) => NodeVisitReturn
 export type NodeOptions = Record<string, any> & AllNodeOptions
 export const DEFAULT_DATA = 'value'
 
-type NodeInValue<T extends NodeValue> = T
 type BasicNodeTypes = Primitive | Node
 type NodeRecordValue = BasicNodeTypes | Array<BasicNodeTypes | Primitive[]> | Record<string, any>
 export type NodeValueObject = Record<string, NodeRecordValue>
@@ -55,6 +56,10 @@ export type LocationInfo = [
   endColumn: number,
 ]
 
+/**
+ * @todo I think the only utility for this now is we collect
+ * the types of nodes in the tree at first evaluation time.
+ */
 export const defineType = <
   V = never,
   T extends Class<Node> = Class<Node>,
@@ -84,13 +89,6 @@ export const defineType = <
   }
 }
 
-type NarrowTypes<T> =
-  IsUnknown<T> extends true
-    ? NodeValue
-    : T extends NodeValue
-      ? T
-      : never
-
 export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<='
 
 export type NoOverride<T> = Tagged<T, 'NoOverride'>
@@ -99,9 +97,8 @@ export type NoOverride<T> = Tagged<T, 'NoOverride'>
  * The underlying type for all Jess nodes
  */
 export abstract class Node<
-  Type = unknown,
-  O extends NodeOptions = NodeOptions,
-  T extends NarrowTypes<Type> = NarrowTypes<Type>,
+  Data = unknown,
+  O extends NodeOptions = NodeOptions
 > {
   private _location: LocationInfo | [] | undefined
   get location() {
@@ -140,8 +137,8 @@ export abstract class Node<
    * In a NodeList, any whitespace tokens outside of comments are individually represented,
    * because they are preserved while the comment may not be.
    */
-  pre: ArrayList | 1 | 0 | undefined
-  post: ArrayList | 1 | 0 | undefined
+  pre: Node[] | 1 | 0 | undefined
+  post: Node[] | 1 | 0 | undefined
 
   visible = true
   evaluated = false
@@ -150,8 +147,10 @@ export abstract class Node<
   allowRuleRoot = false
 
   /**
-   * Nodes are assigned an initial index of 0, but when evaluating,
-   * they are assigned a new, sequential index.
+   * When evaluating, nodes are assigned an index by the Rules node.
+   * This is used for lookup order. Note, this _will_ be undefined
+   * initially, but we assign it in the Rules node, which is also
+   * where we read it, so this makes the type easier.
    */
   index!: number
 
@@ -164,99 +163,82 @@ export abstract class Node<
    */
   requiredSemi = false
 
-  /** Used by Rules */
-  rootRules: ArrayList | undefined
+  /**
+   * Used by Rules
+   * @todo - Remove
+   */
+  rootRules: Node[] | undefined
 
   /**
    * Track the original source when cloned / copied,
    * rather than keeping the entire tree
    */
   sourceNode: Node = this as any
-
-  /**
-   * This is the internal `data` of the node, which is how its represented
-   * internally, and may be different from the `value` of the node.
-   */
-  data!: NodeData
-  parentData: NodeData | undefined
-
-  get parent(): Node | undefined {
-    let parentData = this.parentData
-    if (parentData) {
-      return parentData.parentNode
-    }
-  }
+  parent: Node | undefined
 
   nil!: () => Nil
 
+  private _value: Data
+
+  /**
+   * This is the internal `data` of the node.
+   */
+  get value(): Data {
+    return this._value
+  }
+
+  set value(val: Data) {
+    this._value = this._processNodes(val)
+  }
+
+  /**
+   * Assign parent to sub-nodes
+   * @note - This will not process the children nodes of children nodes.
+   */
+  private _processNodes<T>(value: T): T {
+    for (let val of getValues(value)) {
+      if (val instanceof Node) {
+        val.parent = this
+      }
+    }
+    return value
+  }
+
   constructor(
-    value: NodeInValue<T>,
+    value: Data,
     options?: O,
     location?: LocationInfo,
     treeContext?: TreeContext
   ) {
-    this.data = new NodeData(this as any, value) as any
+    this._value = this._processNodes(value)
     this._treeContext = treeContext
     this._location = location
     this._options = options
   }
 
-  declare value: any
-
   /**
-   * Mutates node children in place. Used by eval()
-   * which first makes a shallow clone before mutating.
+   * Mutates node children in place. Used by eval()?
    *
    * Processed nodes must always return a Node.
    */
-  processNodes(func: (n: Node) => Node) {
-    for (let [key, nodeVal] of this.data.entries()) {
-      if (nodeVal instanceof Node) {
-        /** Assume that the type will still be valid */
-        (this.data as MapLike<any, any>).set(key, func(nodeVal))
+  forEachNode(func: (n: Node) => Node) {
+    for (let [value, key, collection] of getEntriesFromNode(this as { value: unknown[] })) {
+      if (value instanceof Node) {
+        collection[key] = func(value)
       }
     }
   }
 
-  /**
-   * Mutates node children in place, asynchronously
-   */
-  async processNodesAsync(func: (n: Node) => Node | Promise<Node>) {
-    let promises: Array<Promise<void>> = []
-    const data = this.data
-    for (let [key, nodeVal, nodeIndex] of this.data.entries()) {
-      if (nodeVal instanceof Node) {
-        /** Assume that the type will still be valid */
-        promises.push(
-          (async () => (data as any).set(key, await func(nodeVal), nodeIndex))()
-        )
+  static * nodeAndPrePost(node: Node) {
+    if (isArray(node.pre)) {
+      for (let n of node.pre) {
+        yield n
       }
     }
-    await Promise.all(promises)
-  }
-
-  /**
-   * Mutate nodes in place, used in... just pre and post now?
-   */
-  private _processNodeList(
-    list: ArrayList,
-    fn: NodeVisitFunction,
-    shallow?: boolean,
-    visitPrePost?: boolean,
-    reverse?: boolean
-  ) {
-    let method: 'entries' | 'reverseEntries' = reverse ? 'reverseEntries' : 'entries'
-    for (let [key, node] of list[method]()) {
-      let returnVal = fn(node)
-      if (returnVal === ABORT) {
-        return ABORT
-      } else if (returnVal === REMOVE) {
-        list.set(key, this.nil())
-      } else if (returnVal instanceof Node && returnVal !== node) {
-        list.set(key, returnVal)
-      }
-      if (!shallow) {
-        node.walkNodes(fn, false, reverse, visitPrePost)
+    yield node
+    if (isArray(node.post)) {
+      for (let n of node.post) {
+        yield n
       }
     }
   }
@@ -264,85 +246,61 @@ export abstract class Node<
   /**
    * Return an iterator for all nodes / children nodes, including this one
    */
-  * nodes(reverse?: boolean): Generator<Node, void, unknown> {
-    yield this
-    yield * this.children(true, reverse)
+  * nodes(reverse?: boolean, includePrePost?: boolean): Generator<Node, void, unknown> {
+    if (includePrePost) {
+      yield * Node.nodeAndPrePost(this)
+    } else {
+      yield this
+    }
+    yield * this.children(true, reverse, includePrePost)
   }
 
-  /** An iterator for all node children */
-  * children(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
-    for (let nodeVal of this.data.values(reverse)) {
+  /**
+   * An iterator for all node children
+   * @todo - Replace `walkNodes` with this?
+   */
+  * children(deep?: boolean, reverse?: boolean, includePrePost?: boolean): Generator<Node, void, unknown> {
+    for (let nodeVal of getValues(this.value, reverse)) {
       if (nodeVal instanceof Node) {
-        yield nodeVal
+        if (includePrePost) {
+          yield * Node.nodeAndPrePost(nodeVal)
+        } else {
+          yield nodeVal
+        }
         if (deep) {
-          yield * nodeVal.children(deep, reverse)
+          yield * nodeVal.children(deep, reverse, includePrePost)
         }
       }
     }
   }
 
   /**
-   * Fire a function for each Node in the tree, recursively.
-   * This method can optionally mutate the tree in place,
-   * if the callback function returns a Node.
-   *
-   * @note
-   * A Node return value is intended to be a mutation.
-   * A return value of ABORT means to abort the walk.
-   * A return value of REMOVE means to remove the current node.
+   * @todo - Remove?
    */
-  walkNodes(
-    func: NodeVisitFunction,
-    shallow?: boolean,
-    reverse?: boolean,
-    visitPrePost?: boolean
-  ) {
-    const data = this.data
-    if (visitPrePost) {
-      let { pre, post } = this
-      if (pre instanceof ArrayList) {
-        this._processNodeList(pre, func, true, false, reverse)
-      }
-      if (post instanceof ArrayList) {
-        this._processNodeList(post, func, true, false, reverse)
-      }
-    }
+  // collectRoots(): Node[] {
+  //   let list: Node[] = []
+  //   this.walkNodes(n => {
+  //     if (n.type === 'Rules') {
+  //       const rules = n.rootRules
+  //       if (rules) {
+  //         for (let n of rules) {
+  //           list.push(n)
+  //         }
+  //         n.rootRules = undefined
+  //       }
+  //     }
+  //   })
+  //   return list
+  // }
 
-    for (const [key, nodeVal, nodeIndex] of data.entries(reverse)) {
-      if (nodeVal instanceof Node) {
-        let returnVal = func(nodeVal)
-        if (returnVal === ABORT) {
-          return ABORT
-        } else if (returnVal === REMOVE) {
-          data.set(key, this.nil().inherit(nodeVal), nodeIndex)
-        } else if (returnVal instanceof Node && returnVal !== nodeVal) {
-          data.set(key, returnVal, nodeIndex)
-        }
-        if (!shallow) {
-          nodeVal.walkNodes(func, false, reverse, visitPrePost)
-        }
-      }
-    }
-  }
-
-  collectRoots(): ArrayList<Node> {
-    let list = new ArrayList<Node>()
-    this.walkNodes(n => {
-      if (n.type === 'Rules') {
-        const rules = n.rootRules
-        if (rules) {
-          for (let n of rules) {
-            list.push(n)
-          }
-          rules.clear()
-        }
-      }
-    })
-    return list
-  }
-
+  /**
+   * @todo - Is this right? Visitors only get callbacks for children?
+   *         I should check the original Less visitor pattern.
+   */
   accept(visitor: Visitor) {
-    this.processNodes(n => visitor.visit(n))
+    for (let node of this.children()) {
+      visitor.visit(node)
+    }
   }
 
   maybeClone(context: Context, deep?: boolean, cloneFn?: (n: Node) => Node): this {
@@ -366,14 +324,33 @@ export abstract class Node<
    */
   clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     let Class = this.constructor as Class<this>
-
-    let newNode = new Class(this.value, this.options, this.location, this.treeContext)
+    let originalValue = this.value
+    let newValue = this.value
+    /**
+     * Create new array objects and plain objects
+     */
+    if (isArray(originalValue)) {
+      newValue = [...originalValue] as Data
+    } else if (isPlainObject(originalValue)) {
+      let map = new Map(Object.entries(originalValue as Record<string, unknown>))
+      for (let [key, value] of map.entries()) {
+        if (isArray(value)) {
+          map.set(key, [...value])
+        }
+      }
+      newValue = Object.fromEntries(map) as Data
+    }
+    let newNode = new Class(newValue, { ...this.options }, this.location, this.treeContext)
     newNode.inherit(this)
 
     cloneFn ??= n => n.clone(deep)
 
     if (deep) {
-      newNode.processNodes(cloneFn)
+      for (let [value, key, collection] of getEntriesFromNode(newNode as { value: unknown[] })) {
+        if (value instanceof Node) {
+          collection[key] = cloneFn(value)
+        }
+      }
     }
 
     return newNode
@@ -381,10 +358,11 @@ export abstract class Node<
 
   /** Remove comments from pre/post */
   stripPrePost(prePost: Node['pre']) {
-    if (prePost instanceof ArrayList) {
+    if (isArray(prePost)) {
       for (let [key, node] of prePost.entries()) {
         if (node.type === 'Comment') {
-          prePost.set(key, this.nil().inherit(node))
+          /** Maybe don't inherit from comment? */
+          prePost[key] = this.nil().inherit(node)
         }
       }
     }
@@ -492,6 +470,7 @@ export abstract class Node<
     this.post = node.post
     this.sourceNode = node.sourceNode
     this.index ??= node.index
+    this.parent = node.parent
     return this
   }
 
@@ -503,19 +482,19 @@ export abstract class Node<
    * Derived nodes will override this with different
    * normalization algorithms.
    */
-  valueOf(): Type extends string ? string : string | number {
-    let value = this.data
-    if (typeof value === 'string') {
-      return value
+  valueOf(): string | number {
+    let value = this.value
+    let type = typeof value
+    if (type === 'string') {
+      return value as string
+    } else if (type === 'number') {
+      return value as number
     }
-    if (typeof value === 'number') {
-      return value
-    }
-    let values = [...this.data.values()]
+    let values = [...getValues(value)]
     if (values.length === 1) {
       return `${values[0]}`
     }
-    return `${values}`
+    return values.join('')
   }
 
   processPrePost(key: 'pre' | 'post', defaultVal: string = '') {
@@ -546,10 +525,13 @@ export abstract class Node<
    * @note toString() will, by default, include pre/post
    * white-space and comments, to make serialization
    * easy.
+   *
+   * In almost all Node cases, this should not be overriden,
+   * and toTrimmedString() should be overridden instead.
    */
-  toString(depth?: number, defaultPre?: string, defaultPost?: string): NoOverride<string> {
+  toString(depth?: number, defaultPre?: string, defaultPost?: string): string {
     if (!this.visible) {
-      return '' as NoOverride<string>
+      return ''
     }
     let output = ''
     output += this.processPrePost('pre', defaultPre)
@@ -558,7 +540,7 @@ export abstract class Node<
     if (this.options?.semi === true) {
       output += ';'
     }
-    return output as NoOverride<string>
+    return output
   }
 
   /**
@@ -571,8 +553,12 @@ export abstract class Node<
    */
   toTrimmedString(depth?: number) {
     let output = ''
-    for (let value of this.data.values()) {
-      output += value.toString(depth)
+    for (let value of getValues(this.value)) {
+      if (value instanceof Node) {
+        output += value.toString(depth)
+      } else {
+        output += value === undefined ? '' : String(value)
+      }
     }
     return output
   }
@@ -600,6 +586,7 @@ export abstract class Node<
     return this
   }
 
+  /** @todo - Still needed? */
   static numericCompare(a: number, b: number) {
     if (a === b) {
       return 0
@@ -616,227 +603,4 @@ export abstract class Node<
    */
   /** Move to ToModuleVisitor */
   // toModule?(context: Context, out: OutputCollector): void
-}
-
-/** Use an accessor, but _pretend_ that it's a plain property so we can override in other sub-classes */
-Object.defineProperty(Node.prototype, 'value', {
-  /** Get the values back in the same format they went in */
-  get() {
-    const data = this.data.data
-
-    if (data instanceof HashMap) {
-      return data.toRaw()
-    }
-
-    if (data instanceof ArrayList) {
-      return data.items
-    }
-
-    return data
-  },
-
-  set(val: any) {
-    this.data.setAllData(val)
-  }
-})
-
-interface MapLike<K, V> {
-  get(key: K): V
-  set(key: K, value: V): any
-  entries(): IterableIterator<[K, V]>
-}
-
-export interface NodeListOptions extends NodeOptions {
-  /** Don't add list to node lists */
-  disableTracking?: boolean
-}
-
-// export class NodeTreeEdge<
-//   S extends symbol = symbol
-// > {
-//   constructor(
-//     public node: typeof NODE_INDEX,
-//     public type?: S,
-//     public value?: string
-//   ) {}
-// }
-
-/**
- * It's important to note that any[] extends Record
- * and `(...args: any[]) => any` extends Record,
- * so we need to be careful about order.
- */
-type NodeDataData<T extends NodeValue> =
-  T extends any[]
-    ? ArrayList<T[0]>
-    : T extends (...args: any[]) => any
-      ? T
-      : T extends Node
-        ? T
-        : T extends Record<string, any>
-          ? HashMap<T>
-          : T
-
-type NodeDataObject<T extends NodeValue> =
-  T extends any[]
-    ? { value: T }
-    : T extends Node
-      ? { value: T }
-      : T extends NodeValueObject
-        ? T
-        : { value: T }
-
-type ValueOfNodeData<T extends NodeValue, K extends string> =
-  K extends keyof T
-    ? T[K]
-    : any
-
-type NodeDataKeys<T extends NodeValue> =
-  T extends any[]
-    ? 'value'
-    : T extends Node
-      ? 'value'
-      : T extends NodeValueObject
-        ? keyof T
-        : string
-
-/**
- * An abstracted representation of node data with a unified API
- */
-export class NodeData<Type = any, T extends IfAny<Type, any, NarrowTypes<Type>> = IfAny<Type, any, NarrowTypes<Type>>> {
-  /** @todo - Figure out how to determine this type */
-  data!: any
-
-  /** Process nodes if they exist */
-  private _getNodeValue(val: any) {
-    if (val instanceof Node) {
-      val.parentData = this as any
-    } else if (isArray(val)) {
-      for (let n of val) {
-        if (n instanceof Node) {
-          n.parentData = this as any
-        }
-      }
-    }
-    return val
-  }
-
-  /** Get / has / set only deal with map data */
-  has(key: string) {
-    const data = this.data
-    if (data instanceof HashMap) {
-      return data.has(key)
-    }
-    if (key === 'value') {
-      return true
-    }
-    return false
-  }
-
-  get<K extends NodeDataKeys<T>>(key: K): ValueOfNodeData<NodeDataObject<T>, K> {
-    const data = this.data
-    if (data instanceof HashMap) {
-      return data.get(key)
-    }
-    return data
-  }
-
-  private _setInList(list: any, index: number, val: any) {
-    if (!(list instanceof ArrayList)) {
-      throw new Error('Cannot set at index on non-ArrayList data')
-    }
-    list.set(index, this._getNodeValue(val))
-  }
-
-  /** For map-like operations */
-  set<K extends NodeDataKeys<T>>(key: K, val: ValueOfNodeData<NodeDataObject<T>, K>, listIndex: number = -1) {
-    const data = this.data
-    if (data instanceof HashMap) {
-      if (listIndex !== -1) {
-        this._setInList(data.get(key), listIndex, val)
-      } else {
-        data.set(key, val as any)
-      }
-    } else if (key === 'value') {
-      if (listIndex !== -1) {
-        this._setInList(data, listIndex, val)
-      }
-    } else {
-      throw new Error('Cannot set on non-HashMap data')
-    }
-  }
-
-  /** For list-like operations */
-  setAt(index: number, val: T extends Array<infer U> ? U : never) {
-    const data = this.data
-    if (data instanceof ArrayList) {
-      data.set(index, val as any)
-    } else {
-      throw new Error('Cannot set at index on non-ArrayList data')
-    }
-  }
-
-  constructor(
-    /** The Node this is getting attached to */
-    public parentNode: Node,
-    value: NodeInValue<T>
-  ) {
-    this.setAllData(value)
-  }
-
-  setAllData(value: NodeInValue<T>) {
-    const process = this._getNodeValue.bind(this)
-    if (value && (value instanceof Map || isPlainObject(value))) {
-      this.data = new HashMap(value as any, process) as NodeDataData<T>
-    } else if (isArray(value)) {
-      this.data = new ArrayList(value as any, process) as NodeDataData<T>
-    } else {
-      this.data = process(value) as NodeDataData<T>
-    }
-  }
-
-  private _dataValues(asEntries?: false, reverse?: boolean): Generator<NodeRecordValue>
-  private _dataValues(asEntries: true, reverse?: boolean): Generator<[NodeDataKeys<T>, NodeRecordValue, listIndex: number]>
-  private * _dataValues(
-    asEntries?: boolean,
-    reverse?: boolean
-  ): Generator<NodeRecordValue | [string, NodeRecordValue, listIndex: number]> {
-    const data = this.data
-    const listMethod = reverse ? 'reverseEntries' : 'entries'
-    if (data instanceof HashMap) {
-      for (let [key, val] of data.entries()) {
-        if (val instanceof ArrayList) {
-          for (let [nodeIndex, node] of val[listMethod]()) {
-            yield asEntries ? [key, node, nodeIndex] : node
-          }
-        } else {
-          yield asEntries ? [key, val, -1] : val
-        }
-      }
-    } else if (data instanceof ArrayList) {
-      for (let [nodeIndex, node] of data[listMethod]()) {
-        yield asEntries ? [DEFAULT_DATA, node, nodeIndex] : node
-      }
-    } else {
-      asEntries ? yield [DEFAULT_DATA, data as NodeRecordValue, -1] : yield data as NodeRecordValue
-    }
-  }
-
-  * values(reverse?: boolean): Generator<Exclude<NodeRecordValue, undefined>> {
-    for (let value of this._dataValues(false, reverse)) {
-      /** Exclude `undefined` as a value */
-      if (value !== undefined) {
-        yield value
-      }
-    }
-  }
-
-  * entries(reverse?: boolean) {
-    for (let value of this._dataValues(true, reverse)) {
-      /** Exclude `undefined` as a value */
-      if (value !== undefined) {
-        yield value
-      }
-    }
-  }
 }

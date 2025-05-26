@@ -20,7 +20,6 @@ export type AttributeSelectorValue = {
  *   e.g. [id="foo"]
 */
 export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
-  declare value: AttributeSelectorValue
   type = 'AttributeSelector' as const
   shortType = 'attr' as const
 

@@ -1,15 +1,12 @@
 /* eslint-disable @typescript-eslint/require-array-sort-compare */
 import {
-  defineType,
-  type NodeData
+  defineType
 } from './node'
 import { type Context } from '../context'
 import { Selector } from './selector'
 
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
-  declare value: Selector[]
-  declare data: NodeData<Selector[]>
   type = 'SelectorList'
   shortType = 'sellist'
 

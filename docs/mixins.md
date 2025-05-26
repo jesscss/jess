@@ -102,7 +102,7 @@ $foo: @($width; $height) > {
 Note, functions do not have "early" returns. For example:
 ```scss
 $foo: @($var) > {
-  @if($var = 0) {
+  $if($var = 0) {
     return: red;
   }
   return: blue;
@@ -111,6 +111,11 @@ $foo: @($var) > {
 .a {
   color: $foo(0); // returns `blue`
 }
+```
+
+Functions can have simple returns
+```scss
+$double: @($unit) > #($unit * 2);
 ```
 
 ## Collections

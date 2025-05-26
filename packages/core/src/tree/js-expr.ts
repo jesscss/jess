@@ -6,6 +6,9 @@ import { cast } from './util/cast'
  * Deprecated Less feature.
  */
 export class JsExpression extends Node<string> {
+  type = 'JsExpression' as const
+  shortType = 'js' as const
+
   override toTrimmedString(): string {
     return '`' + this.value + '`'
   }

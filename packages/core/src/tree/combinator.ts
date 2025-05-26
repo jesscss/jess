@@ -2,7 +2,6 @@ import { defineType } from './node'
 import { Selector } from './selector'
 
 export class Combinator extends Selector<string> {
-  declare value: string
   type = 'Combinator' as const
   shortType = 'co' as const
 

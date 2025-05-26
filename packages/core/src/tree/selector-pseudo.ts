@@ -1,7 +1,6 @@
 import {
   defineType,
-  type Node,
-  type NodeData
+  type Node
 } from './node'
 import { SimpleSelector } from './selector-simple'
 import { type Context } from '../context'
@@ -17,16 +16,12 @@ export type PseudoSelectorValue = {
   arg?: Node
 }
 
-const { isArray } = Array
-
 /**
  * A pseudo selector
  * @see https://developer.mozilla.org/en-US/docs/Learn/CSS/Building_blocks/Selectors/Pseudo-classes_and_pseudo-elements
  *   e.g. :hover, :focus, :active
 */
 export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
-  declare value: PseudoSelectorValue
-  declare data: NodeData<PseudoSelectorValue>
   type = 'PseudoSelector'
   shortType = 'pseudo'
 
@@ -93,11 +88,10 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   override valueOf(): string {
     let valueOf = this._valueOf
     if (!valueOf) {
-      let value = this.data.get('name')
-      let arg = this.data.get('arg')
+      let { name, arg } = this.value
       /** Simplify wrapped :is when it can be */
       if (
-        value === ':is'
+        name === ':is'
         && (isNode(arg, 'CompoundSelector') || arg instanceof SimpleSelector)
       ) {
         return arg.valueOf()
@@ -109,14 +103,14 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
        *
        * @todo 1n === n, 2n + 0 === 2n
        */
-      valueOf = `${value}${arg ? `(${arg.toTrimmedString().replace(/\s+/, '')})` : ''}`
+      valueOf = `${name}${arg ? `(${arg.toTrimmedString().replace(/\s+/, '')})` : ''}`
       this._valueOf = valueOf
     }
     return valueOf
   }
 
   override async evalNode(context: Context) {
-    let arg = this.data.get('arg')
+    let arg = this.value.arg
     let node = this.maybeClone(context)
     if (!arg) {
       return node
@@ -126,7 +120,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     context.canOperate = false
     arg = await arg.eval(context)
     context.canOperate = canOperate
-    node.data.set('arg', arg)
+    node.value.arg = arg
     return node
   }
 }

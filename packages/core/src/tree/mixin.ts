@@ -1,4 +1,4 @@
-import { Node, defineType, type NodeData } from './node'
+import { Node, defineType } from './node'
 import type { Condition } from './condition'
 import { type List } from './list'
 import type { Rest } from './rest'
@@ -47,9 +47,6 @@ export type MixinOptions = {
  */
 
 export class Mixin extends Node<MixinValue> {
-  declare value: Readonly<MixinValue>
-  declare data: NodeData<MixinValue>
-
   type = 'Mixin'
   shortType = 'mixin'
 
@@ -66,7 +63,7 @@ export class Mixin extends Node<MixinValue> {
       output += ` when ${guard}`
     }
     output += ' {\n'
-    output += rules.toString(depth + 1) as string
+    output += rules.toString(depth + 1)
     output += `${space}}`
     return output
   }
@@ -75,7 +72,6 @@ export class Mixin extends Node<MixinValue> {
     if (!this.preEvaluated) {
       let node = this.maybeClone(context)
       node.preEvaluated = true
-      node.sourceNode ??= this
       let { name } = node.value
       if (name && name instanceof Interpolated) {
         node.data.set('name', await name.eval(context) as Name)

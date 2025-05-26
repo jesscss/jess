@@ -24,9 +24,11 @@ export type LookupValue = {
  *     $foo.one.two =
  *     (Lookup
  *       (value Lookup(value Reference($foo), key 'one'), key 'two')
+ *
+ * @todo - My guess is that this should be re-written or modified
+ * now that Scope has been simplified within Rules?
  */
 export class Lookup extends Node<LookupValue> {
-  declare value: LookupValue
   type = 'Lookup' as const
   shortType = 'look' as const
 

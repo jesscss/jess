@@ -2,9 +2,7 @@ import { type Context, UnitMode } from '../context'
 import { Color, ColorFormat } from './color'
 import {
   Node,
-  defineType,
   type LocationInfo,
-  type NodeData,
   type NodeOptions,
   type TreeContext
 } from './node'
@@ -32,13 +30,10 @@ type UnitMapEntries = Array<[ConversionUnit, ConversionGroup]>
  * A number or dimension
  */
 export class Dimension extends Node<DimensionValue> {
-  declare value: DimensionValue
-  declare data: NodeData<DimensionValue>
   type = 'Dimension' as const
   shortType = 'dimension' as const
 
-  _unitToGroup: Map<string, ConversionGroup> | undefined
-
+  private _unitToGroup: Map<string, ConversionGroup> | undefined
   get unitToGroup() {
     let unitToGroup = this._unitToGroup
     if (!unitToGroup) {

@@ -1,4 +1,4 @@
-import { Node, defineType, type NodeData } from './node'
+import { Node, defineType } from './node'
 import { Nil } from './nil'
 import { List } from './list'
 import type { Context } from '../context'
@@ -22,8 +22,6 @@ export type SequenceOptions = {
  * actually be a sequence of values (like for shorthand)
  */
 export class Sequence extends Node<Node[], SequenceOptions> {
-  declare value: Node[]
-  declare data: NodeData<Node[]>
   type = 'Sequence'
   shortType = 'seq'
 
@@ -43,13 +41,13 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return new List([newSequence, ...b.value]).inherit(this)
     } else if (isNode(b, 'Sequence')) {
       /** Inference not working in this class? */
-      const values = (b as Sequence).value.map(v => v.maybeClone(context))
+      const values = b.value.map(v => v.maybeClone(context))
       if (values.length) {
         values[0]!.pre = 1
       }
       newSequence.value.push(...values)
     } else {
-      b = (b as Node).maybeClone(context)
+      b = b.maybeClone(context)
       b.pre = 1
       newSequence.value.push(b)
     }

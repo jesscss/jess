@@ -8,7 +8,6 @@ import type { Extend } from './extend'
  *  .a:extend(.b), .c:extend(.d);
  */
 export class ExtendList extends Node<Extend[]> {
-  declare value: Extend[]
   type = 'ExtendList' as const
   shortType = 'extendlist' as const
   override allowRoot = true

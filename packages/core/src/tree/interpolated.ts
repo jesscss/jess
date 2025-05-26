@@ -14,7 +14,6 @@ export type InterpolatedValue = {
 export interface Interpolated<
   T extends string = GeneralNodeType
 > extends Node<InterpolatedValue, GeneralOptions<T>> {
-  value: InterpolatedValue
   eval(context: Context): Promise<General<T>>
 }
 /**

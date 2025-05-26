@@ -17,7 +17,6 @@ export type GeneralOptions<T extends string> = {
 export interface General<
   T extends string = GeneralNodeType
 > extends Node<string, GeneralOptions<T>> {
-  value: string
   eval(context: Context): Promise<General<T>>
 }
 

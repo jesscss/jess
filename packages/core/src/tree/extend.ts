@@ -1,7 +1,6 @@
 import { defineType } from './node'
 import { type Context } from '../context'
 import { Selector } from './selector'
-import { type Nil } from './nil'
 
 export const enum ExtendFlag {
   All = 1
@@ -22,7 +21,6 @@ export type ExtendValue = {
  * registers selectors by a string code.
  */
 export class Extend extends Selector<ExtendValue> {
-  declare value: ExtendValue
   type = 'Extend' as const
   shortType = 'extend' as const
 

@@ -13,9 +13,6 @@ export type ListOptions = {
   sep?: ',' | ';' | '/'
 }
 
-export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
-  value: T[]
-}
 /**
  * A list of expressions
  *

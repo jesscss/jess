@@ -1,5 +1,5 @@
 
-import { Node, defineType, type NodeData } from './node'
+import { Node, defineType } from './node'
 import { type Reference } from './reference'
 import { type Rules } from './rules'
 
@@ -58,8 +58,6 @@ export type ImportValue = {
  * @see https://sass-lang.com/documentation/at-rules/import/
  */
 export class Import extends Node<ImportValue, ImportOptions> {
-  declare value: ImportValue
-  declare data: NodeData<ImportValue>
   type = 'Import' as const
   shortType = 'use' as const
 }

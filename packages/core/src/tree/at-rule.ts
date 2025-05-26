@@ -17,8 +17,6 @@ export type AtRuleValue = {
  * A rule like @charset or @media
  */
 export class AtRule extends Node<AtRuleValue> {
-  declare value: AtRuleValue
-  declare data: NodeData<AtRuleValue>
   type = 'AtRule' as const
   shortType = 'atrule' as const
   override allowRoot = true

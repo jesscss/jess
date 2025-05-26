@@ -9,7 +9,6 @@ export type BlockOptions = {
  * for things like custom properties and unknown at-rules.
  */
 export class Block extends Node<Node, BlockOptions> {
-  declare value: Node
   type = 'Block' as const
   shortType = 'block' as const
 

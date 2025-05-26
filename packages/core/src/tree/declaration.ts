@@ -80,9 +80,6 @@ export type DeclarationValue = {
  * Once evaluated, name must be a string
  */
 export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
-  declare value: DeclarationValue
-  declare data: NodeData<DeclarationValue>
-
   type = 'Declaration'
   shortType = 'decl'
   override allowRuleRoot = true
@@ -114,10 +111,9 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
 
   override async preEval(context: Context): Promise<this> {
     if (!this.preEvaluated) {
-      let node = this.maybeClone(context)
+      /** We need to clone declarations, because we alter their options */
+      let node = this.clone()
       node.preEvaluated = true
-      node.options = { ...this.options }
-      node.sourceNode ??= this
       let { name, value } = node.value
       let key: string | Name
       if (name instanceof Interpolated) {

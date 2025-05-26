@@ -3,7 +3,6 @@ import { Node, defineType } from './node'
 import { Bool } from './bool'
 
 export class DefaultGuard extends Node<string> {
-  declare value: string
   type = 'DefaultGuard' as const
   shortType = 'defaultguard' as const
 

@@ -11,8 +11,7 @@ export type QuotedOptions = {
 /**
  * An quoted value
  */
-export class Quoted extends Node<string | Interpolated, QuotedOptions> {
-  declare value: string | General | Interpolated
+export class Quoted extends Node<string | General | Interpolated, QuotedOptions> {
   type = 'Quoted' as const
   shortType = 'quoted' as const
 

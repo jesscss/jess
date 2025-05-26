@@ -46,7 +46,6 @@ type ReferenceParams = ConstructorParameters<NodeType>
  * which can itself contain a reference (a variable variable).
  */
 export class Reference extends Selector<string | Interpolated, ReferenceOptions> {
-  declare value: string | Interpolated
   type = 'Reference'
   shortType = 'ref'
 

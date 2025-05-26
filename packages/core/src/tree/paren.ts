@@ -19,7 +19,6 @@ const isOpOrExpression = (node: Node): node is Operation | Expression => {
  * An expression in parenthesis
  */
 export class Paren extends Node<Node | undefined, ParenOptions> {
-  declare value: Node | undefined
   type = 'Paren' as const
   shortType = 'paren' as const
 

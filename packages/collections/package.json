@@ -1,7 +1,7 @@
 {
-  "name": "reverse-combinate",
+  "name": "@jesscss/collections",
   "publishConfig": {
-    "access": "public"
+    "access": "restricted"
   },
   "version": "2.0.0-alpha.1",
   "description": "Finds common arrays from combined arrays",

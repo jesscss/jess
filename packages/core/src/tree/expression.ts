@@ -8,13 +8,12 @@ import { Node, defineType } from './node'
  * an expression.
  *
  * A "live expression" is bound to a var() function.
- * AHHHH THIS IS SO SMART
+ * AHHHH THIS IS SO SMART (or is it?)
  *   e.g. `var(--foo, $foo)`
  *   - $foo and all it's dependencies are exported into
  *     the module. This is waaaay smarter than Vue's v-bind
  */
 export class Expression extends Node<Node> {
-  declare value: Node
   type = 'Expression' as const
   shortType = 'expr' as const
 

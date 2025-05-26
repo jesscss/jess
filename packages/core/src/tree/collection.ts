@@ -1,4 +1,4 @@
-import { defineType, Node, type NodeData } from './node'
+import { defineType, Node } from './node'
 
 /**
  * A collection is essentially like an anonymous mixin,
@@ -9,8 +9,6 @@ import { defineType, Node, type NodeData } from './node'
  * @see https://sass-lang.com/documentation/style-rules/declarations/#nesting
  */
 export class Collection extends Node<Node[]> {
-  declare value: Node[]
-  declare data: NodeData<Node[]>
   type = 'Collection' as const
   shortType = 'coll' as const
 

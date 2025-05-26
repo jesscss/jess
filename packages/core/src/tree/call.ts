@@ -1,4 +1,4 @@
-import { Node, defineType, type NodeData } from './node'
+import { Node, defineType } from './node'
 import { type List } from './list'
 import { type Context } from '../context'
 import { isNode } from './util'
@@ -40,8 +40,6 @@ export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...a
  * is not a string, but is an (optional) variable reference.
  */
 export class Call extends Node<CallValue> {
-  declare value: CallValue
-  declare data: NodeData<CallValue>
   type = 'Call' as const
   shortType = 'call' as const
   override requiredSemi = true
