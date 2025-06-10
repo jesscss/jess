@@ -1,7 +1,6 @@
 import {
   Node,
-  defineType,
-  type NodeData
+  defineType
 } from './node'
 import { isNode } from './util'
 import { Nil } from './nil'

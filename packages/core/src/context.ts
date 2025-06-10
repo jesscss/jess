@@ -1,7 +1,7 @@
 import { type Node } from './tree/node'
-import type { Ruleset } from './tree/ruleset'
-import type { Rules } from './tree/rules'
-import { type Scope } from './scope'
+import { type Ruleset } from './tree/ruleset'
+import { type Rules } from './tree/rules'
+// import { type Scope } from './scope'
 import type { Declaration, Root } from './tree'
 import { type Operator } from './tree/util/calculate'
 import type { PluginObject } from './plugin'
@@ -66,8 +66,8 @@ export interface TreeContextOptions extends ContextOptions {
    * For instances where a new tree needs to inherit from scope
    * (like Less / SCSS `@import` rule)
    */
-  parentScope?: Scope
-  scope?: Scope
+  parentScope?: Rules
+  scope?: Rules
 
   isModule?: boolean
 
@@ -127,7 +127,7 @@ export class TreeContext implements TreeContextOptions {
   isModule: boolean
 
   /** Current scope while evaluating */
-  scope: Scope | undefined
+  scope: Rules | undefined
 
   file?: TreeContextOptions['file']
   /**
@@ -205,7 +205,7 @@ export class Context {
    * This is set when entering rulesets so that child nodes
    * can use this to lookup values.
    */
-  scope: Scope | undefined
+  scope: Rules | undefined
   /**
    * The file (eval) context should have the same ID at compile-time
    * as run-time, so this ID will be set in `toModule()` output

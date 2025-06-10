@@ -8,8 +8,7 @@
  */
 
 /** Base classes - keep these on top */
-import { type LocationInfo } from './node'
-import { Node } from './node'
+import { Node, type LocationInfo } from './node'
 import { type Operator } from './util/calculate'
 import { Anonymous } from './general'
 import { TreeContext } from '../context'

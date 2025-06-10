@@ -32,6 +32,7 @@ export type Primitive = undefined | boolean | string | number | ((...args: any[]
 
 export const ABORT: unique symbol = Symbol('ABORT')
 export const REMOVE: unique symbol = Symbol('REMOVE')
+export const IS_PROXY: unique symbol = Symbol('IS_PROXY')
 export type NodeVisitReturn = void | Node | symbol
 export type NodeOptions = Record<string, any> & AllNodeOptions
 export const DEFAULT_DATA = 'value'
@@ -178,7 +179,7 @@ export abstract class Node<
 
   nil!: () => Nil
 
-  private _value: Data
+  protected _value: Data
 
   /**
    * This is the internal `data` of the node.
@@ -189,6 +190,35 @@ export abstract class Node<
 
   set value(val: Data) {
     this._value = this._processNodes(val)
+  }
+
+  private _tryProxyWrap<T>(value: T): T {
+    if (isPlainObject(value) || isArray(value)) {
+      return new Proxy(value as object, {
+        get: (target, prop) => {
+          if (prop === IS_PROXY) {
+            return true
+          }
+          const returnVal = Reflect.get(target, prop)
+          if (isPlainObject(returnVal) || isArray(returnVal)) {
+            if (returnVal[IS_PROXY]) {
+              /** Already a proxy */
+              return returnVal
+            }
+            return this._tryProxyWrap(returnVal)
+          }
+          return returnVal
+        },
+        set: (target, prop, newValue) => {
+          if (isPlainObject(newValue) || isArray(newValue)) {
+            newValue = this._processNodes(newValue)
+          }
+          return Reflect.set(target, prop, newValue)
+        }
+      }) as T
+    }
+
+    return value
   }
 
   /**

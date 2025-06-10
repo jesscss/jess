@@ -10,6 +10,7 @@ export default defineConfig({
     coverage: {
       reporter: ['text'],
       include: ['src/**/*.ts'],
+      // eslint-disable-next-line @typescript-eslint/naming-convention
       100: true
     }
   }
