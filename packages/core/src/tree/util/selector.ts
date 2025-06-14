@@ -4,10 +4,9 @@ import { Ampersand } from '../ampersand'
 import { Combinator } from '../combinator'
 import { SelectorList } from '../selector-list'
 import { ComplexSelector, type ComplexSelectorValue } from '../selector-complex'
-import { CompoundSelector, type CompoundSelectorValue } from '../selector-compound'
+import { CompoundSelector } from '../selector-compound'
 import { PseudoSelector } from '../selector-pseudo'
-import { BasicSelector } from '../selector-basic'
-import { SelectorTree } from '../tree'
+// import { BasicSelector } from '../selector-basic'
 import { ABORT } from '../node'
 
 export function combineKeys(

@@ -26,6 +26,7 @@
     "ci": "pnpm build && pnpm test:all",
     "prepublishOnly": "pnpm build && pnpm test:all",
     "build": "pnpm compile",
+    "visualize": "vite build",
     "compile": "tsc -b tsconfig.build.json",
     "dev": "tsc -b tsconfig.build.json -w",
     "test": "cross-env TEST=true vitest",
@@ -41,6 +42,10 @@
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
     "@types/lodash-es": "^4.17.8",
-    "chevrotain": "^11.0.3"
+    "chevrotain": "^11.0.3",
+    "rollup-plugin-visualizer": "~6.0.3",
+    "vite-plugin-circular-dependency": "~0.5.0",
+    "vite-plugin-externalize-deps": "~0.9.0",
+    "vite-plugin-node-polyfills": "~0.23.0"
   }
 }
