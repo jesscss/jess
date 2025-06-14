@@ -1,3 +1,11 @@
+# Variable declaration
+```scss
+$foo: bar; // any type
+<*> foo: bar; // equivalent
+<keyword> foo: bar; // limit type
+```
+
+
 # Variable evaluation
 
 ## Comparisons

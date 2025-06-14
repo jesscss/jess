@@ -20,11 +20,11 @@
  */
 import type { ConditionalExcept } from 'type-fest'
 import isPlainObject from 'lodash-es/isPlainObject'
-import type { Node } from '../node'
+// import type { Node } from '../node'
 
 const { isArray } = Array
 
-export function atIndex(array: any[], index: number = -1) {
+export function atIndex<T>(array: T[], index: number = -1): T | undefined {
   if (index >= 0) {
     return array[index]
   }
@@ -43,15 +43,13 @@ export function atIndex(array: any[], index: number = -1) {
  *
  * The function logic should mirror this type logic.
  */
-type GetEntriesOf<T extends { value: unknown }> = T extends { value: infer NodeValue }
-  ? NodeValue extends readonly any[]
-    ? [NodeValue[number], number, NodeValue]
-    : NodeValue extends Record<string, infer RecordValue>
-      ? RecordValue extends readonly any[]
-        ? [RecordValue[number], number, RecordValue]
-        : [RecordValue, keyof ConditionalExcept<NodeValue, readonly any[]>, NodeValue]
-      : [NodeValue, 'value', T]
-  : never
+type GetEntriesOf<T> = T extends readonly any[]
+  ? [T[number], number, T]
+  : T extends Record<string, infer RecordValue>
+    ? RecordValue extends readonly any[]
+      ? [RecordValue[number], number, RecordValue]
+      : [RecordValue, keyof ConditionalExcept<T, readonly any[]>, T]
+    : [T, 'value', T]
 
 // type Test = GetEntriesOf<Node<string>>
 // type Test2 = GetEntriesOf<Node<string[]>>
@@ -83,29 +81,29 @@ export function * getValues<T>(collection: T, reverse = false): Generator<GetEnt
   }
 }
 
-export function * getEntries<T>(collection: T, reverse = false): Generator<GetEntriesOf<Node<T>> | T> {
+export function * getEntries<T>(collection: T, reverse = false): Generator<GetEntriesOf<T>> {
   if (isArray(collection)) {
     if (reverse) {
       for (let i = collection.length - 1; i >= 0; i--) {
-        yield [collection[i]!, i, collection] as GetEntriesOf<Node<T>>
+        yield [collection[i]!, i, collection] as GetEntriesOf<T>
       }
     } else {
       let length = collection.length
       for (let i = 0; i < length; i++) {
-        yield [collection[i]!, i, collection] as GetEntriesOf<Node<T>>
+        yield [collection[i]!, i, collection] as GetEntriesOf<T>
       }
     }
   } else if (isPlainObject(collection)) {
     const entries = Object.entries(collection as Record<string, unknown>)
     for (let [key, value] of entries) {
       if (isArray(value)) {
-        yield * getEntries(value, reverse) as Generator<GetEntriesOf<Node<T>>>
+        yield * getEntries(value, reverse) as Generator<GetEntriesOf<T>>
       } else {
-        yield [value, key, collection] as GetEntriesOf<Node<T>>
+        yield [value, key, collection] as GetEntriesOf<T>
       }
     }
   } else {
-    yield collection
+    yield [collection, 'value', collection] as GetEntriesOf<T>
   }
 }
 

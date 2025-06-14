@@ -353,18 +353,24 @@ function myFunc(one: Color, two?: any, three?: any) {}
 
 // To create a tuple of numbers:
 // Note: custom types must start with a capital letter
-@-type Num2or4: <number#2 | number#4>; // maybe?
-// accepts one of these values
-@-type Size: 1rem | 1.2rem | 1.4rem;
-
-@-mixin set-size(<Size> size) {
-  font-size: $size;
+@-types {
+  Num2or4: <number#2 | number#4>; // maybe?
+  // accepts one of these values
+  Size: 1rem | 1.2rem | 1.4rem;
 }
-
 
 // design-system.jess
 @-property-types {
   width: <Size>;
+}
+
+@-values {
+  // limit all dimension references to Size?
+  dimension: Size;
+}
+
+@ set-size(<Size> $size) {
+  font-size: $size;
 }
 
 // my-file

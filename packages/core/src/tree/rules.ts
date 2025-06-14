@@ -116,11 +116,29 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let { value } = this
     let outputs = value
       .map((n, i) => {
-        let initial = n.toString(depth, i === 0 && depth !== 0 ? '\n' : undefined)
-        if (n.requiredSemi && n.options.semi !== false && value.length >= i) {
-          initial += ';'
+        const isNested = isNode(n, ['Ruleset', 'AtRule'])
+        let out = ''
+        if (isNested && n.options?.hoistToParent) {
+          out += '\n}\n'
+          out += n.toString(depth - 1)
+          // out += `${(n.options?.parentSelector as Node).toString(depth, undefined, ' ')}{`
+        } else {
+          out += n.toString(depth, i === 0 && depth !== 0 ? `\n${space}` : '\n')
         }
-        return initial.replace(/^(\n?)[ \t]*/, `$1${space}`)
+        if (n.requiredSemi && n.options.semi !== false && value.length >= i) {
+          out += ';'
+        }
+        if (out === '') {
+          return ''
+        }
+        /**
+         * Replace the initial spaces in each line with the correct indentation
+         * unless the node is a type that contains rules
+         */
+        if (isNested || isNode(n, 'Mixin')) {
+          return out
+        }
+        return out.replace(/^[ \t]+/gm, space)
       })
     output += outputs
       .join('')

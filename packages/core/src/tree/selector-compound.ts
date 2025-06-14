@@ -61,7 +61,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
       return returnVal[0]!.inherit(this) as Selector
     }
 
-    this.data.set('value', returnVal as SimpleSelector[])
+    this.value = returnVal as SimpleSelector[]
 
     return sel
   }

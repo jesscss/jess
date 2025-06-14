@@ -1,9 +1,10 @@
-import { Node, defineType } from './node'
+import { Node, defineType, type NodeOptions } from './node'
 import { type Rules } from './rules'
 import type { Context } from '../context'
 import { Nil } from './nil'
 import type { Condition } from './condition'
 import type { Selector } from './selector'
+import { atIndex } from './util/collections'
 
 export type RulesetValue = {
   selector: Selector | Nil
@@ -14,6 +15,10 @@ export type RulesetValue = {
    */
   rules: Rules
   guard?: Condition
+}
+
+type RulesetOptions = NodeOptions & {
+  parentSelector?: Selector | Nil
 }
 
 type NarrowRulesetValue<T> = T extends RulesetValue ? T : RulesetValue
@@ -28,7 +33,7 @@ type NarrowRulesetValue<T> = T extends RulesetValue ? T : RulesetValue
  *   color: black;
  * }
  */
-export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>> {
+export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, RulesetOptions> {
   type = 'Ruleset'
   shortType = 'ruleset'
   override allowRuleRoot = true
@@ -55,7 +60,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>> {
     if (rules.post === undefined) {
       output += '\n'
     }
-    output += `${space}}\n`
+    output += `${space}}`
     return output
   }
 
@@ -73,6 +78,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>> {
 
   override async evalNode(context: Context): Promise<Ruleset | Nil> {
     let rule = this.maybeClone(context)
+    rule.options = { ...this.options }
+    let frame = atIndex(context.frames, -1)
+    /** Store the current frame selector if we need it for serialization */
+    if (frame) {
+      rule.options.parentSelector = frame.selector
+    }
     let guard = rule.value.guard
     if (guard) {
       let bool = await guard.eval(context)
@@ -85,8 +96,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>> {
     /** Allow a selector to signal that nesting should be collapsed */
     const collapseNesting = context.opts.collapseNesting
     let sels = (await this.selector.eval(context)) as Selector | Nil
-    let hoistToParent = this.options?.hoistToParent ?? context.opts.collapseNesting
-    if (hoistToParent) {
+
+    if (frame && (this.options?.hoistToParent ?? context.opts.collapseNesting)) {
       rule.options.hoistToParent = true
     }
     context.opts.collapseNesting = collapseNesting

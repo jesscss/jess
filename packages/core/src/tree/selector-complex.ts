@@ -12,6 +12,7 @@ import { type SelectorList } from './selector-list'
 import { Selector } from './selector'
 import type { SimpleSelector } from './selector-simple'
 import type { CompoundSelector } from './selector-compound'
+import { getEntries } from './util/collections'
 
 // TODO - fix later
 export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand
@@ -82,7 +83,9 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       }
     }
 
-    selector = await super.evalNode.call(selector, context) as ComplexSelector
+    for (let [sel, i] of getEntries(selector.value)) {
+      selector.value[i] = await sel.eval(context) as ComplexSelectorComponent
+    }
 
     let cleanElements = (elements: Array<Selector | Combinator | Nil>): ComplexSelectorValue => {
       let elementsLength = elements.length
