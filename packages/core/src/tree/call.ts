@@ -1,7 +1,7 @@
 import { Node, defineType } from './node'
 import { type List } from './list'
 import { type Context } from '../context'
-import { isNode } from './util'
+import { isNode } from './util/is-node'
 import { cast } from './util/cast'
 
 export type CallValue = {

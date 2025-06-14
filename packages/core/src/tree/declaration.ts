@@ -2,7 +2,7 @@ import {
   Node,
   defineType
 } from './node'
-import { isNode } from './util'
+import { isNode } from './util/is-node'
 import { Nil } from './nil'
 import type { Context } from '../context'
 import { Interpolated } from './interpolated'
@@ -117,7 +117,7 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
       let key: string | Name
       if (name instanceof Interpolated) {
         key = await name.eval(context) as Name
-        node.data.set('name', key)
+        node.value.name = key
       } else {
         key = name
       }
@@ -149,28 +149,24 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
               ? new List([ref, value])
               : spaced([ref, value])
 
-            node.data.set('value', value)
+            node.value.value = value
             break
           }
           case AssignmentType.Add: {
-            node.data.set(
-              'value',
+            node.value.value =
               new Operation([
                 new Reference(key.toString(), { type }),
                 '+',
                 value
               ])
-            )
             break
           }
           case AssignmentType.CondAssign: {
-            node.data.set(
-              'value',
+            node.value.value =
               new Reference(key.toString(), {
                 type,
                 fallbackValue: value
               })
-            )
             break
           }
         }
@@ -190,7 +186,7 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
      * @todo - is this valid if rulesets pre-emptively evaluate names?
      */
     if (name instanceof Interpolated) {
-      node.data.set('name', await name.eval(context) as Name)
+      node.value.name = await name.eval(context) as Name
     }
     /** Evaluate the value */
     if (value instanceof Node) {
@@ -198,7 +194,7 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
       if (newValue instanceof Nil) {
         return newValue.inherit(node)
       } else {
-        node.data.set('value', newValue)
+        node.value.value = newValue
       }
     }
     return node

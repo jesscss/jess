@@ -3,7 +3,7 @@ import { Nil } from './nil'
 import type { Context } from '../context'
 import { SimpleSelector } from './selector-simple'
 import { BasicSelector } from './selector-basic'
-import { isNode } from './util'
+import { isNode } from './util/is-node'
 import { type Selector } from './selector'
 import { atIndex } from './util/collections'
 

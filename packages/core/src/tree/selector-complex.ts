@@ -6,7 +6,7 @@ import {
 } from './node'
 import type { Context } from '../context'
 import { Nil } from './nil'
-import { isNode } from './util'
+import { isNode } from './util/is-node'
 import { PseudoSelector } from './selector-pseudo'
 import { type SelectorList } from './selector-list'
 import { Selector } from './selector'

@@ -1,12 +1,12 @@
 import { defineType, type Node } from './node'
 import type { Interpolated } from './interpolated'
-import { type Context } from '../context'
+import type { Context } from '../context'
 import { cast } from './util/cast'
-import { Declaration } from './declaration'
+import type { Declaration } from './declaration'
 import type { GetterOptions } from '../scope'
 import { General } from './general'
 import { Selector } from './selector'
-import { isNode } from './util'
+import { isNode } from './util/is-node'
 
 /**
  * The type is determined by syntax
@@ -120,7 +120,7 @@ export class Reference extends Selector<string | Interpolated, ReferenceOptions>
       }
       return fallbackValue
     }
-    if (returnVal instanceof Declaration) {
+    if (isNode(returnVal, 'Declaration')) {
       context.declarationScope.add(returnVal)
       const evald = await returnVal.value.value.eval(context)
       context.declarationScope.delete(returnVal)

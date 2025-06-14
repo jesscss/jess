@@ -25,11 +25,11 @@ import type { Node } from '../node'
 const { isArray } = Array
 
 export function atIndex(array: any[], index: number = -1) {
-  if (index < 0) {
+  if (index >= 0) {
     return array[index]
   }
   /** Use a negative index to access from the last element */
-  return array[array.length - index - 1]
+  return array[array.length + index]
 }
 
 /**

@@ -5,8 +5,8 @@ import { SelectorList } from '../tree/selector-list'
 import { Selector } from '../tree/selector'
 import { TreeVisitor } from '../visitor'
 import { PseudoSelector } from '../tree/selector-pseudo'
-import { isNode } from '../tree/util'
-import { DirectedGraph, HashMap, Stack, type DirectedVertex } from 'data-structure-typed'
+import { isNode } from '../tree/util/is-node'
+import { DirectedGraph, HashMap, Stack } from 'data-structure-typed'
 
 const { isArray } = Array
 

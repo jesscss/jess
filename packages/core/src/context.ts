@@ -1,7 +1,6 @@
 import { type Node } from './tree/node'
 import { type Ruleset } from './tree/ruleset'
 import { type Rules } from './tree/rules'
-// import { type Scope } from './scope'
 import type { Declaration, Root } from './tree'
 import { type Operator } from './tree/util/calculate'
 import type { PluginObject } from './plugin'

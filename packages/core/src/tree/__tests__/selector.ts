@@ -1,6 +1,6 @@
 // import { Selector } from '../selector-sequence'
 import { sel, el, co, pseudo, attr, any, quoted, sellist, compound } from '..'
-import { isNode } from '../util'
+import { isNode } from '../util/is-node'
 // import type { Class } from 'type-fest'
 // import type { Node } from '../node'
 

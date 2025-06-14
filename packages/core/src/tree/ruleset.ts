@@ -80,7 +80,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>> {
         return new Nil()
       }
       /** Remove once evaluated */
-      rule.data.set('guard', undefined)
+      rule.value.guard = undefined
     }
     /** Allow a selector to signal that nesting should be collapsed */
     const collapseNesting = context.opts.collapseNesting
@@ -94,14 +94,14 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>> {
     if (sels instanceof Nil) {
       return sels
     }
-    rule.data.set('selector', sels)
+    rule.value.selector = sels
 
     context.frames.push(rule)
-    rule.data.set('rules', await this.data.get('rules').eval(context))
+    rule.value.rules = await this.value.rules.eval(context) as Rules
     context.frames.pop()
 
     /** Remove empty rules */
-    const rules = rule.data.get('rules')
+    const rules = rule.value.rules
     if (rules.visibleRules().length === 0) {
       rule.visible = false
     }

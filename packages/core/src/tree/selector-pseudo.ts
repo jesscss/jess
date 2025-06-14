@@ -4,7 +4,7 @@ import {
 } from './node'
 import { SimpleSelector } from './selector-simple'
 import { type Context } from '../context'
-import { isNode } from './util'
+import { isNode } from './util/is-node'
 
 export type PseudoSelectorValue = {
   /**

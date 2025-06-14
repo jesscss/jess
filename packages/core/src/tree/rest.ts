@@ -1,5 +1,5 @@
 import { defineType, Node } from './node'
-import { isNode } from './util'
+import { isNode } from './util/is-node'
 
 /**
  * A rest expression (e.g. ...$var). By itself it doesn't do much.

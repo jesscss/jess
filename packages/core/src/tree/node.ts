@@ -8,7 +8,7 @@ import { type Visitor } from '../visitor'
 import { type Operator } from './util/calculate'
 import type { Class, Tagged } from 'type-fest'
 import { type Nil } from './nil'
-import { getEntriesFromNode, getValues } from './util'
+import { getEntriesFromNode, getValues } from './util/collections'
 
 export type { TreeContext }
 

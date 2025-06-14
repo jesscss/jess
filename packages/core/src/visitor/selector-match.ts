@@ -4,7 +4,7 @@ import { SimpleSelector } from '../tree/selector-simple'
 import { NodeList, Node } from '../tree/node'
 import { type Selector } from '../tree/selector'
 import { Stack } from 'data-structure-typed'
-import { isNode } from '../tree/util'
+import { isNode } from '../tree/util/is-node'
 
 export class SelectorMatchVisitor extends Visitor {
   private _compoundParent: Stack<CompoundSelector> | undefined

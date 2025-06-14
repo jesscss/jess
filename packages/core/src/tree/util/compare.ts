@@ -1,5 +1,5 @@
-import { isNode } from '.'
-import { cast } from './cast'
+import { isNode } from './is-node'
+import isObject from 'lodash-es/isObject'
 // import { Selector } from '../selector'
 // import { type Combinator } from '../combinator'
 // import { type Node } from '../node'
@@ -10,12 +10,13 @@ export function compare(a: any, b: any) {
   if (a === b) {
     return 0
   }
-  if (typeof a === 'string' && typeof b === 'string') {
+  if (!isObject(a) && !isObject(b)) {
     return a > b ? 1 : -1
   }
-  let aNode = isNode(a) ? a : cast(a)
-  let bNode = isNode(b) ? b : cast(b)
-  return aNode.compare(bNode)
+  if (isNode(a) && isNode(b)) {
+    return a.compare(b)
+  }
+  return undefined
 }
 
 export function compareNodeArray(a: any[], b: any[]): 0 | 1 | -1 | undefined {

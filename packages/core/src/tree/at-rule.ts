@@ -1,4 +1,4 @@
-import { Node, defineType, type NodeData } from './node'
+import { Node, defineType } from './node'
 import { ComplexSelector } from './selector-complex'
 import { Ampersand } from './ampersand'
 import { Ruleset } from './ruleset'

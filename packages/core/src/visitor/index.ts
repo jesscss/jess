@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-invalid-void-type */
 import {
   Node,
-  type NodeOptions,
   type NodeVisitReturn,
   ABORT,
   REMOVE

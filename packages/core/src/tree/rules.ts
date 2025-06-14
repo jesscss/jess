@@ -7,17 +7,18 @@ import {
   type TreeContext
 } from './node'
 import {
-  Declaration
+  type Declaration
 } from './declaration'
 import {
   type VarDeclaration
 } from './var-declaration'
 import type { Context } from '../context'
-import { isNode } from './util'
+import { isNode } from './util/is-node'
 import { type Ruleset } from './ruleset'
 import { type Mixin } from './mixin'
 import { Interpolated } from './interpolated'
 import type { Selector } from './selector'
+import { atIndex } from './util/collections'
 
 export const enum Priority {
   None = 0,
@@ -463,15 +464,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    *
    * @todo - get primitive values rendered for things
    * like numbers?
+   *
+   * @todo - Redo from scratch
    */
   toObject() {
     let output = new Map<string, string>()
     const iterateRules = (rules: Rules) => {
       let value = rules.value
       value.forEach(n => {
-        if (n instanceof Declaration) {
+        if (isNode(n, 'Declaration')) {
           let { name, value, important } = n.value
-          output.set(name.toString(), `${n.value.valueOf()}${n.important ? ` ${n.important}` : ''}`)
+          output.set(name.toString(), `${n.value.valueOf()}${important ? ` ${important}` : ''}`)
         } else if (n instanceof Rules) {
           iterateRules(n)
         }
@@ -554,7 +557,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       let map = this.declarationMap
       let key = node.value.name.toString()
-      let queue = map.get(key) ?? new Queue()
+      let queue = map.get(key) ?? []
       queue.push(node)
       map.set(key, queue)
     } else {
@@ -576,9 +579,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * Find the closest declaration from start, in reverse order,
    * using a binary search
    */
-  private _findClosestByStart(list: Queue<Declaration>, start?: number) {
+  private _findClosestByStart(list: Declaration[], start?: number) {
     if (start === undefined) {
-      return list.last
+      return atIndex(list, -1)
     }
     /**
      * We do this so we start looking above the given position and don't
@@ -794,7 +797,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             && isNode(rule, 'Declaration')
             && rule.value.name instanceof Interpolated
           ) {
-            let lowQueue = evalQueue.get(Priority.High) ?? new Queue()
+            let lowQueue = evalQueue.get(Priority.High) ?? []
             lowQueue.push([i, rule])
             evalQueue.set(Priority.High, lowQueue)
             continue
@@ -809,7 +812,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             rules.value[i] = result
             /** Probably already set when evaluating? */
             result.parent = rules
-            queue.setAt(i, [i, result])
+            queue[i] = [i, result]
           }
           if (method === 'preEval') {
             /** Do I need to pass in options? */
@@ -931,7 +934,7 @@ export type FindContext = {
   readonly?: boolean
 }
 
-type EvalQueueMap = Map<Priority, Queue<[number, Node]>>
+type EvalQueueMap = Map<Priority, Array<[number, Node]>>
 
 /**
  * @todo - Will need lots of massaging, to resolve things like

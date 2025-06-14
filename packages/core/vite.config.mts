@@ -2,7 +2,8 @@ import { defineConfig, type PluginOption } from 'vite'
 import { visualizer } from 'rollup-plugin-visualizer'
 // import { nodePolyfills } from 'vite-plugin-node-polyfills'
 import { externalizeDeps } from 'vite-plugin-externalize-deps'
-import circleDependency from 'vite-plugin-circular-dependency'
+// import circleDependency from 'vite-plugin-circular-dependency'
+import circularDependencies from 'rollup-plugin-circular-dependencies'
 
 export default defineConfig({
   build: {
@@ -14,7 +15,8 @@ export default defineConfig({
   },
   plugins: [
     externalizeDeps(),
-    circleDependency()
+    circularDependencies(),
+    // circleDependency()
     // nodePolyfills({
     //   globals: {
     //     Buffer: true,
@@ -23,9 +25,9 @@ export default defineConfig({
     //   },
     //   protocolImports: true
     // }),
-    // visualizer({
-    //   // template: 'raw-data',
-    //   open: true
-    // }) as PluginOption
+    visualizer({
+      template: 'flamegraph',
+      open: true
+    }) as PluginOption
   ]
 })

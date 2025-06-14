@@ -1,7 +1,7 @@
 import { Node, defineType } from './node'
 import { calculate, type Operator } from './util/calculate'
 import { type Context } from '../context'
-import { isNode } from './util'
+import { isNode } from './util/is-node'
 import round from 'lodash-es/round'
 
 type ColorValues = [number, number, number, number] | number[]
