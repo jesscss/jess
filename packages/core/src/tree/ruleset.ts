@@ -70,9 +70,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       node.preEvaluated = true
       node.sourceNode ??= this
       let { selector } = node.value
-      context.rulesetFrames.push(node)
       node.value.selector = await selector.eval(context) as Selector | Nil
-      context.rulesetFrames.pop()
       return node
     }
     return this

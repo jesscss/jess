@@ -3,6 +3,7 @@ import { Nil } from './nil'
 import type { Context } from '../context'
 import { SimpleSelector } from './selector-simple'
 import { BasicSelector } from './selector-basic'
+import { PseudoSelector } from './selector-pseudo'
 import { isNode } from './util/is-node'
 import { type Selector } from './selector'
 import { atIndex } from './util/collections'
@@ -125,7 +126,7 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
           }
         }
         context.opts.collapseNesting = true
-        return selector
+        return new PseudoSelector({ name: ':is', arg: selector })
       }
       return new Nil()
     }

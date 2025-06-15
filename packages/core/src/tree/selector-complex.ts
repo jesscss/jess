@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/require-array-sort-compare */
-import { Combinator } from './combinator'
-import { Ampersand } from './ampersand'
+import { type Combinator } from './combinator'
+import { type Ampersand } from './ampersand'
 import {
   defineType
 } from './node'
 import type { Context } from '../context'
-import { Nil } from './nil'
+import { type Nil } from './nil'
 import { isNode } from './util/is-node'
 import { PseudoSelector } from './selector-pseudo'
 import { type SelectorList } from './selector-list'
@@ -64,86 +64,94 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
    * @todo - Re-write and simplify, now that we have a distinct CompoundSelector
    */
   override async evalNode(context: Context): Promise<ComplexSelector | SelectorList | Nil> {
-    let selector: ComplexSelector = this.maybeClone(context)
-    let elements = [...selector.value] as ComplexSelectorValue
-    selector.value = elements
-
-    let collapseNesting = context.opts.collapseNesting
-    if (collapseNesting) {
-      let hasAmp = elements.find(el => el instanceof Ampersand)
-      /**
-       * Try to evaluate all selectors as if they are prepended by `&`
-       */
-      if (!hasAmp && context.rulesetFrames.length > 0) {
-        if (elements[0] instanceof Combinator) {
-          elements.unshift(new Ampersand())
-        } else {
-          elements.unshift(new Ampersand(), new Combinator(' '))
-        }
-      }
-    }
-
-    for (let [sel, i] of getEntries(selector.value)) {
-      selector.value[i] = await sel.eval(context) as ComplexSelectorComponent
-    }
-
-    let cleanElements = (elements: Array<Selector | Combinator | Nil>): ComplexSelectorValue => {
-      let elementsLength = elements.length
-      for (let i = 0; i < elementsLength; i++) {
-        let value = elements[i]!
-
-        if (
-          i === 0
-          && (
-            (
-              value instanceof ComplexSelector
-              && value.value.length === 0
-            )
-            || value instanceof Nil
-            || (collapseNesting && (value instanceof Ampersand || value instanceof Combinator))
-          )
-        ) {
-          elements.shift()
-          elementsLength -= 1
-          i -= 1
-        /**
-         * @note The following two can occur because of evaluation of `&`
-         */
-        } else if (value instanceof ComplexSelector) {
-          elements = elements.slice(0, i).concat(value.value).concat(elements.slice(i + 1))
-          elementsLength += value.value.length - 1
-        } else if (isNode(value, 'SelectorList') && elementsLength > 1) {
-          /**
-           * Wrap returned lists with :is(), if
-           * there are more elements in the sequence
-           */
-          elements[i] = new PseudoSelector({
-            name: ':is',
-            arg: value
-          })
-        }
-      }
-      return elements as ComplexSelectorValue
-      // This can/should only happen with compound selectors
-      // elements.sort((a, b) => {
-      //   const aVal = a instanceof BasicSelector && a.isTag ? -1 : 0
-      //   const bVal = b instanceof BasicSelector && b.isTag ? -1 : 0
-      //   return aVal - bVal
-      // })
-    }
-
-    /** @todo - Selector lists can have basic selectors */
-    if (isNode(selector, 'SelectorList')) {
-      selector.value.forEach(sel => { (sel).value = cleanElements(sel.value) })
-    } else {
-      selector.value = cleanElements(selector.value)
-    }
-
-    if (elements.length === 0) {
-      return new Nil()
+    let selector = this.maybeClone(context)
+    let { value } = selector
+    for (let [sel, i] of getEntries(value)) {
+      value[i] = await sel.eval(context) as ComplexSelectorComponent
     }
     return selector
   }
+  // override async evalNode(context: Context): Promise<ComplexSelector | SelectorList | Nil> {
+  //   let selector: ComplexSelector = this.maybeClone(context)
+  //   let elements = [...selector.value] as ComplexSelectorValue
+  //   selector.value = elements
+
+  //   let collapseNesting = context.opts.collapseNesting
+  //   if (collapseNesting) {
+  //     let hasAmp = elements.find(el => el instanceof Ampersand)
+  //     /**
+  //      * Try to evaluate all selectors as if they are prepended by `&`
+  //      */
+  //     if (!hasAmp && context.rulesetFrames.length > 0) {
+  //       if (elements[0] instanceof Combinator) {
+  //         elements.unshift(new Ampersand())
+  //       } else {
+  //         elements.unshift(new Ampersand(), new Combinator(' '))
+  //       }
+  //     }
+  //   }
+
+  //   for (let [sel, i] of getEntries(selector.value)) {
+  //     selector.value[i] = await sel.eval(context) as ComplexSelectorComponent
+  //   }
+
+  //   let cleanElements = (elements: Array<Selector | Combinator | Nil>): ComplexSelectorValue => {
+  //     let elementsLength = elements.length
+  //     for (let i = 0; i < elementsLength; i++) {
+  //       let value = elements[i]!
+
+  //       if (
+  //         i === 0
+  //         && (
+  //           (
+  //             value instanceof ComplexSelector
+  //             && value.value.length === 0
+  //           )
+  //           || value instanceof Nil
+  //           || (collapseNesting && (value instanceof Ampersand || value instanceof Combinator))
+  //         )
+  //       ) {
+  //         elements.shift()
+  //         elementsLength -= 1
+  //         i -= 1
+  //       /**
+  //        * @note The following two can occur because of evaluation of `&`
+  //        */
+  //       } else if (value instanceof ComplexSelector) {
+  //         elements = elements.slice(0, i).concat(value.value).concat(elements.slice(i + 1))
+  //         elementsLength += value.value.length - 1
+  //       } else if (isNode(value, 'SelectorList') && elementsLength > 1) {
+  //         /**
+  //          * Wrap returned lists with :is(), if
+  //          * there are more elements in the sequence
+  //          */
+  //         elements[i] = new PseudoSelector({
+  //           name: ':is',
+  //           arg: value
+  //         })
+  //       }
+  //     }
+  //     return elements as ComplexSelectorValue
+  //     // This can/should only happen with compound selectors
+  //     // elements.sort((a, b) => {
+  //     //   const aVal = a instanceof BasicSelector && a.isTag ? -1 : 0
+  //     //   const bVal = b instanceof BasicSelector && b.isTag ? -1 : 0
+  //     //   return aVal - bVal
+  //     // })
+  //   }
+
+  //   /** @todo - Selector lists can have basic selectors */
+  //   if (isNode(selector, 'SelectorList')) {
+  //     selector.value.forEach(sel => { (sel).value = cleanElements(sel.value) })
+  //   } else {
+  //     selector.value = cleanElements(selector.value)
+  //   }
+
+  //   if (elements.length === 0) {
+  //     return new Nil()
+  //   }
+  //   return selector
+  // }
 
   /** @todo move to visitors */
   // toCSS(context: Context, out: OutputCollector) {

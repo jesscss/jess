@@ -127,7 +127,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         /**
          * Replace the initial spaces in the first line with the correct indentation
          */
-        return out.replace(/^[ \t]+/, space)
+        return out.replace(/^\n[ \t]*/, `\n${space}`)
       })
     output += outputs
       .join('')

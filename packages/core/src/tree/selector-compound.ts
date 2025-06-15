@@ -6,6 +6,7 @@ import type { Context } from '../context'
 import { Nil } from './nil'
 import { Selector } from './selector'
 import type { SimpleSelector } from './selector-simple'
+import { getEntries } from './util/collections'
 
 /**
  * @example
@@ -48,21 +49,29 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
 
   override async evalNode(context: Context): Promise<CompoundSelector | Selector | Nil> {
     const sel = this.maybeClone(context)
-    let valuePromises = sel.value
-      .map(async n => await n.eval(context))
+    let { value } = sel
+    for (let [item, i] of getEntries(value)) {
+      value[i] = await item.eval(context) as SimpleSelector
+    }
+    value = value
+      .filter(n => n && !(n instanceof Nil))
+      .sort((a, b) => {
+        let aIsElement = !nonElementRegex.test(a.valueOf())
+        let bIsElement = !nonElementRegex.test(b.valueOf())
+        if (aIsElement && bIsElement) {
+          /** Throw an error? */
+          return a.valueOf() < b.valueOf() ? -1 : 1
+        }
+        return aIsElement ? -1 : bIsElement ? 1 : 0
+      })
 
-    const returnVal = (
-      (await Promise.all(valuePromises)).filter(n => n && !(n instanceof Nil))
-    )
-    if (returnVal.length === 0) {
+    if (value.length === 0) {
       return (new Nil()).inherit(this)
     }
-    if (returnVal.length === 1) {
-      return returnVal[0]!.inherit(this) as Selector
+    if (value.length === 1) {
+      return value[0]!.inherit(this) as Selector
     }
-
-    this.value = returnVal as SimpleSelector[]
-
+    sel.value = value
     return sel
   }
 

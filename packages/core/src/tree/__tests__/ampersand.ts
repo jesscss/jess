@@ -21,7 +21,7 @@ describe('Ampersand', () => {
       rules: rules([
         decl({ name: 'chungus', value: spaced([el('foo'), el('bar')]) }),
         ruleset({
-          selector: sel(selectors),
+          selector: compound(selectors),
           rules: rules([
             decl({ name: 'inner', value: spaced([el('one'), el('two')]) })
           ])
@@ -85,7 +85,7 @@ describe('Ampersand', () => {
     )
   })
 
-  it.only('should collapse selectors when in collapsing mode #2', async () => {
+  it('should collapse selectors when in collapsing mode #2', async () => {
     /** We need a root node to bubble rules */
     let node = wrapAmpList([sel([amp()])])
     context = new Context({ collapseNesting: true })
@@ -110,7 +110,7 @@ describe('Ampersand', () => {
       .one.two {
         chungus: foo bar;
       }
-      h2.one.two {
+      h2:is(.one.two) {
         inner: one two;
       }`
     )
