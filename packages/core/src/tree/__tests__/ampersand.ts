@@ -70,7 +70,7 @@ describe('Ampersand', () => {
     )
   })
 
-  it.only('should collapse selectors when in collapsing mode', async () => {
+  it('should collapse selectors when in collapsing mode #1', async () => {
     /** We need a root node to bubble rules */
     let node = wrapAmp([amp()])
     context = new Context({ collapseNesting: true })
@@ -83,13 +83,20 @@ describe('Ampersand', () => {
         inner: one two;
       }`
     )
-    node = wrapAmpList([sel([amp()])])
-    evald = await node.eval(context)
+  })
+
+  it.only('should collapse selectors when in collapsing mode #2', async () => {
+    /** We need a root node to bubble rules */
+    let node = wrapAmpList([sel([amp()])])
+    context = new Context({ collapseNesting: true })
+    let evald = await node.eval(context)
     expect(`${evald}`).toBeString(`
-      .one, .two {
+      .one,
+      .two {
         chungus: foo bar;
       }
-      .one, .two {
+      .one,
+      .two {
         inner: one two;
       }`
     )

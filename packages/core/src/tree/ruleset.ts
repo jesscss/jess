@@ -70,7 +70,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       node.preEvaluated = true
       node.sourceNode ??= this
       let { selector } = node.value
+      context.rulesetFrames.push(node)
       node.value.selector = await selector.eval(context) as Selector | Nil
+      context.rulesetFrames.pop()
       return node
     }
     return this
@@ -79,7 +81,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   override async evalNode(context: Context): Promise<Ruleset | Nil> {
     let rule = this.maybeClone(context)
     rule.options = { ...this.options }
-    let frame = atIndex(context.frames, -1)
+    let frame = atIndex(context.rulesetFrames, -1)
     /** Store the current frame selector if we need it for serialization */
     if (frame) {
       rule.options.parentSelector = frame.selector
@@ -97,8 +99,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     const collapseNesting = context.opts.collapseNesting
     let sels = (await this.selector.eval(context)) as Selector | Nil
 
-    if (frame && (this.options?.hoistToParent ?? context.opts.collapseNesting)) {
-      rule.options.hoistToParent = true
+    if (frame && (this.options.hoistToRoot ?? context.opts.collapseNesting)) {
+      rule.options.hoistToRoot = true
     }
     context.opts.collapseNesting = collapseNesting
 
@@ -107,9 +109,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
     rule.value.selector = sels
 
-    context.frames.push(rule)
+    context.rulesetFrames.push(rule)
     rule.value.rules = await this.value.rules.eval(context) as Rules
-    context.frames.pop()
+    context.rulesetFrames.pop()
 
     /** Remove empty rules */
     const rules = rule.value.rules

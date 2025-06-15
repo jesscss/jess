@@ -74,7 +74,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       /**
        * Try to evaluate all selectors as if they are prepended by `&`
        */
-      if (!hasAmp && context.frames.length > 0) {
+      if (!hasAmp && context.rulesetFrames.length > 0) {
         if (elements[0] instanceof Combinator) {
           elements.unshift(new Ampersand())
         } else {

@@ -40,7 +40,7 @@ export class Lookup extends Node<LookupValue> {
       key = `[${key}]`
     }
     if (mixin) {
-      return `${value} -> ${key}`
+      return `${value} > ${key}`
     } else if (keyIsBracketed) {
       return `${value}${key}`
     }

@@ -16,7 +16,11 @@ const { isArray } = Array
 
 type AllNodeOptions = {
   hoistToRoot?: boolean
-  hoistToParent?: boolean
+  /**
+   * This seems harder to implement. For now, for anything that needs
+   * to be flattened, we hoist it to the root.
+   */
+  // hoistToParent?: boolean
 
   /**
    * For statements with optional semis,
@@ -333,6 +337,12 @@ export abstract class Node<
     }
   }
 
+  /**
+   * @todo
+   * Write tests that make sure that a maybe clone without preserveOriginalNodes
+   * does not clone the nodes, but a maybeClone with preserveOriginalNodes
+   * does clone the nodes all through the tree.
+   */
   maybeClone(context: Context, deep?: boolean, cloneFn?: (n: Node) => Node): this {
     if (context.preserveOriginalNodes) {
       return this.clone(deep, cloneFn)

@@ -116,15 +116,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let { value } = this
     let outputs = value
       .map((n, i) => {
-        const isNested = isNode(n, ['Ruleset', 'AtRule'])
-        let out = ''
-        if (isNested && n.options?.hoistToParent) {
-          out += '\n}\n'
-          out += n.toString(depth - 1)
-          // out += `${(n.options?.parentSelector as Node).toString(depth, undefined, ' ')}{`
-        } else {
-          out += n.toString(depth, i === 0 && depth !== 0 ? `\n${space}` : '\n')
-        }
+        let out = n.toString(depth, i === 0 && depth !== 0 ? `\n${space}` : '\n')
+
         if (n.requiredSemi && n.options.semi !== false && value.length >= i) {
           out += ';'
         }
@@ -132,13 +125,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           return ''
         }
         /**
-         * Replace the initial spaces in each line with the correct indentation
-         * unless the node is a type that contains rules
+         * Replace the initial spaces in the first line with the correct indentation
          */
-        if (isNested || isNode(n, 'Mixin')) {
-          return out
-        }
-        return out.replace(/^[ \t]+/gm, space)
+        return out.replace(/^[ \t]+/, space)
       })
     output += outputs
       .join('')
@@ -781,6 +770,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (!this.preEvaluated) {
       rules = await this.preEval(context)
     }
+    /** Presumably the first eval'd rules is the root? */
+    let root = context.root ??= rules
     let evalQueue: EvalQueueMap = new Map()
 
     let rulesContext = context.rulesContext
@@ -799,6 +790,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       queue.push(item)
       evalQueue.set(priority, queue)
     }
+
+    let rulesToHoist = false
 
     /** Now, evaluate the queue in two rounds */
     for (let method of ['preEval', 'eval'] as const) {
@@ -828,9 +821,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           result = await rule[method](context)
           if (result !== rule) {
             rules.value[i] = result
-            /** Probably already set when evaluating? */
-            result.parent = rules
             queue[i] = [i, result]
+          }
+          if (method === 'eval' && result.options.hoistToRoot) {
+            rulesToHoist = true
           }
           if (method === 'preEval') {
             /** Do I need to pass in options? */
@@ -852,6 +846,37 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           // rules.data.setAt(i, rule)
         }
       }
+    }
+    /** Bubble any hoisted rules */
+    let frame = context.rulesetFrames[0]
+    if (frame && rulesToHoist) {
+      let newRules = new Rules([])
+      const getRulesetCopy = () => {
+        let newFrame = frame.copy(true)
+        for (let n of newFrame.nodes()) {
+          if (isNode((n.value as any).rules, 'Rules') && (n.value as any).rules.index === rules.index) {
+            (n.value as any).rules = newRules
+            break
+          }
+        }
+        return newFrame
+      }
+      let rootRules: Node[] = !rules.value[0]?.options.hoistToRoot ? [getRulesetCopy()] : []
+      for (let [i, rule] of rules) {
+        if (!rule.options.hoistToRoot) {
+          newRules.push(rule)
+        } else {
+          rootRules.push(rule)
+          let next = atIndex(rules.value, i + 1)
+          if (next && !next.options.hoistToRoot) {
+            newRules = new Rules([])
+            rootRules.push(getRulesetCopy())
+          }
+        }
+      }
+      let prevFrameIndex = root.value.indexOf(frame)
+      /** Splice the new rules where that frame was */
+      root.value.splice(prevFrameIndex, 1, ...rootRules)
     }
     /**
      * Restore rules context

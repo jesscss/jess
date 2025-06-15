@@ -46,14 +46,14 @@ export class AtRule extends Node<AtRuleValue> {
        *
        * @todo - Make sure this works with and without collapsing
        */
-      if (context.opts.collapseNesting && context.frames.length) {
+      if (context.opts.collapseNesting && context.rulesetFrames.length) {
         let rule = await new Ruleset({
           selector: new ComplexSelector([new Ampersand()]),
           rules
         })
           .inherit(this)
           .eval(context)
-        node.data.set('rules', new Rules([rule]))
+        node.value.rules = new Rules([rule])
       }
       let rootRules = this.collectRoots()
       rootRules.forEach(rule => rules.value.push(rule))

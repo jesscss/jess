@@ -1,7 +1,11 @@
-import { type Node } from './tree/node'
-import { type Ruleset } from './tree/ruleset'
-import { type Rules } from './tree/rules'
-import type { Declaration, Root } from './tree'
+import type {
+  AtRule,
+  Declaration,
+  Root,
+  Node,
+  Ruleset,
+  Rules
+} from './tree'
 import { type Operator } from './tree/util/calculate'
 import type { PluginObject } from './plugin'
 import * as path from 'node:path'
@@ -208,9 +212,10 @@ export class Context {
   /**
    * The file (eval) context should have the same ID at compile-time
    * as run-time, so this ID will be set in `toModule()` output
+   *
+   * @todo - Make the id a hash of the (project-relative) path + contents
    */
   id = generateId()
-  varCounter = 0
   ruleCounter = 0
 
   private _classMap: Map<string, string> | undefined
@@ -222,7 +227,10 @@ export class Context {
    * The ruleset (qualified rule) frames. This is used to resolve
    * '&' when we need to.
    */
-  frames: Array<Ruleset<any>> = []
+  rulesetFrames: Array<Ruleset<any>> = []
+
+  /** Like `@media` */
+  atRuleFrames: AtRule[] = []
 
   /**
    * Keys of @let variables --
@@ -242,7 +250,7 @@ export class Context {
    */
   depth = 0
 
-  rootRules: Node[] = []
+  root: Rules | undefined
 
   /**
    * currently generating a runtime module or not

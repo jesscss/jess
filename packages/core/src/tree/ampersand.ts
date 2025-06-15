@@ -103,7 +103,7 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
   override async evalNode(context: Context): Promise<Selector | Nil> {
     const { appendValue } = this.value
     if (appendValue ?? context.opts.collapseNesting) {
-      let frame = atIndex(context.frames, -1)
+      let frame = atIndex(context.rulesetFrames, -1)
       if (frame) {
         let selector = frame.selector.copy(true)
         if (appendValue && !isNode(selector, 'Nil')) {
@@ -130,7 +130,7 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
       return new Nil()
     }
     const amp: Ampersand = this.maybeClone(context)
-    let frame = atIndex(context.frames, -1)
+    let frame = atIndex(context.rulesetFrames, -1)
     /**
      * Attach a pointer to the current context selector,
      * if we need it later, for extends and such.

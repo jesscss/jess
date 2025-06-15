@@ -4,6 +4,7 @@ import {
 } from './node'
 import { type Context } from '../context'
 import { Selector } from './selector'
+import { getEntries } from './util/collections'
 
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
@@ -30,8 +31,11 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   override async evalNode(context: Context): Promise<SelectorList | Selector> {
-    const list = await (super.evalNode(context) as Promise<SelectorList>)
+    const list = this.maybeClone(context)
     const { value } = list
+    for (let [item, i] of getEntries(value)) {
+      value[i] = await item.eval(context) as Selector
+    }
     if (value.length === 1) {
       return value[0]!
     }
