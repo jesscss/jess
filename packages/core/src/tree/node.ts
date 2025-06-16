@@ -6,7 +6,7 @@ import {
 } from '../context'
 import { type Visitor } from '../visitor'
 import { type Operator } from './util/calculate'
-import type { Class, Tagged } from 'type-fest'
+import type { Class, AbstractClass, Tagged } from 'type-fest'
 import { type Nil } from './nil'
 import { getEntriesFromNode, getValues } from './util/collections'
 
@@ -67,7 +67,7 @@ export type LocationInfo = [
  */
 export const defineType = <
   V = never,
-  T extends Class<Node> = Class<Node>,
+  T extends AbstractClass<Node> = AbstractClass<Node>,
   P extends ConstructorParameters<T> = ConstructorParameters<T>
 >(
     Clazz: T,

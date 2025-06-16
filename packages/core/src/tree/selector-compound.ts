@@ -14,7 +14,8 @@ import { getEntries } from './util/collections'
  *
  * Must have at least 2 selectors. Otherwise it would be collapsed.
  */
-const nonElementRegex = /^[.#:*[]/
+/** Anything other than type (element) or universal, which must come first */
+const nonElementRegex = /^[.#:[]/
 export class CompoundSelector extends Selector<SimpleSelector[]> {
   type = 'CompoundSelector' as const
   shortType = 'compound' as const

@@ -116,7 +116,7 @@ describe('Ampersand', () => {
     )
   })
 
-  it('should collapse selectors when ampersand is set to hoist', async () => {
+  it('should collapse selectors when ampersand is set to hoist #1', async () => {
     let node = wrapAmp([amp(undefined, { hoistToRoot: true })])
     let evald = await node.eval(context)
     expect(`${evald}`).toBeString(`
@@ -127,19 +127,24 @@ describe('Ampersand', () => {
         inner: one two;
       }`
     )
-    node = wrapAmpList([sel([amp(undefined, { hoistToRoot: true })])])
-    evald = await node.eval(context)
+  })
+
+  it('should collapse selectors when ampersand is set to hoist #2', async () => {
+    let node = wrapAmpList([sel([amp(undefined, { hoistToRoot: true })])])
+    let evald = await node.eval(context)
     expect(`${evald}`).toBeString(`
-      .one, .two {
+      .one,
+      .two {
         chungus: foo bar;
       }
-      .one, .two {
+      .one,
+      .two {
         inner: one two;
       }`
     )
   })
 
-  it('should collapse selectors when ampersand has an appended value', async () => {
+  it('should collapse selectors when ampersand has an appended value #1', async () => {
     let node = wrapAmp([amp('-1')])
     let evald = await node.eval(context)
     expect(`${evald}`).toBeString(`
@@ -150,13 +155,18 @@ describe('Ampersand', () => {
         inner: one two;
       }`
     )
-    node = wrapAmpList([sel([amp('-1')])])
-    evald = await node.eval(context)
+  })
+
+  it('should collapse selectors when ampersand has an appended value #2', async () => {
+    let node = wrapAmpList([sel([amp('-1')])])
+    let evald = await node.eval(context)
     expect(`${evald}`).toBeString(`
-      .one, .two {
+      .one,
+      .two {
         chungus: foo bar;
       }
-      .one-1, .two-1 {
+      .one-1,
+      .two-1 {
         inner: one two;
       }`
     )
@@ -167,17 +177,20 @@ describe('Ampersand', () => {
     context = new Context({ collapseNesting: true })
     let evald = await node.eval(context)
     expect(`${evald}`).toBeString(`
-      .one, .two {
+      .one,
+      .two {
         chungus: foo bar;
       }
-      .one, .two, :is(.one, .two) .three {
+      :is(.one, .two),
+      .three {
         inner: one two;
       }`
     )
-    node = wrapAmpList([sel([amp(), el('.three')])])
+    node = wrapAmpList([compound([amp(), el('.three')])])
     evald = await node.eval(context)
     expect(`${evald}`).toBeString(`
-      .one, .two {
+      .one,
+      .two {
         chungus: foo bar;
       }
       :is(.one, .two).three {

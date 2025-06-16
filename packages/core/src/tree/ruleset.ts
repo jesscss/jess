@@ -5,6 +5,7 @@ import { Nil } from './nil'
 import type { Condition } from './condition'
 import type { Selector } from './selector'
 import { atIndex } from './util/collections'
+import { isNode } from './util/is-node'
 
 export type RulesetValue = {
   selector: Selector | Nil
@@ -102,9 +103,19 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
     context.opts.collapseNesting = collapseNesting
 
+    /** If the only selector is a generated :is, unwrap it */
+    if (
+      isNode(sels, 'PseudoSelector')
+      && sels.value.name === ':is'
+      && sels.options.generated
+    ) {
+      sels = sels.value.arg as Selector
+    }
+
     if (sels instanceof Nil) {
       return sels
     }
+
     rule.value.selector = sels
 
     context.rulesetFrames.push(rule)

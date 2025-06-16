@@ -2,7 +2,6 @@ import { defineType, type NodeOptions, type LocationInfo, type TreeContext } fro
 import { Nil } from './nil'
 import type { Context } from '../context'
 import { SimpleSelector } from './selector-simple'
-import { BasicSelector } from './selector-basic'
 import { PseudoSelector } from './selector-pseudo'
 import { isNode } from './util/is-node'
 import { type Selector } from './selector'
@@ -103,22 +102,24 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
   /** Hmm this should never return Extend */
   override async evalNode(context: Context): Promise<Selector | Nil> {
     const { appendValue } = this.value
-    if (appendValue ?? context.opts.collapseNesting) {
+    if ((appendValue ?? context.opts.collapseNesting) || this.options.hoistToRoot) {
       let frame = atIndex(context.rulesetFrames, -1)
       if (frame) {
         let selector = frame.selector.copy(true)
         if (appendValue && !isNode(selector, 'Nil')) {
           let doAppendValue = (n: Selector) => {
-            if (!n.value) {
-              throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`)
-            }
-            let last = n.value
-            if (last instanceof BasicSelector) {
-              last.value += appendValue
-            } else {
-              throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`)
+            for (let s of n.nodes(true)) {
+              /** Find the last simple selector and attempt to append */
+              if (isNode(s, 'SimpleSelector')) {
+                if (typeof s.value === 'string') {
+                  s.value += appendValue
+                  break
+                }
+                throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`)
+              }
             }
           }
+
           if (isNode(selector, 'SelectorList')) {
             selector.value.forEach(doAppendValue)
           } else {
@@ -126,7 +127,7 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
           }
         }
         context.opts.collapseNesting = true
-        return new PseudoSelector({ name: ':is', arg: selector })
+        return new PseudoSelector({ name: ':is', arg: selector }, { generated: true })
       }
       return new Nil()
     }

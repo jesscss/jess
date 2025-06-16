@@ -1,4 +1,4 @@
-import { Node, type NodeOptions, type NodeValue } from './node'
+import { Node, type NodeOptions, type NodeValue, defineType } from './node'
 import type { IfAny } from 'type-fest'
 
 /** This represents anything that is valid in a selector */
@@ -23,3 +23,5 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
   protected _keySet: Set<string> | undefined
   abstract keySet: Set<string>
 }
+
+defineType(Selector, 'Selector')

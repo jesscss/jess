@@ -63,11 +63,15 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   /**
    * @todo - Re-write and simplify, now that we have a distinct CompoundSelector
    */
-  override async evalNode(context: Context): Promise<ComplexSelector | SelectorList | Nil> {
+  override async evalNode(context: Context): Promise<Selector | Nil> {
     let selector = this.maybeClone(context)
     let { value } = selector
     for (let [sel, i] of getEntries(value)) {
       value[i] = await sel.eval(context) as ComplexSelectorComponent
+    }
+    /** If properly parsed, this shouldn't happen, but check anyway */
+    if (value.length === 1) {
+      return value[0]!.inherit(selector)
     }
     return selector
   }
