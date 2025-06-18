@@ -1,3 +1,35 @@
+# Jun 18, 2025
+
+## Idea
+
+After reviewing some of the reasoning for Tailwind, let's explore this:
+
+1. Define a `module` mode for Jess (or `component`?)
+2. Only mixins / classes are allowed, with an optional type (to not default to `div`)
+   a. Mixins essentially become like styled components with props
+   b. Classes are static components
+   c. Must start with a capital letter
+
+e.g.
+```vue
+<style component lang="jess">
+@-use 'somefile.jess' (.Bar);
+
+!div.Foo($one, $two) {
+  /** Imported .Bar? */
+  :extend(.flex, .foo);
+  .Bar {
+    // when <Bar /> is inside <Foo />
+  }
+}
+a.Foo {} // Error 
+</style>
+
+<template>
+  <Foo />
+</template>
+```
+
 # May 26, 2025
 - Am going to let the healing begin on complexity by removing all ArrayLists,
   HashMaps, or other non-native collection structures. Types defined on the 
