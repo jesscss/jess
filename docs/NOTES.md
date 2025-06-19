@@ -15,7 +15,7 @@ e.g.
 <style component lang="jess">
 @-use 'somefile.jess' (.Bar);
 
-!div.Foo($one, $two) {
+!div.Foo(<string> $one; <string> $two) {
   /** Imported .Bar? */
   :extend(.flex, .foo);
   .Bar {
