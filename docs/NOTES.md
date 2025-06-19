@@ -12,17 +12,63 @@ After reviewing some of the reasoning for Tailwind, let's explore this:
 
 e.g.
 ```vue
-<style component lang="jess">
-@-use 'somefile.jess' (.Bar);
+<script>
+// Jess, on the JavaScript level, exports a function, always.
+// This function can be passed an object, which then maps props
+// as "scope".
+// therefore, this is like:
+import Link from './Link.vue'
+import styles from '_component.jess'
 
-!div.Foo(<string> $one; <string> $two) {
+const { StyledLink } = styles({ Link })
+</script>
+<style lang="jess">
+// component mode requires type tags
+@-mode component;
+
+// After the function is called, Jess will return an object
+// with scoped items.
+//
+// from the return object
+// has .Bar in it
+@-use 'somefile.jess';
+
+// In component mode, the export is { Foo }
+Foo(<string> $one; <string> $two) {
+  :is(section); // parens also optional?
   /** Imported .Bar? */
-  :extend(.flex, .foo);
-  .Bar {
+  :extends(.flex, .foo);
+  
+  // component reference -- must be defined
+  !Bar {
     // when <Bar /> is inside <Foo />
   }
 }
 a.Foo {} // Error 
+
+// add additional styles to Foo
+!Foo {
+
+}
+
+// allow imported components, this is like styled(Link)`color: red;`
+// this must be visible in the host component scope, or imported with JS
+// as a function. Less just exports a function that then calls Link()
+// and passes in any extra attributes
+StyledLink($style-prop: 1) {
+  // 1. uses the Link generated calss
+  // 2. creates a class for the default static value hash
+  // 3. creates props for var injections?
+  :extends Link($style-prop; $static: value);
+  // this will call Link like
+  Link({
+    attrs: {
+      ['style-prop']: 1,
+      static: 'value'
+    },
+    classes: ['']
+  })
+}
 </style>
 
 <template>

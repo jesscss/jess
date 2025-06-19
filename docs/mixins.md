@@ -1,53 +1,103 @@
 ## Supports Less and Sass mixin patterns
 
-Named mixins start with an `!` followed by the name.
+What if... like Less, mixins can have compound selectors or like Sass, can have simple names. Maybe the difference is in how they're called?
 
-Mixins can have comma-separated or semi-colon-separated parameters (and can have optional final separators).
+Maybe what we do is register any selector list item that is a compound selector (of only types, classes, and ids) that is followed by parens?
+
+Maybe can be preceded by an `@` plus a space to be explicit?
+
+Mixins must have semi-colon-separated parameters (and can have optional final separators).
 
 ```scss
 // Plain mixin
-!my-mixin($width; $height;) {
+my-mixin($width; $height;) {
   width: $width;
   height: $height;
 }
 
-// Mixins can have dot-names or hash-names like Less
-!.my-mixin($width; $height) {
+// Mixins can have compound selectors like Less
+.my-mixin($width; $height) {
   // ...
 }
-!#my-mixin($width; $height) {
+#my-mixin.more($width; $height) {
   // ...
 }
 
 // Mixins can have default values
-!my-mixin($width; $height: 1rem) {
+my-mixin($width; $height: 1rem) {
   // ...
 }
 
 // Mixins, like Less, can be overloaded and dis-ambiguated by parameters
-!my-mixin($width) {
+my-mixin($width) {
   // ...
 }
-!my-mixin($width; $height) {
+my-mixin($width; $height) {
   // ...
 }
 
 // Mixins can have disambiguation by value
-!my-mixin(red) {
+my-mixin(red) {
   // ...
 }
-!my-mixin(blue) {
+my-mixin(blue) {
   // ...
 }
 // called like `$ -> my-mixin(red);`
 
 // Like Less, mixins can have guards
-!my-mixin($width; $height) when ($height > 1rem) {
+my-mixin($width; $height) when ($height > 1rem) {
   // ...
 }
 
 // called like
 $ > my-mixin(20px; 40px);
+```
+Mixins are disambiguated when called, not named. For example, Sass may have a mixin and a selector with the same name.
+```scss
+// Selector
+div {
+
+}
+@mixin div {
+
+}
+```
+In Jess, this would be written:
+```scss
+div {
+
+}
+div() {
+
+}
+```
+However, when called, we can disambiguate:
+```scss
+.foo {
+  $ > div(); // include a mixin
+  $ > div/(); // include a mixin or selector that matches
+  $ > div; // for balance? call a selector that matches?
+}
+```
+
+Sass's placeholders that can be extended are just mixins that can be extended in Jess.
+```scss
+// sass
+%selector {
+
+}
+.foo {
+  @extend %selector;
+}
+
+// Jess
+selector() {
+
+}
+.foo {
+  :extend selector();
+}
 ```
 
 Single values in parameter default values / arguments must be wrapped in `(` `)` with optional preceding `~`
@@ -55,10 +105,10 @@ Single values in parameter default values / arguments must be wrapped in `(` `)`
 $ > my-mixin($fonts: ~('Times New Roman', serif));
 ```
 
-Anonymous mixins are started with `!(` or `!{` e.g.
+Anonymous mixins are started with `@(` or `@{` e.g.
 
 ```scss
-$my-mixin: !($width; $height) {
+$my-mixin: @($width; $height) {
   // ...
 }
 // called like:
@@ -66,7 +116,7 @@ $my-mixin(20px; 40px);
 
 // or
 
-$my-mixin: !{
+$my-mixin: @{
   // ...
 }
 ```
@@ -75,14 +125,26 @@ To pass a ruleset to a mixin when called, just pass in an anonymous mixin.
 
 ```scss
 // Mixin definition
-!my-mixin($content) {
+my-mixin($content) {
   $content();
 }
 
 // Mixin call
-$ > my-mixin(!{
+$ > my-mixin(@{
   color: red;
 }); 
+```
+Or do Sass-style.
+```scss
+// Mixin definition
+my-mixin() {
+  @-content(); // optional, will not throw an error if not present
+}
+
+// Mixin call -- with :?
+$ > my-mixin(): {
+  color: red;
+}
 ```
 
 
@@ -91,7 +153,7 @@ $ > my-mixin(!{
 Functions use the return symbol `>` to designate a mixin as returning a single value (assigned to `return`).
 
 ```scss
-$foo: !($width; $height) > {
+$foo: @($width; $height) > {
   return: $width;
 }
 .box {
@@ -101,7 +163,7 @@ $foo: !($width; $height) > {
 
 Note, functions do not have "early" returns. For example:
 ```scss
-$foo: !($var) > {
+$foo: @($var) > {
   $if($var = 0) {
     return: red;
   }
@@ -115,7 +177,7 @@ $foo: !($var) > {
 
 Functions can have simple returns
 ```scss
-$double: !($unit) > #($unit * 2);
+$double: @($unit) > #($unit * 2);
 ```
 
 ## Collections
