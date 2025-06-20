@@ -34,17 +34,20 @@ const { StyledLink } = styles({ Link })
 @-use 'somefile.jess';
 
 // In component mode, the export is { Foo }
-Foo(<string> $one; <string> $two) {
-  :is(section); // parens also optional?
+!Foo(<string> $one; <string> $two) {
+  :-is(section); // parens also optional?
   /** Imported .Bar? */
-  :extends(.flex, .foo);
+  :-extends(.flex, .foo);
   
   // component reference -- must be defined
   !Bar {
     // when <Bar /> is inside <Foo />
   }
 }
-a.Foo {} // Error 
+// Error, Foo is defined
+Foo() {
+  :is(a);
+} 
 
 // add additional styles to Foo
 !Foo {

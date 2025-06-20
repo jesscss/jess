@@ -68,7 +68,7 @@ In Jess, this would be written:
 div {
 
 }
-div() {
+!div() {
 
 }
 ```
@@ -142,8 +142,47 @@ my-mixin() {
 }
 
 // Mixin call -- with :?
-$ > my-mixin(): {
+$ > my-mixin(): @{
   color: red;
+}
+```
+In Sass, you can do this:
+```scss
+@mixin media($types...) {
+  @each $type in $types {
+    @media #{$type} {
+      @content($type);
+    }
+  }
+}
+
+@include media(screen, print) using ($type1) {
+  h1 {
+    font-size: 40px;
+    @if $type1 == print {
+      font-family: Calluna;
+    }
+  }
+}
+```
+
+Jess equivalent is:
+```scss
+media($types...) {
+  @-for($type in $types) {
+    @media #{$type} {
+      @-content($type);
+    }
+  }
+}
+
+$ > media(screen, print): @($type1) {
+  h1 {
+    font-size: 40px;
+    @-if($type1 = print) {
+      font-family: Calluna;
+    }
+  }
 }
 ```
 
