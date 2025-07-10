@@ -7,10 +7,19 @@ import { type VarDeclaration } from './var-declaration'
 import type { Rules } from './rules'
 import { Interpolated } from './interpolated'
 import type { Context } from '../context'
+import type { Expression } from './expression'
+import { isNode } from './util/is-node'
 
-export type MixinValue = {
-  name?: string | Name | Interpolated<'Name'>
-  rules: Rules
+export interface MixinValue {
+  /**
+   * A mixin name can be compound, like `type.foo#id` because
+   * of interpolation. It will actually be re-parsed as a Sequence
+   * Node in those cases, in order to register it along-side
+   * "namespaced" mixins.
+   */
+  name?: string | Node
+  /** Functions can be assigned an expression */
+  body: Rules | Expression
   /**
    * - A plain node is a kind of value guard.
    * - A name is just a named variable.
@@ -24,10 +33,17 @@ export type MixinValue = {
 export type MixinOptions = {
   /** This is a flag that will set during parsing */
   hasDefault?: boolean
+  isFunction?: boolean
+  /**
+   * Cannot be overloaded. Written as !my-mixin() in Jess.
+   * If multiple mixin matches are found with the same
+   * name in a scope, it will throw an error.
+   */
+  unique?: boolean
 }
 
 /**
- * @@ someMixin (arg1; arg2: 10px) {
+ * someMixin (arg1; arg2: 10px) {
  *   color: black;
  *   background-color: white;
  *   border-radius: $arg2;
@@ -39,21 +55,22 @@ export type MixinOptions = {
  * as the first argument, representing named arguments,
  * followed by positional arguments.
  *
- * e.g. `@@ foo($a; $b) { ... }`
+ * e.g. `foo($a; $b) { ... }`
  *   can be called from JS like:
  *     foo(1, 2) or
  *     foo({ a: 1, b: 2 }) or
  *     foo({ b: 2 }, 1)
  */
 
-export class Mixin extends Node<MixinValue> {
+export class Mixin extends Node<MixinValue, MixinOptions> {
   type = 'Mixin'
   shortType = 'mixin'
 
   override toTrimmedString(depth: number = 0): string {
-    let { name, rules, params, guard } = this.value
+    let { name, body, params, guard } = this.value
+    let options = this.options
     let space = ''.padStart(depth * 2)
-    let output = `@@ ${name}`
+    let output = `${name}`
     if (params) {
       output += '('
       output += params.toString(depth)
@@ -62,9 +79,16 @@ export class Mixin extends Node<MixinValue> {
     if (guard) {
       output += ` when ${guard}`
     }
-    output += ' {\n'
-    output += rules.toString(depth + 1)
-    output += `${space}}`
+    if (options.isFunction) {
+      output += ' >'
+    }
+    if (isNode(body, 'Expression')) {
+      output += ` ${body.toString(depth)}`
+    } else {
+      output += ' {\n'
+      output += body.toString(depth + 1)
+      output += `${space}}`
+    }
     return output
   }
 
@@ -74,12 +98,19 @@ export class Mixin extends Node<MixinValue> {
       node.preEvaluated = true
       let { name } = node.value
       if (name && name instanceof Interpolated) {
-        node.data.set('name', await name.eval(context) as Name)
+        node.value.name = await name.eval(context) as Name
       }
       return node
     }
     return this
   }
+
+  // override async evalNode(context: Context): Promise<Rules | Expression> {
+  //   let { name, body, params, guard } = this.value
+  //   if (name instanceof Interpolated) {
+  //     name
+  // }
+
   /**
    * @todo -
    * Return either a ruleset if `this` is the eval context,

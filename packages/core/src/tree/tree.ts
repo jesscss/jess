@@ -4,6 +4,7 @@ import type { AtRule } from './at-rule'
 import type { Call } from './call'
 import type { Declaration } from './declaration'
 import type { Dimension } from './dimension'
+import type { Expression } from './expression'
 import type { BasicSelector } from './selector-basic'
 import type { List } from './list'
 import type { Mixin } from './mixin'
@@ -30,6 +31,7 @@ export type Nodes = {
   AtRule: typeof AtRule
   Call: typeof Call
   Declaration: typeof Declaration
+  Expression: typeof Expression
   VarDeclaration: typeof VarDeclaration
   Dimension: typeof Dimension
   BasicSelector: typeof BasicSelector

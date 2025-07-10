@@ -58,10 +58,10 @@ export interface TreeContextOptions extends ContextOptions {
    * Hoists variable declarations, so they can be
    * evaluated per scope. Less sets this to true.
    */
-  hoistDeclarations?: boolean
+  // hoistDeclarations?: boolean
 
   /** In Less 1.x-5.x, Less sets this to true */
-  leakVariablesIntoScope?: boolean
+  // leakVariablesIntoScope?: boolean
 
   inlineJavaScript?: boolean
 
@@ -122,14 +122,13 @@ export const generateId = (length = 8) => {
  */
 export class TreeContext implements TreeContextOptions {
   opts: Record<string, any>
-  hoistDeclarations: boolean
   // changed to `rulesVisiblity` set during parsing
   // leakVariablesIntoScope: boolean
   mathMode: MathMode
   unitMode: UnitMode
   isModule: boolean
 
-  /** Current scope while evaluating */
+  /** Current scope while evaluating - Remove? */
   scope: Rules | undefined
 
   file?: TreeContextOptions['file']
@@ -147,15 +146,14 @@ export class TreeContext implements TreeContextOptions {
     let {
       scope,
       parentScope,
-      hoistDeclarations,
-      leakVariablesIntoScope,
+      // hoistDeclarations,
+      // leakVariablesIntoScope,
       mathMode,
       unitMode,
       isModule,
       file,
       ...rest
     } = opts
-    this.hoistDeclarations = hoistDeclarations ?? false
     // this.leakVariablesIntoScope = leakVariablesIntoScope ?? false
     this.mathMode = mathMode ?? MathMode.PARENS_DIVISION
     this.unitMode = unitMode ?? UnitMode.STRICT
