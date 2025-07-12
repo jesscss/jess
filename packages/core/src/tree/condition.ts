@@ -18,6 +18,10 @@ export type ConditionOptions = {
   negate?: boolean
 }
 
+export interface Condition extends Node<ConditionValue, ConditionOptions> {
+  eval(context: Context): Promise<Bool>
+}
+
 export class Condition extends Node<ConditionValue, ConditionOptions> {
   type = 'Condition' as const
   shortType = 'condition' as const

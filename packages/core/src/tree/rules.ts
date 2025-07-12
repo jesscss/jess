@@ -9,17 +9,21 @@ import {
 import {
   type Declaration
 } from './declaration'
-import {
-  type VarDeclaration
-} from './var-declaration'
 import { Context } from '../context'
 import { isNode } from './util/is-node'
+import { cast } from './util/cast'
 import { type Ruleset } from './ruleset'
 import { type Mixin } from './mixin'
 import { Interpolated } from './interpolated'
 import type { Selector } from './selector'
+import { spaced } from './sequence'
+
 import { atIndex } from './util/collections'
 import isPlainObject from 'lodash-es/isPlainObject'
+import type { Condition } from './condition'
+import type { Bool } from './bool'
+
+const { isArray } = Array
 
 export const enum Priority {
   None = 0,
@@ -78,6 +82,9 @@ export type RulesOptions = {
   local?: boolean
 }
 
+export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
+  eval(context: Context): Promise<this>
+}
 /**
  * The class representing a "declaration list".
  * CSS calls it this even though CSS Nesting
@@ -117,7 +124,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let { value } = this
     let outputs = value
       .map((n, i) => {
-        let out = n.toString(depth, i === 0 && depth !== 0 ? `\n${space}` : '\n')
+        let out = n.toString(
+          depth,
+          i === 0
+            ? depth !== 0
+              ? `\n${space}`
+              : ''
+            : '\n'
+        )
 
         if (n.requiredSemi && n.options.semi !== false && value.length >= i) {
           out += ';'
@@ -128,7 +142,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         /**
          * Replace the initial spaces in the first line with the correct indentation
          */
-        return out.replace(/^\n[ \t]*/, `\n${space}`)
+        return out.replace(/^\n+[ \t]*/, `\n${space}`)
       })
     output += outputs
       .join('')
@@ -885,90 +899,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     context.rulesContext = rulesContext
     return rules
   }
-
-  /** @todo move to visitors */
-  // toCSS(context: Context, out: OutputCollector) {
-  //   const value = this.value
-  //   out.add('{\n')
-  //   context.indent++
-  //   let pre = context.pre
-  //   value.forEach(v => {
-  //     out.add(pre)
-  //     v.toCSS(context, out)
-  //     out.add('\n')
-  //   })
-  //   context.indent--
-  //   pre = context.pre
-  //   out.add(`${pre}}`)
-  // }
-
-  // toModule(context: Context, out: OutputCollector) {
-  //   const depth = context.depth
-  //   context.depth = 2
-
-  //   out.add('$J.ruleset(\n', this.location)
-  //   context.indent++
-  //   let pre = context.pre
-  //   out.add(`${pre}(() => {\n`)
-  //   context.indent++
-  //   out.add(`  ${pre}const $OUT = []\n`)
-  //   this.value.forEach((node, i) => {
-  //     out.add(`  ${pre}`)
-  //     if (node instanceof JsNode) {
-  //       node.toModule(context, out)
-  //       out.add('\n')
-  //     } else if (node instanceof Declaration && context.opts.dynamic) {
-  //       /**
-  //        * Creates either runtime vars or var() depending on settings
-  //        */
-  //       const n = node.clone()
-  //       const process = (n: Node) => {
-  //         if (n instanceof JsExpr || n instanceof Call) {
-  //           if (context.isRuntime) {
-  //             context.rootRules.push(new Declaration({
-  //               name: context.getVar(),
-  //               value: n
-  //             }))
-  //             return n
-  //           }
-  //           return new Call({
-  //             name: 'var',
-  //             value: new List([
-  //               context.getVar(),
-  //               n
-  //             ])
-  //           })
-  //         }
-  //         n.processNodes(process)
-  //         return n
-  //       }
-  //       n.processNodes(process)
-
-  //       if (context.isRuntime) {
-  //         context.rootRules.forEach(n => {
-  //           out.add('$OUT.push(')
-  //           n.toModule(context, out)
-  //           out.add(')\n')
-  //         })
-  //         context.rootRules = []
-  //       } else {
-  //         out.add('$OUT.push(')
-  //         n.toModule(context, out)
-  //         out.add(')\n')
-  //       }
-  //     } else {
-  //       out.add('$OUT.push(')
-  //       node.toModule(context, out)
-  //       out.add(')\n')
-  //     }
-  //   })
-  //   out.add(`  ${pre}return $OUT\n${pre}})()`)
-  //   context.indent -= 2
-  //   pre = context.pre
-  //   out.add(`\n${pre})`)
-
-  //   context.depth = depth
-  // }
 }
 export const rules = defineType(Rules, 'Rules')
 
@@ -1024,7 +954,7 @@ const NodeTypeToPriority = new Map([
 //   RULES            = 0b110000
 // }
 
-type IndexKey = `${NodeType}${string}`
+// type IndexKey = `${NodeType}${string}`
 
 interface RulesEntry {
   node: Rules
@@ -1039,7 +969,7 @@ interface RulesEntry {
 /**
  * Right now, the only nodes that can be registered to the scope for lookups
  */
-type ScopeNodes = Declaration | VarDeclaration | Mixin | Ruleset | Rules
+// type ScopeNodes = Declaration | VarDeclaration | Mixin | Ruleset | Rules
 type MixinEntry = Mixin | Rules
 
 /**
@@ -1048,7 +978,7 @@ type MixinEntry = Mixin | Rules
  * This is in the same file as Rules to avoid circular dependencies
  */
 export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
-  let mixinArr = Array.isArray(mixins) ? mixins : [mixins]
+  let mixinArr = isArray(mixins) ? mixins : [mixins]
   /**
    * This will be called by a mixin call or by JavaScript
    *
@@ -1081,7 +1011,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         mixinCandidates.push(mixin)
       } else {
         /** The mixin has parameters, so let's check args to see if there's a match */
-        let params = (mixin as Mixin).params.clone()
+        let params = (mixin as Mixin).value.params!.clone()
         let positions = new Set(params.value.map((_, i) => i))
         /**
          * First argument can be a plain object with named params
@@ -1098,7 +1028,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
            */
           for (let [i, param] of params) {
             if (isNode(param, 'VarDeclaration')) {
-              let key = param.name as string
+              let key = param.value.name as string
               let namedValue = namedMap.get(key)
               /** Replace our param value with the passed in named value */
               if (namedValue) {
@@ -1134,9 +1064,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           let arg = args[argPos]
           let param = params.value[i]!
           if (isNode(param, 'VarDeclaration')) {
-            param.value = cast(arg)
+            param.value.value = cast(arg)
           } else if (isNode(param, 'Rest')) {
-            param.value = new Spaced(args.slice(argPos))
+            param.value = spaced(args.slice(argPos))
             /** Check a pattern-matching node */
           } else if (param.compare(arg) !== 0) {
             /** This mixin is not a match */
@@ -1146,7 +1076,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           argPos++
         }
         if (match) {
-          (mixin as Mixin).params = params
+          (mixin as Mixin).value.params = params
           mixinCandidates.push(mixin)
         }
       }
@@ -1207,28 +1137,25 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         outputRules.push([candidate, i])
         continue
       }
-      let rules = candidate.rules
-      /**
-       * During parsing, each ruleset should have been assigned
-       * a scope by the tree context, so we can use that to
-       * create a new scope.
-       */
-      let scope = new Scope(rules.scope)
+      /** Create new rules, and add the candidate rules, to add to scope */
+      let rules = new Rules([])
+      rules.push(candidate.value.rules)
 
       /** Now we need to add our parameters, if any */
-      let params = candidate.params
+      let params = candidate.value.params
       if (params) {
         for (let param of params.value) {
           if (isNode(param, ['VarDeclaration', 'Rest'])) {
-            scope.setVar(param.name as string, param.value)
+            /** @todo - Register Rest */
+            rules.register(param)
           }
         }
       }
       /** Now we can evaluate our guards, if any */
-      let guard: Condition | Bool | undefined = candidate.guard
+      let guard: Condition | Bool | undefined = candidate.value.guard
       let passes = true
       let incomingScope = thisContext.scope
-      thisContext.scope = scope
+      thisContext.scope = rules
       if (guard) {
         passes = false
         /** All nodes need context to be evaluated */
@@ -1240,9 +1167,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         }
       }
       if (passes) {
-        let newRules = rules.clone()
-        newRules.scope = scope
-        newRules = await newRules.eval(thisContext)
+        let newRules = await rules.eval(thisContext)
         outputRules.push([newRules, i])
       }
       thisContext.scope = incomingScope
@@ -1254,10 +1179,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     let rulesArr = outputRules.sort((a, b) => a[1] - b[1]).map(r => r[0])
     /** Create a rules wrapper */
     let output = new Rules(rulesArr)
-    /** Assign vars to new scope */
-    rulesArr.forEach(r => {
-      output.scope.merge(r.scope)
-    })
+
     /** Now push all rules into the rules value */
     if (this instanceof Context) {
       return output

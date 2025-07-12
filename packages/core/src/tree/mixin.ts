@@ -18,8 +18,12 @@ export interface MixinValue {
    * "namespaced" mixins.
    */
   name?: string | Node
-  /** Functions can be assigned an expression */
-  body: Rules | Expression
+  /**
+   * Functions can be assigned an expression when parsing,
+   * but it will be evaluated as a set of Rules with a scope
+   * and an implicit `return`
+   */
+  rules: Rules
   /**
    * - A plain node is a kind of value guard.
    * - A name is just a named variable.

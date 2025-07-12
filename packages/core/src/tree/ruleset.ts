@@ -119,7 +119,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     rule.value.selector = sels
 
     context.rulesetFrames.push(rule)
-    rule.value.rules = await this.value.rules.eval(context) as Rules
+    rule.value.rules = await this.value.rules.eval(context)
     context.rulesetFrames.pop()
 
     /** Remove empty rules */

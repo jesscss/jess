@@ -24,6 +24,14 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   type = 'List'
   shortType = 'list'
 
+  get length() {
+    return this.value.length
+  }
+
+  * [Symbol.iterator]() {
+    yield * this.value.entries()
+  }
+
   override toTrimmedString() {
     let { sep = ',' } = this.options ?? {}
     return this.value.map(v => v.toString()).join(`${sep}`)
