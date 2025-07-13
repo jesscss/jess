@@ -7,8 +7,8 @@ import { type VarDeclaration } from './var-declaration'
 import type { Rules } from './rules'
 import { Interpolated } from './interpolated'
 import type { Context } from '../context'
-import type { Expression } from './expression'
-import { isNode } from './util/is-node'
+import type { Selector } from './selector'
+import type { Declaration } from '..'
 
 export interface MixinValue {
   /**
@@ -16,8 +16,13 @@ export interface MixinValue {
    * of interpolation. It will actually be re-parsed as a Sequence
    * Node in those cases, in order to register it along-side
    * "namespaced" mixins.
+   *
+   * @note - For Sass, a mixin name is always a single identifier,
+   * but Less uses mixins / rulesets interchangeably, so we use
+   * `selector` as a property and `Selector` as the type to allow
+   * more flexibility.
    */
-  name?: string | Node
+  selector?: Selector
   /**
    * Functions can be assigned an expression when parsing,
    * but it will be evaluated as a set of Rules with a scope
@@ -37,7 +42,10 @@ export interface MixinValue {
 export type MixinOptions = {
   /** This is a flag that will set during parsing */
   hasDefault?: boolean
-  isFunction?: boolean
+
+  /** If this is a function, specify what is returned  */
+  isFunctionWith?: 'rules' | 'expression'
+
   /**
    * Cannot be overloaded. Written as !my-mixin() in Jess.
    * If multiple mixin matches are found with the same
@@ -71,10 +79,10 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   shortType = 'mixin'
 
   override toTrimmedString(depth: number = 0): string {
-    let { name, body, params, guard } = this.value
-    let options = this.options
+    let { selector, rules, params, guard } = this.value
+    let { isFunctionWith } = this.options
     let space = ''.padStart(depth * 2)
-    let output = `${name}`
+    let output = `${selector}`
     if (params) {
       output += '('
       output += params.toString(depth)
@@ -83,14 +91,14 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     if (guard) {
       output += ` when ${guard}`
     }
-    if (options.isFunction) {
+    if (isFunctionWith) {
       output += ' >'
     }
-    if (isNode(body, 'Expression')) {
-      output += ` ${body.toString(depth)}`
+    if (isFunctionWith === 'expression') {
+      output += ` ${(rules.at(0) as Declaration).value.value.toString(depth)}`
     } else {
       output += ' {\n'
-      output += body.toString(depth + 1)
+      output += rules.toString(depth + 1)
       output += `${space}}`
     }
     return output
@@ -100,9 +108,9 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     if (!this.preEvaluated) {
       let node = this.maybeClone(context)
       node.preEvaluated = true
-      let { name } = node.value
-      if (name && name instanceof Interpolated) {
-        node.value.name = await name.eval(context) as Name
+      let { selector } = node.value
+      if (selector && selector instanceof Interpolated) {
+        node.value.selector = (await selector.eval(context)).createSelector()
       }
       return node
     }

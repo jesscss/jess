@@ -6,7 +6,7 @@ Maybe what we do is register any selector list item that is a compound selector 
 
 Maybe can be preceded by an `@` plus a space to be explicit?
 
-Mixins must have semi-colon-separated parameters (and can have optional final separators).
+Mixins allow commas OR semi-colons as separators. Unlike Less, Jess won't parse to the end of the block to see if a comma-separated value is a single argument. If you want to have commas in your value, it must be wrapped in `~()` to make the intention clear. You can't mix commas and semi-colons in the same definition / call.
 
 ```scss
 // Plain mixin

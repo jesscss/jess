@@ -158,329 +158,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return this.value.filter(n => n.visible)
   }
 
-  // assign(map: QueueMap, key: Priority, value: Node, pos: number, nameOnly?: true | undefined) {
-  //   let set = map.get(key)
-  //   if (set) {
-  //     set.add({ node: value, pos, nameOnly })
-  //   } else {
-  //     map.set(key, new Set([{ node: value, pos, nameOnly }]))
-  //   }
-  // }
-
-  // async evalNodeOld(context: Context): Promise<Rules | Root> {
-  //   let inheritedScope = context.scope
-  //   context.scope = this.scope
-  //   let { leakVariablesIntoScope } = context.treeContext
-  //   let rules = this.clone()
-  //   rules.scope = this.scope
-  //   let assign = this.assign
-  //   /**
-  //    * Make a shallow copy of rules.
-  //    * This is because we're going to replace
-  //    * each item in the array when evaluating.
-  //    */
-  //   rules.value = [...this.value]
-  //   let evalQueue: QueueMap = new Map()
-
-  //   /**
-  //    * First, create a linked list.
-  //    * This is so folding in mixins can be done
-  //    * without mutating arrays.
-  //    */
-  //   // let prev: Node | undefined
-  //   // let nodeLength = ruleValues.length
-  //   /** Iterate in reverse order, to assign the _next node */
-  //   // for (let i = nodeLength - 1; i >= 0; i--) {
-  //   //   const n = value[i]
-  //   //   if (i === nodeLength - 1) {
-  //   //     this._last = n
-  //   //   }
-  //   //   if (i === 0) {
-  //   //     this._first = n
-  //   //   }
-  //   //   if (prev) {
-  //   //     n._next = prev
-  //   //   }
-  //   //   prev = n
-  //   // }
-
-  //   /**
-  //    * Assign to the evaluation queue.
-  //    *
-  //    * Evalution order (in Less) should go:
-  //    *   1. static declaration names (names that do not, themselves,
-  //    *      contain variables). This includes mixin and qualified rule names
-  //    *   2. variable declaration names
-  //    *   3. mixin and function calls
-  //    *   3. everything else (declaration values, etc.)
-  //    *
-  //    * Everything else:
-  //    *   1. static declaration names of mixins and functions
-  //    *   2. variable declaration names of mixins and functions
-  //    *   3. everything else
-  //    */
-  //   for (let [i, n] of rules) {
-  //     /** Evaluate names */
-  //     if (n instanceof Declaration || n instanceof Mixin) {
-  //       const { name } = n.value
-
-  //       if (name instanceof Node) {
-  //         if (name instanceof Interpolated) {
-  //           /** Evaluate these names after evaluating static names */
-  //           assign(evalQueue, Priority.Medium, n, i, true)
-  //         } else {
-  //           /** Evaluate static names first */
-  //           assign(evalQueue, Priority.High, n, i, true)
-  //         }
-  //       }
-  //     /**
-  //      * Hoist imports
-  //      *
-  //      * @note - this might need tweaking
-  //      */
-  //     } else if (isNode(n, 'Import')) {
-  //       assign(evalQueue, Priority.Low, n, i)
-  //     } else {
-  //       assign(evalQueue, Priority.None, n, i)
-  //     }
-  //   }
-
-  //   /** Start with high priority */
-  //   for (let i: Priority = Priority.High; i >= 0; i--) {
-  //     let set = evalQueue.get(i)
-  //     if (!set) {
-  //       continue
-  //     }
-
-  //     for (let item of set) {
-  //       const { node, pos, nameOnly } = item
-  //       if (nameOnly) {
-  //         let decl = node.clone() as Declaration
-  //         /** Everything in a ruleset root will have a name */
-  //         let name = decl.value.name
-  //         let ident: string
-  //         if (name instanceof Node) {
-  //           ident = (await name.eval(context)).value
-  //           decl.value.name = ident
-  //         } else {
-  //           ident = name
-  //         }
-  //         if (!decl.allowRuleRoot) {
-  //           decl.visible = false
-  //         }
-  //         rules.data.setAt(pos, decl)
-
-  //         // if (isNode(decl, 'Mixin')) {
-  //         //   this._scope.setMixin(ident, decl, decl.options)
-  //         // } else if (isNode(decl, ['VarDeclaration', 'Func'])) {
-  //         //   this._scope.setVar(ident, decl, decl.options as VarDeclarationOptions)
-  //         // } else {
-  //         //   this._scope.setProp(ident, decl as Declaration)
-  //         // }
-  //         /**
-  //          * Now that we've evaluated the name, add it to the evaluation queue.
-  //          * (Variable values are not evaluated unless they are called)
-  //          */
-  //         if (!(decl instanceof VarDeclaration)) {
-  //           assign(evalQueue, Priority.None, decl, i)
-  //         }
-  //       } else {
-  //         /** Variable values are only evaluated if referenced */
-  //         if (!(node instanceof VarDeclaration)) {
-  //           if (node instanceof Declaration) {
-  //             /**
-  //              * We've already cloned and partially evaluated this,
-  //              * so we only need to evaluate the value.
-  //              */
-  //             context.declarationScope.push(node)
-  //             let evaldValue = await node.data.get('value').eval(context)
-  //             context.declarationScope.pop()
-
-  //             /**
-  //              * If the eval'd value of the declaration is Nil, effectively
-  //              * remove the declaration from the ruleset by setting the entire
-  //              * declaration to Nil.
-  //              *
-  //              * @todo - Is this correct? I'm not sure this is correct.
-  //              */
-  //             if (evaldValue instanceof Nil) {
-  //               rules.data.setAt(pos, evaldValue)
-  //             } else {
-  //               /** Else set the value only of the (declaration) node */
-  //               node.data.set('value', evaldValue)
-  //             }
-  //           } else {
-  //             /**
-  //              * Not a VarDeclaration and not a declaration.
-  //              * What is it?
-  //              */
-  //             let result = await node.eval(context)
-
-  //             if (!result.allowRuleRoot) {
-  //               result.visible = false
-  //             }
-  //             if (result instanceof Rules) {
-  //               /** @todo Push inherited prop / ruleset references into parent scope */
-  //               // let returnRules = result.data.list
-  //               // if (leakVariablesIntoScope) {
-  //               //   rules.data.list.splice(pos, 1, ...returnRules)
-  //               // } else {
-  //               //   returnRules = returnRules.filter((current, i) => {
-
-  //               //   })
-  //               // }
-
-  //             } else {
-  //               // rules.data.set(ROOT_DATA, result, pos)
-  //             }
-
-  //             /** Merge any scope that we need for lookups */
-  //             // if (result instanceof Rules) {
-  //             //   this._scope.merge(result._scope, leakVariablesIntoScope)
-  //             // }
-  //           }
-  //         }
-  //       }
-  //     }
-  //   }
-
-  //   // let current = map[0]
-  //   // let prevEvald: Node | undefined
-
-  //   /**
-  //      * This will dynamically link rulesets like
-  //      * [rule]._next = [ruleset]._first
-  //      * [ruleset]._last = [rule]._next._next
-  //      *
-  //      * @todo Register declarations for languages
-  //      *       that merge them in.
-  //      */
-  //   // while (current) {
-  //   //   let evald: Node
-
-  //   //   if (current.nameOnly) {
-  //   //     const decl = current.node.clone() as Declaration<Node>
-  //   //     decl.name = decl.name.eval(context)
-  //   //     evald = decl
-  //   //   } else {
-  //   //     evald = current.node.eval(context)
-  //   //   }
-  //   //   const evaldIsRules = evald instanceof Rules
-  //   //   /**
-  //   //    * If previous iteration produced a ruleset, link its
-  //   //    * last value to the currently-evaluated rule
-  //   //    */
-  //   //   if (prevEvald) {
-  //   //     if (prevEvald instanceof Rules) {
-  //   //       prevEvald._last._next = evald
-  //   //     } else {
-  //   //       prevEvald._next = evald
-  //   //     }
-  //   //   }
-
-  //   //   /**
-  //   //    * If we're on the first node, and it evals to a ruleset,
-  //   //    * link this ruleset's first node to the first node of
-  //   //    * the ruleset.
-  //   //    */
-  //   //   if (this._first === current.node) {
-  //   //     if (evaldIsRules) {
-  //   //       this._first = (evald as Rules)._first
-  //   //     } else {
-  //   //       this._first = evald
-  //   //     }
-  //   //   }
-
-  //   //   if (evaldIsRules && prevEvald) {
-  //   //     prevEvald._next = (evald as Rules)._first
-  //   //   }
-
-  //   //   /**
-  //   //    * If we're on the last node, and it evals to a ruleset,
-  //   //    * link this ruleset's last node to the last node of
-  //   //    * the ruleset.
-  //   //    */
-  //   //   if (this._last === current.node) {
-  //   //     if (evaldIsRules) {
-  //   //       this._last = (evald as Rules)._last
-  //   //     } else {
-  //   //       this._last = evald
-  //   //     }
-  //   //   }
-
-  //   //   current = current._next
-  //   //   prevEvald = evald
-  //   // }
-
-  //   let newRules: Node[] = []
-
-  //   /** @todo - Probably need to re-write bubbling */
-  //   let bubbleRootRules = (rule: Node) => {
-  //     let importedRoots =
-  //       (isNode(rule, 'Ruleset') || isNode(rule, 'AtRule'))
-  //         ? rule.value.rules?.rootRules
-  //         : rule.rootRules
-  //     if (importedRoots) {
-  //       const newImportedRoots = new ArrayList()
-  //       for (let r of importedRoots) {
-  //         if (r.options.hoistToParent) {
-  //           r.options.hoistToParent = false
-  //           newRules.push(r)
-  //           continue
-  //         }
-  //         newImportedRoots.push(r)
-  //       }
-  //       let { rootRules } = rules
-  //       if (!rootRules) {
-  //         rules.rootRules = newImportedRoots
-  //       } else {
-  //         rootRules.push(...newImportedRoots)
-  //       }
-  //     }
-  //   }
-  //   /**
-  //    * Bubble rules to root as needed
-  //    */
-  //   let tryAddToRoot = (rule: Ruleset | AtRule) => {
-  //     if (
-  //       rules.type !== 'Root'
-  //       && (
-  //         rule.options.hoistToRoot
-  //         || rule.options.hoistToParent
-  //         || context.opts.collapseNesting
-  //       )
-  //     ) {
-  //       /** Remove empty rules */
-  //       if (!rules.rootRules) {
-  //         rules.rootRules = new ArrayList([rule])
-  //       } else {
-  //         rules.rootRules.push(rule)
-  //       }
-  //     } else {
-  //       newRules.push(rule)
-  //     }
-  //   }
-
-  //   let walkRules = (rules: Node[]) => {
-  //     rules.forEach(rule => {
-  //       if (isNode(rule, ['Ruleset', 'AtRule'])) {
-  //         tryAddToRoot(rule)
-  //         bubbleRootRules(rule)
-  //       } else if (rule instanceof Rules) {
-  //         bubbleRootRules(rule)
-  //         walkRules(rule.value)
-  //       } else {
-  //         newRules.push(rule)
-  //       }
-  //     })
-  //   }
-  //   walkRules(ruleValues)
-  //   rules.value = newRules
-  //   /** Restore scope */
-  //   context.scope = inheritedScope
-  //   return rules
-  // }
-
   /**
    * Return an object representation of a ruleset
    *
@@ -562,7 +239,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (node.options?.setDefined) {
         let key = node.value.name.toString()
         /** Don't set within sibling rules */
-        let opts: FindContext = {}
+        let opts: FindOptions = {}
         let result = this.findDeclaration(key, node.type as 'Declaration', opts, true, node.index)
         if (result) {
           if (result.options?.readonly || opts.readonly) {
@@ -582,8 +259,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       let queue = map.get(key) ?? []
       queue.push(node)
       map.set(key, queue)
-    } else {
-      /** ? */
+    } else if (isNode(node, 'Mixin') || isNode(node, 'Ruleset')) {
+      /** Register by selector */
+      const { selector } = node.value
+      if (selector && !isNode(selector, 'Nil')) {
+        for (const key of selector.keySet) {
+          let queue = this.selectorMap.get(key) ?? []
+          queue.push(node as Mixin | Ruleset)
+          this.selectorMap.set(key, queue)
+
+          /** @todo - I left off here */
+        }
+      }
     }
   }
 
@@ -644,7 +331,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   findDeclaration(
     key: string,
     type: 'VarDeclaration' | 'Declaration' = 'VarDeclaration',
-    opts?: FindContext,
+    opts?: FindOptions,
     searchParents: boolean = true,
     start?: number,
     local: boolean = false
@@ -746,7 +433,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * Returns an executable function
    * @todo - Move from scope
    */
-  getMixin(selector: Selector, opts: FindContext = {}) {
+  getMixinOrRuleset(selector: Selector, opts: FindOptions = {}) {
     return () => {}
   }
 
@@ -902,10 +589,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 }
 export const rules = defineType(Rules, 'Rules')
 
-export type FindContext = {
+export type FindOptions = {
   filter?: (n: Node) => boolean
   /** This gets set if any parent is set to readonly */
   readonly?: boolean
+  searchParents?: boolean
+  start?: number
+  local?: boolean
 }
 
 type EvalQueueMap = Map<Priority, Array<[number, Node]>>

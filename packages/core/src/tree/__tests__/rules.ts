@@ -15,7 +15,8 @@ import {
   type Node,
   type Rules,
   AssignmentType,
-  VarDeclaration
+  VarDeclaration,
+  type Selector
 } from '..'
 import { Context, TreeContext } from '../../context'
 
@@ -27,6 +28,12 @@ function getPropWithContext(context: Context, n: Rules, key: string, opts: FindC
 }
 
 function getVarWithContext(context: Context, n: Rules, key: string, opts: FindContext = {}, start?: number) {
+  context.rulesContext = n
+  let decl = n.findDeclaration(key, 'VarDeclaration', opts, true, start)
+  return decl
+}
+
+function getSelectorWithContext(context: Context, n: Rules, key: Selector, opts: FindContext = {}, start?: number) {
   context.rulesContext = n
   let decl = n.findDeclaration(key, 'VarDeclaration', opts, true, start)
   return decl
@@ -376,14 +383,20 @@ describe('Rules', () => {
     })
   })
 
-  describe('lookup mixins', () => {
-    it('can lookup a mixin in scope', async () => {
+  /** IT IS TIME */
+  describe('lookup selectors', () => {
+    it('can lookup a simple ruleset', async () => {
       let node = rules([
-        decl({ name: 'foo', value: any('bar') })
+        ruleset({
+          selector: el('.foo'),
+          rules: rules([
+            decl({ name: 'foo', value: any('bar') })
+          ])
+        })
       ])
       node = await node.eval(context)
 
-      expect(`${getProp(node, 'foo')}`).toBe('foo: bar')
+      expect(getSelector(node, 'foo')).toBe('foo: bar')
     })
   })
 

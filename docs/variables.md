@@ -148,6 +148,14 @@ Maps and objects can be looked up by dot chains
 
 
 ## Limiting types for a design system (WIP)
+
+Variables are assigned a type and will give a warning when assigned to a different type. In the future, people can opt into throwing an error.
+
+```scss
+$foo: #FF0000; // <color>
+$foo: blarg; // log warning
+```
+
 ```scss
 // @see https://developer.mozilla.org/en-US/docs/Web/CSS/@property/syntax
 // @see https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Types

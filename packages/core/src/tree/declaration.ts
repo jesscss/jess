@@ -118,7 +118,7 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
       let { name, value } = node.value
       let key: string | Name
       if (name instanceof Interpolated) {
-        key = await name.eval(context) as Name
+        key = (await name.eval(context)).createGeneric() as Name
         node.value.name = key
       } else {
         key = name
@@ -188,7 +188,7 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
      * @todo - is this valid if rulesets pre-emptively evaluate names?
      */
     if (name instanceof Interpolated) {
-      node.value.name = await name.eval(context) as Name
+      node.value.name = (await name.eval(context)).createGeneric() as Name
     }
     /** Evaluate the value */
     if (value instanceof Node) {

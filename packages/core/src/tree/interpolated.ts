@@ -1,11 +1,15 @@
-import { Node, defineType } from './node'
+import { type Node, defineType } from './node'
 import { General, type GeneralNodeType, type GeneralOptions } from './general'
 import type { Context } from '../context'
+import { isNode } from './util/is-node'
+import { BasicSelector } from './selector-basic'
+import { SelectorList } from './selector-list'
+import { SimpleSelector } from './selector-simple'
 
 export type InterpolatedValue = {
-  /** String with ## placeholders */
-  value: string
-  replacements?: Node[]
+  /** String with {} placeholders */
+  source: string
+  replacements: Node[]
 }
 
 /**
@@ -13,8 +17,8 @@ export type InterpolatedValue = {
  */
 export interface Interpolated<
   T extends string = GeneralNodeType
-> extends Node<InterpolatedValue, GeneralOptions<T>> {
-  eval(context: Context): Promise<General<T>>
+> extends SimpleSelector<InterpolatedValue, GeneralOptions<T>> {
+  eval(context: Context): Promise<Interpolated<T>>
 }
 /**
  * An interpolated value is one that contains
@@ -29,23 +33,70 @@ export interface Interpolated<
  */
 export class Interpolated<
   T extends string = GeneralNodeType
-> extends Node<InterpolatedValue, GeneralOptions<T>> {
+> extends SimpleSelector<InterpolatedValue, GeneralOptions<T>> {
   type = 'Interpolated' as const
   shortType = 'interpolated' as const
 
   override valueOf(): string {
-    return this.value.value
+    return this.value.source
   }
 
-  override async evalNode(context: Context): Promise<General<T>> {
-    let { value, replacements } = this.value
-    if (!replacements) {
-      return new General<T>(value).inherit(this)
+  replace(replacements: Node[]): string {
+    let { source } = this.value
+    let output = source
+    let i = 0
+    output = output.replace(/{}/g, _ => {
+      return replacements[i++]?.toTrimmedString() ?? ''
+    })
+    return output
+  }
+
+  override toTrimmedString(): string {
+    return this.replace(this.value.replacements)
+  }
+
+  /**
+   * Can turn simple #id, .class, element and list into a selector
+   */
+  createSelector() {
+    let { source, replacements } = this.value
+    let segments = source.split('{}')
+    let output = ''
+    let list: string[] = []
+    for (let [i, replacement] of replacements.entries()) {
+      if (!replacement.evaluated) {
+        throw new Error('Cannot create selector from un-evaluated interpolated node')
+      }
+      if (isNode(replacement, 'List')) {
+        for (let item of replacement.value) {
+          list.push(this.replace([item, ...replacements.slice(i + 1)]))
+        }
+      } else {
+        output += (segments[i] ?? '') + replacement.toTrimmedString()
+      }
     }
-    replacements = await Promise.all(replacements.map(async (n: Node) => await n.eval(context)))
-    // eslint-disable-next-line no-control-regex
-    value = value.replace(/\x00/g, _ => String(replacements.shift()))
-    let node = new General<T>(value).inherit(this)
+    if (!list.length) {
+      return new BasicSelector(output).inherit(this)
+    } else {
+      return new SelectorList(
+        list.map(item => new BasicSelector(item))
+      ).inherit(this)
+    }
+  }
+
+  createGeneric() {
+    return new General<T>(this.toTrimmedString()).inherit(this)
+  }
+
+  /**
+   * Just evaluate replacements and return. We don't stringify yet,
+   * because depending on the context, it will turn into different
+   * node types.
+   */
+  override async evalNode(context: Context) {
+    let node = this.maybeClone(context)
+    let { replacements } = node.value
+    node.value.replacements = await Promise.all(replacements.map(async (n: Node) => await n.eval(context)))
     return node
   }
 }

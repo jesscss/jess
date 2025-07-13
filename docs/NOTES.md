@@ -1,3 +1,7 @@
+# Jul 12, 2025
+
+ Finished migrating generating a function from mixins to rules. Started work on registering mixins / rulesets to the rules scope.
+
 # Jun 18, 2025
 
 ## Idea
