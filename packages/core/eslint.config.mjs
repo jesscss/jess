@@ -1,11 +1,16 @@
-module.exports = {
-  extends: '../../.eslintrc.js',
-  root: true,
-  overrides: [{
+import rootConfig from '../../eslint.config.mjs';
+import tseslint from 'typescript-eslint';
+
+export default [
+  ...rootConfig,
+  {
     files: ['*.ts', '*.tsx'],
-    parserOptions: {
-      // parser: '@typescript-eslint/parser',
-      project: './tsconfig.json'
+    languageOptions: {
+      parser: tseslint.parser,
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
     },
     rules: {
       '@typescript-eslint/no-base-to-string': 'off',
@@ -20,5 +25,5 @@ module.exports = {
         }
       ]
     }
-  }]
-}
+  }
+];

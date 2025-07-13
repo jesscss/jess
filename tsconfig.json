@@ -26,5 +26,6 @@
       "vitest/globals"
     ]
   },
+  "include": ["**/*.ts"],
   "exclude": ["node_modules", "lib"]
 }
