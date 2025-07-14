@@ -7,19 +7,19 @@ import {
   EOF
   // type IOrAlt,
   // type OrMethodOpts
-} from 'chevrotain'
+} from 'chevrotain';
 
-import type { ParserMethodInternal } from 'chevrotain/src/parse/parser/types'
+import type { ParserMethodInternal } from 'chevrotain/src/parse/parser/types';
 
 import {
   TreeContext,
   type LocationInfo
-} from '@jesscss/core'
+} from '@jesscss/core';
 
 /** Apply this label to tokens you wish to skip during parsing consideration */
-export const SKIPPED_LABEL = 'Skipped'
+export const SKIPPED_LABEL = 'Skipped';
 /** The name of the whitespace token */
-export const WS_NAME = 'WS'
+export const WS_NAME = 'WS';
 
 // const { isArray } = Array
 
@@ -27,9 +27,9 @@ export const WS_NAME = 'WS'
  * @note copied from 'chevrotain/src/parse/grammar/keys'
  * We have to copy these because they aren't exported
  */
-export const BITS_FOR_OCCURRENCE_IDX = 8
-export const OR_IDX = 1 << BITS_FOR_OCCURRENCE_IDX
-export const OPTION_IDX = 2 << BITS_FOR_OCCURRENCE_IDX
+export const BITS_FOR_OCCURRENCE_IDX = 8;
+export const OR_IDX = 1 << BITS_FOR_OCCURRENCE_IDX;
+export const OPTION_IDX = 2 << BITS_FOR_OCCURRENCE_IDX;
 
 /**
  * A parser that can make decisions based on whitespace,
@@ -38,94 +38,94 @@ export const OPTION_IDX = 2 << BITS_FOR_OCCURRENCE_IDX
  */
 export class AdvancedActionsParser extends EmbeddedActionsParser {
   /** Indexed by the startOffset of the next token it precedes */
-  preSkippedTokenMap: Map<number, IToken[]>
-  postSkippedTokenMap: Map<number, IToken[]>
+  preSkippedTokenMap: Map<number, IToken[]>;
+  postSkippedTokenMap: Map<number, IToken[]>;
   /** Boolean flag for used in post node */
-  usedSkippedTokens: Set<IToken[]>
+  usedSkippedTokens: Set<IToken[]>;
 
-  _context: TreeContext
-  locationStack: LocationInfo[] = []
+  _context: TreeContext;
+  locationStack: LocationInfo[] = [];
   // captureStack: number[]
-  originalInput: IToken[]
+  originalInput: IToken[];
 
   /** Exposed from Chevrotain */
-  currIdx: number
+  currIdx: number;
 
   get context() {
-    let context = this._context
+    let context = this._context;
     if (!context) {
-      context = this._context = new TreeContext()
+      context = this._context = new TreeContext();
     }
-    return context
+    return context;
   }
 
   set context(c: TreeContext) {
-    this._context = c
+    this._context = c;
   }
 
   subruleInternal: <ARGS extends unknown[], R>(
     ruleToCall: ParserMethodInternal<ARGS, R>,
     idx: number,
     options?: SubruleMethodOpts<ARGS>
-  ) => R
+  ) => R;
 
   getKeyForAutomaticLookahead: (
     dslMethodIdx: number,
     occurrence: number,
-  ) => number
+  ) => number;
 
   raiseNoAltException: (
     occurrence: number,
     errMsgTypes: string | undefined,
-  ) => never
+  ) => never;
 
-  getLaFuncFromCache: (key: number) => (...args: any[]) => any
+  getLaFuncFromCache: (key: number) => (...args: any[]) => any;
 
   constructor(tokenVocabulary: TokenVocabulary, config: IParserConfig) {
-    super(tokenVocabulary, config)
+    super(tokenVocabulary, config);
     if (!config.skipValidations) {
-      this.subruleInternal = this._subruleInternal.bind(this)
+      this.subruleInternal = this._subruleInternal.bind(this);
     }
   }
 
   /** Separate skipped tokens into a new map */
   // @ts-expect-error - It's defined in Chevrotain as a data property
-  set input(value: IToken[]) { // eslint-disable-line accessor-pairs
-    const preSkippedTokenMap = this.preSkippedTokenMap = new Map<number, IToken[]>()
-    const postSkippedTokenMap = this.postSkippedTokenMap = new Map<number, IToken[]>()
-    const inputTokens: IToken[] = []
-    let valueLength = value.length
-    let prevToken: IToken | undefined
+  set input(value: IToken[]) {
+    const preSkippedTokenMap = this.preSkippedTokenMap = new Map<number, IToken[]>();
+    const postSkippedTokenMap = this.postSkippedTokenMap = new Map<number, IToken[]>();
+    const inputTokens: IToken[] = [];
+    let valueLength = value.length;
+    let prevToken: IToken | undefined;
     for (let i = 0; i < valueLength; i++) {
-      const token = value[i]!
-      let nextToken: IToken | undefined
+      const token = value[i]!;
+      let nextToken: IToken | undefined;
       /** Find the next non-skipped token */
       for (let j = i + 1; j < valueLength; j++) {
-        nextToken = value[j]!
+        nextToken = value[j]!;
         if (nextToken.tokenType.LABEL !== SKIPPED_LABEL) {
-          break
+          break;
         }
       }
-      const beforeIndex = nextToken?.startOffset ?? Infinity
+      const beforeIndex = nextToken?.startOffset ?? Infinity;
       if (token.tokenType.LABEL === SKIPPED_LABEL) {
-        let tokens = preSkippedTokenMap.get(beforeIndex)
+        let tokens = preSkippedTokenMap.get(beforeIndex);
         if (tokens) {
-          tokens.push(token)
+          tokens.push(token);
         } else {
-          tokens = [token]
-          preSkippedTokenMap.set(beforeIndex, tokens)
+          tokens = [token];
+          preSkippedTokenMap.set(beforeIndex, tokens);
         }
         if (prevToken) {
-          postSkippedTokenMap.set(prevToken.endOffset!, tokens)
+          postSkippedTokenMap.set(prevToken.endOffset!, tokens);
         }
       } else {
-        prevToken = token
-        inputTokens.push(token)
+        prevToken = token;
+        inputTokens.push(token);
       }
     }
-    this.usedSkippedTokens = new Set()
-    this.originalInput = value
-    super.input = inputTokens
+    this.usedSkippedTokens = new Set();
+    this.originalInput = value;
+    super.input = inputTokens;
   }
 
   _subruleInternal<ARGS extends unknown[], R>(
@@ -133,15 +133,15 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
     idx: number,
     options?: SubruleMethodOpts<ARGS>
   ): R {
-    let name = ruleToCall.ruleName
-    let preLength = this.locationStack.length
+    let name = ruleToCall.ruleName;
+    let preLength = this.locationStack.length;
     // @ts-expect-error - This exists
-    let result = super.subruleInternal(ruleToCall, idx, options)
-    let postLength = this.locationStack.length
+    let result = super.subruleInternal(ruleToCall, idx, options);
+    let postLength = this.locationStack.length;
     if (postLength !== preLength) {
-      throw new Error(`Rule ${name} did not call endRule()`)
+      throw new Error(`Rule ${name} did not call endRule()`);
     }
-    return result
+    return result;
   }
 
   /**
@@ -149,12 +149,12 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
    * Determine if there is white-space before the next token
    */
   hasWS() {
-    let startOffset = this.LA(1).startOffset
-    const skipped = this.preSkippedTokenMap.get(startOffset)
+    let startOffset = this.LA(1).startOffset;
+    const skipped = this.preSkippedTokenMap.get(startOffset);
     if (!skipped) {
-      return false
+      return false;
     }
-    return !!skipped.find(token => token.tokenType.name === WS_NAME)
+    return !!skipped.find(token => token.tokenType.name === WS_NAME);
   }
 
   /**
@@ -162,27 +162,27 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
    * Affirms that there is NOT white space or comment before next token
    */
   noSep(offset: number = 0) {
-    let startOffset = this.LA(1 + offset).startOffset
-    return !this.preSkippedTokenMap.get(startOffset)
+    let startOffset = this.LA(1 + offset).startOffset;
+    return !this.preSkippedTokenMap.get(startOffset);
   }
 
   protected startRule() {
     if (!this.RECORDING_PHASE) {
-      let { startOffset, startLine, startColumn } = this.LA(1)
-      let location: LocationInfo = [startOffset, startLine!, startColumn!, NaN, NaN, NaN]
-      this.locationStack.push(location)
-      return location
+      let { startOffset, startLine, startColumn } = this.LA(1);
+      let location: LocationInfo = [startOffset, startLine!, startColumn!, NaN, NaN, NaN];
+      this.locationStack.push(location);
+      return location;
     }
   }
 
   /** Should only be called when not in recording phase */
   protected endRule() {
-    let { endOffset, endLine, endColumn } = this.LA(0)
-    let location = this.locationStack.pop()!
-    location[3] = endOffset!
-    location[4] = endLine!
-    location[5] = endColumn!
-    return location
+    let { endOffset, endLine, endColumn } = this.LA(0);
+    let location = this.locationStack.pop()!;
+    location[3] = endOffset!;
+    location[4] = endLine!;
+    location[5] = endColumn!;
+    return location;
   }
 
   /** @note might not need these */
@@ -221,7 +221,7 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
 
   protected getLocationInfo(loc: IToken): LocationInfo {
     if (loc.tokenType === EOF) {
-      return new Array(6).fill(Infinity) as LocationInfo
+      return new Array(6).fill(Infinity) as LocationInfo;
     }
     const {
       startOffset,
@@ -230,12 +230,12 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
       endOffset,
       endLine,
       endColumn
-    } = loc
+    } = loc;
     /** Assert that, in our case, tokens will have these properties */
-    return [startOffset, startLine!, startColumn!, endOffset!, endLine!, endColumn!]
+    return [startOffset, startLine!, startColumn!, endOffset!, endLine!, endColumn!];
   }
 
   protected isToken(node: any): node is IToken {
-    return Boolean(node && 'tokenType' in node)
+    return Boolean(node && 'tokenType' in node);
   }
 }

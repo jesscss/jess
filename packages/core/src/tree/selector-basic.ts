@@ -1,6 +1,6 @@
-import type { Context } from '../context'
-import { defineType } from './node'
-import { SimpleSelector } from './selector-simple'
+import type { Context } from '../context';
+import { defineType } from './node';
+import { SimpleSelector } from './selector-simple';
 
 /**
  * A basic selector
@@ -8,32 +8,32 @@ import { SimpleSelector } from './selector-simple'
  *   e.g. div, .foo, #bar
 */
 export class BasicSelector extends SimpleSelector<string> {
-  type = 'BasicSelector' as const
-  shortType = 'el' as const
+  type = 'BasicSelector' as const;
+  shortType = 'el' as const;
 
   get isClass() {
-    return /^\./.test(this.value)
+    return /^\./.test(this.value);
   }
 
   get isId() {
-    return /^#/.test(this.value)
+    return /^#/.test(this.value);
   }
 
   /** A tag-type selector */
   get isTag() {
-    return /^[^.#*]/.test(this.value)
+    return /^[^.#*]/.test(this.value);
   }
 
   override async evalNode(context: Context): Promise<BasicSelector> {
-    let node = await super.evalNode(context) as BasicSelector
+    let node = await super.evalNode(context) as BasicSelector;
     if (node.isClass) {
-      context.hashClass(node.value)
+      context.hashClass(node.value);
     }
-    return node
+    return node;
   }
 
   override valueOf(): string {
-    return (this._valueOf ??= (this.isTag ? this.value.toLowerCase() : this.value))
+    return (this._valueOf ??= (this.isTag ? this.value.toLowerCase() : this.value));
   }
 
   /** @todo - move to visitors */
@@ -54,4 +54,4 @@ export class BasicSelector extends SimpleSelector<string> {
 }
 
 /** Short form of a basic selector is a short 'el' for 'element' */
-export const el = defineType(BasicSelector, 'BasicSelector', 'el')
+export const el = defineType(BasicSelector, 'BasicSelector', 'el');

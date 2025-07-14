@@ -5,10 +5,10 @@ import type {
   Node,
   Ruleset,
   Rules
-} from './tree'
-import { type Operator } from './tree/util/calculate'
-import type { PluginObject } from './plugin'
-import * as path from 'node:path'
+} from './tree';
+import { type Operator } from './tree/util/calculate';
+import type { PluginObject } from './plugin';
+import * as path from 'node:path';
 
 export const enum MathMode {
   /**
@@ -28,11 +28,11 @@ export const enum UnitMode {
   STRICT = 1
 }
 
-const { isArray } = Array
+const { isArray } = Array;
 
 export interface ContextOptions {
   /** Hash classes for module output */
-  module?: boolean
+  module?: boolean;
   /**
    * From docs:
    * "Changes compilation mode so dynamic content
@@ -43,14 +43,14 @@ export interface ContextOptions {
    * i.e. change compilation to always be static, but
    * generate a separate module for calculated CSS variables.
    */
-  dynamic?: boolean
-  collapseNesting?: boolean
+  dynamic?: boolean;
+  collapseNesting?: boolean;
 
-  mathMode?: MathMode
-  unitMode?: UnitMode
+  mathMode?: MathMode;
+  unitMode?: UnitMode;
 
   /** Directories to search to resolve files */
-  paths?: string[]
+  paths?: string[];
 }
 
 export interface TreeContextOptions extends ContextOptions {
@@ -63,28 +63,28 @@ export interface TreeContextOptions extends ContextOptions {
   /** In Less 1.x-5.x, Less sets this to true */
   // leakVariablesIntoScope?: boolean
 
-  inlineJavaScript?: boolean
+  inlineJavaScript?: boolean;
 
   /**
    * For instances where a new tree needs to inherit from scope
    * (like Less / SCSS `@import` rule)
    */
-  parentScope?: Rules
-  scope?: Rules
+  parentScope?: Rules;
+  scope?: Rules;
 
-  isModule?: boolean
+  isModule?: boolean;
 
   file?: {
-    name: string
-    path: string
-    fullPath: string
+    name: string;
+    path: string;
+    fullPath: string;
     // contents: string[]
-  }
+  };
 
-  [k: string]: any
+  [k: string]: any;
 }
 
-const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('')
+const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('');
 
 /**
  * @todo - Redo:
@@ -93,13 +93,13 @@ const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('')
  *   2. Append file (module) hash after class name
  */
 export const generateId = (length = 8) => {
-  let str = ''
-  let idCharsLength = idChars.length
+  let str = '';
+  let idCharsLength = idChars.length;
   for (let i = 0; i < length; i++) {
-    str += idChars[Math.floor(Math.random() * idCharsLength)]!
+    str += idChars[Math.floor(Math.random() * idCharsLength)]!;
   }
-  return str
-}
+  return str;
+};
 
 /**
  * Tree context is attached to each node
@@ -121,22 +121,22 @@ export const generateId = (length = 8) => {
  * unique to the tree, such as the math mode.
  */
 export class TreeContext implements TreeContextOptions {
-  opts: Record<string, any>
+  opts: Record<string, any>;
   // changed to `rulesVisiblity` set during parsing
   // leakVariablesIntoScope: boolean
-  mathMode: MathMode
-  unitMode: UnitMode
-  isModule: boolean
+  mathMode: MathMode;
+  unitMode: UnitMode;
+  isModule: boolean;
 
   /** Current scope while evaluating - Remove? */
-  scope: Rules | undefined
+  scope: Rules | undefined;
 
-  file?: TreeContextOptions['file']
+  file?: TreeContextOptions['file'];
   /**
    * The plugin that created this tree. It will have first dibs
    * to resolve any imports.
    */
-  plugin?: PluginObject
+  plugin?: PluginObject;
 
   constructor(opts: TreeContextOptions = {}) {
     /**
@@ -153,14 +153,14 @@ export class TreeContext implements TreeContextOptions {
       isModule,
       file,
       ...rest
-    } = opts
+    } = opts;
     // this.leakVariablesIntoScope = leakVariablesIntoScope ?? false
-    this.mathMode = mathMode ?? MathMode.PARENS_DIVISION
-    this.unitMode = unitMode ?? UnitMode.STRICT
-    this.isModule = isModule ?? false
-    this.file = file
+    this.mathMode = mathMode ?? MathMode.PARENS_DIVISION;
+    this.unitMode = unitMode ?? UnitMode.STRICT;
+    this.isModule = isModule ?? false;
+    this.file = file;
     // this.scope = scope ?? new Scope(parentScope)
-    this.opts = rest
+    this.opts = rest;
   }
 }
 
@@ -184,11 +184,11 @@ export class TreeContext implements TreeContextOptions {
  * There should only ever be one Context singleton per parse & evaluation.
  */
 export class Context {
-  readonly plugins: PluginObject[]
-  readonly opts: ContextOptions
+  readonly plugins: PluginObject[];
+  readonly opts: ContextOptions;
 
-  treeContext!: TreeContext
-  rulesContext!: Rules
+  treeContext!: TreeContext;
+  rulesContext!: Rules;
 
   /**
    * When getting vars, the current declaration is ommitted
@@ -197,38 +197,38 @@ export class Context {
    *
    * We use a set here because we look it up for filtering
    */
-  private _declarationScope: Set<Declaration> | undefined
+  private _declarationScope: Set<Declaration> | undefined;
   get declarationScope() {
-    return (this._declarationScope ??= new Set())
+    return (this._declarationScope ??= new Set());
   }
 
   /**
    * This is set when entering rulesets so that child nodes
    * can use this to lookup values.
    */
-  scope: Rules | undefined
+  scope: Rules | undefined;
   /**
    * The file (eval) context should have the same ID at compile-time
    * as run-time, so this ID will be set in `toModule()` output
    *
    * @todo - Make the id a hash of the (project-relative) path + contents
    */
-  id = generateId()
-  ruleCounter = 0
+  id = generateId();
+  ruleCounter = 0;
 
-  private _classMap: Map<string, string> | undefined
+  private _classMap: Map<string, string> | undefined;
   get classMap() {
-    return (this._classMap ??= new Map())
+    return (this._classMap ??= new Map());
   }
 
   /**
    * The ruleset (qualified rule) frames. This is used to resolve
    * '&' when we need to.
    */
-  rulesetFrames: Array<Ruleset<any>> = []
+  rulesetFrames: Array<Ruleset<any>> = [];
 
   /** Like `@media` */
-  atRuleFrames: AtRule[] = []
+  atRuleFrames: AtRule[] = [];
 
   /**
    * Keys of @let variables --
@@ -237,18 +237,18 @@ export class Context {
    *
    * @todo - remove?
    */
-  private _exports: Set<string> | undefined
+  private _exports: Set<string> | undefined;
   get exports(): Set<string> {
-    return (this._exports ??= new Set())
+    return (this._exports ??= new Set());
   }
 
   /**
    * @todo - is this still used? Or do all toString()
    * and toTrimmedString() methods pass in depth?
    */
-  depth = 0
+  depth = 0;
 
-  root: Rules | undefined
+  root: Rules | undefined;
 
   /**
    * currently generating a runtime module or not
@@ -261,20 +261,20 @@ export class Context {
    * be preserved as-is and not evaluated, except for
    * #() expressions.
   */
-  inCustom: boolean | undefined
+  inCustom: boolean | undefined;
 
   /** A flag set by expressions */
-  canOperate: boolean | undefined
+  canOperate: boolean | undefined;
 
   /** A flag set when evaluating conditions */
-  isDefault: boolean | undefined
+  isDefault: boolean | undefined;
 
   /** A flag to clone nodes before mutating */
-  preserveOriginalNodes: boolean | undefined
+  preserveOriginalNodes: boolean | undefined;
 
   constructor(opts: ContextOptions = {}, plugins?: PluginObject[]) {
-    this.opts = opts
-    this.plugins = plugins ?? []
+    this.opts = opts;
+    this.plugins = plugins ?? [];
   }
 
   /**
@@ -287,76 +287,76 @@ export class Context {
    * I'll revisit this when I finish imports.
    */
   async getTree(filePath: string, initialDirectory?: string, options?: Record<string, any>) {
-    initialDirectory ??= path.dirname(filePath)
-    const paths = this.opts.paths ?? []
-    options ??= {}
-    options = { ...this.opts, ...options }
+    initialDirectory ??= path.dirname(filePath);
+    const paths = this.opts.paths ?? [];
+    options ??= {};
+    options = { ...this.opts, ...options };
 
-    const plugins = this.plugins
-    const pluginLength = plugins.length
-    let fullPath: string | undefined
-    let resolvedTree: Root | false | undefined
-    const triedPaths: string[] = []
+    const plugins = this.plugins;
+    const pluginLength = plugins.length;
+    let fullPath: string | undefined;
+    let resolvedTree: Root | false | undefined;
+    const triedPaths: string[] = [];
 
-    let rootPlugin = this.currentTree?.plugin
+    let rootPlugin = this.currentTree?.plugin;
 
     /** If we have a root plugin, try it first */
     if (rootPlugin?.fileManager) {
-      const result = rootPlugin.fileManager.getPath(filePath, initialDirectory, paths, options)
+      const result = rootPlugin.fileManager.getPath(filePath, initialDirectory, paths, options);
       if (isArray(result)) {
-        triedPaths.push(...result)
+        triedPaths.push(...result);
       } else {
-        fullPath = result
+        fullPath = result;
       }
     }
 
     /** Iterate in reverse, starting with last added plugin */
     for (let i = pluginLength - 1; i >= 0; i--) {
-      const plugin = plugins[i]!
+      const plugin = plugins[i]!;
       if (plugin === rootPlugin) {
-        continue
+        continue;
       }
       if (!plugin.fileManager) {
-        continue
+        continue;
       }
-      const result = plugin.fileManager.getPath(filePath, initialDirectory, paths, options)
+      const result = plugin.fileManager.getPath(filePath, initialDirectory, paths, options);
       if (isArray(result)) {
-        triedPaths.push(...result)
+        triedPaths.push(...result);
       } else {
-        fullPath = result
-        break
+        fullPath = result;
+        break;
       }
     }
     if (!fullPath) {
-      throw new Error('File not found')
+      throw new Error('File not found');
     }
 
     /** If we have a root plugin, try it first */
     if (rootPlugin?.fileManager) {
-      const result = await rootPlugin.fileManager.getTree(fullPath, options)
+      const result = await rootPlugin.fileManager.getTree(fullPath, options);
       if (result) {
-        return result
+        return result;
       }
     }
 
     for (let i = pluginLength - 1; i >= 0; i--) {
-      const plugin = plugins[i]!
+      const plugin = plugins[i]!;
       if (plugin === rootPlugin) {
-        continue
+        continue;
       }
       if (!plugin.fileManager) {
-        continue
+        continue;
       }
-      const tree = await plugin.fileManager.getTree(fullPath, options)
+      const tree = await plugin.fileManager.getTree(fullPath, options);
       if (tree) {
-        resolvedTree = tree
-        break
+        resolvedTree = tree;
+        break;
       }
     }
     if (!resolvedTree) {
-      throw new Error(`File "${path.basename(filePath)}" not supported`)
+      throw new Error(`File "${path.basename(filePath)}" not supported`);
     }
-    return resolvedTree
+    return resolvedTree;
   }
 
   /**
@@ -367,37 +367,37 @@ export class Context {
    */
   hashClass(name: string) {
     /** Remove dot for mapping */
-    name = name.slice(1)
-    let lookup = this.classMap.get(name)
+    name = name.slice(1);
+    let lookup = this.classMap.get(name);
     if (lookup) {
-      return `.${lookup}`
+      return `.${lookup}`;
     }
-    let mapVal: string
+    let mapVal: string;
     if (this.opts.module) {
-      mapVal = `${name}_${this.id}`
+      mapVal = `${name}_${this.id}`;
     } else {
-      mapVal = name
+      mapVal = name;
     }
-    this.classMap.set(name, mapVal)
-    return `.${mapVal}`
+    this.classMap.set(name, mapVal);
+    return `.${mapVal}`;
   }
 
   getVar() {
-    return `--v${this.id}-${this.varCounter++}`
+    return `--v${this.id}-${this.varCounter++}`;
   }
 
   shouldOperate(op: Operator) {
-    const mathMode = this.opts.mathMode
+    const mathMode = this.opts.mathMode;
     /** Parens for Less/SCSS will set `canOperate` to true */
     if (mathMode === MathMode.ALWAYS || this.canOperate) {
-      return true
+      return true;
     }
     if (mathMode === MathMode.PARENS_DIVISION) {
-      return op !== '/'
+      return op !== '/';
     }
     if (mathMode === MathMode.PARENS) {
-      return false
+      return false;
     }
-    return true
+    return true;
   }
 }

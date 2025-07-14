@@ -1,40 +1,40 @@
-import { Node } from './node'
-import type { ComplexSelector } from './selector-complex'
-import { compare } from './util/compare'
+import { Node } from './node';
+import type { ComplexSelector } from './selector-complex';
+import { compare } from './util/compare';
 
 /** Will be bound in ./util/compare.ts */
 export interface Selector<T extends SelectorValue = SelectorValue> extends Node<T> {
-  get value(): SelectorValue['value']
-  set value(v: SelectorValue['value'])
-  compare(other: Node): 0 | 1 | -1 | undefined
+  get value(): SelectorValue['value'];
+  set value(v: SelectorValue['value']);
+  compare(other: Node): 0 | 1 | -1 | undefined;
 }
 
 export type SelectorValue = {
-  value: string | Node | Node[]
-}
+  value: string | Node | Node[];
+};
 
 // export type KeyList = Array<string | SelectorList>
 // export type Keys = string | SelectorList | KeyList
 
-const { isArray } = Array
+const { isArray } = Array;
 
 /** If it's an array, only the first element can optionally be a string array */
-export type Keys = string | [(string | string[]), ...string[]]
+export type Keys = string | [(string | string[]), ...string[]];
 
 export abstract class Selector<T extends SelectorValue = SelectorValue> extends Node<T> {
-  protected _value: string
-  protected _keys: Keys
-  protected _keySet: Set<string>
-  protected _paths: ComplexSelector[]
+  protected _value: string;
+  protected _keys: Keys;
+  protected _keySet: Set<string>;
+  protected _paths: ComplexSelector[];
 
-  extended: boolean = false
+  extended: boolean = false;
 
   get keys(): Keys {
-    let keys = this._keys
+    let keys = this._keys;
     if (!keys) {
-      Object.defineProperty(this, '_keys', { value: keys = this.valueOf() })
+      Object.defineProperty(this, '_keys', { value: keys = this.valueOf() });
     }
-    return keys
+    return keys;
   }
 
   /**
@@ -43,24 +43,24 @@ export abstract class Selector<T extends SelectorValue = SelectorValue> extends 
    * of an :is() SelectorList
    */
   set keys(v: Keys) {
-    this._keys = v
+    this._keys = v;
   }
 
   /** Normalized as Array */
   get keyList(): Exclude<Keys, string> {
-    return isArray(this.keys) ? this.keys : [this.keys]
+    return isArray(this.keys) ? this.keys : [this.keys];
   }
 
   /** Always a Set, for normalization */
   get keySet(): Set<string> {
-    let keySet = this._keySet
+    let keySet = this._keySet;
     if (!keySet) {
-      let keys = this.keys
+      let keys = this.keys;
       Object.defineProperty(this, '_keySet', {
         value: keySet = new Set(isArray(keys) ? keys.flat() : [keys])
-      })
+      });
     }
-    return keySet
+    return keySet;
   }
 
   /** Normalization to lists of complex selectors for searching / matching */
@@ -69,7 +69,7 @@ export abstract class Selector<T extends SelectorValue = SelectorValue> extends 
   }
 
   normalize(): Selector {
-    return this
+    return this;
   }
 
   /**
@@ -113,17 +113,17 @@ export abstract class Selector<T extends SelectorValue = SelectorValue> extends 
 
   /** The normalized value */
   valueOf(): string {
-    let value = this._value
+    let value = this._value;
     if (!value) {
-      value = this.toTrimmedString()
-      Object.defineProperty(this, '_value', { value })
+      value = this.toTrimmedString();
+      Object.defineProperty(this, '_value', { value });
     }
-    return value
+    return value;
   }
 
   compare(other: Node) {
-    const thisValue = this.valueOf()
-    const otherValue = other.valueOf()
-    return compare(thisValue, otherValue)
+    const thisValue = this.valueOf();
+    const otherValue = other.valueOf();
+    return compare(thisValue, otherValue);
   }
 }

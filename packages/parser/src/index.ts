@@ -1,19 +1,19 @@
-import type { IToken } from 'chevrotain'
-import { Lexer } from 'chevrotain'
-import { Tokens, Fragments } from './jessTokens'
-import type { IParseResult } from '@jesscss/css-parser'
-import { createTokens } from '@jesscss/css-parser'
-import { JessParser } from './jessParser'
+import type { IToken } from 'chevrotain';
+import { Lexer } from 'chevrotain';
+import { Tokens, Fragments } from './jessTokens';
+import type { IParseResult } from '@jesscss/css-parser';
+import { createTokens } from '@jesscss/css-parser';
+import { JessParser } from './jessParser';
 
-export * from './jessParser'
-export * from './jessTokens'
+export * from './jessParser';
+export * from './jessTokens';
 
 export class Parser {
-  lexer: Lexer
-  parser: JessParser
+  lexer: Lexer;
+  parser: JessParser;
 
   constructor() {
-    const { tokens, T } = createTokens(Fragments, Tokens)
+    const { tokens, T } = createTokens(Fragments, Tokens);
     /**
      * @todo
      * Make a multi-mode lexer for better JavaScript parsing?
@@ -23,17 +23,17 @@ export class Parser {
     this.lexer = new Lexer(tokens, {
       ensureOptimizations: true,
       skipValidations: process.env.JESS_TESTING_MODE !== 'true'
-    })
-    this.parser = new JessParser(tokens, T)
+    });
+    this.parser = new JessParser(tokens, T);
   }
 
   parse(text: string): IParseResult<JessParser> {
-    const parser = this.parser
-    const lexerResult = this.lexer.tokenize(text)
-    const lexedTokens: IToken[] = lexerResult.tokens
-    parser.input = lexedTokens
-    const cst = parser.root()
+    const parser = this.parser;
+    const lexerResult = this.lexer.tokenize(text);
+    const lexedTokens: IToken[] = lexerResult.tokens;
+    parser.input = lexedTokens;
+    const cst = parser.root();
 
-    return { cst, lexerResult, parser }
+    return { cst, lexerResult, parser };
   }
 }

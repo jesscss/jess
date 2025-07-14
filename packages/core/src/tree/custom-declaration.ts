@@ -1,7 +1,7 @@
-import { Declaration } from './declaration'
-import { defineType } from './node'
-import type { Context } from '../context'
-import type { Nil } from './nil'
+import { Declaration } from './declaration';
+import { defineType } from './node';
+import type { Context } from '../context';
+import type { Nil } from './nil';
 // import type { OutputCollector } from '../output'
 
 /**
@@ -15,10 +15,10 @@ import type { Nil } from './nil'
  */
 export class CustomDeclaration extends Declaration {
   override async evalNode(context: Context): Promise<this | Nil> {
-    context.inCustom = true
-    let node = await super.evalNode(context)
-    context.inCustom = false
-    return node
+    context.inCustom = true;
+    let node = await super.evalNode(context);
+    context.inCustom = false;
+    return node;
   }
 
   /** @todo move to visitors */
@@ -48,4 +48,4 @@ export class CustomDeclaration extends Declaration {
   // }
 }
 
-export const customdecl = defineType(CustomDeclaration, 'CustomDeclaration', 'custom')
+export const customdecl = defineType(CustomDeclaration, 'CustomDeclaration', 'custom');

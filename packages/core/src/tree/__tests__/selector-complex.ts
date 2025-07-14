@@ -1,4 +1,4 @@
-import { sel, compound, el, co, pseudo, sellist } from '..'
+import { sel, compound, el, co, pseudo, sellist } from '..';
 
 /**
  * @todo - add tests for list bubbling
@@ -13,7 +13,7 @@ describe('Complex selector', () => {
         ]),
         co('>'),
         el('.three')
-      ]).valueOf()
+      ]).valueOf();
 
       let sel2 = sel([
         compound([
@@ -22,7 +22,7 @@ describe('Complex selector', () => {
         ]),
         co('>'),
         el('.three')
-      ]).valueOf()
+      ]).valueOf();
 
       let sel3 = sel([
         el('.one'),
@@ -31,10 +31,10 @@ describe('Complex selector', () => {
           el('.two'),
           el('.three')
         ])
-      ]).valueOf()
-      expect(sel1).toEqual(sel2)
-      expect(sel1).not.toEqual(sel3)
-    })
+      ]).valueOf();
+      expect(sel1).toEqual(sel2);
+      expect(sel1).not.toEqual(sel3);
+    });
 
     test('un-wrap :is', () => {
       /** a#id.one.two */
@@ -45,7 +45,7 @@ describe('Complex selector', () => {
           el('.one'),
           el('.two')
         ])
-      ]).valueOf()
+      ]).valueOf();
       /** :is(a)#id:is(.two.one) */
       let sel2 = sel([
         compound([
@@ -53,9 +53,9 @@ describe('Complex selector', () => {
           el('#id'),
           pseudo({ name: ':is', value: compound([el('.two'), el('.one')]) })
         ])
-      ]).valueOf()
-      expect(sel1).toEqual(sel2)
-    })
+      ]).valueOf();
+      expect(sel1).toEqual(sel2);
+    });
 
     test('un-wrap :is with combinator', () => {
       /** a#id > .one.two */
@@ -69,7 +69,7 @@ describe('Complex selector', () => {
           el('.one'),
           el('.two')
         ])
-      ]).valueOf()
+      ]).valueOf();
       /** :is(a)#id > :is(.one.two) */
       let sel2 = sel([
         compound([
@@ -83,9 +83,9 @@ describe('Complex selector', () => {
             el('.two'), el('.one')
           ])
         })
-      ]).valueOf()
-      expect(sel1).toEqual(sel2)
-    })
+      ]).valueOf();
+      expect(sel1).toEqual(sel2);
+    });
 
     test('un-wrap :is with inner combinator', () => {
       let sel1 = sel([
@@ -94,9 +94,9 @@ describe('Complex selector', () => {
           pseudo({ name: ':is', value: sel([el('.b'), co('>'), el('.c')]) }),
           el('.d')
         ])
-      ]).valueOf()
-      expect(sel1).toEqual('.b>.a.c.d')
-    })
+      ]).valueOf();
+      expect(sel1).toEqual('.b>.a.c.d');
+    });
 
     test('don\'t un-wrap with complex in :is()', () => {
       /** a#id > .one.two */
@@ -110,7 +110,7 @@ describe('Complex selector', () => {
           el('.one'),
           el('.two')
         ])
-      ]).valueOf()
+      ]).valueOf();
       /** :is(a)#id:is(> .one.two) */
       let sel2 = sel([
         compound([
@@ -118,10 +118,10 @@ describe('Complex selector', () => {
           el('#id'),
           pseudo({ name: ':is', value: sel([co('>'), compound([el('.two'), el('.one')])]) })
         ])
-      ]).valueOf()
-      expect(sel1).not.toEqual(sel2)
-    })
-  })
+      ]).valueOf();
+      expect(sel1).not.toEqual(sel2);
+    });
+  });
 
   describe('keys', () => {
     test('simple complex', () => {
@@ -132,9 +132,9 @@ describe('Complex selector', () => {
         ]),
         co('>'),
         el('.three')
-      ])
-      expect(sel1.keys).toEqual(['.one', '.two', '.three'])
-    })
+      ]);
+      expect(sel1.keys).toEqual(['.one', '.two', '.three']);
+    });
     test('nested complex (w/ relative :is)', () => {
       let sel2 = sel([
         compound([
@@ -142,9 +142,9 @@ describe('Complex selector', () => {
           el('#id'),
           pseudo({ name: ':is', value: sel([co('>'), compound([el('.two'), el('.one')])]) })
         ])
-      ])
-      expect(sel2.keys).toEqual(['a', '#id', ':is(>.one.two)'])
-    })
+      ]);
+      expect(sel2.keys).toEqual(['a', '#id', ':is(>.one.two)']);
+    });
     test('nested complex (w/o relative :is)', () => {
       let sel2 = sel([
         compound([
@@ -152,9 +152,9 @@ describe('Complex selector', () => {
           el('#id'),
           pseudo({ name: ':is', value: sel([compound([el('.two'), el('.one')])]) })
         ])
-      ])
-      expect(sel2.keys).toEqual(['a', '#id', '.two', '.one'])
-    })
+      ]);
+      expect(sel2.keys).toEqual(['a', '#id', '.two', '.one']);
+    });
     test(':is w/ selector list', () => {
       let sel2 = sel([
         compound([
@@ -162,9 +162,9 @@ describe('Complex selector', () => {
           el('#id'),
           pseudo({ name: ':is', value: sel([compound([el('.two'), el('.one')])]) })
         ])
-      ])
-      expect(sel2.keys).toEqual([['a', 'b'], '#id', '.two', '.one'])
-    })
+      ]);
+      expect(sel2.keys).toEqual([['a', 'b'], '#id', '.two', '.one']);
+    });
 
     test(':is w/ complex selector list', () => {
       let sel2 = sel([
@@ -179,8 +179,8 @@ describe('Complex selector', () => {
           el('#id'),
           pseudo({ name: ':is', value: sel([compound([el('.two'), el('.one')])]) })
         ])
-      ])
-      expect(sel2.keys).toEqual([['a', 'c'], 'b', 'd', '#id', '.two', '.one'])
-    })
-  })
-})
+      ]);
+      expect(sel2.keys).toEqual([['a', 'c'], 'b', 'd', '#id', '.two', '.one']);
+    });
+  });
+});

@@ -1,1 +1,1 @@
-import '@ungap/set-methods'
+import '@ungap/set-methods';

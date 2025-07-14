@@ -1,11 +1,11 @@
-import { defineType, type NodeOptions, type LocationInfo, type TreeContext } from './node'
-import { Nil } from './nil'
-import type { Context } from '../context'
-import { SimpleSelector } from './selector-simple'
-import { PseudoSelector } from './selector-pseudo'
-import { isNode } from './util/is-node'
-import { type Selector } from './selector'
-import { atIndex } from './util/collections'
+import { defineType, type NodeOptions, type LocationInfo, type TreeContext } from './node';
+import { Nil } from './nil';
+import type { Context } from '../context';
+import { SimpleSelector } from './selector-simple';
+import { PseudoSelector } from './selector-pseudo';
+import { isNode } from './util/is-node';
+import { type Selector } from './selector';
+import { atIndex } from './util/collections';
 
 export type AmpersandValue = {
   /**
@@ -58,17 +58,17 @@ export type AmpersandValue = {
      }
 
    */
-  appendValue?: string
+  appendValue?: string;
   /** The evaluated selector */
-  selector?: Selector | Nil
-}
+  selector?: Selector | Nil;
+};
 
 /**
  * The '&' selector element
  */
 export class Ampersand extends SimpleSelector<AmpersandValue> {
-  override type = 'Ampersand' as const
-  shortType = 'amp' as const
+  override type = 'Ampersand' as const;
+  shortType = 'amp' as const;
 
   constructor(
     value?: AmpersandValue | string,
@@ -76,71 +76,71 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
     location?: LocationInfo,
     treeContext?: TreeContext
   ) {
-    const finalValue: AmpersandValue = {}
+    const finalValue: AmpersandValue = {};
     if (typeof value === 'string') {
-      finalValue.appendValue = value
+      finalValue.appendValue = value;
     } else if (value) {
-      finalValue.appendValue = value.appendValue
-      finalValue.selector = value.selector
+      finalValue.appendValue = value.appendValue;
+      finalValue.selector = value.selector;
     }
-    super(finalValue, options, location, treeContext)
+    super(finalValue, options, location, treeContext);
   }
 
   override valueOf() {
-    const { selector } = this.value
+    const { selector } = this.value;
     if (selector) {
-      return selector.valueOf()
+      return selector.valueOf();
     }
-    return '&'
+    return '&';
   }
 
   override toTrimmedString(): string {
-    let { appendValue } = this.value
-    return appendValue !== undefined ? `&(${appendValue ?? ''})` : '&'
+    let { appendValue } = this.value;
+    return appendValue !== undefined ? `&(${appendValue ?? ''})` : '&';
   }
 
   /** Hmm this should never return Extend */
   override async evalNode(context: Context): Promise<Selector | Nil> {
-    const { appendValue } = this.value
+    const { appendValue } = this.value;
     if ((appendValue ?? context.opts.collapseNesting) || this.options.hoistToRoot) {
-      let frame = atIndex(context.rulesetFrames, -1)
+      let frame = atIndex(context.rulesetFrames, -1);
       if (frame) {
-        let selector = frame.selector.copy(true)
+        let selector = frame.selector.copy(true);
         if (appendValue && !isNode(selector, 'Nil')) {
           let doAppendValue = (n: Selector) => {
             for (let s of n.nodes(true)) {
               /** Find the last simple selector and attempt to append */
               if (isNode(s, 'SimpleSelector')) {
                 if (typeof s.value === 'string') {
-                  s.value += appendValue
-                  break
+                  s.value += appendValue;
+                  break;
                 }
-                throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`)
+                throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
               }
             }
-          }
+          };
 
           if (isNode(selector, 'SelectorList')) {
-            selector.value.forEach(doAppendValue)
+            selector.value.forEach(doAppendValue);
           } else {
-            doAppendValue(selector)
+            doAppendValue(selector);
           }
         }
-        context.opts.collapseNesting = true
-        return new PseudoSelector({ name: ':is', arg: selector }, { generated: true })
+        context.opts.collapseNesting = true;
+        return new PseudoSelector({ name: ':is', arg: selector }, { generated: true });
       }
-      return new Nil()
+      return new Nil();
     }
-    const amp: Ampersand = this.maybeClone(context)
-    let frame = atIndex(context.rulesetFrames, -1)
+    const amp: Ampersand = this.maybeClone(context);
+    let frame = atIndex(context.rulesetFrames, -1);
     /**
      * Attach a pointer to the current context selector,
      * if we need it later, for extends and such.
      */
     if (frame) {
-      amp.value.selector = frame.selector
+      amp.value.selector = frame.selector;
     }
-    return amp
+    return amp;
   }
 
   /** @todo - move to ToModuleVisitor */
@@ -149,4 +149,4 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
   // }
 }
 
-export const amp = defineType(Ampersand, 'Ampersand', 'amp')
+export const amp = defineType(Ampersand, 'Ampersand', 'amp');

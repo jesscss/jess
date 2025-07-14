@@ -18,18 +18,18 @@
  * using the API, and we just have some utility functions in this file to iterate over
  * arrays / objects / simple values and return the values or entries, in any order.
  */
-import type { ConditionalExcept } from 'type-fest'
-import isPlainObject from 'lodash-es/isPlainObject'
+import type { ConditionalExcept } from 'type-fest';
+import isPlainObject from 'lodash-es/isPlainObject';
 // import type { Node } from '../node'
 
-const { isArray } = Array
+const { isArray } = Array;
 
 export function atIndex<T>(array: T[], index: number = -1): T | undefined {
   if (index >= 0) {
-    return array[index]
+    return array[index];
   }
   /** Use a negative index to access from the last element */
-  return array[array.length + index]
+  return array[array.length + index];
 }
 
 /**
@@ -49,61 +49,61 @@ type GetEntriesOf<T> = T extends readonly any[]
     ? RecordValue extends readonly any[]
       ? [RecordValue[number], number, RecordValue]
       : [RecordValue, keyof ConditionalExcept<T, readonly any[]>, T]
-    : [T, 'value', T]
+    : [T, 'value', T];
 
 // type Test = GetEntriesOf<Node<string>>
 // type Test2 = GetEntriesOf<Node<string[]>>
 // type Test3 = GetEntriesOf<Node<{ selector: Node[], foo: 'string' }>>
 
-export function * getValues<T>(collection: T, reverse = false): Generator<GetEntriesOf<{ value: T }>[0]> {
+export function* getValues<T>(collection: T, reverse = false): Generator<GetEntriesOf<{ value: T }>[0]> {
   if (isArray(collection)) {
     if (reverse) {
       for (let i = collection.length - 1; i >= 0; i--) {
-        yield collection[i]!
+        yield collection[i]!;
       }
     } else {
-      let length = collection.length
+      let length = collection.length;
       for (let i = 0; i < length; i++) {
-        yield collection[i]!
+        yield collection[i]!;
       }
     }
   } else if (isPlainObject(collection)) {
-    const values = Object.values(collection as Record<string, unknown>)
+    const values = Object.values(collection as Record<string, unknown>);
     for (let value of values) {
       if (isArray(value)) {
-        yield * getValues(value, reverse)
+        yield* getValues(value, reverse);
       } else {
-        yield value
+        yield value;
       }
     }
   } else {
-    yield collection
+    yield collection;
   }
 }
 
-export function * getEntries<T>(collection: T, reverse = false): Generator<GetEntriesOf<T>> {
+export function* getEntries<T>(collection: T, reverse = false): Generator<GetEntriesOf<T>> {
   if (isArray(collection)) {
     if (reverse) {
       for (let i = collection.length - 1; i >= 0; i--) {
-        yield [collection[i]!, i, collection] as GetEntriesOf<T>
+        yield [collection[i]!, i, collection] as GetEntriesOf<T>;
       }
     } else {
-      let length = collection.length
+      let length = collection.length;
       for (let i = 0; i < length; i++) {
-        yield [collection[i]!, i, collection] as GetEntriesOf<T>
+        yield [collection[i]!, i, collection] as GetEntriesOf<T>;
       }
     }
   } else if (isPlainObject(collection)) {
-    const entries = Object.entries(collection as Record<string, unknown>)
+    const entries = Object.entries(collection as Record<string, unknown>);
     for (let [key, value] of entries) {
       if (isArray(value)) {
-        yield * getEntries(value, reverse) as Generator<GetEntriesOf<T>>
+        yield* getEntries(value, reverse) as Generator<GetEntriesOf<T>>;
       } else {
-        yield [value, key, collection] as GetEntriesOf<T>
+        yield [value, key, collection] as GetEntriesOf<T>;
       }
     }
   } else {
-    yield [collection, 'value', collection] as GetEntriesOf<T>
+    yield [collection, 'value', collection] as GetEntriesOf<T>;
   }
 }
 
@@ -111,12 +111,12 @@ export function * getEntries<T>(collection: T, reverse = false): Generator<GetEn
  * We use { value: unknown } as the type for the node so that
  * we can easily override the value type when calling.
  */
-export function * getValuesFromNode<T extends { value: unknown }>(node: T, reverse = false): Generator<GetEntriesOf<T>[0]> {
-  let value = node.value
+export function* getValuesFromNode<T extends { value: unknown }>(node: T, reverse = false): Generator<GetEntriesOf<T>[0]> {
+  let value = node.value;
   if (isArray(value) || isPlainObject(value)) {
-    yield * getValues(value, reverse) as Generator<GetEntriesOf<T>[0]>
+    yield* getValues(value, reverse) as Generator<GetEntriesOf<T>[0]>;
   } else {
-    yield value
+    yield value;
   }
 }
 
@@ -124,11 +124,11 @@ export function * getValuesFromNode<T extends { value: unknown }>(node: T, rever
  * This is especially useful, because we don't have to care about what the Node's `value` is,
  * we can just iterate over it and get the entries, and replace as necessary.
  */
-export function * getEntriesFromNode<T extends { value: unknown }>(node: T, reverse = false): Generator<GetEntriesOf<T>> {
-  let value = node.value
+export function* getEntriesFromNode<T extends { value: unknown }>(node: T, reverse = false): Generator<GetEntriesOf<T>> {
+  let value = node.value;
   if (isArray(value) || isPlainObject(value)) {
-    yield * getEntries(value, reverse) as Generator<GetEntriesOf<T>[0]>
+    yield* getEntries(value, reverse) as Generator<GetEntriesOf<T>[0]>;
   } else {
-    yield [value, 'value', node] as GetEntriesOf<T>
+    yield [value, 'value', node] as GetEntriesOf<T>;
   }
 }

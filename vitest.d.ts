@@ -1,9 +1,8 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import type { Assertion, AsymmetricMatchersContaining } from 'vitest'
+import type { Assertion, AsymmetricMatchersContaining } from 'vitest';
 
 interface CustomMatchers<R = unknown> {
-  toBeString(str: string): R
-  toMatchCss(str: string): R
+  toBeString(str: string): R;
+  toMatchCss(str: string): R;
 }
 
 declare module 'vitest' {

@@ -1,4 +1,4 @@
-import { defineType, Node } from './node'
+import { defineType, Node } from './node';
 
 /**
  * A collection is essentially like an anonymous mixin,
@@ -9,28 +9,28 @@ import { defineType, Node } from './node'
  * @see https://sass-lang.com/documentation/style-rules/declarations/#nesting
  */
 export class Collection extends Node<Node[]> {
-  type = 'Collection' as const
-  shortType = 'coll' as const
+  type = 'Collection' as const;
+  shortType = 'coll' as const;
 
   override toTrimmedString(depth: number = 0) {
-    let space = ''.padStart(depth * 2)
-    let output = '{\n'
-    depth += 1
-    space = ''.padStart(depth * 2)
-    let outputs = this.value.map(n => n.toString(depth))
-    output += space + outputs.join(`\n${space}`)
-    depth -= 1
-    space = ''.padStart(depth * 2)
-    output += `\n${space}}`
-    return output
+    let space = ''.padStart(depth * 2);
+    let output = '{\n';
+    depth += 1;
+    space = ''.padStart(depth * 2);
+    let outputs = this.value.map(n => n.toString(depth));
+    output += space + outputs.join(`\n${space}`);
+    depth -= 1;
+    space = ''.padStart(depth * 2);
+    output += `\n${space}}`;
+    return output;
   }
 }
 
-type Params = ConstructorParameters<typeof Collection>
+type Params = ConstructorParameters<typeof Collection>;
 
 export const coll = defineType(Collection, 'Collection', 'coll') as (
   value: Params[0],
   options?: Params[1],
   location?: Params[2],
   treeContext?: Params[3]
-) => Collection
+) => Collection;

@@ -1,5 +1,5 @@
-import { EMPTY_ALT } from 'chevrotain'
-import type { JessParser } from '../jessParser'
+import { EMPTY_ALT } from 'chevrotain';
+import type { JessParser } from '../jessParser';
 
 export default function(this: JessParser, $: JessParser) {
   $.testQualifiedRule = $.OVERRIDE_RULE('testQualifiedRule', () => {
@@ -12,13 +12,13 @@ export default function(this: JessParser, $: JessParser) {
         { ALT: () => $.CONSUME($.T.LSquare) },
         {
           ALT: () => {
-            $.SUBRULE($.testQualifiedRuleExpression)
-            $.CONSUME($.T.LCurly)
+            $.SUBRULE($.testQualifiedRuleExpression);
+            $.CONSUME($.T.LCurly);
           }
         }
       ]
-    })
-  })
+    });
+  });
 
   $.testQualifiedRuleExpression = $.OVERRIDE_RULE('testQualifiedRuleExpression', () => {
     $.MANY(() => {
@@ -33,19 +33,19 @@ export default function(this: JessParser, $: JessParser) {
             $.OR2([
               { ALT: () => $.CONSUME($.T.Function) },
               { ALT: () => $.CONSUME($.T.LParen) }
-            ])
-            $.SUBRULE($.testQualifiedRuleExpression)
-            $.CONSUME($.T.RParen)
+            ]);
+            $.SUBRULE($.testQualifiedRuleExpression);
+            $.CONSUME($.T.RParen);
           }
         },
         {
           ALT: () => {
-            $.CONSUME($.T.LSquare)
-            $.SUBRULE2($.testQualifiedRuleExpression)
-            $.CONSUME($.T.RSquare)
+            $.CONSUME($.T.LSquare);
+            $.SUBRULE2($.testQualifiedRuleExpression);
+            $.CONSUME($.T.RSquare);
           }
         }
-      ])
-    })
-  })
+      ]);
+    });
+  });
 }

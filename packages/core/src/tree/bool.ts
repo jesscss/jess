@@ -1,11 +1,11 @@
-import { Node, defineType } from './node'
+import { Node, defineType } from './node';
 
 export class Bool extends Node<boolean> {
-  type = 'Bool' as const
-  shortType = 'bool' as const
+  type = 'Bool' as const;
+  shortType = 'bool' as const;
 
   override toTrimmedString() {
-    return this.value ? 'true' : 'false'
+    return this.value ? 'true' : 'false';
   }
 }
-export const bool = defineType(Bool, 'Bool')
+export const bool = defineType(Bool, 'Bool');

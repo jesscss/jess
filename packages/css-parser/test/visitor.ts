@@ -1,7 +1,7 @@
 /**
  * This is now obselete, as I deleted the CST visitor
  */
-import { CssParser } from '../src/cssParser'
+import { CssParser } from '../src/cssParser';
 
 // type Obj = Record<any, any>
 // /** @see https://stackoverflow.com/questions/2257993/how-to-display-all-methods-of-an-object */
@@ -19,40 +19,40 @@ import { CssParser } from '../src/cssParser'
 
 describe('CSS CST Visitor', () => {
   describe('produces a valid AST', () => {
-    let parser: CssParser
+    let parser: CssParser;
     beforeAll(() => {
-      parser = new CssParser()
-    })
+      parser = new CssParser();
+    });
     it('should produce a valid AST', () => {
-      const { tree } = parser.parse('a/**/b { color: red blue; }')
+      const { tree } = parser.parse('a/**/b { color: red blue; }');
       expect(`${tree}`).toBeString(`
         a/**/b {
           color: red blue;
         }
-      `)
-    })
-  })
+      `);
+    });
+  });
 
   describe.only('visits every visitor method', () => {
-    let parser: CssParser
+    let parser: CssParser;
     beforeAll(() => {
-      parser = new CssParser()
-    })
+      parser = new CssParser();
+    });
     /**
      * Note, with no input (or skipped input), the location info
      * will be all NaN.
     */
     it('Root', () => {
-      let { tree } = parser.parse('')
-      expect(tree.type).toBe('Root')
-    })
+      let { tree } = parser.parse('');
+      expect(tree.type).toBe('Root');
+    });
     it('Qualified Rule', () => {
-      let { tree } = parser.parse('a { color: red; }')
-      expect(tree).toMatchSnapshot()
-    })
+      let { tree } = parser.parse('a { color: red; }');
+      expect(tree).toMatchSnapshot();
+    });
     it('Calc', () => {
-      let { tree } = parser.parse('a { b: calc(1 + 1) }')
-      expect(tree).toMatchSnapshot()
-    })
-  })
-})
+      let { tree } = parser.parse('a { b: calc(1 + 1) }');
+      expect(tree).toMatchSnapshot();
+    });
+  });
+});

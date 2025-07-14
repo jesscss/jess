@@ -1,7 +1,7 @@
-import { type Context } from '../context'
-import { defineType, Node } from './node'
-import { compareNodeArray } from './util/compare'
-import { type Operator } from './util/calculate'
+import { type Context } from '../context';
+import { defineType, Node } from './node';
+import { compareNodeArray } from './util/compare';
+import { type Operator } from './util/calculate';
 
 export type ListOptions = {
   /**
@@ -10,8 +10,8 @@ export type ListOptions = {
    *
    * @todo - Is there a more CSS-y way to define this?
    */
-  sep?: ',' | ';' | '/'
-}
+  sep?: ',' | ';' | '/';
+};
 
 /**
  * A list of expressions
@@ -21,41 +21,41 @@ export type ListOptions = {
  * or one / two / three
  */
 export class List<T extends Node = Node> extends Node<T[], ListOptions> {
-  type = 'List'
-  shortType = 'list'
+  type = 'List';
+  shortType = 'list';
 
   get length() {
-    return this.value.length
+    return this.value.length;
   }
 
   * [Symbol.iterator]() {
-    yield * this.value.entries()
+    yield* this.value.entries();
   }
 
   override toTrimmedString() {
-    let { sep = ',' } = this.options ?? {}
-    return this.value.map(v => v.toString()).join(`${sep}`)
+    let { sep = ',' } = this.options ?? {};
+    return this.value.map(v => v.toString()).join(`${sep}`);
   }
 
   override compare(other: Node) {
     if (other instanceof List) {
-      return compareNodeArray(this.value, other.value)
+      return compareNodeArray(this.value, other.value);
     }
-    return super.compare(other)
+    return super.compare(other);
   }
 
   override operate(b: Node, op: Operator, context: Context): List<T> {
     if (op !== '+') {
-      throw new Error(`List operation "${op}" not supported`)
+      throw new Error(`List operation "${op}" not supported`);
     }
-    let newList = this.maybeClone(context)
+    let newList = this.maybeClone(context);
     if (b instanceof List) {
-      newList.value.push(...b.value)
+      newList.value.push(...b.value);
     } else {
       /** @todo - do we need to verify the list type? */
-      newList.value.push(b as T)
+      newList.value.push(b as T);
     }
-    return newList
+    return newList;
   }
 
   /** @todo? Lists should collapse nested lists? */
@@ -105,11 +105,11 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   // }
 }
 
-type Params = ConstructorParameters<typeof List>
+type Params = ConstructorParameters<typeof List>;
 
 export const list = defineType(List, 'List') as (
   value: Params[0],
   options?: Params[1],
   location?: Params[2],
   treeContext?: Params[3]
-) => List
+) => List;

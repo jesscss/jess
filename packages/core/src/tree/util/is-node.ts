@@ -1,7 +1,7 @@
-import { Node } from '../node'
-import type { Nodes } from '../tree'
+import { Node } from '../node';
+import type { Nodes } from '../tree';
 
-const { isArray } = Array
+const { isArray } = Array;
 /**
  * This utility function prevents circular dependencies,
  * in case we need to. It examines the `type` property
@@ -44,30 +44,30 @@ const { isArray } = Array
 // export function isNode(value: any, type?: undefined): value is Node
 // export function isNode(value: any, type?: keyof Nodes | ReadonlyArray<keyof Nodes>): value is Node
 
-export function isNode(value: unknown): value is Node
+export function isNode(value: unknown): value is Node;
 
 export function isNode<T extends keyof Nodes>(
   value: unknown,
   type: T
-): value is InstanceType<Nodes[T]>
+): value is InstanceType<Nodes[T]>;
 
 export function isNode<T extends ReadonlyArray<keyof Nodes>>(
   value: unknown,
   type: T
-): value is InstanceType<Nodes[T[number]]>
+): value is InstanceType<Nodes[T[number]]>;
 
 export function isNode(
   value: unknown,
   type?: keyof Nodes | ReadonlyArray<keyof Nodes>
 ): boolean {
   if (!value || !(value instanceof Node)) {
-    return false
+    return false;
   }
   if (!type) {
-    return true
+    return true;
   }
   if (isArray(type)) {
-    return type.some(t => value.types.has(t))
+    return type.some(t => value.types.has(t));
   }
-  return value.type === type || value.types?.has(type as keyof Nodes)
+  return value.type === type || value.types?.has(type as keyof Nodes);
 }

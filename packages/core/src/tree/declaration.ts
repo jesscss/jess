@@ -1,16 +1,16 @@
 import {
   Node,
   defineType
-} from './node'
-import { isNode } from './util/is-node'
-import { Nil } from './nil'
-import type { Context } from '../context'
-import { Interpolated } from './interpolated'
-import type { General, Name } from './general'
-import { Reference } from './reference'
-import { List } from './list'
-import { spaced } from './sequence'
-import { Operation } from './operation'
+} from './node';
+import { isNode } from './util/is-node';
+import { Nil } from './nil';
+import type { Context } from '../context';
+import { Interpolated } from './interpolated';
+import type { General, Name } from './general';
+import { Reference } from './reference';
+import { List } from './list';
+import { spaced } from './sequence';
+import { Operation } from './operation';
 
 export const enum AssignmentType {
   Default = ':',
@@ -30,15 +30,15 @@ export const enum AssignmentType {
 }
 
 export type DeclarationOptions = {
-  assign?: AssignmentType
-  semi?: boolean
+  assign?: AssignmentType;
+  semi?: boolean;
   /**
    * This doesn't prevent shadowing; it prevents declarations like:
    *   $$overwrite: foo;
    *
    * Written as `!$foo:` in Jess or imported from a readonly context
    */
-  readonly?: boolean
+  readonly?: boolean;
   /**
    * Instead of implicitly declaring or overriding,
    * requires a variable to previously be explicitly
@@ -46,13 +46,13 @@ export type DeclarationOptions = {
    *
    * Used by SCSS (!global) and Jess's ($$foo:)
    */
-  setDefined?: boolean
+  setDefined?: boolean;
 
   /**
    * Used for mixin / function parameters (and args). It's not the
    * same kind of variable declaration.
    */
-  paramVar?: boolean
+  paramVar?: boolean;
 
   /** Used by SCSS (!default) and Jess (?:) */
   // setIfUndefined?: boolean
@@ -62,17 +62,17 @@ export type DeclarationOptions = {
    *
    * Used by SCSS in the case of mixins... not Jess?
    */
-  throwIfDefined?: boolean
-}
+  throwIfDefined?: boolean;
+};
 
-type NameValue = string | Name | Interpolated<'Name'>
+type NameValue = string | Name | Interpolated<'Name'>;
 
 export type DeclarationValue = {
-  name: NameValue
-  value: Node
+  name: NameValue;
+  value: Node;
   /** The actual string representation of important, if it exists */
-  important?: General<'Flag'>
-}
+  important?: General<'Flag'>;
+};
 
 /**
  * A continuous collection of nodes.
@@ -81,67 +81,67 @@ export type DeclarationValue = {
  * Once evaluated, name must be a string
  */
 export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
-  type = 'Declaration'
-  shortType = 'decl'
-  override allowRuleRoot = true
-  override requiredSemi = true
+  type = 'Declaration';
+  shortType = 'decl';
+  override allowRuleRoot = true;
+  override requiredSemi = true;
 
   protected declTrimmedString(depth?: number) {
-    const { name, value, important } = this.value
-    const { assign = ':' } = this.options
-    let a = assign === ':' ? ':' : ` ${assign}`
+    const { name, value, important } = this.value;
+    const { assign = ':' } = this.options;
+    let a = assign === ':' ? ':' : ` ${assign}`;
     let returnVal = `${name}${a}${
       value.processPrePost('pre', ' ')
     }${
       value.toTrimmedString(depth)
     }${
       value.processPrePost('post')
-    }`
+    }`;
     if (!isNode(value, 'Collection')) {
-      returnVal += important ? `${important}` : ''
+      returnVal += important ? `${important}` : '';
       if (this.options?.semi === true) {
-        returnVal += ';'
+        returnVal += ';';
       }
     }
-    return returnVal
+    return returnVal;
   }
 
   override toTrimmedString(depth?: number) {
-    return this.declTrimmedString(depth)
+    return this.declTrimmedString(depth);
   }
 
   override async preEval(context: Context): Promise<this> {
     if (!this.preEvaluated) {
       /** We need to clone declarations, because we alter their options */
-      let node = this.clone()
-      node.preEvaluated = true
-      let { name, value } = node.value
-      let key: string | Name
+      let node = this.clone();
+      node.preEvaluated = true;
+      let { name, value } = node.value;
+      let key: string | Name;
       if (name instanceof Interpolated) {
-        key = (await name.eval(context)).createGeneric() as Name
-        node.value.name = key
+        key = (await name.eval(context)).createGeneric() as Name;
+        node.value.name = key;
       } else {
-        key = name
+        key = name;
       }
       /** Normalize assignment types */
-      let assign = node.options?.assign
+      let assign = node.options?.assign;
       if (assign) {
-        value = value.maybeClone(context)
+        value = value.maybeClone(context);
         /** Reference type */
         let type: 'property' | 'variable' =
-          node.type === 'Declaration' ? 'property' : 'variable'
+          node.type === 'Declaration' ? 'property' : 'variable';
         switch (assign) {
           case AssignmentType.MergeList:
           case AssignmentType.MergeSequence: {
             const ref = new Reference(key.toString(), {
               type,
               fallbackValue: new Nil(),
-              filter: n => {
-                const assign = n.options?.assign
+              filter: (n) => {
+                const assign = n.options?.assign;
                 return assign === AssignmentType.MergeList
-                  || assign === AssignmentType.MergeSequence
+                  || assign === AssignmentType.MergeSequence;
               }
-            })
+            });
             /**
              * @note - It's up to Sequence and List to handle
              *         the merging of the values, if Nil()
@@ -149,10 +149,10 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
              */
             value = assign === AssignmentType.MergeList
               ? new List([ref, value])
-              : spaced([ref, value])
+              : spaced([ref, value]);
 
-            node.value.value = value
-            break
+            node.value.value = value;
+            break;
           }
           case AssignmentType.Add: {
             node.value.value =
@@ -160,46 +160,46 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
                 new Reference(key.toString(), { type }),
                 '+',
                 value
-              ])
-            break
+              ]);
+            break;
           }
           case AssignmentType.CondAssign: {
             node.value.value =
               new Reference(key.toString(), {
                 type,
                 fallbackValue: value
-              })
-            break
+              });
+            break;
           }
         }
-        node.options.assign = AssignmentType.Default
+        node.options.assign = AssignmentType.Default;
       }
-      return node
+      return node;
     }
-    return this
+    return this;
   }
 
   override async evalNode(context: Context) {
-    let node = await this.preEval(context)
-    let { name, value } = node.value
+    let node = await this.preEval(context);
+    let { name, value } = node.value;
     /**
      * Name may be a variable or a sequence containing a variable
      *
      * @todo - is this valid if rulesets pre-emptively evaluate names?
      */
     if (name instanceof Interpolated) {
-      node.value.name = (await name.eval(context)).createGeneric() as Name
+      node.value.name = (await name.eval(context)).createGeneric() as Name;
     }
     /** Evaluate the value */
     if (value instanceof Node) {
-      let newValue = await value.eval(context)
+      let newValue = await value.eval(context);
       if (newValue instanceof Nil) {
-        return newValue.inherit(node)
+        return newValue.inherit(node);
       } else {
-        node.value.value = newValue
+        node.value.value = newValue;
       }
     }
-    return node
+    return node;
   }
 
   /** @todo - move to visitors */
@@ -232,11 +232,11 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
   // }
 }
 
-type DeclarationParams = ConstructorParameters<typeof Declaration>
+type DeclarationParams = ConstructorParameters<typeof Declaration>;
 
 export const decl = defineType<DeclarationValue>(Declaration, 'Declaration', 'decl') as (
   value: DeclarationValue | DeclarationParams[0],
   options?: DeclarationParams[1],
   location?: DeclarationParams[2],
   treeContext?: DeclarationParams[3]
-) => Declaration
+) => Declaration;

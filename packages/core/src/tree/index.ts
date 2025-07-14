@@ -8,87 +8,87 @@
  */
 
 /** Base classes - keep these on top */
-import { Node, type LocationInfo } from './node'
-import { type Operator } from './util/calculate'
-import { Anonymous } from './general'
-import { TreeContext } from '../context'
-import { Nil } from './nil'
+import { Node, type LocationInfo } from './node';
+import { type Operator } from './util/calculate';
+import { Anonymous } from './general';
+import { TreeContext } from '../context';
+import { Nil } from './nil';
 /**
  * We bind these here to avoid circular dependencies
  * between Context and Node
  */
 Node.prototype.operate = function(b: Node, op: Operator) {
-  let aVal = this.toString()
-  let bVal = b.toString()
+  let aVal = this.toString();
+  let bVal = b.toString();
   if (op === '+') {
-    return new Anonymous(aVal + bVal).inherit(this)
+    return new Anonymous(aVal + bVal).inherit(this);
   }
-  throw new Error(`Cannot operate on ${this.type}`)
-}
+  throw new Error(`Cannot operate on ${this.type}`);
+};
 Node.prototype.nil = function() {
-  return new Nil()
-}
+  return new Nil();
+};
 
 Object.defineProperty(Node.prototype, 'treeContext', {
   get() {
-    let context = this._treeContext
+    let context = this._treeContext;
     if (!context) {
-      context = this._treeContext = new TreeContext()
+      context = this._treeContext = new TreeContext();
     }
-    return context
+    return context;
   }
-})
+});
 
-export { Node, TreeContext, type LocationInfo }
+export { Node, TreeContext, type LocationInfo };
 
-export * from './at-rule'
-export * from './block'
-export * from './bool'
-export * from './ampersand'
-export * from './general'
-export * from './call'
-export * from './collection'
-export * from './color'
-export * from './comment'
-export * from './combinator'
-export * from './condition'
-export * from './custom-declaration'
-export * from './declaration'
-export * from './dimension'
-export * from './expression'
-export * from './extend'
-export * from './extend-list'
-export * from './general'
-export * from './include'
-export * from './list'
-export * from './mixin'
-export * from './negative'
-export * from './function'
-export * from './function-value'
-export * from './nil'
-export * from './operation'
-export * from './paren'
-export * from './query-condition'
-export * from './quoted'
-export * from './ruleset'
-export * from './rules'
-export * from './root'
-export * from './selector'
-export * from './selector-attr'
-export * from './selector-basic'
-export * from './selector-list'
-export * from './selector-pseudo'
-export * from './selector-compound'
-export * from './selector-complex'
-export * from './selector-simple'
-export * from './sequence'
-export * from './token'
-export * from './comment'
-export * from './var-declaration'
-export * from './reference'
-export * from './lookup'
-export * from './import'
-export * from './interpolated'
-export * from './default-guard'
-export * from './js-expr'
-export * from './rest'
+export * from './at-rule';
+export * from './block';
+export * from './bool';
+export * from './ampersand';
+export * from './general';
+export * from './call';
+export * from './collection';
+export * from './color';
+export * from './comment';
+export * from './combinator';
+export * from './condition';
+export * from './custom-declaration';
+export * from './declaration';
+export * from './dimension';
+export * from './expression';
+export * from './extend';
+export * from './extend-list';
+export * from './general';
+export * from './include';
+export * from './list';
+export * from './mixin';
+export * from './negative';
+export * from './function';
+export * from './function-value';
+export * from './nil';
+export * from './operation';
+export * from './paren';
+export * from './query-condition';
+export * from './quoted';
+export * from './ruleset';
+export * from './rules';
+export * from './root';
+export * from './selector';
+export * from './selector-attr';
+export * from './selector-basic';
+export * from './selector-list';
+export * from './selector-pseudo';
+export * from './selector-compound';
+export * from './selector-complex';
+export * from './selector-simple';
+export * from './sequence';
+export * from './token';
+export * from './comment';
+export * from './var-declaration';
+export * from './reference';
+export * from './lookup';
+export * from './import';
+export * from './interpolated';
+export * from './default-guard';
+export * from './js-expr';
+export * from './rest';

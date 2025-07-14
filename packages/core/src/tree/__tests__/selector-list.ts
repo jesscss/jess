@@ -1,4 +1,4 @@
-import { sel, sellist, el, co } from '..'
+import { sel, sellist, el, co } from '..';
 
 /**
  * @todo - add tests for list bubbling
@@ -18,7 +18,7 @@ describe('Selector list', () => {
           co(' '),
           el('c')
         ])
-      ]).valueOf()
+      ]).valueOf();
 
       let sel2 = sellist([
         sel([
@@ -31,10 +31,10 @@ describe('Selector list', () => {
           co(' '),
           el('b')
         ])
-      ]).valueOf()
+      ]).valueOf();
 
-      expect(sel1).toEqual(sel2)
-      expect(sel1).toEqual('a b,a c')
-    })
-  })
-})
+      expect(sel1).toEqual(sel2);
+      expect(sel1).toEqual('a b,a c');
+    });
+  });
+});

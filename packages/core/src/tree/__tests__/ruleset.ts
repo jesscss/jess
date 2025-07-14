@@ -1,12 +1,12 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any } from '..'
-import { Context } from '../../context'
+import { rules, sellist, sel, el, decl, ruleset, spaced, any } from '..';
+import { Context } from '../../context';
 
-let context: Context
+let context: Context;
 
 describe('Rule', () => {
   beforeEach(() => {
-    context = new Context()
-  })
+    context = new Context();
+  });
   it('should serialize to CSS', () => {
     let node = ruleset({
       selector: sellist([sel([el('foo')])]),
@@ -14,9 +14,9 @@ describe('Rule', () => {
         decl({ name: 'border', value: spaced([any('1px'), any('solid'), any('black')]) }),
         decl({ name: 'color', value: any('#eee') })
       ])
-    })
-    expect(`${node}`).toBe('foo {\n  border: 1px solid black;\n  color: #eee;\n}')
-  })
+    });
+    expect(`${node}`).toBe('foo {\n  border: 1px solid black;\n  color: #eee;\n}');
+  });
   // it('should serialize to a module', () => {
   //   let node = rule({
   //     selector: list([sel([el('foo')])]),
@@ -30,4 +30,4 @@ describe('Rule', () => {
   //     '$J.rule({\n  selector: $J.list([\n    $J.sel([$J.el($J.any("foo"))])\n  ]),\n  value: $J.ruleset(\n    (() => {\n      const $OUT = []\n      let brandColor = area(5)\n      $OUT.push($J.decl({\n        name: $J.any("color"),\n        value: brandColor\n      }))\n      return $OUT\n    })()\n  )},[])'
   //   )
   // })
-})
+});

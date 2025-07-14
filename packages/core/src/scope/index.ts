@@ -1,18 +1,18 @@
-import { logger } from '../logger'
-import { type Declaration, AssignmentType } from '../tree/declaration'
-import { type Node } from '../tree/node'
-import type { Mixin } from '../tree/mixin'
-import isPlainObject from 'lodash-es/isPlainObject'
-import { isNode } from '../tree/util/is-node'
-import { cast } from '../tree/util/cast'
-import { type Rules } from '../tree/rules'
-import type { Bool } from '../tree/bool'
-import type { Condition } from '../tree/condition'
-import { type Context } from '../context'
-import { BiMap, type LinkedList } from '../tree/util/collections'
-import { Queue } from 'data-structure-typed'
-import type { VarDeclaration } from '../tree/var-declaration'
-import type { Ruleset } from '../tree/ruleset'
+import { logger } from '../logger';
+import { type Declaration, AssignmentType } from '../tree/declaration';
+import { type Node } from '../tree/node';
+import type { Mixin } from '../tree/mixin';
+import isPlainObject from 'lodash-es/isPlainObject';
+import { isNode } from '../tree/util/is-node';
+import { cast } from '../tree/util/cast';
+import { type Rules } from '../tree/rules';
+import type { Bool } from '../tree/bool';
+import type { Condition } from '../tree/condition';
+import { type Context } from '../context';
+import { BiMap, type LinkedList } from '../tree/util/collections';
+import { Queue } from 'data-structure-typed';
+import type { VarDeclaration } from '../tree/var-declaration';
+import type { Ruleset } from '../tree/ruleset';
 
 /**
  * The Scope object is meant to be an efficient
@@ -27,27 +27,27 @@ export type ScopeEntryOptions = {
   /**
    * These are from JS import statements
    */
-  protected?: boolean
+  protected?: boolean;
   /**
    * Imports from JS/TS are already normalized
    */
-  isNormalized?: boolean
+  isNormalized?: boolean;
 
-  setDefined?: boolean
-  setIfUndefined?: boolean
-  throwIfDefined?: boolean
+  setDefined?: boolean;
+  setIfUndefined?: boolean;
+  throwIfDefined?: boolean;
 
   /**
    * Preserve previous entries. Used by Jess/Less for mixins.
    */
-  preserve?: boolean
+  preserve?: boolean;
 
   /**
    * A variable marked private.
    * In SCSS, this is any variable starting with a dash.
    */
-  private?: boolean
-}
+  private?: boolean;
+};
 
 /**
  * We use this to store meta-information
@@ -55,20 +55,20 @@ export type ScopeEntryOptions = {
  * from imports are protected.
  */
 export class ScopeEntry<T = unknown> {
-  options: ScopeEntryOptions
-  key: string
-  value: T | undefined
+  options: ScopeEntryOptions;
+  key: string;
+  value: T | undefined;
 
   constructor(key: string, value?: T, opts?: ScopeEntryOptions) {
-    this.key = key
-    this.value = value
-    this.options = opts ?? {}
+    this.key = key;
+    this.value = value;
+    this.options = opts ?? {};
   }
 }
 
-export type MixinEntry = Mixin | Rules
-export type ScopeEntryMap<T = unknown> = Record<string, ScopeEntry<T> | undefined>
-export type PropMap = Record<string, Declaration | Declaration[]>
+export type MixinEntry = Mixin | Rules;
+export type ScopeEntryMap<T = unknown> = Record<string, ScopeEntry<T> | undefined>;
+export type PropMap = Record<string, Declaration | Declaration[]>;
 
 /**
  * For JS interoperability,
@@ -84,21 +84,21 @@ const RESERVED = [
   'protected',
   'public',
   'static'
-]
+];
 
 type FilterResult = {
-  value: unknown
-  done: boolean
-}
+  value: unknown;
+  done: boolean;
+};
 
 export type GetterOptions = {
-  filter?: (n: Node) => boolean
-}
+  filter?: (n: Node) => boolean;
+};
 
 export type ScopeFilter = (
   entry: ScopeEntry | undefined,
   valueFilter: (value: any, index?: number, entryValue?: any[]) => boolean
-) => ({ value: unknown, done: boolean })
+) => ({ value: unknown; done: boolean });
 
 /** Arbitrary prefixes to disambiguate names within maps */
 export const enum NodeType {
@@ -124,7 +124,7 @@ const TypeToNodeType = new Map([
   ['Declaration', NodeType.PROPERTY],
   ['VarDeclaration', NodeType.VARIABLE],
   ['Rules', NodeType.RULES]
-])
+]);
 
 // export const enum NodeTypeIndex {
 //   NONE             = 0b000000,
@@ -143,26 +143,26 @@ const TypeToNodeType = new Map([
 //   RULES            = 0b110000
 // }
 
-type IndexKey = `${NodeType}${string}`
+type IndexKey = `${NodeType}${string}`;
 
 interface NodeEntry<T extends Node = Node> {
-  node: T
-  position: number
-  type: NodeType | symbol
+  node: T;
+  position: number;
+  type: NodeType | symbol;
   /**
    * These are from JS import statements
    */
-  readonly?: boolean
+  readonly?: boolean;
 }
 
 /**
  * Right now, the only nodes that can be registered to the scope for lookups
  */
-type ScopeNodes = Declaration | VarDeclaration | Mixin | Ruleset | Rules
+type ScopeNodes = Declaration | VarDeclaration | Mixin | Ruleset | Rules;
 
 export class Scope {
   /** A map of positions to nodes */
-  private readonly nodePositionMap = new BiMap<number, Node>()
+  private readonly nodePositionMap = new BiMap<number, Node>();
   /**
    * All indexed collections, keyed. These are the value
    * per scope (like a set of rules).
@@ -170,43 +170,43 @@ export class Scope {
    * @note - Types are stored differently for disambiguation
    *         See the Prefix enum.
    */
-  private _entryMap: Map<IndexKey | symbol, Queue<NodeEntry>> | undefined
+  private _entryMap: Map<IndexKey | symbol, Queue<NodeEntry>> | undefined;
   private get entryMap(): Map<IndexKey | symbol, Queue<NodeEntry>> {
-    return (this._entryMap ??= new Map())
+    return (this._entryMap ??= new Map());
   }
 
   private _genericType(type: NodeType): NodeType {
     switch (type) {
       case NodeType.VARIABLE:
       case NodeType.PROPERTY:
-        return NodeType.VAR_OR_PROP
+        return NodeType.VAR_OR_PROP;
       case NodeType.RULESET:
       case NodeType.MIXIN:
-        return NodeType.MIXIN_OR_RULESET
+        return NodeType.MIXIN_OR_RULESET;
       case NodeType.LEAKY_RULES:
       case NodeType.PRIVATE_RULES:
-        return NodeType.RULES
+        return NodeType.RULES;
       default:
-        return type
+        return type;
     }
   }
 
   private _getType(n: ScopeNodes) {
-    return TypeToNodeType.get(n.type)!
+    return TypeToNodeType.get(n.type)!;
   }
 
   private _getKey(n: Node) {
-    let type = this._getType(n)
+    let type = this._getType(n);
     switch (type) {
       case NodeType.VARIABLE:
       case NodeType.PROPERTY:
-        return `${NodeType.VAR_OR_PROP}${n.data.get('name')!.valueOf() ?? ''}`
+        return `${NodeType.VAR_OR_PROP}${n.data.get('name')!.valueOf() ?? ''}`;
       case NodeType.RULESET:
       case NodeType.MIXIN:
         /** @todo - Different key lookup */
-        return `${NodeType.RULESET}${n.data.get('selector')!.valueOf() ?? ''}`
+        return `${NodeType.RULESET}${n.data.get('selector')!.valueOf() ?? ''}`;
       default:
-        return type
+        return type;
     }
   }
 
@@ -217,20 +217,20 @@ export class Scope {
     readonly?: boolean
   ) {
     // let genericType = this._genericType(type)
-    let indexKey = this._getKey(node)
+    let indexKey = this._getKey(node);
 
-    let list = this.entryMap.get(indexKey)
+    let list = this.entryMap.get(indexKey);
     if (!list) {
-      list = new Queue()
-      this.entryMap.set(indexKey, list)
+      list = new Queue();
+      this.entryMap.set(indexKey, list);
     }
-    list.push({ node, position, type, readonly })
+    list.push({ node, position, type, readonly });
   }
 
   private _setNode(n: Node, position: number, readonly?: boolean) {
     if (isNode(n, ['Mixin', 'Declaration', 'Ruleset'])) {
-      this.nodePositionMap.set(position, n)
-      this._addToIndex(this._getType(n), n, position, readonly)
+      this.nodePositionMap.set(position, n);
+      this._addToIndex(this._getType(n), n, position, readonly);
     }
   }
 
@@ -241,30 +241,30 @@ export class Scope {
    * @param readonly Variable is readonly (such as for a protected import)
    */
   add(n: Node, allowRuleLookups = false, readonly: boolean = false) {
-    let position = this.context.ruleCounter++
+    let position = this.context.ruleCounter++;
     if (isNode(n, 'Rules')) {
-      this.nodePositionMap.set(position, n)
-      this._addToIndex(allowRuleLookups ? NodeType.LEAKY_RULES : NodeType.PRIVATE_RULES, n, position, readonly)
+      this.nodePositionMap.set(position, n);
+      this._addToIndex(allowRuleLookups ? NodeType.LEAKY_RULES : NodeType.PRIVATE_RULES, n, position, readonly);
     } else if (isNode(n, 'Declaration')) {
       if (n.options?.setDefined) {
         /** `setDefined` is an immediate mutation of the last found instance */
-        let key = this._getKey(n)
+        let key = this._getKey(n);
         /** Don't set within sibling rules */
-        let result = this.find(key, this._getType(n), true, position)
+        let result = this.find(key, this._getType(n), true, position);
         if (result) {
-          let entry = result.first!
+          let entry = result.first!;
           if (entry.readonly) {
-            throw new ReferenceError(`${key} is readonly`)
+            throw new ReferenceError(`${key} is readonly`);
           }
           /** Over-write value */
-          entry.node.value = n.value
+          entry.node.value = n.value;
         } else {
-          throw new ReferenceError(`${key} is not defined`)
+          throw new ReferenceError(`${key} is not defined`);
         }
       }
-      this._setNode(n, position, readonly)
+      this._setNode(n, position, readonly);
     } else {
-      this._setNode(n, position, readonly)
+      this._setNode(n, position, readonly);
     }
   }
 
@@ -279,73 +279,73 @@ export class Scope {
     searchParents: boolean = true,
     start?: number
   ) {
-    let scope: Scope | undefined = this
+    let scope: Scope | undefined = this;
     /** Return nodes */
-    let result: Queue<NodeEntry> | undefined
-    let genericType = this._genericType(type)
+    let result: Queue<NodeEntry> | undefined;
+    let genericType = this._genericType(type);
     while (scope) {
-      let map = scope.entryMap
-      let indexKey: IndexKey = `${genericType}${key}`
-      let list = map.get(indexKey)
+      let map = scope.entryMap;
+      let indexKey: IndexKey = `${genericType}${key}`;
+      let list = map.get(indexKey);
       if (!list) {
         if (!searchParents) {
-          return
+          return;
         }
-        scope = scope.parent
-        continue
+        scope = scope.parent;
+        continue;
       }
-      let bestMatch: number | undefined
+      let bestMatch: number | undefined;
       if (start !== undefined) {
         /** Binary search the queue to find a starting position */
-        let left = 0
-        let right = list.length - 1
+        let left = 0;
+        let right = list.length - 1;
 
         while (left <= right) {
-          let mid = Math.floor((left + right) / 2)
-          let midVal = list.at(mid)!.position
+          let mid = Math.floor((left + right) / 2);
+          let midVal = list.at(mid)!.position;
           if (midVal === start) {
-            bestMatch = mid
-            break
+            bestMatch = mid;
+            break;
           }
           if (midVal < start) {
-            bestMatch = mid
-            left = mid + 1
+            bestMatch = mid;
+            left = mid + 1;
           } else {
-            right = mid - 1
+            right = mid - 1;
           }
         }
         if (bestMatch === undefined) {
           if (!searchParents) {
-            return
+            return;
           }
-          scope = scope.parent
+          scope = scope.parent;
           if (scope && start !== undefined) {
-            start = scope.nodePositionMap.getValue(this.rules)
+            start = scope.nodePositionMap.getValue(this.rules);
           }
-          continue
+          continue;
         }
       } else {
         /** We didn't have a start position, so the whole list matches */
-        bestMatch = list.length - 1
+        bestMatch = list.length - 1;
       }
-      result ??= new Queue()
+      result ??= new Queue();
       for (let i = bestMatch; i >= 0; i--) {
-        let entry = list.at(i)!
+        let entry = list.at(i)!;
         if (entry.type === type) {
-          result.push(entry)
+          result.push(entry);
         }
       }
 
       if (!searchParents) {
-        return result
+        return result;
       }
 
-      scope = scope.parent
+      scope = scope.parent;
       if (scope && start !== undefined) {
-        start = scope.nodePositionMap.getValue(this.rules)
+        start = scope.nodePositionMap.getValue(this.rules);
       }
     }
-    return result
+    return result;
   }
 
   /**
@@ -373,15 +373,15 @@ export class Scope {
   // }
 
   private _get(key: string, type: NodeType, opts?: GetterOptions, start?: number) {
-    let result = (this.find(key, type, true, start) ?? new Queue())
+    let result = (this.find(key, type, true, start) ?? new Queue());
     let rulesType =
       type === NodeType.VARIABLE || NodeType.MIXIN || NodeType.RULESET
         ? NodeType.LEAKY_RULES
-        : NodeType.RULES
-    let rules = this.find('', rulesType, false, start) as Queue<NodeEntry<Rules>>
+        : NodeType.RULES;
+    let rules = this.find('', rulesType, false, start) as Queue<NodeEntry<Rules>>;
     if (rules) {
       for (let entry of rules) {
-        let localResult = entry.node.getScope(this.context).find(key, type, false)
+        let localResult = entry.node.getScope(this.context).find(key, type, false);
         if (localResult) {
           /** Add every entry of the queue in its current position */
           for (let item of localResult) {
@@ -389,18 +389,18 @@ export class Scope {
               node: item.node,
               position: entry.position,
               type: item.type
-            })
+            });
           }
         }
       }
     }
 
     if (!result.length) {
-      return result
+      return result;
     }
 
     if (opts?.filter) {
-      result = result.filter(entry => opts.filter!(entry.node))
+      result = result.filter(entry => opts.filter!(entry.node));
     }
 
     // let node = result?.first?.node
@@ -429,9 +429,9 @@ export class Scope {
     // }
 
     /** Sort these so they are evaluated in the proper order */
-    result.sort((a, b) => b.position - a.position)
+    result.sort((a, b) => b.position - a.position);
 
-    return result
+    return result;
 
     // if (isNode(node, 'Declaration')) {
     //   /**
@@ -478,30 +478,30 @@ export class Scope {
     opts: GetterOptions = {},
     start?: number
   ) {
-    let result = this._get(key, type, opts, start) as Queue<NodeEntry<Declaration>>
+    let result = this._get(key, type, opts, start) as Queue<NodeEntry<Declaration>>;
     if (!result.length) {
-      return
+      return;
     }
 
-    let node = result.first!.node
+    let node = result.first!.node;
 
     /**
      * If the most recent value is not a merge value
      * return this as the only value.
      */
-    let assignment = node.options?.assign ?? AssignmentType.Default
+    let assignment = node.options?.assign ?? AssignmentType.Default;
     if (assignment !== AssignmentType.Default) {
-      throw new Error('Invalid assignment type. (Was this node pre-evaluated?)')
+      throw new Error('Invalid assignment type. (Was this node pre-evaluated?)');
     }
-    return node
+    return node;
   }
 
   getProp(key: string, opts: GetterOptions = {}, start?: number) {
-    return this._getDeclaration(NodeType.PROPERTY, key, opts, start)
+    return this._getDeclaration(NodeType.PROPERTY, key, opts, start);
   }
 
   getVar(key: string, opts: GetterOptions = {}, start?: number) {
-    return this._getDeclaration(NodeType.VARIABLE, key, opts, start)
+    return this._getDeclaration(NodeType.VARIABLE, key, opts, start);
   }
 
   // get(key: string, type: NodeTypeIndex, start?: number) {
@@ -526,9 +526,9 @@ export class Scope {
    * A map of selector keys anywhere in a ruleset to contained ruleset selectors
    * (This is used for partial extends)
    */
-  private _partialSelectorMap: Map<string, LinkedList> | undefined
+  private _partialSelectorMap: Map<string, LinkedList> | undefined;
   private get partialSelectorMap(): Map<string, LinkedList> {
-    return (this._partialSelectorMap ??= new Map())
+    return (this._partialSelectorMap ??= new Map());
   }
 
   /**
@@ -550,17 +550,17 @@ export class Scope {
    *
    * Not sure if this is needed, but works.
    */
-  static NONE = Symbol('None')
+  static NONE = Symbol('None');
 
   /**
    * Keys are normalized to camelCase, therefore we should
    * warn when a key is normalized differently
    */
-  static entryKeys = new Map<string, string>()
+  static entryKeys = new Map<string, string>();
   /** If we already normalized, don't re-normalize */
-  static cachedKeys = new Map<string, string>()
+  static cachedKeys = new Map<string, string>();
 
-  visibleScopes: Set<Scope> | undefined
+  visibleScopes: Set<Scope> | undefined;
 
   constructor(
     public rules: Rules,
@@ -569,7 +569,7 @@ export class Scope {
   ) {
     for (let [, n] of rules) {
       if (TypeToNodeType.has(n.type)) {
-        this.add(n)
+        this.add(n);
       }
     }
   }
@@ -582,9 +582,9 @@ export class Scope {
    * can be normalized.
    */
   normalizeKey(key: string) {
-    let cachedKey = Scope.cachedKeys.get(key)
+    let cachedKey = Scope.cachedKeys.get(key);
     if (cachedKey) {
-      return cachedKey
+      return cachedKey;
     }
     /** @todo - can this be a single replace with the replacer function? */
     let normalKey = key
@@ -593,10 +593,10 @@ export class Scope {
       /** Replace dot-name to lowerCamelCase */
       .replace(/^\.(.+)/g, (_, p1 = '') => `${p1.toLowerCase()}`)
       /** Convert dash-case to camelCase, as well as leading '#' to UpperCamelCase */
-      .replace(/(^_)|(?:[#\-_])(.)/g, (_, p1 = '', p2 = '') => `${p1}${p2.toUpperCase()}`)
+      .replace(/(^_)|(?:[#\-_])(.)/g, (_, p1 = '', p2 = '') => `${p1}${p2.toUpperCase()}`);
 
     if (RESERVED.includes(normalKey)) {
-      logger.warn(`"${normalKey}" is a reserved identifier and is not exportable`)
+      logger.warn(`"${normalKey}" is a reserved identifier and is not exportable`);
     } else {
       /**
        * Quick way to identify a valid JS identifier -
@@ -605,27 +605,26 @@ export class Scope {
        * @see https://stackoverflow.com/questions/2008279/validate-a-javascript-function-name
        */
       try {
-        // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new, no-new-func
-        new Function(`let ${normalKey}`)
+        new Function(`let ${normalKey}`);
       } catch (err) {
-        logger.warn(`"${key}" is not exportable`)
+        logger.warn(`"${key}" is not exportable`);
       }
     }
 
-    let lookupKey = Scope.entryKeys.get(normalKey)
+    let lookupKey = Scope.entryKeys.get(normalKey);
     if (lookupKey) {
       if (lookupKey !== key) {
-        logger.warn(`${key} was previously normalized from ${lookupKey}, which could lead to unexpected behaviors.`)
+        logger.warn(`${key} was previously normalized from ${lookupKey}, which could lead to unexpected behaviors.`);
       }
     }
-    Scope.cachedKeys.set(key, normalKey)
-    return normalKey
+    Scope.cachedKeys.set(key, normalKey);
+    return normalKey;
   }
 
   getMixin(key: string, options?: GetterOptions) {
-    let mixins = this._getBase('mixins', key, options)
+    let mixins = this._getBase('mixins', key, options);
     if (mixins) {
-      return getFunctionFromMixins(mixins)
+      return getFunctionFromMixins(mixins);
     }
   }
 
@@ -709,94 +708,94 @@ export class Scope {
    * We can pass in a filter to narrow the
    * entries.
    */
-  private _getBase(collection: 'mixins', baseKey: string, options?: GetterOptions): MixinEntry | MixinEntry[] | undefined
-  private _getBase(collection: 'vars' | 'props', baseKey: string, options?: GetterOptions): any
+  private _getBase(collection: 'mixins', baseKey: string, options?: GetterOptions): MixinEntry | MixinEntry[] | undefined;
+  private _getBase(collection: 'vars' | 'props', baseKey: string, options?: GetterOptions): any;
   private _getBase(collection: 'vars' | 'props' | 'mixins', baseKey: string, options: GetterOptions = {}): any {
-    let NONE = Scope.NONE
-    let key = this.normalizeKey(baseKey)
+    let NONE = Scope.NONE;
+    let key = this.normalizeKey(baseKey);
     let {
       /** By default, return the first value */
       filter = (value: unknown) => ({ value, done: true })
-    } = options
+    } = options;
 
     if (typeof filter !== 'function') {
-      let filteredNode = filter
+      let filteredNode = filter;
       filter = (value: unknown) => {
         if (value === filteredNode) {
-          return { value: NONE, done: false }
+          return { value: NONE, done: false };
         }
-        return { value, done: true }
-      }
+        return { value, done: true };
+      };
     }
     /**
      * When getting, use the private variable,
      * so we don't extend the prototype chain.
      */
-    let current: ScopeEntryMap | PropMap | undefined = this[collection]
-    let results: any[] = []
+    let current: ScopeEntryMap | PropMap | undefined = this[collection];
+    let results: any[] = [];
 
     /**
      * In Less / Jess, mixins are defined / merged per scope
      * We don't climb the prototype chain, and they aren't filtered.
      */
     if (collection === 'mixins') {
-      let entry = current[key]
+      let entry = current[key];
       if (!entry) {
         if (options.suppressUndefinedError) {
-          return undefined
+          return undefined;
         }
-        throw new ReferenceError(`"${baseKey}" is not defined`)
+        throw new ReferenceError(`"${baseKey}" is not defined`);
       }
-      return (entry as unknown as ScopeEntryMap).value
+      return (entry as unknown as ScopeEntryMap).value;
     }
     while (current) {
-      let entry = (options.local && !Object.prototype.hasOwnProperty.call(current, key)) ? undefined : current[key]
+      let entry = (options.local && !Object.prototype.hasOwnProperty.call(current, key)) ? undefined : current[key];
       if (!entry) {
         if (options.suppressUndefinedError) {
-          return undefined
+          return undefined;
         }
-        throw new ReferenceError(`"${baseKey}" is not defined`)
+        throw new ReferenceError(`"${baseKey}" is not defined`);
       }
       let entryValue: unknown = collection === 'vars'
         ? (entry as unknown as ScopeEntryMap).value
-        : entry
-      let lastResult: FilterResult
+        : entry;
+      let lastResult: FilterResult;
       if (Array.isArray(entryValue)) {
         for (let i = 0; i < entryValue.length; i++) {
-          let val = filter(entryValue[i], results)
+          let val = filter(entryValue[i], results);
           if (val.value !== NONE) {
-            results.push(val.value)
+            results.push(val.value);
           }
-          lastResult = val
+          lastResult = val;
           if (val.done) {
-            break
+            break;
           }
         }
       } else {
-        let val = filter(entryValue, results)
-        lastResult = val
+        let val = filter(entryValue, results);
+        lastResult = val;
         if (val.value !== NONE) {
-          results.push(val.value)
+          results.push(val.value);
         }
       }
 
       if (lastResult!.done) {
-        break
+        break;
       }
       /** Traverse up the prototype chain */
-      current = Object.getPrototypeOf(current)
+      current = Object.getPrototypeOf(current);
     }
     let returnResult = results.length
       ? results.length === 1
         ? results[0]
         : results
-      : NONE
+      : NONE;
     if (returnResult === NONE && !options.suppressUndefinedError) {
-      throw new ReferenceError(`"${baseKey}" is not defined`)
+      throw new ReferenceError(`"${baseKey}" is not defined`);
     }
-    return returnResult
+    return returnResult;
   }
 }
 
-Scope.entryKeys = new Map()
-Scope.cachedKeys = new Map()
+Scope.entryKeys = new Map();
+Scope.cachedKeys = new Map();

@@ -1,21 +1,21 @@
-import { Node } from '../node'
-import { Nil } from '../nil'
-import { List } from '../list'
-import { Dimension } from '../dimension'
-import { Anonymous } from '../general'
-import { Color } from '../color'
-import { FunctionValue } from '../function-value'
-import isPlainObject from 'lodash-es/isPlainObject'
+import { Node } from '../node';
+import { Nil } from '../nil';
+import { List } from '../list';
+import { Dimension } from '../dimension';
+import { Anonymous } from '../general';
+import { Color } from '../color';
+import { FunctionValue } from '../function-value';
+import isPlainObject from 'lodash-es/isPlainObject';
 
 function getNodeType(value: any): Node {
   if (value instanceof Node) {
-    return value
+    return value;
   }
   if (value === undefined || value === null) {
-    return new Nil()
+    return new Nil();
   }
   if (typeof value === 'function') {
-    return new FunctionValue(value)
+    return new FunctionValue(value);
   }
   /**
    * @todo - need to remove the $root part
@@ -23,27 +23,27 @@ function getNodeType(value: any): Node {
    */
   if (isPlainObject(value)) {
     if (Object.prototype.hasOwnProperty.call(value, '$root')) {
-      return value.$root
+      return value.$root;
     }
-    return new Anonymous('[object]')
+    return new Anonymous('[object]');
   }
   if (Array.isArray(value)) {
-    return new List(value.map(val => cast(val)))
+    return new List(value.map(val => cast(val)));
   }
   if (value.constructor === Number) {
-    return new Dimension({ number: value as number })
+    return new Dimension({ number: value as number });
   }
   if (typeof value === 'string') {
     if (value.startsWith('#')) {
-      return new Color(value)
+      return new Color(value);
     } else {
-      let result = value.match(/^(\d*(?:\.\d+))([a-z]*)$/i)
+      let result = value.match(/^(\d*(?:\.\d+))([a-z]*)$/i);
       if (result) {
-        return new Dimension({ number: parseFloat(result[1]!), unit: result[2] })
+        return new Dimension({ number: parseFloat(result[1]!), unit: result[2] });
       }
     }
   }
-  return new Anonymous(value.toString())
+  return new Anonymous(value.toString());
 }
 /**
  * Casts a primitive JavaScript value to a Jess node
@@ -53,13 +53,13 @@ function getNodeType(value: any): Node {
  * cast(area(5))
  */
 export function cast(value: any): Node {
-  const node = getNodeType(value)
+  const node = getNodeType(value);
   /**
    * If converting from a primitive, then
    * the value should be considered evaluated.
    */
   if (!(value instanceof Node)) {
-    node.evaluated = true
+    node.evaluated = true;
   }
-  return node
+  return node;
 }

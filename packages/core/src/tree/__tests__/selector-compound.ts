@@ -1,4 +1,4 @@
-import { compound, sel, el, pseudo, type SimpleSelector } from '..'
+import { compound, sel, el, pseudo, type SimpleSelector } from '..';
 
 /**
  * @todo - add tests for list bubbling
@@ -10,42 +10,42 @@ describe('Compound Selector', () => {
         el('a'),
         el('#id'),
         el('.class')
-      ]).valueOf()
+      ]).valueOf();
       let sel2 = compound([
         el('a'),
         el('#id'),
         el('.class')
-      ]).valueOf()
-      expect(sel1).toEqual(sel2)
-    })
+      ]).valueOf();
+      expect(sel1).toEqual(sel2);
+    });
 
     test('same value (unsorted)', () => {
       let sel1 = compound([
         el('a'),
         el('#id'),
         el('.class')
-      ]).valueOf()
+      ]).valueOf();
       let sel2 = compound([
         el('a'),
         el('.class'),
         el('#id')
-      ]).valueOf()
-      expect(sel1).toEqual(sel2)
-    })
+      ]).valueOf();
+      expect(sel1).toEqual(sel2);
+    });
 
     test('pseudo sorting', () => {
       /** :is(.a):is(.b) */
       let sel1 = compound([
         pseudo({ name: ':is', arg: el('.a') }),
         pseudo({ name: ':is', arg: el('.b') })
-      ]).valueOf()
+      ]).valueOf();
       /** :is(.b):is(.a) */
       let sel2 = compound([
         pseudo({ name: ':is', arg: el('.b') }),
         pseudo({ name: ':is', arg: el('.a') })
-      ]).valueOf()
-      expect(sel1).toEqual(sel2)
-    })
+      ]).valueOf();
+      expect(sel1).toEqual(sel2);
+    });
 
     test('un-wrap is', () => {
       /** a#id.one.two */
@@ -54,16 +54,16 @@ describe('Compound Selector', () => {
         el('#id'),
         el('.one'),
         el('.two')
-      ]).valueOf()
+      ]).valueOf();
       /** :is(a)#id:is(.one.two) */
       let sel2 = compound([
         pseudo({ name: ':is', arg: el('a') }),
         el('#id'),
         pseudo({ name: ':is', arg: compound([el('.two'), el('.one')]) })
-      ]).valueOf()
-      expect(sel1).toEqual(sel2)
-    })
-  })
+      ]).valueOf();
+      expect(sel1).toEqual(sel2);
+    });
+  });
 
   describe.skip('keys', () => {
     test('simple compound', () => {
@@ -71,21 +71,21 @@ describe('Compound Selector', () => {
         el('a'),
         el('#id'),
         el('.class')
-      ])
-      expect(sel1.keys).toEqual(['a', '#id', '.class'])
-    })
+      ]);
+      expect(sel1.keys).toEqual(['a', '#id', '.class']);
+    });
 
     test('nested compound', () => {
       /** :is(a)#id:is(.one.two) */
-      const sel1 = pseudo({ value: ':is', arg: el('a') })
+      const sel1 = pseudo({ value: ':is', arg: el('a') });
       let sel2 = compound([
         sel1,
         el('#id'),
         pseudo({ value: ':is', arg: compound([el('.two'), el('.one')]) })
-      ])
+      ]);
 
-      expect(sel1.keys).toEqual('a')
-      expect(sel2.keys).toEqual(['a', '#id', '.two', '.one'])
-    })
-  })
-})
+      expect(sel1.keys).toEqual('a');
+      expect(sel2.keys).toEqual(['a', '#id', '.two', '.one']);
+    });
+  });
+});

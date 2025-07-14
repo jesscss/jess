@@ -1,44 +1,44 @@
-import { Node, defineType } from './node'
-import { ComplexSelector } from './selector-complex'
-import { Ampersand } from './ampersand'
-import { Ruleset } from './ruleset'
-import type { General } from './general'
-import { Rules } from './rules'
-import type { Context } from '../context'
+import { Node, defineType } from './node';
+import { ComplexSelector } from './selector-complex';
+import { Ampersand } from './ampersand';
+import { Ruleset } from './ruleset';
+import type { General } from './general';
+import { Rules } from './rules';
+import type { Context } from '../context';
 
 export type AtRuleValue = {
-  name: General<'Name'>
+  name: General<'Name'>;
   /** The prelude */
-  prelude?: Node
-  rules?: Rules
-}
+  prelude?: Node;
+  rules?: Rules;
+};
 
 /**
  * A rule like @charset or @media
  */
 export class AtRule extends Node<AtRuleValue> {
-  type = 'AtRule' as const
-  shortType = 'atrule' as const
-  override allowRoot = true
+  type = 'AtRule' as const;
+  shortType = 'atrule' as const;
+  override allowRoot = true;
 
   override toTrimmedString(depth: number = 0): string {
-    let { name, prelude, rules } = this.value
+    let { name, prelude, rules } = this.value;
     /** The ruleset will have already indented the first line */
-    let output = `${name}`
+    let output = `${name}`;
     if (prelude) {
-      output += prelude.toString()
+      output += prelude.toString();
     }
     if (rules) {
-      output += `{${rules.toString(depth + 1)}}`
+      output += `{${rules.toString(depth + 1)}}`;
     } else {
-      output += ';'
+      output += ';';
     }
-    return output
+    return output;
   }
 
   override async evalNode(context: Context) {
-    let node = await super.evalNode(context) as AtRule
-    let rules = node.value.rules
+    let node = await super.evalNode(context) as AtRule;
+    let rules = node.value.rules;
     /** Don't let rooted rules bubble past an at-rule */
     if (rules) {
       /**
@@ -52,13 +52,13 @@ export class AtRule extends Node<AtRuleValue> {
           rules
         })
           .inherit(this)
-          .eval(context)
-        node.value.rules = new Rules([rule])
+          .eval(context);
+        node.value.rules = new Rules([rule]);
       }
-      let rootRules = this.collectRoots()
-      rootRules.forEach(rule => rules.value.push(rule))
+      let rootRules = this.collectRoots();
+      rootRules.forEach(rule => rules.value.push(rule));
     }
-    return node
+    return node;
   }
 
   /** @todo - move to visitors */
@@ -96,4 +96,4 @@ export class AtRule extends Node<AtRuleValue> {
   // }
 }
 
-export const atrule = defineType(AtRule, 'AtRule')
+export const atrule = defineType(AtRule, 'AtRule');

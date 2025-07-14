@@ -1,31 +1,31 @@
-import type { Context } from '../context'
-import { Node, defineType } from './node'
-import { Rules } from './rules'
-import { Root } from './root'
-import { Call } from './call'
+import type { Context } from '../context';
+import { Node, defineType } from './node';
+import { Rules } from './rules';
+import { Root } from './root';
+import { Call } from './call';
 
 export type IncludeValue = {
-  value: Node
-  with?: Rules
-}
+  value: Node;
+  with?: Rules;
+};
 
 /**
  * Include can be for a file or a mixin
  * or a variable that returns a ruleset.
  *
  * Basically anything that returns a ruleset.
- * 
+ *
  * @todo - remove? Isn't this an import with options?
  */
 export class Include extends Node<IncludeValue> {
-  declare value: IncludeValue
-  type: 'Include' = 'Include'
-  shortType: 'include' = 'include'
+  declare value: IncludeValue;
+  type: 'Include' = 'Include';
+  shortType: 'include' = 'include';
 
   override async evalNode(context: Context): Promise<Node> {
-    let value = this.value
+    let value = this.value;
     if (value instanceof Call) {
-      value = await value.eval(context)
+      value = await value.eval(context);
     }
 
     /**
@@ -53,17 +53,17 @@ export class Include extends Node<IncludeValue> {
      * @todo - add fileInfo
      */
     if (value instanceof Root) {
-      return new Rules(value.value).inherit(this)
+      return new Rules(value.value).inherit(this);
     }
 
     if (!value.allowRoot && !value.allowRuleRoot) {
-      let message = '@include returned an invalid node.'
+      let message = '@include returned an invalid node.';
       if (value instanceof Call) {
-        message += ` Unknown reference "${value.name}"`
+        message += ` Unknown reference "${value.name}"`;
       }
-      throw new TypeError(message)
+      throw new TypeError(message);
     }
-    return value.inherit(this)
+    return value.inherit(this);
   }
 
   /** Move to ToModuleVisitor */
@@ -74,4 +74,4 @@ export class Include extends Node<IncludeValue> {
   // }
 }
 
-export const include = defineType(Include, 'Include')
+export const include = defineType(Include, 'Include');

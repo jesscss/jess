@@ -1,7 +1,7 @@
-import { colorBlend } from '../util/colorHelper'
+import { colorBlend } from '../util/colorHelper';
 
 export function multiplyBase(cb: number, cs: number) {
-  return cb * cs
+  return cb * cs;
 }
 
-export default colorBlend.bind(null, multiplyBase)
+export default colorBlend.bind(null, multiplyBase);

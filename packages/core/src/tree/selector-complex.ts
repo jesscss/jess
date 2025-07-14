@@ -1,21 +1,20 @@
-/* eslint-disable @typescript-eslint/require-array-sort-compare */
-import { type Combinator } from './combinator'
-import { type Ampersand } from './ampersand'
+import { type Combinator } from './combinator';
+import { type Ampersand } from './ampersand';
 import {
   defineType
-} from './node'
-import type { Context } from '../context'
-import { type Nil } from './nil'
-import { isNode } from './util/is-node'
-import { Selector } from './selector'
-import type { SimpleSelector } from './selector-simple'
-import type { CompoundSelector } from './selector-compound'
-import { getEntries } from './util/collections'
+} from './node';
+import type { Context } from '../context';
+import { type Nil } from './nil';
+import { isNode } from './util/is-node';
+import { Selector } from './selector';
+import type { SimpleSelector } from './selector-simple';
+import type { CompoundSelector } from './selector-compound';
+import { getEntries } from './util/collections';
 
 // TODO - fix later
-export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand
+export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand;
 // type SelectorValue = Component[]
-export type ComplexSelectorValue = ComplexSelectorComponent[]
+export type ComplexSelectorValue = ComplexSelectorComponent[];
 
 /**
  * Selectors with combinators.
@@ -24,54 +23,54 @@ export type ComplexSelectorValue = ComplexSelectorComponent[]
  * #id > .class.class
  */
 export class ComplexSelector extends Selector<ComplexSelectorValue> {
-  type = 'ComplexSelector'
-  shortType = 'sel'
+  type = 'ComplexSelector';
+  shortType = 'sel';
   /**
    * Essentially, a#id.class === a.class#id as being identical selectors,
    * so we normalize groups and combinators
    *
    */
   override valueOf() {
-    return (this._valueOf ??= this.value.map(n => n.valueOf()).join(''))
+    return (this._valueOf ??= this.value.map(n => n.valueOf()).join(''));
   }
 
   get keySet() {
     /** @todo - iterate and add keys from children keys */
-    return (this._keySet ??= new Set())
+    return (this._keySet ??= new Set());
   }
 
   override toTrimmedString(depth?: number | undefined): string {
-    let output = ''
-    let { value } = this
-    let length = value.length
+    let output = '';
+    let { value } = this;
+    let length = value.length;
     for (let i = 0; i < length; i++) {
-      let component = value[i]!
+      let component = value[i]!;
       /** Add some combinator spacing */
       if (isNode(component, 'Combinator') && component.value !== ' ') {
-        output += !component.pre ? ' ' : component.processPrePost('pre')
-        output += component.toTrimmedString(depth)
-        output += !component.post ? ' ' : component.processPrePost('post')
+        output += !component.pre ? ' ' : component.processPrePost('pre');
+        output += component.toTrimmedString(depth);
+        output += !component.post ? ' ' : component.processPrePost('post');
       } else {
-        output += component.toString()
+        output += component.toString();
       }
     }
-    return output
+    return output;
   }
 
   /**
    * @todo - Re-write and simplify, now that we have a distinct CompoundSelector
    */
   override async evalNode(context: Context): Promise<Selector | Nil> {
-    let selector = this.maybeClone(context)
-    let { value } = selector
+    let selector = this.maybeClone(context);
+    let { value } = selector;
     for (let [sel, i] of getEntries(value)) {
-      value[i] = await sel.eval(context) as ComplexSelectorComponent
+      value[i] = await sel.eval(context) as ComplexSelectorComponent;
     }
     /** If properly parsed, this shouldn't happen, but check anyway */
     if (value.length === 1) {
-      return value[0]!.inherit(selector)
+      return value[0]!.inherit(selector);
     }
-    return selector
+    return selector;
   }
   // override async evalNode(context: Context): Promise<ComplexSelector | SelectorList | Nil> {
   //   let selector: ComplexSelector = this.maybeClone(context)
@@ -173,11 +172,11 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   // }
 }
 
-type SelectorParams = ConstructorParameters<typeof ComplexSelector>
+type SelectorParams = ConstructorParameters<typeof ComplexSelector>;
 
 export const sel = defineType<ComplexSelectorValue>(ComplexSelector, 'ComplexSelector', 'sel') as (
   value: ComplexSelectorValue,
   options?: SelectorParams[1],
   location?: SelectorParams[2],
   treeContext?: SelectorParams[3]
-) => ComplexSelector
+) => ComplexSelector;

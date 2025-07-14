@@ -1,30 +1,30 @@
-import type { TreeContextOptions } from './context'
-import type { Root } from './tree/root'
-import { join, isAbsolute, extname } from 'node:path'
-import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import type { TreeContextOptions } from './context';
+import type { Root } from './tree/root';
+import { join, isAbsolute, extname } from 'node:path';
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 
 type PathOptions = Record<string, any> & {
-  allowBareRelative?: boolean
-}
+  allowBareRelative?: boolean;
+};
 
 export type FileManagerOptions = {
   /**
    * If the resolver can't resolve, it must return the same path.
    * You can use this to resolve alias paths, for example.
    */
-  resolver: (filePath: string) => string
-}
+  resolver: (filePath: string) => string;
+};
 
 export abstract class FileManager<O extends FileManagerOptions = FileManagerOptions> {
-  abstract supportedExtensions?: string[]
-  opts: O
+  abstract supportedExtensions?: string[];
+  opts: O;
 
   constructor(
     opts: Partial<O> = {}
   ) {
-    opts.resolver ??= filePath => filePath
-    this.opts = opts as O
+    opts.resolver ??= filePath => filePath;
+    this.opts = opts as O;
   }
 
   /**
@@ -43,29 +43,29 @@ export abstract class FileManager<O extends FileManagerOptions = FileManagerOpti
     paths: string[],
     options: PathOptions
   ): string | string[] {
-    filePath = this.opts.resolver(filePath)
-    const pathsTried: string[] = []
+    filePath = this.opts.resolver(filePath);
+    const pathsTried: string[] = [];
     if (isAbsolute(filePath)) {
-      pathsTried.push(filePath)
+      pathsTried.push(filePath);
       if (existsSync(filePath)) {
-        return filePath
+        return filePath;
       }
     }
-    let isRelative = filePath.startsWith('.')
-    let tryPath: string | undefined
+    let isRelative = filePath.startsWith('.');
+    let tryPath: string | undefined;
     if (options.allowBareRelative || isRelative) {
-      tryPath = join(currentDir, filePath)
-      pathsTried.push(tryPath)
+      tryPath = join(currentDir, filePath);
+      pathsTried.push(tryPath);
       if (existsSync(tryPath)) {
-        return tryPath
+        return tryPath;
       }
     }
 
     if (!isRelative) {
       try {
-        tryPath = require.resolve(filePath)
+        tryPath = require.resolve(filePath);
         if (existsSync(tryPath)) {
-          return tryPath
+          return tryPath;
         }
       } catch (err) {
         // ignore
@@ -73,17 +73,17 @@ export abstract class FileManager<O extends FileManagerOptions = FileManagerOpti
     }
 
     for (let i = 0; i < paths.length; i++) {
-      tryPath = join(paths[i]!, filePath)
-      pathsTried.push(tryPath)
+      tryPath = join(paths[i]!, filePath);
+      pathsTried.push(tryPath);
       if (existsSync(tryPath)) {
-        return tryPath
+        return tryPath;
       }
     }
-    return pathsTried
+    return pathsTried;
   }
 
   async loadFile(fullPath: string) {
-    return await readFile(fullPath, 'utf8')
+    return await readFile(fullPath, 'utf8');
   }
 
   /**
@@ -91,18 +91,18 @@ export abstract class FileManager<O extends FileManagerOptions = FileManagerOpti
    * to preserve extension-checking logic.
    */
   protected async _getTree(fullPath: string, options?: Record<string, any>): Promise<Root | false> {
-    return false
+    return false;
   }
 
   /**
    * @param fullPath The fully resolved path
    */
   async getTree(fullPath: string, options?: Record<string, any>): Promise<Root | false> {
-    const supported = this.supportedExtensions
+    const supported = this.supportedExtensions;
     if (supported && !supported.includes(extname(fullPath))) {
-      return false
+      return false;
     }
-    return await this._getTree(fullPath, options)
+    return await this._getTree(fullPath, options);
   }
 }
 
@@ -112,8 +112,8 @@ export type PluginObject = {
    * an explicit type.
    * e.g. 'less'
    */
-  name: string
-  fileManager?: FileManager
-}
+  name: string;
+  fileManager?: FileManager;
+};
 
-export type Plugin = <T extends TreeContextOptions>(opts?: T) => PluginObject
+export type Plugin = <T extends TreeContextOptions>(opts?: T) => PluginObject;

@@ -1,20 +1,20 @@
-import { type ExtendedFn } from '../util'
-import { Node, Quoted } from '@jesscss/core'
-import { type, instance, assert } from 'superstruct'
+import { type ExtendedFn } from '../util';
+import { Node, Quoted } from '@jesscss/core';
+import { type, instance, assert } from 'superstruct';
 
 const Struct = type({
   value: instance(Node)
-})
+});
 
 /**
  * Escape a quoted value
  */
 const e: ExtendedFn = async function e(value: Node) {
-  assert({ value }, Struct)
+  assert({ value }, Struct);
   if (value instanceof Quoted) {
-    return value.value
+    return value.value;
   }
-  return value
-}
+  return value;
+};
 
-export default e
+export default e;

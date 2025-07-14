@@ -1,7 +1,7 @@
-import { defineType } from './node'
-import { Call, type CallValue } from './call'
-import { type Quoted } from './quoted'
-import { type UrlValue } from './general'
+import { defineType } from './node';
+import { Call, type CallValue } from './call';
+import { type Quoted } from './quoted';
+import { type UrlValue } from './general';
 
 // export type ThisUrlValue = CallValue & {
 //   value: Quoted | UrlValue
@@ -15,4 +15,4 @@ export class Url extends Call {
    */
 }
 
-export const url = defineType(Url, 'Url')
+export const url = defineType(Url, 'Url');

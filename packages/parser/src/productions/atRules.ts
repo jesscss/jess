@@ -1,6 +1,6 @@
-import type { CstChild } from '@jesscss/css-parser'
-import { CstNode } from '@jesscss/css-parser'
-import type { JessParser } from '../jessParser'
+import type { CstChild } from '@jesscss/css-parser';
+import { CstNode } from '@jesscss/css-parser';
+import type { JessParser } from '../jessParser';
 
 export default function(this: JessParser, $: JessParser) {
   $.knownAtRule = $.OVERRIDE_RULE('knownAtRule',
@@ -17,35 +17,35 @@ export default function(this: JessParser, $: JessParser) {
       { ALT: () => $.SUBRULE($.atNested) },
       { ALT: () => $.SUBRULE($.atNonNested) }
     ])
-  )
+  );
 
   $.atImport = $.OVERRIDE_RULE('atImport', () => {
     const atRule: CstChild[] = [
       $.CONSUME($.T.AtImport)
-    ]
-    const prelude = []
-    $.OPTION(() => prelude.push($.CONSUME($.T.WS)))
+    ];
+    const prelude = [];
+    $.OPTION(() => prelude.push($.CONSUME($.T.WS)));
 
     $.OR([
       {
         ALT: () => {
           prelude.push(
             $.SUBRULE($.atImportCss)
-          )
-          $.OPTION2(() => prelude.push($.CONSUME2($.T.WS)))
-          $.OPTION3(() => prelude.push($.SUBRULE($.mediaQueryList)))
+          );
+          $.OPTION2(() => prelude.push($.CONSUME2($.T.WS)));
+          $.OPTION3(() => prelude.push($.SUBRULE($.mediaQueryList)));
         }
       },
       {
         ALT: () => {
           prelude.push(
             $.SUBRULE($.atImportJs)
-          )
+          );
         }
       }
-    ])
+    ]);
 
-    $.OPTION4(() => prelude.push($.CONSUME3($.T.WS)))
+    $.OPTION4(() => prelude.push($.CONSUME3($.T.WS)));
 
     atRule.push(
       {
@@ -53,19 +53,19 @@ export default function(this: JessParser, $: JessParser) {
         children: prelude
       },
       $.OPTION5(() => $.CONSUME($.T.SemiColon))
-    )
+    );
     return {
       name: 'atRule',
       children: atRule
-    }
-  })
+    };
+  });
 
   $.atImportCss = $.RULE('atImportCss',
     () => $.OR([
       { ALT: () => $.CONSUME($.T.StringLiteral) },
       { ALT: () => $.CONSUME($.T.Uri) }
     ])
-  )
+  );
 
   /**
    * @todo - for now, just capture the stream of tokens
@@ -74,7 +74,7 @@ export default function(this: JessParser, $: JessParser) {
    */
   $.atImportJs = $.RULE('atImportJs',
     () => {
-      const children: CstChild[] = []
+      const children: CstChild[] = [];
       $.OR([
         {
           ALT: () => {
@@ -85,7 +85,7 @@ export default function(this: JessParser, $: JessParser) {
               $._(1),
               /** JS ident */
               $.CONSUME($.T.Ident)
-            )
+            );
           }
         },
         {
@@ -94,41 +94,41 @@ export default function(this: JessParser, $: JessParser) {
             children.push(
               $.CONSUME2($.T.Ident),
               $._(2)
-            )
+            );
             $.OPTION(() => {
               children.push(
                 $.CONSUME($.T.Comma),
                 $._(3),
                 $.SUBRULE($.atImportJsBlock)
-              )
-            })
+              );
+            });
           }
         },
         {
           ALT: () => {
-            children.push($.SUBRULE2($.atImportJsBlock))
+            children.push($.SUBRULE2($.atImportJsBlock));
           }
         }
-      ])
+      ]);
       children.push(
         $._(4),
         $.CONSUME($.T.From),
         $._(5),
         $.CONSUME($.T.StringLiteral)
-      )
+      );
       return {
         name: 'atImportJs',
         children
-      }
+      };
     }
-  )
+  );
 
   $.atImportJsBlock = $.RULE('atImportJsBlock', () => {
     const children: CstChild[] = [
       $.CONSUME($.T.LCurly),
       $._(),
       $.SUBRULE($.atImportJsArg)
-    ]
+    ];
 
     $.MANY(() => {
       children.push(
@@ -140,22 +140,22 @@ export default function(this: JessParser, $: JessParser) {
           ]
         },
         $.SUBRULE2($.atImportJsArg)
-      )
-    })
-    children.push($.CONSUME($.T.RCurly))
+      );
+    });
+    children.push($.CONSUME($.T.RCurly));
 
     return {
       name: 'atImportJsBlock',
       children
-    }
-  })
+    };
+  });
 
   $.atImportJsArg = $.RULE('atImportJsArg', () => {
     /** JS ident */
     const children: CstChild[] = [
       $.CONSUME($.T.PlainIdent),
       $._()
-    ]
+    ];
     $.OPTION(() => {
       children.push(
         $.CONSUME($.T.As),
@@ -163,11 +163,11 @@ export default function(this: JessParser, $: JessParser) {
         /** JS ident */
         $.CONSUME2($.T.PlainIdent),
         $._(2)
-      )
-    })
+      );
+    });
     return {
       name: 'atImportJsArg',
       children
-    }
-  })
+    };
+  });
 }

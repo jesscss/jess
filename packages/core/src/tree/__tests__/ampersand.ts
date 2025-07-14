@@ -2,14 +2,14 @@ import {
   root, amp, rules, sel, el, spaced, any, sellist, ruleset, decl, attr,
   compound,
   type SimpleSelector, type Combinator, type ComplexSelector
-} from '..'
-import { Context } from '../../context'
+} from '..';
+import { Context } from '../../context';
 
-let context: Context
+let context: Context;
 describe('Ampersand', () => {
   beforeEach(() => {
-    context = new Context()
-  })
+    context = new Context();
+  });
 
   /** We need a root node to bubble rules */
   let wrapAmp = (selectors: Array<SimpleSelector | Combinator>) => root([
@@ -28,7 +28,7 @@ describe('Ampersand', () => {
         })
       ])
     })
-  ])
+  ]);
 
   let wrapAmpList = (selectors: ComplexSelector[]) => root([
     ruleset({
@@ -43,12 +43,12 @@ describe('Ampersand', () => {
         })
       ])
     })
-  ])
+  ]);
 
   it('should output valid CSS Nesting as-is', async () => {
   /** We need a root node to bubble rules */
-    let node = wrapAmp([amp()])
-    let evald = await node.eval(context)
+    let node = wrapAmp([amp()]);
+    let evald = await node.eval(context);
     expect(`${evald}`).toBeString(`
       .one.two {
         chungus: foo bar;
@@ -56,9 +56,9 @@ describe('Ampersand', () => {
           inner: one two;
         }
       }
-    `)
-    node = wrapAmpList([sel([amp()])])
-    evald = await node.eval(context)
+    `);
+    node = wrapAmpList([sel([amp()])]);
+    evald = await node.eval(context);
     expect(`${evald}`).toBeString(`
       .one,
       .two {
@@ -67,14 +67,14 @@ describe('Ampersand', () => {
           inner: one two;
         }
       }`
-    )
-  })
+    );
+  });
 
   it('should collapse selectors when in collapsing mode #1', async () => {
     /** We need a root node to bubble rules */
-    let node = wrapAmp([amp()])
-    context = new Context({ collapseNesting: true })
-    let evald = await node.eval(context)
+    let node = wrapAmp([amp()]);
+    context = new Context({ collapseNesting: true });
+    let evald = await node.eval(context);
     expect(`${evald}`).toBeString(`
       .one.two {
         chungus: foo bar;
@@ -82,14 +82,14 @@ describe('Ampersand', () => {
       .one.two {
         inner: one two;
       }`
-    )
-  })
+    );
+  });
 
   it('should collapse selectors when in collapsing mode #2', async () => {
     /** We need a root node to bubble rules */
-    let node = wrapAmpList([sel([amp()])])
-    context = new Context({ collapseNesting: true })
-    let evald = await node.eval(context)
+    let node = wrapAmpList([sel([amp()])]);
+    context = new Context({ collapseNesting: true });
+    let evald = await node.eval(context);
     expect(`${evald}`).toBeString(`
       .one,
       .two {
@@ -99,13 +99,13 @@ describe('Ampersand', () => {
       .two {
         inner: one two;
       }`
-    )
-  })
+    );
+  });
 
   it('should order selectors when collapsing', async () => {
-    let node = wrapAmp([amp(), el('h2')])
-    context = new Context({ collapseNesting: true })
-    let evald = await node.eval(context)
+    let node = wrapAmp([amp(), el('h2')]);
+    context = new Context({ collapseNesting: true });
+    let evald = await node.eval(context);
     expect(`${evald}`).toBeString(`
       .one.two {
         chungus: foo bar;
@@ -113,12 +113,12 @@ describe('Ampersand', () => {
       h2:is(.one.two) {
         inner: one two;
       }`
-    )
-  })
+    );
+  });
 
   it('should collapse selectors when ampersand is set to hoist #1', async () => {
-    let node = wrapAmp([amp(undefined, { hoistToRoot: true })])
-    let evald = await node.eval(context)
+    let node = wrapAmp([amp(undefined, { hoistToRoot: true })]);
+    let evald = await node.eval(context);
     expect(`${evald}`).toBeString(`
       .one.two {
         chungus: foo bar;
@@ -126,12 +126,12 @@ describe('Ampersand', () => {
       .one.two {
         inner: one two;
       }`
-    )
-  })
+    );
+  });
 
   it('should collapse selectors when ampersand is set to hoist #2', async () => {
-    let node = wrapAmpList([sel([amp(undefined, { hoistToRoot: true })])])
-    let evald = await node.eval(context)
+    let node = wrapAmpList([sel([amp(undefined, { hoistToRoot: true })])]);
+    let evald = await node.eval(context);
     expect(`${evald}`).toBeString(`
       .one,
       .two {
@@ -141,12 +141,12 @@ describe('Ampersand', () => {
       .two {
         inner: one two;
       }`
-    )
-  })
+    );
+  });
 
   it('should collapse selectors when ampersand has an appended value #1', async () => {
-    let node = wrapAmp([amp('-1')])
-    let evald = await node.eval(context)
+    let node = wrapAmp([amp('-1')]);
+    let evald = await node.eval(context);
     expect(`${evald}`).toBeString(`
       .one.two {
         chungus: foo bar;
@@ -154,12 +154,12 @@ describe('Ampersand', () => {
       .one.two-1 {
         inner: one two;
       }`
-    )
-  })
+    );
+  });
 
   it('should collapse selectors when ampersand has an appended value #2', async () => {
-    let node = wrapAmpList([sel([amp('-1')])])
-    let evald = await node.eval(context)
+    let node = wrapAmpList([sel([amp('-1')])]);
+    let evald = await node.eval(context);
     expect(`${evald}`).toBeString(`
       .one,
       .two {
@@ -169,13 +169,13 @@ describe('Ampersand', () => {
       .two-1 {
         inner: one two;
       }`
-    )
-  })
+    );
+  });
 
   it('should wrap inner lists in :is()', async () => {
-    let node = wrapAmpList([sel([amp()]), sel([el('.three')])])
-    context = new Context({ collapseNesting: true })
-    let evald = await node.eval(context)
+    let node = wrapAmpList([sel([amp()]), sel([el('.three')])]);
+    context = new Context({ collapseNesting: true });
+    let evald = await node.eval(context);
     expect(`${evald}`).toBeString(`
       .one,
       .two {
@@ -185,9 +185,9 @@ describe('Ampersand', () => {
       .three {
         inner: one two;
       }`
-    )
-    node = wrapAmpList([compound([amp(), el('.three')])])
-    evald = await node.eval(context)
+    );
+    node = wrapAmpList([compound([amp(), el('.three')])]);
+    evald = await node.eval(context);
     expect(`${evald}`).toBeString(`
       .one,
       .two {
@@ -196,8 +196,8 @@ describe('Ampersand', () => {
       :is(.one, .two).three {
         inner: one two;
       }`
-    )
-  })
+    );
+  });
 
   it('should throw if the parent selector is not basic', async () => {
     let node = root([
@@ -219,7 +219,7 @@ describe('Ampersand', () => {
           })
         ])
       })
-    ])
-    await expect(async () => await node.eval(context)).rejects.toThrow('Cannot append "-1" to this type of selector')
-  })
-})
+    ]);
+    await expect(async () => await node.eval(context)).rejects.toThrow('Cannot append "-1" to this type of selector');
+  });
+});

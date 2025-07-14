@@ -1,11 +1,11 @@
-import * as glob from 'glob'
-import * as fs from 'fs'
-import * as path from 'path'
-import { invalidLess } from '@jesscss/shared'
-import { JessCompiler } from '../src'
-import lessPlugin from 'jess-plugin-less'
+import * as glob from 'glob';
+import * as fs from 'fs';
+import * as path from 'path';
+import { invalidLess } from '@jesscss/shared';
+import { JessCompiler } from '../src';
+import lessPlugin from 'jess-plugin-less';
 
-const testData = path.dirname(require.resolve('@less/test-data'))
+const testData = path.dirname(require.resolve('@less/test-data'));
 
 const compiler = new JessCompiler({
   collapseNesting: true,
@@ -14,25 +14,25 @@ const compiler = new JessCompiler({
       mathMode: 0
     })
   ]
-})
+});
 
 describe('Can render Less files to CSS', () => {
-  const files = glob.sync(path.join(testData, 'less/*/charsets.less'))
+  const files = glob.sync(path.join(testData, 'less/*/charsets.less'));
   files
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))
     .sort()
-    .forEach(file => {
+    .forEach((file) => {
       it(`${file}`, async () => {
-        const lessPath = path.join(testData, file)
-        const cssPath = lessPath.replace(/\.less$/, '.css').replace('/less/', '/css/')
-        const css = fs.readFileSync(cssPath).toString()
-        const output = await compiler.render(lessPath)
+        const lessPath = path.join(testData, file);
+        const cssPath = lessPath.replace(/\.less$/, '.css').replace('/less/', '/css/');
+        const css = fs.readFileSync(cssPath).toString();
+        const output = await compiler.render(lessPath);
         /**
          * Newer CSS output and older Less CSS output are not going
          * to be identical. How do we make sure they match?
          */
-        expect(output).toMatchCss(css)
-      })
-    })
-})
+        expect(output).toMatchCss(css);
+      });
+    });
+});

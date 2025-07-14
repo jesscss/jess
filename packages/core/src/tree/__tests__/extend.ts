@@ -1,14 +1,14 @@
 import {
   el, extend, root, ruleset, rules,
   type Ruleset
-} from '..'
-import { Context } from '../../context'
+} from '..';
+import { Context } from '../../context';
 
-let context: Context
+let context: Context;
 describe('Extend', () => {
   beforeEach(() => {
-    context = new Context()
-  })
+    context = new Context();
+  });
 
   it('should extend a simple selector', async () => {
     let rule = root([
@@ -23,9 +23,9 @@ describe('Extend', () => {
         ]),
         rules: rules([])
       })
-    ])
-    let evald = await rule.eval(context)
-    let firstRuleset = evald.value[0]! as Ruleset
-    expect(`${firstRuleset.selector}`).toBe('.a.b')
-  })
-})
+    ]);
+    let evald = await rule.eval(context);
+    let firstRuleset = evald.value[0]! as Ruleset;
+    expect(`${firstRuleset.selector}`).toBe('.a.b');
+  });
+});

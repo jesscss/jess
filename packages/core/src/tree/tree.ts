@@ -1,55 +1,55 @@
-import type { Ampersand } from './ampersand'
-import type { General } from './general'
-import type { AtRule } from './at-rule'
-import type { Call } from './call'
-import type { Declaration } from './declaration'
-import type { Dimension } from './dimension'
-import type { Expression } from './expression'
-import type { BasicSelector } from './selector-basic'
-import type { List } from './list'
-import type { Mixin } from './mixin'
-import type { Func } from './function'
-import type { FunctionValue } from './function-value'
-import type { Ruleset } from './ruleset'
-import type { Rules } from './rules'
-import type { ComplexSelector } from './selector-complex'
-import type { CompoundSelector } from './selector-compound'
-import type { Import } from './import'
-import type { Nil } from './nil'
-import type { SelectorList } from './selector-list'
-import type { Collection } from './collection'
-import type { VarDeclaration } from './var-declaration'
-import type { Rest } from './rest'
-import type { SimpleSelector } from './selector-simple'
-import type { PseudoSelector } from './selector-pseudo'
-import type { Combinator } from './combinator'
-import type { Sequence } from './sequence'
+import type { Ampersand } from './ampersand';
+import type { General } from './general';
+import type { AtRule } from './at-rule';
+import type { Call } from './call';
+import type { Declaration } from './declaration';
+import type { Dimension } from './dimension';
+import type { Expression } from './expression';
+import type { BasicSelector } from './selector-basic';
+import type { List } from './list';
+import type { Mixin } from './mixin';
+import type { Func } from './function';
+import type { FunctionValue } from './function-value';
+import type { Ruleset } from './ruleset';
+import type { Rules } from './rules';
+import type { ComplexSelector } from './selector-complex';
+import type { CompoundSelector } from './selector-compound';
+import type { Import } from './import';
+import type { Nil } from './nil';
+import type { SelectorList } from './selector-list';
+import type { Collection } from './collection';
+import type { VarDeclaration } from './var-declaration';
+import type { Rest } from './rest';
+import type { SimpleSelector } from './selector-simple';
+import type { PseudoSelector } from './selector-pseudo';
+import type { Combinator } from './combinator';
+import type { Sequence } from './sequence';
 
 export type Nodes = {
-  Ampersand: typeof Ampersand
-  General: typeof General
-  AtRule: typeof AtRule
-  Call: typeof Call
-  Declaration: typeof Declaration
-  Expression: typeof Expression
-  VarDeclaration: typeof VarDeclaration
-  Dimension: typeof Dimension
-  BasicSelector: typeof BasicSelector
-  SimpleSelector: typeof SimpleSelector
-  PseudoSelector: typeof PseudoSelector
-  ComplexSelector: typeof ComplexSelector
-  CompoundSelector: typeof CompoundSelector
-  SelectorList: typeof SelectorList
-  Combinator: typeof Combinator
-  List: typeof List
-  Mixin: typeof Mixin
-  Func: typeof Func
-  FunctionValue: typeof FunctionValue
-  Ruleset: typeof Ruleset
-  Rules: typeof Rules
-  Import: typeof Import
-  Nil: typeof Nil
-  Collection: typeof Collection
-  Rest: typeof Rest
-  Sequence: typeof Sequence
-}
+  Ampersand: typeof Ampersand;
+  General: typeof General;
+  AtRule: typeof AtRule;
+  Call: typeof Call;
+  Declaration: typeof Declaration;
+  Expression: typeof Expression;
+  VarDeclaration: typeof VarDeclaration;
+  Dimension: typeof Dimension;
+  BasicSelector: typeof BasicSelector;
+  SimpleSelector: typeof SimpleSelector;
+  PseudoSelector: typeof PseudoSelector;
+  ComplexSelector: typeof ComplexSelector;
+  CompoundSelector: typeof CompoundSelector;
+  SelectorList: typeof SelectorList;
+  Combinator: typeof Combinator;
+  List: typeof List;
+  Mixin: typeof Mixin;
+  Func: typeof Func;
+  FunctionValue: typeof FunctionValue;
+  Ruleset: typeof Ruleset;
+  Rules: typeof Rules;
+  Import: typeof Import;
+  Nil: typeof Nil;
+  Collection: typeof Collection;
+  Rest: typeof Rest;
+  Sequence: typeof Sequence;
+};

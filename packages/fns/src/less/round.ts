@@ -1,7 +1,7 @@
-import { mathHelper } from '../util/mathHelper'
-import lodashRound from 'lodash-es/round'
-import { type ExtendedFn } from '../util'
+import { mathHelper } from '../util/mathHelper';
+import lodashRound from 'lodash-es/round';
+import { type ExtendedFn } from '../util';
 
-const round: ExtendedFn = mathHelper.bind(null, lodashRound, ['value', 'precision'], undefined)
+const round: ExtendedFn = mathHelper.bind(null, lodashRound, ['value', 'precision'], undefined);
 
-export default round
+export default round;

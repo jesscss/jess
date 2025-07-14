@@ -1,21 +1,20 @@
-/* eslint-disable @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/restrict-plus-operands, @typescript-eslint/no-invalid-void-type */
-import isPlainObject from 'lodash-es/isPlainObject'
+import isPlainObject from 'lodash-es/isPlainObject';
 import {
   type TreeContext,
   type Context
-} from '../context'
-import { type Visitor } from '../visitor'
-import { type Operator } from './util/calculate'
-import type { Class, AbstractClass, Tagged } from 'type-fest'
-import { type Nil } from './nil'
-import { getEntriesFromNode, getValues } from './util/collections'
+} from '../context';
+import { type Visitor } from '../visitor';
+import { type Operator } from './util/calculate';
+import type { Class, AbstractClass, Tagged } from 'type-fest';
+import { type Nil } from './nil';
+import { getEntriesFromNode, getValues } from './util/collections';
 
-export type { TreeContext }
+export type { TreeContext };
 
-const { isArray } = Array
+const { isArray } = Array;
 
 type AllNodeOptions = {
-  hoistToRoot?: boolean
+  hoistToRoot?: boolean;
   /**
    * This seems harder to implement. For now, for anything that needs
    * to be flattened, we hoist it to the root.
@@ -26,31 +25,31 @@ type AllNodeOptions = {
    * For statements with optional semis,
    * we flag this for accurate re-serialization.
    */
-  semi?: boolean
-}
+  semi?: boolean;
+};
 
 /**
  * @todo - Clean up and delete these types and symbols, if not used.
  */
-export type Primitive = undefined | boolean | string | number | ((...args: any[]) => any)
+export type Primitive = undefined | boolean | string | number | ((...args: any[]) => any);
 
-export const ABORT: unique symbol = Symbol('ABORT')
-export const REMOVE: unique symbol = Symbol('REMOVE')
-export const IS_PROXY: unique symbol = Symbol('IS_PROXY')
-export type NodeVisitReturn = void | Node | symbol
-export type NodeOptions = Record<string, any> & AllNodeOptions
-export const DEFAULT_DATA = 'value'
+export const ABORT: unique symbol = Symbol('ABORT');
+export const REMOVE: unique symbol = Symbol('REMOVE');
+export const IS_PROXY: unique symbol = Symbol('IS_PROXY');
+export type NodeVisitReturn = void | Node | symbol;
+export type NodeOptions = Record<string, any> & AllNodeOptions;
+export const DEFAULT_DATA = 'value';
 
-type BasicNodeTypes = Primitive | Node
-type NodeRecordValue = BasicNodeTypes | Array<BasicNodeTypes | Primitive[]> | Record<string, any>
-export type NodeValueObject = Record<string, NodeRecordValue>
-export type NodeValue = BasicNodeTypes | BasicNodeTypes[] | NodeValueObject
+type BasicNodeTypes = Primitive | Node;
+type NodeRecordValue = BasicNodeTypes | Array<BasicNodeTypes | Primitive[]> | Record<string, any>;
+export type NodeValueObject = Record<string, NodeRecordValue>;
+export type NodeValue = BasicNodeTypes | BasicNodeTypes[] | NodeValueObject;
 
 export type NodeMapArray<
   T extends NodeValueObject = NodeValueObject,
   K = keyof T,
   V = T[string]
-> = Array<[K, V]>
+> = Array<[K, V]>;
 
 export type LocationInfo = [
   startOffset: number,
@@ -58,8 +57,8 @@ export type LocationInfo = [
   startColumn: number,
   endOffset: number,
   endLine: number,
-  endColumn: number,
-]
+  endColumn: number
+];
 
 /**
  * @todo I think the only utility for this now is we collect
@@ -70,33 +69,33 @@ export const defineType = <
   T extends AbstractClass<Node> = AbstractClass<Node>,
   P extends ConstructorParameters<T> = ConstructorParameters<T>
 >(
-    Clazz: T,
-    type: string,
-    shortType?: string
-  ) => {
+  Clazz: T,
+  type: string,
+  shortType?: string
+) => {
   shortType ??= type.toLowerCase()
   ;(Clazz as any).type = type
-  ;(Clazz as any).shortType = shortType
+  ;(Clazz as any).shortType = shortType;
 
-  let proto: any = Clazz
-  let types = proto.types = new Set()
+  let proto: any = Clazz;
+  let types = proto.types = new Set();
   while (proto?.type) {
-    types.add(proto.type)
-    proto = Object.getPrototypeOf(proto)
+    types.add(proto.type);
+    proto = Object.getPrototypeOf(proto);
   }
 
-  type Args = [value?: P[0] | V, location?: P[1], options?: P[2], treeContext?: P[3]]
+  type Args = [value?: P[0] | V, location?: P[1], options?: P[2], treeContext?: P[3]];
   return (...args: Args) => {
     const node = new Clazz(...args) as T extends Class<infer C> ? InstanceType<Class<C, Args>> : never
     ;(node as any).type = type
-    ;(node as any).shortType = shortType
-    return node
-  }
-}
+    ;(node as any).shortType = shortType;
+    return node;
+  };
+};
 
-export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<='
+export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<=';
 
-export type NoOverride<T> = Tagged<T, 'NoOverride'>
+export type NoOverride<T> = Tagged<T, 'NoOverride'>;
 
 /**
  * The underlying type for all Jess nodes
@@ -105,31 +104,31 @@ export abstract class Node<
   Data = unknown,
   O extends NodeOptions = NodeOptions
 > {
-  private _location: LocationInfo | [] | undefined
+  private _location: LocationInfo | [] | undefined;
   get location() {
-    return (this._location ??= [])
+    return (this._location ??= []);
   }
 
-  private _treeContext: TreeContext | undefined
+  private _treeContext: TreeContext | undefined;
   /** Assigned in index to avoid circularity */
-  declare readonly treeContext: TreeContext
+  declare readonly treeContext: TreeContext;
 
-  private _options: Partial<O & AllNodeOptions> | undefined
+  private _options: Partial<O & AllNodeOptions> | undefined;
   get options(): Partial<O & AllNodeOptions> {
-    return this._options ??= {}
+    return this._options ??= {};
   }
 
   set options(options: Partial<O & AllNodeOptions>) {
-    this._options = options
+    this._options = options;
   }
 
   /**
    * Assigned on the prototype, make sure we don't initialize
    */
-  abstract type: string
-  abstract shortType: string
+  abstract type: string;
+  abstract shortType: string;
   get types(): Set<string> {
-    return (this.constructor as any).types
+    return (this.constructor as any).types;
   }
 
   /**
@@ -142,14 +141,14 @@ export abstract class Node<
    * In a NodeList, any whitespace tokens outside of comments are individually represented,
    * because they are preserved while the comment may not be.
    */
-  pre: Node[] | 1 | 0 | undefined
-  post: Node[] | 1 | 0 | undefined
+  pre: Node[] | 1 | 0 | undefined;
+  post: Node[] | 1 | 0 | undefined;
 
-  visible = true
-  evaluated = false
-  preEvaluated = false
-  allowRoot = false
-  allowRuleRoot = false
+  visible = true;
+  evaluated = false;
+  preEvaluated = false;
+  allowRoot = false;
+  allowRuleRoot = false;
 
   /**
    * When evaluating, nodes are assigned an index by the Rules node.
@@ -157,7 +156,7 @@ export abstract class Node<
    * initially, but we assign it in the Rules node, which is also
    * where we read it, so this makes the type easier.
    */
-  index!: number
+  index!: number;
 
   /**
    * If the node must have a semi separator before
@@ -166,34 +165,34 @@ export abstract class Node<
    *
    * Defined on the prototype
    */
-  requiredSemi = false
+  requiredSemi = false;
 
   /**
    * Used by Rules
    * @todo - Remove
    */
-  rootRules: Node[] | undefined
+  rootRules: Node[] | undefined;
 
   /**
    * Track the original source when cloned / copied,
    * rather than keeping the entire tree
    */
-  sourceNode: Node = this as any
-  parent: Node | undefined
+  sourceNode: Node = this as any;
+  parent: Node | undefined;
 
-  nil!: () => Nil
+  nil!: () => Nil;
 
-  protected _value: Data
+  protected _value: Data;
 
   /**
    * This is the internal `data` of the node.
    */
   get value(): Data {
-    return this._value
+    return this._value;
   }
 
   set value(val: Data) {
-    this._value = this._processNodes(val)
+    this._value = this._processNodes(val);
   }
 
   private _tryProxyWrap<T>(value: T): T {
@@ -201,28 +200,28 @@ export abstract class Node<
       return new Proxy(value as object, {
         get: (target, prop) => {
           if (prop === IS_PROXY) {
-            return true
+            return true;
           }
-          const returnVal = Reflect.get(target, prop)
+          const returnVal = Reflect.get(target, prop);
           if (isPlainObject(returnVal) || isArray(returnVal)) {
             if (returnVal[IS_PROXY]) {
               /** Already a proxy */
-              return returnVal
+              return returnVal;
             }
-            return this._tryProxyWrap(returnVal)
+            return this._tryProxyWrap(returnVal);
           }
-          return returnVal
+          return returnVal;
         },
         set: (target, prop, newValue) => {
           if (isPlainObject(newValue) || isArray(newValue)) {
-            newValue = this._processNodes(newValue)
+            newValue = this._processNodes(newValue);
           }
-          return Reflect.set(target, prop, newValue)
+          return Reflect.set(target, prop, newValue);
         }
-      }) as T
+      }) as T;
     }
 
-    return value
+    return value;
   }
 
   /**
@@ -232,10 +231,10 @@ export abstract class Node<
   private _processNodes<T>(value: T): T {
     for (let val of getValues(value)) {
       if (val instanceof Node) {
-        val.parent = this
+        val.parent = this;
       }
     }
-    return value
+    return value;
   }
 
   constructor(
@@ -244,10 +243,10 @@ export abstract class Node<
     location?: LocationInfo,
     treeContext?: TreeContext
   ) {
-    this._value = this._processNodes(value)
-    this._treeContext = treeContext
-    this._location = location
-    this._options = options
+    this._value = this._processNodes(value);
+    this._treeContext = treeContext;
+    this._location = location;
+    this._options = options;
   }
 
   /**
@@ -258,21 +257,21 @@ export abstract class Node<
   forEachNode(func: (n: Node) => Node) {
     for (let [value, key, collection] of getEntriesFromNode(this as { value: unknown[] })) {
       if (value instanceof Node) {
-        collection[key] = func(value)
+        collection[key] = func(value);
       }
     }
   }
 
-  static * nodeAndPrePost(node: Node) {
+  static* nodeAndPrePost(node: Node) {
     if (isArray(node.pre)) {
       for (let n of node.pre) {
-        yield n
+        yield n;
       }
     }
-    yield node
+    yield node;
     if (isArray(node.post)) {
       for (let n of node.post) {
-        yield n
+        yield n;
       }
     }
   }
@@ -282,11 +281,11 @@ export abstract class Node<
    */
   * nodes(reverse?: boolean, includePrePost?: boolean): Generator<Node, void, unknown> {
     if (includePrePost) {
-      yield * Node.nodeAndPrePost(this)
+      yield* Node.nodeAndPrePost(this);
     } else {
-      yield this
+      yield this;
     }
-    yield * this.children(true, reverse, includePrePost)
+    yield* this.children(true, reverse, includePrePost);
   }
 
   /**
@@ -297,12 +296,12 @@ export abstract class Node<
     for (let nodeVal of getValues(this.value, reverse)) {
       if (nodeVal instanceof Node) {
         if (includePrePost) {
-          yield * Node.nodeAndPrePost(nodeVal)
+          yield* Node.nodeAndPrePost(nodeVal);
         } else {
-          yield nodeVal
+          yield nodeVal;
         }
         if (deep) {
-          yield * nodeVal.children(deep, reverse, includePrePost)
+          yield* nodeVal.children(deep, reverse, includePrePost);
         }
       }
     }
@@ -333,7 +332,7 @@ export abstract class Node<
    */
   accept(visitor: Visitor) {
     for (let node of this.children()) {
-      visitor.visit(node)
+      visitor.visit(node);
     }
   }
 
@@ -345,9 +344,9 @@ export abstract class Node<
    */
   maybeClone(context: Context, deep?: boolean, cloneFn?: (n: Node) => Node): this {
     if (context.preserveOriginalNodes) {
-      return this.clone(deep, cloneFn)
+      return this.clone(deep, cloneFn);
     }
-    return this
+    return this;
   }
 
   /**
@@ -363,37 +362,37 @@ export abstract class Node<
    * node, I think we should just only clone when we need to.
    */
   clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    let Class = this.constructor as Class<this>
-    let originalValue = this.value
-    let newValue = this.value
+    let Class = this.constructor as Class<this>;
+    let originalValue = this.value;
+    let newValue = this.value;
     /**
      * Create new array objects and plain objects
      */
     if (isArray(originalValue)) {
-      newValue = [...originalValue] as Data
+      newValue = [...originalValue] as Data;
     } else if (isPlainObject(originalValue)) {
-      let map = new Map(Object.entries(originalValue as Record<string, unknown>))
+      let map = new Map(Object.entries(originalValue as Record<string, unknown>));
       for (let [key, value] of map.entries()) {
         if (isArray(value)) {
-          map.set(key, [...value])
+          map.set(key, [...value]);
         }
       }
-      newValue = Object.fromEntries(map) as Data
+      newValue = Object.fromEntries(map) as Data;
     }
-    let newNode = new Class(newValue, { ...this.options }, this.location, this.treeContext)
-    newNode.inherit(this)
+    let newNode = new Class(newValue, { ...this.options }, this.location, this.treeContext);
+    newNode.inherit(this);
 
-    cloneFn ??= n => n.clone(deep)
+    cloneFn ??= n => n.clone(deep);
 
     if (deep) {
       for (let [value, key, collection] of getEntriesFromNode(newNode as { value: unknown[] })) {
         if (value instanceof Node) {
-          collection[key] = cloneFn(value)
+          collection[key] = cloneFn(value);
         }
       }
     }
 
-    return newNode
+    return newNode;
   }
 
   /** Remove comments from pre/post */
@@ -402,7 +401,7 @@ export abstract class Node<
       for (let [key, node] of prePost.entries()) {
         if (node.type === 'Comment') {
           /** Maybe don't inherit from comment? */
-          prePost[key] = this.nil().inherit(node)
+          prePost[key] = this.nil().inherit(node);
         }
       }
     }
@@ -416,17 +415,17 @@ export abstract class Node<
   copy(deep?: boolean): this {
     const newNode = this.clone(
       deep,
-      n => {
+      (n) => {
         if (n.type !== 'Comment') {
-          const copy = n.copy(deep)
-          return copy
+          const copy = n.copy(deep);
+          return copy;
         }
-        return this.nil().inherit(this)
+        return this.nil().inherit(this);
       }
-    )
-    this.stripPrePost(this.pre)
-    this.stripPrePost(this.post)
-    return newNode
+    );
+    this.stripPrePost(this.pre);
+    this.stripPrePost(this.post);
+    return newNode;
   }
 
   /**
@@ -437,8 +436,8 @@ export abstract class Node<
    * are evaluated.
    */
   async preEval(context: Context): Promise<this> {
-    this.preEvaluated = true
-    return this
+    this.preEvaluated = true;
+    return this;
   }
 
   /**
@@ -446,28 +445,28 @@ export abstract class Node<
    * Individual nodes will specify / narrow return type
    */
   async evalNode(context: Context): Promise<Node> {
-    return this
+    return this;
   }
 
   static async evalStatic(node: Node, context: Context): Promise<Node> {
-    let returnNode: Node = node
+    let returnNode: Node = node;
     if (!node.preEvaluated) {
-      returnNode = await node.preEval(context)
+      returnNode = await node.preEval(context);
       // if (returnNode !== node) {
       //   returnNode.inherit(node)
       // }
-      returnNode.preEvaluated = true
+      returnNode.preEvaluated = true;
     }
     if (!returnNode.evaluated) {
-      returnNode = await returnNode.evalNode(context)
+      returnNode = await returnNode.evalNode(context);
       // if (evaldNode !== returnNode) {
       //   evaldNode.inherit(returnNode)
       //   returnNode = evaldNode
       // }
-      returnNode.preEvaluated = true
-      returnNode.evaluated = true
+      returnNode.preEvaluated = true;
+      returnNode.evaluated = true;
     }
-    return returnNode
+    return returnNode;
   }
 
   /**
@@ -476,9 +475,9 @@ export abstract class Node<
    */
   async eval(context: Context): Promise<Node> {
     if (Object.getPrototypeOf(this).eval !== Node.prototype.eval) {
-      throw new Error('Do not call super.eval() from a subclass.')
+      throw new Error('Do not call super.eval() from a subclass.');
     }
-    return await Node.evalStatic(this, context)
+    return await Node.evalStatic(this, context);
   }
 
   /**
@@ -488,30 +487,30 @@ export abstract class Node<
    */
   protected async evalIfNot<T extends Node = Node>(context: Context, func: () => T | Promise<T>): Promise<T> {
     if (!this.evaluated) {
-      let node = await func()
+      let node = await func();
       if (!node.evaluated) {
-        node.inherit(this)
-        node.evaluated = true
+        node.inherit(this);
+        node.evaluated = true;
       }
-      return node
+      return node;
     }
-    return this as unknown as T
+    return this as unknown as T;
   }
 
   /**
    * This is used when a Node will replace another node.
    */
   inherit(node: Node) {
-    this._location = node.location
-    this._treeContext = node.treeContext
-    this.evaluated &&= node.evaluated
-    this.preEvaluated &&= node.preEvaluated
-    this.pre = node.pre
-    this.post = node.post
-    this.sourceNode = node.sourceNode
-    this.index ??= node.index
-    this.parent = node.parent
-    return this
+    this._location = node.location;
+    this._treeContext = node.treeContext;
+    this.evaluated &&= node.evaluated;
+    this.preEvaluated &&= node.preEvaluated;
+    this.pre = node.pre;
+    this.post = node.post;
+    this.sourceNode = node.sourceNode;
+    this.index ??= node.index;
+    this.parent = node.parent;
+    return this;
   }
 
   /**
@@ -523,30 +522,30 @@ export abstract class Node<
    * normalization algorithms.
    */
   valueOf(): string | number {
-    let value = this.value
-    let type = typeof value
+    let value = this.value;
+    let type = typeof value;
     if (type === 'string') {
-      return value as string
+      return value as string;
     } else if (type === 'number') {
-      return value as number
+      return value as number;
     }
-    let values = [...getValues(value)]
+    let values = [...getValues(value)];
     if (values.length === 1) {
-      return `${values[0]}`
+      return `${values[0]}`;
     }
-    return values.join('')
+    return values.join('');
   }
 
   processPrePost(key: 'pre' | 'post', defaultVal: string = '') {
-    let value = this[key]
+    let value = this[key];
     if (value === undefined) {
-      return defaultVal
+      return defaultVal;
     } else if (value === 0) {
-      return ''
+      return '';
     } else if (value === 1) {
-      return ' '
+      return ' ';
     } else {
-      return value.toString()
+      return value.toString();
     }
   }
 
@@ -571,16 +570,16 @@ export abstract class Node<
    */
   toString(depth?: number, defaultPre?: string, defaultPost?: string): string {
     if (!this.visible) {
-      return ''
+      return '';
     }
-    let output = ''
-    output += this.processPrePost('pre', defaultPre)
-    output += this.toTrimmedString(depth)
-    output += this.processPrePost('post', defaultPost)
+    let output = '';
+    output += this.processPrePost('pre', defaultPre);
+    output += this.toTrimmedString(depth);
+    output += this.processPrePost('post', defaultPost);
     if (this.options?.semi === true) {
-      output += ';'
+      output += ';';
     }
-    return output
+    return output;
   }
 
   /**
@@ -592,15 +591,15 @@ export abstract class Node<
    * pre/post nodes.
    */
   toTrimmedString(depth?: number) {
-    let output = ''
+    let output = '';
     for (let value of getValues(this.value)) {
       if (value instanceof Node) {
-        output += value.toString(depth)
+        output += value.toString(depth);
       } else {
-        output += value === undefined ? '' : String(value)
+        output += value === undefined ? '' : String(value);
       }
     }
-    return output
+    return output;
   }
 
   /**
@@ -613,27 +612,27 @@ export abstract class Node<
    * undefined = not comparable
    */
   compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
-    let aVal = this.valueOf()
-    let bVal = b.valueOf()
+    let aVal = this.valueOf();
+    let bVal = b.valueOf();
     if (aVal === bVal) {
-      return 0
+      return 0;
     }
-    return aVal > bVal ? 1 : -1
+    return aVal > bVal ? 1 : -1;
   }
 
   /** Overridden in index.ts to avoid circularity */
   operate(b: Node, op: Operator, context: Context): Node {
-    return this
+    return this;
   }
 
   /** @todo - Still needed? */
   static numericCompare(a: number, b: number) {
     if (a === b) {
-      return 0
+      return 0;
     } else if (a > b) {
-      return 1
+      return 1;
     } else {
-      return -1
+      return -1;
     }
   }
 

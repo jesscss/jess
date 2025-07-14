@@ -1,28 +1,28 @@
-import { Node, defineType, type NodeOptions } from './node'
-import { type Rules } from './rules'
-import type { Context } from '../context'
-import { Nil } from './nil'
-import type { Condition } from './condition'
-import type { Selector } from './selector'
-import { atIndex } from './util/collections'
-import { isNode } from './util/is-node'
+import { Node, defineType, type NodeOptions } from './node';
+import { type Rules } from './rules';
+import type { Context } from '../context';
+import { Nil } from './nil';
+import type { Condition } from './condition';
+import type { Selector } from './selector';
+import { atIndex } from './util/collections';
+import { isNode } from './util/is-node';
 
 export type RulesetValue = {
-  selector: Selector | Nil
+  selector: Selector | Nil;
   /**
    * It's important that any Node that defines a Rules
    * sets it to the `rules` property. This allows us to
    * generalize nodes for the `frames` property in Context
    */
-  rules: Rules
-  guard?: Condition
-}
+  rules: Rules;
+  guard?: Condition;
+};
 
 type RulesetOptions = NodeOptions & {
-  parentSelector?: Selector | Nil
-}
+  parentSelector?: Selector | Nil;
+};
 
-type NarrowRulesetValue<T> = T extends RulesetValue ? T : RulesetValue
+type NarrowRulesetValue<T> = T extends RulesetValue ? T : RulesetValue;
 /**
  * A qualified rule. This is historically called a "Ruleset"
  * by older CSS documentation and by Less.
@@ -35,73 +35,73 @@ type NarrowRulesetValue<T> = T extends RulesetValue ? T : RulesetValue
  * }
  */
 export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, RulesetOptions> {
-  type = 'Ruleset'
-  shortType = 'ruleset'
-  override allowRuleRoot = true
-  override allowRoot = true
+  type = 'Ruleset';
+  shortType = 'ruleset';
+  override allowRuleRoot = true;
+  override allowRoot = true;
 
   get selector() {
-    return this.value.selector
+    return this.value.selector;
   }
 
   /** @todo - remove? */
   override valueOf() {
-    return this.selector instanceof Nil ? '' : this.selector.valueOf()
+    return this.selector instanceof Nil ? '' : this.selector.valueOf();
   }
 
   override toTrimmedString(depth: number = 0): string {
-    let space = ''.padStart(depth * 2)
-    let { selector, rules } = this.value
+    let space = ''.padStart(depth * 2);
+    let { selector, rules } = this.value;
     if (selector instanceof Nil) {
-      return ''
+      return '';
     }
-    let output = ''
-    output += `${selector.toString(depth, undefined, ' ')}{`
-    output += `${rules.toString(depth + 1)}`
+    let output = '';
+    output += `${selector.toString(depth, undefined, ' ')}{`;
+    output += `${rules.toString(depth + 1)}`;
     if (rules.post === undefined) {
-      output += '\n'
+      output += '\n';
     }
-    output += `${space}}`
-    return output
+    output += `${space}}`;
+    return output;
   }
 
   override async preEval(context: Context): Promise<this> {
     if (!this.preEvaluated) {
-      let node = this.maybeClone(context)
-      node.preEvaluated = true
-      node.sourceNode ??= this
-      let { selector } = node.value
-      node.value.selector = await selector.eval(context) as Selector | Nil
-      return node
+      let node = this.maybeClone(context);
+      node.preEvaluated = true;
+      node.sourceNode ??= this;
+      let { selector } = node.value;
+      node.value.selector = await selector.eval(context) as Selector | Nil;
+      return node;
     }
-    return this
+    return this;
   }
 
   override async evalNode(context: Context): Promise<Ruleset | Nil> {
-    let rule = this.maybeClone(context)
-    rule.options = { ...this.options }
-    let frame = atIndex(context.rulesetFrames, -1)
+    let rule = this.maybeClone(context);
+    rule.options = { ...this.options };
+    let frame = atIndex(context.rulesetFrames, -1);
     /** Store the current frame selector if we need it for serialization */
     if (frame) {
-      rule.options.parentSelector = frame.selector
+      rule.options.parentSelector = frame.selector;
     }
-    let guard = rule.value.guard
+    let guard = rule.value.guard;
     if (guard) {
-      let bool = await guard.eval(context)
+      let bool = await guard.eval(context);
       if (!bool.value) {
-        return new Nil()
+        return new Nil();
       }
       /** Remove once evaluated */
-      rule.value.guard = undefined
+      rule.value.guard = undefined;
     }
     /** Allow a selector to signal that nesting should be collapsed */
-    const collapseNesting = context.opts.collapseNesting
-    let sels = (await this.selector.eval(context)) as Selector | Nil
+    const collapseNesting = context.opts.collapseNesting;
+    let sels = (await this.selector.eval(context)) as Selector | Nil;
 
     if (frame && (this.options.hoistToRoot ?? context.opts.collapseNesting)) {
-      rule.options.hoistToRoot = true
+      rule.options.hoistToRoot = true;
     }
-    context.opts.collapseNesting = collapseNesting
+    context.opts.collapseNesting = collapseNesting;
 
     /** If the only selector is a generated :is, unwrap it */
     if (
@@ -109,25 +109,25 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       && sels.value.name === ':is'
       && sels.options.generated
     ) {
-      sels = sels.value.arg as Selector
+      sels = sels.value.arg as Selector;
     }
 
     if (sels instanceof Nil) {
-      return sels
+      return sels;
     }
 
-    rule.value.selector = sels
+    rule.value.selector = sels;
 
-    context.rulesetFrames.push(rule)
-    rule.value.rules = await this.value.rules.eval(context)
-    context.rulesetFrames.pop()
+    context.rulesetFrames.push(rule);
+    rule.value.rules = await this.value.rules.eval(context);
+    context.rulesetFrames.pop();
 
     /** Remove empty rules */
-    const rules = rule.value.rules
+    const rules = rule.value.rules;
     if (rules.visibleRules().length === 0) {
-      rule.visible = false
+      rule.visible = false;
     }
-    return rule
+    return rule;
   }
 
   /** @todo move to ToCssVisitor */
@@ -154,11 +154,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   // }
 }
 
-type RulesetParams = ConstructorParameters<typeof Ruleset>
+type RulesetParams = ConstructorParameters<typeof Ruleset>;
 
 export const ruleset = defineType<RulesetValue>(Ruleset, 'Ruleset') as (
   value: RulesetValue | RulesetParams[0],
   options?: RulesetParams[1],
   location?: RulesetParams[2],
   treeContext?: RulesetParams[3]
-) => Ruleset
+) => Ruleset;

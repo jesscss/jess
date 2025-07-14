@@ -1,7 +1,7 @@
-import type { ExtendedFn } from '@jesscss/core'
-import type { validate } from 'superstruct'
+import type { ExtendedFn } from '@jesscss/core';
+import type { validate } from 'superstruct';
 
-export type { ExtendedFn }
+export type { ExtendedFn };
 
 // export function createFn<Args extends any[], F, R>(fn: F extends ExtendedFn<infer Args, infer R> ? ExtendedFn<Args, R> : ExtendedFn<any[], any>) {
 //   const returnFn: ExtendedFn<Args, R> = function(this: Context, ...args: Args) {
@@ -16,24 +16,24 @@ export type { ExtendedFn }
 //   return returnFn
 // }
 
-type CheckResult = ReturnType<typeof validate>
+type CheckResult = ReturnType<typeof validate>;
 
 export function wrapValidate(
   ...args: CheckResult[]
 ) {
-  const success = args.some(([err]) => !err)
-  const errors: Error[] = []
+  const success = args.some(([err]) => !err);
+  const errors: Error[] = [];
   if (!success) {
     for (let i = 0; i < args.length; i++) {
-      let [err] = args[i]!
+      let [err] = args[i]!;
       if (!err) {
-        continue
+        continue;
       }
 
-      let error = err.failures()[0]!
-      errors.push(new Error(error.message))
+      let error = err.failures()[0]!;
+      errors.push(new Error(error.message));
     }
-    return errors
+    return errors;
   }
-  return true
+  return true;
 }

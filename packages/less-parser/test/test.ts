@@ -1,46 +1,46 @@
-import * as glob from 'glob'
-import * as fs from 'fs'
-import * as path from 'path'
-import { Parser } from '../src'
-import { invalidLess } from '@jesscss/shared'
+import * as glob from 'glob';
+import * as fs from 'fs';
+import * as path from 'path';
+import { Parser } from '../src';
+import { invalidLess } from '@jesscss/shared';
 
-const testData = path.dirname(require.resolve('@less/test-data'))
+const testData = path.dirname(require.resolve('@less/test-data'));
 
-const lessParser = new Parser()
-const parse = lessParser.parse
+const lessParser = new Parser();
+const parse = lessParser.parse;
 
 describe('can parse any rule', () => {
   test('qualified rule with interpolation', () => {
     const { errors } = parse(
       'qw@{ident} { foo: bar }',
       'main'
-    )
-    expect(errors.length).toBe(0)
-  })
+    );
+    expect(errors.length).toBe(0);
+  });
 
   test('anonymous mixins', () => {
     const { errors } = parse(
       '.(@v;@i) {}',
       'anonymousMixinDefinition'
-    )
-    expect(errors.length).toBe(0)
-  })
+    );
+    expect(errors.length).toBe(0);
+  });
 
   test('comparison', () => {
     const { errors } = parse(
       '@a = white',
       'comparison'
-    )
-    expect(errors.length).toBe(0)
-  })
+    );
+    expect(errors.length).toBe(0);
+  });
 
   test('assignment', () => {
     const { errors } = parse(
       '@a: 1px;',
       'stylesheet'
-    )
-    expect(errors.length).toBe(0)
-  })
+    );
+    expect(errors.length).toBe(0);
+  });
 
   test('assignment to mixin', () => {
     const { errors } = parse(
@@ -49,33 +49,33 @@ describe('can parse any rule', () => {
         background: white;
       }`,
       'stylesheet'
-    )
-    expect(errors.length).toBe(0)
-  })
+    );
+    expect(errors.length).toBe(0);
+  });
 
   test('when guard', () => {
     const { errors } = parse(
       'when(@a = white)',
       'guard'
-    )
-    expect(errors.length).toBe(0)
-  })
+    );
+    expect(errors.length).toBe(0);
+  });
 
   test('declaration', () => {
     const { errors } = parse(
       'color: green',
       'declaration'
-    )
-    expect(errors.length).toBe(0)
-  })
+    );
+    expect(errors.length).toBe(0);
+  });
 
   test('accessors', () => {
     const { errors } = parse(
       'color: @p[accessor]',
       'declaration'
-    )
-    expect(errors.length).toBe(0)
-  })
+    );
+    expect(errors.length).toBe(0);
+  });
 
   test('qualified rule', () => {
     const { errors } = parse(
@@ -83,26 +83,26 @@ describe('can parse any rule', () => {
           color: green;
       }`,
       'qualifiedRule'
-    )
-    expect(errors.length).toBe(0)
-  })
+    );
+    expect(errors.length).toBe(0);
+  });
 
   test('parses mixin args', () => {
     const { errors } = parse(
       '(@v)',
       'mixinArgs',
       { isDefinition: true }
-    )
-    expect(errors.length).toBe(0)
-  })
+    );
+    expect(errors.length).toBe(0);
+  });
 
   test('non-nested at-rule', () => {
     const { errors } = parse(
       '@namespace @ns "http://lesscss.org";',
       'nonNestedAtRule'
-    )
-    expect(errors.length).toBe(0)
-  })
+    );
+    expect(errors.length).toBe(0);
+  });
 
   test('mixin definition', () => {
     // let lexerResult = lessParser.lexer.tokenize(
@@ -142,8 +142,8 @@ describe('can parse any rule', () => {
     const { errors } = parse(
       '.m(@v) when (@v)        {two: when true}',
       'mixinDefinition'
-    )
-    expect(errors.length).toBe(0)
+    );
+    expect(errors.length).toBe(0);
 
     // lexerResult = lessParser.lexer.tokenize(
     //   '.mixin-args(@a: 1, 2, 3; @b: 3);'
@@ -179,13 +179,13 @@ describe('can parse any rule', () => {
     // parser.input = lexedTokens
     // parser.testMixin()
     // expect(parser.errors.length).toBe(0)
-  })
+  });
 
   test('mixin call', () => {
     let { errors } = parse(
       '.mixin-with-guard-inside(0px);',
       'mixinCall'
-    )
+    );
     expect(errors.length).toBe(0)
 
     ;({ errors } = parse(
@@ -193,21 +193,21 @@ describe('can parse any rule', () => {
         color: red;
       });`,
       'mixinCall'
-    ))
+    ));
 
     expect(errors.length).toBe(0)
 
     ;({ errors } = parse(
       '.mixin-takes-two(@a : d, e; @b : f);',
       'mixinCall'
-    ))
+    ));
 
     expect(errors.length).toBe(0)
 
     ;({ errors } = parse(
       '.mixin-call({direct: works;}; @b: {named: works;});',
       'stylesheet'
-    ))
+    ));
     expect(errors.length).toBe(0)
 
     ;({ errors } = parse(
@@ -215,8 +215,8 @@ describe('can parse any rule', () => {
         left: 1;
       }`,
       'mixinCall'
-    ))
-  })
+    ));
+  });
 
   it('variable declaration', () => {
     // let lexerResult =
@@ -231,31 +231,31 @@ describe('can parse any rule', () => {
       @a: 1px;`,
       /** @todo - add `variableDeclaration` as sugar */
       'stylesheet'
-    )
-    expect(errors.length).toBe(0)
-  })
-})
+    );
+    expect(errors.length).toBe(0);
+  });
+});
 
 describe.only('can parse all Less stylesheets', () => {
-  const files = glob.sync(path.join(testData, 'less/**/*.less'))
+  const files = glob.sync(path.join(testData, 'less/**/*.less'));
   files
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))
     .sort()
-    .forEach(file => {
+    .forEach((file) => {
       it(`${file}`, () => {
-        const result = fs.readFileSync(path.join(testData, file))
-        const contents = result.toString()
+        const result = fs.readFileSync(path.join(testData, file));
+        const contents = result.toString();
         // const parseStart = performance.now()
-        const { lexerResult, errors } = lessParser.parse(contents)
+        const { lexerResult, errors } = lessParser.parse(contents);
         // const parseEnd = performance.now()
         // console.log(`${file} parse time: ${Math.round(parseEnd - parseStart)}ms`)
         // expect(`(${Math.round(parseEnd - parseStart)}ms)`).toBeDefined()
         if (lexerResult.errors.length || errors.length) {
-          console.log('oops')
+          console.log('oops');
         }
-        expect(lexerResult.errors.length).toBe(0)
-        expect(errors.length).toBe(0)
+        expect(lexerResult.errors.length).toBe(0);
+        expect(errors.length).toBe(0);
 
         /** JavaScript tokens are skipped */
         // if (!([
@@ -265,25 +265,25 @@ describe.only('can parse all Less stylesheets', () => {
         //   const output = stringify(cst)
         //   expect(output).toBe(contents)
         // }
-      })
+      });
       // }
-    })
-})
+    });
+});
 
 // Skipped until we fix these flows
 describe.skip('should throw parsing errors', () => {
   const files = glob.sync(
     path.relative(process.cwd(), path.join(testData, 'errors/parse/**/*.less'))
-  )
+  );
   files
     .sort()
     .map(value => path.relative(testData, value))
-    .forEach(file => {
+    .forEach((file) => {
       it(`${file}`, () => {
-        const result = fs.readFileSync(file)
-        const { lexerResult, errors } = lessParser.parse(result.toString())
-        expect(lexerResult.errors.length).toBe(0)
-        expect(errors.length).toBe(1)
-      })
-    })
-})
+        const result = fs.readFileSync(file);
+        const { lexerResult, errors } = lessParser.parse(result.toString());
+        expect(lexerResult.errors.length).toBe(0);
+        expect(errors.length).toBe(1);
+      });
+    });
+});

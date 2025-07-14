@@ -1,13 +1,13 @@
-import { mixin, rules, decl, any, condition, paren, ref, list, vardecl } from '..'
-import { Context } from '../../context'
+import { mixin, rules, decl, any, condition, paren, ref, list, vardecl } from '..';
+import { Context } from '../../context';
 
-let context: Context
+let context: Context;
 
 describe('Mixin', () => {
   beforeEach(() => {
-    context = new Context()
-    context.depth = 2
-  })
+    context = new Context();
+    context.depth = 2;
+  });
 
   describe('serialization', () => {
     it('should serialize a mixin', () => {
@@ -17,14 +17,14 @@ describe('Mixin', () => {
           decl({ name: 'color', value: any('black') }),
           decl({ name: 'background-color', value: any('white') })
         ])
-      })
+      });
       expect(`${rule}`).toBeString(`
         @mixin myMixin {
           color: black;
           background-color: white;
         }
-      `)
-    })
+      `);
+    });
 
     it('should serialize a mixin with args', () => {
       const rule = mixin({
@@ -37,14 +37,14 @@ describe('Mixin', () => {
           decl({ name: 'color', value: any('black') }),
           decl({ name: 'background-color', value: any('white') })
         ])
-      })
+      });
       expect(`${rule}`).toBeString(`
         @mixin my-mixin($a: black, $b: white) {
           color: black;
           background-color: white;
         }
-      `)
-    })
+      `);
+    });
 
     it('should serialize a guard', () => {
       const rule = mixin({
@@ -58,15 +58,15 @@ describe('Mixin', () => {
           decl({ name: 'color', value: any('black') }),
           decl({ name: 'background-color', value: any('white') })
         ])
-      })
+      });
       expect(`${rule}`).toBeString(`
         @mixin my-mixin($a: black, $b: white) when ($a = $b) {
           color: black;
           background-color: white;
         }
-      `)
-    })
-  })
+      `);
+    });
+  });
 
   // it('should serialize to a module', () => {
   //   let rule = mixin({
@@ -85,4 +85,4 @@ describe('Mixin', () => {
   //     'background-color': 'white'
   //   })
   // })
-})
+});

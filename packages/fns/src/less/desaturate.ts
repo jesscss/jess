@@ -3,9 +3,9 @@ import {
   type Color,
   type Dimension,
   type Node
-} from '@jesscss/core'
-import { adjustHSL } from '../util/get-hsla'
+} from '@jesscss/core';
+import { adjustHSL } from '../util/get-hsla';
 
 export default function desaturate(this: Context, color: Color, amount: Dimension, method?: Node) {
-  return adjustHSL.call(this, 's', '-', color, amount, method)
+  return adjustHSL.call(this, 's', '-', color, amount, method);
 }

@@ -1,6 +1,6 @@
-import { defineType, type NoOverride } from './node'
-import { Rules } from './rules'
-import type { Context } from '../context'
+import { defineType, type NoOverride } from './node';
+import { Rules } from './rules';
+import type { Context } from '../context';
 
 /**
  * The root node. Contains a collection of nodes.
@@ -12,20 +12,20 @@ export class Root extends Rules {
    * There shouldn't be root rules so much as parent / root rules.
    */
   override async evalNode(context: Context): Promise<this> {
-    context.opts.mathMode = this.treeContext.mathMode
-    context.opts.unitMode = this.treeContext.unitMode
-    context.depth++
-    let node = (await super.evalNode(context)) as Root
-    let rules = node.value
-    node.rootRules?.forEach(rule => rules.push(rule))
-    context.depth--
-    node.value = rules
-    return node
+    context.opts.mathMode = this.treeContext.mathMode;
+    context.opts.unitMode = this.treeContext.unitMode;
+    context.depth++;
+    let node = (await super.evalNode(context)) as Root;
+    let rules = node.value;
+    node.rootRules?.forEach(rule => rules.push(rule));
+    context.depth--;
+    node.value = rules;
+    return node;
   }
 
   override toString(depth?: number | undefined) {
     /** Remove leading newlines */
-    return super.toString(depth).replace(/^\n+/, '') as NoOverride<string>
+    return super.toString(depth).replace(/^\n+/, '') as NoOverride<string>;
   }
 
   /** @todo - move to visitors */
@@ -113,4 +113,4 @@ export class Root extends Rules {
   // }
 }
 
-export const root = defineType(Root, 'Root')
+export const root = defineType(Root, 'Root');

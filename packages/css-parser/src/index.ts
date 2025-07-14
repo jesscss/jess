@@ -1,8 +1,8 @@
-export * from './cssTokens'
-export * from './util'
-export * from './advancedActionsParser'
-export * from './cssActionsParser'
-export * from './cssErrorMessageProvider'
-export * from './cssParser'
-export * as productions from './productions'
-export * from './productions'
+export * from './cssTokens';
+export * from './util';
+export * from './advancedActionsParser';
+export * from './cssActionsParser';
+export * from './cssErrorMessageProvider';
+export * from './cssParser';
+export * as productions from './productions';
+export * from './productions';

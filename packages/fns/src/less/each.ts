@@ -5,14 +5,14 @@ import {
   Mixin,
   General,
   getFunctionFromMixins
-} from '@jesscss/core'
-import { type ExtendedFn } from '../util'
-import { type, instance, union, assert } from 'superstruct'
+} from '@jesscss/core';
+import { type ExtendedFn } from '../util';
+import { type, instance, union, assert } from 'superstruct';
 
 const Struct = type({
   list: instance(Node),
   mixin: union([instance(Mixin), instance(Rules)])
-})
+});
 
 /**
  * This is a 1-based iterator. Meaning,
@@ -30,11 +30,11 @@ const Struct = type({
  * $each(list, iterate);
  */
 const each: ExtendedFn = async function each(list: Node, mixin: Mixin | Rules) {
-  assert({ list, mixin }, Struct)
-  let entries = list.entries()
+  assert({ list, mixin }, Struct);
+  let entries = list.entries();
   /** If a Node is not list-like, wrap it */
   if (!entries) {
-    entries = [[0, list]].entries()
+    entries = [[0, list]].entries();
   }
   if (mixin instanceof Rules) {
     mixin = new Mixin([
@@ -43,22 +43,22 @@ const each: ExtendedFn = async function each(list: Node, mixin: Mixin | Rules) {
         new General('key', { type: 'Name' }),
         new General('index', { type: 'Name' })
       ])]
-    ])
+    ]);
   }
-  const func = getFunctionFromMixins(mixin).bind(this)
+  const func = getFunctionFromMixins(mixin).bind(this);
 
-  const rule = new Rules([])
-  const rules = rule.value
+  const rule = new Rules([]);
+  const rules = rule.value;
 
-  let index = 1
+  let index = 1;
 
   for (let [key, value] of entries) {
-    let keyStr = typeof key === 'number' ? `${key + 1}` : key
-    let outputRules = await func(value, keyStr, index++)
-    rules.push(outputRules)
+    let keyStr = typeof key === 'number' ? `${key + 1}` : key;
+    let outputRules = await func(value, keyStr, index++);
+    rules.push(outputRules);
   }
 
-  return rules
-}
+  return rules;
+};
 
-export default each
+export default each;

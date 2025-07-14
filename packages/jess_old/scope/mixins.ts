@@ -1,15 +1,15 @@
-import { noMatch, isMixin, mixinArgs } from './symbols'
-import { Scope } from '.'
-import type { ScopeObj } from './types'
+import { noMatch, isMixin, mixinArgs } from './symbols';
+import { Scope } from '.';
+import type { ScopeObj } from './types';
 
 interface ParamType {
-  type?: 'color' | 'dimension'
-  name: string
-  default?: any
-  value?: any
+  type?: 'color' | 'dimension';
+  name: string;
+  default?: any;
+  value?: any;
 }
 
-type ArgTest = (args: any[]) => boolean
+type ArgTest = (args: any[]) => boolean;
 /**
  * Mixin definitions like:
  *
@@ -41,27 +41,27 @@ export const createMixin = (
   paramTypes: ParamType[] = Array(func.length),
   argTests: ArgTest[] = []
 ) => {
-  const scope = Scope(definitionScope)
+  const scope = Scope(definitionScope);
   if (func.length !== paramTypes.length) {
-    throw new Error('Number of function parameters and parameter types must match.')
+    throw new Error('Number of function parameters and parameter types must match.');
   }
   /** Construct a map of names */
-  const paramMap: Record<string, any> = {}
+  const paramMap: Record<string, any> = {};
   for (let i = 0; i < paramTypes.length; i++) {
-    const param = paramTypes[i]
+    const param = paramTypes[i];
     if (param.name) {
-      paramMap[param.name] = i
+      paramMap[param.name] = i;
     }
   }
   type Mixin = ((this: ScopeObj, ...functionArgs: any[]) => ScopeObj | typeof noMatch) & {
-    [isMixin]?: true
-  }
+    [isMixin]?: true;
+  };
   const mixin: Mixin = function(this: ScopeObj, ...functionArgs: any[]) {
     /** First, we assign default values established by the params array */
     const newArgs: ParamType[] = paramTypes.map(param => ({
       name: param.name,
       value: param.default
-    }))
+    }));
     /** Then, we assign incoming args */
     /**
      * @todo - Should we allow an object as the first
@@ -69,9 +69,9 @@ export const createMixin = (
      *         interoperability?
      */
     for (let i = 0; i < functionArgs.length; i++) {
-      const arg = functionArgs[i]
+      const arg = functionArgs[i];
       if (arg !== undefined) {
-        newArgs[i].value = arg
+        newArgs[i].value = arg;
       }
     }
     /**
@@ -86,47 +86,47 @@ export const createMixin = (
      *   }
      */
     if (this?.[mixinArgs]) {
-      const entries = Object.entries(this[mixinArgs])
+      const entries = Object.entries(this[mixinArgs]);
       for (const entry of entries) {
-        const key = entry[0]
-        const index: number = parseInt(key)
+        const key = entry[0];
+        const index: number = parseInt(key);
         if (!isNaN(index)) {
           /** It's a positional arg */
-          newArgs[index].value = entry[1]
+          newArgs[index].value = entry[1];
         } else {
           /**
            * It's a named arg. To place it correctly,
            * we need to look it up in the params array.
            */
-          const pos = paramMap[key]
+          const pos = paramMap[key];
           if (pos === undefined) {
             /** Passed parameter doesn't exist on this mixin */
-            return noMatch
+            return noMatch;
           }
-          newArgs[pos].value = entry[1]
+          newArgs[pos].value = entry[1];
         }
       }
     }
     if (
       /** One of the mixin's values is not defined */
-      newArgs.find(val => val === undefined) ??
+      newArgs.find(val => val === undefined)
       /** One of the guards does not succeed */
-      argTests.find(test => !test(newArgs))
+      ?? argTests.find(test => !test(newArgs))
     ) {
       /** One of the mixin's values is not defined, so it's not a match. */
-      return noMatch
+      return noMatch;
     }
 
     for (const arg of newArgs) {
-      scope[`$${arg.name}`] = arg.value
+      scope[`$${arg.name}`] = arg.value;
     }
 
-    return func.apply(scope, newArgs.map(arg => arg.value))
-  }
+    return func.apply(scope, newArgs.map(arg => arg.value));
+  };
   /** Make the function length match the original */
   Object.defineProperty(mixin, 'length', {
     value: func.length
-  })
-  mixin[isMixin] = true
-  return mixin
-}
+  });
+  mixin[isMixin] = true;
+  return mixin;
+};

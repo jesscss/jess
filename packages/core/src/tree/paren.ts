@@ -1,40 +1,40 @@
-import { type Context } from '../context'
-import { Bool } from './bool'
-import { Expression } from './expression'
-import { Operation } from './operation'
-import { Node, defineType } from './node'
-import { Dimension } from './dimension'
+import { type Context } from '../context';
+import { Bool } from './bool';
+import { Expression } from './expression';
+import { Operation } from './operation';
+import { Node, defineType } from './node';
+import { Dimension } from './dimension';
 // import type { Context } from '../context'
 // import type { OutputCollector } from '../output'
 
 export type ParenOptions = {
-  escaped: boolean
-}
+  escaped: boolean;
+};
 
 const isOpOrExpression = (node: Node): node is Operation | Expression => {
-  return node instanceof Operation || node instanceof Expression
-}
+  return node instanceof Operation || node instanceof Expression;
+};
 
 /**
  * An expression in parenthesis
  */
 export class Paren extends Node<Node | undefined, ParenOptions> {
-  type = 'Paren' as const
-  shortType = 'paren' as const
+  type = 'Paren' as const;
+  shortType = 'paren' as const;
 
   override toTrimmedString(): string {
-    let value = `${this.value ?? ''}`
-    let escapeChar = this.options?.escaped ? '~' : ''
-    return `${escapeChar}(${value})`
+    let value = `${this.value ?? ''}`;
+    let escapeChar = this.options?.escaped ? '~' : '';
+    return `${escapeChar}(${value})`;
   }
 
   override async evalNode(context: Context): Promise<Node> {
-    let canOperate = context.canOperate
-    context.canOperate = true
-    let { value } = this
+    let canOperate = context.canOperate;
+    context.canOperate = true;
+    let { value } = this;
     if (value) {
-      let isOp = isOpOrExpression(value)
-      value = await value.eval(context)
+      let isOp = isOpOrExpression(value);
+      value = await value.eval(context);
       /**
        * Removing nested parens or parens around a single
        * dimension is a bit presumptuous, but I think Less's
@@ -43,19 +43,19 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
        * on output.
        */
       while (value instanceof Paren && value.value) {
-        value = value.value
+        value = value.value;
       }
       if (value instanceof Bool || value instanceof Dimension) {
-        return value
+        return value;
       }
-      context.canOperate = canOperate
+      context.canOperate = canOperate;
       if (isOp && !isOpOrExpression(value)) {
-        return value
+        return value;
       }
     }
-    let node = this.maybeClone(context)
-    node.value = value
-    return node
+    let node = this.maybeClone(context);
+    node.value = value;
+    return node;
   }
 
   // toCSS(context: Context, out: OutputCollector) {
@@ -72,4 +72,4 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   // }
 }
 
-export const paren = defineType(Paren, 'Paren')
+export const paren = defineType(Paren, 'Paren');

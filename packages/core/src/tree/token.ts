@@ -1,8 +1,8 @@
-import { defineType } from './node'
-import { General, type GeneralNodeType } from './general'
-import { type LiteralUnion } from 'type-fest'
+import { defineType } from './node';
+import { General, type GeneralNodeType } from './general';
+import { type LiteralUnion } from 'type-fest';
 
-type TokenType = LiteralUnion<GeneralNodeType, string>
+type TokenType = LiteralUnion<GeneralNodeType, string>;
 
 /**
  * Arbitrary general single-token nodes that are captured
@@ -10,4 +10,4 @@ type TokenType = LiteralUnion<GeneralNodeType, string>
  * unknown at-rule or a custom property.
  */
 export class Token extends General<TokenType> {}
-export const token = defineType(Token, 'Token')
+export const token = defineType(Token, 'Token');

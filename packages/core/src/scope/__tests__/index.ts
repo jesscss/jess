@@ -1,50 +1,50 @@
-import { decl, vardecl, any, AssignmentType, rules, ref, type Node } from '../../tree'
-import { Scope } from '../index'
-import { logger } from '../../logger'
-import { Context } from '../../context'
+import { decl, vardecl, any, AssignmentType, rules, ref, type Node } from '../../tree';
+import { Scope } from '../index';
+import { logger } from '../../logger';
+import { Context } from '../../context';
 
-vi.spyOn(logger, 'warn')
+vi.spyOn(logger, 'warn');
 
-let scope: Scope
-let context: Context
+let scope: Scope;
+let context: Context;
 
-function push(s: Scope, n: Node, { allowRuleLookups = false, readonly = false }: { allowRuleLookups?: boolean, readonly?: boolean } = {}) {
-  s.add(n, allowRuleLookups, readonly)
+function push(s: Scope, n: Node, { allowRuleLookups = false, readonly = false }: { allowRuleLookups?: boolean; readonly?: boolean } = {}) {
+  s.add(n, allowRuleLookups, readonly);
 }
 
 describe('Scope', async () => {
   beforeEach(() => {
-    context = new Context()
-    scope = new Scope(rules(), context)
-    context.scope = scope
-  })
+    context = new Context();
+    scope = new Scope(rules(), context);
+    context.scope = scope;
+  });
 
   describe('set / get', () => {
     it('can do a normal get / set of properties', () => {
-      push(scope, decl({ name: 'foo', value: any('bar') }))
-      expect(`${scope.getProp('foo')}`).toBe('foo: bar')
-    })
+      push(scope, decl({ name: 'foo', value: any('bar') }));
+      expect(`${scope.getProp('foo')}`).toBe('foo: bar');
+    });
 
     it('can do a normal get / set of variables', () => {
-      push(scope, vardecl({ name: 'foo', value: any('bar') }))
-      expect(`${scope.getVar('foo')}`).toBe('$foo: bar')
-    })
+      push(scope, vardecl({ name: 'foo', value: any('bar') }));
+      expect(`${scope.getVar('foo')}`).toBe('$foo: bar');
+    });
 
     it('replaces variable values', () => {
-      push(scope, vardecl({ name: 'foo', value: any('one') }))
-      push(scope, vardecl({ name: 'foo', value: any('two') }))
-      expect(`${scope.getVar('foo')}`).toBe('$foo: two')
-    })
+      push(scope, vardecl({ name: 'foo', value: any('one') }));
+      push(scope, vardecl({ name: 'foo', value: any('two') }));
+      expect(`${scope.getVar('foo')}`).toBe('$foo: two');
+    });
 
     it('will not set if defined', async () => {
-      let decl1 = vardecl({ name: 'first', value: any('one') }, { assign: AssignmentType.CondAssign })
-      let decl2 = vardecl({ name: 'first', value: any('two') }, { assign: AssignmentType.CondAssign })
-      decl1 = await decl1.preEval(context)
-      decl2 = await decl2.preEval(context)
-      push(scope, decl1)
-      push(scope, decl2)
-      expect(`${await scope.getVar('first')!.eval(context)}`).toBe('$first: one')
-    })
+      let decl1 = vardecl({ name: 'first', value: any('one') }, { assign: AssignmentType.CondAssign });
+      let decl2 = vardecl({ name: 'first', value: any('two') }, { assign: AssignmentType.CondAssign });
+      decl1 = await decl1.preEval(context);
+      decl2 = await decl2.preEval(context);
+      push(scope, decl1);
+      push(scope, decl2);
+      expect(`${await scope.getVar('first')!.eval(context)}`).toBe('$first: one');
+    });
 
     // it('will skip normalization', () => {
     //   scope.setVar('one', 'one', { isNormalized: true, protected: true })
@@ -52,111 +52,111 @@ describe('Scope', async () => {
     // })
 
     it('throws if undefined', async () => {
-      let decl1 = decl({ name: 'foo', value: ref('first', { type: 'variable' }) })
-      push(scope, decl1)
+      let decl1 = decl({ name: 'foo', value: ref('first', { type: 'variable' }) });
+      push(scope, decl1);
       await expect(
         decl1.eval(context)
-      ).rejects.toThrowError()
-    })
+      ).rejects.toThrowError();
+    });
 
     it('doesn\'t throw error if there\'s a fallback', async () => {
-      let decl1 = decl({ name: 'foo', value: ref('first', { type: 'variable', fallbackValue: true }) })
-      push(scope, decl1)
-      await expect(decl1.eval(context)).resolves.not.toThrow()
-    })
-  })
+      let decl1 = decl({ name: 'foo', value: ref('first', { type: 'variable', fallbackValue: true }) });
+      push(scope, decl1);
+      await expect(decl1.eval(context)).resolves.not.toThrow();
+    });
+  });
 
   describe('scope inheritance', () => {
     it('looks up parent scope', () => {
-      push(scope, vardecl({ name: 'foo', value: any('bar') }))
-      let inherited = new Scope(rules(), context, scope)
+      push(scope, vardecl({ name: 'foo', value: any('bar') }));
+      let inherited = new Scope(rules(), context, scope);
       /** Pretend the rules came from the parent scope when evaluating */
-      expect(`${inherited.getVar('foo')}`).toBe('$foo: bar')
-    })
+      expect(`${inherited.getVar('foo')}`).toBe('$foo: bar');
+    });
 
     it('inherits values when set after', () => {
-      let inherited = new Scope(rules(), context, scope)
-      push(scope, vardecl({ name: 'foo', value: any('bar') }))
-      expect(`${inherited.getVar('foo')}`).toBe('$foo: bar')
-    })
+      let inherited = new Scope(rules(), context, scope);
+      push(scope, vardecl({ name: 'foo', value: any('bar') }));
+      expect(`${inherited.getVar('foo')}`).toBe('$foo: bar');
+    });
 
     it('shadows variables #1', () => {
-      let inherited = new Scope(rules(), context, scope)
-      push(scope, vardecl({ name: 'one', value: any('one') }))
-      push(inherited, vardecl({ name: 'one', value: any('three') }))
-      expect(`${inherited.getVar('one')}`).toBe('$one: three')
-    })
+      let inherited = new Scope(rules(), context, scope);
+      push(scope, vardecl({ name: 'one', value: any('one') }));
+      push(inherited, vardecl({ name: 'one', value: any('three') }));
+      expect(`${inherited.getVar('one')}`).toBe('$one: three');
+    });
 
     it('shadows variables #2', () => {
-      let inherited = new Scope(rules(), context, scope)
-      push(scope, vardecl({ name: 'one', value: any('one') }))
-      push(inherited, vardecl({ name: 'one', value: any('two') }))
-      push(inherited, vardecl({ name: 'one', value: any('three') }))
-      expect(`${inherited.getVar('one')}`).toBe('$one: three')
-    })
+      let inherited = new Scope(rules(), context, scope);
+      push(scope, vardecl({ name: 'one', value: any('one') }));
+      push(inherited, vardecl({ name: 'one', value: any('two') }));
+      push(inherited, vardecl({ name: 'one', value: any('three') }));
+      expect(`${inherited.getVar('one')}`).toBe('$one: three');
+    });
 
     it('sets existing variables', () => {
-      let inherited = new Scope(rules(), context, scope)
-      push(scope, vardecl({ name: 'one', value: any('one') }))
-      push(inherited, vardecl({ name: 'one', value: any('three') }, { setDefined: true }))
-      expect(`${scope.getVar('one')}`).toBe('$one: three')
-      expect(`${inherited.getVar('one')}`).toBe('$$one: three')
-    })
+      let inherited = new Scope(rules(), context, scope);
+      push(scope, vardecl({ name: 'one', value: any('one') }));
+      push(inherited, vardecl({ name: 'one', value: any('three') }, { setDefined: true }));
+      expect(`${scope.getVar('one')}`).toBe('$one: three');
+      expect(`${inherited.getVar('one')}`).toBe('$$one: three');
+    });
 
     it('fails to set if existing variable is readonly', () => {
-      let inherited = new Scope(rules(), context, scope)
-      push(scope, vardecl({ name: 'one', value: any('one') }), { readonly: true })
+      let inherited = new Scope(rules(), context, scope);
+      push(scope, vardecl({ name: 'one', value: any('one') }), { readonly: true });
       expect(() =>
         push(inherited, vardecl({ name: 'one', value: any('three') }, { setDefined: true }))
-      ).toThrow()
-    })
+      ).toThrow();
+    });
 
     it('looks upwards from position', () => {
-      scope.add(vardecl({ name: 'one', value: any('one') }))
-      scope.add(vardecl({ name: 'one', value: any('two') }))
-      scope.add(vardecl({ name: 'one', value: any('three') }))
-      expect(`${scope.getVar('one', {}, 0)}`).toBe('$one: one')
-      expect(`${scope.getVar('one', {}, 1)}`).toBe('$one: two')
-      expect(`${scope.getVar('one')}`).toBe('$one: three')
-    })
+      scope.add(vardecl({ name: 'one', value: any('one') }));
+      scope.add(vardecl({ name: 'one', value: any('two') }));
+      scope.add(vardecl({ name: 'one', value: any('three') }));
+      expect(`${scope.getVar('one', {}, 0)}`).toBe('$one: one');
+      expect(`${scope.getVar('one', {}, 1)}`).toBe('$one: two');
+      expect(`${scope.getVar('one')}`).toBe('$one: three');
+    });
 
     it('sets upwards from position', () => {
-      scope.add(vardecl({ name: 'one', value: any('one') }))
-      scope.add(vardecl({ name: 'one', value: any('two') }, { setDefined: true }))
-      scope.add(vardecl({ name: 'one', value: any('three') }))
-      expect(`${scope.getVar('one', {}, 0)}`).toBe('$one: two')
-      expect(`${scope.getVar('one', {}, 1)}`).toBe('$$one: two')
-      expect(`${scope.getVar('one')}`).toBe('$one: three')
-    })
+      scope.add(vardecl({ name: 'one', value: any('one') }));
+      scope.add(vardecl({ name: 'one', value: any('two') }, { setDefined: true }));
+      scope.add(vardecl({ name: 'one', value: any('three') }));
+      expect(`${scope.getVar('one', {}, 0)}`).toBe('$one: two');
+      expect(`${scope.getVar('one', {}, 1)}`).toBe('$$one: two');
+      expect(`${scope.getVar('one')}`).toBe('$one: three');
+    });
 
     it('assigns position linearly for nested rules', () => {
       let grandChild = rules([
         vardecl({ name: 'one', value: any('three') })
-      ])
+      ]);
       let child = rules([
         vardecl({ name: 'foo', value: any('bar') }),
         vardecl({ name: 'one', value: any('two') }),
         grandChild
-      ])
+      ]);
       let outer = rules([
         vardecl({ name: 'one', value: any('one') }),
         vardecl({ name: 'root', value: any('value') }),
         child
-      ])
+      ]);
       /** @todo - Add a bunch of parent tests elsewhere */
-      expect(grandChild.parent).toBe(child)
-      expect(child.parent).toBe(outer)
+      expect(grandChild.parent).toBe(child);
+      expect(child.parent).toBe(outer);
       for (let [,rule] of outer) {
-        scope.add(rule)
+        scope.add(rule);
       }
 
-      expect(`${scope.getVar('one')}`).toBe('$one: one')
-      expect(`${grandChild.getScope(context).getVar('one')}`).toBe('$one: three')
+      expect(`${scope.getVar('one')}`).toBe('$one: one');
+      expect(`${grandChild.getScope(context).getVar('one')}`).toBe('$one: three');
 
       /** @todo - Doesn't work yet. See NOTES.md */
       // expect(`${grandChild.getScope(context).getVar('foo')}`).toBe('$foo: bar')
       // expect(`${grandChild.getScope(context).getVar('root')}`).toBe('$root: value')
-    })
+    });
 
     // it('can deeply inherit scope', () => {
     //   let child = new Scope(rules(), scope)
@@ -196,7 +196,7 @@ describe('Scope', async () => {
     //   scope.merge(child, true)
     //   expect(scope.getVar('one')).toEqual('one')
     // })
-  })
+  });
 
   // describe('key normalization', () => {
   //   it('normalizes into camel case', () => {
@@ -272,4 +272,4 @@ describe('Scope', async () => {
   //     })).toThrow()
   //   })
   // })
-})
+});

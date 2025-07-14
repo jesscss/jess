@@ -1,13 +1,13 @@
-import '@ungap/set-methods'
+import '@ungap/set-methods';
 // export * from './scope'
-export * from './tree'
-export * from './context'
-export * from './logger'
-export * from './plugin'
-export * from './jess-error'
-export * from './tree/util/is-node'
-export * from './tree/util/calculate'
-export * from './tree/util/compare'
-export * from './tree/util/cast'
-export * from './tree/util/selector'
-export * from './tree/util/collections'
+export * from './tree';
+export * from './context';
+export * from './logger';
+export * from './plugin';
+export * from './jess-error';
+export * from './tree/util/is-node';
+export * from './tree/util/calculate';
+export * from './tree/util/compare';
+export * from './tree/util/cast';
+export * from './tree/util/selector';
+export * from './tree/util/collections';

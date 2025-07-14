@@ -1,18 +1,18 @@
-import { Node, type NodeOptions, type NodeValue, defineType } from './node'
-import type { IfAny } from 'type-fest'
+import { Node, type NodeOptions, type NodeValue, defineType } from './node';
+import type { IfAny } from 'type-fest';
 
 /** This represents anything that is valid in a selector */
 
 export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> extends Node<IfAny<T, NodeValue, T>, O> {
-  isSelector = true
+  isSelector = true;
 
-  protected _valueOf: string | undefined
+  protected _valueOf: string | undefined;
   /**
    * For selectors, this is a normalized value, not just
    * a straight stringification like toTrimmedString
    */
   override valueOf(): string {
-    return ''
+    return '';
   }
 
   /**
@@ -20,8 +20,8 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
    * for easy lookup to see if the selector is extendable
    * by the key sets in the extend scope.
    */
-  protected _keySet: Set<string> | undefined
-  abstract keySet: Set<string>
+  protected _keySet: Set<string> | undefined;
+  abstract keySet: Set<string>;
 }
 
-defineType(Selector, 'Selector')
+defineType(Selector, 'Selector');

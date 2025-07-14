@@ -8,9 +8,9 @@ import {
   mixinArgs,
   isMixin,
   noMatch
-} from './symbols'
-import { registry } from './registry'
-import type { ScopeObj, GenericObject, Languages } from './types'
+} from './symbols';
+import { registry } from './registry';
+import type { ScopeObj, GenericObject, Languages } from './types';
 
 const proxyHandler: ProxyHandler<ScopeObj> = {
   // get(target, p) {
@@ -34,17 +34,17 @@ const proxyHandler: ProxyHandler<ScopeObj> = {
       if (p.startsWith('$')) {
         /** Mixin behavior */
         if (value[isMixin]) {
-          const ctx = target[context]
-          const isLess = ctx === 'less'
+          const ctx = target[context];
+          const isLess = ctx === 'less';
           if (isLess || ctx === 'jess') {
             if (!(mixinMap in target)) {
-              target[mixinMap] = {}
+              target[mixinMap] = {};
             }
             if (!target[mixinMap]![p]) {
               target[mixinMap]![p] = {
                 mixins: [],
                 default: []
-              }
+              };
               /**
                * For Less/Jess mixins, we can register many matches.
                * The results will be combined into a new set of rules.
@@ -57,61 +57,61 @@ const proxyHandler: ProxyHandler<ScopeObj> = {
                  */
                 value: function(this: ScopeObj | undefined, ...args: any[]) {
                   /** Less mixins have access to the caller scope */
-                  const localThis = this && isLess ? this : {}
-                  const scope = Scope(localThis)
+                  const localThis = this && isLess ? this : {};
+                  const scope = Scope(localThis);
                   if (this && isLess) {
-                    scope[mixinArgs] = this[mixinArgs]
+                    scope[mixinArgs] = this[mixinArgs];
                   }
 
                   let results = target[mixinMap]![p].mixins!
                     .map(mixin => mixin.call(scope, ...args))
-                    .filter((result: any) => result !== noMatch)
+                    .filter((result: any) => result !== noMatch);
 
                   if (results.length === 0) {
                     results = target[mixinMap]![p].default!
                       .map(mixin => mixin.call(scope, ...args))
-                      .filter((result: any) => result !== noMatch)
+                      .filter((result: any) => result !== noMatch);
 
                     if (results.length === 0) {
-                      throw new Error('RuntimeError: No matching definition was found')
+                      throw new Error('RuntimeError: No matching definition was found');
                     }
                     if (results.length > 1) {
-                      throw new Error('RuntimeError: Ambiguous use of `default()`')
+                      throw new Error('RuntimeError: Ambiguous use of `default()`');
                     }
                   }
 
                   if (results.length === 1) {
-                    scope[rules].concat(results[0])
+                    scope[rules].concat(results[0]);
                   } else {
-                    scope[rules].concat(...results)
+                    scope[rules].concat(...results);
                   }
-                  return scope
+                  return scope;
                 }
-              })
+              });
             }
-            target[mixinMap]![p].mixins!.push(value)
+            target[mixinMap]![p].mixins!.push(value);
           } else {
-            target[p] = value
+            target[p] = value;
           }
-          return true
+          return true;
         }
         if (!(p in target)) {
           Object.defineProperty(target, p, {
             value,
             writable: true
-          })
+          });
         } else {
-          target[p] = value
+          target[p] = value;
         }
-        return true
+        return true;
       }
       /** Every set of a property */
-      target[rules].push({ [p]: value })
-      target[p] = value
+      target[rules].push({ [p]: value });
+      target[p] = value;
     }
-    return true
+    return true;
   }
-}
+};
 
 /**
  * Create a new scope object (for root or mixins or declaration lists)
@@ -119,7 +119,7 @@ const proxyHandler: ProxyHandler<ScopeObj> = {
 export function Scope(obj: GenericObject, ctx: Languages = 'jess'): ScopeObj {
   if (obj[original]) {
     /** We make sure we extend the prototype of the non-proxied object */
-    obj = Object.create(obj[original])
+    obj = Object.create(obj[original]);
   } else {
     Object.defineProperties(obj, {
       [original]: {
@@ -131,7 +131,7 @@ export function Scope(obj: GenericObject, ctx: Languages = 'jess'): ScopeObj {
       [register]: {
         value: registry.bind(obj as ScopeObj)
       }
-    })
+    });
   }
 
   Object.defineProperties(obj, {
@@ -141,7 +141,7 @@ export function Scope(obj: GenericObject, ctx: Languages = 'jess'): ScopeObj {
     [context]: {
       value: ctx
     }
-  })
+  });
 
-  return new Proxy(obj as ScopeObj, proxyHandler)
+  return new Proxy(obj as ScopeObj, proxyHandler);
 }

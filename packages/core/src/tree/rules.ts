@@ -1,29 +1,28 @@
-/* eslint-disable @typescript-eslint/prefer-readonly */
 import {
   Node,
   defineType,
   type NodeOptions,
   type LocationInfo,
   type TreeContext
-} from './node'
+} from './node';
 import {
   type Declaration
-} from './declaration'
-import { Context } from '../context'
-import { isNode } from './util/is-node'
-import { cast } from './util/cast'
-import { type Ruleset } from './ruleset'
-import { type Mixin } from './mixin'
-import { Interpolated } from './interpolated'
-import type { Selector } from './selector'
-import { spaced } from './sequence'
+} from './declaration';
+import { Context } from '../context';
+import { isNode } from './util/is-node';
+import { cast } from './util/cast';
+import { type Ruleset } from './ruleset';
+import { type Mixin } from './mixin';
+import { Interpolated } from './interpolated';
+import type { Selector } from './selector';
+import { spaced } from './sequence';
 
-import { atIndex } from './util/collections'
-import isPlainObject from 'lodash-es/isPlainObject'
-import type { Condition } from './condition'
-import type { Bool } from './bool'
+import { atIndex } from './util/collections';
+import isPlainObject from 'lodash-es/isPlainObject';
+import type { Condition } from './condition';
+import type { Bool } from './bool';
 
-const { isArray } = Array
+const { isArray } = Array;
 
 export const enum Priority {
   None = 0,
@@ -76,14 +75,14 @@ export type RulesOptions = {
    *       Mixin: 'public'
    *    }
    */
-  rulesVisibility?: Record<string, 'public' | 'optional' | 'private'>
-  readonly?: boolean
+  rulesVisibility?: Record<string, 'public' | 'optional' | 'private'>;
+  readonly?: boolean;
   /** all imports other than classic `@import` set returned rules to local */
-  local?: boolean
-}
+  local?: boolean;
+};
 
 export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
-  eval(context: Context): Promise<this>
+  eval(context: Context): Promise<this>;
 }
 /**
  * The class representing a "declaration list".
@@ -100,10 +99,10 @@ export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
  * ]
  */
 export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
-  type = 'Rules'
-  shortType = 'rules'
-  override allowRuleRoot = true
-  override allowRoot = true
+  type = 'Rules';
+  shortType = 'rules';
+  override allowRuleRoot = true;
+  override allowRoot = true;
 
   constructor(
     value: Node[],
@@ -111,17 +110,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     location?: LocationInfo,
     treeContext?: TreeContext
   ) {
-    super(value ?? [], options, location, treeContext)
+    super(value ?? [], options, location, treeContext);
   }
 
   * [Symbol.iterator]() {
-    yield * this.value.entries()
+    yield* this.value.entries();
   }
 
   override toTrimmedString(depth: number = 0) {
-    let space = ''.padStart(depth * 2)
-    let output = ''
-    let { value } = this
+    let space = ''.padStart(depth * 2);
+    let output = '';
+    let { value } = this;
     let outputs = value
       .map((n, i) => {
         let out = n.toString(
@@ -131,31 +130,31 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               ? `\n${space}`
               : ''
             : '\n'
-        )
+        );
 
         if (n.requiredSemi && n.options.semi !== false && value.length >= i) {
-          out += ';'
+          out += ';';
         }
         if (out === '') {
-          return ''
+          return '';
         }
         /**
          * Replace the initial spaces in the first line with the correct indentation
          */
-        return out.replace(/^\n+[ \t]*/, `\n${space}`)
-      })
+        return out.replace(/^\n+[ \t]*/, `\n${space}`);
+      });
     output += outputs
       .join('')
       /**
        * Replace multiple newlines with single newlines
        * (Remove empty lines)
        */
-      .replace(/\n+/g, '\n')
-    return output
+      .replace(/\n+/g, '\n');
+    return output;
   }
 
   visibleRules() {
-    return this.value.filter(n => n.visible)
+    return this.value.filter(n => n.visible);
   }
 
   /**
@@ -167,20 +166,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * @todo - Redo from scratch
    */
   toObject() {
-    let output = new Map<string, string>()
+    let output = new Map<string, string>();
     const iterateRules = (rules: Rules) => {
-      let value = rules.value
-      value.forEach(n => {
+      let value = rules.value;
+      value.forEach((n) => {
         if (isNode(n, 'Declaration')) {
-          let { name, value, important } = n.value
-          output.set(name.toString(), `${value.valueOf()}${important ? ` ${important}` : ''}`)
+          let { name, value, important } = n.value;
+          output.set(name.toString(), `${value.valueOf()}${important ? ` ${important}` : ''}`);
         } else if (n instanceof Rules) {
-          iterateRules(n)
+          iterateRules(n);
         }
-      })
-    }
-    iterateRules(this as unknown as Rules)
-    return Object.fromEntries(output)
+      });
+    };
+    iterateRules(this as unknown as Rules);
+    return Object.fromEntries(output);
   }
 
   /**
@@ -197,23 +196,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * @note - Types are stored differently for disambiguation
    *         See the Prefix enum.
    */
-  private _declarationMap: Map<string, Declaration[]> | undefined
+  private _declarationMap: Map<string, Declaration[]> | undefined;
   private get declarationMap(): Map<string, Declaration[]> {
-    return (this._declarationMap ??= new Map())
+    return (this._declarationMap ??= new Map());
   }
 
   /**
    * Rulesets and mixins. These get indexed multiple times
    * for each simple selector.
    */
-  private _selectorMap: Map<string, Array<Mixin | Ruleset>> | undefined
+  private _selectorMap: Map<string, Array<Mixin | Ruleset>> | undefined;
   private get selectorMap(): Map<string, Array<Mixin | Ruleset>> {
-    return (this._selectorMap ??= new Map())
+    return (this._selectorMap ??= new Map());
   }
 
-  private _rulesSet: RulesEntry[] | undefined
+  private _rulesSet: RulesEntry[] | undefined;
   private get rulesSet(): RulesEntry[] {
-    return (this._rulesSet ??= [])
+    return (this._rulesSet ??= []);
   }
 
   /**
@@ -221,52 +220,52 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   register(node: Node, options?: Record<string, any>) {
     if (isNode(node, 'Rules')) {
-      let rulesVisibility = options?.rulesVisibility ?? node.options?.rulesVisibility ?? {}
+      let rulesVisibility = options?.rulesVisibility ?? node.options?.rulesVisibility ?? {};
 
       /** These are public by default */
-      rulesVisibility.Declaration ??= 'public'
-      rulesVisibility.Ruleset ??= 'public'
+      rulesVisibility.Declaration ??= 'public';
+      rulesVisibility.Ruleset ??= 'public';
 
       /** Either one set as readonly will win */
-      let readonly = Boolean(options?.readonly || node.options?.readonly)
+      let readonly = Boolean(options?.readonly || node.options?.readonly);
       this.rulesSet.push({
         node,
         rulesVisibility,
         readonly
-      })
+      });
     } else if (isNode(node, 'Declaration')) {
       /** `setDefined` is an immediate mutation of the last found instance */
       if (node.options?.setDefined) {
-        let key = node.value.name.toString()
+        let key = node.value.name.toString();
         /** Don't set within sibling rules */
-        let opts: FindOptions = {}
-        let result = this.findDeclaration(key, node.type as 'Declaration', opts, true, node.index)
+        let opts: FindOptions = {};
+        let result = this.findDeclaration(key, node.type as 'Declaration', opts, true, node.index);
         if (result) {
           if (result.options?.readonly || opts.readonly) {
-            throw new ReferenceError(`"${key}" is readonly`)
+            throw new ReferenceError(`"${key}" is readonly`);
           }
           /** Over-write value */
-          result.value.value = node.value.value.copy()
+          result.value.value = node.value.value.copy();
           /** !important always wins */
-          let important = result.value.important || node.value.important
-          result.value.important = important
+          let important = result.value.important || node.value.important;
+          result.value.important = important;
         } else {
-          throw new ReferenceError(`"${key}" is not defined`)
+          throw new ReferenceError(`"${key}" is not defined`);
         }
       }
-      let map = this.declarationMap
-      let key = node.value.name.toString()
-      let queue = map.get(key) ?? []
-      queue.push(node)
-      map.set(key, queue)
+      let map = this.declarationMap;
+      let key = node.value.name.toString();
+      let queue = map.get(key) ?? [];
+      queue.push(node);
+      map.set(key, queue);
     } else if (isNode(node, 'Mixin') || isNode(node, 'Ruleset')) {
       /** Register by selector */
-      const { selector } = node.value
+      const { selector } = node.value;
       if (selector && !isNode(selector, 'Nil')) {
         for (const key of selector.keySet) {
-          let queue = this.selectorMap.get(key) ?? []
-          queue.push(node as Mixin | Ruleset)
-          this.selectorMap.set(key, queue)
+          let queue = this.selectorMap.get(key) ?? [];
+          queue.push(node as Mixin | Ruleset);
+          this.selectorMap.set(key, queue);
 
           /** @todo - I left off here */
         }
@@ -275,13 +274,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   push(node: Node) {
-    node.parent = this
-    this.value.push(node)
-    this.register(node)
+    node.parent = this;
+    this.value.push(node);
+    this.register(node);
   }
 
   at(index: number) {
-    return this.value[index]
+    return this.value[index];
   }
 
   /**
@@ -290,35 +289,35 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   private _findClosestByStart(list: Declaration[], start?: number) {
     if (start === undefined) {
-      return atIndex(list, -1)
+      return atIndex(list, -1);
     }
     /**
      * We do this so we start looking above the given position and don't
      * return the current node.
      */
-    start -= 1
-    let bestMatch: number | undefined
+    start -= 1;
+    let bestMatch: number | undefined;
 
     /** Binary search the queue to find a starting position */
-    let left = 0
-    let right = list.length - 1
+    let left = 0;
+    let right = list.length - 1;
 
     while (left <= right) {
-      let mid = Math.floor((left + right) / 2)
-      let midVal = list.at(mid)!.index
+      let mid = Math.floor((left + right) / 2);
+      let midVal = list.at(mid)!.index;
       if (midVal === start) {
-        bestMatch = mid
-        break
+        bestMatch = mid;
+        break;
       }
       if (midVal < start) {
-        bestMatch = mid
-        left = mid + 1
+        bestMatch = mid;
+        left = mid + 1;
       } else {
-        right = mid - 1
+        right = mid - 1;
       }
     }
 
-    return bestMatch !== undefined ? list.at(bestMatch) : undefined
+    return bestMatch !== undefined ? list.at(bestMatch) : undefined;
   }
 
   /**
@@ -339,13 +338,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let declCandidate: [
       declaration: Declaration,
       read?: boolean
-    ] | undefined
-    let rules: Rules | undefined = this
-    let isPublic = false
+    ] | undefined;
+    let rules: Rules | undefined = this;
+    let isPublic = false;
     while (rules) {
-      let currentReadonly = opts?.readonly || rules.options?.readonly
+      let currentReadonly = opts?.readonly || rules.options?.readonly;
       if (rules._declarationMap) {
-        let list = rules.declarationMap.get(key)
+        let list = rules.declarationMap.get(key);
         if (list) {
           list = list.filter(
             n =>
@@ -354,41 +353,41 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 !opts?.filter
                 || opts.filter(n)
               )
-          )
+          );
         }
         if (list) {
-          let result = rules._findClosestByStart(list, start)
+          let result = rules._findClosestByStart(list, start);
           if (result) {
-            declCandidate = [result, result.options?.readonly || currentReadonly]
+            declCandidate = [result, result.options?.readonly || currentReadonly];
           }
-          isPublic = true
+          isPublic = true;
         }
       }
 
       if (rules._rulesSet) {
-        let { rulesSet } = rules
+        let { rulesSet } = rules;
         /**
          * Only consider rules after the last found declaration (if relevant)
          * and before the start position (if relevant)
          */
-        rulesSet = rulesSet.filter(n => {
+        rulesSet = rulesSet.filter((n) => {
           return (!declCandidate || n.node.index > declCandidate[0].index)
-              && (start === undefined || n.node.index < start)
-              && (!(local && Boolean(n.node.options?.local)))
-              && (
-                n.rulesVisibility?.[type] === 'optional'
-                || n.rulesVisibility?.[type] === 'public'
-              )
-        })
+            && (start === undefined || n.node.index < start)
+            && (!(local && Boolean(n.node.options?.local)))
+            && (
+              n.rulesVisibility?.[type] === 'optional'
+              || n.rulesVisibility?.[type] === 'public'
+            );
+        });
 
-        let length = rulesSet.length
+        let length = rulesSet.length;
         if (length) {
           for (let i = length - 1; i >= 0; i--) {
-            let r = rulesSet.at(i)!
+            let r = rulesSet.at(i)!;
             /** Locals can be searched once but not twice */
-            let newLocal = local || Boolean(r.node.options?.local)
-            let newOpts = opts ? { ...opts, readonly: currentReadonly || r.readonly } : { readonly: currentReadonly || r.readonly }
-            let result = r.node.findDeclaration(key, type, newOpts, false, undefined, newLocal)
+            let newLocal = local || Boolean(r.node.options?.local);
+            let newOpts = opts ? { ...opts, readonly: currentReadonly || r.readonly } : { readonly: currentReadonly || r.readonly };
+            let result = r.node.findDeclaration(key, type, newOpts, false, undefined, newLocal);
             if (result) {
               /**
                * If it's public, and it's the lower-most declaration,
@@ -396,9 +395,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                */
               if (r.rulesVisibility?.[type] === 'public') {
                 if (opts && newOpts.readonly) {
-                  opts.readonly = true
+                  opts.readonly = true;
                 }
-                return result
+                return result;
               }
               /**
                * The declaration is optional, so we need to keep searching.
@@ -406,7 +405,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                * value which should win.
                */
               if (!declCandidate) {
-                declCandidate = [result, newOpts.readonly]
+                declCandidate = [result, newOpts.readonly];
               }
             }
           }
@@ -414,19 +413,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       if (isPublic || !searchParents) {
         if (opts && declCandidate?.[1]) {
-          opts.readonly = true
+          opts.readonly = true;
         }
-        return declCandidate?.[0]
+        return declCandidate?.[0];
       }
 
       do {
-        rules = rules?.parent as Rules
-      } while (rules && !(rules instanceof Rules))
+        rules = rules?.parent as Rules;
+      } while (rules && !(rules instanceof Rules));
     }
     if (opts && declCandidate?.[1]) {
-      opts.readonly = true
+      opts.readonly = true;
     }
-    return declCandidate?.[0]
+    return declCandidate?.[0];
   }
 
   /**
@@ -434,7 +433,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * @todo - Move from scope
    */
   getMixinOrRuleset(selector: Selector, opts: FindOptions = {}) {
-    return () => {}
+    return () => {};
   }
 
   /**
@@ -445,7 +444,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   override async preEval(context: Context): Promise<this> {
     if (!this.preEvaluated) {
-      let rules = this.maybeClone(context)
+      let rules = this.maybeClone(context);
       /**
        * Attach this early? Normally the parent will attach
        * but this causes recursion issues with rules.
@@ -453,84 +452,84 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
        * @todo - Should this be added to node.clone()? I need
        * to think about the implications.
        */
-      rules.preEvaluated = true
+      rules.preEvaluated = true;
       if (rules.index === undefined) {
-        rules.index = context.ruleCounter++
+        rules.index = context.ruleCounter++;
       }
       for (let [, node] of rules) {
         if (node.index === undefined) {
-          node.index = context.ruleCounter++
+          node.index = context.ruleCounter++;
         }
       }
-      return rules
+      return rules;
     }
-    return this
+    return this;
   }
 
   override async evalNode(context: Context): Promise<this> {
-    let rules = this
+    let rules = this;
     if (!this.preEvaluated) {
-      rules = await this.preEval(context)
+      rules = await this.preEval(context);
     }
     /** Presumably the first eval'd rules is the root? */
-    let root = context.root ??= rules
-    let evalQueue: EvalQueueMap = new Map()
+    let root = context.root ??= rules;
+    let evalQueue: EvalQueueMap = new Map();
 
-    let rulesContext = context.rulesContext
-    context.rulesContext = rules
+    let rulesContext = context.rulesContext;
+    context.rulesContext = rules;
     if (rules.type === 'Root') {
-      context.treeContext = rules.treeContext
+      context.treeContext = rules.treeContext;
     }
     // let { leakVariablesIntoScope } = context.treeContext ?? {}
     /**
      * First, push rules onto an evaluation queue.
      */
     for (let item of rules) {
-      let [, rule] = item
-      let priority = NodeTypeToPriority.get(rule.type) ?? Priority.None
-      let queue = evalQueue.get(priority) ?? []
-      queue.push(item)
-      evalQueue.set(priority, queue)
+      let [, rule] = item;
+      let priority = NodeTypeToPriority.get(rule.type) ?? Priority.None;
+      let queue = evalQueue.get(priority) ?? [];
+      queue.push(item);
+      evalQueue.set(priority, queue);
     }
 
-    let rulesToHoist = false
+    let rulesToHoist = false;
 
     /** Now, evaluate the queue in two rounds */
     for (let method of ['preEval', 'eval'] as const) {
       for (let i: Priority = Priority.Highest; i >= 0; i--) {
-        let queue = evalQueue.get(i)
+        let queue = evalQueue.get(i);
         if (!queue) {
-          continue
+          continue;
         }
         for (let item of queue) {
-          let [i, rule] = item
+          let [i, rule] = item;
           if (
             i === Priority.Highest
             && method === 'preEval'
             && isNode(rule, 'Declaration')
             && rule.value.name instanceof Interpolated
           ) {
-            let lowQueue = evalQueue.get(Priority.High) ?? []
-            lowQueue.push([i, rule])
-            evalQueue.set(Priority.High, lowQueue)
-            continue
+            let lowQueue = evalQueue.get(Priority.High) ?? [];
+            lowQueue.push([i, rule]);
+            evalQueue.set(Priority.High, lowQueue);
+            continue;
           }
           /** Only evaluated on reference */
           if (method === 'eval' && isNode(rule, 'VarDeclaration')) {
-            continue
+            continue;
           }
-          let result!: Node
-          result = await rule[method](context)
+          let result!: Node;
+          result = await rule[method](context);
           if (result !== rule) {
-            rules.value[i] = result
-            queue[i] = [i, result]
+            rules.value[i] = result;
+            queue[i] = [i, result];
           }
           if (method === 'eval' && result.options.hoistToRoot) {
-            rulesToHoist = true
+            rulesToHoist = true;
           }
           if (method === 'preEval') {
             /** Do I need to pass in options? */
-            rules.register(result)
+            rules.register(result);
           }
           /**
            * @todo - Figure out if I should try to evaluate again later?
@@ -550,55 +549,55 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     }
     /** Bubble any hoisted rules */
-    let frame = context.rulesetFrames[0]
+    let frame = context.rulesetFrames[0];
     if (frame && rulesToHoist) {
-      let newRules = new Rules([])
+      let newRules = new Rules([]);
       const getRulesetCopy = () => {
-        let newFrame = frame.copy(true)
+        let newFrame = frame.copy(true);
         for (let n of newFrame.nodes()) {
           if (isNode((n.value as any).rules, 'Rules') && (n.value as any).rules.index === rules.index) {
-            (n.value as any).rules = newRules
-            break
+            (n.value as any).rules = newRules;
+            break;
           }
         }
-        return newFrame
-      }
-      let rootRules: Node[] = !rules.value[0]?.options.hoistToRoot ? [getRulesetCopy()] : []
+        return newFrame;
+      };
+      let rootRules: Node[] = !rules.value[0]?.options.hoistToRoot ? [getRulesetCopy()] : [];
       for (let [i, rule] of rules) {
         if (!rule.options.hoistToRoot) {
-          newRules.push(rule)
+          newRules.push(rule);
         } else {
-          rootRules.push(rule)
-          let next = atIndex(rules.value, i + 1)
+          rootRules.push(rule);
+          let next = atIndex(rules.value, i + 1);
           if (next && !next.options.hoistToRoot) {
-            newRules = new Rules([])
-            rootRules.push(getRulesetCopy())
+            newRules = new Rules([]);
+            rootRules.push(getRulesetCopy());
           }
         }
       }
-      let prevFrameIndex = root.value.indexOf(frame)
+      let prevFrameIndex = root.value.indexOf(frame);
       /** Splice the new rules where that frame was */
-      root.value.splice(prevFrameIndex, 1, ...rootRules)
+      root.value.splice(prevFrameIndex, 1, ...rootRules);
     }
     /**
      * Restore rules context
      */
-    context.rulesContext = rulesContext
-    return rules
+    context.rulesContext = rulesContext;
+    return rules;
   }
 }
-export const rules = defineType(Rules, 'Rules')
+export const rules = defineType(Rules, 'Rules');
 
 export type FindOptions = {
-  filter?: (n: Node) => boolean
+  filter?: (n: Node) => boolean;
   /** This gets set if any parent is set to readonly */
-  readonly?: boolean
-  searchParents?: boolean
-  start?: number
-  local?: boolean
-}
+  readonly?: boolean;
+  searchParents?: boolean;
+  start?: number;
+  local?: boolean;
+};
 
-type EvalQueueMap = Map<Priority, Array<[number, Node]>>
+type EvalQueueMap = Map<Priority, Array<[number, Node]>>;
 
 /**
  * @todo - Will need lots of massaging, to resolve things like
@@ -617,7 +616,7 @@ const NodeTypeToPriority = new Map([
   /** Then, resolve any calls */
   ['Call', Priority.Low]
   /** Then, everything else? */
-])
+]);
 
 // const TypeToNodeType = new Map([
 //   ['Mixin', NodeType.MIXIN],
@@ -647,20 +646,20 @@ const NodeTypeToPriority = new Map([
 // type IndexKey = `${NodeType}${string}`
 
 interface RulesEntry {
-  node: Rules
-  rulesVisibility?: RulesOptions['rulesVisibility']
+  node: Rules;
+  rulesVisibility?: RulesOptions['rulesVisibility'];
   /**
    * These are from use, from, and import statements. Can't be assigned with $$
    * (verify that this is not possible with SCSS).
    */
-  readonly?: RulesOptions['readonly']
+  readonly?: RulesOptions['readonly'];
 }
 
 /**
  * Right now, the only nodes that can be registered to the scope for lookups
  */
 // type ScopeNodes = Declaration | VarDeclaration | Mixin | Ruleset | Rules
-type MixinEntry = Mixin | Rules
+type MixinEntry = Mixin | Rules;
 
 /**
  * Returns a plain JS function for calling a set of mixins
@@ -668,49 +667,49 @@ type MixinEntry = Mixin | Rules
  * This is in the same file as Rules to avoid circular dependencies
  */
 export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
-  let mixinArr = isArray(mixins) ? mixins : [mixins]
+  let mixinArr = isArray(mixins) ? mixins : [mixins];
   /**
    * This will be called by a mixin call or by JavaScript
    *
    * @note - Mixins resolve to async functions because they
    * can contain dynamic imports.
    */
-  async function returnFunc(this: unknown, ...args: any[]): Promise<Rules | Record<string, string>>
-  async function returnFunc(this: Context, ...args: any[]): Promise<Rules>
+  async function returnFunc(this: unknown, ...args: any[]): Promise<Rules | Record<string, string>>;
+  async function returnFunc(this: Context, ...args: any[]): Promise<Rules>;
   async function returnFunc(this: Context | unknown, ...args: any[]) {
-    const mixinLength = mixinArr.length
-    let mixinCandidates: MixinEntry[] = []
-    let evalCandidates: Array<[MixinEntry, number]>
-    let thisContext = this instanceof Context ? this : new Context()
+    const mixinLength = mixinArr.length;
+    let mixinCandidates: MixinEntry[] = [];
+    let evalCandidates: Array<[MixinEntry, number]>;
+    let thisContext = this instanceof Context ? this : new Context();
     /**
      * Check named and positional arguments
      * against mixins, to see which ones match.
      * (Any mixin with a mis-match of
      * arguments fails.)
      */
-    let argEntries = isPlainObject(args[0]) ? Object.entries(args[0]) : null
+    let argEntries = isPlainObject(args[0]) ? Object.entries(args[0]) : null;
     for (let i = 0; i < mixinLength; i++) {
-      let mixin = mixinArr[i]!
-      let isPlainRule = isNode(mixin, 'Rules')
-      let paramLength = isPlainRule ? 0 : (mixin as Mixin).value.params?.length ?? 0
+      let mixin = mixinArr[i]!;
+      let isPlainRule = isNode(mixin, 'Rules');
+      let paramLength = isPlainRule ? 0 : (mixin as Mixin).value.params?.length ?? 0;
       if (!paramLength) {
         /** Exit early if args were passed in, but no args are possible */
         if (args.length) {
-          continue
+          continue;
         }
-        mixinCandidates.push(mixin)
+        mixinCandidates.push(mixin);
       } else {
         /** The mixin has parameters, so let's check args to see if there's a match */
-        let params = (mixin as Mixin).value.params!.clone()
-        let positions = new Set(params.value.map((_, i) => i))
+        let params = (mixin as Mixin).value.params!.clone();
+        let positions = new Set(params.value.map((_, i) => i));
         /**
          * First argument can be a plain object with named params
          * e.g. { a: 1, b: 2 }
          */
-        let argPos = 0
+        let argPos = 0;
         if (argEntries) {
-          argPos = 1
-          let namedMap = new Map(argEntries)
+          argPos = 1;
+          let namedMap = new Map(argEntries);
           /**
            * We iterate through params instead of args,
            * because we need to track the position
@@ -718,26 +717,26 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
            */
           for (let [i, param] of params) {
             if (isNode(param, 'VarDeclaration')) {
-              let key = param.value.name as string
-              let namedValue = namedMap.get(key)
+              let key = param.value.name as string;
+              let namedValue = namedMap.get(key);
               /** Replace our param value with the passed in named value */
               if (namedValue) {
-                params.value[i] = cast(namedValue)
+                params.value[i] = cast(namedValue);
                 /**
                  * Because we've assigned a named value, any
                  * positional arguments will be shifted.
                  */
-                positions.delete(i)
-                namedMap.delete(key)
+                positions.delete(i);
+                namedMap.delete(key);
               } else {
                 /** This mixin is not a match */
-                break
+                break;
               }
             }
           }
           if (namedMap.size) {
             /** This mixin is not a match */
-            continue
+            continue;
           }
         }
         /**
@@ -746,28 +745,28 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
          */
         if (args.length - argPos !== positions.size) {
           /** This mixin is not a match */
-          continue
+          continue;
         }
-        let match = true
+        let match = true;
 
         for (let i of positions) {
-          let arg = args[argPos]
-          let param = params.value[i]!
+          let arg = args[argPos];
+          let param = params.value[i]!;
           if (isNode(param, 'VarDeclaration')) {
-            param.value.value = cast(arg)
+            param.value.value = cast(arg);
           } else if (isNode(param, 'Rest')) {
-            param.value = spaced(args.slice(argPos))
+            param.value = spaced(args.slice(argPos));
             /** Check a pattern-matching node */
           } else if (param.compare(arg) !== 0) {
             /** This mixin is not a match */
-            match = false
-            break
+            match = false;
+            break;
           }
-          argPos++
+          argPos++;
         }
         if (match) {
-          (mixin as Mixin).value.params = params
-          mixinCandidates.push(mixin)
+          (mixin as Mixin).value.params = params;
+          mixinCandidates.push(mixin);
         }
       }
     }
@@ -778,40 +777,40 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      * First, let's make an evaluation order that evaluates
      * default guards last.
      */
-    let hasDefault = false
+    let hasDefault = false;
     evalCandidates = mixinCandidates
       .map<[MixinEntry, number]>(
-      (candidate, i) => {
-        let isDefault = candidate.options?.hasDefault
-        if (isDefault) {
-          if (hasDefault) {
-            throw new Error('Ambiguous use of default guard found')
+        (candidate, i) => {
+          let isDefault = candidate.options?.hasDefault;
+          if (isDefault) {
+            if (hasDefault) {
+              throw new Error('Ambiguous use of default guard found');
+            }
+            hasDefault = true;
           }
-          hasDefault = true
-        }
-        return [candidate, i]
-      })
+          return [candidate, i];
+        });
 
     if (hasDefault) {
       /** There is a default guard, so sort candidates */
       evalCandidates = evalCandidates.slice(0).sort((a, b) => {
-        let aNode = a[0]
-        let bNode = b[0]
-        let aDefault = aNode.options?.hasDefault
-        let bDefault = bNode.options?.hasDefault
+        let aNode = a[0];
+        let bNode = b[0];
+        let aDefault = aNode.options?.hasDefault;
+        let bDefault = bNode.options?.hasDefault;
         /** No guard (or is just a plain ruleset) */
         if (!aDefault && !bDefault) {
-          return 0
+          return 0;
         }
 
         if (!aDefault) {
-          return 1
+          return 1;
         }
         if (!bDefault) {
-          return -1
+          return -1;
         }
-        return 0
-      })
+        return 0;
+      });
     }
 
     /**
@@ -819,64 +818,64 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      * but first we need to create a new scope for each mixin,
      * and create variable declarations for each parameter.
      */
-    let hasMatch = false
-    let outputRules: Array<[Rules, number]> = []
+    let hasMatch = false;
+    let outputRules: Array<[Rules, number]> = [];
     for (let [candidate, i] of evalCandidates) {
       if (isNode(candidate, 'Rules')) {
-        hasMatch = true
-        outputRules.push([candidate, i])
-        continue
+        hasMatch = true;
+        outputRules.push([candidate, i]);
+        continue;
       }
       /** Create new rules, and add the candidate rules, to add to scope */
-      let rules = new Rules([])
-      rules.push(candidate.value.rules)
+      let rules = new Rules([]);
+      rules.push(candidate.value.rules);
 
       /** Now we need to add our parameters, if any */
-      let params = candidate.value.params
+      let params = candidate.value.params;
       if (params) {
         for (let param of params.value) {
           if (isNode(param, ['VarDeclaration', 'Rest'])) {
             /** @todo - Register Rest */
-            rules.register(param)
+            rules.register(param);
           }
         }
       }
       /** Now we can evaluate our guards, if any */
-      let guard: Condition | Bool | undefined = candidate.value.guard
-      let passes = true
-      let incomingScope = thisContext.scope
-      thisContext.scope = rules
+      let guard: Condition | Bool | undefined = candidate.value.guard;
+      let passes = true;
+      let incomingScope = thisContext.scope;
+      thisContext.scope = rules;
       if (guard) {
-        passes = false
+        passes = false;
         /** All nodes need context to be evaluated */
-        thisContext.isDefault = !hasMatch
-        guard = await guard.eval(thisContext)
+        thisContext.isDefault = !hasMatch;
+        guard = await guard.eval(thisContext);
         /** The guard condition passed */
         if (guard.value) {
-          passes = true
+          passes = true;
         }
       }
       if (passes) {
-        let newRules = await rules.eval(thisContext)
-        outputRules.push([newRules, i])
+        let newRules = await rules.eval(thisContext);
+        outputRules.push([newRules, i]);
       }
-      thisContext.scope = incomingScope
+      thisContext.scope = incomingScope;
     }
     /**
      * Now that we have output rules, we sort them by
      * their original order
      */
-    let rulesArr = outputRules.sort((a, b) => a[1] - b[1]).map(r => r[0])
+    let rulesArr = outputRules.sort((a, b) => a[1] - b[1]).map(r => r[0]);
     /** Create a rules wrapper */
-    let output = new Rules(rulesArr)
+    let output = new Rules(rulesArr);
 
     /** Now push all rules into the rules value */
     if (this instanceof Context) {
-      return output
+      return output;
     } else {
-      return output.toObject()
+      return output.toObject();
     }
   }
 
-  return returnFunc
+  return returnFunc;
 }

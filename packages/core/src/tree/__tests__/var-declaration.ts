@@ -1,28 +1,28 @@
-import { vardecl, coll, decl, any } from '..'
-import { Context } from '../../context'
+import { vardecl, coll, decl, any } from '..';
+import { Context } from '../../context';
 
-let context: Context
+let context: Context;
 
 describe('Let', () => {
   beforeEach(() => {
-    context = new Context()
-    context.depth = 1
-  })
+    context = new Context();
+    context.depth = 1;
+  });
 
   describe('serialization', () => {
     it('should serialize a @let', () => {
-      context.depth = 2
+      context.depth = 2;
       let rule = vardecl({
         name: 'brandColor',
         value: any('#eee')
-      })
-      expect(`${rule}`).toBe('@let brandColor: #eee;')
+      });
+      expect(`${rule}`).toBe('@let brandColor: #eee;');
     // rule.toModule(context, out)
     // expect(out.toString()).toBe('let brandColor = $J.expr([$J.any("#eee")])')
-    })
+    });
 
     it('should serialize a @let collection', () => {
-      context.depth = 2
+      context.depth = 2;
       let rule = vardecl({
         name: 'brandColor',
         value: coll([
@@ -30,7 +30,7 @@ describe('Let', () => {
           decl({ name: 'dark', value: any('#222') }),
           decl({ name: 'light', value: any('#eee') })
         ])
-      })
+      });
       expect(`${rule}`).toBeString(`
       @let brandColor: {
         global: {
@@ -40,11 +40,11 @@ describe('Let', () => {
         light: #eee;
       }
       `
-      )
+      );
     // rule.toModule(context, out)
     // expect(out.toString()).toBe('let brandColor = $J.expr([$J.any("#eee")])')
-    })
-  })
+    });
+  });
 
   // it('should serialize a @let collection', () => {
   //   let rule = set(
@@ -79,4 +79,4 @@ describe('Let', () => {
   //     'brand = $J.merge({}, $J.get($VARS, \'brand\'))\nbrand.global = {}\nbrand.global.dark = $J.get($VARS, \'brand.global.dark\', $J.any("#000"))\nbrand.dark = $J.get($VARS, \'brand.dark\', $J.any("#222"))\nbrand.light = $J.get($VARS, \'brand.light\', $J.any("#eee"))\n'
   //   )
   // })
-})
+});

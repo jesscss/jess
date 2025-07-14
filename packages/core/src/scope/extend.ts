@@ -1,21 +1,20 @@
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import type * as tree from '../tree'
+import type * as tree from '../tree';
 
-import { SelectorList } from '../tree/selector-list'
-import { Selector } from '../tree/selector'
-import { TreeVisitor } from '../visitor'
-import { PseudoSelector } from '../tree/selector-pseudo'
-import { isNode } from '../tree/util/is-node'
-import { DirectedGraph, HashMap, Stack } from 'data-structure-typed'
+import { SelectorList } from '../tree/selector-list';
+import { Selector } from '../tree/selector';
+import { TreeVisitor } from '../visitor';
+import { PseudoSelector } from '../tree/selector-pseudo';
+import { isNode } from '../tree/util/is-node';
+import { DirectedGraph, HashMap, Stack } from 'data-structure-typed';
 
-const { isArray } = Array
+const { isArray } = Array;
 
 /**
  * Visits inputs, and only extends simple selectors
  */
 class ExtendVisitor extends TreeVisitor {
   /** List parents */
-  private readonly _parents = new Stack<tree.Node | undefined>()
+  private readonly _parents = new Stack<tree.Node | undefined>();
 
   constructor() {
     /**
@@ -33,44 +32,44 @@ class ExtendVisitor extends TreeVisitor {
      *  :is(.d > .a).b,
      *  .c.a {}
      */
-    super('rtl')
+    super('rtl');
   }
 
   /**
    * @todo - Add each vertex by valueOf key, and element as value
    * Edges are the various paths to search for matches to extend a selector
    */
-  _extendGraph = new DirectedGraph<tree.Selector>()
-  _matchGraph = new DirectedGraph<tree.Selector>()
+  _extendGraph = new DirectedGraph<tree.Selector>();
+  _matchGraph = new DirectedGraph<tree.Selector>();
 
   get _parent() {
-    return this._parents.peek()
+    return this._parents.peek();
   }
 
   enter(startNode: tree.Selector | tree.SelectorList) {
-    this._parents.push(undefined)
-    super.enter(startNode)
+    this._parents.push(undefined);
+    super.enter(startNode);
   }
 
   exit() {
-    this._parents.clear()
+    this._parents.clear();
   }
 
   private _getSimpleExtends(sel: tree.SimpleSelector): tree.SimpleSelector | tree.SimpleSelector[] {
-    const { selectorMap } = this
-    const match = selectorMap.get(sel.valueOf())
+    const { selectorMap } = this;
+    const match = selectorMap.get(sel.valueOf());
     if (match) {
-      return match.toSelectors()
+      return match.toSelectors();
     }
-    return sel
+    return sel;
   }
 
   private _simpleSelector(n: tree.SimpleSelector) {
-    const selectors = this._getSimpleExtends(n)
+    const selectors = this._getSimpleExtends(n);
     if (isArray(selectors)) {
-      const { _parent } = this
+      const { _parent } = this;
       /** First element should always be a match to current selector */
-      selectors.shift()
+      selectors.shift();
       if (!_parent) {
         /**
          * This simple selector consumes the entire selector
@@ -78,67 +77,67 @@ class ExtendVisitor extends TreeVisitor {
          * selector to begin with, so we can add to
          * the outer list.
          */
-        return new SelectorList([n, ...selectors]).inherit(n)
+        return new SelectorList([n, ...selectors]).inherit(n);
       } else if (isNode(_parent, 'SelectorList')) {
-        _parent.value.push(...selectors)
+        _parent.value.push(...selectors);
       } else {
         return new PseudoSelector({
           name: ':is',
           arg: new SelectorList([n, ...selectors])
-        }).inherit(n)
+        }).inherit(n);
       }
     }
   }
 
   selectorList(n: tree.SelectorList) {
-    this._parents.push(n)
+    this._parents.push(n);
   }
 
   complexSelector(n: tree.ComplexSelector) {
-    this._parents.push(n)
+    this._parents.push(n);
   }
 
   compoundSelector(n: tree.CompoundSelector) {
-    this._parents.push(n)
+    this._parents.push(n);
   }
 
   selectorListExit() {
-    this._parents.pop()
+    this._parents.pop();
   }
 
   complexSelectorExit() {
-    this._parents.pop()
+    this._parents.pop();
   }
 
   compoundSelectorExit(): void {
-    this._parents.pop()
+    this._parents.pop();
   }
 
   basicSelector(n: tree.BasicSelector) {
-    return this._simpleSelector(n)
+    return this._simpleSelector(n);
   }
 
   attributeSelector(n: tree.AttributeSelector) {
-    return this._simpleSelector(n)
+    return this._simpleSelector(n);
   }
 
   pseudoSelector(n: tree.PseudoSelector) {
     if (n.arg instanceof Selector || isNode(n.arg, 'SelectorList')) {
-      this._parents.push(undefined)
+      this._parents.push(undefined);
     }
-    return this._simpleSelector(n)
+    return this._simpleSelector(n);
   }
 
   pseudoSelectorExit(n: tree.PseudoSelector): void {
     if (n.arg instanceof Selector || isNode(n.arg, 'SelectorList')) {
-      this._parents.pop()
+      this._parents.pop();
     }
   }
 }
 
 class SelectorTreeNode {
-  previous: SelectorTreeNode | undefined = undefined
-  next: SelectorTreeNode | SelectorTreeNode[] | undefined = undefined
+  previous: SelectorTreeNode | undefined = undefined;
+  next: SelectorTreeNode | SelectorTreeNode[] | undefined = undefined;
 
   constructor(
     public selector: tree.Selector | tree.Combinator,
@@ -147,61 +146,61 @@ class SelectorTreeNode {
   ) {}
 }
 
-type Parents = Array<tree.Selector | tree.SelectorList>
+type Parents = Array<tree.Selector | tree.SelectorList>;
 
 /** Linked tree representing a selector for easier replacement */
 class SelectorTree {
-  current: SelectorTreeNode | undefined = undefined
+  current: SelectorTreeNode | undefined = undefined;
 
   constructor(sel: tree.Selector | tree.SelectorList) {
-    this.add(sel)
+    this.add(sel);
   }
 
   add(n: tree.Selector | tree.Combinator | tree.SelectorList, parents?: Parents) {
-    const mergedParents = parents ? [n, ...parents] : [n]
+    const mergedParents = parents ? [n, ...parents] : [n];
     if (isNode(n, 'SelectorList')) {
-      n.value.forEach(s => this.add(s, mergedParents as Parents))
+      n.value.forEach(s => this.add(s, mergedParents as Parents));
     } else if (isNode(n, 'Combinator')) {
-      this.addSimple(n, parents)
+      this.addSimple(n, parents);
     } else if (isNode(n, 'ComplexSelector')) {
-      this.addComplexSelector(n, mergedParents as Parents)
+      this.addComplexSelector(n, mergedParents as Parents);
     } else if (isNode(n, 'CompoundSelector')) {
-      this.addCompoundSelector(n, mergedParents as Parents)
+      this.addCompoundSelector(n, mergedParents as Parents);
     } else if (isNode(n, 'PseudoSelector') && (n.arg instanceof Selector || isNode(n.arg, 'SelectorList'))) {
-      this.addPseudoSelector(n, mergedParents as Parents)
+      this.addPseudoSelector(n, mergedParents as Parents);
     }
   }
 
   addSimple(n: tree.SimpleSelector | tree.Combinator, parents?: Parents) {
-    const key = n.valueOf()
-    const node = new SelectorTreeNode(n, key, parents)
+    const key = n.valueOf();
+    const node = new SelectorTreeNode(n, key, parents);
     if (this.current) {
-      this.current.next = node
-      node.previous = this.current
+      this.current.next = node;
+      node.previous = this.current;
     }
-    this.current = node
+    this.current = node;
   }
 
   addComplexSelector(n: tree.ComplexSelector, parents?: Parents) {
-    const mergedParents = parents ? [n, ...parents] : [n]
-    n.value.forEach(s => this.add(s, mergedParents))
+    const mergedParents = parents ? [n, ...parents] : [n];
+    n.value.forEach(s => this.add(s, mergedParents));
   }
 
   addCompoundSelector(n: tree.CompoundSelector, parents?: Parents) {
-    const mergedParents = parents ? [n, ...parents] : [n]
-    n.value.forEach(s => this.add(s, mergedParents))
+    const mergedParents = parents ? [n, ...parents] : [n];
+    n.value.forEach(s => this.add(s, mergedParents));
   }
 
-  addPseudoSelector(n: tree.PseudoSelector<{ value: string, arg: tree.Node }>, parents?: Parents) {
-    const mergedParents = parents ? [n, ...parents] : [n]
-    this.add(n.arg, mergedParents)
+  addPseudoSelector(n: tree.PseudoSelector<{ value: string; arg: tree.Node }>, parents?: Parents) {
+    const mergedParents = parents ? [n, ...parents] : [n];
+    this.add(n.arg, mergedParents);
   }
 }
 
 /** An object class for tracking extended selectors */
 export class Container {
   /** Tracks references to prevent recursion */
-  static referencedContainers: Container[] = []
+  static referencedContainers: Container[] = [];
 
   constructor(
     public selector: tree.SimpleSelector,
@@ -213,19 +212,19 @@ export class Container {
    * @param input - Should already match the selector in value
    */
   toSelectors(): tree.SimpleSelector | tree.SimpleSelector[] {
-    const { containers } = this
-    const { referencedContainers } = Container
+    const { containers } = this;
+    const { referencedContainers } = Container;
 
-    const newContainers = containers.length && containers.filter(c => !referencedContainers.includes(c))
-    // eslint-disable-next-line @typescript-eslint/prefer-optional-chain
+    const newContainers = containers.length && containers.filter(c => !referencedContainers.includes(c));
+
     if (!newContainers || !newContainers.length) {
       if (referencedContainers.length) {
-        Container.referencedContainers = []
+        Container.referencedContainers = [];
       }
-      return this.selector
+      return this.selector;
     }
-    referencedContainers.push(this)
-    return [this.selector, ...newContainers.flatMap(c => c.toSelectors())]
+    referencedContainers.push(this);
+    return [this.selector, ...newContainers.flatMap(c => c.toSelectors())];
   }
 }
 
@@ -242,70 +241,70 @@ export class ExtendScope {
    * first extend partial selectors to determine complete
    * selectors.
    */
-  _completeMap: Map<string, tree.Selector[]> | undefined = undefined
+  _completeMap: Map<string, tree.Selector[]> | undefined = undefined;
 
-  selectorMap = new HashMap<string, Container>()
+  selectorMap = new HashMap<string, Container>();
 
   get completeMap() {
-    let value = this._completeMap
+    let value = this._completeMap;
     if (!value) {
-      value = new Map<string, tree.Selector[]>()
-      Object.defineProperty(this, '_completeMap', { value })
+      value = new Map<string, tree.Selector[]>();
+      Object.defineProperty(this, '_completeMap', { value });
     }
-    return value
+    return value;
   }
 
   /**
    *
    */
-  extendVisitor: ExtendVisitor | undefined = undefined
-  _extendGraph: DirectedGraph<tree.Selector> | undefined = undefined
-  _matchGraph: DirectedGraph<tree.Selector> | undefined = undefined
+  extendVisitor: ExtendVisitor | undefined = undefined;
+  _extendGraph: DirectedGraph<tree.Selector> | undefined = undefined;
+  _matchGraph: DirectedGraph<tree.Selector> | undefined = undefined;
 
   addNode(
     src: tree.SimpleSelector,
     dest: tree.SimpleSelector,
     edgeValue?: 'continue' | 'extend'
   ) {
-    const { extendGraph } = this
-    let srcKey = src.valueOf()
-    let destKey = dest.valueOf()
+    const { extendGraph } = this;
+    let srcKey = src.valueOf();
+    let destKey = dest.valueOf();
     if (srcKey === destKey) {
-      throw new Error('Cannot extend a selector with itself')
+      throw new Error('Cannot extend a selector with itself');
     }
     if (!extendGraph.hasVertex(srcKey)) {
-      extendGraph.addVertex(srcKey, src)
+      extendGraph.addVertex(srcKey, src);
     }
-    let srcVertex = extendGraph.getVertex(srcKey)!
+    let srcVertex = extendGraph.getVertex(srcKey)!;
     if (!extendGraph.hasVertex(destKey)) {
-      extendGraph.addVertex(destKey, dest)
+      extendGraph.addVertex(destKey, dest);
     }
-    let destVertex = extendGraph.getVertex(destKey)!
-    extendGraph.addEdge(srcVertex, destVertex, 1, edgeValue)
+    let destVertex = extendGraph.getVertex(destKey)!;
+    extendGraph.addEdge(srcVertex, destVertex, 1, edgeValue);
   }
 
   get extendGraph() {
-    let value = this._extendGraph
+    let value = this._extendGraph;
     if (!value) {
       if (!this.extendVisitor) {
-        this.extendVisitor = new ExtendVisitor()
+        this.extendVisitor = new ExtendVisitor();
       }
-      value = this.extendVisitor._extendGraph
-      Object.defineProperty(this, '_extendGraph', { value })
+      value = this.extendVisitor._extendGraph;
+      Object.defineProperty(this, '_extendGraph', { value });
     }
-    return value
+    return value;
   }
 
   get matchGraph() {
-    let value = this._matchGraph
+    let value = this._matchGraph;
     if (!value) {
       if (!this.extendVisitor) {
-        this.extendVisitor = new ExtendVisitor()
+        this.extendVisitor = new ExtendVisitor();
       }
-      value = this.extendVisitor._matchGraph
-      Object.defineProperty(this, '_matchGraph', { value })
+      value = this.extendVisitor._matchGraph;
+      Object.defineProperty(this, '_matchGraph', { value });
     }
-    return value
+    return value;
   }
 
   /**
@@ -318,15 +317,15 @@ export class ExtendScope {
    *         '.two' => pointer to same array -> [[sel(':is(.one, .two) > .three.four'), el('.five)]]
    *       }
    */
-  _partialMap: Map<string, Array<[tree.Selector, tree.Selector]>> | undefined = undefined
+  _partialMap: Map<string, Array<[tree.Selector, tree.Selector]>> | undefined = undefined;
 
   get partialMap() {
-    let value = this._partialMap
+    let value = this._partialMap;
     if (!value) {
-      value = new Map<string, Array<[tree.Selector, tree.Selector]>>()
-      Object.defineProperty(this, '_partialMap', { value })
+      value = new Map<string, Array<[tree.Selector, tree.Selector]>>();
+      Object.defineProperty(this, '_partialMap', { value });
     }
-    return value
+    return value;
   }
 
   /**
@@ -336,15 +335,15 @@ export class ExtendScope {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Set/isDisjointFrom
    */
-  _selectorSet: Set<string> | undefined = undefined
+  _selectorSet: Set<string> | undefined = undefined;
 
   get selectorSet() {
-    let value = this._selectorSet
+    let value = this._selectorSet;
     if (!value) {
-      value = new Set<string>()
-      Object.defineProperty(this, '_selectorSet', { value })
+      value = new Set<string>();
+      Object.defineProperty(this, '_selectorSet', { value });
     }
-    return value
+    return value;
   }
 
   /**
@@ -356,56 +355,56 @@ export class ExtendScope {
     extendWith: tree.Selector /* .a */,
     all?: boolean
   ) {
-    target.walkNodes(node => {
+    target.walkNodes((node) => {
 
-    }, true, 'rtl')
+    }, true, 'rtl');
 
-    const [first] = target.keyList
+    const [first] = target.keyList;
     /**
      * @todo - This doesn't constitute a full match
      * because it should consume everything in a selector
      * list.
      */
     if (!all) {
-      const { completeMap, selectorSet } = this
-      const value = target.valueOf()
-      const existing = completeMap.get(value)
+      const { completeMap, selectorSet } = this;
+      const value = target.valueOf();
+      const existing = completeMap.get(value);
       if (existing) {
-        existing.push(extendWith)
-        return
+        existing.push(extendWith);
+        return;
       }
-      completeMap.set(value, [extendWith])
+      completeMap.set(value, [extendWith]);
       if (isArray(first)) {
-        first.forEach(key => selectorSet.add(key))
+        first.forEach(key => selectorSet.add(key));
       } else {
-        selectorSet.add(first)
+        selectorSet.add(first);
       }
-      return
+      return;
     }
 
-    const registration: [tree.Selector, tree.Selector] = [target, extendWith]
+    const registration: [tree.Selector, tree.Selector] = [target, extendWith];
 
     const register = (key: string) => {
-      let get = this.partialSimpleMap.get(key) as Container
+      let get = this.partialSimpleMap.get(key) as Container;
       if (!get) {
-        get = new Container(target)
+        get = new Container(target);
         // @ts-expect-error Fix later
-        get.selector = target
-        this.partialSimpleMap.set(key, get)
+        get.selector = target;
+        this.partialSimpleMap.set(key, get);
       }
-      let extender = extendWith.valueOf()
-      let extenderRecord = this.partialSimpleMap.get(extender)
+      let extender = extendWith.valueOf();
+      let extenderRecord = this.partialSimpleMap.get(extender);
       if (!extenderRecord) {
-        extenderRecord = new Container()
+        extenderRecord = new Container();
         // @ts-expect-error Fix later
-        extenderRecord.selector = extendWith
-        this.partialSimpleMap.set(extender, extenderRecord)
+        extenderRecord.selector = extendWith;
+        this.partialSimpleMap.set(extender, extenderRecord);
       }
       if (!get.containers.includes(extenderRecord)) {
-        get.containers.push(extenderRecord)
+        get.containers.push(extenderRecord);
       }
-      this.selectorSet.add(key)
-    }
+      this.selectorSet.add(key);
+    };
 
     // Partial maps
     // const register = (key: string) => {
@@ -419,9 +418,9 @@ export class ExtendScope {
     // }
 
     if (isArray(first)) {
-      first.forEach(register)
+      first.forEach(register);
     } else {
-      register(first)
+      register(first);
     }
     // let targetKeyList = target.keyList
 
@@ -496,7 +495,7 @@ export class ExtendScope {
      *   .c => [el(.a)]
      * }
      */
-    let match = this.completeMap.get(input.valueOf())
+    let match = this.completeMap.get(input.valueOf());
 
     if (match) {
       /**
@@ -505,15 +504,15 @@ export class ExtendScope {
        */
       for (const [i, item] of match.entries()) {
         if (!item.extended) {
-          const newItem = item.copy()
-          newItem.extended = true
-          match[i] = this.getExtendedSelector(newItem)
+          const newItem = item.copy();
+          newItem.extended = true;
+          match[i] = this.getExtendedSelector(newItem);
         }
       }
-      return [...match]
+      return [...match];
     }
 
-    return input
+    return input;
   }
 
   /**
@@ -521,8 +520,8 @@ export class ExtendScope {
    * @see https://gist.github.com/matthew-dean/cb9173dcdd35ee88c4173bf9f2ca32da?fbclid=IwAR1RwYZs0PUdRaKEAoetsXGSTEHnX7sINhhkcnEPi0SuvHqVJq9OBsyodfo
    */
   private _applyPartial(input: tree.Selector): tree.Selector | tree.Selector[] {
-    const { _partialMap, _partialSimpleMap } = this
-    const keySet = input.keySet
+    const { _partialMap, _partialSimpleMap } = this;
+    const keySet = input.keySet;
 
     /**
      * Given:
@@ -532,29 +531,29 @@ export class ExtendScope {
      *        .a => [[.a.b.c, .h]] -- h:extends(.a.b.c)
      *      }
      */
-    const longMatchGroups: Array<[tree.Selector, tree.Selector]> = []
-    const shortMatchGroups: tree.Selector[] = []
+    const longMatchGroups: Array<[tree.Selector, tree.Selector]> = [];
+    const shortMatchGroups: tree.Selector[] = [];
 
     for (const key of keySet) {
-      const longGroups = _partialMap?.get(key)
-      const shortGroups = _partialSimpleMap?.get(key)
+      const longGroups = _partialMap?.get(key);
+      const shortGroups = _partialSimpleMap?.get(key);
 
       /**
        * Get each set of groups by key (simple selector),
        * and assemble groups where the target has all the keys
        * of the input.
        */
-      longGroups?.forEach(group => {
+      longGroups?.forEach((group) => {
         if (!longMatchGroups.includes(group) && group[0].keySet.isSubsetOf(keySet)) {
-          longMatchGroups.push(group)
+          longMatchGroups.push(group);
         }
-      })
+      });
 
-      shortGroups?.forEach(group => {
+      shortGroups?.forEach((group) => {
         if (!shortMatchGroups.includes(group)) {
-          shortMatchGroups.push(group)
+          shortMatchGroups.push(group);
         }
-      })
+      });
     }
     /**
      * Starting selector (key) matches some part of
@@ -581,19 +580,19 @@ export class ExtendScope {
         if (input instanceof tree.SimpleSelector) {
           // this is easy
           if (input.valueOf() === target.valueOf()) {
-            return extendWith
+            return extendWith;
           }
         }
       }
     }
-    return input
+    return input;
   }
 
   private _applySimple(input: tree.Selector | SelectorList) {
     if (!this.extendVisitor) {
-      return input
+      return input;
     }
-    return this.extendVisitor.visit(input)
+    return this.extendVisitor.visit(input);
     // const list = input instanceof SelectorList ? input.value : [input]
 
     // for (const sel of list) {
@@ -630,7 +629,7 @@ export class ExtendScope {
    *   3. Finally, extend complete selector sequences, using the results from #2.
    */
   getExtendedSelector(input: tree.Selector | SelectorList): tree.Selector | SelectorList {
-    const { selectorSet } = this
+    const { selectorSet } = this;
 
     if (selectorSet.size === 0 || input.keySet.isDisjointFrom(selectorSet)) {
       /**
@@ -639,36 +638,36 @@ export class ExtendScope {
        *   b) the selector contains no simple selectors or starts of simple
        *      selectors that have been extended, so return as-is
        */
-      return input
+      return input;
     }
     /** Extend simple selectors */
-    input = this._applySimple(input)
+    input = this._applySimple(input);
 
     /** We should do partials first */
     // input = this._applyPartial(input)
 
     /** Then do completes */
     if (this._completeMap && this._completeMap.size !== 0) {
-      return input
+      return input;
     }
 
     if (input instanceof SelectorList) {
-      const outerList = input.value
-      const inputLength = outerList.length
+      const outerList = input.value;
+      const inputLength = outerList.length;
       for (let i = 0; i < inputLength; i++) {
-        let newList = this._applyComplete(outerList[i]!)
+        let newList = this._applyComplete(outerList[i]!);
         /** An array indicates matches */
         if (isArray(newList)) {
-          outerList.push(...newList)
+          outerList.push(...newList);
         }
       }
-      return input
+      return input;
     } else {
-      let newList = this._applyComplete(input)
+      let newList = this._applyComplete(input);
       if (!isArray(newList)) {
-        return newList
+        return newList;
       }
-      return new SelectorList([input, ...newList]).inherit(input)
+      return new SelectorList([input, ...newList]).inherit(input);
     }
   }
 }

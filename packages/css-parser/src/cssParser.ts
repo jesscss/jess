@@ -1,20 +1,20 @@
-import { type ILexingResult, Lexer, type IRecognitionException } from 'chevrotain'
-import { cssTokens, cssFragments } from './cssTokens'
-import { type TokenMap, type CssParserConfig, CssActionsParser } from './cssActionsParser'
-import { createLexerDefinition } from './util'
-import { CssErrorMessageProvider } from './cssErrorMessageProvider'
-import type { ConditionalPick } from 'type-fest'
-import { type Node, type Root } from '@jesscss/core'
+import { type ILexingResult, Lexer, type IRecognitionException } from 'chevrotain';
+import { cssTokens, cssFragments } from './cssTokens';
+import { type TokenMap, type CssParserConfig, CssActionsParser } from './cssActionsParser';
+import { createLexerDefinition } from './util';
+import { CssErrorMessageProvider } from './cssErrorMessageProvider';
+import type { ConditionalPick } from 'type-fest';
+import { type Node, type Root } from '@jesscss/core';
 
 export interface IParseResult<T extends Node = Node> {
-  lexerResult: ILexingResult
-  errors: IRecognitionException[]
-  tree: T
+  lexerResult: ILexingResult;
+  errors: IRecognitionException[];
+  tree: T;
 }
 
-const errorMessageProvider = new CssErrorMessageProvider()
+const errorMessageProvider = new CssErrorMessageProvider();
 
-export type CssRules = keyof ConditionalPick<CssActionsParser, () => Node>
+export type CssRules = keyof ConditionalPick<CssActionsParser, () => Node>;
 
 /**
  * If we're not extending the CSS parser,
@@ -22,8 +22,8 @@ export type CssRules = keyof ConditionalPick<CssActionsParser, () => Node>
  * a CST, as it assigns tokens to the parser automatically.
  */
 export class CssParser {
-  lexer: Lexer
-  parser: CssActionsParser
+  lexer: Lexer;
+  parser: CssActionsParser;
 
   /**
    * @note `recoveryEnabled` should be set to true for
@@ -42,31 +42,31 @@ export class CssParser {
       legacyMode: true,
       skipValidations: process.env.TEST !== 'true',
       ...config
-    }
-    const { lexer, T } = createLexerDefinition(cssFragments(), cssTokens())
+    };
+    const { lexer, T } = createLexerDefinition(cssFragments(), cssTokens());
     this.lexer = new Lexer(lexer, {
       ensureOptimizations: true,
       // Always run the validations during testing (dev flows).
       // And avoid validation during productive flows to reduce the Lexer's startup time.
       skipValidations: process.env.TEST !== 'true'
-    })
-    this.parser = new CssActionsParser(lexer, T as TokenMap, config)
+    });
+    this.parser = new CssActionsParser(lexer, T as TokenMap, config);
   }
 
-  parse(text: string): IParseResult<Root>
-  parse(text: string, rule: 'stylesheet'): IParseResult<Root>
-  parse(text: string, rule?: CssRules): IParseResult
+  parse(text: string): IParseResult<Root>;
+  parse(text: string, rule: 'stylesheet'): IParseResult<Root>;
+  parse(text: string, rule?: CssRules): IParseResult;
   parse(text: string, rule: CssRules = 'stylesheet'): IParseResult {
-    const parser = this.parser
-    const lexerResult = this.lexer.tokenize(text)
-    const lexedTokens = lexerResult.tokens
-    parser.input = lexedTokens
-    const tree = parser[rule]() as Node
+    const parser = this.parser;
+    const lexerResult = this.lexer.tokenize(text);
+    const lexedTokens = lexerResult.tokens;
+    parser.input = lexedTokens;
+    const tree = parser[rule]() as Node;
 
     return {
       tree,
       lexerResult,
       errors: parser.errors
-    }
+    };
   }
 }

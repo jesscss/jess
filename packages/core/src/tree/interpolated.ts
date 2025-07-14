@@ -1,16 +1,16 @@
-import { type Node, defineType } from './node'
-import { General, type GeneralNodeType, type GeneralOptions } from './general'
-import type { Context } from '../context'
-import { isNode } from './util/is-node'
-import { BasicSelector } from './selector-basic'
-import { SelectorList } from './selector-list'
-import { SimpleSelector } from './selector-simple'
+import { type Node, defineType } from './node';
+import { General, type GeneralNodeType, type GeneralOptions } from './general';
+import type { Context } from '../context';
+import { isNode } from './util/is-node';
+import { BasicSelector } from './selector-basic';
+import { SelectorList } from './selector-list';
+import { SimpleSelector } from './selector-simple';
 
 export type InterpolatedValue = {
   /** String with {} placeholders */
-  source: string
-  replacements: Node[]
-}
+  source: string;
+  replacements: Node[];
+};
 
 /**
  * Merge an interface to declare the specific types
@@ -18,7 +18,7 @@ export type InterpolatedValue = {
 export interface Interpolated<
   T extends string = GeneralNodeType
 > extends SimpleSelector<InterpolatedValue, GeneralOptions<T>> {
-  eval(context: Context): Promise<Interpolated<T>>
+  eval(context: Context): Promise<Interpolated<T>>;
 }
 /**
  * An interpolated value is one that contains
@@ -34,58 +34,58 @@ export interface Interpolated<
 export class Interpolated<
   T extends string = GeneralNodeType
 > extends SimpleSelector<InterpolatedValue, GeneralOptions<T>> {
-  type = 'Interpolated' as const
-  shortType = 'interpolated' as const
+  type = 'Interpolated' as const;
+  shortType = 'interpolated' as const;
 
   override valueOf(): string {
-    return this.value.source
+    return this.value.source;
   }
 
   replace(replacements: Node[]): string {
-    let { source } = this.value
-    let output = source
-    let i = 0
-    output = output.replace(/{}/g, _ => {
-      return replacements[i++]?.toTrimmedString() ?? ''
-    })
-    return output
+    let { source } = this.value;
+    let output = source;
+    let i = 0;
+    output = output.replace(/{}/g, (_) => {
+      return replacements[i++]?.toTrimmedString() ?? '';
+    });
+    return output;
   }
 
   override toTrimmedString(): string {
-    return this.replace(this.value.replacements)
+    return this.replace(this.value.replacements);
   }
 
   /**
    * Can turn simple #id, .class, element and list into a selector
    */
   createSelector() {
-    let { source, replacements } = this.value
-    let segments = source.split('{}')
-    let output = ''
-    let list: string[] = []
+    let { source, replacements } = this.value;
+    let segments = source.split('{}');
+    let output = '';
+    let list: string[] = [];
     for (let [i, replacement] of replacements.entries()) {
       if (!replacement.evaluated) {
-        throw new Error('Cannot create selector from un-evaluated interpolated node')
+        throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
       if (isNode(replacement, 'List')) {
         for (let item of replacement.value) {
-          list.push(this.replace([item, ...replacements.slice(i + 1)]))
+          list.push(this.replace([item, ...replacements.slice(i + 1)]));
         }
       } else {
-        output += (segments[i] ?? '') + replacement.toTrimmedString()
+        output += (segments[i] ?? '') + replacement.toTrimmedString();
       }
     }
     if (!list.length) {
-      return new BasicSelector(output).inherit(this)
+      return new BasicSelector(output).inherit(this);
     } else {
       return new SelectorList(
         list.map(item => new BasicSelector(item))
-      ).inherit(this)
+      ).inherit(this);
     }
   }
 
   createGeneric() {
-    return new General<T>(this.toTrimmedString()).inherit(this)
+    return new General<T>(this.toTrimmedString()).inherit(this);
   }
 
   /**
@@ -94,11 +94,11 @@ export class Interpolated<
    * node types.
    */
   override async evalNode(context: Context) {
-    let node = this.maybeClone(context)
-    let { replacements } = node.value
-    node.value.replacements = await Promise.all(replacements.map(async (n: Node) => await n.eval(context)))
-    return node
+    let node = this.maybeClone(context);
+    let { replacements } = node.value;
+    node.value.replacements = await Promise.all(replacements.map(async (n: Node) => await n.eval(context)));
+    return node;
   }
 }
 
-export const interpolated = defineType(Interpolated, 'Interpolated')
+export const interpolated = defineType(Interpolated, 'Interpolated');

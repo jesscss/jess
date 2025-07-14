@@ -13,52 +13,52 @@ import {
   type ConsumeMethodOpts,
   type CstNodeLocation,
   type IRecognitionException
-} from 'chevrotain'
+} from 'chevrotain';
 
-import type { ParserMethodInternal } from 'chevrotain/src/parse/parser/types'
+import type { ParserMethodInternal } from 'chevrotain/src/parse/parser/types';
 
-import clone from 'lodash-es/clone'
+import clone from 'lodash-es/clone';
 
 /** copied from 'chevrotain/src/parse/grammar/keys'  */
-export const BITS_FOR_METHOD_TYPE = 4
-export const BITS_FOR_OCCURRENCE_IDX = 8
-export const OR_IDX = 1 << BITS_FOR_OCCURRENCE_IDX
+export const BITS_FOR_METHOD_TYPE = 4;
+export const BITS_FOR_OCCURRENCE_IDX = 8;
+export const OR_IDX = 1 << BITS_FOR_OCCURRENCE_IDX;
 
 export interface IParserState {
-  errors: IRecognitionException[]
-  lexerState: any
-  RULE_STACK: number[]
-  CST_STACK: CstNode[]
+  errors: IRecognitionException[];
+  lexerState: any;
+  RULE_STACK: number[];
+  CST_STACK: CstNode[];
 }
 
 export interface IToken extends Required<Omit<OrigIToken, 'payload'>> {
-  payload?: OrigIToken['payload']
+  payload?: OrigIToken['payload'];
 }
 
 /** Apply this label to tokens you wish to skip during parsing consideration */
-export const SKIPPED_LABEL = 'Skipped'
+export const SKIPPED_LABEL = 'Skipped';
 /** The name of the whitespace token */
-export const WS_NAME = 'WS'
+export const WS_NAME = 'WS';
 
-const BACKTRACKING_ERROR = 'Error during backtracking'
+const BACKTRACKING_ERROR = 'Error during backtracking';
 
-type UppercaseLetters = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M' | 'N' | 'O' | 'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z'
-type LowercaseLetters = Lowercase<UppercaseLetters>
-export type TokenKey = `${UppercaseLetters}${string}`
-export type NodeKey = `${LowercaseLetters}${string}`
+type UppercaseLetters = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M' | 'N' | 'O' | 'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z';
+type LowercaseLetters = Lowercase<UppercaseLetters>;
+export type TokenKey = `${UppercaseLetters}${string}`;
+export type NodeKey = `${LowercaseLetters}${string}`;
 
 export type AdvancedCstNode = Omit<CstNode, 'children'> & {
   children: {
-    [token: TokenKey]: IToken[]
-    [node: NodeKey]: AdvancedCstNode[]
-  }
-  childrenStream: Array<AdvancedCstNode | IToken>
-  location: Required<CstNodeLocation>
-}
+    [token: TokenKey]: IToken[];
+    [node: NodeKey]: AdvancedCstNode[];
+  };
+  childrenStream: Array<AdvancedCstNode | IToken>;
+  location: Required<CstNodeLocation>;
+};
 
 export type OrAdvancedMethodOpts<T> = OrMethodOpts<T> & {
-  CONTINUE_ON_ERROR?: boolean
-}
+  CONTINUE_ON_ERROR?: boolean;
+};
 
 /**
  * This enhances Chevrotain's CstParser with a few extra features:
@@ -71,58 +71,58 @@ export type OrAdvancedMethodOpts<T> = OrMethodOpts<T> & {
  */
 export class AdvancedCstParser extends CstParser {
   /** Indexed by the startOffset of the next token it precedes */
-  skippedTokenMap: Map<number, IToken[]>
+  skippedTokenMap: Map<number, IToken[]>;
 
   /** Start exposing private Chevrotain API */
-  CST_STACK: AdvancedCstNode[]
-  currIdx: number
-  isBackTrackingStack: number[]
-  outputCst: boolean
-  _errors: IRecognitionException[]
-  RULE_STACK: number[]
-  isTryingSubRule: boolean
-  trySubRuleCache = new WeakMap<(...args: any[]) => any, { state: IParserState, result: any }>()
+  CST_STACK: AdvancedCstNode[];
+  currIdx: number;
+  isBackTrackingStack: number[];
+  outputCst: boolean;
+  _errors: IRecognitionException[];
+  RULE_STACK: number[];
+  isTryingSubRule: boolean;
+  trySubRuleCache = new WeakMap<(...args: any[]) => any, { state: IParserState; result: any }>();
 
-  getLaFuncFromCache: (key: number) => (alts: Array<IOrAlt<any>>) => number
+  getLaFuncFromCache: (key: number) => (alts: Array<IOrAlt<any>>) => number;
 
   getKeyForAutomaticLookahead: (
     dslMethodIdx: number,
     occurrence: number
-  ) => number
+  ) => number;
 
-  isBackTracking: () => boolean
+  isBackTracking: () => boolean;
 
-  setInitialNodeLocation: (node: CstNode) => void
+  setInitialNodeLocation: (node: CstNode) => void;
 
   setNodeLocationFromToken: (
     nodeLocation: CstNodeLocation,
     locationInformation: CstNodeLocation,
-  ) => void
+  ) => void;
 
   setNodeLocationFromNode: (
     nodeLocation: CstNodeLocation,
     locationInformation: CstNodeLocation,
-  ) => void
+  ) => void;
   /** End exposing private Chevrotain API */
 
   /** Used by backtracking and try-parse */
   saveRecogState(): IParserState {
-    const savedRuleStack = clone(this.RULE_STACK)
+    const savedRuleStack = clone(this.RULE_STACK);
     return {
       errors: this.isBackTracking() ? [] : this.errors,
       lexerState: this.currIdx,
       RULE_STACK: savedRuleStack,
       CST_STACK: this.CST_STACK as unknown as CstNode[]
-    }
+    };
   }
 
   /** Used by backtracking and try-parse */
   reloadRecogState(newState: IParserState) {
     if (!this.isBackTracking()) {
-      this.errors = newState.errors
+      this.errors = newState.errors;
     }
-    this.currIdx = newState.lexerState
-    this.RULE_STACK = newState.RULE_STACK
+    this.currIdx = newState.lexerState;
+    this.RULE_STACK = newState.RULE_STACK;
   }
 
   /** Suppress error recording when backtracking */
@@ -132,10 +132,10 @@ export class AdvancedCstParser extends CstParser {
     userDefinedErrMsg: string | undefined
   ) {
     if (this.isBackTracking()) {
-      throw new EarlyExitException(BACKTRACKING_ERROR, this.LA(1), this.LA(0))
+      throw new EarlyExitException(BACKTRACKING_ERROR, this.LA(1), this.LA(0));
     }
     // @ts-expect-error - This exists
-    super.raiseEarlyExitException(occurrence, prodType, userDefinedErrMsg)
+    super.raiseEarlyExitException(occurrence, prodType, userDefinedErrMsg);
   }
 
   raiseNoAltException(
@@ -147,10 +147,10 @@ export class AdvancedCstParser extends CstParser {
         BACKTRACKING_ERROR,
         this.LA(1),
         this.LA(0)
-      )
+      );
     }
     // @ts-expect-error - This exists
-    super.raiseNoAltException(occurrence, errMsgTypes)
+    super.raiseNoAltException(occurrence, errMsgTypes);
   }
 
   subruleInternal<ARGS extends unknown[], R>(
@@ -159,13 +159,13 @@ export class AdvancedCstParser extends CstParser {
     options?: SubruleMethodOpts<ARGS>
   ): R {
     if (this.trySubRuleCache.has(ruleToCall)) {
-      const cached = this.trySubRuleCache.get(ruleToCall)!
-      this.trySubRuleCache.delete(ruleToCall)
-      this.reloadRecogState(cached.state)
-      return cached.result
+      const cached = this.trySubRuleCache.get(ruleToCall)!;
+      this.trySubRuleCache.delete(ruleToCall);
+      this.reloadRecogState(cached.state);
+      return cached.result;
     }
     // @ts-expect-error - This exists
-    return super.subruleInternal(ruleToCall, idx, options)
+    return super.subruleInternal(ruleToCall, idx, options);
   }
 
   subRuleInternalError(
@@ -174,10 +174,10 @@ export class AdvancedCstParser extends CstParser {
     ruleName: string
   ) {
     if (this.isBackTracking()) {
-      throw e
+      throw e;
     }
     // @ts-expect-error - This exists
-    super.subRuleInternalError(e, options, ruleName)
+    super.subRuleInternalError(e, options, ruleName);
   }
 
   consumeInternalError(
@@ -186,57 +186,57 @@ export class AdvancedCstParser extends CstParser {
     options: ConsumeMethodOpts | undefined
   ) {
     if (this.isBackTracking()) {
-      const backtrackingError = new Error()
-      backtrackingError.name = 'MismatchedTokenException'
-      throw backtrackingError
+      const backtrackingError = new Error();
+      backtrackingError.name = 'MismatchedTokenException';
+      throw backtrackingError;
     }
     // @ts-expect-error - This exists
-    super.consumeInternalError(tokType, nextToken, options)
+    super.consumeInternalError(tokType, nextToken, options);
   }
 
   BACKTRACK<T>(grammarRule: (...args: any[]) => T, args?: any[]): () => boolean {
-    const self = this
+    const self = this;
     return function() {
-      self.isBackTrackingStack.push(1)
-      const orgState = self.saveRecogState()
+      self.isBackTrackingStack.push(1);
+      const orgState = self.saveRecogState();
       try {
         // hack to enable outputting none CST values from grammar rules.
-        self.outputCst = false
-        grammarRule.apply(self, args!)
-        return true
+        self.outputCst = false;
+        grammarRule.apply(self, args!);
+        return true;
       } catch (e) {
         if (isRecognitionException(e as Error)) {
-          return false
+          return false;
         } else {
-          throw e
+          throw e;
         }
       } finally {
-        self.outputCst = true
-        self.reloadRecogState(orgState)
-        self.isBackTrackingStack.pop()
+        self.outputCst = true;
+        self.reloadRecogState(orgState);
+        self.isBackTrackingStack.pop();
       }
-    }
+    };
   }
 
   /** Unlike Backtrack, should be called by an arrow function */
   trySubRule<T>(grammarRule: (...args: any[]) => T, args?: any[]): boolean {
-    const isTryingSubRule = this.isTryingSubRule
-    const state = this.saveRecogState()
+    const isTryingSubRule = this.isTryingSubRule;
+    const state = this.saveRecogState();
     try {
-      this.isTryingSubRule = true
-      grammarRule.apply(this, args!)
-      const result = grammarRule.apply(this, args!)
-      this.trySubRuleCache.set(grammarRule, { result, state })
-      this.isTryingSubRule = isTryingSubRule
-      this.reloadRecogState(state)
-      return true
+      this.isTryingSubRule = true;
+      grammarRule.apply(this, args!);
+      const result = grammarRule.apply(this, args!);
+      this.trySubRuleCache.set(grammarRule, { result, state });
+      this.isTryingSubRule = isTryingSubRule;
+      this.reloadRecogState(state);
+      return true;
     } catch (e) {
       if (isRecognitionException(e as Error)) {
-        this.isTryingSubRule = isTryingSubRule
-        this.reloadRecogState(state)
-        return false
+        this.isTryingSubRule = isTryingSubRule;
+        this.reloadRecogState(state);
+        return false;
       } else {
-        throw e
+        throw e;
       }
     }
   }
@@ -296,11 +296,11 @@ export class AdvancedCstParser extends CstParser {
     consumedToken: IToken
   ): void {
     if (!this.outputCst) {
-      return
+      return;
     }
-    const rootCst = this.CST_STACK[this.CST_STACK.length - 1]
-    this.addTerminalToCst(rootCst!, consumedToken, key)
-    this.setNodeLocationFromToken(rootCst!.location, <any>consumedToken)
+    const rootCst = this.CST_STACK[this.CST_STACK.length - 1];
+    this.addTerminalToCst(rootCst!, consumedToken, key);
+    this.setNodeLocationFromToken(rootCst!.location, <any>consumedToken);
   }
 
   cstPostNonTerminal(
@@ -308,114 +308,114 @@ export class AdvancedCstParser extends CstParser {
     ruleName: string
   ): void {
     if (!this.outputCst) {
-      return
+      return;
     }
-    const preCstNode = this.CST_STACK[this.CST_STACK.length - 1]
-    this.addNoneTerminalToCst(preCstNode!, ruleName, ruleCstResult)
-    this.setNodeLocationFromNode(preCstNode!.location, ruleCstResult.location)
+    const preCstNode = this.CST_STACK[this.CST_STACK.length - 1];
+    this.addNoneTerminalToCst(preCstNode!, ruleName, ruleCstResult);
+    this.setNodeLocationFromNode(preCstNode!.location, ruleCstResult.location);
   }
 
   cstInvocationStateUpdate(fullRuleName: string): void {
     if (!this.outputCst) {
-      return
+      return;
     }
     const cstNode: Partial<AdvancedCstNode> = {
       name: fullRuleName,
       children: Object.create(null)
-    }
+    };
     /**
      * Sets a linear stream of children CstNodes and ITokens
      * which can easily be re-serialized.
      */
     Object.defineProperty(cstNode, 'childrenStream', {
       value: []
-    })
+    });
 
-    this.setInitialNodeLocation(cstNode as unknown as CstNode)
-    this.CST_STACK.push(cstNode as AdvancedCstNode)
+    this.setInitialNodeLocation(cstNode as unknown as CstNode);
+    this.CST_STACK.push(cstNode as AdvancedCstNode);
   }
 
   cstFinallyStateUpdate(): void {
     if (!this.outputCst) {
-      return
+      return;
     }
-    this.CST_STACK.pop()
+    this.CST_STACK.pop();
   }
 
   addTerminalToCst(node: AdvancedCstNode, token: IToken, tokenTypeName: string) {
     if (token.tokenType.LABEL !== SKIPPED_LABEL) {
-      node.childrenStream.push(token)
+      node.childrenStream.push(token);
     }
-    let childNode = node.children[tokenTypeName as TokenKey]
+    let childNode = node.children[tokenTypeName as TokenKey];
     if (childNode === undefined) {
-      node.children[tokenTypeName as TokenKey] = [token]
+      node.children[tokenTypeName as TokenKey] = [token];
     } else {
-      childNode.push(token)
+      childNode.push(token);
     }
   }
 
   addNoneTerminalToCst(node: AdvancedCstNode, ruleName: string, ruleResult: AdvancedCstNode) {
-    node.childrenStream.push(ruleResult)
-    let childNode = node.children[ruleName as NodeKey]
+    node.childrenStream.push(ruleResult);
+    let childNode = node.children[ruleName as NodeKey];
     if (childNode === undefined) {
-      node.children[ruleName as NodeKey] = [ruleResult]
+      node.children[ruleName as NodeKey] = [ruleResult];
     } else {
-      childNode.push(ruleResult)
+      childNode.push(ruleResult);
     }
   }
 
   private _consumeImplicits(key: 'pre' | 'post') {
     if (!this.outputCst) {
-      return
+      return;
     }
-    let nextToken = this.LA(1)
+    let nextToken = this.LA(1);
     if (key === 'pre') {
-      let startOffset = nextToken.startOffset
-      const skipped = this.skippedTokenMap.get(startOffset)
+      let startOffset = nextToken.startOffset;
+      const skipped = this.skippedTokenMap.get(startOffset);
       if (skipped) {
-        skipped.forEach(token => this.cstPostTerminal('Skipped', token))
+        skipped.forEach(token => this.cstPostTerminal('Skipped', token));
       }
     } else if (nextToken.tokenType === EOF) {
-      const skipped = this.skippedTokenMap.get(Infinity)
+      const skipped = this.skippedTokenMap.get(Infinity);
       if (skipped) {
-        skipped.forEach(token => this.cstPostTerminal('Skipped', token))
+        skipped.forEach(token => this.cstPostTerminal('Skipped', token));
       }
     }
   }
 
   consumeInternal(tokType: TokenType, idx: number, options?: ConsumeMethodOpts): IToken {
-    this._consumeImplicits('pre')
+    this._consumeImplicits('pre');
     // @ts-expect-error - Yes this exists.
-    const retVal = super.consumeInternal(tokType, idx, options)
-    this._consumeImplicits('post')
-    return retVal
+    const retVal = super.consumeInternal(tokType, idx, options);
+    this._consumeImplicits('post');
+    return retVal;
   }
 
   /** Separate skipped tokens into a new map */
   // @ts-expect-error - It's defined in Chevrotain as a data property
-  set input(value: IToken[]) { // eslint-disable-line accessor-pairs
-    const skippedTokenMap = new Map<number, IToken[]>()
-    const inputTokens: IToken[] = []
+  set input(value: IToken[]) {
+    const skippedTokenMap = new Map<number, IToken[]>();
+    const inputTokens: IToken[] = [];
     for (let i = 0; i < value.length; i++) {
-      const token = value[i]!
-      let nextToken: IToken | undefined
+      const token = value[i]!;
+      let nextToken: IToken | undefined;
       /** Find the next non-skipped token */
       for (let j = i + 1; j < value.length; j++) {
-        nextToken = value[j]!
+        nextToken = value[j]!;
         if (nextToken.tokenType.LABEL !== SKIPPED_LABEL) {
-          break
+          break;
         }
       }
-      const beforeIndex = nextToken?.startOffset ?? Infinity
+      const beforeIndex = nextToken?.startOffset ?? Infinity;
       if (token.tokenType.LABEL === SKIPPED_LABEL) {
-        const tokens = skippedTokenMap.get(beforeIndex) ?? []
-        skippedTokenMap.set(beforeIndex, [...tokens, token])
+        const tokens = skippedTokenMap.get(beforeIndex) ?? [];
+        skippedTokenMap.set(beforeIndex, [...tokens, token]);
       } else {
-        inputTokens.push(token)
+        inputTokens.push(token);
       }
     }
-    this.skippedTokenMap = skippedTokenMap
-    super.input = inputTokens
+    this.skippedTokenMap = skippedTokenMap;
+    super.input = inputTokens;
   }
 
   /**
@@ -423,12 +423,12 @@ export class AdvancedCstParser extends CstParser {
    * Determine if there is white-space before the next token
    */
   hasWS() {
-    let startOffset = this.LA(1).startOffset
-    const skipped = this.skippedTokenMap.get(startOffset)
+    let startOffset = this.LA(1).startOffset;
+    const skipped = this.skippedTokenMap.get(startOffset);
     if (!skipped) {
-      return false
+      return false;
     }
-    return !!skipped.find(token => token.tokenType.name === WS_NAME)
+    return !!skipped.find(token => token.tokenType.name === WS_NAME);
   }
 
   /**
@@ -436,7 +436,7 @@ export class AdvancedCstParser extends CstParser {
    * Affirms that there is NOT white space or comment before next token
    */
   noSep(offset: number = 0) {
-    let startOffset = this.LA(1 + offset).startOffset
-    return !this.skippedTokenMap.get(startOffset)
+    let startOffset = this.LA(1 + offset).startOffset;
+    return !this.skippedTokenMap.get(startOffset);
   }
 }

@@ -3,11 +3,11 @@ import {
   defineType,
   type LocationInfo,
   type NodeOptions
-} from './node'
-import type { TreeContext } from '../context'
+} from './node';
+import type { TreeContext } from '../context';
 
 export interface Nil extends Node<''> {
-  valueOf(): ''
+  valueOf(): '';
 }
 
 /**
@@ -20,22 +20,22 @@ export interface Nil extends Node<''> {
  * `$var:;`
  */
 export class Nil extends Node<''> {
-  type = 'Nil'
-  shortType = 'nil'
-  override allowRoot = true
-  override allowRuleRoot = true
-  override visible = false
+  type = 'Nil';
+  shortType = 'nil';
+  override allowRoot = true;
+  override allowRuleRoot = true;
+  override visible = false;
 
   constructor(
     value?: any,
     options?: NodeOptions,
     location?: LocationInfo,
     treeContext?: TreeContext) {
-    super('', options, location, treeContext)
+    super('', options, location, treeContext);
   }
 
-  override toTrimmedString() { return '' }
-  override toString() { return '' }
+  override toTrimmedString() { return ''; }
+  override toString() { return ''; }
 }
 
-export const nil = defineType(Nil, 'Nil')
+export const nil = defineType(Nil, 'Nil');

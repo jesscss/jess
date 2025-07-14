@@ -1,7 +1,6 @@
-
-import { Node, defineType } from './node'
-import { type Reference } from './reference'
-import { type Rules } from './rules'
+import { Node, defineType } from './node';
+import { type Reference } from './reference';
+import { type Rules } from './rules';
 
 /**
  * This class is for Jess / Sass+ / Less-style imports,
@@ -12,39 +11,39 @@ import { type Rules } from './rules'
  */
 export type ImportOptions = {
   /** Make mixins & vars available, set to `true` with `@import` */
-  reference?: boolean
+  reference?: boolean;
   /** Output selectors, set to `true` with `@import` */
-  include?: boolean
+  include?: boolean;
   /** Classic `@import` in Less/Sass doesn't have isolated scope */
-  useParentScope?: boolean
+  useParentScope?: boolean;
   /** JS/TS (or modules compiled to JS) imports */
-  from?: boolean
-}
+  from?: boolean;
+};
 
 export type ImportValue = {
-  path: string
+  path: string;
 
   /** Values to inject */
-  with?: Reference | Rules
+  with?: Reference | Rules;
 
   /** e.g. `import * as foo` sets namespace to `foo` */
-  namespace?: string
+  namespace?: string;
   /**
    * - In array,
    *   - string is a plain import identifier
    *   - [string, string] is { [identifier1] as [identifier2] }
   */
-  imports?: string | Array<string | [string, string]>
+  imports?: string | Array<string | [string, string]>;
 
   /**
    * Treat import as one of registered types.
    * Will use that type as parser and evaluator.
    */
-  importType: string
+  importType: string;
 
   /** Options passed to the Jess import plugin */
-  pluginOptions?: Record<string, any>
-}
+  pluginOptions?: Record<string, any>;
+};
 
 /**
  * This is a generic class for:
@@ -58,8 +57,8 @@ export type ImportValue = {
  * @see https://sass-lang.com/documentation/at-rules/import/
  */
 export class Import extends Node<ImportValue, ImportOptions> {
-  type = 'Import' as const
-  shortType = 'use' as const
+  type = 'Import' as const;
+  shortType = 'use' as const;
 }
 
-export const use = defineType<ImportValue>(Import, 'Import', 'use')
+export const use = defineType<ImportValue>(Import, 'Import', 'use');
