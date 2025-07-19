@@ -20,16 +20,27 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   shortType = 'compound' as const;
 
   get keySet() {
-    if (!this._keySet) {
-      const combinedKeySet = new Set<string>();
-      for (const selector of this.value) {
-        for (const key of selector.keySet) {
-          combinedKeySet.add(key);
-        }
-      }
-      this._keySet = combinedKeySet;
+    if (this._keySet === undefined) {
+      this._computeKeySetAndFastReject();
     }
-    return this._keySet;
+    return this._keySet!;
+  }
+
+  protected override _computeKeySetAndFastReject(): void {
+    let combinedKeySet = new Set<string>();
+    let canFastReject = true;
+
+    for (const selector of this.value) {
+      // Union each child's keySet
+      combinedKeySet = combinedKeySet.union(selector.keySet);
+      // If any child can't fast reject, this compound can't either
+      if (!selector.canFastReject) {
+        canFastReject = false;
+      }
+    }
+
+    this._keySet = combinedKeySet;
+    this._canFastReject = canFastReject;
   }
 
   override valueOf() {

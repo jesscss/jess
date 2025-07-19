@@ -8,7 +8,16 @@ export abstract class SimpleSelector<
   O extends NodeOptions = NodeOptions
 > extends Selector<T, O> {
   get keySet(): Set<string> {
-    return (this._keySet ??= new Set([this.valueOf()]));
+    if (this._keySet === undefined) {
+      this._computeKeySetAndFastReject();
+    }
+    return this._keySet!;
+  }
+
+  protected override _computeKeySetAndFastReject(): void {
+    // Simple selectors are always safe for fast rejection
+    this._keySet = new Set([this.valueOf()]);
+    this._canFastReject = true;
   }
 }
 

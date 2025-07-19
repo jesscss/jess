@@ -15,8 +15,22 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   get keySet(): Set<string> {
-    /** @todo - build key set */
-    return (this._keySet ??= new Set());
+    if (this._keySet === undefined) {
+      this._computeKeySetAndFastReject();
+    }
+    return this._keySet!;
+  }
+
+  protected override _computeKeySetAndFastReject(): void {
+    let combinedKeySet = new Set<string>();
+
+    for (const selector of this.value) {
+      combinedKeySet = combinedKeySet.union(selector.keySet);
+    }
+
+    this._keySet = combinedKeySet;
+    // SelectorLists represent alternatives - can't use fast rejection
+    this._canFastReject = false;
   }
 
   /** @todo - put in whitespace and line breaks */

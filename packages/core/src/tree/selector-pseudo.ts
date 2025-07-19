@@ -5,7 +5,7 @@ import {
 import { SimpleSelector } from './selector-simple';
 import { type Context } from '../context';
 import { isNode } from './util/is-node';
-import { type Selector } from './selector';
+import { Selector } from './selector';
 
 export type PseudoSelectorValue = {
   /**
@@ -29,33 +29,43 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   shortType = 'pseudo';
 
   override get keySet(): Set<string> {
-    if (!this._keySet) {
-      const { name, arg } = this.value;
-
-      // For :is() pseudo-selectors, expand the argument's keySet
-      if (name === ':is' && arg) {
-        if (isNode(arg, 'SelectorList')) {
-          const combinedKeySet = new Set<string>();
-          for (const selector of arg.value) {
-            for (const key of selector.keySet) {
-              combinedKeySet.add(key);
-            }
-          }
-          this._keySet = combinedKeySet;
-        } else if (arg && typeof arg === 'object' && 'keySet' in arg) {
-          // Single selector argument
-          const keySet = (arg as any).keySet;
-          this._keySet = new Set(keySet);
-        } else {
-          // Fallback to valueOf
-          this._keySet = new Set([this.valueOf()]);
-        }
-      } else {
-        // For other pseudo-selectors, use valueOf
-        this._keySet = new Set([this.valueOf()]);
-      }
+    if (this._keySet === undefined) {
+      this._computeKeySetAndFastReject();
     }
-    return this._keySet;
+    return this._keySet!;
+  }
+
+  protected override _computeKeySetAndFastReject(): void {
+    const { name, arg } = this.value;
+
+    // Check if this is a pseudo-selector that contains selectors
+    const hasSelectorArg = arg instanceof Selector;
+    const hasSelectorListArg = isNode(arg, 'SelectorList');
+
+    if (hasSelectorArg || hasSelectorListArg) {
+      const combinedKeySet = new Set<string>();
+
+      if (hasSelectorListArg) {
+        // SelectorList argument - union all selector keySets
+        let combinedKeySet = new Set<string>();
+        for (const selector of arg.value) {
+          combinedKeySet = combinedKeySet.union(selector.keySet);
+        }
+        // Trust the SelectorList's canFastReject (should be false for alternatives)
+        this._keySet = combinedKeySet;
+        this._canFastReject = arg.canFastReject;
+      } else if (hasSelectorArg) {
+        // Single Selector argument - use its keySet
+        this._keySet = arg.keySet;
+        // Trust the selector's canFastReject
+        this._canFastReject = arg.canFastReject;
+      }
+    } else {
+      // For other pseudo-selectors (like :hover, :focus), use valueOf
+      this._keySet = new Set([this.valueOf()]);
+      // Other pseudo-selectors are safe for fast rejection
+      this._canFastReject = true;
+    }
   }
 
   override toTrimmedString() {

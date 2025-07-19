@@ -45,17 +45,57 @@ export interface MatchResult {
   remainders: Selector[];
 }
 
+// Pre-allocated result objects for common cases to reduce object creation
+const EXACT_MATCH_RESULT_CACHE = new WeakMap<Selector, MatchResult>();
+
 export function matchSelectors(target: Selector, find: Selector, partial = false): MatchResult {
   // Handle the key insight: right-to-left matching through :is() alternatives
 
-  // First, try direct valueOf() match for simple cases
+  // Fast path: Check for exact match first (most common case)
   if (target.valueOf() === find.valueOf()) {
+    // Try to use cached result to reduce object creation
+    let cachedResult = EXACT_MATCH_RESULT_CACHE.get(target);
+    if (!cachedResult) {
+      cachedResult = {
+        hasMatch: true,
+        hasFullMatch: true,
+        hasPartialMatch: false,
+        matched: [target],
+        remainders: []
+      };
+      EXACT_MATCH_RESULT_CACHE.set(target, cachedResult);
+    }
+    return cachedResult;
+  }
+
+  // OPTIMIZATION #4: KeySet fast rejection - bail early for non-matches
+  // This is crucial for stylesheet performance where non-matches are the overwhelming majority
+  // Use canFastReject to determine if keySet disjointness guarantees no match
+  if (target.keySet && find.keySet
+    && target.keySet.isDisjointFrom(find.keySet)
+    && target.canFastReject && find.canFastReject) {
+    // No common keys and both selectors are safe for fast rejection - impossible match, bail immediately
     return {
-      hasMatch: true,
-      hasFullMatch: true,
+      hasMatch: false,
+      hasFullMatch: false,
       hasPartialMatch: false,
-      matched: [target],
-      remainders: []
+      matched: [],
+      remainders: [target]
+    };
+  }
+
+  // OPTIMIZATION #5: KeySet subset rejection for partial matches
+  // When doing partial matching and find selector has no alternatives (canFastReject = true),
+  // we can use set relationships to fast reject cases where find requires keys target doesn't have
+  if (partial && find.canFastReject && target.keySet && find.keySet
+    && !find.keySet.isSubsetOf(target.keySet)) {
+    // Find requires keys that target doesn't have - impossible partial match, bail immediately
+    return {
+      hasMatch: false,
+      hasFullMatch: false,
+      hasPartialMatch: false,
+      matched: [],
+      remainders: [target]
     };
   }
 
@@ -210,22 +250,46 @@ function areCompoundSelectorsEquivalent(target: CompoundSelector, find: Compound
   // Check if two compound selectors have the same set of simple selectors
   // regardless of order. This handles cases like .d.b matching .b.d
 
-  if (target.value.length !== find.value.length) {
+  const targetLen = target.value.length;
+  const findLen = find.value.length;
+
+  if (targetLen !== findLen) {
     return false;
   }
 
+  // Early exit for empty compounds
+  if (targetLen === 0) {
+    return true;
+  }
+
+  // For small compounds, use direct comparison (most common case)
+  if (targetLen === 1) {
+    return target.value[0]!.valueOf() === find.value[0]!.valueOf();
+  }
+
+  if (targetLen === 2) {
+    const t0 = target.value[0]!.valueOf();
+    const t1 = target.value[1]!.valueOf();
+    const f0 = find.value[0]!.valueOf();
+    const f1 = find.value[1]!.valueOf();
+    return (t0 === f0 && t1 === f1) || (t0 === f1 && t1 === f0);
+  }
+
+  // For larger compounds, use the general algorithm but avoid intermediate arrays
+  const targetValues = target.value;
+  const findValues = find.value;
+
   // Check if every component in find has a matching component in target
-  for (const findComponent of find.value) {
-    let foundMatch = false;
-    for (const targetComponent of target.value) {
-      if (targetComponent.valueOf() === findComponent.valueOf()) {
-        foundMatch = true;
-        break;
+  outer: for (let i = 0; i < findLen; i++) {
+    const findComponent = findValues[i]!;
+    const findVal = findComponent.valueOf();
+
+    for (let j = 0; j < targetLen; j++) {
+      if (targetValues[j]!.valueOf() === findVal) {
+        continue outer; // Found match, check next find component
       }
     }
-    if (!foundMatch) {
-      return false;
-    }
+    return false; // No match found for this find component
   }
 
   return true;
@@ -412,6 +476,7 @@ function matchComplexToComplex(target: ComplexSelector, find: ComplexSelector, p
   // Should match from right: .e.d matches .d.e, > matches >, .c.b matches .b.c
   // Result: partial match with remainder .a >
 
+  // Fast path: exact match check (using cached result from WeakMap)
   if (target.valueOf() === find.valueOf()) {
     return {
       hasMatch: true,
@@ -422,12 +487,24 @@ function matchComplexToComplex(target: ComplexSelector, find: ComplexSelector, p
     };
   }
 
-  // For both full and partial matching, we need to do semantic comparison
   const targetComponents = target.value;
   const findComponents = find.value;
+  const targetLen = targetComponents.length;
+  const findLen = findComponents.length;
 
-  // For full matches, selectors must have the same number of components
-  if (!partial && targetComponents.length !== findComponents.length) {
+  // Fast path: length check for non-partial matching
+  if (!partial && targetLen !== findLen) {
+    return {
+      hasMatch: false,
+      hasFullMatch: false,
+      hasPartialMatch: false,
+      matched: [],
+      remainders: [target]
+    };
+  }
+
+  // Fast path: if find is longer than target and we don't allow partial, impossible
+  if (findLen > targetLen && !partial) {
     return {
       hasMatch: false,
       hasFullMatch: false,

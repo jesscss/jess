@@ -35,8 +35,34 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   }
 
   get keySet() {
-    /** @todo - iterate and add keys from children keys */
-    return (this._keySet ??= new Set());
+    if (this._keySet === undefined) {
+      this._computeKeySetAndFastReject();
+    }
+    return this._keySet!;
+  }
+
+  protected override _computeKeySetAndFastReject(): void {
+    let combinedKeySet = new Set<string>();
+    let canFastReject = true;
+
+    for (const component of this.value) {
+      // Skip combinators - they don't contribute keys
+      if (isNode(component, 'Combinator')) {
+        continue;
+      }
+
+      // Get keys from selector components
+      const selector = component as Selector;
+      combinedKeySet = combinedKeySet.union(selector.keySet);
+
+      // If any selector component can't fast reject, this complex selector can't either
+      if (!selector.canFastReject) {
+        canFastReject = false;
+      }
+    }
+
+    this._keySet = combinedKeySet;
+    this._canFastReject = canFastReject;
   }
 
   override toTrimmedString(depth?: number | undefined): string {
