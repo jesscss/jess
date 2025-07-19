@@ -20,8 +20,16 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   shortType = 'compound' as const;
 
   get keySet() {
-    /** @todo - build key set */
-    return (this._keySet ??= new Set());
+    if (!this._keySet) {
+      const combinedKeySet = new Set<string>();
+      for (const selector of this.value) {
+        for (const key of selector.keySet) {
+          combinedKeySet.add(key);
+        }
+      }
+      this._keySet = combinedKeySet;
+    }
+    return this._keySet;
   }
 
   override valueOf() {

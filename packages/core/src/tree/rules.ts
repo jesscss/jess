@@ -239,7 +239,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         let key = node.value.name.toString();
         /** Don't set within sibling rules */
         let opts: FindOptions = {};
-        let result = this.findDeclaration(key, node.type as 'Declaration', opts, true, node.index);
+        opts.searchParents = true;
+        opts.start = node.index;
+        let result = this.findDeclaration(key, node.type as 'Declaration', opts);
         if (result) {
           if (result.options?.readonly || opts.readonly) {
             throw new ReferenceError(`"${key}" is readonly`);
@@ -330,10 +332,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   findDeclaration(
     key: string,
     type: 'VarDeclaration' | 'Declaration' = 'VarDeclaration',
-    opts?: FindOptions,
-    searchParents: boolean = true,
-    start?: number,
-    local: boolean = false
+    opts?: FindOptions
   ): Declaration | undefined {
     let declCandidate: [
       declaration: Declaration,
@@ -341,6 +340,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     ] | undefined;
     let rules: Rules | undefined = this;
     let isPublic = false;
+    const {
+      searchParents = true,
+      local = false,
+      start
+    } = opts ?? {};
     while (rules) {
       let currentReadonly = opts?.readonly || rules.options?.readonly;
       if (rules._declarationMap) {
@@ -387,7 +391,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             /** Locals can be searched once but not twice */
             let newLocal = local || Boolean(r.node.options?.local);
             let newOpts = opts ? { ...opts, readonly: currentReadonly || r.readonly } : { readonly: currentReadonly || r.readonly };
-            let result = r.node.findDeclaration(key, type, newOpts, false, undefined, newLocal);
+            newOpts.searchParents = false;
+            newOpts.local = newLocal;
+            newOpts.start = undefined;
+            let result = r.node.findDeclaration(key, type, newOpts);
             if (result) {
               /**
                * If it's public, and it's the lower-most declaration,

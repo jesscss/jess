@@ -11,7 +11,7 @@ import {
   any,
   call,
   ref,
-  type FindContext,
+  type FindOptions,
   type Node,
   type Rules,
   AssignmentType,
@@ -22,30 +22,35 @@ import { Context, TreeContext } from '../../context';
 
 let context: Context;
 
-function getPropWithContext(context: Context, n: Rules, key: string, opts: FindContext = {}, start?: number) {
+function getPropWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
   context.rulesContext = n;
-  return n.findDeclaration(key, 'Declaration', opts, true, start);
+  opts.searchParents = true;
+  return n.findDeclaration(key, 'Declaration', opts);
 }
 
-function getVarWithContext(context: Context, n: Rules, key: string, opts: FindContext = {}, start?: number) {
+function getVarWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
   context.rulesContext = n;
-  let decl = n.findDeclaration(key, 'VarDeclaration', opts, true, start);
+  opts.searchParents = true;
+  let decl = n.findDeclaration(key, 'VarDeclaration', opts);
   return decl;
 }
 
-function getSelectorWithContext(context: Context, n: Rules, key: Selector, opts: FindContext = {}, start?: number) {
+function getSelectorWithContext(context: Context, n: Rules, key: Selector, opts: FindOptions = {}, start?: number) {
   context.rulesContext = n;
-  let decl = n.findDeclaration(key, 'VarDeclaration', opts, true, start);
+  opts.searchParents = true;
+  let decl = n.findDeclaration(key, 'VarDeclaration', opts);
   return decl;
 }
 
 describe('Rules', () => {
   let getProp = getPropWithContext.bind(context, context);
   let getVar = getVarWithContext.bind(context, context);
+  let getSelector = getSelectorWithContext.bind(context, context);
   beforeEach(() => {
     context = new Context();
     getProp = getPropWithContext.bind(context, context);
     getVar = getVarWithContext.bind(context, context);
+    getSelector = getSelectorWithContext.bind(context, context);
     context.id = 'testing';
   });
 
@@ -337,9 +342,9 @@ describe('Rules', () => {
         ]);
         node = await node.eval(context);
 
-        expect(`${getVar(node, 'one', {}, node.at(1)?.index)}`).toBe('$one: one');
-        expect(`${getVar(node, 'one', {}, node.at(2)?.index)}`).toBe('$one: two');
-        expect(`${getVar(node, 'one', {}, 10)}`).toBe('$one: three');
+        expect(`${getVar(node, 'one', { start: node.at(1)?.index })}`).toBe('$one: one');
+        expect(`${getVar(node, 'one', { start: node.at(2)?.index })}`).toBe('$one: two');
+        expect(`${getVar(node, 'one', { start: 10 })}`).toBe('$one: three');
       });
 
       it('sets upwards from position', async () => {
@@ -350,9 +355,9 @@ describe('Rules', () => {
         ]);
         node = await node.eval(context);
 
-        expect(`${getVar(node, 'one', {}, node.at(1)?.index)}`).toBe('$one: two');
-        expect(`${getVar(node, 'one', {}, node.at(2)?.index)}`).toBe('$$one: two');
-        expect(`${getVar(node, 'one', {}, 10)}`).toBe('$one: three');
+        expect(`${getVar(node, 'one', { start: node.at(1)?.index })}`).toBe('$one: two');
+        expect(`${getVar(node, 'one', { start: node.at(2)?.index })}`).toBe('$$one: two');
+        expect(`${getVar(node, 'one', { start: 10 })}`).toBe('$one: three');
       });
 
       it('won\'t find variables in sub-rules of local rules', async () => {

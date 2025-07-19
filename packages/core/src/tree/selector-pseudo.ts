@@ -5,6 +5,7 @@ import {
 import { SimpleSelector } from './selector-simple';
 import { type Context } from '../context';
 import { isNode } from './util/is-node';
+import { type Selector } from './selector';
 
 export type PseudoSelectorValue = {
   /**
@@ -26,6 +27,36 @@ export type PseudoSelectorValue = {
 export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   type = 'PseudoSelector';
   shortType = 'pseudo';
+
+  override get keySet(): Set<string> {
+    if (!this._keySet) {
+      const { name, arg } = this.value;
+
+      // For :is() pseudo-selectors, expand the argument's keySet
+      if (name === ':is' && arg) {
+        if (isNode(arg, 'SelectorList')) {
+          const combinedKeySet = new Set<string>();
+          for (const selector of arg.value) {
+            for (const key of selector.keySet) {
+              combinedKeySet.add(key);
+            }
+          }
+          this._keySet = combinedKeySet;
+        } else if (arg && typeof arg === 'object' && 'keySet' in arg) {
+          // Single selector argument
+          const keySet = (arg as any).keySet;
+          this._keySet = new Set(keySet);
+        } else {
+          // Fallback to valueOf
+          this._keySet = new Set([this.valueOf()]);
+        }
+      } else {
+        // For other pseudo-selectors, use valueOf
+        this._keySet = new Set([this.valueOf()]);
+      }
+    }
+    return this._keySet;
+  }
 
   override toTrimmedString() {
     let { name, arg } = this.value;
@@ -156,3 +187,15 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
 // foo.arg
 
 export const pseudo = defineType<PseudoSelectorValue, typeof PseudoSelector>(PseudoSelector, 'PseudoSelector', 'pseudo');
+
+/**
+ * Convenience function to create a :is() pseudo-selector
+ * @param arg The selector that goes inside :is()
+ * @returns A PseudoSelector with name ":is" and the provided selector as argument
+ */
+export function is(arg: Selector): PseudoSelector {
+  return pseudo({
+    name: ':is',
+    arg: arg
+  });
+}
