@@ -61,16 +61,16 @@ describe('Extend Selector Tests', () => {
       expect(result.valueOf()).toBe('.a>:is(.b,.d).c');
     });
 
-    it('should not match partial across compound boundaries without complete match', () => {
+    it('should match partial across compound boundaries with partial matching', () => {
       // Selector: .a > .b.c, Target: .a > .b (partial)
-      // This should NOT match because we cross complex boundary without complete compound match
+      // This SHOULD match with partial matching because .a > .b matches .a > .b exactly,
+      // and .b matches within .b.c leaving .c as remainder
       const selector = sel([el('.a'), co('>'), compound([el('.b'), el('.c')])]);
       const target = sel([el('.a'), co('>'), el('.b')]);
       const extendWith = el('.d');
 
-      expect(() => {
-        extendSelector(selector, target, extendWith, true);
-      }).toThrow(); // Should throw because no valid match
+      const result = extendSelector(selector, target, extendWith, true);
+      expect(result.valueOf()).toBe('.a>.b.c,.c.d'); // Remainder (.c) extended with .d
     });
 
     it('should extend complex partial match with compound boundaries - example 6', () => {

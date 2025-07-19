@@ -64,9 +64,14 @@ export function matchSelectors(target: Selector, find: Selector, partial = false
     return matchTargetAgainstSelectorList(target, find, partial);
   }
 
-  // For complex selectors, use the sophisticated right-to-left backtracking algorithm
+  // For complex selectors with :is(), use the sophisticated right-to-left backtracking algorithm
   if ((isNode(target, 'ComplexSelector') && isNode(find, 'ComplexSelector')) && partial) {
-    return backtrackingMatch(target, find);
+    // Only use backtrackingMatch if target has :is() pseudo-selectors that need special handling
+    if (hasIsPseudoSelector(target)) {
+      return backtrackingMatch(target, find);
+    } else {
+      return matchComplexToComplex(target, find, partial);
+    }
   }
 
   // Key insight from user: right-to-left backtracking through :is()
@@ -586,6 +591,20 @@ function matchComplexAgainstSimple(target: ComplexSelector, find: Selector, part
     matched: [],
     remainders: [target]
   };
+}
+
+function hasIsPseudoSelector(selector: ComplexSelector): boolean {
+  // Check if any component in the complex selector has :is() pseudo-selectors
+  for (const component of selector.value) {
+    if (isNode(component, 'CompoundSelector')) {
+      for (const subcomp of component.value) {
+        if (isNode(subcomp, 'PseudoSelector') && subcomp.value.name === ':is') {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 // Sophisticated right-to-left backtracking algorithm for complex :is() matching
