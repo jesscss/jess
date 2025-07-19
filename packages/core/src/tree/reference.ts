@@ -83,14 +83,14 @@ export class Reference extends Selector<string | Interpolated, ReferenceOptions>
 
   /**
    * We don't need to mark evaluated, because a reference
-   * should never resolve to another reference
+   * should never resolve to itself
    */
   override async evalNode(context: Context): Promise<Node> {
     let { value } = this;
     let { type, fallbackValue, filter: originalFilter } = this.options;
     let key: string;
     if (isNode(value)) {
-      key = (await value.eval(context)).value;
+      key = (await value.eval(context)).toTrimmedString();
     } else {
       key = value;
     }
