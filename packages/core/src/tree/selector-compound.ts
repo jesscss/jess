@@ -35,21 +35,24 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   override valueOf() {
     let value = this._valueOf;
     if (!value) {
-      value = this.value
-        .map(n => n.valueOf())
-        .sort((a, b) => {
-          /** Elements come first */
-          if (!nonElementRegex.test(a)) {
-            if (!nonElementRegex.test(b)) {
-              return a < b ? -1 : 1;
-            }
-            return -1;
-          } else if (!nonElementRegex.test(b)) {
-            return 1;
-          }
-          return a < b ? -1 : 1;
-        })
-        .join('');
+      // Convert selectors to strings
+      const components = this.value.map(n => n.valueOf());
+
+      // Find element selectors (those that don't start with .#:[)
+      const elementSelectors: string[] = [];
+      const nonElementSelectors: string[] = [];
+
+      for (const component of components) {
+        if (!nonElementRegex.test(component)) {
+          elementSelectors.push(component);
+        } else {
+          nonElementSelectors.push(component);
+        }
+      }
+
+      // Element selectors must come first for valid CSS
+      // Non-element selectors maintain their original order (no sorting)
+      value = [...elementSelectors, ...nonElementSelectors].join('');
       this._valueOf = value;
     }
     return value;

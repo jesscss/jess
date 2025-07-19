@@ -129,14 +129,20 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       ) {
         return arg.valueOf();
       }
-      /**
-       * Normalizes :nth-child(n + 1) to match :nth-child(n+1)
-       * That is, anything that doesn't hold a selector as a value
-       * is, by definition, not space-sensitive.
-       *
-       * @todo 1n === n, 2n + 0 === 2n
-       */
-      valueOf = `${name}${arg ? `(${arg.toTrimmedString().replace(/\s+/, '')})` : ''}`;
+
+      // For :is() with SelectorList, use valueOf() to avoid newlines
+      if (name === ':is' && arg) {
+        valueOf = `${name}(${arg.valueOf()})`;
+      } else {
+        /**
+         * Normalizes :nth-child(n + 1) to match :nth-child(n+1)
+         * That is, anything that doesn't hold a selector as a value
+         * is, by definition, not space-sensitive.
+         *
+         * @todo 1n === n, 2n + 0 === 2n
+         */
+        valueOf = `${name}${arg ? `(${arg.toTrimmedString().replace(/\s+/, '')})` : ''}`;
+      }
       this._valueOf = valueOf;
     }
     return valueOf;

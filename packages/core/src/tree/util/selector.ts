@@ -131,29 +131,64 @@ function matchCompoundSelector(target: CompoundSelector, find: Selector, partial
   for (let i = 0; i < target.value.length; i++) {
     const component = target.value[i]!;
 
-    // Direct component match
-    const componentResult = matchSelectors(component, find, false);
-    if (componentResult.hasMatch && componentResult.hasFullMatch) {
+    // Direct component match - use partial flag for :is() cases
+    const componentResult = matchSelectors(component, find, partial);
+    if (componentResult.hasMatch && (componentResult.hasFullMatch || (partial && componentResult.hasPartialMatch))) {
       // Build remainder by removing this component
-      const remainderComponents = target.value.filter((_, idx) => idx !== i);
+      let remainderComponents = target.value.filter((_, idx) => idx !== i);
 
-      let remainders: Selector[];
-      if (remainderComponents.length === 0) {
-        remainders = [];
-      } else if (remainderComponents.length === 1) {
-        remainders = [remainderComponents[0]!];
+      // For compound selectors, if we have a partial match with remainders,
+      // we need to handle them more carefully
+      if (componentResult.hasPartialMatch && componentResult.remainders.length > 0) {
+        // If there are remainders from the matched component, we need to reconstruct
+        // the compound selector with both the unmatched original components and
+        // the remainders from the partial match
+
+        // Get the remaining simple selectors
+        const remainingSimpleSelectors = remainderComponents;
+
+        // The remainders from partial match might need to be added separately
+        // since they might not be simple selectors (could be compound or complex)
+        let allRemainders: Selector[] = [];
+
+        if (remainingSimpleSelectors.length > 0) {
+          if (remainingSimpleSelectors.length === 1) {
+            allRemainders.push(remainingSimpleSelectors[0]!);
+          } else {
+            allRemainders.push(new CompoundSelector(remainingSimpleSelectors).inherit(target));
+          }
+        }
+
+        // Add the remainders from the partial match
+        allRemainders.push(...componentResult.remainders);
+
+        return {
+          hasMatch: true,
+          hasFullMatch: false,
+          hasPartialMatch: true,
+          matched: componentResult.matched,
+          remainders: allRemainders
+        };
       } else {
-        // Create new compound selector with remaining components
-        remainders = [new CompoundSelector(remainderComponents).inherit(target)];
-      }
+        // Full match case - simpler handling
+        let remainders: Selector[];
+        if (remainderComponents.length === 0) {
+          remainders = [];
+        } else if (remainderComponents.length === 1) {
+          remainders = [remainderComponents[0]!];
+        } else {
+          // Create new compound selector with remaining components
+          remainders = [new CompoundSelector(remainderComponents).inherit(target)];
+        }
 
-      return {
-        hasMatch: true,
-        hasFullMatch: remainders.length === 0,
-        hasPartialMatch: remainders.length > 0,
-        matched: [component],
-        remainders: remainders
-      };
+        return {
+          hasMatch: true,
+          hasFullMatch: remainders.length === 0,
+          hasPartialMatch: remainders.length > 0,
+          matched: componentResult.matched,
+          remainders: remainders
+        };
+      }
     }
   }
 
@@ -166,9 +201,45 @@ function matchCompoundSelector(target: CompoundSelector, find: Selector, partial
   };
 }
 
+function areCompoundSelectorsEquivalent(target: CompoundSelector, find: CompoundSelector): boolean {
+  // Check if two compound selectors have the same set of simple selectors
+  // regardless of order. This handles cases like .d.b matching .b.d
+
+  if (target.value.length !== find.value.length) {
+    return false;
+  }
+
+  // Check if every component in find has a matching component in target
+  for (const findComponent of find.value) {
+    let foundMatch = false;
+    for (const targetComponent of target.value) {
+      if (targetComponent.valueOf() === findComponent.valueOf()) {
+        foundMatch = true;
+        break;
+      }
+    }
+    if (!foundMatch) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function matchCompoundToCompound(target: CompoundSelector, find: CompoundSelector, partial: boolean): MatchResult {
   // Handle compound to compound matching: target .a:is(.b, .c), find .a.b
   // Need to match all components in find against components in target
+
+  // First check if they're semantically equivalent (same components in any order)
+  if (areCompoundSelectorsEquivalent(target, find)) {
+    return {
+      hasMatch: true,
+      hasFullMatch: true,
+      hasPartialMatch: false,
+      matched: [find],
+      remainders: []
+    };
+  }
 
   const matchedComponents: Selector[] = [];
   const unmatchedFindComponents: Selector[] = [];
@@ -297,8 +368,8 @@ function matchSelectorList(target: SelectorList, find: Selector, partial: boolea
 function matchComplexSelectors(target: Selector, find: Selector, partial: boolean): MatchResult {
   // More sophisticated complex selector matching
 
-  // For partial matches, we need to be careful not to match across combinators improperly
-  if (partial && isNode(target, 'ComplexSelector') && isNode(find, 'ComplexSelector')) {
+  // Handle complex-to-complex matching for both full and partial matches
+  if (isNode(target, 'ComplexSelector') && isNode(find, 'ComplexSelector')) {
     return matchComplexToComplex(target, find, partial);
   }
 
@@ -331,8 +402,10 @@ function matchComplexSelectors(target: Selector, find: Selector, partial: boolea
 }
 
 function matchComplexToComplex(target: ComplexSelector, find: ComplexSelector, partial: boolean): MatchResult {
-  // This is the subsequence matching case: target .a > .b > .c, find .b > .c
-  // Need to find find sequence within target sequence
+  // This handles right-to-left backtracking for complex selector matching
+  // Example: target .a > .b.c > .d.e, find .c.b > .e.d
+  // Should match from right: .e.d matches .d.e, > matches >, .c.b matches .b.c
+  // Result: partial match with remainder .a >
 
   if (target.valueOf() === find.valueOf()) {
     return {
@@ -344,32 +417,147 @@ function matchComplexToComplex(target: ComplexSelector, find: ComplexSelector, p
     };
   }
 
-  if (partial) {
-    // Try to find the find sequence as a subsequence within target
-    const targetComponents = target.value;
-    const findComponents = find.value;
+  // For both full and partial matching, we need to do semantic comparison
+  const targetComponents = target.value;
+  const findComponents = find.value;
 
-    // Try each starting position in target
-    for (let startIdx = 0; startIdx <= targetComponents.length - findComponents.length; startIdx++) {
-      let allMatch = true;
+  // For full matches, selectors must have the same number of components
+  if (!partial && targetComponents.length !== findComponents.length) {
+    return {
+      hasMatch: false,
+      hasFullMatch: false,
+      hasPartialMatch: false,
+      matched: [],
+      remainders: [target]
+    };
+  }
 
-      // Check if find sequence matches at this position
-      for (let i = 0; i < findComponents.length; i++) {
-        const targetComp = targetComponents[startIdx + i]!;
-        const findComp = findComponents[i]!;
+  // Right-to-left matching: start from the end of both selectors
+  let targetIdx = targetComponents.length - 1;
+  let findIdx = findComponents.length - 1;
+  const partialMatchRemainders: Selector[] = []; // Track remainders from partial matches
 
-        // For exact subsequence matching, components must be identical
-        if (targetComp.valueOf() !== findComp.valueOf()) {
-          allMatch = false;
-          break;
-        }
+  // Match components from right to left
+  while (targetIdx >= 0 && findIdx >= 0) {
+    const targetComp = targetComponents[targetIdx]!;
+    const findComp = findComponents[findIdx]!;
+
+    // For combinator matching, must be exact
+    if (isNode(targetComp, 'Combinator') || isNode(findComp, 'Combinator')) {
+      if (targetComp.valueOf() !== findComp.valueOf()) {
+        break; // No match
+      }
+    } else {
+      // For selector components, use semantic matching
+      // Allow partial matching within components for compound selectors
+      const compResult = matchSelectors(targetComp as Selector, findComp as Selector, partial);
+      if (!compResult.hasFullMatch && !(partial && compResult.hasPartialMatch)) {
+        break; // No match
       }
 
-      if (allMatch) {
-        // Found a match! Build remainders
-        const beforeComponents = targetComponents.slice(0, startIdx);
-        const afterComponents = targetComponents.slice(startIdx + findComponents.length);
-        const remainderComponents = [...beforeComponents, ...afterComponents];
+      // If this was a partial match, collect its remainders
+      if (compResult.hasPartialMatch && compResult.remainders.length > 0) {
+        partialMatchRemainders.unshift(...compResult.remainders);
+      }
+    }
+
+    // Move to next components (leftward)
+    targetIdx--;
+    findIdx--;
+  }
+
+  // Check if we matched all of find components
+  if (findIdx < 0) {
+    // All find components matched! Build remainder from unmatched target components
+    const unmatchedTargetComponents = targetComponents.slice(0, targetIdx + 1);
+
+    // Combine unmatched target components with partial match remainders
+    let allRemainders: Selector[] = [];
+
+    // Add unmatched target components
+    if (unmatchedTargetComponents.length > 0) {
+      if (unmatchedTargetComponents.length === 1 && !isNode(unmatchedTargetComponents[0], 'Combinator')) {
+        allRemainders.push(unmatchedTargetComponents[0] as Selector);
+      } else {
+        allRemainders.push(new ComplexSelector(unmatchedTargetComponents).inherit(target));
+      }
+    }
+
+    // Add partial match remainders
+    allRemainders.push(...partialMatchRemainders);
+
+    if (allRemainders.length === 0) {
+      // Full match: all components matched completely
+      return {
+        hasMatch: true,
+        hasFullMatch: true,
+        hasPartialMatch: false,
+        matched: [find],
+        remainders: []
+      };
+    } else if (partial) {
+      // Partial match: some components or parts remain
+      return {
+        hasMatch: true,
+        hasFullMatch: false,
+        hasPartialMatch: true,
+        matched: [find],
+        remainders: allRemainders
+      };
+    }
+  }
+
+  // No match
+  return {
+    hasMatch: false,
+    hasFullMatch: false,
+    hasPartialMatch: false,
+    matched: [],
+    remainders: [target]
+  };
+}
+
+function matchComplexAgainstSimple(target: ComplexSelector, find: Selector, partial: boolean): MatchResult {
+  // target: .a.b > .c, find: .b -> check if find matches any component
+  // Supports partial matching within compound selectors, even across combinators
+  // Example: .a.b > .c can match .b > .c (partial match with remainder .a)
+  const components = target.value;
+
+  for (let i = 0; i < components.length; i++) {
+    const component = components[i]!;
+
+    if (isNode(component, 'Combinator')) {
+      // Skip combinators
+      continue;
+    }
+
+    // Check if this component is adjacent to a combinator
+    const hasPrevCombinator = i > 0 && isNode(components[i - 1], 'Combinator');
+    const hasNextCombinator = i < components.length - 1 && isNode(components[i + 1], 'Combinator');
+
+    // Allow partial matching for components adjacent to combinators too
+    // This enables matching like .a.b > .c against .b > .c
+    const allowPartialForThisComponent = partial;
+
+    const result = matchSelectors(component, find, allowPartialForThisComponent);
+    if (result.hasMatch) {
+      // If we found a partial match within a compound, we need to handle remainders properly
+      if (result.hasPartialMatch && result.remainders.length > 0) {
+        // Build new complex selector with the matched component replaced by its remainders
+        const newComponents = [...components];
+        // Type assertion needed because remainder could be any Selector type
+        newComponents[i] = result.remainders[0]! as ComplexSelectorValue[number];
+
+        return {
+          hasMatch: true,
+          hasFullMatch: false,
+          hasPartialMatch: true,
+          matched: result.matched,
+          remainders: [new ComplexSelector(newComponents as ComplexSelectorValue).inherit(target)]
+        };
+      } else if (result.hasFullMatch) {
+        // Full match - remove this component and build remainder from remaining components
+        const remainderComponents = components.filter((_, idx) => idx !== i);
 
         let remainders: Selector[];
         if (remainderComponents.length === 0) {
@@ -388,51 +576,6 @@ function matchComplexToComplex(target: ComplexSelector, find: ComplexSelector, p
           remainders: remainders
         };
       }
-    }
-  }
-
-  return {
-    hasMatch: false,
-    hasFullMatch: false,
-    hasPartialMatch: false,
-    matched: [],
-    remainders: [target]
-  };
-}
-
-function matchComplexAgainstSimple(target: ComplexSelector, find: Selector, partial: boolean): MatchResult {
-  // target: .a.b > .c, find: .a.b -> check if find matches any component before a combinator
-  const components = target.value;
-
-  for (let i = 0; i < components.length; i++) {
-    const component = components[i]!;
-
-    if (isNode(component, 'Combinator')) {
-      // Stop at first combinator - don't match across combinators
-      break;
-    }
-
-    const result = matchSelectors(component, find, false);
-    if (result.hasMatch && result.hasFullMatch) {
-      // Build remainder from remaining components
-      const remainderComponents = components.slice(i + 1);
-
-      let remainders: Selector[];
-      if (remainderComponents.length === 0) {
-        remainders = [];
-      } else if (remainderComponents.length === 1 && !isNode(remainderComponents[0], 'Combinator')) {
-        remainders = [remainderComponents[0] as Selector];
-      } else {
-        remainders = [new ComplexSelector(remainderComponents as ComplexSelectorValue).inherit(target)];
-      }
-
-      return {
-        hasMatch: true,
-        hasFullMatch: remainders.length === 0,
-        hasPartialMatch: remainders.length > 0,
-        matched: [find],
-        remainders: remainders
-      };
     }
   }
 

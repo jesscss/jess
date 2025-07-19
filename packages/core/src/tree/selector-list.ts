@@ -26,7 +26,7 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   override valueOf() {
-    return this.value.map(v => v.valueOf()).sort().join(',');
+    return this.value.map(v => v.valueOf()).join(',');
   }
 
   override async evalNode(context: Context): Promise<SelectorList | Selector> {

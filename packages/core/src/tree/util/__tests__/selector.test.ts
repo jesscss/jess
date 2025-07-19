@@ -96,13 +96,14 @@ describe('Selector match tests', () => {
       expect(result.remainders).toHaveLength(1);
     });
 
-    it('should not partially match across combinators without full match', () => {
-      // target: .a.b > .c, find: .b > .c (should not match)
-      // Cannot cross combinator threshold without matching completely
+    it('should partially match across combinators with compound selector', () => {
+      // target: .a.b > .c, find: .b > .c (should match)
+      // .b matches within compound .a.b, leaving .a as remainder
       const target = sel([compound([el('.a'), el('.b')]), co('>'), el('.c')]);
       const find = sel([el('.b'), co('>'), el('.c')]);
       const result = matchSelectors(target, find, true);
-      expect(result.hasMatch).toBe(false);
+      expect(result.hasMatch).toBe(true);
+      expect(result.hasPartialMatch).toBe(true);
     });
 
     it('should partially match before combinator', () => {
