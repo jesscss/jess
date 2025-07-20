@@ -3,6 +3,10 @@ import type { IfAny } from 'type-fest';
 
 /** This represents anything that is valid in a selector */
 
+export interface Selector<T = any, O extends NodeOptions = NodeOptions> extends Node<IfAny<T, NodeValue, T>, O> {
+  valueOf(): string;
+}
+
 export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> extends Node<IfAny<T, NodeValue, T>, O> {
   isSelector = true;
 

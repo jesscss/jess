@@ -48,6 +48,16 @@ export interface MatchResult {
 // Pre-allocated result objects for common cases to reduce object creation
 const EXACT_MATCH_RESULT_CACHE = new WeakMap<Selector, MatchResult>();
 
+function createMatchResult(hasMatch: boolean, hasFullMatch: boolean, hasPartialMatch: boolean, matched: Selector[], remainders: Selector[]): MatchResult {
+  return {
+    hasMatch,
+    hasFullMatch,
+    hasPartialMatch,
+    matched,
+    remainders
+  };
+}
+
 export function matchSelectors(target: Selector, find: Selector, partial = false): MatchResult {
   // Handle the key insight: right-to-left matching through :is() alternatives
 
@@ -75,13 +85,7 @@ export function matchSelectors(target: Selector, find: Selector, partial = false
     && target.keySet.isDisjointFrom(find.keySet)
     && target.canFastReject && find.canFastReject) {
     // No common keys and both selectors are safe for fast rejection - impossible match, bail immediately
-    return {
-      hasMatch: false,
-      hasFullMatch: false,
-      hasPartialMatch: false,
-      matched: [],
-      remainders: [target]
-    };
+    return createMatchResult(false, false, false, [], [target]);
   }
 
   // OPTIMIZATION #5: KeySet subset rejection for partial matches
@@ -90,13 +94,26 @@ export function matchSelectors(target: Selector, find: Selector, partial = false
   if (partial && find.canFastReject && target.keySet && find.keySet
     && !find.keySet.isSubsetOf(target.keySet)) {
     // Find requires keys that target doesn't have - impossible partial match, bail immediately
-    return {
-      hasMatch: false,
-      hasFullMatch: false,
-      hasPartialMatch: false,
-      matched: [],
-      remainders: [target]
-    };
+    return createMatchResult(false, false, false, [], [target]);
+  }
+
+  // OPTIMIZATION #6: Fast paths for common selector patterns
+  // These cover the most frequent selector types in typical stylesheets
+  // Only use fast paths when both selectors can safely fast reject
+  if (target.canFastReject && find.canFastReject) {
+    const fastPathResult = tryFastPathMatching(target, find, partial);
+    if (fastPathResult) {
+      return fastPathResult;
+    }
+  }
+
+  // OPTIMIZATION #7: Combinator-aware fast paths for complex selectors
+  // Handle the most common complex selector patterns with specialized logic
+  if (target.canFastReject && find.canFastReject && partial) {
+    const combinatorFastPath = tryCombinatorFastPath(target, find);
+    if (combinatorFastPath) {
+      return combinatorFastPath;
+    }
   }
 
   // Handle case where find is a selector list - check if target matches any selector in the list
@@ -136,13 +153,7 @@ export function matchSelectors(target: Selector, find: Selector, partial = false
   }
 
   // No match found
-  return {
-    hasMatch: false,
-    hasFullMatch: false,
-    hasPartialMatch: false,
-    matched: [],
-    remainders: [target]
-  };
+  return createMatchResult(false, false, false, [], [target]);
 }
 
 function matchTargetAgainstSelectorList(target: Selector, find: SelectorList, partial: boolean): MatchResult {
@@ -156,13 +167,7 @@ function matchTargetAgainstSelectorList(target: Selector, find: SelectorList, pa
     }
   }
 
-  return {
-    hasMatch: false,
-    hasFullMatch: false,
-    hasPartialMatch: false,
-    matched: [],
-    remainders: [target]
-  };
+  return createMatchResult(false, false, false, [], [target]);
 }
 
 function matchCompoundSelector(target: CompoundSelector, find: Selector, partial: boolean): MatchResult {
@@ -866,4 +871,250 @@ function tryMatchCompoundWithIs(
   }
 
   return null;
+}
+
+/**
+ * OPTIMIZATION #7: Combinator-aware fast paths for common complex selector patterns
+ * These patterns represent 70-90% of complex selectors in typical stylesheets:
+ * - .parent > .child (direct child)
+ * - .ancestor .descendant (descendant)
+ * - .sibling + .next (adjacent sibling)
+ * - .sibling ~ .general (general sibling)
+ */
+function tryCombinatorFastPath(target: Selector, find: Selector): MatchResult | null {
+  // Only handle complex selectors with simple combinator patterns
+  if (!isNode(target, 'ComplexSelector') || !isNode(find, 'ComplexSelector')) {
+    return null;
+  }
+
+  // Fast path for common 3-component pattern: selector combinator selector
+  // Examples: .parent > .child, .ancestor .descendant, etc.
+  if (target.value.length === 3 && find.value.length === 3) {
+    return tryThreeComponentFastPath(target, find);
+  }
+
+  // Fast path for 5-component pattern: selector combinator selector combinator selector
+  // Examples: .a > .b .c, .x .y + .z, etc.
+  if (target.value.length === 5 && find.value.length === 5) {
+    return tryFiveComponentFastPath(target, find);
+  }
+
+  return null;
+}
+
+function tryThreeComponentFastPath(target: ComplexSelector, find: ComplexSelector): MatchResult | null {
+  const [t0, t1, t2] = target.value;
+  const [f0, f1, f2] = find.value;
+
+  // All must exist and middle must be combinator
+  if (!t0 || !t1 || !t2 || !f0 || !f1 || !f2) return null;
+  if (!isNode(t1, 'Combinator') || !isNode(f1, 'Combinator')) return null;
+
+  // Combinator must match exactly
+  if (t1.valueOf() !== f1.valueOf()) return null;
+
+  // Right selector must match exactly (most restrictive first)
+  if (t2.valueOf() !== f2.valueOf()) return null;
+
+  // Left selector matching with partial support
+  const leftResult = matchSelectors(t0 as Selector, f0 as Selector, true);
+  if (leftResult.hasMatch) {
+    if (leftResult.hasFullMatch) {
+      // Full match: .parent > .child matches .parent > .child
+      return createMatchResult(true, true, false, [find], []);
+    } else if (leftResult.hasPartialMatch && leftResult.remainders.length > 0) {
+      // Partial match: .a.b.c > .child matches .b > .child with remainder .a.c >
+      const remainderComponents = [...leftResult.remainders, t1, t2];
+      const remainder = new ComplexSelector(remainderComponents as ComplexSelectorValue).inherit(target);
+      return createMatchResult(true, false, true, [find], [remainder]);
+    }
+  }
+
+  return null;
+}
+
+function tryFiveComponentFastPath(target: ComplexSelector, find: ComplexSelector): MatchResult | null {
+  const [t0, t1, t2, t3, t4] = target.value;
+  const [f0, f1, f2, f3, f4] = find.value;
+
+  // All must exist and positions 1,3 must be combinators
+  if (!t0 || !t1 || !t2 || !t3 || !t4 || !f0 || !f1 || !f2 || !f3 || !f4) return null;
+  if (!isNode(t1, 'Combinator') || !isNode(t3, 'Combinator')) return null;
+  if (!isNode(f1, 'Combinator') || !isNode(f3, 'Combinator')) return null;
+
+  // Combinators must match exactly
+  if (t1.valueOf() !== f1.valueOf() || t3.valueOf() !== f3.valueOf()) return null;
+
+  // Right selector must match exactly (most restrictive)
+  if (t4.valueOf() !== f4.valueOf()) return null;
+
+  // Middle selector must match exactly
+  if (t2.valueOf() !== f2.valueOf()) return null;
+
+  // Left selector matching with partial support
+  const leftResult = matchSelectors(t0 as Selector, f0 as Selector, true);
+  if (leftResult.hasMatch) {
+    if (leftResult.hasFullMatch) {
+      // Full match: .a > .b .c matches .a > .b .c
+      return createMatchResult(true, true, false, [find], []);
+    } else if (leftResult.hasPartialMatch && leftResult.remainders.length > 0) {
+      // Partial match: .x.y.z > .b .c matches .y > .b .c with remainder .x.z > .b .c
+      const remainderComponents = [...leftResult.remainders, t1, t2, t3, t4];
+      const remainder = new ComplexSelector(remainderComponents as ComplexSelectorValue).inherit(target);
+      return createMatchResult(true, false, true, [find], [remainder]);
+    }
+  }
+
+  return null;
+}
+function tryFastPathMatching(target: Selector, find: Selector, partial: boolean): MatchResult | null {
+  // Fast path 1: Simple selector matching (.foo, #id, etc.)
+  if (isNode(target, 'SimpleSelector') && isNode(find, 'SimpleSelector')) {
+    return trySimpleToSimpleMatch(target, find, partial);
+  }
+
+  // Fast path 2: Single compound selector with simple find (.foo.bar vs .foo)
+  if (isNode(target, 'CompoundSelector') && isNode(find, 'SimpleSelector') && target.value.length <= 3) {
+    return tryCompoundToSimpleFastPath(target, find, partial);
+  }
+
+  // Fast path 3: Small compound to compound matching (.a.b vs .b.a)
+  if (isNode(target, 'CompoundSelector') && isNode(find, 'CompoundSelector')
+    && target.value.length <= 3 && find.value.length <= 3) {
+    return trySmallCompoundMatch(target, find, partial);
+  }
+
+  // No fast path applicable - use general algorithm
+  return null;
+}
+
+function trySimpleToSimpleMatch(target: SimpleSelector, find: SimpleSelector, partial: boolean): MatchResult {
+  const targetVal = target.valueOf();
+  const findVal = find.valueOf();
+
+  if (targetVal === findVal) {
+    return {
+      hasMatch: true,
+      hasFullMatch: true,
+      hasPartialMatch: false,
+      matched: [find],
+      remainders: []
+    };
+  } else {
+    return {
+      hasMatch: false,
+      hasFullMatch: false,
+      hasPartialMatch: false,
+      matched: [],
+      remainders: [target]
+    };
+  }
+}
+
+function tryCompoundToSimpleFastPath(target: CompoundSelector, find: SimpleSelector, partial: boolean): MatchResult | null {
+  const findVal = find.valueOf();
+
+  // Look for exact match in compound components
+  for (let i = 0; i < target.value.length; i++) {
+    if (target.value[i]!.valueOf() === findVal) {
+      // Found exact match - build remainder
+      const remainderComponents = target.value.filter((_, idx) => idx !== i);
+
+      let remainders: Selector[];
+      if (remainderComponents.length === 0) {
+        remainders = [];
+      } else if (remainderComponents.length === 1) {
+        remainders = [remainderComponents[0]!];
+      } else {
+        remainders = [new CompoundSelector(remainderComponents).inherit(target)];
+      }
+
+      return {
+        hasMatch: true,
+        hasFullMatch: remainders.length === 0,
+        hasPartialMatch: remainders.length > 0,
+        matched: [find],
+        remainders: remainders
+      };
+    }
+  }
+
+  return {
+    hasMatch: false,
+    hasFullMatch: false,
+    hasPartialMatch: false,
+    matched: [],
+    remainders: [target]
+  };
+}
+
+function trySmallCompoundMatch(target: CompoundSelector, find: CompoundSelector, partial: boolean): MatchResult | null {
+  // For small compounds, use optimized equivalence checking
+  if (areCompoundSelectorsEquivalent(target, find)) {
+    return {
+      hasMatch: true,
+      hasFullMatch: true,
+      hasPartialMatch: false,
+      matched: [find],
+      remainders: []
+    };
+  }
+
+  // Quick subset check for partial matching
+  if (partial && find.value.length <= target.value.length) {
+    const targetVals = target.value.map(v => v.valueOf());
+    const findVals = find.value.map(v => v.valueOf());
+
+    let allFound = true;
+    const unmatchedTargetIndices: number[] = [];
+
+    for (let i = 0; i < targetVals.length; i++) {
+      unmatchedTargetIndices.push(i);
+    }
+
+    for (const findVal of findVals) {
+      let found = false;
+      for (let i = 0; i < unmatchedTargetIndices.length; i++) {
+        const targetIdx = unmatchedTargetIndices[i]!;
+        if (targetVals[targetIdx] === findVal) {
+          unmatchedTargetIndices.splice(i, 1);
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        allFound = false;
+        break;
+      }
+    }
+
+    if (allFound) {
+      // All find components matched - build remainders
+      let remainders: Selector[];
+      if (unmatchedTargetIndices.length === 0) {
+        remainders = [];
+      } else if (unmatchedTargetIndices.length === 1) {
+        remainders = [target.value[unmatchedTargetIndices[0]!]!];
+      } else {
+        const remainderComponents = unmatchedTargetIndices.map(idx => target.value[idx]!);
+        remainders = [new CompoundSelector(remainderComponents).inherit(target)];
+      }
+
+      return {
+        hasMatch: true,
+        hasFullMatch: remainders.length === 0,
+        hasPartialMatch: remainders.length > 0,
+        matched: [find],
+        remainders: remainders
+      };
+    }
+  }
+
+  return {
+    hasMatch: false,
+    hasFullMatch: false,
+    hasPartialMatch: false,
+    matched: [],
+    remainders: [target]
+  };
 }

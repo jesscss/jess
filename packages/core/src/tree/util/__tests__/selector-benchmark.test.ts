@@ -1,7 +1,44 @@
 import { el, sel, sellist, compound, is, co, pseudo, type Selector } from '../../..';
-import { matchSelectors } from '../selector';
+import { matchSelectors, MatchResult } from '../selector';
 import { extendSelector } from '../extend';
 import { isNode } from '../is-node';
+
+/**
+ * Version of matchSelectors that bypasses fast path optimizations
+ * for performance comparison testing
+ */
+function matchSelectorsNoOptimizations(target: Selector, find: Selector, partial = false): MatchResult {
+  // Temporarily override canFastReject to always return false to bypass fast paths
+  const originalTargetCanFastReject = Object.getOwnPropertyDescriptor(target, 'canFastReject');
+  const originalFindCanFastReject = Object.getOwnPropertyDescriptor(find, 'canFastReject');
+
+  try {
+    // Force canFastReject to false to bypass fast path optimizations
+    Object.defineProperty(target, 'canFastReject', {
+      get: () => false,
+      configurable: true
+    });
+    Object.defineProperty(find, 'canFastReject', {
+      get: () => false,
+      configurable: true
+    });
+
+    // Call the regular matchSelectors function, which will now skip fast paths
+    return matchSelectors(target, find, partial);
+  } finally {
+    // Restore original canFastReject descriptors
+    if (originalTargetCanFastReject) {
+      Object.defineProperty(target, 'canFastReject', originalTargetCanFastReject);
+    } else {
+      delete (target as any).canFastReject;
+    }
+    if (originalFindCanFastReject) {
+      Object.defineProperty(find, 'canFastReject', originalFindCanFastReject);
+    } else {
+      delete (find as any).canFastReject;
+    }
+  }
+}
 
 describe('Selector Performance Benchmarks', () => {
   const runBenchmark = (name: string, fn: () => void, iterations = 10000) => {
@@ -45,6 +82,159 @@ describe('Selector Performance Benchmarks', () => {
 
     runBenchmark('Complex selector partial matching', () => {
       matchSelectors(target, find, true);
+    });
+  });
+
+  // Fast Path Optimization Benchmarks
+  describe('Fast Path Optimizations', () => {
+    it('should benchmark simple-to-simple selector fast path', () => {
+      const target = el('.button');
+      const find = el('.button');
+      const nonMatch = el('.input');
+
+      runBenchmark('Simple-to-simple: match', () => {
+        matchSelectors(target, find);
+      }, 100000);
+
+      runBenchmark('Simple-to-simple: non-match', () => {
+        matchSelectors(target, nonMatch);
+      }, 100000);
+    });
+
+    it('should benchmark ID selector fast path', () => {
+      const target = el('#navbar');
+      const find = el('#navbar');
+      const nonMatch = el('#sidebar');
+
+      runBenchmark('ID selector: match', () => {
+        matchSelectors(target, find);
+      }, 100000);
+
+      runBenchmark('ID selector: non-match', () => {
+        matchSelectors(target, nonMatch);
+      }, 100000);
+    });
+
+    it('should benchmark compound-to-simple fast path', () => {
+      const target = compound([el('.btn'), el('.primary')]);
+      const find = el('.btn');
+      const nonMatch = el('.secondary');
+
+      runBenchmark('Compound-to-simple: match', () => {
+        matchSelectors(target, find);
+      }, 50000);
+
+      runBenchmark('Compound-to-simple: non-match', () => {
+        matchSelectors(target, nonMatch);
+      }, 50000);
+    });
+
+    it('should benchmark small compound-to-compound fast path', () => {
+      const target = compound([el('.btn'), el('.primary')]);
+      const find = compound([el('.primary'), el('.btn')]);
+      const nonMatch = compound([el('.btn'), el('.secondary')]);
+
+      runBenchmark('Small compound-to-compound: match', () => {
+        matchSelectors(target, find);
+      }, 50000);
+
+      runBenchmark('Small compound-to-compound: non-match', () => {
+        matchSelectors(target, nonMatch);
+      }, 50000);
+    });
+
+    it('should benchmark fast path vs general algorithm', () => {
+      // Fast path eligible selectors (canFastReject = true)
+      const simpleTarget = el('.fast');
+      const simpleFind = el('.fast');
+
+      const compoundTarget = compound([el('.fast'), el('.path')]);
+      const compoundFind = compound([el('.path'), el('.fast')]);
+
+      // General algorithm selectors (canFastReject = false, contains :is())
+      const complexTarget = compound([el('.slow'), is(sellist([el('.a'), el('.b')]))]);
+      const complexFind = compound([el('.slow'), el('.a')]);
+
+      runBenchmark('Fast path: Simple match', () => {
+        matchSelectors(simpleTarget, simpleFind);
+      }, 100000);
+
+      runBenchmark('Fast path: Compound match', () => {
+        matchSelectors(compoundTarget, compoundFind);
+      }, 50000);
+
+      runBenchmark('General algorithm: :is() match', () => {
+        matchSelectors(complexTarget, complexFind);
+      }, 10000);
+    });
+  });
+
+  // Comparison benchmarks - with and without fast path optimizations
+  it('should compare performance with and without fast path optimizations', () => {
+    const scenarios = [
+      {
+        name: 'Simple selector match',
+        target: el('.button'),
+        find: el('.button'),
+        iterations: 100000
+      },
+      {
+        name: 'ID selector match',
+        target: el('#navbar'),
+        find: el('#navbar'),
+        iterations: 100000
+      },
+      {
+        name: 'Compound to simple match',
+        target: compound([el('.btn'), el('.primary')]),
+        find: el('.btn'),
+        iterations: 50000
+      },
+      {
+        name: 'Small compound to compound match',
+        target: compound([el('.btn'), el('.primary')]),
+        find: compound([el('.primary'), el('.btn')]),
+        iterations: 50000
+      },
+      {
+        name: 'Simple non-match',
+        target: el('.button'),
+        find: el('.input'),
+        iterations: 100000
+      },
+      {
+        name: 'Compound non-match',
+        target: compound([el('.btn'), el('.primary')]),
+        find: compound([el('.btn'), el('.secondary')]),
+        iterations: 50000
+      }
+    ];
+
+    console.log('\n🔥 FAST PATH OPTIMIZATION COMPARISON');
+    console.log('====================================');
+
+    scenarios.forEach((scenario) => {
+      console.log(`\n📊 ${scenario.name}:`);
+
+      // Test with optimizations enabled
+      const optimizedResult = runBenchmark(
+        `${scenario.name} (optimized)`,
+        () => matchSelectors(scenario.target, scenario.find),
+        scenario.iterations
+      );
+
+      // Test with optimizations disabled (bypass fast path check)
+      const unoptimizedResult = runBenchmark(
+        `${scenario.name} (unoptimized)`,
+        () => matchSelectorsNoOptimizations(scenario.target, scenario.find),
+        scenario.iterations
+      );
+
+      const speedup = optimizedResult.opsPerSec / unoptimizedResult.opsPerSec;
+      const improvement = ((optimizedResult.opsPerSec - unoptimizedResult.opsPerSec) / unoptimizedResult.opsPerSec) * 100;
+
+      console.log(`   💨 Speedup: ${speedup.toFixed(1)}x faster`);
+      console.log(`   📈 Improvement: ${improvement.toFixed(1)}%`);
     });
   });
 
@@ -357,5 +547,98 @@ describe('Selector Performance Benchmarks', () => {
       console.log(`   Without optimizations: ${timeWithout.toFixed(2)}ms (${opsPerSecWithout.toFixed(0)} ops/sec)`);
       console.log(`   🚀 Speedup: ${speedup.toFixed(1)}x (${improvement.toFixed(1)}% improvement)\n`);
     }
+  });
+
+  it('should benchmark high-volume operations', () => {
+    // Test many operations to ensure performance remains good under load
+    const targets = [
+      el('.a'), el('.b'), el('.c'),
+      compound([el('.x'), el('.y')]),
+      compound([el('.p'), el('.q')])
+    ];
+
+    const finds = [
+      el('.z'), // Will not match any targets
+      el('.w'),
+      compound([el('.missing')])
+    ];
+
+    console.log('\n🔥 High-Volume Operations Test:');
+
+    // Run many non-matching operations to test overall performance
+    runBenchmark('High-volume non-matching operations', () => {
+      for (const target of targets) {
+        for (const find of finds) {
+          matchSelectors(target, find);
+          if (Math.random() < 0.3) {
+            // Also test partial matching
+            matchSelectors(target, find, true);
+          }
+        }
+      }
+    }, 2000); // Many iterations to stress-test performance
+
+    console.log('   📈 System should maintain good performance under high load');
+  });
+
+  it('benchmarks combinator-aware fast paths vs general algorithm', () => {
+    const results: any[] = [];
+
+    // Test combinator patterns that should hit fast paths
+    const combinatorTestCases = [
+      // 3-component patterns (selector combinator selector)
+      { name: 'Direct child (.parent > .child)', target: sel([el('.parent'), co('>'), el('.child')]), find: sel([el('.parent'), co('>'), el('.child')]) },
+      { name: 'Descendant (.ancestor .descendant)', target: sel([el('.ancestor'), co(' '), el('.descendant')]), find: sel([el('.ancestor'), co(' '), el('.descendant')]) },
+      { name: 'Adjacent sibling (.prev + .next)', target: sel([el('.prev'), co('+'), el('.next')]), find: sel([el('.prev'), co('+'), el('.next')]) },
+      { name: 'General sibling (.first ~ .second)', target: sel([el('.first'), co('~'), el('.second')]), find: sel([el('.first'), co('~'), el('.second')]) },
+
+      // 5-component patterns (selector combinator selector combinator selector)
+      { name: 'Complex (.a > .b .c)', target: sel([el('.a'), co('>'), el('.b'), co(' '), el('.c')]), find: sel([el('.a'), co('>'), el('.b'), co(' '), el('.c')]) },
+      { name: 'Mixed combinators (.x .y + .z)', target: sel([el('.x'), co(' '), el('.y'), co('+'), el('.z')]), find: sel([el('.x'), co(' '), el('.y'), co('+'), el('.z')]) },
+      { name: 'Chain (.p > .q ~ .r)', target: sel([el('.p'), co('>'), el('.q'), co('~'), el('.r')]), find: sel([el('.p'), co('>'), el('.q'), co('~'), el('.r')]) }
+    ];
+
+    for (const testCase of combinatorTestCases) {
+      const target = testCase.target;
+      const find = testCase.find;
+
+      // Measure with all optimizations enabled
+      const withFastPath = runBenchmark(`${testCase.name} (optimized)`, () => {
+        matchSelectors(target, find, true);
+      }, 100000);
+
+      // Measure without fast path optimizations
+      const withoutFastPath = runBenchmark(`${testCase.name} (unoptimized)`, () => {
+        matchSelectorsNoOptimizations(target, find, true);
+      }, 100000);
+
+      const speedup = withFastPath.opsPerSec / withoutFastPath.opsPerSec;
+
+      results.push({
+        pattern: testCase.name,
+        withFastPath: Math.round(withFastPath.opsPerSec),
+        withoutFastPath: Math.round(withoutFastPath.opsPerSec),
+        speedup: speedup.toFixed(1) + 'x'
+      });
+
+      // Verify correctness - both should produce identical results
+      const result1 = matchSelectors(target, find, true);
+      const result2 = matchSelectorsNoOptimizations(target, find, true);
+
+      expect(result1.hasMatch).toBe(result2.hasMatch);
+      expect(result1.hasFullMatch).toBe(result2.hasFullMatch);
+      expect(result1.hasPartialMatch).toBe(result2.hasPartialMatch);
+    }
+
+    console.log('\n🚀 COMBINATOR FAST PATH BENCHMARK');
+    console.log('===================================');
+    console.table(results);
+
+    // Calculate average performance improvement
+    const avgSpeedup = results.reduce((sum, r) => sum + parseFloat(r.speedup), 0) / results.length;
+    console.log(`📊 Average speedup: ${avgSpeedup.toFixed(1)}x`);
+
+    // Should see good speedup for combinator patterns
+    expect(avgSpeedup).toBeGreaterThan(1.2);
   });
 });
