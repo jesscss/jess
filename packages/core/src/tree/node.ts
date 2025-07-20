@@ -6,7 +6,7 @@ import {
 import { type Visitor } from '../visitor';
 import { type Operator } from './util/calculate';
 import type { Class, AbstractClass, Tagged } from 'type-fest';
-import { type Nil } from './nil';
+import type { Nil } from './nil';
 import { getEntriesFromNode, getValues } from './util/collections';
 
 export type { TreeContext };
@@ -409,11 +409,21 @@ export abstract class Node<
     if (isArray(prePost)) {
       for (let [key, node] of prePost.entries()) {
         if (node.type === 'Comment') {
-          /** Maybe don't inherit from comment? */
-          prePost[key] = this.nil().inherit(node);
+          /** Replace comment with a nil node that inherits location */
+          const nilNode = this.nil?.() || this._createMinimalNil();
+          prePost[key] = nilNode.inherit(node);
         }
       }
     }
+  }
+
+  /** Minimal nil fallback for edge cases where prototype method isn't attached yet */
+  private _createMinimalNil(): Node {
+    const nilish = Object.create(this.constructor.prototype);
+    nilish.type = 'Nil';
+    nilish.visible = false;
+    nilish.value = '';
+    return nilish;
   }
 
   /**
@@ -429,11 +439,12 @@ export abstract class Node<
           const copy = n.copy(deep);
           return copy;
         }
-        return this.nil().inherit(this);
+        const nilNode = this.nil?.() || this._createMinimalNil();
+        return nilNode.inherit(n);
       }
     );
-    this.stripPrePost(this.pre);
-    this.stripPrePost(this.post);
+    newNode.stripPrePost(newNode.pre);
+    newNode.stripPrePost(newNode.post);
     return newNode;
   }
 
@@ -514,8 +525,9 @@ export abstract class Node<
     this._treeContext = node.treeContext;
     this.evaluated &&= node.evaluated;
     this.preEvaluated &&= node.preEvaluated;
-    this.pre = node.pre;
-    this.post = node.post;
+    // Create new arrays to avoid shared references
+    this.pre = isArray(node.pre) ? [...node.pre] : node.pre;
+    this.post = isArray(node.post) ? [...node.post] : node.post;
     this.sourceNode = node.sourceNode;
     this.index ??= node.index;
     this.parent = node.parent;
@@ -553,8 +565,11 @@ export abstract class Node<
       return '';
     } else if (value === 1) {
       return ' ';
+    } else if (isArray(value)) {
+      // Handle Node[] array - call toString() on each node
+      return value.map(node => node.toString()).join('');
     } else {
-      return value.toString();
+      return String(value);
     }
   }
 

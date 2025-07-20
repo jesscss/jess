@@ -57,7 +57,9 @@ function handleFullExtend(
   // If selector is already a selector list, add to it
   if (isNode(selector, 'SelectorList')) {
     const newSelectors = [...selector.value, extendWith];
-    return new SelectorList(newSelectors).inherit(selector);
+    // Use clone to preserve comments
+    const copyForInheritance = selector.clone();
+    return new SelectorList(newSelectors).inherit(copyForInheritance);
   }
 
   // If selector is a :is() pseudo-selector, add to its argument list
@@ -66,19 +68,25 @@ function handleFullExtend(
     if (arg && isNode(arg, 'SelectorList')) {
       // Add to existing selector list
       const newSelectors = [...arg.value, extendWith];
-      const newArg = new SelectorList(newSelectors).inherit(arg);
+      const newArg = new SelectorList(newSelectors);
+
+      // Use clone to preserve comments
+      const copyForInheritance = selector.clone();
       return new PseudoSelector({
         name: ':is',
         arg: newArg
-      }).inherit(selector);
+      }).inherit(copyForInheritance);
     } else if (arg) {
       // Convert single selector to list and add extension
       const newSelectors = [arg as Selector, extendWith];
-      const newArg = new SelectorList(newSelectors).inherit(selector);
+      const newArg = new SelectorList(newSelectors);
+
+      // Use clone to preserve comments
+      const copyForInheritance = selector.clone();
       return new PseudoSelector({
         name: ':is',
         arg: newArg
-      }).inherit(selector);
+      }).inherit(copyForInheritance);
     }
   }
 
@@ -88,7 +96,8 @@ function handleFullExtend(
   }
 
   // Default case: create a new selector list
-  return new SelectorList([selector, extendWith]).inherit(selector);
+  const copyForInheritance = selector.clone();
+  return new SelectorList([selector, extendWith]).inherit(copyForInheritance);
 }
 
 /**
@@ -287,6 +296,7 @@ function handleCompoundPartialExtend(
 
       if (compMatchResult.hasMatch) {
         // Replace this component with :is(original, extension)
+        // IMPORTANT: Use comp instead of target to preserve comments!
         const newComponents = [...selector.value];
         newComponents[i] = createIsWrapper([comp, extendWith], comp);
 
@@ -301,13 +311,22 @@ function handleCompoundPartialExtend(
 
 /**
  * Creates an :is() wrapper around the given selectors
+ * Preserves comments on original selectors, strips them from inheritance chain
  */
 function createIsWrapper(selectors: Selector[], inheritFrom: Selector): PseudoSelector {
-  const selectorList = new SelectorList(selectors).inherit(inheritFrom);
-  return new PseudoSelector({
+  // Strip comments only from the inheritance chain to avoid duplication on the wrapper
+  const copyForInheritance = inheritFrom.copy();
+
+  // Create selectorList with original selectors (preserving their comments)
+  const selectorList = new SelectorList(selectors);
+
+  // Create PseudoSelector and inherit from the comment-stripped copy
+  const pseudoSelector = new PseudoSelector({
     name: ':is',
     arg: selectorList
-  }).inherit(inheritFrom);
+  }).inherit(copyForInheritance);
+
+  return pseudoSelector;
 }
 
 /**
