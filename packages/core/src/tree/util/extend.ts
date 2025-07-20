@@ -5,6 +5,7 @@ import { ComplexSelector, type ComplexSelectorValue } from '../selector-complex'
 import { CompoundSelector } from '../selector-compound';
 import { PseudoSelector } from '../selector-pseudo';
 import { Combinator } from '../combinator';
+import { Ampersand } from '../ampersand';
 import { isNode } from './is-node';
 import { matchSelectors } from './match-selector';
 
@@ -15,6 +16,7 @@ import { matchSelectors } from './match-selector';
  * @param target - The target selector to find matches for
  * @param extendWith - The selector to extend with
  * @param partial - Whether to use partial matching (true) or full matching (false)
+ * @param skipAmpersandCheck - Whether to skip ampersand boundary checking (used in recursive calls)
  * @returns The extended selector
  * @throws Error if no match is found
  */
@@ -22,15 +24,31 @@ export function extendSelector(
   selector: Selector,
   target: Selector,
   extendWith: Selector,
-  partial: boolean
+  partial: boolean,
+  skipAmpersandCheck: boolean = false
 ): Selector {
   // Use our sophisticated matching function to find matches
   const matchResult = matchSelectors(selector, target, partial);
 
   if (!matchResult.hasMatch) {
     throw new Error('No match found for target selector');
+  }  // Check for ampersand boundary crossing before extending (unless skipped)
+  if (!skipAmpersandCheck) {
+    const ampersandInfo = analyzeAmpersandBoundary(selector, target);
+    console.log('Ampersand analysis:', {
+      crossesBoundary: ampersandInfo.crossesBoundary,
+      hasAmpersand: !!ampersandInfo.ampersandNode,
+      selectorStr: selector.toTrimmedString(),
+      targetStr: target.toTrimmedString()
+    });
+
+    // Handle ampersand boundary crossing
+    if (ampersandInfo.crossesBoundary) {
+      return handleAmpersandBoundaryCrossing(selector, target, extendWith, ampersandInfo, matchResult);
+    }
   }
 
+  // Standard extension logic
   if (partial) {
     return handlePartialExtend(selector, target, extendWith, matchResult);
   } else {
@@ -403,4 +421,214 @@ function reconstructCompoundSelector(
   const finalComponents = [...contextComponents, newCompound];
 
   return new ComplexSelector(finalComponents as ComplexSelectorValue).inherit(originalSelector);
+}
+
+/**
+ * Information about ampersand boundary analysis
+ */
+interface AmpersandBoundaryInfo {
+  crossesBoundary: boolean;
+  ampersandNode?: Ampersand;
+}
+
+/**
+ * Analyzes if extending the target would cross an ampersand boundary
+ * @param selector - The selector containing potential ampersands
+ * @param target - The target selector being extended
+ * @returns Information about ampersand boundary crossing
+ */
+function analyzeAmpersandBoundary(selector: Selector, target: Selector): AmpersandBoundaryInfo {
+  const ampersandNodes = findAmpersandsInSelector(selector);
+
+  for (const { ampersand } of ampersandNodes) {
+    // Check if the ampersand has a resolved selector
+    if (ampersand.value.selector && !isNode(ampersand.value.selector, 'Nil')) {
+      // To detect boundary crossing, we need to check two things:
+      // 1. Does the target match the resolved form? (potential boundary crossing)
+      // 2. Does the target match the non-ampersand parts only? (boundary preservation)
+
+      // Create a temporary resolved version of the selector by replacing the ampersand
+      const resolvedSelector = replaceAmpersandWithResolved(selector, {
+        crossesBoundary: false,
+        ampersandNode: ampersand
+      });
+
+      // Check if target matches the fully resolved selector
+      const resolvedMatch = matchSelectors(resolvedSelector, target, true);
+
+      // Also check if target matches just the non-ampersand parts
+      const selectorWithoutAmpersand = replaceAmpersandWithEmpty(selector, ampersand);
+      const partialMatch = matchSelectors(selectorWithoutAmpersand, target, true);
+
+      if (resolvedMatch.hasMatch && !partialMatch.hasMatch) {
+        // Target matches resolved form but not the non-ampersand part
+        // This means the match depends on the ampersand resolution = boundary crossing
+        return {
+          crossesBoundary: true,
+          ampersandNode: ampersand
+        };
+      }
+    }
+  }
+
+  return { crossesBoundary: false };
+}
+
+/**
+ * Finds all ampersand nodes in a selector
+ * @param selector - The selector to search
+ * @returns Array of ampersand nodes
+ */
+function findAmpersandsInSelector(selector: Selector): Array<{ ampersand: Ampersand }> {
+  const results: Array<{ ampersand: Ampersand }> = [];
+
+  // Use the nodes() iterator to traverse all nodes recursively
+  for (const node of selector.nodes()) {
+    if (isNode(node, 'Ampersand')) {
+      results.push({ ampersand: node });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Creates a version of the selector with the ampersand removed (for boundary analysis)
+ * @param selector - The selector containing the ampersand
+ * @param ampersand - The ampersand node to remove
+ * @returns Selector with ampersand removed
+ */
+function replaceAmpersandWithEmpty(selector: Selector, ampersand: Ampersand): Selector {
+  // Create a copy of the selector
+  const selectorCopy = selector.copy();
+
+  // Find and remove the ampersand node
+  for (const node of selectorCopy.nodes()) {
+    if (node === ampersand || (isNode(node, 'Ampersand')
+      && node.value.selector === ampersand.value.selector)) {
+      // We need to find the parent container and remove the ampersand
+      const parent = findParentOfNode(selectorCopy, node);
+      if (parent && isNode(parent, 'CompoundSelector')) {
+        // Remove from compound selector
+        parent.value = parent.value.filter((n: any) => n !== node);
+      }
+      break;
+    }
+  }
+
+  return selectorCopy;
+}
+
+/**
+ * Handles extension when it crosses an ampersand boundary
+ * @param selector - The original selector
+ * @param target - The target being extended
+ * @param extendWith - The selector to extend with
+ * @param ampersandInfo - Information about the ampersand boundary
+ * @param matchResult - The match result
+ * @returns Extended selector with ampersand resolved and hoisted to root
+ */
+function handleAmpersandBoundaryCrossing(
+  selector: Selector,
+  target: Selector,
+  extendWith: Selector,
+  ampersandInfo: AmpersandBoundaryInfo,
+  matchResult: any
+): Selector {
+  if (!ampersandInfo.ampersandNode?.value.selector || isNode(ampersandInfo.ampersandNode.value.selector, 'Nil')) {
+    throw new Error('Ampersand boundary crossing detected but ampersand has no resolved selector');
+  }
+
+  // Step 1: Replace the ampersand with its resolved selector
+  const resolvedSelector = replaceAmpersandWithResolved(selector, ampersandInfo);
+
+  // Step 2: Extend the resolved selector (skip ampersand check to prevent recursion)
+  const extendedSelector = extendSelector(resolvedSelector, target, extendWith, false, true);
+
+  // Step 3: Mark for hoisting to root
+  return markSelectorForHoisting(extendedSelector);
+}
+
+/**
+ * Replaces an ampersand with its resolved selector value
+ * @param selector - The selector containing the ampersand
+ * @param ampersandInfo - Information about the ampersand to replace
+ * @returns Selector with ampersand replaced by resolved selector
+ */
+function replaceAmpersandWithResolved(selector: Selector, ampersandInfo: AmpersandBoundaryInfo): Selector {
+  if (!ampersandInfo.ampersandNode?.value.selector) {
+    return selector;
+  }
+
+  // Create a copy of the selector
+  const selectorCopy = selector.copy();
+  const resolvedSelector = ampersandInfo.ampersandNode.value.selector.copy();
+  // Find and replace all instances of the specific ampersand node
+  // Since we're working with copies, we need to find the corresponding ampersand in the copy
+  for (const node of selectorCopy.nodes()) {
+    if (isNode(node, 'Ampersand')
+      && node.value.selector?.valueOf() === ampersandInfo.ampersandNode.value.selector?.valueOf()) {
+      // Replace the ampersand's content with the resolved selector
+      // We need to find the parent container and replace the ampersand
+      const parent = findParentOfNode(selectorCopy, node);
+      if (parent) {
+        replaceNodeInParent(parent, node, resolvedSelector.inherit(ampersandInfo.ampersandNode));
+      }
+      break; // Only replace the first matching ampersand
+    }
+  }
+
+  return selectorCopy;
+}
+
+/**
+ * Finds the parent container of a specific node
+ * @param root - The root selector to search in
+ * @param targetNode - The node to find the parent of
+ * @returns The parent container or null if not found
+ */
+function findParentOfNode(root: Selector, targetNode: any): any {
+  for (const node of root.nodes()) {
+    if (isNode(node, 'CompoundSelector') || isNode(node, 'ComplexSelector') || isNode(node, 'SelectorList')) {
+      for (let i = 0; i < node.value.length; i++) {
+        if (node.value[i] === targetNode) {
+          return node;
+        }
+      }
+    } else if (isNode(node, 'PseudoSelector') && node.value.arg === targetNode) {
+      return node;
+    }
+  }
+  return null;
+}
+
+/**
+ * Replaces a node within its parent container
+ * @param parent - The parent container
+ * @param oldNode - The node to replace
+ * @param newNode - The replacement node
+ */
+function replaceNodeInParent(parent: any, oldNode: any, newNode: any): void {
+  if (isNode(parent, 'CompoundSelector') || isNode(parent, 'ComplexSelector') || isNode(parent, 'SelectorList')) {
+    for (let i = 0; i < parent.value.length; i++) {
+      if (parent.value[i] === oldNode) {
+        parent.value[i] = newNode;
+        break;
+      }
+    }
+  } else if (isNode(parent, 'PseudoSelector') && parent.value.arg === oldNode) {
+    parent.value.arg = newNode;
+  }
+}
+
+/**
+ * Marks a selector for hoisting to root by setting hoistToRoot option
+ * @param selector - The selector to mark for hoisting
+ * @returns Selector marked for hoisting
+ */
+function markSelectorForHoisting(selector: Selector): Selector {
+  // Clone the selector and set hoistToRoot option
+  const hoistedSelector = selector.copy();
+  hoistedSelector.options.hoistToRoot = true;
+  return hoistedSelector;
 }

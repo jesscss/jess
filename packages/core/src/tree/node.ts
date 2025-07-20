@@ -405,8 +405,10 @@ export abstract class Node<
   }
 
   /** Remove comments from pre/post */
-  stripPrePost(prePost: Node['pre']) {
+  stripPrePost(n: Node, preOrPost: 'pre' | 'post') {
+    const prePost = n[preOrPost];
     if (isArray(prePost)) {
+      n[preOrPost] = [...prePost];
       for (let [key, node] of prePost.entries()) {
         if (node.type === 'Comment') {
           /** Replace comment with a nil node that inherits location */
@@ -443,8 +445,8 @@ export abstract class Node<
         return nilNode.inherit(n);
       }
     );
-    newNode.stripPrePost(newNode.pre);
-    newNode.stripPrePost(newNode.post);
+    newNode.stripPrePost(newNode, 'pre');
+    newNode.stripPrePost(newNode, 'post');
     return newNode;
   }
 
@@ -525,9 +527,9 @@ export abstract class Node<
     this._treeContext = node.treeContext;
     this.evaluated &&= node.evaluated;
     this.preEvaluated &&= node.preEvaluated;
-    // Create new arrays to avoid shared references
-    this.pre = isArray(node.pre) ? [...node.pre] : node.pre;
-    this.post = isArray(node.post) ? [...node.post] : node.post;
+    // Note that we need to create new arrays if we mutate pre/post later
+    this.pre = node.pre;
+    this.post = node.post;
     this.sourceNode = node.sourceNode;
     this.index ??= node.index;
     this.parent = node.parent;
