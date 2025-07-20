@@ -1,6 +1,6 @@
 import { SelectorTree } from '../tree';
 import { sellist, sel, compound, el, pseudo, co } from '..';
-import { getPaths, getSelectorFromTree, getTreeNode } from '../util/selector';
+// import { getPaths, getSelectorFromTree, getTreeNode } from '../util/selector';
 
 describe('Selector tree', () => {
   // test.skip('get all tree paths', () => {

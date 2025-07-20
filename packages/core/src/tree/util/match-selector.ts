@@ -45,8 +45,69 @@ export interface MatchResult {
   remainders: Selector[];
 }
 
+/**
+ * MatchResult helper for successful matches
+ * @param matched - Array of matched selectors
+ * @param remainders - Array of remainder selectors (empty for full matches)
+ * @returns MatchResult indicating successful match
+ */
+function createSuccessResult(matched: Selector[], remainders: Selector[] = []): MatchResult {
+  return createMatchResult(true, remainders.length === 0, remainders.length > 0, matched, remainders);
+}
+
+/**
+ * MatchResult helper for failed matches
+ * @param target - The target selector that failed to match
+ * @returns MatchResult indicating no match
+ */
+function createFailureResult(target: Selector): MatchResult {
+  return createMatchResult(false, false, false, [], [target]);
+}
+
 // Pre-allocated result objects for common cases to reduce object creation
 const EXACT_MATCH_RESULT_CACHE = new WeakMap<Selector, MatchResult>();
+
+/**
+ * Creates remainder selectors from component array
+ * @param components - Array of selector components
+ * @param inheritFrom - Node to inherit properties from
+ * @returns Array of remainder selectors
+ */
+function createRemainderSelectors(components: Selector[], inheritFrom: Selector): Selector[] {
+  if (components.length === 0) return [];
+  if (components.length === 1) return [components[0]!];
+  return [new CompoundSelector(components as any).inherit(inheritFrom)];
+}
+
+/**
+ * Attempts fast rejection optimizations before full matching
+ * @param target - Target selector
+ * @param find - Find selector
+ * @param partial - Whether partial matching is enabled
+ * @returns MatchResult if fast path succeeded, null to continue with full matching
+ */
+function tryFastRejectionOptimizations(target: Selector, find: Selector, partial: boolean): MatchResult | null {
+  /** OPTIMIZATION #4: KeySet fast rejection - bail early for non-matches */
+  /** This is crucial for stylesheet performance where non-matches are the overwhelming majority */
+  /** Use canFastReject to determine if keySet disjointness guarantees no match */
+  if (target.keySet && find.keySet
+    && target.keySet.isDisjointFrom(find.keySet)
+    && target.canFastReject && find.canFastReject) {
+    /** No common keys and both selectors are safe for fast rejection - impossible match, bail immediately */
+    return createFailureResult(target);
+  }
+
+  /** OPTIMIZATION #5: KeySet subset rejection for partial matches */
+  /** When doing partial matching and find selector has no alternatives (canFastReject = true), */
+  /** we can use set relationships to fast reject cases where find requires keys target doesn't have */
+  if (partial && find.canFastReject && target.keySet && find.keySet
+    && !find.keySet.isSubsetOf(target.keySet)) {
+    /** Find requires keys that target doesn't have - impossible partial match, bail immediately */
+    return createFailureResult(target);
+  }
+
+  return null;
+}
 
 function createMatchResult(hasMatch: boolean, hasFullMatch: boolean, hasPartialMatch: boolean, matched: Selector[], remainders: Selector[]): MatchResult {
   return {
@@ -58,12 +119,20 @@ function createMatchResult(hasMatch: boolean, hasFullMatch: boolean, hasPartialM
   };
 }
 
+/**
+ * Matches target selector against find selector with optional partial matching
+ * Implements a sophisticated 7-layer optimization system for CSS selector matching
+ * @param target - The selector to match against
+ * @param find - The selector to find matches for
+ * @param partial - Whether to allow partial matches (default: false)
+ * @returns MatchResult containing match status, matched selectors, and remainders
+ */
 export function matchSelectors(target: Selector, find: Selector, partial = false): MatchResult {
-  // Handle the key insight: right-to-left matching through :is() alternatives
+  /** Handle the key insight: right-to-left matching through :is() alternatives */
 
-  // Fast path: Check for exact match first (most common case)
+  /** Fast path: Check for exact match first (most common case) */
   if (target.valueOf() === find.valueOf()) {
-    // Try to use cached result to reduce object creation
+    /** Try to use cached result to reduce object creation */
     let cachedResult = EXACT_MATCH_RESULT_CACHE.get(target);
     if (!cachedResult) {
       cachedResult = {
@@ -78,26 +147,13 @@ export function matchSelectors(target: Selector, find: Selector, partial = false
     return cachedResult;
   }
 
-  // OPTIMIZATION #4: KeySet fast rejection - bail early for non-matches
-  // This is crucial for stylesheet performance where non-matches are the overwhelming majority
-  // Use canFastReject to determine if keySet disjointness guarantees no match
-  if (target.keySet && find.keySet
-    && target.keySet.isDisjointFrom(find.keySet)
-    && target.canFastReject && find.canFastReject) {
-    // No common keys and both selectors are safe for fast rejection - impossible match, bail immediately
-    return createMatchResult(false, false, false, [], [target]);
+  /** Apply fast rejection optimizations */
+  const fastRejectResult = tryFastRejectionOptimizations(target, find, partial);
+  if (fastRejectResult) {
+    return fastRejectResult;
   }
 
-  // OPTIMIZATION #5: KeySet subset rejection for partial matches
-  // When doing partial matching and find selector has no alternatives (canFastReject = true),
-  // we can use set relationships to fast reject cases where find requires keys target doesn't have
-  if (partial && find.canFastReject && target.keySet && find.keySet
-    && !find.keySet.isSubsetOf(target.keySet)) {
-    // Find requires keys that target doesn't have - impossible partial match, bail immediately
-    return createMatchResult(false, false, false, [], [target]);
-  }
-
-  // OPTIMIZATION #6: Fast paths for common selector patterns
+  /** OPTIMIZATION #6: Fast paths for common selector patterns */
   // These cover the most frequent selector types in typical stylesheets
   // Only use fast paths when both selectors can safely fast reject
   if (target.canFastReject && find.canFastReject) {
@@ -138,8 +194,14 @@ export function matchSelectors(target: Selector, find: Selector, partial = false
   }
 
   // Handle :is() pseudo-selectors - check if find matches any alternative
-  if (isNode(target, 'PseudoSelector') && target.value.name === ':is') {
-    return matchIsPseudoSelector(target, find, partial);
+  if (isNode(target, 'PseudoSelector')) {
+    if (target.value.name === ':is') {
+      return matchIsPseudoSelector(target, find, partial);
+    }
+    // Handle other pseudo-selectors with Selector args - match by name equality and arg matching
+    if (isNode(find, 'PseudoSelector')) {
+      return matchGeneralPseudoSelectors(target, find, partial);
+    }
   }
 
   // Handle selector lists - find matches any selector in the list
@@ -156,9 +218,16 @@ export function matchSelectors(target: Selector, find: Selector, partial = false
   return createMatchResult(false, false, false, [], [target]);
 }
 
+/**
+ * Matches target selector against a selector list
+ * @param target - The target selector to match against
+ * @param find - The selector list to find matches within
+ * @param partial - Whether to allow partial matches
+ * @returns MatchResult from first successful match, or failure result
+ */
 function matchTargetAgainstSelectorList(target: Selector, find: SelectorList, partial: boolean): MatchResult {
-  // When find is a selector list, check if target matches any selector in the list
-  // This handles cases like: target .a, find [.a, .b] -> should match because .a is in the list
+  /** When find is a selector list, check if target matches any selector in the list */
+  /** This handles cases like: target .a, find [.a, .b] -> should match because .a is in the list */
 
   for (const selector of find.value) {
     const result = matchSelectors(target, selector, partial);
@@ -167,34 +236,41 @@ function matchTargetAgainstSelectorList(target: Selector, find: SelectorList, pa
     }
   }
 
-  return createMatchResult(false, false, false, [], [target]);
+  return createFailureResult(target);
 }
 
+/**
+ * Matches compound selector against find selector with partial matching support
+ * @param target - The compound selector to match against
+ * @param find - The selector to find matches for
+ * @param partial - Whether to allow partial matches
+ * @returns MatchResult with component-level matching details
+ */
 function matchCompoundSelector(target: CompoundSelector, find: Selector, partial: boolean): MatchResult {
-  // Handle the reverse case: find is a compound selector and target contains :is()
+  /** Handle the reverse case: find is a compound selector and target contains :is() */
   if (isNode(find, 'CompoundSelector')) {
     return matchCompoundToCompound(target, find, partial);
   }
 
-  // The key insight: when target has :is(.a).b and find is .b
-  // we should match .b from the compound, leaving :is(.a) as remainder
+  /** The key insight: when target has :is(.a).b and find is .b */
+  /** we should match .b from the compound, leaving :is(.a) as remainder */
   for (let i = 0; i < target.value.length; i++) {
     const component = target.value[i]!;
 
-    // Direct component match - use partial flag for :is() cases
+    /** Direct component match - use partial flag for :is() cases */
     const componentResult = matchSelectors(component, find, partial);
     if (componentResult.hasMatch && (componentResult.hasFullMatch || (partial && componentResult.hasPartialMatch))) {
-      // Build remainder by removing this component
+      /** Build remainder by removing this component */
       let remainderComponents = target.value.filter((_, idx) => idx !== i);
 
-      // For compound selectors, if we have a partial match with remainders,
-      // we need to handle them more carefully
+      /** For compound selectors, if we have a partial match with remainders, */
+      /** we need to handle them more carefully */
       if (componentResult.hasPartialMatch && componentResult.remainders.length > 0) {
-        // If there are remainders from the matched component, we need to reconstruct
-        // the compound selector with both the unmatched original components and
-        // the remainders from the partial match
+        /** If there are remainders from the matched component, we need to reconstruct */
+        /** the compound selector with both the unmatched original components and */
+        /** the remainders from the partial match */
 
-        // Get the remaining simple selectors
+        /** Get the remaining simple selectors */
         const remainingSimpleSelectors = remainderComponents;
 
         // The remainders from partial match might need to be added separately
@@ -209,52 +285,29 @@ function matchCompoundSelector(target: CompoundSelector, find: Selector, partial
           }
         }
 
-        // Add the remainders from the partial match
+        /** Add the remainders from the partial match */
         allRemainders.push(...componentResult.remainders);
 
-        return {
-          hasMatch: true,
-          hasFullMatch: false,
-          hasPartialMatch: true,
-          matched: componentResult.matched,
-          remainders: allRemainders
-        };
+        return createSuccessResult(componentResult.matched, allRemainders);
       } else {
-        // Full match case - simpler handling
-        let remainders: Selector[];
-        if (remainderComponents.length === 0) {
-          remainders = [];
-        } else if (remainderComponents.length === 1) {
-          remainders = [remainderComponents[0]!];
-        } else {
-          // Create new compound selector with remaining components
-          remainders = [new CompoundSelector(remainderComponents).inherit(target)];
-        }
-
-        return {
-          hasMatch: true,
-          hasFullMatch: remainders.length === 0,
-          hasPartialMatch: remainders.length > 0,
-          matched: componentResult.matched,
-          remainders: remainders
-        };
+        /** Full match case - simpler handling */
+        const remainders = createRemainderSelectors(remainderComponents, target);
+        return createSuccessResult(componentResult.matched, remainders);
       }
     }
   }
 
-  return {
-    hasMatch: false,
-    hasFullMatch: false,
-    hasPartialMatch: false,
-    matched: [],
-    remainders: [target]
-  };
+  return createFailureResult(target);
 }
 
+/**
+ * Checks if two compound selectors have equivalent components (same set of simple selectors)
+ * regardless of order. This handles cases like .d.b matching .b.d
+ * @param target - The target compound selector
+ * @param find - The find compound selector
+ * @returns true if selectors are equivalent
+ */
 function areCompoundSelectorsEquivalent(target: CompoundSelector, find: CompoundSelector): boolean {
-  // Check if two compound selectors have the same set of simple selectors
-  // regardless of order. This handles cases like .d.b matching .b.d
-
   const targetLen = target.value.length;
   const findLen = find.value.length;
 
@@ -300,19 +353,20 @@ function areCompoundSelectorsEquivalent(target: CompoundSelector, find: Compound
   return true;
 }
 
+/**
+ * Handles compound to compound matching with component-level matching
+ * @param target - The target compound selector
+ * @param find - The find compound selector
+ * @param partial - Whether to allow partial matches
+ * @returns MatchResult with detailed component matching
+ */
 function matchCompoundToCompound(target: CompoundSelector, find: CompoundSelector, partial: boolean): MatchResult {
-  // Handle compound to compound matching: target .a:is(.b, .c), find .a.b
-  // Need to match all components in find against components in target
+  /** Handle compound to compound matching: target .a:is(.b, .c), find .a.b */
+  /** Need to match all components in find against components in target */
 
-  // First check if they're semantically equivalent (same components in any order)
+  /** First check if they're semantically equivalent (same components in any order) */
   if (areCompoundSelectorsEquivalent(target, find)) {
-    return {
-      hasMatch: true,
-      hasFullMatch: true,
-      hasPartialMatch: false,
-      matched: [find],
-      remainders: []
-    };
+    return createSuccessResult([find]);
   }
 
   const matchedComponents: Selector[] = [];
@@ -340,76 +394,114 @@ function matchCompoundToCompound(target: CompoundSelector, find: CompoundSelecto
     }
   }
 
-  // Check if all find components were matched
+  /** Check if all find components were matched */
   if (unmatchedFindComponents.length === 0) {
-    // All find components matched
-    let remainders: Selector[];
-    if (unmatchedTargetComponents.length === 0) {
-      remainders = [];
-    } else if (unmatchedTargetComponents.length === 1) {
-      remainders = [unmatchedTargetComponents[0]!];
-    } else {
-      remainders = [new CompoundSelector(unmatchedTargetComponents).inherit(target)];
-    }
+    /** All find components matched */
+    const remainders = createRemainderSelectors(unmatchedTargetComponents, target);
 
     const matched = matchedComponents.length === 1
       ? matchedComponents
-      : [find]; // Return the original find as matched
+      : [find]; /** Return the original find as matched */
 
-    return {
-      hasMatch: true,
-      hasFullMatch: remainders.length === 0,
-      hasPartialMatch: remainders.length > 0,
-      matched: matched,
-      remainders: remainders
-    };
+    return createSuccessResult(matched, remainders);
   }
 
-  return {
-    hasMatch: false,
-    hasFullMatch: false,
-    hasPartialMatch: false,
-    matched: [],
-    remainders: [target]
-  };
+  return createFailureResult(target);
 }
 
+/**
+ * Handles :is() pseudo-selector matching by checking each alternative
+ * @param target - The :is() pseudo-selector to match against
+ * @param find - The selector to find matches for
+ * @param partial - Whether to allow partial matches
+ * @returns MatchResult from first successful alternative match
+ */
 function matchIsPseudoSelector(target: PseudoSelector, find: Selector, partial: boolean): MatchResult {
-  // Handle :is() by checking each alternative
+  /** Handle :is() by checking each alternative */
   const arg = target.value.arg;
   if (!arg || !isNode(arg, 'SelectorList')) {
-    return {
-      hasMatch: false,
-      hasFullMatch: false,
-      hasPartialMatch: false,
-      matched: [],
-      remainders: [target]
-    };
+    return createFailureResult(target);
   }
 
-  // Try matching against each alternative in the :is()
+  /** Try matching against each alternative in the :is() */
   for (const alternative of arg.value) {
     const altResult = matchSelectors(alternative, find, partial);
     if (altResult.hasMatch) {
-      return {
-        hasMatch: true,
-        hasFullMatch: altResult.hasFullMatch,
-        hasPartialMatch: altResult.hasPartialMatch,
-        matched: altResult.matched,
-        remainders: altResult.remainders
-      };
+      return altResult;
     }
   }
 
-  return {
-    hasMatch: false,
-    hasFullMatch: false,
-    hasPartialMatch: false,
-    matched: [],
-    remainders: [target]
-  };
+  return createFailureResult(target);
 }
 
+/**
+ * Handles general pseudo-selector matching (excluding :is())
+ * @param target - The target pseudo-selector
+ * @param find - The find pseudo-selector
+ * @param partial - Whether to allow partial matches
+ * @returns MatchResult based on name equality and arg matching
+ */
+function matchGeneralPseudoSelectors(target: PseudoSelector, find: PseudoSelector, partial: boolean): MatchResult {
+  console.log('DEBUG: matchGeneralPseudoSelectors called');
+  console.log('DEBUG: target.value.name:', target.value.name);
+  console.log('DEBUG: find.value.name:', find.value.name);
+
+  /** Check if names match */
+  if (target.value.name !== find.value.name) {
+    console.log('DEBUG: Names do not match');
+    return createFailureResult(target);
+  }
+
+  console.log('DEBUG: Names match');
+
+  /** If both have Selector args, match them recursively */
+  const targetArg = target.value.arg;
+  const findArg = find.value.arg;
+
+  console.log('DEBUG: targetArg:', targetArg ? targetArg.constructor.name : 'null');
+  console.log('DEBUG: findArg:', findArg ? findArg.constructor.name : 'null');
+
+  if (targetArg && findArg && isSelector(targetArg) && isSelector(findArg)) {
+    console.log('DEBUG: Both have selector args, matching recursively');
+    const argResult = matchSelectors(targetArg as Selector, findArg as Selector, false); // Full match required for pseudo-selector args
+    console.log('DEBUG: argResult.hasMatch:', argResult.hasMatch);
+    console.log('DEBUG: argResult.hasFullMatch:', argResult.hasFullMatch);
+    if (argResult.hasMatch && argResult.hasFullMatch) {
+      console.log('DEBUG: Arg matching succeeded, returning success');
+      return createSuccessResult([target], []);
+    }
+    console.log('DEBUG: Arg matching failed, returning failure');
+    return createFailureResult(target);
+  }
+
+  console.log('DEBUG: Falling back to valueOf comparison');
+  console.log('DEBUG: target.valueOf():', target.valueOf());
+  console.log('DEBUG: find.valueOf():', find.valueOf());
+
+  /** Fall back to valueOf comparison for other cases */
+  if (target.valueOf() === find.valueOf()) {
+    console.log('DEBUG: valueOf match successful');
+    return createSuccessResult([target], []);
+  }
+
+  console.log('DEBUG: valueOf match failed');
+  return createFailureResult(target);
+}
+
+/**
+ * Helper function to check if a value is a Selector node
+ */
+function isSelector(value: any): boolean {
+  return isNode(value, 'Selector');
+}
+
+/**
+ * Handles matching against selector lists - checks each selector in the list
+ * @param target - The selector list to match against
+ * @param find - The selector to find matches for
+ * @param partial - Whether to allow partial matches
+ * @returns MatchResult aggregating all matches found
+ */
 function matchSelectorList(target: SelectorList, find: Selector, partial: boolean): MatchResult {
   const matches: Selector[] = [];
   const remainders: Selector[] = [];

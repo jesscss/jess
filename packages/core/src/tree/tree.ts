@@ -24,6 +24,7 @@ import type { SimpleSelector } from './selector-simple';
 import type { PseudoSelector } from './selector-pseudo';
 import type { Combinator } from './combinator';
 import type { Sequence } from './sequence';
+import type { Selector } from './selector';
 
 export type Nodes = {
   Ampersand: typeof Ampersand;
@@ -34,6 +35,7 @@ export type Nodes = {
   Expression: typeof Expression;
   VarDeclaration: typeof VarDeclaration;
   Dimension: typeof Dimension;
+  Selector: typeof Selector;
   BasicSelector: typeof BasicSelector;
   SimpleSelector: typeof SimpleSelector;
   PseudoSelector: typeof PseudoSelector;

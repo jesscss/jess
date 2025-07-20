@@ -1,5 +1,5 @@
 import { el, sel, sellist, compound, is, co } from '../../..';
-import { matchSelectors } from '../selector';
+import { matchSelectors } from '../match-selector';
 
 describe(':is() Right-to-Left Backtracking Tests', () => {
   it('should understand the basic concept with simple example', () => {

@@ -1,3 +1,8 @@
+# Jul 19, 2025
+
+Selector matching and extend logic maybe done?? Used Claude 4 Sonnet quite a bit.
+
+
 # Jul 12, 2025
 
  Finished migrating generating a function from mixins to rules. Started work on registering mixins / rulesets to the rules scope.

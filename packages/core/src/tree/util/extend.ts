@@ -6,7 +6,7 @@ import { CompoundSelector } from '../selector-compound';
 import { PseudoSelector } from '../selector-pseudo';
 import { Combinator } from '../combinator';
 import { isNode } from './is-node';
-import { matchSelectors } from './selector';
+import { matchSelectors } from './match-selector';
 
 /**
  * Extends a selector by finding matches for a target selector and adding the extension.
@@ -40,6 +40,11 @@ export function extendSelector(
 
 /**
  * Handles full match extension - adds the extension as a new alternative
+ * @param selector - The selector to extend
+ * @param target - The target selector that was matched
+ * @param extendWith - The selector to add as an alternative
+ * @param matchResult - The result from the selector matching operation
+ * @returns Extended selector with the new alternative
  */
 function handleFullExtend(
   selector: Selector,
@@ -88,6 +93,11 @@ function handleFullExtend(
 
 /**
  * Handles full extend for compound selectors containing :is()
+ * @param selector - The compound selector to extend
+ * @param target - The target selector that was matched
+ * @param extendWith - The selector to add as an alternative
+ * @param matchResult - The result from the selector matching operation
+ * @returns Extended compound selector or new selector list
  */
 function handleCompoundFullExtend(
   selector: CompoundSelector,
@@ -126,6 +136,11 @@ function handleCompoundFullExtend(
 
 /**
  * Handles partial match extension - modifies the selector structure to include the extension
+ * @param selector - The selector to extend
+ * @param target - The target selector that was partially matched
+ * @param extendWith - The selector to add as an alternative
+ * @param matchResult - The result from the partial selector matching operation
+ * @returns Extended selector with remainders properly handled
  */
 function handlePartialExtend(
   selector: Selector,
@@ -155,6 +170,11 @@ function handlePartialExtend(
 
 /**
  * Handles partial extension for complex selectors
+ * @param selector - The complex selector to extend
+ * @param target - The target selector that was partially matched
+ * @param extendWith - The selector to add as an alternative
+ * @param matchResult - The result from the partial selector matching operation
+ * @returns Extended complex selector with proper remainder handling
  */
 function handleComplexPartialExtend(
   selector: ComplexSelector,
@@ -215,23 +235,24 @@ function handleComplexPartialExtend(
       const newComponents = [...remainder.value, isWrapper as any];
       return new ComplexSelector(newComponents).inherit(selector);
     } else if (remainder) {
-      // Remainder is simple - need to determine if we need a combinator
-      // Check if the original selector had a combinator before the target
-      let needsCombinator = false;
+      // Remainder is simple - need to determine if we need a combinator and which one
+      // Extract the actual combinator from the original selector structure
+      let originalCombinator: Combinator | null = null;
 
       if (isNode(selector, 'ComplexSelector')) {
         const components = selector.value;
-        // Look for combinator pattern in the original selector
-        for (let i = 0; i < components.length - 1; i++) {
-          if (isNode(components[i + 1], 'Combinator')) {
-            needsCombinator = true;
+        // Find the combinator that was used in the original selector
+        for (let i = 0; i < components.length; i++) {
+          if (isNode(components[i], 'Combinator')) {
+            originalCombinator = components[i] as Combinator;
             break;
           }
         }
       }
 
-      if (needsCombinator) {
-        const newComponents = [remainder as any, new Combinator('>').inherit(remainder as any), isWrapper as any];
+      if (originalCombinator) {
+        // Use the original combinator, not hardcoded '>'
+        const newComponents = [remainder as any, originalCombinator, isWrapper as any];
         return new ComplexSelector(newComponents).inherit(selector);
       } else {
         const newComponents = [remainder as any, isWrapper as any];
@@ -246,6 +267,11 @@ function handleComplexPartialExtend(
 
 /**
  * Handles partial extension for compound selectors
+ * @param selector - The compound selector to extend
+ * @param target - The target selector that was partially matched
+ * @param extendWith - The selector to add as an alternative
+ * @param matchResult - The result from the partial selector matching operation
+ * @returns Extended compound selector with :is() wrapper
  */
 function handleCompoundPartialExtend(
   selector: CompoundSelector,
@@ -286,7 +312,6 @@ function createIsWrapper(selectors: Selector[], inheritFrom: Selector): PseudoSe
 
 /**
  * Check if we need compound selector reconstruction
- * This happens when the target was matched within a compound selector
  */
 function checkCompoundReconstruction(
   originalSelector: ComplexSelector,
