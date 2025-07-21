@@ -32,19 +32,20 @@ export function extendSelector(
 
   if (!matchResult.hasMatch) {
     throw new Error('No match found for target selector');
-  }  // Check for ampersand boundary crossing before extending (unless skipped)
-  if (!skipAmpersandCheck) {
-    const ampersandInfo = analyzeAmpersandBoundary(selector, target);
-    console.log('Ampersand analysis:', {
-      crossesBoundary: ampersandInfo.crossesBoundary,
-      hasAmpersand: !!ampersandInfo.ampersandNode,
-      selectorStr: selector.toTrimmedString(),
-      targetStr: target.toTrimmedString()
-    });
+  }
 
-    // Handle ampersand boundary crossing
-    if (ampersandInfo.crossesBoundary) {
-      return handleAmpersandBoundaryCrossing(selector, target, extendWith, ampersandInfo, matchResult);
+  // Check for ampersand boundary crossing during extension (unless skipped)
+  if (!skipAmpersandCheck) {
+    const ampersandCrossingInfo = checkAmpersandCrossingDuringExtension(selector, target);
+
+    if (ampersandCrossingInfo.crossed) {
+      return handleAmpersandBoundaryCrossing(
+        selector,
+        target,
+        extendWith,
+        ampersandCrossingInfo.ampersandNode!,
+        matchResult
+      );
     }
   }
 
@@ -424,54 +425,47 @@ function reconstructCompoundSelector(
 }
 
 /**
- * Information about ampersand boundary analysis
- */
-interface AmpersandBoundaryInfo {
-  crossesBoundary: boolean;
-  ampersandNode?: Ampersand;
-}
-
-/**
- * Analyzes if extending the target would cross an ampersand boundary
+ * Checks if extending the target would cross an ampersand boundary
+ * This is simpler than the old analyzeAmpersandBoundary - we just check if:
+ * 1. Selector contains ampersands with resolved values
+ * 2. Target would match the resolved form of those ampersands
  * @param selector - The selector containing potential ampersands
  * @param target - The target selector being extended
  * @returns Information about ampersand boundary crossing
  */
-function analyzeAmpersandBoundary(selector: Selector, target: Selector): AmpersandBoundaryInfo {
+function checkAmpersandCrossingDuringExtension(selector: Selector, target: Selector): {
+  crossed: boolean;
+  ampersandNode?: Ampersand;
+} {
+  // Find ampersands in the selector
   const ampersandNodes = findAmpersandsInSelector(selector);
 
   for (const { ampersand } of ampersandNodes) {
-    // Check if the ampersand has a resolved selector
-    if (ampersand.value.selector && !isNode(ampersand.value.selector, 'Nil')) {
-      // To detect boundary crossing, we need to check two things:
-      // 1. Does the target match the resolved form? (potential boundary crossing)
-      // 2. Does the target match the non-ampersand parts only? (boundary preservation)
+    // Skip ampersands without resolved selectors
+    if (!ampersand.value.selector || isNode(ampersand.value.selector, 'Nil')) {
+      continue;
+    }
 
-      // Create a temporary resolved version of the selector by replacing the ampersand
-      const resolvedSelector = replaceAmpersandWithResolved(selector, {
-        crossesBoundary: false,
+    // Create resolved version by replacing ampersand with its resolved selector
+    const resolvedSelector = replaceAmpersandWithItsValue(selector, ampersand);
+
+    // Check if target matches the resolved version
+    const resolvedMatch = matchSelectors(resolvedSelector, target, true);
+
+    // Also check if target matches the selector without this ampersand
+    const selectorWithoutAmpersand = replaceAmpersandWithEmpty(selector, ampersand);
+    const nonAmpersandMatch = matchSelectors(selectorWithoutAmpersand, target, true);
+
+    if (resolvedMatch.hasMatch && !nonAmpersandMatch.hasMatch) {
+      // Target only matches when ampersand is resolved = boundary crossing
+      return {
+        crossed: true,
         ampersandNode: ampersand
-      });
-
-      // Check if target matches the fully resolved selector
-      const resolvedMatch = matchSelectors(resolvedSelector, target, true);
-
-      // Also check if target matches just the non-ampersand parts
-      const selectorWithoutAmpersand = replaceAmpersandWithEmpty(selector, ampersand);
-      const partialMatch = matchSelectors(selectorWithoutAmpersand, target, true);
-
-      if (resolvedMatch.hasMatch && !partialMatch.hasMatch) {
-        // Target matches resolved form but not the non-ampersand part
-        // This means the match depends on the ampersand resolution = boundary crossing
-        return {
-          crossesBoundary: true,
-          ampersandNode: ampersand
-        };
-      }
+      };
     }
   }
 
-  return { crossesBoundary: false };
+  return { crossed: false };
 }
 
 /**
@@ -490,6 +484,36 @@ function findAmpersandsInSelector(selector: Selector): Array<{ ampersand: Ampers
   }
 
   return results;
+}
+
+/**
+ * Creates a version of the selector with the specified ampersand replaced by its resolved value
+ * @param selector - The selector containing the ampersand
+ * @param ampersand - The ampersand node to replace
+ * @returns Selector with ampersand replaced by its resolved selector
+ */
+function replaceAmpersandWithItsValue(selector: Selector, ampersand: Ampersand): Selector {
+  if (!ampersand.value.selector) {
+    return selector;
+  }
+
+  // Create a copy of the selector
+  const selectorCopy = selector.copy();
+  const resolvedSelector = ampersand.value.selector.copy();
+
+  // Find and replace the ampersand node using the existing helper functions
+  for (const node of selectorCopy.nodes()) {
+    if (isNode(node, 'Ampersand') && node.value.selector?.valueOf() === ampersand.value.selector?.valueOf()) {
+      // Replace the ampersand with its resolved selector using existing helper
+      const parent = findParentOfNode(selectorCopy, node);
+      if (parent) {
+        replaceNodeInParent(parent, node, resolvedSelector.inherit(ampersand));
+      }
+      break; // Only replace the first matching ampersand
+    }
+  }
+
+  return selectorCopy;
 }
 
 /**
@@ -524,7 +548,7 @@ function replaceAmpersandWithEmpty(selector: Selector, ampersand: Ampersand): Se
  * @param selector - The original selector
  * @param target - The target being extended
  * @param extendWith - The selector to extend with
- * @param ampersandInfo - Information about the ampersand boundary
+ * @param ampersandNode - The ampersand node that was crossed
  * @param matchResult - The match result
  * @returns Extended selector with ampersand resolved and hoisted to root
  */
@@ -532,53 +556,21 @@ function handleAmpersandBoundaryCrossing(
   selector: Selector,
   target: Selector,
   extendWith: Selector,
-  ampersandInfo: AmpersandBoundaryInfo,
+  ampersandNode: Ampersand,
   matchResult: any
 ): Selector {
-  if (!ampersandInfo.ampersandNode?.value.selector || isNode(ampersandInfo.ampersandNode.value.selector, 'Nil')) {
+  if (!ampersandNode?.value.selector || isNode(ampersandNode.value.selector, 'Nil')) {
     throw new Error('Ampersand boundary crossing detected but ampersand has no resolved selector');
   }
 
   // Step 1: Replace the ampersand with its resolved selector
-  const resolvedSelector = replaceAmpersandWithResolved(selector, ampersandInfo);
+  const resolvedSelector = replaceAmpersandWithItsValue(selector, ampersandNode);
 
   // Step 2: Extend the resolved selector (skip ampersand check to prevent recursion)
   const extendedSelector = extendSelector(resolvedSelector, target, extendWith, false, true);
 
   // Step 3: Mark for hoisting to root
   return markSelectorForHoisting(extendedSelector);
-}
-
-/**
- * Replaces an ampersand with its resolved selector value
- * @param selector - The selector containing the ampersand
- * @param ampersandInfo - Information about the ampersand to replace
- * @returns Selector with ampersand replaced by resolved selector
- */
-function replaceAmpersandWithResolved(selector: Selector, ampersandInfo: AmpersandBoundaryInfo): Selector {
-  if (!ampersandInfo.ampersandNode?.value.selector) {
-    return selector;
-  }
-
-  // Create a copy of the selector
-  const selectorCopy = selector.copy();
-  const resolvedSelector = ampersandInfo.ampersandNode.value.selector.copy();
-  // Find and replace all instances of the specific ampersand node
-  // Since we're working with copies, we need to find the corresponding ampersand in the copy
-  for (const node of selectorCopy.nodes()) {
-    if (isNode(node, 'Ampersand')
-      && node.value.selector?.valueOf() === ampersandInfo.ampersandNode.value.selector?.valueOf()) {
-      // Replace the ampersand's content with the resolved selector
-      // We need to find the parent container and replace the ampersand
-      const parent = findParentOfNode(selectorCopy, node);
-      if (parent) {
-        replaceNodeInParent(parent, node, resolvedSelector.inherit(ampersandInfo.ampersandNode));
-      }
-      break; // Only replace the first matching ampersand
-    }
-  }
-
-  return selectorCopy;
 }
 
 /**

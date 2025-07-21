@@ -41,6 +41,11 @@ export interface MatchResult {
   hasPartialMatch: boolean;
   matched: Selector[];
   remainders: Selector[];
+  /** Ampersand boundary crossing information */
+  ampersandInfo?: {
+    crossedBoundary: boolean;
+    ampersandNodes: Ampersand[];
+  };
 }
 
 /**
