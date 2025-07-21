@@ -61,6 +61,11 @@ export type LocationInfo = [
 ];
 
 /**
+ * Utility type to mark a node's value as generated
+ */
+export type GeneratedNodeValue<T> = T extends object ? T & { generated: true } : T;
+
+/**
  * @todo I think the only utility for this now is we collect
  * the types of nodes in the tree at first evaluation time.
  */
@@ -149,6 +154,12 @@ export abstract class Node<
   preEvaluated = false;
   allowRoot = false;
   allowRuleRoot = false;
+
+  /**
+   * Code internally should call .create() when making new
+   * nodes, which will automatically mark the node as generated.
+   */
+  generated = false;
 
   /**
    * When evaluating, nodes are assigned an index by the Rules node.
@@ -256,6 +267,34 @@ export abstract class Node<
       enumerable: false,
       configurable: true
     });
+  }
+
+  /**
+   * Static factory method to create a generated node.
+   * Has the exact same signature as the constructor but automatically marks the node as generated.
+   *
+   * @param value - The node's value data
+   * @param options - Node options
+   * @param location - Location information
+   * @param treeContext - Tree context
+   * @returns A new node instance with generated flag set if applicable
+   */
+  static create<T extends new (...args: any[]) => Node>(
+    this: T,
+    value: ConstructorParameters<T>[0],
+    options?: ConstructorParameters<T>[1],
+    location?: ConstructorParameters<T>[2],
+    treeContext?: ConstructorParameters<T>[3]
+  ): InstanceType<T> {
+    // Create the instance with the same signature as constructor
+    const instance = new this(value, options, location, treeContext) as InstanceType<T>;
+
+    // Mark as generated if the value is an object that can be marked
+    if (instance instanceof Node) {
+      instance.generated = true;
+    }
+
+    return instance;
   }
 
   /**

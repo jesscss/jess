@@ -44,12 +44,15 @@ describe('Extend Comment and Whitespace Handling Tests', () => {
       const result = extendSelector(selector, target, extendWith, true);
       const trimmed = result.toTrimmedString();
 
-      // Assert the exact expected output - this shows how extension works with complex selectors
-      expect(trimmed).toBe('.a > :is(.b, .c.d)');
+      // Assert the exact expected output - this shows how extension preserves comments
+      expect(trimmed).toBe('.a > /* b */:is(.b, .c.d)');
 
-      // Verify comment handling - it appears the comment is lost in this case
-      // This documents the current behavior - if comments should be preserved, this test will catch regressions
-      expect(trimmed).not.toContain('/* b */');
+      // Verify comment handling - comment should be preserved on the original component
+      expect(trimmed).toContain('/* b */');
+
+      // Verify no comment duplication
+      const commentCount = (trimmed.match(/\/\* b \*\//g) || []).length;
+      expect(commentCount).toBe(1);
     });
 
     it('should extend complex nested selector creating selector list', () => {
@@ -73,8 +76,8 @@ describe('Extend Comment and Whitespace Handling Tests', () => {
       const result = extendSelector(selector, target, extendWith, true);
       const trimmed = result.toTrimmedString();
 
-      // Assert the exact output - shows how complex selector extension creates selector lists
-      expect(trimmed).toBe('.a > /* component */.b.c > .d.e,\n.a > .c > .d.e.f');
+      // Assert the exact output - shows how component-level extension uses :is() wrapper
+      expect(trimmed).toBe('.a > /* component */:is(.b, .f).c > .d.e');
 
       // Verify no comment duplication
       const commentCount = (trimmed.match(/\/\* component \*\//g) || []).length;
@@ -161,6 +164,7 @@ describe('Extend Comment and Whitespace Handling Tests', () => {
       const trimmed = result.toTrimmedString();
 
       // Assert exact output - shows how nested :is() extension works with full matching
+      // Original :is() should be preserved since it wasn't created by extend
       expect(trimmed).toBe(':is(/* inner */.inner, .other, .extended)');
 
       // Should not duplicate the comment
