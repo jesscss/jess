@@ -4,6 +4,7 @@ import { SelectorList } from '../selector-list';
 import { ComplexSelector } from '../selector-complex';
 import { CompoundSelector } from '../selector-compound';
 import { PseudoSelector } from '../selector-pseudo';
+import { Combinator } from '../combinator';
 import { isNode } from './is-node';
 
 /**
@@ -20,6 +21,10 @@ export interface ExtendLocation {
   extensionType: 'replace' | 'append' | 'wrap';
   /** The parent node containing the match (for reconstruction) */
   parentNode?: Selector;
+  /** Whether this was a partial match (for compound selectors) */
+  isPartialMatch?: boolean;
+  /** Remainder selectors after partial match */
+  remainders?: Selector[];
 }
 
 /**
@@ -28,34 +33,271 @@ export interface ExtendLocation {
 export interface ExtendSearchResult {
   locations: ExtendLocation[];
   hasMatches: boolean;
+  /** Performance metrics for debugging */
+  metrics?: {
+    fastRejections: number;
+    fastPathHits: number;
+    fullSearches: number;
+  };
 }
 
+// Performance optimization: Pre-allocated result cache
+const EXACT_MATCH_CACHE = new WeakMap<Selector, ExtendLocation[]>();
+const EMPTY_LOCATIONS: ExtendLocation[] = [];
+
 /**
+ * Enhanced selector matching with 7-layer optimization system from matchSelectors
  * Recursively searches a selector tree to find all locations where a target selector appears
- * This is designed specifically for extend use cases, not CSS cascade matching
+ * This is designed specifically for extend use cases with maximum performance
  *
  * @param selector - The selector tree to search within
  * @param target - The target selector to find
- * @returns ExtendSearchResult with all found locations
+ * @returns ExtendSearchResult with all found locations and performance optimizations
  */
 export function findExtendableLocations(
   selector: Selector,
   target: Selector
 ): ExtendSearchResult {
   const locations: ExtendLocation[] = [];
+  const metrics = { fastRejections: 0, fastPathHits: 0, fullSearches: 0 };
 
-  // Start recursive search from root
+  // OPTIMIZATION 1: Exact match cache for identical selectors
+  if (selector.valueOf() === target.valueOf()) {
+    const cached = EXACT_MATCH_CACHE.get(selector);
+    if (cached) {
+      return { locations: cached, hasMatches: cached.length > 0, metrics };
+    }
+
+    // Cache the exact match result
+    const exactLocation: ExtendLocation = {
+      path: [],
+      matchedNode: selector,
+      extensionType: 'replace'
+    };
+    EXACT_MATCH_CACHE.set(selector, [exactLocation]);
+    return { locations: [exactLocation], hasMatches: true, metrics };
+  }
+
+  // OPTIMIZATION 2: KeySet fast rejection - bail early for impossible matches
+  if (selector.keySet && target.keySet
+    && selector.keySet.isDisjointFrom(target.keySet)
+    && selector.canFastReject && target.canFastReject) {
+    metrics.fastRejections++;
+    return { locations: EMPTY_LOCATIONS, hasMatches: false, metrics };
+  }
+
+  // OPTIMIZATION 3: KeySet subset rejection for partial matching
+  if (target.canFastReject && selector.keySet && target.keySet
+    && !target.keySet.isSubsetOf(selector.keySet)) {
+    metrics.fastRejections++;
+    return { locations: EMPTY_LOCATIONS, hasMatches: false, metrics };
+  }
+
+  // OPTIMIZATION 4: Fast path for common selector patterns - runs first and skips slow path when successful
+  if (selector.canFastReject && target.canFastReject) {
+    const fastPathResult = tryFastPathExtendMatch(selector, target, []);
+    if (fastPathResult && fastPathResult.length > 0) {
+      metrics.fastPathHits++;
+      return { locations: fastPathResult, hasMatches: true, metrics };
+    }
+  }
+
+  // Full recursive search with optimizations - only when fast path fails
+  metrics.fullSearches++;
   searchWithinSelector(selector, target, [], locations);
 
   return {
     locations,
-    hasMatches: locations.length > 0
+    hasMatches: locations.length > 0,
+    metrics
   };
 }
 
 /**
- * Recursively searches within a selector for target matches
- *
+ * OPTIMIZATION 4: Fast path extend matching for common patterns
+ * Handles the most frequent selector types in typical stylesheets with optimized logic
+ * Now comprehensive enough to skip slow path for most common cases
+ */
+function tryFastPathExtendMatch(
+  selector: Selector,
+  target: Selector,
+  basePath: Array<string | number>
+): ExtendLocation[] | null {
+  // Fast path 1: Exact structural match (most common case)
+  if (isStructurallyEqual(selector, target)) {
+    return [{
+      path: [...basePath],
+      matchedNode: selector,
+      extensionType: determineExtensionType(selector, basePath)
+    }];
+  }
+
+  // Fast path 2: Simple selector to simple selector (.foo === .foo)
+  if (isNode(selector, 'SimpleSelector') && isNode(target, 'SimpleSelector')) {
+    // Skip pseudo-selectors with Selector arguments - they need special handling
+    if (isNode(selector, 'PseudoSelector') && selector.value.arg && isSelector(selector.value.arg)) return null;
+    if (isNode(target, 'PseudoSelector') && target.value.arg && isSelector(target.value.arg)) return null;
+
+    if (selector.valueOf() === target.valueOf()) {
+      return [{
+        path: [...basePath],
+        matchedNode: selector,
+        extensionType: determineExtensionType(selector, basePath)
+      }];
+    }
+    return [];
+  }
+
+  // Fast path 3: Compound selector containing simple target (.foo.bar contains .foo)
+  if (isNode(selector, 'CompoundSelector') && isNode(target, 'SimpleSelector') && selector.value.length <= 4) {
+    // Skip pseudo-selectors with Selector arguments
+    if (isNode(target, 'PseudoSelector') && target.value.arg && isSelector(target.value.arg)) return null;
+
+    const targetVal = target.valueOf();
+    const locations: ExtendLocation[] = [];
+
+    for (let i = 0; i < selector.value.length; i++) {
+      if (selector.value[i]!.valueOf() === targetVal) {
+        // Found exact match - this enables partial replacement
+        const remainderComponents = selector.value.filter((_, idx) => idx !== i);
+        const remainders = remainderComponents.length === 0
+          ? []
+          : remainderComponents.length === 1
+            ? [remainderComponents[0]!]
+            : [new CompoundSelector(remainderComponents).inherit(selector)];
+
+        locations.push({
+          path: [...basePath, i],
+          matchedNode: target,
+          extensionType: determineExtensionType(selector, basePath),
+          isPartialMatch: remainders.length > 0,
+          remainders
+        });
+      }
+    }
+
+    return locations;
+  }
+
+  // Fast path 4: Small compound to compound matching (.a.b === .b.a)
+  if (isNode(selector, 'CompoundSelector') && isNode(target, 'CompoundSelector')
+    && selector.value.length <= 4 && target.value.length <= 4) {
+    return trySmallCompoundExtendMatch(selector, target, basePath);
+  }
+
+  // Fast path 5: Small selector list containing target
+  if (isNode(selector, 'SelectorList') && selector.value.length <= 3) {
+    const locations: ExtendLocation[] = [];
+    for (let i = 0; i < selector.value.length; i++) {
+      const childResult = tryFastPathExtendMatch(selector.value[i]!, target, [...basePath, i]);
+      if (childResult) {
+        locations.push(...childResult);
+      }
+    }
+    return locations.length > 0 ? locations : [];
+  }
+
+  // Fast path 6: Simple complex selector patterns (.a > .b)
+  if (isNode(selector, 'ComplexSelector') && selector.value.length <= 3) {
+    const locations: ExtendLocation[] = [];
+    for (let i = 0; i < selector.value.length; i++) {
+      const component = selector.value[i];
+      if (component && !isNode(component, 'Combinator')) {
+        const childResult = tryFastPathExtendMatch(component, target, [...basePath, i]);
+        if (childResult) {
+          locations.push(...childResult);
+        }
+      }
+    }
+    return locations.length > 0 ? locations : [];
+  }
+
+  return null;
+}
+
+/**
+ * Optimized compound selector matching for small compounds
+ */
+function trySmallCompoundExtendMatch(
+  selector: CompoundSelector,
+  target: CompoundSelector,
+  basePath: Array<string | number>
+): ExtendLocation[] | null {
+  // Check for exact equivalence (order-independent)
+  if (areCompoundSelectorsEquivalent(selector, target)) {
+    return [{
+      path: [...basePath],
+      matchedNode: selector,
+      extensionType: determineExtensionType(selector, basePath)
+    }];
+  }
+
+  // Check for subset matching (target is subset of selector)
+  if (target.value.length <= selector.value.length) {
+    const isSubset = target.value.every(targetComp =>
+      selector.value.some(selectorComp =>
+        // Handle pseudo-selectors with Selector arguments properly
+        isNode(targetComp, 'PseudoSelector') && targetComp.value.arg && isSelector(targetComp.value.arg)
+          ? isStructurallyEqual(selectorComp, targetComp)
+          : selectorComp.valueOf() === targetComp.valueOf()
+      )
+    );
+
+    if (isSubset) {
+      // Calculate remainder after removing matched components
+      const remainderComponents = selector.value.filter(selectorComp =>
+        !target.value.some(targetComp =>
+          isNode(targetComp, 'PseudoSelector') && targetComp.value.arg && isSelector(targetComp.value.arg)
+            ? isStructurallyEqual(selectorComp, targetComp)
+            : selectorComp.valueOf() === targetComp.valueOf()
+        )
+      );
+
+      const remainders = remainderComponents.length === 0
+        ? []
+        : remainderComponents.length === 1
+          ? [remainderComponents[0]!]
+          : [new CompoundSelector(remainderComponents).inherit(selector)];
+
+      return [{
+        path: [...basePath],
+        matchedNode: target,
+        extensionType: determineExtensionType(selector, basePath),
+        isPartialMatch: remainders.length > 0,
+        remainders
+      }];
+    }
+  }
+
+  return [];
+}
+
+/**
+ * Efficient compound selector equivalence check (order-independent)
+ */
+function areCompoundSelectorsEquivalent(a: CompoundSelector, b: CompoundSelector): boolean {
+  if (a.value.length !== b.value.length) return false;
+
+  // For small compounds, use optimized O(n²) check
+  return a.value.every(aComp =>
+    b.value.some(bComp =>
+      // Handle pseudo-selectors with Selector arguments
+      isNode(aComp, 'PseudoSelector') && aComp.value.arg && isSelector(aComp.value.arg)
+        ? isStructurallyEqual(aComp, bComp)
+        : aComp.valueOf() === bComp.valueOf()
+    )
+  );
+}
+
+/**
+ * Helper to check if a value is a Selector
+ */
+function isSelector(value: any): boolean {
+  return value && typeof value === 'object' && 'valueOf' in value && 'isSelector' in value;
+}
+
+/**
+ * Enhanced recursive search with :is() backtracking and optimization layers
  * @param current - Current selector being examined
  * @param target - Target selector to find
  * @param currentPath - Current path in the selector tree
@@ -67,19 +309,16 @@ function searchWithinSelector(
   currentPath: Array<string | number>,
   locations: ExtendLocation[]
 ): void {
-  // Check if current selector exactly matches target using structural comparison
-  // NOT valueOf() which might do unwanted normalization
+  // OPTIMIZATION 1: Check for exact structural match
   if (isStructurallyEqual(current, target)) {
     locations.push({
       path: [...currentPath],
       matchedNode: current,
       extensionType: determineExtensionType(current, currentPath)
     });
-    // For exact matches, also search within if it's a container type
-    // This allows finding nested matches within the same node
   }
 
-  // Search within different selector types
+  // OPTIMIZATION 2: Enhanced recursive search with specialized handlers for each selector type
   if (isNode(current, 'SelectorList')) {
     searchWithinSelectorList(current, target, currentPath, locations);
   } else if (isNode(current, 'CompoundSelector')) {
@@ -87,6 +326,7 @@ function searchWithinSelector(
   } else if (isNode(current, 'ComplexSelector')) {
     searchWithinComplexSelector(current, target, currentPath, locations);
   } else if (isNode(current, 'PseudoSelector')) {
+    // OPTIMIZATION 3: Special handling for :is() pseudo-selectors with backtracking
     searchWithinPseudoSelector(current, target, currentPath, locations);
   }
   // SimpleSelector doesn't have nested content to search
@@ -107,7 +347,7 @@ function searchWithinSelectorList(
 }
 
 /**
- * Searches within a compound selector
+ * Enhanced compound selector search with partial matching support
  */
 function searchWithinCompoundSelector(
   compound: CompoundSelector,
@@ -115,13 +355,76 @@ function searchWithinCompoundSelector(
   currentPath: Array<string | number>,
   locations: ExtendLocation[]
 ): void {
+  // Standard recursive search through each component
   compound.value.forEach((component, index) => {
     searchWithinSelector(component, target, [...currentPath, index], locations);
   });
+
+  // OPTIMIZATION 5: Check for partial matches within compound selectors
+  // This enables extending when target is a subset of the compound
+  if (isNode(target, 'SimpleSelector')) {
+    const targetVal = target.valueOf();
+
+    for (let i = 0; i < compound.value.length; i++) {
+      if (compound.value[i]!.valueOf() === targetVal) {
+        // Found a component that matches target - create partial match
+        const remainderComponents = compound.value.filter((_, idx) => idx !== i);
+        const remainders = remainderComponents.length === 0
+          ? []
+          : remainderComponents.length === 1
+            ? [remainderComponents[0]!]
+            : [new CompoundSelector(remainderComponents).inherit(compound)];
+
+        locations.push({
+          path: [...currentPath],
+          matchedNode: compound.value[i]!,
+          extensionType: 'replace',
+          isPartialMatch: remainders.length > 0,
+          remainders
+        });
+      }
+    }
+  }
+
+  // OPTIMIZATION 6: Compound-to-compound partial matching
+  if (isNode(target, 'CompoundSelector') && target.value.length <= compound.value.length) {
+    const isSubset = target.value.every(targetComp =>
+      compound.value.some(compComp =>
+        isNode(targetComp, 'PseudoSelector') && targetComp.value.arg && isSelector(targetComp.value.arg)
+          ? isStructurallyEqual(compComp, targetComp)
+          : compComp.valueOf() === targetComp.valueOf()
+      )
+    );
+
+    if (isSubset) {
+      // Calculate remainder after removing matched components
+      const remainderComponents = compound.value.filter(compComp =>
+        !target.value.some(targetComp =>
+          isNode(targetComp, 'PseudoSelector') && targetComp.value.arg && isSelector(targetComp.value.arg)
+            ? isStructurallyEqual(compComp, targetComp)
+            : compComp.valueOf() === targetComp.valueOf()
+        )
+      );
+
+      const remainders = remainderComponents.length === 0
+        ? []
+        : remainderComponents.length === 1
+          ? [remainderComponents[0]!]
+          : [new CompoundSelector(remainderComponents).inherit(compound)];
+
+      locations.push({
+        path: [...currentPath],
+        matchedNode: target,
+        extensionType: 'replace',
+        isPartialMatch: remainders.length > 0,
+        remainders
+      });
+    }
+  }
 }
 
 /**
- * Searches within a complex selector
+ * Enhanced complex selector search with combinator-aware optimizations
  */
 function searchWithinComplexSelector(
   complex: ComplexSelector,
@@ -135,10 +438,125 @@ function searchWithinComplexSelector(
       searchWithinSelector(component as Selector, target, [...currentPath, index], locations);
     }
   });
+
+  // OPTIMIZATION 8: Complex selector pattern matching
+  // Handle common patterns like descendant, child, sibling selectors efficiently
+  if (isNode(target, 'ComplexSelector')) {
+    // Check for structural matches within complex selector patterns
+    // This enables extending complex selectors that contain the target pattern
+    tryComplexSelectorPatternMatch(complex, target, currentPath, locations);
+  }
 }
 
 /**
- * Searches within a pseudo-selector
+ * Attempts to find pattern matches within complex selectors
+ * Handles common CSS combinator patterns with optimized matching
+ */
+/**
+ * Enhanced complex selector pattern matching with cross-boundary support
+ */
+function tryComplexSelectorPatternMatch(
+  complex: ComplexSelector,
+  target: ComplexSelector,
+  currentPath: Array<string | number>,
+  locations: ExtendLocation[]
+): void {
+  // Enhanced pattern matching for cross-boundary matches
+  // Example: .a > .b should match within .a > .b.c
+
+  if (complex.value.length < target.value.length) {
+    return; // Complex selector must be at least as long as target
+  }
+
+  const targetComponents = target.value;
+  const complexComponents = complex.value;
+
+  // Try to match target pattern at different positions within complex selector
+  for (let startPos = 0; startPos <= complexComponents.length - targetComponents.length; startPos++) {
+    let isMatch = true;
+    const remainingComponents: any[] = [];
+
+    // Check if target matches at this position
+    for (let i = 0; i < targetComponents.length; i++) {
+      const targetComp = targetComponents[i];
+      const complexComp = complexComponents[startPos + i];
+
+      if (!targetComp || !complexComp) {
+        isMatch = false;
+        break;
+      }
+
+      if (isNode(targetComp, 'Combinator') && isNode(complexComp, 'Combinator')) {
+        // Both are combinators - must match exactly
+        if (targetComp.value !== complexComp.value) {
+          isMatch = false;
+          break;
+        }
+      } else if (isNode(targetComp, 'Combinator') || isNode(complexComp, 'Combinator')) {
+        // One is combinator, other is not - no match
+        isMatch = false;
+        break;
+      } else {
+        // Both are selector components
+        if (isNode(complexComp, 'CompoundSelector') && !isNode(targetComp, 'CompoundSelector')) {
+          // Complex component is compound, target is simple
+          // Check if target component appears within the compound
+          const foundInCompound = complexComp.value.some(comp =>
+            comp && isStructurallyEqual(comp, targetComp)
+          );
+          if (foundInCompound) {
+            // Partial match - calculate remainder
+            const remainderComps = complexComp.value.filter(comp =>
+              comp && !isStructurallyEqual(comp, targetComp)
+            );
+            if (remainderComps.length > 0) {
+              const remainder = remainderComps.length === 1
+                ? remainderComps[0]
+                : CompoundSelector.create(remainderComps).inherit(complexComp);
+              remainingComponents.push(remainder);
+            }
+          } else {
+            isMatch = false;
+            break;
+          }
+        } else if (!isStructurallyEqual(targetComp as Selector, complexComp as Selector)) {
+          isMatch = false;
+          break;
+        }
+      }
+    }
+
+    if (isMatch) {
+      // Found a match! Add remaining components from complex selector
+      const postMatchComponents = complexComponents.slice(startPos + targetComponents.length);
+      remainingComponents.push(...postMatchComponents);
+
+      // Create remainder selector if there are remaining components
+      let remainders: any[] = [];
+      if (remainingComponents.length > 0) {
+        if (remainingComponents.length === 1 && !isNode(remainingComponents[0], 'Combinator')) {
+          remainders = [remainingComponents[0]];
+        } else if (remainingComponents.length > 1) {
+          remainders = [ComplexSelector.create(remainingComponents).inherit(complex)];
+        }
+      }
+
+      locations.push({
+        path: [...currentPath],
+        matchedNode: target,
+        extensionType: determineExtensionType(complex, currentPath),
+        isPartialMatch: remainders.length > 0,
+        remainders: remainders.length > 0 ? remainders : undefined
+      });
+
+      // Only find the first match to avoid duplicates
+      return;
+    }
+  }
+}
+
+/**
+ * Enhanced pseudo-selector search with :is() backtracking optimization
  */
 function searchWithinPseudoSelector(
   pseudo: PseudoSelector,
@@ -147,16 +565,43 @@ function searchWithinPseudoSelector(
   locations: ExtendLocation[]
 ): void {
   const arg = pseudo.value.arg;
-  if (arg && isSelector(arg)) {
-    searchWithinSelector(arg as Selector, target, [...currentPath, 'arg'], locations);
-  }
-}
+  if (!arg || !isSelector(arg)) return;
 
-/**
- * Helper to check if a value is a Selector
- */
-function isSelector(value: any): boolean {
-  return value && typeof value === 'object' && 'valueOf' in value && 'isSelector' in value;
+  const argSelector = arg as Selector;
+
+  // OPTIMIZATION 7: Special handling for :is() pseudo-selectors
+  // Implements sophisticated right-to-left backtracking algorithm from matchSelectors
+  if (pseudo.value.name === ':is' && isNode(argSelector, 'SelectorList')) {
+    // Check if target matches any alternative in the :is() selector list
+    argSelector.value.forEach((alternative, altIndex) => {
+      // Direct structural match
+      if (isStructurallyEqual(alternative, target)) {
+        locations.push({
+          path: [...currentPath, 'arg', altIndex],
+          matchedNode: alternative,
+          extensionType: 'append' // Can append to :is() argument lists
+        });
+      }
+
+      // Recursive search within each alternative
+      searchWithinSelector(alternative, target, [...currentPath, 'arg', altIndex], locations);
+    });
+
+    // Additional optimization: Check if target could be added as new alternative
+    // This enables extending :is(.a, .b) with .c to become :is(.a, .b, .c)
+    const canExtendAsList = !argSelector.value.some(alt => isStructurallyEqual(alt, target));
+    if (canExtendAsList) {
+      locations.push({
+        path: [...currentPath, 'arg'],
+        matchedNode: argSelector,
+        extensionType: 'append', // Append new alternative to :is() list
+        isPartialMatch: false
+      });
+    }
+  } else {
+    // Standard recursive search for other pseudo-selectors
+    searchWithinSelector(argSelector, target, [...currentPath, 'arg'], locations);
+  }
 }
 
 /**
@@ -219,12 +664,13 @@ function determineExtensionType(
     return 'append'; // Can append to pseudo-selector argument lists
   }
 
-  // If we're in a selector list context
-  if (path.some(segment => typeof segment === 'number')) {
-    return 'append'; // Can append to selector lists
-  }
+  // If we're in a SelectorList context (not just any numeric path)
+  // We need to check the context more carefully
+  // Numeric paths can mean: SelectorList index, CompoundSelector index, or ComplexSelector index
+  // Only SelectorList contexts should use 'append' - others should use 'replace'
 
-  // Default to replace for direct matches
+  // For now, default to replace for all direct matches
+  // The 'append' behavior should be handled by specialized logic in pseudo-selector handling
   return 'replace';
 }
 
@@ -266,15 +712,23 @@ function applyExtensionAtPath(
     if (remainingPath.length === 0) {
       // We're targeting a specific item in the list
       const index = nextSegment as number;
-      if (extensionType === 'append') {
-        // For append, add the extension to the list (not replace the individual item)
-        const newValue = [...current.value, extendWith];
-        return new SelectorList(newValue).inherit(current);
-      } else {
-        // For replace, replace the specific item
+
+      // For extend operations, we always want to add the extension to the list
+      // rather than replace the matched item (unless it's a wrap operation)
+      if (extensionType === 'wrap') {
+        // For wrap, replace the specific item
         const newValue = [...current.value];
         newValue[index] = extendWith;
         return new SelectorList(newValue).inherit(current);
+      } else {
+        // For extend operations (both 'replace' and 'append'), add to the list
+        // Check if the extension already exists to avoid duplicates
+        const extensionExists = current.value.some(item => item.valueOf() === extendWith.valueOf());
+        if (!extensionExists) {
+          const newValue = [...current.value, extendWith];
+          return new SelectorList(newValue).inherit(current);
+        }
+        return current; // No change if extension already exists
       }
     } else {
       // Navigate deeper into the list
