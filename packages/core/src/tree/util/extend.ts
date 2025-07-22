@@ -65,26 +65,109 @@ export function extendSelector(
   // Handle partial vs full matching modes
   if (partial) {
     // PARTIAL MATCHING MODE: Create :is() wrappers for component-level matches
-    
-    // If it's a root-level match in partial mode, we may still want selector list behavior
+
+    // If it's a root-level match in partial mode, handle remainders
     if (location.path.length === 0) {
+      // Check if we have remainders that need to be combined with the extension
+      if (location.isPartialMatch && location.remainders && location.remainders.length > 0) {
+        const remainder = location.remainders[0]!;
+
+        // Combine remainder with extension
+        let combinedExtension: Selector;
+
+        if (isNode(remainder, 'ComplexSelector') && remainder.value.length > 0) {
+          // Remainder is complex selector - append extension
+          const newComponents = [...remainder.value, extendWith as any];
+          combinedExtension = ComplexSelector.create(newComponents).inherit(remainder);
+        } else {
+          // Simple remainder - create compound or complex as needed
+          if (isNode(extendWith, 'ComplexSelector')) {
+            const newComponents = [remainder as any, ...extendWith.value];
+            combinedExtension = ComplexSelector.create(newComponents).inherit(extendWith);
+          } else {
+            combinedExtension = CompoundSelector.create([remainder as any, extendWith as any]).inherit(remainder);
+          }
+        }
+
+        return new SelectorList([selector, combinedExtension]).inherit(selector);
+      }
+
+      // Special case: Check if this is a complex selector partial match case
+      // where we should extract remainder from compound selector structure
+      if (location.isPartialMatch && isNode(selector, 'ComplexSelector') && isNode(target, 'ComplexSelector')) {
+        // Try to detect if we have a case like .a>.b.c matching .a>.b
+        const selectorComponents = selector.value;
+        const targetComponents = target.value;
+
+        // Check if target is a prefix of selector structure
+        if (targetComponents.length <= selectorComponents.length) {
+          let foundCompoundRemainder = false;
+          let compoundRemainder: Selector | null = null;
+
+          // Check each component for partial compound matches
+          for (let i = 0; i < targetComponents.length; i++) {
+            const sComp = selectorComponents[i];
+            const tComp = targetComponents[i];
+
+            if (sComp && tComp && !isNode(sComp, 'Combinator') && !isNode(tComp, 'Combinator')) {
+              // Check if target component partially matches selector component
+              if (isNode(sComp, 'CompoundSelector') && isNode(tComp, 'SimpleSelector')) {
+                const matchingElement = sComp.value.find(el => el.valueOf() === tComp.valueOf());
+                if (matchingElement) {
+                  // Found partial match - extract remainder
+                  const remainderElements = sComp.value.filter(el => el.valueOf() !== tComp.valueOf());
+                  if (remainderElements.length > 0) {
+                    compoundRemainder = remainderElements.length === 1
+                      ? remainderElements[0]!
+                      : CompoundSelector.create(remainderElements).inherit(sComp);
+                    foundCompoundRemainder = true;
+                  }
+                }
+              }
+            }
+          }
+
+          if (foundCompoundRemainder && compoundRemainder) {
+            // Create combined extension with remainder
+            const combinedExtension = CompoundSelector.create([compoundRemainder as any, extendWith as any]).inherit(compoundRemainder);
+            return new SelectorList([selector, combinedExtension]).inherit(selector);
+          }
+        }
+      }
+
       return new SelectorList([selector, extendWith]).inherit(selector);
     }
-    
+
     // For deeper matches in partial mode, we need to analyze the context
     // If we're matching within a compound selector, create :is() wrapper
     if (location.path.length > 0) {
       return handlePartialModeExtension(selector, location, extendWith);
     }
-    
+
     return applyExtensionAtLocation(selector, location, extendWith);
   } else {
     // FULL MATCHING MODE: Create selector lists for complete matches
-    
+
     // Check if this is a root-level full match (should create selector list)
     if (location.path.length === 0 && location.extensionType === 'replace' && !location.isPartialMatch) {
       // This is a full match at the root - create selector list with both original and extension
       return new SelectorList([selector, extendWith]).inherit(selector);
+    }
+
+    // Special handling for pseudo-selector matches in full mode
+    // All pseudo-selectors with selector arguments allow extending inside
+    // This includes :is(), :where(), :not(), :has(), and any other pseudo-selector with selector args
+    if (location.path.includes('arg') && !location.isPartialMatch) {
+      // Check if this is a compound target that fully matches a compound selector
+      // In this case, create a selector list instead of extending inside the pseudo-selector
+      if (isNode(target, 'CompoundSelector') && isNode(selector, 'CompoundSelector')) {
+        // This is a full compound match - create selector list
+        return new SelectorList([selector, extendWith]).inherit(selector);
+      }
+
+      // This is a full match inside a pseudo-selector argument
+      // Always extend inside pseudo-selectors with selector arguments
+      return applyExtensionAtLocation(selector, location, extendWith);
     }
 
     // For full matches within compound selectors, create :is() wrapper
@@ -92,7 +175,7 @@ export function extendSelector(
       // This is a component match within a compound selector
       const componentIndex = location.path[0] as number;
       const matchedComponent = selector.value[componentIndex];
-      
+
       if (matchedComponent && selector.value.length > 1) {
         // Replace the matched component with :is(original, extension)
         const newComponents = [...selector.value];
@@ -116,14 +199,27 @@ function handlePartialModeExtension(
 ): Selector {
   // In partial mode, we want to create :is() wrappers for component-level matches
   // This is the behavior expected by tests like ".a>.b" + ".b" extend ".c" → ".a>:is(.b,.c)"
-  
-  // First check if this is a compound selector match that needs :is() wrapper
+
+  // Handle direct compound selector partial matching (.a.b + .b extend .c → .a:is(.b, .c))
+  if (location.path.length === 1 && isNode(selector, 'CompoundSelector')) {
+    const componentIndex = location.path[0] as number;
+    const matchedComponent = selector.value[componentIndex];
+
+    if (matchedComponent) {
+      // Replace the matched component with :is(original, extension)
+      const newComponents = [...selector.value];
+      newComponents[componentIndex] = createIsWrapper([matchedComponent, extendWith], matchedComponent);
+      return CompoundSelector.create(newComponents).inherit(selector);
+    }
+  }
+
+  // Handle compound selector match within complex selector
   if (location.path.length === 1 && isNode(selector, 'ComplexSelector')) {
     // This is a direct component match in a complex selector
     const componentIndex = location.path[0] as number;
     const components = selector.value;
     const matchedComponent = components[componentIndex];
-    
+
     if (matchedComponent && !isNode(matchedComponent, 'Combinator')) {
       // Replace the matched component with :is(original, extension)
       const newComponents = [...components];
@@ -131,13 +227,13 @@ function handlePartialModeExtension(
       return ComplexSelector.create(newComponents).inherit(selector);
     }
   }
-  
+
   // For compound selector matches within complex selectors
   if (location.path.length === 2 && isNode(selector, 'ComplexSelector')) {
     const [componentIndex, subIndex] = location.path;
     const components = selector.value;
     const component = components[componentIndex as number];
-    
+
     if (component && isNode(component, 'CompoundSelector')) {
       // We're matching a part of a compound selector within a complex selector
       const matchedElement = component.value[subIndex as number];
@@ -145,16 +241,16 @@ function handlePartialModeExtension(
         // Replace the matched element with :is(original, extension)
         const newSubComponents = [...component.value];
         newSubComponents[subIndex as number] = createIsWrapper([matchedElement, extendWith], matchedElement);
-        
+
         const newComponent = CompoundSelector.create(newSubComponents).inherit(component);
         const newComponents = [...components];
         newComponents[componentIndex as number] = newComponent;
-        
+
         return ComplexSelector.create(newComponents).inherit(selector);
       }
     }
   }
-  
+
   // Default: apply extension directly
   return applyExtensionAtLocation(selector, location, extendWith);
 }

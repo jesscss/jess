@@ -1,5 +1,5 @@
 import { el, sel, sellist, compound, is, co, pseudo, type Selector } from '../../..';
-import { matchSelectors, MatchResult } from '../match-selector';
+import { matchSelectors, MatchResult } from '../find-extendable-locations';
 import { extendSelector } from '../extend';
 import { isNode } from '../is-node';
 

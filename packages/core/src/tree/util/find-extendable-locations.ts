@@ -976,7 +976,17 @@ function trySequentialComplexMatch(
         }
       } else if (!isNode(targetComp, 'Combinator') && !isNode(findComp, 'Combinator')) {
         // If both are selectors, use existing selector matching logic
-        if (!areSelectorArgumentsEquivalent(targetComp, findComp)) {
+        // But also check for partial compound matching
+        let componentMatches = areSelectorArgumentsEquivalent(targetComp, findComp);
+
+        if (!componentMatches) {
+          // Check for partial compound matching: .b should match within .b.c
+          if (isNode(targetComp, 'CompoundSelector') && isNode(findComp, 'SimpleSelector')) {
+            componentMatches = targetComp.value.some(comp => comp.valueOf() === findComp.valueOf());
+          }
+        }
+
+        if (!componentMatches) {
           matches = false;
           break;
         }
@@ -994,6 +1004,30 @@ function trySequentialComplexMatch(
       }
       if (afterComponents.length > 0) {
         remainders.push(new ComplexSelector(afterComponents).inherit(target));
+      }
+
+      // Check for compound-level remainders within the matched components
+      for (let i = 0; i < findComponents.length; i++) {
+        const targetComp = targetComponents[startIdx + i];
+        const findComp = findComponents[i];
+
+        if (!isNode(targetComp, 'Combinator') && !isNode(findComp, 'Combinator')) {
+          if (isNode(targetComp, 'CompoundSelector') && isNode(findComp, 'SimpleSelector')) {
+            // Check if there's a partial match leaving compound remainders
+            const matchingComponent = targetComp.value.find(comp => comp.valueOf() === findComp.valueOf());
+            if (matchingComponent) {
+              // Calculate remainder components within this compound
+              const compoundRemainders = targetComp.value.filter(comp => comp.valueOf() !== findComp.valueOf());
+              if (compoundRemainders.length > 0) {
+                if (compoundRemainders.length === 1) {
+                  remainders.push(compoundRemainders[0]!);
+                } else {
+                  remainders.push(new CompoundSelector(compoundRemainders).inherit(targetComp));
+                }
+              }
+            }
+          }
+        }
       }
 
       const isPartialMatch = remainders.length > 0;
@@ -1429,5 +1463,81 @@ function applyExtension(
 
     default:
       throw new Error(`Unknown extension type: ${extensionType}`);
+  }
+}
+
+// ============================================================================
+// Legacy API Compatibility
+// ============================================================================
+
+/**
+ * Legacy MatchResult interface for backward compatibility
+ */
+export interface MatchResult {
+  hasMatch: boolean;
+  hasFullMatch: boolean;
+  hasPartialMatch: boolean;
+  matched: Selector[];
+  remainders: Selector[];
+  /** Ampersand boundary crossing information */
+  ampersandInfo?: {
+    crossedBoundary: boolean;
+    ampersandNodes: any[];
+  };
+}
+
+/**
+ * Legacy matchSelectors function for backward compatibility
+ * Maps to the new findExtendableLocations API
+ */
+export function matchSelectors(target: Selector, find: Selector, partial = false): MatchResult {
+  const searchResult = findExtendableLocations(target, find);
+
+  if (!searchResult.hasMatches) {
+    return {
+      hasMatch: false,
+      hasFullMatch: false,
+      hasPartialMatch: false,
+      matched: [],
+      remainders: []
+    };
+  }
+
+  // Check if any location has a partial match
+  const hasAnyPartialMatch = searchResult.locations.some(loc => loc.isPartialMatch);
+  const hasAnyFullMatch = searchResult.locations.some(loc => !loc.isPartialMatch);
+
+  // If in partial mode, consider it a partial match if there are remainders or if the path indicates partial matching
+  const isPartialMatch = partial && (hasAnyPartialMatch || searchResult.locations.some(loc => loc.remainders && loc.remainders.length > 0));
+
+  return {
+    hasMatch: true,
+    hasFullMatch: hasAnyFullMatch && !isPartialMatch,
+    hasPartialMatch: isPartialMatch,
+    matched: hasAnyFullMatch && !isPartialMatch ? [find] : [],
+    remainders: searchResult.locations[0]?.remainders || []
+  };
+}
+
+/**
+ * Legacy combineKeys function for backward compatibility
+ */
+export function combineKeys(
+  a: Set<string> | string,
+  b: Set<string> | string
+): Set<string> {
+  if (a instanceof Set) {
+    if (b instanceof Set) {
+      return a.union(b);
+    } else {
+      return (new Set(a)).add(b);
+    }
+  } else {
+    if (b instanceof Set) {
+      return (new Set(b)).add(a);
+    } else {
+      /** Both are strings */
+      return new Set([a, b]);
+    }
   }
 }

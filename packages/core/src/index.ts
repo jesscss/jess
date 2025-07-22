@@ -9,5 +9,5 @@ export * from './tree/util/is-node';
 export * from './tree/util/calculate';
 export * from './tree/util/compare';
 export * from './tree/util/cast';
-export * from './tree/util/match-selector';
+export * from './tree/util/find-extendable-locations';
 export * from './tree/util/collections';

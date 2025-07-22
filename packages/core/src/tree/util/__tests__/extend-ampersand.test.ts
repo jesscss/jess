@@ -134,7 +134,7 @@ describe('Extend Ampersand Handling Tests', () => {
       const output = result.toTrimmedString();
 
       expect(result.options.hoistToRoot).toBeFalsy(); // Changed: ampersand already resolved, no boundary detected
-      expect(output).toBe(' > .container.item,\n > .new-item');
+      expect(output).toBe(' > :is(.container.item, .new-item)'); // Updated: modern :is() syntax instead of separate selectors
     });
   });
 
