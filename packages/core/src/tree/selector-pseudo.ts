@@ -149,7 +149,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
          *
          * @todo 1n === n, 2n + 0 === 2n
          */
-        valueOf = `${name}${arg ? `(${arg.toTrimmedString().replace(/\s+/, '')})` : ''}`;
+        valueOf = `${name}${arg ? `(${arg.toTrimmedString().replace(/\s+/g, '')})` : ''}`;
       }
       this._valueOf = valueOf;
     }

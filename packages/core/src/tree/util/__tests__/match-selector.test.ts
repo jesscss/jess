@@ -231,7 +231,7 @@ describe('Selector match tests', () => {
   });
 
   describe('Pseudo-selector matching: :where() and :not()', () => {
-    it('DEBUG: Test if compound-wrapped selector matches unwrapped selector', () => {
+    it('should handle compound-wrapped selector matches with unwrapped selector', () => {
       // Test your hypothesis: compound([el('.a')]) should match el('.a')
       const target = compound([el('.a')]);
       const find = el('.a');
@@ -240,7 +240,7 @@ describe('Selector match tests', () => {
       expect(result.hasFullMatch).toBe(true);
     });
 
-    it('DEBUG: Test if unwrapped selector matches compound-wrapped selector', () => {
+    it('should handle unwrapped selector matches with compound-wrapped selector', () => {
       // Test the reverse: el('.a') should match compound([el('.a')])
       const target = el('.a');
       const find = compound([el('.a')]);

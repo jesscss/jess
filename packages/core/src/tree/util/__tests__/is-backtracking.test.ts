@@ -9,7 +9,6 @@ describe(':is() Right-to-Left Backtracking Tests', () => {
     const find = el('.b');
     const result = matchSelectors(target, find);
 
-    console.log('Simple compound + :is() test result:', result);
     // This should match because .b is in the compound
     expect(result.hasMatch).toBe(true);
   });
@@ -42,10 +41,6 @@ describe(':is() Right-to-Left Backtracking Tests', () => {
     const find = sel([el('.a'), co('>'), el('.b'), co('>'), el('.c')]);
 
     const result = matchSelectors(target, find, true);
-
-    console.log('Target structure:', target.value.map(v => v.valueOf ? v.valueOf() : v));
-    console.log('Find structure:', find.value.map(v => v.valueOf ? v.valueOf() : v));
-    console.log('Complex backtracking test result:', result);
 
     // Should be a partial match because:
     // - .c matches .c

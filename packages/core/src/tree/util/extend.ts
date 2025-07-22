@@ -8,6 +8,7 @@ import { Combinator } from '../combinator';
 import { Ampersand } from '../ampersand';
 import { isNode } from './is-node';
 import { matchSelectors } from './match-selector';
+import { findExtendableLocations, applyExtensionAtLocation } from './find-extendable-locations';
 
 /**
  * Extends a selector by finding matches for a target selector and adding the extension.
@@ -27,10 +28,41 @@ export function extendSelector(
   partial: boolean,
   skipAmpersandCheck: boolean = false
 ): Selector {
-  // Use our sophisticated matching function to find matches
+  // Try the legacy matchSelectors first for compatibility
   const matchResult = matchSelectors(selector, target, partial);
 
-  if (!matchResult.hasMatch) {
+  if (matchResult.hasMatch) {
+    // Use the existing logic for cases that matchSelectors handles correctly
+
+    // Check for ampersand boundary crossing during extension (unless skipped)
+    if (!skipAmpersandCheck) {
+      const ampersandCrossingInfo = checkAmpersandCrossingDuringExtension(selector, target);
+
+      if (ampersandCrossingInfo.crossed) {
+        const result = handleAmpersandBoundaryCrossing(
+          selector,
+          target,
+          extendWith,
+          ampersandCrossingInfo.ampersandNode!,
+          matchResult
+        );
+        return result;
+      }
+    }
+
+    // Handle different match types
+    if (matchResult.hasFullMatch) {
+      return handleFullExtend(selector, target, extendWith, matchResult);
+    } else if (matchResult.hasPartialMatch) {
+      return handlePartialExtend(selector, target, extendWith, matchResult);
+    }
+  }
+
+  // Fall back to ExtendLocation API for cases matchSelectors doesn't handle
+  // (like finding .a within :where(.a, .b))
+  const searchResult = findExtendableLocations(selector, target);
+
+  if (!searchResult.hasMatches) {
     throw new Error('No match found for target selector');
   }
 
@@ -39,30 +71,36 @@ export function extendSelector(
     const ampersandCrossingInfo = checkAmpersandCrossingDuringExtension(selector, target);
 
     if (ampersandCrossingInfo.crossed) {
+      // Convert ExtendLocation to MatchResult for compatibility
+      const fallbackMatchResult = {
+        hasMatch: true,
+        hasFullMatch: true,
+        hasPartialMatch: false,
+        matched: [target],
+        remainders: []
+      };
       const result = handleAmpersandBoundaryCrossing(
         selector,
         target,
         extendWith,
         ampersandCrossingInfo.ampersandNode!,
-        matchResult
+        fallbackMatchResult
       );
       return result;
     }
   }
 
-  // Standard extension logic
-  let result: Selector;
-  if (partial) {
-    result = handlePartialExtend(selector, target, extendWith, matchResult);
-  } else {
-    result = handleFullExtend(selector, target, extendWith, matchResult);
+  // Use the first location found
+  const location = searchResult.locations[0]!;
+
+  // Check if this is a root-level full match (should create selector list)
+  if (location.path.length === 0 && location.extensionType === 'replace') {
+    // This is a full match at the root - create selector list with both original and extension
+    return new SelectorList([selector, extendWith]).inherit(selector);
   }
 
-  // Post-process to remove unnecessary :is() wrappers only at the top level
-  // Only optimize if the entire result is just a standalone :is() wrapper
-  const optimizedResult = optimizeTopLevelUnnecessaryIsWrapper(result);
-
-  return optimizedResult;
+  // Otherwise, apply the extension at the found location
+  return applyExtensionAtLocation(selector, location, extendWith);
 }
 
 /**
@@ -89,11 +127,12 @@ function handleFullExtend(
     return SelectorList.create(newSelectors).inherit(copyForInheritance);
   }
 
-  // If selector is a pseudo-selector with selector arguments, add to its argument list
+  // If selector is a pseudo-selector with selector arguments, check if we should extend arguments or create selector list
   if (isNode(selector, 'PseudoSelector')) {
     const arg = selector.value.arg;
-    // Check if the argument is a selector or selector list
-    if (arg && (arg as any).isSelector) {
+    // Only extend arguments for :is() pseudo-selectors or when the target is NOT the complete pseudo-selector
+    // For other pseudo-selectors like :where(), when the entire pseudo-selector is matched, create a selector list
+    if (arg && (arg as any).isSelector && selector.value.name === ':is') {
       if (isNode(arg, 'SelectorList')) {
         // Add to existing selector list
         const newSelectors = [...arg.value, extendWith];
@@ -128,6 +167,8 @@ function handleFullExtend(
         }
       }
     }
+    // For non-:is() pseudo-selectors or when target matches the entire pseudo-selector,
+    // fall through to create a selector list
   }
 
   // For compound selectors, check if we need special handling for pseudo-classes
@@ -160,7 +201,7 @@ function handleCompoundFullExtend(
     if (!comp) continue;
 
     // Check if this is an existing :is() pseudo-selector that might contain the target
-    // :is() is special - it allows RTL matching (matching from outside to inside its arguments)
+    // ONLY :is() allows boundary crossing - all other pseudo-selectors are atomic units
     if (isNode(comp, 'PseudoSelector') && comp.value.name === ':is') {
       const arg = comp.value.arg;
       if (arg && (arg as any).isSelector) {
@@ -616,104 +657,97 @@ function optimizeTopLevelUnnecessaryIsWrapper(selector: Selector): Selector {
 }
 
 /**
- * Optimizes unnecessary :is() wrappers by unwrapping them when they're standalone
- * @param selector - The selector to optimize
- * @returns Optimized selector with unnecessary :is() wrappers removed
+ * Handles partial extension at root level
  */
-function optimizeUnnecessaryIsWrappers(selector: Selector): Selector {
-  // First, recursively optimize all children
-  let optimized = optimizeChildSelectors(selector);
+function handlePartialExtendAtRoot(selector: Selector, target: Selector, extendWith: Selector): Selector {
+  // For partial matches at root, we typically want to wrap with :is() if it's compound
+  if (isNode(selector, 'CompoundSelector') && selector.value.length > 1) {
+    return new SelectorList([new PseudoSelector({ name: ':is', arg: new SelectorList([target, extendWith]).inherit(target) }), ...selector.value.slice(1)]).inherit(selector);
+  }
 
-  // Then check if this level can be optimized
-  return optimizeCurrentLevel(optimized);
+  // Default to selector list for root-level partial matches
+  return new SelectorList([selector, extendWith]).inherit(selector);
 }
 
 /**
- * Recursively optimizes child selectors within the given selector
- * @param selector - The selector whose children to optimize
- * @returns Selector with optimized children
+ * Checks if partial match processing is needed
  */
-function optimizeChildSelectors(selector: Selector): Selector {
-  if (isNode(selector, 'SelectorList')) {
-    const optimizedSelectors = selector.value.map(s => optimizeUnnecessaryIsWrappers(s));
-    return SelectorList.create(optimizedSelectors).inherit(selector);
-  }
-
-  if (isNode(selector, 'ComplexSelector')) {
-    const optimizedComponents = selector.value.map((component) => {
-      if (isNode(component, 'Combinator')) {
-        return component;
-      }
-      return optimizeUnnecessaryIsWrappers(component as Selector) as any;
-    });
-    return ComplexSelector.create(optimizedComponents).inherit(selector);
-  }
-
-  if (isNode(selector, 'CompoundSelector')) {
-    const optimizedComponents = selector.value.map(component =>
-      component ? optimizeUnnecessaryIsWrappers(component) as any : component
-    );
-    return CompoundSelector.create(optimizedComponents).inherit(selector);
-  }
-
-  if (isNode(selector, 'PseudoSelector')) {
-    const arg = selector.value.arg;
-    if (arg && (arg as any).isSelector) {
-      // Optimize the selector argument - this is key for nested contexts!
-      const optimizedArg = optimizeUnnecessaryIsWrappers(arg as Selector);
-
-      if (optimizedArg !== arg) {
-        // Create new pseudo-selector with optimized argument
-        return PseudoSelector.create({
-          name: selector.value.name,
-          arg: optimizedArg
-        }).inherit(selector);
-      }
-    }
-  }
-
-  // For all other cases, return as-is
-  return selector;
+function needsPartialMatchProcessing(result: Selector, location: any): boolean {
+  // Only need processing for complex selector results
+  return isNode(result, 'ComplexSelector') || isNode(result, 'CompoundSelector');
 }
 
 /**
- * Optimizes the current level selector if it's an unnecessary :is() wrapper
- * Only optimizes :is() wrappers that were generated during compilation
- * @param selector - The selector to check for optimization
- * @returns Optimized selector or original if no optimization needed
+ * Processes partial match results to handle remainders properly
  */
-function optimizeCurrentLevel(selector: Selector): Selector {
-  // Check if this is a standalone :is() pseudo-selector (not part of a compound)
-  // that was generated during compilation
-  if (isNode(selector, 'PseudoSelector')
-    && selector.value.name === ':is'
-    && selector.generated === true) { // Explicit check for true to avoid falsy values
-    const arg = selector.value.arg;
-    if (arg && (arg as any).isSelector) {
-      // This is a standalone :is() generated by compilation - unwrap it since :is() is only needed when combined with other components
-      return (arg as Selector).inherit(selector);
-    }
+function processPartialMatchResult(
+  result: Selector,
+  selector: Selector,
+  target: Selector,
+  extendWith: Selector,
+  location: any
+): Selector {
+  // For now, return the result as-is
+  // This is where we would handle complex partial match scenarios
+  return result;
+}
+
+/**
+ * Handles extension location in partial mode - creates :is() wrappers
+ */
+function handleExtendLocationPartial(
+  selector: Selector,
+  location: any,
+  extendWith: Selector
+): Selector {
+  // Apply extension - this will create selector lists within pseudo-selectors
+  const extended = applyExtensionAtLocation(selector, location, extendWith);
+
+  // If we're in a complex selector context and need to create :is() wrappers
+  // For now, just return the extended result
+  return extended;
+}
+
+/**
+ * Handles extension location in full mode - creates appropriate structures based on context
+ */
+function handleExtendLocationFull(
+  selector: Selector,
+  location: any,
+  extendWith: Selector
+): Selector {
+  // For compound selectors, we may need to create :is() wrappers
+  if (location.path.length > 0) {
+    // We're extending within a compound or complex selector
+    const extended = applyExtensionAtLocation(selector, location, extendWith);
+
+    // Check if we need to convert the result to use :is() wrappers
+    // This happens when extending part of a compound selector
+    return convertToIsWrapperIfNeeded(extended, selector, location, extendWith);
   }
 
-  // Check if this is a compound selector with only one component that's an :is() generated by compilation
-  if (isNode(selector, 'CompoundSelector') && selector.value.length === 1) {
-    const singleComponent = selector.value[0];
-    if (singleComponent
-      && isNode(singleComponent, 'PseudoSelector')
-      && singleComponent.value.name === ':is'
-      && singleComponent.generated === true) { // Explicit check for true to avoid falsy values
-      const arg = singleComponent.value.arg;
-      if (arg && (arg as any).isSelector) {
-        // Unwrap the :is() since it's the only component in the compound and was generated by compilation
-        return (arg as Selector).inherit(selector);
-      }
-    }
+  // Default case: apply extension directly
+  return applyExtensionAtLocation(selector, location, extendWith);
+}
+
+/**
+ * Converts extended results to use :is() wrappers when needed for compound selectors
+ */
+function convertToIsWrapperIfNeeded(
+  extended: Selector,
+  original: Selector,
+  location: any,
+  extendWith: Selector
+): Selector {
+  // If this is a compound selector extension, we might need :is() wrapper
+  if (isNode(original, 'CompoundSelector') && original.value.length > 1) {
+    // Check if the extension created a selector list at the component level
+    // If so, we should wrap it in :is()
+
+    // For now, just return the extended result
+    // The proper logic would analyze the location path and determine
+    // if we need to create :is() wrappers for compound boundary cases
   }
 
-  // DO NOT optimize:
-  // - :is() that existed in the original selector (without generated: true)
-  // - Compound selectors with multiple components like &:is(.bar, .a) - the :is() is necessary
-  // - Any :is() that serves a semantic purpose in the original selector
-
-  return selector;
+  return extended;
 }
