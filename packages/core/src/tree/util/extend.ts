@@ -7,7 +7,6 @@ import { PseudoSelector } from '../selector-pseudo';
 import { Combinator } from '../combinator';
 import { Ampersand } from '../ampersand';
 import { isNode } from './is-node';
-import { matchSelectors } from './match-selector';
 import { findExtendableLocations, applyExtensionAtLocation } from './find-extendable-locations';
 
 /**
@@ -28,38 +27,7 @@ export function extendSelector(
   partial: boolean,
   skipAmpersandCheck: boolean = false
 ): Selector {
-  // Try the legacy matchSelectors first for compatibility
-  const matchResult = matchSelectors(selector, target, partial);
-
-  if (matchResult.hasMatch) {
-    // Use the existing logic for cases that matchSelectors handles correctly
-
-    // Check for ampersand boundary crossing during extension (unless skipped)
-    if (!skipAmpersandCheck) {
-      const ampersandCrossingInfo = checkAmpersandCrossingDuringExtension(selector, target);
-
-      if (ampersandCrossingInfo.crossed) {
-        const result = handleAmpersandBoundaryCrossing(
-          selector,
-          target,
-          extendWith,
-          ampersandCrossingInfo.ampersandNode!,
-          matchResult
-        );
-        return result;
-      }
-    }
-
-    // Handle different match types
-    if (matchResult.hasFullMatch) {
-      return handleFullExtend(selector, target, extendWith, matchResult);
-    } else if (matchResult.hasPartialMatch) {
-      return handlePartialExtend(selector, target, extendWith, matchResult);
-    }
-  }
-
-  // Fall back to ExtendLocation API for cases matchSelectors doesn't handle
-  // (like finding .a within :where(.a, .b))
+  // Use the unified ExtendLocation API for all selector matching
   const searchResult = findExtendableLocations(selector, target);
 
   if (!searchResult.hasMatches) {
@@ -71,13 +39,14 @@ export function extendSelector(
     const ampersandCrossingInfo = checkAmpersandCrossingDuringExtension(selector, target);
 
     if (ampersandCrossingInfo.crossed) {
-      // Convert ExtendLocation to MatchResult for compatibility
+      // Convert ExtendLocation to MatchResult for compatibility with ampersand handling
+      const location = searchResult.locations[0]!;
       const fallbackMatchResult = {
         hasMatch: true,
-        hasFullMatch: true,
-        hasPartialMatch: false,
+        hasFullMatch: !location.isPartialMatch,
+        hasPartialMatch: !!location.isPartialMatch,
         matched: [target],
-        remainders: []
+        remainders: location.remainders || []
       };
       const result = handleAmpersandBoundaryCrossing(
         selector,
@@ -93,13 +62,100 @@ export function extendSelector(
   // Use the first location found
   const location = searchResult.locations[0]!;
 
-  // Check if this is a root-level full match (should create selector list)
-  if (location.path.length === 0 && location.extensionType === 'replace') {
-    // This is a full match at the root - create selector list with both original and extension
-    return new SelectorList([selector, extendWith]).inherit(selector);
-  }
+  // Handle partial vs full matching modes
+  if (partial) {
+    // PARTIAL MATCHING MODE: Create :is() wrappers for component-level matches
+    
+    // If it's a root-level match in partial mode, we may still want selector list behavior
+    if (location.path.length === 0) {
+      return new SelectorList([selector, extendWith]).inherit(selector);
+    }
+    
+    // For deeper matches in partial mode, we need to analyze the context
+    // If we're matching within a compound selector, create :is() wrapper
+    if (location.path.length > 0) {
+      return handlePartialModeExtension(selector, location, extendWith);
+    }
+    
+    return applyExtensionAtLocation(selector, location, extendWith);
+  } else {
+    // FULL MATCHING MODE: Create selector lists for complete matches
+    
+    // Check if this is a root-level full match (should create selector list)
+    if (location.path.length === 0 && location.extensionType === 'replace' && !location.isPartialMatch) {
+      // This is a full match at the root - create selector list with both original and extension
+      return new SelectorList([selector, extendWith]).inherit(selector);
+    }
 
-  // Otherwise, apply the extension at the found location
+    // For full matches within compound selectors, create :is() wrapper
+    if (location.path.length === 1 && isNode(selector, 'CompoundSelector')) {
+      // This is a component match within a compound selector
+      const componentIndex = location.path[0] as number;
+      const matchedComponent = selector.value[componentIndex];
+      
+      if (matchedComponent && selector.value.length > 1) {
+        // Replace the matched component with :is(original, extension)
+        const newComponents = [...selector.value];
+        newComponents[componentIndex] = createIsWrapper([matchedComponent, extendWith], matchedComponent);
+        return CompoundSelector.create(newComponents).inherit(selector);
+      }
+    }
+
+    // For full matches at deeper levels, still apply the extension
+    return applyExtensionAtLocation(selector, location, extendWith);
+  }
+}
+
+/**
+ * Handles extension in partial matching mode - creates :is() wrappers for component-level matches
+ */
+function handlePartialModeExtension(
+  selector: Selector,
+  location: any,
+  extendWith: Selector
+): Selector {
+  // In partial mode, we want to create :is() wrappers for component-level matches
+  // This is the behavior expected by tests like ".a>.b" + ".b" extend ".c" → ".a>:is(.b,.c)"
+  
+  // First check if this is a compound selector match that needs :is() wrapper
+  if (location.path.length === 1 && isNode(selector, 'ComplexSelector')) {
+    // This is a direct component match in a complex selector
+    const componentIndex = location.path[0] as number;
+    const components = selector.value;
+    const matchedComponent = components[componentIndex];
+    
+    if (matchedComponent && !isNode(matchedComponent, 'Combinator')) {
+      // Replace the matched component with :is(original, extension)
+      const newComponents = [...components];
+      newComponents[componentIndex] = createIsWrapper([matchedComponent, extendWith], matchedComponent);
+      return ComplexSelector.create(newComponents).inherit(selector);
+    }
+  }
+  
+  // For compound selector matches within complex selectors
+  if (location.path.length === 2 && isNode(selector, 'ComplexSelector')) {
+    const [componentIndex, subIndex] = location.path;
+    const components = selector.value;
+    const component = components[componentIndex as number];
+    
+    if (component && isNode(component, 'CompoundSelector')) {
+      // We're matching a part of a compound selector within a complex selector
+      const matchedElement = component.value[subIndex as number];
+      if (matchedElement) {
+        // Replace the matched element with :is(original, extension)
+        const newSubComponents = [...component.value];
+        newSubComponents[subIndex as number] = createIsWrapper([matchedElement, extendWith], matchedElement);
+        
+        const newComponent = CompoundSelector.create(newSubComponents).inherit(component);
+        const newComponents = [...components];
+        newComponents[componentIndex as number] = newComponent;
+        
+        return ComplexSelector.create(newComponents).inherit(selector);
+      }
+    }
+  }
+  
+  // Default: apply extension directly
   return applyExtensionAtLocation(selector, location, extendWith);
 }
 
@@ -205,10 +261,10 @@ function handleCompoundFullExtend(
     if (isNode(comp, 'PseudoSelector') && comp.value.name === ':is') {
       const arg = comp.value.arg;
       if (arg && (arg as any).isSelector) {
-        const isMatchResult = matchSelectors(arg as Selector, target, false);
-        if (isMatchResult.hasMatch) {
-          // Extend the :is() argument
-          const extendedArg = handleFullExtend(arg as Selector, target, extendWith, isMatchResult);
+        const isSearchResult = findExtendableLocations(arg as Selector, target);
+        if (isSearchResult.hasMatches) {
+          // Extend the :is() argument using the new API
+          const extendedArg = extendSelector(arg as Selector, target, extendWith, false, true);
 
           // If the original selector was generated, we can mutate the :is() component in place
           if (selector.generated) {
@@ -228,8 +284,8 @@ function handleCompoundFullExtend(
       }
     } else {
       // Check if this component matches the target
-      const compMatchResult = matchSelectors(comp, target, false);
-      if (compMatchResult.hasMatch && selector.value.length > 1) {
+      const compSearchResult = findExtendableLocations(comp, target);
+      if (compSearchResult.hasMatches && selector.value.length > 1) {
         // This compound has multiple components - replace matched component with :is() wrapper
         const isWrapper = createIsWrapper([comp, extendWith], comp);
 
@@ -340,17 +396,18 @@ function handleComplexPartialExtend(
     }
 
     if (component) {
-      const compMatchResult = matchSelectors(component, target, true);
+      const compSearchResult = findExtendableLocations(component, target);
 
-      if (compMatchResult.hasMatch) {
+      if (compSearchResult.hasMatches) {
         // Found matching component - replace with :is() wrapper
         const newComponents = [...components];
+        const location = compSearchResult.locations[0]!;
 
-        if (compMatchResult.hasPartialMatch && compMatchResult.remainders && compMatchResult.remainders.length > 0) {
+        if (location.isPartialMatch && location.remainders && location.remainders.length > 0) {
           // Partial match within this component - need to handle remainders
           if (isNode(component, 'CompoundSelector')) {
-            // Component is compound - delegate to compound partial extend logic
-            const extendedComponent = handleCompoundPartialExtend(component, target, extendWith, compMatchResult);
+            // Component is compound - apply the extension using the new API
+            const extendedComponent = applyExtensionAtLocation(component, location, extendWith);
             newComponents[i] = extendedComponent as any; // Type assertion needed for ComplexSelectorComponent
           } else {
             // Simple component - replace with :is() wrapper
@@ -389,9 +446,9 @@ function handleCompoundPartialExtend(
   for (let i = 0; i < selector.value.length; i++) {
     const comp = selector.value[i];
     if (comp) {
-      const compMatchResult = matchSelectors(comp, target, false);
+      const compSearchResult = findExtendableLocations(comp, target);
 
-      if (compMatchResult.hasMatch) {
+      if (compSearchResult.hasMatches) {
         // Replace this component with :is(original, extension)
         // IMPORTANT: Use comp instead of target to preserve comments!
         const newComponents = [...selector.value];
@@ -452,13 +509,13 @@ function checkAmpersandCrossingDuringExtension(selector: Selector, target: Selec
     const resolvedSelector = replaceAmpersandWithItsValue(selector, ampersand);
 
     // Check if target matches the resolved version
-    const resolvedMatch = matchSelectors(resolvedSelector, target, true);
+    const resolvedSearchResult = findExtendableLocations(resolvedSelector, target);
 
     // Also check if target matches the selector without this ampersand
     const selectorWithoutAmpersand = replaceAmpersandWithEmpty(selector, ampersand);
-    const nonAmpersandMatch = matchSelectors(selectorWithoutAmpersand, target, true);
+    const nonAmpersandSearchResult = findExtendableLocations(selectorWithoutAmpersand, target);
 
-    if (resolvedMatch.hasMatch && !nonAmpersandMatch.hasMatch) {
+    if (resolvedSearchResult.hasMatches && !nonAmpersandSearchResult.hasMatches) {
       // Target only matches when ampersand is resolved = boundary crossing
       return {
         crossed: true,

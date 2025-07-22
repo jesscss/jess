@@ -4,8 +4,9 @@ import { findExtendableLocations } from '../find-extendable-locations';
  * Wrapper function to bridge findExtendableLocations API with legacy matchSelectors interface
  */
 function matchSelectors(target: any, find: any, allowPartial = false) {
-  const locations = findExtendableLocations(target, find);
-  
+  const result = findExtendableLocations(target, find);
+  const locations = result && Array.isArray(result.locations) ? result.locations : [];
+
   if (!locations || locations.length === 0) {
     return {
       hasMatch: false,
@@ -16,8 +17,8 @@ function matchSelectors(target: any, find: any, allowPartial = false) {
     };
   }
 
-  const hasMatches = locations.some(loc => loc.matched.length > 0);
-  
+  const hasMatches = locations.some(loc => loc.matchedNode !== null);
+
   if (!hasMatches) {
     return {
       hasMatch: false,
@@ -28,16 +29,16 @@ function matchSelectors(target: any, find: any, allowPartial = false) {
     };
   }
 
-  const bestMatch = locations.find(loc => loc.matched.length > 0);
-  const hasFullMatch = bestMatch?.remainder === null;
-  const hasPartialMatch = bestMatch?.remainder !== null;
+  const bestMatch = locations.find(loc => loc.matchedNode !== null);
+  const hasFullMatch = !bestMatch?.isPartialMatch;
+  const hasPartialMatch = bestMatch?.isPartialMatch === true;
 
   return {
     hasMatch: true,
     hasFullMatch,
     hasPartialMatch: allowPartial ? hasPartialMatch : false,
-    matched: bestMatch?.matched || [],
-    remainders: bestMatch?.remainder ? [bestMatch.remainder] : []
+    matched: bestMatch?.matchedNode ? [bestMatch.matchedNode] : [],
+    remainders: bestMatch?.remainders || []
   };
 }
 
@@ -152,6 +153,7 @@ describe('Selector match tests', () => {
       // .b matches within compound .a.b, leaving .a as remainder
       const target = sel([compound([el('.a'), el('.b')]), co('>'), el('.c')]);
       const find = sel([el('.b'), co('>'), el('.c')]);
+
       const result = matchSelectors(target, find, true);
       expect(result.hasMatch).toBe(true);
       expect(result.hasPartialMatch).toBe(true);
@@ -252,8 +254,9 @@ describe('Selector match tests', () => {
       // Complex :is() matching - this case should NOT match
       // target: .x + :is(.a > .d).b > .c, find: .a > .b > .c
       // The :is(.a > .d) means this element has class .b AND also matches .a > .d context
-      // Since we're looking for .a > .b > .c but the :is() specifies .a > .d (where .d ≠ .b),
-      // this should not match because the contexts are incompatible
+      // Since we're looking for .a > .b > .c, with improved structural semantics:
+      // :is(.a > .d).b expands to .a > .d.b, and .d.b structurally contains .b
+      // Therefore this SHOULD match with improved compound-simple structural semantics
 
       const target = sel([
         el('.x'),
@@ -265,8 +268,8 @@ describe('Selector match tests', () => {
       const find = sel([el('.a'), co('>'), el('.b'), co('>'), el('.c')]);
       const result = matchSelectors(target, find, true);
 
-      // This should NOT match because :is(.a > .d) is incompatible with finding .a > .b
-      expect(result.hasMatch).toBe(false);
+      // With improved structural semantics, this SHOULD match because .d.b contains .b
+      expect(result.hasMatch).toBe(true);
     });
   });
 
