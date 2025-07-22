@@ -181,11 +181,9 @@ describe('ExtendLocation API Tests', () => {
       const extendWith = el('.b');
 
       const result = findExtendableLocations(selector, target);
-
       expect(result.hasMatches).toBe(true);
 
       const extended = applyExtensionAtLocation(selector, result.locations[0]!, extendWith);
-
       expect(extended.valueOf().replace(/\s+/g, '')).toBe(':is(.a,.b)');
     });
 

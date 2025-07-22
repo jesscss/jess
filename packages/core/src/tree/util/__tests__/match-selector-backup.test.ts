@@ -1,45 +1,5 @@
 import { el, sel, sellist, compound, is, co, attr, quoted, pseudo } from '../../..';
 import { findExtendableLocations } from '../find-extendable-locations';
-/**
- * Wrapper function to bridge findExtendableLocations API with legacy matchSelectors interface
- */
-function matchSelectors(target: any, find: any, allowPartial = false) {
-  const locations = findExtendableLocations(target, find);
-  
-  if (!locations || locations.length === 0) {
-    return {
-      hasMatch: false,
-      hasFullMatch: false,
-      hasPartialMatch: false,
-      matched: [],
-      remainders: [target]
-    };
-  }
-
-  const hasMatches = locations.some(loc => loc.matched.length > 0);
-  
-  if (!hasMatches) {
-    return {
-      hasMatch: false,
-      hasFullMatch: false,
-      hasPartialMatch: false,
-      matched: [],
-      remainders: [target]
-    };
-  }
-
-  const bestMatch = locations.find(loc => loc.matched.length > 0);
-  const hasFullMatch = bestMatch?.remainder === null;
-  const hasPartialMatch = bestMatch?.remainder !== null;
-
-  return {
-    hasMatch: true,
-    hasFullMatch,
-    hasPartialMatch: allowPartial ? hasPartialMatch : false,
-    matched: bestMatch?.matched || [],
-    remainders: bestMatch?.remainder ? [bestMatch.remainder] : []
-  };
-}
 
 /**
  * Helper functions for creating :where() and :not() pseudo-selectors

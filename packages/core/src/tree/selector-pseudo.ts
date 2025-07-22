@@ -130,21 +130,17 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     let valueOf = this._valueOf;
     if (!valueOf) {
       let { name, arg } = this.value;
+      // For :is() with SelectorList, use valueOf() to avoid newlines
 
-      // For :is() pseudo-selectors, always preserve the wrapper for semantic correctness
-      // This is important for extend operations where :is(.a) and .a have different meanings
-      if (name === ':is' && arg) {
-        valueOf = `${name}(${arg.valueOf()})`;
-      } else {
-        /**
-         * Normalizes :nth-child(n + 1) to match :nth-child(n+1)
-         * That is, anything that doesn't hold a selector as a value
-         * is, by definition, not space-sensitive.
-         *
-         * @todo 1n === n, 2n + 0 === 2n
-         */
-        valueOf = `${name}${arg ? `(${arg.toTrimmedString().replace(/\s+/g, '')})` : ''}`;
-      }
+      /**
+       * Normalizes :nth-child(n + 1) to match :nth-child(n+1)
+       * That is, anything that doesn't hold a selector as a value
+       * is, by definition, not space-sensitive.
+       *
+       * @todo 1n === n, 2n + 0 === 2n
+       */
+      valueOf = `${name}${arg ? `(${arg.valueOf()})` : ''}`;
+
       this._valueOf = valueOf;
     }
     return valueOf;
