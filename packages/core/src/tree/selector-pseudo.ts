@@ -130,15 +130,9 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     let valueOf = this._valueOf;
     if (!valueOf) {
       let { name, arg } = this.value;
-      /** Simplify wrapped :is when it can be */
-      if (
-        name === ':is'
-        && (isNode(arg, 'CompoundSelector') || arg instanceof SimpleSelector)
-      ) {
-        return arg.valueOf();
-      }
 
-      // For :is() with SelectorList, use valueOf() to avoid newlines
+      // For :is() pseudo-selectors, always preserve the wrapper for semantic correctness
+      // This is important for extend operations where :is(.a) and .a have different meanings
       if (name === ':is' && arg) {
         valueOf = `${name}(${arg.valueOf()})`;
       } else {
