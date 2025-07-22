@@ -8,6 +8,13 @@ import { Combinator } from '../combinator';
 import { Ampersand } from '../ampersand';
 import { isNode } from './is-node';
 import { findExtendableLocations, applyExtensionAtLocation } from './find-extendable-locations';
+import {
+  componentsMatch,
+  isSelector,
+  determineExtensionType,
+  buildSelectorPath,
+  areCompoundSelectorsEquivalent
+} from './extend-helpers';
 
 /**
  * Extends a selector by finding matches for a target selector and adding the extension.

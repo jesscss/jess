@@ -6,6 +6,17 @@ import { CompoundSelector } from '../selector-compound';
 import { PseudoSelector } from '../selector-pseudo';
 import { Combinator } from '../combinator';
 import { isNode } from './is-node';
+import {
+  componentsMatch,
+  isSelector,
+  determineExtensionType,
+  buildSelectorPath,
+  areCompoundSelectorsEquivalent,
+  expandCompoundWithPseudoSelectors,
+  arePseudoSelectorsEquivalent,
+  areComplexSelectorsEquivalent,
+  getNonCombinatorComponents
+} from './extend-helpers';
 
 /**
  * Represents a location within a selector tree where a target can be extended
@@ -483,32 +494,6 @@ function trySmallCompoundExtendMatch(
 }
 
 /**
- * Efficient compound selector equivalence check (order-independent)
- */
-function areCompoundSelectorsEquivalent(a: CompoundSelector, b: CompoundSelector): boolean {
-  if (a.value.length !== b.value.length) return false;
-
-  // Expand both compounds to handle :is() pseudo-selectors
-  const aExpanded = expandCompoundWithPseudoSelectors(a);
-  const bExpanded = expandCompoundWithPseudoSelectors(b);
-
-  // Check if any expanded form of a matches any expanded form of b
-  return aExpanded.some(aComp =>
-    bExpanded.some(bComp =>
-      // All components must match
-      aComp.value.length === bComp.value.length
-      && aComp.value.every(aCompItem =>
-        bComp.value.some(bCompItem =>
-          isNode(aCompItem, 'PseudoSelector') && aCompItem.value.arg && isSelector(aCompItem.value.arg)
-            ? arePseudoSelectorsEquivalent(aCompItem, bCompItem)
-            : aCompItem.valueOf() === bCompItem.valueOf()
-        )
-      )
-    )
-  );
-}
-
-/**
  * Expands compound selectors by handling :is() pseudo-selectors
  * IMPORTANT: Only handle :is() as special case. All other pseudo-selectors with selector args
  * are handled through normal equivalence checking.
@@ -628,9 +613,6 @@ function areSelectorArgumentsEquivalent(a: Selector, b: Selector): boolean {
 /**
  * Helper to check if a value is a Selector
  */
-function isSelector(value: any): boolean {
-  return value && typeof value === 'object' && 'valueOf' in value && 'isSelector' in value;
-}
 
 /**
  * Enhanced recursive search with :is() backtracking and optimization layers
@@ -1153,34 +1135,6 @@ function tryBacktrackingComplexMatch(
   return null;
 }
 
-// Helper to check if two components match (with improved structural semantics)
-function componentsMatch(a: Selector, b: Selector): boolean {
-  if (a.valueOf() === b.valueOf()) return true;
-
-  // Handle compound selector equivalence (order-independent)
-  if (isNode(a, 'CompoundSelector') && isNode(b, 'CompoundSelector')) {
-    return areCompoundSelectorsEquivalent(a, b);
-  }
-
-  // Handle compound vs simple: compound contains simple (improved structural matching)
-  if (isNode(a, 'CompoundSelector') && isNode(b, 'SimpleSelector')) {
-    return a.value.some(comp => comp.valueOf() === b.valueOf());
-  }
-
-  // Handle simple vs compound: compound contains simple (improved structural matching)
-  if (isNode(a, 'SimpleSelector') && isNode(b, 'CompoundSelector')) {
-    return b.value.some(comp => comp.valueOf() === a.valueOf());
-  }
-
-  // Handle pseudo-selector equivalence
-  if (isNode(a, 'PseudoSelector') && isNode(b, 'PseudoSelector')) {
-    return a.value.name === b.value.name
-      && areSelectorArgumentsEquivalent(a.value.arg as Selector, b.value.arg as Selector);
-  }
-
-  return false;
-}
-
 /**
  * Enhanced pseudo-selector search with :is() backtracking optimization
  */
@@ -1293,28 +1247,6 @@ function isStructurallyEqual(a: Selector, b: Selector): boolean {
 
   // Default fallback
   return false;
-}
-
-/**
- * Determines the appropriate extension type based on the match location
- */
-function determineExtensionType(
-  matchedNode: Selector,
-  path: Array<string | number>
-): 'replace' | 'append' | 'wrap' {
-  // If we're inside a pseudo-selector argument (like :where() or :is())
-  if (path.some(segment => segment === 'arg')) {
-    return 'append'; // Can append to pseudo-selector argument lists
-  }
-
-  // If we're in a SelectorList context (not just any numeric path)
-  // We need to check the context more carefully
-  // Numeric paths can mean: SelectorList index, CompoundSelector index, or ComplexSelector index
-  // Only SelectorList contexts should use 'append' - others should use 'replace'
-
-  // For now, default to replace for all direct matches
-  // The 'append' behavior should be handled by specialized logic in pseudo-selector handling
-  return 'replace';
 }
 
 /**
