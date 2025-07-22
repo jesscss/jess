@@ -15,6 +15,8 @@ import {
   expandCompoundWithPseudoSelectors,
   arePseudoSelectorsEquivalent,
   areComplexSelectorsEquivalent,
+  areSelectorArgumentsEquivalent,
+  isStructurallyEqual,
   getNonCombinatorComponents
 } from './extend-helpers';
 
@@ -318,38 +320,6 @@ function tryFastPathExtendMatch(
 }
 
 /**
- * Check if two complex selectors are equivalent
- */
-function areComplexSelectorsEquivalent(a: ComplexSelector, b: ComplexSelector): boolean {
-  if (a.value.length !== b.value.length) return false;
-
-  // Check each component matches
-  for (let i = 0; i < a.value.length; i++) {
-    const aComp = a.value[i];
-    const bComp = b.value[i];
-
-    if (!aComp || !bComp) return false;
-
-    // Both must be same type
-    if (isNode(aComp, 'Combinator') && isNode(bComp, 'Combinator')) {
-      if (aComp.value !== bComp.value) return false;
-    } else if (!isNode(aComp, 'Combinator') && !isNode(bComp, 'Combinator')) {
-      // Both are selectors - check equivalence
-      if (isNode(aComp, 'CompoundSelector') && isNode(bComp, 'CompoundSelector')) {
-        if (!areCompoundSelectorsEquivalent(aComp, bComp)) return false;
-      } else if (aComp.valueOf() !== bComp.valueOf()) {
-        return false;
-      }
-    } else {
-      // One is combinator, other is not
-      return false;
-    }
-  }
-
-  return true;
-}
-
-/**
  * Tries to match partial complex selectors
  */
 function tryPartialComplexMatch(
@@ -491,123 +461,6 @@ function trySmallCompoundExtendMatch(
   }
 
   return [];
-}
-
-/**
- * Expands compound selectors by handling :is() pseudo-selectors
- * IMPORTANT: Only handle :is() as special case. All other pseudo-selectors with selector args
- * are handled through normal equivalence checking.
- */
-function expandCompoundWithPseudoSelectors(compound: CompoundSelector): CompoundSelector[] {
-  const expansions: CompoundSelector[] = [compound];
-
-  // Only expand :is() pseudo-selectors
-  compound.value.forEach((component, index) => {
-    if (isNode(component, 'PseudoSelector') && component.value.name === ':is' && component.value.arg && isSelector(component.value.arg)) {
-      const arg = component.value.arg as Selector;
-
-      // Handle :is() with compound selector argument
-      if (isNode(arg, 'CompoundSelector')) {
-        // Create new expansions by replacing :is() with its contents
-        const newExpansions: CompoundSelector[] = [];
-
-        expansions.forEach((expansion) => {
-          const newComponents = [...expansion.value];
-          newComponents.splice(index, 1, ...arg.value); // Replace :is() with its contents
-          newExpansions.push(new CompoundSelector(newComponents));
-        });
-
-        expansions.push(...newExpansions);
-      } else if (isNode(arg, 'SimpleSelector')) {
-        // Handle :is() with simple selector argument
-        // Create new expansions by replacing :is() with the simple selector
-        const newExpansions: CompoundSelector[] = [];
-
-        expansions.forEach((expansion) => {
-          const newComponents = [...expansion.value];
-          newComponents.splice(index, 1, arg); // Replace :is() with the simple selector
-          newExpansions.push(new CompoundSelector(newComponents));
-        });
-
-        expansions.push(...newExpansions);
-      } else if (isNode(arg, 'SelectorList')) {
-        // Handle :is() with selector list argument
-        // Create new expansions for each item in the selector list
-        const newExpansions: CompoundSelector[] = [];
-
-        arg.value.forEach((listItem) => {
-          expansions.forEach((expansion) => {
-            const newComponents = [...expansion.value];
-            if (isNode(listItem, 'SimpleSelector')) {
-              newComponents.splice(index, 1, listItem); // Replace :is() with the list item
-              newExpansions.push(new CompoundSelector(newComponents));
-            } else if (isNode(listItem, 'CompoundSelector')) {
-              newComponents.splice(index, 1, ...listItem.value); // Replace :is() with compound components
-              newExpansions.push(new CompoundSelector(newComponents));
-            }
-          });
-        });
-
-        expansions.push(...newExpansions);
-      }
-    }
-  });
-
-  return expansions;
-}
-
-/**
- * Check if two pseudo-selectors are equivalent
- * Handles all pseudo-selectors with selector arguments, not just specific ones
- */
-function arePseudoSelectorsEquivalent(a: any, b: any): boolean {
-  if (!isNode(a, 'PseudoSelector') || !isNode(b, 'PseudoSelector')) return false;
-  if (a.value.name !== b.value.name) return false;
-
-  const aArg = a.value.arg;
-  const bArg = b.value.arg;
-
-  if (!aArg && !bArg) return true;
-  if (!aArg || !bArg) return false;
-
-  // If both have selector arguments, check equivalence
-  if (isSelector(aArg) && isSelector(bArg)) {
-    return areSelectorArgumentsEquivalent(aArg as Selector, bArg as Selector);
-  }
-
-  // For non-selector arguments, use string comparison
-  return String(aArg) === String(bArg);
-}
-
-/**
- * Check if two selector arguments are equivalent
- * This handles compound selectors in different orders and other equivalences
- */
-function areSelectorArgumentsEquivalent(a: Selector, b: Selector): boolean {
-  // Same reference or same valueOf
-  if (a === b || a.valueOf() === b.valueOf()) return true;
-
-  // Handle compound selectors with different orders
-  if (isNode(a, 'CompoundSelector') && isNode(b, 'CompoundSelector')) {
-    return areCompoundSelectorsEquivalent(a, b);
-  }
-
-  // Handle complex selectors
-  if (isNode(a, 'ComplexSelector') && isNode(b, 'ComplexSelector')) {
-    return areComplexSelectorsEquivalent(a, b);
-  }
-
-  // Handle selector lists
-  if (isNode(a, 'SelectorList') && isNode(b, 'SelectorList')) {
-    if (a.value.length !== b.value.length) return false;
-    // For now, require same order in selector lists
-    return a.value.every((aItem, i) =>
-      areSelectorArgumentsEquivalent(aItem, b.value[i]!)
-    );
-  }
-
-  // Default: not equivalent
-  return false;
 }
 
 /**
@@ -1202,56 +1055,7 @@ function searchWithinPseudoSelector(
 }
 
 /**
- * Checks if two selectors are structurally equal (same type and content)
- * This is different from valueOf() comparison which might do normalization
- */
-function isStructurallyEqual(a: Selector, b: Selector): boolean {
-  // Quick check: if they're the exact same object reference
-  if (a === b) return true;
-
-  // Check if they're the same node type
-  if (a.type !== b.type) return false;
-
-  // For simple selectors, use valueOf comparison
-  if (isNode(a, 'SimpleSelector') && isNode(b, 'SimpleSelector')) {
-    return a.valueOf() === b.valueOf();
-  }
-
-  // For pseudo-selectors, compare name and arguments
-  if (isNode(a, 'PseudoSelector') && isNode(b, 'PseudoSelector')) {
-    if (a.value.name !== b.value.name) return false;
-
-    const aArg = a.value.arg;
-    const bArg = b.value.arg;
-
-    // Both have no args
-    if (!aArg && !bArg) return true;
-
-    // One has arg, other doesn't
-    if (!aArg || !bArg) return false;
-
-    // Both have args - compare them recursively
-    if (isSelector(aArg) && isSelector(bArg)) {
-      return isStructurallyEqual(aArg as Selector, bArg as Selector);
-    }
-
-    // Fallback to string comparison for other arg types
-    return String(aArg) === String(bArg);
-  }
-
-  // For other selector types, use valueOf as fallback
-  // This handles compound, complex, and selector list comparisons
-  if (isNode(a, 'CompoundSelector') || isNode(a, 'ComplexSelector') || isNode(a, 'SelectorList')) {
-    return a.valueOf() === b.valueOf();
-  }
-
-  // Default fallback
-  return false;
-}
-
-/**
  * Applies an extension at a specific location within a selector tree
- *
  * @param selector - The original selector
  * @param location - The location where to apply the extension
  * @param extendWith - The selector to extend with

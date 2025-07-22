@@ -1,4 +1,4 @@
-import { type Selector } from '../selector';
+import { Selector } from '../selector';
 import { SimpleSelector } from '../selector-simple';
 import { SelectorList } from '../selector-list';
 import { ComplexSelector } from '../selector-complex';
@@ -39,11 +39,8 @@ export function determineExtensionType(
  * Checks if a value can be treated as a selector
  * Extracted from multiple pseudo-selector checks
  */
-export function isSelector(value: any): boolean {
-  return value
-    && typeof value === 'object'
-    && 'valueOf' in value
-    && 'isSelector' in value;
+export function isSelector(value: any): value is Selector {
+  return value instanceof Selector;
 }
 
 /**
@@ -98,9 +95,11 @@ export function componentsMatch(a: Selector, b: Selector): boolean {
 
 /**
  * Checks pseudo-selector equivalence including argument matching
- * Extracted from multiple locations with identical logic
+ * Handles all pseudo-selectors with selector arguments, not just specific ones
+ * Extracted from find-extendable-locations.ts with preserved original logic
  */
-export function arePseudoSelectorsEquivalent(a: PseudoSelector, b: PseudoSelector): boolean {
+export function arePseudoSelectorsEquivalent(a: any, b: any): boolean {
+  if (!isNode(a, 'PseudoSelector') || !isNode(b, 'PseudoSelector')) return false;
   if (a.value.name !== b.value.name) return false;
 
   const aArg = a.value.arg;
@@ -109,11 +108,13 @@ export function arePseudoSelectorsEquivalent(a: PseudoSelector, b: PseudoSelecto
   if (!aArg && !bArg) return true;
   if (!aArg || !bArg) return false;
 
-  if (!isSelector(aArg) || !isSelector(bArg)) {
-    return aArg === bArg;
+  // If both have selector arguments, check equivalence
+  if (isSelector(aArg) && isSelector(bArg)) {
+    return areSelectorArgumentsEquivalent(aArg as Selector, bArg as Selector);
   }
 
-  return areSelectorArgumentsEquivalent(aArg as Selector, bArg as Selector);
+  // For non-selector arguments, use string comparison
+  return String(aArg) === String(bArg);
 }
 
 /**
@@ -240,25 +241,75 @@ export function buildSelectorPath(
 
 /**
  * Checks if two complex selectors are equivalent using the original algorithm
- * Preserves exact combinator and component matching logic
+ * Preserves exact combinator and component matching logic from find-extendable-locations.ts
  */
 export function areComplexSelectorsEquivalent(a: ComplexSelector, b: ComplexSelector): boolean {
   if (a.value.length !== b.value.length) return false;
 
+  // Check each component matches
   for (let i = 0; i < a.value.length; i++) {
     const aComp = a.value[i];
     const bComp = b.value[i];
 
     if (!aComp || !bComp) return false;
 
+    // Both must be same type
     if (isNode(aComp, 'Combinator') && isNode(bComp, 'Combinator')) {
       if (aComp.value !== bComp.value) return false;
     } else if (!isNode(aComp, 'Combinator') && !isNode(bComp, 'Combinator')) {
-      if (!componentsMatch(aComp as Selector, bComp as Selector)) return false;
+      // Both are selectors - check equivalence
+      if (isNode(aComp, 'CompoundSelector') && isNode(bComp, 'CompoundSelector')) {
+        if (!areCompoundSelectorsEquivalent(aComp, bComp)) return false;
+      } else if (aComp.valueOf() !== bComp.valueOf()) {
+        return false;
+      }
     } else {
+      // One is combinator, other is not
       return false;
     }
   }
 
   return true;
+}
+
+/**
+ * Checks if two selectors are structurally equal (same type and content)
+ * This is different from valueOf() comparison which might do normalization
+ */
+export function isStructurallyEqual(a: Selector, b: Selector): boolean {
+  // For pseudo-selectors, compare name and arguments first (before basic selector check)
+  if (isNode(a, 'PseudoSelector') && isNode(b, 'PseudoSelector')) {
+    if (a.value.name !== b.value.name) return false;
+
+    const aArg = a.value.arg;
+    const bArg = b.value.arg;
+
+    // Both have no args
+    if (!aArg && !bArg) return true;
+
+    // One has arg, other doesn't
+    if (!aArg || !bArg) return false;
+
+    // Both have args - compare them recursively
+    if (isSelector(aArg) && isSelector(bArg)) {
+      return isStructurallyEqual(aArg as Selector, bArg as Selector);
+    }
+
+    // Fallback to valueOf comparison for other arg types (non-selector nodes)
+    return aArg.valueOf() === bArg.valueOf();
+  }
+
+  // For basic selectors (div, .foo, #bar) and other simple selectors, use valueOf comparison
+  if (isNode(a, 'SimpleSelector') && isNode(b, 'SimpleSelector')) {
+    return a.valueOf() === b.valueOf();
+  }
+
+  // For other selector types, use valueOf as fallback
+  // This handles compound, complex, and selector list comparisons
+  if (isNode(a, 'CompoundSelector') || isNode(a, 'ComplexSelector') || isNode(a, 'SelectorList')) {
+    return a.valueOf() === b.valueOf();
+  }
+
+  // Default fallback
+  return false;
 }
