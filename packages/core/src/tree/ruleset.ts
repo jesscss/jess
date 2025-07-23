@@ -22,6 +22,7 @@ type RulesetOptions = NodeOptions & {
   parentSelector?: Selector | Nil;
 };
 
+/** @todo - Fix typing */
 type NarrowRulesetValue<T> = T extends RulesetValue ? T : RulesetValue;
 /**
  * A qualified rule. This is historically called a "Ruleset"

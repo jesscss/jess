@@ -12,6 +12,7 @@ export class ExtendList extends Node<Extend[]> {
   shortType = 'extendlist' as const;
   override allowRoot = true;
   override allowRuleRoot = true;
+  override visible = false;
 
   override toTrimmedString(depth?: number | undefined): string {
     const output = super.toTrimmedString(depth);

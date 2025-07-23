@@ -30,7 +30,7 @@ export class Extend extends Selector<ExtendValue> {
 
   /** The preceding selector is the keyset */
   get keySet() {
-    return this.data.get('selector').keySet;
+    return this.value.selector.keySet;
   }
 
   override toTrimmedString(depth?: number | undefined): string {
@@ -41,9 +41,9 @@ export class Extend extends Selector<ExtendValue> {
   }
 
   override async evalNode(context: Context): Promise<Selector> {
-    let { selector, target } = this.value;
+    let { selector, target, flag } = this.value;
     selector = await selector.eval(context) as Selector;
-    /** @todo - register target */
+    context.root?.pendingExtends.add([target, selector, flag === ExtendFlag.All]);
     return selector;
   }
 }

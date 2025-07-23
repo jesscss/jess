@@ -59,6 +59,13 @@ export type ImportValue = {
 export class Import extends Node<ImportValue, ImportOptions> {
   type = 'Import' as const;
   shortType = 'use' as const;
+
+  /**
+   * @note
+   * When imports are evaluated, they should be deeply cloned. The reason is that
+   * they can be used in multiple places, and can be evaluated differently
+   * each time, so they are more like a function call.
+   */
 }
 
 export const use = defineType<ImportValue>(Import, 'Import', 'use');

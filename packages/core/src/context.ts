@@ -248,7 +248,11 @@ export class Context {
    */
   depth = 0;
 
-  root: Rules | undefined;
+  /** Entire context root (ultimate root) */
+  root: Root | undefined;
+
+  /** Set so that we can do ruleset selector lookup for extend */
+  currentRoot: Root | undefined;
 
   /**
    * currently generating a runtime module or not

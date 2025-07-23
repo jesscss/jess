@@ -11,7 +11,7 @@ import {
 import { Context } from '../context';
 import { isNode } from './util/is-node';
 import { cast } from './util/cast';
-import { type Ruleset } from './ruleset';
+import { type Ruleset, type RulesetValue } from './ruleset';
 import { type Mixin } from './mixin';
 import { Interpolated } from './interpolated';
 import type { Selector } from './selector';
@@ -478,15 +478,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (!this.preEvaluated) {
       rules = await this.preEval(context);
     }
-    /** Presumably the first eval'd rules is the root? */
-    let root = context.root ??= rules;
     let evalQueue: EvalQueueMap = new Map();
+    let root = context.root;
 
     let rulesContext = context.rulesContext;
     context.rulesContext = rules;
-    if (rules.type === 'Root') {
-      context.treeContext = rules.treeContext;
-    }
     // let { leakVariablesIntoScope } = context.treeContext ?? {}
     /**
      * First, push rules onto an evaluation queue.
@@ -537,6 +533,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (method === 'preEval') {
             /** Do I need to pass in options? */
             rules.register(result);
+          } else if (method === 'eval') {
+            /** Register rulesets for extending */
+            if (root && isNode(result, 'Ruleset')) {
+              /** @todo - fix ruleset type so Ruleset<unknown> is */
+              root.registerRuleset(result as Ruleset<RulesetValue>);
+            }
           }
           /**
            * @todo - Figure out if I should try to evaluate again later?
@@ -557,7 +559,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     /** Bubble any hoisted rules */
     let frame = context.rulesetFrames[0];
-    if (frame && rulesToHoist) {
+    if (root && frame && rulesToHoist) {
       let newRules = new Rules([]);
       const getRulesetCopy = () => {
         let newFrame = frame.copy(true);

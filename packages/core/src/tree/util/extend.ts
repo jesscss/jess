@@ -20,12 +20,11 @@ import {
 /**
  * Error types for extend operations
  */
-export enum ExtendErrorType {
-  NOT_FOUND = 'NOT_FOUND',
-  ELEMENT_CONFLICT = 'ELEMENT_CONFLICT',
-  ID_CONFLICT = 'ID_CONFLICT',
-  AMPERSAND_BOUNDARY = 'AMPERSAND_BOUNDARY'
-}
+export type ExtendErrorType =
+  'NOT_FOUND'
+  | 'ELEMENT_CONFLICT'
+  | 'ID_CONFLICT'
+  | 'AMPERSAND_BOUNDARY';
 
 export class ExtendError extends Error {
   constructor(
@@ -139,7 +138,7 @@ export function extendSelector(
 
   if (!searchResult.hasMatches) {
     throw new ExtendError(
-      ExtendErrorType.NOT_FOUND,
+      'NOT_FOUND',
       'No match found for target selector',
       { target, find, extendWith }
     );
@@ -875,7 +874,7 @@ function validateIsWrapper(
       const elementList = Array.from(allElementTypes);
       return {
         isValid: false,
-        errorType: ExtendErrorType.ELEMENT_CONFLICT,
+        errorType: 'ELEMENT_CONFLICT',
         errorMessage: `Cannot combine different element types in compound selector: ${elementList.join(', ')}`,
         conflictingSelectors: [] // We could collect the actual selector objects if needed
       };
@@ -884,7 +883,7 @@ function validateIsWrapper(
       const idList = Array.from(allIdValues);
       return {
         isValid: false,
-        errorType: ExtendErrorType.ID_CONFLICT,
+        errorType: 'ID_CONFLICT',
         errorMessage: `Cannot combine different ID selectors in compound selector: ${idList.join(', ')}`,
         conflictingSelectors: [] // We could collect the actual selector objects if needed
       };
@@ -921,7 +920,7 @@ function validateIsWrapper(
       const elementList = Array.from(elementTypes);
       return {
         isValid: false,
-        errorType: ExtendErrorType.ELEMENT_CONFLICT,
+        errorType: 'ELEMENT_CONFLICT',
         errorMessage: `Cannot combine different element types in :is(): ${elementList.join(', ')}`,
         conflictingSelectors: [] // We could collect the actual selectors if needed
       };
@@ -930,7 +929,7 @@ function validateIsWrapper(
       const idList = Array.from(idValues);
       return {
         isValid: false,
-        errorType: ExtendErrorType.ID_CONFLICT,
+        errorType: 'ID_CONFLICT',
         errorMessage: `Cannot combine different ID selectors in :is(): ${idList.join(', ')}`,
         conflictingSelectors: [] // We could collect the actual selectors if needed
       };
@@ -1372,7 +1371,7 @@ function validateCompoundSelector(components: any[]): {
         const elementList = Array.from(elementTypes);
         return {
           isValid: false,
-          errorType: ExtendErrorType.ELEMENT_CONFLICT,
+          errorType: 'ELEMENT_CONFLICT',
           errorMessage: `Cannot combine different element types: ${elementList.join(', ')}`,
           conflictingSelectors: [] // We could collect the actual selectors if needed
         };
@@ -1381,7 +1380,7 @@ function validateCompoundSelector(components: any[]): {
         const idList = Array.from(idValues);
         return {
           isValid: false,
-          errorType: ExtendErrorType.ID_CONFLICT,
+          errorType: 'ID_CONFLICT',
           errorMessage: `Cannot combine different ID selectors: ${idList.join(', ')}`,
           conflictingSelectors: [] // We could collect the actual selectors if needed
         };
