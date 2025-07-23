@@ -1,5 +1,5 @@
 import { el, sel, sellist, compound, is, co, pseudo, attr, quoted } from '../../..';
-import { extendSelector } from '../extend';
+import { extendSelector, tryExtendSelector, ExtendErrorType } from '../extend';
 
 describe('Simplified Extend Test Cases', () => {
   describe('Basic full-match extensions', () => {
@@ -92,7 +92,8 @@ describe('Simplified Extend Test Cases', () => {
     });
 
     it('should extend compound selector with attributes', () => {
-      // input[type="text"].required -> input extend with .text-field -> :is(input,.text-field)[type="text"].required
+      // input[type="text"].required -> input extend with .text-field
+      // This should succeed: input and .text-field are not conflicting
       const selector = compound([
         el('input'),
         attr({ name: 'type', op: '=', value: quoted('text') }),
@@ -102,6 +103,7 @@ describe('Simplified Extend Test Cases', () => {
       const extendWith = el('.text-field');
 
       const result = extendSelector(selector, target, extendWith, false);
+      // Should create :is(input,.text-field)[type="text"].required
       expect(result.valueOf()).toBe(':is(input,.text-field)[type="text"].required');
     });
 
