@@ -281,6 +281,9 @@ export class Context {
     this.plugins = plugins ?? [];
   }
 
+  /** Full resolved path -> tree */
+  fileTrees: Map<string, Root> = new Map();
+
   /**
    * @todo - What is this used for? I think I wrote this to resolve
    * a tree context given a file path. Ohhhh I think, essentially,
@@ -290,8 +293,12 @@ export class Context {
    *
    * I'll revisit this when I finish imports.
    */
-  async getTree(filePath: string, initialDirectory?: string, options?: Record<string, any>) {
-    initialDirectory ??= path.dirname(filePath);
+  async getTree(
+    filePath: string,
+    options?: Record<string, any>
+  ) {
+    const currentTree = this.treeContext;
+    const currentDirectory = currentTree.file?.path ?? process.cwd();
     const paths = this.opts.paths ?? [];
     options ??= {};
     options = { ...this.opts, ...options };
@@ -302,11 +309,11 @@ export class Context {
     let resolvedTree: Root | false | undefined;
     const triedPaths: string[] = [];
 
-    let rootPlugin = this.currentTree?.plugin;
+    let rootPlugin = this.treeContext?.plugin;
 
     /** If we have a root plugin, try it first */
     if (rootPlugin?.fileManager) {
-      const result = rootPlugin.fileManager.getPath(filePath, initialDirectory, paths, options);
+      const result = rootPlugin.fileManager.getPath(filePath, currentDirectory, paths, options);
       if (isArray(result)) {
         triedPaths.push(...result);
       } else {
@@ -314,31 +321,41 @@ export class Context {
       }
     }
 
-    /** Iterate in reverse, starting with last added plugin */
-    for (let i = pluginLength - 1; i >= 0; i--) {
-      const plugin = plugins[i]!;
-      if (plugin === rootPlugin) {
-        continue;
-      }
-      if (!plugin.fileManager) {
-        continue;
-      }
-      const result = plugin.fileManager.getPath(filePath, initialDirectory, paths, options);
-      if (isArray(result)) {
-        triedPaths.push(...result);
-      } else {
-        fullPath = result;
-        break;
+    if (!fullPath) {
+      /** Iterate in reverse, starting with last added plugin */
+      for (let i = pluginLength - 1; i >= 0; i--) {
+        const plugin = plugins[i]!;
+        if (plugin === rootPlugin) {
+          continue;
+        }
+        if (!plugin.fileManager) {
+          continue;
+        }
+        const result = plugin.fileManager.getPath(filePath, currentDirectory, paths, options);
+        if (isArray(result)) {
+          triedPaths.push(...result);
+        } else {
+          fullPath = result;
+          break;
+        }
       }
     }
+
     if (!fullPath) {
+      /** @todo - Add messaging around tried paths */
       throw new Error('File not found');
+    }
+
+    /** We already have resolved this file and parsed it. */
+    if (this.fileTrees.has(fullPath)) {
+      return this.fileTrees.get(fullPath)!;
     }
 
     /** If we have a root plugin, try it first */
     if (rootPlugin?.fileManager) {
       const result = await rootPlugin.fileManager.getTree(fullPath, options);
       if (result) {
+        this.fileTrees.set(fullPath, result);
         return result;
       }
     }

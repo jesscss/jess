@@ -8,6 +8,10 @@ export type QuotedOptions = {
   escaped?: boolean;
 };
 
+export interface Quoted extends Node<string | General | Interpolated, QuotedOptions> {
+  eval(context: Context): Promise<Quoted | General | Interpolated>;
+}
+
 /**
  * An quoted value
  */
@@ -22,12 +26,12 @@ export class Quoted extends Node<string | General | Interpolated, QuotedOptions>
     return `${escapeChar}${quote}${output}${quote}`;
   }
 
-  override valueOf() {
+  override valueOf(): string {
     const { value } = this;
     return value instanceof Node ? value.valueOf() : value;
   }
 
-  override async evalNode(context: Context): Promise<Node> {
+  override async evalNode(context: Context): Promise<Quoted | General | Interpolated> {
     let { value } = this;
     if (value instanceof Node) {
       value = (await value.eval(context));

@@ -7,7 +7,7 @@ import { cast } from './util/cast';
  */
 export class JsExpression extends Node<string> {
   type = 'JsExpression' as const;
-  shortType = 'js' as const;
+  shortType = 'jsexpr' as const;
 
   override toTrimmedString(): string {
     return '`' + this.value + '`';
@@ -21,4 +21,4 @@ export class JsExpression extends Node<string> {
     return cast(result);
   }
 }
-export const js = defineType(JsExpression, 'JsExpression', 'js');
+export const jsexpr = defineType(JsExpression, 'JsExpression', 'jsexpr');

@@ -1,7 +1,13 @@
 import { Node, type NodeOptions, type NodeValue, defineType } from './node';
 import type { IfAny } from 'type-fest';
 
-/** This represents anything that is valid in a selector */
+/**
+ * This represents anything that is valid in a selector
+ *
+ * @todo - Add Sass private / placeholder selectors?
+ *   e.g. `\\foo` instead of `%foo`
+ *       private = `\\_foo`
+ */
 
 export interface Selector<T = any, O extends NodeOptions = NodeOptions> extends Node<IfAny<T, NodeValue, T>, O> {
   valueOf(): string;
