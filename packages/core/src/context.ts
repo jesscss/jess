@@ -4,7 +4,8 @@ import type {
   Root,
   Ruleset,
   Rules,
-  StyleImportValue
+  StyleImportValue,
+  StyleImportOptions
 } from './tree';
 import { type Operator } from './tree/util/calculate';
 import type { PluginObject } from './plugin';
@@ -283,7 +284,8 @@ export class Context {
   }
 
   /** Full resolved path -> tree */
-  fileTrees: Map<string, Rules> = new Map();
+  sourceTrees = new Map<string, Rules>();
+  evaldTrees = new Map<string, Rules>();
 
   /**
    * @todo - What is this used for? I think I wrote this to resolve
@@ -306,7 +308,7 @@ export class Context {
 
     const plugins = this.plugins;
     const pluginLength = plugins.length;
-    let fullPath: string | undefined;
+    let resolvedPath: string | undefined;
     let resolvedTree: Root | false | undefined;
     const triedPaths: string[] = [];
 
@@ -318,11 +320,11 @@ export class Context {
       if (isArray(result)) {
         triedPaths.push(...result);
       } else {
-        fullPath = result;
+        resolvedPath = result;
       }
     }
 
-    if (!fullPath) {
+    if (!resolvedPath) {
       /** Iterate in reverse, starting with last added plugin */
       for (let i = pluginLength - 1; i >= 0; i--) {
         const plugin = plugins[i]!;
@@ -336,28 +338,36 @@ export class Context {
         if (isArray(result)) {
           triedPaths.push(...result);
         } else {
-          fullPath = result;
+          resolvedPath = result;
           break;
         }
       }
     }
 
-    if (!fullPath) {
+    if (!resolvedPath) {
       /** @todo - Add messaging around tried paths */
       throw new Error('File not found');
     }
 
     /** We already have resolved this file and parsed it. */
-    if (this.fileTrees.has(fullPath)) {
-      return this.fileTrees.get(fullPath)!;
+    if (this.sourceTrees.has(resolvedPath)) {
+      return {
+        node: this.sourceTrees.get(resolvedPath)!,
+        triedPaths,
+        resolvedPath
+      };
     }
 
     /** If we have a root plugin, try it first */
     if (rootPlugin?.fileManager) {
-      const result = await rootPlugin.fileManager.getTree(fullPath, options);
+      const result = await rootPlugin.fileManager.getTree(resolvedPath, options);
       if (result) {
-        this.fileTrees.set(fullPath, result);
-        return result;
+        this.sourceTrees.set(resolvedPath, result);
+        return {
+          node: result,
+          triedPaths,
+          resolvedPath
+        };
       }
     }
 
@@ -369,7 +379,7 @@ export class Context {
       if (!plugin.fileManager) {
         continue;
       }
-      const tree = await plugin.fileManager.getTree(fullPath, options);
+      const tree = await plugin.fileManager.getTree(resolvedPath, options);
       if (tree) {
         resolvedTree = tree;
         break;
@@ -378,25 +388,31 @@ export class Context {
     if (!resolvedTree) {
       throw new Error(`File "${path.basename(filePath)}" not supported`);
     }
-    return resolvedTree;
+    this.sourceTrees.set(resolvedPath, resolvedTree);
+    return {
+      node: resolvedTree,
+      triedPaths,
+      resolvedPath
+    };
   }
 
   async getRules(
     filePath: string,
-    options: Record<string, any> = {},
+    nodeOptions: StyleImportOptions,
+    userOptions: Record<string, any> = {},
     withValues?: StyleImportValue['with']
   ) {
-    const tree = await this.getTree(filePath, options);
-    let rules = tree.clone(true) as Rules;
+    let rules = await this.getTree(filePath, userOptions);
     if (withValues && isNode(withValues.node, 'Rules')) {
       if (rules.options.readonly) {
         throw new Error('Cannot set an import\'s "with" values more than once.');
       }
+      /** @todo - Throw errors for undefined vars */
       let withRules = withValues.node.clone(true) as Rules;
       withRules.value.unshift(rules);
       rules = withRules;
       if (withValues.type === 'set') {
-        this.fileTrees.set(filePath, rules);
+        this.sourceTrees.set(filePath, rules);
       }
     }
     return rules;
@@ -425,9 +441,9 @@ export class Context {
     return `.${mapVal}`;
   }
 
-  getVar() {
-    return `--v${this.id}-${this.varCounter++}`;
-  }
+  // getVar() {
+  //   return `--v${this.id}-${this.varCounter++}`;
+  // }
 
   shouldOperate(op: Operator) {
     const mathMode = this.opts.mathMode;

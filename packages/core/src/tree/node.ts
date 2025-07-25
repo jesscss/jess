@@ -118,12 +118,12 @@ export abstract class Node<
   /** Assigned in index to avoid circularity */
   declare readonly treeContext: TreeContext;
 
-  private _options: Partial<O & AllNodeOptions> | undefined;
-  get options(): Partial<O & AllNodeOptions> {
-    return this._options ??= {};
+  private _options: O & AllNodeOptions | undefined;
+  get options(): O & AllNodeOptions {
+    return (this._options ??= {} as O & AllNodeOptions);
   }
 
-  set options(options: Partial<O & AllNodeOptions>) {
+  set options(options: O & AllNodeOptions) {
     this._options = options;
   }
 

@@ -18,8 +18,8 @@
  * This will be ported to Less 5 to replace `@plugin`.
  *
  */
-@-load './foo.js' as js;
-@-load '#less/math' as math;
+@-module './foo.js' as js;
+@-module '#less/math' as math;
 
 @-include (as: less /* other options */) './file.css' as *;
 

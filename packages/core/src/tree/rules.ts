@@ -251,9 +251,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return (this._rulesSet ??= []);
   }
 
-  /**
-   * @todo - Figure out the readonly part
-   */
   register(node: Node, options?: Record<string, any>) {
     if (isNode(node, 'Rules')) {
       let rulesVisibility = options?.rulesVisibility ?? node.options.rulesVisibility ?? {};

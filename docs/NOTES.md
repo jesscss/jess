@@ -1,6 +1,6 @@
 # Jul 25, 2025
 
-Tons of work on syntax, especially around imports. Added `@-load` rule for loading JS/TS. Enforced that modules must have namespaces.
+Tons of work on syntax, especially around imports. Added `@-module` rule for loading JS/TS. Enforced that modules must have namespaces.
 
 # Jul 20, 2025
 

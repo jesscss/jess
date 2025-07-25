@@ -1,8 +1,9 @@
 import { Node, defineType } from './node';
 import { type Reference } from './reference';
-import { type Rules } from './rules';
+import { type Rules, type RulesOptions } from './rules';
 import { type Quoted } from './quoted';
 import { type Context } from '../context';
+import { isNode } from './util/is-node';
 
 /**
  * This class is for Jess / Sass+ / Less-style imports,
@@ -61,6 +62,11 @@ export type StyleImportOptions = {
    * e.g. `@-import 'foo.css?less';`
    */
   asType?: string;
+
+  /** Set on the import node instead of on rules */
+  readonly?: boolean;
+  local?: boolean;
+  rulesVisibility?: RulesOptions['rulesVisibility'];
 };
 
 export type StyleImportValue = {
@@ -108,9 +114,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
    * @todo
    * How do extends work then?
    */
-  override async evalNode(context: Context): Promise<Node> {
-    const { path, with: withValues } = this.value;
-    const { type } = this.options;
+  override async evalNode(context: Context): Promise<this> {
+    let node = this.maybeClone(context);
+    const { path, with: withValues } = node.value;
+    const { options } = node;
+    const { type } = options;
     const finalPath = (await path.eval(context)).valueOf();
     /**
      * @todo - Add options
@@ -122,11 +130,47 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
      * option. Since all vars are global per compilation, it should just
      * work.
      */
-    const rules = await context.getRules(finalPath, { type }, withValues);
+    let { node: rules, resolvedPath } = await context.getTree(finalPath, options);
+    let evaldRules = context.evaldTrees.get(resolvedPath);
+    if (withValues) {
+      if (withValues.type === 'set' && evaldRules) {
+        throw new Error('Cannot configure a stylesheet more than once.');
+      }
+
+      /** @todo - Throw errors for undefined vars */
+      let withRules = withValues.node.clone(true) as Rules;
+      withRules.value.unshift(rules);
+
+      rules = withRules;
+    }
+
+    /**
+     * `@-import` stylesheets can read their parent scope,
+     * so we always need to re-evaluate them.
+     */
+    if (!evaldRules || type === 'import') {
+      /**
+       * We need to preserve original nodes because we might
+       * import multiple times with a `with` value.
+       */
+      let preserveOriginalNodes = context.preserveOriginalNodes;
+      context.preserveOriginalNodes = true;
+      rules = await rules.eval(context);
+      context.preserveOriginalNodes = preserveOriginalNodes;
+
+      if (withValues?.type === 'set') {
+        context.evaldTrees.set(resolvedPath, rules);
+      }
+    } else {
+      /** Attach the already-evaluated rules to the import node */
+      rules = evaldRules;
+    }
+
     /** Set visibility according to import type */
     switch (type) {
       case 'use':
-        rules.options = {
+        node.options = {
+          ...options,
           rulesVisibility: {
             Ruleset: 'public',
             Declaration: 'public',
@@ -138,7 +182,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         };
         break;
       case 'include':
-        rules.options = {
+        node.options = {
+          ...options,
           rulesVisibility: {
             Ruleset: 'public',
             Declaration: 'public',
@@ -150,7 +195,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         };
         break;
       case 'import':
-        rules.options = {
+        node.options = {
+          ...options,
           rulesVisibility: {
             Ruleset: 'public',
             Declaration: 'public',
@@ -163,7 +209,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         break;
       /** @todo - Should `@-import (reference)` differ from `@-reference`?  */
       case 'reference':
-        rules.options = {
+        node.options = {
+          ...options,
           rulesVisibility: {
             /** Visible when extended */
             Ruleset: 'optional',
@@ -176,7 +223,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         };
         break;
     }
-    return rules;
+
+    node.value.rules = rules;
+    return node;
   }
 }
 
