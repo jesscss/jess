@@ -4,7 +4,7 @@
 - Should execute in an isolated VM? https://www.npmjs.com/package/isolated-vm - (No, use Deno)
 - In addition, function calls to Jess functions should receive plain arguments with primitive values, but when called internally, should bind to a `this` object that has AST arguments. Each function, therefore should call something like `getArguments(this, args)` and either parse primitives or get the passed arguments.
 - For interoperability with JavaScript, Jess mixins should return serialized plain objects, but have a non-enumerable property with an AST return UNLESS they were passed a `this` object with AST args, in which case they should return AST nodes
-- Jess function / mixin args should always have semi-colon separators
+- Jess mixin definitions & calls always require semi-colon separators. External functions can have commas or semis per call. (Wrap comma-separated values with `~()`)
 
 ## TypeScript / JavaScript calls
 
@@ -15,20 +15,18 @@
  * Maps to JS/TS import syntax
  * Mirrors @use syntax.
  *
- * This will be ported to Less 6 to replace `@plugin`.
+ * This will be ported to Less 5 to replace `@plugin`.
  *
- * @note `import` should not be needed, but provides intuitive symmetery with JS
  */
-@-from './foo.js' import (myFunction); // also allow `$from './foo.js' import { myFunction } ?
-@-from '#less' import * as less;
+@-load './foo.js' as js;
+@-load '#less/math' as math;
 
-@-include './file.css' (type: 'less');
+@-include (as: less /* other options */) './file.css' as *;
 
 // declaring vars
-$count:; // a Node of `Nil`
+$count; // (or $count:;) a Node of `Nil`
 
-// setting vars - note, this avoids the need for !global in Sass
-// Note also that this will throw an error in Jess without `$let count`
+// setting vars
 $count: 1;
 
 // equivalent to Sass !global, will throw an error if not defined
@@ -44,13 +42,13 @@ $count: 1;
 $#($var): foo;
 
 // variable mixins
-@@ #($var) () {}
+#($var)() {}
 
 .something {
   
 }
 
-// `$` is a referencer, to reduce ambiguity
+
 // #() is an expression
 $count: #($count + 1); // expression 
 
@@ -60,8 +58,8 @@ $count: #($count + 1); // expression
 // $(one, two): $list;
 
 // Mixin definition / call
-@@ .mixin() {};
-$ > .mixin(); // (Sass style)
+.mixin() {};
+$ > .mixin();
 
 // mixin a ruleset
 // should allow any selector?
@@ -73,7 +71,7 @@ $ > .rule/(); // (Less style)
 // #() to wrap expressions
 .bar {
   foo: #($count + 1);
-  deeper: #($>mixin().$my-var)
+  deeper: #($ > mixin().$my-var)
 }
 
 // var expressions will be re-output as "live" expression functions
@@ -103,16 +101,18 @@ $ > .rule/(); // (Less style)
 ## Features
 
 ### Control Flow
-- when guard (like Less)
+
+Control flow statements do not create new scope, so they are merged with parent rules.
+
 ```scss
 .box {
-  @-when ($a = 1) {
-    $$foo: one;
-  } @-else {
-    $$foo: two;
+  $if ($a = 1) {
+    $foo: one;
+  } $else {
+    $foo: two;
   }
   // or
-  $$foo: @-when ($a = 1) { one } @-else { two };
+  $foo: $if ($a = 1) { one } $else { two };
 }
 ```
 -for 
@@ -144,7 +144,8 @@ $for ($i of 1 to 3) {
   // Glob expression to limit extend
   // '~' is compilation root
   // @todo - remove? limit to @-use?
-  :extend(.bar '~/*');
+  :-extend(.bar); // partial by default (vs. Less's !exact as default)
+  :-extend(.bar !exact);
 }
 ```
 
@@ -156,26 +157,32 @@ Sass is an overly-complex stylesheet language. Jess aims to be:
 - 100% compatible with Less
 - Compatible with a common subset of Sass called Sass+ (to be defined)
 
-### `@-use ('(' type ')')? [file|object|map] (as [namespace])? ('with' reference|declarationList)?`
+### `@-use ('(' as ')')? [file|object|map] 'as' [namespace] ('with'|'set' reference|declarationList)?`
 
 Non-leaky replacement for `@import`. Will import the scope (mixins, variables, and selector references) of the object. If a namespace is specified, will wrap rules in a mixin name. If it's imported `as *` (the default), will render rules.
 
-Note: like Sass, `as` is not required, but whereas the default for Sass would be `as [filename]`, the default for Jess is `as *`.
+Note: unlike Sass, `as` is required, for clarity.
 
-Can be at the root or nested.
+Namespaced imports are referenced with plain identifiers. e.g.
 
-### `@-ref ('(' type ')')? [file|object|map] ('as' [namespace])? ('with' reference|declarationList)?`
+```scss
+@-use 'colors.jess' as colors;
 
-(In Less, this will be `@reference`) - This is the same as `@-use` except:
-1. `@-ref` rules will not be extended,
-2. rules imported with `as *` will not be rendered.
+.box {
+  color: colors.$primary;
+}
+```
 
-This is more like Sass's `@use` and somewhat like Less's `@import (reference)`
+### `@-ref ('(' type ')')? [file|object|map] 'as' [namespace] ('with'|'set' reference|declarationList)?`
+
+(In Less, this will be `@reference`) - This is the same as `@-use` except rules will not be rendered unless extended.
+
+This is somewhat like Less's `@import (reference)`, although with Less's `@import (reference)`, the referenced file can see the parent's variables, but with `@reference`, the scope is isolated.
 
 ```scss
 @-ref 'colors.less' as colors;
 // or override variables
-@-ref 'colors.less' with {
+@-ref 'colors.less' as colors with {
   // should throw an error if primary-color is not defined
   // overrides the outer $let statement e.g. $let primary-color: #333;
   // TODO - should these be implicitly typed and throw an error when a mis-matched type?
@@ -184,33 +191,47 @@ This is more like Sass's `@use` and somewhat like Less's `@import (reference)`
 }
 
 //or
-@-ref 'colors.less'; // implied `as *`
+@-ref 'colors.less' as *;
 ```
 
+Using `set` instead of `with` on a stylesheet import will alter that import within the compilation scope. (In Sass, this is how `with` works.) Using `with` will alter the import just for this module.
+
+Note that `set` may not be used more than once with the same module (resolved to the same file path), and if you first import the module without using `set` and then try to use it after, this also throws an error. `set` must be used the first time a file is imported or not at all.
 
 ```less
+
 // or ultimate customization
-@-use 'bootstrap.scss' with {
-  // Transitively apply a different use
-  @-ref 'variables.scss' with $variables;
-  @-use 'some-classes.scss' with {
-    // Replace a class
-    .class {
-      color: blue;
-    }
+@-ref 'bootstrap/variables.scss' set $variables;
+@-ref 'bootstrap/tables.scss' set {
+  .tbl {
+    border-color: blue;
   }
 }
 
+@-use 'bootstrap.scss' as bs;
+
 .foo {
-  color: $colors.$primary-color;
+  color: bs.$primary-color;
 }
 // or
 .foo {
-  @-use 'colors.less';
-  color: $primary-color;
+  @-use 'colors.less' as colors;
+  color: colors.$primary-color;
 }
 
 //
+```
+
+### JavaScript / TypeScript imports -- `@-load`
+
+We can directly import JS/TS modules with `@-load` e.g.
+
+```scss
+@-load './my-module.js' as js;
+
+.box {
+  value: js.myFunc();
+}
 ```
 
 ### `@-use` without `@-forward`
@@ -222,18 +243,18 @@ Q: what happens if a two files use `@-use` on the same file with different param
 They would be subject to evaluation order.
 ```scss
 // use1.jess
-@-use './file.jess' with {
+@-use './file.jess' as * with {
   $foo: one;
 }
 
 // use2.jess
-@-use './file.jess' with {
+@-use './file.jess' as * with {
   $foo: two;
 }
 
 // final.jess
-@-use './use1.jess';
-@-use './use2.jess';
+@-use './use1.jess' as *;
+@-use './use2.jess' as *;
 
 .rule {
   value: $foo; // two
@@ -249,13 +270,13 @@ $-private: var;
 ```
 Would be converted to:
 ```scss
-@-use './file1.jess';
+@-use './file1.jess' as *;
 $not-private: var;
-@-private $-private: var;
+$_private: var;
 @-export './file2.jess' as *;
 ```
 
-## `@-include [file|object|selector|mixin] ('(' vars ')')? ('with' reference|declarationList)?`
+## `@-include [file] ('(' vars ')')? 'as' [namespace] ('with' reference|declarationList)?`
 
 Will import the rules (but not pollute the variable scope). It does not allow extending of the rules in the included file.
 
@@ -263,12 +284,12 @@ Can be at the root or nested.
 
 ```scss
 // main.jess
-@-ref 'colors.jess';
+@-ref 'colors.jess' as *;
 @-include 'rules.jess' with $colors;
 
 // rules.jess
 // Doesn't have access to vars in main.jess w/o:
-@-use 'main.jess';
+@-use 'main.jess' as *;
 // this would include the vars in colors.jess
 ```
 Using an `include` that's the _result_ of a `ref`:

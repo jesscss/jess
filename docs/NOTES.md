@@ -1,3 +1,7 @@
+# Jul 25, 2025
+
+Tons of work on syntax, especially around imports. Added `@-load` rule for loading JS/TS. Enforced that modules must have namespaces.
+
 # Jul 20, 2025
 
 Did refactoring with Claude to support preserving comments when extending selectors.
