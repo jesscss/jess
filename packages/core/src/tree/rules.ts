@@ -584,7 +584,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             /** Register rulesets for extending */
             if (root && isNode(result, 'Ruleset')) {
               /** @todo - fix ruleset type so Ruleset<unknown> is */
-              root.registerRuleset(result as Ruleset<RulesetValue>);
+              currentRoot.registerRuleset(result as Ruleset<RulesetValue>);
             }
           }
           /**
