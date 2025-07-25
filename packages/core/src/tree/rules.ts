@@ -21,6 +21,7 @@ import { atIndex } from './util/collections';
 import isPlainObject from 'lodash-es/isPlainObject';
 import type { Condition } from './condition';
 import type { Bool } from './bool';
+import { SelectorRegistry } from './util/selector-utils';
 
 const { isArray } = Array;
 
@@ -77,7 +78,11 @@ export type RulesOptions = {
    */
   rulesVisibility?: Record<string, 'public' | 'optional' | 'private'>;
   readonly?: boolean;
-  /** all imports other than classic `@import` set returned rules to local */
+  /**
+   * all imports other than classic `@import` set returned rules to local.
+   * The reason is that variables are not transitive, and you need to re-use
+   * modules to get the same variables.
+   */
   local?: boolean;
 };
 
@@ -103,6 +108,37 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   shortType = 'rules';
   override allowRuleRoot = true;
   override allowRoot = true;
+
+  private _selectorRegistry: SelectorRegistry | undefined;
+  get selectorRegistry(): SelectorRegistry {
+    return (this._selectorRegistry ??= new SelectorRegistry());
+  }
+
+  pendingExtends = new Set<[find: Selector, extendWith: Selector, partial: boolean]>();
+
+  /**
+   * Register a ruleset for extend operations
+   */
+  registerRuleset(ruleset: Ruleset) {
+    this.selectorRegistry.addRuleset(ruleset);
+  }
+
+  /**
+   * Update the registry when a ruleset's selectors change.
+   * Extending only ever adds keys, so we can just add the ruleset again,
+   * and re-index.
+   */
+  updateRuleset(ruleset: Ruleset) {
+    this.selectorRegistry.addRuleset(ruleset);
+  }
+
+  /**
+   * Find rulesets that could potentially be extended by the target selector
+   */
+  findExtendableRulesets(targetSelector: Selector): Ruleset[] {
+    const candidates = this.selectorRegistry.findCandidateRulesets(targetSelector);
+    return Array.from(candidates);
+  }
 
   constructor(
     value: Node[],
@@ -220,14 +256,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   register(node: Node, options?: Record<string, any>) {
     if (isNode(node, 'Rules')) {
-      let rulesVisibility = options?.rulesVisibility ?? node.options?.rulesVisibility ?? {};
+      let rulesVisibility = options?.rulesVisibility ?? node.options.rulesVisibility ?? {};
 
       /** These are public by default */
       rulesVisibility.Declaration ??= 'public';
       rulesVisibility.Ruleset ??= 'public';
 
       /** Either one set as readonly will win */
-      let readonly = Boolean(options?.readonly || node.options?.readonly);
+      let readonly = Boolean(options?.readonly || node.options.readonly);
       this.rulesSet.push({
         node,
         rulesVisibility,
@@ -346,7 +382,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       start
     } = opts ?? {};
     while (rules) {
-      let currentReadonly = opts?.readonly || rules.options?.readonly;
+      let currentReadonly = opts?.readonly || rules.options.readonly;
       if (rules._declarationMap) {
         let list = rules.declarationMap.get(key);
         if (list) {
@@ -362,7 +398,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (list) {
           let result = rules._findClosestByStart(list, start);
           if (result) {
-            declCandidate = [result, result.options?.readonly || currentReadonly];
+            declCandidate = [result, result.options.readonly || currentReadonly];
           }
           isPublic = true;
         }
@@ -427,6 +463,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       do {
         rules = rules?.parent as Rules;
+        /**
+         * If we reach an import boundary, stop unless it's an `@import`
+         * which means these rules can reach into the parent file that imports
+         * this one.
+         */
+        if (isNode(rules, 'StyleImport') && rules.options.type !== 'import') {
+          rules = undefined;
+          break;
+        }
       } while (rules && !(rules instanceof Rules));
     }
     if (opts && declCandidate?.[1]) {
@@ -482,7 +527,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let root = context.root;
 
     let rulesContext = context.rulesContext;
+    let treeContext = context.treeContext;
+    let currentRoot = context.currentRoot;
     context.rulesContext = rules;
+    if (rules.options.isRoot) {
+      context.currentRoot = rules;
+    }
     // let { leakVariablesIntoScope } = context.treeContext ?? {}
     /**
      * First, push rules onto an evaluation queue.
@@ -589,7 +639,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       root.value.splice(prevFrameIndex, 1, ...rootRules);
     }
     /**
-     * Restore rules context
+     * Restore contexts
      */
     context.rulesContext = rulesContext;
     return rules;
@@ -621,7 +671,7 @@ const NodeTypeToPriority = new Map([
   ['Mixin', Priority.High],
   ['Ruleset', Priority.High],
   /** Then, resolve imports */
-  ['Import', Priority.Medium],
+  ['StyleImport', Priority.Medium],
   /** Then, resolve any calls */
   ['Call', Priority.Low]
   /** Then, everything else? */
@@ -661,7 +711,7 @@ interface RulesEntry {
    * These are from use, from, and import statements. Can't be assigned with $$
    * (verify that this is not possible with SCSS).
    */
-  readonly?: RulesOptions['readonly'];
+  readonly?: boolean;
 }
 
 /**

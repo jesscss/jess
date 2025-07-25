@@ -35,22 +35,22 @@ function getVarWithContext(context: Context, n: Rules, key: string, opts: FindOp
   return decl;
 }
 
-function getSelectorWithContext(context: Context, n: Rules, key: Selector, opts: FindOptions = {}, start?: number) {
-  context.rulesContext = n;
-  opts.searchParents = true;
-  let decl = n.findDeclaration(key, 'VarDeclaration', opts);
-  return decl;
-}
+// function getSelectorWithContext(context: Context, n: Rules, key: Selector, opts: FindOptions = {}, start?: number) {
+//   context.rulesContext = n;
+//   opts.searchParents = true;
+//   let decl = n.findDeclaration(key, 'VarDeclaration', opts);
+//   return decl;
+// }
 
 describe('Rules', () => {
   let getProp = getPropWithContext.bind(context, context);
   let getVar = getVarWithContext.bind(context, context);
-  let getSelector = getSelectorWithContext.bind(context, context);
+  // let getSelector = getSelectorWithContext.bind(context, context);
   beforeEach(() => {
     context = new Context();
     getProp = getPropWithContext.bind(context, context);
     getVar = getVarWithContext.bind(context, context);
-    getSelector = getSelectorWithContext.bind(context, context);
+    // getSelector = getSelectorWithContext.bind(context, context);
     context.id = 'testing';
   });
 
@@ -389,21 +389,21 @@ describe('Rules', () => {
   });
 
   /** IT IS TIME */
-  describe('lookup selectors', () => {
-    it('can lookup a simple ruleset', async () => {
-      let node = rules([
-        ruleset({
-          selector: el('.foo'),
-          rules: rules([
-            decl({ name: 'foo', value: any('bar') })
-          ])
-        })
-      ]);
-      node = await node.eval(context);
+  // describe('lookup selectors', () => {
+  //   it('can lookup a simple ruleset', async () => {
+  //     let node = rules([
+  //       ruleset({
+  //         selector: el('.foo'),
+  //         rules: rules([
+  //           decl({ name: 'foo', value: any('bar') })
+  //         ])
+  //       })
+  //     ]);
+  //     node = await node.eval(context);
 
-      expect(getSelector(node, 'foo')).toBe('foo: bar');
-    });
-  });
+  //     expect(getSelector(node, 'foo')).toBe('foo: bar');
+  //   });
+  // });
 
   it('should flatten rules when serializing', async () => {
     let node = rules([

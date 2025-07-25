@@ -2,13 +2,14 @@ import type {
   AtRule,
   Declaration,
   Root,
-  Node,
   Ruleset,
-  Rules
+  Rules,
+  StyleImportValue
 } from './tree';
 import { type Operator } from './tree/util/calculate';
 import type { PluginObject } from './plugin';
 import * as path from 'node:path';
+import { isNode } from './tree/util/is-node';
 
 export const enum MathMode {
   /**
@@ -249,10 +250,10 @@ export class Context {
   depth = 0;
 
   /** Entire context root (ultimate root) */
-  root: Root | undefined;
+  root: Rules | undefined;
 
   /** Set so that we can do ruleset selector lookup for extend */
-  currentRoot: Root | undefined;
+  currentRoot: Rules | undefined;
 
   /**
    * currently generating a runtime module or not
@@ -282,7 +283,7 @@ export class Context {
   }
 
   /** Full resolved path -> tree */
-  fileTrees: Map<string, Root> = new Map();
+  fileTrees: Map<string, Rules> = new Map();
 
   /**
    * @todo - What is this used for? I think I wrote this to resolve
@@ -378,6 +379,27 @@ export class Context {
       throw new Error(`File "${path.basename(filePath)}" not supported`);
     }
     return resolvedTree;
+  }
+
+  async getRules(
+    filePath: string,
+    options: Record<string, any> = {},
+    withValues?: StyleImportValue['with']
+  ) {
+    const tree = await this.getTree(filePath, options);
+    let rules = tree.clone(true) as Rules;
+    if (withValues && isNode(withValues.node, 'Rules')) {
+      if (rules.options.readonly) {
+        throw new Error('Cannot set an import\'s "with" values more than once.');
+      }
+      let withRules = withValues.node.clone(true) as Rules;
+      withRules.value.unshift(rules);
+      rules = withRules;
+      if (withValues.type === 'set') {
+        this.fileTrees.set(filePath, rules);
+      }
+    }
+    return rules;
   }
 
   /**

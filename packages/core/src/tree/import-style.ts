@@ -30,7 +30,7 @@ export type StyleImportOptions = {
    *   - ✅ file imported by `@-import` has access to parent scope
    * - `reference`
    *   - ✅ parent has access to `@-reference` scope
-   *   - ❌ selectors are NOT rendered in output
+   *   - ❌ selectors are NOT rendered in output (but can be replaced / made visible with extend)
    *   - ❌ file imported by `@-reference` does not have access to parent scope
    */
   type: 'use' | 'include' | 'import' | 'reference';
@@ -109,11 +109,73 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
    * How do extends work then?
    */
   override async evalNode(context: Context): Promise<Node> {
-    const { path } = this.value;
+    const { path, with: withValues } = this.value;
+    const { type } = this.options;
     const finalPath = (await path.eval(context)).valueOf();
-    /** @todo - Add options */
-    const result = await context.getTree(finalPath);
-    const rules = result.clone(true);
+    /**
+     * @todo - Add options
+     *
+     * Note that the Less plugin should trigger a unique default behavior
+     * for `@import` which is that it is de-duplicated by default. Meaning
+     * that it won't render rulesets twice per compilation. I think that
+     * means that it's just kind of ignored without an explicit `multiple`
+     * option. Since all vars are global per compilation, it should just
+     * work.
+     */
+    const rules = await context.getRules(finalPath, { type }, withValues);
+    /** Set visibility according to import type */
+    switch (type) {
+      case 'use':
+        rules.options = {
+          rulesVisibility: {
+            Ruleset: 'public',
+            Declaration: 'public',
+            VarDeclaration: 'public',
+            Mixin: 'public'
+          },
+          readonly: true,
+          local: true
+        };
+        break;
+      case 'include':
+        rules.options = {
+          rulesVisibility: {
+            Ruleset: 'public',
+            Declaration: 'public',
+            VarDeclaration: 'private',
+            Mixin: 'private'
+          },
+          readonly: true,
+          local: true
+        };
+        break;
+      case 'import':
+        rules.options = {
+          rulesVisibility: {
+            Ruleset: 'public',
+            Declaration: 'public',
+            VarDeclaration: 'public',
+            Mixin: 'public'
+          },
+          /** Imports act more like merged rules, so they are writeable. */
+          readonly: false
+        };
+        break;
+      /** @todo - Should `@-import (reference)` differ from `@-reference`?  */
+      case 'reference':
+        rules.options = {
+          rulesVisibility: {
+            /** Visible when extended */
+            Ruleset: 'optional',
+            Declaration: 'private',
+            VarDeclaration: 'public',
+            Mixin: 'public'
+          },
+          readonly: true,
+          local: true
+        };
+        break;
+    }
     return rules;
   }
 }
