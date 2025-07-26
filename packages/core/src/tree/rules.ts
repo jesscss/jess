@@ -21,7 +21,7 @@ import { atIndex } from './util/collections';
 import isPlainObject from 'lodash-es/isPlainObject';
 import type { Condition } from './condition';
 import type { Bool } from './bool';
-import { SelectorRegistry } from './util/selector-utils';
+import { MixinRegistry, SelectorRegistry } from './util/selector-utils';
 
 const { isArray } = Array;
 
@@ -111,7 +111,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _selectorRegistry: SelectorRegistry | undefined;
   get selectorRegistry(): SelectorRegistry {
-    return (this._selectorRegistry ??= new SelectorRegistry());
+    return (this._selectorRegistry ??= new SelectorRegistry(this));
+  }
+
+  private _mixinRegistry: MixinRegistry | undefined;
+  get mixinRegistry(): MixinRegistry {
+    return (this._mixinRegistry ??= new MixinRegistry(this));
   }
 
   pendingExtends = new Set<[find: Selector, extendWith: Selector, partial: boolean]>();
@@ -121,6 +126,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   registerRuleset(ruleset: Ruleset) {
     this.selectorRegistry.addRuleset(ruleset);
+  }
+
+  registerMixin(mixin: Mixin | Ruleset) {
+    this.mixinRegistry.addMixin(mixin);
   }
 
   /**
@@ -134,6 +143,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   /**
    * Find rulesets that could potentially be extended by the target selector
+   * @todo - Search through child files.
    */
   findExtendableRulesets(targetSelector: Selector): Ruleset[] {
     const candidates = this.selectorRegistry.findCandidateRulesets(targetSelector);
@@ -310,8 +320,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   push(node: Node) {
     node.parent = this;
-    node.treeRoot = this.treeRoot;
-    node.root = this.root;
     this.value.push(node);
     this.register(node);
   }
@@ -363,6 +371,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    *
    * @todo - The pattern for mixins will be similar, no? Can this be
    * re-used / abstracted?
+   *
+   * @todo - Register declarations and index them only when searching.
+   * This would be similar to how we index rulesets for extending.
    */
   findDeclaration(
     key: string,
@@ -523,15 +534,24 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       rules = await this.preEval(context);
     }
     let evalQueue: EvalQueueMap = new Map();
-    let root = context.root;
 
+    /** Grab current context */
     let rulesContext = context.rulesContext;
     let treeContext = context.treeContext;
-    let currentRoot = context.currentRoot;
+    let treeRoot = context.treeRoot;
+    let root = context.root;
+
+    /** Set new context while evaluating */
+    if (!treeContext || treeContext !== rules.treeContext) {
+      /** We've encountered a new tree root */
+      context.allRoots.push(rules);
+      context.treeContext = rules.treeContext;
+      context.treeRoot = rules;
+      /** Set this as ultimate root if there isn't a root yet */
+      context.root ??= rules;
+    }
     context.rulesContext = rules;
-    /** Assume that the first rules to be eval'd are the root */
-    context.currentRoot = rules;
-    context.root ??= rules;
+
     // let { leakVariablesIntoScope } = context.treeContext ?? {}
     /**
      * First, push rules onto an evaluation queue.
@@ -584,9 +604,24 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             rules.register(result);
           } else if (method === 'eval') {
             /** Register rulesets for extending */
-            if (root && isNode(result, 'Ruleset')) {
-              /** @todo - fix ruleset type so Ruleset<unknown> is */
-              currentRoot.registerRuleset(result as Ruleset<RulesetValue>);
+            let rulesetType = isNode(result, 'Ruleset')
+              ? 'Ruleset'
+              : isNode(result, 'Mixin')
+                ? 'Mixin'
+                : undefined;
+            if (rulesetType === 'Ruleset') {
+              /**
+               * We register it at the tree root for extends,
+               * because extends is a global (file-level) operation.
+               *
+               * We also register it at the ruleset for mixin lookup.
+               *
+               * @todo - fix ruleset type so Ruleset<unknown>
+               */
+              context.treeRoot.registerRuleset(result as Ruleset<RulesetValue>);
+            }
+            if (rulesetType) {
+              this.registerMixin(result as Mixin);
             }
           }
           /**
@@ -641,7 +676,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
      * Restore contexts
      */
     context.rulesContext = rulesContext;
-    context.currentRoot = currentRoot;
+    context.treeRoot = treeRoot;
+    context.root = root;
     return rules;
   }
 }
@@ -723,7 +759,9 @@ type MixinEntry = Mixin | Rules;
 /**
  * Returns a plain JS function for calling a set of mixins
  *
- * This is in the same file as Rules to avoid circular dependencies
+ * This is in the same file as Rules to avoid circular dependencies.
+ *
+ * @note this will be called as a result after a mixin find is executed.
  */
 export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
   let mixinArr = isArray(mixins) ? mixins : [mixins];

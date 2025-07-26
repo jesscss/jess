@@ -86,6 +86,24 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
     super(finalValue, options, location, treeContext);
   }
 
+  override get keySet() {
+    if (this._keySet === undefined) {
+      this._computeKeySetAndFastReject();
+    }
+    return this._keySet!;
+  }
+
+  /** The keys of an ampersand are the keys of the selector it contains */
+  protected override _computeKeySetAndFastReject(): void {
+    const { selector } = this.value;
+    if (selector && 'keySet' in selector) {
+      this._keySet = selector.keySet;
+      this._canFastReject = selector.canFastReject;
+      return;
+    }
+    this._keySet = new Set(['&']);
+  }
+
   override valueOf() {
     const { selector } = this.value;
     if (selector) {

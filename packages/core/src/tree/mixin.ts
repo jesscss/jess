@@ -8,7 +8,7 @@ import type { Rules } from './rules';
 import { Interpolated } from './interpolated';
 import type { Context } from '../context';
 import type { Selector } from './selector';
-import type { Declaration } from '..';
+import type { Declaration } from './declaration';
 
 export interface MixinValue {
   /**
@@ -102,6 +102,10 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       output += `${space}}`;
     }
     return output;
+  }
+
+  getImplicitSelector(): Selector | undefined {
+    return this.value.selector;
   }
 
   override async preEval(context: Context): Promise<this> {

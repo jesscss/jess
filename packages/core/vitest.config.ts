@@ -3,7 +3,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     name: 'core',
-    timeout: 30_000,
+    testTimeout: 30_000,
     watch: false,
     include: ['test/**/*.ts', '!test/setup.ts', '**/__tests__/**/*.ts', '!src/old_tree/**/*'],
     globals: true,

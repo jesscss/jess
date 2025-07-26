@@ -6,6 +6,10 @@ import type { Condition } from './condition';
 import type { Selector } from './selector';
 import { atIndex } from './util/collections';
 import { isNode } from './util/is-node';
+import { Ampersand } from './ampersand';
+import { Combinator } from './combinator';
+import { ComplexSelector } from './selector-complex';
+import { SelectorList } from './selector-list';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -40,6 +44,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   shortType = 'ruleset';
   override allowRuleRoot = true;
   override allowRoot = true;
+
+  override stateRules = ['visible', 'evaluated', 'preEvaluated', 'parentSelector'];
+  parentSelector: Selector | undefined;
 
   get selector() {
     return this.value.selector;
@@ -78,13 +85,71 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return this;
   }
 
+  /** Attach an (invisible) ampersand to the selector(s) if it's not already there */
+  getImplicitSelector() {
+    if (!this.parentSelector) {
+      return this.selector;
+    }
+
+    const selector = this.selector;
+    if (selector instanceof Nil) {
+      return selector;
+    }
+    const invisibleAmp = new Ampersand({ selector: this.parentSelector });
+    invisibleAmp.visible = false;
+    const invisibleCombinator = new Combinator(' ');
+    invisibleCombinator.visible = false;
+
+    // Helper to check for ampersand in a selector's nodes
+    const hasAmpersand = (sel: Selector) => {
+      for (const node of sel.nodes()) {
+        if (isNode(node, 'Ampersand')) return true;
+      }
+
+      return false;
+    };
+
+    // If selector is a SelectorList, process each item
+    if (isNode(selector, 'SelectorList')) {
+      const newList = selector.value.map((sel) => {
+        if (hasAmpersand(sel)) {
+          return sel;
+        }
+        if (isNode(sel, 'CompoundSelector') || isNode(sel, 'SimpleSelector')) {
+          return ComplexSelector.create([invisibleAmp, invisibleCombinator, sel]);
+        }
+        if (isNode(sel, 'ComplexSelector')) {
+          const cloned = sel.clone(true);
+          cloned.value.unshift(invisibleAmp, invisibleCombinator);
+          return cloned;
+        }
+        return sel;
+      });
+      return SelectorList.create(newList);
+    }
+
+    // If selector is not a list, check for ampersand
+    if (hasAmpersand(selector)) {
+      return selector;
+    }
+    if (isNode(selector, 'CompoundSelector') || isNode(selector, 'SimpleSelector')) {
+      return ComplexSelector.create([invisibleAmp, invisibleCombinator, selector]);
+    }
+    if (isNode(selector, 'ComplexSelector')) {
+      const cloned = selector.clone(true);
+      cloned.value.unshift(invisibleAmp, invisibleCombinator);
+      return cloned;
+    }
+    return selector;
+  }
+
   override async evalNode(context: Context): Promise<Ruleset | Nil> {
     let rule = this.maybeClone(context);
     rule.options = { ...this.options };
     let frame = atIndex(context.rulesetFrames, -1);
     /** Store the current frame selector if we need it for serialization */
-    if (frame) {
-      rule.options.parentSelector = frame.selector;
+    if (frame && isNode(frame.selector, 'Selector')) {
+      rule.parentSelector = frame.selector;
     }
     let guard = rule.value.guard;
     if (guard) {
@@ -103,15 +168,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       rule.options.hoistToRoot = true;
     }
     context.opts.collapseNesting = collapseNesting;
-
-    /** If the only selector is a generated :is, unwrap it */
-    if (
-      isNode(sels, 'PseudoSelector')
-      && sels.value.name === ':is'
-      && sels.options.generated
-    ) {
-      sels = sels.value.arg as Selector;
-    }
 
     if (sels instanceof Nil) {
       return sels;

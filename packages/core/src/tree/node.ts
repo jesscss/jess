@@ -103,6 +103,12 @@ export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<=';
 
 export type NoOverride<T> = Tagged<T, 'NoOverride'>;
 
+export interface NodeState {
+  visible: boolean;
+  evaluated: boolean;
+  preEvaluated: boolean;
+}
+
 /**
  * The underlying type for all Jess nodes
  */
@@ -150,9 +156,12 @@ export abstract class Node<
   pre: Node[] | 1 | 0 | undefined;
   post: Node[] | 1 | 0 | undefined;
 
+  /** Will be copied during inherit */
+  stateRules = ['visible', 'evaluated', 'preEvaluated'];
   visible = true;
   evaluated = false;
   preEvaluated = false;
+
   allowRoot = false;
   allowRuleRoot = false;
 
@@ -191,10 +200,7 @@ export abstract class Node<
    * Note: This property is defined in constructor as non-enumerable
    */
   declare sourceNode: Node;
-  /** A reference to the root node of the stylesheet tree */
-  declare treeRoot: Rules;
-  /** The root node of all stylesheets */
-  declare root: Rules;
+
   /** The parent node of this node */
   parent: Node | undefined;
 
@@ -250,16 +256,6 @@ export abstract class Node<
     for (let val of getValues(value)) {
       if (val instanceof Node) {
         val.parent = this;
-        if (!val.treeRoot
-          || (
-            this.treeRoot
-            && val.treeRoot.treeContext !== this.treeRoot.treeContext
-          )
-        ) {
-          val.treeRoot = this.treeRoot;
-        }
-        val.treeRoot = this.treeRoot;
-        val.root = this.root;
       }
     }
     return value;
@@ -280,18 +276,6 @@ export abstract class Node<
     Object.defineProperties(this, {
       sourceNode: {
         value: this,
-        writable: true,
-        enumerable: false,
-        configurable: false
-      },
-      treeRoot: {
-        value: undefined,
-        writable: true,
-        enumerable: false,
-        configurable: false
-      },
-      root: {
-        value: undefined,
         writable: true,
         enumerable: false,
         configurable: false
@@ -594,6 +578,10 @@ export abstract class Node<
   inherit(node: Node) {
     this._location = node.location;
     this._treeContext = node.treeContext;
+    /** Copy any state rules */
+    for (let rule of this.stateRules) {
+      (this as any)[rule] = (node as any)[rule];
+    }
     this.evaluated &&= node.evaluated;
     this.preEvaluated &&= node.preEvaluated;
     // Note that we need to create new arrays if we mutate pre/post later

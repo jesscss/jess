@@ -178,6 +178,11 @@ export class Context {
 
   treeContext!: TreeContext;
   rulesContext!: Rules;
+  /** Entire context root (ultimate root) */
+  root!: Rules;
+  /** Set so that we can do ruleset selector lookup for extend */
+  treeRoot!: Rules;
+  allRoots: Rules[] = [];
 
   /**
    * When getting vars, the current declaration is ommitted
@@ -236,12 +241,6 @@ export class Context {
    * and toTrimmedString() methods pass in depth?
    */
   depth = 0;
-
-  /** Entire context root (ultimate root) */
-  root: Rules | undefined;
-
-  /** Set so that we can do ruleset selector lookup for extend */
-  currentRoot: Rules | undefined;
 
   /**
    * currently generating a runtime module or not

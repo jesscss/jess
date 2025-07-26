@@ -1,28 +1,29 @@
 import type { Ruleset } from '../ruleset';
 import type { Selector } from '../selector';
 import type { Rules } from '../rules';
-import type { Condition } from '../condition';
 import { isNode } from './is-node';
+import type { Mixin } from '../mixin';
+import type { Nil } from '../nil';
 
-type RulesetWithSelector = Ruleset<{
-  selector: Selector;
-  rules: Rules;
-  guard?: Condition;
-}>;
-
+const { isArray } = Array;
+/**
+ * @todo - Move declaration searches here from rules?
+ */
 /**
  * Registry for fast selector-based ruleset lookups
  */
 export class SelectorRegistry {
-  private index = new Map<string, Set<RulesetWithSelector>>();
-  private pendingRulesets = new Set<RulesetWithSelector>();
+  constructor(public rules: Rules) {}
+
+  private index = new Map<string, Set<Ruleset>>();
+  private pendingRulesets = new Set<Ruleset>();
 
   /**
    * Add a ruleset to be indexed later
    */
   addRuleset(ruleset: Ruleset) {
     if (isNode(ruleset.value.selector, 'Selector')) {
-      this.pendingRulesets.add(ruleset as RulesetWithSelector);
+      this.pendingRulesets.add(ruleset);
     }
   }
 
@@ -32,7 +33,8 @@ export class SelectorRegistry {
   private indexPendingRulesets() {
     const index = this.index;
     for (const ruleset of this.pendingRulesets) {
-      const selector = ruleset.selector;
+      /** Make sure we're indexing according to the ruleset's context */
+      const selector = ruleset.getImplicitSelector();
       if (selector && 'keySet' in selector) {
         for (const key of selector.keySet) {
           const existing = index.get(key);
@@ -50,27 +52,248 @@ export class SelectorRegistry {
   /**
    * Find candidate rulesets that might match the target selector
    */
-  findCandidateRulesets(targetSelector: Selector): Set<RulesetWithSelector> {
+  findCandidateRulesets(targetSelector: Selector): Set<Ruleset> | undefined {
     // Index any pending rulesets first
     this.indexPendingRulesets();
     const { keySet } = targetSelector;
 
-    let candidates: Set<RulesetWithSelector> | undefined = undefined;
+    let candidates: Set<Ruleset> | undefined = undefined;
 
     // Use intersection to whittle down candidates with each subsequent key
     for (const key of keySet) {
       // const key = targetKeys[i]!;
       const keyRulesets = this.index.get(key);
       if (!keyRulesets || keyRulesets.size === 0) {
-        return new Set(); // No matches for this key, so no candidates
+        return; // No matches for this key, so no candidates
       }
 
-      candidates = (candidates ?? new Set()).intersection(keyRulesets);
+      if (candidates) {
+        candidates = candidates.intersection(keyRulesets);
+      } else {
+        candidates = keyRulesets;
+      }
       if (candidates.size === 0) {
         return candidates;
       }
     }
-
-    return candidates ?? new Set();
+    return candidates;
   }
+}
+
+/**
+ * The mixin registry works a little differently than the selector registry
+ * in these ways:
+ *
+ * 1. The mixin registry can only be indexed by basic element, class, and
+ *    id selectors.
+ * 2. The index is the start key, not any key found in the selector.
+ * 3. '>' and ' ' combinators are ignored.
+ * 4. Initial ampersands (implicit or explicit) are ignored.
+ * 5. The mixin registry is local to the rules, whereas the selector registry
+ *    is global to the file tree.
+ * 6. Rulesets and mixins without params will have their children searched
+ *    if the first part matches.
+ */
+export class MixinRegistry {
+  constructor(public rules: Rules) {}
+
+  private index = new Map<string, Set<{
+    mixin: Mixin | Ruleset;
+    match: string[];
+  }>>();
+
+  private pendingMixins = new Set<Mixin | Ruleset>();
+
+  addMixin(mixin: Mixin | Ruleset) {
+    const selector = (mixin as any).value.selector;
+    const keyList = this.getSimpleKeyList(selector);
+    this.pendingMixins.add(mixin);
+  }
+
+  private getSimpleKeyList(selector: Selector | Nil | undefined): string[] | undefined {
+    let keyList: string[] | undefined;
+    if (selector && 'keySet' in selector) {
+      let passed = true;
+      let foundBasic = false;
+      for (const sel of selector.nodes()) {
+        /** Ampersand is okay at start, but not after a basic selector */
+        if (!foundBasic && isNode(sel, 'Ampersand')) {
+          continue;
+        }
+
+        if (isNode(sel, 'Combinator')) {
+          if (sel.value !== '>' && sel.value !== ' ') {
+            passed = false;
+            break;
+          }
+          continue;
+        }
+
+        /** Anything other than a universal selector is fine */
+        if (isNode(sel, 'BasicSelector') && /^[^*]/.test(sel.value)) {
+          (keyList ??= []).push(sel.valueOf() as string);
+          foundBasic = true;
+          continue;
+        }
+        if (isNode(sel, 'CompoundSelector') || isNode(sel, 'ComplexSelector')) {
+          /** Might still be fine */
+          continue;
+        }
+        /** Nothing else is valid, so fail */
+        passed = false;
+        break;
+      }
+      if (!passed) {
+        return;
+      }
+    }
+    return keyList;
+  }
+
+  private _indexSelectorStart(mixin: Ruleset | Mixin, selector: Selector | Nil | undefined) {
+    const keyList = this.getSimpleKeyList(selector);
+    const index = this.index;
+
+    if (keyList?.length) {
+      const [startKey, ...rest] = keyList;
+      const existing = index.get(startKey!);
+      if (existing) {
+        existing.add({ mixin, match: rest });
+      } else {
+        index.set(startKey!, new Set([{ mixin, match: rest }]));
+      }
+    }
+  }
+
+  private indexPendingMixins() {
+    for (const mixin of this.pendingMixins) {
+      const selector = mixin.value.selector;
+      if (isNode(selector, 'SelectorList')) {
+        /** Selector list's selectors are individually registered */
+        for (const sel of selector.value) {
+          this._indexSelectorStart(mixin, sel);
+        }
+      } else {
+        this._indexSelectorStart(mixin, selector);
+      }
+    }
+    this.pendingMixins.clear();
+  }
+
+  /**
+   * Find candidate mixins (or rulesets, or both) that might match the target selector
+   */
+  findCandidateMixins(
+    targetSelector: Selector | string[] | string,
+    filterType: 'Mixin' | 'Ruleset' | undefined = undefined,
+    options: {
+      searchParents?: boolean;
+      candidates?: Set<Mixin | Ruleset>;
+    } = {}
+  ): Set<Mixin | Ruleset> | undefined {
+    if (this.pendingMixins.size === 0 && this.index.size === 0) {
+      return;
+    }
+
+    let keyList: string[] | undefined;
+
+    /**
+       * This is for calls from `.scss` files, which can
+       * call namespaced mixins like `@include \.bar\#foo;
+       *
+       * @todo - Test after completing the Sass+ parser if this is needed.
+       */
+    if (typeof targetSelector === 'string') {
+      keyList = targetSelector.split(/([#.])/);
+      for (let i = 0; i < keyList.length; i++) {
+        let key = keyList[i];
+        keyList[i] = key!.trim();
+        if (!key) {
+          throw new Error(`Invalid mixin name: ${targetSelector}`);
+        }
+      }
+    } else if (isArray(targetSelector)) {
+      keyList = targetSelector;
+    } else {
+      keyList = this.getSimpleKeyList(targetSelector);
+    }
+
+    if (!keyList?.length) {
+      return;
+    }
+
+    let rules: Rules | undefined = this.rules;
+    let { searchParents = true, candidates } = options;
+    while (rules) {
+      let registry = rules.mixinRegistry;
+      registry.indexPendingMixins();
+
+      let [startKey, ...search] = keyList;
+      const existing = registry.index.get(startKey!);
+
+      if (existing) {
+        for (const { mixin, match } of existing) {
+          if (filterType && mixin.type !== filterType) {
+            continue;
+          }
+
+          // If all match keys match all search keys, add as candidate
+          if (arraysEqual(match, search)) {
+            (candidates ??= new Set()).add(mixin);
+            continue;
+          }
+
+          // If there are more search keys, and this is a ruleset or has empty params
+          if (search.length > match.length) {
+            const remainder = search.slice(match.length);
+            if (
+              (isNode(mixin, 'Ruleset'))
+              || (isNode(mixin, 'Mixin') && (!mixin.value.params || mixin.value.params.length === 0))
+            ) {
+            // Recursively search in this mixin's registry
+              const registry = mixin.value.rules.mixinRegistry;
+              if (registry) {
+                const subCandidates =
+                registry.findCandidateMixins(remainder, filterType, {
+                  searchParents: false,
+                  candidates
+                });
+                if (subCandidates) {
+                  if (candidates) {
+                    candidates = candidates.union(subCandidates);
+                  } else {
+                    candidates = subCandidates;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      if (!searchParents) {
+        break;
+      }
+      do {
+        rules = rules?.parent as Rules;
+        /**
+         * If we reach an import boundary, stop unless it's an `@import`
+         * which means these rules can reach into the parent file that imports
+         * this one.
+         */
+        if (isNode(rules, 'StyleImport') && rules.options.type !== 'import') {
+          rules = undefined;
+          break;
+        }
+      } while (rules && rules.type !== 'Rules');
+    }
+    return candidates;
+  }
+}
+
+function arraysEqual(a: string[], b: string[]) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
 }
