@@ -272,10 +272,16 @@ export class CssActionsParser extends AdvancedActionsParser {
     }
     let post = this.getPrePost(nextTokenLocation[0]!);
     let remainder = processPrePost(post);
-    let RulesConstructor = isRoot ? Root : Rules;
-    let returnRules =
-      new RulesConstructor(rules, undefined, rules.length ? this.getLocationFromNodes(rules) : 0, this.context);
-    returnRules.scope = this.context.scope;
+    let returnRules: Rules;
+    if (isRoot) {
+      returnRules = new Root([], undefined, rules.length ? this.getLocationFromNodes(rules) : undefined, this.context);
+      returnRules.treeRoot = returnRules;
+      returnRules.value = rules;
+    } else {
+      returnRules = new Rules(rules, undefined, rules.length ? this.getLocationFromNodes(rules) : undefined, this.context);
+    }
+
+    // returnRules.scope = this.context.scope;
     returnRules.post = remainder;
     return returnRules;
   }
