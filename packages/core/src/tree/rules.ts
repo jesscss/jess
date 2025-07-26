@@ -310,6 +310,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   push(node: Node) {
     node.parent = this;
+    node.treeRoot = this.treeRoot;
+    node.root = this.root;
     this.value.push(node);
     this.register(node);
   }
@@ -527,9 +529,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let treeContext = context.treeContext;
     let currentRoot = context.currentRoot;
     context.rulesContext = rules;
-    if (rules.options.isRoot) {
-      context.currentRoot = rules;
-    }
+    /** Assume that the first rules to be eval'd are the root */
+    context.currentRoot = rules;
+    context.root ??= rules;
     // let { leakVariablesIntoScope } = context.treeContext ?? {}
     /**
      * First, push rules onto an evaluation queue.
@@ -639,6 +641,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
      * Restore contexts
      */
     context.rulesContext = rulesContext;
+    context.currentRoot = currentRoot;
     return rules;
   }
 }

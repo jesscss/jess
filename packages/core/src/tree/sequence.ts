@@ -64,6 +64,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
    * @todo - If this is a selector sequence, and we've
    *         evaluated an expression to an inner sequence,
    *         then we should be inserting white-space combinators?
+   *
+   * @todo - REWRITE
    */
   override async evalNode(context: Context) {
     let node = this.maybeClone(context);
@@ -96,7 +98,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
        */
       let Class = Object.getPrototypeOf(this).constructor;
       let combinations = combinate(lists);
-      let returnList = new List([]).inherit(this);
+      let returnList = new List([] as Node[]).inherit(this);
 
       /** @todo - create :is() in selector */
       combinations.forEach((combo) => {

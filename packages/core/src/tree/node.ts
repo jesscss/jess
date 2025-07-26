@@ -8,6 +8,7 @@ import { type Operator } from './util/calculate';
 import type { Class, AbstractClass, Tagged } from 'type-fest';
 import type { Nil } from './nil';
 import { getEntriesFromNode, getValues } from './util/collections';
+import type { Rules } from './rules';
 
 export type { TreeContext };
 
@@ -89,9 +90,9 @@ export const defineType = <
     proto = Object.getPrototypeOf(proto);
   }
 
-  type Args = [value?: P[0] | V, location?: P[1], options?: P[2], treeContext?: P[3]];
+  type Args = [value?: P[0] | V, options?: P[1], location?: P[2]];
   return (...args: Args) => {
-    const node = new Clazz(...args) as T extends Class<infer C> ? InstanceType<Class<C, Args>> : never
+    const node = new (Clazz as any)(...args) as T extends Class<infer C> ? InstanceType<Class<C, Args>> : never
     ;(node as any).type = type
     ;(node as any).shortType = shortType;
     return node;
@@ -189,7 +190,12 @@ export abstract class Node<
    * rather than keeping the entire tree
    * Note: This property is defined in constructor as non-enumerable
    */
-  sourceNode!: Node;
+  declare sourceNode: Node;
+  /** A reference to the root node of the stylesheet tree */
+  declare treeRoot: Rules;
+  /** The root node of all stylesheets */
+  declare root: Rules;
+  /** The parent node of this node */
   parent: Node | undefined;
 
   nil!: () => Nil;
@@ -244,6 +250,16 @@ export abstract class Node<
     for (let val of getValues(value)) {
       if (val instanceof Node) {
         val.parent = this;
+        if (!val.treeRoot
+          || (
+            this.treeRoot
+            && val.treeRoot.treeContext !== this.treeRoot.treeContext
+          )
+        ) {
+          val.treeRoot = this.treeRoot;
+        }
+        val.treeRoot = this.treeRoot;
+        val.root = this.root;
       }
     }
     return value;
@@ -261,11 +277,25 @@ export abstract class Node<
     this._options = options;
 
     // Make sourceNode non-enumerable to avoid JSON serialization issues
-    Object.defineProperty(this, 'sourceNode', {
-      value: this,
-      writable: true,
-      enumerable: false,
-      configurable: true
+    Object.defineProperties(this, {
+      sourceNode: {
+        value: this,
+        writable: true,
+        enumerable: false,
+        configurable: false
+      },
+      treeRoot: {
+        value: undefined,
+        writable: true,
+        enumerable: false,
+        configurable: false
+      },
+      root: {
+        value: undefined,
+        writable: true,
+        enumerable: false,
+        configurable: false
+      }
     });
   }
 

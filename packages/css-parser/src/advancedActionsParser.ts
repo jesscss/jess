@@ -49,37 +49,33 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
   originalInput: IToken[];
 
   /** Exposed from Chevrotain */
-  currIdx: number;
+  declare currIdx: number;
 
   get context() {
-    let context = this._context;
-    if (!context) {
-      context = this._context = new TreeContext();
-    }
-    return context;
+    return (this._context ??= new TreeContext());
   }
 
   set context(c: TreeContext) {
     this._context = c;
   }
 
-  subruleInternal: <ARGS extends unknown[], R>(
+  declare subruleInternal: <ARGS extends unknown[], R>(
     ruleToCall: ParserMethodInternal<ARGS, R>,
     idx: number,
     options?: SubruleMethodOpts<ARGS>
   ) => R;
 
-  getKeyForAutomaticLookahead: (
+  declare getKeyForAutomaticLookahead: (
     dslMethodIdx: number,
     occurrence: number,
   ) => number;
 
-  raiseNoAltException: (
+  declare raiseNoAltException: (
     occurrence: number,
     errMsgTypes: string | undefined,
   ) => never;
 
-  getLaFuncFromCache: (key: number) => (...args: any[]) => any;
+  declare getLaFuncFromCache: (key: number) => (...args: any[]) => any;
 
   constructor(tokenVocabulary: TokenVocabulary, config: IParserConfig) {
     super(tokenVocabulary, config);

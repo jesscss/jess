@@ -109,15 +109,7 @@ export const generateId = (length = 8) => {
  *
  * Each file (and hence, tree) will get a new tree
  * context. For the most part, it is passed around
- * as an object reference, but during AST creation,
- * the scope property will be modified (and later
- * restored when the file is finished with AST
- * creation) so that rulesets can inherit scope
- * based on their tree postion.
- *
- * It's used primarily to attach scope to rulesets,
- * since rules have context / scope according
- * to their position in the tree.
+ * as an object reference.
  *
  * Additionally, it sets options that may be
  * unique to the tree, such as the math mode.
@@ -128,10 +120,9 @@ export class TreeContext implements TreeContextOptions {
   // leakVariablesIntoScope: boolean
   mathMode: MathMode;
   unitMode: UnitMode;
-  isModule: boolean;
 
-  /** Current scope while evaluating - Remove? */
-  scope: Rules | undefined;
+  /** @todo - Change how extend works based on this value */
+  isModule: boolean;
 
   file?: TreeContextOptions['file'];
   /**
@@ -146,10 +137,6 @@ export class TreeContext implements TreeContextOptions {
      * Unknown options are assigned to `opts`
      */
     let {
-      scope,
-      parentScope,
-      // hoistDeclarations,
-      // leakVariablesIntoScope,
       mathMode,
       unitMode,
       isModule,
@@ -396,27 +383,27 @@ export class Context {
     };
   }
 
-  async getRules(
-    filePath: string,
-    nodeOptions: StyleImportOptions,
-    userOptions: Record<string, any> = {},
-    withValues?: StyleImportValue['with']
-  ) {
-    let rules = await this.getTree(filePath, userOptions);
-    if (withValues && isNode(withValues.node, 'Rules')) {
-      if (rules.options.readonly) {
-        throw new Error('Cannot set an import\'s "with" values more than once.');
-      }
-      /** @todo - Throw errors for undefined vars */
-      let withRules = withValues.node.clone(true) as Rules;
-      withRules.value.unshift(rules);
-      rules = withRules;
-      if (withValues.type === 'set') {
-        this.sourceTrees.set(filePath, rules);
-      }
-    }
-    return rules;
-  }
+  // async getRules(
+  //   filePath: string,
+  //   nodeOptions: StyleImportOptions,
+  //   userOptions: Record<string, any> = {},
+  //   withValues?: StyleImportValue['with']
+  // ) {
+  //   let rules = await this.getTree(filePath, userOptions);
+  //   if (withValues && isNode(withValues.node, 'Rules')) {
+  //     if (rules.options.readonly) {
+  //       throw new Error('Cannot set an import\'s "with" values more than once.');
+  //     }
+  //     /** @todo - Throw errors for undefined vars */
+  //     let withRules = withValues.node.clone(true) as Rules;
+  //     withRules.value.unshift(rules);
+  //     rules = withRules;
+  //     if (withValues.type === 'set') {
+  //       this.sourceTrees.set(filePath, rules);
+  //     }
+  //   }
+  //   return rules;
+  // }
 
   /**
    * Hash a CSS class name or not depending on the `module` setting

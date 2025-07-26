@@ -38,7 +38,7 @@ export type TokenMap = Record<CssTokenType, TokenType>;
 export type Rule<F extends () => void = () => void> = ParserMethod<Parameters<F>, any>;
 
 export interface CssParserConfig extends IParserConfig {
-  /** Thinks like star property hacks and IE filters */
+  /** Things like star property hacks and IE filters */
   legacyMode?: boolean;
 }
 
