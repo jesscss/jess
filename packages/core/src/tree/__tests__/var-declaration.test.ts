@@ -10,18 +10,18 @@ describe('Let', () => {
   });
 
   describe('serialization', () => {
-    it('should serialize a @let', () => {
+    it('should serialize a var declaration', () => {
       context.depth = 2;
       let rule = vardecl({
         name: 'brandColor',
         value: any('#eee')
       });
-      expect(`${rule}`).toBe('@let brandColor: #eee;');
+      expect(`${rule}`).toBe('$brandColor: #eee;');
     // rule.toModule(context, out)
     // expect(out.toString()).toBe('let brandColor = $J.expr([$J.any("#eee")])')
     });
 
-    it('should serialize a @let collection', () => {
+    it('should serialize a collection', () => {
       context.depth = 2;
       let rule = vardecl({
         name: 'brandColor',
@@ -32,7 +32,7 @@ describe('Let', () => {
         ])
       });
       expect(`${rule}`).toBeString(`
-      @let brandColor: {
+      $brandColor: {
         global: {
           dark: #000;
         }

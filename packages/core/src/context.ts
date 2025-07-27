@@ -25,8 +25,13 @@ export const enum MathMode {
 }
 
 export const enum UnitMode {
-  /** Less's default 1.x-5.x */
+  /** Less's default 1.x-4.x */
   LOOSE = 0,
+  /**
+   * @todo - I think Less's current strict unit mode is weirder,
+   * so this may need another mode depending on behavior. But
+   * if it's too weird, it could be a breaking change.
+   */
   STRICT = 1
 }
 

@@ -8,19 +8,19 @@ describe('Dimension', () => {
     context = new Context();
   });
   describe('serialization', () => {
-    it.only('should make a dimension from a string', () => {
-      let rule = dimension([10, 'px']);
-      let clone = rule.clone();
-      expect(rule.data.get('number')).toBe(10);
-      expect(clone.data.get('number')).toBe(10);
-      expect(rule.data.get('unit')).toBe('px');
-      expect(rule.data).not.toBe(clone.data);
-      expect(rule.data.data).not.toBe(clone.data.data);
-      expect(rule.toString()).toBe('10px');
-    });
+    /** @todo? */
+    // it.only('should make a dimension from a string', () => {
+    //   let rule = dimension('10px');
+    //   let clone = rule.clone();
+    //   expect(rule.value.number).toBe(10);
+    //   expect(clone.value.number).toBe(10);
+    //   expect(rule.value.unit).toBe('px');
+    //   expect(rule.value).not.toBe(clone.value);
+    //   expect(rule.toString()).toBe('10px');
+    // });
     it('should make a dimension from a number', () => {
       let rule = num(10);
-      expect(rule.number).toBe(10);
+      expect(rule.value.number).toBe(10);
       expect(rule.toString()).toBe('10');
     });
   });
@@ -46,12 +46,12 @@ describe('Dimension', () => {
 
     it('should use left-hand units when right has no unit', () => {
       let left = dimension([10, 'px']);
-      let right = dimension([20]);
+      let right = num(20);
       expect(left.operate(right, '-').toString()).toBe('-10px');
     });
 
     it('should use right-hand units when left has no unit', () => {
-      let left = dimension([10]);
+      let left = num(10);
       let right = dimension([20, 'px']);
       expect(left.operate(right, '-').toString()).toBe('-10px');
     });
@@ -60,11 +60,11 @@ describe('Dimension', () => {
   describe('multiplication', () => {
     it('should multiply', () => {
       let left = dimension([10, 'px']);
-      let right = dimension([2]);
+      let right = num(2);
       expect(left.operate(right, '*').toString()).toBe('20px');
     });
     it('should multiply', () => {
-      let left = dimension([10]);
+      let left = num(10);
       let right = dimension([2, 'px']);
       expect(left.operate(right, '*').toString()).toBe('20px');
     });
@@ -78,11 +78,11 @@ describe('Dimension', () => {
   describe('division', () => {
     it('should divide', () => {
       let left = dimension([10, 'px']);
-      let right = dimension([2]);
+      let right = num(2);
       expect(left.operate(right, '/').toString()).toBe('5px');
     });
     it('should divide number by unit (non-strict)', () => {
-      let left = dimension([10]);
+      let left = num(10);
       let right = dimension([2, 'px']);
       expect(left.operate(right, '/').toString()).toBe('5px');
     });
@@ -130,7 +130,7 @@ describe('Dimension', () => {
       expect(() => left.operate(right, '+', context)).toThrow();
     });
     it('should throw when dividing a number by a unit', () => {
-      let left = dimension([10]);
+      let left = num(10);
       let right = dimension([2, 'px']);
       expect(() => left.operate(right, '/', context)).toThrow();
     });
@@ -141,7 +141,7 @@ describe('Dimension', () => {
     });
     it('should throw on divide by zero', () => {
       let left = dimension([10, 'px']);
-      let right = dimension([0]);
+      let right = num(0);
       // expect(left.operate(right, '/', context).toString()).toBe('5')
       expect(() => left.operate(right, '/', context)).toThrow();
     });

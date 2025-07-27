@@ -99,7 +99,12 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
     }`;
     if (!isNode(value, 'Collection')) {
       returnVal += important ? `${important}` : '';
-      if (this.options?.semi === true) {
+      /**
+       * During parsing, a semi-colon must be explicitly false
+       * to be omitted. This is so that declarations created
+       * with the API can default to a semi-colon.
+       */
+      if (this.options?.semi !== false) {
         returnVal += ';';
       }
     }

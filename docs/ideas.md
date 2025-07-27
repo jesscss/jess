@@ -116,10 +116,10 @@ Control flow statements do not create new scope, so they are merged with parent 
 }
 ```
 -for 
-Selectors parsed / wrapped with `*()` in value,
-except in Less where we do looser values
+Selectors parsed prefixed with ^ in value (and optionally wrapped in parens), except in Less where we do looser values
 ```scss
-$items: *(.box) 1 / *(.foo) 2;
+$sel2: ^.foo;
+$items: ^(.box) 1 / $sel2 2;
 $for (($item, $i) of $items) {
   #($item[0]) {
     number: $item[1]
