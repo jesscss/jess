@@ -11,6 +11,9 @@ export default {
   organizationName: 'jesscss', // Usually your GitHub org/user name.
   projectName: 'jesscss.github.io', // Usually your repo name.
   themeConfig: {
+    prism: {
+      additionalLanguages: ['javascript', 'typescript', 'scss', 'less'],
+    },
     navbar: {
       title: 'Jess',
       logo: {

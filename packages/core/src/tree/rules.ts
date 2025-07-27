@@ -277,7 +277,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         readonly
       });
     } else if (isNode(node, 'Declaration')) {
-      /** `setDefined` is an immediate mutation of the last found instance */
+      /**
+       * `setDefined` is an immediate mutation of the last found instance
+       *
+       * @todo - This behavior needs to be changed to be aligned with Sass. It should not
+       * mutate the last found instance, and instead should create a new declaration at
+       * the same scope level as the original declaration, but just before where the
+       * current evaluation is at the top level of the current scope.
+       */
       if (node.options?.setDefined) {
         let key = node.value.name.toString();
         /** Don't set within sibling rules */

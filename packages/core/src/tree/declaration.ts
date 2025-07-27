@@ -34,7 +34,7 @@ export type DeclarationOptions = {
   semi?: boolean;
   /**
    * This doesn't prevent shadowing; it prevents declarations like:
-   *   $$overwrite: foo;
+   *   ^$overwrite: foo;
    *
    * Written as `!$foo:` in Jess or imported from a readonly context
    */
@@ -44,7 +44,7 @@ export type DeclarationOptions = {
    * requires a variable to previously be explicitly
    * declared within scope.
    *
-   * Used by SCSS (!global) and Jess's ($$foo:)
+   * Used by SCSS (!global) and Jess's (^$foo:)
    */
   setDefined?: boolean;
 

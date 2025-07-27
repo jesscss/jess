@@ -2,7 +2,9 @@
 
 - Switch `@-use` to `@-compose` (for stylesheets) and use `@-use` for JS/TS imports. Why? Because "use" implies importing values, but a `@-compose` can output rules as well as can be evaluated differently based on input values.
 - Enabling `@-module` and inline JS for Less requires the `jess-plugin-js` plugin. The reasoning being that it installs the Deno runtime to safely execute JS.
-- Sass defaulting a namespace to the file / module name I think has merit and probably resembles some other languages.
+- Sass defaulting a namespace to the file / module name I think has merit and probably resembles some other languages... on the other hand... file names can have spaces?
+
+Apparently, Sass just replaces any un-supported character in a file name with underscores. (CSS identifiers can't start with numbers, so filenames starting with a number prepend an underscore at the start.)
 
 # Jul 25, 2025
 
