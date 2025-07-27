@@ -15,12 +15,13 @@ describe('Call', () => {
     expect(`${rule}`).toBe('rgb(100, 100, 100)');
   });
 
+  /** @todo */
   it('should serialize a mixin call', () => {
     let rule = call({
       ref: 'my-mixin',
       args: list([num(100), num(100), num(100)])
     });
-    expect(`${rule}`).toBe('rgb(100, 100, 100)');
+    expect(`${rule}`).toBe('my-mixin(100, 100, 100)');
   });
 
   // it('should serialize to a module', () => {

@@ -7,9 +7,9 @@ import { cast } from './util/cast';
 export type CallValue = {
   /**
    * Can be an identifier or something like a mixin or variable lookup
-   *   e.g. #mixin > .class() is [Call (#mixin ())] -> [Call (class ())]
+   *   e.g. #mixin > .class() is [Call (#mixin ())] -> [Call (.class ())]
    */
-  value: string | Node;
+  ref: string | Node;
   args?: List;
   /**
    * Legacy Less feature -- if a ruleset is returned,
@@ -45,22 +45,22 @@ export class Call extends Node<CallValue> {
   override requiredSemi = true;
 
   override toTrimmedString() {
-    let { value, args, important } = this.value;
-    return `${value}(${args ?? ''})${important ? ' !important' : ''}`;
+    let { ref, args, important } = this.value;
+    return `${ref}(${args ?? ''})${important ? ' !important' : ''}`;
   }
 
   override async evalNode(context: Context): Promise<Node> {
     let canOperate = context.canOperate;
     /** Reset parentheses "state" */
     context.canOperate = false;
-    let { value, args } = this.value;
-    if (value instanceof Node) {
-      value = await value.eval(context);
+    let { ref, args } = this.value;
+    if (ref instanceof Node) {
+      ref = await ref.eval(context);
     }
 
-    if (isNode(value, 'FunctionValue')) {
+    if (isNode(ref, 'FunctionValue')) {
       // try {
-      const func = value.value;
+      const func = ref.value;
       let result: any;
       if (func.evalArgs !== false) {
         if (args) {
@@ -68,9 +68,9 @@ export class Call extends Node<CallValue> {
         }
       }
       if (args) {
-        result = await value.value.call(context, ...args.value);
+        result = await ref.value.call(context, ...args.value);
       } else {
-        result = await value.value.call(context);
+        result = await ref.value.call(context);
       }
 
       /** @todo - mark results as important */
@@ -84,8 +84,8 @@ export class Call extends Node<CallValue> {
     }
     context.canOperate = canOperate;
     let node = this.maybeClone(context);
-    node.data.set('value', value);
-    node.data.set('args', args);
+    node.value.ref = ref;
+    node.value.args = args;
     return node;
   }
 }

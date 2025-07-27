@@ -13,6 +13,10 @@ export type ListOptions = {
   sep?: ',' | ';' | '/';
 };
 
+export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
+  eval(context: Context): Promise<List<T>>;
+}
+
 /**
  * A list of expressions
  *
@@ -34,7 +38,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
 
   override toTrimmedString() {
     let { sep = ',' } = this.options ?? {};
-    return this.value.map(v => v.toString()).join(`${sep}`);
+    return this.value.map(
+      (v, i) => v.toString(0, i === 0 ? '' : ' ')).join(`${sep}`
+    );
   }
 
   override compare(other: Node) {

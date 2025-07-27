@@ -29,6 +29,9 @@ Node.prototype.nil = function() {
   return new Nil();
 };
 
+/**
+ * Define a fallback treeContext for testing.
+ */
 Object.defineProperty(Node.prototype, 'treeContext', {
   get() {
     let context = this._treeContext;

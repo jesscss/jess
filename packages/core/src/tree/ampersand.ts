@@ -145,7 +145,7 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
           }
         }
         context.opts.collapseNesting = true;
-        return new PseudoSelector({ name: ':is', arg: selector }, { generated: true });
+        return PseudoSelector.create({ name: ':is', arg: selector });
       }
       return new Nil();
     }

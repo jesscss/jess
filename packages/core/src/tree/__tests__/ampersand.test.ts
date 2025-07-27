@@ -1,7 +1,7 @@
 import {
-  root, amp, rules, sel, el, spaced, any, sellist, ruleset, decl, attr,
+  amp, rules, sel, el, spaced, any, sellist, ruleset, decl, attr,
   compound,
-  type SimpleSelector, type Combinator, type ComplexSelector
+  type SimpleSelector, type Combinator, type Selector
 } from '..';
 import { Context } from '../../context';
 
@@ -12,7 +12,7 @@ describe('Ampersand', () => {
   });
 
   /** We need a root node to bubble rules */
-  let wrapAmp = (selectors: Array<SimpleSelector | Combinator>) => root([
+  let wrapAmp = (selectors: SimpleSelector[]) => rules([
     ruleset({
       selector: compound([
         el('.one'),
@@ -30,7 +30,7 @@ describe('Ampersand', () => {
     })
   ]);
 
-  let wrapAmpList = (selectors: ComplexSelector[]) => root([
+  let wrapAmpList = (selectors: Selector[]) => rules([
     ruleset({
       selector: sellist([sel([el('.one')]), sel([el('.two')])]),
       rules: rules([
@@ -200,7 +200,7 @@ describe('Ampersand', () => {
   });
 
   it('should throw if the parent selector is not basic', async () => {
-    let node = root([
+    let node = rules([
       ruleset({
         selector: sel([
           attr({

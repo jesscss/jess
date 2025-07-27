@@ -169,6 +169,15 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
     context.opts.collapseNesting = collapseNesting;
 
+    /** If the only selector is a generated :is, unwrap it */
+    if (
+      isNode(sels, 'PseudoSelector')
+      && sels.value.name === ':is'
+      && sels.generated
+    ) {
+      sels = sels.value.arg as Selector;
+    }
+
     if (sels instanceof Nil) {
       return sels;
     }

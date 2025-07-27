@@ -28,9 +28,17 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
 
   override toTrimmedString() {
     let [left, op, right] = this.value;
+    /**
+     * If we have a comparison with an operator or a negation
+     * we need to wrap the condition output in parens.
+     */
+    let needsParens = right || this.options?.negate;
     let output = `${left}${op ? ` ${op} ${right}` : ''}`;
+    if (needsParens) {
+      output = `(${output})`;
+    }
     if (this.options?.negate) {
-      return `not${output}`;
+      return `not ${output}`;
     }
     return output;
   }

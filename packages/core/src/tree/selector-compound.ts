@@ -75,6 +75,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     for (let [item, i] of getEntries(value)) {
       value[i] = await item.eval(context) as SimpleSelector;
     }
+    /** Bubble tag selectors to the front of compound selectors */
     value = value
       .filter(n => n && !(n instanceof Nil))
       .sort((a, b) => {

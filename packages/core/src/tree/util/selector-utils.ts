@@ -182,6 +182,8 @@ export class MixinRegistry {
 
   /**
    * Find candidate mixins (or rulesets, or both) that might match the target selector
+   *
+   * @todo - Prevent infinite recursion when a mixin calls itself.
    */
   findCandidateMixins(
     targetSelector: Selector | string[] | string,

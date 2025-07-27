@@ -62,7 +62,7 @@ export interface TreeContextOptions extends ContextOptions {
    */
   // hoistDeclarations?: boolean
 
-  /** In Less 1.x-5.x, Less sets this to true */
+  /** In Less 1.x-4.x, Less sets this to true */
   // leakVariablesIntoScope?: boolean
 
   inlineJavaScript?: boolean;
@@ -177,6 +177,7 @@ export class Context {
   readonly opts: ContextOptions;
 
   treeContext!: TreeContext;
+
   rulesContext!: Rules;
   /** Entire context root (ultimate root) */
   root!: Rules;

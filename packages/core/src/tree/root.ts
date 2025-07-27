@@ -8,6 +8,8 @@ import { JessError } from '../jess-error';
 /**
  * The root node. Contains a collection of nodes.
  * The tree will have a root, but each file will have its own root.
+ *
+ * @todo - I think we can remove and just have Rules
  */
 export class Root extends Rules {
   /**

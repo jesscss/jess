@@ -275,7 +275,7 @@ describe('MixinRegistry', () => {
    * Unlike mixins, rulesets are evaluated immediately,
    * so we should see their "mixin" registries populated.
    */
-  it.only('can search rulesets after eval()', async () => {
+  it('can search rulesets after eval()', async () => {
     const childRulesetNode = ruleset({
       selector: el('.child'),
       rules: rules([])

@@ -1,4 +1,4 @@
-import { bool, condition, dimension } from '..';
+import { bool, condition, dimension, num } from '..';
 import { Context } from '../../context';
 
 let context: Context;
@@ -14,7 +14,7 @@ describe('Condition', () => {
         '=',
         bool(true)
       ]);
-      expect(`${node}`).toBe('true = true');
+      expect(`${node}`).toBe('(true = true)');
     });
 
     it('should serialize an and', () => {
@@ -23,7 +23,7 @@ describe('Condition', () => {
         'and',
         bool(true)
       ]);
-      expect(`${node}`).toBe('true and true');
+      expect(`${node}`).toBe('(true and true)');
     });
 
     it('should serialize an or', () => {
@@ -32,7 +32,7 @@ describe('Condition', () => {
         'or',
         bool(true)
       ]);
-      expect(`${node}`).toBe('true or true');
+      expect(`${node}`).toBe('(true or true)');
     });
 
     it('should serialize a negated condition', () => {
@@ -41,7 +41,7 @@ describe('Condition', () => {
         '=',
         bool(true)
       ], { negate: true });
-      expect(`${node}`).toBe('not(true = true)');
+      expect(`${node}`).toBe('not (true = true)');
     });
   });
 
@@ -78,9 +78,9 @@ describe('Condition', () => {
 
     it('should compare dimensions', async () => {
       let node = condition([
-        dimension([10]),
+        num(10),
         '=',
-        dimension([10])
+        num(10)
       ]);
       let evald = await node.eval(context);
       expect(`${evald}`).toBe('true');
@@ -88,9 +88,9 @@ describe('Condition', () => {
 
     it('should compare dimensions', async () => {
       let node = condition([
-        dimension([10]),
+        num(10),
         '=',
-        dimension([11])
+        num(11)
       ]);
       let evald = await node.eval(context);
       expect(`${evald}`).toBe('false');

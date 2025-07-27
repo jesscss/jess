@@ -189,12 +189,6 @@ export abstract class Node<
   requiredSemi = false;
 
   /**
-   * Used by Rules
-   * @todo - Remove
-   */
-  rootRules: Node[] | undefined;
-
-  /**
    * Track the original source when cloned / copied,
    * rather than keeping the entire tree
    * Note: This property is defined in constructor as non-enumerable
@@ -216,9 +210,16 @@ export abstract class Node<
   }
 
   set value(val: Data) {
-    this._value = this._processNodes(val);
+    this._value = this._tryProxyWrap(val);
   }
 
+  /**
+   * This wraps the value in a proxy if it's an object or array.
+   * We do this so that assignment to the sub-nodes will properly
+   * set the parent of the sub-nodes.
+   *
+   * @todo - Test parent setting for objects / arrays.
+   */
   private _tryProxyWrap<T>(value: T): T {
     if (isPlainObject(value) || isArray(value)) {
       return new Proxy(value as object, {
@@ -229,7 +230,7 @@ export abstract class Node<
           const returnVal = Reflect.get(target, prop);
           if (isPlainObject(returnVal) || isArray(returnVal)) {
             if (returnVal[IS_PROXY]) {
-              /** Already a proxy */
+              /** Already a proxy so don't re-wrap it */
               return returnVal;
             }
             return this._tryProxyWrap(returnVal);
@@ -245,7 +246,7 @@ export abstract class Node<
       }) as T;
     }
 
-    return value;
+    return this._processNodes(value);
   }
 
   /**
@@ -267,7 +268,7 @@ export abstract class Node<
     location?: LocationInfo,
     treeContext?: TreeContext
   ) {
-    this._value = this._processNodes(value);
+    this._value = this._tryProxyWrap(value);
     this._treeContext = treeContext;
     this._location = location;
     this._options = options;

@@ -1,4 +1,4 @@
-import { ColorFormat, color, dimension } from '..';
+import { ColorFormat, color, dimension, num } from '..';
 import { Context } from '../../context';
 
 let context: Context;
@@ -75,13 +75,13 @@ describe('Color', () => {
 
     it('should multiply a color by a number', () => {
       let left = color('#222');
-      let right = dimension([2]);
+      let right = num(2);
       expect(left.operate(right, '*').toString()).toBe('#444444');
     });
 
     it('should divide a color by a number', () => {
       let left = color('#222');
-      let right = dimension([2]);
+      let right = num(2);
       expect(left.operate(right, '/').toString()).toBe('#111111');
     });
   });
