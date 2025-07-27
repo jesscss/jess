@@ -16,6 +16,9 @@ import {
   co,
   Rules
 } from '../../index';
+import { Context } from '../../../context';
+
+let context: Context;
 
 function makeAmpersand(parts: string[]) {
   return amp({ selector: makeCompound(parts) });
@@ -29,6 +32,7 @@ describe('SelectorRegistry', () => {
   let baseRules: Rules;
   let registry: SelectorRegistry;
   beforeEach(() => {
+    context = new Context();
     baseRules = rules([]);
     registry = baseRules.selectorRegistry;
   });
@@ -101,6 +105,7 @@ describe('MixinRegistry', () => {
   let baseRules: Rules;
   let registry: MixinRegistry;
   beforeEach(() => {
+    context = new Context();
     baseRules = rules([]);
     registry = baseRules.mixinRegistry;
   });
@@ -216,34 +221,91 @@ describe('MixinRegistry', () => {
     expect(candidates?.has(anotherRulesetNode)).toBe(true);
   });
 
-  it.only('can search parents', () => {
-    const childRs = rules([
-      ruleset({ selector: el('.child'), rules: rules([]) })
-    ]) as Rules;
+  it('can search parents', () => {
+    /**
+     * .base {
+     *   .grandparent {
+     *     .parent {
+     *       .child {}
+     *       .sibling {}
+     *     }
+     *   }
+     * }
+     */
     const childMixinNode = mixin({
-      selector: makeCompound(['.bar']),
-      rules: childRs,
-      params: undefined
+      selector: el('.child'),
+      rules: rules([])
+    });
+    const siblingMixinNode = mixin({
+      selector: el('.sibling'),
+      rules: rules([])
     });
     const parentMixinNode = mixin({
-      selector: makeCompound(['.foo']),
+      selector: el('.parent'),
       rules: rules([
-        childMixinNode
+        childMixinNode,
+        siblingMixinNode
       ]),
       params: undefined
     });
-    registry.addMixin(parentMixinNode);
-    /** Add child to parent's registry (normally happens during eval()) */
+    const grandparentMixinNode = mixin({
+      selector: el('.grandparent'),
+      rules: rules([
+        parentMixinNode
+      ]),
+      params: undefined
+    });
+    registry.addMixin(grandparentMixinNode);
+    /** This should happen during eval()) */
+    grandparentMixinNode.value.rules.mixinRegistry.addMixin(parentMixinNode);
     parentMixinNode.value.rules.mixinRegistry.addMixin(childMixinNode);
-
-    /** From the child, we should be able to find the local .bar */
-    let candidates = childRs.mixinRegistry.findCandidateMixins(['.bar']);
-    expect(candidates?.has(childMixinNode)).toBe(true);
-    /** From the child, we should be able to find the parent .foo */
-    candidates = childRs.mixinRegistry.findCandidateMixins(['.foo']);
+    parentMixinNode.value.rules.mixinRegistry.addMixin(siblingMixinNode);
+    /** From the child, we should be able to find the local .sibling */
+    let candidates = childMixinNode.value.rules.mixinRegistry.findCandidateMixins(['.sibling']);
+    expect(candidates?.has(siblingMixinNode)).toBe(true);
+    /** From the child, we should be able to find the parent .parent */
+    candidates = childMixinNode.value.rules.mixinRegistry.findCandidateMixins(['.parent']);
     expect(candidates?.has(parentMixinNode)).toBe(true);
-    /** But we should also find .foo .bar from the child because of going to the parent then back */
-    candidates = childRs.mixinRegistry.findCandidateMixins(['.foo', '.bar']);
-    expect(candidates?.has(childMixinNode)).toBe(true);
+    /** But we should also find .parent .sibling from the child because of going to the parent then back */
+    candidates = childMixinNode.value.rules.mixinRegistry.findCandidateMixins(['.parent', '.sibling']);
+    expect(candidates?.has(siblingMixinNode)).toBe(true);
+  });
+
+  /**
+   * Unlike mixins, rulesets are evaluated immediately,
+   * so we should see their "mixin" registries populated.
+   */
+  it.only('can search rulesets after eval()', async () => {
+    const childRulesetNode = ruleset({
+      selector: el('.child'),
+      rules: rules([])
+    });
+    const siblingRulesetNode = ruleset({
+      selector: el('.sibling'),
+      rules: rules([])
+    });
+    const parentRulesetNode = ruleset({
+      selector: el('.parent'),
+      rules: rules([
+        childRulesetNode,
+        siblingRulesetNode
+      ])
+    });
+    const grandparentRulesetNode = ruleset({
+      selector: el('.grandparent'),
+      rules: rules([
+        parentRulesetNode
+      ])
+    });
+    baseRules.push(grandparentRulesetNode);
+    await baseRules.eval(context);
+    let candidates = childRulesetNode.value.rules.mixinRegistry.findCandidateMixins(['.sibling']);
+    expect(candidates?.has(siblingRulesetNode)).toBe(true);
+    /** From the child, we should be able to find the parent .parent */
+    candidates = childRulesetNode.value.rules.mixinRegistry.findCandidateMixins(['.parent']);
+    expect(candidates?.has(parentRulesetNode)).toBe(true);
+    /** But we should also find .parent .sibling from the child because of going to the parent then back */
+    candidates = childRulesetNode.value.rules.mixinRegistry.findCandidateMixins(['.parent', '.sibling']);
+    expect(candidates?.has(siblingRulesetNode)).toBe(true);
   });
 });

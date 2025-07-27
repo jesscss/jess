@@ -191,10 +191,6 @@ export class MixinRegistry {
       candidates?: Set<Mixin | Ruleset>;
     } = {}
   ): Set<Mixin | Ruleset> | undefined {
-    if (this.pendingMixins.size === 0 && this.index.size === 0) {
-      return;
-    }
-
     let keyList: string[] | undefined;
 
     /**
