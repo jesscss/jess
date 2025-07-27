@@ -66,11 +66,11 @@ width: #($width * 2);
 ```
 **Jess**
 ```less
-@ mixin($size) {
+mixin($size) {
   width: #($size * 1px);
 }
 .box {
-  $ -> mixin(50);
+  $ > mixin(50);
 }
 ```
 
@@ -102,7 +102,7 @@ each(@sizes, #(@size) {
 **Jess**
 
 ```less
-@-for ($size of $sizes) {
+$for ($size of $sizes) {
   .icon-#($size) {
     font-size: $size;
     height: $size;

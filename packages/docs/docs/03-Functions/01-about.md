@@ -8,7 +8,7 @@ You can optionally install the `@jesscss/fns` package to add a number of helper 
 Most of these functions (especially color functions) are imported and converted from Less.js.
 
 To use, import them like:
-```scss
+```css
 @import { mix } from '@jesscss/fns';
 
 .box {
@@ -22,7 +22,7 @@ Unlike Less, all functions must be imported! This keeps the Jess runtime small a
 
 :::
 
-```scss
+```css
 @import { rgb as jessRgb } from '@jesscss/fns';
 
 .color {

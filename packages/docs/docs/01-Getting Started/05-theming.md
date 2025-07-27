@@ -11,7 +11,7 @@ Here's [an example setup](https://github.com/jesscss/theme-library-example) for 
 
 #### config.jess
 
-```scss
+```css
 @let value: red;
 @let config {
   global {
@@ -26,7 +26,7 @@ Here's [an example setup](https://github.com/jesscss/theme-library-example) for 
 }
 ```
 #### buttons.jess
-```scss
+```css
 @import { config as defaultConfig } from './config.jess';
 
 @let config: $defaultConfig;
@@ -37,7 +37,7 @@ Here's [an example setup](https://github.com/jesscss/theme-library-example) for 
 }
 ```
 #### nav.jess
-```scss
+```css
 @import { config as defaultConfig } from './config.jess';
 
 @let config: $defaultConfig;
@@ -47,7 +47,7 @@ Here's [an example setup](https://github.com/jesscss/theme-library-example) for 
 }
 ```
 #### library.jess
-```scss
+```css
 @import getConfig from './config.jess';
 @import buttons from './buttons.jess';
 @import nav from './nav.jess';

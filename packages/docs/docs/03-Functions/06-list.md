@@ -6,7 +6,7 @@ sidebar_label: List
 
 ### each(_collection_, _mixin_)
 
-```scss
+```css
 @import { each } from '@jesscss/fns';
 @let list: 1, 2, 3;
 

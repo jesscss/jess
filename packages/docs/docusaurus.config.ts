@@ -1,4 +1,6 @@
-module.exports = {
+import type { Config } from '@docusaurus/types';
+
+export default {
   title: 'Jess',
   tagline: 'Jess is in alpha and currently seeking testers / collaborators!',
   url: 'https://jesscss.github.io',
@@ -78,10 +80,18 @@ module.exports = {
   },
   presets: [
     [
-      '@docusaurus/preset-classic',
+      'classic',
       {
         docs: {
-          sidebarPath: require.resolve('./sidebars.js'),
+          sidebarPath: './sidebars.js',
+          includeCurrentVersion: true,
+          lastVersion: 'current',
+          versions: {
+            current: {
+              label: 'Next',
+              path: ''
+            }
+          },
           // Please change this to your repo.
           editUrl:
             'https://github.com/jesscss/jess/tree/master/packages/docs/'
@@ -93,9 +103,9 @@ module.exports = {
             'https://github.com/jesscss/jess/tree/master/packages/docs/'
         },
         theme: {
-          customCss: require.resolve('./src/css/custom.css')
+          customCss: ['./src/css/custom.css']
         }
       }
     ]
   ]
-}
+} satisfies Config;

@@ -7,7 +7,7 @@ sidebar_label: Color Operation
 Color operations generally take parameters in the same units as the values they are changing, and percentages are handled as absolutes, so increasing a 10% value by 10% results in 20%. Set the option method parameter to relative for relative percentages. When using relative percentages increasing a 10% value by 10% results in 11%. Values are clamped to their allowed ranges; they do not wrap around. Where return values are shown, we've used formats that make it clear what each function has done, in addition to the hex versions that you will usually be be working with.
 
 Example:
-```scss
+```css
 @import { saturate, hsl } from '@jesscss/fns';
 
 .box {

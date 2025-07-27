@@ -18,10 +18,15 @@
  * This will be ported to Less 5 to replace `@plugin`.
  *
  */
-@-module './foo.js' as js;
-@-module '#less/math' as math;
+@-use './foo.js' as js;
+@-use '#less/math'; // implicit "as math"
 
-@-include (as: less /* other options */) './file.css' as *;
+/*
+- can put in other options in parens
+- This doesn't expose vars or mixins, and doesn't allow extending.
+- It also imports the CSS file with the 'less' plugin. (Whatever is the first keyword after '?' is interpreted as the name to pass through.)
+*/
+@-compose private './file.css?less';
 
 // declaring vars
 $count; // (or $count:;) a Node of `Nil`
@@ -80,11 +85,11 @@ $ > .rule/(); // (Less style)
   foo: var(--live, #($count + 1));
 }
 
-// Function calls can use $
+// Imported JS calls are scoped to their namespace
 .bar {
   // You can write this in two ways:
-  value: $myFunction($sass-var); 
-  value: #($myFunction($sass-var));
+  value: js.myFunction($sass-var); 
+  value: #(js.myFunction($sass-var));
 }
 
 // you can also do:
@@ -157,41 +162,41 @@ Sass is an overly-complex stylesheet language. Jess aims to be:
 - 100% compatible with Less
 - Compatible with a common subset of Sass called Sass+ (to be defined)
 
-### `@-use ('(' as ')')? [file|object|map] 'as' [namespace] ('with'|'set' reference|declarationList)?`
+### `@-compose ('(' as ')')? [file|object|map] 'as' [namespace] ('with'|'set' reference|declarationList)?`
 
-Non-leaky replacement for `@import`. Will import the scope (mixins, variables, and selector references) of the object. If a namespace is specified, will wrap rules in a mixin name. If it's imported `as *` (the default), will render rules.
-
-Note: unlike Sass, `as` is required, for clarity.
+Non-leaky replacement for `@import`. Will import the scope (mixins, variables, and selector references) of the object, and render rules. By default, like Sass's `@use`, the namespace is taken from the last identifier (file name or module).
 
 Namespaced imports are referenced with plain identifiers. e.g.
 
 ```scss
-@-use 'colors.jess' as colors;
+@-compose 'colors.jess' as colors;
 
 .box {
   color: colors.$primary;
 }
 ```
 
-### `@-ref ('(' type ')')? [file|object|map] 'as' [namespace] ('with'|'set' reference|declarationList)?`
+### `@-compose reference`
 
-(In Less, this will be `@reference`) - This is the same as `@-use` except rules will not be rendered unless extended.
+This is the same as basic `@-compose` except rules will not be rendered unless extended.
 
-This is somewhat like Less's `@import (reference)`, although with Less's `@import (reference)`, the referenced file can see the parent's variables, but with `@reference`, the scope is isolated.
+This is somewhat like Less's `@import (reference)`, although with Less's `@import (reference)`, the referenced file can see the parent's variables, but with `@-compose reference`, the scope is isolated.
+
+_To reduce confusion when migrating from Less, you can write `@-compose (reference)` or `@-import reference` with or without parenetheses._
 
 ```scss
-@-ref 'colors.less' as colors;
+@-compose reference 'colors.less';
 // or override variables
-@-ref 'colors.less' as colors with {
+@-compose reference 'colors.less' with {
   // should throw an error if primary-color is not defined
-  // overrides the outer $let statement e.g. $let primary-color: #333;
+  // overrides the outer declaration statement e.g. $primary-color: #333;
   // TODO - should these be implicitly typed and throw an error when a mis-matched type?
-  // No, not unless it is $let <color> primary-color: #333;
+  // No, not unless it is <color> primary-color: #333;
   $primary-color: #333;
 }
 
 //or
-@-ref 'colors.less' as *;
+@-compose reference 'colors.less';
 ```
 
 Using `set` instead of `with` on a stylesheet import will alter that import within the compilation scope. (In Sass, this is how `with` works.) Using `with` will alter the import just for this module.
@@ -201,60 +206,114 @@ Note that `set` may not be used more than once with the same module (resolved to
 ```less
 
 // or ultimate customization
-@-ref 'bootstrap/variables.scss' set $variables;
-@-ref 'bootstrap/tables.scss' set {
+@-compose reference 'bootstrap/variables.scss' set $variables;
+@-compose reference 'bootstrap/tables.scss' set {
   .tbl {
     border-color: blue;
   }
 }
 
-@-use 'bootstrap.scss' as bs;
+@-compose 'bootstrap.scss' as bs;
 
 .foo {
   color: bs.$primary-color;
 }
 // or
 .foo {
-  @-use 'colors.less' as colors;
+  @-compose 'colors.less';
   color: colors.$primary-color;
 }
 
 //
 ```
 
-### JavaScript / TypeScript imports -- `@-load`
+### JavaScript / TypeScript imports -- `@-use`
 
-We can directly import JS/TS modules with `@-load` e.g.
+We can directly import JS/TS modules with `@-use` e.g.
 
 ```scss
-@-load './my-module.js' as js;
+@-use './my-module.js' as js;
 
 .box {
   value: js.myFunc();
 }
 ```
 
-### `@-use` without `@-forward`
+### `@-compose private`
 
-In Jess, variables defined or imported with `@-use export` or `@-export` will be re-exported. This is similar to Sass's `@-forward`.
+Rules will be rendered, but variables and mixins are not available to this stylesheet.
 
-Q: what happens if a two files use `@-use` on the same file with different params?
+```scss
+// main.jess
+@-compose 'colors.jess' as *;
+@-compose 'rules.jess' with $colors;
+
+// rules.jess
+// Doesn't have access to vars in main.jess w/o:
+@-compose 'main.jess' as *;
+// this would include the vars in colors.jess
+```
+Using an `compose` that's the _result_ of another `compose`:
+```scss
+@-compose 'theme.jess' with {
+  // Using +: with a collection will merge values
+  $colors +: {
+    primary: #3a3a3a;
+  }
+}
+```
+You could also do the above like:
+```scss
+$custom-color: #3a3a3a;
+@-compose 'theme.jess' with {
+  $colors +: {
+    // Here, it will reference the outer $custom-color
+    // TODO - remove?
+    primary: $$custom-color;
+  }
+}
+```
+
+### `@-compose export`
+
+In Jess, variables defined or imported with `@-compose export` will be re-exported and made available to a stylesheet downstream.
+
+### `@-compose readonly`
+
+Rules cannot be extended.
+
+### Simulating Sass's `@forward`
+
+To simulate Sass's forward, you can write:
+ - `@-compose reference export readonly 'stylesheet.jess';
+
+This would do the following:
+ - `reference` - Import variables and mixins but do not render stylesheets.
+ - `export` - variables and mixins are forwarded to a downstream stylesheet
+ - `readonly` - Rules cannot be extended
+
+However, for convenience, these three flags can be set with:
+ - `@-compose forward 'stylesheet.jess';
+
+### Questions 
+
+Q: what happens if a two files use `@-compose` on the same file with different `with` params?
 
 They would be subject to evaluation order.
 ```scss
 // use1.jess
-@-use './file.jess' as * with {
+@-compose './file.jess' as * with {
   $foo: one;
 }
 
 // use2.jess
-@-use './file.jess' as * with {
+@-compose './file.jess' as * with {
   $foo: two;
 }
 
 // final.jess
-@-use './use1.jess' as *;
-@-use './use2.jess' as *;
+@-compose './use1.jess' as *;
+@-compose './use2.jess' as *;
 
 .rule {
   value: $foo; // two
@@ -270,51 +329,21 @@ $-private: var;
 ```
 Would be converted to:
 ```scss
-@-use './file1.jess' as *;
+@-compose './file1.jess' as *;
 $not-private: var;
 $_private: var;
-@-export './file2.jess' as *;
+@-compose './file2.jess' as *;
 ```
 
-## `@-include [file] ('(' vars ')')? 'as' [namespace] ('with' reference|declarationList)?`
+## `@-compose readonly`
 
 Will import the rules (but not pollute the variable scope). It does not allow extending of the rules in the included file.
 
 Can be at the root or nested.
 
-```scss
-// main.jess
-@-ref 'colors.jess' as *;
-@-include 'rules.jess' with $colors;
-
-// rules.jess
-// Doesn't have access to vars in main.jess w/o:
-@-use 'main.jess' as *;
-// this would include the vars in colors.jess
-```
-Using an `include` that's the _result_ of a `ref`:
-```scss
-@-ref 'theme.jess' as theme with {
-  // Using +: with a collection will merge values
-  $colors +: {
-    primary: #3a3a3a;
-  }
-}
-@-include $theme;
-```
-You could also do the above like:
-```scss
-$custom-color: #3a3a3a;
-@-include 'theme.jess' with {
-  $colors +: {
-    // Here, it will reference the outer $custom-color
-    primary: $$custom-color;
-  }
-}
-```
 ### Include for mixins / inter-operability
 ```scss
-@-use 'mixins.less';
+@-compose 'mixins.less' as *;
 
 // This will include ALL mixins named `.root-mixin` AND all selectors labeled `.root-mixin`
 // Note: this is how converted Less would look

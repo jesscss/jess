@@ -12,7 +12,7 @@ Here are some examples of features in Less / Sass and their equivalent syntax in
 @color: red;
 ```
 **Sass**
-```scss
+```css
 $color: red;
 ```
 **Jess**
@@ -29,13 +29,13 @@ Variables are declared using the `@let` at-rule. `color` must be a valid JavaScr
 color: @color;
 ```
 **Sass**
-```scss
+```css
 color: $color;
 ```
 **Jess**
 
 Jess can evaluate any continuous JavaScript expression starting with `$`. Referencing ends up looking a little like Sass.
-```scss
+```css
 color: $color;
 ```
 
@@ -46,18 +46,18 @@ color: $color;
 width: (@width * 2);
 ```
 **Sass**
-```scss
+```css
 width: ($width * 2);
 ```
 **Jess**
 
 Depending on the type of value, and if you want to preserve units, you can use Jess helper functions. Otherwise, you can just perform your math in JavaScript.
 
-```scss
+```css
 width: $(width * 2);
 ```
 or, to preserve units in a dimension:
-```scss
+```css
 @import { op } from '@jesscss/fns';
 width: op($width * 2);
 ```
@@ -74,7 +74,7 @@ width: op($width * 2);
 }
 ```
 **Sass**
-```scss
+```css
 @mixin mixin($size) {
   width: $size * 2px;
 }
@@ -87,7 +87,7 @@ width: op($width * 2);
 
 Jess mimics Sass mixin syntax, but the transpiled mixin is just a JavaScript function.
 
-```scss
+```css
 @import { op } from '@jesscss/fns';
 
 @mixin mixin(size) {
@@ -102,7 +102,7 @@ Jess mimics Sass mixin syntax, but the transpiled mixin is just a JavaScript fun
 ### Each
 
 **Sass**
-```scss
+```css
 $sizes: 24px, 32px, 40px;
 
 @each $size in $sizes {

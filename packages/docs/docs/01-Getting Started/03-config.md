@@ -7,7 +7,7 @@ Jess can be configured by including a `jess.config.js` file at the root of your 
 
 ```js
 // jess.config.js
-module.exports = {
+export default {
   options: {}
 }
 ```

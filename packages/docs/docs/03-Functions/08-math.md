@@ -9,7 +9,7 @@ sidebar_label: Math
 A math operation. Parses math expressions and returns results, preserving node types. This is done in an external function (vs. a language feature) to keep the Jess runtime small and speedy. (You may not need to import it, if you perform all your operations in JavaScript, and don't care about preserving units.)
 
 #### Example
-```scss
+```css
 @import { op } from '@jesscss/fns';
 .box {
   one: op(2px * (2 + 1));
@@ -39,7 +39,7 @@ If you're performing a lot of operations using `op`, one way to give it a small 
 
 :::
 
-```scss
+```css
 @import { op as _ } from '@jesscss/fns';
 .box {
   one: _(2px * (2 + 1));

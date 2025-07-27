@@ -5,7 +5,7 @@ sidebar_label: Color Channel
 ---
 
 Example:
-```scss
+```css
 @import { hue, hsl } from '@jesscss/fns';
 
 .box {

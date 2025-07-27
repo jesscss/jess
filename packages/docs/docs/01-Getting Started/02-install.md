@@ -12,7 +12,7 @@ Jess is in early alpha, so features and syntax are likely to change!
 
 The simplest way to use the Jess compiler is like this:
 ```bash
-yarn install jess -g
+pnpm install jess -g
 ```
 ```bash
 jess my-file.jess my-file.css

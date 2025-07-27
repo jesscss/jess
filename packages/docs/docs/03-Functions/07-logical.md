@@ -6,7 +6,7 @@ sidebar_label: Logical
 
 ### iif(_condition_, _ifValue_, _elseValue_)
 
-```scss
+```css
 @import { iif } from '@jesscss/fns';
 .box {
   width: iif($(value > 10), 20px, 10px);
@@ -21,7 +21,7 @@ This example demonstrates a pattern of using `iif` like Less's `when` guards, in
 
 :::
 
-```scss
+```css
 @import { iif } from '@jesscss/fns';
 
 @mixin one(value) {
@@ -57,7 +57,7 @@ This example demonstrates a pattern of using `iif` like Less's `when` guards, in
 ```
 
 This would produce:
-```scss
+```css
 .box-0 {
   width: 4px;
 }

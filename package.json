@@ -5,6 +5,7 @@
   "description": "The Jess Monorepo",
   "main": "rollup.config.js",
   "devDependencies": {
+    "@changesets/cli": "~2.29.5",
     "@eslint/eslintrc": "~3.3.1",
     "@eslint/js": "~9.31.0",
     "@less/test-data": "^4.2.0",

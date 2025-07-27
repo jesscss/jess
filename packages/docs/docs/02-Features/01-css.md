@@ -11,7 +11,7 @@ Steps to making a `.jess` file:
 
 And save it as `.jess`
  
-```scss
+```css
 // myfile.jess
 .my-header {
   background: rebeccapurple;

@@ -4,7 +4,7 @@ title: Mixins
 ---
 
 Mixins are JavaScript functions that return a set of _rules_.
-```scss
+```css
 @mixin myMixin {
   width: 30px;
   height: 40px;
@@ -14,7 +14,7 @@ Mixins are JavaScript functions that return a set of _rules_.
 }
 ```
 Mixins can also have parameters and default values.
-```scss
+```css
 @mixin myMixin(width, height: 40px) {
   width: $width;
   height: $height;
@@ -28,7 +28,7 @@ Mixins can also have parameters and default values.
 }
 ```
 The above will produce:
-```scss
+```css
 .box-1 {
   width: 10px;
   height: 40px;

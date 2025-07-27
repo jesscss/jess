@@ -13,7 +13,7 @@ If you're not performing operations on a color, you don't have to import `rgb` /
 :::
 
 Example:
-```scss
+```css
 @import { hue, hsl } from '@jesscss/fns';
 
 .box {
