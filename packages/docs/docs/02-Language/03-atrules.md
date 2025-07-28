@@ -5,9 +5,9 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 
-One of the ironies about the popularity of both Less and Sass is they became too popular, and their syntax was too intuitive. In the case of Less, this meant that useful functions like `if()` had syntax conflict as soon as a CSS-native `if()` was adopted (in 2025).
+One of the ironies about the popularity of both Less and Sass is they became too popular, and their syntax was too intuitive. In the case of Less, this meant that useful functions like `if()` had syntax conflict as soon as a CSS-native `if()` was adopted (in 2025), as well as many other Less functions.
 
-Sass has had much bigger syntax conflicts, mostly in the space of at-rules. Sass has a huge number of at-rules, and some of those at-rules have begun to be adopted by the CSS working group.
+Sass has had much bigger syntax conflicts, mostly in the space of at-rules. Sass has a huge number of at-rules, and some of those at-rules have been adopted by the CSS working group.
 
 :::info
 
@@ -188,7 +188,7 @@ We told you we had a good purpose for `@-use`, and here it is. Jess can import a
 
 :::info
 
-In order to evaluate JS/TS while compiling, you need to install the `@jess/plugin-js` package. This package is required because it installs the Deno runtime (if you're not already using Deno), as that's the only way to execute unknown JS safely.
+In order to evaluate JS/TS while compiling, you need to install the `@jesscss/plugin-js` package. This package is required because it installs the Deno runtime (if you're not already using Deno), as that's the only way to execute unknown JS safely.
 
 The reason this is necessary is that, when maintaining Less, we found that it sometimes surprised developers to learn that their stylesheets could execute JavaScript, which meant potential security vulnerabilities if they weren't careful.
 
