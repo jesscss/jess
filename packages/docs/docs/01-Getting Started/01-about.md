@@ -4,7 +4,7 @@ title: About Jess
 slug: /
 ---
 
-```css
+```scss
 // I am a Jess file
 @-use './sizes.ts';
 @-use '#less';

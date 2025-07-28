@@ -1,6 +1,10 @@
 import type { Config } from '@docusaurus/types';
+import { themes } from 'prism-react-renderer'
 
 export default {
+  future: {
+    v4: true,
+  },
   title: 'Jess',
   tagline: 'Jess is in alpha and currently seeking testers / collaborators!',
   url: 'https://jesscss.github.io',
@@ -11,7 +15,15 @@ export default {
   organizationName: 'jesscss', // Usually your GitHub org/user name.
   projectName: 'jesscss.github.io', // Usually your repo name.
   themeConfig: {
+    colorMode: {
+      defaultMode: 'system',
+      disableSwitch: false,
+      respectPrefersColorScheme: true,
+      respectSystemColorScheme: true,
+    },
     prism: {
+      theme: themes.oneLight,
+      darkTheme: themes.oneDark,
       additionalLanguages: ['javascript', 'typescript', 'scss', 'less'],
     },
     navbar: {

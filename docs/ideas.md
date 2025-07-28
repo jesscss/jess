@@ -162,7 +162,7 @@ Sass is an overly-complex stylesheet language. Jess aims to be:
 - 100% compatible with Less
 - Compatible with a common subset of Sass called Sass+ (to be defined)
 
-### `@-compose ('(' as ')')? [file|object|map] 'as' [namespace] ('with'|'set' reference|declarationList)?`
+### `@-compose ('(' as ')')? [file|object|map] ('as' [namespace])? ('with'|'set' reference|declarationList)?`
 
 Non-leaky replacement for `@import`. Will import the scope (mixins, variables, and selector references) of the object, and render rules. By default, like Sass's `@use`, the namespace is taken from the last identifier (file name or module).
 
@@ -182,7 +182,7 @@ This is the same as basic `@-compose` except rules will not be rendered unless e
 
 This is somewhat like Less's `@import (reference)`, although with Less's `@import (reference)`, the referenced file can see the parent's variables, but with `@-compose reference`, the scope is isolated.
 
-_To reduce confusion when migrating from Less, you can write `@-compose (reference)` or `@-import reference` with or without parenetheses._
+_To reduce confusion when migrating from Less, you can write `@-compose (reference)` or `@-import reference` with or without parentheses._
 
 ```scss
 @-compose reference 'colors.less';

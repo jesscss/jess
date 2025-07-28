@@ -60,7 +60,7 @@ I can change the way it evaluates with the following:
 }
 ```
 
-::: note
+:::info
 
 The `+:` means `$colors = $colors + { ... }`. When Jess adds a collection to another collection (or a JS object to another object), it will merge values.
 

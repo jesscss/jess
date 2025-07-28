@@ -15,7 +15,7 @@ sidebar_label: Logical
 
 #### Advanced Example
 
-:::note
+:::info
 
 This example demonstrates a pattern of using `iif` like Less's `when` guards, including a `default()` (fallback) mixin guard. It's verbose, but this is just to prove that with the power of JavaScript behind it, there's nothing you can do in Less or Sass that you can't do in Jess.
 

@@ -25,7 +25,7 @@ Output:
   color: #666666;
 }
 ```
-:::note
+:::info
 
 Dimension nodes in Jess have a `valueOf()` method that JavaScript uses when performing math, so in the case of a `myDimension` variable set to `2px`, you can just do `$(myDimension * 3)`. This would return a value of `6`.
 

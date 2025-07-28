@@ -1,0 +1,102 @@
+---
+title: Conditionals and iteration
+---
+
+Similar to JavaScript, reserves a few `$` keywords to use for conditional evaluation and recursive iterations (loops).
+
+## $if, $else, $elseif
+
+These conditionals evaluate pretty much how you would expect.
+
+### Examples
+
+#### 1. Theme Switching
+```less
+$theme: "dark";
+
+$if ($theme = "dark") {
+  body { background: #111; color: #eee; }
+} $else {
+  body { background: #fff; color: #222; }
+}
+```
+
+#### 2. Feature Flags for Styles
+```less
+@-use 'https://example.com/my-flags.json' as flags;
+
+.card {
+  border-radius: 8px;
+  $if (flags.$enableFancyShadows) {
+    box-shadow: 0 8px 32px #0002;
+  }
+}
+```
+#### 3. Seasonal settings
+
+```less
+// An NPM module that gives us a season method
+@-use "some-date-fns" as date; 
+
+$season: date.getSeason(date.now()); // e.g., returns "spring", "summer", etc.
+
+$if ($season == "spring") {
+  body { background: #d8f5d1; }
+} $elseif ($season == "summer") {
+  body { background: #ffe066; }
+} $elseif ($season == "autumn") {
+  body { background: #ffbe76; }
+} $else {
+  // winter (or whatever else you want to handle)
+  body { background: #a5b8e7; }
+}
+```
+
+
+#### 4. Dumb Easter Eggs (Because You Can)
+```less
+$shouldTroll: false;
+
+$if ($shouldTroll) {
+  h1 { font-family: "Comic Sans MS"; color: hotpink; }
+}
+```
+
+### Block scoping
+
+Unlike rulesets and at-rules, conditionals and iteration blocks do not create a new scope. That means that rules declared in a conditional or iteration block are automatically merged with their containing block.
+
+```less
+.box {
+  $my-color: red;
+  $if (true) {
+    $my-color: blue;
+  }
+  color: $my-color; // blue
+}
+
+```
+
+## $for
+
+The `$for` syntax in Jess should also be familiar to developers.
+
+```less
+$sections: header, sidebar, footer;
+
+$for ($section, $i of $sections) {
+  .box-#($section) {
+    padding-left: #($i * 20px);
+  }
+}
+```
+
+:::info
+
+In the above example, `$i` is the key of `$sections`. Because `$sections` is assigned a list, the key is it's offset from the start.
+
+The syntax is `$for ($item [, $key [, $counter]?]? of $items) {...}`. In this case, both `$key` and `$counter` would have the same value. However, with something like a Jess collection, the `$key` would be assigned the declaration name. We'll explore collections in the "Values" section.
+
+:::
+
+

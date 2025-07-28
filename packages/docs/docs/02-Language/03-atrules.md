@@ -1,0 +1,216 @@
+---
+title: Jess's at-rules
+---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+
+One of the ironies about the popularity of both Less and Sass is they became too popular, and their syntax was too intuitive. In the case of Less, this meant that useful functions like `if()` had syntax conflict as soon as a CSS-native `if()` was adopted (in 2025).
+
+Sass has had much bigger syntax conflicts, mostly in the space of at-rules. Sass has a huge number of at-rules, and some of those at-rules have begun to be adopted by the CSS working group.
+
+:::info
+
+Many in the CSS community wanted to use Sass's `@if` as a new conditional rule, but ultimately settled on using `@when`, a more Less-like conditional, to not "break Sass".
+
+:::
+
+One of Jess's goals is to make the syntax as future-proof as possible. So, even in the case where Jess supports Less and Sass behavior, compiler at-rules are prefixed with dashes to not cause clashes.
+
+## @-compose
+
+This is probably the most important at-rule. It's what you will use to compose together different stylesheets. It is most similar to, and largely a drop-in replacement of Sass's `@use` at-rule.
+
+That is, it will render
+
+Here's an example:
+
+<Tabs>
+  <TabItem value="jess" label="Jess">
+    ```less
+    @-compose './theme' as theme;
+
+    .box {
+      color: theme.$primary-color;
+    }
+    ```
+  </TabItem>
+  <TabItem value="less" label="Less 5+">
+    ```less
+    @compose './theme' as theme;
+
+    .box {
+      color: theme[@primary-color];
+    }
+    ```
+  </TabItem>
+  <TabItem value="sass" label="Sass">
+    ```less
+    @use './theme' as theme;
+
+    .box {
+      color: theme.$primary-color;
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+:::warning[Hold up]
+
+Why `@-compose` and not `@-use`? A couple reasons.
+
+1. "Use" typically implies an import of values, but values and variables can actually flow _into_ the stylesheet you're composing with (which can change how it evaluates and compiles), which we'll get to!
+2. We're not just importing values; composing also renders rules.
+3. We have a use case for `@-use` which fits into the "use" semantics a bit better.
+
+:::
+
+### `with` and `set`
+
+Using `set` instead of `with` on a stylesheet import will alter that import within the compilation scope. (In Sass, this is how `with` works.) Using `with` will alter the import just for this module.
+
+Note that `set` may not be used more than once with the same module (resolved to the same file path), and if you first import the module without using `set` and then try to use it after, this also throws an error. `set` must be used the first time a file is imported or not at all.
+
+Example:
+
+```less
+// file1.jess
+@-compose './theme' set {
+  colors +: {
+    $primary-color: rebeccapurple;
+  }
+}
+```
+```less
+// file2.jess
+@-compose './theme';
+
+.box {
+  background-color: theme.colors.$primary-color; // rebeccapurple
+}
+```
+
+#### Using the `with` keyword
+
+In contrast to `set`, `with` will set values only while being composed into the current file.
+
+```less
+// file1.jess
+@-compose './theme' with {
+  colors +: {
+    $primary-color: rebeccapurple;
+  }
+}
+```
+```less
+// file2.jess
+@-compose './theme';
+
+.box {
+  background-color: theme.colors.$primary-color; // default primary color
+}
+```
+
+### @-compose reference
+
+This is the same as basic `@-compose` except rules will not be rendered unless extended.
+
+This is somewhat like Less's `@import (reference)`, although with Less's `@import (reference)`, the referenced file can see the parent's variables, but with `@-compose reference`, the scope is isolated.
+
+```less
+// rules.jess
+$border-color: green;
+.box {
+  border: 1px solid $border-color;
+}
+```
+```less
+// main.jess
+@-compose reference './rules';
+
+.container {
+  border: 2px dashed rules.$border-color;
+}
+```
+This would output:
+```css
+.container {
+  border: 2px dashed green;
+}
+```
+
+### @-compose private
+
+Rules will be rendered, but variables and mixins are not available to this stylesheet.
+
+```scss
+// main.jess
+@-compose 'colors.jess' as *;
+@-compose 'rules.jess' with $colors;
+
+// rules.jess
+// Doesn't have access to vars in main.jess w/o:
+@-compose 'main.jess' as *;
+// this would include the vars in colors.jess
+```
+
+
+### @-compose export
+
+In Jess, variables defined or imported with `@-compose export` (or the namespace) will be re-exported and made available to a stylesheet downstream.
+
+:::warning
+
+Use this sparingly! It may be harder to reason about where variables and values come from. Instead, consider importing stylesheet dependencies directly per file.
+
+:::
+
+### @-compose readonly
+
+Rules cannot be extended.
+
+### Simulating Sass's `@forward`
+
+To simulate Sass's forward, you could write:
+ - `@-compose reference export readonly 'stylesheet.jess';`
+
+This would do the following:
+ - `reference` - Import variables and mixins but do not render rulesets.
+ - `export` - variables and mixins are forwarded to a downstream stylesheet
+ - `readonly` - Rules cannot be extended
+
+However, that's super wordy. For convenience, these three flags can be set with:
+ - `@-compose forward 'stylesheet.jess';`
+
+## @-use
+
+We told you we had a good purpose for `@-use`, and here it is. Jess can import and use values from JavaScript, TypeScript, and JSON. Easily.
+
+:::info
+
+In order to evaluate JS/TS while compiling, you need to install the `@jess/plugin-js` package. This package is required because it installs the Deno runtime (if you're not already using Deno), as that's the only way to execute unknown JS safely.
+
+The reason this is necessary is that, when maintaining Less, we found that it sometimes surprised developers to learn that their stylesheets could execute JavaScript, which meant potential security vulnerabilities if they weren't careful.
+
+:::
+
+We can directly import JS/TS modules with `@-use` e.g.
+
+```scss
+@-use './my-module.js' as js;
+
+.box {
+  value: js.myFunc();
+}
+```
+
+You can also import and use Less and Sass functions.
+
+```scss
+@-use '#less/type' as type;
+@-use '#sass/math' as math;
+
+.box {
+  value: #(type.isnumber(math.$e)); // true
+}
+```

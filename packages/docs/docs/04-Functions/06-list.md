@@ -19,7 +19,7 @@ sidebar_label: List
 @include $each(list, iterate);
 ```
 
-:::note
+:::info
 
 Unlike Less, keys in lists align with JavaScript, and are therefore *0-based* instead of *1-based*. _NOTE: Is that ideal?_
 

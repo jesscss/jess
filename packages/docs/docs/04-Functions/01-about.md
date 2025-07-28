@@ -16,7 +16,7 @@ To use, import them like:
 }
 ```
 
-:::note
+:::info
 
 Unlike Less, all functions must be imported! This keeps the Jess runtime small and fast. It also prevents conflicts with CSS function names, because you can do the following, using the power of module syntax!
 

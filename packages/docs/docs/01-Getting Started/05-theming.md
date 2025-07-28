@@ -75,7 +75,7 @@ stylesheets.
 @include buttons(${config});
 @include nav(${config});
 ```
-:::note
+:::info
 
 We pass in the config object to `buttons.jess` and `nav.jess` even though they import a default configuration. This:
 1. makes sure that Jess merges your updated values based on that key.
