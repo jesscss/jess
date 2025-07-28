@@ -47,11 +47,15 @@ Like CSS, variables have a value per scope. This is similar to how CSS custom pr
 
 ## Linear variables
 
-Linear variables are evaluated (and can be set) linearly.
+Linear variables are evaluated (and can be set) linearly, using `^$`.  (You can think of `^` like the "upwards pointer" to the declared variable.)
+
+:::info
+
+In most cases, you shouldn't need this feature, unless you're changing the value of a variable after setting within access to the same scope. However, it's useful for some cases, and necessary for supporting Sass's variable lookup behavior.
+
+:::
 
 ### Get linearly
-
-In Jess, linear variable lookup is done using `^$`. (You can think of `^` like the "pointer" to the declared variable.)
 
 <Tabs>
   <TabItem value="jess" label="Jess">
@@ -87,7 +91,7 @@ In Jess, linear variable lookup is done using `^$`. (You can think of `^` like t
 
 Similar to getting, you can set previously-declared variables using `^$`. Jess will search upwards linearly and outwardly (by scope), and override the last known declaration. Among stylesheet languages, this feature is unique to Jess, but is more familiar to those used to conventional programming languages.
 
-Note: this can be used as a replacement for Sass's `!global` if the referenced variable was global.
+Note: this ***can*** be used as a replacement for Sass's `!global` ***if*** the referenced variable was global.
 
 For example:
 

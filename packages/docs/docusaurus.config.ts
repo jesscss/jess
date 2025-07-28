@@ -14,12 +14,18 @@ export default {
   favicon: 'img/favicon.ico',
   organizationName: 'jesscss', // Usually your GitHub org/user name.
   projectName: 'jesscss.github.io', // Usually your repo name.
+  // plugins: [
+  //   [
+  //     '@docusaurus/plugin-content-docs',
+  //     {
+        
+  //     }
+  //   ]
+  // ],
   themeConfig: {
     colorMode: {
-      defaultMode: 'system',
       disableSwitch: false,
-      respectPrefersColorScheme: true,
-      respectSystemColorScheme: true,
+      respectPrefersColorScheme: true
     },
     prism: {
       theme: themes.oneLight,
@@ -98,6 +104,20 @@ export default {
       'classic',
       {
         docs: {
+          /** @todo - figure out path lowercasing later */
+          // async sidebarItemsGenerator({defaultSidebarItemsGenerator, ...args}: any) {
+          //   const sidebarItems = await defaultSidebarItemsGenerator(args);
+          //   return sidebarItems.map((item: any) => {
+          //     console.log(item);
+          //     if (item.type === 'category') {
+          //       return {
+          //         ...item,
+          //         label: item.label.toLowerCase()
+          //       };
+          //     }
+          //     return item;
+          //   })
+          // },
           sidebarPath: './sidebars.js',
           includeCurrentVersion: true,
           lastVersion: 'current',

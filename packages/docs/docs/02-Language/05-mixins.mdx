@@ -2,6 +2,9 @@
 title: Mixins
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 ## Overview
 
 Both Sass and Less have mixins, and Jess supports the full features of both. But let's start with the basics, if mixins are new to you. Think of mixins as a reusable block of styles that you can drop anywhere.
@@ -307,7 +310,7 @@ div-2 {
 
 ## Selectors as Mixins
 
-Jess lets you reuse any selector as a mixin—just include it with `$ > .some-class;` (no parentheses needed).
+Jess lets you reuse any selector as a mixin—just include it with `$ > .some-class;` (without parentheses).
 
 This is great when you want to define a class you can use on its own, but also “pull in” those same styles somewhere else.
 
@@ -360,3 +363,130 @@ The CSS output is:
   outline: 1px solid #0002;
 }
 ```
+
+## Anonymous mixins
+
+Jess supports anonymous mixins, which are mixins that are not named. Anonymous mixins are started with `@(` or `@{` and are followed by a block of rules.
+
+```less
+$my-mixin: @() {
+  color: red;
+}
+.box {
+  $ > $my-mixin();
+}
+```
+
+Anonymous mixins without parameters can be written as:
+
+```less
+$my-mixin: @{
+  color: red;
+}
+.box {
+  $ > $my-mixin();
+}
+```
+
+## Passing sets of rules to mixins
+
+Jess supports passing sets of rules to mixins by "assigning" an anonymous mixin callback to the mixin call. The mixin can then render rules using the built-in `content` mixin.
+
+```less
+my-mixin() {
+  $ > content();
+}
+.box {
+  $ > my-mixin(): @{
+    color: red;
+  }
+}
+```
+
+### Passing sets of rules to mixins with parameters
+
+You can also assign mixin callbacks to the mixin call.
+
+```less
+media(...$types) {
+  $for ($type of $types) {
+    @media #($type) {
+      $ > content($type);
+    }
+  }
+}
+
+$ > media(screen, print): @($type) {
+  h1 {
+    font-size: 40px;
+    $if ($type = print) {
+      font-family: Calluna;
+    }
+  }
+}
+```
+
+
+## Calling mixins from other languages
+
+If you have the Jess, Less, and Sass+ language plugins installed, you can use your language of choice, and import and call mixins from other languages.
+
+Let's say we had these set of files:
+
+```less
+// mixins.jess
+jess-mixin() {
+  color: red;
+}
+```
+```less
+// mixins.less
+.less-mixin() {
+  color: blue;
+}
+```
+```scss
+// mixins.scss
+@mixin sass-mixin() {
+  color: green;
+}
+```
+
+You could call them from each other like this:
+
+<Tabs>
+  <TabItem value="Jess">
+  ```less
+  @-compose './mixins.scss' as *;
+  @-compose './mixins.less' as *;
+
+  .box {
+    $ > sass-mixin();
+    $ > .less-mixin();
+  }
+  ```
+  </TabItem>
+  <TabItem value="Less 5+">
+  ```less
+  @compose './mixins.scss' as *;
+  @compose './mixins.jess' as *;
+
+  .box {
+    sass-mixin();
+    jess-mixin();
+  }
+  ```
+  </TabItem>
+  <TabItem value="Sass+">
+  ```less
+  @use './mixins.jess' as *;
+  @use './mixins.less' as *;
+
+  .box {
+    @include jess-mixin();
+    // Backslashes are required to call a mixin with a selector name
+    @include \.less-mixin();
+  }
+  ```
+  </TabItem>
+</Tabs>

@@ -81,7 +81,8 @@ However, when called, we can disambiguate:
 }
 ```
 
-Sass's placeholders that can be extended are just mixins that can be extended in Jess.
+Sass's `%` placeholders are `\\` placeholders in Jess.
+
 ```scss
 // sass
 %selector {
@@ -92,11 +93,11 @@ Sass's placeholders that can be extended are just mixins that can be extended in
 }
 
 // Jess
-selector() {
+\\selector {
 
 }
 .foo {
-  :extend selector();
+  :extend(\\selector);
 }
 ```
 
@@ -169,9 +170,9 @@ In Sass, you can do this:
 Jess equivalent is:
 ```scss
 media($types...) {
-  @-for($type in $types) {
+  $for ($type of $types) {
     @media #{$type} {
-      @-content($type);
+      $ > content($type);
     }
   }
 }
