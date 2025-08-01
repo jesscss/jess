@@ -3,7 +3,9 @@ import { Node, defineType } from './node';
 import { cast } from './util/cast';
 
 /**
- * Deprecated Less feature.
+ * Deprecated Less feature
+ *
+ * @deprecated - use `@-use` instead
  */
 export class JsExpression extends Node<string> {
   type = 'JsExpression' as const;

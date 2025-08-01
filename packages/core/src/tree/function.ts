@@ -17,13 +17,16 @@ export class Func extends Mixin {
   override type = 'Func' as const;
   override shortType = 'fn' as const;
 
+  /** @todo - We need to evaluate this like mixins, but with a return value */
   override async evalNode(context: Context): Promise<Node> {
     let result = await super.evalNode(context);
     if (result instanceof Rules) {
       /** Find the last valid return */
-      const decl = result.findDeclaration('return', 'Declaration', undefined, false);
+      const decl = result.findDeclaration('return', 'Declaration', {
+        searchParents: false
+      });
       if (!decl) {
-        throw new Error(`Function ${this.value.name} must return a value`);
+        throw new Error(`Function ${this.value.selector} must return a value`);
       }
     }
     return result;

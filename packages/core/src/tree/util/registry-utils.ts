@@ -4,26 +4,69 @@ import type { Rules } from '../rules';
 import { isNode } from './is-node';
 import type { Mixin } from '../mixin';
 import type { Nil } from '../nil';
+import type { Node } from '../node';
+import type { JsFunction } from '../js-function';
+import type { General } from '../general';
+import type { Declaration } from '../declaration';
+import type { BasicDeclaration } from '../declaration-basic';
 
 const { isArray } = Array;
-/**
- * @todo - Move declaration searches here from rules?
- */
+
+export abstract class Registry<
+  Type extends Node,
+  FindUsing extends Node,
+  IndexType extends Set<Type> | Array<{
+    value: Type;
+    [key: string]: any;
+  }> = Set<Type>
+> {
+  abstract index: Map<string, IndexType>;
+  protected pendingItems = new Set<Type>();
+
+  constructor(public rules: Rules) {}
+
+  add(item: Type): void {
+    this.pendingItems.add(item);
+  }
+
+  indexPendingItems() {
+    for (const item of this.pendingItems) {
+      let key = String((item as any).value);
+      let set = this.index.get(key);
+      if (set && set instanceof Set) {
+        set.add(item);
+      } else {
+        this.index.set(key, new Set([item]) as IndexType);
+      }
+    }
+    this.pendingItems.clear();
+  }
+
+  find(using: FindUsing): Set<Type> | undefined {
+    this.indexPendingItems();
+    let set = this.index.get(String(using));
+    if (set) {
+      if (set instanceof Set) {
+        return set;
+      }
+      return new Set(set.map(({ value }) => value));
+    }
+    return;
+  }
+}
+
 /**
  * Registry for fast selector-based ruleset lookups
  */
-export class SelectorRegistry {
-  constructor(public rules: Rules) {}
-
-  private index = new Map<string, Set<Ruleset>>();
-  private pendingRulesets = new Set<Ruleset>();
+export class SelectorRegistry extends Registry<Ruleset, Selector> {
+  index = new Map<string, Set<Ruleset>>();
 
   /**
    * Add a ruleset to be indexed later
    */
-  addRuleset(ruleset: Ruleset) {
+  override add(ruleset: Ruleset) {
     if (isNode(ruleset.value.selector, 'Selector')) {
-      this.pendingRulesets.add(ruleset);
+      this.pendingItems.add(ruleset);
     }
   }
 
@@ -32,7 +75,7 @@ export class SelectorRegistry {
    */
   private indexPendingRulesets() {
     const index = this.index;
-    for (const ruleset of this.pendingRulesets) {
+    for (const ruleset of this.pendingItems) {
       /** Make sure we're indexing according to the ruleset's context */
       const selector = ruleset.getImplicitSelector();
       if (selector && 'keySet' in selector) {
@@ -46,13 +89,13 @@ export class SelectorRegistry {
         }
       }
     }
-    this.pendingRulesets.clear();
+    this.pendingItems.clear();
   }
 
   /**
    * Find candidate rulesets that might match the target selector
    */
-  findCandidateRulesets(targetSelector: Selector): Set<Ruleset> | undefined {
+  override find(targetSelector: Selector): Set<Ruleset> | undefined {
     // Index any pending rulesets first
     this.indexPendingRulesets();
     const { keySet } = targetSelector;
@@ -94,21 +137,15 @@ export class SelectorRegistry {
  * 6. Rulesets and mixins without params will have their children searched
  *    if the first part matches.
  */
-export class MixinRegistry {
-  constructor(public rules: Rules) {}
-
-  private index = new Map<string, Set<{
-    mixin: Mixin | Ruleset;
+export class MixinRegistry extends Registry<
+  Mixin | Ruleset,
+  Selector,
+  Array<{
+    value: Mixin | Ruleset;
     match: string[];
-  }>>();
-
-  private pendingMixins = new Set<Mixin | Ruleset>();
-
-  addMixin(mixin: Mixin | Ruleset) {
-    const selector = (mixin as any).value.selector;
-    const keyList = this.getSimpleKeyList(selector);
-    this.pendingMixins.add(mixin);
-  }
+  }>
+> {
+  index = new Map();
 
   private getSimpleKeyList(selector: Selector | Nil | undefined): string[] | undefined {
     let keyList: string[] | undefined;
@@ -158,15 +195,15 @@ export class MixinRegistry {
       const [startKey, ...rest] = keyList;
       const existing = index.get(startKey!);
       if (existing) {
-        existing.add({ mixin, match: rest });
+        existing.push({ value: mixin, match: rest });
       } else {
-        index.set(startKey!, new Set([{ mixin, match: rest }]));
+        index.set(startKey!, [{ value: mixin, match: rest }]);
       }
     }
   }
 
-  private indexPendingMixins() {
-    for (const mixin of this.pendingMixins) {
+  override indexPendingItems() {
+    for (const mixin of this.pendingItems) {
       const selector = mixin.value.selector;
       if (isNode(selector, 'SelectorList')) {
         /** Selector list's selectors are individually registered */
@@ -177,7 +214,7 @@ export class MixinRegistry {
         this._indexSelectorStart(mixin, selector);
       }
     }
-    this.pendingMixins.clear();
+    this.pendingItems.clear();
   }
 
   /**
@@ -185,7 +222,7 @@ export class MixinRegistry {
    *
    * @todo - Prevent infinite recursion when a mixin calls itself.
    */
-  findCandidateMixins(
+  override find(
     targetSelector: Selector | string[] | string,
     filterType: 'Mixin' | 'Ruleset' | undefined = undefined,
     options: {
@@ -224,20 +261,20 @@ export class MixinRegistry {
     let { searchParents = true, candidates } = options;
     while (rules) {
       let registry = rules.mixinRegistry;
-      registry.indexPendingMixins();
+      registry.indexPendingItems();
 
       let [startKey, ...search] = keyList;
       const existing = registry.index.get(startKey!);
 
       if (existing) {
-        for (const { mixin, match } of existing) {
-          if (filterType && mixin.type !== filterType) {
+        for (const { value, match } of existing) {
+          if (filterType && value.type !== filterType) {
             continue;
           }
 
           // If all match keys match all search keys, add as candidate
           if (arraysEqual(match, search)) {
-            (candidates ??= new Set()).add(mixin);
+            (candidates ??= new Set()).add(value);
             continue;
           }
 
@@ -245,14 +282,14 @@ export class MixinRegistry {
           if (search.length > match.length) {
             const remainder = search.slice(match.length);
             if (
-              (isNode(mixin, 'Ruleset'))
-              || (isNode(mixin, 'Mixin') && (!mixin.value.params || mixin.value.params.length === 0))
+              (isNode(value, 'Ruleset'))
+              || (isNode(value, 'Mixin') && (!value.value.params || value.value.params.length === 0))
             ) {
             // Recursively search in this mixin's registry
-              const registry = mixin.value.rules.mixinRegistry;
+              const registry = value.value.rules.mixinRegistry;
               if (registry) {
                 const subCandidates =
-                registry.findCandidateMixins(remainder, filterType, {
+                registry.find(remainder, filterType, {
                   searchParents: false,
                   candidates
                 });
@@ -286,6 +323,29 @@ export class MixinRegistry {
     }
     return candidates;
   }
+}
+
+/**
+ * @deprecated
+ *
+ * This is used by Less and Sass. Their respective plugins can register
+ * functions that can be called from the language without a `@-use` directive.
+ *
+ * The presence of `@-use` directives anywhere in the stylesheet tree will cause
+ * these global functions to be disabled.
+ */
+export class FunctionRegistry extends Registry<BasicDeclaration<{
+  name: string;
+  value: JsFunction;
+}>, General> {
+  index = new Map<string, Set<BasicDeclaration<{
+    name: string;
+    value: JsFunction;
+  }>>>();
+}
+
+export class DeclarationRegistry extends Registry<Declaration, Selector> {
+  index = new Map<string, Set<Declaration>>();
 }
 
 function arraysEqual(a: string[], b: string[]) {

@@ -30,8 +30,8 @@ type UnitMapEntries = Array<[ConversionUnit, ConversionGroup]>;
  * A number or dimension
  */
 export class Dimension extends Node<DimensionValue> {
-  type = 'Dimension' as const;
-  shortType = 'dimension' as const;
+  type = 'Dimension';
+  shortType = 'dimension';
 
   private _unitToGroup: Map<string, ConversionGroup> | undefined;
   get unitToGroup() {
@@ -240,11 +240,3 @@ export const dimension = (
   }
   return new Dimension(typeof value === 'number' ? { number: value } : value, options, location, treeContext);
 };
-
-/** alias */
-export const num = (
-  value: number,
-  options?: NodeOptions,
-  location?: LocationInfo,
-  treeContext?: TreeContext
-) => dimension({ number: value }, options, location, treeContext);

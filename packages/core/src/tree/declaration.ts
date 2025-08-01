@@ -12,6 +12,7 @@ import { Reference } from './reference';
 import { List } from './list';
 import { spaced } from './sequence';
 import { Operation } from './operation';
+import { BasicDeclaration } from './declaration-basic';
 
 export const enum AssignmentType {
   Default = ':',
@@ -66,7 +67,7 @@ export type DeclarationOptions = {
   throwIfDefined?: boolean;
 };
 
-type NameValue = string | Name | Interpolated<'Name'>;
+type NameValue = Name | Interpolated<'Name'>;
 
 export type DeclarationValue = {
   name: NameValue;
@@ -81,9 +82,9 @@ export type DeclarationValue = {
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
-export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
-  type = 'Declaration';
-  shortType = 'decl';
+export class Declaration extends BasicDeclaration<DeclarationValue, DeclarationOptions> {
+  override type = 'Declaration';
+  override shortType = 'decl';
   override allowRuleRoot = true;
 
   constructor(
@@ -130,7 +131,7 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
       let node = this.clone();
       node.preEvaluated = true;
       let { name, value } = node.value;
-      let key: string | Name;
+      let key: Name;
       if (name instanceof Interpolated) {
         key = (await name.eval(context)).createGeneric() as Name;
         node.value.name = key;
@@ -147,7 +148,7 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
         switch (assign) {
           case AssignmentType.MergeList:
           case AssignmentType.MergeSequence: {
-            const ref = new Reference(key.toString(), {
+            const ref = new Reference(key, {
               type,
               fallbackValue: new Nil(),
               filter: (n) => {
@@ -171,7 +172,7 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
           case AssignmentType.Add: {
             node.value.value =
               new Operation([
-                new Reference(key.toString(), { type }),
+                new Reference(key, { type }),
                 '+',
                 value
               ]);
@@ -179,7 +180,7 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
           }
           case AssignmentType.CondAssign: {
             node.value.value =
-              new Reference(key.toString(), {
+              new Reference(key, {
                 type,
                 fallbackValue: value
               });

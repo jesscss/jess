@@ -1,4 +1,4 @@
-import { defineType, type Node } from './node';
+import { defineType, Node } from './node';
 import type { Interpolated } from './interpolated';
 import type { Context } from '../context';
 import { cast } from './util/cast';
@@ -13,21 +13,24 @@ import { isNode } from './util/is-node';
  * and location.
  *   e.g. in Jess
  *    - `$foo` refers to a variable
- *    - `$.foo` refers to a propert
- *    - `$foo$bar` refers to a variable in a variable
+ *    - `$.foo` refers to a property
+ *    - `$foo#($bar)` refers to a variable variable
  *    - `$foo.bar` refers to a property in a variable
  *    - in `$ > .foo()`, `.foo` refers to a mixin
  *    - in `$foo > .mixin()` `.mixin` refers to a mixin in `$foo`
  *    - Resolution:
  *      - `$` searches scope,
- *      - `$$` searches in declaration order
+ *      - `^$` searches in declaration order
  *   in Less
  *   - `@foo` refers to a variable
  *   - `$foo` refers to a property
- *   - `.foo` refers to a mixin
+ *   - `.foo` or `#foo` refers to a mixin
  */
 export type ReferenceOptions = {
-  type: 'variable' | 'property' | 'mixin';
+  /**
+   * What kind of lookup are we doing?
+   */
+  type?: 'variable' | 'property' | 'basic' | 'function' | 'mixin' | 'rule' | 'mixin-rule';
   resolution?: 'scope' | 'linear';
   /**
    * Optional references just resolve to the string
@@ -39,39 +42,31 @@ export type ReferenceOptions = {
   filter?: (node: Node) => boolean;
 };
 
-type NodeType = typeof Node<string | Interpolated, ReferenceOptions>;
+type MixinReference = {
+  type: 'mixin' | 'rule' | 'all';
+  selector: Selector;
+};
+
+type NodeType = typeof Node<General | Interpolated | MixinReference, ReferenceOptions>;
 type ReferenceParams = ConstructorParameters<NodeType>;
+
 /**
  * This is a variable or property reference,
  * which can itself contain a reference (a variable variable).
  */
-export class Reference extends Selector<string | Interpolated, ReferenceOptions> {
+export class Reference extends Node<General | Interpolated | MixinReference, ReferenceOptions> {
   type = 'Reference';
   shortType = 'ref';
-
-  constructor(...args: ReferenceParams) {
-    /** Default to a variable-type reference */
-    args[1] ??= { type: 'variable' };
-    super(...args);
-  }
-
-  override get keySet(): Set<string> {
-    return (this._keySet ??= new Set());
-  }
-
-  find(needle: Selector): Selector[] | undefined {
-    throw new Error('Method not implemented.');
-  }
 
   override valueOf() {
     return '';
   }
 
   override toTrimmedString(): string {
-    const { type, resolution } = this.options;
+    const { declarationType, resolution } = this.options;
     const { value } = this;
     const preChar = resolution === 'linear' ? '$$' : '$';
-    switch (type!) {
+    switch (declarationType!) {
       case 'variable':
         return `${preChar}${value}`;
       case 'property':

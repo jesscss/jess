@@ -3,7 +3,7 @@ import type { Condition } from './condition';
 import { type List } from './list';
 import type { Rest } from './rest';
 import type { Name } from './general';
-import { type VarDeclaration } from './var-declaration';
+import { type VarDeclaration } from './declaration-var';
 import type { Rules } from './rules';
 import { Interpolated } from './interpolated';
 import type { Context } from '../context';

@@ -1,4 +1,5 @@
 import { Node, defineType } from './node';
+import { Selector } from './selector';
 
 /**
  * An expression is a node that returns a value.
@@ -7,15 +8,16 @@ import { Node, defineType } from './node';
  * In Less/Sass, everything containing an operation is
  * an expression.
  *
- * A "live expression" is bound to a var() function.
- * AHHHH THIS IS SO SMART (or is it?)
- *   e.g. `var(--foo, $foo)`
- *   - $foo and all it's dependencies are exported into
- *     the module. This is waaaay smarter than Vue's v-bind
+ * @note This extends Selector just because it can be
+ * in the selector position (initially).
  */
-export class Expression extends Node<Node> {
+export class Expression extends Selector<Node> {
   type = 'Expression' as const;
   shortType = 'expr' as const;
+
+  override get keySet(): Set<string> {
+    return new Set();
+  }
 
   override toTrimmedString(depth?: number): string {
     return `#(${this.value.toString(depth)})`;

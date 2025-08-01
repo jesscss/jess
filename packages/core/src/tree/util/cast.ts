@@ -2,10 +2,15 @@ import { Node } from '../node';
 import { Nil } from '../nil';
 import { List } from '../list';
 import { Dimension } from '../dimension';
+import { Number } from '../number';
 import { Anonymous } from '../general';
 import { Color } from '../color';
-import { FunctionValue } from '../function-value';
+import { JsFunction } from '../js-function';
+import { JsObject } from '../js-object';
+import { Bool } from '../bool';
 import isPlainObject from 'lodash-es/isPlainObject';
+
+const { isArray } = Array;
 
 function getNodeType(value: any): Node {
   if (value instanceof Node) {
@@ -14,24 +19,20 @@ function getNodeType(value: any): Node {
   if (value === undefined || value === null) {
     return new Nil();
   }
+  if (typeof value === 'boolean') {
+    return new Bool(value);
+  }
   if (typeof value === 'function') {
-    return new FunctionValue(value);
+    return new JsFunction(value);
   }
-  /**
-   * @todo - need to remove the $root part
-   * as we're not compiling to a module anymore
-   */
   if (isPlainObject(value)) {
-    if (Object.prototype.hasOwnProperty.call(value, '$root')) {
-      return value.$root;
-    }
-    return new Anonymous('[object]');
+    return new JsObject(value);
   }
-  if (Array.isArray(value)) {
+  if (isArray(value)) {
     return new List(value.map(val => cast(val)));
   }
   if (value.constructor === Number) {
-    return new Dimension({ number: value as number });
+    return new Number(value as unknown as number);
   }
   if (typeof value === 'string') {
     if (value.startsWith('#')) {

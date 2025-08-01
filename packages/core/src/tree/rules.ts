@@ -21,7 +21,7 @@ import { atIndex } from './util/collections';
 import isPlainObject from 'lodash-es/isPlainObject';
 import type { Condition } from './condition';
 import type { Bool } from './bool';
-import { MixinRegistry, SelectorRegistry } from './util/selector-utils';
+import { MixinRegistry, SelectorRegistry, FunctionRegistry, DeclarationRegistry } from './util/registry-utils';
 import { tryExtendSelector } from './util/extend';
 
 const { isArray } = Array;
@@ -120,27 +120,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return (this._mixinRegistry ??= new MixinRegistry(this));
   }
 
+  private _declarationRegistry: DeclarationRegistry | undefined;
+  get declarationRegistry(): DeclarationRegistry {
+    return (this._declarationRegistry ??= new DeclarationRegistry(this));
+  }
+
+  private _functionRegistry: FunctionRegistry | undefined;
+  get functionRegistry(): FunctionRegistry {
+    return (this._functionRegistry ??= new FunctionRegistry(this));
+  }
+
   pendingExtends = new Set<[find: Selector, extendWith: Selector, partial: boolean]>();
-
-  /**
-   * Register a ruleset for extend operations
-   */
-  registerRuleset(ruleset: Ruleset) {
-    this.selectorRegistry.addRuleset(ruleset);
-  }
-
-  registerMixin(mixin: Mixin | Ruleset) {
-    this.mixinRegistry.addMixin(mixin);
-  }
-
-  /**
-   * Update the registry when a ruleset's selectors change.
-   * Extending only ever adds keys, so we can just add the ruleset again,
-   * and re-index.
-   */
-  updateRuleset(ruleset: Ruleset) {
-    this.selectorRegistry.addRuleset(ruleset);
-  }
 
   constructor(
     value: Node[],
@@ -231,23 +221,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * All indexed collections, keyed. These are the value
    * per scope (like a set of rules).
    *
-   * @note - Types are stored differently for disambiguation
-   *         See the Prefix enum.
+   * @note - Keys of different types may overlap, but then are filtered when searching.
+   *         As in, a variable named `$foo` and a property named `foo` will be in the 
+   *         same map.
    */
   private _declarationMap: Map<string, Declaration[]> | undefined;
   private get declarationMap(): Map<string, Declaration[]> {
     return (this._declarationMap ??= new Map());
   }
 
-  /**
-   * Rulesets and mixins. These get indexed multiple times
-   * for each simple selector.
-   */
-  private _selectorMap: Map<string, Array<Mixin | Ruleset>> | undefined;
-  private get selectorMap(): Map<string, Array<Mixin | Ruleset>> {
-    return (this._selectorMap ??= new Map());
-  }
-
+  /** @todo - Refactor? */
   private _rulesSet: RulesEntry[] | undefined;
   private get rulesSet(): RulesEntry[] {
     return (this._rulesSet ??= []);
@@ -297,23 +280,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           throw new ReferenceError(`"${key}" is not defined`);
         }
       }
-      let map = this.declarationMap;
-      let key = node.value.name.toString();
-      let queue = map.get(key) ?? [];
-      queue.push(node);
-      map.set(key, queue);
-    } else if (isNode(node, 'Mixin') || isNode(node, 'Ruleset')) {
-      /** Register by selector */
-      const { selector } = node.value;
-      if (selector && !isNode(selector, 'Nil')) {
-        for (const key of selector.keySet) {
-          let queue = this.selectorMap.get(key) ?? [];
-          queue.push(node as Mixin | Ruleset);
-          this.selectorMap.set(key, queue);
-
-          /** @todo - I left off here */
-        }
-      }
+      this.declarationRegistry.add(node);
     }
   }
 
@@ -623,10 +590,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                *
                * @todo - fix ruleset type so Ruleset<unknown>
                */
-              context.treeRoot.registerRuleset(result as Ruleset<RulesetValue>);
+              context.treeRoot.selectorRegistry.add(result as Ruleset<RulesetValue>);
             }
             if (rulesetType) {
-              this.registerMixin(result as Mixin);
+              this.mixinRegistry.add(result as Mixin);
             }
           }
           /**
@@ -687,7 +654,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
        */
       for (let root of context.allRoots) {
         for (let [find, extendWith, partial] of root.pendingExtends) {
-          let rulesetSet = root.selectorRegistry.findCandidateRulesets(find);
+          let rulesetSet = root.selectorRegistry.find(find);
           if (rulesetSet) {
             rulesetSet.forEach((ruleset) => {
               let result = tryExtendSelector(ruleset.selector as Selector, find, extendWith, partial);
@@ -842,7 +809,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
            */
           for (let [i, param] of params) {
             if (isNode(param, 'VarDeclaration')) {
-              let key = param.value.name as string;
+              let key = String(param.value.name);
               let namedValue = namedMap.get(key);
               /** Replace our param value with the passed in named value */
               if (namedValue) {

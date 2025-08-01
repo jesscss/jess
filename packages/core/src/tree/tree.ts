@@ -9,7 +9,7 @@ import type { BasicSelector } from './selector-basic';
 import type { List } from './list';
 import type { Mixin } from './mixin';
 import type { Func } from './function';
-import type { FunctionValue } from './function-value';
+import type { JsFunction } from './js-function';
 import type { Ruleset } from './ruleset';
 import type { Rules } from './rules';
 import type { ComplexSelector } from './selector-complex';
@@ -19,13 +19,14 @@ import type { JsImport } from './import-js';
 import type { Nil } from './nil';
 import type { SelectorList } from './selector-list';
 import type { Collection } from './collection';
-import type { VarDeclaration } from './var-declaration';
+import type { VarDeclaration } from './declaration-var';
 import type { Rest } from './rest';
 import type { SimpleSelector } from './selector-simple';
 import type { PseudoSelector } from './selector-pseudo';
 import type { Combinator } from './combinator';
 import type { Sequence } from './sequence';
 import type { Selector } from './selector';
+import type { JsObject } from './js-object';
 
 export type Nodes = {
   Ampersand: typeof Ampersand;
@@ -47,7 +48,8 @@ export type Nodes = {
   List: typeof List;
   Mixin: typeof Mixin;
   Func: typeof Func;
-  FunctionValue: typeof FunctionValue;
+  JsFunction: typeof JsFunction;
+  JsObject: typeof JsObject;
   Ruleset: typeof Ruleset;
   Rules: typeof Rules;
   StyleImport: typeof StyleImport;

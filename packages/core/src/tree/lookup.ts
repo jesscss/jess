@@ -4,14 +4,22 @@ import isPlainObject from 'lodash-es/isPlainObject';
 import { Rules } from './rules';
 import { Reference } from './reference';
 import { cast } from './util/cast';
+import { JsObject } from './js-object';
+import type { Number } from './number';
+import type { General } from './general';
+import type { Call } from './call';
 
 export type LookupValue = {
   /**
    * This is the reference value to resolve first
    * This is what we're looking "in". No value means
-   * the current rules.
+   * the current rules. This can be a:
+   *   - Rules
+   *   - Reference
+   *   - Another Lookup
+   *   - A JS Object
    */
-  target?: Node;
+  target?: Rules | Reference | Lookup | JsObject;
   /**
    * This is what we're looking for. This will
    * be a Node with a string or number value (or a reference to a variable)
@@ -21,7 +29,7 @@ export type LookupValue = {
    * Negative numbers are from the end.
    * @todo - Add tests for this
    */
-  find: Node;
+  find: Number | Reference | General | Call;
 };
 
 /**
@@ -30,8 +38,13 @@ export type LookupValue = {
  * recursive nodes.
  *   e.g.
  *     $foo.one.two =
- *     (Lookup
- *       (value Lookup(value Reference($foo), key 'one'), key 'two')
+ *     Lookup({
+ *       target: Lookup({
+ *         target: Reference($foo),
+ *         find: 'one'
+ *       }),
+ *       find: 'two'
+ *     })
  *
  * @todo - My guess is that this should be re-written or modified
  * now that Scope has been simplified within Rules?

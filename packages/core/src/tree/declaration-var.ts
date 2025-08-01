@@ -29,7 +29,7 @@ export class VarDeclaration extends Declaration {
   override allowRoot = true;
 
   override toTrimmedString(depth?: number): string {
-    const rule = this.options?.setDefined ? '$$' : '$';
+    const rule = this.options?.setDefined ? '^$' : '$';
     return `${rule}${this.declTrimmedString(depth)}`;
   }
 }
