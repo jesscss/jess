@@ -23,6 +23,11 @@ type ColorParameters = ConstructorParameters<typeof Node<string | ColorFormat>>;
  * Color's `value` will either be the parsed value,
  * or, when constructed with a function, the preferred
  * output type.
+ *
+ * @todo - Maybe the value should be more organized,
+ * with both the parsed node and its numerical value
+ * representation? The "its either a value or an enum"
+ * seems kinda weird.
  */
 export class Color extends Node<string | ColorFormat> {
   type = 'Color' as const;
@@ -43,7 +48,7 @@ export class Color extends Node<string | ColorFormat> {
     let b: number;
     let a: number;
     if (isArray(value)) {
-      ;([r, g, b, a] = value as [number, number, number, number]);
+      [r, g, b, a] = value as [number, number, number, number];
       value = ColorFormat.RGB;
     }
     super(value, options, location, context);

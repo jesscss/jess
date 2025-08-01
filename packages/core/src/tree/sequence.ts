@@ -160,7 +160,5 @@ export const spaced = (
   for (let i = 1; i < value.length; i++) {
     value[i]!.pre = 1;
   }
-  const node = new Sequence(value, options);
-  node.pre = 1;
-  return node;
+  return new Sequence(value, options);
 };

@@ -1,4 +1,5 @@
 import { defineType, Node } from './node';
+import type { Rules } from './rules';
 
 /**
  * A collection is essentially like an anonymous mixin,
@@ -8,20 +9,19 @@ import { defineType, Node } from './node';
  * Can be used like Sass property nesting.
  * @see https://sass-lang.com/documentation/style-rules/declarations/#nesting
  */
-export class Collection extends Node<Node[]> {
+export class Collection extends Node<Rules> {
   type = 'Collection' as const;
   shortType = 'coll' as const;
 
   override toTrimmedString(depth: number = 0) {
     let space = ''.padStart(depth * 2);
-    let output = '{\n';
-    depth += 1;
-    space = ''.padStart(depth * 2);
-    let outputs = this.value.map(n => n.toString(depth));
-    output += space + outputs.join(`\n${space}`);
-    depth -= 1;
-    space = ''.padStart(depth * 2);
-    output += `\n${space}}`;
+    let output = '{';
+    let rules = this.value;
+    output += `${rules.toString(depth + 1)}`;
+    if (rules.post === undefined) {
+      output += '\n';
+    }
+    output += `${space}}`;
     return output;
   }
 }

@@ -42,7 +42,7 @@ export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...a
 export class Call extends Node<CallValue> {
   type = 'Call' as const;
   shortType = 'call' as const;
-  override requiredSemi = true;
+  override _requiredSemi = true;
 
   override toTrimmedString() {
     let { ref, args, important } = this.value;

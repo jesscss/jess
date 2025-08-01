@@ -25,7 +25,6 @@ export type { DeclarationOptions as VarDeclarationOptions } from './declaration'
 export class VarDeclaration extends Declaration {
   override type = 'VarDeclaration';
   override shortType = 'vardecl';
-  override requiredSemi = true;
   override allowRuleRoot = true;
   override allowRoot = true;
 

@@ -21,6 +21,8 @@ export interface MixinValue {
    * but Less uses mixins / rulesets interchangeably, so we use
    * `selector` as a property and `Selector` as the type to allow
    * more flexibility.
+   *
+   * @todo - Should anonymous mixins have a different class type?
    */
   selector?: Selector;
   /**

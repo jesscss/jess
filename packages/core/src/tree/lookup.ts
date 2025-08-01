@@ -6,14 +6,22 @@ import { Reference } from './reference';
 import { cast } from './util/cast';
 
 export type LookupValue = {
-  /** This is the reference value to resolve first */
-  value: Node;
   /**
-   * Number is the (0-based) position in rules.
+   * This is the reference value to resolve first
+   * This is what we're looking "in". No value means
+   * the current rules.
+   */
+  target?: Node;
+  /**
+   * This is what we're looking for. This will
+   * be a Node with a string or number value (or a reference to a variable)
+   * This might be a mixin call, a variable, or a string / number key.
+   *
+   * Number is the (0-based) offset in rules.
    * Negative numbers are from the end.
    * @todo - Add tests for this
    */
-  key: string | number | Node;
+  find: Node;
 };
 
 /**
@@ -33,9 +41,9 @@ export class Lookup extends Node<LookupValue> {
   shortType = 'look' as const;
 
   override toTrimmedString(): string {
-    let { value, key } = this.value;
-    let mixin = key instanceof Reference && key.options.type === 'mixin';
-    const keyIsBracketed = typeof key !== 'string';
+    let { target, find } = this.value;
+    let mixin = find instanceof Reference && find.options.type === 'mixin';
+    const keyIsBracketed = isNode(find, '');
     if (keyIsBracketed) {
       key = `[${key}]`;
     }

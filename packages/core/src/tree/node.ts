@@ -183,10 +183,15 @@ export abstract class Node<
    * If the node must have a semi separator before
    * the next node when in a declaration list or main
    * rules list.
-   *
-   * Defined on the prototype
    */
-  requiredSemi = false;
+  _requiredSemi = false;
+  get requiredSemi() {
+    return this._requiredSemi;
+  }
+
+  set requiredSemi(value: boolean) {
+    this._requiredSemi = value;
+  }
 
   /**
    * Track the original source when cloned / copied,

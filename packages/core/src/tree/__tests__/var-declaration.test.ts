@@ -1,4 +1,4 @@
-import { vardecl, coll, decl, any } from '..';
+import { vardecl, coll, decl, any, rules } from '..';
 import { Context } from '../../context';
 
 let context: Context;
@@ -21,15 +21,17 @@ describe('Let', () => {
     // expect(out.toString()).toBe('let brandColor = $J.expr([$J.any("#eee")])')
     });
 
-    it('should serialize a collection', () => {
+    it.only('should serialize a collection', () => {
       context.depth = 2;
       let rule = vardecl({
         name: 'brandColor',
-        value: coll([
-          decl({ name: 'global', value: coll([decl({ name: 'dark', value: any('#000') })]) }),
+        value: coll(rules([
+          decl({ name: 'global', value: coll(rules([
+            decl({ name: 'dark', value: any('#000') })
+          ])) }),
           decl({ name: 'dark', value: any('#222') }),
           decl({ name: 'light', value: any('#eee') })
-        ])
+        ]))
       });
       expect(`${rule}`).toBeString(`
       $brandColor: {

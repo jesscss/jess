@@ -43,7 +43,7 @@ export class Extend extends Selector<ExtendValue> {
   override async evalNode(context: Context): Promise<Selector> {
     let { selector, target, flag } = this.value;
     selector = await selector.eval(context) as Selector;
-    context.currentRoot?.pendingExtends.add([target, selector, flag === ExtendFlag.All]);
+    context.treeRoot?.pendingExtends.add([target, selector, flag === ExtendFlag.All]);
     return selector;
   }
 }

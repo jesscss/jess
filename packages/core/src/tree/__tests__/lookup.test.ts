@@ -22,8 +22,8 @@ describe('Lookup', () => {
       let node = look({
         value: ref('foo', { type: 'variable' }),
         key: 'bar'
-      }, { mixin: true });
-      expect(`${node}`).toBe('$foo -> bar');
+      });
+      expect(`${node}`).toBe('$foo > bar');
     });
   });
 
@@ -57,7 +57,7 @@ describe('Lookup', () => {
         value: ref('foo', { type: 'variable' }),
         key: ref('bar', { type: 'variable' })
       }, { mixin: true });
-      expect(`${node}`).toBe('$foo -> [$bar]');
+      expect(`${node}`).toBe('$foo > [$bar]');
     });
   });
 });

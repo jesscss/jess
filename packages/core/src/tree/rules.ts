@@ -22,6 +22,7 @@ import isPlainObject from 'lodash-es/isPlainObject';
 import type { Condition } from './condition';
 import type { Bool } from './bool';
 import { MixinRegistry, SelectorRegistry } from './util/selector-utils';
+import { tryExtendSelector } from './util/extend';
 
 const { isArray } = Array;
 
@@ -139,15 +140,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   updateRuleset(ruleset: Ruleset) {
     this.selectorRegistry.addRuleset(ruleset);
-  }
-
-  /**
-   * Find rulesets that could potentially be extended by the target selector
-   * @todo - Search through child files.
-   */
-  findExtendableRulesets(targetSelector: Selector): Ruleset[] {
-    const candidates = this.selectorRegistry.findCandidateRulesets(targetSelector);
-    return Array.from(candidates);
   }
 
   constructor(
@@ -550,7 +542,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     /** Set new context while evaluating */
     if (!treeContext || treeContext !== rules.treeContext) {
-      /** We've encountered a new tree root */
+      /**
+       * We've encountered a new tree root...
+       * but this isn't the right way to manage this...
+       *
+       * We need a list of _unique_ tree context roots that are visible
+       * from this root AND that are extendable.
+       */
       context.allRoots.push(rules);
       context.treeContext = rules.treeContext;
       context.treeRoot = rules;
@@ -678,6 +676,29 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       let prevFrameIndex = root.value.indexOf(frame);
       /** Splice the new rules where that frame was */
       root.value.splice(prevFrameIndex, 1, ...rootRules);
+    }
+    if (rules === context.root) {
+      /**
+       * We've evaluated all the rules of the "outer" rules
+       * and we can now resolve any pending extends.
+       *
+       * We need to loop through all roots, but we need to properly respect
+       * import scoping, so this isn't correct yet.
+       */
+      for (let root of context.allRoots) {
+        for (let [find, extendWith, partial] of root.pendingExtends) {
+          let rulesetSet = root.selectorRegistry.findCandidateRulesets(find);
+          if (rulesetSet) {
+            rulesetSet.forEach((ruleset) => {
+              let result = tryExtendSelector(ruleset.selector as Selector, find, extendWith, partial);
+              if (result) {
+                /** Just extend it? */
+                ruleset.value.selector = result.value;
+              }
+            });
+          }
+        }
+      }
     }
     /**
      * Restore contexts

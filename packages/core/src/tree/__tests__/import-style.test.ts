@@ -1,4 +1,4 @@
-import { include, rules, sel, ref, any, ruleset, mixin, decl, call } from '..';
+import { style, rules, sel, el, ref, any, ruleset, mixin, decl, call } from '..';
 import { Context } from '../../context';
 
 let context: Context;
@@ -10,18 +10,18 @@ describe('Include', () => {
   it('should include a mixin', async () => {
     let node = rules([
       mixin({
-        name: 'foo',
-        value: rules([
+        selector: el('foo'),
+        rules: rules([
           decl({ name: 'prop1', value: any('value') })
         ])
       }),
       mixin({
-        name: 'foo',
-        value: rules([
+        selector: el('foo'),
+        rules: rules([
           decl({ name: 'prop2', value: any('value') })
         ])
       }),
-      include(call({
+      style(call({
         ref: ref('foo', { type: 'mixin' })
       }))
     ]);

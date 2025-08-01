@@ -1,3 +1,15 @@
+# Jul 31, 2025
+
+- Destructuring ideas:
+
+```scss
+[$one, $two]: $list; // parsing conflict with attributes?
+$[$one, $two]: $list; // less ambiguous but a lot of `$`
+($one, $two): $list; // maybe more CSS-like?
+
+$for (($one, $two) of $items) {}
+```
+
 # Jul 27, 2025
 
 - Switch `@-use` to `@-compose` (for stylesheets) and use `@-use` for JS/TS imports. Why? Because "use" implies importing values, but a `@-compose` can output rules as well as can be evaluated differently based on input values.

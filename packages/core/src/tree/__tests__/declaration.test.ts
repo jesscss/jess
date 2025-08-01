@@ -8,7 +8,7 @@ describe('Declaration', () => {
   });
   it('should serialize to CSS', () => {
     let rule = decl({ name: 'color', value: color('#eee') });
-    expect(`${rule}`).toBe('color: #eee;');
+    expect(`${rule}`).toBe('color: #eee');
   });
   // it('should serialize to a module', () => {
   //   let rule = decl({ name: expr([any('color')]), value: spaced([any('#eee')]) })

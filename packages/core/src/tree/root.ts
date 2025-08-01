@@ -16,42 +16,42 @@ export class Root extends Rules {
    * @todo - Rewrite to handle "root rules" better.
    * There shouldn't be root rules so much as parent / root rules.
    */
-  override async evalNode(context: Context): Promise<this> {
-    context.opts.mathMode = this.treeContext.mathMode;
-    context.opts.unitMode = this.treeContext.unitMode;
-    context.depth++;
-    let currentCurrentRoot = context.currentRoot;
-    context.currentRoot = this;
-    context.root ??= this;
-    let currentTreeContext = context.treeContext;
-    context.treeContext = this.treeContext;
-    let node = (await super.evalNode(context)) as this;
-    context.depth--;
-    /** We've evaluated all roots! We can extend now! */
-    if (this === context.root) {
-      for (const [find, extendWith, partial] of node.pendingExtends) {
-        const candidates = this.selectorRegistry.findCandidateRulesets(find);
-        for (const candidate of candidates) {
-          /** @todo - Fix Ruleset typing */
-          const result = tryExtendSelector(candidate.selector as Selector, find, extendWith, partial);
-          if (result.error && result.error.type === 'NOT_FOUND') {
-            throw new JessError({
-              type: 'ExtendError',
-              message: result.error.message
-              /** @todo */
-              // filePath: this.filePath,
-              // line: this.line,
-              // column: this.column,
-              // source: this.source
-            });
-          }
-        }
-      }
-    }
-    context.treeContext = currentTreeContext;
-    context.currentRoot = currentCurrentRoot;
-    return node;
-  }
+  // override async evalNode(context: Context): Promise<this> {
+  //   context.opts.mathMode = this.treeContext.mathMode;
+  //   context.opts.unitMode = this.treeContext.unitMode;
+  //   context.depth++;
+  //   let currentCurrentRoot = context.currentRoot;
+  //   context.currentRoot = this;
+  //   context.root ??= this;
+  //   let currentTreeContext = context.treeContext;
+  //   context.treeContext = this.treeContext;
+  //   let node = (await super.evalNode(context)) as this;
+  //   context.depth--;
+  //   /** We've evaluated all roots! We can extend now! */
+  //   if (this === context.root) {
+  //     for (const [find, extendWith, partial] of node.pendingExtends) {
+  //       const candidates = this.selectorRegistry.findCandidateRulesets(find);
+  //       for (const candidate of candidates) {
+  //         /** @todo - Fix Ruleset typing */
+  //         const result = tryExtendSelector(candidate.selector as Selector, find, extendWith, partial);
+  //         if (result.error && result.error.type === 'NOT_FOUND') {
+  //           throw new JessError({
+  //             type: 'ExtendError',
+  //             message: result.error.message
+  //             /** @todo */
+  //             // filePath: this.filePath,
+  //             // line: this.line,
+  //             // column: this.column,
+  //             // source: this.source
+  //           });
+  //         }
+  //       }
+  //     }
+  //   }
+  //   context.treeContext = currentTreeContext;
+  //   context.currentRoot = currentCurrentRoot;
+  //   return node;
+  // }
 
   override toString(depth?: number | undefined) {
     /** Remove leading newlines */

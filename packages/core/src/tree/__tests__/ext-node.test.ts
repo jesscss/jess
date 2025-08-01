@@ -17,15 +17,15 @@ describe('Extend', () => {
         rules: rules([])
       }),
       ruleset({
-        selector: extend([
-          ['value', el('.b')],
-          ['target', el('.a')]
-        ]),
+        selector: extend({
+          selector: el('.b'),
+          target: el('.a')
+        }),
         rules: rules([])
       })
     ]);
     let evald = await rule.eval(context);
     let firstRuleset = evald.value[0]! as Ruleset;
-    expect(`${firstRuleset.selector}`).toBe('.a.b');
+    expect(`${firstRuleset.selector}`).toBe('.a,\n.b');
   });
 });

@@ -1,10 +1,11 @@
 import {
   Node,
-  defineType
+  defineType,
+  type LocationInfo
 } from './node';
 import { isNode } from './util/is-node';
 import { Nil } from './nil';
-import type { Context } from '../context';
+import type { Context, TreeContext } from '../context';
 import { Interpolated } from './interpolated';
 import type { General, Name } from './general';
 import { Reference } from './reference';
@@ -84,7 +85,20 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
   type = 'Declaration';
   shortType = 'decl';
   override allowRuleRoot = true;
-  override requiredSemi = true;
+
+  constructor(
+    value: DeclarationValue,
+    options?: DeclarationOptions,
+    location?: LocationInfo,
+    treeContext?: TreeContext
+  ) {
+    super(value, options, location, treeContext);
+  }
+
+  /** If the value has curly braces, a semi-colon is not required */
+  override get requiredSemi() {
+    return !isNode(this.value.value, 'Collection') && !isNode(this.value.value, 'Mixin');
+  }
 
   protected declTrimmedString(depth?: number) {
     const { name, value, important } = this.value;
@@ -100,13 +114,8 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
     if (!isNode(value, 'Collection')) {
       returnVal += important ? `${important}` : '';
       /**
-       * During parsing, a semi-colon must be explicitly false
-       * to be omitted. This is so that declarations created
-       * with the API can default to a semi-colon.
+       * @note Semi-colon output is handled by the Rules node
        */
-      if (this.options?.semi !== false) {
-        returnVal += ';';
-      }
     }
     return returnVal;
   }
