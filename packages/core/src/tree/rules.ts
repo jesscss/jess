@@ -21,8 +21,9 @@ import { atIndex } from './util/collections';
 import isPlainObject from 'lodash-es/isPlainObject';
 import type { Condition } from './condition';
 import type { Bool } from './bool';
-import { MixinRegistry, SelectorRegistry, FunctionRegistry, DeclarationRegistry } from './util/registry-utils';
+import * as Registries from './util/registry-utils';
 import { tryExtendSelector } from './util/extend';
+import type { General } from './general';
 
 const { isArray } = Array;
 
@@ -110,24 +111,50 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override allowRuleRoot = true;
   override allowRoot = true;
 
-  private _selectorRegistry: SelectorRegistry | undefined;
-  get selectorRegistry(): SelectorRegistry {
-    return (this._selectorRegistry ??= new SelectorRegistry(this));
+  rulesetRegistry: Registries.RulesetRegistry | undefined;
+  mixinRegistry: Registries.MixinRegistry | undefined;
+  declarationRegistry: Registries.DeclarationRegistry | undefined;
+  functionRegistry: Registries.FunctionRegistry | undefined;
+
+  /**
+   * This wrapper is used so we don't prematurely create a registry
+   * just to search it.
+   */
+  find(type: 'ruleset', keys: string | string[] | Set<string>, filterType?: string, options?: Registries.FindOptions): ReturnType<Registries.RulesetRegistry['find']> | undefined;
+  find(type: 'declaration', keys: string, filterType?: string, options?: Registries.DeclarationFindOptions): ReturnType<Registries.DeclarationRegistry['find']> | undefined;
+  find(type: 'mixin', keys: string | string[], filterType?: string, options?: Registries.FindOptions): ReturnType<Registries.MixinRegistry['find']> | undefined;
+  find(type: 'function', keys: string, filterType?: string, options?: Registries.FindOptions): ReturnType<Registries.FunctionRegistry['find']> | undefined;
+  find(
+    type: 'ruleset' | 'declaration' | 'mixin' | 'function',
+    keys: string | string[] | Set<string>,
+    filterType?: string,
+    options?: Registries.FindOptions
+  ): ReturnType<Registries.RulesetRegistry['find']> | ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.MixinRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined {
+    let registry = this[`${type}Registry`];
+    let className = `${type.charAt(0).toUpperCase()}${type.slice(1)}` as Capitalize<typeof type>;
+    if (!registry) {
+      let RegistryClass = Registries[`${className}Registry`];
+      registry = new RegistryClass(this);
+      (this as any)[`${type}Registry`] = registry;
+    }
+    return (registry as any).find(keys, filterType, options);
   }
 
-  private _mixinRegistry: MixinRegistry | undefined;
-  get mixinRegistry(): MixinRegistry {
-    return (this._mixinRegistry ??= new MixinRegistry(this));
-  }
-
-  private _declarationRegistry: DeclarationRegistry | undefined;
-  get declarationRegistry(): DeclarationRegistry {
-    return (this._declarationRegistry ??= new DeclarationRegistry(this));
-  }
-
-  private _functionRegistry: FunctionRegistry | undefined;
-  get functionRegistry(): FunctionRegistry {
-    return (this._functionRegistry ??= new FunctionRegistry(this));
+  /**
+   * Lazily create registries for types as needed.
+   */
+  register(
+    type: 'ruleset' | 'declaration' | 'mixin' | 'function',
+    node: Node
+  ) {
+    let registry = this[`${type}Registry`];
+    let className = `${type.charAt(0).toUpperCase()}${type.slice(1)}` as Capitalize<typeof type>;
+    if (!registry) {
+      let RegistryClass = Registries[`${className}Registry`];
+      registry = new RegistryClass(this);
+      (this as any)[`${type}Registry`] = registry;
+    }
+    return (registry as any).add(node);
   }
 
   pendingExtends = new Set<[find: Selector, extendWith: Selector, partial: boolean]>();
@@ -217,18 +244,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * duplication of concepts like "scope parents" since they
    * are just Rules parents.
    */
-  /**
-   * All indexed collections, keyed. These are the value
-   * per scope (like a set of rules).
-   *
-   * @note - Keys of different types may overlap, but then are filtered when searching.
-   *         As in, a variable named `$foo` and a property named `foo` will be in the 
-   *         same map.
-   */
-  private _declarationMap: Map<string, Declaration[]> | undefined;
-  private get declarationMap(): Map<string, Declaration[]> {
-    return (this._declarationMap ??= new Map());
-  }
 
   /** @todo - Refactor? */
   private _rulesSet: RulesEntry[] | undefined;
@@ -236,7 +251,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return (this._rulesSet ??= []);
   }
 
-  register(node: Node, options?: Record<string, any>) {
+  /** @deprecated - Move to `register` */
+  registerNode(node: Node, options?: Record<string, any>) {
     if (isNode(node, 'Rules')) {
       let rulesVisibility = options?.rulesVisibility ?? node.options.rulesVisibility ?? {};
 
@@ -261,12 +277,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
        * current evaluation is at the top level of the current scope.
        */
       if (node.options?.setDefined) {
-        let key = node.value.name.toString();
+        let key = node.value.name?.toString();
         /** Don't set within sibling rules */
-        let opts: FindOptions = {};
+        let opts: Registries.FindOptions = {};
         opts.searchParents = true;
         opts.start = node.index;
-        let result = this.findDeclaration(key, node.type as 'Declaration', opts);
+        let result = this.find('declaration', key, node.type as 'Declaration', opts);
         if (result) {
           if (result.options?.readonly || opts.readonly) {
             throw new ReferenceError(`"${key}" is readonly`);
@@ -280,188 +296,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           throw new ReferenceError(`"${key}" is not defined`);
         }
       }
-      this.declarationRegistry.add(node);
+      this.register('declaration', node);
     }
   }
 
   push(node: Node) {
     node.parent = this;
     this.value.push(node);
-    this.register(node);
+    /** @todo - replace with `register` ? */
+    this.registerNode(node);
   }
 
   at(index: number) {
-    return this.value[index];
-  }
-
-  /**
-   * Find the closest declaration from start, in reverse order,
-   * using a binary search
-   */
-  private _findClosestByStart(list: Declaration[], start?: number) {
-    if (start === undefined) {
-      return atIndex(list, -1);
-    }
-    /**
-     * We do this so we start looking above the given position and don't
-     * return the current node.
-     */
-    start -= 1;
-    let bestMatch: number | undefined;
-
-    /** Binary search the queue to find a starting position */
-    let left = 0;
-    let right = list.length - 1;
-
-    while (left <= right) {
-      let mid = Math.floor((left + right) / 2);
-      let midVal = list.at(mid)!.index;
-      if (midVal === start) {
-        bestMatch = mid;
-        break;
-      }
-      if (midVal < start) {
-        bestMatch = mid;
-        left = mid + 1;
-      } else {
-        right = mid - 1;
-      }
-    }
-
-    return bestMatch !== undefined ? list.at(bestMatch) : undefined;
-  }
-
-  /**
-   * Get declarations from map and nested rulesets.
-   * This will return a list of all matching nodes.
-   *
-   * @todo - The pattern for mixins will be similar, no? Can this be
-   * re-used / abstracted?
-   *
-   * @todo - Register declarations and index them only when searching.
-   * This would be similar to how we index rulesets for extending.
-   */
-  findDeclaration(
-    key: string,
-    type: 'VarDeclaration' | 'Declaration' = 'VarDeclaration',
-    opts?: FindOptions
-  ): Declaration | undefined {
-    let declCandidate: [
-      declaration: Declaration,
-      read?: boolean
-    ] | undefined;
-    let rules: Rules | undefined = this;
-    let isPublic = false;
-    const {
-      searchParents = true,
-      local = false,
-      start
-    } = opts ?? {};
-    while (rules) {
-      let currentReadonly = opts?.readonly || rules.options.readonly;
-      if (rules._declarationMap) {
-        let list = rules.declarationMap.get(key);
-        if (list) {
-          list = list.filter(
-            n =>
-              n.type === type
-              && (
-                !opts?.filter
-                || opts.filter(n)
-              )
-          );
-        }
-        if (list) {
-          let result = rules._findClosestByStart(list, start);
-          if (result) {
-            declCandidate = [result, result.options.readonly || currentReadonly];
-          }
-          isPublic = true;
-        }
-      }
-
-      if (rules._rulesSet) {
-        let { rulesSet } = rules;
-        /**
-         * Only consider rules after the last found declaration (if relevant)
-         * and before the start position (if relevant)
-         */
-        rulesSet = rulesSet.filter((n) => {
-          return (!declCandidate || n.node.index > declCandidate[0].index)
-            && (start === undefined || n.node.index < start)
-            && (!(local && Boolean(n.node.options?.local)))
-            && (
-              n.rulesVisibility?.[type] === 'optional'
-              || n.rulesVisibility?.[type] === 'public'
-            );
-        });
-
-        let length = rulesSet.length;
-        if (length) {
-          for (let i = length - 1; i >= 0; i--) {
-            let r = rulesSet.at(i)!;
-            /** Locals can be searched once but not twice */
-            let newLocal = local || Boolean(r.node.options?.local);
-            let newOpts = opts ? { ...opts, readonly: currentReadonly || r.readonly } : { readonly: currentReadonly || r.readonly };
-            newOpts.searchParents = false;
-            newOpts.local = newLocal;
-            newOpts.start = undefined;
-            let result = r.node.findDeclaration(key, type, newOpts);
-            if (result) {
-              /**
-               * If it's public, and it's the lower-most declaration,
-               * it wins.
-               */
-              if (r.rulesVisibility?.[type] === 'public') {
-                if (opts && newOpts.readonly) {
-                  opts.readonly = true;
-                }
-                return result;
-              }
-              /**
-               * The declaration is optional, so we need to keep searching.
-               * If we already have a candidate, that means we have a local
-               * value which should win.
-               */
-              if (!declCandidate) {
-                declCandidate = [result, newOpts.readonly];
-              }
-            }
-          }
-        }
-      }
-      if (isPublic || !searchParents) {
-        if (opts && declCandidate?.[1]) {
-          opts.readonly = true;
-        }
-        return declCandidate?.[0];
-      }
-
-      do {
-        rules = rules?.parent as Rules;
-        /**
-         * If we reach an import boundary, stop unless it's an `@import`
-         * which means these rules can reach into the parent file that imports
-         * this one.
-         */
-        if (isNode(rules, 'StyleImport') && rules.options.type !== 'import') {
-          rules = undefined;
-          break;
-        }
-      } while (rules && !(rules instanceof Rules));
-    }
-    if (opts && declCandidate?.[1]) {
-      opts.readonly = true;
-    }
-    return declCandidate?.[0];
-  }
-
-  /**
-   * Returns an executable function
-   * @todo - Move from scope
-   */
-  getMixinOrRuleset(selector: Selector, opts: FindOptions = {}) {
-    return () => {};
+    return atIndex(this.value, index);
   }
 
   /**
@@ -573,7 +420,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
           if (method === 'preEval') {
             /** Do I need to pass in options? */
-            rules.register(result);
+            rules.registerNode(result);
           } else if (method === 'eval') {
             /** Register rulesets for extending */
             let rulesetType = isNode(result, 'Ruleset')
@@ -590,10 +437,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                *
                * @todo - fix ruleset type so Ruleset<unknown>
                */
-              context.treeRoot.selectorRegistry.add(result as Ruleset<RulesetValue>);
+              context.treeRoot.register('ruleset', result as Ruleset<RulesetValue>);
             }
             if (rulesetType) {
-              this.mixinRegistry.add(result as Mixin);
+              context.treeRoot.register('mixin', result as Mixin);
             }
           }
           /**
@@ -654,7 +501,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
        */
       for (let root of context.allRoots) {
         for (let [find, extendWith, partial] of root.pendingExtends) {
-          let rulesetSet = root.selectorRegistry.find(find);
+          let rulesetSet = root.find('ruleset', find.keySet);
           if (rulesetSet) {
             rulesetSet.forEach((ruleset) => {
               let result = tryExtendSelector(ruleset.selector as Selector, find, extendWith, partial);
@@ -677,15 +524,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 }
 export const rules = defineType(Rules, 'Rules');
-
-export type FindOptions = {
-  filter?: (n: Node) => boolean;
-  /** This gets set if any parent is set to readonly */
-  readonly?: boolean;
-  searchParents?: boolean;
-  start?: number;
-  local?: boolean;
-};
 
 type EvalQueueMap = Map<Priority, Array<[number, Node]>>;
 
@@ -928,7 +766,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         for (let param of params.value) {
           if (isNode(param, ['VarDeclaration', 'Rest'])) {
             /** @todo - Register Rest */
-            rules.register(param);
+            rules.register('declaration', param);
           }
         }
       }

@@ -8,14 +8,14 @@ This section refers to functions defined in stylesheets. For importing functions
 
 :::
 
-In Jess, functions are anonymous mixins that have return values.
+In Jess, functions have a very similar signature to mixins, but are assigned a return value with `:`. The return value is then assigned with `return`.
 
 ```less
 // Define a function
-$my-function: @() > {
+my-function() : {
   return: #(1 + 2);
 }
 
 // Call a function
-$my-function(); // 3
+value: my-function(); // 3
 ```

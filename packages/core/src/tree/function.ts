@@ -9,7 +9,7 @@ import { Mixin } from './mixin';
  * Functions are mixins with a return value,
  * defined in a stylesheet.
  *
- *  e.g. `$my-function: @($a; $b) > { ... }`
+ *  e.g. `my-function($a; $b): { ... }`
  *
  * Used by Jess / Sass
  */
@@ -22,11 +22,11 @@ export class Func extends Mixin {
     let result = await super.evalNode(context);
     if (result instanceof Rules) {
       /** Find the last valid return */
-      const decl = result.findDeclaration('return', 'Declaration', {
+      const decl = result.find('declaration', 'return', 'Declaration', {
         searchParents: false
       });
       if (!decl) {
-        throw new Error(`Function ${this.value.selector} must return a value`);
+        throw new Error(`Function ${this.value.name} must return a value`);
       }
     }
     return result;

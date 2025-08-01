@@ -9,6 +9,8 @@ import { JsFunction } from '../js-function';
 import { JsObject } from '../js-object';
 import { Bool } from '../bool';
 import isPlainObject from 'lodash-es/isPlainObject';
+import { Selector } from '../selector';
+import { BasicSelector } from '../selector-basic';
 
 const { isArray } = Array;
 
@@ -46,6 +48,7 @@ function getNodeType(value: any): Node {
   }
   return new Anonymous(value.toString());
 }
+
 /**
  * Casts a primitive JavaScript value to a Jess node
  * (if not already).

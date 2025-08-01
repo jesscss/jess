@@ -12,19 +12,20 @@ import type { Declaration } from './declaration';
 
 export interface MixinValue {
   /**
-   * A mixin name can be compound, like `type.foo#id` because
-   * of interpolation. It will actually be re-parsed as a Sequence
-   * Node in those cases, in order to register it along-side
-   * "namespaced" mixins.
+   * Mixin names can include . or # - in Sass they have to be escaped.
    *
-   * @note - For Sass, a mixin name is always a single identifier,
-   * but Less uses mixins / rulesets interchangeably, so we use
-   * `selector` as a property and `Selector` as the type to allow
-   * more flexibility.
+   * Valid mixin names:
+   *   foo
+   *   foo.bar
+   *   foo#bar
+   *   foo.bar#baz
+   *   foo#bar.baz
+   *   -foo
+   *   _foo (private, from Sass both -foo and _foo are parsed as _foo)
    *
    * @todo - Should anonymous mixins have a different class type?
    */
-  selector?: Selector;
+  name?: Name;
   /**
    * Functions can be assigned an expression when parsing,
    * but it will be evaluated as a set of Rules with a scope
@@ -56,6 +57,7 @@ export type MixinOptions = {
   unique?: boolean;
 };
 
+const COMPOUND_REGEX = /[#.]?[-_a-zA-Z\xA0-\uFFFF][-_a-zA-Z0-9\xA0-\uFFFF]*/ug;
 /**
  * someMixin (arg1; arg2: 10px) {
  *   color: black;
@@ -74,17 +76,33 @@ export type MixinOptions = {
  *     foo(1, 2) or
  *     foo({ a: 1, b: 2 }) or
  *     foo({ b: 2 }, 1)
+ *
+ * @todo - Even though we allow a selector as a name.
  */
-
 export class Mixin extends Node<MixinValue, MixinOptions> {
   type = 'Mixin';
   shortType = 'mixin';
 
+  /** Return a selector-like keySet */
+  private _keySet: Set<string> | undefined;
+  get keySet() {
+    let keySet = this._keySet;
+    if (!keySet) {
+      let { name } = this.value;
+      if (!name) {
+        return (this._keySet = new Set());
+      }
+      let matches = name.toString().match(COMPOUND_REGEX) ?? [];
+      keySet = this._keySet = new Set(matches);
+    }
+    return keySet;
+  }
+
   override toTrimmedString(depth: number = 0): string {
-    let { selector, rules, params, guard } = this.value;
+    let { name, rules, params, guard } = this.value;
     let { isFunctionWith } = this.options;
     let space = ''.padStart(depth * 2);
-    let output = `${selector}`;
+    let output = `${name}`;
     if (params) {
       output += '(';
       output += params.toString(depth);
@@ -106,17 +124,13 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     return output;
   }
 
-  getImplicitSelector(): Selector | undefined {
-    return this.value.selector;
-  }
-
   override async preEval(context: Context): Promise<this> {
     if (!this.preEvaluated) {
       let node = this.maybeClone(context);
       node.preEvaluated = true;
-      let { selector } = node.value;
-      if (selector && selector instanceof Interpolated) {
-        node.value.selector = (await selector.eval(context)).createSelector();
+      let { name } = node.value;
+      if (name && name instanceof Interpolated) {
+        node.value.name = await name.eval(context);
       }
       return node;
     }

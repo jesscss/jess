@@ -1,7 +1,10 @@
 import { Node, defineType } from './node';
 
-export type JsFunctionValue = ((...args: any[]) => any) & {
-  evalArgs?: boolean;
+export type JsFunctionValue = {
+  name?: string;
+  fn: ((...args: any[]) => any) & {
+    evalArgs?: boolean;
+  };
 };
 
 /**

@@ -6,15 +6,29 @@ import type { Mixin } from '../mixin';
 import type { Nil } from '../nil';
 import type { Node } from '../node';
 import type { JsFunction } from '../js-function';
+import type { Func } from '../function';
 import type { General } from '../general';
 import type { Declaration } from '../declaration';
 import type { BasicDeclaration } from '../declaration-basic';
+import { atIndex } from './collections';
 
 const { isArray } = Array;
 
+export type DeclarationFindOptions = {
+  filter?: (n: Node) => boolean;
+  /** This gets set if any parent is set to readonly */
+  readonly?: boolean;
+  searchParents?: boolean;
+  start?: number;
+  local?: boolean;
+};
+
+export type FindOptions = DeclarationFindOptions & {
+  [key: string]: any;
+};
+
 export abstract class Registry<
   Type extends Node,
-  FindUsing extends Node,
   IndexType extends Set<Type> | Array<{
     value: Type;
     [key: string]: any;
@@ -42,23 +56,86 @@ export abstract class Registry<
     this.pendingItems.clear();
   }
 
-  find(using: FindUsing): Set<Type> | undefined {
-    this.indexPendingItems();
-    let set = this.index.get(String(using));
-    if (set) {
-      if (set instanceof Set) {
-        return set;
-      }
-      return new Set(set.map(({ value }) => value));
+  /**
+   * Find the closest declaration from start, in reverse order,
+   * using a binary search
+   */
+  _findClosestByStart(list: Type[], start?: number) {
+    if (start === undefined) {
+      return atIndex(list, -1);
     }
-    return;
+    /**
+     * We do this so we start looking above the given position and don't
+     * return the current node.
+     */
+    start -= 1;
+    let bestMatch: number | undefined;
+
+    /** Binary search the queue to find a starting position */
+    let left = 0;
+    let right = list.length - 1;
+
+    while (left <= right) {
+      let mid = Math.floor((left + right) / 2);
+      let midVal = list.at(mid)!.index;
+      if (midVal === start) {
+        bestMatch = mid;
+        break;
+      }
+      if (midVal < start) {
+        bestMatch = mid;
+        left = mid + 1;
+      } else {
+        right = mid - 1;
+      }
+    }
+
+    return bestMatch !== undefined ? list.at(bestMatch) : undefined;
+  }
+
+  private _findByKey(candidates: Set<Type> | Type | undefined, key: string, filterType?: string, options?: FindOptions): Set<Type> | Type | undefined {
+    let set = this.index.get(key);
+    if (set) {
+      let newSet: Set<Type>;
+      if (set instanceof Set) {
+        newSet = set;
+      } else {
+        newSet = new Set(set.map(({ value }) => value));
+      }
+      if (candidates) {
+        if (candidates instanceof Set) {
+          candidates = candidates.union(newSet);
+        } else {
+          candidates = new Set([candidates, ...newSet]);
+        }
+      } else {
+        candidates = newSet;
+      }
+    }
+    return candidates;
+  }
+
+  find(keys: string | string[] | Set<string>, filterType?: string, options?: FindOptions): Type[] | Type | Array<{ value: Type; [key: string]: any }> | undefined {
+    this.indexPendingItems();
+    let candidates: Set<Type> | Type | undefined;
+    if (isArray(keys) || keys instanceof Set) {
+      for (const key of keys) {
+        candidates = this._findByKey(candidates, key, filterType, options);
+      }
+    } else {
+      candidates = this._findByKey(candidates, keys, filterType, options);
+    }
+    if (candidates instanceof Set) {
+      return candidates.size ? [...candidates] : undefined;
+    }
+    return candidates;
   }
 }
 
 /**
  * Registry for fast selector-based ruleset lookups
  */
-export class SelectorRegistry extends Registry<Ruleset, Selector> {
+export class RulesetRegistry extends Registry<Ruleset> {
   index = new Map<string, Set<Ruleset>>();
 
   /**
@@ -95,15 +172,14 @@ export class SelectorRegistry extends Registry<Ruleset, Selector> {
   /**
    * Find candidate rulesets that might match the target selector
    */
-  override find(targetSelector: Selector): Set<Ruleset> | undefined {
+  override find(keys: string[] | Set<string>): Ruleset[] | undefined {
     // Index any pending rulesets first
     this.indexPendingRulesets();
-    const { keySet } = targetSelector;
 
     let candidates: Set<Ruleset> | undefined = undefined;
 
     // Use intersection to whittle down candidates with each subsequent key
-    for (const key of keySet) {
+    for (const key of keys) {
       // const key = targetKeys[i]!;
       const keyRulesets = this.index.get(key);
       if (!keyRulesets || keyRulesets.size === 0) {
@@ -111,15 +187,22 @@ export class SelectorRegistry extends Registry<Ruleset, Selector> {
       }
 
       if (candidates) {
+        /**
+         * The ruleset registry is keyed by each selector in each ruleset,
+         * so in this registry, we want the intersection i.e. only rulesets
+         * with selectors that have every key, as opposed to getting a
+         * set of items that have any of the keys.
+         */
         candidates = candidates.intersection(keyRulesets);
       } else {
         candidates = keyRulesets;
       }
+      /** If the key doesn't exist, we can take an early exit. */
       if (candidates.size === 0) {
-        return candidates;
+        return undefined;
       }
     }
-    return candidates;
+    return candidates?.size ? [...candidates] : undefined;
   }
 }
 
@@ -139,7 +222,6 @@ export class SelectorRegistry extends Registry<Ruleset, Selector> {
  */
 export class MixinRegistry extends Registry<
   Mixin | Ruleset,
-  Selector,
   Array<{
     value: Mixin | Ruleset;
     match: string[];
@@ -204,7 +286,7 @@ export class MixinRegistry extends Registry<
 
   override indexPendingItems() {
     for (const mixin of this.pendingItems) {
-      const selector = mixin.value.selector;
+      const selector = mixin.value.name;
       if (isNode(selector, 'SelectorList')) {
         /** Selector list's selectors are individually registered */
         for (const sel of selector.value) {
@@ -221,36 +303,26 @@ export class MixinRegistry extends Registry<
    * Find candidate mixins (or rulesets, or both) that might match the target selector
    *
    * @todo - Prevent infinite recursion when a mixin calls itself.
+   *
+   * ...also...
+   *
+   * @todo - Not sure how recursion works here with the match overflow and returning
+   * proper arrays.
    */
-  override find(
-    targetSelector: Selector | string[] | string,
+  _findMatches(
+    keys: string | string[],
     filterType: 'Mixin' | 'Ruleset' | undefined = undefined,
     options: {
       searchParents?: boolean;
       candidates?: Set<Mixin | Ruleset>;
     } = {}
-  ): Set<Mixin | Ruleset> | undefined {
+  ): Array<{ value: Mixin | Ruleset; match: string[] }> | undefined {
     let keyList: string[] | undefined;
 
-    /**
-       * This is for calls from `.scss` files, which can
-       * call namespaced mixins like `@include \.bar\#foo;
-       *
-       * @todo - Test after completing the Sass+ parser if this is needed.
-       */
-    if (typeof targetSelector === 'string') {
-      keyList = targetSelector.split(/([#.])/);
-      for (let i = 0; i < keyList.length; i++) {
-        let key = keyList[i];
-        keyList[i] = key!.trim();
-        if (!key) {
-          throw new Error(`Invalid mixin name: ${targetSelector}`);
-        }
-      }
-    } else if (isArray(targetSelector)) {
-      keyList = targetSelector;
+    if (isArray(keys)) {
+      keyList = keys;
     } else {
-      keyList = this.getSimpleKeyList(targetSelector);
+      keyList = [keys];
     }
 
     if (!keyList?.length) {
@@ -260,11 +332,8 @@ export class MixinRegistry extends Registry<
     let rules: Rules | undefined = this.rules;
     let { searchParents = true, candidates } = options;
     while (rules) {
-      let registry = rules.mixinRegistry;
-      registry.indexPendingItems();
-
       let [startKey, ...search] = keyList;
-      const existing = registry.index.get(startKey!);
+      const existing = rules.mixinRegistry?._findMatches(startKey!);
 
       if (existing) {
         for (const { value, match } of existing) {
@@ -286,20 +355,14 @@ export class MixinRegistry extends Registry<
               || (isNode(value, 'Mixin') && (!value.value.params || value.value.params.length === 0))
             ) {
             // Recursively search in this mixin's registry
-              const registry = value.value.rules.mixinRegistry;
-              if (registry) {
-                const subCandidates =
-                registry.find(remainder, filterType, {
+              let subRules = value.value.rules;
+              const subCandidates =
+                subRules.mixinRegistry?._findMatches(remainder, filterType, {
                   searchParents: false,
-                  candidates
+                  candidates: (candidates ??= new Set())
                 });
-                if (subCandidates) {
-                  if (candidates) {
-                    candidates = candidates.union(subCandidates);
-                  } else {
-                    candidates = subCandidates;
-                  }
-                }
+              if (subCandidates) {
+                candidates = candidates!.union(new Set(subCandidates.map(({ value }) => value)));
               }
             }
           }
@@ -326,26 +389,150 @@ export class MixinRegistry extends Registry<
 }
 
 /**
- * @deprecated
+ * For either Sass, Jess, or JS functions.
  *
- * This is used by Less and Sass. Their respective plugins can register
- * functions that can be called from the language without a `@-use` directive.
+ * Less and Sass can register global functions that can be called from the language
+ * without a `@-use` directive.
  *
- * The presence of `@-use` directives anywhere in the stylesheet tree will cause
- * these global functions to be disabled.
+ * @todo Should the presence of `@-use` directives anywhere in the
+ * stylesheet tree cause these global functions to be disabled?
  */
-export class FunctionRegistry extends Registry<BasicDeclaration<{
-  name: string;
-  value: JsFunction;
-}>, General> {
-  index = new Map<string, Set<BasicDeclaration<{
-    name: string;
-    value: JsFunction;
-  }>>>();
+export class FunctionRegistry extends Registry<JsFunction | Func> {
+  index = new Map();
 }
 
-export class DeclarationRegistry extends Registry<Declaration, Selector> {
+/**
+ *
+ * @note - Keys of different types may overlap, but then are filtered when searching.
+ *         As in, a variable named `$foo` and a property named `foo` will be in the
+ *         same map.
+ */
+export class DeclarationRegistry extends Registry<Declaration> {
   index = new Map<string, Set<Declaration>>();
+
+  /**
+   * Get declarations from map and nested rulesets.
+   * This will return a list of all matching nodes.
+   *
+   * @todo - The pattern for mixins will be similar, no? Can this be
+   * re-used / abstracted?
+   *
+   * @todo - Register declarations and index them only when searching.
+   * This would be similar to how we index rulesets for extending.
+   */
+  override find(
+    key: string,
+    filterType: 'VarDeclaration' | 'Declaration' | 'BasicDeclaration' = 'VarDeclaration',
+    options?: FindOptions
+  ): Declaration | undefined {
+    let declCandidate: [
+      declaration: Declaration,
+      read?: boolean
+    ] | undefined;
+    let rules: Rules | undefined = this.rules;
+    let isPublic = false;
+    const {
+      searchParents = true,
+      local = false,
+      start
+    } = options ?? {};
+    while (rules) {
+      let currentReadonly = options?.readonly || rules.options.readonly;
+      let set = rules.declarationRegistry?.index.get(key);
+      let list = set ? [...set] : undefined;
+      if (list) {
+        list = list.filter(
+          n =>
+            n.type === filterType
+            && (
+              !options?.filter
+              || options.filter(n)
+            )
+        );
+      }
+      if (list?.length) {
+        let result = rules.declarationRegistry?._findClosestByStart(list, start);
+        if (result) {
+          declCandidate = [result, result.options.readonly || currentReadonly];
+        }
+        isPublic = true;
+      }
+
+      if (rules._rulesSet) {
+        let { rulesSet } = rules;
+        /**
+         * Only consider rules after the last found declaration (if relevant)
+         * and before the start position (if relevant)
+         */
+        rulesSet = rulesSet.filter((n) => {
+          return (!declCandidate || n.node.index > declCandidate[0].index)
+            && (start === undefined || n.node.index < start)
+            && (!(local && Boolean(n.node.options?.local)))
+            && (
+              n.rulesVisibility?.[filterType] === 'optional'
+              || n.rulesVisibility?.[filterType] === 'public'
+            );
+        });
+
+        let length = rulesSet.length;
+        if (length) {
+          for (let i = length - 1; i >= 0; i--) {
+            let r = rulesSet.at(i)!;
+            /** Locals can be searched once but not twice */
+            let newLocal = local || Boolean(r.node.options?.local);
+            let newOpts = options ? { ...options, readonly: currentReadonly || r.readonly } : { readonly: currentReadonly || r.readonly };
+            newOpts.searchParents = false;
+            newOpts.local = newLocal;
+            newOpts.start = undefined;
+            let result = r.node.declarationRegistry?.find(key, filterType, newOpts);
+            if (result) {
+              /**
+               * If it's public, and it's the lower-most declaration,
+               * it wins.
+               */
+              if (r.rulesVisibility?.[filterType] === 'public') {
+                if (options && newOpts.readonly) {
+                  options.readonly = true;
+                }
+                return result;
+              }
+              /**
+               * The declaration is optional, so we need to keep searching.
+               * If we already have a candidate, that means we have a local
+               * value which should win.
+               */
+              if (!declCandidate) {
+                declCandidate = [result, newOpts.readonly];
+              }
+            }
+          }
+        }
+      }
+      if (isPublic || !searchParents) {
+        if (options && declCandidate?.[1]) {
+          options.readonly = true;
+        }
+        return declCandidate?.[0];
+      }
+
+      do {
+        rules = rules?.parent as Rules;
+        /**
+         * If we reach an import boundary, stop unless it's an `@import`
+         * which means these rules can reach into the parent file that imports
+         * this one.
+         */
+        if (isNode(rules, 'StyleImport') && rules.options.type !== 'import') {
+          rules = undefined;
+          break;
+        }
+      } while (rules && !isNode(rules, 'Rules'));
+    }
+    if (options && declCandidate?.[1]) {
+      options.readonly = true;
+    }
+    return declCandidate?.[0];
+  }
 }
 
 function arraysEqual(a: string[], b: string[]) {
