@@ -32,16 +32,16 @@ Here's an example:
     @-compose './theme' as theme;
 
     .box {
-      color: theme.$primary-color;
+      color: $theme.primary-color;
     }
     ```
   </TabItem>
   <TabItem value="less" label="Less 5+">
     ```less
-    @compose './theme' as theme;
+    @compose './theme' as @theme;
 
     .box {
-      color: theme[@primary-color];
+      color: @theme[primary-color];
     }
     ```
   </TabItem>
@@ -66,6 +66,32 @@ Why `@-compose` and not `@-use`, similar to Sass? A couple reasons.
 
 :::
 
+### Composing with a namespace
+
+Like Sass, namespaces for `@-compose` and `@-use` are set automatically based on the file name or path. But you can also set a namespace explicitly with the `as` keyword.
+
+```less
+@-compose './theme.jess'; // is the same as...
+@-compose './theme.jess' as theme;
+```
+
+You can compose without a namespace using the `*` symbol.
+
+```less
+@-compose './theme.jess' as *;
+
+.box {
+  color: $primary-color; // from theme.jess
+}
+```
+
+:::warning
+
+Composing without a namespace is discouraged, as it can be harder to reason about where variables and values come from when you have multiple files.
+
+:::
+
+
 ### `with` and `set`
 
 Using `set` on a stylesheet import will alter that import within the compilation scope. (In Sass, this is how `with` works, but the `with` keyword works slightly differently in Jess, which we'll explain in a bit.)
@@ -75,11 +101,17 @@ Note that `set` may not be used more than once with the same module (resolved to
 Example:
 
 ```less
+// theme.jess
+~primary-color: blue;
+```
+
+```less
 // file1.jess
 @-compose './theme' set {
-  colors +: {
-    $primary-color: rebeccapurple;
-  }
+  ~primary-color: rebeccapurple;
+}
+.box {
+  color: $theme.primary-color; // rebeccapurple
 }
 ```
 ```less
@@ -87,7 +119,7 @@ Example:
 @-compose './theme';
 
 .box {
-  background-color: theme.colors.$primary-color; // rebeccapurple
+  color: $theme.primary-color; // rebeccapurple
 }
 ```
 
@@ -98,9 +130,10 @@ In contrast to `set`, `with` will set values only while being composed into the 
 ```less
 // file1.jess
 @-compose './theme' with {
-  colors +: {
-    $primary-color: rebeccapurple;
-  }
+  ~primary-color: rebeccapurple;
+}
+.box {
+  color: $theme.primary-color; // rebeccapurple
 }
 ```
 ```less
@@ -108,7 +141,7 @@ In contrast to `set`, `with` will set values only while being composed into the 
 @-compose './theme';
 
 .box {
-  background-color: theme.colors.$primary-color; // default primary color
+  color: $theme.primary-color; // blue
 }
 ```
 
@@ -120,7 +153,7 @@ This is somewhat like Less's `@import (reference)`, although with Less's `@impor
 
 ```less
 // rules.jess
-$border-color: green;
+~border-color: green;
 .box {
   border: 1px solid $border-color;
 }
@@ -130,7 +163,7 @@ $border-color: green;
 @-compose reference './rules';
 
 .container {
-  border: 2px dashed rules.$border-color;
+  border: 2px dashed $rules.border-color;
 }
 ```
 This would output:
@@ -146,7 +179,7 @@ Rules will be rendered, but variables and mixins are not available to this style
 
 ```less
 // library.jess
-$border-color: red;
+~border-color: red;
 .box {
   border: 1px solid $border-color;
 }
@@ -209,7 +242,7 @@ We can directly import JS/TS modules with `@-use` e.g.
 @-use './my-module.js' as js;
 
 .box {
-  value: js.myFunc();
+  value: $js.myFunc();
 }
 ```
 
@@ -220,7 +253,7 @@ You can also import and use Less and Sass functions.
 @-use '#sass/math' as math;
 
 .box {
-  value: #(type.isnumber(math.$e)); // true
+  value: $(type.isnumber($math.e)); // true
 }
 ```
 

@@ -12,7 +12,7 @@ These conditionals evaluate pretty much how you would expect.
 
 #### 1. Theme Switching
 ```less
-$theme: "dark";
+~theme: "dark";
 
 $if ($theme = "dark") {
   body { background: #111; color: #eee; }
@@ -23,11 +23,11 @@ $if ($theme = "dark") {
 
 #### 2. Feature Flags for Styles
 ```less
-@-use 'https://example.com/my-flags.json' as flags;
+@-use 'https://example.com/my-flags.json';
 
 .card {
   border-radius: 8px;
-  $if (flags.$enableFancyShadows) {
+  $if ($my-flags.enableFancyShadows) {
     box-shadow: 0 8px 32px #0002;
   }
 }
@@ -38,13 +38,13 @@ $if ($theme = "dark") {
 // An NPM module that gives us a season method
 @-use "some-date-fns" as date; 
 
-$season: date.getSeason(date.now()); // e.g., returns "spring", "summer", etc.
+~season: $date.getSeason(date.now()); // e.g., returns "spring", "summer", etc.
 
-$if ($season == "spring") {
+$if ($season = "spring") {
   body { background: #d8f5d1; }
-} $elseif ($season == "summer") {
+} $elseif ($season = "summer") {
   body { background: #ffe066; }
-} $elseif ($season == "autumn") {
+} $elseif ($season = "autumn") {
   body { background: #ffbe76; }
 } $else {
   // winter (or whatever else you want to handle)
@@ -55,7 +55,7 @@ $if ($season == "spring") {
 
 #### 4. Dumb Easter Eggs (Because You Can)
 ```less
-$shouldTroll: false;
+~shouldTroll: false;
 
 $if ($shouldTroll) {
   h1 { font-family: "Comic Sans MS"; color: hotpink; }
@@ -68,9 +68,9 @@ Unlike rulesets and at-rules, conditionals and iteration blocks do not create a 
 
 ```less
 .box {
-  $my-color: red;
+  ~my-color: red;
   $if (true) {
-    $my-color: blue;
+    ~my-color: blue;
   }
   color: $my-color; // blue
 }
@@ -82,20 +82,20 @@ Unlike rulesets and at-rules, conditionals and iteration blocks do not create a 
 The `$for` syntax in Jess should also be familiar to developers.
 
 ```less
-$sections: header, sidebar, footer;
+~sections: header, sidebar, footer;
 
-$for ($section, $i of $sections) {
-  .box-#($section) {
-    padding-left: #($i * 20px);
+$for (section, i of $sections) {
+  .box-$(section) {
+    padding-left: $(i * 20px);
   }
 }
 ```
 
 :::info
 
-In the above example, `$i` is the key of `$sections`. Because `$sections` is assigned a list, the key is it's offset from the start.
+In the above example, `i` is the key of `sections`. Because `sections` is assigned a list, the key is it's offset from the start.
 
-The syntax is `$for ($item [, $key [, $counter]?]? of $items) {...}`. In this case, both `$key` and `$counter` would have the same value. However, with something like a Jess collection, the `$key` would be assigned the declaration name. We'll explore collections in the "Values" section.
+The syntax is `$for ({item} [, {key} [, {counter}]?]? of $var) {...}`. In this case, both `key` and `counter` would have the same value. However, with something like a Jess collection, the `key` would be assigned the declaration name. We'll explore collections in the "Values" section.
 
 :::
 

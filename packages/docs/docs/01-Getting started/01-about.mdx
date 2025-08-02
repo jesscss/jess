@@ -13,8 +13,8 @@ slug: /
 @-compose './mixins.scss'; // Import mixins from Less and Sass!
 
 .container {
-  width: less.unit(sizes.width);
-  color: theme.$primary-color;
+  width: $less.unit($sizes.width);
+  color: $theme.primary-color;
   display: flex;
   $ > mixins.box();
 }

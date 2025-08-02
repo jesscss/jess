@@ -20,7 +20,8 @@ mixin() {
   ~color: red;
   color: $brand-color;
   border-color: $color; // variable named 'color'
-  border-color: $.color; // property named 'color'
+  border-color: $.color; // variable or property named 'color'
+  border-color: $.#color; // property named 'color'
 }
 
 mixin-2() {

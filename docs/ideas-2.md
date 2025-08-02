@@ -29,11 +29,11 @@
 .mixin(blue; @width: 10px; @height: 5px) {
   padding: $width $height;
 }
-/** Get translated into this in Jess */
-.mixin(_p0; width: 20px; height: 10px) when ($_p0 = red) {
+/** Get translated into this in Jess # as keyword literal */
+.mixin(#red; width: 20px; height: 10px) {
   padding: $width $height;
 }
-.mixin(_p0; width: 10px; height: 5px) when ($_p0 = blue) {
+.mixin(#blue; width: 10px; height: 5px) {
   padding: $width $height;
 }
 

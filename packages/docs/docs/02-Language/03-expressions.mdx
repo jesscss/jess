@@ -4,49 +4,67 @@ title: Expressions
 
 Jess supports expressions, which are used to evaluate values, perform calculations, and more.
 
-Unlike other languages, and unlike Sass and Less, Jess expressions must be wrapped in `#()` even when used in a "value" position. This is to reduce ambiguity and conflict with other CSS syntax.
+All Jess expressions start with `$` and namespaces `$x.y` and function calls `$x.y()` are considered part of the expression. Math operations like `*` or `/` or comparisons like `=` or `>` must be wrapped in parentheses `$()` e.g. `$(x + 1)` or `$(x = 1)`.
+
+In addition, all expressions used in interpolation (within strings or identifiers) must be wrapped in `$()`.
 
 ## Examples
 
 ### 1. Basic arithmetic
 
 ```less
-value: #(1 + 2); // 3
-value: #(1 - 2); // -1
-value: #(1 * 2); // 2
-value: #(1 / 2); // 0.5
-value: #(1 % 2); // 1 (modulus)
+value: $(1 + 2); // 3
+value: $(1 - 2); // -1
+value: $(1 * 2); // 2
+value: $(1 / 2); // 0.5
+value: $(1 % 2); // 1 (modulus)
 ```
 
 ### 2. String concatenation
 
 ```less
-value: #("Hello, " + "world!"); // "Hello, world!"
+value: $("Hello, " + "world!"); // "Hello, world!"
 ```
 
 ### 3. Comparison operations
 
 ```less
-value: #(1 > 2); // false
-value: #(1 < 2); // true
-value: #(1 >= 2); // false
-value: #(1 <= 2); // true
+value: $(1 > 2); // false
+value: $(1 < 2); // true
+value: $(1 >= 2); // false
+value: $(1 <= 2); // true
 ```
 
 ### 4. Support for unique CSS values
 
 ```less
-value: #(#222 / 2); // #111
+value: $(#222 / 2); // #111
 ```
 
 ### 5. Use with Jess variables
 
 ```less
-$width: 10px;
-$height: #($width + 10px);
+~width: 10px;
+~height: $(width + 10px);
 
 #header {
   width: $width;
   height: $height;
 }
+```
+
+## Identifiers in expressions
+
+Identifiers in expressions are evaluated as variable references.
+
+```less
+~color: red;
+value: $(color); // red
+value: $less.iscolor(color); // true
+```
+
+If you need to pass in a keyword argument to a function or mixin where it is ambiguous whether it is a variable or a keyword, Jess allows `#` as a "keyword literal" sigil.
+
+```less
+value: $less.iscolor(#red); // true
 ```

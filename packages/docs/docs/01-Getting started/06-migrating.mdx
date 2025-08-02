@@ -59,7 +59,7 @@ Sass-style and Less-style variable declarations will be converted to Jess-style 
   </TabItem>
   <TabItem value="Jess">
   ```less
-  $color: #06c;
+  ~color: #06c;
   ```
   </TabItem>
 </Tabs>
@@ -97,14 +97,14 @@ The caret in Jess `^` is used to only look upwards for variables, not per scope.
   </div>
   <div style={{ flex: 1 }}>
   ```less
-  value: ^$color;
+  value: $^color;
   ```
   </div>
 </div>
 
 ### Expressions
 
-All expressions get "wrapped" in `#()` to reduce confusion and to not "switch" syntax based on the division `/` operator.
+All Jess expressions start with `$` and namespaces `$x.y` and function calls `$x.y()` are considered part of the expression. Math operations like `*` or `/` or comparisons like `=` or `>` must be wrapped in parentheses `$()` e.g. `$(x + 1)` or `$(x = 1)`.
 
 #### Less-to-Jess
 
@@ -117,8 +117,8 @@ All expressions get "wrapped" in `#()` to reduce confusion and to not "switch" s
   </div>
   <div style={{ flex: 1 }}>
   ```less
-  value: #($width + 1);
-  value: #($width / 2);
+  value: $(width + 1);
+  value: $(width / 2);
   ```
   </div>
 </div>
@@ -134,15 +134,15 @@ All expressions get "wrapped" in `#()` to reduce confusion and to not "switch" s
   </div>
   <div style={{ flex: 1 }}>
   ```less
-  value: #(^$width + 1);
-  value: #(^$width / 2);
+  value: $(^width + 1);
+  value: $(^width / 2);
   ```
   </div>
 </div>
 
 ### Mixin definitions
 
-#### Less-to-Jess: (mostly) identical
+#### Less-to-Jess
 
 <div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
   <div style={{ flex: 1 }}>
@@ -150,7 +150,7 @@ All expressions get "wrapped" in `#()` to reduce confusion and to not "switch" s
   .box() {}
   .with-params(
     @param1: 1;
-    @param2: 2
+    @param2: 2;
   ) {}
   ```
   </div>
@@ -158,8 +158,8 @@ All expressions get "wrapped" in `#()` to reduce confusion and to not "switch" s
   ```less
   .box() {}
   .with-params(
-    $param1: 1;
-    $param2: 2
+    param1: 1;
+    param2: 2;
   ) {}
   ```
   </div>
@@ -181,8 +181,8 @@ All expressions get "wrapped" in `#()` to reduce confusion and to not "switch" s
   ```less
   box() {}
   with-params(
-    $param1: 1;
-    $param2: 2
+    param1: 1;
+    param2: 2;
   ) {}
   ```
   </div>
