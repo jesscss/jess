@@ -84,7 +84,7 @@ mixin-1() {}
 Mixins can make repeated rules and configurability trivial, especially when you begin using parameters.
 
 ```less
-button-base(bg: #1a73e8; color: #fff; pad: 0.5em 1.25em) {
+button-base($bg: #1a73e8; $color: #fff; $pad: 0.5em 1.25em) {
   display: inline-block;
   background: $bg;
   color: $color;
@@ -94,8 +94,8 @@ button-base(bg: #1a73e8; color: #fff; pad: 0.5em 1.25em) {
   font-size: 1rem;
   cursor: pointer;
   transition: background 0.15s;
-  &:hover { background: $less.color.darken($bg, 7%); }
-  &:active { background: $less.color.darken($bg, 14%); }
+  &:hover { background: $less.color.darken(bg, 7%); }
+  &:active { background: $less.color.darken(bg, 14%); }
 }
 
 .button-primary   { $ > button-base(); }
@@ -108,7 +108,7 @@ Let's break this down.
 ### The mixin definition
 
 ```less
-button-base(bg: #1a73e8; color: #fff; pad: 0.5em 1.25em) {
+button-base($bg: #1a73e8; $color: #fff; $pad: 0.5em 1.25em) {
   ...
 }
 ```
@@ -144,7 +144,7 @@ button-base(bg: #1a73e8; color: #fff; pad: 0.5em 1.25em) {
 - **Named arguments:**  
   You can specify which parameter you’re overriding by name, and skip the rest:
   ```less
-  .button-skinny { $ > button-base(pad: 0.25em 1em); }
+  .button-skinny { $ > button-base($pad: 0.25em 1em); }
   ```
   This sets only the padding, and leaves the background and color at their default values.
 
@@ -155,7 +155,7 @@ You don’t have to give parameters default values. If you leave them out, Jess 
 #### Example
 
 ```less
-highlight(bg; color) {
+highlight($bg; $color) {
   background: $bg;
   color: $color;
 }
@@ -175,13 +175,13 @@ Guards are designed to be similar to CSS Media Query syntax.
 Let's start with an example:
 
 ```less
-mixin(a) when ($color.lightness(a) >= 50%) {
+mixin($a) when ($color.lightness(a) >= 50%) {
   background-color: black;
 }
-mixin(a) when ($color.lightness(a) < 50%) {
+mixin($a) when ($color.lightness(a) < 50%) {
   background-color: white;
 }
-mixin(a) {
+mixin($a) {
   color: $a;
 }
 ```
@@ -211,8 +211,8 @@ Here's what we'll get:
 The full list of comparison operators usable in guards are: `>`, `>=`, `=`, `=<`, `<`. Additionally, the keyword `true` is the only truthy value, making these two mixins equivalent:
 
 ```less
-truth(a) when ($a) { ... }
-truth(a) when ($a = true) { ... }
+truth($a) when ($a) { ... }
+truth($a) when ($a = true) { ... }
 ```
 
 Unlike JavaScript, any value other than an expression that evaluates to `true` or the keyword `true` is considered false:
@@ -228,31 +228,31 @@ Note that you can also compare arguments with each other, or with non-arguments:
 ```less
 $theme: "brand";
 
-button-theme(bg; color) when ($theme = "brand") {
+button-theme($bg; $color) when ($theme = "brand") {
   // ...
 }
 
-button-theme(bg; color) when ($theme = "minimal") {
+button-theme($bg; $color) when ($theme = "minimal") {
   // ...
 }
 
-max(a; b) when ($a > $b) { width: $a }
-max(a; b) when ($a < $b) { width: $b }
+max($a; $b) when ($a > $b) { width: $a }
+max($a; $b) when ($a < $b) { width: $b }
 ```
 
 :::info
 
-Note that in Jess, guards (like `when`) and control flow (like `if`) require `$` to start a new expression.
+Note that in Jess, any new "parentheses context" exits "expression mode". So parentheses in guards (like `when`) and control flow (like `if`) require `$` to start a new expression.
 
 These are equivalent:
 
 ```less
-max(a; b) when ($a > $b) { width: $a }
-max(a; b) when $(a > b) { width: $a }
+max($a; $b) when ($a > $b) { width: $a }
+max($a; $b) when $(a > b) { width: $a }
 
 // and 
-truth(a) when ($a = true) { ... }
-truth(a) when $(a = #true) { ... } // # for keyword literal inside an expression
+truth($a) when ($a = true)  { ... }
+truth($a) when $(a = ~true) { ... } // ~ for keyword literal inside an expression
 ```
 
 :::
@@ -265,19 +265,19 @@ You can use logical operators with guards. The syntax is based on CSS media quer
 Use the `and` keyword to combine guards:
 
 ```less
-mixin(a) when ($type.isnumber(a)) and ($a > 0) { ... }
+mixin($a) when ($type.isnumber($a)) and ($a > 0) { ... }
 ```
 
 Use the word `or` for alternate conditions. If any of the guards evaluate to true, it's considered a match:
 
 ```less
-mixin(a) when ($a > 10) or ($a < -10) { ... }
+mixin($a) when ($a > 10) or ($a < -10) { ... }
 ```
 
 Use the `not` keyword to negate conditions:
 
 ```less
-mixin(b) when not ($b > 0) { ... }
+mixin($b) when not ($b > 0) { ... }
 ```
 
 ### How Jess & Less overload mixins
@@ -291,7 +291,7 @@ If after finding potential mixin matches, none of the when guards evaluate to tr
 ```less
 mixin(1)               { x: 11 }
 mixin(2)               { y: 22 }
-mixin(x) when default  { z: $x }
+mixin($x) when default { z: $x }
 
 div {
   $ > mixin(3);
@@ -315,8 +315,8 @@ div.special {
 It is possible to use the value returned by `default` with guard operators. For example `mixin() when not default {}` will match only if there's at least one more mixin definition that matches the `mixin()` call:
 
 ```less
-mixin(value) when ($type.ispixel(value))  { width: $value }
-mixin(value) when not default             { padding: $(value / 5) }
+mixin($value) when ($type.ispixel($value))  { width: $value }
+mixin($value) when not default              { padding: $(value / 5) }
 
 div-1 {
   $ > mixin(100px);
@@ -373,7 +373,7 @@ To do so, you can put a slash between the selector and the calling parentheses t
 }
 
 // Define a mixin with the same name
-.shadow(color: #0002) {
+.shadow($color: #0002) {
   box-shadow: 0 2px 8px $color;
   outline: 1px solid $color;
 }
@@ -438,15 +438,15 @@ my-mixin() {
 You can also assign mixin callbacks to the mixin call.
 
 ```less
-media(...types) {
-  $for (type of $types) {
+media(...$types) {
+  $for ($type of $types) {
     @media $(type) {
       $content($type);
     }
   }
 }
 
-$ > media(screen, print): @(type) {
+$ > media(screen, print): @($type) {
   h1 {
     font-size: 40px;
     $if ($type = print) {

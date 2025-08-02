@@ -148,3 +148,28 @@ For example:
     ```
   </TabItem>
 </Tabs>
+
+## Readonly variables
+
+Prepend readonly variables (`const`-type vars) with `!`
+
+```scss
+!$color: red;
+$color: blue; // Error
+```
+
+## Private variables
+
+Variables are "public" on a namespace by default. To make a variable private, prepend the variable or key name with `_`.
+
+```scss
+$colors: {
+  _private: unknown;
+  primary: #06c;
+}
+
+.box {
+  color: $colors.primary;
+  color: $colors._private; // Error, '_private' not found
+}
+```

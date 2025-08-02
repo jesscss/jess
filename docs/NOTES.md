@@ -2,6 +2,27 @@
 
 After working through more scenarios, I think both access and assignment of vars needs to be `$name`, because it's too confusing for patterns like `$foo +: 1;` whether it should start with `$` or `~`
 
+This also resolves this:
+
+```scss
+/** Declaring mixins
+  Pattern matching mixins (not often-used in Less) like this
+*/
+.mixin(red; @width: 20px; @height: 10px) {
+  padding: $width $height;
+}
+.mixin(blue; @width: 10px; @height: 5px) {
+  padding: $width $height;
+}
+/** Get translated into this in Jess */
+.mixin(red; $width: 20px; $height: 10px) {
+  padding: $width $height;
+}
+.mixin(blue; $width: 10px; $height: 5px) {
+  padding: $width $height;
+}
+```
+
 # Aug 1, 2025
 
 - Syntax ideas
