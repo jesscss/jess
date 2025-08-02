@@ -1,3 +1,7 @@
+# Aug 2, 2025
+
+After working through more scenarios, I think both access and assignment of vars needs to be `$name`, because it's too confusing for patterns like `$foo +: 1;` whether it should start with `$` or `~`
+
 # Aug 1, 2025
 
 - Syntax ideas

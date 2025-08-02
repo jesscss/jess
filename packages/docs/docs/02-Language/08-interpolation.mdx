@@ -9,7 +9,7 @@ Want to jam the result of a Jess expression anywhere in your CSS output? Use int
 ### 1. Selectors in style rules
 
 ```scss
-~side: left;
+$side: left;
 .widget-$(side) {
   float: $side;
 }
@@ -23,7 +23,7 @@ Want to jam the result of a Jess expression anywhere in your CSS output? Use int
 
 ### 2. Property names in declarations
 ```scss
-~radius: top-right;
+$radius: top-right;
 .card {
   border-$(radius)-radius: 12px;
 }
@@ -37,7 +37,7 @@ Want to jam the result of a Jess expression anywhere in your CSS output? Use int
 
 ### 3. Custom property values
 ```less
-~theme: dark;
+$theme: dark;
 body {
   --theme-mode: $(theme);
 }
@@ -57,7 +57,7 @@ Note: in normal property values, you can just use `$theme`, but in custom proper
 
 ### 4. :-extend
 ```scss
-~type: *(.notice); // `*()` can capture a selector
+$type: *(.notice); // `*()` can capture a selector
 .notice {
   color: orange;
 }
@@ -72,7 +72,7 @@ Note: in normal property values, you can just use `$theme`, but in custom proper
 
 ### 5. Plain CSS @imports
 ```scss
-~family: "modern";
+$family: "modern";
 @import url("fonts/$(family).css");
 ```
 →
@@ -82,9 +82,9 @@ Note: in normal property values, you can just use `$theme`, but in custom proper
 
 ### 6. Plain CSS function names
 ```scss
-~fn: "min";
-~s1: 30vw;
-~s2: 50vw;
+$fn: "min";
+$s1: 30vw;
+$s2: 50vw;
 .container {
   width: $(fn)( $s1, $s2 );
 }
@@ -99,9 +99,9 @@ Note: in normal property values, you can just use `$theme`, but in custom proper
 ### 7. Any plain output
 
 ```scss
-~color-name: "red";
+$color-name: "red";
 .container {
-  color: ~~"$(color-name)";
+  color: ~"$(color-name)";
 }
 ```
 →
@@ -115,6 +115,6 @@ Note: in normal property values, you can just use `$theme`, but in custom proper
 1. Use $() for dynamic bits—selectors, property names, and anything clever you want in output.
 2. Don’t wrap variables for no reason; use direct variables unless you need interpolation.
 3. Never interpolate numbers if you want to do math with them.
-4. Escape strings with `~~""` for clarity when you want to drop quotes from a string.
+4. Escape strings with `~""` for clarity when you want to drop quotes from a string.
 
 Jess is designed to be simple and clear.

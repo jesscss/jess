@@ -226,7 +226,7 @@ Unlike JavaScript, any value other than an expression that evaluates to `true` o
 Note that you can also compare arguments with each other, or with non-arguments:
 
 ```less
-~theme: "brand";
+$theme: "brand";
 
 button-theme(bg; color) when ($theme = "brand") {
   // ...
@@ -399,7 +399,7 @@ The CSS output is:
 Jess supports anonymous mixins, which are mixins that are not named. Anonymous mixins are started with `@(` or `@{` and are followed by a block of rules.
 
 ```less
-~my-mixin: @() {
+$my-mixin: @() {
   color: red;
 }
 .box {
@@ -410,7 +410,7 @@ Jess supports anonymous mixins, which are mixins that are not named. Anonymous m
 Anonymous mixins without parameters can be written as:
 
 ```less
-~my-mixin: @{
+$my-mixin: @{
   color: red;
 }
 .box {

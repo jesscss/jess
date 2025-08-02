@@ -12,7 +12,7 @@ In Jess, functions are anonymous mixins that return a single value. We indicate 
 
 ```less
 // Define a function
-~my-function: @() > {
+$my-function: @() > {
   return: $(1 + 2);
 }
 
@@ -23,7 +23,7 @@ value: $my-function(); // 3
 Like arrow functions in JavaScript, anonymous functions can also return a single expression.
 
 ```less
-~my-function: @() > $(1 + 2);
+$my-function: @() > $(1 + 2);
 
 value: $my-function(); // 3
 ```

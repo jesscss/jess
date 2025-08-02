@@ -12,7 +12,7 @@ These conditionals evaluate pretty much how you would expect.
 
 #### 1. Theme Switching
 ```less
-~theme: "dark";
+$theme: "dark";
 
 $if ($theme = "dark") {
   body { background: #111; color: #eee; }
@@ -38,7 +38,7 @@ $if ($theme = "dark") {
 // An NPM module that gives us a season method
 @-use "some-date-fns" as date; 
 
-~season: $date.getSeason(date.now()); // e.g., returns "spring", "summer", etc.
+$season: $date.getSeason(date.now()); // e.g., returns "spring", "summer", etc.
 
 $if ($season = "spring") {
   body { background: #d8f5d1; }
@@ -55,7 +55,7 @@ $if ($season = "spring") {
 
 #### 4. Dumb Easter Eggs (Because You Can)
 ```less
-~shouldTroll: false;
+$shouldTroll: false;
 
 $if ($shouldTroll) {
   h1 { font-family: "Comic Sans MS"; color: hotpink; }
@@ -68,9 +68,9 @@ Unlike rulesets and at-rules, conditionals and iteration blocks do not create a 
 
 ```less
 .box {
-  ~my-color: red;
+  $my-color: red;
   $if (true) {
-    ~my-color: blue;
+    $my-color: blue;
   }
   color: $my-color; // blue
 }
@@ -82,7 +82,7 @@ Unlike rulesets and at-rules, conditionals and iteration blocks do not create a 
 The `$for` syntax in Jess should also be familiar to developers.
 
 ```less
-~sections: header, sidebar, footer;
+$sections: header, sidebar, footer;
 
 $for (section, i of $sections) {
   .box-$(section) {

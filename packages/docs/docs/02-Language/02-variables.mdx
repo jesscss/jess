@@ -9,25 +9,18 @@ Jess supports both scoped (Less- and CSS-style) and linear (Sass-style) variable
 
 ## Syntax
 
-While both Less and Jess use the same syntax for both declaring and using variables, Jess distinguishes the two, using unique sigils for declaration (like `~`) and usage (`$`).
+Jess uses Sass-style declarations and references of variables. The difference is that, in Jess, in the declaration `$color`, the name of the variable is `color`, not `$color`. In basic cases, this is not an important distinction, but it becomes important within expressions or in accessing namespaces.
 
 ### Examples
 
 ```scss
-~color: #06c; // normal declaration
+$color: #06c; // normal declaration
 
 .box {
   color: $color; // normal usage
+  color: $(color); // same as $color
 }
 ```
-
-:::info
-
-Why does Jess use a different symbol for declaration? The main reason is to make it clear that the variable name does not include the sigil. This allows for some nice syntax features, like nested namespacing without having to re-use `$` for every nested variable.
-
-Ommitting `$` or `@` as part of the variable name also allows intuitive interopability with JavaScript and TypeScript.
-
-:::
 
 ## Scoped variables
 
@@ -39,7 +32,7 @@ Like CSS and Less, Jess variables have a value per scope. This is similar to how
     .btn {
       // In Jess/Less this is fine
       color: $color;
-      ~color: #06c;
+      $color: #06c;
       // In CSS this is also fine
       background: var(--background);
       --background: white;
@@ -85,9 +78,9 @@ In most cases, you shouldn't need this feature, unless you're mutating the value
   <TabItem value="jess" label="Jess">
     ```scss
     .btn {
-      ~color: red;
+      $color: red;
       color: $^color; // value is red
-      ~color: blue;
+      $color: blue;
     }
     ```
   </TabItem>
@@ -132,10 +125,10 @@ For example:
   </TabItem>
   <TabItem value="jess" label="Jess">
     ```scss
-    ~color: red;
+    $color: red;
     .btn {
       // Do not shadow, but assign
-      ^color: blue;
+      $^color: blue;
     }
     .box {
       color: $color; // blue

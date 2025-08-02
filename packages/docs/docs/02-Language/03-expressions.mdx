@@ -44,8 +44,8 @@ value: $(#222 / 2); // #111
 ### 5. Use with Jess variables
 
 ```less
-~width: 10px;
-~height: $(width + 10px);
+$width: 10px;
+$height: $(width + 10px);
 
 #header {
   width: $width;
@@ -58,13 +58,13 @@ value: $(#222 / 2); // #111
 Identifiers in expressions are evaluated as variable references.
 
 ```less
-~color: red;
+$color: red;
 value: $(color); // red
 value: $less.iscolor(color); // true
 ```
 
-If you need to pass in a keyword argument to a function or mixin where it is ambiguous whether it is a variable or a keyword, Jess allows `#` as a "keyword literal" sigil.
+If you need to pass in a keyword argument to a function or mixin where it is ambiguous whether it is a variable or a keyword, Jess allows `~` before an identifier to signify a keyword literal. So, like `~""` for string escapes and `~()` for parentheses escapes, you can think of it as escaping the expression context.
 
 ```less
-value: $less.iscolor(#red); // true
+value: $less.iscolor(~red); // true
 ```
