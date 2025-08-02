@@ -1,3 +1,41 @@
+# Aug 1, 2025
+
+- Syntax ideas
+
+```scss
+~color: red; // scope var 
+^color: red; // set var
+!color: red; // readonly var
+~_color: red; // private var named _color
+
+.box {
+  value: $color; // reference (var or prop)
+  $ > .mixin(); // call mixin named fn
+  value: $fn(); // function named `fn`
+}
+
+~brand-color: orange;
+
+mixin() {
+  ~color: red;
+  color: $brand-color;
+  border-color: $color; // variable named 'color'
+  border-color: $.color; // property named 'color'
+}
+
+mixin-2() {
+  background-color: $brand-color;
+}
+
+~double: @(~size) > $(size * 2);
+
+.container {
+  $ > .mixin();
+  width: $double(10px);
+}
+```
+
+
 # Jul 31, 2025
 
 - Destructuring ideas:
