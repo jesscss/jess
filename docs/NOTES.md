@@ -42,11 +42,15 @@ This also resolves this:
 ~brand-color: orange;
 
 mixin() {
-  ~color: red;
+  $color: red;
   color: $brand-color;
   border-color: $color; // variable named 'color'
   border-color: $.color; // variable or property named 'color'
-  border-color: $.#color; // property named 'color'
+  border-color: $['color']; // property named 'color'
+  ns: $ns.$color; // variable named 'color' in $ns
+  ns: $ns.color; // variable or property named 'color' in $ns
+  ns: $ns['color'] // property named 'color' in $ns
+
 }
 
 mixin-2() {
@@ -71,7 +75,7 @@ mixin-2() {
 $[$one, $two]: $list; // less ambiguous but a lot of `$`
 ($one, $two): $list; // maybe more CSS-like?
 
-$for (($one, $two) of $items) {}
+$for ([$one, $two] of $items) {}
 ```
 
 # Jul 27, 2025
