@@ -158,6 +158,7 @@ export abstract class Node<
 
   /** Will be copied during inherit */
   stateRules = ['visible', 'evaluated', 'preEvaluated'];
+  declare renderVisible: boolean;
   visible = true;
   evaluated = false;
   preEvaluated = false;
@@ -658,7 +659,7 @@ export abstract class Node<
    * and toTrimmedString() should be overridden instead.
    */
   toString(depth?: number, defaultPre?: string, defaultPost?: string): string {
-    if (!this.visible) {
+    if (!this.visible && !this.renderVisible) {
       return '';
     }
     let output = '';
@@ -732,3 +733,6 @@ export abstract class Node<
   /** Move to ToModuleVisitor */
   // toModule?(context: Context, out: OutputCollector): void
 }
+
+/** When converting Less/Sass to Jess, we'll switch this flag temporarily */
+Node.prototype.renderVisible = false;

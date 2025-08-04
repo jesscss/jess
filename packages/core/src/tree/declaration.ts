@@ -247,7 +247,7 @@ export class Declaration extends BasicDeclaration<DeclarationValue, DeclarationO
   // }
 }
 
-type DeclarationParams = ConstructorParameters<typeof Declaration>;
+export type DeclarationParams = ConstructorParameters<typeof Declaration>;
 
 export const decl = defineType<DeclarationValue>(Declaration, 'Declaration', 'decl') as (
   value: DeclarationValue | DeclarationParams[0],

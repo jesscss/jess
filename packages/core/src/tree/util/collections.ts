@@ -24,7 +24,7 @@ import isPlainObject from 'lodash-es/isPlainObject';
 
 const { isArray } = Array;
 
-export function atIndex<T>(array: T[], index: number = -1): T | undefined {
+export function atIndex<T>(array: readonly T[], index: number = -1): T | undefined {
   if (index >= 0) {
     return array[index];
   }

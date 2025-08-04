@@ -188,11 +188,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             : '\n'
         );
 
-        if (n.requiredSemi && n.options.semi !== false && value.length >= i) {
-          out += ';';
-        }
         if (out === '') {
           return '';
+        }
+        if (n.requiredSemi && n.options.semi !== false && value.length >= i) {
+          out += ';';
         }
         /**
          * Replace the initial spaces in the first line with the correct indentation

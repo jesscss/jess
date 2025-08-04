@@ -27,6 +27,8 @@ import type { Combinator } from './combinator';
 import type { Sequence } from './sequence';
 import type { Selector } from './selector';
 import type { JsObject } from './js-object';
+import type { JsArray } from './js-array';
+import type { Num } from './number';
 
 export type Nodes = {
   Ampersand: typeof Ampersand;
@@ -37,6 +39,7 @@ export type Nodes = {
   Expression: typeof Expression;
   VarDeclaration: typeof VarDeclaration;
   Dimension: typeof Dimension;
+  Num: typeof Num;
   Selector: typeof Selector;
   BasicSelector: typeof BasicSelector;
   SimpleSelector: typeof SimpleSelector;
@@ -50,6 +53,7 @@ export type Nodes = {
   Func: typeof Func;
   JsFunction: typeof JsFunction;
   JsObject: typeof JsObject;
+  JsArray: typeof JsArray;
   Ruleset: typeof Ruleset;
   Rules: typeof Rules;
   StyleImport: typeof StyleImport;

@@ -6,9 +6,9 @@ import {
 import { Dimension } from './dimension';
 
 /**
- * A number
+ * A number. Named `Num` to avoid conflict with the built-in `Number` class.
  */
-export class Number extends Dimension {
+export class Num extends Dimension {
   override type = 'Number' as const;
   override shortType = 'num' as const;
 
@@ -22,4 +22,4 @@ export const num = (
   options?: NodeOptions,
   location?: LocationInfo,
   treeContext?: TreeContext
-) => new Number(value, options, location, treeContext);
+) => new Num(value, options, location, treeContext);

@@ -7,7 +7,8 @@ import { Mixin } from './mixin';
 
 /**
  * Functions are mixins with a return value,
- * defined in a stylesheet.
+ * defined in a stylesheet. Called `Func` to avoid conflict
+ * with the built-in `Function` class.
  *
  *  e.g. `my-function($a; $b): { ... }`
  *

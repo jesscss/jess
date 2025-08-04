@@ -410,6 +410,19 @@ export class FunctionRegistry extends Registry<JsFunction | Func> {
 export class DeclarationRegistry extends Registry<Declaration> {
   index = new Map<string, Set<Declaration>>();
 
+  override indexPendingItems() {
+    for (const item of this.pendingItems) {
+      let key = String(item.value.name);
+      let set = this.index.get(key);
+      if (set && set instanceof Set) {
+        set.add(item);
+      } else {
+        this.index.set(key, new Set([item]));
+      }
+    }
+    this.pendingItems.clear();
+  }
+
   /**
    * Get declarations from map and nested rulesets.
    * This will return a list of all matching nodes.
@@ -425,6 +438,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
     filterType: 'VarDeclaration' | 'Declaration' | 'BasicDeclaration' = 'VarDeclaration',
     options?: FindOptions
   ): Declaration | undefined {
+    this.indexPendingItems();
     let declCandidate: [
       declaration: Declaration,
       read?: boolean

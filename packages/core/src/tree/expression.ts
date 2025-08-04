@@ -1,3 +1,4 @@
+import type { Context } from '../context';
 import { Node, defineType } from './node';
 import { Selector } from './selector';
 
@@ -21,6 +22,12 @@ export class Expression extends Selector<Node, ExpressionOptions> {
 
   override get keySet(): Set<string> {
     return new Set();
+  }
+
+  override async evalNode(context: Context) {
+    let { value } = this;
+    let evald = await value.eval(context);
+    return evald;
   }
 
   override toTrimmedString(depth?: number): string {

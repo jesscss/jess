@@ -5,7 +5,8 @@ import type {
   Ruleset,
   Rules,
   StyleImportValue,
-  StyleImportOptions
+  StyleImportOptions,
+  Node
 } from './tree';
 import { type Operator } from './tree/util/calculate';
 import type { PluginObject } from './plugin';
@@ -191,15 +192,14 @@ export class Context {
   allRoots: Rules[] = [];
 
   /**
-   * When getting vars, the current declaration is ommitted
-   * to prevent recursion errors. Each subsequent declaration
-   * is then added to prevent back-references to this one.
+   * When doing any kind of lookup, the current node and resolved
+   * nodes in the search chain are added to prevent recursion errors.
    *
    * We use a set here because we look it up for filtering
    */
-  private _declarationScope: Set<Declaration> | undefined;
-  get declarationScope() {
-    return (this._declarationScope ??= new Set());
+  private _searchScope: Set<Node> | undefined;
+  get searchScope() {
+    return (this._searchScope ??= new Set());
   }
 
   /**

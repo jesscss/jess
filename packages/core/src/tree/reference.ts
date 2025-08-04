@@ -7,57 +7,46 @@ import type { GetterOptions } from '../scope';
 import { General } from './general';
 import { Selector } from './selector';
 import { isNode } from './util/is-node';
+import type { Call } from './call';
+import type { Quoted } from './quoted';
+import { atIndex } from './util/collections';
+import type { Num } from './number';
 
 /**
  * The type is determined by syntax
  * and location.
  *   e.g. in Jess
  *    - `$foo` refers to a variable
- *    - `$.foo` refers to a property
- *    - `$foo#($bar)` refers to a variable variable
- *    - `$foo.bar` refers to a property in a variable
- *    - in `$ > .foo()`, `.foo` refers to a mixin
- *    - in `$foo > .mixin()` `.mixin` refers to a mixin in `$foo`
+ *    - `$.foo` is a prop or var
+ *    - `$foo$(bar)` is a var var
+ *    - `$foo.bar` is a prop or var `bar` in `foo`
+ *    - in `$|.foo()`, `.foo` is a mixin
+ *    - in `$foo|.mixin()`, `.mixin` is a mixin in `$foo`
  *    - Resolution:
  *      - `$` searches scope,
- *      - `^$` searches in declaration order
+ *      - `$^` searches in declaration order
  *   in Less
  *   - `@foo` refers to a variable
  *   - `$foo` refers to a property
  *   - `.foo` or `#foo` refers to a mixin
- *
- *   target? undefined | Reference | Call
- *   key: string | number | General | Quoted | Reference
- *   keyType: 'declaration' | 'variable' | 'mixin'
- *
- *   target: undefined
- *   key: 'key'
- *   keyType: 'declaration'
- *
- *   $.key
- *
- *   target: undefined
- *   key: 'key'
- *   keyType: 'variable'
- *
- *   $key
- *
- *   target: undefined
- *   key: 'key'
- *   keyType: 'mixin'
- *
- *   $ > key
- *
- *   target: Reference ($.key)
- *   key: Quoted('key')
- *   keyType: 'property'
- *   $.key['key']
  */
+export type ReferenceValue = {
+  target?: Reference | Call | undefined;
+  key:
+    string
+    | General
+    | number // $[0] or $.0
+    | Num // $.key or $[key] or $*key
+    | Quoted // $['key']
+    | Selector // $*(.selector)
+    | Reference; // $.key
+};
+
 export type ReferenceOptions = {
   /**
    * What kind of lookup are we doing?
    */
-  type?: 'variable' | 'property' | 'basic' | 'function' | 'mixin' | 'rule' | 'mixin-rule';
+  type: 'index' | 'declaration' | 'variable' | 'property' | 'mixin' | 'ruleset' | 'mixin-ruleset';
   resolution?: 'scope' | 'linear';
   /**
    * Optional references just resolve to the string
@@ -69,19 +58,14 @@ export type ReferenceOptions = {
   filter?: (node: Node) => boolean;
 };
 
-type MixinReference = {
-  type: 'mixin' | 'rule' | 'all';
-  selector: Selector;
-};
-
-type NodeType = typeof Node<General | Interpolated | MixinReference, ReferenceOptions>;
+type NodeType = typeof Node<ReferenceValue, ReferenceOptions>;
 type ReferenceParams = ConstructorParameters<NodeType>;
 
 /**
  * This is a variable or property reference,
  * which can itself contain a reference (a variable variable).
  */
-export class Reference extends Node<General | Interpolated | MixinReference, ReferenceOptions> {
+export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   type = 'Reference';
   shortType = 'ref';
 
@@ -89,17 +73,34 @@ export class Reference extends Node<General | Interpolated | MixinReference, Ref
     return '';
   }
 
+  /**
+   * @note - A reference doesn't render `$` (unless it has a target);
+   *         that's managed by the parent expression.
+   */
   override toTrimmedString(): string {
-    const { declarationType, resolution } = this.options;
-    const { value } = this;
-    const preChar = resolution === 'linear' ? '$$' : '$';
-    switch (declarationType!) {
+    let { type, resolution, fallbackValue } = this.options;
+    let { target, key } = this.value;
+    if (resolution === 'linear') {
+      key = `^${key}`;
+    }
+    if (fallbackValue === true) {
+      key = `${key}?`;
+    }
+    switch (type) {
+      case 'index':
+        return `[${key}]`;
       case 'variable':
-        return `${preChar}${value}`;
+        return `${key}`;
+      case 'declaration':
+        return `.${key}`;
       case 'property':
-        return `${preChar}.${value}`;
+        return `.~${key}`;
       case 'mixin':
-        return `${value}`;
+        return `|${key}`;
+      case 'ruleset':
+        return `*(${key})`;
+      case 'mixin-ruleset':
+        return `*${key}`;
     }
   }
 
@@ -108,29 +109,66 @@ export class Reference extends Node<General | Interpolated | MixinReference, Ref
    * should never resolve to itself
    */
   override async evalNode(context: Context): Promise<Node> {
-    let { value } = this;
+    let { target, key } = this.value;
     let { type, fallbackValue, filter: originalFilter } = this.options;
-    let key: string;
-    if (isNode(value)) {
-      key = (await value.eval(context)).toTrimmedString();
+    let valueKey: string | number;
+    if (isNode(key)) {
+      let evald = await key.eval(context);
+      valueKey = evald.valueOf();
     } else {
-      key = value;
+      valueKey = key;
     }
+    let resolvedTarget = target ? await target.eval(context) : context.rulesContext;
     originalFilter ??= () => true;
     let filter = (n: Node) =>
-      originalFilter(n) && !context.declarationScope.has(n as Declaration);
+      originalFilter(n) && !context.searchScope.has(n);
     let opts: GetterOptions = { filter };
 
     let returnVal: any;
     switch (type) {
+      case 'index':
+        if (typeof valueKey === 'number') {
+          /** Look for array-like nodes */
+          if (isNode(resolvedTarget, 'Rules')) {
+            returnVal = resolvedTarget.at(valueKey);
+          } else if (isNode(resolvedTarget, 'JsArray')) {
+            returnVal = atIndex(resolvedTarget.value, valueKey);
+          }
+        } else {
+          if (isNode(resolvedTarget, 'Rules')) {
+            returnVal = resolvedTarget.find('declaration', `${valueKey}`, undefined, opts);
+          } else if (isNode(resolvedTarget, 'JsObject')) {
+            returnVal = resolvedTarget.value[valueKey];
+          }
+        }
+        break;
       case 'variable':
-        returnVal = context.rulesContext.findDeclaration(key, 'VarDeclaration', opts);
+        if (isNode(resolvedTarget, 'Rules')) {
+          returnVal = resolvedTarget.find('declaration', `${valueKey}`, 'VarDeclaration', opts);
+        }
         break;
       case 'property':
-        returnVal = context.rulesContext.findDeclaration(key, 'Declaration', opts);
+        if (isNode(resolvedTarget, 'Rules')) {
+          returnVal = resolvedTarget.find('declaration', `${valueKey}`, 'Declaration', opts);
+        } else if (isNode(resolvedTarget, 'JsObject')) {
+          returnVal = resolvedTarget.value[valueKey];
+        }
         break;
-      // case 'mixin':
-      //   returnVal = context.rulesContext.getMixin(key, opts)
+      case 'mixin':
+        if (isNode(resolvedTarget, 'Rules')) {
+          returnVal = resolvedTarget.find('mixin', `${valueKey}`, 'Mixin', opts);
+        }
+        break;
+      case 'ruleset':
+        if (isNode(resolvedTarget, 'Rules')) {
+          returnVal = resolvedTarget.find('mixin', `${valueKey}`, 'Ruleset', opts);
+        }
+        break;
+      case 'mixin-ruleset':
+        if (isNode(resolvedTarget, 'Rules')) {
+          returnVal = resolvedTarget.find('mixin', `${valueKey}`, undefined, opts);
+        }
+        break;
     }
 
     if (returnVal === undefined) {
@@ -138,14 +176,14 @@ export class Reference extends Node<General | Interpolated | MixinReference, Ref
         throw new ReferenceError(`"${key}" is not defined`);
       }
       if (fallbackValue === true) {
-        return new General(key, { type: 'Name' });
+        return new General(`${valueKey}`, { type: 'Name' });
       }
       return fallbackValue;
     }
     if (isNode(returnVal, 'Declaration')) {
-      context.declarationScope.add(returnVal);
+      context.searchScope.add(returnVal);
       const evald = await returnVal.value.value.eval(context);
-      context.declarationScope.delete(returnVal);
+      context.searchScope.delete(returnVal);
       return evald;
     } else {
       return cast(returnVal);

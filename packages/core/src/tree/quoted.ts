@@ -13,7 +13,8 @@ export interface Quoted extends Node<string | General | Interpolated, QuotedOpti
 }
 
 /**
- * An quoted value
+ * A quoted string value. Called a `String` in CSS, but calling it Quoted
+ * to avoid conflict with the built-in `String` class.
  */
 export class Quoted extends Node<string | General | Interpolated, QuotedOptions> {
   type = 'Quoted' as const;
