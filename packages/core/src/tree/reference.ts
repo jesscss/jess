@@ -3,7 +3,7 @@ import type { Interpolated } from './interpolated';
 import type { Context } from '../context';
 import { cast } from './util/cast';
 import type { Declaration } from './declaration';
-import type { GetterOptions } from '../scope';
+import type { FindOptions } from './util/registry-utils';
 import { General } from './general';
 import { Selector } from './selector';
 import { isNode } from './util/is-node';
@@ -122,7 +122,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     originalFilter ??= () => true;
     let filter = (n: Node) =>
       originalFilter(n) && !context.searchScope.has(n);
-    let opts: GetterOptions = { filter };
+    let opts: FindOptions = { filter };
 
     let returnVal: any;
     switch (type) {
