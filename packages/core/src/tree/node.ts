@@ -79,9 +79,9 @@ export const defineType = <
   type: string,
   shortType?: string
 ) => {
-  shortType ??= type.toLowerCase()
-  ;(Clazz as any).type = type
-  ;(Clazz as any).shortType = shortType;
+  shortType ??= type.toLowerCase();
+  (Clazz as any).type = type;
+  (Clazz as any).shortType = shortType;
 
   let proto: any = Clazz;
   let types = proto.types = new Set();
@@ -92,9 +92,9 @@ export const defineType = <
 
   type Args = [value?: P[0] | V, options?: P[1], location?: P[2]];
   return (...args: Args) => {
-    const node = new (Clazz as any)(...args) as T extends Class<infer C> ? InstanceType<Class<C, Args>> : never
-    ;(node as any).type = type
-    ;(node as any).shortType = shortType;
+    const node = new (Clazz as any)(...args) as T extends Class<infer C> ? InstanceType<Class<C, Args>> : never;
+    (node as any).type = type;
+    (node as any).shortType = shortType;
     return node;
   };
 };
@@ -102,12 +102,6 @@ export const defineType = <
 export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<=';
 
 export type NoOverride<T> = Tagged<T, 'NoOverride'>;
-
-export interface NodeState {
-  visible: boolean;
-  evaluated: boolean;
-  preEvaluated: boolean;
-}
 
 /**
  * The underlying type for all Jess nodes
@@ -158,7 +152,7 @@ export abstract class Node<
 
   /** Will be copied during inherit */
   stateRules = ['visible', 'evaluated', 'preEvaluated'];
-  declare renderVisible: boolean;
+  declare renderInvisible: boolean;
   visible = true;
   evaluated = false;
   preEvaluated = false;
@@ -228,6 +222,7 @@ export abstract class Node<
    */
   private _tryProxyWrap<T>(value: T): T {
     if (isPlainObject(value) || isArray(value)) {
+      value = this._processNodes(value);
       return new Proxy(value as object, {
         get: (target, prop) => {
           if (prop === IS_PROXY) {
@@ -659,7 +654,7 @@ export abstract class Node<
    * and toTrimmedString() should be overridden instead.
    */
   toString(depth?: number, defaultPre?: string, defaultPost?: string): string {
-    if (!this.visible && !this.renderVisible) {
+    if (!this.visible && !this.renderInvisible) {
       return '';
     }
     let output = '';
@@ -735,4 +730,4 @@ export abstract class Node<
 }
 
 /** When converting Less/Sass to Jess, we'll switch this flag temporarily */
-Node.prototype.renderVisible = false;
+Node.prototype.renderInvisible = false;

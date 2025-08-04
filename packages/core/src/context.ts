@@ -1,7 +1,6 @@
 import type {
   AtRule,
   Declaration,
-  Root,
   Ruleset,
   Rules,
   StyleImportValue,
@@ -301,7 +300,7 @@ export class Context {
     const plugins = this.plugins;
     const pluginLength = plugins.length;
     let resolvedPath: string | undefined;
-    let resolvedTree: Root | false | undefined;
+    let resolvedTree: Rules | false | undefined;
     const triedPaths: string[] = [];
 
     let rootPlugin = this.treeContext?.plugin;

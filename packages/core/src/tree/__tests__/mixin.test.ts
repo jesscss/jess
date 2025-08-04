@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, paren, ref, list, vardecl } from '..';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, name } from '..';
 import { Context } from '../../context';
 
 let context: Context;
@@ -12,7 +12,7 @@ describe('Mixin', () => {
   describe('serialization', () => {
     it('should serialize a mixin', () => {
       const rule = mixin({
-        selector: el('myMixin'),
+        name: name('myMixin'),
         rules: rules([
           decl({ name: 'color', value: any('black') }),
           decl({ name: 'background-color', value: any('white') })
@@ -28,11 +28,11 @@ describe('Mixin', () => {
 
     it('should serialize a mixin with args', () => {
       const rule = mixin({
-        selector: el('my-mixin'),
+        name: name('my-mixin'),
         params: list([
           vardecl({ name: 'a', value: any('black') }, { paramVar: true }),
           vardecl({ name: 'b', value: any('white') }, { paramVar: true })
-        ]),
+        ], { sep: ';' }),
         rules: rules([
           decl({ name: 'color', value: any('black') }),
           decl({ name: 'background-color', value: any('white') })
@@ -48,12 +48,12 @@ describe('Mixin', () => {
 
     it('should serialize a guard', () => {
       const rule = mixin({
-        selector: el('my-mixin'),
+        name: name('my-mixin'),
         params: list([
           vardecl({ name: 'a', value: any('black') }, { paramVar: true }),
           vardecl({ name: 'b', value: any('white') }, { paramVar: true })
-        ]),
-        guard: condition([paren(condition([ref('a'), '=', ref('b')]))]),
+        ], { sep: ';' }),
+        guard: condition([expr(ref({ key: 'a' })), '=', expr(ref({ key: 'b' }))]),
         rules: rules([
           decl({ name: 'color', value: any('black') }),
           decl({ name: 'background-color', value: any('white') })

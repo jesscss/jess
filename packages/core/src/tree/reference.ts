@@ -78,7 +78,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
    *         that's managed by the parent expression.
    */
   override toTrimmedString(): string {
-    let { type, resolution, fallbackValue } = this.options;
+    let { type = 'variable', resolution, fallbackValue } = this.options;
     let { target, key } = this.value;
     if (resolution === 'linear') {
       key = `^${key}`;

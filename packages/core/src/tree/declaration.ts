@@ -7,12 +7,11 @@ import { isNode } from './util/is-node';
 import { Nil } from './nil';
 import type { Context, TreeContext } from '../context';
 import { Interpolated } from './interpolated';
-import type { General, Name } from './general';
+import { type General, Name } from './general';
 import { Reference } from './reference';
 import { List } from './list';
 import { spaced } from './sequence';
 import { Operation } from './operation';
-import { BasicDeclaration } from './declaration-basic';
 
 export const enum AssignmentType {
   Default = ':',
@@ -50,12 +49,6 @@ export type DeclarationOptions = {
    */
   setDefined?: boolean;
 
-  /**
-   * Used for mixin / function parameters (and args). It's not the
-   * same kind of variable declaration.
-   */
-  paramVar?: boolean;
-
   /** Used by SCSS (!default) and Jess (?:) */
   // setIfUndefined?: boolean
   /**
@@ -82,19 +75,10 @@ export type DeclarationValue = {
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
-export class Declaration extends BasicDeclaration<DeclarationValue, DeclarationOptions> {
+export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts> {
   override type = 'Declaration';
   override shortType = 'decl';
   override allowRuleRoot = true;
-
-  constructor(
-    value: DeclarationValue,
-    options?: DeclarationOptions,
-    location?: LocationInfo,
-    treeContext?: TreeContext
-  ) {
-    super(value, options, location, treeContext);
-  }
 
   /** If the value has curly braces, a semi-colon is not required */
   override get requiredSemi() {
@@ -148,7 +132,7 @@ export class Declaration extends BasicDeclaration<DeclarationValue, DeclarationO
         switch (assign) {
           case AssignmentType.MergeList:
           case AssignmentType.MergeSequence: {
-            const ref = new Reference(key, {
+            const ref = new Reference({ key }, {
               type,
               fallbackValue: new Nil(),
               filter: (n) => {
@@ -172,7 +156,7 @@ export class Declaration extends BasicDeclaration<DeclarationValue, DeclarationO
           case AssignmentType.Add: {
             node.value.value =
               new Operation([
-                new Reference(key, { type }),
+                new Reference({ key }, { type }),
                 '+',
                 value
               ]);
@@ -180,7 +164,7 @@ export class Declaration extends BasicDeclaration<DeclarationValue, DeclarationO
           }
           case AssignmentType.CondAssign: {
             node.value.value =
-              new Reference(key, {
+              new Reference({ key }, {
                 type,
                 fallbackValue: value
               });
@@ -249,9 +233,15 @@ export class Declaration extends BasicDeclaration<DeclarationValue, DeclarationO
 
 export type DeclarationParams = ConstructorParameters<typeof Declaration>;
 
-export const decl = defineType<DeclarationValue>(Declaration, 'Declaration', 'decl') as (
-  value: DeclarationValue | DeclarationParams[0],
-  options?: DeclarationParams[1],
-  location?: DeclarationParams[2],
-  treeContext?: DeclarationParams[3]
-) => Declaration;
+defineType<DeclarationValue>(Declaration, 'Declaration', 'decl');
+
+export const decl = (
+  value: DeclarationValue | { name: string; value: Node; important?: General<'Flag'> },
+  options?: DeclarationOptions,
+  location?: LocationInfo,
+  treeContext?: TreeContext
+) => {
+  let { name } = value;
+  value.name = typeof name === 'string' ? new Name(name) : name;
+  return new Declaration(value as DeclarationValue, options, location, treeContext);
+};

@@ -1,5 +1,4 @@
 import {
-  root,
   ruleset,
   sel,
   el,
@@ -11,27 +10,27 @@ import {
   any,
   call,
   ref,
-  type FindOptions,
-  type Node,
+  Node,
   type Rules,
   AssignmentType,
   VarDeclaration,
   type Selector
 } from '..';
 import { Context, TreeContext } from '../../context';
+import type { FindOptions } from '../util/registry-utils';
 
 let context: Context;
 
 function getPropWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
   context.rulesContext = n;
   opts.searchParents = true;
-  return n.findDeclaration(key, 'Declaration', opts);
+  return n.find('declaration', key, 'Declaration', opts);
 }
 
 function getVarWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
   context.rulesContext = n;
   opts.searchParents = true;
-  let decl = n.findDeclaration(key, 'VarDeclaration', opts);
+  let decl = n.find('declaration', key, 'VarDeclaration', opts);
   return decl;
 }
 
@@ -43,6 +42,14 @@ function getVarWithContext(context: Context, n: Rules, key: string, opts: FindOp
 // }
 
 describe('Rules', () => {
+  beforeAll(() => {
+    Node.prototype.renderInvisible = true;
+  });
+
+  afterAll(() => {
+    Node.prototype.renderInvisible = false;
+  });
+
   let getProp = getPropWithContext.bind(context, context);
   let getVar = getVarWithContext.bind(context, context);
   // let getSelector = getSelectorWithContext.bind(context, context);
@@ -126,14 +133,14 @@ describe('Rules', () => {
 
       it('throws if undefined', async () => {
         let node = rules([
-          decl({ name: 'foo', value: ref('first', { type: 'variable' }) })
+          decl({ name: 'foo', value: ref({ key: 'first' }, { type: 'variable' }) })
         ]);
         await expect(node.eval(context)).rejects.toThrowError();
       });
 
       it('doesn\'t throw error if there\'s a fallback', async () => {
         let node = rules([
-          decl({ name: 'foo', value: ref('first', { type: 'variable', fallbackValue: true }) })
+          decl({ name: 'foo', value: ref({ key: 'first' }, { type: 'variable', fallbackValue: true }) })
         ]);
         await expect(node.eval(context)).resolves.not.toThrow();
       });
@@ -242,7 +249,7 @@ describe('Rules', () => {
         node = await node.eval(context);
         let inherited = node.at(1);
         expect(`${getVar(node, 'one')}`).toBe('$one: three');
-        expect(`${getVar(inherited as Rules, 'one')}`).toBe('$$one: three');
+        expect(`${getVar(inherited as Rules, 'one')}`).toBe('$^one: three');
       });
 
       it('fails to set if existing variable is readonly', async () => {
@@ -356,7 +363,7 @@ describe('Rules', () => {
         node = await node.eval(context);
 
         expect(`${getVar(node, 'one', { start: node.at(1)?.index })}`).toBe('$one: two');
-        expect(`${getVar(node, 'one', { start: node.at(2)?.index })}`).toBe('$$one: two');
+        expect(`${getVar(node, 'one', { start: node.at(2)?.index })}`).toBe('$^one: two');
         expect(`${getVar(node, 'one', { start: 10 })}`).toBe('$one: three');
       });
 

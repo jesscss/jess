@@ -101,13 +101,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   override toTrimmedString(depth: number = 0): string {
     let { name, rules, params, guard } = this.value;
     let { isFunctionWith } = this.options;
-    let space = ''.padStart(depth * 2);
-    let output = `${name}`;
-    if (params) {
-      output += '(';
-      output += params.toString(depth);
-      output += ')';
-    }
+    let output = `${name}(${params?.toString(depth) ?? ''})`;
     if (guard) {
       output += ` when ${guard}`;
     }
@@ -117,9 +111,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     if (isFunctionWith === 'expression') {
       output += ` ${(rules.at(0) as Declaration).value.value.toString(depth)}`;
     } else {
-      output += ' {\n';
-      output += rules.toString(depth + 1);
-      output += `${space}}`;
+      output += ' ' + rules.toBraced(depth);
     }
     return output;
   }

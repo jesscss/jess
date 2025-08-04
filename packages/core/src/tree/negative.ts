@@ -6,7 +6,6 @@ import { Dimension } from './dimension';
  * The negative sign before a node
  */
 export class Negative extends Node<Node> {
-  declare value: Node;
   type = 'Negative' as const;
   shortType = 'negative' as const;
 

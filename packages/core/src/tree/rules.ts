@@ -129,11 +129,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     type: 'ruleset' | 'declaration' | 'mixin' | 'function',
     keys: string | string[] | Set<string>,
     filterType?: string,
-    options?: Registries.FindOptions
+    options: Registries.FindOptions = {}
   ): ReturnType<Registries.RulesetRegistry['find']> | ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.MixinRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined {
     let registry = this[`${type}Registry`];
-    let className = `${type.charAt(0).toUpperCase()}${type.slice(1)}` as Capitalize<typeof type>;
     if (!registry) {
+      /**
+       * @note - Ideally we wouldn't create a registry object if we didn't have to,
+       * just to find. But the find methods have complex logic for searching parent
+       * and children rules / registries.
+       */
+      let className = `${type.charAt(0).toUpperCase()}${type.slice(1)}` as Capitalize<typeof type>;
       let RegistryClass = Registries[`${className}Registry`];
       registry = new RegistryClass(this);
       (this as any)[`${type}Registry`] = registry;
@@ -149,8 +154,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     node: Node
   ) {
     let registry = this[`${type}Registry`];
-    let className = `${type.charAt(0).toUpperCase()}${type.slice(1)}` as Capitalize<typeof type>;
     if (!registry) {
+      let className = `${type.charAt(0).toUpperCase()}${type.slice(1)}` as Capitalize<typeof type>;
       let RegistryClass = Registries[`${className}Registry`];
       registry = new RegistryClass(this);
       (this as any)[`${type}Registry`] = registry;
@@ -171,6 +176,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   * [Symbol.iterator]() {
     yield* this.value.entries();
+  }
+
+  /**
+   * Used by Ruleset, Mixins, and AtRules etc to render
+   * rules with braces.
+   */
+  toBraced(depth: number = 0) {
+    let space = ''.padStart(depth * 2);
+    let output = `{${this.toString(depth + 1)}`;
+    if (this.post === undefined) {
+      output += '\n';
+    }
+    output += `${space}}`;
+    return output;
   }
 
   override toTrimmedString(depth: number = 0) {
@@ -238,17 +257,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return Object.fromEntries(output);
   }
 
-  /**
-   * SCOPING
-   * The scope part of rules. Originally, `Scope` this was a separate
-   * class, but making it part of the definition of rules reduces
-   * duplication of concepts like "scope parents" since they
-   * are just Rules parents.
-   */
-
   /** @todo - Refactor? */
-  private _rulesSet: RulesEntry[] | undefined;
-  private get rulesSet(): RulesEntry[] {
+  _rulesSet: RulesEntry[] | undefined;
+  get rulesSet(): RulesEntry[] {
     return (this._rulesSet ??= []);
   }
 

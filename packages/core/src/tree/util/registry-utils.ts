@@ -9,7 +9,6 @@ import type { JsFunction } from '../js-function';
 import type { Func } from '../function';
 import type { General } from '../general';
 import type { Declaration } from '../declaration';
-import type { BasicDeclaration } from '../declaration-basic';
 import { atIndex } from './collections';
 
 const { isArray } = Array;
@@ -435,7 +434,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
    */
   override find(
     key: string,
-    filterType: 'VarDeclaration' | 'Declaration' | 'BasicDeclaration' = 'VarDeclaration',
+    filterType: 'VarDeclaration' | 'Declaration' = 'VarDeclaration',
     options?: FindOptions
   ): Declaration | undefined {
     this.indexPendingItems();
@@ -452,7 +451,11 @@ export class DeclarationRegistry extends Registry<Declaration> {
     } = options ?? {};
     while (rules) {
       let currentReadonly = options?.readonly || rules.options.readonly;
-      let set = rules.declarationRegistry?.index.get(key);
+      let registry = rules.declarationRegistry;
+      if (registry) {
+        registry.indexPendingItems();
+      }
+      let set = registry?.index.get(key);
       let list = set ? [...set] : undefined;
       if (list) {
         list = list.filter(
@@ -498,7 +501,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
             newOpts.searchParents = false;
             newOpts.local = newLocal;
             newOpts.start = undefined;
-            let result = r.node.declarationRegistry?.find(key, filterType, newOpts);
+            let result = r.node.find('declaration', key, filterType, newOpts);
             if (result) {
               /**
                * If it's public, and it's the lower-most declaration,

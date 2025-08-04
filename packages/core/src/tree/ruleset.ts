@@ -58,19 +58,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   override toTrimmedString(depth: number = 0): string {
-    let space = ''.padStart(depth * 2);
     let { selector, rules } = this.value;
     if (selector instanceof Nil) {
       return '';
     }
-    let output = '';
-    output += `${selector.toString(depth, undefined, ' ')}{`;
-    output += `${rules.toString(depth + 1)}`;
-    if (rules.post === undefined) {
-      output += '\n';
-    }
-    output += `${space}}`;
-    return output;
+    return selector.toString(depth, undefined, ' ') + rules.toBraced(depth);
   }
 
   override async preEval(context: Context): Promise<this> {
