@@ -1,5 +1,5 @@
 import {
-  el, extend, root, ruleset, rules,
+  el, extend, ruleset, rules,
   type Ruleset
 } from '..';
 import { Context } from '../../context';
@@ -11,7 +11,7 @@ describe('Extend', () => {
   });
 
   it('should extend a simple selector', async () => {
-    let rule = root([
+    let rule = rules([
       ruleset({
         selector: el('.a'),
         rules: rules([])

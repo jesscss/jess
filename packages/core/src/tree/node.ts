@@ -581,7 +581,7 @@ export abstract class Node<
     this._location = node.location;
     this._treeContext = node.treeContext;
     /** Copy any state rules */
-    for (let rule of this.stateRules) {
+    for (let rule of this.stateRules || []) {
       (this as any)[rule] = (node as any)[rule];
     }
     this.evaluated &&= node.evaluated;
