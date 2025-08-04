@@ -369,9 +369,9 @@ describe('Rules', () => {
 
       it('won\'t find variables in sub-rules of local rules', async () => {
         let node = rules([ // root.jess
-          rules([ // @use 'child1.jess'
+          rules([ // @-compose('child1.jess')
             vardecl({ name: 'foo', value: any('bar') }),
-            rules([ // @use 'child2.jess'
+            rules([ // @-compose('child2.jess')
               vardecl({ name: 'one', value: any('two') })
             ], {
               local: true,
