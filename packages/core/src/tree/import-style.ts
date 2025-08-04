@@ -1,6 +1,6 @@
 import { Node, defineType } from './node';
 import { type Reference } from './reference';
-import { type Rules, type RulesOptions } from './rules';
+import { type Rules, type RulesOptions, type RulesVisibility } from './rules';
 import { type Quoted } from './quoted';
 import { type Context } from '../context';
 import { isNode } from './util/is-node';
@@ -34,7 +34,7 @@ export type StyleImportOptions = {
    *   - ❌ selectors are NOT rendered in output (but can be replaced / made visible with extend)
    *   - ❌ file imported by `@-reference` does not have access to parent scope
    */
-  type: 'use' | 'include' | 'import' | 'reference';
+  type: 'import' | 'compose';
 
   /**
    * Options passed to the Jess import plugin. Options are interpreted like
@@ -44,27 +44,29 @@ export type StyleImportOptions = {
    *     - bar: true
    *     - baz: '1'
    */
-  pluginOptions?: Record<string, any>;
+  importOptions?: {
+    /**
+     * Affects evaluation - will be passed to registered import handlers when parsing.
+     * Normally this is done by file extension, but can be overridden.
+     *
+     * e.g. `@-import (type: less) 'foo.css';`
+     */
+    type?: string;
+    /** Rules are not rendered in output. */
+    reference?: boolean;
+    /** Less's default behavior for `@import` is to only import any resolved resource once. */
+    once?: boolean;
+    /** Rulesets can't be extended, the extend "search" will stop at this import. */
+    protected?: boolean;
+    /** Variables can't be reassigned (default is true for `@-compose` and false for `@-import`). */
+    readonly?: boolean;
+    [key: string]: any;
+  };
 
   /** e.g. `import * as foo` sets namespace to `foo` */
   namespace?: string;
-  /**
-   * - In array,
-   *   - string is a plain import identifier
-   *   - [string, string] is { [identifier1] as [identifier2] }
-  */
-  imports?: string | Array<string | [string, string]>;
-
-  /**
-   * Affects evaluation - will be passed to registered import handlers when parsing.
-   * Normally this is done by file extension, but can be overridden.
-   *
-   * e.g. `@-import 'foo.css?less';`
-   */
-  asType?: string;
 
   /** Set on the import node instead of on rules */
-  readonly?: boolean;
   local?: boolean;
   rulesVisibility?: RulesOptions['rulesVisibility'];
 };
@@ -92,12 +94,10 @@ export type StyleImportValue = {
 
 /**
  * This is a generic class for:
- *   - Less, Sass+, Jess `@use`
- *   - Less, Sass+, Jess `@include`
- *   - Less, Jess `@from`
- *   - Less and Sass `@import` that are indicated to be processed by the engine
- *
- * `@use` values will be passed to Jess plugins
+ *   - Sass+ `@use` (for stylesheets)
+ *   - Jess `@-compose` and Less `@compose`
+ *   - Less, Sass+, and Jess `@import` / `@-import` that are indicated
+ *     to be processed by the engine
  *
  * @see https://sass-lang.com/documentation/at-rules/import/
  */
@@ -118,7 +118,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     let node = this.maybeClone(context);
     const { path, with: withValues } = node.value;
     const { options } = node;
-    const { type } = options;
+    options.importOptions ??= {};
+    const { type, importOptions } = options;
     const finalPath = (await path.eval(context)).valueOf();
     /**
      * @todo - Add options
@@ -167,62 +168,31 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
 
     /** Set visibility according to import type */
-    switch (type) {
-      case 'use':
-        node.options = {
-          ...options,
-          rulesVisibility: {
-            Ruleset: 'public',
-            Declaration: 'public',
-            VarDeclaration: 'public',
-            Mixin: 'public'
-          },
-          readonly: true,
-          local: true
-        };
-        break;
-      case 'include':
-        node.options = {
-          ...options,
-          rulesVisibility: {
-            Ruleset: 'public',
-            Declaration: 'public',
-            VarDeclaration: 'private',
-            Mixin: 'private'
-          },
-          readonly: true,
-          local: true
-        };
-        break;
-      case 'import':
-        node.options = {
-          ...options,
-          rulesVisibility: {
-            Ruleset: 'public',
-            Declaration: 'public',
-            VarDeclaration: 'public',
-            Mixin: 'public'
-          },
-          /** Imports act more like merged rules, so they are writeable. */
-          readonly: false
-        };
-        break;
-      /** @todo - Should `@-import (reference)` differ from `@-reference`?  */
-      case 'reference':
-        node.options = {
-          ...options,
-          rulesVisibility: {
-            /** Visible when extended */
-            Ruleset: 'optional',
-            Declaration: 'private',
-            VarDeclaration: 'public',
-            Mixin: 'public'
-          },
-          readonly: true,
-          local: true
-        };
-        break;
+    let Ruleset: RulesVisibility = 'public';
+    let Declaration: RulesVisibility = 'public';
+    let Mixin: RulesVisibility = 'public';
+
+    if (importOptions.protected) {
+      Ruleset = 'private';
+    } else if (importOptions.reference) {
+      Ruleset = 'optional';
     }
+
+    if (type === 'compose') {
+      importOptions.readonly ??= true;
+    } else {
+      importOptions.readonly ??= false;
+    }
+
+    node.options = {
+      ...options,
+      rulesVisibility: {
+        Ruleset,
+        Declaration,
+        Mixin
+      },
+      local: type === 'compose'
+    };
 
     node.value.rules = rules;
     return node;

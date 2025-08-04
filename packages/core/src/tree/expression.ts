@@ -1,17 +1,21 @@
 import { Node, defineType } from './node';
 import { Selector } from './selector';
 
+export type ExpressionOptions = {
+  parens?: boolean;
+};
+
 /**
  * An expression is a node that returns a value.
  * It can contain values, references, and operations.
  *
- * In Less/Sass, everything containing an operation is
- * an expression.
+ * When parsing Less/Sass, everything containing an operation is
+ * considered an expression.
  *
  * @note This extends Selector just because it can be
  * in the selector position (initially).
  */
-export class Expression extends Selector<Node> {
+export class Expression extends Selector<Node, ExpressionOptions> {
   type = 'Expression' as const;
   shortType = 'expr' as const;
 
@@ -20,7 +24,10 @@ export class Expression extends Selector<Node> {
   }
 
   override toTrimmedString(depth?: number): string {
-    return `#(${this.value.toString(depth)})`;
+    let { parens } = this.options;
+    let left = parens ? '(' : '';
+    let right = parens ? ')' : '';
+    return `$${left}${this.value.toString(depth)}${right}`;
   }
 }
 

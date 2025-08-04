@@ -33,10 +33,10 @@ export class General<
 }
 
 export class Name extends General<'Name'> {}
-defineType(Name, 'Name');
+export const name = defineType(Name, 'Name');
 
 export class Keyword extends General<'Keyword'> {}
-defineType(Keyword, 'Keyword');
+export const keyword = defineType(Keyword, 'Keyword');
 
 export class UrlValue extends General<'UrlValue'> {}
 defineType(UrlValue, 'UrlValue');

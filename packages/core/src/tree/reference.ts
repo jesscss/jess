@@ -25,6 +25,33 @@ import { isNode } from './util/is-node';
  *   - `@foo` refers to a variable
  *   - `$foo` refers to a property
  *   - `.foo` or `#foo` refers to a mixin
+ *
+ *   target? undefined | Reference | Call
+ *   key: string | number | General | Quoted | Reference
+ *   keyType: 'declaration' | 'variable' | 'mixin'
+ *
+ *   target: undefined
+ *   key: 'key'
+ *   keyType: 'declaration'
+ *
+ *   $.key
+ *
+ *   target: undefined
+ *   key: 'key'
+ *   keyType: 'variable'
+ *
+ *   $key
+ *
+ *   target: undefined
+ *   key: 'key'
+ *   keyType: 'mixin'
+ *
+ *   $ > key
+ *
+ *   target: Reference ($.key)
+ *   key: Quoted('key')
+ *   keyType: 'property'
+ *   $.key['key']
  */
 export type ReferenceOptions = {
   /**

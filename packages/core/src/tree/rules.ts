@@ -34,6 +34,7 @@ export const enum Priority {
   High = 3,
   Highest = 4
 }
+export type RulesVisibility = 'public' | 'optional' | 'private';
 
 export type RulesOptions = {
   /**
@@ -78,7 +79,7 @@ export type RulesOptions = {
    *       Mixin: 'public'
    *    }
    */
-  rulesVisibility?: Record<string, 'public' | 'optional' | 'private'>;
+  rulesVisibility?: Record<string, RulesVisibility>;
   readonly?: boolean;
   /**
    * all imports other than classic `@import` set returned rules to local.

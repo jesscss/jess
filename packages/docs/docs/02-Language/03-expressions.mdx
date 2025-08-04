@@ -4,9 +4,9 @@ title: Expressions
 
 Jess supports expressions, which are used to evaluate values, perform calculations, and more.
 
-All Jess expressions start with `$` and namespaces `$x.y` and function calls `$x.y()` are considered part of the expression. Math operations like `*` or `/` or comparisons like `=` or `>` must be wrapped in parentheses `$()` e.g. `$(x + 1)` or `$(x = 1)`.
+All Jess expressions start with `$`. You can think of `$` or `$(` as starting a new "expression context". If Jess encounters a mixin or function call e.g. `func(`, it will start a new "CSS value context" and temporarily exit the expression context. This is best explained with examples below.
 
-In addition, all expressions used in interpolation (within strings or identifiers) must be wrapped in `$()`.
+Note: all expressions used in interpolation (within strings or identifiers) must be wrapped in `$()`.
 
 ## Examples
 
@@ -55,16 +55,19 @@ $height: $(width + 10px);
 
 ## Identifiers in expressions
 
-Identifiers in expressions are evaluated as variable references.
+Identifiers in expressions are evaluated as variable references. Note in the example below, when we call `iscolor`, we enter a new "CSS value context" and temporarily exit the expression context. So if we want to pass in a variable, we need to start a new expression with `$`.
 
 ```less
 $color: red;
 value: $(color); // red
-value: $less.iscolor(color); // true
+value: $less.iscolor($color); // true
 ```
-
-If you need to pass in a keyword argument to a function or mixin where it is ambiguous whether it is a variable or a keyword, Jess allows `~` before an identifier to signify a keyword literal. So, like `~""` for string escapes and `~()` for parentheses escapes, you can think of it as escaping the expression context.
+```less
+$num: 10;
+value: $(num + 1); // 11
+```
+If you need to pass in a keyword argument in an expression context for some reason, Jess allows `~` before an identifier to signify a keyword literal. So, like `~""` for string escapes and `~()` for parentheses escapes, you can think of it as escaping the expression context.
 
 ```less
-value: $less.iscolor(~red); // true
+value: $(~black + #111); // #111
 ```

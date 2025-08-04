@@ -6,7 +6,7 @@ Similar to JavaScript, reserves a few `$` keywords to use for conditional evalua
 
 ## $if, $else, $elseif
 
-These conditionals evaluate pretty much how you would expect.
+These conditionals evaluate pretty much how you would expect. Note that even though control flow names start with `$`, they are not expressions, and expressions after them must be started with `$`.
 
 ### Examples
 
@@ -38,7 +38,7 @@ $if ($theme = "dark") {
 // An NPM module that gives us a season method
 @-use "some-date-fns" as date; 
 
-$season: $date.getSeason(date.now()); // e.g., returns "spring", "summer", etc.
+$season: $date.getSeason($date.now()); // e.g., returns "spring", "summer", etc.
 
 $if ($season = "spring") {
   body { background: #d8f5d1; }

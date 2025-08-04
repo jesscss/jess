@@ -60,6 +60,7 @@ export * from './declaration-custom';
 export * from './declaration-var';
 export * from './declaration';
 export * from './dimension';
+export * from './number';
 export * from './expression';
 export * from './extend';
 export * from './extend-list';

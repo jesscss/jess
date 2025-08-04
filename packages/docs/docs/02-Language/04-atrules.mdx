@@ -145,11 +145,11 @@ In contrast to `set`, `with` will set values only while being composed into the 
 }
 ```
 
-### @-compose reference
+### @-compose (reference)
 
 This is the same as basic `@-compose` except rules will not be rendered unless extended. In other words, you can use `reference` to import values, variables, and functions.
 
-This is somewhat like Less's `@import (reference)`, although with Less's `@import (reference)`, the referenced file can see the parent's variables, but with `@-compose reference`, the scope is isolated.
+This is much like Less's `@import (reference)`, although with Less's `@import (reference)`, the referenced file can see the parent's variables, but with `@-compose (reference)`, the scope is isolated.
 
 ```less
 // rules.jess
@@ -160,7 +160,7 @@ $border-color: green;
 ```
 ```less
 // main.jess
-@-compose reference './rules';
+@-compose (reference) './rules';
 
 .container {
   border: 2px dashed $rules.border-color;
@@ -173,31 +173,28 @@ This would output:
 }
 ```
 
-### @-compose private
+### @-compose (protected)
 
-Rules will be rendered, but variables and mixins are not available to this stylesheet.
+Rules cannot be extended when composed by other stylesheets.
 
 ```less
 // library.jess
-$border-color: red;
 .box {
-  border: 1px solid $border-color;
+  border: 1px solid green;
 }
 ```
 ```less
 // main.jess
-// Doesn't have access to vars in library.jess
-@-compose private 'library.jess' as *;
+@-compose (protected) './library.jess';
 
-.second-box {
-  border-color: $border-color; // Error
-}
+// Error!
+.second-box:-extend(.box);
 ```
 
 
-### @-compose export
+### @-compose (export)
 
-In Jess, variables defined or imported with `@-compose export` (or the namespace) will be re-exported and made available to a stylesheet downstream.
+In Jess, variables defined or imported with `@-compose (export)` (or the namespace) will be re-exported and made available to a stylesheet downstream.
 
 :::warning
 
@@ -205,24 +202,20 @@ Use this sparingly! It may be harder to reason about where variables and values 
 
 :::
 
-### @-compose readonly
-
-Rules cannot be extended.
-
 ### Simulating Sass's `@forward`
 
 Sass has an at-rule called `@forward` which "forwards" a stylesheet's values (variables, functions, and mixins) to a parent file that is importing the current stylesheet.
 
 To simulate Sass's forward, you could write:
- - `@-compose reference export readonly 'stylesheet.jess';`
+ - `@-compose (reference, export, protected) './stylesheet.jess';`
 
 This would do the following:
  - `reference` - Import variables and mixins but do not render rulesets.
  - `export` - variables and mixins are forwarded to a downstream stylesheet
- - `readonly` - Rules cannot be extended
+ - `protected` - Rules cannot be extended
 
 However, that's super wordy. For convenience, these three flags can be set with:
- - `@-compose forward 'stylesheet.jess';`
+ - `@-compose (forward) './stylesheet.jess';`
 
 ## @-use
 
@@ -249,8 +242,8 @@ We can directly import JS/TS modules with `@-use` e.g.
 You can also import and use Less and Sass functions.
 
 ```scss
-@-use '#less/type' as type;
-@-use '#sass/math' as math;
+@-use '#less/type';
+@-use '#sass/math';
 
 .box {
   value: $(type.isnumber(math.e)); // true

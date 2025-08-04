@@ -8,6 +8,7 @@ import { JsObject } from './js-object';
 import type { Number } from './number';
 import type { General } from './general';
 import type { Call } from './call';
+import { isNode } from './util/is-node';
 
 export type LookupValue = {
   /**
@@ -28,8 +29,12 @@ export type LookupValue = {
    * Number is the (0-based) offset in rules.
    * Negative numbers are from the end.
    * @todo - Add tests for this
+   *
+   * - with Number -- $foo[0]
+   * - with Reference -- $foo[$bar]
+   * - with General -- $foo.bar
    */
-  find: Number | Reference | General | Call;
+  find: Number | Reference | General;
 };
 
 /**
@@ -56,7 +61,7 @@ export class Lookup extends Node<LookupValue> {
   override toTrimmedString(): string {
     let { target, find } = this.value;
     let mixin = find instanceof Reference && find.options.type === 'mixin';
-    const keyIsBracketed = isNode(find, '');
+    const keyIsBracketed = isNode(find, 'Reference') && find.options.type === 'property';
     if (keyIsBracketed) {
       key = `[${key}]`;
     }

@@ -1,3 +1,23 @@
+# Aug 3, 2025
+
+- Include mixin by namespace, different reference syntax
+
+```scss
+value: $foo; // variable ref
+value: $.foo; // var or prop ref
+value: $.~foo; // prop ref
+value: $ns.$foo; // var 'foo' in ns
+value: $ns.foo; // var or prop 'foo' in ns
+value: $ns.~foo; // prop 'foo' in ns
+
+$|mixin(); // mixin include
+$*(.rule)(); // selector include
+$*.mixin(); // mixin or selector include 
+$ns|.mixin(); // mixin in ns
+$ns*.rule(); // mixin or selector in ns
+$ns*(.rule)(); // 
+```
+
 # Aug 2, 2025
 
 After working through more scenarios, I think both access and assignment of vars needs to be `$name`, because it's too confusing for patterns like `$foo +: 1;` whether it should start with `$` or `~`
