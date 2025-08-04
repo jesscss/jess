@@ -4,7 +4,8 @@ import {
   Node,
   type LocationInfo,
   type NodeOptions,
-  type TreeContext
+  type TreeContext,
+  defineType
 } from './node';
 import { type Operator, calculate } from './util/calculate';
 import { logger } from '../logger';
@@ -227,6 +228,8 @@ const conversions = {
     turn: 1
   } satisfies Record<AngleUnit, number>
 };
+
+defineType(Dimension, 'Dimension');
 
 export const dimension = (
   value: DimensionValue | [number, string] | number,

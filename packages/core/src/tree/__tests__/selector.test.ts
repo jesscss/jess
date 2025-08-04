@@ -32,9 +32,6 @@ describe('Selector', () => {
     });
   });
 
-  describe('normalization', () => {
-  });
-
   describe('equality', () => {
     test('normalized attribute selectors should be equal', () => {
       const attr1 = attr({

@@ -1,9 +1,15 @@
-import { vardecl, coll, decl, any, rules } from '..';
+import { vardecl, coll, decl, any, rules, Node } from '..';
 import { Context } from '../../context';
 
 let context: Context;
 
 describe('Let', () => {
+  beforeAll(() => {
+    Node.prototype.renderInvisible = true;
+  });
+  afterAll(() => {
+    Node.prototype.renderInvisible = false;
+  });
   beforeEach(() => {
     context = new Context();
     context.depth = 1;
@@ -16,12 +22,12 @@ describe('Let', () => {
         name: 'brandColor',
         value: any('#eee')
       });
-      expect(`${rule}`).toBe('$brandColor: #eee;');
+      expect(`${rule}`).toBe('$brandColor: #eee');
     // rule.toModule(context, out)
     // expect(out.toString()).toBe('let brandColor = $J.expr([$J.any("#eee")])')
     });
 
-    it.only('should serialize a collection', () => {
+    it('should serialize a collection', () => {
       context.depth = 2;
       let rule = vardecl({
         name: 'brandColor',

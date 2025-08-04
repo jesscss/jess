@@ -4,8 +4,9 @@ import { sel, sellist, el, co } from '..';
  * @todo - add tests for list bubbling
  */
 describe('Selector list', () => {
-  describe('normalization', () => {
-    test('combine lists', () => {
+  describe('equality', () => {
+    /** @todo - add test for non-equality */
+    test('basic list equality', () => {
       /** a b, a c */
       let sel1 = sellist([
         sel([
@@ -18,7 +19,7 @@ describe('Selector list', () => {
           co(' '),
           el('c')
         ])
-      ]).valueOf();
+      ]);
 
       let sel2 = sellist([
         sel([
@@ -31,10 +32,10 @@ describe('Selector list', () => {
           co(' '),
           el('b')
         ])
-      ]).valueOf();
+      ]);
 
-      expect(sel1).toEqual(sel2);
-      expect(sel1).toEqual('a b,a c');
+      expect(sel1.compare(sel2)).toBe(0);
+      expect(sel2.compare(sel1)).toBe(0);
     });
   });
 });

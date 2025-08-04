@@ -16,6 +16,10 @@ export function compare(a: any, b: any) {
   if (isNode(a) && isNode(b)) {
     return a.compare(b);
   }
+  /** Do comparison without strict equality */
+  if (a == b) {
+    return 0;
+  }
   return undefined;
 }
 

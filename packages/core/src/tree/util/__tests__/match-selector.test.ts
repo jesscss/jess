@@ -1,46 +1,5 @@
 import { el, sel, sellist, compound, is, co, attr, quoted, pseudo } from '../../..';
-import { findExtendableLocations } from '../find-extendable-locations';
-/**
- * Wrapper function to bridge findExtendableLocations API with legacy matchSelectors interface
- */
-function matchSelectors(target: any, find: any, allowPartial = false) {
-  const result = findExtendableLocations(target, find);
-  const locations = result && Array.isArray(result.locations) ? result.locations : [];
-
-  if (!locations || locations.length === 0) {
-    return {
-      hasMatch: false,
-      hasFullMatch: false,
-      hasPartialMatch: false,
-      matched: [],
-      remainders: [target]
-    };
-  }
-
-  const hasMatches = locations.some(loc => loc.matchedNode !== null);
-
-  if (!hasMatches) {
-    return {
-      hasMatch: false,
-      hasFullMatch: false,
-      hasPartialMatch: false,
-      matched: [],
-      remainders: [target]
-    };
-  }
-
-  const bestMatch = locations.find(loc => loc.matchedNode !== null);
-  const hasFullMatch = !bestMatch?.isPartialMatch;
-  const hasPartialMatch = bestMatch?.isPartialMatch === true;
-
-  return {
-    hasMatch: true,
-    hasFullMatch,
-    hasPartialMatch: allowPartial ? hasPartialMatch : false,
-    matched: bestMatch?.matchedNode ? [bestMatch.matchedNode] : [],
-    remainders: bestMatch?.remainders || []
-  };
-}
+import { findExtendableLocations, matchSelectors } from '../find-extendable-locations';
 
 /**
  * Helper functions for creating :where() and :not() pseudo-selectors
@@ -209,16 +168,65 @@ describe('Selector match tests', () => {
   });
 
   describe('Advanced matching scenarios', () => {
-    it('should match simple selectors using valueOf() comparison', () => {
-      // This simulates the case where selectors might have different internal representations
-      // but should match when their valueOf() results are equivalent
-      const target = el('.foo');
-      const find = el('.foo');
-      const result = matchSelectors(target, find);
-      expect(result.hasMatch).toBe(true);
-      expect(result.hasFullMatch).toBe(true);
-      expect(result.hasPartialMatch).toBe(false);
-    });
+          it('should match simple selectors using valueOf() comparison', () => {
+        // This simulates the case where selectors might have different internal representations
+        // but should match when their valueOf() results are equivalent
+        const target = el('.foo');
+        const find = el('.foo');
+        const result = matchSelectors(target, find);
+        expect(result.hasMatch).toBe(true);
+        expect(result.hasFullMatch).toBe(true);
+        expect(result.hasPartialMatch).toBe(false);
+      });
+
+      it('should match selector lists in different order', () => {
+        // Test basic selector list order independence: a b, c d should match c d, a b
+        const target = sellist([
+          sel([el('a'), co(' '), el('b')]),  // a b
+          sel([el('c'), co(' '), el('d')])   // c d
+        ]);
+        const find = sellist([
+          sel([el('c'), co(' '), el('d')]),  // c d
+          sel([el('a'), co(' '), el('b')])   // a b
+        ]);
+        const result = matchSelectors(target, find);
+        
+        console.log('Selector list order test:');
+        console.log('  target:', target.valueOf());
+        console.log('  find:', find.valueOf());
+        console.log('  hasMatch:', result.hasMatch);
+        console.log('  hasFullMatch:', result.hasFullMatch);
+        console.log('  hasPartialMatch:', result.hasPartialMatch);
+        
+        expect(result.hasMatch).toBe(true);
+        expect(result.hasFullMatch).toBe(true);
+        expect(result.hasPartialMatch).toBe(false);
+      });
+
+      it('should match expanded :is() - a b, a c vs a :is(b, c)', async () => {
+        // Test the complex :is() factoring case
+        const target = sellist([
+          sel([el('a'), co(' '), el('b')]),  // a b
+          sel([el('a'), co(' '), el('c')])   // a c
+        ]);
+        const find = sel([
+          el('a'), 
+          co(' '), 
+          pseudo({
+            name: ':is',
+            arg: sellist([el('b'), el('c')])  // :is(b, c)
+          })
+        ]);
+        const result = matchSelectors(target, find);
+        
+
+        
+        expect(result.hasMatch).toBe(true);
+        expect(result.hasFullMatch).toBe(true);
+        expect(result.hasPartialMatch).toBe(false);
+      });
+
+
 
     it('should partially match complex :is() with right-to-left logic - case 1', () => {
       // Complex :is() matching - sophisticated right-to-left backtracking
@@ -340,7 +348,9 @@ describe('Selector match tests', () => {
           where(el('.c')),
           el('.b')
         ]);
+        
         const result = matchSelectors(target, find);
+        
         expect(result.hasMatch).toBe(false);
       });
 

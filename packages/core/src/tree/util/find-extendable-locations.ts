@@ -17,7 +17,8 @@ import {
   areComplexSelectorsEquivalent,
   areSelectorArgumentsEquivalent,
   isStructurallyEqual,
-  getNonCombinatorComponents
+  getNonCombinatorComponents,
+  expandComplexSelectorWithIs
 } from './extend-helpers';
 
 /**
@@ -989,6 +990,71 @@ function tryBacktrackingComplexMatch(
 }
 
 /**
+ * Normalizes a selector to handle :is() equivalences
+ * This is the single source of truth for :is() expansion logic
+ *
+ * Examples:
+ * - :is(.a) -> .a
+ * - a :is(b, c) -> a b, a c (as SelectorList)
+ * - :is(.foo, .bar) -> .foo, .bar (as SelectorList)
+ */
+function normalizeSelector(selector: Selector): Selector {
+  // Case 1: Standalone :is() pseudo-selector -> expand to selector list
+  if (isNode(selector, 'PseudoSelector') && selector.value.name === ':is' && selector.value.arg) {
+    const arg = selector.value.arg as Selector;
+
+    // :is(.a) -> .a (single selector)
+    if (isNode(arg, 'SimpleSelector')) {
+      return arg;
+    }
+
+    // :is(.a, .b) -> .a, .b (selector list)
+    if (isNode(arg, 'SelectorList')) {
+      return arg;
+    }
+
+    // :is(complex) -> complex (pass through other types)
+    return arg;
+  }
+
+  // Case 2: Complex selector with :is() -> expand to selector list
+  if (isNode(selector, 'ComplexSelector')) {
+    const expanded = expandComplexSelectorWithIs(selector);
+    if (expanded.length > 1) {
+      return new SelectorList(expanded);
+    }
+    if (expanded.length === 1) {
+      return expanded[0]!;
+    }
+  }
+
+  // Case 3: Selector list -> normalize each selector in the list
+  if (isNode(selector, 'SelectorList')) {
+    const normalizedSelectors: Selector[] = [];
+
+    for (const sel of selector.value) {
+      const normalized = normalizeSelector(sel);
+      if (isNode(normalized, 'SelectorList')) {
+        // Flatten nested selector lists
+        normalizedSelectors.push(...normalized.value);
+      } else {
+        normalizedSelectors.push(normalized);
+      }
+    }
+
+    // If we only have one selector, return it directly
+    if (normalizedSelectors.length === 1) {
+      return normalizedSelectors[0]!;
+    }
+
+    return new SelectorList(normalizedSelectors);
+  }
+
+  // Case 4: All other selectors -> pass through unchanged
+  return selector;
+}
+
+/**
  * Enhanced pseudo-selector search with :is() backtracking optimization
  */
 function searchWithinPseudoSelector(
@@ -1227,7 +1293,22 @@ export interface MatchResult {
  * Maps to the new findExtendableLocations API
  */
 export function matchSelectors(target: Selector, find: Selector, partial = false): MatchResult {
-  const searchResult = findExtendableLocations(target, find);
+  // Normalize selectors to handle :is() equivalences at the entry point
+  const normalizedTarget = normalizeSelector(target);
+  const normalizedFind = normalizeSelector(find);
+
+  // Try exact match on normalized forms first (most common case)
+  if (normalizedTarget.valueOf() === normalizedFind.valueOf()) {
+    return {
+      hasMatch: true,
+      hasFullMatch: true,
+      hasPartialMatch: false,
+      matched: [find],
+      remainders: []
+    };
+  }
+
+  const searchResult = findExtendableLocations(normalizedTarget, normalizedFind);
 
   if (!searchResult.hasMatches) {
     return {

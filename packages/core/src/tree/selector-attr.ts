@@ -42,14 +42,6 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     }
     return valueOf;
   }
-
-  override compare(other: Node) {
-    const thisValue = this.valueOf();
-    if (other instanceof AttributeSelector) {
-      return compare(thisValue, other.valueOf());
-    }
-    return compare(thisValue, other);
-  }
 }
 
 /** Not sure why types couldn't be properly inferred */

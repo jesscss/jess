@@ -13,6 +13,7 @@ import { type Operator } from './util/calculate';
 import { Anonymous } from './general';
 import { TreeContext } from '../context';
 import { Nil } from './nil';
+import { compare } from './util/compare';
 /**
  * We bind these here to avoid circular dependencies
  * between Context and Node
@@ -43,6 +44,28 @@ Object.defineProperty(Node.prototype, 'treeContext', {
 });
 
 export { Node, TreeContext, type LocationInfo };
+
+import { Selector } from './selector';
+import { matchSelectors } from './util/find-extendable-locations';
+
+/** Patch Selector to avoid circularity */
+Selector.prototype.compare = function(other: Node) {
+  if (other instanceof Selector) {
+    let result = matchSelectors(this, other);
+    if (result.hasMatch) {
+      return 0;
+    } else if (result.hasPartialMatch) {
+      return -1;
+    } else {
+      /** Try for a reverse match to see if this is a partial of other */
+      result = matchSelectors(other, this);
+      if (result.hasPartialMatch) {
+        return 1;
+      }
+    }
+  }
+  return compare(this.valueOf(), other?.valueOf?.());
+};
 
 export * from './at-rule';
 export * from './block';

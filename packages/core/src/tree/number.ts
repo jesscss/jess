@@ -1,7 +1,8 @@
 import {
   type LocationInfo,
   type NodeOptions,
-  type TreeContext
+  type TreeContext,
+  defineType
 } from './node';
 import { Dimension } from './dimension';
 
@@ -16,6 +17,8 @@ export class Num extends Dimension {
     super({ number: value }, options, location, treeContext);
   }
 }
+
+defineType(Num, 'Num');
 
 export const num = (
   value: number,

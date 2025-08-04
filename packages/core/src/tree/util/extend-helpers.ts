@@ -229,6 +229,62 @@ export function expandCompoundWithPseudoSelectors(compound: CompoundSelector): C
 }
 
 /**
+ * Expands complex selectors containing :is() pseudo-selectors into equivalent selector lists
+ * This handles cases like: a :is(b, c) -> a b, a c
+ */
+export function expandComplexSelectorWithIs(complexSelector: ComplexSelector): Selector[] {
+  // Look for :is() pseudo-selectors in the complex selector
+  let hasIsSelector = false;
+  let isIndex = -1;
+  let isArg: Selector | null = null;
+
+  for (let i = 0; i < complexSelector.value.length; i++) {
+    const component = complexSelector.value[i];
+    if (isNode(component, 'PseudoSelector') && component.value.name === ':is' && component.value.arg && isSelector(component.value.arg)) {
+      hasIsSelector = true;
+      isIndex = i;
+      isArg = component.value.arg as Selector;
+      break; // Handle first :is() found for now
+    }
+  }
+
+  if (!hasIsSelector || !isArg) {
+    return [complexSelector]; // No :is() found, return original
+  }
+
+  const results: ComplexSelector[] = [];
+
+  // Get the list of alternatives from :is()
+  const alternatives = isNode(isArg, 'SelectorList') ? isArg.value : [isArg];
+
+  // For each alternative, create a new complex selector
+  alternatives.forEach((alternative) => {
+    const newComponents = [...complexSelector.value];
+    newComponents[isIndex] = alternative as any; // Replace :is() with the alternative
+    results.push(new ComplexSelector(newComponents).inherit(complexSelector));
+  });
+
+  return results;
+}
+
+/**
+ * Expands any selector that might contain :is() into equivalent forms for comparison
+ */
+export function expandSelectorWithIs(selector: Selector): Selector[] {
+  if (isNode(selector, 'ComplexSelector')) {
+    return expandComplexSelectorWithIs(selector);
+  }
+
+  // For other types, check if they need expansion
+  if (isNode(selector, 'CompoundSelector')) {
+    const expansions = expandCompoundWithPseudoSelectors(selector);
+    return expansions.length > 1 ? expansions : [selector];
+  }
+
+  return [selector]; // No expansion needed
+}
+
+/**
  * Creates a standardized path representation for selector tree navigation
  * Eliminates duplicate path building logic
  */
