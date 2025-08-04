@@ -71,3 +71,42 @@ If you need to pass in a keyword argument in an expression context for some reas
 ```less
 value: $(~black + #111); // #111
 ```
+
+## Other operators
+
+### `?` operator
+
+Jess uses `?` to represent optionality. In many cases, that means that a variable that isn't found will not trigger an error, but will instead return a `nil` node.
+
+```less
+border: 1px solid red;
+color: $some-undefined-variable?; // nil
+background: black;
+```
+→
+```css
+border: 1px solid red;
+background: black;
+```
+
+#### `?` with CSS-like functions
+
+Both Less and Sass allow "function fallbacks". In other words, function calls will look up a respective Less/Sass function, and if it doesn't exist, it will output the function as-is.
+
+Jess supports this with a `?` operator after the function name.
+
+```less
+// If a variable exists named `rgb`, call the variable as a function, passing these values to the function. Otherwise, output the function as-is.
+value: rgb?(10, 20, 30);
+```
+→
+```
+value: rgb(10, 20, 30);
+```
+
+Note that this is distinct from:
+```less
+// If the variable `rgb` does not exist, resolve to `nil`.
+value: $rgb?(10, 20, 30);
+```
+→ (no output)
