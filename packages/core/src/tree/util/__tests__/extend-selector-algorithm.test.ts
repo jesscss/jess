@@ -1,4 +1,3 @@
-import { describe, it, expect } from 'vitest';
 import { el, sel, sellist, compound, is, co } from '../../..';
 import { extendSelector, tryExtendSelector, ExtendErrorType } from '../extend';
 
