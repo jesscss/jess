@@ -491,5 +491,5 @@ export type TokenNames<T extends readonly any[]> = TokenNameMap<T>[number];
 /** Join all modes to get strong indexing */
 export type CssTokenType = TokenNames<TokenModes[keyof TokenModes]>;
 
-export const cssTokens = () => tokens() as WritableDeep<ReturnType<typeof tokens>>;
-export const cssFragments = () => fragments();
+export const cssTokens: () => WritableDeep<RawModeConfig> = tokens as unknown as () => WritableDeep<RawModeConfig>;
+export const cssFragments = fragments;

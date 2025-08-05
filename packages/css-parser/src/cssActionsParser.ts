@@ -20,9 +20,9 @@ import {
   Comment,
   Color,
   Dimension,
+  Num,
   Token,
   Rules,
-  Root,
   General
 } from '@jesscss/core';
 
@@ -71,94 +71,94 @@ export class CssActionsParser extends AdvancedActionsParser {
   legacyMode: boolean;
 
   /** Expose Chevrotain's flag */
-  skipValidations: boolean;
+  declare skipValidations: boolean;
 
   /** Rewire, declaring class fields in constructor with `public` */
-  stylesheet: Rule<(options?: Record<string, any>) => void>;
-  main: Rule<(ctx?: RuleContext) => void>;
-  qualifiedRule: Rule<(ctx?: RuleContext) => void>;
-  atRule: Rule;
-  selectorList: Rule<(ctx?: RuleContext) => void>;
-  declarationList: Rule;
-  forgivingSelectorList: Rule<(ctx?: RuleContext) => void>;
-  classSelector: Rule;
-  idSelector: Rule;
-  pseudoSelector: Rule<(ctx?: RuleContext) => void>;
-  attributeSelector: Rule;
-  nthValue: Rule;
-  complexSelector: Rule<(ctx?: RuleContext) => void>;
-  simpleSelector: Rule<(ctx?: RuleContext) => void>;
-  compoundSelector: Rule<(ctx?: RuleContext) => void>;
-  relativeSelector: Rule<(ctx?: RuleContext) => void>;
+  stylesheet!: Rule<(options?: Record<string, any>) => void>;
+  main!: Rule<(ctx?: RuleContext) => void>;
+  qualifiedRule!: Rule<(ctx?: RuleContext) => void>;
+  atRule!: Rule;
+  selectorList!: Rule<(ctx?: RuleContext) => void>;
+  declarationList!: Rule;
+  forgivingSelectorList!: Rule<(ctx?: RuleContext) => void>;
+  classSelector!: Rule;
+  idSelector!: Rule;
+  pseudoSelector!: Rule<(ctx?: RuleContext) => void>;
+  attributeSelector!: Rule;
+  nthValue!: Rule;
+  complexSelector!: Rule<(ctx?: RuleContext) => void>;
+  simpleSelector!: Rule<(ctx?: RuleContext) => void>;
+  compoundSelector!: Rule<(ctx?: RuleContext) => void>;
+  relativeSelector!: Rule<(ctx?: RuleContext) => void>;
 
-  declaration: Rule;
-  valueList: Rule<(ctx?: RuleContext) => void>;
+  declaration!: Rule;
+  valueList!: Rule<(ctx?: RuleContext) => void>;
   /** Often a space-separated sequence */
-  valueSequence: Rule<(ctx?: RuleContext) => void>;
-  value: Rule<(ctx?: RuleContext) => void>;
-  squareValue: Rule<(ctx?: RuleContext) => void>;
-  customValue: Rule;
-  innerCustomValue: Rule;
+  valueSequence!: Rule<(ctx?: RuleContext) => void>;
+  value!: Rule<(ctx?: RuleContext) => void>;
+  squareValue!: Rule<(ctx?: RuleContext) => void>;
+  customValue!: Rule;
+  innerCustomValue!: Rule;
 
-  functionCall: Rule;
-  functionCallArgs: Rule<(ctx?: RuleContext) => void>;
-  knownFunctions: Rule;
-  varFunction: Rule;
-  calcFunction: Rule;
-  urlFunction: Rule;
-  unknownValue: Rule;
-  string: Rule;
+  functionCall!: Rule;
+  functionCallArgs!: Rule<(ctx?: RuleContext) => void>;
+  knownFunctions!: Rule;
+  varFunction!: Rule;
+  calcFunction!: Rule;
+  urlFunction!: Rule;
+  unknownValue!: Rule;
+  string!: Rule;
 
   // expression: Rule
   // calc()
-  mathSum: Rule;
-  mathProduct: Rule;
-  mathValue: Rule;
-  mathParen: Rule;
+  mathSum!: Rule;
+  mathProduct!: Rule;
+  mathValue!: Rule;
+  mathParen!: Rule;
 
   /** At Rules */
-  innerAtRule: Rule;
-  importAtRule: Rule;
-  mediaAtRule: Rule<(inner?: boolean) => void>;
-  supportsAtRule: Rule<(inner?: boolean) => void>;
-  containerAtRule: Rule<(inner?: boolean) => void>;
-  atRuleBody: Rule<(inner?: boolean) => void>;
-  pageAtRule: Rule;
-  pageSelector: Rule;
-  fontFaceAtRule: Rule;
-  nestedAtRule: Rule;
-  nonNestedAtRule: Rule;
-  unknownAtRule: Rule;
+  innerAtRule!: Rule;
+  importAtRule!: Rule;
+  mediaAtRule!: Rule<(inner?: boolean) => void>;
+  supportsAtRule!: Rule<(inner?: boolean) => void>;
+  containerAtRule!: Rule<(inner?: boolean) => void>;
+  atRuleBody!: Rule<(inner?: boolean) => void>;
+  pageAtRule!: Rule;
+  pageSelector!: Rule;
+  fontFaceAtRule!: Rule;
+  nestedAtRule!: Rule;
+  nonNestedAtRule!: Rule;
+  unknownAtRule!: Rule;
 
   /** `@media` syntax */
-  mediaQuery: Rule;
-  mediaCondition: Rule;
-  mediaType: Rule;
-  mediaConditionWithoutOr: Rule;
-  mediaNot: Rule;
-  mediaInParens: Rule;
-  mediaAnd: Rule;
-  mediaOr: Rule;
-  mediaFeature: Rule;
+  mediaQuery!: Rule;
+  mediaCondition!: Rule;
+  mediaType!: Rule;
+  mediaConditionWithoutOr!: Rule;
+  mediaNot!: Rule;
+  mediaInParens!: Rule;
+  mediaAnd!: Rule;
+  mediaOr!: Rule;
+  mediaFeature!: Rule;
 
-  mfValue: Rule;
-  mediaRange: Rule;
-  mfComparison: Rule;
-  mfNonIdentifierValue: Rule;
+  mfValue!: Rule;
+  mediaRange!: Rule;
+  mfComparison!: Rule;
+  mfNonIdentifierValue!: Rule;
 
   /**
    * `@supports` syntax - the parsing is defined differently
    * from `@media`, which is fortunate, because it's much
    * simpler.
   */
-  supportsCondition: Rule;
-  supportsInParens: Rule;
+  supportsCondition!: Rule;
+  supportsInParens!: Rule;
 
   /** General purpose subrules */
-  anyOuterValue: Rule<(ctx?: RuleContext) => void>;
-  anyInnerValue: Rule<(ctx?: RuleContext) => void>;
-  extraTokens: Rule;
-  customBlock: Rule;
+  anyOuterValue!: Rule<(ctx?: RuleContext) => void>;
+  anyInnerValue!: Rule<(ctx?: RuleContext) => void>;
+  extraTokens!: Rule;
+  customBlock!: Rule;
 
   constructor(
     tokenVocabulary: TokenVocabulary,
@@ -272,15 +272,7 @@ export class CssActionsParser extends AdvancedActionsParser {
     }
     let post = this.getPrePost(nextTokenLocation[0]!);
     let remainder = processPrePost(post);
-    let returnRules: Rules;
-    if (isRoot) {
-      returnRules = new Root([], undefined, rules.length ? this.getLocationFromNodes(rules) : undefined, this.context);
-      returnRules.treeRoot = returnRules;
-      returnRules.value = rules;
-    } else {
-      returnRules = new Rules(rules, undefined, rules.length ? this.getLocationFromNodes(rules) : undefined, this.context);
-    }
-
+    let returnRules: Rules = new Rules(rules, undefined, rules.length ? this.getLocationFromNodes(rules) : undefined, this.context);
     // returnRules.scope = this.context.scope;
     returnRules.post = remainder;
     return returnRules;
@@ -337,11 +329,10 @@ export class CssActionsParser extends AdvancedActionsParser {
         return node;
       }
     }
-    if ((!post || post === 'both') && node.pre === 0) {
+    if ((!post || post === 'both') && node.pre === undefined) {
       let offset = node.location[0];
       if (offset !== undefined) {
         node.pre = this.getPrePost(offset);
-        // throw new Error(`Node "${node.type}" can't be wrapped`)
       }
     }
     return node;
@@ -354,37 +345,40 @@ export class CssActionsParser extends AdvancedActionsParser {
     let tokType = token.tokenType;
     let tokName = tokType.name;
     let T = this.T;
-    let dimValue: [number: number, unit?: string] | undefined;
+    let dimValue: { number: number; unit?: string } | undefined;
+    let numValue: number | undefined;
     const getDimension = (finalValue: Exclude<typeof dimValue, undefined>) =>
       new Dimension(finalValue, undefined, this.getLocationInfo(token), this.context);
+    const getNumber = (finalValue: number) =>
+      new Num(finalValue, undefined, this.getLocationInfo(token), this.context);
 
     if (tokenMatcher(token, T.Ident)) {
       /** @todo - check to see if it's a color */
       return new General(tokValue, { type: 'Keyword' }, this.getLocationInfo(token), this.context);
     } else if (tokenMatcher(token, T.Dimension)) {
-      dimValue = [parseFloat(token.payload[0]), token.payload[1]];
+      dimValue = { number: parseFloat(token.payload[0]), unit: token.payload[1] };
       return getDimension(dimValue);
     } else if (tokName === 'MathConstant') {
       switch (tokValue.toLowerCase()) {
         case 'pi':
-          dimValue = [Math.PI];
+          numValue = Math.PI;
           break;
         case 'infinity':
-          dimValue = [Infinity];
+          numValue = Infinity;
           break;
         case '-infinity':
-          dimValue = [-Infinity];
+          numValue = -Infinity;
           break;
         case 'e':
-          dimValue = [Math.E];
+          numValue = Math.E;
           break;
         case 'nan':
-          dimValue = [NaN];
+          numValue = NaN;
       }
-      return getDimension(dimValue!);
+      return getNumber(numValue!);
     } else if (tokenMatcher(token, T.Number)) {
-      dimValue = [parseFloat(tokValue)];
-      return getDimension(dimValue);
+      numValue = parseFloat(tokValue);
+      return getNumber(numValue);
     } else if (tokenMatcher(token, T.Color)) {
       return new Color(tokValue, undefined, this.getLocationInfo(token), this.context);
     } else {

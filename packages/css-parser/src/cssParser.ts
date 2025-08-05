@@ -4,7 +4,7 @@ import { type TokenMap, type CssParserConfig, CssActionsParser } from './cssActi
 import { createLexerDefinition } from './util';
 import { CssErrorMessageProvider } from './cssErrorMessageProvider';
 import type { ConditionalPick } from 'type-fest';
-import { type Node, type Root } from '@jesscss/core';
+import { type Node, type Rules } from '@jesscss/core';
 
 export interface IParseResult<T extends Node = Node> {
   lexerResult: ILexingResult;
@@ -53,8 +53,8 @@ export class CssParser {
     this.parser = new CssActionsParser(lexer, T as TokenMap, config);
   }
 
-  parse(text: string): IParseResult<Root>;
-  parse(text: string, rule: 'stylesheet'): IParseResult<Root>;
+  parse(text: string): IParseResult<Rules>;
+  parse(text: string, rule: 'stylesheet'): IParseResult<Rules>;
   parse(text: string, rule?: CssRules): IParseResult;
   parse(text: string, rule: CssRules = 'stylesheet'): IParseResult {
     const parser = this.parser;

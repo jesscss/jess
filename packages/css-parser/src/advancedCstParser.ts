@@ -71,35 +71,36 @@ export type OrAdvancedMethodOpts<T> = OrMethodOpts<T> & {
  */
 export class AdvancedCstParser extends CstParser {
   /** Indexed by the startOffset of the next token it precedes */
-  skippedTokenMap: Map<number, IToken[]>;
+  skippedTokenMap!: Map<number, IToken[]>;
 
   /** Start exposing private Chevrotain API */
-  CST_STACK: AdvancedCstNode[];
-  currIdx: number;
-  isBackTrackingStack: number[];
-  outputCst: boolean;
-  _errors: IRecognitionException[];
-  RULE_STACK: number[];
-  isTryingSubRule: boolean;
+  declare CST_STACK: AdvancedCstNode[];
+  declare currIdx: number;
+  declare isBackTrackingStack: number[];
+  declare outputCst: boolean;
+  declare _errors: IRecognitionException[];
+  declare RULE_STACK: number[];
+
+  isTryingSubRule!: boolean;
   trySubRuleCache = new WeakMap<(...args: any[]) => any, { state: IParserState; result: any }>();
 
-  getLaFuncFromCache: (key: number) => (alts: Array<IOrAlt<any>>) => number;
+  declare getLaFuncFromCache: (key: number) => (alts: Array<IOrAlt<any>>) => number;
 
-  getKeyForAutomaticLookahead: (
+  declare getKeyForAutomaticLookahead: (
     dslMethodIdx: number,
     occurrence: number
   ) => number;
 
-  isBackTracking: () => boolean;
+  declare isBackTracking: () => boolean;
 
-  setInitialNodeLocation: (node: CstNode) => void;
+  declare setInitialNodeLocation: (node: CstNode) => void;
 
-  setNodeLocationFromToken: (
+  declare setNodeLocationFromToken: (
     nodeLocation: CstNodeLocation,
     locationInformation: CstNodeLocation,
   ) => void;
 
-  setNodeLocationFromNode: (
+  declare setNodeLocationFromNode: (
     nodeLocation: CstNodeLocation,
     locationInformation: CstNodeLocation,
   ) => void;
@@ -415,6 +416,7 @@ export class AdvancedCstParser extends CstParser {
       }
     }
     this.skippedTokenMap = skippedTokenMap;
+    // @ts-expect-error - This is fine.
     super.input = inputTokens;
   }
 

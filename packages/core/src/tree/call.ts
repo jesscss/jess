@@ -9,7 +9,7 @@ export type CallValue = {
    * Can be an identifier or something like a mixin or variable lookup
    *   e.g. #mixin > .class() is [Call (#mixin ())] -> [Call (.class ())]
    */
-  ref: string | Node;
+  name: string | Node;
   args?: List;
   /**
    * Legacy Less feature -- if a ruleset is returned,
@@ -45,22 +45,22 @@ export class Call extends Node<CallValue> {
   override _requiredSemi = true;
 
   override toTrimmedString() {
-    let { ref, args, important } = this.value;
-    return `${ref}(${args ?? ''})${important ? ' !important' : ''}`;
+    let { name, args, important } = this.value;
+    return `${name}(${args ?? ''})${important ? ' !important' : ''}`;
   }
 
   override async evalNode(context: Context): Promise<Node> {
     let canOperate = context.canOperate;
     /** Reset parentheses "state" */
     context.canOperate = false;
-    let { ref, args } = this.value;
-    if (ref instanceof Node) {
-      ref = await ref.eval(context);
+    let { name, args } = this.value;
+    if (name instanceof Node) {
+      name = await name.eval(context);
     }
 
-    if (isNode(ref, 'JsFunction')) {
+    if (isNode(name, 'JsFunction')) {
       // try {
-      const func = ref.value;
+      const func = name.value;
       let result: any;
       if (func.fn.evalArgs !== false) {
         if (args) {
@@ -84,7 +84,7 @@ export class Call extends Node<CallValue> {
     }
     context.canOperate = canOperate;
     let node = this.maybeClone(context);
-    node.value.ref = ref;
+    node.value.name = name;
     node.value.args = args;
     return node;
   }

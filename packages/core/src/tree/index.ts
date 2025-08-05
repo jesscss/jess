@@ -119,3 +119,4 @@ export * from './import-js';
 export * from './interpolated';
 export * from './default-guard';
 export * from './rest';
+export * from './url';

@@ -8,7 +8,7 @@ import { type Operator } from './util/calculate';
 import type { Class, AbstractClass, Tagged } from 'type-fest';
 import type { Nil } from './nil';
 import { getEntriesFromNode, getValues } from './util/collections';
-import type { Rules } from './rules';
+import type { Comment } from './comment';
 
 export type { TreeContext };
 
@@ -110,7 +110,7 @@ export abstract class Node<
   Data = unknown,
   O extends NodeOptions = NodeOptions
 > {
-  private _location: LocationInfo | [] | undefined;
+  _location: LocationInfo | [] | undefined;
   get location() {
     return (this._location ??= []);
   }
@@ -147,8 +147,8 @@ export abstract class Node<
    * In a NodeList, any whitespace tokens outside of comments are individually represented,
    * because they are preserved while the comment may not be.
    */
-  pre: Node[] | 1 | 0 | undefined;
-  post: Node[] | 1 | 0 | undefined;
+  pre: Array<Comment | Nil | string> | 1 | 0 | undefined;
+  post: Array<Comment | Nil | string> | 1 | 0 | undefined;
 
   /** Will be copied during inherit */
   stateRules = ['visible', 'evaluated', 'preEvaluated'];
@@ -329,13 +329,17 @@ export abstract class Node<
   static* nodeAndPrePost(node: Node) {
     if (isArray(node.pre)) {
       for (let n of node.pre) {
-        yield n;
+        if (n instanceof Node) {
+          yield n;
+        }
       }
     }
     yield node;
     if (isArray(node.post)) {
       for (let n of node.post) {
-        yield n;
+        if (n instanceof Node) {
+          yield n;
+        }
       }
     }
   }
@@ -465,7 +469,7 @@ export abstract class Node<
     if (isArray(prePost)) {
       n[preOrPost] = [...prePost];
       for (let [key, node] of prePost.entries()) {
-        if (node.type === 'Comment') {
+        if (node instanceof Node && node.type === 'Comment') {
           /** Replace comment with a nil node that inherits location */
           const nilNode = this.nil?.() || this._createMinimalNil();
           prePost[key] = nilNode.inherit(node);
@@ -661,9 +665,10 @@ export abstract class Node<
     output += this.processPrePost('pre', defaultPre);
     output += this.toTrimmedString(depth);
     output += this.processPrePost('post', defaultPost);
-    if (this.options?.semi === true) {
-      output += ';';
-    }
+    // Here or in rules list?
+    // if (this.options?.semi === true) {
+    //   output += ';';
+    // }
     return output;
   }
 

@@ -141,10 +141,6 @@ export default tseslint.config([
       }, {
         selector: 'typeLike',
         format: ['PascalCase', 'UPPER_CASE', 'snake_case']
-      }, {
-        selector: 'property',
-        format: ['camelCase', 'PascalCase', 'snake_case'],
-        leadingUnderscore: 'allow'
       },
       {
         selector: 'parameter',
