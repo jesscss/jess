@@ -268,12 +268,12 @@ export class MixinRegistry extends Registry<
     return keyList;
   }
 
-  private _indexSelectorStart(mixin: Ruleset | Mixin, selector: Selector | Nil | undefined) {
-    const keyList = this.getSimpleKeyList(selector);
+  private _indexSelectorStart(mixin: Ruleset | Mixin, keySet: Set<string>) {
+    // const keyList = this.getSimpleKeyList(selector);
     const index = this.index;
 
-    if (keyList?.length) {
-      const [startKey, ...rest] = keyList;
+    if (keySet?.size) {
+      const [startKey, ...rest] = keySet;
       const existing = index.get(startKey!);
       if (existing) {
         existing.push({ value: mixin, match: rest });
@@ -285,14 +285,20 @@ export class MixinRegistry extends Registry<
 
   override indexPendingItems() {
     for (const mixin of this.pendingItems) {
-      const selector = mixin.value.name;
-      if (isNode(selector, 'SelectorList')) {
-        /** Selector list's selectors are individually registered */
-        for (const sel of selector.value) {
-          this._indexSelectorStart(mixin, sel);
+      if (isNode(mixin, 'Ruleset')) {
+        let selector = mixin.value.selector;
+        if (isNode(selector, 'Nil')) {
+          continue;
         }
-      } else {
-        this._indexSelectorStart(mixin, selector);
+
+        if (isNode(selector, 'SelectorList')) {
+          /** Selector list's selectors are individually registered */
+          for (const sel of selector.value) {
+            this._indexSelectorStart(mixin, sel.keySet);
+          }
+        } else {
+          this._indexSelectorStart(mixin, selector.keySet);
+        }
       }
     }
     this.pendingItems.clear();
@@ -330,9 +336,13 @@ export class MixinRegistry extends Registry<
 
     let rules: Rules | undefined = this.rules;
     let { searchParents = true, candidates } = options;
+    let outer: Array<{ value: Mixin | Ruleset; match: string[] }> | undefined;
     while (rules) {
       let [startKey, ...search] = keyList;
       const existing = rules.mixinRegistry?._findMatches(startKey!);
+      if (rules === this.rules) {
+        outer = existing;
+      }
 
       if (existing) {
         for (const { value, match } of existing) {
@@ -383,7 +393,7 @@ export class MixinRegistry extends Registry<
         }
       } while (rules && rules.type !== 'Rules');
     }
-    return candidates;
+    return outer;
   }
 }
 

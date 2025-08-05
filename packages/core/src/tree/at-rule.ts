@@ -55,8 +55,9 @@ export class AtRule extends Node<AtRuleValue> {
           .eval(context);
         node.value.rules = new Rules([rule]);
       }
-      let rootRules = this.collectRoots();
-      rootRules.forEach(rule => rules.value.push(rule));
+      /** @todo - Figure out at-rule bubbling */
+      // let rootRules = this.collectRoots();
+      // rootRules.forEach(rule => rules.value.push(rule));
     }
     return node;
   }

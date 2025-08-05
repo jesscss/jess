@@ -2,7 +2,7 @@ import { Node } from '../node';
 import { Nil } from '../nil';
 import { List } from '../list';
 import { Dimension } from '../dimension';
-import { Number } from '../number';
+import { Num } from '../number';
 import { Anonymous } from '../general';
 import { Color } from '../color';
 import { JsFunction } from '../js-function';
@@ -34,7 +34,7 @@ function getNodeType(value: any): Node {
     return new List(value.map(val => cast(val)));
   }
   if (value.constructor === Number) {
-    return new Number(value as unknown as number);
+    return new Num(value as unknown as number);
   }
   if (typeof value === 'string') {
     if (value.startsWith('#')) {

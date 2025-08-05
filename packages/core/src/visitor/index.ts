@@ -48,8 +48,8 @@ export interface Visitor {
   anonymousExit?(n: tree.Anonymous, ctx?: VisitorContext): void;
   general?(n: tree.General<string>, ctx?: VisitorContext): VisitorReturn;
   generalExit?(n: tree.General<string>, ctx?: VisitorContext): void;
-  call?(n: tree.Call<tree.CallValue>, ctx?: VisitorContext): VisitorReturn;
-  callExit?(n: tree.Call<tree.CallValue>, ctx?: VisitorContext): void;
+  call?(n: tree.Call, ctx?: VisitorContext): VisitorReturn;
+  callExit?(n: tree.Call, ctx?: VisitorContext): void;
   collection?(n: tree.Collection, ctx?: VisitorContext): VisitorReturn;
   collectionExit?(n: tree.Collection, ctx?: VisitorContext): void;
   color?(n: tree.Color, ctx?: VisitorContext): VisitorReturn;
@@ -62,8 +62,8 @@ export interface Visitor {
   conditionExit?(n: tree.Condition, ctx?: VisitorContext): void;
   customDeclaration?(n: tree.CustomDeclaration, ctx?: VisitorContext): VisitorReturn;
   customDeclarationExit?(n: tree.CustomDeclaration, ctx?: VisitorContext): void;
-  declaration?(n: tree.Declaration<tree.DeclarationOptions, tree.Name>): VisitorReturn;
-  declarationExit?(n: tree.Declaration<tree.DeclarationOptions, tree.Name>, ctx?: VisitorContext): void;
+  declaration?(n: tree.Declaration): VisitorReturn;
+  declarationExit?(n: tree.Declaration, ctx?: VisitorContext): void;
   dimension?(n: tree.Dimension, ctx?: VisitorContext): VisitorReturn;
   dimensionExit?(n: tree.Dimension, ctx?: VisitorContext): void;
   expression?(n: tree.Expression, ctx?: VisitorContext): VisitorReturn;
@@ -72,8 +72,6 @@ export interface Visitor {
   extendExit?(n: tree.Extend, ctx?: VisitorContext): void;
   extendList?(n: tree.ExtendList, ctx?: VisitorContext): VisitorReturn;
   extendListExit?(n: tree.ExtendList, ctx?: VisitorContext): void;
-  include?(n: tree.Include, ctx?: VisitorContext): VisitorReturn;
-  includeExit?(n: tree.Include, ctx?: VisitorContext): void;
   list?(n: tree.List<Node>, ctx?: VisitorContext): VisitorReturn;
   listExit?(n: tree.List<Node>, ctx?: VisitorContext): void;
   mixin?(n: tree.Mixin, ctx?: VisitorContext): VisitorReturn;
@@ -82,8 +80,8 @@ export interface Visitor {
   negativeExit?(n: tree.Negative, ctx?: VisitorContext): void;
   func?(n: tree.Func, ctx?: VisitorContext): VisitorReturn;
   funcExit?(n: tree.Func, ctx?: VisitorContext): void;
-  functionValue?(n: tree.FunctionValue): VisitorReturn;
-  functionValueExit?(n: tree.FunctionValue, ctx?: VisitorContext): void;
+  jsFunction?(n: tree.JsFunction): VisitorReturn;
+  jsFunctionExit?(n: tree.JsFunction, ctx?: VisitorContext): void;
   nil?(n: tree.Nil, ctx?: VisitorContext): VisitorReturn;
   nilExit?(n: tree.Nil, ctx?: VisitorContext): void;
   operation?(n: tree.Operation, ctx?: VisitorContext): VisitorReturn;
@@ -98,8 +96,6 @@ export interface Visitor {
   rulesetExit?(n: tree.Ruleset, ctx?: VisitorContext): void;
   rules?(n: tree.Rules, ctx?: VisitorContext): VisitorReturn;
   rulesExit?(n: tree.Rules, ctx?: VisitorContext): void;
-  root?(n: tree.Root, ctx?: VisitorContext): VisitorReturn;
-  rootExit?(n: tree.Root, ctx?: VisitorContext): void;
   attributeSelector?(n: tree.AttributeSelector, ctx?: VisitorContext): VisitorReturn;
   attributeSelectorExit?(n: tree.AttributeSelector, ctx?: VisitorContext): void;
   basicSelector?(n: tree.BasicSelector, ctx?: VisitorContext): VisitorReturn;
@@ -112,20 +108,16 @@ export interface Visitor {
   compoundSelectorExit?(n: tree.CompoundSelector, ctx?: VisitorContext): void;
   complexSelector?(n: tree.ComplexSelector, ctx?: VisitorContext): VisitorReturn;
   complexSelectorExit?(n: tree.ComplexSelector, ctx?: VisitorContext): void;
-  sequence?(n: tree.Sequence<Node>, ctx?: VisitorContext): VisitorReturn;
-  sequenceExit?(n: tree.Sequence<Node>, ctx?: VisitorContext): void;
-  spaced?(n: tree.Spaced, ctx?: VisitorContext): VisitorReturn;
-  spacedExit?(n: tree.Spaced, ctx?: VisitorContext): void;
+  sequence?(n: tree.Sequence, ctx?: VisitorContext): VisitorReturn;
+  sequenceExit?(n: tree.Sequence, ctx?: VisitorContext): void;
   token?(n: tree.Token, ctx?: VisitorContext): VisitorReturn;
   tokenExit?(n: tree.Token, ctx?: VisitorContext): void;
-  varDeclaration?(n: tree.VarDeclaration<tree.Name>, ctx?: VisitorContext): VisitorReturn;
-  varDeclarationExit?(n: tree.VarDeclaration<tree.Name>, ctx?: VisitorContext): void;
+  varDeclaration?(n: tree.VarDeclaration, ctx?: VisitorContext): VisitorReturn;
+  varDeclarationExit?(n: tree.VarDeclaration, ctx?: VisitorContext): void;
   reference?(n: tree.Reference, ctx?: VisitorContext): VisitorReturn;
   referenceExit?(n: tree.Reference, ctx?: VisitorContext): void;
-  lookup?(n: tree.Lookup, ctx?: VisitorContext): VisitorReturn;
-  lookupExit?(n: tree.Lookup, ctx?: VisitorContext): void;
-  import?(n: tree.Import, ctx?: VisitorContext): VisitorReturn;
-  importExit?(n: tree.Import, ctx?: VisitorContext): void;
+  styleImport?(n: tree.StyleImport, ctx?: VisitorContext): VisitorReturn;
+  styleImportExit?(n: tree.StyleImport, ctx?: VisitorContext): void;
   interpolated?(n: tree.Interpolated, ctx?: VisitorContext): VisitorReturn;
   interpolatedExit?(n: tree.Interpolated, ctx?: VisitorContext): void;
   defaultGuard?(n: tree.DefaultGuard, ctx?: VisitorContext): VisitorReturn;
@@ -214,18 +206,20 @@ export abstract class TreeVisitor extends Visitor {
     super();
   }
 
-  enter(n: tree.Node) {
+  override enter(n: tree.Node) {
     this.visitedNodes.clear();
   }
 
-  _visit(n: Node, ctx: VisitorContext) {
+  override _visit(n: Node, ctx: VisitorContext) {
     if (this.visitedNodes.has(n)) {
       return n;
     }
     this.visitedNodes.add(n);
     const { reverse } = this;
     if (this.visitChildren === 'before') {
-      n.walkNodes(node => this._visit(node, ctx), true, reverse, true);
+      for (const node of n.children(true, reverse, true)) {
+        this._visit(node, ctx);
+      }
       const returnVal = super._visit(n, ctx);
       /** @node The exit function passes in the original node */
       this.visitExit(n, ctx);
@@ -244,7 +238,9 @@ export abstract class TreeVisitor extends Visitor {
       /** Don't visit new created nodes */
       this.visitedNodes.add(returnVal);
     } else {
-      n.walkNodes(node => this._visit(node, ctx), true, reverse, true);
+      for (const node of n.children(true, reverse, true)) {
+        this._visit(node, ctx);
+      }
     }
 
     this.visitExit(n, ctx);

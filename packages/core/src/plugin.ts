@@ -1,5 +1,5 @@
 import type { TreeContextOptions } from './context';
-import type { Root } from './tree/root';
+import type { Rules } from './tree/rules';
 import { join, isAbsolute, extname } from 'node:path';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
@@ -90,14 +90,14 @@ export abstract class FileManager<O extends FileManagerOptions = FileManagerOpti
    * Can override this instead of `getTree` if we want
    * to preserve extension-checking logic.
    */
-  protected async _getTree(fullPath: string, options?: Record<string, any>): Promise<Root | false> {
+  protected async _getTree(fullPath: string, options?: Record<string, any>): Promise<Rules | false> {
     return false;
   }
 
   /**
    * @param fullPath The fully resolved path
    */
-  async getTree(fullPath: string, options?: Record<string, any>): Promise<Root | false> {
+  async getTree(fullPath: string, options?: Record<string, any>): Promise<Rules | false> {
     const supported = this.supportedExtensions;
     if (supported && !supported.includes(extname(fullPath))) {
       return false;
