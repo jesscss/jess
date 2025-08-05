@@ -546,7 +546,15 @@ export function complexSelector(this: C, T: TokenMap) {
           if (co) {
             combinator = $.wrap(new Combinator(co.image, undefined, $.getLocationInfo(co), this.context), 'both');
           } else {
+            /** Whitespace combinators are special */
             let startOffset = this.LA(1).startOffset;
+            /**
+             * This can be confusing at first, but a whitespace combinator
+             * may not be a literal space character. It could be a newline,
+             * for example. So we store it as an empty string, which we can
+             * test against, and add the actual space character as pre/post
+             * nodes.
+             */
             combinator = new Combinator('', undefined, undefined, this.context);
             combinator.pre = $.getPrePost(startOffset);
           }
@@ -787,8 +795,8 @@ export function declaration(this: C, T: TokenMap, alt?: Alt) {
       let location = $.endRule();
       return new Declaration({
         name: name!,
-        value: $.wrap(value!, true),
-        important: important ? $.wrap(new General(important.image, { type: 'Flag' }, $.getLocationInfo(important), this.context), true) : undefined
+        value: $.wrap(value!, 'both'),
+        important: important ? $.wrap(new General(important.image, { type: 'Flag' }, $.getLocationInfo(important), this.context), 'both') : undefined
       }, { assign: assign!.image as AssignmentType }, location, this.context);
     }
   };

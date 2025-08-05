@@ -39,7 +39,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   override toTrimmedString() {
     let { sep = ',' } = this.options ?? {};
     return this.value.map(
-      (v, i) => v.toString(0, i === 0 ? '' : ' ')).join(`${sep}`
+      (v, i) => v.toString(0, i === 0 ? '' : '')).join(`${sep}`
     );
   }
 

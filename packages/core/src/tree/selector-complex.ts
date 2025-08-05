@@ -72,7 +72,11 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     for (let i = 0; i < length; i++) {
       let component = value[i]!;
       /** Add some combinator spacing */
-      if (isNode(component, 'Combinator') && component.value !== ' ') {
+      if (
+        isNode(component, 'Combinator')
+        && component.value !== ' '
+        && component.value !== ''
+      ) {
         output += !component.pre ? ' ' : component.processPrePost('pre');
         output += component.toTrimmedString(depth);
         output += !component.post ? ' ' : component.processPrePost('post');

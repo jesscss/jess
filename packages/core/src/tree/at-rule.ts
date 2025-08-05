@@ -29,7 +29,7 @@ export class AtRule extends Node<AtRuleValue> {
       output += prelude.toString();
     }
     if (rules) {
-      output += `{${rules.toString(depth + 1)}}`;
+      output += rules.toBraced(depth);
     } else {
       output += ';';
     }
