@@ -109,7 +109,8 @@ export abstract class FileManager<O extends FileManagerOptions = FileManagerOpti
 export type PluginObject = {
   /**
    * Will be the key name used if passing
-   * an explicit type.
+   * an explicit type. This should also be the name
+   * used if inferring the type from a file extension.
    * e.g. 'less'
    */
   name: string;

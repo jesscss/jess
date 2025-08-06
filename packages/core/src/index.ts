@@ -5,6 +5,7 @@ export * from './context';
 export * from './logger';
 export * from './plugin';
 export * from './jess-error';
+export * from './define-function';
 export * from './tree/util/is-node';
 export * from './tree/util/calculate';
 export * from './tree/util/compare';

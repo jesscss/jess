@@ -1,6 +1,22 @@
+# Aug 6, 2025
+
+- Added a defineFunction that makes Sass-like function calls possible. This will do compile-time type-checking
+
+### TODO
+- Allow "eval on access" pattern to eliminate the `evalArgs` necessity. That is, instead of passing in evaluated args or non-evaluated, pass in generated functions like: `() => node.eval(context)`. Each param, then, will evaluate on a getter from the object proxy. In order to do this... does the called function need to always receive a plain object? Instead of it receiving positional args? I think so...
+- Type the returned function with `(this: Context...)`
+- Make some sort of proxy-wrapper thing that passes in context in order to create a proxy object for the function
+- Re-work Less functions to use this defineFunction signature
+
+### FUTURE WORK
+- Re-work Less / Sass functions to, if possible, generate equivalent CSS functions / calcs that represent the color translation / list access... right now it may be too complex.
+
 # Aug 5, 2025
 
 Extend Scopes
+
+- Create a map of scope (strings) to a set of what scopes are visible to that scope
+- When registering rulesets that are extendable, and extends themselves, register them with their current extend scope
 
 - At-rules and files create extend scopes
 - When we encounter an at-rule with rules:
