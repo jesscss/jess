@@ -206,7 +206,7 @@ export class CssActionsParser extends AdvancedActionsParser {
     }
 
     if (lastNode instanceof Node) {
-      ([endOffset, endLine, endColumn] = lastNode.location as LocationInfo);
+      ([,,,endOffset, endLine, endColumn] = lastNode.location as LocationInfo);
     } else {
       ({ endOffset, endLine, endColumn } = lastNode as Required<IToken>);
     }
@@ -318,7 +318,7 @@ export class CssActionsParser extends AdvancedActionsParser {
     }
     // let skipValidations = this.skipValidations
     if (post) {
-      if (node.post === 0) {
+      if (node.post === undefined) {
         let offset = node.location[3];
         if (offset !== undefined) {
           node.post = this.getPrePost(offset, true);

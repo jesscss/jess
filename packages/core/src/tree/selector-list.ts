@@ -36,7 +36,16 @@ export class SelectorList extends Selector<Selector[]> {
   /** @todo - put in whitespace and line breaks */
   override toTrimmedString(depth: number = 0) {
     let space = ''.padStart(depth * 2);
-    return this.value.map(v => v.toString(depth)).join(`,\n${space}`);
+    let length = this.value.length;
+    let output = '';
+    for (let i = 0; i < length; i++) {
+      let line = this.value[i]!.toString(depth);
+      if (i < length - 1) {
+        line = line.replace(/\s*$/, `,\n${space}`);
+      }
+      output += line;
+    }
+    return output;
   }
 
   override valueOf() {

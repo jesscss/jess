@@ -62,7 +62,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (selector instanceof Nil) {
       return '';
     }
-    return selector.toString(depth, undefined, ' ') + rules.toBraced(depth);
+    let output = selector.toString(depth);
+    if (!/\s$/.test(output)) {
+      /** No whitespace before braces, add it */
+      output += ' ';
+    }
+    return output + rules.toBraced(depth);
   }
 
   override async preEval(context: Context): Promise<this> {

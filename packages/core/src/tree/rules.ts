@@ -183,11 +183,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * rules with braces.
    */
   toBraced(depth: number = 0) {
-    let space = ''.padStart(depth * 2);
+    let space = ''.padStart((depth) * 2);
     let output = `{${this.toString(depth + 1)}`;
-    if (this.post === undefined) {
-      output += '\n';
-    }
     output += `${space}}`;
     return output;
   }
@@ -198,25 +195,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let { value } = this;
     let outputs = value
       .map((n, i) => {
-        let out = n.toString(
-          depth,
-          i === 0
-            ? depth !== 0
-              ? `\n${space}`
-              : ''
-            : '\n'
-        );
-
+        let out = n.toString(depth);
+        /** Add proper indentation to each line, and new line at the end */
+        if (i === 0 && depth !== 0) {
+          out = out.replace(/^[\n\s]*/, `\n${space}`);
+        } else if (depth !== 0) {
+          out = out.replace(/^\s*/, space);
+        }
         if (out === '') {
           return '';
         }
         if (n.requiredSemi && n.options.semi !== false && value.length >= i) {
           out += ';';
         }
-        /**
-         * Replace the initial spaces in the first line with the correct indentation
-         */
-        return out.replace(/^\n+[ \t]*/, `\n${space}`);
+
+        out = out.replace(/[\n\s]*$/, '\n');
+
+        return out;
       });
     output += outputs
       .join('')
@@ -225,6 +220,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
        * (Remove empty lines)
        */
       .replace(/\n+/g, '\n');
+    if (depth === 0) {
+      /** Remove trailing whitespace */
+      return output.replace(/[\n\s]*$/, '');
+    }
+
     return output;
   }
 

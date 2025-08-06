@@ -1,3 +1,16 @@
+# Aug 5, 2025
+
+Extend Scopes
+
+- At-rules and files create extend scopes
+- When we encounter an at-rule with rules:
+  - create a unique extend scope, except in some cases
+- When we encounter a new style import:
+  - create a new (unique) scope
+  - if it's not protected, add it to the current file's accessible scopes
+  - if it is protected, do not update either file's accessible scopes
+  - if it is an `@-import`, then update both files' scopes
+
 # Aug 3, 2025
 
 - Include mixin by namespace, different reference syntax

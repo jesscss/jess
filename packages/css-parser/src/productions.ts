@@ -682,6 +682,7 @@ export function selectorList(this: C, T: TokenMap) {
       if (sequences!.length === 1) {
         return sequences![0]!;
       }
+
       return new SelectorList(sequences!, undefined, location, this.context);
     }
   };

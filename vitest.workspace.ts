@@ -3,7 +3,8 @@ export default defineWorkspace([
   'packages/*/vitest.config.ts',
   {
     test: {
-      setupFiles: ['./test/setup.ts']
+      setupFiles: ['./test/setup.ts'],
+      testTimeout: 30000
     }
   }
 ]);
