@@ -56,7 +56,7 @@ describe('defineFunction', () => {
     it('should work with partial record (missing optional parameters)', () => {
       // With the new validation, missing required parameters should throw
       expect(() => {
-        myFunc({ name: 'hello' });
+        (myFunc as any)({ name: 'hello' });
       }).toThrow('Required argument \'value\' is missing');
     });
 
@@ -112,7 +112,7 @@ describe('defineFunction', () => {
     it('should handle empty record', () => {
       // With the new validation, empty record should throw for missing required parameters
       expect(() => {
-        myFunc({});
+        (myFunc as any)({});
       }).toThrow('Required argument \'name\' is missing');
     });
 
