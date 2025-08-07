@@ -1,5 +1,4 @@
 import { Class, OmitIndexSignature } from 'type-fest';
-import { Color } from './tree/color';
 
 export type PrimitiveType = 'string' | 'number' | 'boolean' | 'null' | 'undefined';
 export type ArgType = PrimitiveType | Class<any>;
