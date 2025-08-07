@@ -6,7 +6,7 @@ export type ArgType = PrimitiveType | Class<any>;
 export type DefineFunctionOptions = {
   params: readonly {
     name: string;
-    type: ArgType | ArgType[];
+    type: ArgType | readonly ArgType[];
     optional?: boolean;
     default?: any;
   }[];
@@ -32,15 +32,19 @@ type GetArgType<T extends ArgType> =
               : never;
 
 // Get positional types for up to 5 parameters with strong typing
-type GetPositionalTypes<T extends DefineFunctionOptions> = {
-  [K in keyof T['params']]: T['params'][K] extends { optional: true } | { default: any }
-    ? GetArgType<T['params'][K] extends { type: ArgType } ? T['params'][K]['type'] : T['params'][K] extends { type: readonly ArgType[] } ? T['params'][K]['type'][number] : never> | undefined
-    : T['params'][K] extends { name: infer N extends string; type: ArgType }
-      ? GetArgType<T['params'][K]['type']>
-      : T['params'][K] extends { name: infer N extends string; type: readonly ArgType[] }
-        ? GetArgType<T['params'][K]['type'][number]>
-        : never;
-};
+// type GetPositionalTypes<T extends DefineFunctionOptions> = {
+//   [K in keyof T['params']]: T['params'][K] extends { optional: true } | { default: any }
+//     ? GetArgType<T['params'][K] extends { type: ArgType } ? T['params'][K]['type'] : T['params'][K] extends { type: readonly ArgType[] } ? T['params'][K]['type'][number] : never> | undefined
+//     : T['params'][K] extends { name: infer N extends string; type: ArgType }
+//       ? GetArgType<T['params'][K]['type']>
+//       : T['params'][K] extends { name: infer N extends string; type: readonly ArgType[] }
+//         ? GetArgType<T['params'][K]['type'][number]>
+//         : never;
+// } extends infer U
+//   ? U extends readonly any[]
+//     ? U
+//     : never
+//   : never;
 
 // Helper to make optional parameters optional in function signature
 type MakeOptional<T extends readonly any[]> = T extends [...infer Required, infer Optional]
@@ -50,69 +54,180 @@ type MakeOptional<T extends readonly any[]> = T extends [...infer Required, infe
   : T;
 
 // Get record types for named parameters
-type GetRecordTypes<T extends DefineFunctionOptions> = OmitIndexSignature<{
-  [K in keyof T['params'] as T['params'][K] extends { name: infer N extends string } ? N : never]?:
+type GetRecordType<T extends DefineFunctionOptions> = OmitIndexSignature<{
+  [K in keyof T['params'] as K extends `${number}`
+    ? T['params'][K] extends { name: infer N extends string }
+      ? N
+      : never
+    : never]:
   T['params'][K] extends { optional: true } | { default: any }
-    ? GetArgType<T['params'][K] extends { type: ArgType } ? T['params'][K]['type'] : T['params'][K] extends { type: readonly ArgType[] } ? T['params'][K]['type'][number] : never> | undefined
-    : T['params'][K] extends { type: ArgType }
-      ? GetArgType<T['params'][K]['type']>
+    // eslint-disable-next-line @stylistic/indent-binary-ops
+    ? GetArgType<
+      T['params'][K] extends { type: infer A extends ArgType }
+        ? A
+        : T['params'][K] extends { type: readonly ArgType[] }
+          ? T['params'][K]['type'][number]
+          : never
+      > | undefined
+    : T['params'][K] extends { type: infer A extends ArgType }
+      ? GetArgType<A>
       : T['params'][K] extends { type: readonly ArgType[] }
         ? GetArgType<T['params'][K]['type'][number]>
         : never;
 }>;
 
-export function defineFunction<T extends DefineFunctionOptions, F extends (...args: any[]) => any>(
+/** Hack to increment a number while building a type */
+type BuildTuple<L extends number, T extends unknown[] = []> =
+  T['length'] extends L ? T : BuildTuple<L, [...T, unknown]>;
+type Increment<N extends number> = [...BuildTuple<N>, unknown]['length'] extends number ? [...BuildTuple<N>, unknown]['length'] : never;
+
+// type GetPositionalTypes<
+//   T extends DefineFunctionOptions,
+//   N extends number = 0,
+//   OmitKeys extends string = ''
+// > = (N extends keyof T['params']
+//   // eslint-disable-next-line @stylistic/indent-binary-ops
+//   ? {
+//     [K in N]: T['params'][K] extends { optional: true } | { default: any }
+//       ? T['params'][K] extends {
+//         name: infer Name extends string;
+//         type: infer A extends ArgType;
+//       }
+//         ? GetArgType<A> | Omit<GetRecordType<T>, Name | OmitKeys>
+//         : T['params'][K] extends {
+//           name: infer Name extends string;
+//           type: readonly ArgType[];
+//         }
+//           ? GetArgType<T['params'][K]['type'][number]> | Omit<GetRecordType<T>, Name | OmitKeys>
+//           : never
+//             | undefined
+//       : T['params'][K] extends {
+//         name: infer Name extends string;
+//         type: infer A extends ArgType;
+//       }
+//         ? GetArgType<A> | Omit<GetRecordType<T>, Name | OmitKeys>
+//         : T['params'][K] extends {
+//           name: infer Name extends string;
+//           type: readonly ArgType[];
+//         }
+//           ? GetArgType<T['params'][K]['type'][number]> | Omit<GetRecordType<T>, Name | OmitKeys>
+//           : never;
+//   } & (
+//       T['params'][N] extends { name: infer Name extends string }
+//         ? GetPositionalTypes<T, Increment<N>, OmitKeys | Name>
+//         : {}
+//     )
+//   : {}
+// );
+
+type GetPositionalTypes<
+  T extends DefineFunctionOptions,
+  N extends number = 0,
+  OmitKeys extends string = '',
+  Acc extends unknown[] = []
+> = N extends keyof T['params']
+  ? T['params'][N] extends { name: infer Name extends string }
+    ? GetPositionalTypes<
+        T,
+        Increment<N>,
+        OmitKeys | Name,
+        [...Acc, T['params'][N] extends { optional: true } | { default: any }
+          ? T['params'][N] extends { type: infer A extends ArgType }
+            ? GetArgType<A> | Omit<GetRecordType<T>, OmitKeys> | undefined
+            : T['params'][N] extends { type: readonly ArgType[] }
+              ? GetArgType<T['params'][N]['type'][number]> | Omit<GetRecordType<T>, OmitKeys> | undefined
+              : never
+          : T['params'][N] extends { type: infer A extends ArgType }
+            ? GetArgType<A> | Omit<GetRecordType<T>, OmitKeys>
+            : T['params'][N] extends { type: readonly ArgType[] }
+              ? GetArgType<T['params'][N]['type'][number]> | Omit<GetRecordType<T>, OmitKeys>
+              : never
+        ]
+      >
+    : Acc
+  : Acc;
+
+/** Mostly a copy of GetRecordTypes, except we don't cast the number index to the name */
+// type GetPositionalTypes<T extends DefineFunctionOptions> = OmitIndexSignature<{
+//   [K in keyof T['params']]:
+//   T['params'][K] extends { optional: true } | { default: any }
+//     // eslint-disable-next-line @stylistic/indent-binary-ops
+//     ? GetArgType<
+//       T['params'][K] extends { type: infer A extends ArgType }
+//         ? A
+//         : T['params'][K] extends { type: readonly ArgType[] }
+//           ? T['params'][K]['type'][number]
+//           : never
+//       > | undefined
+//     : T['params'][K] extends { type: infer A extends ArgType }
+//       ? GetArgType<A>
+//       : T['params'][K] extends { type: readonly ArgType[] }
+//         ? GetArgType<T['params'][K]['type'][number]>
+//         : never;
+// }> extends infer U
+//   ? U extends readonly any[]
+//     ? U
+//     : never
+//   : never;
+
+const foo = {
+  params: [
+    { name: 'name', type: 'string' },
+    { name: 'age', type: 'number' },
+    { name: 'high', type: ['boolean', 'number'], optional: true }
+  ]
+} as const;
+
+type T = GetPositionalTypes<typeof foo>;
+
+export function defineFunction<
+  const T extends DefineFunctionOptions,
+  F extends (record: any) => any>(
   name: string,
   fn: F,
   options?: T
 ) {
-  // Type validation to ensure params match function signature
-  type ValidateArgs<T extends DefineFunctionOptions, F extends (...args: any[]) => any> =
-    Parameters<F> extends GetPositionalTypes<T> ? true : false;
-  type ValidateArgsType = ValidateArgs<T, F>;
-  const validateArgsType: ValidateArgsType = true as any;
+  // The external API types remain exactly the same, but internal function must accept record
 
-  // Create function signature with strong typing for up to 5 parameters
   type NamedFunction = {
-    (...args: Parameters<F>): ReturnType<F>;
-    (record: GetRecordTypes<T>): ReturnType<F>;
-    (arg1: Parameters<F>[0], record: Partial<GetRecordTypes<T>>): ReturnType<F>;
+    (...args: GetPositionalTypes<T>): ReturnType<F>;
+    (values: GetRecordType<T>): ReturnType<F>;
   } & (
     // Strong typing for up to 5 parameters
     T['params'] extends readonly [{ name: string; type: ArgType | ArgType[]; optional?: boolean }, { name: string; type: ArgType | ArgType[]; optional: true }]
       ? {
           (): ReturnType<F>;
-          (arg1: Parameters<F>[0]): ReturnType<F>;
+          (arg1: GetPositionalTypes<T>[0]): ReturnType<F>;
         }
       : T['params'] extends readonly [{ name: string; type: ArgType | ArgType[]; optional: true }, { name: string; type: ArgType | ArgType[]; optional: true }]
         ? {
             (): ReturnType<F>;
-            (arg1: Parameters<F>[0]): ReturnType<F>;
-            (arg1: Parameters<F>[0], arg2: Parameters<F>[1]): ReturnType<F>;
+            (arg1: GetPositionalTypes<T>[0]): ReturnType<F>;
+            (arg1: GetPositionalTypes<T>[0], arg2: GetPositionalTypes<T>[1]): ReturnType<F>;
           }
         : T['params'] extends readonly [{ name: string; type: ArgType | ArgType[]; optional?: boolean }, { name: string; type: ArgType | ArgType[]; optional?: boolean }, { name: string; type: ArgType | ArgType[]; optional: true }]
           ? {
               (): ReturnType<F>;
-              (arg1: Parameters<F>[0]): ReturnType<F>;
-              (arg1: Parameters<F>[0], arg2: Parameters<F>[1]): ReturnType<F>;
-              (arg1: Parameters<F>[0], arg2: Parameters<F>[1], arg3: Parameters<F>[2]): ReturnType<F>;
+              (arg1: GetPositionalTypes<T>[0]): ReturnType<F>;
+              (arg1: GetPositionalTypes<T>[0], arg2: GetPositionalTypes<T>[1]): ReturnType<F>;
+              (arg1: GetPositionalTypes<T>[0], arg2: GetPositionalTypes<T>[1], arg3: GetPositionalTypes<T>[2]): ReturnType<F>;
             }
           : T['params'] extends readonly [{ name: string; type: ArgType | ArgType[]; optional?: boolean }, { name: string; type: ArgType | ArgType[]; optional?: boolean }, { name: string; type: ArgType | ArgType[]; optional?: boolean }, { name: string; type: ArgType | ArgType[]; optional: true }]
             ? {
                 (): ReturnType<F>;
-                (arg1: Parameters<F>[0]): ReturnType<F>;
-                (arg1: Parameters<F>[0], arg2: Parameters<F>[1]): ReturnType<F>;
-                (arg1: Parameters<F>[0], arg2: Parameters<F>[1], arg3: Parameters<F>[2]): ReturnType<F>;
-                (arg1: Parameters<F>[0], arg2: Parameters<F>[1], arg3: Parameters<F>[2], arg4: Parameters<F>[3]): ReturnType<F>;
+                (arg1: GetPositionalTypes<T>[0]): ReturnType<F>;
+                (arg1: GetPositionalTypes<T>[0], arg2: GetPositionalTypes<T>[1]): ReturnType<F>;
+                (arg1: GetPositionalTypes<T>[0], arg2: GetPositionalTypes<T>[1], arg3: GetPositionalTypes<T>[2]): ReturnType<F>;
+                (arg1: GetPositionalTypes<T>[0], arg2: GetPositionalTypes<T>[1], arg3: GetPositionalTypes<T>[2], arg4: GetPositionalTypes<T>[3]): ReturnType<F>;
               }
             : T['params'] extends readonly [{ name: string; type: ArgType | ArgType[]; optional?: boolean }, { name: string; type: ArgType | ArgType[]; optional?: boolean }, { name: string; type: ArgType | ArgType[]; optional?: boolean }, { name: string; type: ArgType | ArgType[]; optional?: boolean }, { name: string; type: ArgType | ArgType[]; optional: true }]
               ? {
                   (): ReturnType<F>;
-                  (arg1: Parameters<F>[0]): ReturnType<F>;
-                  (arg1: Parameters<F>[0], arg2: Parameters<F>[1]): ReturnType<F>;
-                  (arg1: Parameters<F>[0], arg2: Parameters<F>[1], arg3: Parameters<F>[2]): ReturnType<F>;
-                  (arg1: Parameters<F>[0], arg2: Parameters<F>[1], arg3: Parameters<F>[2], arg4: Parameters<F>[3]): ReturnType<F>;
-                  (arg1: Parameters<F>[0], arg2: Parameters<F>[1], arg3: Parameters<F>[2], arg4: Parameters<F>[3], arg5: Parameters<F>[4]): ReturnType<F>;
+                  (arg1: GetPositionalTypes<T>[0]): ReturnType<F>;
+                  (arg1: GetPositionalTypes<T>[0], arg2: GetPositionalTypes<T>[1]): ReturnType<F>;
+                  (arg1: GetPositionalTypes<T>[0], arg2: GetPositionalTypes<T>[1], arg3: GetPositionalTypes<T>[2]): ReturnType<F>;
+                  (arg1: GetPositionalTypes<T>[0], arg2: GetPositionalTypes<T>[1], arg3: GetPositionalTypes<T>[2], arg4: GetPositionalTypes<T>[3]): ReturnType<F>;
+                  (arg1: GetPositionalTypes<T>[0], arg2: GetPositionalTypes<T>[1], arg3: GetPositionalTypes<T>[2], arg4: GetPositionalTypes<T>[3], arg5: GetPositionalTypes<T>[4]): ReturnType<F>;
                 }
               : {}
   );
@@ -120,6 +235,7 @@ export function defineFunction<T extends DefineFunctionOptions, F extends (...ar
   /**
    * Function that accepts either positional arguments or a record object.
    * Parameter names are inferred from the params array: name, value, etc.
+   * All calls are converted to record format before calling the internal function.
    */
   const result = function(...args: any[]): ReturnType<F> {
     // Check if this is a pure record call (single object argument that's not a class instance)
@@ -130,20 +246,19 @@ export function defineFunction<T extends DefineFunctionOptions, F extends (...ar
       );
 
       if (!isClassInstance) {
-        // Pure record call - convert to positional
-        const record = args[0];
-        const positionalArgs = [];
+        // Pure record call - apply defaults and validate
+        const record = { ...args[0] }; // Make a copy to avoid mutating the original
 
-        for (let i = 0; i < (options?.params?.length ?? 0); i++) {
-          const paramName = options?.params?.[i]?.name;
-          if (paramName) {
-            positionalArgs.push(record[paramName] ?? options!.params![i]?.default);
+        // Apply defaults for missing parameters
+        for (const paramDef of options?.params ?? []) {
+          const paramName = paramDef.name;
+          if (record[paramName] === undefined && paramDef.default !== undefined) {
+            record[paramName] = paramDef.default;
           }
         }
 
-        // Validate positional arguments
-        validateArguments(positionalArgs, options?.params);
-        return fn(...positionalArgs);
+        validateArguments(record, options?.params);
+        return fn(record);
       }
     }
 
@@ -153,44 +268,49 @@ export function defineFunction<T extends DefineFunctionOptions, F extends (...ar
       const positionalArgs = args.slice(0, -1);
       const record = args[args.length - 1];
 
-      // Merge positional args with record (record takes precedence)
-      // Create an array of arguments in the correct order
-      const mergedArgs = [...positionalArgs];
+      // Create merged record from positional args and record object
+      const mergedRecord: any = {};
 
-      // Fill in missing positional args from record, but record takes precedence
-      for (let i = 0; i < (options?.params?.length ?? 0); i++) {
+      // First, set values from positional arguments
+      for (let i = 0; i < positionalArgs.length && i < (options?.params?.length ?? 0); i++) {
         const paramName = options?.params?.[i]?.name;
-        if (paramName && record[paramName] !== undefined) {
-          // Record takes precedence - overwrite positional arg
-          mergedArgs[i] = record[paramName];
-        } else if (mergedArgs[i] === undefined && options?.params?.[i]?.default !== undefined) {
-          // Apply default value if parameter is missing
-          const option = options!.params![i];
-          if (option && option.default !== undefined) {
-            mergedArgs[i] = option.default;
-          }
+        if (paramName) {
+          mergedRecord[paramName] = positionalArgs[i];
         }
       }
 
-      // Validate merged arguments
-      validateArguments(mergedArgs, options?.params);
-      return fn(...mergedArgs);
-    } else {
-      // Pure positional call - apply defaults for missing parameters
-      const processedArgs = [...args];
+      // Then, override with values from record (record takes precedence)
+      Object.assign(mergedRecord, record);
 
       // Apply defaults for missing parameters
-      for (let i = 0; i < (options?.params?.length ?? 0); i++) {
-        if (processedArgs[i] === undefined && options?.params?.[i]?.default !== undefined) {
-          const option = options!.params![i];
-          if (option && option.default !== undefined) {
-            processedArgs[i] = option.default;
+      for (const paramDef of options?.params ?? []) {
+        const paramName = paramDef.name;
+        if (mergedRecord[paramName] === undefined && paramDef.default !== undefined) {
+          mergedRecord[paramName] = paramDef.default;
+        }
+      }
+
+      validateArguments(mergedRecord, options?.params);
+      return fn(mergedRecord);
+    } else {
+      // Pure positional call - convert to record
+      const recordArgs: any = {};
+
+      // Map positional arguments to record properties
+      for (let i = 0; i < Math.max(args.length, options?.params?.length ?? 0); i++) {
+        const paramName = options?.params?.[i]?.name;
+        if (paramName) {
+          if (i < args.length) {
+            recordArgs[paramName] = args[i];
+          } else if (options?.params?.[i]?.default !== undefined) {
+            // Apply default for missing positional argument
+            recordArgs[paramName] = options!.params![i]?.default;
           }
         }
       }
 
-      validateArguments(processedArgs, options?.params);
-      return fn(...processedArgs);
+      validateArguments(recordArgs, options?.params);
+      return fn(recordArgs);
     }
   } as NamedFunction;
 
@@ -198,43 +318,40 @@ export function defineFunction<T extends DefineFunctionOptions, F extends (...ar
 }
 
 /**
- * Runtime validation function to check argument types and required parameters
+ * Runtime validation function to check argument types and required parameters for record-based calls
  */
-function validateArguments(args: any[], params?: readonly { name: string; type: ArgType | ArgType[]; optional?: boolean; default?: any }[]) {
+function validateArguments(record: any, params?: readonly { name: string; type: ArgType | ArgType[]; optional?: boolean; default?: any }[]) {
   if (!params) return;
 
   // Check that all required parameters are provided
-  for (let i = 0; i < params.length; i++) {
-    const paramDef = params[i];
-    if (!paramDef) continue;
-
-    const arg = args[i];
-    const expectedType = paramDef.type;
+  for (const paramDef of params) {
     const paramName = paramDef.name;
+    const expectedType = paramDef.type;
     const isOptional = paramDef.optional || paramDef.default !== undefined;
+    const value = record[paramName];
 
     // Check if required parameter is missing
-    if (!isOptional && arg === undefined) {
+    if (!isOptional && value === undefined) {
       throw new TypeError(`Required argument '${paramName}' is missing`);
     }
 
     // Skip validation for undefined optional arguments
-    if (arg === undefined) continue;
+    if (value === undefined) continue;
 
     if (Array.isArray(expectedType)) {
-      // Check if arg matches any of the allowed types
-      const isValid = expectedType.some(type => isValidType(arg, type));
+      // Check if value matches any of the allowed types
+      const isValid = expectedType.some(type => isValidType(value, type));
       if (!isValid) {
         throw new TypeError(
-          `Argument '${paramName}' must be one of: ${expectedType.join(', ')}. Got: ${typeof arg}`
+          `Argument '${paramName}' must be one of: ${expectedType.join(', ')}. Got: ${typeof value}`
         );
       }
     } else {
       // Single type validation
-      if (!isValidType(arg, expectedType)) {
+      if (!isValidType(value, expectedType)) {
         const typeName = typeof expectedType === 'function' ? expectedType.name : expectedType;
         throw new TypeError(
-          `Argument '${paramName}' must be of type '${typeName}'. Got: ${typeof arg}`
+          `Argument '${paramName}' must be of type '${typeName}'. Got: ${typeof value}`
         );
       }
     }
