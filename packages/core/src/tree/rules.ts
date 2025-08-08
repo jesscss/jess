@@ -185,9 +185,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const mark = w.mark();
     let space = ''.padStart((depth) * 2);
     w.add('{');
+    // newline + indent for first child line
+    w.add('\n');
+    const childIndent = ''.padStart((depth + 1) * 2);
+    w.add(childIndent);
     // emit body at increased depth without calling toString on self
     this._emitRulesBody({ ...options, depth: depth + 1 });
-    w.add(`${space}}`);
+    // ensure closing brace is on its own properly indented line
+    w.add('\n');
+    if (depth !== 0) w.add(space);
+    w.add('}');
     return w.getSince(mark);
   }
 
@@ -196,17 +203,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const depth = options.depth ?? 0;
     const space = ''.padStart(depth * 2);
     const { value } = this;
-    for (let i = 0; i < value.length; i++) {
-      const n = value[i]!;
-      const beforeMark = w.mark();
-      n.toString(options);
-      const out = w.getSince(beforeMark);
-      if (out === '') continue;
-      if (n.requiredSemi && n.options.semi !== false && value.length >= i) {
+    const items = value.filter(n => n.visible);
+    if (items.length === 0) return;
+
+    for (let idx = 0; idx < items.length; idx++) {
+      const n = items[idx]!;
+      // newline + indent between rules (not before the first; caller already indented)
+      if (idx > 0) {
+        w.add('\n');
+        if (depth !== 0) w.add(space);
+      }
+      // Render child with shared writer; suppress pre spacing
+      const childOptions: PrintOptions = { writer: w, depth, defaultPre: '' };
+      n.toString(childOptions);
+      if (n.requiredSemi && n.options.semi !== false) {
         w.add(';');
       }
-      w.add('\n');
-      if (depth !== 0) w.add(space);
     }
   }
 

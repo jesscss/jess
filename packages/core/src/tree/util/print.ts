@@ -4,6 +4,11 @@ export type PrintOptions = {
   defaultPre?: string;
   defaultPost?: string;
   compress?: boolean;
+  /**
+   * Hint for containers like Rules: do not prepend a leading newline/indent
+   * before the first emitted child. The parent is responsible for line breaks.
+   */
+  suppressLeadingNewline?: boolean;
 };
 
 export interface OutputWriter {

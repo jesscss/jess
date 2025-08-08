@@ -122,7 +122,8 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       (rules.at(0) as Declaration).value.value.toString(options);
     } else {
       w.add(' ');
-      w.add(rules.toBraced(depth, options));
+      // Emit rules directly into shared writer; do not re-add return value
+      rules.toBraced(depth, options);
     }
     return w.getSince(mark);
   }

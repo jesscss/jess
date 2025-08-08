@@ -74,8 +74,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
     // rules.toBraced needs depth updates
     const depth = (options.depth ?? 0);
-    // Emit rules with braces directly into writer
-    rules.toBraced(depth, options);
+    // Emit rules with braces; inner body should not start with an extra newline
+    rules.toBraced(depth, { ...options, suppressLeadingNewline: true });
     return w.getSince(mark);
   }
 

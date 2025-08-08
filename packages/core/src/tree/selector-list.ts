@@ -4,7 +4,8 @@ import {
 import { type Context } from '../context';
 import { Selector } from './selector';
 import { getEntries } from './util/collections';
-import { type PrintOptions, getPrintOptions } from './util/print';
+import { type PrintOptions, getPrintOptions, OutputWriterImpl } from './util/print.js';
+import { normalizeContinuationIndent } from './util/format';
 
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
@@ -23,7 +24,7 @@ export class SelectorList extends Selector<Selector[]> {
     this._canFastReject = false;
   }
 
-  /** @todo - put in whitespace and line breaks */
+  /** Normalize selectors on separate lines with indentation */
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
@@ -32,11 +33,20 @@ export class SelectorList extends Selector<Selector[]> {
     let length = this.value.length;
     const mark = w.mark();
     for (let i = 0; i < length; i++) {
-      this.value[i]!.toString(options);
+      // Render selector into a temporary writer so we can control placement
+      const childWriter = new OutputWriterImpl();
+      const selOptions: PrintOptions = { ...options, writer: childWriter };
+      const selStr = this.value[i]!.toString(selOptions);
+      const selOut = childWriter.toString() || selStr || '';
+      // Put subsequent selectors on their own new line at current depth
+      if (i > 0) {
+        w.add('\n');
+        w.add(space);
+      }
+      const normalized = normalizeContinuationIndent(selOut, space);
+      w.add(normalized);
       if (i < length - 1) {
-        // replace trailing space before comma with ",\n<space>"
-        // We don't need to actually replace because we control emission order
-        w.add(`,\n${space}`);
+        w.add(',');
       }
     }
     return w.getSince(mark);
