@@ -1,4 +1,7 @@
+import { isPlainObject } from 'lodash-es';
 import { Class, OmitIndexSignature } from 'type-fest';
+import { isNode } from './tree/util/is-node';
+import type { Context } from './context';
 
 export type PrimitiveType = 'string' | 'number' | 'boolean' | 'null' | 'undefined';
 export type ArgType = PrimitiveType | Class<any>;
@@ -96,6 +99,8 @@ export function defineFunction<
   type NamedFunction = {
     (...args: GetPositionalTypes<T['params']>): ReturnType<F>;
     (record: GetRecordType<T['params']>): ReturnType<F>;
+    name: string;
+    params: T['params'];
   } & (
     // Overloads for 1 parameter
     T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional: true }]
@@ -246,7 +251,84 @@ export function defineFunction<
     }
   } as NamedFunction;
 
-  return result;
+  /** Allow runtime reflection on the function */
+  return new Proxy(result, {
+    has(target, prop) {
+      if (prop === 'params' || prop === 'name') {
+        return true;
+      }
+      return prop in target;
+    },
+    get(target, prop) {
+      if (prop === 'params') {
+        return options?.params;
+      } else if (prop === 'name') {
+        return name;
+      }
+      return (target as any)[prop];
+    }
+  });
+}
+
+/** This will be called internally by Jess to functions created with defineFunction */
+export function callWithContext(context: Context, fn: (...args: any[]) => any, ...args: any[]) {
+  let record: any = {};
+
+  if (!(fn as any)?.params && args.some(arg =>
+    (isNode(arg) && arg.type === 'Collection')
+    || isPlainObject(arg))
+  ) {
+    throw new Error('Record-based call without params is not supported');
+  }
+
+  if (!(fn as any)?.params) {
+    /** Treat as normal positional function call */
+    return fn.call(context, ...args);
+  }
+
+  // Map positional arguments to record properties
+  for (let i = 0; i < args.length; i++) {
+    let arg = args[i];
+    if (isNode(arg, 'Collection')) {
+      arg = arg.toObject(false);
+      Object.assign(record, arg);
+      continue;
+    } else if (isPlainObject(arg)) {
+      Object.assign(record, arg);
+      continue;
+    }
+    const paramName = (fn as any).params[i]?.name as string;
+    if (!paramName) {
+      throw new Error('Function does not support this number of arguments');
+    }
+    record[paramName] = args[i];
+  }
+
+  /**
+   * Create an object in which all properties are only evaluated when accessed
+   * This allows patterns like the if() function to work with references to
+   * variables that may not exist.
+   */
+  let lateEvalProxy = new Proxy(record, {
+    get(target, prop) {
+      if (prop === '_raw') {
+        return target;
+      }
+      if (prop in target) {
+        let item = target[prop];
+        if (isNode(item) && !item.evaluated) {
+          item = item.eval(context);
+          target[prop] = item;
+        }
+        return item;
+      }
+    },
+    has(target, prop) {
+      return prop in target;
+    }
+  });
+
+  return fn.call(context, lateEvalProxy);
 }
 
 /**

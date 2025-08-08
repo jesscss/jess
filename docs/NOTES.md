@@ -1,3 +1,7 @@
+# Aug 8, 2025
+
+- 
+
 # Aug 6, 2025
 
 - Added a defineFunction that makes Sass-like function calls possible. This will do compile-time type-checking

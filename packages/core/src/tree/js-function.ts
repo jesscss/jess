@@ -1,16 +1,9 @@
 import { Node, defineType } from './node';
 
-export type JsFunctionValue = {
-  name?: string;
-  fn: ((...args: any[]) => any) & {
-    evalArgs?: boolean;
-  };
-};
-
 /**
  * A JS function.
  */
-export class JsFunction extends Node<JsFunctionValue> {
+export class JsFunction extends Node<(...args: any[]) => any> {
   type = 'JsFunction' as const;
   shortType = 'jsfunc' as const;
 }

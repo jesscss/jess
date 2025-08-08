@@ -1,28 +1,23 @@
-import { defineType, Node } from './node';
-import type { Rules } from './rules';
+import { defineType } from './node';
+import { Rules } from './rules';
 
 /**
  * A collection is essentially like an anonymous mixin,
  * except that properties are arbitrary, so its intended
  * for map data.
  *
+ * Even though it doesn't allow everything that a regular set
+ * of rules does, we extend Rules just to make evaluation easier.
+ *
  * Can be used like Sass property nesting.
  * @see https://sass-lang.com/documentation/style-rules/declarations/#nesting
  */
-export class Collection extends Node<Rules> {
-  type = 'Collection' as const;
-  shortType = 'coll' as const;
+export class Collection extends Rules {
+  override type = 'Collection' as const;
+  override shortType = 'coll' as const;
 
   override toTrimmedString(depth: number = 0) {
-    let space = ''.padStart(depth * 2);
-    let output = '{';
-    let rules = this.value;
-    output += `${rules.toString(depth + 1)}`;
-    if (rules.post === undefined) {
-      output += '\n';
-    }
-    output += `${space}}`;
-    return output;
+    return this.toBraced(depth);
   }
 }
 

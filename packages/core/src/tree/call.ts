@@ -3,19 +3,24 @@ import { type List } from './list';
 import { type Context } from '../context';
 import { isNode } from './util/is-node';
 import { cast } from './util/cast';
+import { callWithContext } from '../define-function';
 
 export type CallValue = {
   /**
    * Can be an identifier or something like a mixin or variable lookup
-   *   e.g. #mixin > .class() is [Call (#mixin ())] -> [Call (.class ())]
+   *   e.g. $|#mixin|.class() is -> [Call name: [Ref (#mixin.class)], args: []]
    */
   name: string | Node;
   args?: List;
+};
+
+export type CallOptions = {
   /**
    * Legacy Less feature -- if a ruleset is returned,
    * all the properties can be marked as important.
    */
-  important?: boolean;
+  markImportant?: boolean;
+  silentFail?: boolean;
 };
 
 /**
@@ -39,50 +44,57 @@ export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...a
  * @note In Less, the ref for something like `rgb`
  * is not a string, but is an (optional) variable reference.
  */
-export class Call extends Node<CallValue> {
+export class Call extends Node<CallValue, CallOptions> {
   type = 'Call' as const;
   shortType = 'call' as const;
   override _requiredSemi = true;
 
   override toTrimmedString() {
-    let { name, args, important } = this.value;
-    return `${name}(${args ?? ''})${important ? ' !important' : ''}`;
+    let { name, args } = this.value;
+    let important = this.options?.markImportant ? ' !important' : '';
+    return `${name}(${args ?? ''})${important}`;
   }
 
   override async evalNode(context: Context): Promise<Node> {
-    let canOperate = context.canOperate;
     /** Reset parentheses "state" */
-    context.canOperate = false;
+    context.parenFrames.push(false);
     let { name, args } = this.value;
     if (name instanceof Node) {
       name = await name.eval(context);
     }
 
     if (isNode(name, 'JsFunction')) {
-      // try {
-      const func = name.value;
-      let result: any;
-      if (func.fn.evalArgs !== false) {
+      try {
+        const fn = name.value;
+        let result: any;
         if (args) {
-          args = await args?.eval(context);
+          result = await callWithContext(context, fn, ...args.value);
+        } else {
+          result = await callWithContext(context, fn);
+        }
+
+        /** Restore parens state */
+        context.parenFrames.pop();
+        /** @todo - mark results as important */
+        return cast(result).inherit(this);
+      } catch (e) {
+        /** Do something with JS errors */
+        if (!this.options?.silentFail) {
+          throw e;
         }
       }
-      if (args) {
-        result = await func.fn.call(context, ...args.value);
-      } else {
-        result = await func.fn.call(context);
-      }
-
-      /** @todo - mark results as important */
-      return cast(result).inherit(this);
-      // } catch (e) {
-      /** Do something with JS errors */
-      // console.log(e)
-      // }
     } else {
+      if (name === 'calc') {
+        context.calcFrames.push(true);
+      }
       args = await args?.eval(context);
+      if (name === 'calc') {
+        context.calcFrames.pop();
+      }
     }
-    context.canOperate = canOperate;
+    /** Restore parens state */
+    context.parenFrames.pop();
+
     let node = this.maybeClone(context);
     node.value.name = name;
     node.value.args = args;

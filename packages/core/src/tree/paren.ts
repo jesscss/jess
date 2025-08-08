@@ -29,12 +29,12 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   }
 
   override async evalNode(context: Context): Promise<Node> {
-    let canOperate = context.canOperate;
-    context.canOperate = true;
     let { value } = this;
     if (value) {
       let isOp = isOpOrExpression(value);
+      context.parenFrames.push(true);
       value = await value.eval(context);
+      context.parenFrames.pop();
       /**
        * Removing nested parens or parens around a single
        * dimension is a bit presumptuous, but I think Less's
@@ -48,7 +48,6 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       if (value instanceof Bool || value instanceof Dimension) {
         return value;
       }
-      context.canOperate = canOperate;
       if (isOp && !isOpOrExpression(value)) {
         return value;
       }

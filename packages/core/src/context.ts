@@ -230,6 +230,20 @@ export class Context {
   atRuleFrames: AtRule[] = [];
 
   /**
+   * We push a boolean to this array when entering a calc() call
+   * and pop it when leaving. This helps us determine if operations
+   * should be performed or not.
+   */
+  calcFrames: boolean[] = [];
+
+  /**
+   * We push a boolean to this array when entering parens call
+   * and pop it when leaving. This helps us determine if operations
+   * should be performed or not.
+   */
+  parenFrames: boolean[] = [];
+
+  /**
    * Keys of @let variables --
    * We need this b/c we need to generate code
    * for over-riding in the exported function.
@@ -259,9 +273,6 @@ export class Context {
    * #() expressions.
   */
   inCustom: boolean | undefined;
-
-  /** A flag set by expressions */
-  canOperate: boolean | undefined;
 
   /** A flag set when evaluating conditions */
   isDefault: boolean | undefined;
@@ -432,14 +443,15 @@ export class Context {
     return `.${mapVal}`;
   }
 
-  // getVar() {
-  //   return `--v${this.id}-${this.varCounter++}`;
-  // }
-
   shouldOperate(op: Operator) {
     const mathMode = this.opts.mathMode;
+    const inParens = this.parenFrames.at(-1);
+    const inCalc = this.calcFrames.at(-1);
+    if (inCalc) {
+      return false;
+    }
     /** Parens for Less/SCSS will set `canOperate` to true */
-    if (mathMode === MathMode.ALWAYS || this.canOperate) {
+    if (mathMode === MathMode.ALWAYS || inParens) {
       return true;
     }
     if (mathMode === MathMode.PARENS_DIVISION) {

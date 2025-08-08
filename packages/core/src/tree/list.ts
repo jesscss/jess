@@ -14,7 +14,7 @@ export type ListOptions = {
 };
 
 export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
-  eval(context: Context): Promise<List<T>>;
+  eval(context: Context): Promise<this>;
 }
 
 /**
@@ -38,9 +38,21 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
 
   override toTrimmedString() {
     let { sep = ',' } = this.options ?? {};
-    return this.value.map(
-      (v, i) => v.toString(0, i === 0 ? '' : '')).join(`${sep}`
-    );
+    let { value } = this;
+    let length = value.length - 1;
+    let output = '';
+    for (let i = 0; i <= length; i++) {
+      let item = value[i]!;
+      if (i > 0) {
+        output += item.toString().replace(/^\s*/, ' ');
+      } else {
+        output += item.toString();
+      }
+      if (i < length) {
+        output += sep;
+      }
+    }
+    return output;
   }
 
   override compare(other: Node) {

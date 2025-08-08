@@ -1,8 +1,6 @@
-import { defineType, Node } from './node';
-import type { Interpolated } from './interpolated';
-import type { Context } from '../context';
+import { defineType, Node, type LocationInfo } from './node';
+import type { Context, TreeContext } from '../context';
 import { cast } from './util/cast';
-import type { Declaration } from './declaration';
 import type { FindOptions } from './util/registry-utils';
 import { General } from './general';
 import { Selector } from './selector';
@@ -46,7 +44,7 @@ export type ReferenceOptions = {
   /**
    * What kind of lookup are we doing?
    */
-  type: 'index' | 'declaration' | 'variable' | 'property' | 'mixin' | 'ruleset' | 'mixin-ruleset';
+  type?: 'index' | 'declaration' | 'variable' | 'property' | 'mixin' | 'ruleset' | 'mixin-ruleset';
   resolution?: 'scope' | 'linear';
   /**
    * Optional references just resolve to the string
@@ -69,6 +67,13 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   type = 'Reference';
   shortType = 'ref';
 
+  constructor(value: ReferenceValue | string, options?: ReferenceOptions, location?: LocationInfo, treeContext?: TreeContext) {
+    if (typeof value === 'string') {
+      value = { key: value };
+    }
+    super(value, options, location, treeContext);
+  }
+
   override valueOf() {
     return '';
   }
@@ -88,20 +93,28 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     }
     switch (type) {
       case 'index':
-        return `[${key}]`;
+        key = `[${key}]`;
+        break;
       case 'variable':
-        return `${key}`;
+        key = `${key}`;
+        break;
       case 'declaration':
-        return `.${key}`;
+        key = `.${key}`;
+        break;
       case 'property':
-        return `.~${key}`;
+        key = `.~${key}`;
+        break;
       case 'mixin':
-        return `|${key}`;
+        key = `|${key}`;
+        break;
       case 'ruleset':
-        return `*(${key})`;
+        key = `*(${key})`;
+        break;
       case 'mixin-ruleset':
-        return `*${key}`;
+        key = `*${key}`;
+        break;
     }
+    return `${target ? target.toTrimmedString() : ''}${key}`;
   }
 
   /**

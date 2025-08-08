@@ -5,9 +5,6 @@ import {
   type LocationInfo,
   type TreeContext
 } from './node';
-import {
-  type Declaration
-} from './declaration';
 import { Context } from '../context';
 import { isNode } from './util/is-node';
 import { cast } from './util/cast';
@@ -15,7 +12,7 @@ import { type Ruleset, type RulesetValue } from './ruleset';
 import { type Mixin } from './mixin';
 import { Interpolated } from './interpolated';
 import type { Selector } from './selector';
-import { spaced } from './sequence';
+import { spaced, Sequence } from './sequence';
 
 import { atIndex } from './util/collections';
 import isPlainObject from 'lodash-es/isPlainObject';
@@ -23,7 +20,6 @@ import type { Condition } from './condition';
 import type { Bool } from './bool';
 import * as Registries from './util/registry-utils';
 import { tryExtendSelector } from './util/extend';
-import type { General } from './general';
 
 const { isArray } = Array;
 
@@ -234,24 +230,28 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   /**
    * Return an object representation of a ruleset
-   *
-   * @todo - get primitive values rendered for things
-   * like numbers?
-   *
-   * @todo - Redo from scratch
    */
-  toObject() {
-    let output = new Map<string, string>();
+  toObject(convertToPrimitives: true): Record<string, string | number>;
+  toObject(convertToPrimitives: false): Record<string, Node>;
+  toObject(convertToPrimitives?: boolean): Record<string, string | number | Node>;
+  toObject(convertToPrimitives: boolean = true): Record<string, string | number | Node> {
+    let output = new Map<string, string | number | Node>();
     const iterateRules = (rules: Rules) => {
-      let value = rules.value;
-      value.forEach((n) => {
+      for (let n of rules.value) {
         if (isNode(n, 'Declaration')) {
           let { name, value, important } = n.value;
-          output.set(name.toString(), `${value.valueOf()}${important ? ` ${important}` : ''}`);
+          if (convertToPrimitives) {
+            let primitive = value.valueOf();
+            let outputValue = important ? `${primitive} ${important}` : primitive;
+            output.set(name.toString(), outputValue);
+          } else {
+            let outputValue = important ? new Sequence([n, important]) : n;
+            output.set(name.toString(), outputValue);
+          }
         } else if (n instanceof Rules) {
           iterateRules(n);
         }
-      });
+      }
     };
     iterateRules(this as unknown as Rules);
     return Object.fromEntries(output);
