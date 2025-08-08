@@ -5,6 +5,7 @@ import { Ruleset } from './ruleset';
 import type { General } from './general';
 import { Rules } from './rules';
 import type { Context } from '../context';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 export type AtRuleValue = {
   name: General<'Name'>;
@@ -21,19 +22,22 @@ export class AtRule extends Node<AtRuleValue> {
   shortType = 'atrule' as const;
   override allowRoot = true;
 
-  override toTrimmedString(depth: number = 0): string {
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
     let { name, prelude, rules } = this.value;
-    /** The ruleset will have already indented the first line */
-    let output = `${name}`;
+    const mark = w.mark();
+    w.add(`${name}`, this);
     if (prelude) {
-      output += prelude.toString();
+      prelude.toString(options);
     }
     if (rules) {
-      output += rules.toBraced(depth);
+      const depth = options.depth ?? 0;
+      w.add(rules.toBraced(depth, options));
     } else {
-      output += ';';
+      w.add(';');
     }
-    return output;
+    return w.getSince(mark);
   }
 
   override async evalNode(context: Context) {

@@ -4,6 +4,7 @@ import { type Context } from '../context';
 import { isNode } from './util/is-node';
 import { cast } from './util/cast';
 import { callWithContext } from '../define-function';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 export type CallValue = {
   /**
@@ -49,10 +50,18 @@ export class Call extends Node<CallValue, CallOptions> {
   shortType = 'call' as const;
   override _requiredSemi = true;
 
-  override toTrimmedString() {
-    let { name, args } = this.value;
-    let important = this.options?.markImportant ? ' !important' : '';
-    return `${name}(${args ?? ''})${important}`;
+  override toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    const { name, args } = this.value;
+    if (typeof name === 'string') w.add(name, this);
+    else name.toString(options);
+    w.add('(');
+    if (args) args.toString(options);
+    w.add(')');
+    if (this.options?.markImportant) w.add(' !important');
+    return w.getSince(mark);
   }
 
   override async evalNode(context: Context): Promise<Node> {

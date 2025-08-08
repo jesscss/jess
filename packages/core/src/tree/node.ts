@@ -9,6 +9,7 @@ import type { Class, AbstractClass, Tagged } from 'type-fest';
 import type { Nil } from './nil';
 import { getEntriesFromNode, getValues } from './util/collections';
 import type { Comment } from './comment';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 export type { TreeContext };
 
@@ -622,19 +623,33 @@ export abstract class Node<
     return values.join('');
   }
 
-  processPrePost(key: 'pre' | 'post', defaultVal: string = '') {
+  processPrePost(key: 'pre' | 'post', defaultVal: string = '', options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
     let value = this[key];
     if (value === undefined) {
-      return defaultVal;
+      if (defaultVal) w.add(defaultVal);
+      return w.getSince(mark);
     } else if (value === 0) {
       return '';
     } else if (value === 1) {
-      return ' ';
+      w.add(' ');
+      return w.getSince(mark);
     } else if (isArray(value)) {
-      // Handle Node[] array - call toString() on each node
-      return value.map(node => node.toString()).join('');
+      // Handle Node[] array - call toString() on each node (they will emit into writer)
+      for (let node of value) {
+        if (node instanceof Node) {
+          node.toString(options);
+        } else {
+          w.add(String(node));
+        }
+      }
+      return w.getSince(mark);
     } else {
-      return String(value);
+      const s = String(value);
+      w.add(s);
+      return w.getSince(mark);
     }
   }
 
@@ -657,19 +672,24 @@ export abstract class Node<
    * In almost all Node cases, this should not be overriden,
    * and toTrimmedString() should be overridden instead.
    */
-  toString(depth?: number, defaultPre?: string, defaultPost?: string): string {
+  toString(options?: PrintOptions): string {
     if (!this.visible && !this.renderInvisible) {
       return '';
     }
-    let output = '';
-    output += this.processPrePost('pre', defaultPre);
-    output += this.toTrimmedString(depth);
-    output += this.processPrePost('post', defaultPost);
-    // Here or in rules list?
-    // if (this.options?.semi === true) {
-    //   output += ';';
-    // }
-    return output;
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    if (options.defaultPre) this.processPrePost('pre', options.defaultPre, options);
+    else this.processPrePost('pre', '', options);
+    const bodyMark = w.mark();
+    const bodyStr = this.toTrimmedString(options);
+    const bodyEmitted = w.getSince(bodyMark);
+    if (bodyEmitted.length === 0 && bodyStr) {
+      w.add(bodyStr);
+    }
+    if (options.defaultPost) this.processPrePost('post', options.defaultPost, options);
+    else this.processPrePost('post', '', options);
+    return w.getSince(mark);
   }
 
   /**
@@ -680,16 +700,19 @@ export abstract class Node<
    * correct. This method just serializes a node without the outer
    * pre/post nodes.
    */
-  toTrimmedString(depth?: number) {
-    let output = '';
+  toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
     for (let value of getValues(this.value)) {
       if (value instanceof Node) {
-        output += value.toString(depth);
+        value.toString(options);
       } else {
-        output += value === undefined ? '' : String(value);
+        const s = value === undefined ? '' : String(value);
+        if (s) w.add(s, this);
       }
     }
-    return output;
+    return w.getSince(mark);
   }
 
   /**

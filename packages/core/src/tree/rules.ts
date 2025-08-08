@@ -13,6 +13,7 @@ import { type Mixin } from './mixin';
 import { Interpolated } from './interpolated';
 import type { Selector } from './selector';
 import { spaced, Sequence } from './sequence';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 import { atIndex } from './util/collections';
 import isPlainObject from 'lodash-es/isPlainObject';
@@ -178,50 +179,48 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * Used by Ruleset, Mixins, and AtRules etc to render
    * rules with braces.
    */
-  toBraced(depth: number = 0) {
+  toBraced(depth: number = 0, options?: PrintOptions) {
+    options = getPrintOptions({ ...options, depth });
+    const w = options.writer!;
+    const mark = w.mark();
     let space = ''.padStart((depth) * 2);
-    let output = `{${this.toString(depth + 1)}`;
-    output += `${space}}`;
-    return output;
+    w.add('{');
+    // emit body at increased depth without calling toString on self
+    this._emitRulesBody({ ...options, depth: depth + 1 });
+    w.add(`${space}}`);
+    return w.getSince(mark);
   }
 
-  override toTrimmedString(depth: number = 0) {
-    let space = ''.padStart(depth * 2);
-    let output = '';
-    let { value } = this;
-    let outputs = value
-      .map((n, i) => {
-        let out = n.toString(depth);
-        /** Add proper indentation to each line, and new line at the end */
-        if (i === 0 && depth !== 0) {
-          out = out.replace(/^[\n\s]*/, `\n${space}`);
-        } else if (depth !== 0) {
-          out = out.replace(/^\s*/, space);
-        }
-        if (out === '') {
-          return '';
-        }
-        if (n.requiredSemi && n.options.semi !== false && value.length >= i) {
-          out += ';';
-        }
-
-        out = out.replace(/[\n\s]*$/, '\n');
-
-        return out;
-      });
-    output += outputs
-      .join('')
-      /**
-       * Replace multiple newlines with single newlines
-       * (Remove empty lines)
-       */
-      .replace(/\n+/g, '\n');
-    if (depth === 0) {
-      /** Remove trailing whitespace */
-      return output.replace(/[\n\s]*$/, '');
+  private _emitRulesBody(options: PrintOptions) {
+    const w = options.writer!;
+    const depth = options.depth ?? 0;
+    const space = ''.padStart(depth * 2);
+    const { value } = this;
+    for (let i = 0; i < value.length; i++) {
+      const n = value[i]!;
+      const beforeMark = w.mark();
+      n.toString(options);
+      const out = w.getSince(beforeMark);
+      if (out === '') continue;
+      if (n.requiredSemi && n.options.semi !== false && value.length >= i) {
+        w.add(';');
+      }
+      w.add('\n');
+      if (depth !== 0) w.add(space);
     }
+  }
 
-    return output;
+  override toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const depth = options.depth ?? 0;
+    const mark = w.mark();
+    this._emitRulesBody(options);
+    const all = w.getSince(mark);
+    if (depth === 0) {
+      return all.replace(/[\n\s]*$/, '');
+    }
+    return all;
   }
 
   visibleRules() {

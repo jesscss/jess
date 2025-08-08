@@ -9,6 +9,7 @@ import { Interpolated } from './interpolated';
 import type { Context } from '../context';
 import type { Selector } from './selector';
 import type { Declaration } from './declaration';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 export interface MixinValue {
   /**
@@ -98,22 +99,32 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     return keySet;
   }
 
-  override toTrimmedString(depth: number = 0): string {
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const depth = options.depth ?? 0;
     let { name, rules, params, guard } = this.value;
     let { isFunctionWith } = this.options;
-    let output = `${name}(${params?.toString(depth) ?? ''})`;
+    const mark = w.mark();
+    w.add(`${name}`);
+    w.add('(');
+    if (params) params.toString(options);
+    w.add(')');
     if (guard) {
-      output += ` when ${guard}`;
+      w.add(' when ');
+      w.add(`${guard}`);
     }
     if (isFunctionWith) {
-      output += ' >';
+      w.add(' >');
     }
     if (isFunctionWith === 'expression') {
-      output += ` ${(rules.at(0) as Declaration).value.value.toString(depth)}`;
+      w.add(' ');
+      (rules.at(0) as Declaration).value.value.toString(options);
     } else {
-      output += ' ' + rules.toBraced(depth);
+      w.add(' ');
+      w.add(rules.toBraced(depth, options));
     }
-    return output;
+    return w.getSince(mark);
   }
 
   override async preEval(context: Context): Promise<this> {

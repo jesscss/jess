@@ -9,6 +9,7 @@ import type { Call } from './call';
 import type { Quoted } from './quoted';
 import { atIndex } from './util/collections';
 import type { Num } from './number';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 /**
  * The type is determined by syntax
@@ -82,39 +83,48 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
    * @note - A reference doesn't render `$` (unless it has a target);
    *         that's managed by the parent expression.
    */
-  override toTrimmedString(): string {
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
     let { type = 'variable', resolution, fallbackValue } = this.options;
     let { target, key } = this.value;
+    const emitKey = (k: any) => {
+      if (typeof k === 'string' || typeof k === 'number') w.add(String(k), this);
+      else if (k instanceof Node) k.toString(options);
+      else w.add(String(k));
+    };
+    if (target) target.toString(options);
     if (resolution === 'linear') {
-      key = `^${key}`;
-    }
-    if (fallbackValue === true) {
-      key = `${key}?`;
+      w.add('^');
     }
     switch (type) {
       case 'index':
-        key = `[${key}]`;
+        w.add('['); emitKey(key); w.add(']');
         break;
       case 'variable':
-        key = `${key}`;
+        emitKey(key);
         break;
       case 'declaration':
-        key = `.${key}`;
+        w.add('.'); emitKey(key);
         break;
       case 'property':
-        key = `.~${key}`;
+        w.add('.~'); emitKey(key);
         break;
       case 'mixin':
-        key = `|${key}`;
+        w.add('|'); emitKey(key);
         break;
       case 'ruleset':
-        key = `*(${key})`;
+        w.add('*('); emitKey(key); w.add(')');
         break;
       case 'mixin-ruleset':
-        key = `*${key}`;
+        w.add('*'); emitKey(key);
         break;
     }
-    return `${target ? target.toTrimmedString() : ''}${key}`;
+    if (fallbackValue === true) {
+      w.add('?');
+    }
+    return w.getSince(mark);
   }
 
   /**

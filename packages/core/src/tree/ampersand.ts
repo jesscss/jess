@@ -6,6 +6,7 @@ import { PseudoSelector } from './selector-pseudo';
 import { isNode } from './util/is-node';
 import { type Selector } from './selector';
 import { atIndex } from './util/collections';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 export type AmpersandValue = {
   /**
@@ -112,9 +113,19 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
     return '&';
   }
 
-  override toTrimmedString(): string {
-    let { appendValue } = this.value;
-    return appendValue !== undefined ? `&(${appendValue ?? ''})` : '&';
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    const { appendValue } = this.value;
+    if (appendValue !== undefined) {
+      w.add('&(');
+      if (appendValue) w.add(appendValue, this);
+      w.add(')');
+    } else {
+      w.add('&', this);
+    }
+    return w.getSince(mark);
   }
 
   /** Hmm this should never return Extend */

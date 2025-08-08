@@ -2,6 +2,7 @@ import { defineType, type LocationInfo, type Node } from './node';
 import { type TreeContext } from '../context';
 import { SimpleSelector } from './selector-simple';
 import { compare } from './util/compare';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */
@@ -23,9 +24,18 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   type = 'AttributeSelector' as const;
   shortType = 'attr' as const;
 
-  override toTrimmedString() {
-    let { name, op, value, mod } = this.value;
-    return `[${name}${op ?? ''}${value ?? ''}${mod ? ` ${mod}` : ''}]`;
+  override toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    const { name, op, value, mod } = this.value;
+    w.add('[');
+    if (typeof name === 'string') { w.add(name, this); } else { name.toString(options); }
+    if (op) w.add(op);
+    if (value) value.toString(options);
+    if (mod) { w.add(' '); w.add(mod); }
+    w.add(']');
+    return w.getSince(mark);
   }
 
   override valueOf() {

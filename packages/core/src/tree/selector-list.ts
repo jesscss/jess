@@ -4,6 +4,7 @@ import {
 import { type Context } from '../context';
 import { Selector } from './selector';
 import { getEntries } from './util/collections';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
@@ -23,18 +24,22 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   /** @todo - put in whitespace and line breaks */
-  override toTrimmedString(depth: number = 0) {
+  override toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    let depth = options.depth ?? 0;
     let space = ''.padStart(depth * 2);
     let length = this.value.length;
-    let output = '';
+    const mark = w.mark();
     for (let i = 0; i < length; i++) {
-      let line = this.value[i]!.toString(depth);
+      this.value[i]!.toString(options);
       if (i < length - 1) {
-        line = line.replace(/\s*$/, `,\n${space}`);
+        // replace trailing space before comma with ",\n<space>"
+        // We don't need to actually replace because we control emission order
+        w.add(`,\n${space}`);
       }
-      output += line;
     }
-    return output;
+    return w.getSince(mark);
   }
 
   override valueOf() {

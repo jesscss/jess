@@ -6,6 +6,7 @@ import {
 } from './declaration';
 import { type General, Name } from './general';
 import { defineType, type LocationInfo, type Node, type TreeContext } from './node';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export type VarDeclarationOptions = DeclarationOptions & {
   paramVar?: boolean;
@@ -45,9 +46,17 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     }
   }
 
-  override toTrimmedString(depth?: number): string {
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
     const rule = this.options?.setDefined ? '$^' : '$';
-    return `${rule}${this.declTrimmedString(depth)}`;
+    w.add(rule, this);
+    const before = w.mark();
+    const s = this.declTrimmedString(options);
+    const emitted = w.getSince(before);
+    if (!emitted && s) w.add(s);
+    return w.getSince(mark);
   }
 }
 defineType<DeclarationValue>(VarDeclaration, 'VarDeclaration', 'vardecl');

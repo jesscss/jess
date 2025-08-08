@@ -1,5 +1,6 @@
 import { type Context } from '../context';
 import { defineType, Node } from './node';
+import { type PrintOptions, getPrintOptions } from './util/print';
 import { compareNodeArray } from './util/compare';
 import { type Operator } from './util/calculate';
 
@@ -36,23 +37,24 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     yield* this.value.entries();
   }
 
-  override toTrimmedString() {
+  override toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const w = options.writer!;
     let { sep = ',' } = this.options ?? {};
     let { value } = this;
     let length = value.length - 1;
-    let output = '';
+    const mark = w.mark();
     for (let i = 0; i <= length; i++) {
       let item = value[i]!;
       if (i > 0) {
-        output += item.toString().replace(/^\s*/, ' ');
-      } else {
-        output += item.toString();
+        w.add(' ');
       }
+      item.toString(options);
       if (i < length) {
-        output += sep;
+        w.add(sep);
       }
     }
-    return output;
+    return w.getSince(mark);
   }
 
   override compare(other: Node) {

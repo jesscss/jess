@@ -31,13 +31,13 @@ describe('Let', () => {
       context.depth = 2;
       let rule = vardecl({
         name: 'brandColor',
-        value: coll(rules([
-          decl({ name: 'global', value: coll(rules([
+        value: coll([
+          decl({ name: 'global', value: coll([
             decl({ name: 'dark', value: any('#000') })
-          ])) }),
+          ]) }),
           decl({ name: 'dark', value: any('#222') }),
           decl({ name: 'light', value: any('#eee') })
-        ]))
+        ])
       });
       expect(`${rule}`).toBeString(`
       $brandColor: {

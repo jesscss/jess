@@ -10,6 +10,7 @@ import { Ampersand } from './ampersand';
 import { Combinator } from './combinator';
 import { ComplexSelector } from './selector-complex';
 import { SelectorList } from './selector-list';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -57,17 +58,25 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return this.selector instanceof Nil ? '' : this.selector.valueOf();
   }
 
-  override toTrimmedString(depth: number = 0): string {
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
     let { selector, rules } = this.value;
     if (selector instanceof Nil) {
       return '';
     }
-    let output = selector.toString(depth);
-    if (!/\s$/.test(output)) {
-      /** No whitespace before braces, add it */
-      output += ' ';
+    const mark = w.mark();
+    const beforeSel = w.mark();
+    selector.toString(options);
+    const selOut = w.getSince(beforeSel);
+    if (!/\s$/.test(selOut)) {
+      w.add(' ');
     }
-    return output + rules.toBraced(depth);
+    // rules.toBraced needs depth updates
+    const depth = (options.depth ?? 0);
+    // Emit rules with braces directly into writer
+    rules.toBraced(depth, options);
+    return w.getSince(mark);
   }
 
   override async preEval(context: Context): Promise<this> {

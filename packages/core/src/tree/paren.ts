@@ -4,6 +4,7 @@ import { Expression } from './expression';
 import { Operation } from './operation';
 import { Node, defineType } from './node';
 import { Dimension } from './dimension';
+import { type PrintOptions, getPrintOptions } from './util/print';
 // import type { Context } from '../context'
 // import type { OutputCollector } from '../output'
 
@@ -22,10 +23,22 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   type = 'Paren' as const;
   shortType = 'paren' as const;
 
-  override toTrimmedString(): string {
-    let value = `${this.value ?? ''}`;
-    let escapeChar = this.options?.escaped ? '~' : '';
-    return `${escapeChar}(${value})`;
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    const escapeChar = this.options?.escaped ? '~' : '';
+    if (escapeChar) w.add(escapeChar, this);
+    w.add('(');
+    if (this.value) {
+      if (this.value instanceof Node) {
+        this.value.toString(options);
+      } else {
+        w.add(String(this.value), this);
+      }
+    }
+    w.add(')');
+    return w.getSince(mark);
   }
 
   override async evalNode(context: Context): Promise<Node> {

@@ -2,6 +2,7 @@ import { type Interpolated } from './interpolated';
 import { General } from './general';
 import { Node, defineType } from './node';
 import type { Context } from '../context';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 export type QuotedOptions = {
   quote?: '"' | '\'';
@@ -20,11 +21,17 @@ export class Quoted extends Node<string | General | Interpolated, QuotedOptions>
   type = 'Quoted' as const;
   shortType = 'quoted' as const;
 
-  override toTrimmedString() {
+  override toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
     let { quote = '"', escaped } = this.options ?? {};
-    let output = super.toTrimmedString();
     let escapeChar = escaped ? '~' : '';
-    return `${escapeChar}${quote}${output}${quote}`;
+    if (escapeChar) w.add(escapeChar, this);
+    w.add(quote);
+    super.toTrimmedString(options);
+    w.add(quote);
+    return w.getSince(mark);
   }
 
   override valueOf(): string {

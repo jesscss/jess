@@ -2,6 +2,7 @@ import { type Context } from '../context';
 import { Node, defineType } from './node';
 import { Bool } from './bool';
 import { Nil } from './nil';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 /** @note Less will parse =< but it will be stored as <= */
 export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<=';
@@ -26,21 +27,21 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   type = 'Condition' as const;
   shortType = 'condition' as const;
 
-  override toTrimmedString() {
+  override toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
     let [left, op, right] = this.value;
-    /**
-     * If we have a comparison with an operator or a negation
-     * we need to wrap the condition output in parens.
-     */
-    let needsParens = right || this.options?.negate;
-    let output = `${left}${op ? ` ${op} ${right}` : ''}`;
-    if (needsParens) {
-      output = `(${output})`;
+    const needsParens = Boolean(right || this.options?.negate);
+    if (this.options?.negate) w.add('not ');
+    if (needsParens) w.add('(');
+    left.toString(options);
+    if (op && right) {
+      w.add(' '); w.add(op); w.add(' ');
+      right.toString(options);
     }
-    if (this.options?.negate) {
-      return `not ${output}`;
-    }
-    return output;
+    if (needsParens) w.add(')');
+    return w.getSince(mark);
   }
 
   override async evalNode(context: Context): Promise<Bool> {

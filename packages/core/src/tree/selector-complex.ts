@@ -10,6 +10,7 @@ import { Selector } from './selector';
 import type { SimpleSelector } from './selector-simple';
 import type { CompoundSelector } from './selector-compound';
 import { getEntries } from './util/collections';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 // TODO - fix later
 export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand;
@@ -58,10 +59,12 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     this._canFastReject = canFastReject;
   }
 
-  override toTrimmedString(depth?: number | undefined): string {
-    let output = '';
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
     let { value } = this;
     let length = value.length;
+    const mark = w.mark();
     for (let i = 0; i < length; i++) {
       let component = value[i]!;
       /** Add some combinator spacing */
@@ -70,14 +73,23 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         && component.value !== ' '
         && component.value !== ''
       ) {
-        output += !component.pre ? ' ' : component.processPrePost('pre');
-        output += component.toTrimmedString(depth);
-        output += !component.post ? ' ' : component.processPrePost('post');
+        // pre spacing (default to single space when no explicit pre)
+        if (!component.pre) {
+          w.add(' ');
+        } else {
+          component.processPrePost('pre', '', options);
+        }
+        component.toTrimmedString(options);
+        if (!component.post) {
+          w.add(' ');
+        } else {
+          component.processPrePost('post', '', options);
+        }
       } else {
-        output += component.toString();
+        component.toString(options);
       }
     }
-    return output;
+    return w.getSince(mark);
   }
 
   /**

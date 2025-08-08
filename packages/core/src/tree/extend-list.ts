@@ -1,4 +1,5 @@
 import { Node, defineType } from './node';
+import { type PrintOptions, getPrintOptions } from './util/print';
 import type { Extend } from './extend';
 
 /**
@@ -14,9 +15,14 @@ export class ExtendList extends Node<Extend[]> {
   override allowRuleRoot = true;
   override visible = false;
 
-  override toTrimmedString(depth?: number | undefined): string {
-    const output = super.toTrimmedString(depth);
-    return output + ';';
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    const base = super.toTrimmedString(options);
+    // base is already emitted to writer; but getSince captured it. Add ';'
+    w.add(';');
+    return w.getSince(mark);
   }
 }
 

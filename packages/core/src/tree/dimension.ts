@@ -10,6 +10,7 @@ import {
 import { type Operator, calculate } from './util/calculate';
 import { logger } from '../logger';
 import round from 'lodash-es/round';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 // import type { Context } from '../context'
 // import type { OutputCollector } from '../output'
@@ -176,14 +177,15 @@ export class Dimension extends Node<DimensionValue> {
     }
   }
 
-  override toTrimmedString() {
+  override toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
     let { number, unit = '' } = this.value;
-    /**
-     * Rounding numbers to a particular precision in JavaScript
-     * is extremely non-trivial. Lodash has a solution for this.
-     */
-    let numberStr = `${round(number, 8)}`.toLowerCase();
-    return `${numberStr}${unit}`;
+    const numberStr = `${round(number, 8)}`.toLowerCase();
+    w.add(numberStr, this);
+    if (unit) w.add(unit);
+    return w.getSince(mark);
   }
 
   /** @todo - move to visitors */

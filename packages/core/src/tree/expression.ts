@@ -1,6 +1,7 @@
 import type { Context } from '../context';
 import { Node, defineType } from './node';
 import { Selector } from './selector';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 export type ExpressionOptions = {
   parens?: boolean;
@@ -30,11 +31,16 @@ export class Expression extends Selector<Node, ExpressionOptions> {
     return evald;
   }
 
-  override toTrimmedString(depth?: number): string {
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
     let { parens } = this.options;
-    let left = parens ? '(' : '';
-    let right = parens ? ')' : '';
-    return `$${left}${this.value.toString(depth)}${right}`;
+    const mark = w.mark();
+    w.add('$', this);
+    if (parens) w.add('(');
+    this.value.toString(options);
+    if (parens) w.add(')');
+    return w.getSince(mark);
   }
 }
 

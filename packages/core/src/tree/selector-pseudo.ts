@@ -6,6 +6,7 @@ import { SimpleSelector } from './selector-simple';
 import { type Context } from '../context';
 import { isNode } from './util/is-node';
 import { Selector } from './selector';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 export type PseudoSelectorValue = {
   /**
@@ -66,17 +67,26 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     }
   }
 
-  override toTrimmedString() {
+  override toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const w = options.writer!;
     let { name, arg } = this.value;
-    let argString = '';
+    const mark = w.mark();
+    w.add(name, this);
     if (arg) {
+      w.add('(');
       if (isNode(arg, 'SelectorList')) {
-        argString = `(${arg.value.map(v => v.toString()).join(', ')})`;
+        const last = arg.value.length - 1;
+        for (let i = 0; i <= last; i++) {
+          arg.value[i]!.toString(options);
+          if (i < last) w.add(', ');
+        }
       } else {
-        argString = `(${arg.toString()})`;
+        arg.toString(options);
       }
+      w.add(')');
     }
-    return `${name}${argString}`;
+    return w.getSince(mark);
   }
 
   /**

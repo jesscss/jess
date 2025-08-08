@@ -12,6 +12,7 @@ import { Reference } from './reference';
 import { List } from './list';
 import { spaced } from './sequence';
 import { Operation } from './operation';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 export const enum AssignmentType {
   Default = ':',
@@ -85,28 +86,30 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return !isNode(this.value.value, 'Collection') && !isNode(this.value.value, 'Mixin');
   }
 
-  protected declTrimmedString(depth?: number) {
+  protected declTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const w = options.writer!;
     const { name, value, important } = this.value;
     const { assign = ':' } = this.options;
+    const mark = w.mark();
     let a = assign === ':' ? ':' : ` ${assign}`;
-    let returnVal = `${name}${a}${
-      value.processPrePost('pre', ' ')
-    }${
-      value.toTrimmedString(depth)
-    }${
-      value.processPrePost('post')
-    }`;
-    if (!isNode(value, 'Collection')) {
-      returnVal += important ? `${important}` : '';
-      /**
-       * @note Semi-colon output is handled by the Rules node
-       */
+    w.add(`${name}${a}`, this);
+    value.processPrePost('pre', ' ', options);
+    const beforeVal = w.mark();
+    const valStr = value.toTrimmedString(options);
+    const emittedVal = w.getSince(beforeVal);
+    if (!emittedVal && valStr) {
+      w.add(valStr);
     }
-    return returnVal;
+    value.processPrePost('post', '', options);
+    if (!isNode(value, 'Collection')) {
+      if (important) w.add(`${important}`);
+    }
+    return w.getSince(mark);
   }
 
-  override toTrimmedString(depth?: number) {
-    return this.declTrimmedString(depth);
+  override toTrimmedString(options?: PrintOptions) {
+    return this.declTrimmedString(options);
   }
 
   override async preEval(context: Context): Promise<this> {

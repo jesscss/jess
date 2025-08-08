@@ -5,6 +5,7 @@ import { isNode } from './util/is-node';
 import { BasicSelector } from './selector-basic';
 import { SelectorList } from './selector-list';
 import { SimpleSelector } from './selector-simple';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 export type InterpolatedValue = {
   /** String with {} placeholders */
@@ -41,18 +42,22 @@ export class Interpolated<
     return this.value.source;
   }
 
-  replace(replacements: Node[]): string {
+  replace(replacements: Node[], options?: PrintOptions): string {
     let { source } = this.value;
     let output = source;
     let i = 0;
     output = output.replace(/{}/g, (_) => {
-      return replacements[i++]?.toTrimmedString() ?? '';
+      return replacements[i++]?.toTrimmedString(options) ?? '';
     });
     return output;
   }
 
-  override toTrimmedString(): string {
-    return this.replace(this.value.replacements);
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    w.add(this.replace(this.value.replacements, options), this);
+    return w.getSince(mark);
   }
 
   /**

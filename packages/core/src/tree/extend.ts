@@ -1,6 +1,7 @@
 import { defineType } from './node';
 import { type Context } from '../context';
 import { Selector } from './selector';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 export const enum ExtendFlag {
   All = 1
@@ -25,19 +26,24 @@ export class Extend extends Selector<ExtendValue> {
   shortType = 'extend' as const;
 
   override valueOf() {
-    return `:extend(${this.value.valueOf()})`;
+    return `:-extend(${this.value.valueOf()})`;
   }
 
   /** The preceding selector is the keyset */
-  get keySet() {
+  override get keySet() {
     return this.value.selector.keySet;
   }
 
-  override toTrimmedString(depth?: number | undefined): string {
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
     let { target, selector } = this.value;
-    let output = selector ? `${selector}` : '';
-    output += `:extend(${target})`;
-    return output;
+    const mark = w.mark();
+    if (selector) selector.toString(options);
+    w.add(':extend(');
+    target.toString(options);
+    w.add(')');
+    return w.getSince(mark);
   }
 
   override async evalNode(context: Context): Promise<Selector> {

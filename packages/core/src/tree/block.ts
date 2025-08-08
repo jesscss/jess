@@ -1,4 +1,5 @@
 import { Node, defineType } from './node';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 export type BlockOptions = {
   type: 'curly' | 'square';
@@ -12,12 +13,17 @@ export class Block extends Node<Node, BlockOptions> {
   type = 'Block' as const;
   shortType = 'block' as const;
 
-  override toTrimmedString() {
+  override toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
     let { type } = this.options ?? {};
-    let output = super.toTrimmedString();
     let start = type === 'square' ? '[' : '{';
     let end = type === 'square' ? ']' : '}';
-    return `${start}${output}${end}`;
+    w.add(start);
+    super.toTrimmedString(options);
+    w.add(end);
+    return w.getSince(mark);
   }
 }
 
