@@ -5,22 +5,18 @@ export class Combinator extends Selector<string> {
   type = 'Combinator' as const;
   shortType = 'co' as const;
 
-  /** To make forming Sets easier */
   override valueOf() {
-    return this.value;
+    let valueOf = this._valueOf;
+    if (!valueOf) {
+      let { value } = this;
+      /**
+       * Handle space combinators. These get parsed
+       * as empty strings.
+       */
+      valueOf = this._valueOf = value === '' ? ' ' : value;
+    }
+    return valueOf;
   }
-
-  get keySet() {
-    return new Set([this.value]);
-  }
-
-  normalize() {
-    return this;
-  }
-  // toTrimmedString() {
-  //   let { value } = this
-  //   return value === ' ' ? value : ` ${value} `
-  // }
 
   /** @todo move to visitor */
   // toCSS(context: Context, out: OutputCollector) {

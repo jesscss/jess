@@ -19,13 +19,6 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   type = 'CompoundSelector' as const;
   shortType = 'compound' as const;
 
-  get keySet() {
-    if (this._keySet === undefined) {
-      this._computeKeySetAndFastReject();
-    }
-    return this._keySet!;
-  }
-
   protected override _computeKeySetAndFastReject(): void {
     let combinedKeySet = new Set<string>();
     let canFastReject = true;

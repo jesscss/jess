@@ -24,7 +24,12 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
    * by the key sets in the extend scope.
    */
   protected _keySet: Set<string> | undefined;
-  abstract keySet: Set<string>;
+  get keySet(): Set<string> {
+    if (!this._keySet) {
+      this._computeKeySetAndFastReject();
+    }
+    return this._keySet!;
+  }
 
   /**
    * Cached computation: can this selector's keySet be trusted for disjoint rejection?

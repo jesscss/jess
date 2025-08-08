@@ -34,13 +34,6 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return (this._valueOf ??= this.value.map(n => n.valueOf()).join(''));
   }
 
-  get keySet() {
-    if (this._keySet === undefined) {
-      this._computeKeySetAndFastReject();
-    }
-    return this._keySet!;
-  }
-
   protected override _computeKeySetAndFastReject(): void {
     let combinedKeySet = new Set<string>();
     let canFastReject = true;

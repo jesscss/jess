@@ -10,17 +10,6 @@ export class SelectorList extends Selector<Selector[]> {
   type = 'SelectorList';
   shortType = 'sellist';
 
-  find(needle: Selector): Selector[] | undefined {
-    throw new Error('Method not implemented.');
-  }
-
-  get keySet(): Set<string> {
-    if (this._keySet === undefined) {
-      this._computeKeySetAndFastReject();
-    }
-    return this._keySet!;
-  }
-
   protected override _computeKeySetAndFastReject(): void {
     let combinedKeySet = new Set<string>();
 

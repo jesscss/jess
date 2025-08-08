@@ -152,11 +152,10 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     if (!arg) {
       return node;
     }
-    let canOperate = context.canOperate;
     /** Reset parentheses "state" */
-    context.canOperate = false;
+    context.parenFrames.push(false);
     arg = await arg.eval(context);
-    context.canOperate = canOperate;
+    context.parenFrames.pop();
     node.value.arg = arg;
     return node;
   }
