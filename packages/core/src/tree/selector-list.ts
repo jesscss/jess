@@ -33,21 +33,13 @@ export class SelectorList extends Selector<Selector[]> {
     let length = this.value.length;
     const mark = w.mark();
     for (let i = 0; i < length; i++) {
-      // Render selector into a temporary writer so we can control placement
-      const childWriter = new OutputWriter();
-      const selOptions: PrintOptions = { ...options, writer: childWriter };
-      const selStr = this.value[i]!.toString(selOptions);
-      const selOut = childWriter.toString() || selStr || '';
-      // Put subsequent selectors on their own new line at current depth
       if (i > 0) {
         w.add('\n');
-        w.add(space);
       }
-      const normalized = normalizeContinuationIndent(selOut, space);
-      w.add(normalized);
-      if (i < length - 1) {
-        w.add(',');
-      }
+      w.add(space);
+      // Emit trimmed selector (no outer pre/post) to avoid duplicating newlines
+      this.value[i]!.toTrimmedString(options);
+      if (i < length - 1) w.add(',');
     }
     return w.getSince(mark);
   }

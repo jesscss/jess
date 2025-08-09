@@ -29,11 +29,13 @@ export class AtRule extends Node<AtRuleValue> {
     const mark = w.mark();
     w.add(`${name}`, this);
     if (prelude) {
-      prelude.toString(options);
+      // Always one space between at-rule name and prelude; render prelude trimmed
+      w.add(' ');
+      prelude.toTrimmedString(options);
     }
     if (rules) {
       const depth = options.depth ?? 0;
-      w.add(rules.toBraced(depth, options));
+      rules.toBraced(depth, options);
     } else {
       w.add(';');
     }

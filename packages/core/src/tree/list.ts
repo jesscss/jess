@@ -1,6 +1,7 @@
 import { type Context } from '../context';
 import { defineType, Node } from './node';
 import { type PrintOptions, getPrintOptions } from './util/print';
+import { getValues } from './util/collections';
 import { compareNodeArray } from './util/compare';
 import { type Operator } from './util/calculate';
 
@@ -44,15 +45,15 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     let { value } = this;
     let length = value.length - 1;
     const mark = w.mark();
-    for (let i = 0; i <= length; i++) {
-      let item = value[i]!;
-      if (i > 0) {
-        w.add(' ');
-      }
+    if (value.length === 0) return '';
+    // Print first item as-is
+    value[0]!.toString(options);
+    // Subsequent items: emit sep; signal child to insert a space only if it does not begin with whitespace
+    for (let i = 1; i <= length; i++) {
+      const item = value[i]!;
+      w.add(sep);
+      options.pendingSpaceBeforeNext = true;
       item.toString(options);
-      if (i < length) {
-        w.add(sep);
-      }
     }
     return w.getSince(mark);
   }

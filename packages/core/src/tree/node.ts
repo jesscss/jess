@@ -638,11 +638,14 @@ export abstract class Node<
       return w.getSince(mark);
     } else if (isArray(value)) {
       // Handle Node[] array - call toString() on each node (they will emit into writer)
+      const stripWS = false; // rollback aggressive whitespace stripping
       for (let node of value) {
         if (node instanceof Node) {
           node.toString(options);
         } else {
-          w.add(String(node));
+          const s = String(node);
+          if (stripWS && /^\s+$/.test(s)) continue;
+          w.add(s);
         }
       }
       return w.getSince(mark);
@@ -679,8 +682,17 @@ export abstract class Node<
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    const preMark = w.mark();
     if (options.defaultPre) this.processPrePost('pre', options.defaultPre, options);
     else this.processPrePost('pre', '', options);
+    // If parent requested a conditional space and our pre did not start with whitespace, add one now
+    if (options.pendingSpaceBeforeNext) {
+      const preOut = w.getSince(preMark);
+      if (!/^\s/.test(preOut)) {
+        w.add(' ');
+      }
+      options.pendingSpaceBeforeNext = false;
+    }
     const bodyMark = w.mark();
     const bodyStr = this.toTrimmedString(options);
     const bodyEmitted = w.getSince(bodyMark);

@@ -67,7 +67,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
     const mark = w.mark();
     const beforeSel = w.mark();
-    selector.toString(options);
+    // Emit selector without outer pre/post to avoid inherited blank lines
+    selector.toTrimmedString(options);
     const selOut = w.getSince(beforeSel);
     if (!/\s$/.test(selOut)) {
       w.add(' ');

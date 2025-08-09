@@ -9,6 +9,16 @@ export type PrintOptions = {
    * before the first emitted child. The parent is responsible for line breaks.
    */
   suppressLeadingNewline?: boolean;
+  /**
+   * Suppress pure-whitespace string tokens in `pre` when emitting children,
+   * preserving comment nodes and non-whitespace tokens.
+   */
+  stripPreWhitespace?: boolean;
+  /**
+   * Signal that the next emitted node should insert a single space
+   * if it does not naturally begin with whitespace.
+   */
+  pendingSpaceBeforeNext?: boolean;
 };
 
 export interface OutputWriter {

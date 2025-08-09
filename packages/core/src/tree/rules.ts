@@ -185,12 +185,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const mark = w.mark();
     let space = ''.padStart((depth) * 2);
     w.add('{');
-    // newline + indent for first child line
-    w.add('\n');
-    const childIndent = ''.padStart((depth + 1) * 2);
-    w.add(childIndent);
-    // emit body at increased depth without calling toString on self
-    this._emitRulesBody({ ...options, depth: depth + 1 });
+    // emit body at increased depth; start with a single newline, body handles indent
+    const childOptions = { ...options, depth: depth + 1 } as PrintOptions;
+    childOptions.writer!.add('\n');
+    this._emitRulesBody(childOptions);
     // ensure closing brace is on its own properly indented line
     w.add('\n');
     if (depth !== 0) w.add(space);
@@ -206,16 +204,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const items = value.filter(n => n.visible);
     if (items.length === 0) return;
 
+    // Guard against stray pending-space affecting first child indent
+    options.pendingSpaceBeforeNext = false;
+
     for (let idx = 0; idx < items.length; idx++) {
       const n = items[idx]!;
-      // newline + indent between rules (not before the first; caller already indented)
-      if (idx > 0) {
+      // newline between rules (avoid doubling if already at line start)
+      if (idx > 0 && (w as any)._column !== 0) {
         w.add('\n');
-        if (depth !== 0) w.add(space);
       }
-      // Render child with shared writer; suppress pre spacing
-      const childOptions: PrintOptions = { writer: w, depth, defaultPre: '' };
-      n.toString(childOptions);
+      // always indent each child line by depth
+      if (depth !== 0) w.add(space);
+      // Ensure no pending-space leaks into indentation
+      options.pendingSpaceBeforeNext = false;
+      // Render child content without outer pre/post; parent controls line breaks
+      const childOptions: PrintOptions = { writer: w, depth } as PrintOptions;
+      n.toTrimmedString(childOptions);
       if (n.requiredSemi && n.options.semi !== false) {
         w.add(';');
       }
@@ -228,8 +232,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const depth = options.depth ?? 0;
     const mark = w.mark();
     this._emitRulesBody(options);
-    const all = w.getSince(mark);
+    let all = w.getSince(mark);
     if (depth === 0) {
+      // Collapse accidental double newlines between rules
+      all = all.replace(/\n{2,}/g, '\n');
       return all.replace(/[\n\s]*$/, '');
     }
     return all;
