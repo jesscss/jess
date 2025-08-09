@@ -17,20 +17,30 @@ export interface OutputWriter {
   getSince(mark: number): string;
   toString(): string;
   toSourceMapV3(): any;
+  getSegments(): SourceSegment[];
 }
+
+export type SourceSegment = {
+  genLine: number;     // 0-based
+  genColumn: number;   // 0-based
+  source?: string;     // file full path or name
+  origLine: number;    // 0-based
+  origColumn: number;  // 0-based
+};
 
 export function getPrintOptions(options?: PrintOptions): PrintOptions {
   options = options ?? {
-    writer: new OutputWriterImpl()
+    writer: new OutputWriter()
   };
-  options.writer ??= new OutputWriterImpl();
+  options.writer ??= new OutputWriter();
   return options;
 }
 
-export class OutputWriterImpl implements OutputWriter {
+export class OutputWriter implements OutputWriter {
   private chunks: string[] = [];
   private _line = 0;
   private _column = 0;
+  private _segments: SourceSegment[] = [];
 
   get line() { return this._line; }
   get column() { return this._column; }
@@ -38,6 +48,22 @@ export class OutputWriterImpl implements OutputWriter {
   add(text: string, _origin?: unknown): void {
     if (!text) return;
     this.chunks.push(text);
+
+    // Record a mapping segment if we have origin location info
+    const origin: any = _origin as any;
+    const loc: any = origin && origin.location;
+    if (loc && Array.isArray(loc) && loc.length === 6) {
+      const startLine = (loc[1] ?? 1) - 1;     // convert to 0-based
+      const startColumn = (loc[2] ?? 1) - 1;   // convert to 0-based
+      const file = origin?.treeContext?.file?.fullPath || origin?.treeContext?.file?.path || origin?.treeContext?.file?.name;
+      this._segments.push({
+        genLine: this._line,
+        genColumn: this._column,
+        source: file,
+        origLine: startLine,
+        origColumn: startColumn
+      });
+    }
 
     // Fast path: no newlines
     let i = text.indexOf('\n');
@@ -72,5 +98,9 @@ export class OutputWriterImpl implements OutputWriter {
 
   toSourceMapV3(): any {
     return null;
+  }
+
+  getSegments(): SourceSegment[] {
+    return this._segments;
   }
 }

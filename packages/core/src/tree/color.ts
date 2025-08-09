@@ -3,6 +3,7 @@ import { calculate, type Operator } from './util/calculate';
 import { type Context } from '../context';
 import { isNode } from './util/is-node';
 import round from 'lodash-es/round';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 type ColorValues = [number, number, number, number] | number[];
 
@@ -195,11 +196,15 @@ export class Color extends Node<string | ColorFormat> {
     return [h! * 360, s, l];
   }
 
-  override toTrimmedString() {
+  override toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
     let { value } = this;
     /** This is a hex value or keyword, output as-is */
     if (typeof value === 'string') {
-      return value;
+      w.add(value, this);
+      return w.getSince(mark);
     }
     let colorFunction: string | undefined;
 
@@ -216,7 +221,8 @@ export class Color extends Node<string | ColorFormat> {
         colorFunction = 'hsl';
       }
     } else {
-      return this.toHex();
+      w.add(this.toHex(), this);
+      return w.getSince(mark);
     }
 
     let alpha = this.alpha;
@@ -243,7 +249,10 @@ export class Color extends Node<string | ColorFormat> {
     }
 
     /** @todo - represent with slash syntax? */
-    return `${colorFunction}(${args.join(', ')})`;
+    w.add(`${colorFunction}(`, this);
+    w.add(args.join(', '));
+    w.add(')');
+    return w.getSince(mark);
   }
 
   override operate(b: Node, op: Operator, context?: Context | undefined): Color {

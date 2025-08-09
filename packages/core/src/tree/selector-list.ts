@@ -4,7 +4,7 @@ import {
 import { type Context } from '../context';
 import { Selector } from './selector';
 import { getEntries } from './util/collections';
-import { type PrintOptions, getPrintOptions, OutputWriterImpl } from './util/print.js';
+import { type PrintOptions, getPrintOptions, OutputWriter } from './util/print.js';
 import { normalizeContinuationIndent } from './util/format';
 
 /** Constructs */
@@ -34,7 +34,7 @@ export class SelectorList extends Selector<Selector[]> {
     const mark = w.mark();
     for (let i = 0; i < length; i++) {
       // Render selector into a temporary writer so we can control placement
-      const childWriter = new OutputWriterImpl();
+      const childWriter = new OutputWriter();
       const selOptions: PrintOptions = { ...options, writer: childWriter };
       const selStr = this.value[i]!.toString(selOptions);
       const selOut = childWriter.toString() || selStr || '';
