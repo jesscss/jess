@@ -34,7 +34,8 @@ import {
   QueryCondition,
   Token,
   Name,
-  CustomDeclaration
+  CustomDeclaration,
+  RawRules
 } from '@jesscss/core';
 
 type C = CssActionsParser;
@@ -814,10 +815,27 @@ export function customValue(this: C, T: TokenMap, alt?: Alt) {
   const $ = this;
 
   /** Should be almost anything, but custom blocks need matching closers */
+  // Order matters: prefer nested blocks first, then strings, then raw tokens.
+  // Avoid knownFunctions here to remove ambiguity with custom blocks.
   let valueAlt = alt ?? [
+    { ALT: () => $.SUBRULE($.customBlock) },
     { ALT: () => $.SUBRULE($.string) },
-    { ALT: () => $.SUBRULE($.extraTokens) },
-    { ALT: () => $.SUBRULE($.customBlock) }
+    {
+      ALT: () => {
+        const token = $.OR3([
+          { ALT: () => $.CONSUME(T.Value) },
+          { ALT: () => $.CONSUME(T.CustomProperty) },
+          { ALT: () => $.CONSUME(T.Colon) },
+          { ALT: () => $.CONSUME(T.AtName) },
+          { ALT: () => $.CONSUME(T.Comma) },
+          { ALT: () => $.CONSUME(T.Important) },
+          { ALT: () => $.CONSUME(T.Unknown) }
+        ]);
+        if (!$.RECORDING_PHASE) {
+          return $.wrap($.processValueToken(token));
+        }
+      }
+    }
   ];
 
   return () => $.OR(valueAlt);
@@ -1423,6 +1441,10 @@ export function atRule(this: C, T: TokenMap, alt?: Alt) {
   const $ = this;
 
   let ruleAlt = alt ?? [
+    { ALT: () => $.SUBRULE($.containerAtRule) },
+    { ALT: () => $.SUBRULE($.scopeAtRule) },
+    { ALT: () => $.SUBRULE($.documentAtRule) },
+    { ALT: () => $.SUBRULE($.layerAtRule) },
     { ALT: () => $.SUBRULE($.keyframesAtRule) },
     { ALT: () => $.SUBRULE($.importAtRule) },
     { ALT: () => $.SUBRULE($.mediaAtRule) },
@@ -1440,7 +1462,6 @@ export function atRule(this: C, T: TokenMap, alt?: Alt) {
 /**
   Inner rules are mostly the same except they have a declarationList
   instead of a main block within {}
-  @todo - Add `@container` `@layer` `@scope`
 */
 // innerAtRule
 //   : innerMediaAtRule
@@ -1450,6 +1471,10 @@ export function innerAtRule(this: C, T: TokenMap, alt?: Alt) {
   const $ = this;
 
   let ruleAlt = alt ?? [
+    { ALT: () => $.SUBRULE($.containerAtRule, { ARGS: [true] }) },
+    { ALT: () => $.SUBRULE($.scopeAtRule, { ARGS: [true] }) },
+    { ALT: () => $.SUBRULE($.documentAtRule, { ARGS: [true] }) },
+    { ALT: () => $.SUBRULE($.layerAtRule, { ARGS: [true] }) },
     { ALT: () => $.SUBRULE($.keyframesAtRule) },
     { ALT: () => $.SUBRULE($.mediaAtRule, { ARGS: [true] }) },
     { ALT: () => $.SUBRULE($.supportsAtRule, { ARGS: [true] }) },
@@ -2208,6 +2233,110 @@ export function keyframesAtRule(this: C, T: TokenMap) {
   };
 }
 
+// containerAtRule: @container <prelude>? { main }
+export function containerAtRule(this: C, T: TokenMap) {
+  const $ = this;
+  return (inner?: boolean) => {
+    $.startRule();
+    const name = $.CONSUME(T.AtContainer);
+    const preludeNodes: Node[] = [];
+    $.MANY(() => preludeNodes.push($.wrap($.SUBRULE($.anyOuterValue))));
+    $.CONSUME(T.LCurly);
+    const rules = $.SUBRULE($.atRuleBody, { ARGS: [inner] });
+    $.CONSUME(T.RCurly);
+    if (!$.RECORDING_PHASE) {
+      return new AtRule({
+        name: $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true),
+        prelude: preludeNodes.length ? $.wrap(new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context), 'both') : undefined,
+        rules
+      }, undefined, $.endRule(), this.context);
+    }
+  };
+}
+
+// scopeAtRule: @scope <prelude>? { main }
+export function scopeAtRule(this: C, T: TokenMap) {
+  const $ = this;
+  return (inner?: boolean) => {
+    $.startRule();
+    const name = $.CONSUME(T.AtScope);
+    const preludeNodes: Node[] = [];
+    $.MANY(() => preludeNodes.push($.wrap($.SUBRULE($.anyOuterValue))));
+    $.CONSUME(T.LCurly);
+    const rules = $.SUBRULE($.atRuleBody, { ARGS: [inner] });
+    $.CONSUME(T.RCurly);
+    if (!$.RECORDING_PHASE) {
+      return new AtRule({
+        name: $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true),
+        prelude: preludeNodes.length ? $.wrap(new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context), 'both') : undefined,
+        rules
+      }, undefined, $.endRule(), this.context);
+    }
+  };
+}
+
+// documentAtRule (non-standard): @document <prelude>? { main }
+export function documentAtRule(this: C, T: TokenMap) {
+  const $ = this;
+  return (inner?: boolean) => {
+    $.startRule();
+    const name = $.CONSUME(T.AtDocument);
+    const preludeNodes: Node[] = [];
+    $.MANY(() => preludeNodes.push($.wrap($.SUBRULE($.anyOuterValue))));
+    $.CONSUME(T.LCurly);
+    const rules = $.SUBRULE($.atRuleBody, { ARGS: [inner] });
+    $.CONSUME(T.RCurly);
+    if (!$.RECORDING_PHASE) {
+      return new AtRule({
+        name: $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true),
+        prelude: preludeNodes.length ? $.wrap(new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context), 'both') : undefined,
+        rules
+      }, undefined, $.endRule(), this.context);
+    }
+  };
+}
+
+// layerAtRule: statement or block
+// @layer <name>(, <name>)* ;
+// @layer <name>? { main }
+export function layerAtRule(this: C, T: TokenMap) {
+  const $ = this;
+  return (inner?: boolean) => {
+    $.startRule();
+    const nameTok = $.CONSUME(T.AtLayer);
+    const preludeNodes: Node[] = [];
+    // Collect a simple prelude (names/idents/commas)
+    $.MANY(() => preludeNodes.push($.wrap($.SUBRULE($.anyOuterValue))));
+    return $.OR([
+      {
+        ALT: () => {
+          $.CONSUME(T.Semi);
+          if (!$.RECORDING_PHASE) {
+            return new AtRule({
+              name: $.wrap(new General(nameTok.image, { type: 'Name' }, $.getLocationInfo(nameTok), this.context), true),
+              prelude: preludeNodes.length ? new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context) : undefined
+            }, undefined, $.endRule(), this.context);
+          }
+        }
+      },
+      {
+        ALT: () => {
+          $.CONSUME(T.LCurly);
+          const rules = $.SUBRULE($.atRuleBody, { ARGS: [inner] });
+          $.CONSUME(T.RCurly);
+          if (!$.RECORDING_PHASE) {
+            return new AtRule({
+              name: $.wrap(new General(nameTok.image, { type: 'Name' }, $.getLocationInfo(nameTok), this.context), true),
+              prelude: preludeNodes.length ? new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context) : undefined,
+              rules
+            }, undefined, $.endRule(), this.context);
+          }
+        }
+      }
+    ]);
+  };
+}
+
 /**
    * @see https://developer.mozilla.org/en-US/docs/Web/CSS/@supports
    */
@@ -2641,6 +2770,7 @@ export function unknownAtRule(this: C, T: TokenMap) {
     let ruleNodes: Node[];
     let declRules: Rules | undefined;
     let endToken: IToken | undefined;
+    let innerBlockLocation: LocationInfo | undefined;
 
     if (!RECORDING_PHASE) {
       preludeNodes = [];
@@ -2661,34 +2791,68 @@ export function unknownAtRule(this: C, T: TokenMap) {
             ruleNodes = [];
           }
           $.CONSUME(T.LCurly);
-          // Prefer parsing as declaration list; otherwise fallback to raw content
-          $.OR2([
-            {
-              ALT: () => {
-                declRules = $.SUBRULE($.declarationList);
-              }
-            },
-            {
-              ALT: () => {
-                $.MANY2(() => {
-                  let rule = $.SUBRULE($.anyInnerValue);
-                  if (!RECORDING_PHASE) {
-                    ruleNodes.push($.wrap(rule, 'both'));
-                  }
-                });
-              }
+          // Mark inner-content start to ensure a stable location even when empty
+          $.startRule();
+          // 1) Fast selector/nested-at-rule start gate
+          const t1 = $.LA(1).tokenType;
+          const t2 = $.LA(2).tokenType;
+          const isRuleStart = (
+            t1 === T.DotName
+            || t1 === T.HashName
+            || t1 === T.Ampersand
+            || t1 === T.LSquare
+            || t1 === T.SelectorPseudoClass
+            || t1 === T.NthPseudoClass
+            || t1 === T.Star
+            || t1 === T.ColorIdentStart
+            || t1 === T.AtKeyword
+            // Also treat IDENT followed by '{' as a rule start (e.g., @-moz-document url-prefix() { a { ... } })
+            || ((t1 === T.PlainIdent || t1 === T.CustomProperty || (T.LegacyPropIdent ? t1 === T.LegacyPropIdent : false)) && t2 === T.LCurly)
+          );
+          if (isRuleStart) {
+            declRules = $.SUBRULE($.main);
+          } else {
+            // 2) Constant-time declaration start: IDENT ':'
+            const isDeclStart = (
+              t1 === T.PlainIdent || t1 === T.CustomProperty || (T.LegacyPropIdent ? t1 === T.LegacyPropIdent : false)
+            ) && t2 === T.Colon;
+            if (isDeclStart) {
+              declRules = $.SUBRULE($.declarationList);
+            } else {
+              // 3) Fallback to raw capture
+              $.MANY2(() => {
+                const rule = $.SUBRULE($.anyInnerValue);
+                if (!RECORDING_PHASE) {
+                  ruleNodes.push($.wrap(rule, 'both'));
+                }
+              });
             }
-          ]);
+          }
           endToken = $.CONSUME(T.RCurly);
+          if (!RECORDING_PHASE) {
+            innerBlockLocation = $.endRule();
+          }
         }
       }
     ]);
 
     if (!$.RECORDING_PHASE) {
+      // Build rules result: declaration list, or single-sequence fallback, or undefined
+      let rulesResult: Rules | undefined;
+      if (declRules) {
+        rulesResult = declRules;
+      } else if (endToken) {
+        // Create a single Sequence from all inner nodes, so serialization treats it as one unit
+        const seqLoc = innerBlockLocation ?? (ruleNodes!.length ? $.getLocationFromNodes(ruleNodes!) : undefined);
+        const seq = new Sequence(ruleNodes!, undefined, seqLoc, this.context);
+        const rulesLoc = innerBlockLocation ?? $.getLocationFromNodes([seq]);
+        // Use RawRules to avoid inserting newlines/indentation during serialization
+        rulesResult = new RawRules([seq], undefined, rulesLoc, this.context) as unknown as Rules;
+      }
       return new AtRule({
         name: $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true),
         prelude: preludeNodes!.length ? new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context) : undefined,
-        rules: declRules ?? (endToken ? $.getRulesWithComments(ruleNodes!, $.getLocationInfo(endToken)) : undefined)
+        rules: rulesResult
       }, undefined, $.endRule(), this.context);
     }
   };

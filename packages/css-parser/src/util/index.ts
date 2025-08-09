@@ -88,7 +88,8 @@ export const createLexerDefinition = (rawFragments: string[][], rawTokens: Writa
       let { name, pattern, longer_alt, categories, group, ...rest } = rawToken;
       let regExpPattern: RegExp | CustomPatternMatcherFunc;
       if (pattern !== LexerType.NA) {
-        if (!categories || (group !== LexerType.SKIPPED && !categories.includes('BlockMarker'))) {
+        const isUnknownToken = name === 'Unknown';
+        if (!isUnknownToken && (!categories || (group !== LexerType.SKIPPED && !categories.includes('BlockMarker')))) {
           if (!categories) {
             categories = [];
           } else {

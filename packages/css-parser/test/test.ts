@@ -78,7 +78,8 @@ const notSameSerialized = [
   'css/_main/plugin.css',
   /** It's valid but not formatted, which we're also testing */
   'css/_main/plugin-module.css',
-  'css/_main/import.css'
+  'css/_main/import.css',
+  'css/_main/import-interpolation.css'
 ];
 
 describe('can parse Less CSS output', () => {

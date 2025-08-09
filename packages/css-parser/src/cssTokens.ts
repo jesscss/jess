@@ -236,6 +236,30 @@ const tokens = () => ({
         categories: ['BlockMarker', 'AtName']
       },
       {
+        name: 'AtLayer',
+        pattern: /@layer/i,
+        longer_alt: 'AtKeyword',
+        categories: ['BlockMarker', 'AtName']
+      },
+      {
+        name: 'AtContainer',
+        pattern: /@container/i,
+        longer_alt: 'AtKeyword',
+        categories: ['BlockMarker', 'AtName']
+      },
+      {
+        name: 'AtScope',
+        pattern: /@scope/i,
+        longer_alt: 'AtKeyword',
+        categories: ['BlockMarker', 'AtName']
+      },
+      {
+        name: 'AtDocument',
+        pattern: /@(?:-moz-)?document/i,
+        longer_alt: 'AtKeyword',
+        categories: ['BlockMarker', 'AtName']
+      },
+      {
         name: 'AtPage',
         pattern: /@page/i,
         longer_alt: 'AtKeyword',
@@ -247,10 +271,10 @@ const tokens = () => ({
         categories: ['BlockMarker', 'AtName']
       },
       // Keyframes (standard and vendor-prefixed)
-      { name: 'AtKeyframes', pattern: /@(-[a-z]+-)?keyframes/i, longer_alt: 'AtKeyword', categories: ['BlockMarker', 'AtName'] },
+      { name: 'AtKeyframes', pattern: /@(?:-[a-z]+-)?keyframes/i, longer_alt: 'AtKeyword', categories: ['BlockMarker', 'AtName'] },
       {
         name: 'AtNested',
-        pattern: /@starting-style|@property|@counter-style/i,
+        pattern: /@starting-style|@property|@counter-style|@viewport|@-ms-viewport|@color-profile|@font-palette-values/i,
         longer_alt: 'AtKeyword',
         categories: ['BlockMarker', 'AtName']
       },

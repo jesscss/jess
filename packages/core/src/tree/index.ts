@@ -102,6 +102,7 @@ export * from './query-condition';
 export * from './quoted';
 export * from './ruleset';
 export * from './rules';
+export * from './rules-raw';
 export * from './selector';
 export * from './selector-attr';
 export * from './selector-basic';
