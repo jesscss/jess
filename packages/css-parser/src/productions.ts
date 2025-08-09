@@ -139,7 +139,7 @@ export function main(this: C, T: TokenMap, alt?: Alt) {
     });
 
     if (!RECORDING_PHASE) {
-      let returnNode = $.getRulesWithComments(rules!, $.getLocationInfo($.LA(1)), isRoot);
+      let returnNode = $.getRulesWithComments(rules!, $.getLocationInfo($.LA(1)));
       // Attaches remaining whitespace at the end of rules
       return $.wrap(returnNode!, true);
     }
@@ -2709,7 +2709,7 @@ export function nestedAtRule(this: C, T: TokenMap) {
 
     let name = $.CONSUME(T.AtNested);
     let preludeNodes: Node[];
-    let rulesNode: Rules;
+    let rules: Rules;
 
     if (!RECORDING_PHASE) {
       preludeNodes = [];
@@ -2723,14 +2723,14 @@ export function nestedAtRule(this: C, T: TokenMap) {
     });
     $.CONSUME(T.LCurly);
     // All known nested at-rules use declaration lists in their blocks
-    rulesNode = $.SUBRULE($.declarationList);
+    rules = $.SUBRULE($.declarationList);
     $.CONSUME(T.RCurly);
 
     if (!$.RECORDING_PHASE) {
       return new AtRule({
         name: $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true),
         prelude: preludeNodes!.length ? $.wrap(new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context), 'both') : undefined,
-        rules: rulesNode
+        rules
       }, undefined, $.endRule(), this.context);
     }
   };

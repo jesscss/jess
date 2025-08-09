@@ -1,6 +1,25 @@
 # Aug 8, 2025
 
-- 
+- styles.config.ts
+
+This will be the config file for both less / jess
+
+```ts
+// styles.config.ts
+
+export default {
+  // Jess / Less compile settings
+  compile: {
+
+  },
+  language: {
+    less: {
+      /** Like math settings */
+    }
+  }
+}
+
+```
 
 # Aug 6, 2025
 

@@ -1,7 +1,6 @@
 import { type ILexingResult, Lexer, type IRecognitionException } from 'chevrotain';
-import { cssTokens, cssFragments } from './cssTokens';
+import { cssLexer } from './cssTokens';
 import { type TokenMap, type CssParserConfig, CssActionsParser } from './cssActionsParser';
-import { createLexerDefinition } from './util';
 import { CssErrorMessageProvider } from './cssErrorMessageProvider';
 import type { ConditionalPick } from 'type-fest';
 import { type Node, type Rules } from '@jesscss/core';
@@ -43,7 +42,7 @@ export class CssParser {
       skipValidations: process.env.TEST !== 'true',
       ...config
     };
-    const { lexer, T } = createLexerDefinition(cssFragments(), cssTokens());
+    const { lexer, T } = cssLexer;
     this.lexer = new Lexer(lexer, {
       ensureOptimizations: true,
       // Always run the validations during testing (dev flows).

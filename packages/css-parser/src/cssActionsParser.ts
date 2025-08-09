@@ -226,8 +226,7 @@ export class CssActionsParser extends AdvancedActionsParser {
 
   protected getRulesWithComments(
     existingRules: Node[] | undefined,
-    nextTokenLocation?: LocationInfo,
-    isRoot?: boolean
+    nextTokenLocation?: LocationInfo
   ) {
     if (!nextTokenLocation) {
       nextTokenLocation = this.getLocationInfo(this.LA(1));
@@ -268,7 +267,7 @@ export class CssActionsParser extends AdvancedActionsParser {
     };
 
     for (let rule of existingRules) {
-      if (rule.pre === 0) {
+      if (rule.pre === undefined) {
         let pre = this.getPrePost(rule.location[0]!);
         rule.pre = processPrePost(pre);
       }

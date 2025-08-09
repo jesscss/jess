@@ -92,14 +92,14 @@ importers:
         specifier: ^0.3.4
         version: 0.3.4
       ts-macros:
-        specifier: ~2.5.0
-        version: 2.5.0(typescript@5.8.3)
+        specifier: ~2.6.2
+        version: 2.6.2(typescript@5.8.3)
       ts-node:
         specifier: ^9.1.1
         version: 9.1.1(typescript@5.8.3)
       ts-patch:
-        specifier: ~3.0.2
-        version: 3.0.2
+        specifier: ~3.3.0
+        version: 3.3.0
       tslib:
         specifier: ^2.6.2
         version: 2.8.1
@@ -120,8 +120,6 @@ importers:
         version: 3.2.3(@types/debug@4.1.12)(@types/node@18.19.111)(jiti@1.21.7)(terser@5.42.0)(yaml@2.8.0)
 
   packages/_shared: {}
-
-  packages/collections: {}
 
   packages/core:
     dependencies:
@@ -4182,9 +4180,9 @@ packages:
     resolution: {integrity: sha512-NBcGGFbBA9s1VzD41QXDG+3++t9Mn5t1FpLdhESY6oKY4gYTFpX4wO3sqGUa0Srjtbfj3szX0RnemmrVRUdULA==}
     engines: {node: '>=10'}
 
-  global-prefix@3.0.0:
-    resolution: {integrity: sha512-awConJSVCHVGND6x3tmMaKcQvwXLhjdkmomy2W+Goaui8YPgYgXJZewhg3fWC+DlfqqQuWg8AwqjGTD2nAPVWg==}
-    engines: {node: '>=6'}
+  global-prefix@4.0.0:
+    resolution: {integrity: sha512-w0Uf9Y9/nyHinEk5vMJKRie+wa4kR5hmDbEhGGds/kG1PwGLLHKRoNMeJOyCQjjBkANlnScqgzcFwGHgmgLkVA==}
+    engines: {node: '>=16'}
 
   globals@11.12.0:
     resolution: {integrity: sha512-WOBp/EEGUiIsJSp7wcv/y6MO+lV9UoncWqxuFfm8eBwzWNgyfBd6Gz+IeKQ9jCmyhoH99g15M3T+QaVHFjizVA==}
@@ -4486,6 +4484,10 @@ packages:
     resolution: {integrity: sha512-7PnF4oN3CvZF23ADhA5wRaYEQpJ8qygSkbtTXWBeXWXmEVRXK+1ITciHWwHhsjv1TmW0MgacIv6hEi5pX5NQdA==}
     engines: {node: '>=10'}
 
+  ini@4.1.3:
+    resolution: {integrity: sha512-X7rqawQBvfdjS10YU1y1YVreA3SsLrW9dX2CewP2EbBJM4ypVNLDkO5y04gejPwKIY9lR+7r9gn3rFPt/kmWFg==}
+    engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
+
   inline-style-parser@0.2.4:
     resolution: {integrity: sha512-0aO8FkhNZlj/ZIbNi7Lxxr12obT7cL1moPfE4tg1LkX7LlLfC6DeX4l2ZEud1ukP9jNQyNnfzQVqwbwmAATY4Q==}
 
@@ -4743,6 +4745,10 @@ packages:
 
   isexe@2.0.0:
     resolution: {integrity: sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==}
+
+  isexe@3.1.1:
+    resolution: {integrity: sha512-LpB/54B+/2J5hqQ7imZHfdU31OlgQqx7ZicVlkm9kzg9/w8GKLEcFfJl/t7DCEDueOyBAD6zCCwTO6Fzs0NoEQ==}
+    engines: {node: '>=16'}
 
   isobject@3.0.1:
     resolution: {integrity: sha512-WhB9zCku7EGTj/HQQRz5aUQEUeoQZH2bWcltRErOpymJ4boYE6wL9Tbr23krRPSZ+C5zqNSrSw+Cc7sZZ4b7vg==}
@@ -7073,11 +7079,11 @@ packages:
   ts-interface-checker@0.1.13:
     resolution: {integrity: sha512-Y/arvbn+rrz3JCKl9C4kVNfTfSm2/mEp5FSz5EsZSANGPSlQrpRI5M4PKF+mJnE52jOO90PnPSc3Ur3bTQw0gA==}
 
-  ts-macros@2.5.0:
-    resolution: {integrity: sha512-Uha8rei70+YtQS7nJ1F9m4BVUUV78vky3hIeH6JaHo2cqrKFpA9VWKzkzt4CAQU7g1pheNKr0iOkBmCzrKy2jw==}
+  ts-macros@2.6.2:
+    resolution: {integrity: sha512-ZzEn268Td/efdvgFptYS2Hh4k8fEihF9P2QFqwX9OzEwAhdWq0oyhD0nUH6xh+mXklPKQiGQySS2NyW79tG5eA==}
     hasBin: true
     peerDependencies:
-      typescript: 4.7.x || 4.8.x || 4.9.x || 5.0.x || 5.1.x || 5.2.x
+      typescript: 5.2.x || 5.3.x || 5.4.x || 5.5.x || 5.6.x
 
   ts-node@9.1.1:
     resolution: {integrity: sha512-hPlt7ZACERQGf03M253ytLY3dHbGNGrAq9qIHWUY9XHYl1z7wYngSr3OQ5xmui8o2AaxsONxIzjafLUiWBo1Fg==}
@@ -7086,8 +7092,8 @@ packages:
     peerDependencies:
       typescript: '>=2.7'
 
-  ts-patch@3.0.2:
-    resolution: {integrity: sha512-iTg8euqiNsNM1VDfOsVIsP0bM4kAVXU38n7TGQSkky7YQX/syh6sDPIRkvSS0HjT8ZOr0pq1h+5Le6jdB3hiJQ==}
+  ts-patch@3.3.0:
+    resolution: {integrity: sha512-zAOzDnd5qsfEnjd9IGy1IRuvA7ygyyxxdxesbhMdutt8AHFjD8Vw8hU2rMF89HX1BKRWFYqKHrO8Q6lw0NeUZg==}
     hasBin: true
 
   tsconfig-paths@3.15.0:
@@ -7474,13 +7480,14 @@ packages:
     resolution: {integrity: sha512-rEvr90Bck4WZt9HHFC4DJMsjvu7x+r6bImz0/BrbWb7A2djJ8hnZMrWnHo9F8ssv0OMErasDhftrfROTyqSDrw==}
     engines: {node: '>= 0.4'}
 
-  which@1.3.1:
-    resolution: {integrity: sha512-HxJdYWq1MTIQbJ3nw0cqssHoTNU267KlrDuGZ1WYlxDStUtKUhOaJmh112/TZmHxxUfuJqPXSOm7tDyas0OSIQ==}
-    hasBin: true
-
   which@2.0.2:
     resolution: {integrity: sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==}
     engines: {node: '>= 8'}
+    hasBin: true
+
+  which@4.0.0:
+    resolution: {integrity: sha512-GlaYyEb07DPxYCKhKzplCWBJtvxZcZMrL+4UkrTSJHHPyZU4mYYTv3qaOe77H7EODLSSopAUFAc6W8U4yqvscg==}
+    engines: {node: ^16.13.0 || >=18.0.0}
     hasBin: true
 
   why-is-node-running@2.3.0:
@@ -12773,11 +12780,11 @@ snapshots:
     dependencies:
       ini: 2.0.0
 
-  global-prefix@3.0.0:
+  global-prefix@4.0.0:
     dependencies:
-      ini: 1.3.8
+      ini: 4.1.3
       kind-of: 6.0.3
-      which: 1.3.1
+      which: 4.0.0
 
   globals@11.12.0: {}
 
@@ -13159,6 +13166,8 @@ snapshots:
 
   ini@2.0.0: {}
 
+  ini@4.1.3: {}
+
   inline-style-parser@0.2.4: {}
 
   internal-slot@1.1.0:
@@ -13383,6 +13392,8 @@ snapshots:
   isarray@2.0.5: {}
 
   isexe@2.0.0: {}
+
+  isexe@3.1.1: {}
 
   isobject@3.0.1: {}
 
@@ -16294,7 +16305,7 @@ snapshots:
 
   ts-interface-checker@0.1.13: {}
 
-  ts-macros@2.5.0(typescript@5.8.3):
+  ts-macros@2.6.2(typescript@5.8.3):
     dependencies:
       typescript: 5.8.3
       yargs-parser: 21.1.1
@@ -16309,10 +16320,10 @@ snapshots:
       typescript: 5.8.3
       yn: 3.1.1
 
-  ts-patch@3.0.2:
+  ts-patch@3.3.0:
     dependencies:
       chalk: 4.1.2
-      global-prefix: 3.0.0
+      global-prefix: 4.0.0
       minimist: 1.2.8
       resolve: 1.22.10
       semver: 7.7.2
@@ -16845,13 +16856,13 @@ snapshots:
       gopd: 1.2.0
       has-tostringtag: 1.0.2
 
-  which@1.3.1:
-    dependencies:
-      isexe: 2.0.0
-
   which@2.0.2:
     dependencies:
       isexe: 2.0.0
+
+  which@4.0.0:
+    dependencies:
+      isexe: 3.1.1
 
   why-is-node-running@2.3.0:
     dependencies:

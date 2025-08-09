@@ -62,6 +62,12 @@ const invalidCSSOutput = [
   /** Contains an invalid Microsoft progid filter */
   'css/_main/strings.css',
 
+  /** Invalid comma in a media query */
+  'css/_main/media.css',
+
+  /** invalidly exposed declarations (not in ruleset) */
+  'css/_main/container.css',
+
   /**
    * All of these contain a property with no value,
    * and/or a list with no value
@@ -79,14 +85,14 @@ const notSameSerialized = [
   /** It's valid but not formatted, which we're also testing */
   'css/_main/plugin-module.css',
   'css/_main/import.css',
-  'css/_main/import-interpolation.css'
+  'css/_main/import-interpolation.css',
+  'css/_main/directives-bubling.css'
 ];
 
 describe('can parse Less CSS output', () => {
   glob.sync(path.join(testData, 'css/_main/*.css'))
     .map(value => path.relative(testData, value))
     .filter(value => !invalidCSSOutput.includes(value))
-    .filter(value => !notSameSerialized.includes(value))
     .sort()
     .forEach((file) => {
       it(`${file}`, () => {
@@ -98,7 +104,10 @@ describe('can parse Less CSS output', () => {
         expect(lexerResult.errors.length).toBe(0);
         expect(errors.length).toBe(0);
 
-        if (!(['test/css/custom-properties.css'].includes(file))) {
+        if (
+          !(['test/css/custom-properties.css'].includes(file))
+          && !(notSameSerialized.includes(file))
+        ) {
           const output = `${tree}`;
           expect(output).toBe(contents);
         }
