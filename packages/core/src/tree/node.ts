@@ -682,25 +682,14 @@ export abstract class Node<
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const preMark = w.mark();
-    if (options.defaultPre) this.processPrePost('pre', options.defaultPre, options);
-    else this.processPrePost('pre', '', options);
-    // If parent requested a conditional space and our pre did not start with whitespace, add one now
-    if (options.pendingSpaceBeforeNext) {
-      const preOut = w.getSince(preMark);
-      if (!/^\s/.test(preOut)) {
-        w.add(' ');
-      }
-      options.pendingSpaceBeforeNext = false;
-    }
+    this.processPrePost('pre', '', options);
     const bodyMark = w.mark();
     const bodyStr = this.toTrimmedString(options);
     const bodyEmitted = w.getSince(bodyMark);
     if (bodyEmitted.length === 0 && bodyStr) {
       w.add(bodyStr);
     }
-    if (options.defaultPost) this.processPrePost('post', options.defaultPost, options);
-    else this.processPrePost('post', '', options);
+    this.processPrePost('post', '', options);
     return w.getSince(mark);
   }
 

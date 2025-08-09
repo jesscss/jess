@@ -204,25 +204,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const items = value.filter(n => n.visible);
     if (items.length === 0) return;
 
-    // Guard against stray pending-space affecting first child indent
-    options.pendingSpaceBeforeNext = false;
+    // No spacing flags; writer.capture is used where needed
 
     for (let idx = 0; idx < items.length; idx++) {
       const n = items[idx]!;
-      // newline between rules (avoid doubling if already at line start)
-      if (idx > 0 && (w as any)._column !== 0) {
-        w.add('\n');
+      if (idx > 0) w.add('\n');
+      const isChildRules = n.type === 'Rules';
+      if (!isChildRules && depth !== 0) {
+        w.add(space);
       }
-      // always indent each child line by depth
-      if (depth !== 0) w.add(space);
-      // Ensure no pending-space leaks into indentation
-      options.pendingSpaceBeforeNext = false;
-      // Render child content without outer pre/post; parent controls line breaks
-      const childOptions: PrintOptions = { writer: w, depth } as PrintOptions;
-      n.toTrimmedString(childOptions);
-      if (n.requiredSemi && n.options.semi !== false) {
-        w.add(';');
-      }
+      // Emit directly to preserve source map segments
+      n.toTrimmedString({ ...options, writer: w, depth } as PrintOptions);
+      if (n.requiredSemi && n.options.semi !== false) w.add(';');
     }
   }
 

@@ -66,17 +66,17 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return '';
     }
     const mark = w.mark();
-    const beforeSel = w.mark();
-    // Emit selector without outer pre/post to avoid inherited blank lines
+    // Capture selector, normalize trailing whitespace to exactly one space
+    // Write selector directly; then ensure exactly one space boundary before '{'
+    const before = w.mark();
     selector.toTrimmedString(options);
-    const selOut = w.getSince(beforeSel);
-    if (!/\s$/.test(selOut)) {
-      w.add(' ');
-    }
+    const selOut = w.getSince(before);
+    // Always ensure exactly one space before '{'
+    w.add(' ');
     // rules.toBraced needs depth updates
     const depth = (options.depth ?? 0);
-    // Emit rules with braces; inner body should not start with an extra newline
-    rules.toBraced(depth, { ...options, suppressLeadingNewline: true });
+    // Emit rules with braces using parent-managed newlines/indents
+    rules.toBraced(depth, options);
     return w.getSince(mark);
   }
 

@@ -1,24 +1,7 @@
 export type PrintOptions = {
   depth?: number;
   writer?: OutputWriter;
-  defaultPre?: string;
-  defaultPost?: string;
   compress?: boolean;
-  /**
-   * Hint for containers like Rules: do not prepend a leading newline/indent
-   * before the first emitted child. The parent is responsible for line breaks.
-   */
-  suppressLeadingNewline?: boolean;
-  /**
-   * Suppress pure-whitespace string tokens in `pre` when emitting children,
-   * preserving comment nodes and non-whitespace tokens.
-   */
-  stripPreWhitespace?: boolean;
-  /**
-   * Signal that the next emitted node should insert a single space
-   * if it does not naturally begin with whitespace.
-   */
-  pendingSpaceBeforeNext?: boolean;
 };
 
 export interface OutputWriter {
@@ -51,16 +34,17 @@ export class OutputWriter implements OutputWriter {
   private _line = 0;
   private _column = 0;
   private _segments: SourceSegment[] = [];
+  private _positions: Array<{ line: number; column: number; segments: number }> = [];
 
   get line() { return this._line; }
   get column() { return this._column; }
 
-  add(text: string, _origin?: unknown): void {
+  add(text: string, originParam?: unknown): void {
     if (!text) return;
     this.chunks.push(text);
 
     // Record a mapping segment if we have origin location info
-    const origin: any = _origin as any;
+    const origin: any = originParam as any;
     const loc: any = origin && origin.location;
     if (loc && Array.isArray(loc) && loc.length === 6) {
       const startLine = (loc[1] ?? 1) - 1;     // convert to 0-based
@@ -79,6 +63,7 @@ export class OutputWriter implements OutputWriter {
     let i = text.indexOf('\n');
     if (i === -1) {
       this._column += text.length;
+      this._positions.push({ line: this._line, column: this._column, segments: this._segments.length });
       return;
     }
 
@@ -91,6 +76,7 @@ export class OutputWriter implements OutputWriter {
       i = next;
     }
     this._column = text.length - (i + 1);
+    this._positions.push({ line: this._line, column: this._column, segments: this._segments.length });
   }
 
   mark(): number {
@@ -100,6 +86,32 @@ export class OutputWriter implements OutputWriter {
   getSince(mark: number): string {
     if (mark < 0 || mark > this.chunks.length) return '';
     return this.chunks.slice(mark).join('');
+  }
+
+  /** Restore writer state to a given mark, discarding appended chunks and segments */
+  restore(mark: number): void {
+    if (mark < 0 || mark > this.chunks.length) return;
+    this.chunks.length = mark;
+    const pos = this._positions[mark - 1];
+    if (pos) {
+      this._line = pos.line;
+      this._column = pos.column;
+      this._segments.length = pos.segments;
+    } else {
+      this._line = 0;
+      this._column = 0;
+      this._segments.length = 0;
+    }
+    this._positions.length = mark;
+  }
+
+  /** Capture output from a function without committing to the main buffer */
+  capture(fn: () => void): string {
+    const m = this.mark();
+    fn();
+    const s = this.getSince(m);
+    this.restore(m);
+    return s;
   }
 
   toString(): string {

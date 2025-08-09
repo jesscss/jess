@@ -27,13 +27,19 @@ export class AtRule extends Node<AtRuleValue> {
     const w = options.writer!;
     let { name, prelude, rules } = this.value;
     const mark = w.mark();
-    w.add(`${name}`, this);
-    if (prelude) {
-      // Always one space between at-rule name and prelude; render prelude trimmed
+    // Emit name without trailing whitespace by using its trimmed serializer
+    name.toTrimmedString(options);
+    const hasPrelude = Boolean(prelude);
+    if (hasPrelude) {
+      // Ensure exactly one space before the prelude and trim only join-boundary whitespace
+      const preludeOut = w.capture(() => prelude!.toTrimmedString(options));
+      const normalized = preludeOut.replace(/^\s+/, '').replace(/\s+$/, '');
       w.add(' ');
-      prelude.toTrimmedString(options);
+      w.add(normalized);
     }
     if (rules) {
+      // Ensure exactly one space between the last token (name or prelude) and '{'
+      w.add(' ');
       const depth = options.depth ?? 0;
       rules.toBraced(depth, options);
     } else {

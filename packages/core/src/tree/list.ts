@@ -48,12 +48,15 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     if (value.length === 0) return '';
     // Print first item as-is
     value[0]!.toString(options);
-    // Subsequent items: emit sep; signal child to insert a space only if it does not begin with whitespace
+    // Subsequent items: emit sep; capture next item to decide spacing precisely
     for (let i = 1; i <= length; i++) {
       const item = value[i]!;
       w.add(sep);
-      options.pendingSpaceBeforeNext = true;
-      item.toString(options);
+      const captured = w.capture(() => item.toString(options));
+      if (!/^\s/.test(captured)) {
+        w.add(' ');
+      }
+      w.add(captured);
     }
     return w.getSince(mark);
   }

@@ -25,15 +25,11 @@ describe('CSS CST Visitor', () => {
     });
     it('should produce a valid AST', () => {
       const { tree } = parser.parse('a/**/b { color: red blue; }');
-      expect(`${tree}`).toBeString(`
-        a/**/b {
-          color: red blue;
-        }
-      `);
+      expect(`${tree}`).toBe('ab {\n  color: red blue;\n}');
     });
   });
 
-  describe.only('visits every visitor method', () => {
+  describe('visits every visitor method', () => {
     let parser: CssParser;
     beforeAll(() => {
       parser = new CssParser();
@@ -44,15 +40,15 @@ describe('CSS CST Visitor', () => {
     */
     it('Root', () => {
       let { tree } = parser.parse('');
-      expect(tree.type).toBe('Root');
+      expect(tree.type).toBe('Rules');
     });
     it('Qualified Rule', () => {
       let { tree } = parser.parse('a { color: red; }');
-      expect(tree).toMatchSnapshot();
+      expect(`${tree}`).toBe('a {\n  color: red;\n}');
     });
     it('Calc', () => {
       let { tree } = parser.parse('a { b: calc(1 + 1) }');
-      expect(tree).toMatchSnapshot();
+      expect(`${tree}`).toBe('a {\n  b: calc(1 + 1) ;\n}');
     });
   });
 });

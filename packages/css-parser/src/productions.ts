@@ -17,7 +17,7 @@ import {
   CompoundSelector,
   ComplexSelector,
   type ComplexSelectorValue,
-  type Rules,
+  Rules,
   Combinator,
   BasicSelector,
   Ampersand,
@@ -33,7 +33,8 @@ import {
   AtRule,
   QueryCondition,
   Token,
-  Name
+  Name,
+  CustomDeclaration
 } from '@jesscss/core';
 
 type C = CssActionsParser;
@@ -794,7 +795,8 @@ export function declaration(this: C, T: TokenMap, alt?: Alt) {
 
     if (!RECORDING_PHASE) {
       let location = $.endRule();
-      return new Declaration({
+      const isCustom = name!.valueOf().startsWith('--');
+      return new (isCustom ? CustomDeclaration : Declaration)({
         name: name!,
         value: $.wrap(value!, 'both'),
         important: important ? $.wrap(new General(important.image, { type: 'Flag' }, $.getLocationInfo(important), this.context), 'both') : undefined
@@ -969,7 +971,9 @@ export function customBlock(this: C, T: TokenMap, alt?: Alt) {
           break;
       }
       if (type) {
-        let seq = new Sequence(nodes!, undefined, undefined, this.context);
+        // Preserve inner sequence post so trailing semicolons become part of block content
+        const seqLoc = nodes!.length ? $.getLocationFromNodes(nodes!) : undefined;
+        let seq = new Sequence(nodes!, undefined, seqLoc, this.context);
         if (type === 'paren') {
           return $.wrap(new Paren($.wrap(seq, true), undefined, location, this.context));
         }
@@ -1419,6 +1423,7 @@ export function atRule(this: C, T: TokenMap, alt?: Alt) {
   const $ = this;
 
   let ruleAlt = alt ?? [
+    { ALT: () => $.SUBRULE($.keyframesAtRule) },
     { ALT: () => $.SUBRULE($.importAtRule) },
     { ALT: () => $.SUBRULE($.mediaAtRule) },
     { ALT: () => $.SUBRULE($.pageAtRule) },
@@ -1445,8 +1450,10 @@ export function innerAtRule(this: C, T: TokenMap, alt?: Alt) {
   const $ = this;
 
   let ruleAlt = alt ?? [
+    { ALT: () => $.SUBRULE($.keyframesAtRule) },
     { ALT: () => $.SUBRULE($.mediaAtRule, { ARGS: [true] }) },
     { ALT: () => $.SUBRULE($.supportsAtRule, { ARGS: [true] }) },
+    { ALT: () => $.SUBRULE($.nestedAtRule) },
     { ALT: () => $.SUBRULE($.unknownAtRule) }
   ];
 
@@ -2133,6 +2140,74 @@ export function fontFaceAtRule(this: C, T: TokenMap) {
   };
 }
 
+// keyframesAtRule
+//   : (AT_KEYFRAMES | vendorKeyframes) WS* IDENT WS* '{' keyframeBlock* '}'
+//   ;
+export function keyframesAtRule(this: C, T: TokenMap) {
+  const $ = this;
+
+  return () => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+
+    const atTok = $.CONSUME(T.AtKeyframes);
+    // prelude: a single animation name (ident or string)
+    let preludeNode: Node | undefined;
+    $.OR({
+      DEF: [
+        { ALT: () => {
+          const tok = $.CONSUME(T.PlainIdent);
+          if (!RECORDING_PHASE) preludeNode = $.wrap($.processValueToken(tok));
+        } },
+        { ALT: () => preludeNode = $.SUBRULE($.string) }
+      ]
+    });
+    $.CONSUME(T.LCurly);
+
+    // keyframe blocks: selectors are percentages or 'from'/'to'
+    const blocks: Node[] = RECORDING_PHASE ? ([] as unknown as Node[]) : [];
+    $.MANY2(() => {
+      $.startRule();
+      // selector list for keyframes
+      const selectors: Node[] = RECORDING_PHASE ? ([] as unknown as Node[]) : [];
+      $.AT_LEAST_ONE_SEP({
+        SEP: T.Comma,
+        DEF: () => {
+          const sel = $.OR2([
+            { ALT: () => $.CONSUME(T.From) },
+            { ALT: () => $.CONSUME(T.To) },
+            { ALT: () => $.CONSUME(T.DimensionInt) }, // handles 0%
+            { ALT: () => $.CONSUME(T.DimensionNum) }  // handles 12.5%
+          ]);
+          if (!RECORDING_PHASE) selectors.push($.wrap($.processValueToken(sel)));
+        }
+      });
+      $.CONSUME2(T.LCurly);
+      const decls = $.SUBRULE($.declarationList);
+      $.CONSUME(T.RCurly);
+      if (!RECORDING_PHASE) {
+        const loc = $.endRule();
+        // Reuse Ruleset node shape: selector is a list, rules are decls
+        blocks.push(new Ruleset({
+          selector: new SelectorList(selectors as any, undefined, $.getLocationFromNodes(selectors as any), this.context) as any,
+          rules: decls
+        } as any, undefined, loc, this.context));
+      }
+    });
+
+    const endTok = $.CONSUME2(T.RCurly);
+
+    if (!$.RECORDING_PHASE) {
+      return new AtRule({
+        name: $.wrap(new General(atTok.image, { type: 'Name' }, $.getLocationInfo(atTok), this.context), true),
+        prelude: preludeNode ? $.wrap(preludeNode, 'both') : undefined,
+        // Include isolated comments inside the keyframes body
+        rules: $.getRulesWithComments(blocks, $.getLocationInfo(endTok))
+      }, undefined, $.endRule(), this.context);
+    }
+  };
+}
+
 /**
    * @see https://developer.mozilla.org/en-US/docs/Web/CSS/@supports
    */
@@ -2505,11 +2580,10 @@ export function nestedAtRule(this: C, T: TokenMap) {
 
     let name = $.CONSUME(T.AtNested);
     let preludeNodes: Node[];
-    let ruleNodes: Node[];
+    let rulesNode: Rules;
 
     if (!RECORDING_PHASE) {
       preludeNodes = [];
-      ruleNodes = [];
     }
 
     $.MANY(() => {
@@ -2519,20 +2593,15 @@ export function nestedAtRule(this: C, T: TokenMap) {
       }
     });
     $.CONSUME(T.LCurly);
-    /** @todo - add more structure for known rule bodies */
-    $.MANY2(() => {
-      let value = $.SUBRULE($.anyInnerValue);
-      if (!RECORDING_PHASE) {
-        ruleNodes.push($.wrap(value));
-      }
-    });
-    let endToken = $.CONSUME(T.RCurly);
+    // All known nested at-rules use declaration lists in their blocks
+    rulesNode = $.SUBRULE($.declarationList);
+    $.CONSUME(T.RCurly);
 
     if (!$.RECORDING_PHASE) {
       return new AtRule({
         name: $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true),
         prelude: preludeNodes!.length ? $.wrap(new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context), 'both') : undefined,
-        rules: $.getRulesWithComments(ruleNodes!, $.getLocationInfo(endToken)!)
+        rules: rulesNode
       }, undefined, $.endRule(), this.context);
     }
   };
@@ -2570,6 +2639,7 @@ export function unknownAtRule(this: C, T: TokenMap) {
 
     let preludeNodes: Node[];
     let ruleNodes: Node[];
+    let declRules: Rules | undefined;
     let endToken: IToken | undefined;
 
     if (!RECORDING_PHASE) {
@@ -2591,12 +2661,24 @@ export function unknownAtRule(this: C, T: TokenMap) {
             ruleNodes = [];
           }
           $.CONSUME(T.LCurly);
-          $.MANY2(() => {
-            let rule = $.SUBRULE($.anyInnerValue);
-            if (!RECORDING_PHASE) {
-              ruleNodes.push($.wrap(rule, 'both'));
+          // Prefer parsing as declaration list; otherwise fallback to raw content
+          $.OR2([
+            {
+              ALT: () => {
+                declRules = $.SUBRULE($.declarationList);
+              }
+            },
+            {
+              ALT: () => {
+                $.MANY2(() => {
+                  let rule = $.SUBRULE($.anyInnerValue);
+                  if (!RECORDING_PHASE) {
+                    ruleNodes.push($.wrap(rule, 'both'));
+                  }
+                });
+              }
             }
-          });
+          ]);
           endToken = $.CONSUME(T.RCurly);
         }
       }
@@ -2606,7 +2688,7 @@ export function unknownAtRule(this: C, T: TokenMap) {
       return new AtRule({
         name: $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true),
         prelude: preludeNodes!.length ? new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context) : undefined,
-        rules: endToken ? $.getRulesWithComments(ruleNodes!, $.getLocationInfo(endToken)) : undefined
+        rules: declRules ?? (endToken ? $.getRulesWithComments(ruleNodes!, $.getLocationInfo(endToken)) : undefined)
       }, undefined, $.endRule(), this.context);
     }
   };

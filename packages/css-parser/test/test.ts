@@ -20,14 +20,14 @@ describe('can parse all CSS stylesheets', () => {
         it(`${file}`, () => {
           const result = fs.readFileSync(file);
           const contents = result.toString();
-          const { lexerResult, errors } = cssParser.parse(contents);
+          const { tree, lexerResult, errors } = cssParser.parse(contents);
           expect(lexerResult.errors.length).toBe(0);
           expect(errors.length).toBe(0);
 
           /** This contains CDO tokens, which are skipped */
           // if (!(['test/css/custom-properties.css'].includes(file))) {
-          //   const output = stringify(cst)
-          //   expect(output).toBe(contents)
+          //   const output = `${tree}`;
+          //   expect(output).toBe(contents);
           // }
         });
       }
@@ -69,18 +69,23 @@ const invalidCSSOutput = [
   'css/_main/extract-and-length.css',
   'css/_main/comments.css',
   'css/_main/functions.css',
-  'css/_main/javascript.css',
+  'css/_main/javascript.css'
+];
 
+const notSameSerialized = [
   /** Serialization issues */
   /** Has a pi value that was not rounded properly */
   'css/_main/plugin.css',
+  /** It's valid but not formatted, which we're also testing */
+  'css/_main/plugin-module.css',
   'css/_main/import.css'
 ];
 
-describe.only('can parse Less CSS output', () => {
+describe('can parse Less CSS output', () => {
   glob.sync(path.join(testData, 'css/_main/*.css'))
     .map(value => path.relative(testData, value))
     .filter(value => !invalidCSSOutput.includes(value))
+    .filter(value => !notSameSerialized.includes(value))
     .sort()
     .forEach((file) => {
       it(`${file}`, () => {

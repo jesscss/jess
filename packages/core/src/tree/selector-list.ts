@@ -35,8 +35,8 @@ export class SelectorList extends Selector<Selector[]> {
     for (let i = 0; i < length; i++) {
       if (i > 0) {
         w.add('\n');
+        w.add(space);
       }
-      w.add(space);
       // Emit trimmed selector (no outer pre/post) to avoid duplicating newlines
       this.value[i]!.toTrimmedString(options);
       if (i < length - 1) w.add(',');

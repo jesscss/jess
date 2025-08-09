@@ -124,6 +124,7 @@ export class CssActionsParser extends AdvancedActionsParser {
   containerAtRule!: Rule<(inner?: boolean) => void>;
   atRuleBody!: Rule<(inner?: boolean) => void>;
   pageAtRule!: Rule;
+  keyframesAtRule!: Rule;
   pageSelector!: Rule;
   fontFaceAtRule!: Rule;
   nestedAtRule!: Rule;

@@ -2,7 +2,7 @@
 import { type WritableDeep } from 'type-fest';
 import type { RawModeConfig } from './util';
 import { LexerType } from './util';
-import { SKIPPED_LABEL } from './advancedCstParser';
+import { SKIPPED_LABEL } from './advancedActionsParser';
 
 /**
  * references:
@@ -246,9 +246,11 @@ const tokens = () => ({
         pattern: /@font-face/i,
         categories: ['BlockMarker', 'AtName']
       },
+      // Keyframes (standard and vendor-prefixed)
+      { name: 'AtKeyframes', pattern: /@(-[a-z]+-)?keyframes/i, longer_alt: 'AtKeyword', categories: ['BlockMarker', 'AtName'] },
       {
         name: 'AtNested',
-        pattern: /@keyframes|@viewport|@document/i,
+        pattern: /@starting-style|@property|@counter-style/i,
         longer_alt: 'AtKeyword',
         categories: ['BlockMarker', 'AtName']
       },

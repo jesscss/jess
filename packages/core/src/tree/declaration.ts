@@ -94,16 +94,23 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const mark = w.mark();
     let a = assign === ':' ? ':' : ` ${assign}`;
     w.add(`${name}${a}`, this);
-    value.processPrePost('pre', ' ', options);
-    const beforeVal = w.mark();
-    const valStr = value.toTrimmedString(options);
-    const emittedVal = w.getSince(beforeVal);
-    if (!emittedVal && valStr) {
-      w.add(valStr);
-    }
-    value.processPrePost('post', '', options);
-    if (!isNode(value, 'Collection')) {
-      if (important) w.add(`${important}`);
+    // Custom properties must preserve value text exactly as provided.
+    const isCustomProperty = `${name}`.startsWith('--');
+    if (isCustomProperty) {
+      // Emit value exactly as captured (no trimming, no added spaces)
+      value.toString(options);
+    } else {
+      value.processPrePost('pre', ' ', options);
+      const beforeVal = w.mark();
+      const valStr = value.toTrimmedString(options);
+      const emittedVal = w.getSince(beforeVal);
+      if (!emittedVal && valStr) {
+        w.add(valStr);
+      }
+      value.processPrePost('post', '', options);
+      if (!isNode(value, 'Collection')) {
+        if (important) w.add(`${important}`);
+      }
     }
     return w.getSince(mark);
   }
