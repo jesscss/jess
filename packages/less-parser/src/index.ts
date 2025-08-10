@@ -32,7 +32,7 @@ export class Parser {
       skipValidations: process.env.TEST !== 'true',
       ...config
     };
-    const { lexer, T } = createLexerDefinition(lessFragments(), lessTokens());
+    const { lexer, T } = createLexerDefinition(lessFragments() as unknown as ReadonlyArray<Readonly<[string, string]>>, lessTokens());
 
     this.lexer = new Lexer(lexer, {
       ensureOptimizations: true,

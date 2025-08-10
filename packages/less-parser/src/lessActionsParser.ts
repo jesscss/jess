@@ -5,7 +5,9 @@ import {
   type RuleContext as CssRuleContext,
   type CssParserConfig,
   CssActionsParser,
-  productions as cssProductions
+  productions as cssProductions,
+  type CssTokenType,
+  type TokenMap as CssTokenMap
 } from '@jesscss/css-parser';
 
 import {
@@ -13,11 +15,11 @@ import {
   DefaultGuard,
   JsExpression,
   type Node,
-  type SelectorSequence,
-  type Extend
+  type Extend,
+  type ComplexSelector
 } from '@jesscss/core';
 
-import { type LessTokenType } from './lessTokens';
+import { type LessTokenType, type LessExtraTokenType } from './lessTokens';
 import * as productions from './productions';
 
 // import root from './productions/root'
@@ -40,7 +42,9 @@ export type LessParserConfig = CssParserConfig & {
   looseMode?: boolean;
 };
 
-export type TokenMap = Record<LessTokenType, TokenType>;
+// Concrete TokenMap: union of CSS and Less token names
+export type CombinedTokenMap = Record<CssTokenType, TokenType> & Record<LessExtraTokenType, TokenType>;
+export type TokenMap = CombinedTokenMap;
 
 export type RuleContext = CssRuleContext & {
   hasDefault?: boolean;
@@ -59,60 +63,60 @@ export type RuleContext = CssRuleContext & {
   /** Allow passing in the currently constructed Node */
   node?: Node;
   ruleIsFinished?: boolean;
-  sequences?: Array<SelectorSequence | Extend>;
+  sequences?: Array<ComplexSelector | Extend>;
 };
 /**
  * Unlike the historical Less parser, this parser
  * avoids all backtracking
  */
 export class LessActionsParser extends CssActionsParser {
-  T: TokenMap;
+  declare T: CssTokenMap;
   looseMode: boolean;
 
-  expressionSum: Rule<(ctx?: RuleContext) => void>;
-  expressionProduct: Rule<(ctx?: RuleContext) => void>;
-  expressionValue: Rule<(ctx?: RuleContext) => void>;
-  functionValueList: Rule;
-  ifFunction: Rule;
-  booleanFunction: Rule;
+  expressionSum!: Rule<(ctx?: RuleContext) => void>;
+  expressionProduct!: Rule<(ctx?: RuleContext) => void>;
+  expressionValue!: Rule<(ctx?: RuleContext) => void>;
+  functionValueList!: Rule;
+  ifFunction!: Rule;
+  booleanFunction!: Rule;
 
-  wrappedDeclarationList: Rule;
+  wrappedDeclarationList!: Rule;
 
-  varName: Rule;
-  valueReference: Rule<(ctx?: RuleContext) => void>;
-  varReference: Rule<(ctx?: RuleContext) => void>;
+  varName!: Rule;
+  valueReference!: Rule<(ctx?: RuleContext) => void>;
+  varReference!: Rule<(ctx?: RuleContext) => void>;
 
   // mixins
-  mixinReference: Rule;
-  mixinName: Rule<(asReference?: boolean) => void>;
-  mixinDefinition: Rule;
-  mixinCall: Rule;
-  inlineMixinCall: Rule<(ctx?: RuleContext) => void>;
-  mixinArgs: Rule<(ctx?: RuleContext) => void>;
-  mixinArgList: Rule<(ctx?: RuleContext) => void>;
-  mixinArg: Rule<(ctx?: RuleContext) => void>;
-  anonymousMixinDefinition: Rule;
+  mixinReference!: Rule;
+  mixinName!: Rule<(asReference?: boolean) => void>;
+  mixinDefinition!: Rule;
+  mixinCall!: Rule;
+  inlineMixinCall!: Rule<(ctx?: RuleContext) => void>;
+  mixinArgs!: Rule<(ctx?: RuleContext) => void>;
+  mixinArgList!: Rule<(ctx?: RuleContext) => void>;
+  mixinArg!: Rule<(ctx?: RuleContext) => void>;
+  anonymousMixinDefinition!: Rule;
 
-  callArgument: Rule<(ctx?: RuleContext) => void>;
+  callArgument!: Rule<(ctx?: RuleContext) => void>;
 
-  extend: Rule<(selector?: SelectorSequence) => void>;
-  extendList: Rule<(ctx?: RuleContext) => void>;
+  extend!: Rule<(selector?: ComplexSelector) => void>;
+  extendList!: Rule<(ctx?: RuleContext) => void>;
 
   // namespaces
-  accessors: Rule<(ctx?: RuleContext) => void>;
+  accessors!: Rule<(ctx?: RuleContext) => void>;
 
-  comparison: Rule<(ctx?: RuleContext) => void>;
-  guard: Rule<(ctx?: RuleContext) => void>;
-  guardDefault: Rule<(ctx?: RuleContext) => void>;
-  guardOr: Rule<(ctx?: RuleContext) => void>;
-  guardAnd: Rule<(ctx?: RuleContext) => void>;
-  guardInParens: Rule<(ctx?: RuleContext) => void>;
-  guardWithCondition: Rule;
-  guardWithConditionValue: Rule;
+  comparison!: Rule<(ctx?: RuleContext) => void>;
+  guard!: Rule<(ctx?: RuleContext) => void>;
+  guardDefault!: Rule<(ctx?: RuleContext) => void>;
+  guardOr!: Rule<(ctx?: RuleContext) => void>;
+  guardAnd!: Rule<(ctx?: RuleContext) => void>;
+  guardInParens!: Rule<(ctx?: RuleContext) => void>;
+  guardWithCondition!: Rule;
+  guardWithConditionValue!: Rule;
 
   constructor(
     tokenVocabulary: TokenVocabulary,
-    T: TokenMap,
+    T: any,
     config: LessParserConfig = {}
   ) {
     let { legacyMode, looseMode = true, ...rest } = config;
@@ -141,12 +145,12 @@ export class LessActionsParser extends CssActionsParser {
 
   protected processValueToken(token: IToken) {
     let tokenType = token.tokenType;
-    let T = this.T;
-    if (tokenType === T.AtKeyword) {
+    const TT = this.T as unknown as Record<string, TokenType>;
+    if (tokenType === TT['AtKeyword']) {
       return new Reference(token.image.slice(1), { type: 'variable' }, this.getLocationInfo(token), this.context);
-    } else if (tokenType === T.DefaultGuardFunc) {
+    } else if (tokenType === TT['DefaultGuardFunc']) {
       return new DefaultGuard(token.image, undefined, this.getLocationInfo(token), this.context);
-    } else if (tokenType === T.JavaScript) {
+    } else if (tokenType === TT['JavaScript']) {
       return new JsExpression(token.image, undefined, this.getLocationInfo(token), this.context);
     }
     return super.processValueToken(token);

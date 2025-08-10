@@ -3,8 +3,8 @@
   "publishConfig": {
     "access": "public"
   },
-  "description": "",
   "version": "2.0.0-alpha.1",
+  "description": "Jess LESS parser",
   "main": "lib/index",
   "types": "lib/index",
   "files": [
@@ -12,20 +12,23 @@
   ],
   "scripts": {
     "ci": "pnpm build && pnpm test",
-    "prepublishOnly": "npm run build",
+    "prepublishOnly": "pnpm build",
     "build": "pnpm compile",
-    "compile": "tsc -b tsconfig.build.json",
+    "compile": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json -w",
     "test": "cross-env TEST=true vitest --watch=false",
+    "test:coverage": "cross-env TEST=true vitest --coverage",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
     "@jesscss/core": "workspace:*",
     "@jesscss/css-parser": "workspace:*",
-    "chevrotain": "^11.0.3"
+    "chevrotain": "^11.0.3",
+    "chevrotain-allstar": "~0.3.0"
   },
   "devDependencies": {
-    "@jesscss/shared": "workspace:*"
+    "@types/node": "^18.19.31"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",

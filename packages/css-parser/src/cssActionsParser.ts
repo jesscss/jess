@@ -14,6 +14,7 @@ import { AdvancedActionsParser } from './advancedActionsParser';
 
 import { type CssTokenType } from './cssTokens';
 import * as productions from './productions';
+import * as Core from '@jesscss/core';
 import {
   type LocationInfo,
   Node,
@@ -23,8 +24,7 @@ import {
   Num,
   Token,
   Rules,
-  General,
-  Ident
+  General
 } from '@jesscss/core';
 
 const { isArray } = Array;
@@ -361,7 +361,7 @@ export class CssActionsParser extends AdvancedActionsParser {
     if (tokenMatcher(token, T.Ident)) {
       /** @todo - check to see if it's a color */
       // In value position, treat as a generic identifier
-      return new Ident(tokValue, undefined, this.getLocationInfo(token), this.context);
+      return new Core.Ident(tokValue, undefined, this.getLocationInfo(token), this.context);
     } else if (tokenMatcher(token, T.Dimension)) {
       dimValue = { number: parseFloat(token.payload[0]), unit: token.payload[1] };
       return getDimension(dimValue);

@@ -1,13 +1,16 @@
 {
   "extends": "../../tsconfig.json",
   "references": [
-    { "path": "../css-parser" }
+    { "path": "../core"},
+    { "path": "../css-parser"}
   ],
   "compilerOptions": {
     "composite": true,
     "outDir": "./lib",
-    "rootDir": "."
+    "rootDir": ".",
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true
   },
-  "include": ["src/**/*", "test/**/*", "vitest.config.ts"],
+  "include": ["src/**/*", "test/**/*", "vitest.config.ts", "../../vitest.d.ts"],
   "exclude": ["node_modules", "lib"]
 }

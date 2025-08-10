@@ -1,5 +1,5 @@
 import {
-  cssFragments,
+  cssFragmentsRaw,
   cssTokens,
   LexerType,
   groupCapture,
@@ -10,12 +10,42 @@ import {
   type CssTokenType,
   SKIPPED_LABEL
 } from '@jesscss/css-parser';
-import type { WritableDeep } from 'type-fest';
 
 type IMerges = Partial<Record<CssTokenType, RawTokenConfig>>;
 
+/**
+ * Less-specific token names introduced by merges below
+ *
+ * @todo - Can't we infer this from the tokens?
+ */
+export type LessExtraTokenType =
+  | 'Ellipsis'
+  | 'AtKeywordLessExtension'
+  | 'Interpolated'
+  | 'LineComment'
+  | 'PlusAssign'
+  | 'UnderscoreAssign'
+  | 'AnonMixinStart'
+  | 'GtEqAlias'
+  | 'LtEqAlias'
+  | 'Extend'
+  | 'When'
+  | 'VarOrProp'
+  | 'NestedReference'
+  | 'PropertyReference'
+  | 'Percent'
+  | 'FormatFunction'
+  | 'IfFunction'
+  | 'BooleanFunction'
+  | 'DefaultGuardIdent'
+  | 'DefaultGuardFunc'
+  | 'JavaScript'
+  | 'InterpolatedIdent'
+  | 'InterpolatedCustomProperty'
+  | 'InterpolatedSelector';
+
 function $preBuildFragments() {
-  const fragments = cssFragments();
+  const fragments = cssFragmentsRaw();
   fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*']);
   fragments.push(['interpolated', '[@$]\\{(?:{{nmchar}}*)\\}']);
 
@@ -28,20 +58,14 @@ function $preBuildTokens() {
   /**
    * Creates a type from the CSS mode and adds Less tokens
    */
-  type Modes<
-    T extends CssTokenModes = CssTokenModes,
-    U extends typeof merges = typeof merges,
-    J extends keyof U = keyof U
-  > = {
-    [K in keyof T]: K extends 'Default' ? T[K] | U[J] : T[K]
-  };
+  type Modes<T> = any;
 
   type InferMergeTypes = {
-    modes: Modes;
+    modes: any;
     defaultMode: 'Default';
   };
 
-  const tokens = cssTokens() as InferMergeTypes;
+  const tokens = cssTokens() as unknown as InferMergeTypes;
 
   /** Keyed by what to insert after */
   const merges = {
@@ -196,15 +220,15 @@ function $preBuildTokens() {
     ]
   } as const satisfies IMerges;
 
-  let defaultTokens = tokens.modes.Default as WritableDeep<RawToken[]>;
+  let defaultTokens = (tokens.modes.Default as unknown as Readonly<RawToken[]>).slice() as RawToken[];
 
   let tokenLength = defaultTokens.length;
   for (let i = 0; i < tokenLength; i++) {
-    let token: WritableDeep<RawToken> = defaultTokens[i]!;
+    let token: RawToken = defaultTokens[i]!;
 
     const { name } = token;
     const copyToken = () => {
-      token = structuredClone(token);
+      token = structuredClone(token) as RawToken;
     };
 
     let alterations = true;
@@ -247,8 +271,8 @@ function $preBuildTokens() {
     const merge = merges[name];
     if (merge) {
       /** Insert after current token */
-      defaultTokens = defaultTokens.slice(0, i + 1).concat(merge, defaultTokens.slice(i + 1))
-      ;(tokens.modes.Default as WritableDeep<RawToken[]>) = defaultTokens;
+      defaultTokens = defaultTokens.slice(0, i + 1).concat(merge, defaultTokens.slice(i + 1));
+      (tokens.modes.Default as unknown as RawToken[]) = defaultTokens;
       const mergeLength = merge.length;
       tokenLength += mergeLength;
       i += mergeLength;
@@ -265,5 +289,5 @@ type TokenModes = ReturnTokens['modes'];
 
 export type LessTokenType = TokenNames<TokenModes[keyof TokenModes]>;
 
-export const lessFragments = () => Fragments;
-export const lessTokens = () => Tokens as WritableDeep<RawModeConfig>;
+export const lessFragments = () => Fragments as ReadonlyArray<Readonly<[string, string]>>;
+export const lessTokens = () => Tokens as unknown as RawModeConfig;

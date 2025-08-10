@@ -41,7 +41,7 @@ export interface ILexer {
   lexer: IMultiModeLexerDefinition;
 }
 
-export function buildFragments(rawFragments: string[][]) {
+export function buildFragments(rawFragments: ReadonlyArray<Readonly<[string, string]>>) {
   const fragments: Record<string, RegExp> = {};
   for (const fragment of rawFragments) {
     fragments[fragment[0]!] = XRegExpBuild(fragment[1]!, fragments);
@@ -54,7 +54,10 @@ export function buildFragments(rawFragments: string[][]) {
  * This allows us to extend / modify tokens before creating them
  */
 // eslint-disable-next-line @typescript-eslint/naming-convention
-export function createLexerDefinition(rawFragments: string[][], _rawTokens: RawModeConfig): ILexer {
+export function createLexerDefinition(
+  rawFragments: ReadonlyArray<Readonly<[string, string]>>,
+  _rawTokens: RawModeConfig
+): ILexer {
   const rawTokens = _rawTokens as WritableDeep<RawModeConfig>;
   /**
    * @todo - get ts-macros working to eliminate XRegExp dependency

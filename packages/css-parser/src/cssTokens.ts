@@ -23,7 +23,7 @@ import { buildFragments, createLexerDefinition } from './util';
  * XRegExp should accept an object rather than an array of arrays,
  * which would make extending easier.
  */
-const rawCssFragments = [
+export const rawCssFragments = [
   ['newline', '\\n|\\r\\n?|\\f'],
   ['whitespace', '[ ]|\\t|{{newline}}'],
   /** @todo - use in order to attach newlines to node ends? */
@@ -52,7 +52,7 @@ const rawCssFragments = [
   */
   ['number', '(?:\\d*\\.\\d+(?:[eE][+-]\\d+)?|\\d+(?:[eE][+-]\\d+))'],
   ['wsorcomment', '({{ws}})|({{comment}})']
-];
+] as const;
 
 // interface Match { value: string, index: number }
 
@@ -94,7 +94,7 @@ export function groupCapture(this: RegExp, text: string, startOffset: number) {
  * @todo Change to Map implementation? May allow easier replacement of
  * tokens, in extended parsers, as well as easier TokenMap.
  */
-const rawCssTokens = {
+export const rawCssTokens = {
   modes: {
     Default: [
       { name: 'Value', pattern: LexerType.NA },
@@ -527,3 +527,33 @@ export type CssTokenType = TokenNames<TokenModes[keyof TokenModes]>;
 
 export const cssFragments = buildFragments(rawCssFragments);
 export const cssLexer = createLexerDefinition(rawCssFragments, rawCssTokens);
+
+// Back-compat helpers for downstream token extension (e.g., Less parser)
+// Preserve functions and RegExp in token patterns during cloning
+function deepClone<T>(obj: T): T {
+  if (obj === null || typeof obj !== 'object') return obj as any;
+  // Preserve RegExp
+  if (obj instanceof RegExp) return new RegExp(obj) as any;
+  // Arrays
+  if (Array.isArray(obj)) {
+    return (obj as unknown as any[]).map((v) => deepClone(v)) as any;
+  }
+  // Plain objects – preserve functions by reference
+  const out: any = Array.isArray(obj) ? [] : {};
+  for (const key of Object.keys(obj as any)) {
+    const value: any = (obj as any)[key];
+    out[key] = typeof value === 'function' ? value : deepClone(value);
+  }
+  return out as T;
+}
+// Overloads preserve literal names but return mutable structures for downstream mutation
+export function cssTokens(): WritableDeep<typeof rawCssTokens>;
+export function cssTokens<const T extends typeof rawCssTokens>(base: T): WritableDeep<T>;
+export function cssTokens(base?: unknown): any {
+  return deepClone((base ?? rawCssTokens) as any);
+}
+export function cssFragmentsRaw(): WritableDeep<typeof rawCssFragments>;
+export function cssFragmentsRaw<const T extends typeof rawCssFragments>(base: T): WritableDeep<T>;
+export function cssFragmentsRaw(base?: unknown): any {
+  return deepClone((base ?? rawCssFragments) as any);
+}

@@ -18,17 +18,16 @@ import {
 
 import {
   type TreeContext,
-  type Scope,
   Node,
   Ampersand,
   Block,
   Token,
   type LocationInfo,
   type Operator,
+  type ConditionOperator,
   General,
   Ruleset,
   type SimpleSelector,
-  SelectorSequence,
   Combinator,
   List,
   Sequence,
@@ -38,18 +37,21 @@ import {
   Quoted,
   AtRule,
   Interpolated,
-  type Name,
   Reference,
   Extend,
   ExtendList,
   Negative,
   Mixin,
-  Import,
   Condition,
   VarDeclaration,
   DefaultGuard,
-  Lookup,
-  Rest
+  Rest,
+  Ident,
+  AtKeyword,
+  Anonymous,
+  StyleImport,
+  Expression,
+  ComplexSelector
 } from '@jesscss/core';
 
 const isEscapedString = function(this: P, T: TokenMap) {
@@ -67,14 +69,13 @@ export function stylesheet(this: P, T: TokenMap) {
   return (options: Record<string, any> = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     let context: TreeContext;
-    let initialScope: Scope;
     if (!RECORDING_PHASE) {
       if (options.context) {
         context = this._context = options.context;
       } else {
         context = this.context;
       }
-      initialScope = context.scope;
+      // Less may set scope in context.opts; TreeContext has no scope
     }
 
     let charset: IToken | undefined;
@@ -89,7 +90,7 @@ export function stylesheet(this: P, T: TokenMap) {
     let root: Node = $.SUBRULE($.main, { ARGS: [{ isRoot: true }] });
 
     if (!RECORDING_PHASE) {
-      let rules: Node[] = root.value;
+      let rules = root.value as unknown as Node[];
 
       if (charset) {
         let loc = $.getLocationInfo(charset);
@@ -100,7 +101,6 @@ export function stylesheet(this: P, T: TokenMap) {
         rootLoc[2] = loc[2];
       }
 
-      this.context.scope = initialScope!;
       return root;
     }
   };
@@ -132,7 +132,7 @@ export function main(this: P, T: TokenMap) {
     { ALT: () => $.SUBRULE($.mixinCall) }
   ];
 
-  return cssMain.call(this, T, ruleAlt);
+  return cssMain.call(this, T, ruleAlt as any);
 }
 
 export function declarationList(this: P, T: TokenMap) {
@@ -149,27 +149,23 @@ export function declarationList(this: P, T: TokenMap) {
     { ALT: () => $.CONSUME2(T.Semi) }
   ];
 
-  return cssMain.call(this, T, ruleAlt);
+  return cssMain.call(this, T, ruleAlt as any);
 }
 
 let interpolatedRegex = /([$@]){([^}]+)}/g;
-let charPlaceholder = String.fromCharCode(0);
+/** The placeholder we use for interpolation... we should probably use a const exported from @jesscss/core? */
+let charPlaceholder = '{}';
 
 const getInterpolated = (name: string, location: LocationInfo, context: TreeContext): Interpolated => {
-  let nodes: Node[] = [];
+  const replacements: Node[] = [];
   let result: RegExpExecArray | null;
-
-  let outputName = name;
-
+  let source = name;
   while (result = interpolatedRegex.exec(name)) {
-    let [match, propOrVar, value] = result;
-    outputName = outputName.replace(match, charPlaceholder);
-    nodes.push(new Reference(value!, { type: propOrVar === '$' ? 'property' : 'variable' }));
+    const [match, propOrVar, value] = result;
+    source = source.replace(match, '{}');
+    replacements.push(new Reference({ key: value! }, { type: propOrVar === '$' ? 'property' : 'variable' }));
   }
-  return new Interpolated([
-    ['value', outputName],
-    ['replacements', nodes]
-  ], undefined, location, context);
+  return new Interpolated({ source, replacements }, undefined, location, context);
 };
 
 export function declaration(this: P, T: TokenMap) {
@@ -196,12 +192,12 @@ export function declaration(this: P, T: TokenMap) {
           important = $.CONSUME(T.Important);
         });
         if (!$.RECORDING_PHASE) {
-          let nameNode: Name;
+          let nameNode: Node;
           let nameValue = name!.image;
           if (nameValue.includes('@') || nameValue.includes('$')) {
             nameNode = getInterpolated(nameValue, $.getLocationInfo(name!), this.context);
           } else {
-            nameNode = $.wrap(new General(name!.image, { type: 'Name' }, $.getLocationInfo(name!), this.context), true);
+            nameNode = $.wrap(new Ident(name!.image, { role: 'property' }, $.getLocationInfo(name!), this.context), true);
           }
           return [nameNode, assign, value, important];
         }
@@ -228,12 +224,12 @@ export function declaration(this: P, T: TokenMap) {
         });
         if (!RECORDING_PHASE) {
           let location = $.endRule();
-          let nameNode: Name;
+          let nameNode: Node;
           let nameValue = name.image;
           if (nameValue.includes('@') || nameValue.includes('$')) {
             nameNode = getInterpolated(nameValue, $.getLocationInfo(name), this.context);
           } else {
-            nameNode = $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true);
+            nameNode = $.wrap(new Ident(name.image, { role: 'property' }, $.getLocationInfo(name), this.context), true);
           }
           let value = new Sequence(nodes!, undefined, location, this.context);
           return [nameNode, assign, value];
@@ -327,11 +323,7 @@ export function qualifiedRule(this: P, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
-      return new Ruleset([
-        ['selector', selector],
-        ['rules', rules],
-        ['guard', guard]
-      ], undefined, location, this.context);
+      return new Ruleset({ selector, rules, guard }, undefined, location, this.context);
     }
   };
 }
@@ -350,7 +342,8 @@ export function complexSelector(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
-    let selectors: Node[] = $.SUBRULE($.compoundSelector, { ARGS: [ctx] });
+    const first = $.SUBRULE($.compoundSelector, { ARGS: [ctx] });
+    let selectors: Node[] = Array.isArray(first) ? first : [first];
 
     /**
      * Only space combinators and specified combinators will enter the MANY
@@ -368,7 +361,7 @@ export function complexSelector(this: P, T: TokenMap) {
             combinator = $.wrap(new Combinator(co.image, undefined, $.getLocationInfo(co), this.context), 'both');
           } else {
             let startOffset = this.LA(1).startOffset;
-            combinator = new Combinator('', undefined, 0, this.context);
+            combinator = new Combinator('', undefined, $.getLocationInfo($.LA(1)), this.context);
             combinator.pre = $.getPrePost(startOffset);
           }
         }
@@ -376,26 +369,27 @@ export function complexSelector(this: P, T: TokenMap) {
         if (!RECORDING_PHASE) {
           selectors.push(
             combinator!,
-            ...compound
+            ...(Array.isArray(compound) ? compound : [compound])
           );
         }
       }
     });
 
-    let node: SelectorSequence | Extend;
+    let currentSelector: ComplexSelector | undefined;
+    let maybeExtend: Extend | undefined;
 
     if (!RECORDING_PHASE) {
       let location = $.endRule();
-      node = new SelectorSequence(selectors as Array<SimpleSelector | Combinator>, undefined, location, this.context);
+      currentSelector = new ComplexSelector(selectors as Array<SimpleSelector | Combinator>, undefined, location, this.context);
     }
 
     $.OPTION2({
       GATE: () => !!ctx.qualifiedRule,
       DEF: () => {
-        node = $.SUBRULE($.extend, { ARGS: [node as SelectorSequence] });
+        maybeExtend = $.SUBRULE($.extend, { ARGS: [currentSelector] });
       }
     });
-    return node!;
+    return (maybeExtend ?? currentSelector)!;
   };
 }
 
@@ -410,7 +404,7 @@ export function extendList(this: P, T: TokenMap) {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
 
-    let nodes: Array<SelectorSequence | Extend>;
+    let nodes: Array<ComplexSelector | Extend>;
 
     if (!RECORDING_PHASE) {
       nodes = [];
@@ -419,9 +413,10 @@ export function extendList(this: P, T: TokenMap) {
     $.AT_LEAST_ONE_SEP({
       SEP: T.Comma,
       DEF: () => {
-        let node: SelectorSequence | Extend | undefined;
+        let sel: ComplexSelector | undefined;
+        let ext: Extend | undefined;
         $.OPTION(() => {
-          node = $.OR([
+          sel = $.OR([
             {
               GATE: () => !!ctx.inner,
               ALT: () => $.SUBRULE($.relativeSelector, { ARGS: [ctx] })
@@ -432,9 +427,9 @@ export function extendList(this: P, T: TokenMap) {
             }
           ]);
         });
-        node = $.SUBRULE($.extend, { ARGS: [node as SelectorSequence | undefined] });
+        ext = $.SUBRULE($.extend, { ARGS: [sel] });
         if (!RECORDING_PHASE) {
-          nodes.push(node as Extend);
+          nodes.push(ext!);
         }
       }
     });
@@ -451,7 +446,7 @@ export function extendList(this: P, T: TokenMap) {
 export function extend(this: P, T: TokenMap) {
   const $ = this;
 
-  return (selector: SelectorSequence | undefined) => {
+  return (selector: ComplexSelector | undefined) => {
     let start = $.CONSUME(T.Extend);
     let target = $.SUBRULE($.selectorList);
     let flag: IToken | undefined;
@@ -473,16 +468,11 @@ export function extend(this: P, T: TokenMap) {
         startColumn = loc.startColumn!;
       }
       let { endOffset, endLine, endColumn } = end;
-      return new Extend(
-        [
-          ['selector', selector],
-          ['target', target],
-          ['flag', flag ? '!all' : undefined]
-        ],
-        undefined,
-        [startOffset, startLine, startColumn, endOffset!, endLine!, endColumn!],
-        this.context
-      );
+      return new Extend({
+        selector: selector!,
+        target,
+        flag: flag ? 1 : undefined
+      }, undefined, [startOffset, startLine, startColumn, endOffset!, endLine!, endColumn!], this.context);
     }
   };
 }
@@ -518,7 +508,7 @@ export function simpleSelector(this: P, T: TokenMap) {
     { ALT: () => $.SUBRULE($.attributeSelector) }
   ];
 
-  return cssSimpleSelector.call(this, T, selectorAlt);
+  return cssSimpleSelector.call(this, T, selectorAlt as any);
 }
 
 export function anonymousMixinDefinition(this: P, T: TokenMap) {
@@ -535,10 +525,7 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
     let rules = $.SUBRULE($.wrappedDeclarationList);
 
     if (!$.RECORDING_PHASE) {
-      return new Mixin([
-        ['params', params],
-        ['rules', rules]
-      ], undefined, $.endRule(), this.context);
+      return new Mixin({ params, rules }, undefined, $.endRule(), this.context);
     }
   };
 }
@@ -557,17 +544,15 @@ export function importAtRule(this: P, T: TokenMap) {
   const getUrlFromNode = (urlNode: Quoted | Call): string => {
     let url: string = '';
     if (urlNode instanceof Quoted) {
-      let contents = urlNode.value;
-      url = contents.value;
+      url = urlNode.valueOf();
     } else {
-      let innerUrlNode = urlNode.args!.value[0]!;
+      let innerUrlNode = urlNode.value.args!.value[0]!;
       /**
        * A url function will have either a quoted value
        * or a general (un-quoted) value
        */
       if (innerUrlNode instanceof Quoted) {
-        let contents = innerUrlNode.value;
-        url = contents.value;
+        url = innerUrlNode.valueOf();
       } else if (innerUrlNode instanceof General) {
         url = innerUrlNode.value;
       }
@@ -637,19 +622,8 @@ export function importAtRule(this: P, T: TokenMap) {
       if (!RECORDING_PHASE) {
         let { startOffset, startLine, startColumn } = start;
         let { endOffset, endLine, endColumn } = end;
-        preludeNodes.push(
-          $.wrap(
-            new Call(
-              [
-                ['name', 'supports'],
-                ['args', $.wrap(value, 'both')]
-              ],
-              undefined,
-              [startOffset, startLine!, startColumn!, endOffset!, endLine!, endColumn!],
-              this.context
-            )
-          )
-        );
+        const loc = [startOffset, startLine!, startColumn!, endOffset!, endLine!, endColumn!] as LocationInfo;
+        preludeNodes.push($.wrap(new Call({ name: 'supports', args: $.wrap(value, 'both') as any }, undefined, loc, this.context)));
       }
     });
 
@@ -666,29 +640,22 @@ export function importAtRule(this: P, T: TokenMap) {
     if (!RECORDING_PHASE) {
       let location = $.endRule();
       if (isAtRule) {
-        return new AtRule([
-          ['name', $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true)],
-          ['prelude', new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context)]
-        ], undefined, location, this.context);
+        return new AtRule({
+          name: $.wrap(new AtKeyword(name.image, undefined, $.getLocationInfo(name), this.context), true),
+          prelude: new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context)
+        }, undefined, location, this.context);
       }
-      return new Import(
-        [
-          ['path', getUrlFromNode(urlNode)],
-          ['importType', 'less'],
-          /**
-           * If this is inline, it will end up using Jess's text plugin,
-           * but the Less plugin handles url resolving.
-           */
-          ['pluginOptions', options!.includes('inline') ? { inline: true } : {}]
-        ],
-        {
-          reference: true,
-          include: !options!.includes('reference'),
-          useParentScope: true
-        },
-        location,
-        this.context
-      );
+      const pathStr = getUrlFromNode(urlNode);
+      const pathNode = new Quoted(new Anonymous(pathStr), { quote: '\'' }, undefined, this.context);
+      return new StyleImport({
+        path: pathNode
+      }, {
+        type: 'import',
+        importOptions: {
+          reference: options!.includes('reference'),
+          once: true
+        }
+      }, location, this.context);
     }
   };
 }
@@ -705,15 +672,12 @@ const getInterpolatedOrString = (name: string): Interpolated | string => {
   let start = name.slice(1, nextPos);
   let end = name.slice(nextPos);
 
-  return new Interpolated([
-    ['value', start + charPlaceholder],
-    ['replacements', [
-      new Reference(
-        getInterpolatedOrString(end),
-        { type: end.startsWith('@') ? 'variable' : 'property' }
-      )
-    ]]
-  ]);
+  return new Interpolated({
+    source: start + charPlaceholder,
+    replacements: [
+      new Reference(getInterpolatedOrString(end) as string, { type: end.startsWith('@') ? 'variable' : 'property' })
+    ]
+  });
 };
 
 /** Less variables */
@@ -829,26 +793,26 @@ export function unknownAtRule(this: P, T: TokenMap) {
         return returnVal;
       }
       let nameVal: string | Interpolated = getInterpolatedOrString(name!.image);
-      let nameNode: Interpolated | General<'Name'>;
+      let nameNode: Node;
       if (!(nameVal instanceof Interpolated)) {
-        nameNode = new General(nameVal, { type: 'Name' }, $.getLocationInfo(name!), this.context);
+        nameNode = new Ident(nameVal, { role: 'selector' }, $.getLocationInfo(name!), this.context);
       } else {
         nameNode = nameVal;
       }
 
       /** An anonymous mixin call */
       if (!value) {
-        return new Call([
-          ['name', nameNode],
-          ['args', args!]
-        ], undefined, location, this.context);
+        const nameRef = nameNode instanceof Interpolated
+          ? new Reference({ key: nameNode }, { type: 'mixin-ruleset' })
+          : new Reference({ key: nameNode as any }, { type: 'mixin-ruleset' });
+        return new Call({ name: new Expression(nameRef), args: args! }, undefined, location, this.context);
       }
 
-      return new VarDeclaration([
-        ['name', $.wrap(nameNode, true)],
-        ['value', $.wrap(value, true)],
-        ['important', important ? $.wrap(new General(important.image, { type: 'Flag' }, $.getLocationInfo(important), this.context), true) : undefined]
-      ], undefined, location, this.context);
+      return new VarDeclaration({
+        name: $.wrap(nameNode, true) as any,
+        value: $.wrap(value, true),
+        important: important ? $.wrap(new General(important.image, { type: 'Flag' }, $.getLocationInfo(important), this.context), true) : undefined
+      }, undefined, location, this.context);
     }
   };
 }
@@ -1033,7 +997,6 @@ export function expressionSum(this: P, T: TokenMap) {
     });
 
     if (!RECORDING_PHASE) {
-      left.location = $.endRule();
       return left;
     }
   };
@@ -1071,7 +1034,7 @@ export function expressionProduct(this: P, T: TokenMap) {
     });
 
     if (!RECORDING_PHASE) {
-      left.location = $.endRule();
+      $.endRule();
       return left;
     }
   };
@@ -1153,7 +1116,7 @@ export function nthValue(this: P, T: TokenMap) {
     }
   ];
 
-  return cssNthValue.call(this, T, nthValueAlt);
+  return cssNthValue.call(this, T, nthValueAlt as any);
 }
 
 export function knownFunctions(this: P, T: TokenMap) {
@@ -1168,7 +1131,7 @@ export function knownFunctions(this: P, T: TokenMap) {
     /** @todo - add custom() and selector() */
   ];
 
-  return cssKnownFunctions.call(this, T, functions);
+  return cssKnownFunctions.call(this, T, functions as any);
 }
 
 export function ifFunction(this: P, T: TokenMap) {
@@ -1232,11 +1195,8 @@ export function ifFunction(this: P, T: TokenMap) {
 
     if (!RECORDING_PHASE) {
       let location = $.endRule();
-      let nameNode = new Reference('if', { type: 'variable', optional: true }, $.getLocationInfo(name), this.context);
-      return new Call([
-        ['name', nameNode],
-        ['args', new List(args!, undefined, argsLocation, this.context)]
-      ], undefined, location, this.context);
+      let nameNode = new Reference('if', { type: 'variable', fallbackValue: true }, $.getLocationInfo(name), this.context);
+      return new Call({ name: nameNode, args: new List(args!, undefined, argsLocation, this.context) }, undefined, location, this.context);
     }
   };
 }
@@ -1252,11 +1212,8 @@ export function booleanFunction(this: P, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
-      let nameNode = new Reference('boolean', { type: 'variable', optional: true }, $.getLocationInfo(name), this.context);
-      return new Call([
-        ['name', nameNode],
-        ['args', new List([arg], undefined, arg.location as LocationInfo, this.context)]
-      ], undefined, location, this.context);
+      let nameNode = new Reference('boolean', { type: 'variable', fallbackValue: true }, $.getLocationInfo(name), this.context);
+      return new Call({ name: nameNode, args: new List([arg], undefined, arg.location as LocationInfo, this.context) }, undefined, location, this.context);
     }
   };
 }
@@ -1292,9 +1249,13 @@ export function varReference(this: P, T: TokenMap) {
         ALT: () => {
           let token = $.CONSUME(T.NestedReference);
           if (!RECORDING_PHASE) {
-            let name = token.image;
-            let type: 'variable' | 'property' = name.startsWith('@') ? 'variable' : 'property';
-            return new Reference(getInterpolatedOrString(token.image), { type }, $.getLocationInfo(token), this.context);
+            const raw = token.image;
+            const type: 'variable' | 'property' = raw.startsWith('@') ? 'variable' : 'property';
+            const key = getInterpolatedOrString(raw);
+            if (typeof key === 'string') {
+              return new Reference(key, { type }, $.getLocationInfo(token), this.context);
+            }
+            return new Reference({ key }, { type }, $.getLocationInfo(token), this.context);
           }
         }
       },
@@ -1368,11 +1329,8 @@ export function functionCall(this: P, T: TokenMap) {
 
         if (!$.RECORDING_PHASE) {
           let location = $.endRule();
-          let nameNode = new Reference(name.image, { type: 'variable', optional: true }, $.getLocationInfo(name), this.context);
-          return new Call([
-            ['name', nameNode],
-            ['args', args]
-          ], undefined, location, this.context);
+          let nameNode = new Reference(name.image, { type: 'variable', fallbackValue: true }, $.getLocationInfo(name), this.context);
+          return new Call({ name: nameNode, args }, undefined, location, this.context);
         }
       }
     }
@@ -1822,7 +1780,7 @@ export function comparison(this: P, T: TokenMap) {
         opStr = '<=';
       }
       left = new Condition(
-        [$.wrap(left, true), opStr as Operator, $.wrap(right)],
+        [$.wrap(left, true), opStr as ConditionOperator, $.wrap(right)],
         undefined,
         $.getLocationFromNodes([left, right]),
         this.context
@@ -1878,13 +1836,13 @@ export function mixinName(this: P, T: TokenMap) {
       if (nameValue.includes('@') || nameValue.includes('$')) {
         nameNode = getInterpolated(nameValue, location, this.context);
         if (asReference) {
-          nameNode = new Reference(nameNode as Interpolated, { type: 'mixin' }, location, this.context);
+          nameNode = new Reference({ key: nameNode as Interpolated }, { type: 'mixin' }, location, this.context);
         }
       } else {
         if (asReference) {
-          nameNode = new Reference(nameValue, { type: 'mixin' }, location, this.context);
+          nameNode = new Reference({ key: nameValue }, { type: 'mixin' }, location, this.context);
         } else {
-          nameNode = $.wrap(new General(nameValue, { type: 'Name' }, $.getLocationInfo(name), this.context), true);
+          nameNode = $.wrap(new Ident(nameValue, { role: 'selector' }, $.getLocationInfo(name), this.context), true);
         }
       }
       return nameNode;
@@ -1903,17 +1861,8 @@ export function mixinReference(this: P, T: TokenMap) {
       $.OPTION(() => $.CONSUME(T.Gt));
       let rightNode = $.SUBRULE2($.mixinName, { ARGS: [true] });
       if (!RECORDING_PHASE) {
-        let [startOffset, startLine, startColumn] = leftNode.location;
-        let [,,, endOffset, endLine, endColumn] = rightNode.location;
-        leftNode = new Lookup(
-          [
-            ['value', new Call([['name', leftNode]])],
-            ['key', rightNode]
-          ],
-          undefined,
-          [startOffset, startLine, startColumn, endOffset, endLine, endColumn],
-          this.context
-        );
+        const loc = $.getLocationFromNodes([leftNode, rightNode]);
+        leftNode = new Reference({ target: new Call({ name: leftNode }), key: rightNode }, { type: 'mixin' }, loc, this.context);
       }
     });
     return leftNode;
@@ -1951,15 +1900,9 @@ export function mixinCall(this: P, T: TokenMap) {
       }
     ]);
     if (!RECORDING_PHASE) {
-      let location = $.endRule();
-      let node = new Call([
-        ['name', ref],
-        ['args', argList],
-        ['important', !!important]
-      ], undefined, location, this.context);
-      if (semi) {
-        node.options.semi = true;
-      }
+      const location = $.endRule();
+      const node = new Call({ name: ref, args: argList }, { markImportant: !!important }, location, this.context);
+      if (semi) node.options.semi = true;
       return node;
     }
   };
@@ -1983,19 +1926,12 @@ export function inlineMixinCall(this: P, T: TokenMap) {
 
     let argList: List | undefined;
     let node: Node;
-    let call: Call;
     let ref = $.SUBRULE($.mixinReference);
     if (!RECORDING_PHASE) {
       if (nodeContext) {
-        ref = new Lookup(
-          [
-            ['value', new Call([['name', nodeContext]])],
-            ['key', ref]
-          ]
-        );
+        ref = new Reference({ target: new Call({ name: nodeContext }), key: ref }, { type: 'mixin' });
       }
-      call = new Call([['name', ref]], undefined, ref.location, this.context);
-      node = call;
+      node = new Call({ name: ref }, undefined, ref.location, this.context);
     }
     $.OR([
       {
@@ -2008,11 +1944,9 @@ export function inlineMixinCall(this: P, T: TokenMap) {
         ALT: () => {
           argList = $.SUBRULE($.mixinArgs);
           if (!RECORDING_PHASE) {
-            call.args = argList;
-            let RParen = $.LA(0);
-            let [startOffset, startLine, startColumn] = node.location;
-            let { endOffset, endLine, endColumn } = RParen;
-            call.location = [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!];
+            const RParen = $.LA(0);
+            const loc = $.getLocationFromNodes([node, RParen]);
+            node = new Call({ name: ref, args: argList }, undefined, loc, this.context);
           }
           $.OR2([
             {
@@ -2050,12 +1984,7 @@ export function mixinDefinition(this: P, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
       return new Mixin(
-        [
-          ['name', name],
-          ['params', params],
-          ['rules', rules],
-          ['guard', guard]
-        ],
+        { name, params, rules, guard },
         { hasDefault: !!ctx.hasDefault },
         location,
         this.context
@@ -2089,7 +2018,7 @@ export function accessors(this: P, T: TokenMap) {
     let key = getInterpolatedOrString(tokenStr);
     let type: 'variable' | 'property' = tokenStr.startsWith('@') ? 'variable' : 'property';
 
-    return new Reference(key, { type }, $.getLocationInfo(token), this.context);
+    return new Reference({ key }, { type }, $.getLocationInfo(token), this.context);
   };
 
   let keyAlt = [
@@ -2129,16 +2058,10 @@ export function accessors(this: P, T: TokenMap) {
       } else {
         key = -1;
       }
-      let location = $.endRule();
-      returnNode = new Lookup(
-        [
-          ['value', nodeContext],
-          ['key', key]
-        ],
-        undefined,
-        location,
-        this.context
-      );
+      const location = $.endRule();
+      // Replace Lookup with a Reference targeting the current nodeContext
+      const targetRef = nodeContext as Reference | Node;
+      returnNode = new Reference({ target: targetRef as any, key: key as any }, { type: 'declaration' }, location, this.context);
     }
     /**
      * Allows chaining of lookups / calls
@@ -2154,15 +2077,7 @@ export function accessors(this: P, T: TokenMap) {
             if (!RECORDING_PHASE) {
               let [startOffset, startLine, startColumn] = returnNode.location;
               let { endOffset, endLine, endColumn } = $.LA(0);
-              returnNode = new Call(
-                [
-                  ['name', returnNode],
-                  ['args', args]
-                ],
-                undefined,
-                [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!],
-                this.context
-              );
+              returnNode = new Call({ name: returnNode, args }, undefined, [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!], this.context);
             }
           }
         },
@@ -2238,8 +2153,8 @@ export function mixinArgList(this: P, T: TokenMap) {
                   if (commaNodes.length > 1) {
                     let [first, ...rest] = commaNodes;
                     if (first instanceof VarDeclaration) {
-                      let nodes = [first.value, ...rest];
-                      first.value = new List(nodes, undefined, $.getLocationFromNodes(nodes), this.context);
+                      const nodes = [first.value.value, ...rest];
+                      first.value.value = new List(nodes, undefined, $.getLocationFromNodes(nodes), this.context);
                       semiNodes.push(first);
                     } else {
                       if (!commaNodes[0]) {
@@ -2339,15 +2254,10 @@ export function mixinArg(this: P, T: TokenMap) {
 
           if (!RECORDING_PHASE) {
             let location = $.endRule();
-            return new VarDeclaration(
-              [
-                ['name', name.image.slice(1)],
-                ['value', value]
-              ],
-              { paramVar: true },
-              location,
-              this.context
-            );
+            return new VarDeclaration({
+              name: new Ident(name.image.slice(1), { role: 'variable' }, $.getLocationInfo(name), this.context),
+              value
+            }, { paramVar: true }, location, this.context);
           }
         }
       },
