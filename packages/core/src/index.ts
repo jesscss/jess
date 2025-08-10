@@ -12,3 +12,4 @@ export * from './tree/util/compare';
 export * from './tree/util/cast';
 export * from './tree/util/find-extendable-locations';
 export * from './tree/util/collections';
+export * from './tree/util/serialize-types';

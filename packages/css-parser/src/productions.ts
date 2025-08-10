@@ -35,8 +35,7 @@ import {
   Token,
   Name,
   CustomDeclaration,
-  RawRules,
-  Reference
+  RawRules
 } from '@jesscss/core';
 
 type C = CssActionsParser;
@@ -252,11 +251,9 @@ export function classSelector(this: C, T: TokenMap) {
   const $ = this;
 
   return () => {
-    $.startRule();
-    let selector = $.CONSUME(T.Dot);
-    let name = $.CONSUME(T.Ident);
+    let selector = $.CONSUME(T.DotName);
     if (!$.RECORDING_PHASE) {
-      return new BasicSelector('.' + name.image, undefined, $.endRule(), this.context);
+      return new BasicSelector(selector.image, undefined, $.getLocationInfo(selector), this.context);
     }
   };
 }
@@ -1349,14 +1346,12 @@ export function varFunction(this: C, T: TokenMap) {
   return () => {
     $.startRule();
     $.CONSUME(T.Var);
-    $.OR([
-      {
-        GATE: $.noSep,
-        ALT: () => {
-          $.CONSUME(T.LParen);
-        }
+    $.OR([{
+      GATE: $.noSep,
+      ALT: () => {
+        $.CONSUME(T.LParen);
       }
-    ]);
+    }]);
     let prop = $.CONSUME(T.CustomProperty);
     let args: List | undefined;
     $.OPTION(() => {
@@ -1392,14 +1387,12 @@ export function calcFunction(this: C, T: TokenMap) {
     $.startRule();
 
     $.CONSUME(T.Calc);
-    $.OR([
-      {
-        GATE: $.noSep,
-        ALT: () => {
-          $.CONSUME(T.LParen);
-        }
+    $.OR([{
+      GATE: $.noSep,
+      ALT: () => {
+        $.CONSUME(T.LParen);
       }
-    ]);
+    }]);
     let args = $.SUBRULE($.mathSum);
     $.CONSUME2(T.RParen);
 
@@ -2398,36 +2391,26 @@ export function layerName(this: C, T: TokenMap) {
   return () => {
     const RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
-    let name = '';
-    let tok = $.CONSUME(T.Ident);
+    const nodes: Node[] = RECORDING_PHASE ? ([] as unknown as Node[]) : [];
+
+    const first = $.CONSUME(T.Ident);
     if (!RECORDING_PHASE) {
-      name = tok.image;
+      nodes.push($.wrap($.processValueToken(first)));
     }
 
     $.MANY({
       GATE: $.noSep,
       DEF: () => {
-        $.CONSUME(T.Dot);
+        const seg = $.CONSUME(T.DotName);
         if (!RECORDING_PHASE) {
-          name += '.';
+          nodes.push($.wrap($.processValueToken(seg)));
         }
-        $.OR([
-          {
-            GATE: $.noSep,
-            ALT: () => {
-              let tok = $.CONSUME2(T.Ident);
-              if (!RECORDING_PHASE) {
-                name += tok.image;
-              }
-            }
-          }
-        ]);
       }
     });
 
     if (!RECORDING_PHASE) {
       const loc = $.endRule();
-      return new Name(name, undefined, loc, this.context);
+      return new Sequence(nodes, undefined, loc, this.context);
     }
   };
 }
@@ -2751,14 +2734,12 @@ export function importAtRule(this: C, T: TokenMap) {
     /** layer(responsive) */
     $.OPTION(() => {
       let start = $.CONSUME(T.Layer);
-      $.OR2([
-        {
-          GATE: $.noSep,
-          ALT: () => {
-            $.CONSUME(T.LParen);
-          }
+      $.OR2([{
+        GATE: $.noSep,
+        ALT: () => {
+          $.CONSUME(T.LParen);
         }
-      ]);
+      }]);
       let value: Node = $.SUBRULE($.layerName);
       let end = $.CONSUME(T.RParen);
 
@@ -2783,14 +2764,12 @@ export function importAtRule(this: C, T: TokenMap) {
     /** supports(display: grid) */
     $.OPTION2(() => {
       let start = $.CONSUME(T.Supports);
-      $.OR3([
-        {
-          GATE: $.noSep,
-          ALT: () => {
-            $.CONSUME2(T.LParen);
-          }
+      $.OR3([{
+        GATE: $.noSep,
+        ALT: () => {
+          $.CONSUME2(T.LParen);
         }
-      ]);
+      }]);
       let value = $.OR4([
         { ALT: () => $.SUBRULE($.supportsCondition) },
         { ALT: () => $.SUBRULE($.declaration) }
@@ -2930,32 +2909,28 @@ export function unknownAtRule(this: C, T: TokenMap) {
           // Mark inner-content start to ensure a stable location even when empty
           $.startRule();
           // 1) Fast selector/nested-at-rule start gate
-          const t1 = $.LA(1);
-          const t2 = $.LA(2);
-          const t1Type = t1.tokenType;
-          const t2Type = t2.tokenType;
+          const t1 = $.LA(1).tokenType;
+          const t2 = $.LA(2).tokenType;
           const isRuleStart = (
-            (t1Type === T.Dot && tokenMatcher(t2, T.Ident))
-            || t1Type === T.HashName
-            || t1Type === T.Ampersand
-            || t1Type === T.LSquare
-            || t1Type === T.SelectorPseudoClass
-            || t1Type === T.NthPseudoClass
-            || t1Type === T.Star
-            || t1Type === T.ColorIdentStart
-            || t1Type === T.AtKeyword
+            t1 === T.DotName
+            || t1 === T.HashName
+            || t1 === T.Ampersand
+            || t1 === T.LSquare
+            || t1 === T.SelectorPseudoClass
+            || t1 === T.NthPseudoClass
+            || t1 === T.Star
+            || t1 === T.ColorIdentStart
+            || t1 === T.AtKeyword
             // Also treat IDENT followed by '{' as a rule start (e.g., @-moz-document url-prefix() { a { ... } })
-            || ((t1Type === T.PlainIdent || t1Type === T.CustomProperty || (T.LegacyPropIdent ? t1Type === T.LegacyPropIdent : false)) && t2Type === T.LCurly)
+            || ((t1 === T.PlainIdent || t1 === T.CustomProperty || (T.LegacyPropIdent ? t1 === T.LegacyPropIdent : false)) && t2 === T.LCurly)
           );
           if (isRuleStart) {
             declRules = $.SUBRULE($.main);
           } else {
             // 2) Constant-time declaration start: IDENT ':'
             const isDeclStart = (
-              t1Type === T.PlainIdent
-              || t1Type === T.CustomProperty
-              || t1Type === T.LegacyPropIdent
-            ) && t2Type === T.Colon;
+              t1 === T.PlainIdent || t1 === T.CustomProperty || (T.LegacyPropIdent ? t1 === T.LegacyPropIdent : false)
+            ) && t2 === T.Colon;
             if (isDeclStart) {
               declRules = $.SUBRULE($.declarationList);
             } else {

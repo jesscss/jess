@@ -2,7 +2,7 @@ import * as glob from 'glob';
 import * as fs from 'fs';
 import * as path from 'path';
 import { CssParser } from '../src';
-import { stringify } from '../src/util/cst';
+import { serializeTypes } from '@jesscss/core';
 
 const testData = path.dirname(require.resolve('@less/test-data'));
 
@@ -92,7 +92,7 @@ const notSameSerialized = [
 ];
 
 describe('can parse Less CSS output', () => {
-  glob.sync(path.join(testData, 'css/_main/layer.css'))
+  glob.sync(path.join(testData, 'css/_main/*.css'))
     .map(value => path.relative(testData, value))
     .filter(value => !invalidCSSOutput.includes(value))
     .sort()
@@ -133,4 +133,11 @@ describe('returns errors on invalid Less CSS output', () => {
         expect(errors.length).toBeGreaterThan(0);
       });
     });
+});
+
+describe.only('AST type checks', () => {
+  it('should minimize the number of nodes', () => {
+    const { tree } = cssParser.parse('a { b: c; }');
+    expect(serializeTypes(tree)).toBe('a { b: c; }');
+  });
 });

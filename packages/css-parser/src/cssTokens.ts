@@ -11,13 +11,7 @@ import {
   type IMultiModeLexerDefinition,
   type CustomPatternMatcherFunc
 } from 'chevrotain';
-
-import { build as $build } from 'xregexp';
-
-interface ILexer {
-  T: Record<string, TokenType>;
-  lexer: IMultiModeLexerDefinition;
-}
+import { buildFragments, createLexerDefinition } from './util';
 
 /**
  * references:
@@ -200,7 +194,10 @@ const rawCssTokens = {
       { name: 'Print', pattern: /print/, longer_alt: 'PlainIdent', categories: ['Ident'] },
       { name: 'All', pattern: /all/, longer_alt: 'PlainIdent', categories: ['Ident'] },
 
-      /** Special function names */
+      /**
+       * Special function names. CSS has them tokenized like `calc(` or `layer(`,
+       * but that's inconvenient for extending this parser.
+       */
       { name: 'Layer', pattern: /layer/, longer_alt: 'PlainIdent', categories: ['Ident'] },
       { name: 'Supports', pattern: /supports/, longer_alt: 'PlainIdent', categories: ['Ident'] },
       { name: 'Var', pattern: /var/, longer_alt: 'PlainIdent', categories: ['Ident'] },
@@ -321,10 +318,16 @@ const rawCssTokens = {
         categories: ['Selector']
       },
       {
-        name: 'Dot',
-        pattern: /\./,
-        categories: ['BlockMarker']
+        name: 'DotName',
+        pattern: '\\.{{ident}}',
+        categories: ['Selector']
       },
+      /** There are some cases where we might need this tokenized separately?  */
+      // {
+      //   name: 'Dot',
+      //   pattern: /\./,
+      //   categories: ['BlockMarker']
+      // },
       {
         name: 'HashName',
         pattern: '#{{ident}}',
@@ -522,117 +525,5 @@ export type TokenNames<T extends readonly any[]> = TokenNameMap<T>[number];
 /** Join all modes to get strong indexing */
 export type CssTokenType = TokenNames<TokenModes[keyof TokenModes]>;
 
-// export const cssTokens = tokens as unknown as WritableDeep<RawModeConfig>;
-// export const cssFragments = fragments;
-
-/** @todo - move back to util when this is proven to work */
-function $buildFragments(rawFragments: string[][]) {
-  const fragments: Record<string, RegExp> = {};
-  for (const fragment of rawFragments) {
-    fragments[fragment[0]!] = $build!(fragment[1]!, fragments);
-  };
-  return fragments;
-};
-
-export const cssFragments = $buildFragments!(rawCssFragments);
-export const cssLexer = $createLexerDefinition!(rawCssFragments, rawCssTokens);
-
-/**
- * Builds proper tokens from a raw token definition.
- * This allows us to extend / modify tokens before creating them
- */
-// eslint-disable-next-line @typescript-eslint/naming-convention
-export function $createLexerDefinition(rawFragments: string[][], _rawTokens: RawModeConfig): ILexer {
-  const rawTokens = _rawTokens as WritableDeep<RawModeConfig>;
-  /**
-   * @todo - get ts-macros working to eliminate XRegExp dependency
-   * @see https://github.com/GoogleFeud/ts-macros/issues/66
-   */
-
-  const fragments: Record<string, RegExp> = $buildFragments!(rawFragments);
-  const T: Record<string, TokenType> = {};
-  const lexer: IMultiModeLexerDefinition = {
-    modes: {
-      Default: []
-    },
-    defaultMode: 'Default'
-  };
-
-  /** Build fragment replacements */
-  const entries = Object.entries(rawTokens.modes);
-  entries.forEach(([mode, modeTokens]) => {
-    modeTokens.forEach((rawToken) => {
-      const addToken = (token: TokenType) => {
-        if (lexer.modes[mode] === undefined) {
-          lexer.modes[mode] = [token];
-        } else {
-          /** Build tokens from bottom to top */
-          lexer.modes[mode]!.unshift(token);
-        }
-      };
-      if (typeof rawToken === 'string') {
-        const token = lexer.modes.Default!.find(token => token.name === rawToken)!;
-        addToken(token);
-        return;
-      }
-      let { name, pattern, longer_alt, categories, group, ...rest } = rawToken;
-      let regExpPattern: RegExp | CustomPatternMatcherFunc;
-      if (pattern !== LexerType.NA) {
-        const isUnknownToken = name === 'Unknown';
-        if (!isUnknownToken && (!categories || (group !== LexerType.SKIPPED && !categories.includes('BlockMarker')))) {
-          if (!categories) {
-            categories = [];
-          } else {
-            /** Any non-blockmarker that's not an Identifier */
-            if (!categories.includes('Ident')) {
-              categories.push('NonIdent');
-            }
-          }
-          categories.push('Value');
-        }
-        if (pattern instanceof RegExp) {
-          regExpPattern = pattern;
-        } else if (Array.isArray(pattern)) {
-          regExpPattern = pattern[1].bind($build!(pattern[0], fragments, 'yi'));
-        } else {
-          regExpPattern = $build!(pattern as string, fragments, 'i');
-        }
-      } else {
-        regExpPattern = Lexer.NA;
-      }
-
-      const longerAlt = longer_alt
-        ? {
-            longer_alt: Array.isArray(longer_alt)
-              ? longer_alt.map(val => T[val])
-              : T[longer_alt]
-          }
-        : {};
-      const groupValue = group === LexerType.SKIPPED
-        ? { group: Lexer.SKIPPED }
-        : group ? { group } : {};
-      const tokenCategories = categories
-        ? {
-            categories: categories.map((category) => {
-              return T[category];
-            })
-          }
-        : {};
-      const token = createToken({
-        name,
-        pattern: regExpPattern,
-        ...longerAlt,
-        ...groupValue,
-        ...tokenCategories,
-        ...rest
-      } as ITokenConfig);
-      T[name] = token;
-      addToken(token);
-    });
-  });
-
-  return {
-    lexer,
-    T
-  };
-};
+export const cssFragments = buildFragments(rawCssFragments);
+export const cssLexer = createLexerDefinition(rawCssFragments, rawCssTokens);
