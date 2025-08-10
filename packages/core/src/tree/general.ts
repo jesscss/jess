@@ -1,18 +1,17 @@
-import { Node, defineType } from './node';
-import type { Context } from '../context';
+import { Node, defineType, type LocationInfo } from './node';
+import type { Context, TreeContext } from '../context';
 
 export type GeneralNodeType =
-  'Name'
-  | 'Keyword'
+  'Ident'
+  | 'AtKeyword'
   | 'UrlValue'
   | 'Flag'
   | 'CustomProp'
-  | 'CustomIdent'
   | 'Anonymous';
 
 /** Doesn't get assigned but can be used for inference? */
 export type GeneralOptions<T extends string> = {
-  type: T;
+  type?: T;
 };
 export interface General<
   T extends string = GeneralNodeType
@@ -32,27 +31,47 @@ export class General<
   shortType = 'general';
 }
 
-export class Name extends General<'Name'> {}
-export const name = defineType(Name, 'Name');
+type GeneralConstructor<T extends string, Role = undefined> = new (
+  value: string,
+  options?: GeneralOptions<T> & (Role extends string ? { role?: Role } : {}),
+  loc?: LocationInfo,
+  context?: TreeContext
+) => General<T>;
 
-export class Keyword extends General<'Keyword'> {}
-export const keyword = defineType(Keyword, 'Keyword');
+/**
+ * Create a new General class with a given type.
+ * We do this just to make a friendlier AST.
+ */
+function createGeneral<T extends string, Role = undefined>(type: T, short?: string): GeneralConstructor<T, Role> {
+  type Options = GeneralOptions<T> & (Role extends string ? { role?: Role } : {});
+  let GeneralClass = class extends General<T> {
+    override type = type as any;
+    override shortType = (short ?? type.toLowerCase()) as any;
+    constructor(value: string, options?: Options, loc?: LocationInfo, context?: TreeContext) {
+      super(value, { ...options, type }, loc, context);
+    }
+  };
+  defineType(GeneralClass, type, short);
+  return GeneralClass;
+}
 
-export class UrlValue extends General<'UrlValue'> {}
-defineType(UrlValue, 'UrlValue');
-
-export class Flag extends General<'Flag'> {}
-defineType(Flag, 'Flag');
-
-export class CustomProp extends General<'CustomProp'> {}
-defineType(CustomProp, 'CustomProp');
-
-export class CustomIdent extends General<'CustomIdent'> {}
-defineType(CustomIdent, 'CustomIdent');
+// Core id-like token used broadly (property names, identifiers, most keywords)
+export type IdentRole = 'property' | 'variable' | 'selector' | 'keyword';
+export const Ident = createGeneral<'Ident', IdentRole>('Ident');
+export type Ident = InstanceType<typeof Ident>;
+export const UrlValue = createGeneral('UrlValue');
+export type UrlValue = InstanceType<typeof UrlValue>;
+export const Flag = createGeneral('Flag');
+export type Flag = InstanceType<typeof Flag>;
+export const CustomProp = createGeneral('CustomProp');
+export type CustomProp = InstanceType<typeof CustomProp>;
+export const AtKeyword = createGeneral('AtKeyword');
+export type AtKeyword = InstanceType<typeof AtKeyword>;
 
 /**
  * "Anonymous" is from Less's original definition to mean
  * an unspecified token.
  */
-export class Anonymous extends General<'Anonymous'> {}
-export const any = defineType(Anonymous, 'Anonymous', 'any');
+export const Anonymous = createGeneral('Anonymous', 'any');
+export type Anonymous = InstanceType<typeof Anonymous>;
+export { Anonymous as any };

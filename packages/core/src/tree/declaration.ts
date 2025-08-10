@@ -7,7 +7,7 @@ import { isNode } from './util/is-node';
 import { Nil } from './nil';
 import type { Context, TreeContext } from '../context';
 import { Interpolated } from './interpolated';
-import { type General, Name } from './general';
+import { type General, Ident } from './general';
 import { Reference } from './reference';
 import { List } from './list';
 import { spaced } from './sequence';
@@ -61,7 +61,7 @@ export type DeclarationOptions = {
   throwIfDefined?: boolean;
 };
 
-type NameValue = Name | Interpolated<'Name'>;
+type NameValue = Ident | Interpolated<'Ident'>;
 
 export type DeclarationValue = {
   name: NameValue;
@@ -125,9 +125,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       let node = this.clone();
       node.preEvaluated = true;
       let { name, value } = node.value;
-      let key: Name;
+      let key: Ident;
       if (name instanceof Interpolated) {
-        key = (await name.eval(context)).createGeneric() as Name;
+        key = (await name.eval(context)).createGeneric() as Ident;
         node.value.name = key;
       } else {
         key = name;
@@ -197,7 +197,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
      * @todo - is this valid if rulesets pre-emptively evaluate names?
      */
     if (name instanceof Interpolated) {
-      node.value.name = (await name.eval(context)).createGeneric() as Name;
+      node.value.name = (await name.eval(context)).createGeneric() as Ident;
     }
     /** Evaluate the value */
     if (value instanceof Node) {
@@ -252,6 +252,6 @@ export const decl = (
   treeContext?: TreeContext
 ) => {
   let { name } = value;
-  value.name = typeof name === 'string' ? new Name(name) : name;
+  value.name = typeof name === 'string' ? new Ident(name) : name;
   return new Declaration(value as DeclarationValue, options, location, treeContext);
 };

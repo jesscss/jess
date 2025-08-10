@@ -119,7 +119,9 @@ function serializePlainObject(obj: Record<string, unknown>, depth: number, opts:
 function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOptions>, visiting: Set<Node>): string {
   const typeName = opts.useShortType ? (n as any).shortType : (n as any).type;
   const pad = indent(depth, opts.indentSize);
-  const open = `${pad}(${typeName}`;
+  const role = (n as any)?.options?.role as string | undefined;
+  const meta = role ? ` [role=${role}]` : '';
+  const open = `${pad}(${typeName}${meta}`;
 
   // Protect against cycles
   if (visiting.has(n)) {
@@ -151,6 +153,16 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
     const inner = '\n' + serializeNode(value, depth + 1, opts, visiting);
     visiting.delete(n);
     return `${open}${inner}\n${pad})`;
+  }
+
+  // Special-case Number plain object: print compact form
+  if (typeName === 'Number' && isPlainObject(value)) {
+    const num = (value as any).number;
+    const keys = Object.keys(value as Record<string, unknown>).filter(k => (value as any)[k] !== undefined);
+    if (typeof num === 'number' && (keys.length === 1 || (keys.length === 0))) {
+      visiting.delete(n);
+      return `${open} ${num})`;
+    }
   }
 
   // If the main value is an array

@@ -25,6 +25,7 @@ import {
   Sequence,
   Call,
   Url,
+  UrlValue,
   Paren,
   Operation,
   Quoted,
@@ -33,7 +34,8 @@ import {
   AtRule,
   QueryCondition,
   Token,
-  Name,
+  Ident,
+  AtKeyword,
   CustomDeclaration,
   RawRules
 } from '@jesscss/core';
@@ -513,7 +515,12 @@ export function compoundSelector(this: C, T: TokenMap) {
         }
       }
     });
-    return new CompoundSelector(selectors!, undefined, undefined, this.context);
+    if (!RECORDING_PHASE) {
+      if (selectors!.length === 1) {
+        return selectors![0]!;
+      }
+      return new CompoundSelector(selectors!, undefined, undefined, this.context);
+    }
   };
 }
 
@@ -573,6 +580,9 @@ export function complexSelector(this: C, T: TokenMap) {
 
     if (!RECORDING_PHASE) {
       let location = $.endRule();
+      if (selectors.length === 1) {
+        return selectors[0]!;
+      }
       return new ComplexSelector(selectors as ComplexSelectorValue, undefined, location, this.context);
     }
   };
@@ -747,7 +757,7 @@ export function declaration(this: C, T: TokenMap, alt?: Alt) {
           important = $.CONSUME(T.Important);
         });
         if (!$.RECORDING_PHASE) {
-          let nameNode = $.wrap(new Flag(name!.image, undefined, $.getLocationInfo(name!), this.context), true);
+          let nameNode = $.wrap(new Ident(name!.image, { role: 'property' }, $.getLocationInfo(name!), this.context), true);
           return [nameNode, assign, value, important];
         }
       }
@@ -770,7 +780,7 @@ export function declaration(this: C, T: TokenMap, alt?: Alt) {
         });
         if (!RECORDING_PHASE) {
           let location = $.endRule();
-          let nameNode = $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true);
+          let nameNode = $.wrap(new Ident(name.image, { role: 'property' }, $.getLocationInfo(name), this.context), true);
           let value = new Sequence(nodes!, undefined, location, this.context);
           return [nameNode, assign, value];
         }
@@ -784,7 +794,7 @@ export function declaration(this: C, T: TokenMap, alt?: Alt) {
   return () => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
-    let name: Name | undefined;
+    let name: Ident | undefined;
     let assign: IToken | undefined;
     let value: Node | undefined;
     let important: IToken | undefined;
@@ -800,7 +810,7 @@ export function declaration(this: C, T: TokenMap, alt?: Alt) {
       return new (isCustom ? CustomDeclaration : Declaration)({
         name: name!,
         value: $.wrap(value!, 'both'),
-        important: important ? $.wrap(new General(important.image, { type: 'Flag' }, $.getLocationInfo(important), this.context), 'both') : undefined
+        important: important ? $.wrap(new Flag(important.image, undefined, $.getLocationInfo(important), this.context), 'both') : undefined
       }, { assign: assign!.image as AssignmentType }, location, this.context);
     }
   };
@@ -1289,6 +1299,8 @@ export function mathValue(this: C, T: TokenMap, alt?: Alt) {
   let valueAlt = alt ?? [
     { ALT: () => $.CONSUME(T.Number) },
     { ALT: () => $.CONSUME(T.Dimension) },
+    // Allow identifiers like channel names in color space calcs (e.g., calc(l - 0.1))
+    { ALT: () => $.CONSUME(T.Ident) },
     { ALT: () => $.CONSUME(T.MathConstant) },
     { ALT: () => $.SUBRULE($.knownFunctions) },
     { ALT: () => $.SUBRULE($.mathParen) }
@@ -1535,7 +1547,7 @@ export function mediaAtRule(this: C, T: TokenMap) {
     if (!RECORDING_PHASE) {
       let location = $.endRule();
       return new AtRule({
-        name: $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true),
+        name: $.wrap(new AtKeyword(name.image, undefined, $.getLocationInfo(name), this.context), true),
         prelude: $.wrap(prelude, true),
         rules
       }, undefined, location, this.context);
@@ -1605,7 +1617,7 @@ export function mediaQuery(this: C, T: TokenMap, alt?: Alt) {
         });
 
         if (token && !RECORDING_PHASE) {
-          nodes!.push($.wrap(new General(token.image, { type: 'Keyword' }, $.getLocationInfo(token), this.context)));
+          nodes!.push($.wrap(new Ident(token.image, { role: 'keyword' }, $.getLocationInfo(token), this.context)));
           token = undefined;
         }
         let type = $.SUBRULE($.mediaType);
@@ -1620,7 +1632,7 @@ export function mediaQuery(this: C, T: TokenMap, alt?: Alt) {
         });
         if (!RECORDING_PHASE) {
           if (token) {
-            nodes!.push($.wrap(new General(token.image, { type: 'Keyword' }, $.getLocationInfo(token), this.context)));
+            nodes!.push($.wrap(new Ident(token.image, { role: 'keyword' }, $.getLocationInfo(token), this.context)));
           }
           if (node) {
             nodes!.push(node);
@@ -1657,7 +1669,7 @@ export function mediaType(this: C, T: TokenMap, alt?: Alt) {
   return () => {
     let token = $.OR(typeAlt);
     if (!$.RECORDING_PHASE) {
-      return $.wrap(new General(token.image, { type: 'Keyword' }, $.getLocationInfo(token), this.context));
+      return $.wrap(new Ident(token.image, { role: 'keyword' }, $.getLocationInfo(token), this.context));
     }
   };
 }
@@ -1877,7 +1889,7 @@ export function mediaFeature(this: C, T: TokenMap, alt?: Alt) {
                   let location = $.endRule();
                   return $.wrap(
                     new Declaration({
-                      name: $.wrap(new Name(ident.image), true),
+                      name: $.wrap(new Ident(ident.image, { role: 'property' }), true),
                       value: $.wrap(value)
                     }, undefined, location, this.context),
                     'both');
@@ -1916,7 +1928,7 @@ export function mediaFeature(this: C, T: TokenMap, alt?: Alt) {
         });
         if (!RECORDING_PHASE && !rule) {
           let location = $.endRule();
-          return $.wrap(new General(ident.image, { type: 'Keyword' }, location, this.context));
+          return $.wrap(new Ident(ident.image, { role: 'keyword' }, location, this.context));
         }
         return rule;
       }
@@ -2130,7 +2142,7 @@ export function pageAtRule(this: C, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
       return new AtRule({
-        name: $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true),
+        name: $.wrap(new AtKeyword(name.image, undefined, $.getLocationInfo(name), this.context), true),
         prelude: selector.length ? $.wrap(new List(selector, undefined, $.getLocationFromNodes(selector), this.context), true) : undefined,
         rules
       }, undefined, location, this.context);
@@ -2178,7 +2190,7 @@ export function fontFaceAtRule(this: C, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
       return new AtRule({
-        name: $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true),
+        name: $.wrap(new AtKeyword(name.image, undefined, $.getLocationInfo(name), this.context), true),
         rules
       }, undefined, location, this.context);
     }
@@ -2244,7 +2256,7 @@ export function keyframesAtRule(this: C, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       return new AtRule({
-        name: $.wrap(new General(atTok.image, { type: 'Name' }, $.getLocationInfo(atTok), this.context), true),
+        name: $.wrap(new AtKeyword(atTok.image, undefined, $.getLocationInfo(atTok), this.context), true),
         prelude: preludeNode ? $.wrap(preludeNode, 'both') : undefined,
         // Include isolated comments inside the keyframes body
         rules: $.getRulesWithComments(blocks, $.getLocationInfo(endTok))
@@ -2266,7 +2278,7 @@ export function containerAtRule(this: C, T: TokenMap) {
     $.CONSUME(T.RCurly);
     if (!$.RECORDING_PHASE) {
       return new AtRule({
-        name: $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true),
+        name: $.wrap(new AtKeyword(name.image, undefined, $.getLocationInfo(name), this.context), true),
         prelude: preludeNodes.length ? $.wrap(new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context), 'both') : undefined,
         rules
       }, undefined, $.endRule(), this.context);
@@ -2287,7 +2299,7 @@ export function scopeAtRule(this: C, T: TokenMap) {
     $.CONSUME(T.RCurly);
     if (!$.RECORDING_PHASE) {
       return new AtRule({
-        name: $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true),
+        name: $.wrap(new AtKeyword(name.image, undefined, $.getLocationInfo(name), this.context), true),
         prelude: preludeNodes.length ? $.wrap(new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context), 'both') : undefined,
         rules
       }, undefined, $.endRule(), this.context);
@@ -2308,7 +2320,7 @@ export function documentAtRule(this: C, T: TokenMap) {
     $.CONSUME(T.RCurly);
     if (!$.RECORDING_PHASE) {
       return new AtRule({
-        name: $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true),
+        name: $.wrap(new AtKeyword(name.image, undefined, $.getLocationInfo(name), this.context), true),
         prelude: preludeNodes.length ? $.wrap(new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context), 'both') : undefined,
         rules
       }, undefined, $.endRule(), this.context);
@@ -2352,7 +2364,7 @@ export function layerAtRule(this: C, T: TokenMap) {
           $.CONSUME(T.RCurly);
           if (!RECORDING_PHASE) {
             return new AtRule({
-              name: $.wrap(new General(atTok.image, { type: 'Name' }, $.getLocationInfo(atTok), this.context), true),
+              name: $.wrap(new AtKeyword(atTok.image, undefined, $.getLocationInfo(atTok), this.context), true),
               prelude: preludeNodes.length ? $.wrap(new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context), 'both') : undefined,
               rules
             }, undefined, $.endRule(), this.context);
@@ -2373,7 +2385,7 @@ export function layerAtRule(this: C, T: TokenMap) {
           $.CONSUME(T.Semi);
           if (!RECORDING_PHASE) {
             return new AtRule({
-              name: $.wrap(new General(atTok.image, { type: 'Name' }, $.getLocationInfo(atTok), this.context), true),
+              name: $.wrap(new AtKeyword(atTok.image, undefined, $.getLocationInfo(atTok), this.context), true),
               prelude: preludeNodes.length ? $.wrap(new List(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context), 'both') : undefined
             }, undefined, $.endRule(), this.context);
           }
@@ -2436,7 +2448,7 @@ export function supportsAtRule(this: C, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
       return new AtRule({
-        name: $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true),
+        name: $.wrap(new AtKeyword(name.image, undefined, $.getLocationInfo(name), this.context), true),
         prelude: $.wrap(prelude, 'both'),
         rules
       }, undefined, location, this.context);
@@ -2464,7 +2476,7 @@ export function supportsCondition(this: C, T: TokenMap) {
         if (!$.RECORDING_PHASE) {
           let location = $.endRule();
           return new QueryCondition([
-            $.wrap(new General(keyword.image, { type: 'Keyword' }, $.getLocationInfo(keyword), this.context)),
+            $.wrap(new Ident(keyword.image, { role: 'keyword' }, $.getLocationInfo(keyword), this.context)),
             value
           ], undefined, location, this.context);
         }
@@ -2492,7 +2504,7 @@ export function supportsCondition(this: C, T: TokenMap) {
                   let [,,,endOffset, endLine, endColumn] = right.location;
                   left = new QueryCondition([
                     left,
-                    $.wrap(new General(keyword.image, { type: 'Keyword' }, $.getLocationInfo(keyword), this.context)),
+                    $.wrap(new Ident(keyword.image, { role: 'keyword' }, $.getLocationInfo(keyword), this.context)),
                     right
                   ], undefined, [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!], this.context);
                 }
@@ -2508,7 +2520,7 @@ export function supportsCondition(this: C, T: TokenMap) {
                   let [,,,endOffset, endLine, endColumn] = right.location;
                   left = new QueryCondition([
                     left,
-                    $.wrap(new General(keyword.image, { type: 'Keyword' }, $.getLocationInfo(keyword), this.context)),
+                    $.wrap(new Ident(keyword.image, { role: 'keyword' }, $.getLocationInfo(keyword), this.context)),
                     right
                   ], undefined, [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!], this.context);
                 }
@@ -2600,22 +2612,39 @@ export function functionCall(this: C, T: TokenMap, alt?: Alt) {
   const $ = this;
 
   let funcAlt = alt ?? [
-    { ALT: () => $.SUBRULE($.knownFunctions) },
     {
+      // Disambiguate known functions by their dedicated tokens
+      GATE: () => {
+        let tokenType = $.LA(1).tokenType;
+        return tokenType === T.UrlStart
+          || tokenType === T.Var
+          || tokenType === T.Calc;
+      },
+      ALT: () => $.SUBRULE($.knownFunctions)
+    },
+    {
+      GATE: () => {
+        let tok = $.LA(1);
+        return tokenMatcher(tok, T.Ident)
+          && tok.tokenType !== T.Calc
+          && tok.tokenType !== T.Var;
+      },
       ALT: () => {
         $.startRule();
 
         let name = $.CONSUME(T.Ident);
         let args: List | undefined;
 
-        $.OR2([{
-          GATE: $.noSep,
-          ALT: () => {
-            $.CONSUME(T.LParen);
-            $.OPTION(() => args = $.SUBRULE($.functionCallArgs));
-            $.CONSUME(T.RParen);
+        $.OR2([
+          {
+            GATE: $.noSep,
+            ALT: () => {
+              $.CONSUME(T.LParen);
+              $.OPTION(() => args = $.SUBRULE($.functionCallArgs));
+              $.CONSUME(T.RParen);
+            }
           }
-        }]);
+        ]);
 
         if (!$.RECORDING_PHASE) {
           let location = $.endRule();
@@ -2805,7 +2834,7 @@ export function importAtRule(this: C, T: TokenMap) {
     if (!RECORDING_PHASE) {
       let location = $.endRule();
       return new AtRule({
-        name: $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true),
+        name: $.wrap(new AtKeyword(name.image, undefined, $.getLocationInfo(name), this.context), true),
         prelude: new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context)
       }, undefined, location, this.context);
     }
@@ -2843,7 +2872,7 @@ export function nestedAtRule(this: C, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       return new AtRule({
-        name: $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true),
+        name: $.wrap(new AtKeyword(name.image, undefined, $.getLocationInfo(name), this.context), true),
         prelude: preludeNodes!.length ? $.wrap(new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context), 'both') : undefined,
         rules
       }, undefined, $.endRule(), this.context);
@@ -2864,7 +2893,7 @@ export function nonNestedAtRule(this: C, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       return new AtRule({
-        name: $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true),
+        name: $.wrap(new AtKeyword(name.image, undefined, $.getLocationInfo(name), this.context), true),
         prelude: $.wrap(new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context))
       }, undefined, $.endRule(), this.context);
     }
@@ -2965,7 +2994,7 @@ export function unknownAtRule(this: C, T: TokenMap) {
         rulesResult = new RawRules([seq], undefined, rulesLoc, this.context) as unknown as Rules;
       }
       return new AtRule({
-        name: $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true),
+        name: $.wrap(new AtKeyword(name.image, undefined, $.getLocationInfo(name), this.context), true),
         prelude: preludeNodes!.length ? new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context) : undefined,
         rules: rulesResult
       }, undefined, $.endRule(), this.context);

@@ -2,7 +2,7 @@ import { Node, defineType } from './node';
 import type { Condition } from './condition';
 import { type List } from './list';
 import type { Rest } from './rest';
-import type { Name } from './general';
+import type { Ident as Name } from './general';
 import { type VarDeclaration } from './declaration-var';
 import type { Rules } from './rules';
 import { Interpolated } from './interpolated';

@@ -40,5 +40,27 @@ expect.extend({
       actual: received,
       expected
     };
+  },
+  toContainString(received: string, expected: string) {
+    // Normalize expected indent like toBeString
+    const indent = expected.match(/^\n(\s+)/);
+    if (indent?.[1]) {
+      expected = expected.replace(new RegExp(`\n\s{${indent[1].length}}`, 'gm'), '\n').trim();
+    } else {
+      expected = expected.trim();
+    }
+
+    // Build a loose whitespace regex for matching without destroying indentation in the output
+    const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const loose = escape(expected).replace(/\s+/g, '\\s+');
+    const re = new RegExp(loose, 'm');
+    const match = re.exec(received);
+    const pass = Boolean(match);
+    return {
+      pass,
+      message: () => this.utils.matcherHint(`${this.isNot ? '.not' : ''}.toContainString`),
+      actual: received,
+      expected
+    };
   }
 });

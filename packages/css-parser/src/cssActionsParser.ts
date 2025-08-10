@@ -23,7 +23,8 @@ import {
   Num,
   Token,
   Rules,
-  General
+  General,
+  Ident
 } from '@jesscss/core';
 
 const { isArray } = Array;
@@ -359,7 +360,8 @@ export class CssActionsParser extends AdvancedActionsParser {
 
     if (tokenMatcher(token, T.Ident)) {
       /** @todo - check to see if it's a color */
-      return new General(tokValue, { type: 'Keyword' }, this.getLocationInfo(token), this.context);
+      // In value position, treat as a generic identifier
+      return new Ident(tokValue, undefined, this.getLocationInfo(token), this.context);
     } else if (tokenMatcher(token, T.Dimension)) {
       dimValue = { number: parseFloat(token.payload[0]), unit: token.payload[1] };
       return getDimension(dimValue);

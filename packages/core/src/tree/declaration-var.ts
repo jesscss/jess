@@ -4,7 +4,7 @@ import {
   type DeclarationParams,
   type DeclarationOptions
 } from './declaration';
-import { type General, Name } from './general';
+import { type General, Ident } from './general';
 import { defineType, type LocationInfo, type Node, type TreeContext } from './node';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
@@ -68,6 +68,6 @@ export const vardecl = (
   treeContext?: TreeContext
 ) => {
   let { name } = value;
-  value.name = typeof name === 'string' ? new Name(name) : name;
+  value.name = typeof name === 'string' ? new Ident(name) : name;
   return new VarDeclaration(value as DeclarationValue, options, location, treeContext);
 };

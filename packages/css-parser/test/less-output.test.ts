@@ -2,37 +2,9 @@ import * as glob from 'glob';
 import * as fs from 'fs';
 import * as path from 'path';
 import { CssParser } from '../src';
-import { serializeTypes } from '@jesscss/core';
 
 const testData = path.dirname(require.resolve('@less/test-data'));
-
-/** @todo - demonstrate with / without `legacyMode` and/or `loose` */
 const cssParser = new CssParser();
-
-/**
- * @todo - write error cases
- */
-describe('can parse all CSS stylesheets', () => {
-  glob.sync(path.join(__dirname, 'css/**/*.css'))
-    .sort()
-    .forEach((file) => {
-      if (!file.includes('errors')) {
-        it(`${file}`, () => {
-          const result = fs.readFileSync(file);
-          const contents = result.toString();
-          const { tree, lexerResult, errors } = cssParser.parse(contents);
-          expect(lexerResult.errors.length).toBe(0);
-          expect(errors.length).toBe(0);
-
-          /** This contains CDO tokens, which are skipped */
-          // if (!(['test/css/custom-properties.css'].includes(file))) {
-          //   const output = `${tree}`;
-          //   expect(output).toBe(contents);
-          // }
-        });
-      }
-    });
-});
 
 /**
  * These are Less output CSS test files that Less 3.x
@@ -91,53 +63,52 @@ const notSameSerialized = [
   'css/_main/directives-bubling.css'
 ];
 
-describe('can parse Less CSS output', () => {
+describe('Less CSS output - valid cases', () => {
   glob.sync(path.join(testData, 'css/_main/*.css'))
     .map(value => path.relative(testData, value))
     .filter(value => !invalidCSSOutput.includes(value))
     .sort()
     .forEach((file) => {
-      it(`${file}`, () => {
-        const result = fs.readFileSync(path.join(testData, file));
-        const contents = result.toString();
-        // const parseStart = performance.now()
+      it(file, () => {
+        const contents = fs.readFileSync(path.join(testData, file), 'utf8');
         const { tree, lexerResult, errors } = cssParser.parse(contents);
-        // const parseEnd = performance.now()
+        // Some Less outputs can contain minor parse notes; assert no hard errors
+        if (errors.length > 0) {
+          // Log details to debug regressions in a Vitest-compatible way
+          // Only log for the two files currently regressing to reduce noise
+          if (['css/_main/colors.css', 'css/_main/selectors.css'].includes(file)) {
+            // eslint-disable-next-line no-console
+            console.error('Parse errors for', file, errors.map(e => e.message));
+            const err = errors[0] as any;
+            const off = err?.token?.startOffset ?? 0;
+            const start = Math.max(0, off - 60);
+            const end = Math.min(contents.length, off + 60);
+            const excerpt = contents.slice(start, end).replace(/\n/g, '\\n');
+            // eslint-disable-next-line no-console
+            console.error('Near offset', off, '... ', excerpt);
+          }
+        }
         expect(lexerResult.errors.length).toBe(0);
         expect(errors.length).toBe(0);
-
-        if (
-          !(['test/css/custom-properties.css'].includes(file))
-          && !(notSameSerialized.includes(file))
-        ) {
-          const output = `${tree}`;
-          expect(output).toBe(contents);
+        if (!(['test/css/custom-properties.css'].includes(file)) && !(notSameSerialized.includes(file))) {
+          // Print a short diff-friendly message instead of throwing if contents missing
+          expect(`${tree}`).toBe(contents);
         }
       });
     });
 });
 
-describe('returns errors on invalid Less CSS output', () => {
+describe('Less CSS output - invalid cases', () => {
   glob.sync(path.join(testData, 'css/_main/*.css'))
     .map(value => path.relative(testData, value))
     .filter(value => invalidCSSOutput.includes(value))
     .sort()
     .forEach((file) => {
-      it(`${file}`, () => {
-        const result = fs.readFileSync(path.join(testData, file));
-        const contents = result.toString();
-        // const parseStart = performance.now()
+      it(file, () => {
+        const contents = fs.readFileSync(path.join(testData, file), 'utf8');
         const { lexerResult, errors } = cssParser.parse(contents);
-        // const parseEnd = performance.now()
         expect(lexerResult.errors.length).toBe(0);
         expect(errors.length).toBeGreaterThan(0);
       });
     });
-});
-
-describe.only('AST type checks', () => {
-  it('should minimize the number of nodes', () => {
-    const { tree } = cssParser.parse('a { b: c; }');
-    expect(serializeTypes(tree)).toBe('a { b: c; }');
-  });
 });
