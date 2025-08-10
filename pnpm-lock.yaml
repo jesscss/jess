@@ -23,8 +23,8 @@ importers:
         specifier: ~9.31.0
         version: 9.31.0
       '@less/test-data':
-        specifier: ^4.2.0
-        version: 4.3.0
+        specifier: ^4.4.0
+        version: 4.4.0
       '@rollup/plugin-commonjs':
         specifier: ^24.1.0
         version: 24.1.0(rollup@3.29.5)
@@ -1852,8 +1852,8 @@ packages:
   '@leichtgewicht/ip-codec@2.0.5':
     resolution: {integrity: sha512-Vo+PSpZG2/fmgmiNzYK9qWRh8h/CHrwD0mo1h1DzL4yzHNSfWYujGTYsWGreD000gcgmZ7K4Ys6Tx9TxtsKdDw==}
 
-  '@less/test-data@4.3.0':
-    resolution: {integrity: sha512-ThCmqjVwHiWd7nLLZBm65rusoWyuwm8azo+IdW8YQhzo8E7Z1u861a/kx40c+OnQQ1cNFUV8pZGa6H7XT4z72A==}
+  '@less/test-data@4.4.0':
+    resolution: {integrity: sha512-fstbT2JfgidgDKUzQC5AAu5M5k1jOcxy0RDm5Z7SsTHCUb3j8dPePQNWEyYwVYq/MIFnMxjSwFG7Th2A8BNnNQ==}
 
   '@manypkg/find-root@1.1.0':
     resolution: {integrity: sha512-mki5uBvhHzO8kYYix/WRy2WX8S3B5wdVSc9D6KcU5lQNglP2yt58/VfLuAK49glRXChosY8ap2oJ1qgma3GUVA==}
@@ -9912,7 +9912,7 @@ snapshots:
 
   '@leichtgewicht/ip-codec@2.0.5': {}
 
-  '@less/test-data@4.3.0': {}
+  '@less/test-data@4.4.0': {}
 
   '@manypkg/find-root@1.1.0':
     dependencies:

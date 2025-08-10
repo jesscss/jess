@@ -450,6 +450,11 @@ const rawCssTokens = {
         categories: ['BlockMarker', 'Function']
       },
       {
+        name: 'Layer',
+        pattern: /layer\(/i,
+        categories: ['BlockMarker', 'Function']
+      },
+      {
         name: 'WS',
         pattern: '{{ws}}',
         line_breaks: true,

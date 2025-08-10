@@ -126,6 +126,7 @@ export class CssActionsParser extends AdvancedActionsParser {
   pageAtRule!: Rule;
   keyframesAtRule!: Rule;
   layerAtRule!: Rule<(inner?: boolean) => void>;
+  layerName!: Rule;
   scopeAtRule!: Rule<(inner?: boolean) => void>;
   documentAtRule!: Rule<(inner?: boolean) => void>;
   pageSelector!: Rule;
@@ -135,6 +136,7 @@ export class CssActionsParser extends AdvancedActionsParser {
   unknownAtRule!: Rule;
 
   /** `@media` syntax */
+  mediaQueryList!: Rule;
   mediaQuery!: Rule;
   mediaCondition!: Rule;
   mediaType!: Rule;

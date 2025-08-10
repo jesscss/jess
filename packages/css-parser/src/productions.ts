@@ -1514,12 +1514,30 @@ export function mediaAtRule(this: C, T: TokenMap) {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
     let name = $.CONSUME(T.AtMedia);
-    let queries: Node[];
     let rules: Rules;
-    if (!RECORDING_PHASE) {
-      queries = [];
-    }
+    let prelude: Node = $.SUBRULE($.mediaQueryList);
+    $.CONSUME(T.LCurly);
+    rules = $.SUBRULE($.atRuleBody, { ARGS: [inner] });
+    $.CONSUME(T.RCurly);
 
+    if (!RECORDING_PHASE) {
+      let location = $.endRule();
+      return new AtRule({
+        name: $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true),
+        prelude: $.wrap(prelude, true),
+        rules
+      }, undefined, location, this.context);
+    }
+  };
+}
+
+export function mediaQueryList(this: C, T: TokenMap) {
+  const $ = this;
+
+  return () => {
+    let RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    let queries: Node[] = RECORDING_PHASE ? undefined as unknown as Node[] : [];
     $.AT_LEAST_ONE_SEP({
       SEP: T.Comma,
       DEF: () => {
@@ -1529,23 +1547,13 @@ export function mediaAtRule(this: C, T: TokenMap) {
         }
       }
     });
-    $.CONSUME(T.LCurly);
-    rules = $.SUBRULE($.atRuleBody, { ARGS: [inner] });
-    $.CONSUME(T.RCurly);
 
-    if (!$.RECORDING_PHASE) {
-      let location = $.endRule();
-      let prelude: Node;
+    if (!RECORDING_PHASE) {
       if (queries!.length === 1) {
-        prelude = queries![0]!;
-      } else {
-        prelude = new List(queries!, undefined, $.getLocationFromNodes(queries!), this.context);
+        $.endRule();
+        return queries![0]!;
       }
-      return new AtRule({
-        name: $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true),
-        prelude: $.wrap(prelude, true),
-        rules
-      }, undefined, location, this.context);
+      return new List(queries!, undefined, $.endRule(), this.context);
     }
   };
 }
@@ -2181,7 +2189,7 @@ export function keyframesAtRule(this: C, T: TokenMap) {
     $.OR({
       DEF: [
         { ALT: () => {
-          const tok = $.CONSUME(T.PlainIdent);
+          const tok = $.CONSUME(T.Ident);
           if (!RECORDING_PHASE) preludeNode = $.wrap($.processValueToken(tok));
         } },
         { ALT: () => preludeNode = $.SUBRULE($.string) }
@@ -2296,44 +2304,102 @@ export function documentAtRule(this: C, T: TokenMap) {
   };
 }
 
-// layerAtRule: statement or block
-// @layer <name>(, <name>)* ;
-// @layer <name>? { main }
+/**
+ * `@layer` at rule
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/CSS/@layer
+ *
+ * `@layer` =
+ * `@layer` <layer-name>? { <rule-list> }  |
+ * `@layer` <layer-name># ;
+ *
+ * `<layer-name>` =
+ * <ident> [ '.' <ident> ]*
+ */
 export function layerAtRule(this: C, T: TokenMap) {
   const $ = this;
   return (inner?: boolean) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
-    const nameTok = $.CONSUME(T.AtLayer);
-    const preludeNodes: Node[] = [];
-    // Collect a simple prelude (names/idents/commas)
-    $.MANY(() => preludeNodes.push($.wrap($.SUBRULE($.anyOuterValue))));
+    const atTok = $.CONSUME(T.AtLayer);
+
+    // Optional single layer-name before a block, or first of a comma list in statement form
+    const preludeNodes: Node[] = RECORDING_PHASE ? ([] as unknown as Node[]) : [];
+
     return $.OR([
       {
         ALT: () => {
-          $.CONSUME(T.Semi);
-          if (!$.RECORDING_PHASE) {
+          $.OPTION(() => {
+            const nameNode: Node = $.SUBRULE($.layerName);
+            if (!RECORDING_PHASE) {
+              preludeNodes.push($.wrap(nameNode));
+            }
+          });
+          $.CONSUME(T.LCurly);
+          const rules = $.SUBRULE($.atRuleBody, { ARGS: [inner] });
+          $.CONSUME(T.RCurly);
+          if (!RECORDING_PHASE) {
             return new AtRule({
-              name: $.wrap(new General(nameTok.image, { type: 'Name' }, $.getLocationInfo(nameTok), this.context), true),
-              prelude: preludeNodes.length ? new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context) : undefined
+              name: $.wrap(new General(atTok.image, { type: 'Name' }, $.getLocationInfo(atTok), this.context), true),
+              prelude: preludeNodes.length ? $.wrap(new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context), 'both') : undefined,
+              rules
             }, undefined, $.endRule(), this.context);
           }
         }
       },
       {
         ALT: () => {
-          $.CONSUME(T.LCurly);
-          const rules = $.SUBRULE($.atRuleBody, { ARGS: [inner] });
-          $.CONSUME(T.RCurly);
-          if (!$.RECORDING_PHASE) {
+          $.MANY_SEP({
+            SEP: T.Comma,
+            DEF: () => {
+              let nameNode: Node = $.SUBRULE2($.layerName);
+              if (!RECORDING_PHASE) {
+                preludeNodes.push($.wrap(nameNode));
+              }
+            }
+          });
+          $.CONSUME(T.Semi);
+          if (!RECORDING_PHASE) {
             return new AtRule({
-              name: $.wrap(new General(nameTok.image, { type: 'Name' }, $.getLocationInfo(nameTok), this.context), true),
-              prelude: preludeNodes.length ? new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context) : undefined,
-              rules
+              name: $.wrap(new General(atTok.image, { type: 'Name' }, $.getLocationInfo(atTok), this.context), true),
+              prelude: preludeNodes.length ? $.wrap(new List(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context), 'both') : undefined
             }, undefined, $.endRule(), this.context);
           }
         }
       }
     ]);
+  };
+}
+
+/**
+ * <layer-name> = <ident> ('.' <ident>)*
+ */
+export function layerName(this: C, T: TokenMap) {
+  const $ = this;
+  return () => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    const nodes: Node[] = RECORDING_PHASE ? ([] as unknown as Node[]) : [];
+
+    const first = $.CONSUME(T.Ident);
+    if (!RECORDING_PHASE) {
+      nodes.push($.wrap($.processValueToken(first)));
+    }
+
+    $.MANY({
+      GATE: $.noSep,
+      DEF: () => {
+        const seg = $.CONSUME(T.DotName);
+        if (!RECORDING_PHASE) {
+          nodes.push($.wrap($.processValueToken(seg)));
+        }
+      }
+    });
+
+    if (!RECORDING_PHASE) {
+      const loc = $.endRule();
+      return new Sequence(nodes, undefined, loc, this.context);
+    }
   };
 }
 
@@ -2653,13 +2719,38 @@ export function importAtRule(this: C, T: TokenMap) {
       preludeNodes!.push($.wrap(node));
     }
 
+    /** layer(responsive) */
     $.OPTION(() => {
+      let start = $.CONSUME(T.Layer);
+      let value: Node = $.SUBRULE($.layerName);
+      let end = $.CONSUME(T.RParen);
+
+      if (!RECORDING_PHASE) {
+        let { startOffset, startLine, startColumn } = start;
+        let { endOffset, endLine, endColumn } = end;
+        preludeNodes.push(
+          $.wrap(
+            new Call(
+              {
+                name: 'layer',
+                args: new List([value], undefined, value._location as LocationInfo, this.context)
+              },
+              undefined,
+              [startOffset, startLine!, startColumn!, endOffset!, endLine!, endColumn!],
+              this.context
+            )
+          )
+        );
+      }
+    });
+    /** supports(display: grid) */
+    $.OPTION2(() => {
       let start = $.CONSUME(T.Supports);
       let value = $.OR2([
         { ALT: () => $.SUBRULE($.supportsCondition) },
         { ALT: () => $.SUBRULE($.declaration) }
       ]);
-      let end = $.CONSUME(T.RParen);
+      let end = $.CONSUME2(T.RParen);
 
       if (!RECORDING_PHASE) {
         let { startOffset, startLine, startColumn } = start;
@@ -2679,8 +2770,8 @@ export function importAtRule(this: C, T: TokenMap) {
         );
       }
     });
-    $.OPTION2(() => {
-      node = $.SUBRULE($.mediaQuery);
+    $.OPTION3(() => {
+      node = $.SUBRULE($.mediaQueryList);
       if (!RECORDING_PHASE) {
         preludeNodes!.push(node);
       }
