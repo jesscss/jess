@@ -200,6 +200,12 @@ const rawCssTokens = {
       { name: 'Print', pattern: /print/, longer_alt: 'PlainIdent', categories: ['Ident'] },
       { name: 'All', pattern: /all/, longer_alt: 'PlainIdent', categories: ['Ident'] },
 
+      /** Special function names */
+      { name: 'Layer', pattern: /layer/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'Supports', pattern: /supports/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'Var', pattern: /var/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'Calc', pattern: /calc/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+
       /** Keyframe keywords */
       { name: 'From', pattern: /from/, longer_alt: 'PlainIdent', categories: ['Ident'] },
       { name: 'To', pattern: /to/, longer_alt: 'PlainIdent', categories: ['Ident'] },
@@ -315,9 +321,9 @@ const rawCssTokens = {
         categories: ['Selector']
       },
       {
-        name: 'DotName',
-        pattern: '\\.{{ident}}',
-        categories: ['Selector']
+        name: 'Dot',
+        pattern: /\./,
+        categories: ['BlockMarker']
       },
       {
         name: 'HashName',
@@ -432,27 +438,6 @@ const rawCssTokens = {
       {
         name: 'NthDimension',
         pattern: /\d+n/
-      },
-      /** Special functions */
-      {
-        name: 'Calc',
-        pattern: /calc\(/i,
-        categories: ['BlockMarker', 'Function']
-      },
-      {
-        name: 'Var',
-        pattern: /var\(/i,
-        categories: ['BlockMarker', 'Function']
-      },
-      {
-        name: 'Supports',
-        pattern: /supports\(/i,
-        categories: ['BlockMarker', 'Function']
-      },
-      {
-        name: 'Layer',
-        pattern: /layer\(/i,
-        categories: ['BlockMarker', 'Function']
       },
       {
         name: 'WS',
