@@ -35,4 +35,4 @@ export const invalidLess = [
 
   /** Has an unsupported token - `alpha(opacity=@var)` */
   'less/_main/variables.less'
-]
+];

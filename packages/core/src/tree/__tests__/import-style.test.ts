@@ -1,4 +1,4 @@
-import { style, rules, sel, el, ref, any, name, ruleset, mixin, decl, call } from '..';
+import { style, rules, sel, el, ref, any, ruleset, mixin, decl, call } from '..';
 import { Context } from '../../context';
 
 let context: Context;
@@ -11,19 +11,19 @@ describe.skip('Style import', () => {
   it('should include a mixin', async () => {
     let node = rules([
       mixin({
-        name: name('foo'),
+        name: any('foo'),
         rules: rules([
-          decl({ name: name('prop1'), value: any('value') })
+          decl({ name: any('prop1'), value: any('value') })
         ])
       }),
       mixin({
-        name: name('foo'),
+        name: any('foo'),
         rules: rules([
-          decl({ name: name('prop2'), value: any('value') })
+          decl({ name: any('prop2'), value: any('value') })
         ])
       }),
       style(call({
-        ref: ref(any('foo'), { type: 'mixin' })
+        name: ref({ key: any('foo') }, { type: 'mixin' })
       }))
     ]);
     let evald = await node.eval(context);

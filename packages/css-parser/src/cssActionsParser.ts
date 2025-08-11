@@ -14,7 +14,6 @@ import { AdvancedActionsParser } from './advancedActionsParser';
 
 import { type CssTokenType } from './cssTokens';
 import * as productions from './productions';
-import * as Core from '@jesscss/core';
 import {
   type LocationInfo,
   Node,
@@ -23,7 +22,8 @@ import {
   Dimension,
   Num,
   Rules,
-  Any
+  Any,
+  type Nil
 } from '@jesscss/core';
 
 const { isArray } = Array;
@@ -249,23 +249,29 @@ export class CssActionsParser extends AdvancedActionsParser {
 
     const processPrePost = (prePost: Node['pre']) => {
       if (isArray(prePost)) {
-        let i = 0;
-        let item = prePost[i];
-        while (item) {
+        // Build a new remainder array while moving comment nodes to top-level rules
+        const remainder: Array<string | Node> = [];
+        for (let i = 0; i < prePost.length; i++) {
+          const item = prePost[i]!;
           if (item instanceof Node) {
-            let prev = prePost[i - 1];
-            /** Attach whitespace before comment to comment */
-            if (prev) {
+            // Attach immediately preceding whitespace (if any) to the comment
+            const prev = remainder.length > 0 ? remainder[remainder.length - 1] : undefined;
+            if (typeof prev === 'string') {
               item.pre = [prev];
-              prePost.shift();
-              i--;
+              remainder.pop();
+            }
+            // Attach immediately following whitespace (if any) to comment.post
+            const next = prePost[i + 1];
+            if (typeof next === 'string') {
+              (item as any).post = [next];
+              i++; // consume the following whitespace
             }
             rules.push(item);
-            prePost.shift();
-            i--;
+          } else {
+            remainder.push(item);
           }
-          item = prePost[++i];
         }
+        return remainder.length === 0 ? 0 : remainder;
       }
       return prePost;
     };
@@ -273,14 +279,16 @@ export class CssActionsParser extends AdvancedActionsParser {
     for (let rule of existingRules) {
       if (rule.pre === undefined) {
         let pre = this.getPrePost(rule.location[0]!);
-        rule.pre = processPrePost(pre);
+        const processed = processPrePost(pre) as 0 | 1 | Array<string | Comment | Nil> | undefined;
+        rule.pre = processed;
       }
       rules.push(rule);
     }
-    let post = this.getPrePost(nextTokenLocation[0]!);
-    let remainder = processPrePost(post);
+    // Do not mutate lastRule.post here; lift only at tail capture time to avoid duplication/newlines.
+    // Then capture any remaining EOF tail via preSkipped at LA(1).startOffset.
+    const tail = this.getPrePost(nextTokenLocation[0]!);
+    const remainder = processPrePost(tail) as 0 | 1 | Array<string | Comment | Nil> | undefined;
     let returnRules: Rules = new Rules(rules, undefined, rules.length ? this.getLocationFromNodes(rules) : undefined, this.context);
-    // returnRules.scope = this.context.scope;
     returnRules.post = remainder;
     return returnRules;
   }
@@ -336,10 +344,15 @@ export class CssActionsParser extends AdvancedActionsParser {
         return node;
       }
     }
-    if ((!post || post === 'both') && node.pre === undefined) {
+    if ((!post || post === 'both')) {
+      // Always record pre for a node, but if it is the leading child
+      // of a parent that will itself own pre (e.g., first selector in a qualified rule),
+      // allow callers to reassign this pre to the parent Rules/Ruleset.
       let offset = node.location[0];
-      if (offset !== undefined) {
-        node.pre = this.getPrePost(offset);
+      if (offset !== undefined && node.pre === undefined) {
+        const pre = this.getPrePost(offset);
+        // Narrow to allowed type: Array<Comment | Nil | string> | 1 | 0 | undefined
+        node.pre = pre as any;
       }
     }
     return node;

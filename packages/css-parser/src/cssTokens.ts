@@ -150,12 +150,6 @@ export const rawCssTokens = {
         categories: ['Ident']
       },
       { name: 'LegacyPropIdent', pattern: '(?:\\*|_){{ident}}' },
-      /** Supports the very old alpha(opacity=[number]) */
-      {
-        name: 'LegacyMSFilter',
-        pattern: /alpha\(opacity=\d{1,3}\)|progid:(?:[\w]+\.)*\w+(?:\([^)]*\))?/,
-        categories: ['BlockMarker']
-      },
       {
         name: 'CustomProperty',
         pattern: '--{{ident}}',
@@ -218,6 +212,12 @@ export const rawCssTokens = {
         pattern: /url\(/i,
         push_mode: 'Url',
         categories: ['BlockMarker', 'Function']
+      },
+      /** Supports the very old alpha(opacity=[number]) */
+      {
+        name: 'LegacyMSFilter',
+        pattern: /alpha\(opacity=\d{1,3}\)|progid:(?:[\w]+\.)*\w+(?:\([^)]*\))?/,
+        categories: ['BlockMarker']
       },
       /**
        * Rather than consume the whole string, we push

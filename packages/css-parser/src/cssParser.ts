@@ -59,6 +59,7 @@ export class CssParser {
     const parser = this.parser;
     const lexerResult = this.lexer.tokenize(text);
     const lexedTokens = lexerResult.tokens;
+    // removed diagnostics
     parser.input = lexedTokens;
     const tree = parser[rule]() as Node;
 

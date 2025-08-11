@@ -2,7 +2,7 @@ import { Node, defineType } from './node';
 import type { Condition } from './condition';
 import { type List } from './list';
 import type { Rest } from './rest';
-import type { Any } from './any';
+import type { Any, AnyRole } from './any';
 import { type VarDeclaration } from './declaration-var';
 import type { Rules } from './rules';
 import { Interpolated } from './interpolated';
@@ -10,7 +10,7 @@ import type { Context } from '../context';
 import type { Declaration } from './declaration';
 import { type PrintOptions, getPrintOptions } from './util/print';
 
-export interface MixinValue {
+export interface MixinValue<Name extends AnyRole = 'name'> {
   /**
    * Mixin names can include . or # - in Sass they have to be escaped.
    *
@@ -25,7 +25,7 @@ export interface MixinValue {
    *
    * @todo - Should anonymous mixins have a different class type?
    */
-  name?: Any<'name'> | Interpolated<'name'>;
+  name?: Any<Name> | Interpolated<Name>;
   /**
    * Functions can be assigned an expression when parsing,
    * but it will be evaluated as a set of Rules with a scope
@@ -191,7 +191,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
 type MixinConstructorParams = ConstructorParameters<typeof Mixin>;
 
 export const mixin = defineType(Mixin, 'Mixin') as (
-  value: MixinValue | MixinConstructorParams[0],
+  value: MixinValue<AnyRole> | MixinConstructorParams[0],
   options?: MixinConstructorParams[1],
   location?: MixinConstructorParams[2],
   treeContext?: MixinConstructorParams[3]

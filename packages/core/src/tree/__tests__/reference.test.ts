@@ -1,4 +1,4 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, name, expr } from '..';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr } from '..';
 import { Context } from '../../context';
 
 let context: Context;
@@ -68,11 +68,11 @@ describe('reference', () => {
     it('should get a variable from scope', async () => {
       let node = rules([
         vardecl({
-          name: name('foo'),
+          name: any('foo'),
           value: any('red')
         }),
         decl({
-          name: name('bar'),
+          name: any('bar'),
           value: ref({ key: 'foo' }, { type: 'variable' })
         })
       ]);
@@ -86,11 +86,11 @@ describe('reference', () => {
     it('should get a property from scope', async () => {
       let node = rules([
         decl({
-          name: name('foo'),
+          name: any('foo'),
           value: any('red')
         }),
         decl({
-          name: name('bar'),
+          name: any('bar'),
           value: ref({ key: 'foo' }, { type: 'property' })
         })
       ]);
@@ -104,11 +104,11 @@ describe('reference', () => {
     it('should get a var from scope below reference', async () => {
       let node = rules([
         decl({
-          name: name('bar'),
+          name: any('bar'),
           value: ref({ key: 'foo' }, { type: 'variable' })
         }),
         vardecl({
-          name: name('foo'),
+          name: any('foo'),
           value: any('red')
         })
       ]);
@@ -122,11 +122,11 @@ describe('reference', () => {
     it('should get a prop from scope below reference', async () => {
       let node = rules([
         decl({
-          name: name('bar'),
+          name: any('bar'),
           value: ref({ key: 'foo' }, { type: 'property' })
         }),
         decl({
-          name: name('foo'),
+          name: any('foo'),
           value: any('red')
         })
       ]);
@@ -145,15 +145,15 @@ describe('reference', () => {
        */
       let node = rules([
         vardecl({
-          name: name('foo'),
+          name: any('foo'),
           value: any('red')
         }),
         vardecl({
-          name: name('foo'),
+          name: any('foo'),
           value: spaced([expr(ref({ key: 'foo' }, { type: 'variable' })), any('red')])
         }),
         decl({
-          name: name('bar'),
+          name: any('bar'),
           value: ref({ key: 'foo' }, { type: 'variable' })
         })
       ]);
@@ -168,7 +168,7 @@ describe('reference', () => {
     it('should throw if the variable is not defined', async () => {
       let node = rules([
         decl({
-          name: name('bar'),
+          name: any('bar'),
           value: ref({ key: 'foo' }, { type: 'variable' })
         })
       ]);

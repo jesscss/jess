@@ -53,7 +53,8 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
       const item = value[i]!;
       w.add(sep);
       const captured = w.capture(() => item.toString(options));
-      if (!/^\s/.test(captured)) {
+      if (sep !== '/' && !/^\s/.test(captured)) {
+        // For other separators, insert a single space only if the next chunk doesn't start with whitespace
         w.add(' ');
       }
       w.add(captured);

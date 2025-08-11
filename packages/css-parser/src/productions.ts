@@ -643,7 +643,13 @@ export function forgivingSelectorList(this: C, T: TokenMap) {
       DEF: () => {
         let selector = $.SUBRULE($.relativeSelector, { ARGS: [ctx] });
         if (!RECORDING_PHASE) {
-          sequences.push($.wrap(selector, ++i === 0 ? true : 'both'));
+          i++;
+          if (i === 1 && ctx.qualifiedRule) {
+            // Only attach post; leave pre for the parent Rules to lift comments
+            sequences.push($.wrap(selector, true));
+          } else {
+            sequences.push($.wrap(selector, i === 1 ? true : 'both'));
+          }
         }
       }
     });
@@ -678,7 +684,15 @@ export function selectorList(this: C, T: TokenMap) {
       DEF: () => {
         let sel = $.SUBRULE2($.complexSelector, { ARGS: [ctx] });
         if (!RECORDING_PHASE) {
-          sequences.push($.wrap(sel, ++i === 0 ? true : 'both'));
+          i++;
+          // Do not consume leading pre for the first selector of a qualified rule,
+          // so that pre-rule comments remain available to be lifted to Rules.
+          if (i === 1 && ctx.qualifiedRule) {
+            // Only attach post; leave pre for the parent Rules to lift comments
+            sequences.push($.wrap(sel, true));
+          } else {
+            sequences.push($.wrap(sel, i === 1 ? true : 'both'));
+          }
         }
       }
     });
@@ -874,7 +888,7 @@ export function extraTokens(this: C, T: TokenMap, alt?: Alt) {
   const $ = this;
 
   let valueAlt = alt ?? [
-    { ALT: () => $.SUBRULE($.knownFunctions) },
+    { ALT: () => $.SUBRULE($.functionCall) },
     { ALT: () => $.CONSUME(T.Value) },
     { ALT: () => $.CONSUME(T.CustomProperty) },
     { ALT: () => $.CONSUME(T.Colon) },
@@ -1941,7 +1955,9 @@ export function mediaFeature(this: C, T: TokenMap, alt?: Alt) {
                 seq.location[0] = startOffset;
                 seq.location[1] = startLine;
                 seq.location[2] = startColumn;
+                  return seq;
               }
+                return seq;
             }
           }
         ]);
@@ -2215,7 +2231,12 @@ export function keyframesAtRule(this: C, T: TokenMap) {
             { ALT: () => $.CONSUME(T.DimensionInt) }, // handles 0%
             { ALT: () => $.CONSUME(T.DimensionNum) }  // handles 12.5%
           ]);
-          if (!RECORDING_PHASE) selectors.push($.wrap($.processValueToken(sel)));
+          if (!RECORDING_PHASE) {
+            const node = $.processValueToken(sel);
+            // Do not consume leading pre for the first selector in a keyframe block,
+            // so comments immediately after '{' are liftable to the keyframes Rules.
+            selectors.push($.wrap(node, selectors.length === 0 ? true : 'both'));
+          }
         }
       });
       $.CONSUME2(T.LCurly);
@@ -2766,12 +2787,6 @@ export function importPostlude(this: C, T: TokenMap) {
     /** layer(responsive) */
     $.OPTION(() => {
       let start = $.CONSUME(T.Layer);
-      $.OR([{
-        GATE: $.noSep,
-        ALT: () => {
-          $.CONSUME(T.LParen);
-        }
-      }]);
       let value: Node = $.SUBRULE($.layerName);
       let end = $.CONSUME(T.RParen);
       if (!RECORDING_PHASE) {
@@ -2792,12 +2807,6 @@ export function importPostlude(this: C, T: TokenMap) {
     /** supports(display: grid) */
     $.OPTION2(() => {
       let start = $.CONSUME(T.Supports);
-      $.OR3([{
-        GATE: $.noSep,
-        ALT: () => {
-          $.CONSUME2(T.LParen);
-        }
-      }]);
       let value = $.OR4([
         { ALT: () => $.SUBRULE($.supportsCondition) },
         { ALT: () => $.SUBRULE($.declaration) }

@@ -92,18 +92,27 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
     const inputTokens: IToken[] = [];
     let valueLength = value.length;
     let prevToken: IToken | undefined;
+    const isSkippedToken = (t?: IToken) => {
+      if (!t) return false;
+      const name = t.tokenType.name;
+      return t.tokenType.LABEL === SKIPPED_LABEL || name === WS_NAME || /Comment/i.test(name);
+    };
     for (let i = 0; i < valueLength; i++) {
       const token = value[i]!;
-      let nextToken: IToken | undefined;
-      /** Find the next non-skipped token */
+      let nextToken: IToken | undefined = undefined;
+      /** Find the next non-skipped token; if none found, leave as undefined */
       for (let j = i + 1; j < valueLength; j++) {
-        nextToken = value[j]!;
-        if (nextToken.tokenType.LABEL !== SKIPPED_LABEL) {
+        const candidate = value[j]!;
+        if (!isSkippedToken(candidate)) {
+          nextToken = candidate;
           break;
         }
       }
       const beforeIndex = nextToken?.startOffset ?? Infinity;
-      if (token.tokenType.LABEL === SKIPPED_LABEL) {
+      const tokName = token.tokenType.name;
+      const currIsSkipped = isSkippedToken(token);
+      // removed diagnostics
+      if (currIsSkipped) {
         let tokens = preSkippedTokenMap.get(beforeIndex);
         if (tokens) {
           tokens.push(token);
@@ -120,6 +129,7 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
       }
     }
     this.usedSkippedTokens = new Set();
+    // removed diagnostics
     this.originalInput = value;
     // @ts-expect-error
     super.input = inputTokens;

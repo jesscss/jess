@@ -28,7 +28,8 @@
     "chevrotain-allstar": "~0.3.0"
   },
   "devDependencies": {
-    "@types/node": "^18.19.31"
+    "@types/node": "^18.19.31",
+    "@jesscss/shared": "workspace:*"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",

@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, name } from '..';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl } from '..';
 import { Context } from '../../context';
 
 let context: Context;
@@ -12,7 +12,7 @@ describe('Mixin', () => {
   describe('serialization', () => {
     it('should serialize a mixin', () => {
       const rule = mixin({
-        name: name('myMixin'),
+        name: any('myMixin'),
         rules: rules([
           decl({ name: 'color', value: any('black') }),
           decl({ name: 'background-color', value: any('white') })
@@ -28,7 +28,7 @@ describe('Mixin', () => {
 
     it('should serialize a mixin with args', () => {
       const rule = mixin({
-        name: name('my-mixin'),
+        name: any('my-mixin'),
         params: list([
           vardecl({ name: 'a', value: any('black') }, { paramVar: true }),
           vardecl({ name: 'b', value: any('white') }, { paramVar: true })
@@ -48,7 +48,7 @@ describe('Mixin', () => {
 
     it('should serialize a guard', () => {
       const rule = mixin({
-        name: name('my-mixin'),
+        name: any('my-mixin'),
         params: list([
           vardecl({ name: 'a', value: any('black') }, { paramVar: true }),
           vardecl({ name: 'b', value: any('white') }, { paramVar: true })

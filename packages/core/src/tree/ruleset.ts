@@ -66,12 +66,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return '';
     }
     const mark = w.mark();
-    // Capture selector, normalize trailing whitespace to exactly one space
-    // Write selector directly; then ensure exactly one space boundary before '{'
-    const before = w.mark();
-    selector.toTrimmedString(options);
-    const selOut = w.getSince(before);
-    // Always ensure exactly one space before '{'
+    // Capture selector output to normalize only trailing space before '{'
+    const selOut = w.capture(() => selector.toTrimmedString(options));
+    // Emit selector without trailing whitespace
+    w.add(selOut.replace(/\s+$/, ''));
+    // Ensure exactly one space before '{'
     w.add(' ');
     // rules.toBraced needs depth updates
     const depth = (options.depth ?? 0);

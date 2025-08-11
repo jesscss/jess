@@ -23,6 +23,7 @@ import * as Registries from './util/registry-utils';
 import { tryExtendSelector } from './util/extend';
 
 const { isArray } = Array;
+const DEBUG_FINAL_NL = typeof process !== 'undefined' && (process.env as any)?.JESS_DEBUG_FINAL_NL === '1';
 
 export const enum Priority {
   None = 0,
@@ -143,6 +144,43 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return (registry as any).find(keys, filterType, options);
   }
 
+  override toString(options?: PrintOptions): string {
+    if (!this.visible && !this.renderInvisible) {
+      return '';
+    }
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    this.processPrePost('pre', '', options);
+    const bodyMark = w.mark();
+    const bodyStr = this.toTrimmedString(options);
+    const bodyEmitted = w.getSince(bodyMark);
+    if (bodyEmitted.length === 0 && bodyStr) {
+      w.add(bodyStr);
+    }
+    const depth = options.depth ?? 0;
+    if (depth === 0 && DEBUG_FINAL_NL) {
+      const rootPostPreview = w.capture(() => this.processPrePost('post', '', options));
+      const last = [...this.value].reverse().find(n => n.visible);
+      const lastPostPreview = last ? w.capture(() => last.processPrePost('post', '', options)) : '';
+      console.error('[jess:final-nl]', {
+        rootPostType: typeof this.post,
+        rootPostPreview,
+        lastType: last?.type,
+        lastPostPreview
+      });
+    }
+    // If no explicit Rules.post at root, propagate last child's post
+    if (depth === 0 && (this.post === 0 || this.post === undefined)) {
+      const last = [...this.value].reverse().find(n => n.visible);
+      if (last) {
+        last.processPrePost('post', '', options);
+      }
+    }
+    this.processPrePost('post', '', options);
+    return w.getSince(mark);
+  }
+
   /**
    * Lazily create registries for types as needed.
    */
@@ -222,16 +260,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
-    const depth = options.depth ?? 0;
     const mark = w.mark();
     this._emitRulesBody(options);
-    let all = w.getSince(mark);
-    if (depth === 0) {
-      // Collapse accidental double newlines between rules
-      all = all.replace(/\n{2,}/g, '\n');
-      return all.replace(/[\n\s]*$/, '');
-    }
-    return all;
+    return w.getSince(mark);
   }
 
   visibleRules() {

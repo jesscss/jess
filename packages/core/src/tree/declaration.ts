@@ -7,7 +7,7 @@ import { isNode } from './util/is-node';
 import { Nil } from './nil';
 import type { Context, TreeContext } from '../context';
 import { Interpolated } from './interpolated';
-import { Any } from './any';
+import { Any, type AnyRole } from './any';
 import { Reference } from './reference';
 import { List } from './list';
 import { spaced } from './sequence';
@@ -60,11 +60,11 @@ export type DeclarationOptions = {
    */
   throwIfDefined?: boolean;
 };
+/** Should be Any<'property'> | Interpolated<'property'> */
+type NameValue<T extends AnyRole = 'property'> = Any<T> | Interpolated<T>;
 
-type NameValue = Any<'property'> | Interpolated<'property'>;
-
-export type DeclarationValue = {
-  name: NameValue;
+export type DeclarationValue<T extends AnyRole = 'property'> = {
+  name: NameValue<T>;
   value: Node;
   /** The actual string representation of important, if it exists */
   important?: Any<'flag'>;
@@ -246,7 +246,7 @@ export type DeclarationParams = ConstructorParameters<typeof Declaration>;
 defineType<DeclarationValue>(Declaration, 'Declaration', 'decl');
 
 export const decl = (
-  value: DeclarationValue | { name: string; value: Node; important?: Any<'flag'> },
+  value: DeclarationValue<AnyRole> | { name: string; value: Node; important?: Any<'flag'> },
   options?: DeclarationOptions,
   location?: LocationInfo,
   treeContext?: TreeContext

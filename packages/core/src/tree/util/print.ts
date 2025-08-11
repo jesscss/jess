@@ -35,6 +35,8 @@ export class OutputWriter implements OutputWriter {
   private _column = 0;
   private _segments: SourceSegment[] = [];
   private _positions: Array<{ line: number; column: number; segments: number }> = [];
+  /** Diagnostic: remember the origin that last wrote a trailing newline */
+  private _lastNewlineOrigin: unknown = undefined;
 
   get line() { return this._line; }
   get column() { return this._column; }
@@ -57,6 +59,11 @@ export class OutputWriter implements OutputWriter {
         origLine: startLine,
         origColumn: startColumn
       });
+    }
+
+    // Track if the chunk ends with a newline and record its origin (for diagnostics)
+    if (text.endsWith('\n')) {
+      this._lastNewlineOrigin = originParam;
     }
 
     // Fast path: no newlines
@@ -124,5 +131,10 @@ export class OutputWriter implements OutputWriter {
 
   getSegments(): SourceSegment[] {
     return this._segments;
+  }
+
+  /** Diagnostic accessor */
+  getLastNewlineOrigin(): unknown {
+    return this._lastNewlineOrigin;
   }
 }
