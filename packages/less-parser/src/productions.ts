@@ -53,6 +53,46 @@ import {
   SelectorList
 } from '@jesscss/core';
 
+/** Heuristic lookahead to decide if a mixin definition follows (name + args [+ guard] + '{') */
+function looksLikeMixinDefinition(this: P, T: TokenMap) {
+  // find the first '('
+  let i = 1;
+  while (true) {
+    const tok = this.LA(i);
+    const tt = tok.tokenType;
+    if (tt === T.LParen) break;
+    // stop if we hit something that cannot start a mixin name
+    if (!(tt === T.DotName || tt === T.HashName || tt === T.ColorIdentStart || tt === T.InterpolatedIdent)) return false;
+    i++;
+  }
+  // scan to matching ')'
+  let depth = 0;
+  for (;; i++) {
+    const tok = this.LA(i);
+    const tt = tok.tokenType;
+    if (tt === T.LParen) depth++;
+    else if (tt === T.RParen) {
+      depth--;
+      if (depth === 0) {
+        i++;
+        break;
+      }
+    }
+    // safety: bail out if unexpected EOF
+    if (!tt) return false;
+  }
+  // optional guard starts here
+  const next = this.LA(i);
+  if (next.tokenType === T.LCurly) return true;
+  if (next.tokenType === T.When) return true;
+  if (
+    next.tokenType === T.FunctionStart
+    && typeof next.image === 'string'
+    && next.image.toLowerCase().startsWith('when(')
+  ) return true;
+  return false;
+}
+
 const isEscapedString = function(this: P, T: TokenMap) {
   const next = this.LA(1);
   return tokenMatcher(next, T.QuoteStart) && next.image.startsWith('~');
@@ -109,7 +149,7 @@ export function main(this: P, T: TokenMap) {
   const $ = this;
 
   let ruleAlt = [
-    { ALT: () => $.SUBRULE($.mixinDefinition) },
+    { GATE: () => looksLikeMixinDefinition.call($, T), ALT: () => $.SUBRULE($.mixinDefinition) },
     { ALT: () => $.SUBRULE($.functionCall) },
     { ALT: () => $.SUBRULE($.extendList) },
     { ALT: () => $.SUBRULE($.qualifiedRule) },
@@ -139,9 +179,10 @@ export function declarationList(this: P, T: TokenMap) {
 
   let ruleAlt = [
     { ALT: () => $.SUBRULE($.declaration) },
-    // Prefer mixinDefinition over mixinCall/functionCall so guards are captured
-    { ALT: () => $.SUBRULE($.mixinDefinition) },
-    { ALT: () => $.SUBRULE($.mixinCall) },
+    // Prefer mixinDefinition over calls so guards are captured
+    { GATE: () => looksLikeMixinDefinition.call($, T), ALT: () => $.SUBRULE($.mixinDefinition) },
+    // Enforce statement form (requires a semicolon) to avoid ambiguity with definitions
+    { ALT: () => $.SUBRULE($.mixinCallStatement) },
     { ALT: () => $.SUBRULE($.functionCall) },
     { ALT: () => $.SUBRULE($.innerAtRule) },
     { ALT: () => $.SUBRULE($.extendList) },
@@ -150,6 +191,19 @@ export function declarationList(this: P, T: TokenMap) {
   ];
 
   return cssMain.call(this, T, ruleAlt as any);
+}
+
+// Wrapper to ensure a mixin call in declaration context ends with a semicolon
+export function mixinCallStatement(this: P, T: TokenMap) {
+  const $ = this;
+  return () => {
+    const node = $.SUBRULE($.mixinCall);
+    // If mixinCall did not consume a semicolon, require one now
+    if ($.LA(1).tokenType === T.Semi) {
+      $.CONSUME(T.Semi);
+    }
+    return node;
+  };
 }
 
 let interpolatedRegex = /([$@]){([^}]+)}/g;
@@ -1562,16 +1616,34 @@ export function guard(this: P, T: TokenMap) {
   const $ = this;
 
   return (ctx: RuleContext = {}) => {
-    $.CONSUME(T.When);
     return $.OR([
       {
-        GATE: () => !!ctx.inValueList,
-        ALT: () => $.SUBRULE($.comparison, { ARGS: [ctx] })
+        // Normal tokenized 'when'
+        GATE: () => tokenMatcher($.LA(1), T.When),
+        ALT: () => {
+          $.CONSUME(T.When);
+          return $.OR2([
+            {
+              GATE: () => !!ctx.inValueList,
+              ALT: () => $.SUBRULE($.comparison, { ARGS: [ctx] })
+            },
+            {
+              ALT: () => {
+                ctx.allowComma = true;
+                return $.SUBRULE($.guardOr, { ARGS: [ctx] });
+              }
+            }
+          ]);
+        }
       },
       {
+        // Handle "when(" being tokenized as a FunctionStart
+        GATE: () => $.LA(1).tokenType === T.FunctionStart && $.LA(1).image.toLowerCase().startsWith('when('),
         ALT: () => {
-          ctx.allowComma = true;
-          $.SUBRULE($.guardOr, { ARGS: [ctx] });
+          $.CONSUME(T.FunctionStart); // consumes 'when('
+          const node = $.SUBRULE($.guardInner, { ARGS: [ctx] });
+          $.CONSUME(T.RParen);
+          return node;
         }
       }
     ]);
@@ -1703,24 +1775,7 @@ export function guardInParens(this: P, T: TokenMap) {
       {
         ALT: () => {
           $.CONSUME(T.LParen);
-          let node = $.OR2([
-            { ALT: () => $.SUBRULE($.comparison, { ARGS: [ctx] }) },
-            {
-              GATE: () => {
-                let tokenType = $.LA(1).tokenType;
-                return tokenType !== T.Not && tokenType !== T.DefaultGuardFunc && tokenType !== T.DefaultGuardIdent;
-              },
-              ALT: () => $.SUBRULE($.value, { ARGS: [ctx] })
-            },
-            {
-              /**
-               * This is the only backtracked rule to dis-ambiguate
-               * nested parens with no and / or from nested parens
-               * in math expressions.
-               */
-              ALT: () => $.SUBRULE($.guardOr, { ARGS: [ctx] })
-            }
-          ]);
+          let node = $.SUBRULE($.guardInner, { ARGS: [ctx] });
           $.CONSUME(T.RParen);
           return node;
         }
@@ -1732,6 +1787,25 @@ export function guardInParens(this: P, T: TokenMap) {
       return new Paren(node, undefined, $.endRule(), this.context);
     }
   };
+}
+
+// The inner content of a guard inside parentheses
+export function guardInner(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) =>
+    $.OR([
+      { ALT: () => $.SUBRULE($.comparison, { ARGS: [ctx] }) },
+      {
+        GATE: () => {
+          let tokenType = $.LA(1).tokenType;
+          return tokenType !== T.Not && tokenType !== T.DefaultGuardFunc && tokenType !== T.DefaultGuardIdent;
+        },
+        ALT: () => $.SUBRULE($.value, { ARGS: [ctx] })
+      },
+      {
+        ALT: () => $.SUBRULE($.guardOr, { ARGS: [ctx] })
+      }
+    ]);
 }
 
 export function guardWithConditionValue(this: P, T: TokenMap) {
@@ -2060,23 +2134,22 @@ export function mixinDefinition(this: P, T: TokenMap) {
   const $ = this;
 
   return () => {
+    // Disambiguate definition vs call: name + args must be followed by optional guard and a block
     $.startRule();
-    let name = $.SUBRULE($.mixinName);
-    let params = $.SUBRULE($.mixinArgs, { ARGS: [{ isDefinition: true }] });
+    const name = $.SUBRULE($.mixinName);
+    const params = $.SUBRULE($.mixinArgs, { ARGS: [{ isDefinition: true }] });
+    const ctx: RuleContext = {};
     let guard: Condition | undefined;
-    let ctx: RuleContext = {};
-
     $.OPTION(() => guard = $.SUBRULE($.guard, { ARGS: [ctx] }));
-    let rules = $.SUBRULE($.wrappedDeclarationList);
+    // Require a block start to qualify as a definition
+    $.CONSUME(T.LCurly);
+    const rulesInner = $.SUBRULE($.declarationList);
+    $.CONSUME(T.RCurly);
 
     if (!$.RECORDING_PHASE) {
-      let location = $.endRule();
-      return new Mixin(
-        { name, params, rules, guard },
-        { hasDefault: !!ctx.hasDefault },
-        location,
-        this.context
-      );
+      const location = $.endRule();
+      const rules = rulesInner;
+      return new Mixin({ name, params, rules, guard }, { hasDefault: !!ctx.hasDefault }, location, this.context);
     }
   };
 }
