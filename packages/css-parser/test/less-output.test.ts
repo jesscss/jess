@@ -25,9 +25,6 @@ const invalidCSSOutput = [
   /** invalid attribute selector */
   'css/_main/selectors.css',
 
-  /** invalidly exposed declarations (not in ruleset) */
-  'css/_main/container.css',
-
   /**
    * All of these contain a property with no value,
    * and/or a list with no value

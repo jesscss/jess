@@ -1306,18 +1306,23 @@ export function functionCall(this: P, T: TokenMap) {
           || tokenType === T.Var
           || tokenType === T.Calc
           || tokenType === T.IfFunction
-          || tokenType === T.BooleanFunction
-          || tokenType === T.Layer
-          || tokenType === T.Supports;
+          || tokenType === T.BooleanFunction;
       },
       ALT: () => $.SUBRULE($.knownFunctions)
     },
     {
       // Generic function via FunctionStart token
-      GATE: () => $.LA(1).tokenType === T.FunctionStart,
+      GATE: () => {
+        let tokenType = $.LA(1).tokenType;
+        return tokenType !== T.UrlStart
+          && tokenType !== T.Var
+          && tokenType !== T.Calc
+          && tokenType !== T.IfFunction
+          && tokenType !== T.BooleanFunction;
+      },
       ALT: () => {
         $.startRule();
-        const fnStart = $.CONSUME(T.FunctionStart);
+        const fnStart = $.CONSUME(T.Function);
         let args: List | undefined;
         $.OPTION(() => args = $.SUBRULE($.functionCallArgs));
         $.CONSUME(T.RParen);
@@ -1325,23 +1330,6 @@ export function functionCall(this: P, T: TokenMap) {
           const location = $.endRule();
           const nameValue = fnStart.image.slice(0, -1);
           const nameNode = new Reference(nameValue, { type: 'variable', fallbackValue: true }, $.getLocationInfo(fnStart), this.context);
-          return new Call({ name: nameNode, args }, undefined, location, this.context);
-        }
-      }
-    },
-    {
-      // Fallback for cases where lexer did not merge ident and '('
-      GATE: () => $.LA(1).tokenType === T.Ident && $.LA(2).tokenType === T.LParen,
-      ALT: () => {
-        $.startRule();
-        const nameTok = $.CONSUME2(T.Ident);
-        let args: List | undefined;
-        $.CONSUME3(T.LParen);
-        $.OPTION2(() => args = $.SUBRULE2($.functionCallArgs));
-        $.CONSUME3(T.RParen);
-        if (!$.RECORDING_PHASE) {
-          const location = $.endRule();
-          const nameNode = new Reference(nameTok.image, { type: 'variable', fallbackValue: true }, $.getLocationInfo(nameTok), this.context);
           return new Call({ name: nameNode, args }, undefined, location, this.context);
         }
       }
@@ -1358,7 +1346,9 @@ export function functionCallArgs(this: P, T: TokenMap) {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
 
-    let node = $.SUBRULE($.callArgument, { ARGS: [ctx] });
+    // Inside function arguments, allow inner tokens like ':'
+    const innerCtx = { ...ctx, inner: true } as RuleContext;
+    let node = $.SUBRULE($.callArgument, { ARGS: [innerCtx] });
 
     let commaNodes: Node[];
     let semiNodes: Node[];
@@ -1371,7 +1361,7 @@ export function functionCallArgs(this: P, T: TokenMap) {
     // First, consume any comma-separated arguments
     $.MANY(() => {
       $.CONSUME(T.Comma);
-      node = $.SUBRULE2($.callArgument, { ARGS: [ctx] });
+      node = $.SUBRULE2($.callArgument, { ARGS: [innerCtx] });
       if (!RECORDING_PHASE) {
         commaNodes!.push($.wrap(node, true));
       }
@@ -1393,14 +1383,14 @@ export function functionCallArgs(this: P, T: TokenMap) {
         }
       }
 
-      node = $.SUBRULE3($.callArgument, { ARGS: [{ ...ctx, allowComma: true }] });
+      node = $.SUBRULE3($.callArgument, { ARGS: [{ ...innerCtx, allowComma: true }] });
       if (!RECORDING_PHASE) {
         semiNodes.push($.wrap(node, true));
       }
 
       $.MANY2(() => {
         $.CONSUME2(T.Semi);
-        node = $.SUBRULE4($.callArgument, { ARGS: [{ ...ctx, allowComma: true }] });
+        node = $.SUBRULE4($.callArgument, { ARGS: [{ ...innerCtx, allowComma: true }] });
         if (!RECORDING_PHASE) {
           semiNodes.push($.wrap(node, true));
         }
@@ -1423,11 +1413,7 @@ export function value(this: P, T: TokenMap) {
     let node: Node = $.OR([
       /** Function should appear before Ident */
       {
-        GATE: () => {
-          let next = $.LA(1);
-          if (tokenMatcher(next, T.Function)) return true;
-          return tokenMatcher(next, T.Ident) && $.LA(2).tokenType === T.LParen;
-        },
+        GATE: () => $.LA(1).tokenType === T.Function,
         ALT: () => $.SUBRULE($.functionCall)
       },
       { ALT: () => $.SUBRULE($.inlineMixinCall, { ARGS: [ctx] }) },
@@ -1827,6 +1813,7 @@ export function innerAtRule(this: P, T: TokenMap) {
     { ALT: () => $.SUBRULE($.supportsAtRule, { ARGS: [true] }) },
     { ALT: () => $.SUBRULE($.layerAtRule, { ARGS: [true] }) },
     { ALT: () => $.SUBRULE($.containerAtRule, { ARGS: [true] }) },
+    { ALT: () => $.SUBRULE($.keyframesAtRule) },
     { ALT: () => $.SUBRULE($.documentAtRule, { ARGS: [true] }) },
     { ALT: () => $.SUBRULE($.importAtRule) },
     { ALT: () => $.SUBRULE($.pageAtRule) },
@@ -1863,13 +1850,13 @@ export function mixinName(this: P, T: TokenMap) {
       if (nameValue.includes('@') || nameValue.includes('$')) {
         nameNode = getInterpolated(nameValue, location, this.context);
         if (asReference) {
-          nameNode = new Reference({ key: nameNode as Interpolated }, { type: 'mixin' }, location, this.context);
+          nameNode = new Reference({ key: nameNode as Interpolated }, { type: 'mixin', role: 'name' }, location, this.context);
         }
       } else {
         if (asReference) {
-          nameNode = new Reference({ key: nameValue }, { type: 'mixin' }, location, this.context);
+          nameNode = new Reference({ key: nameValue }, { type: 'mixin', role: 'name' }, location, this.context);
         } else {
-          nameNode = $.wrap(new Any(nameValue, { role: 'ident' }, $.getLocationInfo(name), this.context), true);
+          nameNode = $.wrap(new Any(nameValue, { role: 'name' }, $.getLocationInfo(name), this.context), true);
         }
       }
       return nameNode;
@@ -1889,7 +1876,7 @@ export function mixinReference(this: P, T: TokenMap) {
       let rightNode = $.SUBRULE2($.mixinName, { ARGS: [true] });
       if (!RECORDING_PHASE) {
         const loc = $.getLocationFromNodes([leftNode, rightNode]);
-        leftNode = new Reference({ target: new Call({ name: leftNode }), key: rightNode }, { type: 'mixin' }, loc, this.context);
+        leftNode = new Reference({ target: new Call({ name: leftNode }), key: rightNode }, { type: 'mixin', role: 'name' }, loc, this.context);
       }
     });
     return leftNode;

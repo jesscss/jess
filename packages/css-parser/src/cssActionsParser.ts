@@ -101,6 +101,7 @@ export class CssActionsParser extends AdvancedActionsParser {
   innerCustomValue!: Rule;
 
   functionCall!: Rule;
+  functionCallLike!: Rule;
   functionCallArgs!: Rule<(ctx?: RuleContext) => void>;
   knownFunctions!: Rule;
   varFunction!: Rule;
@@ -197,7 +198,7 @@ export class CssActionsParser extends AdvancedActionsParser {
     }
   }
 
-  protected getLocationFromNodes(nodes: Array<IToken | Node>) {
+  protected getLocationFromNodes(nodes: Array<IToken | Node>): LocationInfo | undefined {
     let startNode = nodes[0]!;
     let lastNode = nodes[nodes.length - 1]!;
     let startOffset: number;
@@ -206,6 +207,10 @@ export class CssActionsParser extends AdvancedActionsParser {
     let endOffset: number;
     let endLine: number;
     let endColumn: number;
+
+    if (startNode === undefined) {
+      return undefined;
+    }
 
     if (startNode instanceof Node) {
       ([startOffset, startLine, startColumn] = startNode.location as LocationInfo);

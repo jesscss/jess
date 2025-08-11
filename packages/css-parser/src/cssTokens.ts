@@ -506,6 +506,10 @@ export const rawCssTokens = {
          */
         pattern: '(?:[\\u0000-\\u0021\\u0023-\\u0026\\u002A-\\u005B\\u005D-\\uFFFF]|{{escape}})+'
       },
+      /**
+       * We need to be careful to think about this token from the URL mode
+       * when we're gating the RParen token for any reason. This is a separate token.
+       */
       {
         name: 'UrlEnd',
         pattern: /\)/,
