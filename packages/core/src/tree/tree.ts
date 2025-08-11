@@ -1,5 +1,5 @@
 import type { Ampersand } from './ampersand';
-import type { General } from './general';
+import type { Any, Anonymous } from './any';
 import type { AtRule } from './at-rule';
 import type { Call } from './call';
 import type { Declaration } from './declaration';
@@ -32,7 +32,8 @@ import type { Num } from './number';
 
 export type Nodes = {
   Ampersand: typeof Ampersand;
-  General: typeof General;
+  Any: typeof Any;
+  Anonymous: typeof Anonymous;
   AtRule: typeof AtRule;
   Call: typeof Call;
   Declaration: typeof Declaration;

@@ -7,7 +7,6 @@ import type { Nil } from '../nil';
 import type { Node } from '../node';
 import type { JsFunction } from '../js-function';
 import type { Func } from '../function';
-import type { General } from '../general';
 import type { Declaration } from '../declaration';
 import { atIndex } from './collections';
 

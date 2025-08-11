@@ -2,13 +2,13 @@ import { Node, defineType } from './node';
 import { ComplexSelector } from './selector-complex';
 import { Ampersand } from './ampersand';
 import { Ruleset } from './ruleset';
-import type { AtKeyword } from './general';
+import type { Any } from './any';
 import { Rules } from './rules';
 import type { Context } from '../context';
 import { type PrintOptions, getPrintOptions } from './util/print';
 
 export type AtRuleValue = {
-  name: AtKeyword;
+  name: Any<'atkeyword'>;
   /** The prelude */
   prelude?: Node;
   rules?: Rules;

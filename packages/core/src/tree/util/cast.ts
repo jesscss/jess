@@ -3,7 +3,7 @@ import { Nil } from '../nil';
 import { List } from '../list';
 import { Dimension } from '../dimension';
 import { Num } from '../number';
-import { Anonymous } from '../general';
+import { Any } from '../any';
 import { Color } from '../color';
 import { JsFunction } from '../js-function';
 import { JsObject } from '../js-object';
@@ -46,7 +46,7 @@ function getNodeType(value: any): Node {
       }
     }
   }
-  return new Anonymous(value.toString());
+  return new Any(value.toString());
 }
 
 /**

@@ -2,12 +2,11 @@ import { Node, defineType } from './node';
 import type { Condition } from './condition';
 import { type List } from './list';
 import type { Rest } from './rest';
-import type { Ident as Name } from './general';
+import type { Any } from './any';
 import { type VarDeclaration } from './declaration-var';
 import type { Rules } from './rules';
 import { Interpolated } from './interpolated';
 import type { Context } from '../context';
-import type { Selector } from './selector';
 import type { Declaration } from './declaration';
 import { type PrintOptions, getPrintOptions } from './util/print';
 
@@ -26,7 +25,7 @@ export interface MixinValue {
    *
    * @todo - Should anonymous mixins have a different class type?
    */
-  name?: Name;
+  name?: Any<'name'> | Interpolated<'name'>;
   /**
    * Functions can be assigned an expression when parsing,
    * but it will be evaluated as a set of Rules with a scope
@@ -39,7 +38,7 @@ export interface MixinValue {
    * - A var declaration is a named variable with a default value.
    * - A rest is a rest parameter.
    */
-  params?: List<Node | Name | VarDeclaration | Rest>;
+  params?: List<Node>;
   guard?: Condition;
 }
 

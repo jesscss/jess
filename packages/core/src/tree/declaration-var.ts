@@ -4,7 +4,7 @@ import {
   type DeclarationParams,
   type DeclarationOptions
 } from './declaration';
-import { type General, Ident } from './general';
+import { Any } from './any';
 import { defineType, type LocationInfo, type Node, type TreeContext } from './node';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
@@ -62,12 +62,12 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
 defineType<DeclarationValue>(VarDeclaration, 'VarDeclaration', 'vardecl');
 
 export const vardecl = (
-  value: DeclarationValue | { name: string; value: Node; important?: General<'Flag'> },
+  value: DeclarationValue | { name: string; value: Node; important?: Any<'flag'> },
   options?: VarDeclarationOptions,
   location?: LocationInfo,
   treeContext?: TreeContext
 ) => {
   let { name } = value;
-  value.name = typeof name === 'string' ? new Ident(name) : name;
+  value.name = typeof name === 'string' ? new Any(name, { role: 'property' }) : name;
   return new VarDeclaration(value as DeclarationValue, options, location, treeContext);
 };

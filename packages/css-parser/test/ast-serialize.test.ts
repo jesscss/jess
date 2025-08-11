@@ -17,9 +17,9 @@ describe('serializeTypes coverage', () => {
                 [
                   (Declaration
                     name: 
-                      (Ident [role=property] 'b')
+                      (any [role=property] 'b')
                     value: 
-                      (Ident 'c')
+                      (any 'c')
                   )
                 ]
               )
@@ -54,7 +54,7 @@ describe('serializeTypes coverage', () => {
           op: '='
           value:
             (Quoted
-              (Anonymous 'bar')
+              (any [role=any] 'bar')
             )
           mod: 'i'
         )
@@ -88,10 +88,9 @@ describe('serializeTypes coverage', () => {
     const { tree } = cssParser.parse('a{ background:url(foo) }');
     const out = serializeTypes(tree);
     expect(out).toContainString(`
-      (Call
-        name: 'url'
-        args:
-          (List
+      (Url
+        (any [role=urlvalue] 'foo')
+      )
     `);
   });
 
@@ -101,7 +100,7 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (Declaration
         name:
-          (Ident [role=property] 'w')
+          (any [role=property] 'w')
         value:
           (Dimension
             number: 10
@@ -111,7 +110,7 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (Declaration
         name:
-          (Ident [role=property] 'z')
+          (any [role=property] 'z')
         value:
           (Number 2)
     `);
@@ -123,7 +122,7 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (Declaration
         name:
-          (Ident [role=property] 'm')
+          (any [role=property] 'm')
         value:
           (List
             [
@@ -136,7 +135,7 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (Declaration
         name:
-          (Ident [role=property] 'n')
+          (any [role=property] 'n')
         value:
           (Sequence
             [
@@ -154,7 +153,7 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (AtRule
         name:
-          (AtKeyword '@media')
+          (any [role=atkeyword] '@media')
     `);
   });
 });

@@ -2,7 +2,7 @@ import { defineType, Node, type LocationInfo } from './node';
 import type { Context, TreeContext } from '../context';
 import { cast } from './util/cast';
 import type { FindOptions } from './util/registry-utils';
-import { General } from './general';
+import { Any, type AnyRole } from './any';
 import { Selector } from './selector';
 import { isNode } from './util/is-node';
 import type { Call } from './call';
@@ -33,7 +33,7 @@ export type ReferenceValue = {
   target?: Reference | Call | undefined;
   key:
     string
-    | General
+    | Any
     | number // $[0] or $.0
     | Num // $.key or $[key] or $*key
     | Quoted // $['key']
@@ -55,6 +55,7 @@ export type ReferenceOptions = {
    */
   fallbackValue?: Node | true;
   filter?: (node: Node) => boolean;
+  role?: AnyRole;
 };
 
 type NodeType = typeof Node<ReferenceValue, ReferenceOptions>;
@@ -199,7 +200,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         throw new ReferenceError(`"${key}" is not defined`);
       }
       if (fallbackValue === true) {
-        return new General(`${valueKey}`, { type: 'Name' });
+        let any = new Any(`${valueKey}`);
+        any.options.role = this.options.role;
+        return any;
       }
       return fallbackValue;
     }

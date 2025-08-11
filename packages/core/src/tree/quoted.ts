@@ -1,5 +1,5 @@
 import { type Interpolated } from './interpolated';
-import { General } from './general';
+import { Any } from './any';
 import { Node, defineType } from './node';
 import type { Context } from '../context';
 import { type PrintOptions, getPrintOptions } from './util/print';
@@ -9,15 +9,15 @@ export type QuotedOptions = {
   escaped?: boolean;
 };
 
-export interface Quoted extends Node<string | General | Interpolated, QuotedOptions> {
-  eval(context: Context): Promise<Quoted | General | Interpolated>;
+export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
+  eval(context: Context): Promise<Quoted | Any | Interpolated>;
 }
 
 /**
  * A quoted string value. Called a `String` in CSS, but calling it Quoted
  * to avoid conflict with the built-in `String` class.
  */
-export class Quoted extends Node<string | General | Interpolated, QuotedOptions> {
+export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   type = 'Quoted' as const;
   shortType = 'quoted' as const;
 
@@ -39,7 +39,7 @@ export class Quoted extends Node<string | General | Interpolated, QuotedOptions>
     return value instanceof Node ? value.valueOf() : value;
   }
 
-  override async evalNode(context: Context): Promise<Quoted | General | Interpolated> {
+  override async evalNode(context: Context): Promise<Quoted | Any | Interpolated> {
     let { value } = this;
     if (value instanceof Node) {
       value = (await value.eval(context));
@@ -48,7 +48,7 @@ export class Quoted extends Node<string | General | Interpolated, QuotedOptions>
       if (value instanceof Node) {
         return value;
       }
-      return new General<'Anonymous'>(value);
+      return new Any(value);
     }
     let quoted = this.maybeClone(context);
     quoted.value = value;

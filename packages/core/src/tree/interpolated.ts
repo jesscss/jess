@@ -1,5 +1,5 @@
 import { type Node, defineType } from './node';
-import { General, type GeneralNodeType, type GeneralOptions } from './general';
+import { Any, type AnyRole, type AnyOptions } from './any';
 import type { Context } from '../context';
 import { isNode } from './util/is-node';
 import { BasicSelector } from './selector-basic';
@@ -17,9 +17,9 @@ export type InterpolatedValue = {
  * Merge an interface to declare the specific types
  */
 export interface Interpolated<
-  T extends string = GeneralNodeType
-> extends SimpleSelector<InterpolatedValue, GeneralOptions<T>> {
-  eval(context: Context): Promise<Interpolated<T>>;
+  Role extends AnyRole = AnyRole
+> extends SimpleSelector<InterpolatedValue, AnyOptions<Role>> {
+  eval(context: Context): Promise<Interpolated<Role>>;
 }
 /**
  * An interpolated value is one that contains
@@ -33,8 +33,8 @@ export interface Interpolated<
  *     - `--prop-@{foo}` is an interpolated property
  */
 export class Interpolated<
-  T extends string = GeneralNodeType
-> extends SimpleSelector<InterpolatedValue, GeneralOptions<T>> {
+  Role extends AnyRole = AnyRole
+> extends SimpleSelector<InterpolatedValue, AnyOptions<Role>> {
   type = 'Interpolated' as const;
   shortType = 'interpolated' as const;
 
@@ -90,7 +90,9 @@ export class Interpolated<
   }
 
   createGeneric() {
-    return new General<T>(this.toTrimmedString()).inherit(this);
+    let any = new Any<Role>(this.toTrimmedString()).inherit(this);
+    any.options.role = this.options.role;
+    return any;
   }
 
   /**

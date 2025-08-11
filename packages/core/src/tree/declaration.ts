@@ -7,7 +7,7 @@ import { isNode } from './util/is-node';
 import { Nil } from './nil';
 import type { Context, TreeContext } from '../context';
 import { Interpolated } from './interpolated';
-import { type General, Ident } from './general';
+import { Any } from './any';
 import { Reference } from './reference';
 import { List } from './list';
 import { spaced } from './sequence';
@@ -61,13 +61,13 @@ export type DeclarationOptions = {
   throwIfDefined?: boolean;
 };
 
-type NameValue = Ident | Interpolated<'Ident'>;
+type NameValue = Any<'property'> | Interpolated<'property'>;
 
 export type DeclarationValue = {
   name: NameValue;
   value: Node;
   /** The actual string representation of important, if it exists */
-  important?: General<'Flag'>;
+  important?: Any<'flag'>;
 };
 
 /**
@@ -125,9 +125,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       let node = this.clone();
       node.preEvaluated = true;
       let { name, value } = node.value;
-      let key: Ident;
+      let key: Any<'property'>;
       if (name instanceof Interpolated) {
-        key = (await name.eval(context)).createGeneric() as Ident;
+        key = (await name.eval(context)).createGeneric() as Any<'property'>;
         node.value.name = key;
       } else {
         key = name;
@@ -197,7 +197,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
      * @todo - is this valid if rulesets pre-emptively evaluate names?
      */
     if (name instanceof Interpolated) {
-      node.value.name = (await name.eval(context)).createGeneric() as Ident;
+      node.value.name = (await name.eval(context)).createGeneric() as Any<'property'>;
     }
     /** Evaluate the value */
     if (value instanceof Node) {
@@ -246,12 +246,12 @@ export type DeclarationParams = ConstructorParameters<typeof Declaration>;
 defineType<DeclarationValue>(Declaration, 'Declaration', 'decl');
 
 export const decl = (
-  value: DeclarationValue | { name: string; value: Node; important?: General<'Flag'> },
+  value: DeclarationValue | { name: string; value: Node; important?: Any<'flag'> },
   options?: DeclarationOptions,
   location?: LocationInfo,
   treeContext?: TreeContext
 ) => {
   let { name } = value;
-  value.name = typeof name === 'string' ? new Ident(name) : name;
+  value.name = typeof name === 'string' ? new Any(name, { role: 'property' }) : name;
   return new Declaration(value as DeclarationValue, options, location, treeContext);
 };

@@ -10,7 +10,7 @@
 /** Base classes - keep these on top */
 import { Node, type LocationInfo } from './node';
 import { type Operator } from './util/calculate';
-import { Anonymous } from './general';
+import { Any } from './any';
 import { TreeContext } from '../context';
 import { Nil } from './nil';
 import { compare } from './util/compare';
@@ -22,7 +22,7 @@ Node.prototype.operate = function(b: Node, op: Operator) {
   let aVal = this.toString();
   let bVal = b.toString();
   if (op === '+') {
-    return new Anonymous(aVal + bVal).inherit(this);
+    return new Any(aVal + bVal).inherit(this);
   }
   throw new Error(`Cannot operate on ${this.type}`);
 };
@@ -71,7 +71,7 @@ export * from './at-rule';
 export * from './block';
 export * from './bool';
 export * from './ampersand';
-export * from './general';
+export * from './any';
 export * from './call';
 export * from './collection';
 export * from './color';
@@ -86,7 +86,6 @@ export * from './number';
 export * from './expression';
 export * from './extend';
 export * from './extend-list';
-export * from './general';
 export * from './list';
 export * from './mixin';
 export * from './negative';
@@ -112,7 +111,6 @@ export * from './selector-compound';
 export * from './selector-complex';
 export * from './selector-simple';
 export * from './sequence';
-export * from './token';
 export * from './comment';
 export * from './reference';
 export * from './import-style';

@@ -22,9 +22,8 @@ import {
   Color,
   Dimension,
   Num,
-  Token,
   Rules,
-  General
+  Any
 } from '@jesscss/core';
 
 const { isArray } = Array;
@@ -361,7 +360,7 @@ export class CssActionsParser extends AdvancedActionsParser {
     if (tokenMatcher(token, T.Ident)) {
       /** @todo - check to see if it's a color */
       // In value position, treat as a generic identifier
-      return new Core.Ident(tokValue, undefined, this.getLocationInfo(token), this.context);
+      return new Any(tokValue, undefined, this.getLocationInfo(token), this.context);
     } else if (tokenMatcher(token, T.Dimension)) {
       dimValue = { number: parseFloat(token.payload[0]), unit: token.payload[1] };
       return getDimension(dimValue);
@@ -389,7 +388,7 @@ export class CssActionsParser extends AdvancedActionsParser {
     } else if (tokenMatcher(token, T.Color)) {
       return new Color(tokValue, undefined, this.getLocationInfo(token), this.context);
     } else {
-      return new Token(tokValue, { type: token.tokenType.name }, this.getLocationInfo(token), this.context);
+      return new Any(tokValue, { type: token.tokenType.name }, this.getLocationInfo(token), this.context);
     }
   }
 }

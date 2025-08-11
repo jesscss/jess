@@ -44,10 +44,10 @@ export interface Visitor {
   boolExit?(n: tree.Bool, ctx?: VisitorContext): void;
   ampersand?(n: tree.Ampersand, ctx?: VisitorContext): VisitorReturn;
   ampersandExit?(n: tree.Ampersand, ctx?: VisitorContext): void;
+  any?(n: tree.Any, ctx?: VisitorContext): VisitorReturn;
+  anyExit?(n: tree.Any, ctx?: VisitorContext): void;
   anonymous?(n: tree.Anonymous, ctx?: VisitorContext): VisitorReturn;
   anonymousExit?(n: tree.Anonymous, ctx?: VisitorContext): void;
-  general?(n: tree.General<string>, ctx?: VisitorContext): VisitorReturn;
-  generalExit?(n: tree.General<string>, ctx?: VisitorContext): void;
   call?(n: tree.Call, ctx?: VisitorContext): VisitorReturn;
   callExit?(n: tree.Call, ctx?: VisitorContext): void;
   collection?(n: tree.Collection, ctx?: VisitorContext): VisitorReturn;
@@ -110,8 +110,6 @@ export interface Visitor {
   complexSelectorExit?(n: tree.ComplexSelector, ctx?: VisitorContext): void;
   sequence?(n: tree.Sequence, ctx?: VisitorContext): VisitorReturn;
   sequenceExit?(n: tree.Sequence, ctx?: VisitorContext): void;
-  token?(n: tree.Token, ctx?: VisitorContext): VisitorReturn;
-  tokenExit?(n: tree.Token, ctx?: VisitorContext): void;
   varDeclaration?(n: tree.VarDeclaration, ctx?: VisitorContext): VisitorReturn;
   varDeclarationExit?(n: tree.VarDeclaration, ctx?: VisitorContext): void;
   reference?(n: tree.Reference, ctx?: VisitorContext): VisitorReturn;
