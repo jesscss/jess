@@ -2741,20 +2741,54 @@ export function importAtRule(this: C, T: TokenMap) {
     if (!RECORDING_PHASE) {
       preludeNodes = [];
     }
-    let node =
-      $.OR([
-        { ALT: () => $.SUBRULE($.urlFunction) },
-        { ALT: () => $.SUBRULE($.string) }
-      ]);
+    let node = $.SUBRULE($.importPrelude) as Node;
 
     if (!RECORDING_PHASE) {
       preludeNodes!.push($.wrap(node));
     }
 
+    let extraNodes: Node[] | undefined;
+    $.OPTION(() => {
+      extraNodes = $.SUBRULE($.importPostlude) as Node[];
+    });
+    if (!RECORDING_PHASE && extraNodes && extraNodes.length) {
+      for (const n of extraNodes) preludeNodes!.push(n);
+    }
+    $.CONSUME(T.Semi);
+
+    if (!RECORDING_PHASE) {
+      let location = $.endRule();
+      return new AtRule({
+        name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context), true),
+        prelude: new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context)
+      }, undefined, location, this.context);
+    }
+  };
+}
+
+/** import prelude: url(...) or "string" */
+export function importPrelude(this: C, T: TokenMap) {
+  const $ = this;
+  return () => {
+    return $.OR([
+      { ALT: () => $.SUBRULE($.urlFunction) },
+      { ALT: () => $.SUBRULE($.string) }
+    ]);
+  };
+}
+
+/** import postlude: optional layer(), supports(), media. Returns Node[] */
+export function importPostlude(this: C, T: TokenMap) {
+  const $ = this;
+  return () => {
+    let RECORDING_PHASE = $.RECORDING_PHASE;
+    let nodes: Node[] | undefined;
+    if (!RECORDING_PHASE) nodes = [];
+
     /** layer(responsive) */
     $.OPTION(() => {
       let start = $.CONSUME(T.Layer);
-      $.OR2([{
+      $.OR([{
         GATE: $.noSep,
         ALT: () => {
           $.CONSUME(T.LParen);
@@ -2762,25 +2796,21 @@ export function importAtRule(this: C, T: TokenMap) {
       }]);
       let value: Node = $.SUBRULE($.layerName);
       let end = $.CONSUME(T.RParen);
-
       if (!RECORDING_PHASE) {
         let { startOffset, startLine, startColumn } = start;
         let { endOffset, endLine, endColumn } = end;
-        preludeNodes.push(
+        let location: LocationInfo = [startOffset, startLine!, startColumn!, endOffset!, endLine!, endColumn!];
+        nodes!.push(
           $.wrap(
-            new Call(
-              {
-                name: 'layer',
-                args: new List([value], undefined, value._location as LocationInfo, this.context)
-              },
-              undefined,
-              [startOffset, startLine!, startColumn!, endOffset!, endLine!, endColumn!],
-              this.context
-            )
+            new Call({
+              name: 'layer',
+              args: new List([value], undefined, value._location as LocationInfo, this.context)
+            }, undefined, location, this.context)
           )
         );
       }
     });
+
     /** supports(display: grid) */
     $.OPTION2(() => {
       let start = $.CONSUME(T.Supports);
@@ -2795,40 +2825,28 @@ export function importAtRule(this: C, T: TokenMap) {
         { ALT: () => $.SUBRULE($.declaration) }
       ]);
       let end = $.CONSUME2(T.RParen);
-
       if (!RECORDING_PHASE) {
         let { startOffset, startLine, startColumn } = start;
         let { endOffset, endLine, endColumn } = end;
-        preludeNodes.push(
+        let location: LocationInfo = [startOffset, startLine!, startColumn!, endOffset!, endLine!, endColumn!];
+        nodes!.push(
           $.wrap(
-            new Call(
-              {
-                name: 'supports',
-                args: $.wrap(value, 'both')
-              },
-              undefined,
-              [startOffset, startLine!, startColumn!, endOffset!, endLine!, endColumn!],
-              this.context
-            )
+            new Call({
+              name: 'supports',
+              args: $.wrap(value, 'both')
+            }, undefined, location, this.context)
           )
         );
       }
     });
-    $.OPTION3(() => {
-      node = $.SUBRULE($.mediaQueryList);
-      if (!RECORDING_PHASE) {
-        preludeNodes!.push(node);
-      }
-    });
-    $.CONSUME(T.Semi);
 
-    if (!RECORDING_PHASE) {
-      let location = $.endRule();
-      return new AtRule({
-        name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context), true),
-        prelude: new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context)
-      }, undefined, location, this.context);
-    }
+    /** media query list */
+    $.OPTION3(() => {
+      let mediaNode = $.SUBRULE($.mediaQueryList);
+      if (!RECORDING_PHASE) nodes!.push(mediaNode);
+    });
+
+    return nodes!;
   };
 }
 

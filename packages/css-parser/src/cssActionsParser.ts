@@ -119,6 +119,8 @@ export class CssActionsParser extends AdvancedActionsParser {
   /** At Rules */
   innerAtRule!: Rule;
   importAtRule!: Rule;
+  importPrelude!: Rule;
+  importPostlude!: Rule;
   mediaAtRule!: Rule<(inner?: boolean) => void>;
   supportsAtRule!: Rule<(inner?: boolean) => void>;
   containerAtRule!: Rule<(inner?: boolean) => void>;

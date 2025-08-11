@@ -21,11 +21,10 @@ import {
   Node,
   Ampersand,
   Block,
-  Token,
+  Any,
   type LocationInfo,
   type Operator,
   type ConditionOperator,
-  General,
   Ruleset,
   type SimpleSelector,
   Combinator,
@@ -46,9 +45,6 @@ import {
   VarDeclaration,
   DefaultGuard,
   Rest,
-  Ident,
-  AtKeyword,
-  Anonymous,
   StyleImport,
   Expression,
   ComplexSelector
@@ -95,7 +91,7 @@ export function stylesheet(this: P, T: TokenMap) {
       if (charset) {
         let loc = $.getLocationInfo(charset);
         let rootLoc = root.location;
-        rules.unshift(new Token(charset.image, { type: 'Charset' }, loc, context!));
+        rules.unshift(new Any(charset.image, { role: 'charset' }, loc, context!));
         rootLoc[0] = loc[0];
         rootLoc[1] = loc[1];
         rootLoc[2] = loc[2];
@@ -163,9 +159,9 @@ const getInterpolated = (name: string, location: LocationInfo, context: TreeCont
   while (result = interpolatedRegex.exec(name)) {
     const [match, propOrVar, value] = result;
     source = source.replace(match, '{}');
-    replacements.push(new Reference({ key: value! }, { type: propOrVar === '$' ? 'property' : 'variable' }));
+    replacements.push(new Reference({ key: value! }, { type: propOrVar === '$' ? 'property' : 'variable', role: 'ident' }));
   }
-  return new Interpolated({ source, replacements }, undefined, location, context);
+  return new Interpolated({ source, replacements }, { role: 'ident' }, location, context);
 };
 
 export function declaration(this: P, T: TokenMap) {
@@ -197,7 +193,7 @@ export function declaration(this: P, T: TokenMap) {
           if (nameValue.includes('@') || nameValue.includes('$')) {
             nameNode = getInterpolated(nameValue, $.getLocationInfo(name!), this.context);
           } else {
-            nameNode = $.wrap(new Ident(name!.image, { role: 'property' }, $.getLocationInfo(name!), this.context), true);
+            nameNode = $.wrap(new Any(name!.image, { role: 'property' }, $.getLocationInfo(name!), this.context), true);
           }
           return [nameNode, assign, value, important];
         }
@@ -229,7 +225,7 @@ export function declaration(this: P, T: TokenMap) {
           if (nameValue.includes('@') || nameValue.includes('$')) {
             nameNode = getInterpolated(nameValue, $.getLocationInfo(name), this.context);
           } else {
-            nameNode = $.wrap(new Ident(name.image, { role: 'property' }, $.getLocationInfo(name), this.context), true);
+            nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), this.context), true);
           }
           let value = new Sequence(nodes!, undefined, location, this.context);
           return [nameNode, assign, value];
@@ -546,15 +542,18 @@ export function importAtRule(this: P, T: TokenMap) {
     if (urlNode instanceof Quoted) {
       url = urlNode.valueOf();
     } else {
-      let innerUrlNode = urlNode.value.args!.value[0]!;
-      /**
-       * A url function will have either a quoted value
-       * or a general (un-quoted) value
-       */
-      if (innerUrlNode instanceof Quoted) {
-        url = innerUrlNode.valueOf();
-      } else if (innerUrlNode instanceof General) {
-        url = innerUrlNode.value;
+      let args = urlNode.value.args;
+      if (args && args.value && args.value.length > 0) {
+        let innerUrlNode = args.value[0]!;
+        /**
+         * A url function will have either a quoted value
+         * or a general (un-quoted) value
+         */
+        if (innerUrlNode instanceof Quoted) {
+          url = innerUrlNode.valueOf();
+        } else if (innerUrlNode instanceof Any) {
+          url = innerUrlNode.value;
+        }
       }
     }
     return url;
@@ -610,30 +609,16 @@ export function importAtRule(this: P, T: TokenMap) {
       preludeNodes = [$.wrap(urlNode)];
     }
 
+    let extraNodes: Node[] | undefined;
     $.OPTION2(() => {
-      isAtRule = true;
-      let start = $.CONSUME(T.Supports);
-      let value = $.OR2([
-        { ALT: () => $.SUBRULE($.supportsCondition) },
-        { ALT: () => $.SUBRULE($.declaration) }
-      ]);
-      let end = $.CONSUME2(T.RParen);
-
-      if (!RECORDING_PHASE) {
-        let { startOffset, startLine, startColumn } = start;
-        let { endOffset, endLine, endColumn } = end;
-        const loc = [startOffset, startLine!, startColumn!, endOffset!, endLine!, endColumn!] as LocationInfo;
-        preludeNodes.push($.wrap(new Call({ name: 'supports', args: $.wrap(value, 'both') as any }, undefined, loc, this.context)));
-      }
+      extraNodes = $.SUBRULE($.importPostlude) as Node[];
     });
-
-    $.OPTION3(() => {
+    if (!RECORDING_PHASE && extraNodes && extraNodes.length) {
       isAtRule = true;
-      let node = $.SUBRULE($.mediaQuery);
-      if (!RECORDING_PHASE) {
-        preludeNodes.push(node);
+      for (const n of extraNodes) {
+        preludeNodes!.push(n);
       }
-    });
+    }
 
     $.CONSUME(T.Semi);
 
@@ -641,19 +626,19 @@ export function importAtRule(this: P, T: TokenMap) {
       let location = $.endRule();
       if (isAtRule) {
         return new AtRule({
-          name: $.wrap(new AtKeyword(name.image, undefined, $.getLocationInfo(name), this.context), true),
+          name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context), true),
           prelude: new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context)
         }, undefined, location, this.context);
       }
       const pathStr = getUrlFromNode(urlNode);
-      const pathNode = new Quoted(new Anonymous(pathStr), { quote: '\'' }, undefined, this.context);
+      const pathNode = new Quoted(new Any(pathStr, { role: 'urlvalue' }), { quote: '\'' }, undefined, this.context);
       return new StyleImport({
         path: pathNode
       }, {
         type: 'import',
         importOptions: {
           reference: options!.includes('reference'),
-          once: true
+          once: !options!.includes('multiple')
         }
       }, location, this.context);
     }
@@ -675,9 +660,9 @@ const getInterpolatedOrString = (name: string): Interpolated | string => {
   return new Interpolated({
     source: start + charPlaceholder,
     replacements: [
-      new Reference(getInterpolatedOrString(end) as string, { type: end.startsWith('@') ? 'variable' : 'property' })
+      new Reference(getInterpolatedOrString(end) as string, { type: end.startsWith('@') ? 'variable' : 'property', role: 'ident' })
     ]
-  });
+  }, { role: 'ident' });
 };
 
 /** Less variables */
@@ -795,7 +780,7 @@ export function unknownAtRule(this: P, T: TokenMap) {
       let nameVal: string | Interpolated = getInterpolatedOrString(name!.image);
       let nameNode: Node;
       if (!(nameVal instanceof Interpolated)) {
-        nameNode = new Ident(nameVal, { role: 'selector' }, $.getLocationInfo(name!), this.context);
+        nameNode = new Any(nameVal, { role: 'ident' }, $.getLocationInfo(name!), this.context);
       } else {
         nameNode = nameVal;
       }
@@ -803,15 +788,15 @@ export function unknownAtRule(this: P, T: TokenMap) {
       /** An anonymous mixin call */
       if (!value) {
         const nameRef = nameNode instanceof Interpolated
-          ? new Reference({ key: nameNode }, { type: 'mixin-ruleset' })
-          : new Reference({ key: nameNode as any }, { type: 'mixin-ruleset' });
+          ? new Reference({ key: nameNode }, { type: 'mixin-ruleset', role: 'ident' })
+          : new Reference({ key: nameNode as any }, { type: 'mixin-ruleset', role: 'ident' });
         return new Call({ name: new Expression(nameRef), args: args! }, undefined, location, this.context);
       }
 
       return new VarDeclaration({
         name: $.wrap(nameNode, true) as any,
         value: $.wrap(value, true),
-        important: important ? $.wrap(new General(important.image, { type: 'Flag' }, $.getLocationInfo(important), this.context), true) : undefined
+        important: important ? $.wrap(new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), this.context), true) : undefined
       }, undefined, location, this.context);
     }
   };
@@ -878,7 +863,7 @@ export function squareValue(this: P, T: TokenMap) {
         ALT: () => {
           let ident = $.CONSUME(T.Ident);
           if (!RECORDING_PHASE) {
-            return new General(ident.image, { type: 'CustomIdent' }, $.getLocationInfo(ident), this.context);
+            return new Any(ident.image, { role: 'ident' }, $.getLocationInfo(ident), this.context);
           }
         }
       },
@@ -997,6 +982,7 @@ export function expressionSum(this: P, T: TokenMap) {
     });
 
     if (!RECORDING_PHASE) {
+      $.endRule();
       return left;
     }
   };
@@ -1128,7 +1114,6 @@ export function knownFunctions(this: P, T: TokenMap) {
     { ALT: () => $.SUBRULE($.calcFunction) },
     { ALT: () => $.SUBRULE($.ifFunction) },
     { ALT: () => $.SUBRULE($.booleanFunction) }
-    /** @todo - add custom() and selector() */
   ];
 
   return cssKnownFunctions.call(this, T, functions as any);
@@ -1310,8 +1295,27 @@ export function functionCall(this: P, T: TokenMap) {
   const $ = this;
 
   let funcAlt = [
-    { ALT: () => $.SUBRULE($.knownFunctions) },
     {
+      // Disambiguate known functions by their dedicated tokens
+      GATE: () => {
+        let tokenType = $.LA(1).tokenType;
+        return tokenType === T.UrlStart
+          || tokenType === T.Var
+          || tokenType === T.Calc
+          || tokenType === T.IfFunction
+          || tokenType === T.BooleanFunction;
+      },
+      ALT: () => $.SUBRULE($.knownFunctions)
+    },
+    {
+      GATE: () => {
+        let tok = $.LA(1);
+        return tokenMatcher(tok, T.Ident)
+          && tok.tokenType !== T.Calc
+          && tok.tokenType !== T.Var
+          && tok.tokenType !== T.IfFunction
+          && tok.tokenType !== T.BooleanFunction;
+      },
       ALT: () => {
         $.startRule();
 
@@ -1473,7 +1477,7 @@ export function string(this: P, T: TokenMap) {
           }
           let location = $.endRule();
           let value = contents?.image;
-          return new Quoted(new General(value ?? ''), { quote: quoteImg as '"' | '\'', escaped }, location, this.context);
+          return new Quoted(new Any(value ?? '', { role: 'any' }), { quote: quoteImg as '"' | '\'', escaped }, location, this.context);
         }
       }
     },
@@ -1493,7 +1497,7 @@ export function string(this: P, T: TokenMap) {
           }
           let location = $.endRule();
           let value = contents?.image;
-          return new Quoted(new General(value ?? ''), { quote: quoteImg as '"' | '\'', escaped }, location, this.context);
+          return new Quoted(new Any(value ?? '', { role: 'any' }), { quote: quoteImg as '"' | '\'', escaped }, location, this.context);
         }
       }
     }
@@ -1842,7 +1846,7 @@ export function mixinName(this: P, T: TokenMap) {
         if (asReference) {
           nameNode = new Reference({ key: nameValue }, { type: 'mixin' }, location, this.context);
         } else {
-          nameNode = $.wrap(new Ident(nameValue, { role: 'selector' }, $.getLocationInfo(name), this.context), true);
+          nameNode = $.wrap(new Any(nameValue, { role: 'ident' }, $.getLocationInfo(name), this.context), true);
         }
       }
       return nameNode;
@@ -2235,7 +2239,7 @@ export function mixinArg(this: P, T: TokenMap) {
         ALT: () => {
           let name = $.SUBRULE($.varName);
           if (!RECORDING_PHASE) {
-            return new General(name.image.slice(1), { type: 'Name' }, $.getLocationInfo(name), this.context);
+            return new Any(name.image.slice(1), { role: 'name' }, $.getLocationInfo(name), this.context);
           }
         }
       },
@@ -2255,7 +2259,7 @@ export function mixinArg(this: P, T: TokenMap) {
           if (!RECORDING_PHASE) {
             let location = $.endRule();
             return new VarDeclaration({
-              name: new Ident(name.image.slice(1), { role: 'variable' }, $.getLocationInfo(name), this.context),
+              name: new Any(name.image.slice(1), { role: 'property' }, $.getLocationInfo(name), this.context),
               value
             }, { paramVar: true }, location, this.context);
           }
