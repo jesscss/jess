@@ -194,14 +194,19 @@ export const rawCssTokens = {
       { name: 'Print', pattern: /print/, longer_alt: 'PlainIdent', categories: ['Ident'] },
       { name: 'All', pattern: /all/, longer_alt: 'PlainIdent', categories: ['Ident'] },
 
+      // Match a generic function start: identifier followed immediately by '('
+      {
+        name: 'FunctionStart',
+        pattern: '{{ident}}\\(',
+        categories: ['BlockMarker', 'Function']
+      },
       /**
-       * Special function names. CSS has them tokenized like `calc(` or `layer(`,
-       * but that's inconvenient for extending this parser.
+       * Special function names in CSS
        */
-      { name: 'Layer', pattern: /layer/, longer_alt: 'PlainIdent', categories: ['Ident'] },
-      { name: 'Supports', pattern: /supports/, longer_alt: 'PlainIdent', categories: ['Ident'] },
-      { name: 'Var', pattern: /var/, longer_alt: 'PlainIdent', categories: ['Ident'] },
-      { name: 'Calc', pattern: /calc/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'Layer', pattern: /layer\(/, categories: ['BlockMarker', 'Function'] },
+      { name: 'Supports', pattern: /supports\(/, categories: ['BlockMarker', 'Function'] },
+      { name: 'Var', pattern: /var\(/, categories: ['BlockMarker', 'Function'] },
+      { name: 'Calc', pattern: /calc\(/, categories: ['BlockMarker', 'Function'] },
 
       /** Keyframe keywords */
       { name: 'From', pattern: /from/, longer_alt: 'PlainIdent', categories: ['Ident'] },
@@ -211,7 +216,8 @@ export const rawCssTokens = {
       {
         name: 'UrlStart',
         pattern: /url\(/i,
-        push_mode: 'Url'
+        push_mode: 'Url',
+        categories: ['BlockMarker', 'Function']
       },
       /**
        * Rather than consume the whole string, we push
@@ -536,7 +542,7 @@ function deepClone<T>(obj: T): T {
   if (obj instanceof RegExp) return new RegExp(obj) as any;
   // Arrays
   if (Array.isArray(obj)) {
-    return (obj as unknown as any[]).map((v) => deepClone(v)) as any;
+    return (obj as unknown as any[]).map(v => deepClone(v)) as any;
   }
   // Plain objects – preserve functions by reference
   const out: any = Array.isArray(obj) ? [] : {};

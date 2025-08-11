@@ -180,7 +180,7 @@ export class CssActionsParser extends AdvancedActionsParser {
       })
     };
 
-    const { legacyMode = true, ...rest } = { ...defaultConfig, ...config };
+    const { legacyMode = true, ...rest } = { ...defaultConfig, ...config, maxLookahead: 1 };
 
     super(tokenVocabulary, rest);
 

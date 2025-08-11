@@ -246,13 +246,15 @@ describe.only('can parse all Less stylesheets', () => {
       it(`${file}`, () => {
         const result = fs.readFileSync(path.join(testData, file));
         const contents = result.toString();
-        // const parseStart = performance.now()
         const { lexerResult, errors } = lessParser.parse(contents);
-        // const parseEnd = performance.now()
-        // console.log(`${file} parse time: ${Math.round(parseEnd - parseStart)}ms`)
-        // expect(`(${Math.round(parseEnd - parseStart)}ms)`).toBeDefined()
         if (lexerResult.errors.length || errors.length) {
           console.log('oops');
+          if (lexerResult.errors.length) {
+            console.log('lexer errors:', lexerResult.errors.map(e => e.message ?? e));
+          }
+          if (errors.length) {
+            console.log('parser errors:', errors.map((e: any) => e.message ?? e));
+          }
         }
         expect(lexerResult.errors.length).toBe(0);
         expect(errors.length).toBe(0);

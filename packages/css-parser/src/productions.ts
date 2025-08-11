@@ -1352,12 +1352,6 @@ export function varFunction(this: C, T: TokenMap) {
   return () => {
     $.startRule();
     $.CONSUME(T.Var);
-    $.OR([{
-      GATE: $.noSep,
-      ALT: () => {
-        $.CONSUME(T.LParen);
-      }
-    }]);
     let prop = $.CONSUME(T.CustomProperty);
     let args: List | undefined;
     $.OPTION(() => {
@@ -1393,12 +1387,6 @@ export function calcFunction(this: C, T: TokenMap) {
     $.startRule();
 
     $.CONSUME(T.Calc);
-    $.OR([{
-      GATE: $.noSep,
-      ALT: () => {
-        $.CONSUME(T.LParen);
-      }
-    }]);
     let args = $.SUBRULE($.mathSum);
     $.CONSUME2(T.RParen);
 
@@ -2615,32 +2603,22 @@ export function functionCall(this: C, T: TokenMap, alt?: Alt) {
     },
     {
       GATE: () => {
-        let tok = $.LA(1);
-        return tokenMatcher(tok, T.Ident)
-          && tok.tokenType !== T.Calc
-          && tok.tokenType !== T.Var;
+        let tokenType = $.LA(1).tokenType;
+        return tokenType === T.FunctionStart;
       },
       ALT: () => {
         $.startRule();
 
-        let name = $.CONSUME(T.Ident);
+        let name = $.CONSUME(T.FunctionStart);
         let args: List | undefined;
 
-        $.OR2([
-          {
-            GATE: $.noSep,
-            ALT: () => {
-              $.CONSUME(T.LParen);
-              $.OPTION(() => args = $.SUBRULE($.functionCallArgs));
-              $.CONSUME(T.RParen);
-            }
-          }
-        ]);
+        $.OPTION(() => args = $.SUBRULE($.functionCallArgs));
+        $.CONSUME(T.RParen);
 
         if (!$.RECORDING_PHASE) {
           let location = $.endRule();
           return new Call({
-            name: name.image,
+            name: name.image.slice(0, -1),
             args
           }, undefined, location, this.context);
         }

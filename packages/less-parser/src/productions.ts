@@ -37,6 +37,8 @@ import {
   AtRule,
   Interpolated,
   Reference,
+  Dimension,
+  Num,
   Extend,
   ExtendList,
   Negative,
@@ -921,7 +923,8 @@ export function expressionSum(this: P, T: TokenMap) {
         return (
           nextType === T.Plus
           || nextType === T.Minus
-        ) || ($.noSep() && tokenMatcher(next, T.Signed));
+          || ($.noSep() && nextType === T.Signed)
+        );
       },
       DEF: () => {
         let op: string | undefined;
@@ -944,24 +947,24 @@ export function expressionSum(this: P, T: TokenMap) {
           /** This will be interpreted by Less as a complete expression */
           {
             ALT: () => {
-              signed = $.CONSUME(T.Signed);
+              // Consume a signed literal and convert it without rewinding
+              const tok = $.CONSUME(T.Signed);
               if (!RECORDING_PHASE) {
-                let str = signed.image;
+                const str = tok.image;
                 op = str[0];
-                /** Alter the token (removing the sign) and continue processing */
-                signed.image = str.slice(1);
-                /** For dimensions with captured units */
-                if (signed.payload) {
-                  signed.payload[0] = signed.payload[0].slice(1);
+                // Build a literal node from the signed token directly
+                // Prefer dimension if payload exists, else number, else ident fallback
+                if (tok.payload && tok.payload[1]) {
+                  const dim = { number: parseFloat(tok.payload[0]), unit: tok.payload[1] };
+                  right = new Dimension(dim, undefined, $.getLocationInfo(tok), this.context);
+                } else {
+                  const num = parseFloat(str);
+                  if (!Number.isNaN(num)) {
+                    right = new Num(num, undefined, $.getLocationInfo(tok), this.context);
+                  } else {
+                    right = $.processValueToken(tok);
+                  }
                 }
-                signed.startOffset += 1;
-                signed.startColumn! += 1;
-                /**
-                 * Back up the parser and re-parse the value
-                 * with the sign removed
-                 */
-                $.currIdx -= 1;
-                right = $.SUBRULE3($.expressionProduct, { ARGS: [ctx] });
               }
             }
           }
@@ -1303,37 +1306,42 @@ export function functionCall(this: P, T: TokenMap) {
           || tokenType === T.Var
           || tokenType === T.Calc
           || tokenType === T.IfFunction
-          || tokenType === T.BooleanFunction;
+          || tokenType === T.BooleanFunction
+          || tokenType === T.Layer
+          || tokenType === T.Supports;
       },
       ALT: () => $.SUBRULE($.knownFunctions)
     },
     {
-      GATE: () => {
-        let tok = $.LA(1);
-        return tokenMatcher(tok, T.Ident)
-          && tok.tokenType !== T.Calc
-          && tok.tokenType !== T.Var
-          && tok.tokenType !== T.IfFunction
-          && tok.tokenType !== T.BooleanFunction;
-      },
+      // Generic function via FunctionStart token
+      GATE: () => $.LA(1).tokenType === T.FunctionStart,
       ALT: () => {
         $.startRule();
-
-        let name = $.CONSUME(T.Ident);
+        const fnStart = $.CONSUME(T.FunctionStart);
         let args: List | undefined;
-
-        $.OR2([{
-          GATE: $.noSep,
-          ALT: () => {
-            $.CONSUME(T.LParen);
-            $.OPTION(() => args = $.SUBRULE($.functionCallArgs));
-            $.CONSUME(T.RParen);
-          }
-        }]);
-
+        $.OPTION(() => args = $.SUBRULE($.functionCallArgs));
+        $.CONSUME(T.RParen);
         if (!$.RECORDING_PHASE) {
-          let location = $.endRule();
-          let nameNode = new Reference(name.image, { type: 'variable', fallbackValue: true }, $.getLocationInfo(name), this.context);
+          const location = $.endRule();
+          const nameValue = fnStart.image.slice(0, -1);
+          const nameNode = new Reference(nameValue, { type: 'variable', fallbackValue: true }, $.getLocationInfo(fnStart), this.context);
+          return new Call({ name: nameNode, args }, undefined, location, this.context);
+        }
+      }
+    },
+    {
+      // Fallback for cases where lexer did not merge ident and '('
+      GATE: () => $.LA(1).tokenType === T.Ident && $.LA(2).tokenType === T.LParen,
+      ALT: () => {
+        $.startRule();
+        const nameTok = $.CONSUME2(T.Ident);
+        let args: List | undefined;
+        $.CONSUME3(T.LParen);
+        $.OPTION2(() => args = $.SUBRULE2($.functionCallArgs));
+        $.CONSUME3(T.RParen);
+        if (!$.RECORDING_PHASE) {
+          const location = $.endRule();
+          const nameNode = new Reference(nameTok.image, { type: 'variable', fallbackValue: true }, $.getLocationInfo(nameTok), this.context);
           return new Call({ name: nameNode, args }, undefined, location, this.context);
         }
       }
@@ -1360,40 +1368,43 @@ export function functionCallArgs(this: P, T: TokenMap) {
     }
     let isSemiList = false;
 
+    // First, consume any comma-separated arguments
     $.MANY(() => {
-      $.OR([
-        {
-          GATE: () => !isSemiList,
-          ALT: () => {
-            $.CONSUME(T.Comma);
-            node = $.SUBRULE2($.callArgument, { ARGS: [ctx] });
-            if (!RECORDING_PHASE) {
-              commaNodes!.push($.wrap(node, true));
-            }
-          }
-        },
-        {
-          ALT: () => {
-            isSemiList = true;
+      $.CONSUME(T.Comma);
+      node = $.SUBRULE2($.callArgument, { ARGS: [ctx] });
+      if (!RECORDING_PHASE) {
+        commaNodes!.push($.wrap(node, true));
+      }
+    });
 
-            $.CONSUME(T.Semi);
+    // Then, optionally switch to semicolon-separated list and continue with semicolons
+    $.OPTION(() => {
+      isSemiList = true;
 
-            if (!RECORDING_PHASE) {
-              /** Aggregate the previous set of comma-nodes */
-              if (commaNodes.length > 1) {
-                let commaList = new List(commaNodes, undefined, $.getLocationFromNodes(commaNodes), this.context);
-                semiNodes.push(commaList);
-              } else {
-                semiNodes.push(commaNodes[0]!);
-              }
-            }
-            node = $.SUBRULE3($.callArgument, { ARGS: [{ ...ctx, allowComma: true }] });
-            if (!RECORDING_PHASE) {
-              semiNodes.push($.wrap(node, true));
-            }
-          }
+      $.CONSUME(T.Semi);
+
+      if (!RECORDING_PHASE) {
+        // Aggregate the previous set of comma-nodes as the first semi item
+        if (commaNodes.length > 1) {
+          let commaList = new List(commaNodes, undefined, $.getLocationFromNodes(commaNodes), this.context);
+          semiNodes.push(commaList);
+        } else {
+          semiNodes.push(commaNodes[0]!);
         }
-      ]);
+      }
+
+      node = $.SUBRULE3($.callArgument, { ARGS: [{ ...ctx, allowComma: true }] });
+      if (!RECORDING_PHASE) {
+        semiNodes.push($.wrap(node, true));
+      }
+
+      $.MANY2(() => {
+        $.CONSUME2(T.Semi);
+        node = $.SUBRULE4($.callArgument, { ARGS: [{ ...ctx, allowComma: true }] });
+        if (!RECORDING_PHASE) {
+          semiNodes.push($.wrap(node, true));
+        }
+      });
     });
 
     if (!RECORDING_PHASE) {
@@ -1411,7 +1422,14 @@ export function value(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     let node: Node = $.OR([
       /** Function should appear before Ident */
-      { ALT: () => $.SUBRULE($.functionCall) },
+      {
+        GATE: () => {
+          let next = $.LA(1);
+          if (tokenMatcher(next, T.Function)) return true;
+          return tokenMatcher(next, T.Ident) && $.LA(2).tokenType === T.LParen;
+        },
+        ALT: () => $.SUBRULE($.functionCall)
+      },
       { ALT: () => $.SUBRULE($.inlineMixinCall, { ARGS: [ctx] }) },
       { ALT: () => $.SUBRULE($.varReference, { ARGS: [ctx] }) },
       { ALT: () => $.CONSUME(T.Ident) },
@@ -1513,6 +1531,8 @@ export function mathValue(this: P, T: TokenMap) {
     { ALT: () => $.CONSUME(T.AtKeyword) },
     { ALT: () => $.CONSUME(T.Number) },
     { ALT: () => $.CONSUME(T.Dimension) },
+    // Allow identifiers like channel names in color space calcs (e.g., calc(l - 0.1))
+    { ALT: () => $.CONSUME(T.Ident) },
     { ALT: () => $.SUBRULE($.functionCall) },
     {
       /** Only allow escaped strings in calc */
