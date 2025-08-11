@@ -58,6 +58,10 @@ describe('can parse any rule', () => {
       'when(@a = white)',
       'guard'
     );
+    if (errors.length) {
+      // Help debug guard failures in CI output
+      console.error('guard errors:', errors.map((e: any) => e.message ?? e));
+    }
     expect(errors.length).toBe(0);
   });
 
@@ -236,8 +240,8 @@ describe('can parse any rule', () => {
   });
 });
 
-describe.only('can parse all Less stylesheets', () => {
-  const files = glob.sync(path.join(testData, 'less/**/container.less'));
+describe('can parse all Less stylesheets', () => {
+  const files = glob.sync(path.join(testData, 'less/**/*.less'));
   files
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))

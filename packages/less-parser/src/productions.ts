@@ -49,7 +49,8 @@ import {
   Rest,
   StyleImport,
   Expression,
-  ComplexSelector
+  ComplexSelector,
+  SelectorList
 } from '@jesscss/core';
 
 const isEscapedString = function(this: P, T: TokenMap) {
@@ -138,9 +139,10 @@ export function declarationList(this: P, T: TokenMap) {
 
   let ruleAlt = [
     { ALT: () => $.SUBRULE($.declaration) },
+    // Prefer mixinDefinition over mixinCall/functionCall so guards are captured
+    { ALT: () => $.SUBRULE($.mixinDefinition) },
     { ALT: () => $.SUBRULE($.mixinCall) },
     { ALT: () => $.SUBRULE($.functionCall) },
-    { ALT: () => $.SUBRULE($.mixinDefinition) },
     { ALT: () => $.SUBRULE($.innerAtRule) },
     { ALT: () => $.SUBRULE($.extendList) },
     { ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [{ inner: true }] }) },
@@ -1413,7 +1415,7 @@ export function value(this: P, T: TokenMap) {
     let node: Node = $.OR([
       /** Function should appear before Ident */
       {
-        GATE: () => $.LA(1).tokenType === T.Function,
+        GATE: () => tokenMatcher($.LA(1), T.Function),
         ALT: () => $.SUBRULE($.functionCall)
       },
       { ALT: () => $.SUBRULE($.inlineMixinCall, { ARGS: [ctx] }) },
@@ -1590,15 +1592,18 @@ export function guardOr(this: P, T: TokenMap) {
     let left = $.SUBRULE($.guardAnd, { ARGS: [ctx] });
     let right: Node | undefined;
     $.MANY({
-      GATE: () => !!ctx.allowComma || $.LA(1).tokenType !== T.Comma,
+      GATE: () => {
+        const next = $.LA(1).tokenType;
+        return (ctx.allowComma && next === T.Comma) || next === T.Or;
+      },
       DEF: () => {
         /**
                * Nest expressions within expressions for correct
                * order of operations.
                */
         $.OR3([
-          { ALT: () => $.CONSUME($.T.Comma) },
-          { ALT: () => $.CONSUME($.T.Or) }
+          { ALT: () => $.CONSUME(T.Comma) },
+          { ALT: () => $.CONSUME(T.Or) }
         ]);
         right = $.SUBRULE2($.guardAnd, { ARGS: [ctx] });
         if (!RECORDING_PHASE) {
@@ -1824,6 +1829,75 @@ export function innerAtRule(this: P, T: TokenMap) {
   ];
 
   return cssInnerAtRule.call(this, T, ruleAlt);
+}
+
+/**
+ * Less override: allow variable reference as the first segment of a layer-name
+ * CSS: <ident> ('.' <ident>)*
+ * Less: (<var-ref> | <ident>) ('.' <ident>)*
+ */
+export function layerName(this: P, T: TokenMap) {
+  const $ = this;
+  return () => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    const nodes: Node[] = RECORDING_PHASE ? ([] as unknown as Node[]) : [];
+
+    // First segment: variable reference or plain ident
+    const first = $.OR([
+      { ALT: () => $.SUBRULE($.valueReference) },
+      { ALT: () => $.CONSUME(T.Ident) }
+    ]);
+
+    if (!RECORDING_PHASE) {
+      if (first instanceof Node) {
+        nodes.push($.wrap(first));
+      } else {
+        nodes.push($.wrap($.processValueToken(first)));
+      }
+    }
+
+    // Remaining segments: dot + ident (same as CSS)
+    $.MANY({
+      GATE: $.noSep,
+      DEF: () => {
+        const seg = $.CONSUME(T.DotName);
+        if (!RECORDING_PHASE) {
+          nodes.push($.wrap($.processValueToken(seg)));
+        }
+      }
+    });
+
+    if (!RECORDING_PHASE) {
+      const loc = $.endRule();
+      return new Sequence(nodes, undefined, loc, this.context);
+    }
+  };
+}
+
+/**
+ * Less override: allow variable reference for @keyframes name
+ * CSS: Ident | String
+ * Less: valueReference | Ident | String
+ */
+// Less override: allow variable reference in keyframes name by overriding keyframesName only
+export function keyframesName(this: P, T: TokenMap) {
+  const $ = this;
+  return () => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    let node: Node | undefined;
+    $.OR({
+      DEF: [
+        { ALT: () => node = $.SUBRULE($.valueReference) },
+        { ALT: () => {
+          const tok = $.CONSUME(T.Ident);
+          if (!RECORDING_PHASE) node = $.wrap($.processValueToken(tok));
+        } },
+        { ALT: () => node = $.SUBRULE($.string) }
+      ]
+    });
+    return node!;
+  };
 }
 
 /**

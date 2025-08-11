@@ -2203,17 +2203,8 @@ export function keyframesAtRule(this: C, T: TokenMap) {
     $.startRule();
 
     const atTok = $.CONSUME(T.AtKeyframes);
-    // prelude: a single animation name (ident or string)
-    let preludeNode: Node | undefined;
-    $.OR({
-      DEF: [
-        { ALT: () => {
-          const tok = $.CONSUME(T.Ident);
-          if (!RECORDING_PHASE) preludeNode = $.wrap($.processValueToken(tok));
-        } },
-        { ALT: () => preludeNode = $.SUBRULE($.string) }
-      ]
-    });
+    // prelude: a single animation name
+    let preludeNode: Node | undefined = $.SUBRULE($.keyframesName);
     $.CONSUME(T.LCurly);
 
     // keyframe blocks: selectors are percentages or 'from'/'to'
@@ -2262,6 +2253,28 @@ export function keyframesAtRule(this: C, T: TokenMap) {
         rules: $.getRulesWithComments(blocks, $.getLocationInfo(endTok))
       }, undefined, $.endRule(), this.context);
     }
+  };
+}
+
+/**
+ * Keyframes name prelude
+ * CSS: Ident | String
+ */
+export function keyframesName(this: C, T: TokenMap) {
+  const $ = this;
+  return () => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    let node: Node | undefined;
+    $.OR({
+      DEF: [
+        { ALT: () => {
+          const tok = $.CONSUME(T.Ident);
+          if (!RECORDING_PHASE) node = $.wrap($.processValueToken(tok));
+        } },
+        { ALT: () => node = $.SUBRULE($.string) }
+      ]
+    });
+    return node!;
   };
 }
 

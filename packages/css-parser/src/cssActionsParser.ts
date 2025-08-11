@@ -128,6 +128,7 @@ export class CssActionsParser extends AdvancedActionsParser {
   atRuleBody!: Rule<(inner?: boolean) => void>;
   pageAtRule!: Rule;
   keyframesAtRule!: Rule;
+  keyframesName!: Rule;
   layerAtRule!: Rule<(inner?: boolean) => void>;
   layerName!: Rule;
   scopeAtRule!: Rule<(inner?: boolean) => void>;
