@@ -23,8 +23,8 @@ importers:
         specifier: ~9.31.0
         version: 9.31.0
       '@less/test-data':
-        specifier: ^4.4.0
-        version: 4.4.0
+        specifier: ^4.4.2
+        version: 4.4.2
       '@rollup/plugin-commonjs':
         specifier: ^24.1.0
         version: 24.1.0(rollup@3.29.5)
@@ -378,10 +378,13 @@ importers:
       chevrotain:
         specifier: ^11.0.3
         version: 11.0.3
+      chevrotain-allstar:
+        specifier: ~0.3.0
+        version: 0.3.1(chevrotain@11.0.3)
     devDependencies:
-      '@jesscss/shared':
-        specifier: workspace:*
-        version: link:../_shared
+      '@types/node':
+        specifier: ^18.19.31
+        version: 18.19.111
 
   packages/parser:
     dependencies:
@@ -1852,8 +1855,8 @@ packages:
   '@leichtgewicht/ip-codec@2.0.5':
     resolution: {integrity: sha512-Vo+PSpZG2/fmgmiNzYK9qWRh8h/CHrwD0mo1h1DzL4yzHNSfWYujGTYsWGreD000gcgmZ7K4Ys6Tx9TxtsKdDw==}
 
-  '@less/test-data@4.4.0':
-    resolution: {integrity: sha512-fstbT2JfgidgDKUzQC5AAu5M5k1jOcxy0RDm5Z7SsTHCUb3j8dPePQNWEyYwVYq/MIFnMxjSwFG7Th2A8BNnNQ==}
+  '@less/test-data@4.4.2':
+    resolution: {integrity: sha512-AsL222mIwg5fcQOsDsOl+vHvP5o2Xvvd1s9y9qA08ZeOytvkaa8wZUA5gTBr+B8qb9SacHjZcoDixkNmyPhGqQ==}
 
   '@manypkg/find-root@1.1.0':
     resolution: {integrity: sha512-mki5uBvhHzO8kYYix/WRy2WX8S3B5wdVSc9D6KcU5lQNglP2yt58/VfLuAK49glRXChosY8ap2oJ1qgma3GUVA==}
@@ -9912,7 +9915,7 @@ snapshots:
 
   '@leichtgewicht/ip-codec@2.0.5': {}
 
-  '@less/test-data@4.4.0': {}
+  '@less/test-data@4.4.2': {}
 
   '@manypkg/find-root@1.1.0':
     dependencies:

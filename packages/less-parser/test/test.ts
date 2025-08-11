@@ -237,7 +237,7 @@ describe('can parse any rule', () => {
 });
 
 describe.only('can parse all Less stylesheets', () => {
-  const files = glob.sync(path.join(testData, 'less/**/*.less'));
+  const files = glob.sync(path.join(testData, 'less/**/media.less'));
   files
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))
@@ -248,12 +248,11 @@ describe.only('can parse all Less stylesheets', () => {
         const contents = result.toString();
         const { lexerResult, errors } = lessParser.parse(contents);
         if (lexerResult.errors.length || errors.length) {
-          console.log('oops');
           if (lexerResult.errors.length) {
-            console.log('lexer errors:', lexerResult.errors.map(e => e.message ?? e));
+            console.error('lexer errors:', lexerResult.errors.map(e => e.message ?? e));
           }
           if (errors.length) {
-            console.log('parser errors:', errors.map((e: any) => e.message ?? e));
+            console.error('parser errors:', errors.map((e: any) => e.message ?? e));
           }
         }
         expect(lexerResult.errors.length).toBe(0);

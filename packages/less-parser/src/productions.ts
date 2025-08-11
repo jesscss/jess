@@ -1825,6 +1825,9 @@ export function innerAtRule(this: P, T: TokenMap) {
   let ruleAlt = [
     { ALT: () => $.SUBRULE($.mediaAtRule, { ARGS: [true] }) },
     { ALT: () => $.SUBRULE($.supportsAtRule, { ARGS: [true] }) },
+    { ALT: () => $.SUBRULE($.layerAtRule, { ARGS: [true] }) },
+    { ALT: () => $.SUBRULE($.containerAtRule, { ARGS: [true] }) },
+    { ALT: () => $.SUBRULE($.documentAtRule, { ARGS: [true] }) },
     { ALT: () => $.SUBRULE($.importAtRule) },
     { ALT: () => $.SUBRULE($.pageAtRule) },
     { ALT: () => $.SUBRULE($.fontFaceAtRule) },
