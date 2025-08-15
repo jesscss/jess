@@ -111,7 +111,7 @@ export const rawCssTokens = {
       { name: 'Selector', pattern: LexerType.NA },
       { name: 'Combinator', pattern: LexerType.NA },
       { name: 'Color', pattern: LexerType.NA },
-      { name: 'Function', pattern: LexerType.NA },
+      { name: 'FunctionStart', pattern: LexerType.NA },
       { name: 'FunctionalPseudoClass', pattern: LexerType.NA },
       { name: 'Assign', pattern: LexerType.NA },
       { name: 'QuoteStart', pattern: LexerType.NA },
@@ -159,11 +159,6 @@ export const rawCssTokens = {
       { name: 'CDCToken', pattern: /-->/, group: LexerType.SKIPPED },
       /** Ignore BOM */
       { name: 'UnicodeBOM', pattern: /\uFFFE/, group: LexerType.SKIPPED },
-      /**
-       * Normally this is a CSS token, but it makes downstream parsers much trickier.
-       * Instead, we leave parens and idents as separate tokens.
-       */
-      // { name: 'PlainFunction', pattern: '{{ident}}\\(', categories: ['BlockMarker', 'Function'] },
       { name: 'AttrFlag', pattern: /[is]/i, longer_alt: 'PlainIdent', categories: ['Ident'] },
 
       /**
@@ -190,17 +185,17 @@ export const rawCssTokens = {
 
       // Match a generic function start: identifier followed immediately by '('
       {
-        name: 'FunctionStart',
+        name: 'GenericFunctionStart',
         pattern: '{{ident}}\\(',
-        categories: ['BlockMarker', 'Function']
+        categories: ['BlockMarker', 'FunctionStart']
       },
       /**
        * Special function names in CSS
        */
-      { name: 'Layer', pattern: /layer\(/, categories: ['BlockMarker', 'Function'] },
-      { name: 'Supports', pattern: /supports\(/, categories: ['BlockMarker', 'Function'] },
-      { name: 'Var', pattern: /var\(/, categories: ['BlockMarker', 'Function'] },
-      { name: 'Calc', pattern: /calc\(/, categories: ['BlockMarker', 'Function'] },
+      { name: 'Layer', pattern: /layer\(/, categories: ['BlockMarker', 'FunctionStart'] },
+      { name: 'Supports', pattern: /supports\(/, categories: ['BlockMarker', 'FunctionStart'] },
+      { name: 'Var', pattern: /var\(/, categories: ['BlockMarker', 'FunctionStart'] },
+      { name: 'Calc', pattern: /calc\(/, categories: ['BlockMarker', 'FunctionStart'] },
 
       /** Keyframe keywords */
       { name: 'From', pattern: /from/, longer_alt: 'PlainIdent', categories: ['Ident'] },
@@ -211,7 +206,7 @@ export const rawCssTokens = {
         name: 'UrlStart',
         pattern: /url\(/i,
         push_mode: 'Url',
-        categories: ['BlockMarker', 'Function']
+        categories: ['BlockMarker', 'FunctionStart']
       },
       /** Supports the very old alpha(opacity=[number]) */
       {

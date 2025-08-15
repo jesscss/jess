@@ -30,6 +30,7 @@ export type LessExtraTokenType =
   | 'LtEqAlias'
   | 'Extend'
   | 'When'
+  | 'WhenFunctionStart'
   | 'VarOrProp'
   | 'NestedReference'
   | 'PropertyReference'
@@ -45,7 +46,7 @@ export type LessExtraTokenType =
   | 'InterpolatedSelector';
 
 function $preBuildFragments() {
-  const fragments = cssFragmentsRaw();
+  const fragments = cssFragmentsRaw() as string[][];
   fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*']);
   fragments.push(['interpolated', '[@$]\\{(?:{{nmchar}}*)\\}']);
 
@@ -119,6 +120,11 @@ function $preBuildTokens() {
        * should be manually added to other places where an ident is valid.
        */
       {
+        name: 'WhenFunctionStart',
+        pattern: /when\(/,
+        categories: ['BlockMarker', 'FunctionStart']
+      },
+      {
         name: 'When',
         pattern: /when/i,
         longer_alt: 'PlainIdent',
@@ -149,17 +155,17 @@ function $preBuildTokens() {
       {
         name: 'FormatFunction',
         pattern: /%\(/,
-        categories: ['BlockMarker', 'Function']
+        categories: ['BlockMarker', 'FunctionStart']
       },
       {
         name: 'IfFunction',
         pattern: /if\(/,
-        categories: ['BlockMarker', 'Function']
+        categories: ['BlockMarker', 'FunctionStart']
       },
       {
         name: 'BooleanFunction',
         pattern: /boolean\(/,
-        categories: ['BlockMarker', 'Function']
+        categories: ['BlockMarker', 'FunctionStart']
       },
       {
         name: 'DefaultGuardIdent',
@@ -289,5 +295,5 @@ type TokenModes = ReturnTokens['modes'];
 
 export type LessTokenType = TokenNames<TokenModes[keyof TokenModes]>;
 
-export const lessFragments = () => Fragments as ReadonlyArray<Readonly<[string, string]>>;
+export const lessFragments = () => Fragments as unknown as ReadonlyArray<Readonly<[string, string]>>;
 export const lessTokens = () => Tokens as unknown as RawModeConfig;

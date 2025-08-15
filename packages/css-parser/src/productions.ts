@@ -928,7 +928,7 @@ export function customBlock(this: C, T: TokenMap, alt?: Alt) {
            * These need to match a right parentheses.
            */
           { ALT: () => start = $.CONSUME(T.LParen) },
-          { ALT: () => start = $.CONSUME(T.Function) },
+          { ALT: () => start = $.CONSUME(T.FunctionStart) },
           { ALT: () => start = $.CONSUME(T.FunctionalPseudoClass) }
         ]);
 
@@ -2633,7 +2633,7 @@ export function functionCallLike(this: C, T: TokenMap) {
   return () => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
-    const name = $.CONSUME(T.Function);
+    const name = $.CONSUME(T.FunctionStart);
     let args: Node[] = !RECORDING_PHASE ? [] : undefined as unknown as Node[];
     let seq: Sequence | undefined;
     let list: List | undefined;
@@ -2691,7 +2691,7 @@ export function functionCall(this: C, T: TokenMap, alt?: Alt) {
       ALT: () => {
         $.startRule();
 
-        let name = $.CONSUME(T.Function);
+        let name = $.CONSUME(T.FunctionStart);
         let args: List | undefined;
 
         $.OPTION(() => args = $.SUBRULE($.functionCallArgs));
