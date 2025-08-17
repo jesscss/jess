@@ -173,9 +173,6 @@ export const rawCssTokens = () => ({
       },
 
       /** Logical Keywords */
-      { name: 'And', pattern: /and/, longer_alt: 'PlainIdent', categories: ['Ident'] },
-      { name: 'Or', pattern: /or/, longer_alt: 'PlainIdent', categories: ['Ident'] },
-      { name: 'Not', pattern: /not/, longer_alt: 'PlainIdent', categories: ['Ident'] },
       { name: 'Only', pattern: /only/, longer_alt: 'PlainIdent', categories: ['Ident'] },
 
       /** Query words */
@@ -189,6 +186,15 @@ export const rawCssTokens = () => ({
         pattern: '{{ident}}\\(',
         categories: ['BlockMarker', 'FunctionStart']
       },
+
+      /**
+       * Move these under GenericFunctionStart so that they are not parsed as `and(`
+       * in Less / Jess.
+       */
+      { name: 'And', pattern: /and/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'Or', pattern: /or/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'Not', pattern: /not/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+
       /**
        * Special function names in CSS
        */
@@ -383,10 +389,10 @@ export const rawCssTokens = () => ({
         name: 'DimensionNum',
         pattern: ['({{number}})({{unit}}|%)', groupCapture],
         start_chars_hint: [
-          '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
+          '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.'
         ],
         line_breaks: false,
-        categories: ['Dimension']
+        categories: ['Dimension', 'Selector']
       },
       {
         name: 'DimensionInt',
@@ -395,7 +401,7 @@ export const rawCssTokens = () => ({
           '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
         ],
         line_breaks: false,
-        categories: ['Dimension', 'Integer']
+        categories: ['Dimension', 'Integer', 'Selector']
       },
       {
         name: 'SignedDimensionNum',

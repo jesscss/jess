@@ -1,5 +1,6 @@
 import {
   type IParserErrorMessageProvider,
+  type IRecognitionException,
   defaultParserErrorProvider
 } from 'chevrotain';
 

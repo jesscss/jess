@@ -4,7 +4,8 @@ import {
   type IParserConfig,
   type ParserMethod,
   type IToken,
-  tokenMatcher
+  tokenMatcher,
+  type IRecognitionException
 } from 'chevrotain';
 
 // import { AdvancedCstParser } from './advancedCstParser'
@@ -25,6 +26,7 @@ import {
   Any,
   type Nil
 } from '@jesscss/core';
+import type { CssErrorMessageProvider } from './cssErrorMessageProvider';
 
 const { isArray } = Array;
 
@@ -70,6 +72,7 @@ export class CssActionsParser extends AdvancedActionsParser {
   T: TokenMap;
   legacyMode: boolean;
 
+  declare _errors: Array<IRecognitionException>;
   /** Expose Chevrotain's flag */
   declare skipValidations: boolean;
 
@@ -137,7 +140,7 @@ export class CssActionsParser extends AdvancedActionsParser {
   fontFaceAtRule!: Rule;
   nestedAtRule!: Rule;
   nonNestedAtRule!: Rule;
-  unknownAtRule!: Rule;
+  unknownAtRule!: Rule<(inner?: boolean) => void>;
 
   /** `@media` syntax */
   mediaQueryList!: Rule;
@@ -183,7 +186,7 @@ export class CssActionsParser extends AdvancedActionsParser {
       })
     };
 
-    const { legacyMode = true, ...rest } = { ...defaultConfig, ...config, maxLookahead: 1 };
+    const { legacyMode = true, ...rest } = { ...defaultConfig, ...config };
 
     super(tokenVocabulary, rest);
 

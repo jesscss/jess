@@ -117,16 +117,6 @@ function $preBuildTokens() {
         pattern: /:extend\(/,
         categories: ['BlockMarker']
       },
-      /**
-       * Keywords that we don't identify as idents
-       * should be manually added to other places where an ident is valid.
-       */
-      {
-        name: 'When',
-        pattern: /when/i,
-        longer_alt: 'PlainIdent',
-        categories: ['BlockMarker']
-      },
       {
         name: 'VarOrProp',
         pattern: LexerType.NA
@@ -161,10 +151,15 @@ function $preBuildTokens() {
       }
     ],
     UrlStart: [
+      /**
+       * Keywords that we don't identify as idents
+       * should be manually added to other places where an ident is valid.
+       */
       {
-        name: 'WhenFunctionStart',
-        pattern: /when\(/,
-        categories: ['BlockMarker', 'FunctionStart']
+        name: 'When',
+        pattern: /when/i,
+        longer_alt: 'PlainIdent',
+        categories: ['BlockMarker']
       },
       {
         name: 'FormatFunction',

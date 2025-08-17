@@ -223,7 +223,10 @@ export function simpleSelector(this: C, T: TokenMap, altContext?: AltContext) {
     { ALT: () => $.SUBRULE($.idSelector) },
     { ALT: () => $.CONSUME(T.Star) },
     { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [ctx] }) },
-    { ALT: () => $.SUBRULE($.attributeSelector) }
+    { ALT: () => $.SUBRULE($.attributeSelector) },
+    /** Supports keyframes selectors */
+    { ALT: () => $.CONSUME(T.DimensionInt) },
+    { ALT: () => $.CONSUME(T.DimensionNum) }
   ]);
 
   return (ctx: RuleContext = {}) => {
@@ -514,7 +517,7 @@ export function compoundSelector(this: C, T: TokenMap) {
       if (selectors!.length === 1) {
         return selectors![0]!;
       }
-      return new CompoundSelector(selectors!, undefined, undefined, this.context);
+      return new CompoundSelector(selectors!, undefined, $.getLocationFromNodes(selectors!), this.context);
     }
   };
 }
@@ -2213,55 +2216,19 @@ export function keyframesAtRule(this: C, T: TokenMap) {
     const RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
 
-    const atTok = $.CONSUME(T.AtKeyframes);
+    let atTok = $.CONSUME(T.AtKeyframes);
     // prelude: a single animation name
     let preludeNode: Node | undefined = $.SUBRULE($.keyframesName);
     $.CONSUME(T.LCurly);
-
-    // keyframe blocks: selectors are percentages or 'from'/'to'
-    const blocks: Node[] = RECORDING_PHASE ? ([] as unknown as Node[]) : [];
-    $.MANY2(() => {
-      $.startRule();
-      // selector list for keyframes
-      const selectors: Node[] = RECORDING_PHASE ? ([] as unknown as Node[]) : [];
-      $.AT_LEAST_ONE_SEP({
-        SEP: T.Comma,
-        DEF: () => {
-          const sel = $.OR2([
-            { ALT: () => $.CONSUME(T.From) },
-            { ALT: () => $.CONSUME(T.To) },
-            { ALT: () => $.CONSUME(T.DimensionInt) }, // handles 0%
-            { ALT: () => $.CONSUME(T.DimensionNum) }  // handles 12.5%
-          ]);
-          if (!RECORDING_PHASE) {
-            const node = $.processValueToken(sel);
-            // Do not consume leading pre for the first selector in a keyframe block,
-            // so comments immediately after '{' are liftable to the keyframes Rules.
-            selectors.push($.wrap(node, selectors.length === 0 ? true : 'both'));
-          }
-        }
-      });
-      $.CONSUME2(T.LCurly);
-      const decls = $.SUBRULE($.declarationList);
-      $.CONSUME(T.RCurly);
-      if (!RECORDING_PHASE) {
-        const loc = $.endRule();
-        // Reuse Ruleset node shape: selector is a list, rules are decls
-        blocks.push(new Ruleset({
-          selector: new SelectorList(selectors as any, undefined, $.getLocationFromNodes(selectors as any), this.context) as any,
-          rules: decls
-        } as any, undefined, loc, this.context));
-      }
-    });
-
-    const endTok = $.CONSUME2(T.RCurly);
+    const rules = $.SUBRULE($.declarationList);
+    $.CONSUME(T.RCurly);
 
     if (!$.RECORDING_PHASE) {
       return new AtRule({
         name: $.wrap(new Any(atTok.image, { role: 'atkeyword' }, $.getLocationInfo(atTok), this.context), true),
         prelude: preludeNode ? $.wrap(preludeNode, 'both') : undefined,
         // Include isolated comments inside the keyframes body
-        rules: $.getRulesWithComments(blocks, $.getLocationInfo(endTok))
+        rules
       }, undefined, $.endRule(), this.context);
     }
   };
@@ -2974,12 +2941,31 @@ export function nonNestedAtRule(this: C, T: TokenMap) {
 export function unknownAtRule(this: C, T: TokenMap) {
   const $ = this;
 
+  const {
+    AtKeyword,
+    Semi,
+    LCurly,
+    RCurly,
+    DotName,
+    HashName,
+    Ampersand,
+    LSquare,
+    SelectorPseudoClass,
+    NthPseudoClass,
+    Star,
+    ColorIdentStart,
+    PlainIdent,
+    CustomProperty,
+    LegacyPropIdent,
+    Colon
+  } = T;
+
   return () => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
 
     let preludeNodes: Node[];
-    let ruleNodes: Node[];
+    let valueNodes!: Node[];
     let declRules: Rules | undefined;
     let endToken: IToken | undefined;
     let innerBlockLocation: LocationInfo | undefined;
@@ -2996,51 +2982,63 @@ export function unknownAtRule(this: C, T: TokenMap) {
       }
     });
     $.OR([
-      { ALT: () => $.CONSUME(T.Semi) },
+      { ALT: () => $.CONSUME(Semi) },
       {
         ALT: () => {
           if (!RECORDING_PHASE) {
-            ruleNodes = [];
+            valueNodes = [];
           }
-          $.CONSUME(T.LCurly);
-          // Mark inner-content start to ensure a stable location even when empty
+          $.CONSUME(LCurly);
           $.startRule();
           // 1) Fast selector/nested-at-rule start gate
-          const t1 = $.LA(1).tokenType;
-          const t2 = $.LA(2).tokenType;
-          const isRuleStart = (
-            t1 === T.DotName
-            || t1 === T.HashName
-            || t1 === T.Ampersand
-            || t1 === T.LSquare
-            || t1 === T.SelectorPseudoClass
-            || t1 === T.NthPseudoClass
-            || t1 === T.Star
-            || t1 === T.ColorIdentStart
-            || t1 === T.AtKeyword
+          let t1 = $.LA(1).tokenType;
+          let t2 = $.LA(2).tokenType;
+          let assumeDeclList = (
+            t1 === DotName
+            || t1 === HashName
+            || t1 === Ampersand
+            || t1 === LSquare
+            || t1 === SelectorPseudoClass
+            || t1 === NthPseudoClass
+            || t1 === Star
+            || t1 === ColorIdentStart
+            || t1 === AtKeyword
             // Also treat IDENT followed by '{' as a rule start (e.g., @-moz-document url-prefix() { a { ... } })
-            || ((t1 === T.PlainIdent || t1 === T.CustomProperty || (T.LegacyPropIdent ? t1 === T.LegacyPropIdent : false)) && t2 === T.LCurly)
+            || (
+              (t1 === PlainIdent
+                || t1 === CustomProperty
+                || t1 === LegacyPropIdent
+              ) && t2 === LCurly
+            )
           );
-          if (isRuleStart) {
-            declRules = $.SUBRULE($.main);
-          } else {
-            // 2) Constant-time declaration start: IDENT ':'
-            const isDeclStart = (
-              t1 === T.PlainIdent || t1 === T.CustomProperty || (T.LegacyPropIdent ? t1 === T.LegacyPropIdent : false)
-            ) && t2 === T.Colon;
-            if (isDeclStart) {
-              declRules = $.SUBRULE($.declarationList);
-            } else {
-              // 3) Fallback to raw capture
-              $.MANY2(() => {
-                const rule = $.SUBRULE($.anyInnerValue);
-                if (!RECORDING_PHASE) {
-                  ruleNodes.push($.wrap(rule, 'both'));
-                }
-              });
-            }
+          if (!assumeDeclList) {
+            assumeDeclList = (
+              t1 === PlainIdent
+              || t1 === CustomProperty
+              || t1 === LegacyPropIdent
+            ) && t2 === Colon;
           }
-          endToken = $.CONSUME(T.RCurly);
+          $.OR9([
+            {
+              GATE: () => assumeDeclList,
+              ALT: () => {
+                declRules = $.SUBRULE($.atRuleBody, { ARGS: [true] });
+              }
+            },
+            {
+              GATE: () => !assumeDeclList,
+              ALT: () => {
+                /** Fallback to raw capture */
+                $.MANY9(() => {
+                  const value = $.SUBRULE($.anyInnerValue);
+                  if (!RECORDING_PHASE) {
+                    valueNodes.push($.wrap(value, 'both'));
+                  }
+                });
+              }
+            }
+          ]);
+          endToken = $.CONSUME(RCurly);
           if (!RECORDING_PHASE) {
             innerBlockLocation = $.endRule();
           }
@@ -3048,23 +3046,24 @@ export function unknownAtRule(this: C, T: TokenMap) {
       }
     ]);
 
-    if (!$.RECORDING_PHASE) {
+    if (!RECORDING_PHASE) {
       // Build rules result: declaration list, or single-sequence fallback, or undefined
-      let rulesResult: Rules | undefined;
+      let rules: Rules | undefined;
       if (declRules) {
-        rulesResult = declRules;
-      } else if (endToken) {
-        // Create a single Sequence from all inner nodes, so serialization treats it as one unit
-        const seqLoc = innerBlockLocation ?? (ruleNodes!.length ? $.getLocationFromNodes(ruleNodes!) : undefined);
-        const seq = new Sequence(ruleNodes!, undefined, seqLoc, this.context);
-        const rulesLoc = innerBlockLocation ?? $.getLocationFromNodes([seq]);
-        // Use RawRules to avoid inserting newlines/indentation during serialization
-        rulesResult = new RawRules([seq], undefined, rulesLoc, this.context) as unknown as Rules;
+        rules = declRules;
+      } else {
+        if (valueNodes?.length) {
+          // Create a single Sequence from all inner nodes, so serialization treats it as one unit
+          const seqLoc = $.getLocationFromNodes(valueNodes!);
+          const seq = new Sequence(valueNodes!, undefined, seqLoc, this.context);
+          // Use RawRules to avoid inserting newlines/indentation during serialization
+          rules = new RawRules([seq], undefined, seqLoc, this.context) as unknown as Rules;
+        }
       }
       return new AtRule({
         name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context), true),
         prelude: preludeNodes!.length ? new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context) : undefined,
-        rules: rulesResult
+        rules
       }, undefined, $.endRule(), this.context);
     }
   };
