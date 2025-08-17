@@ -27,7 +27,7 @@ export type FindOptions = DeclarationFindOptions & {
 
 export abstract class Registry<
   Type extends Node,
-  IndexType extends Set<Type> | Array<{
+  IndexType extends Type | Set<Type> | Array<{
     value: Type;
     [key: string]: any;
   }> = Set<Type>
@@ -94,11 +94,13 @@ export abstract class Registry<
   private _findByKey(candidates: Set<Type> | Type | undefined, key: string, filterType?: string, options?: FindOptions): Set<Type> | Type | undefined {
     let set = this.index.get(key);
     if (set) {
-      let newSet: Set<Type>;
+      let newSet: Set<Type> | undefined;
       if (set instanceof Set) {
         newSet = set;
-      } else {
+      } else if (isArray(set)) {
         newSet = new Set(set.map(({ value }) => value));
+      } else {
+        return set as Type;
       }
       if (candidates) {
         if (candidates instanceof Set) {
@@ -227,45 +229,45 @@ export class MixinRegistry extends Registry<
 > {
   index = new Map();
 
-  private getSimpleKeyList(selector: Selector | Nil | undefined): string[] | undefined {
-    let keyList: string[] | undefined;
-    if (selector && 'keySet' in selector) {
-      let passed = true;
-      let foundBasic = false;
-      for (const sel of selector.nodes()) {
-        /** Ampersand is okay at start, but not after a basic selector */
-        if (!foundBasic && isNode(sel, 'Ampersand')) {
-          continue;
-        }
+  // private getSimpleKeyList(selector: Selector | Nil | undefined): string[] | undefined {
+  //   let keyList: string[] | undefined;
+  //   if (selector && 'keySet' in selector) {
+  //     let passed = true;
+  //     let foundBasic = false;
+  //     for (const sel of selector.nodes()) {
+  //       /** Ampersand is okay at start, but not after a basic selector */
+  //       if (!foundBasic && isNode(sel, 'Ampersand')) {
+  //         continue;
+  //       }
 
-        if (isNode(sel, 'Combinator')) {
-          if (sel.value !== '>' && sel.value !== ' ') {
-            passed = false;
-            break;
-          }
-          continue;
-        }
+  //       if (isNode(sel, 'Combinator')) {
+  //         if (sel.value !== '>' && sel.value !== ' ') {
+  //           passed = false;
+  //           break;
+  //         }
+  //         continue;
+  //       }
 
-        /** Anything other than a universal selector is fine */
-        if (isNode(sel, 'BasicSelector') && /^[^*]/.test(sel.value)) {
-          (keyList ??= []).push(sel.valueOf() as string);
-          foundBasic = true;
-          continue;
-        }
-        if (isNode(sel, 'CompoundSelector') || isNode(sel, 'ComplexSelector')) {
-          /** Might still be fine */
-          continue;
-        }
-        /** Nothing else is valid, so fail */
-        passed = false;
-        break;
-      }
-      if (!passed) {
-        return;
-      }
-    }
-    return keyList;
-  }
+  //       /** Anything other than a universal selector is fine */
+  //       if (isNode(sel, 'BasicSelector') && /^[^*]/.test(sel.value)) {
+  //         (keyList ??= []).push(sel.valueOf() as string);
+  //         foundBasic = true;
+  //         continue;
+  //       }
+  //       if (isNode(sel, 'CompoundSelector') || isNode(sel, 'ComplexSelector')) {
+  //         /** Might still be fine */
+  //         continue;
+  //       }
+  //       /** Nothing else is valid, so fail */
+  //       passed = false;
+  //       break;
+  //     }
+  //     if (!passed) {
+  //       return;
+  //     }
+  //   }
+  //   return keyList;
+  // }
 
   private _indexSelectorStart(mixin: Ruleset | Mixin, keySet: Set<string>) {
     // const keyList = this.getSimpleKeyList(selector);
@@ -405,8 +407,15 @@ export class MixinRegistry extends Registry<
  * @todo Should the presence of `@-use` directives anywhere in the
  * stylesheet tree cause these global functions to be disabled?
  */
-export class FunctionRegistry extends Registry<JsFunction | Func> {
-  index = new Map();
+export class FunctionRegistry extends Registry<JsFunction, JsFunction> {
+  index = new Map<string, JsFunction>();
+
+  override indexPendingItems() {
+    for (const item of this.pendingItems) {
+      this.index.set(item.name!, item);
+    }
+    this.pendingItems.clear();
+  }
 }
 
 /**

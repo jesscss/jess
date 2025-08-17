@@ -41,8 +41,8 @@ export class JessCompiler {
     const context = new Context(rest, [...pluginMap.values()]);
 
     try {
-      const tree = await context.getTree(filePath, process.cwd());
-      const evald = await tree.eval(context);
+      const { node } = await context.getTree(filePath);
+      const evald = await node.eval(context);
       const css = evald.toString();
       return css;
     } catch (err: any) {

@@ -22,7 +22,7 @@ export class Func extends Mixin {
   override async evalNode(context: Context): Promise<Node> {
     let result = await super.evalNode(context);
     if (result instanceof Rules) {
-      /** Find the last valid return */
+      /** Find the first valid return from the top */
       const decl = result.find('declaration', 'return', 'Declaration', {
         searchParents: false
       });
