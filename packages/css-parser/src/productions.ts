@@ -31,7 +31,8 @@ import {
   AtRule,
   QueryCondition,
   CustomDeclaration,
-  RawRules
+  RawRules,
+  type ComplexSelectorComponent
 } from '@jesscss/core';
 
 type C = CssActionsParser;
@@ -39,7 +40,7 @@ type C = CssActionsParser;
 export type Alt = Array<IOrAlt<any>> | OrMethodOpts<any>;
 
 /** ALT which makes decisions based on context */
-export type AltContext = (ctx: RuleContext) => Alt;
+export type AltContext = (ctx?: RuleContext) => Alt;
 
 export function stylesheet(this: C, T: TokenMap) {
   const $ = this;
@@ -597,14 +598,24 @@ export function relativeSelector(this: C, T: TokenMap) {
       {
         ALT: () => {
           let co = $.CONSUME(T.Combinator);
-          let complex: ComplexSelector = $.SUBRULE($.complexSelector, { ARGS: [ctx] });
+          let complex: Node = $.SUBRULE($.complexSelector, { ARGS: [ctx] });
 
           if (!$.RECORDING_PHASE) {
-            complex.value.unshift(new Combinator(co.image, undefined, $.getLocationInfo(co), this.context));
-            let location = complex.location;
-            location[0] = co.startOffset;
-            location[1] = co.startLine;
-            location[2] = co.startColumn;
+            let combinator = new Combinator(co.image, undefined, $.getLocationInfo(co), this.context);
+            if (complex instanceof ComplexSelector) {
+              complex.value.unshift(combinator);
+              let location = complex.location;
+              location[0] = co.startOffset;
+              location[1] = co.startLine;
+              location[2] = co.startColumn;
+            } else {
+              complex = new ComplexSelector(
+                [combinator, complex as ComplexSelectorComponent],
+                undefined,
+                $.getLocationFromNodes([combinator, complex]),
+                this.context
+              );
+            }
           }
           return complex;
         }
@@ -1454,26 +1465,26 @@ export function urlFunction(this: C, T: TokenMap, alt?: Alt) {
 //   | fontFaceAtRule
 //   | supportsAtRule
 //   ;
-export function atRule(this: C, T: TokenMap, alt?: Alt) {
+export function atRule(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
-  let ruleAlt = alt ?? [
-    { ALT: () => $.SUBRULE($.containerAtRule) },
-    { ALT: () => $.SUBRULE($.scopeAtRule) },
-    { ALT: () => $.SUBRULE($.documentAtRule) },
-    { ALT: () => $.SUBRULE($.layerAtRule) },
+  let ruleAlt = alt ?? ((ctx?: RuleContext) => ([
+    { ALT: () => $.SUBRULE($.containerAtRule, { ARGS: [!!ctx?.inner] }) },
+    { ALT: () => $.SUBRULE($.scopeAtRule, { ARGS: [!!ctx?.inner] }) },
+    { ALT: () => $.SUBRULE($.documentAtRule, { ARGS: [!!ctx?.inner] }) },
+    { ALT: () => $.SUBRULE($.layerAtRule, { ARGS: [!!ctx?.inner] }) },
     { ALT: () => $.SUBRULE($.keyframesAtRule) },
     { ALT: () => $.SUBRULE($.importAtRule) },
-    { ALT: () => $.SUBRULE($.mediaAtRule) },
+    { ALT: () => $.SUBRULE($.mediaAtRule, { ARGS: [!!ctx?.inner] }) },
     { ALT: () => $.SUBRULE($.pageAtRule) },
     { ALT: () => $.SUBRULE($.fontFaceAtRule) },
-    { ALT: () => $.SUBRULE($.supportsAtRule) },
+    { ALT: () => $.SUBRULE($.supportsAtRule, { ARGS: [!!ctx?.inner] }) },
     { ALT: () => $.SUBRULE($.nestedAtRule) },
     { ALT: () => $.SUBRULE($.nonNestedAtRule) },
     { ALT: () => $.SUBRULE($.unknownAtRule) }
-  ];
+  ]));
 
-  return () => $.OR(ruleAlt);
+  return (ctx?: RuleContext) => $.OR(ruleAlt(ctx));
 }
 
 /**

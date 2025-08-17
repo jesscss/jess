@@ -89,9 +89,10 @@ export class LessActionsParser extends CssActionsParser {
   // mixins
   mixinReference!: Rule;
   mixinName!: Rule<(asReference?: boolean) => void>;
-  mixinDefinition!: Rule;
-  mixinCall!: Rule;
-  mixinCallStatement!: Rule;
+  mixinOrQualifiedRule!: Rule<(ctx?: RuleContext) => void>;
+  // mixinDefinition!: Rule;
+  // mixinCall!: Rule;
+  // mixinCallStatement!: Rule;
   inlineMixinCall!: Rule<(ctx?: RuleContext) => void>;
   mixinArgs!: Rule<(ctx?: RuleContext) => void>;
   mixinArgList!: Rule<(ctx?: RuleContext) => void>;

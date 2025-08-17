@@ -1,6 +1,6 @@
 import {
-  cssFragmentsRaw,
-  cssTokens,
+  rawCssFragments,
+  rawCssTokens,
   LexerType,
   groupCapture,
   type RawModeConfig,
@@ -46,14 +46,12 @@ export type LessExtraTokenType =
   | 'InterpolatedSelector';
 
 function $preBuildFragments() {
-  const fragments = cssFragmentsRaw() as string[][];
+  const fragments = rawCssFragments() as unknown as string[][];
   fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*']);
   fragments.push(['interpolated', '[@$]\\{(?:{{nmchar}}*)\\}']);
 
   return fragments;
 }
-
-type CssTokenModes = ReturnType<typeof cssTokens>['modes'];
 
 function $preBuildTokens() {
   /**
@@ -66,9 +64,13 @@ function $preBuildTokens() {
     defaultMode: 'Default';
   };
 
-  const tokens = cssTokens() as unknown as InferMergeTypes;
+  const tokens = rawCssTokens() as unknown as InferMergeTypes;
 
-  /** Keyed by what to insert after */
+  /**
+   * Keyed by what to insert after
+   *
+   * @todo - Move merge utility to css-parser
+  */
   const merges = {
     Assign: [
       {
@@ -120,11 +122,6 @@ function $preBuildTokens() {
        * should be manually added to other places where an ident is valid.
        */
       {
-        name: 'WhenFunctionStart',
-        pattern: /when\(/,
-        categories: ['BlockMarker', 'FunctionStart']
-      },
-      {
         name: 'When',
         pattern: /when/i,
         longer_alt: 'PlainIdent',
@@ -153,6 +150,23 @@ function $preBuildTokens() {
         pattern: /%/
       },
       {
+        name: 'DefaultGuardIdent',
+        pattern: /default/,
+        longer_alt: 'PlainIdent',
+        categories: ['Ident']
+      },
+      {
+        name: 'DefaultGuardFunc',
+        pattern: /default(?:\(\))/
+      }
+    ],
+    UrlStart: [
+      {
+        name: 'WhenFunctionStart',
+        pattern: /when\(/,
+        categories: ['BlockMarker', 'FunctionStart']
+      },
+      {
         name: 'FormatFunction',
         pattern: /%\(/,
         categories: ['BlockMarker', 'FunctionStart']
@@ -167,18 +181,6 @@ function $preBuildTokens() {
         pattern: /boolean\(/,
         categories: ['BlockMarker', 'FunctionStart']
       },
-      {
-        name: 'DefaultGuardIdent',
-        pattern: /default/,
-        longer_alt: 'PlainIdent',
-        categories: ['Ident']
-      },
-      {
-        name: 'DefaultGuardFunc',
-        pattern: /default(?:\(\))/
-      }
-    ],
-    UrlStart: [
       {
         name: 'JavaScript',
         pattern: /~?`[^`]*`/,

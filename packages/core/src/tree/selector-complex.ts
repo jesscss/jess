@@ -22,6 +22,9 @@ export type ComplexSelectorValue = ComplexSelectorComponent[];
  *
  * @example
  * #id > .class.class
+ *
+ * @note A complex selector may not always start with a selector. We also use this for a
+ * relative selector, which means it may start with a combinator.
  */
 export class ComplexSelector extends Selector<ComplexSelectorValue> {
   type = 'ComplexSelector';

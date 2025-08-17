@@ -9,11 +9,13 @@ import {
   declaration as cssDeclaration,
   mediaInParens as cssMediaInParens,
   simpleSelector as cssSimpleSelector,
+  complexSelector as cssComplexSelector,
   unknownAtRule as cssUnknownAtRule,
   nthValue as cssNthValue,
   knownFunctions as cssKnownFunctions,
   mathValue as cssMathValue,
-  innerAtRule as cssInnerAtRule
+  innerAtRule as cssInnerAtRule,
+  type AltContext
 } from '@jesscss/css-parser';
 
 import {
@@ -51,50 +53,13 @@ import {
   StyleImport,
   Expression,
   ComplexSelector,
-  SelectorList
+  CompoundSelector,
+  SelectorList,
+  type Rules,
+  type ComplexSelectorComponent
 } from '@jesscss/core';
 
 let { isArray } = Array;
-
-/** Heuristic lookahead to decide if a mixin definition follows (name + args [+ guard] + '{') */
-function looksLikeMixinDefinition(this: P, T: TokenMap) {
-  // find the first '('
-  let i = 1;
-  while (true) {
-    const tok = this.LA(i);
-    const tt = tok.tokenType;
-    if (tt === T.LParen) break;
-    // stop if we hit something that cannot start a mixin name
-    if (!(tt === T.DotName || tt === T.HashName || tt === T.ColorIdentStart || tt === T.InterpolatedIdent)) return false;
-    i++;
-  }
-  // scan to matching ')'
-  let depth = 0;
-  for (;; i++) {
-    const tok = this.LA(i);
-    const tt = tok.tokenType;
-    if (tt === T.LParen) depth++;
-    else if (tt === T.RParen) {
-      depth--;
-      if (depth === 0) {
-        i++;
-        break;
-      }
-    }
-    // safety: bail out if unexpected EOF
-    if (!tt) return false;
-  }
-  // optional guard starts here
-  const next = this.LA(i);
-  if (next.tokenType === T.LCurly) return true;
-  if (next.tokenType === T.When) return true;
-  if (
-    next.tokenType === T.FunctionStart
-    && typeof next.image === 'string'
-    && next.image.toLowerCase().startsWith('when(')
-  ) return true;
-  return false;
-}
 
 const isEscapedString = function(this: P, T: TokenMap) {
   const next = this.LA(1);
@@ -152,10 +117,25 @@ export function main(this: P, T: TokenMap) {
   const $ = this;
 
   let ruleAlt = [
-    { GATE: () => looksLikeMixinDefinition.call($, T), ALT: () => $.SUBRULE($.mixinDefinition) },
+    // { GATE: () => looksLikeMixinDefinition.call($, T), ALT: () => $.SUBRULE($.mixinDefinition) },
     { ALT: () => $.SUBRULE($.functionCall) },
     { ALT: () => $.SUBRULE($.extendList) },
-    { ALT: () => $.SUBRULE($.qualifiedRule) },
+    {
+      GATE: () => {
+        let next = $.LA(1).tokenType;
+        return next === T.DotName || next === T.HashName || next === T.ColorIdentStart;
+      },
+      ALT: () => $.SUBRULE($.mixinOrQualifiedRule)
+    },
+    {
+      GATE: () => {
+        let next = $.LA(1).tokenType;
+        return next !== T.DotName
+          && next !== T.HashName
+          && next !== T.ColorIdentStart;
+      },
+      ALT: () => $.SUBRULE($.qualifiedRule)
+    },
     { ALT: () => $.SUBRULE($.atRule) },
 
     /**
@@ -170,8 +150,8 @@ export function main(this: P, T: TokenMap) {
       GATE: () => $.looseMode,
       ALT: () => $.CONSUME(T.Charset)
     },
-    { ALT: () => $.CONSUME2(T.Semi) },
-    { ALT: () => $.SUBRULE($.mixinCall) }
+    { ALT: () => $.CONSUME2(T.Semi) }
+    // { ALT: () => $.SUBRULE($.mixinCall) }
   ];
 
   return cssMain.call(this, T, ruleAlt as any);
@@ -182,14 +162,24 @@ export function declarationList(this: P, T: TokenMap) {
 
   let ruleAlt = [
     { ALT: () => $.SUBRULE($.declaration) },
-    // Prefer mixinDefinition over calls so guards are captured
-    { GATE: () => looksLikeMixinDefinition.call($, T), ALT: () => $.SUBRULE($.mixinDefinition) },
-    // Enforce statement form (requires a semicolon) to avoid ambiguity with definitions
-    { ALT: () => $.SUBRULE($.mixinCallStatement) },
     { ALT: () => $.SUBRULE($.functionCall) },
-    { ALT: () => $.SUBRULE($.innerAtRule) },
-    { ALT: () => $.SUBRULE($.extendList) },
-    { ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [{ inner: true }] }) },
+    /** Less allows all at-rules in declaration lists for historical reasons */
+    { ALT: () => $.SUBRULE($.atRule, { ARGS: [{ inner: true }] }) },
+    {
+      GATE: () => {
+        let next = $.LA(1).tokenType;
+        return next === T.DotName || next === T.HashName || next === T.ColorIdentStart;
+      },
+      ALT: () => $.SUBRULE($.mixinOrQualifiedRule, { ARGS: [{ inner: true }] })
+    },
+    {
+      GATE: () => {
+        let next = $.LA(1).tokenType;
+        return next !== T.DotName
+          && next !== T.HashName
+          && next !== T.ColorIdentStart;
+      },
+      ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [{ inner: true }] }) },
     { ALT: () => $.CONSUME2(T.Semi) }
   ];
 
@@ -197,17 +187,17 @@ export function declarationList(this: P, T: TokenMap) {
 }
 
 // Wrapper to ensure a mixin call in declaration context ends with a semicolon
-export function mixinCallStatement(this: P, T: TokenMap) {
-  const $ = this;
-  return () => {
-    const node = $.SUBRULE($.mixinCall);
-    // If mixinCall did not consume a semicolon, require one now
-    if ($.LA(1).tokenType === T.Semi) {
-      $.CONSUME(T.Semi);
-    }
-    return node;
-  };
-}
+// export function mixinCallStatement(this: P, T: TokenMap) {
+//   const $ = this;
+//   return () => {
+//     const node = $.SUBRULE($.mixinCall);
+//     // If mixinCall did not consume a semicolon, require one now
+//     if ($.LA(1).tokenType === T.Semi) {
+//       $.CONSUME(T.Semi);
+//     }
+//     return node;
+//   };
+// }
 
 let interpolatedRegex = /([$@]){([^}]+)}/g;
 /** The placeholder we use for interpolation... we should probably use a const exported from @jesscss/core? */
@@ -348,14 +338,53 @@ export function wrappedDeclarationList(this: P, T: TokenMap) {
   };
 }
 
+export function qualifiedRule(this: P, T: TokenMap, altContext?: AltContext) {
+  const $ = this;
+
+  let selectorAlt = altContext ?? ((ctx: RuleContext) => [
+    {
+      GATE: () => !ctx.inner,
+      ALT: () => $.SUBRULE($.selectorList, { ARGS: [{ ...ctx, qualifiedRule: true }] })
+    },
+    {
+      GATE: () => !!ctx.inner,
+      ALT: () => $.SUBRULE($.forgivingSelectorList, { ARGS: [{ ...ctx, firstSelector: true, qualifiedRule: true }] })
+    }
+  ]);
+  // qualifiedRule
+  //   : selectorList WS* LCURLY declarationList RCURLY
+  //   ;
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+
+    let selector = $.OR(selectorAlt(ctx));
+    let guard: Condition | undefined;
+
+    /** Less extension - rules can be guarded */
+    $.OPTION2(() => {
+      guard = $.SUBRULE2($.guard);
+    });
+
+    $.CONSUME(T.LCurly);
+    let rules = $.SUBRULE($.declarationList);
+    $.CONSUME(T.RCurly);
+
+    if (!$.RECORDING_PHASE) {
+      let location = $.endRule();
+      return new Ruleset({
+        selector,
+        rules,
+        guard
+      }, undefined, location, this.context);
+    }
+  };
+}
+
 /**
- * In order to not do any backtracking, we'll just start parsing and can end up
- * with a number of productions depending on what gets parsed.
- *   1. A qualified rule, which is a selectorList followed by a declarationList
- *   2. A mixin call.
- *   3. A mixin definition.
+ * In order to not do any backtracking, anything with a class or id selector start
+ * will end up here, and everything else will be shunted to the qualified rule.
  */
-export function qualifiedRule(this: P, T: TokenMap) {
+export function mixinOrQualifiedRule(this: P, T: TokenMap) {
   const $ = this;
 
   // qualifiedRule
@@ -376,129 +405,138 @@ export function qualifiedRule(this: P, T: TokenMap) {
       }
     ]);
 
+    let isSelectorList = selector instanceof SelectorList;
     let guard: Condition | undefined;
-    let isMixinCall = false;
     let args: List<Node> | undefined;
     let important: IToken | undefined;
 
-    let result = $.OPTION({
-      GATE: () => !(selector instanceof SelectorList),
-      DEF: () => {
-        let isPossibleMixinDefinition = selector instanceof BasicSelector && (selector.isClass || selector.isId);
-        let isPossibleMixinCall = true;
-        if (!isPossibleMixinDefinition) {
-          for (let s of selector.nodes()) {
-            if (
-              (s instanceof BasicSelector && (s.isClass || s.isId))
-              || (s instanceof Combinator && s.value === '>')
-            ) {
-              continue;
-            }
-            isPossibleMixinCall = false;
-            break;
-          }
-        }
-        /**
-         * If we haven't returned a SelectorList, there are the following options:
-         *  1. We can parse an extend statement
-         *  2. We can parse mixinArgs possibly followed by a guard
-         *  3. We can parse mixinArgs possibly followed by a semicolon
-         *  4. none of the above, just a declaration list
-        */
-        return $.OR([
-          {
-            ALT: () => $.SUBRULE($.extend)
-          },
-          {
-            GATE: () => isPossibleMixinDefinition || isPossibleMixinCall,
-            ALT: () => {
-              $.OR([
-                {
-                  ALT: () => {
-                    args = $.SUBRULE($.mixinArgs);
-                    $.OPTION2(() => {
-                      important = $.CONSUME(T.Important);
-                      /** Only mixin calls can have !important */
-                      isPossibleMixinDefinition = false;
-                    });
-                    $.OR([
-                      {
-                        GATE: () => isPossibleMixinDefinition,
-                        ALT: () => {
-                          $.OPTION(() => {
-                            guard = $.SUBRULE($.guard);
-                          });
-                          $.CONSUME(T.LCurly);
-                          let rules = $.SUBRULE($.declarationList);
-                          $.CONSUME(T.RCurly);
-                          if (!RECORDING_PHASE) {
-                            return new Mixin({ name: selector.valueOf(), params: args, rules, guard }, undefined, $.endRule(), this.context);
-                          }
-                        }
-                      },
-                      {
-                        ALT: () => {
-                          /** We can immediately end in a semi, which means this was a mixin call */
-                          $.CONSUME(T.Semi);
-                          isMixinCall = true;
-                        }
-                      }
-                    ]);
-                  }
-                },
-                {
-                  /** This is a mixin call without parens */
-                  ALT: () => {
-                    $.CONSUME2(T.Semi);
-                    isMixinCall = true;
-                  }
-                },
-                {
-                  /** It could have been a mixin call but it wasn't */
-                  ALT: EMPTY_ALT
-                }
-              ]);
-            }
-          },
-          {
-            /** Neither an extend nor mixin call nor definition */
-            ALT: EMPTY_ALT
-          }
-        ]);
+    const createMixinCall = (location: LocationInfo) => {
+      /** Okay, treat the call as a recursive reference */
+      if (RECORDING_PHASE) {
+        return;
       }
-    });
+      let leftNode!: Node;
+      for (let s of selector.nodes()) {
+        if (s instanceof BasicSelector) {
+          leftNode = new Reference({ target: leftNode as Reference, key: s.valueOf() }, { type: 'mixin', role: 'name' }, undefined, this.context);
+        }
+      }
+      /** Finally, pass this reference into a call */
+      leftNode = new Call({ name: leftNode, args }, { markImportant: !!important }, location, this.context);
+      return leftNode;
+    };
 
-    if (!RECORDING_PHASE && result) {
-      return result;
+    let isPossibleMixinDefinition = selector instanceof BasicSelector && (selector.isClass || selector.isId);
+    let isPossibleMixinCall = true;
+    if (!isSelectorList && !isPossibleMixinDefinition && !RECORDING_PHASE) {
+      for (let s of selector.nodes()) {
+        /** Keep going until we get to basic selectors. */
+        if (s instanceof ComplexSelector || s instanceof CompoundSelector) {
+          continue;
+        }
+        if (
+          (s instanceof BasicSelector && (s.isClass || s.isId))
+          || (s instanceof Combinator && s.value === '>')
+        ) {
+          continue;
+        }
+        isPossibleMixinCall = false;
+        break;
+      }
     }
+    let isExtendList = isSelectorList
+      ? (selector as SelectorList).value.every(s => s instanceof Extend)
+      : selector instanceof Extend;
 
-    $.OR([
+    return $.OR2([
       {
-        GATE: () => isMixinCall,
+        GATE: () => !isExtendList && (isPossibleMixinDefinition || isPossibleMixinCall),
         ALT: () => {
-          /** Okay, treat the call as a recursive reference */
-          let leftNode!: Node;
-          for (let s of selector.nodes()) {
-            if (s instanceof BasicSelector) {
-              leftNode = new Reference({ target: leftNode as Reference, key: s.valueOf() }, { type: 'mixin', role: 'name' }, undefined, this.context);
-            }
+          args = $.SUBRULE($.mixinArgs);
+          let next = $.LA(1).tokenType;
+          if (next === T.LCurly || next === T.When || next === T.WhenFunctionStart) {
+            isPossibleMixinCall = false;
           }
-          /** Finally, pass this reference into a call */
-          leftNode = new Call({ name: leftNode, args }, { markImportant: !!important });
-          return leftNode;
+          return $.OR3([
+            {
+              GATE: () => isPossibleMixinDefinition,
+              /** Mixin definition */
+              ALT: () => {
+                $.OPTION(() => {
+                  guard = $.SUBRULE($.guard);
+                });
+                $.CONSUME(T.LCurly);
+                let rules = $.SUBRULE($.declarationList);
+                $.CONSUME(T.RCurly);
+                if (!RECORDING_PHASE) {
+                  return new Mixin({ name: selector.valueOf(), params: args, rules, guard }, undefined, $.endRule(), this.context);
+                }
+              }
+            },
+            {
+              GATE: () => isPossibleMixinCall,
+              /** Mixin call */
+              ALT: () => {
+                $.OPTION2(() => {
+                  important = $.CONSUME(T.Important);
+                });
+                let location: LocationInfo;
+                if (!RECORDING_PHASE) {
+                  location = $.endRule();
+                }
+                let result = $.OPTION3(() => {
+                  return $.SUBRULE($.accessors, { ARGS: [{ node: createMixinCall(location) }] });
+                });
+                return result ?? createMixinCall(location!);
+              }
+            }
+          ]);
         }
       },
       {
-        /** A regular qualified rule, with possible guard */
+        /** Parse as qualified rule */
+        GATE: () => !isExtendList,
         ALT: () => {
-          $.OPTION(() => {
-            guard = $.SUBRULE($.guard);
+          $.OPTION4({
+            GATE: () => !isSelectorList,
+            DEF: () => {
+              guard = $.SUBRULE2($.guard);
+            }
           });
-          $.CONSUME(T.LCurly);
-          let rules = $.SUBRULE($.declarationList);
-          $.CONSUME(T.RCurly);
+          $.CONSUME2(T.LCurly);
+          let rules = $.SUBRULE2($.declarationList);
+          $.CONSUME2(T.RCurly);
           if (!RECORDING_PHASE) {
             return new Ruleset({ selector, rules, guard }, undefined, $.endRule(), this.context);
+          }
+        }
+      },
+      {
+        GATE: () => isExtendList,
+        ALT: () => {
+          let rules!: Rules;
+          /** In Less 5.x, curly braces are optional for extend lists */
+          $.OPTION5(() => {
+            $.CONSUME3(T.LCurly);
+            rules = $.SUBRULE3($.declarationList);
+            $.CONSUME3(T.RCurly);
+          });
+
+          if (!RECORDING_PHASE) {
+            if (!rules) {
+              return new ExtendList(selector.value, undefined, $.endRule(), this.context);
+            }
+            return new Ruleset({ selector, rules, guard }, undefined, $.endRule(), this.context);
+          }
+        }
+      },
+      {
+        GATE: () => isPossibleMixinCall,
+        ALT: () => {
+          // Call terminated by a semi-colon and not parens, deprecated
+          $.CONSUME(T.Semi);
+          if (!RECORDING_PHASE) {
+            $.endRule();
           }
         }
       }
@@ -506,92 +544,72 @@ export function qualifiedRule(this: P, T: TokenMap) {
   };
 }
 
-export function complexSelector(this: P, T: TokenMap) {
+/**
+ * We need to now handle a returned `Extend` node from the complexSelector rule
+ */
+export function relativeSelector(this: P, T: TokenMap) {
   const $ = this;
 
-  /**
-      A sequence of one or more simple and/or compound selectors
-      that are separated by combinators.
-        .e.g. a#selected > .icon
-    */
-  // complexSelector
-  //   : compoundSelector (WS* (combinator WS*)? compoundSelector)*
-  //   ;
   return (ctx: RuleContext = {}) => {
-    let RECORDING_PHASE = $.RECORDING_PHASE;
-    $.startRule();
-    const first = $.SUBRULE($.compoundSelector, { ARGS: [ctx] });
-    let selectors: Node[];
-    if (!RECORDING_PHASE) {
-      selectors = isArray(first) ? first : [first];
-    }
+    return $.OR([
+      {
+        ALT: () => {
+          let co = $.CONSUME(T.Combinator);
+          let node: ComplexSelector | Extend = $.SUBRULE($.complexSelector, { ARGS: [ctx] });
 
-    /**
-     * Only space combinators and specified combinators will enter the MANY
-     */
-    $.MANY({
-      GATE: () => $.hasWS() || tokenMatcher($.LA(1), T.Combinator),
-      DEF: () => {
-        let co: IToken | undefined;
-        let combinator: Node;
-        $.OPTION(() => {
-          co = $.CONSUME(T.Combinator);
-        });
-        if (!RECORDING_PHASE) {
-          if (co) {
-            combinator = $.wrap(new Combinator(co.image, undefined, $.getLocationInfo(co), this.context), 'both');
-          } else {
-            let startOffset = this.LA(1).startOffset;
-            combinator = new Combinator('', undefined, $.getLocationInfo($.LA(1)), this.context);
-            combinator.pre = $.getPrePost(startOffset);
+          if (!$.RECORDING_PHASE) {
+            let combinator = new Combinator(co.image, undefined, $.getLocationInfo(co), this.context);
+            let targetNode =
+              node instanceof Extend
+                ? node.value.selector
+                : node;
+            if (targetNode instanceof ComplexSelector) {
+              targetNode.value.unshift(combinator);
+              targetNode._location = $.getLocationFromNodes(targetNode.value);
+            } else {
+              let nodes = [combinator, targetNode as ComplexSelectorComponent];
+              let complex = new ComplexSelector(nodes, undefined, $.getLocationFromNodes(nodes), this.context);
+              if (node instanceof Extend) {
+                node.value.selector = complex;
+                let location = node.location;
+                location[0] = co.startOffset;
+                location[1] = co.startLine;
+                location[2] = co.startColumn;
+              } else {
+                node = complex;
+              }
+            }
           }
+          return node;
         }
-        let compound = $.SUBRULE2($.compoundSelector, { ARGS: [ctx] });
-        if (!RECORDING_PHASE) {
-          selectors.push(
-            combinator!,
-            ...(isArray(compound) ? compound : [compound])
-          );
-        }
+      },
+      {
+        ALT: () => $.SUBRULE2($.complexSelector, { ARGS: [ctx] })
       }
-    });
+    ]);
+  };
+}
 
-    let currentSelector: ComplexSelector | undefined;
-    let maybeExtend: Extend | undefined;
+/**
+ * Extended with :extend
+ */
+export function complexSelector(this: P, T: TokenMap) {
+  const $ = this;
+  let originalComplexRule = cssComplexSelector.call(this, T);
 
-    if (!RECORDING_PHASE) {
-      let location = $.endRule();
-      currentSelector = new ComplexSelector(selectors! as Array<SimpleSelector | Combinator>, undefined, location, this.context);
-    }
+  return (ctx: RuleContext = {}) => {
+    let selector: Node = originalComplexRule(ctx)!;
 
     let isQualifiedRule = !!ctx.qualifiedRule;
 
-    $.OR([
-      {
-        GATE: () => isQualifiedRule && selectors!.length === 1,
-        ALT: () => {
-          $.CONSUME(T.Semi);
-          return currentSelector;
-        }
-      },
-      {
-        GATE: () => isQualifiedRule,
-        ALT: () => {
-          maybeExtend = $.SUBRULE($.extend, { ARGS: [currentSelector] });
-        }
-      },
-      {
-        ALT: EMPTY_ALT
-      }
-    ]);
-
     $.OPTION2({
-      GATE: () => !!ctx.qualifiedRule,
+      GATE: () => isQualifiedRule,
       DEF: () => {
-        maybeExtend = $.SUBRULE($.extend, { ARGS: [currentSelector] });
+        selector = $.SUBRULE($.extend, { ARGS: [selector as ComplexSelector] });
       }
     });
-    return (maybeExtend ?? currentSelector)!;
+
+    return selector;
   };
 }
 
@@ -882,7 +900,8 @@ export function unknownAtRule(this: P, T: TokenMap) {
    *     followed by a space.
    */
   const isVariableLike = () => {
-    if ($.LA(1).tokenType === T.AtKeywordLessExtension) {
+    let next = $.LA(1).tokenType;
+    if (next === T.AtKeywordLessExtension || next === T.AtKeyword) {
       return true;
     }
     let token = $.LA(2);
@@ -1453,10 +1472,7 @@ export function varReference(this: P, T: TokenMap) {
       },
       {
         ALT: () => {
-          let token = $.CONSUME(T.AtKeyword);
-          if (!RECORDING_PHASE) {
-            return new Reference(token.image.slice(1), { type: 'variable' }, $.getLocationInfo(token), this.context);
-          }
+          return $.SUBRULE($.varName);
         }
       }
     ]);
@@ -1472,10 +1488,9 @@ export function varReference(this: P, T: TokenMap) {
       },
       {
         /** Only variables can have accessors */
-        GATE: () => node!.options.type === 'variable',
+        GATE: () => node?.options?.type === 'variable',
         ALT: () => {
-          ctx.node = node;
-          node = $.SUBRULE2($.accessors, { ARGS: [ctx] });
+          node = $.SUBRULE2($.accessors, { ARGS: [{ ...ctx, node }] });
         }
       },
       { ALT: EMPTY_ALT() }
@@ -2177,43 +2192,43 @@ export function mixinReference(this: P, T: TokenMap) {
 }
 
 /** e.g. #ns > .mixin() */
-export function mixinCall(this: P, T: TokenMap) {
-  const $ = this;
+// export function mixinCall(this: P, T: TokenMap) {
+//   const $ = this;
 
-  return () => {
-    let RECORDING_PHASE = $.RECORDING_PHASE;
-    $.startRule();
-    let ref = $.SUBRULE($.mixinReference);
-    let semi: boolean | undefined;
-    let argList: List | undefined;
-    let important: IToken | undefined;
-    /** Either needs to end in parens or in a semi-colon (or both) */
-    $.OR([
-      {
-        ALT: () => {
-          argList = $.SUBRULE($.mixinArgs);
-          $.OPTION2(() => important = $.CONSUME(T.Important));
-          $.OPTION3(() => {
-            semi = true;
-            $.CONSUME(T.Semi);
-          });
-        }
-      },
-      {
-        ALT: () => {
-          semi = true;
-          $.CONSUME2(T.Semi);
-        }
-      }
-    ]);
-    if (!RECORDING_PHASE) {
-      const location = $.endRule();
-      const node = new Call({ name: ref, args: argList }, { markImportant: !!important }, location, this.context);
-      if (semi) node.options.semi = true;
-      return node;
-    }
-  };
-}
+//   return () => {
+//     let RECORDING_PHASE = $.RECORDING_PHASE;
+//     $.startRule();
+//     let ref = $.SUBRULE($.mixinReference);
+//     let semi: boolean | undefined;
+//     let argList: List | undefined;
+//     let important: IToken | undefined;
+//     /** Either needs to end in parens or in a semi-colon (or both) */
+//     $.OR([
+//       {
+//         ALT: () => {
+//           argList = $.SUBRULE($.mixinArgs);
+//           $.OPTION2(() => important = $.CONSUME(T.Important));
+//           $.OPTION3(() => {
+//             semi = true;
+//             $.CONSUME(T.Semi);
+//           });
+//         }
+//       },
+//       {
+//         ALT: () => {
+//           semi = true;
+//           $.CONSUME2(T.Semi);
+//         }
+//       }
+//     ]);
+//     if (!RECORDING_PHASE) {
+//       const location = $.endRule();
+//       const node = new Call({ name: ref, args: argList }, { markImportant: !!important }, location, this.context);
+//       if (semi) node.options.semi = true;
+//       return node;
+//     }
+//   };
+// }
 
 /**
  * Used within a value. These can be
@@ -2463,9 +2478,6 @@ export function mixinArgList(this: P, T: TokenMap) {
                       first.value.value = new List(nodes, undefined, $.getLocationFromNodes(nodes), this.context);
                       semiNodes.push(first);
                     } else {
-                      if (!commaNodes[0]) {
-                        console.log('oops');
-                      }
                       let commaList = new List(commaNodes, undefined, $.getLocationFromNodes(commaNodes), this.context);
                       semiNodes.push(commaList);
                     }
@@ -2507,6 +2519,9 @@ export function mixinArgList(this: P, T: TokenMap) {
   };
 }
 
+/**
+ * Less is more lenient about at-keywords. See lessTokens.ts for more details.
+ */
 export function varName(this: P, T: TokenMap) {
   const $ = this;
   let nameAlt = [
@@ -2516,6 +2531,11 @@ export function varName(this: P, T: TokenMap) {
   return () => $.OR(nameAlt);
 }
 
+/**
+ * Originally, we were creating alternatives for mixin calls and mixin definitions
+ * that could mostly overlap, which led to longer parsing. Instead, we parse
+ * as if it could be either, and then we disambiguate at the end.
+ */
 export function mixinArg(this: P, T: TokenMap) {
   const $ = this;
 
@@ -2529,34 +2549,21 @@ export function mixinArg(this: P, T: TokenMap) {
       || firstToken.tokenType === T.AtKeywordLessExtension
     );
 
-    let isDeclaration = $.LA(2).tokenType === T.Colon;
+    let isDeclaration = atStart && $.LA(2).tokenType === T.Colon;
 
-    /**
-     * @todo - determine _values_ (variable references)
-     * vs _names_ (variable declarations)
-    */
     return $.OR([
       {
-        GATE: () => isDefinition && atStart,
-        ALT: () => {
-          let name = $.SUBRULE($.varName);
-          if (!RECORDING_PHASE) {
-            return new Any(name.image.slice(1), { role: 'name' }, $.getLocationInfo(name), this.context);
-          }
-        }
+        GATE: () => !atStart && !isDeclaration,
+        ALT: () => $.SUBRULE($.callArgument, { ARGS: [ctx] })
       },
       {
-        GATE: () => isDefinition && !atStart,
-        ALT: () => $.SUBRULE($.value)
-      },
-      {
-        GATE: () => atStart && isDeclaration,
+        GATE: () => isDeclaration,
         ALT: () => {
           $.startRule();
           let name = $.SUBRULE2($.varName);
           $.CONSUME(T.Colon);
           /** Default value */
-          let value = $.SUBRULE($.callArgument, { ARGS: [ctx] });
+          let value = $.SUBRULE2($.callArgument, { ARGS: [ctx] });
 
           if (!RECORDING_PHASE) {
             let location = $.endRule();
@@ -2582,27 +2589,26 @@ export function mixinArg(this: P, T: TokenMap) {
          * elsewhere in the language? Or would there be no
          * reason?
          */
-        GATE: () => isDefinition,
+        GATE: () => atStart,
         ALT: () => {
           $.startRule();
-          let name = $.CONSUME(T.AtKeyword);
-          $.CONSUME(T.Ellipsis);
+          let name = $.SUBRULE($.varName);
+          let ellipsis;
+          $.OPTION(() => ellipsis = $.CONSUME(T.Ellipsis));
           if (!RECORDING_PHASE) {
-            let location = $.endRule();
             let varName = name.image.slice(1);
-            if (isDefinition) {
-              return new Rest(varName, undefined, location, this.context);
+            if (ellipsis) {
+              /** @todo - turn this into a reference if a call */
+              return new Rest(varName, undefined, $.endRule(), this.context);
+
+              // return new Rest(new Reference(varName, { type: 'variable' }, $.getLocationInfo(name), this.context), undefined, location, this.context);
+            } else {
+              return new Any(varName, { role: 'name' }, $.endRule(), this.context);
             }
-            return new Rest(new Reference(varName, { type: 'variable' }, $.getLocationInfo(name), this.context), undefined, location, this.context);
           }
         }
       },
       {
-        GATE: () => !isDefinition && !isDeclaration,
-        ALT: () => $.SUBRULE2($.callArgument, { ARGS: [ctx] })
-      },
-      {
-        GATE: () => isDefinition,
         ALT: () => {
           let ellipsis = $.CONSUME2(T.Ellipsis);
           return new Rest(undefined, undefined, $.getLocationInfo(ellipsis), this.context);

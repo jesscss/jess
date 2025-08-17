@@ -53,9 +53,9 @@ export function buildFragments(rawFragments: ReadonlyArray<Readonly<[string, str
  * Builds proper tokens from a raw token definition.
  * This allows us to extend / modify tokens before creating them
  */
-// eslint-disable-next-line @typescript-eslint/naming-convention
 export function createLexerDefinition(
   rawFragments: ReadonlyArray<Readonly<[string, string]>>,
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   _rawTokens: RawModeConfig
 ): ILexer {
   const rawTokens = _rawTokens as WritableDeep<RawModeConfig>;

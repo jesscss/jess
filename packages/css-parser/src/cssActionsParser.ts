@@ -77,7 +77,7 @@ export class CssActionsParser extends AdvancedActionsParser {
   stylesheet!: Rule<(options?: Record<string, any>) => void>;
   main!: Rule<(ctx?: RuleContext) => void>;
   qualifiedRule!: Rule<(ctx?: RuleContext) => void>;
-  atRule!: Rule;
+  atRule!: Rule<(ctx?: RuleContext) => void>;
   selectorList!: Rule<(ctx?: RuleContext) => void>;
   declarationList!: Rule;
   forgivingSelectorList!: Rule<(ctx?: RuleContext) => void>;
@@ -176,6 +176,7 @@ export class CssActionsParser extends AdvancedActionsParser {
     config: CssParserConfig = {}
   ) {
     const defaultConfig: CssParserConfig = {
+      maxLookahead: 1,
       lookaheadStrategy: new LLStarLookaheadStrategy({
         // suppress ambiguity logging
         // logging() {}
