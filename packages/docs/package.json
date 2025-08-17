@@ -33,6 +33,9 @@
     ]
   },
   "devDependencies": {
-    "@docusaurus/types": "~3.8.1"
+    "@docusaurus/plugin-content-docs": "~3.8.1",
+    "@docusaurus/theme-classic": "~3.8.1",
+    "@docusaurus/types": "~3.8.1",
+    "@types/react": "~19.1.10"
   }
 }
