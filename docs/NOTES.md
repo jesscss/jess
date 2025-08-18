@@ -2,7 +2,7 @@
 
 - Made a new plugin signature with ChatGPT help
 - Made a Webpack resolver wrapper
-- TODO - Rewrite Less plugin and context import things
+- Resolving imports!
 
 # Aug 16, 2025
 

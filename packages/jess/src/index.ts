@@ -3,7 +3,7 @@ import { getConfig } from './config';
 import {
   Context,
   type TreeContextOptions,
-  type PluginObject,
+  type PluginInterface,
   // type JessError,
   logger
 } from '@jesscss/core';
@@ -11,7 +11,7 @@ import merge from 'lodash-es/merge';
 import lessPlugin from 'jess-plugin-less';
 
 export type ConfigOptions = TreeContextOptions & {
-  plugins?: PluginObject[];
+  plugins?: PluginInterface[];
 };
 
 export class JessCompiler {
@@ -29,7 +29,8 @@ export class JessCompiler {
     let corePlugins = [
       lessPlugin()
     ];
-    const pluginMap = new Map<string, PluginObject>();
+    const pluginMap = new Map<string, PluginInterface>();
+    /** This can be used to override the core plugin settings */
     for (const plugin of corePlugins) {
       pluginMap.set(plugin.name, plugin);
     }

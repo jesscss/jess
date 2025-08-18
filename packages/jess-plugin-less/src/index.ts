@@ -1,8 +1,7 @@
 import {
   type Plugin,
-  type PluginObject,
-  FileManager,
-  type FileManagerOptions,
+  type PluginInterface,
+  AbstractPlugin,
   TreeContext,
   MathMode,
   UnitMode,
@@ -14,16 +13,22 @@ import {
 } from '@jesscss/core';
 import * as lessFunctions from '@jesscss/fns/lib/less';
 import { Parser } from '@jesscss/less-parser';
+import path from 'node:path';
 
-export interface LessFileManagerOptions extends FileManagerOptions {
-  plugin: PluginObject;
-  mathMode?: TreeContext['mathMode'];
-  unitMode?: TreeContext['unitMode'];
-}
+const { isArray } = Array;
 
-export class LessFileManager extends FileManager<LessFileManagerOptions> {
+export class LessPlugin extends AbstractPlugin {
+  name = 'less';
   supportedExtensions = ['.less'];
   parser = new Parser();
+
+  constructor(
+    public opts: Record<string, any> = {},
+    public mathMode: MathMode = opts.mathMode ?? MathMode.PARENS_DIVISION,
+    public unitMode: UnitMode = opts.unitMode ?? UnitMode.LOOSE
+  ) {
+    super();
+  }
 
   private _registerFunctions(tree: Rules) {
     for (const [key, value] of Object.entries(lessFunctions)) {
@@ -31,26 +36,38 @@ export class LessFileManager extends FileManager<LessFileManagerOptions> {
     }
   }
 
-  async _getTree(fullPath: string, options: Record<string, any>) {
-    const source = await this.loadFile(fullPath);
+  expandImport(importPath: string, currentDir: string) {
+    const ext = path.extname(importPath);
+    if (ext !== '.less') {
+      return [`${importPath}.less`, `${importPath}`];
+    }
+    return [importPath];
+  }
+
+  async parse(filePath: string, source: string) {
     /**
      * @todo - handle / pretty print errors
      * @todo - add contents to Jess error handler
      */
     const context = new TreeContext({
+      file: {
+        name: path.basename(filePath),
+        path: path.dirname(filePath),
+        fullPath: filePath
+      },
       hoistDeclarations: true,
       /** @todo - write a test to make sure `@use` doesn't leak */
       leakVariablesIntoScope: true,
-      mathMode: this.opts.mathMode ?? MathMode.PARENS_DIVISION,
-      unitMode: this.opts.unitMode ?? UnitMode.LOOSE
+      mathMode: this.mathMode,
+      unitMode: this.unitMode,
+      plugin: this
     });
     const { tree, errors, lexerResult } = this.parser.parse(source, 'stylesheet', { context });
     if (errors.length || lexerResult.errors.length) {
       const error = (lexerResult.errors[0] ?? errors[0])!;
-      throw getErrorFromParser(error, fullPath, source);
+      throw getErrorFromParser(error, filePath, source);
     } else {
       this._registerFunctions(tree);
-      tree.treeContext.plugin = this.opts.plugin;
       return tree;
     }
   }
@@ -60,11 +77,7 @@ type LessOptions = Record<string, any>;
 
 /** @todo - do something with less options */
 const lessPlugin: Plugin = (opts?: LessOptions) => {
-  const plugin: PluginObject = {
-    name: 'less'
-  };
-  plugin.fileManager = new LessFileManager({ ...opts, plugin });
-  return plugin;
+  return new LessPlugin(opts);
 };
 
 export default lessPlugin;

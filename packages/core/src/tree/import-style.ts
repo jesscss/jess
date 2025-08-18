@@ -13,6 +13,32 @@ import { isNode } from './util/is-node';
  * @see https://sass-lang.com/documentation/at-rules/import/#plain-css-imports
  */
 
+export type ImportOptions = {
+  /**
+   * Affects evaluation - will be passed to registered import handlers when parsing.
+   * Normally this is done by file extension, but can be overridden to select a
+   * particular plugin handler.
+   *
+   * e.g. `@-import (type: less) 'foo.css';`
+   */
+  type?: string;
+  /** Rules are not rendered in output. */
+  reference?: boolean;
+  /**
+   * Less's default behavior for `@import` is to only output any resolved resource once.
+   * In Jess, subsequent imports should output as reference unless the `multiple` option
+   * is set to true.
+   *
+   * @todo - Investigate what Sass does.
+   */
+  multiple?: boolean;
+  /** Rulesets can't be extended, the extend "search" will stop at this import. */
+  protected?: boolean;
+  /** Variables can't be reassigned (default is true for `@-compose` and false for `@-import`). */
+  readonly?: boolean;
+  [key: string]: any;
+};
+
 export type StyleImportOptions = {
   /**
    * Affects scoping and evaluation
@@ -44,24 +70,7 @@ export type StyleImportOptions = {
    *     - bar: true
    *     - baz: '1'
    */
-  importOptions?: {
-    /**
-     * Affects evaluation - will be passed to registered import handlers when parsing.
-     * Normally this is done by file extension, but can be overridden.
-     *
-     * e.g. `@-import (type: less) 'foo.css';`
-     */
-    type?: string;
-    /** Rules are not rendered in output. */
-    reference?: boolean;
-    /** Less's default behavior for `@import` is to only import any resolved resource once. */
-    once?: boolean;
-    /** Rulesets can't be extended, the extend "search" will stop at this import. */
-    protected?: boolean;
-    /** Variables can't be reassigned (default is true for `@-compose` and false for `@-import`). */
-    readonly?: boolean;
-    [key: string]: any;
-  };
+  importOptions?: ImportOptions;
 
   /** e.g. `import * as foo` sets namespace to `foo` */
   namespace?: string;
@@ -104,6 +113,7 @@ export type StyleImportValue = {
 export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   type = 'StyleImport' as const;
   shortType = 'style' as const;
+  override visible = false;
 
   /**
    * @note
@@ -131,7 +141,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
      * option. Since all vars are global per compilation, it should just
      * work.
      */
-    let { node: rules, resolvedPath } = await context.getTree(finalPath, options);
+    let { node: rules, resolvedPath } = await context.getTree(finalPath, importOptions);
     let evaldRules = context.evaldTrees.get(resolvedPath);
     if (withValues) {
       if (withValues.type === 'set' && evaldRules) {

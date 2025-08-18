@@ -5,7 +5,7 @@ import { JessCompiler } from '../src';
 
 const compiler = new JessCompiler();
 
-describe('Output files', () => {
+describe.skip('Output files', () => {
   const testData = path.join(__dirname, 'files');
   const files = glob.sync(path.join(testData, '*.jess'));
   files

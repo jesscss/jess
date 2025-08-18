@@ -1,10 +1,10 @@
 import type { Rules } from './tree/rules';
-import { join, isAbsolute, extname } from 'node:path';
+import { join, isAbsolute, extname, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import type { Visitor } from './visitor';
 
-export interface PluginObject {
+export interface PluginInterface {
   /**
    * e.g. 'less-plugin'
    */
@@ -22,7 +22,7 @@ export interface PluginObject {
    *   `@import 'foo'` -> `['./foo.less']`
    *   `@import 'foo'` -> `['./foo.scss', './_foo.scss']`
    */
-  expandImport?(filePath: string, currentDir: string): string[];
+  expandImport?(importPath: string, currentDir: string): string[];
 
   /**
    * e.g.
@@ -32,28 +32,87 @@ export interface PluginObject {
    *
    * Does not attempt to check if the path exists.
    * Note: paths may already be absolute.
+   *
+   * If the plugin has nothing to change, return `null` or return the array as-is.
+   *
+   * @note - I suppose a plugin doesn't have to resolve to an absolute path, if it's
+   *         using some other method to handle the resolved paths in `locate()`.
+   *         To that end, `locate()` shouldn't presume that the paths are absolute.
    */
-  resolve?(filePath: string, currentDir: string, searchPaths: string[]): string[] | Promise<string[]>;
+  resolve?(path: string | string[], currentDir: string, searchPaths: string[]): null | string[] | Promise<null | string[]>;
 
   /**
    * Pick the first one that exists. Return null to let another plugin handle the path.
    */
-  locate?(candidates: string[], currentDir: string): null | string | Promise<string | null>;
+  locate?(pathCandidates: string[], currentDir: string): null | string | Promise<string | null>;
+
+  /**
+   * Get the source code for the file.
+   */
+  getSource?(absoluteFilePath: string): Promise<string>;
 
   /**
    * If we have the extension in `supportedExtensions`, and this method exists,
    * then this plugin is assumed to be able to parse the file.
    */
-  parse?(absoluteFilePath: string): Promise<Rules>;
+  parse?(filePath: string, source: string): Promise<Rules>;
 
-  /** If this method exists, then the plugin can return a JS object */
-  load?(absoluteFilePath: string): Promise<Record<string, any>>;
+  /** If this method exists, then the plugin can return a JS module / object */
+  import?(absoluteFilePath: string): Promise<Record<string, any>>;
 
   /** Post-parse or post-eval visitor(s) */
   visitor?: Visitor | Visitor[];
 }
 
-export type Plugin = <T extends Record<string, any>>(opts?: T) => PluginObject;
+const { isArray } = Array;
+
+export abstract class AbstractPlugin implements PluginInterface {
+  abstract name: string;
+
+  /**
+   * Does a basic path resolution. Node resolution is in other plugins.
+   */
+  resolve(filePath: string | string[], currentDir: string, searchPaths: string[]) {
+    const bases = [currentDir, ...searchPaths];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    filePath = isArray(filePath) ? filePath : [filePath];
+    for (const base of bases) {
+      const baseDir = isAbsolute(base) ? base : join(currentDir, base);
+      for (const path of filePath) {
+        const abs = resolve(baseDir, path);
+        if (abs && !seen.has(abs)) {
+          seen.add(abs);
+          out.push(abs);
+        }
+      }
+    }
+    return out;
+  }
+
+  /** Default source getter */
+  async getSource(absoluteFilePath: string): Promise<string> {
+    return await readFile(absoluteFilePath, 'utf8');
+  }
+
+  /** Gets the first match using from the filesystem that exists */
+  locate(pathCandidates: string[], currentDir: string): null | string {
+    for (const candidate of pathCandidates) {
+      const absolutePath = isAbsolute(candidate) ? candidate : join(currentDir, candidate);
+      if (existsSync(absolutePath)) {
+        return absolutePath;
+      }
+    }
+    return null;
+  }
+
+  /** Implement using the JS plugin w/ Deno */
+  // import(absoluteFilePath: string): Promise<Record<string, any>> {
+  //   return import(absoluteFilePath);
+  // }
+}
+
+export type Plugin = <T extends Record<string, any>>(opts?: T) => PluginInterface;
 
 // export abstract class FileManager<O extends Record<string, any> = Record<string, any>> {
 //   abstract supportedExtensions?: string[];

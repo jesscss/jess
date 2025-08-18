@@ -5,7 +5,9 @@ import {
   ResolverFactory,
   CachedInputFileSystem
 } from 'enhanced-resolve';
-import type { PluginObject } from './plugin';
+import type { PluginInterface } from './plugin';
+
+const { isArray } = Array;
 
 type WebpackResolverInstance = { apply(resolver: any): void };
 export type WebpackResolverCtor<Opts> = new (opts?: Opts) => WebpackResolverInstance;
@@ -13,8 +15,8 @@ type InferCtorOpts<C> = C extends new (opts?: infer O) => any ? O : never;
 
 export function useWebpackResolver<Ctor extends WebpackResolverCtor<any>>(
   CtorRef: Ctor
-): (opts?: InferCtorOpts<Ctor>) => PluginObject {
-  return (opts?: InferCtorOpts<Ctor>): PluginObject => {
+): (opts?: InferCtorOpts<Ctor>) => PluginInterface {
+  return (opts?: InferCtorOpts<Ctor>): PluginInterface => {
     const fileSystem = new CachedInputFileSystem(fs as any, 4000);
     const pluginInstance: WebpackResolverInstance = new CtorRef(opts as any);
 
@@ -36,12 +38,15 @@ export function useWebpackResolver<Ctor extends WebpackResolverCtor<any>>(
         const bases = [currentDir, ...searchPaths];
         const out: string[] = [];
         const seen = new Set<string>();
+        filePath = isArray(filePath) ? filePath : [filePath];
         for (const base of bases) {
           const baseDir = path.isAbsolute(base) ? base : path.resolve(currentDir, base);
-          const abs = await resolveOnce(baseDir, filePath);
-          if (abs && !seen.has(abs)) {
-            seen.add(abs);
-            out.push(abs);
+          for (const path of filePath) {
+            const abs = await resolveOnce(baseDir, path);
+            if (abs && !seen.has(abs)) {
+              seen.add(abs);
+              out.push(abs);
+            }
           }
         }
         return out;

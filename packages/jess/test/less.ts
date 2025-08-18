@@ -17,7 +17,7 @@ const compiler = new JessCompiler({
 });
 
 describe('Can render Less files to CSS', () => {
-  const files = glob.sync(path.join(testData, 'less/*/charsets.less'));
+  const files = glob.sync(path.join(testData, 'less/_main/*.less'));
   files
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))

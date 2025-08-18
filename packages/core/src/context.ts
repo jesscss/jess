@@ -1,16 +1,13 @@
 import type {
   AtRule,
-  Declaration,
   Ruleset,
   Rules,
-  StyleImportValue,
-  StyleImportOptions,
+  ImportOptions,
   Node
 } from './tree';
 import { type Operator } from './tree/util/calculate';
-import type { PluginObject } from './plugin';
+import type { PluginInterface } from './plugin';
 import * as path from 'node:path';
-import { isNode } from './tree/util/is-node';
 
 export const enum MathMode {
   /**
@@ -53,11 +50,12 @@ export interface ContextOptions {
   dynamic?: boolean;
   collapseNesting?: boolean;
 
+  enableJavaScript?: boolean;
   mathMode?: MathMode;
   unitMode?: UnitMode;
 
   /** Directories to search to resolve files */
-  paths?: string[];
+  searchPaths?: string[];
 }
 
 export interface TreeContextOptions extends ContextOptions {
@@ -134,7 +132,7 @@ export class TreeContext implements TreeContextOptions {
    * The plugin that created this tree. It will have first dibs
    * to resolve any imports.
    */
-  plugin?: PluginObject;
+  plugin?: PluginInterface;
 
   constructor(opts: TreeContextOptions = {}) {
     /**
@@ -146,6 +144,7 @@ export class TreeContext implements TreeContextOptions {
       unitMode,
       isModule,
       file,
+      plugin,
       ...rest
     } = opts;
     // this.leakVariablesIntoScope = leakVariablesIntoScope ?? false
@@ -153,6 +152,7 @@ export class TreeContext implements TreeContextOptions {
     this.unitMode = unitMode ?? UnitMode.STRICT;
     this.isModule = isModule ?? false;
     this.file = file;
+    this.plugin = plugin;
     // this.scope = scope ?? new Scope(parentScope)
     this.opts = rest;
   }
@@ -178,7 +178,7 @@ export class TreeContext implements TreeContextOptions {
  * There should only ever be one Context singleton per parse & evaluation.
  */
 export class Context {
-  readonly plugins: PluginObject[];
+  readonly plugins: PluginInterface[];
   readonly opts: ContextOptions;
 
   treeContext!: TreeContext;
@@ -270,7 +270,7 @@ export class Context {
   /**
    * In a custom declaration's value. All nodes should
    * be preserved as-is and not evaluated, except for
-   * #() expressions.
+   * $() expressions.
   */
   inCustom: boolean | undefined;
 
@@ -280,7 +280,7 @@ export class Context {
   /** A flag to clone nodes before mutating */
   preserveOriginalNodes: boolean | undefined;
 
-  constructor(opts: ContextOptions = {}, plugins?: PluginObject[]) {
+  constructor(opts: ContextOptions = {}, plugins?: PluginInterface[]) {
     this.opts = opts;
     this.plugins = plugins ?? [];
   }
@@ -290,68 +290,82 @@ export class Context {
   evaldTrees = new Map<string, Rules>();
 
   /**
-   * @todo - What is this used for? I think I wrote this to resolve
-   * a tree context given a file path. Ohhhh I think, essentially,
-   * if something like a Less `@import` is used, we need to resolve
-   * what the tree context should be for the rules, which is up to
-   * the Less plugin to return.
-   *
-   * I'll revisit this when I finish imports.
+   * @param importPath - The bare import path e.g. `@import "foo";` in a .less file.
    */
-  async getTree(
-    filePath: string,
-    options?: Record<string, any>
-  ) {
+  private async _getPath(importPath: string) {
     const currentTree = this.treeContext;
-    const currentDirectory = currentTree.file?.path ?? process.cwd();
-    const paths = this.opts.paths ?? [];
-    options ??= {};
-    options = { ...this.opts, ...options };
+    const currentDirectory = currentTree?.file?.path ?? process.cwd();
+    const { searchPaths = [] } = this.opts;
 
     const plugins = this.plugins;
-    const pluginLength = plugins.length;
-    let resolvedPath: string | undefined;
-    let resolvedTree: Rules | false | undefined;
-    const triedPaths: string[] = [];
+    let finalPath: string | undefined;
+    let currentPlugin = this.treeContext?.plugin;
 
-    let rootPlugin = this.treeContext?.plugin;
+    /** First, expand imports */
+    let paths = currentPlugin?.expandImport?.(importPath, currentDirectory) ?? [importPath];
+    if (paths.length === 0) {
+      throw new Error(`No paths found for import "${importPath}"`);
+    }
 
-    /** If we have a root plugin, try it first */
-    if (rootPlugin?.fileManager) {
-      const result = rootPlugin.fileManager.getPath(filePath, currentDirectory, paths, options);
-      if (isArray(result)) {
-        triedPaths.push(...result);
-      } else {
-        resolvedPath = result;
+    /** Give current context plugin first dibs to resolve */
+    if (currentPlugin?.resolve) {
+      const result = await currentPlugin.resolve(paths, currentDirectory, searchPaths);
+      if (result) {
+        paths = result;
       }
     }
 
-    if (!resolvedPath) {
-      /** Iterate in reverse, starting with last added plugin */
-      for (let i = pluginLength - 1; i >= 0; i--) {
-        const plugin = plugins[i]!;
-        if (plugin === rootPlugin) {
-          continue;
-        }
-        if (!plugin.fileManager) {
-          continue;
-        }
-        const result = plugin.fileManager.getPath(filePath, currentDirectory, paths, options);
-        if (isArray(result)) {
-          triedPaths.push(...result);
-        } else {
-          resolvedPath = result;
-          break;
-        }
+    /** Try to resolve using resolver plugins */
+    for (const plugin of plugins) {
+      if (plugin === currentPlugin) {
+        continue;
+      }
+      if (!plugin.resolve) {
+        continue;
+      }
+      const result = await plugin.resolve(paths, currentDirectory, searchPaths);
+      if (result) {
+        paths = result;
       }
     }
 
-    if (!resolvedPath) {
+    /** Now, try to locate the first matching file using locator plugins */
+    for (const plugin of plugins) {
+      if (!plugin.locate) {
+        continue;
+      }
+      const result = await plugin.locate(paths, currentDirectory);
+      if (result) {
+        finalPath = result;
+        break;
+      }
+    }
+
+    if (!finalPath) {
       /** @todo - Add messaging around tried paths */
       throw new Error('File not found');
     }
 
-    /** We already have resolved this file and parsed it. */
+    const ext = path.extname(finalPath);
+    const friendlyPath = path.relative(process.cwd(), finalPath);
+
+    if (!ext) {
+      throw new Error(`File "${friendlyPath}" not supported`);
+    }
+
+    return {
+      triedPaths: paths,
+      resolvedPath: finalPath,
+      friendlyPath
+    };
+  }
+
+  async getTree(importPath: string, importOptions: ImportOptions = {}) {
+    const { resolvedPath, triedPaths, friendlyPath } = await this._getPath(importPath);
+    const { type } = importOptions;
+    /**
+     * We already have resolved this file and parsed it.
+     */
     if (this.sourceTrees.has(resolvedPath)) {
       return {
         node: this.sourceTrees.get(resolvedPath)!,
@@ -360,39 +374,91 @@ export class Context {
       };
     }
 
-    /** If we have a root plugin, try it first */
-    if (rootPlugin?.fileManager) {
-      const result = await rootPlugin.fileManager.getTree(resolvedPath, options);
-      if (result) {
-        this.sourceTrees.set(resolvedPath, result);
-        return {
-          node: result,
-          triedPaths,
-          resolvedPath
-        };
+    const plugins = this.plugins;
+
+    const sourceGetter = plugins.find(plugin => plugin.getSource);
+    if (!sourceGetter) {
+      /** If we can't actually load files, bail. */
+      throw new Error('No source getter found');
+    }
+
+    const ext = path.extname(resolvedPath);
+
+    let plugin: PluginInterface | undefined;
+
+    if (type) {
+      plugin = plugins.find(plugin => plugin.name === type);
+      if (!plugin) {
+        throw new Error(`Plugin "${type}" not found`);
+      }
+      if (!plugin.parse) {
+        throw new Error(`Plugin "${type}" does not support parsing`);
       }
     }
 
-    for (let i = pluginLength - 1; i >= 0; i--) {
-      const plugin = plugins[i]!;
-      if (plugin === rootPlugin) {
-        continue;
-      }
-      if (!plugin.fileManager) {
-        continue;
-      }
-      const tree = await plugin.fileManager.getTree(resolvedPath, options);
-      if (tree) {
-        resolvedTree = tree;
-        break;
+    if (!plugin) {
+      plugin = plugins.find(plugin => plugin.supportedExtensions?.includes(ext) && plugin.parse);
+      if (!plugin) {
+        throw new Error(`File "${friendlyPath}" not supported`);
       }
     }
-    if (!resolvedTree) {
-      throw new Error(`File "${path.basename(filePath)}" not supported`);
+
+    const source = await sourceGetter.getSource!(resolvedPath);
+    const tree = await plugin.parse!(resolvedPath, source);
+    if (tree) {
+      this.sourceTrees.set(resolvedPath, tree);
+      return {
+        node: tree,
+        triedPaths,
+        resolvedPath
+      };
     }
-    this.sourceTrees.set(resolvedPath, resolvedTree);
+
+    throw new Error(`File "${friendlyPath}" not supported`);
+  }
+
+  /**
+   *
+   * @param importPath
+   * @param importOptions
+   */
+  async getModule(importPath: string, importOptions: ImportOptions = {}) {
+    const { enableJavaScript } = this.opts;
+    if (enableJavaScript === false) {
+      throw new Error('JavaScript evaluation is disabled');
+    }
+    const { resolvedPath, triedPaths, friendlyPath } = await this._getPath(importPath);
+    const { type } = importOptions;
+
+    const plugins = this.plugins;
+    const ext = path.extname(resolvedPath);
+
+    let plugin: PluginInterface | undefined;
+
+    if (type) {
+      plugin = plugins.find(plugin => plugin.name === type);
+      if (!plugin) {
+        throw new Error(`Plugin "${type}" not found`);
+      }
+      if (!plugin.import) {
+        throw new Error(`Plugin "${type}" can't import modules`);
+      }
+    }
+
+    if (!plugin) {
+      plugin = plugins.find(plugin => plugin.supportedExtensions?.includes(ext) && plugin.import);
+      if (!plugin) {
+        throw new Error(`File "${friendlyPath}" not supported`);
+      }
+    }
+
+    const module = await plugin.import!(resolvedPath);
+    if (!module) {
+      throw new Error(`File "${friendlyPath}" not supported`);
+    }
+
     return {
-      node: resolvedTree,
+      module,
       triedPaths,
       resolvedPath
     };
