@@ -1,3 +1,14 @@
+# Aug 18, 2025
+
+- Made a new plugin signature with ChatGPT help
+- Made a Webpack resolver wrapper
+- TODO - Rewrite Less plugin and context import things
+
+# Aug 16, 2025
+
+- CSS and Less parsing working!
+
+
 # Aug 8, 2025
 
 - styles.config.ts
