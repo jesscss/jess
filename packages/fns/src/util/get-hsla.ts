@@ -38,10 +38,10 @@ export function adjustHSL(
   method?: Node
 ) {
   const hsl = toHSL(color);
-  if (!(amount.unit === '%')) {
+  if (!(amount.value.unit === '%')) {
     throw new Error('Amount must be a percentage');
   }
-  let adjustAmount = amount.number / 100;
+  let adjustAmount = amount.value.number / 100;
 
   if (method && method.value === 'relative') {
     adjustAmount = hsl[key] * adjustAmount;

@@ -16,7 +16,7 @@ export function getColorFunctionValues(one: Node, two: Node, three: Node) {
    */
   let alpha: Node | number = 1;
   if (one instanceof Sequence) {
-    const val: Dimension[] = one.value;
+    const val: Dimension[] = one.value as Dimension[];
     one = val[0]!;
     two = val[1]!;
     three = val[2]!;

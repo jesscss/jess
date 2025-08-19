@@ -1,4 +1,4 @@
-import { Dimension } from '@jesscss/core';
+import { Dimension, Num } from '@jesscss/core';
 
 const { isArray } = Array;
 
@@ -27,5 +27,8 @@ export const mathHelper = (
   }
   const val = input[0];
   unit ??= val instanceof Dimension ? val.value.unit : '';
+  if (!unit) {
+    return new Num(fn(...num(input)));
+  }
   return new Dimension({ number: fn(...num(input)), unit });
 };

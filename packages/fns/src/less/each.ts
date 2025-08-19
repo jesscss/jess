@@ -3,8 +3,9 @@ import {
   Node,
   Rules,
   Mixin,
-  General,
-  getFunctionFromMixins
+  Any,
+  getFunctionFromMixins,
+  getEntries
 } from '@jesscss/core';
 import { type ExtendedFn } from '../util';
 import { type, instance, union, assert } from 'superstruct';
@@ -31,19 +32,17 @@ const Struct = type({
  */
 const each: ExtendedFn = async function each(list: Node, mixin: Mixin | Rules) {
   assert({ list, mixin }, Struct);
-  let entries = list.entries();
+  let entries = getEntries(list);
   /** If a Node is not list-like, wrap it */
-  if (!entries) {
-    entries = [[0, list]].entries();
-  }
   if (mixin instanceof Rules) {
-    mixin = new Mixin([
-      ['params', new List([
-        new General('value', { type: 'Name' }),
-        new General('key', { type: 'Name' }),
-        new General('index', { type: 'Name' })
-      ])]
-    ]);
+    mixin = new Mixin({
+      params: new List([
+        new Any('value', { role: 'name' }),
+        new Any('key', { role: 'name' }),
+        new Any('index', { role: 'name' })
+      ]),
+      rules: mixin
+    });
   }
   const func = getFunctionFromMixins(mixin).bind(this);
 

@@ -15,10 +15,10 @@ export default function contrast(
   threshold?: Dimension
 ) {
   if (!light) {
-    light = rgba.call(this, 255, 255, 255, 1.0);
+    light = rgba.call(this, { r: 255, g: 255, b: 255, a: 1.0 });
   }
   if (!dark) {
-    dark = rgba.call(this, 0, 0, 0, 1.0);
+    dark = rgba.call(this, { r: 0, g: 0, b: 0, a: 1.0 });
   }
   // Figure out which is actually light and dark:
   if (getLuma(dark!) > getLuma(light!)) {

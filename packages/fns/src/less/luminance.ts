@@ -6,8 +6,8 @@ export default function luminance(color: Color) {
     + (0.7152 * color.rgb[1] / 255)
     + (0.0722 * color.rgb[2] / 255);
 
-  return new Dimension([
-    luminance * color.alpha * 100,
-    '%'
-  ]);
+  return new Dimension({
+    number: luminance * color.alpha * 100,
+    unit: '%'
+  });
 }
