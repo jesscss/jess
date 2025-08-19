@@ -191,6 +191,9 @@ importers:
         specifier: ^5.1.1
         version: 5.1.2
     devDependencies:
+      '@jesscss/shared':
+        specifier: workspace:*
+        version: link:../_shared
       '@types/lodash-es':
         specifier: ~4.17.8
         version: 4.17.12

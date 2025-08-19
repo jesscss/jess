@@ -45,7 +45,7 @@ export type ReferenceOptions = {
   /**
    * What kind of lookup are we doing?
    */
-  type?: 'index' | 'declaration' | 'variable' | 'property' | 'mixin' | 'ruleset' | 'mixin-ruleset';
+  type?: 'index' | 'declaration' | 'variable' | 'property' | 'function' | 'mixin' | 'ruleset' | 'mixin-ruleset';
   resolution?: 'scope' | 'linear';
   /**
    * Optional references just resolve to the string
@@ -101,25 +101,33 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     }
     switch (type) {
       case 'index':
-        w.add('['); emitKey(key); w.add(']');
+        w.add('[');
+        emitKey(key);
+        w.add(']');
         break;
       case 'variable':
         emitKey(key);
         break;
       case 'declaration':
-        w.add('.'); emitKey(key);
+        w.add('.');
+        emitKey(key);
         break;
       case 'property':
-        w.add('.~'); emitKey(key);
+        w.add('.~');
+        emitKey(key);
         break;
       case 'mixin':
-        w.add('|'); emitKey(key);
+        w.add('|');
+        emitKey(key);
         break;
       case 'ruleset':
-        w.add('*('); emitKey(key); w.add(')');
+        w.add('*(');
+        emitKey(key);
+        w.add(')');
         break;
       case 'mixin-ruleset':
-        w.add('*'); emitKey(key);
+        w.add('*');
+        emitKey(key);
         break;
     }
     if (fallbackValue === true) {
@@ -171,6 +179,11 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           returnVal = resolvedTarget.find('declaration', `${valueKey}`, 'VarDeclaration', opts);
         }
         break;
+      case 'function':
+        if (isNode(resolvedTarget, 'Rules')) {
+          returnVal = resolvedTarget.find('function', `${valueKey}`, undefined, opts);
+        }
+        break;
       case 'property':
         if (isNode(resolvedTarget, 'Rules')) {
           returnVal = resolvedTarget.find('declaration', `${valueKey}`, 'Declaration', opts);
@@ -208,7 +221,15 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     }
     if (isNode(returnVal, 'Declaration')) {
       context.searchScope.add(returnVal);
+      /** Don't consider calc frames for evaluating references */
+      let inCalc = context.calcFrames.at(-1);
+      if (inCalc) {
+        context.calcFrames.pop();
+      }
       const evald = await returnVal.value.value.eval(context);
+      if (inCalc) {
+        context.calcFrames.push(true);
+      }
       context.searchScope.delete(returnVal);
       return evald;
     } else {

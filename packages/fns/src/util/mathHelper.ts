@@ -6,9 +6,9 @@ export function num(values: Dimension | number): number;
 export function num(values: Array<Dimension | number>): number[];
 export function num(values: Dimension | number | Array<Dimension | number>): number | number[] {
   if (isArray(values)) {
-    return values.map(n => n instanceof Dimension ? n.number : n);
+    return values.map(n => n instanceof Dimension ? n.value.number : n);
   }
-  return values instanceof Dimension ? values.number : values;
+  return values instanceof Dimension ? values.value.number : values;
 }
 
 export const mathHelper = (
@@ -26,6 +26,6 @@ export const mathHelper = (
     }
   }
   const val = input[0];
-  unit ??= val instanceof Dimension ? val.unit : '';
-  return new Dimension([fn(...num(input)), unit]);
+  unit ??= val instanceof Dimension ? val.value.unit : '';
+  return new Dimension({ number: fn(...num(input)), unit });
 };

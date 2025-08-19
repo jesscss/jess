@@ -70,15 +70,18 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   override async evalNode(context: Context) {
     let node = this.maybeClone(context);
     /** Convert all values to Nodes */
-    let valuePromises = node.value
-      .map(async n => await cast(n).eval(context));
+    for (let [i, n] of node.value.entries()) {
+      node.value[i] = await n.eval(context);
+    }
 
-    node.value = (await Promise.all(valuePromises))
+    /** Remove Nil nodes */
+    node.value = node.value
       .filter(n => n && !(n instanceof Nil));
 
     let lists: Record<number, Node[]> | undefined;
 
-    node.value.forEach((n, i) => {
+    /** @todo - Probably remove on rewrite */
+    for (let [i, n] of node.value.entries()) {
       if (n instanceof List) {
         if (!lists) {
           lists = {
@@ -88,7 +91,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
           lists[i] = n.value;
         }
       }
-    });
+    };
 
     if (lists) {
       /**

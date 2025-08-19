@@ -319,10 +319,10 @@ export abstract class Node<
    *
    * Processed nodes must always return a Node.
    */
-  forEachNode(func: (n: Node) => Node) {
+  async forEachNode(func: (n: Node) => Node | Promise<Node>) {
     for (let [value, key, collection] of getEntriesFromNode(this as { value: unknown[] })) {
       if (value instanceof Node) {
-        collection[key] = func(value);
+        collection[key] = await func(value);
       }
     }
   }
@@ -525,26 +525,29 @@ export abstract class Node<
   /**
    * This is the method all nodes will override.
    * Individual nodes will specify / narrow return type
+   *
+   * By default, evals all children
    */
   async evalNode(context: Context): Promise<Node> {
-    return this;
+    let node = this.maybeClone(context);
+    await node.forEachNode(async n => await n.evalNode(context));
+    return node;
   }
 
   static async evalStatic(node: Node, context: Context): Promise<Node> {
     let returnNode: Node = node;
     if (!node.preEvaluated) {
       returnNode = await node.preEval(context);
-      // if (returnNode !== node) {
-      //   returnNode.inherit(node)
-      // }
+      if (returnNode !== node) {
+        returnNode.inherit(node);
+      }
       returnNode.preEvaluated = true;
     }
     if (!returnNode.evaluated) {
       returnNode = await returnNode.evalNode(context);
-      // if (evaldNode !== returnNode) {
-      //   evaldNode.inherit(returnNode)
-      //   returnNode = evaldNode
-      // }
+      if (returnNode !== node) {
+        returnNode.inherit(node);
+      }
       returnNode.preEvaluated = true;
       returnNode.evaluated = true;
     }

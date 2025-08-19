@@ -1,3 +1,15 @@
+import { Dimension, defineFunction } from '@jesscss/core';
 import { mathHelper } from '../util/mathHelper';
 
-export default mathHelper.bind(null, Math.abs, ['value'], undefined);
+export default defineFunction(
+  'abs',
+  function({ value }: { value: Dimension | number }) {
+    return mathHelper(Math.abs, ['value'], undefined, value);
+  },
+  {
+    params: [{
+      name: 'value',
+      type: [Dimension, 'number']
+    }]
+  }
+);

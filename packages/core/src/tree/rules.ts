@@ -445,7 +445,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!queue) {
           continue;
         }
-        for (let item of queue) {
+        for (let [q, item] of queue.entries()) {
           let [i, rule] = item;
           if (
             i === Priority.Highest
@@ -466,7 +466,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           result = await rule[method](context);
           if (result !== rule) {
             rules.value[i] = result;
-            queue[i] = [i, result];
+            queue[q] = [i, result];
           }
           if (method === 'eval' && result.options.hoistToRoot) {
             rulesToHoist = true;
@@ -491,8 +491,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                * @todo - fix ruleset type so Ruleset<unknown>
                */
               context.treeRoot.register('ruleset', result as Ruleset<RulesetValue>);
-            }
-            if (rulesetType) {
+            } else if (rulesetType) {
               context.treeRoot.register('mixin', result as Mixin);
             }
           }

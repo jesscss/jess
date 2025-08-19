@@ -1397,7 +1397,7 @@ export function ifFunction(this: P, T: TokenMap) {
 
     if (!RECORDING_PHASE) {
       let location = $.endRule();
-      let nameNode = new Reference('if', { type: 'variable', fallbackValue: true }, $.getLocationInfo(name), this.context);
+      let nameNode = new Reference('if', { type: 'function', fallbackValue: true }, $.getLocationInfo(name), this.context);
       return new Call({ name: nameNode, args: new List(args!, undefined, argsLocation, this.context) }, undefined, location, this.context);
     }
   };
@@ -1414,7 +1414,7 @@ export function booleanFunction(this: P, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
-      let nameNode = new Reference('boolean', { type: 'variable', fallbackValue: true }, $.getLocationInfo(name), this.context);
+      let nameNode = new Reference('boolean', { type: 'function', fallbackValue: true }, $.getLocationInfo(name), this.context);
       return new Call({ name: nameNode, args: new List([arg], undefined, arg.location as LocationInfo, this.context) }, undefined, location, this.context);
     }
   };
@@ -1542,7 +1542,7 @@ export function functionCall(this: P, T: TokenMap) {
         if (!$.RECORDING_PHASE) {
           const location = $.endRule();
           const nameValue = fnStart.image.slice(0, -1);
-          const nameNode = new Reference(nameValue, { type: 'variable', fallbackValue: true }, $.getLocationInfo(fnStart), this.context);
+          const nameNode = new Reference(nameValue, { type: 'function', fallbackValue: true }, $.getLocationInfo(fnStart), this.context);
           return new Call({ name: nameNode, args }, undefined, location, this.context);
         }
       }

@@ -91,7 +91,7 @@ export abstract class Registry<
     return bestMatch !== undefined ? list.at(bestMatch) : undefined;
   }
 
-  private _findByKey(candidates: Set<Type> | Type | undefined, key: string, filterType?: string, options?: FindOptions): Set<Type> | Type | undefined {
+  private _findByKey(candidates: Set<Type> | Type | undefined, key: string): Set<Type> | Type | undefined {
     let set = this.index.get(key);
     if (set) {
       let newSet: Set<Type> | undefined;
@@ -120,10 +120,10 @@ export abstract class Registry<
     let candidates: Set<Type> | Type | undefined;
     if (isArray(keys) || keys instanceof Set) {
       for (const key of keys) {
-        candidates = this._findByKey(candidates, key, filterType, options);
+        candidates = this._findByKey(candidates, key);
       }
     } else {
-      candidates = this._findByKey(candidates, keys, filterType, options);
+      candidates = this._findByKey(candidates, keys);
     }
     if (candidates instanceof Set) {
       return candidates.size ? [...candidates] : undefined;
@@ -415,6 +415,40 @@ export class FunctionRegistry extends Registry<JsFunction, JsFunction> {
       this.index.set(item.name!, item);
     }
     this.pendingItems.clear();
+  }
+
+  override find(name: string, filterType?: string, options?: FindOptions): JsFunction | undefined {
+    let fn: JsFunction | undefined;
+    let rules: Rules | undefined = this.rules;
+    let { searchParents = true } = options ?? {};
+    let findRoot = false;
+    while (rules) {
+      let registry = rules.functionRegistry;
+      if (registry) {
+        registry.indexPendingItems();
+        fn = registry.index.get(name);
+
+        if (fn || !searchParents) {
+          break;
+        }
+      }
+
+      do {
+        rules = rules?.parent as Rules;
+        if (findRoot && rules.type === 'Rules' && rules?.parent === undefined) {
+          /** We're at the root */
+          break;
+        }
+        /**
+         * If we reach an import boundary, skip the scope until we get to the top level.
+         */
+        if (isNode(rules, 'StyleImport') && rules.options.type !== 'import') {
+          findRoot = true;
+        }
+      } while (!findRoot && rules && rules.type !== 'Rules');
+    }
+
+    return fn;
   }
 }
 

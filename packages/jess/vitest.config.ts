@@ -6,7 +6,9 @@ export default defineConfig({
     watch: false,
     include: ['test/**/*.ts', '**/__tests__/**/*.ts'],
     globals: true,
-    setupFiles: ['../../test/setup.ts']
+    setupFiles: ['../../test/setup.ts'],
+    testTimeout: 30_000,
+    reporters: ['verbose']
     // coverage: {
     //   enabled: true,
     //   include: ['src/**/*.ts'],

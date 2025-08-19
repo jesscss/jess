@@ -55,10 +55,15 @@ export class Call extends Node<CallValue, CallOptions> {
     const w = options.writer!;
     const mark = w.mark();
     const { name, args } = this.value;
-    if (typeof name === 'string') w.add(name, this);
-    else name.toString(options);
+    if (typeof name === 'string') {
+      w.add(name, this);
+    } else {
+      name.toString(options);
+    }
     w.add('(');
-    if (args) args.toString(options);
+    if (args) {
+      args.toString(options);
+    }
     w.add(')');
     if (this.options?.markImportant) w.add(' !important');
     return w.getSince(mark);

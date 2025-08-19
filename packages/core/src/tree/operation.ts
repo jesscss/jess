@@ -18,13 +18,16 @@ export class Operation extends Node<OperationValue> {
   shortType = 'op' as const;
 
   override async evalNode(context: Context): Promise<Node> {
-    let [left, op, right] = this.value;
+    let n = this.maybeClone(context);
+    let [left, op, right] = n.value;
+    left = await left.eval(context);
+    right = await right.eval(context);
     if (context.shouldOperate(op)) {
-      left = await left.eval(context);
-      right = await right.eval(context);
-      return left.operate(right, op, context);
+      let result = left.operate(right, op, context);
+      return result.inherit(this);
     }
-    return this.maybeClone(context);
+    n.value = [left, op, right];
+    return n;
   }
 }
 

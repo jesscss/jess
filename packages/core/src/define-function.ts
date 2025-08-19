@@ -1,10 +1,10 @@
 import { isPlainObject } from 'lodash-es';
-import { Class, OmitIndexSignature } from 'type-fest';
+import { AbstractClass, Class, OmitIndexSignature } from 'type-fest';
 import { isNode } from './tree/util/is-node';
 import type { Context } from './context';
 
 export type PrimitiveType = 'string' | 'number' | 'boolean' | 'null' | 'undefined';
-export type ArgType = PrimitiveType | Class<any>;
+export type ArgType = PrimitiveType | Class<any> | AbstractClass<any>;
 
 export type DefineFunctionOptions = {
   params: readonly {
@@ -30,7 +30,7 @@ type GetArgType<T extends ArgType> =
           ? null
           : T extends 'undefined'
             ? undefined
-            : T extends Class<any>
+            : T extends Class<any> | AbstractClass<any>
               ? InstanceType<T>
               : never;
 

@@ -1,4 +1,45 @@
 /**
+ * These are Less output CSS test files that Less 3.x
+ * doesn't recognize as containing invalid CSS, or which
+ * are invalid when output.
+ */
+export const invalidCSSOutput = [
+  /** Intentionally produces invalid CSS */
+  'css/_main/import-inline.css',
+  'css/_main/import-reference.css',
+
+  /** intentionally invalid property name */
+  'css/_main/property-name-interp.css',
+
+  /** invalid attribute selector */
+  'css/_main/css-3.css',
+
+  /** invalid attribute selector */
+  'css/_main/selectors.css',
+
+  /**
+   * All of these contain a property with no value,
+   * and/or a list with no value
+   *
+   * @todo - Non custom props with no value should be auto-removed (or be unset?)
+   */
+  'css/_main/extract-and-length.css',
+  'css/_main/functions.css',
+  'css/_main/javascript.css'
+];
+
+export const notSameSerialized = [
+  /** Serialization issues */
+  /** Has a pi value that was not rounded properly */
+  'css/_main/plugin.css',
+  /** It's valid but not formatted, which we're also testing */
+  'css/_main/plugin-module.css',
+  'css/_main/import.css',
+  'css/_main/import-interpolation.css',
+  'css/_main/directives-bubling.css'
+];
+
+/**
  * @todo - Fix with a PR to test data in Less repo
  *
  * These files contain invalid CSS which
