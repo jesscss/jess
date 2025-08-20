@@ -129,7 +129,7 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
   }
 
   /** Hmm this should never return Extend */
-  override async evalNode(context: Context): Promise<Selector | Nil> {
+  override evalNode(context: Context): Selector | Nil {
     const { appendValue } = this.value;
     if ((appendValue ?? context.opts.collapseNesting) || this.options.hoistToRoot) {
       let frame = atIndex(context.rulesetFrames, -1);

@@ -22,7 +22,7 @@ export type AnyOptions<T extends string> = NodeOptions & {
 export interface Any<
   Role extends AnyRole = AnyRole
 > extends Node<string, AnyOptions<Role>> {
-  eval(context: Context): Promise<Any<Role>>;
+  eval(context: Context): Any<Role>;
   valueOf(): string;
 }
 

@@ -1,5 +1,10 @@
+import type { Context } from '../context';
 import { Node, defineType } from './node';
 import { type PrintOptions, getPrintOptions } from './util/print';
+
+export interface Bool extends Node<boolean> {
+  eval(context: Context): Bool;
+}
 
 /**
  * A boolean. Named `Bool` to avoid conflict with the built-in `Boolean` class.

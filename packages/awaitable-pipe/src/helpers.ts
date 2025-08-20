@@ -1,8 +1,5 @@
-export type MaybePromise<T> = T | Promise<T>;
-
-function isThenable(x: any): x is Promise<any> {
-  return !!x && (typeof x === 'object' || typeof x === 'function') && typeof x.then === 'function';
-}
+import type { MaybePromise } from './utils';
+import { isThenable } from './utils';
 
 export type StepErrorOptions<TIn, R> = {
   onError?: (error: unknown, input: TIn) => void;

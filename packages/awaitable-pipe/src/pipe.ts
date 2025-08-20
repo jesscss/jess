@@ -9,9 +9,7 @@ type PipeResult<In, Fns extends any[], Acc = In> =
     ? PipeResult<Apply<Acc, F>, Rest>
     : Acc;
 
-function isThenable(x: any): x is Promise<any> {
-  return !!x && (typeof x === 'object' || typeof x === 'function') && typeof x.then === 'function';
-}
+import { isThenable } from './utils';
 
 function runAsync(v: any, fns: AnyFn[]): Promise<any> {
   return fns.reduce<Promise<any>>((p, fn) => p.then(val => {
@@ -34,15 +32,20 @@ export function pipe(...args: any[]): any {
   if (args.length === 0) return undefined as any;
 
   const first = args[0];
+  const second = args[1];
   const rest = args.slice(1) as AnyFn[];
-  // Heuristic:
-  // - If there is at least one arg and the second arg exists, treat first as input and rest as steps
-  // - If only one arg and it's a function, treat it as first step (no input)
-  if (args.length > 1) {
+  // Disambiguation:
+  // - If first and second are both functions → treat as steps-only (no explicit input)
+  // - Else if more than one arg → treat first as input (value | Promise | thunk)
+  // - Else single function → steps-only
+  const stepsOnly = typeof first === 'function' && typeof second === 'function';
+  if (stepsOnly) {
+    input = undefined;
+    fns = (args as unknown[]) as AnyFn[];
+  } else if (args.length > 1) {
     input = typeof first === 'function' ? (first as any)() : first;
     fns = rest;
   } else {
-    // Single argument: no explicit input; use it as the first step
     input = undefined;
     fns = [first as AnyFn];
   }
@@ -110,14 +113,17 @@ export function safePipe(...args: any[]): any {
   if (args.length === 0) return undefined as any;
 
   const first = args[0];
-  if ((first && typeof first === 'object') && (('onError' in first) || ('fallback' in first))) {
-    // options only, no explicit input
+  const second = args[1];
+  const looksLikeOptions = (x: unknown): x is SafePipeOptions<any> => !!x && typeof x === 'object' && (('onError' in (x as any)) || ('fallback' in (x as any)));
+  const bothFns = typeof first === 'function' && typeof second === 'function';
+  if (looksLikeOptions(first) || bothFns) {
+    // options-first or steps-only (no explicit input)
     input = undefined;
-    options = first as SafePipeOptions<any>;
-    fns = (args.slice(1) as unknown[]) as AnyFn[];
+    options = looksLikeOptions(first) ? (first as SafePipeOptions<any>) : {};
+    fns = (looksLikeOptions(first) ? args.slice(1) : args) as AnyFn[];
   } else {
     input = first;
-    options = args[1] as SafePipeOptions<any>;
+    options = (second as SafePipeOptions<any>) ?? {};
     fns = (args.slice(2) as unknown[]) as AnyFn[];
   }
 

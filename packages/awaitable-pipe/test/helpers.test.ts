@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { pipe, safePipe, tryStep, guard } from '../src';
+import { pipe, safePipe, tryStep, guard, isThenable, isPromise } from '../src';
 
 describe('tryStep', () => {
   it('captures sync throw and returns fallback', () => {
@@ -78,6 +78,16 @@ describe('guard', () => {
     const step = guard((n: number) => n > 0);
     const out = pipe(1, step);
     expect(out).toBe(1);
+  });
+
+  it('exports isThenable and isPromise with expected behavior', async () => {
+    expect(isThenable(Promise.resolve(1))).toBe(true);
+    expect(isPromise(Promise.resolve(1))).toBe(true);
+    const thenable = { then: () => {}, catch: undefined } as any;
+    expect(isThenable(thenable)).toBe(true);
+    expect(isPromise(thenable)).toBe(false);
+    expect(isThenable(1)).toBe(false);
+    expect(isPromise(1)).toBe(false);
   });
 
   it('throws when predicate is false', () => {

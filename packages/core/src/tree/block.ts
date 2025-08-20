@@ -1,9 +1,14 @@
+import type { Context } from '../context';
 import { Node, defineType } from './node';
 import { type PrintOptions, getPrintOptions } from './util/print';
 
 export type BlockOptions = {
   type: 'curly' | 'square';
 };
+
+export interface Block extends Node<Node, BlockOptions> {
+  eval(context: Context): Block;
+}
 
 /**
  * A block like `{ ... }` or `[ ... ]`. This is used

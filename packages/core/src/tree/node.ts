@@ -10,6 +10,7 @@ import type { Nil } from './nil';
 import { getEntriesFromNode, getValues } from './util/collections';
 import type { Comment } from './comment';
 import { type PrintOptions, getPrintOptions } from './util/print';
+import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 
 export type { TreeContext };
 
@@ -319,12 +320,23 @@ export abstract class Node<
    *
    * Processed nodes must always return a Node.
    */
-  async forEachNode(func: (n: Node) => Node | Promise<Node>) {
-    for (let [value, key, collection] of getEntriesFromNode(this as { value: unknown[] })) {
-      if (value instanceof Node) {
-        collection[key] = await func(value);
-      }
-    }
+  forEachNode(func: (n: Node) => MaybePromise<Node>) {
+    const steps = [...getEntriesFromNode(this as { value: unknown[] })].map(([value, key, collection]) => {
+      return (_: void) => {
+        if (!(value instanceof Node)) {
+          return;
+        }
+        const out = func(value);
+        if (isThenable(out)) {
+          return (out as Promise<Node>).then((result) => {
+            collection[key] = result;
+          });
+        }
+        collection[key] = out as Node;
+      };
+    });
+
+    return pipe(...steps);
   }
 
   static* nodeAndPrePost(node: Node) {
@@ -517,14 +529,9 @@ export abstract class Node<
    * In other words, values that must be evaluated before other nodes
    * are evaluated.
    */
-  async preEval(context: Context): Promise<this> {
+  preEval(context: Context): MaybePromise<this> {
     this.preEvaluated = true;
     return this;
-  }
-
-  preEvalSync(context: Context): this {
-    // Default: indicate async required if a sync path isn't implemented by subclass
-    throw new Error('AsyncRequired');
   }
 
   /**
@@ -533,94 +540,56 @@ export abstract class Node<
    *
    * By default, evals all children
    */
-  async evalNode(context: Context): Promise<Node> {
-    let node = this.maybeClone(context);
-    await node.forEachNode(async n => await n.evalNode(context));
-    return node;
+  evalNode(context: Context): MaybePromise<Node> {
+    return pipe(
+      () => this.maybeClone(context),
+      (node) => {
+        const out = node.forEachNode((n: Node) => n.eval(context));
+        if (isThenable(out)) {
+          return (out as Promise<void>).then(() => node);
+        }
+        return node;
+      }
+    );
   }
 
-  // Sync-first API: fast-paths should implement these; default throws
-  evalNodeSync(context: Context): Node {
-    // Default: indicate async required
-    throw new Error('AsyncRequired');
-  }
-
-  static async evalStatic(node: Node, context: Context): Promise<Node> {
+  static evalStatic(node: Node, context: Context): MaybePromise<Node> {
     let returnNode: Node = node;
-    if (!node.preEvaluated) {
-      returnNode = await node.preEval(context);
-      if (returnNode !== node) {
-        returnNode.inherit(node);
+    return pipe(
+      () => {
+        if (!returnNode.preEvaluated) {
+          return returnNode.preEval(context);
+        }
+        return returnNode;
+      },
+      (returnNode) => {
+        returnNode.preEvaluated = true;
+        if (!returnNode.evaluated) {
+          return returnNode.evalNode(context);
+        }
+        return returnNode;
+      },
+      (returnNode) => {
+        returnNode.evaluated = true;
+        if (returnNode !== node) {
+          returnNode.inherit(node);
+        }
+        returnNode.preEvaluated = true;
+        returnNode.evaluated = true;
+        return returnNode;
       }
-      returnNode.preEvaluated = true;
-    }
-    if (!returnNode.evaluated) {
-      returnNode = await returnNode.evalNode(context);
-      if (returnNode !== node) {
-        returnNode.inherit(node);
-      }
-      returnNode.preEvaluated = true;
-      returnNode.evaluated = true;
-    }
-    return returnNode;
-  }
-
-  static evalStaticSync(node: Node, context: Context): Node {
-    let returnNode: Node = node;
-    if (!node.preEvaluated) {
-      if (typeof (node as any).preEvalSync !== 'function') {
-        throw new Error('AsyncRequired');
-      }
-      returnNode = (node as any).preEvalSync(context);
-      if (returnNode !== node) {
-        returnNode.inherit(node);
-      }
-      returnNode.preEvaluated = true;
-    }
-    if (!returnNode.evaluated) {
-      if (typeof (returnNode as any).evalNodeSync !== 'function') {
-        throw new Error('AsyncRequired');
-      }
-      returnNode = (returnNode as any).evalNodeSync(context);
-      if (returnNode !== node) {
-        returnNode.inherit(node);
-      }
-      returnNode.preEvaluated = true;
-      returnNode.evaluated = true;
-    }
-    return returnNode;
+    );
   }
 
   /**
    * @note - Make sure you don't call super.eval while evaluating a node. Call it indirectly
    * from another node.
    */
-  async eval(context: Context): Promise<Node> {
+  eval(context: Context): MaybePromise<Node> {
     if (Object.getPrototypeOf(this).eval !== Node.prototype.eval) {
       throw new Error('Do not call super.eval() from a subclass.');
     }
-    return await Node.evalStatic(this, context);
-  }
-
-  evalSync(context: Context): Node {
-    return Node.evalStaticSync(this, context);
-  }
-
-  /**
-   * @note - this should be used if we're conditionally evaluating
-   * and then inheriting. It allows you to call eval() without
-   * penalty, if you're not sure if a node has been evaluated.
-   */
-  protected async evalIfNot<T extends Node = Node>(context: Context, func: () => T | Promise<T>): Promise<T> {
-    if (!this.evaluated) {
-      let node = await func();
-      if (!node.evaluated) {
-        node.inherit(this);
-        node.evaluated = true;
-      }
-      return node;
-    }
-    return this as unknown as T;
+    return Node.evalStatic(this, context);
   }
 
   /**

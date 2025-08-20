@@ -5,6 +5,10 @@ export type CommentOptions = {
   lineComment?: boolean;
 };
 
+export interface Comment extends Node<string, CommentOptions> {
+  eval(context: Context): Comment;
+}
+
 /**
  * A comment node
  */
@@ -14,9 +18,9 @@ export class Comment extends Node<string, CommentOptions> {
   override allowRoot = true;
   override allowRuleRoot = true;
 
-  override async evalNode(context: Context): Promise<Comment> {
+  override evalNode(context: Context): Comment {
     this.visible = !this.options.lineComment;
-    return this;
+    return this as Comment;
   }
 }
 export const comment = defineType(Comment, 'Comment');

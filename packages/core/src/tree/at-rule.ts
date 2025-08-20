@@ -6,6 +6,7 @@ import type { Any } from './any';
 import { Rules } from './rules';
 import type { Context } from '../context';
 import { type PrintOptions, getPrintOptions } from './util/print';
+import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 
 export type AtRuleValue = {
   name: Any<'atkeyword'>;
@@ -48,30 +49,42 @@ export class AtRule extends Node<AtRuleValue> {
     return w.getSince(mark);
   }
 
-  override async evalNode(context: Context) {
-    let node = await super.evalNode(context) as AtRule;
-    let rules = node.value.rules;
-    /** Don't let rooted rules bubble past an at-rule */
-    if (rules) {
-      /**
-       * Wrap sub-rules of a media query like Less
-       *
-       * @todo - Make sure this works with and without collapsing
-       */
-      if (context.opts.collapseNesting && context.rulesetFrames.length) {
-        let rule = await new Ruleset({
-          selector: new ComplexSelector([new Ampersand()]),
-          rules
-        })
-          .inherit(this)
-          .eval(context);
-        node.value.rules = new Rules([rule]);
+  override evalNode(context: Context): MaybePromise<AtRule> {
+    let node = this as AtRule;
+    return pipe(
+      () => super.evalNode(context),
+      (evaldNode: AtRule) => {
+        node = evaldNode;
+        let rules = node.value.rules;
+        /** Don't let rooted rules bubble past an at-rule */
+        if (rules) {
+          /**
+           * Wrap sub-rules of a media query like Less
+           *
+           * @todo - Make sure this works with and without collapsing
+           */
+          if (context.opts.collapseNesting && context.rulesetFrames.length) {
+            return new Ruleset({
+              selector: new ComplexSelector([new Ampersand()]),
+              rules
+            })
+              .inherit(this)
+              .eval(context);
+          }
+          return node;
+        }
+      },
+      (unknownNode) => {
+        if (unknownNode instanceof Ruleset) {
+          node.value.rules = new Rules([unknownNode]);
+          return node;
+        }
+        /** @todo - Figure out at-rule bubbling */
+        // let rootRules = this.collectRoots();
+        // rootRules.forEach(rule => rules.value.push(rule));
+        return unknownNode;
       }
-      /** @todo - Figure out at-rule bubbling */
-      // let rootRules = this.collectRoots();
-      // rootRules.forEach(rule => rules.value.push(rule));
-    }
-    return node;
+    );
   }
 
   /** @todo - move to visitors */

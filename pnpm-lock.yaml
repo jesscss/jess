@@ -129,6 +129,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@jesscss/awaitable-pipe':
+        specifier: workspace:*
+        version: link:../awaitable-pipe
       '@jridgewell/gen-mapping':
         specifier: ~0.3.12
         version: 0.3.12

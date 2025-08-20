@@ -33,6 +33,20 @@ describe('pipe', () => {
     await expect(out).resolves.toBe('a123');
   });
 
+  it('steps-only mode disambiguation works when two functions are passed (no explicit input)', () => {
+    const out = pipe((x?: string) => (x ?? 'h') + 'i', (s) => s + '!');
+    expect(out).toBe('hi!');
+  });
+
+  it('two-step disambiguation with first=fn, second=value (treated as input)', () => {
+    const out = pipe(() => 'x', (s: string) => s + '!');
+    expect(out).toBe('x!');
+  });
+
+  it('first is thunk and second is not a function (args.length>1 branch): evaluates thunk input then throws on bad step', () => {
+    expect(() => (pipe as any)(() => 'x', undefined)).toThrow();
+  });
+
   it('accepts initial thunk and handles sync errors by throwing', () => {
     const boom = () => {
       throw new Error('nope');
@@ -105,6 +119,17 @@ describe('safePipe', () => {
     const out = safePipe('ok', { onError: vi.fn() }, asyncStep, (s: string) => s + '?');
     expect(out).toBeInstanceOf(Promise);
     await expect(out).resolves.toBe('ok!?');
+  });
+
+  it('safePipe steps-only mode (options-first) when two functions passed: uses empty options', () => {
+    const out = safePipe((x?: string) => (x ?? 'a') + 'b', (s: string) => s + 'c');
+    expect(out).toBe('abc');
+  });
+
+  it('safePipe with input and omitted options defaults to empty options', () => {
+    // @ts-expect-error intentionally passing undefined options
+    const out = safePipe('x', undefined, (s: string) => s + '!');
+    expect(out).toBe('x!');
   });
 
   it('handles async rejection with onError and fallback', async () => {

@@ -1,5 +1,10 @@
+import type { Context } from '../context';
 import { defineType } from './node';
 import { Selector } from './selector';
+
+export interface Combinator extends Selector<string> {
+  eval(context: Context): Combinator;
+}
 
 export class Combinator extends Selector<string> {
   type = 'Combinator' as const;

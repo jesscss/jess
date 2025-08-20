@@ -20,6 +20,11 @@ function clamp(v: number, max: number) {
 const { isArray } = Array;
 
 type ColorParameters = ConstructorParameters<typeof Node<string | ColorFormat>>;
+
+export interface Color extends Node<string | ColorFormat> {
+  eval(context: Context): Color;
+}
+
 /**
  * Color's `value` will either be the parsed value,
  * or, when constructed with a function, the preferred
