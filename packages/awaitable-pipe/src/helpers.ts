@@ -1,4 +1,4 @@
-type MaybePromise<T> = T | Promise<T>;
+export type MaybePromise<T> = T | Promise<T>;
 
 function isThenable(x: any): x is Promise<any> {
   return !!x && (typeof x === 'object' || typeof x === 'function') && typeof x.then === 'function';
