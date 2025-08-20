@@ -108,6 +108,30 @@ const p4 = pipe(p3, (s) => s + '?');                   // Promise<string>
 const fin = await p4;                                  // 'hi!?'
 ```
 
+## Per-step helpers
+Sometimes you want to guard or handle errors at a specific step without switching the whole pipeline to safe mode. Use these helpers as steps inside `pipe` or `safePipe`:
+
+```ts
+import { pipe, tryStep, guard } from '@jesscss/awaitable-pipe';
+
+// tryStep: catch at this step only, with optional onError and fallback
+const step = tryStep((n: number) => {
+  if (n < 0) throw new Error('no negatives');
+  return n * 2;
+}, {
+  onError: (err, n) => console.warn('bad number:', n, err),
+  fallback: 0 // could also be (err, n) => 0
+});
+
+const out = pipe(5, step);   // 10
+const out2 = pipe(-1, step); // 0
+
+// guard: ensure a condition holds at this step (sync or async)
+const positive = guard((n: number) => n > 0, (n) => new Error(`not positive: ${n}`));
+const ok = pipe(3, positive);         // 3
+// pipe(-2, positive) would throw: Error('not positive: -2')
+```
+
 ## Why would you want this?
 JavaScript Promises are great, but they aren’t free. Every async hop schedules work, allocates objects, and pushes errors across an async boundary. In hot paths, that overhead adds up.
 
