@@ -1,19 +1,21 @@
-# @jesscss/awaitable-pipe
+# awaitable-pipe
 
-A tiny, zero-dependency pipe that stays sync when possible and becomes a Promise when needed.
+![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
 
-- Sync-only pipeline → returns a plain value
-- Any async input/step → returns a Promise
-- Optional single-point error handling (never throws) with `safePipe`
-- Works with values, Promises, or initial thunks (() => value | Promise)
-- Works with or without an initial value
-- Strong TypeScript types; no wrapper objects
+A tiny, zero-dependency pipe with friendly types that “just works”: it stays sync when everything is sync, and turns into a Promise only when something is async. No wrappers, no ceremony.
+
+- **Stays sync when it can**: all-sync pipelines return a plain value
+- **Goes async when it must**: any async input/step returns a Promise
+- **One place for errors**: `safePipe` gives you a single `onError` + optional `fallback`
+- **Flexible starts**: begin with a value, a Promise, a thunk, or no value at all
+- **Typed nicely**: TypeScript keeps the sync/async shape without Result-like wrappers
 
 ## Install
 
 ```bash
 pnpm add @jesscss/awaitable-pipe
-# or npm i @jesscss/awaitable-pipe
+# or
+npm i @jesscss/awaitable-pipe
 ```
 
 ## Quick Start
@@ -24,7 +26,7 @@ import { pipe, safePipe } from '@jesscss/awaitable-pipe';
 // Sync stays sync
 const upper = (s: string) => s.toUpperCase();
 const exclaim = (s: string) => s + '!';
-const out = pipe('ok', upper, exclaim);   // string: 'OK!'
+const out = pipe('ok', upper, exclaim);   // 'OK!'
 
 // Mixed becomes Promise
 const load = async (s: string) => s + '!';
@@ -32,32 +34,26 @@ const outP = pipe('ok', upper, load);     // Promise<string>
 const result = await outP;                // 'OK!'
 
 // Start without an initial value
-const s2 = pipe((x?: number) => (x ?? 2) * 3); // number -> 6
+const s2 = pipe((x?: number) => (x ?? 2) * 3); // 6
 
 // Single-point error handling (never throws)
 const boom = () => { throw new Error('nope'); };
 const safe = safePipe('ok', { onError: console.error, fallback: 'X' }, boom, upper);
-// safe is string 'X'
+// 'X'
 ```
 
 ## API
 
 ### pipe(input?, ...steps)
-- Returns a plain value if everything is sync
-- Returns a Promise if input or any step is async
-- Errors propagate naturally (sync throws; async rejects)
-
-Input can be:
-- a value
-- a Promise
-- an initial thunk (() => value | Promise)
-- omitted (first step receives `undefined`)
+- **Return shape**: sync returns a value; any async → Promise
+- **Errors**: sync errors throw; async errors reject
+- **Inputs**: value, Promise, thunk (() => value|Promise), or omit (first step gets `undefined`)
 
 ```ts
-// compose sync functions → returns string
+// compose sync functions → string
 const a = pipe('hi', (s) => s.trim(), (s) => s.toUpperCase());
 
-// compose with async → returns Promise<string>
+// mix in async → Promise<string>
 const b = pipe('hi', async (s) => s + '!', (s) => s + '?');
 
 // no initial value
@@ -65,9 +61,11 @@ const c = pipe((x?: number) => (x ?? 1) + 1, (n) => n * 10); // 20
 ```
 
 ### safePipe(inputOrOptions, optionsOrStep, ...steps)
-- Single, centralized error handler
-- Never throws; returns fallback (or undefined) on error
-- Still preserves sync/async result shape
+If you prefer not to throw or reject, `safePipe` centralizes error handling. You get an optional `onError` callback and a `fallback` value (or thunk). On error, the pipeline returns the fallback (or `undefined` if you didn’t provide one).
+
+- **Never throws**: errors are caught and routed to `onError`
+- **Return shape preserved**: still sync-if-sync, async-if-async
+- **Flexible start**: with a value/Promise/thunk or no initial value (options-first)
 
 ```ts
 // Sync-only path
@@ -84,22 +82,41 @@ const r3 = await safePipe('ok', { onError: console.warn, fallback: 'X' },
   async (s: string) => s + '!',
   (s: string) => s + '?'
 ); // 'ok!?'
+
+// 1) No initial value (options-first). First step receives undefined.
+const r4 = safePipe({ onError: console.warn, fallback: 0 },
+  (x?: number) => (x ?? 2) * 5,
+  (n) => n + 1
+); // 11
+
+// 2) No fallback provided. On error, returns undefined (never throws).
+const r5 = safePipe('ok', { onError: console.warn },
+  () => { throw new Error('boom'); },
+  (s: string) => s.toUpperCase()
+); // undefined
 ```
 
 ## Composing pipes
-You can pipe the output of one pipe/safePipe into another. Types preserve sync/async.
+You can feed the output of one pipe (value or Promise) into another. Types keep up with you.
 
 ```ts
 const p1 = pipe('hi', (s: string) => s.toUpperCase()); // string
-const p2 = pipe(p1, (s) => s + '!');                   // string → 'HI!'
+const p2 = pipe(p1, (s) => s + '!');                   // 'HI!'
 
 const p3 = pipe('hi', async s => s + '!');             // Promise<string>
 const p4 = pipe(p3, (s) => s + '?');                   // Promise<string>
 const fin = await p4;                                  // 'hi!?'
 ```
 
-## Why not wrap in Result?
-We optimize for ergonomics: sync returns a value, async returns a Promise. Error handling via `safePipe` is optional, small, and centralized when you want it.
+## Why would you want this?
+JavaScript Promises are great, but they aren’t free. Every async hop schedules work, allocates objects, and pushes errors across an async boundary. In hot paths, that overhead adds up.
+
+- **Zero extra overhead for sync work**: when your steps are synchronous, you get plain values—no microtasks, no `await`, no extra Promise allocations.
+- **Seamless async when you need it**: if any step is async, the pipeline naturally promotes to a Promise—no special handling required.
+- **Cleaner stacks**: sync-only flows keep straightforward stack traces and easier debugging.
+- **Simple error strategy**: prefer natural throw/reject with `pipe`, or centralize it once with `safePipe` without wrapping results.
+
+The result: familiar ergonomics, fast by default.
 
 ## License
 MIT

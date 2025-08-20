@@ -68,19 +68,26 @@ function resolveFallback<R>(fb: SafePipeOptions<R>['fallback']): R | undefined {
 
 function runAsyncSafe<R>(v: any, fns: AnyFn[], opts: SafePipeOptions<R>): Promise<R | undefined> {
   const { onError, fallback } = opts;
+  const callOnError = (e: unknown) => {
+    try {
+      onError?.(e);
+    } catch {
+      // Swallow errors from onError to keep guarantees: never throw
+    }
+  };
   return fns.reduce<Promise<any>>((p, fn) => p.then(val => {
     try {
       const out = fn(val);
       return isThenable(out) ? out : Promise.resolve(out);
     } catch (e) {
-      onError?.(e);
+      callOnError(e);
       return Promise.resolve(resolveFallback(fallback));
     }
   }).catch(e => {
-    onError?.(e);
+    callOnError(e);
     return Promise.resolve(resolveFallback(fallback));
   }), Promise.resolve(v)).catch(e => {
-    onError?.(e);
+    callOnError(e);
     return resolveFallback(fallback);
   });
 }
@@ -117,7 +124,7 @@ export function safePipe(...args: any[]): any {
   try {
     input = typeof input === 'function' ? (input as any)() : input;
   } catch (e) {
-    options?.onError?.(e);
+    try { options?.onError?.(e); } catch {}
     return resolveFallback(options?.fallback) as any;
   }
 
@@ -127,9 +134,13 @@ export function safePipe(...args: any[]): any {
       return runAsyncSafe(input, fns.slice(i), options) as any;
     }
     try {
-      input = fn(input);
+      const out = fn(input);
+      if (isThenable(out)) {
+        return runAsyncSafe(out, fns.slice(i + 1), options) as any;
+      }
+      input = out;
     } catch (e) {
-      options?.onError?.(e);
+      try { options?.onError?.(e); } catch {}
       return resolveFallback(options?.fallback) as any;
     }
   }
