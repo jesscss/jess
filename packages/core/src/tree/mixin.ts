@@ -9,6 +9,7 @@ import { Interpolated } from './interpolated';
 import type { Context } from '../context';
 import type { Declaration } from './declaration';
 import { type PrintOptions, getPrintOptions } from './util/print';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 
 export interface MixinValue<Name extends AnyRole = 'name'> {
   /**
@@ -127,17 +128,22 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     return w.getSince(mark);
   }
 
-  override async preEval(context: Context): Promise<this> {
-    if (!this.preEvaluated) {
-      let node = this.maybeClone(context);
-      node.preEvaluated = true;
-      let { name } = node.value;
-      if (name && name instanceof Interpolated) {
-        node.value.name = await name.eval(context);
+  override preEval(context: Context): MaybePromise<this> {
+    if (this.preEvaluated) return this;
+    let node = this.maybeClone(context);
+    node.preEvaluated = true;
+    let { name } = node.value;
+    if (name && name instanceof Interpolated) {
+      const maybeKey = (name as Interpolated<'name'>).evalToGeneric(context);
+      if (isThenable(maybeKey)) {
+        return (maybeKey as Promise<Any<'name'>>).then((key) => {
+          node.value.name = key;
+          return node;
+        });
       }
-      return node;
+      node.value.name = maybeKey as Any<'name'>;
     }
-    return this;
+    return node;
   }
 
   /** Since this is a mixin definition, it's not evaluated until it's called. */

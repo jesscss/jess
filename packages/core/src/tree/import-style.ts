@@ -4,6 +4,7 @@ import { type Rules, type RulesOptions, type RulesVisibility } from './rules';
 import { type Quoted } from './quoted';
 import { type Context } from '../context';
 import { isNode } from './util/is-node';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 
 /**
  * This class is for Jess / Sass+ / Less-style imports,
@@ -124,13 +125,60 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
    * @todo
    * How do extends work then?
    */
-  override async evalNode(context: Context): Promise<this> {
+  override evalNode(context: Context): MaybePromise<this> {
     let node = this.maybeClone(context);
     const { path, with: withValues } = node.value;
     const { options } = node;
     options.importOptions ??= {};
     const { type, importOptions } = options;
-    const finalPath = (await path.eval(context)).valueOf();
+    const maybePath = path.eval(context);
+    if (isThenable(maybePath)) {
+      return (maybePath as Promise<Quoted>).then(async (p) => {
+        const finalPath = p.valueOf();
+        let { node: rules, resolvedPath } = await context.getTree(finalPath, importOptions);
+        let evaldRules = context.evaldTrees.get(resolvedPath);
+        if (withValues) {
+          if (withValues.type === 'set' && evaldRules) {
+            throw new Error('Cannot configure a stylesheet more than once.');
+          }
+          let withRules = withValues.node.clone(true) as Rules;
+          withRules.value.unshift(rules);
+          rules = withRules;
+        }
+        if (!evaldRules || type === 'import') {
+          let preserveOriginalNodes = context.preserveOriginalNodes;
+          context.preserveOriginalNodes = true;
+          rules = await rules.eval(context);
+          context.preserveOriginalNodes = preserveOriginalNodes;
+          if (withValues?.type === 'set') {
+            context.evaldTrees.set(resolvedPath, rules);
+          }
+        } else {
+          rules = evaldRules;
+        }
+        let Ruleset: RulesVisibility = 'public';
+        let Declaration: RulesVisibility = 'public';
+        let Mixin: RulesVisibility = 'public';
+        if (importOptions.protected) {
+          Ruleset = 'private';
+        } else if (importOptions.reference) {
+          Ruleset = 'optional';
+        }
+        if (type === 'compose') {
+          importOptions.readonly ??= true;
+        } else {
+          importOptions.readonly ??= false;
+        }
+        node.options = {
+          ...options,
+          rulesVisibility: { Ruleset, Declaration, Mixin },
+          local: type === 'compose'
+        };
+        node.value.rules = rules;
+        return node;
+      });
+    }
+    const finalPath = (maybePath as Quoted).valueOf();
     /**
      * @todo - Add options
      *
@@ -141,71 +189,74 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
      * option. Since all vars are global per compilation, it should just
      * work.
      */
-    let { node: rules, resolvedPath } = await context.getTree(finalPath, importOptions);
-    let evaldRules = context.evaldTrees.get(resolvedPath);
-    if (withValues) {
-      if (withValues.type === 'set' && evaldRules) {
-        throw new Error('Cannot configure a stylesheet more than once.');
+    // sync path eval still requires async getTree, so return a promise from here
+    return (async () => {
+      let { node: rules, resolvedPath } = await context.getTree(finalPath, importOptions);
+      let evaldRules = context.evaldTrees.get(resolvedPath);
+      if (withValues) {
+        if (withValues.type === 'set' && evaldRules) {
+          throw new Error('Cannot configure a stylesheet more than once.');
+        }
+
+        /** @todo - Throw errors for undefined vars */
+        let withRules = withValues.node.clone(true) as Rules;
+        withRules.value.unshift(rules);
+
+        rules = withRules;
       }
 
-      /** @todo - Throw errors for undefined vars */
-      let withRules = withValues.node.clone(true) as Rules;
-      withRules.value.unshift(rules);
-
-      rules = withRules;
-    }
-
-    /**
-     * `@-import` stylesheets can read their parent scope,
-     * so we always need to re-evaluate them.
-     */
-    if (!evaldRules || type === 'import') {
       /**
-       * We need to preserve original nodes because we might
-       * import multiple times with a `with` value.
+       * `@-import` stylesheets can read their parent scope,
+       * so we always need to re-evaluate them.
        */
-      let preserveOriginalNodes = context.preserveOriginalNodes;
-      context.preserveOriginalNodes = true;
-      rules = await rules.eval(context);
-      context.preserveOriginalNodes = preserveOriginalNodes;
+      if (!evaldRules || type === 'import') {
+        /**
+         * We need to preserve original nodes because we might
+         * import multiple times with a `with` value.
+         */
+        let preserveOriginalNodes = context.preserveOriginalNodes;
+        context.preserveOriginalNodes = true;
+        rules = await rules.eval(context);
+        context.preserveOriginalNodes = preserveOriginalNodes;
 
-      if (withValues?.type === 'set') {
-        context.evaldTrees.set(resolvedPath, rules);
+        if (withValues?.type === 'set') {
+          context.evaldTrees.set(resolvedPath, rules);
+        }
+      } else {
+        /** Attach the already-evaluated rules to the import node */
+        rules = evaldRules;
       }
-    } else {
-      /** Attach the already-evaluated rules to the import node */
-      rules = evaldRules;
-    }
 
-    /** Set visibility according to import type */
-    let Ruleset: RulesVisibility = 'public';
-    let Declaration: RulesVisibility = 'public';
-    let Mixin: RulesVisibility = 'public';
+      /** Set visibility according to import type */
+      let Ruleset: RulesVisibility = 'public';
+      let Declaration: RulesVisibility = 'public';
+      let Mixin: RulesVisibility = 'public';
 
-    if (importOptions.protected) {
-      Ruleset = 'private';
-    } else if (importOptions.reference) {
-      Ruleset = 'optional';
-    }
+      if (importOptions.protected) {
+        Ruleset = 'private';
+      } else if (importOptions.reference) {
+        Ruleset = 'optional';
+      }
 
-    if (type === 'compose') {
-      importOptions.readonly ??= true;
-    } else {
-      importOptions.readonly ??= false;
-    }
+      if (type === 'compose') {
+        importOptions.readonly ??= true;
+      } else {
+        importOptions.readonly ??= false;
+      }
 
-    node.options = {
-      ...options,
-      rulesVisibility: {
-        Ruleset,
-        Declaration,
-        Mixin
-      },
-      local: type === 'compose'
-    };
+      node.options = {
+        ...options,
+        rulesVisibility: {
+          Ruleset,
+          Declaration,
+          Mixin
+        },
+        local: type === 'compose'
+      };
 
-    node.value.rules = rules;
-    return node;
+      node.value.rules = rules;
+      return node;
+    })();
   }
 }
 

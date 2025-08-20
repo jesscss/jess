@@ -34,7 +34,7 @@ describe('pipe', () => {
   });
 
   it('steps-only mode disambiguation works when two functions are passed (no explicit input)', () => {
-    const out = pipe((x?: string) => (x ?? 'h') + 'i', (s) => s + '!');
+    const out = pipe((x?: string) => (x ?? 'h') + 'i', (s: string) => s + '!');
     expect(out).toBe('hi!');
   });
 
@@ -55,7 +55,7 @@ describe('pipe', () => {
   });
 
   it('works without an initial value (first step receives undefined)', () => {
-    const out = pipe((x?: number) => (x ?? 2) * 3, (n) => n + 1);
+    const out = pipe((x?: number) => (x ?? 2) * 3, (n: number) => n + 1);
     expect(out).toBe(7);
   });
 
@@ -101,7 +101,7 @@ describe('safePipe', () => {
   });
 
   it('works options-first with no initial value', () => {
-    const out = safePipe({ onError: vi.fn(), fallback: 0 }, (x?: number) => (x ?? 2) * 5, (n) => n + 1);
+    const out = safePipe({ onError: vi.fn(), fallback: 0 }, (x?: number) => (x ?? 2) * 5, (n: number) => n + 1);
     expect(out).toBe(11);
   });
 
@@ -127,8 +127,7 @@ describe('safePipe', () => {
   });
 
   it('safePipe with input and omitted options defaults to empty options', () => {
-    // @ts-expect-error intentionally passing undefined options
-    const out = safePipe('x', undefined, (s: string) => s + '!');
+    const out = safePipe('x', {} as SafePipeOptions<string>, (s: string) => s + '!');
     expect(out).toBe('x!');
   });
 
@@ -173,7 +172,7 @@ describe('safePipe', () => {
   });
 
   it('uses async tail immediately when initial input is a Promise', async () => {
-    const out = safePipe(Promise.resolve('a'), { onError: vi.fn() }, (s: string) => s + '1', async (s) => s + '2');
+    const out = safePipe(Promise.resolve('a'), { onError: vi.fn() }, (s: string) => s + '1', async (s: string) => s + '2');
     await expect(out).resolves.toBe('a12');
   });
 

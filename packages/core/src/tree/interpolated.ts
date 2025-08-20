@@ -5,7 +5,9 @@ import { isNode } from './util/is-node';
 import { BasicSelector } from './selector-basic';
 import { SelectorList } from './selector-list';
 import { SimpleSelector } from './selector-simple';
+import type { Selector } from './selector';
 import { type PrintOptions, getPrintOptions } from './util/print';
+import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 
 export type InterpolatedValue = {
   /** String with {} placeholders */
@@ -19,7 +21,7 @@ export type InterpolatedValue = {
 export interface Interpolated<
   Role extends AnyRole = AnyRole
 > extends SimpleSelector<InterpolatedValue, AnyOptions<Role>> {
-  eval(context: Context): Promise<Interpolated<Role>>;
+  eval(context: Context): MaybePromise<Interpolated<Role>>;
 }
 /**
  * An interpolated value is one that contains
@@ -95,16 +97,57 @@ export class Interpolated<
     return any;
   }
 
+  /** Convenience: evaluate replacements then convert to Any<Role> */
+  evalToGeneric(context: Context): MaybePromise<Any<Role>> {
+    const out = this.eval(context);
+    if (isThenable(out)) {
+      return (out as Promise<Interpolated<Role>>).then(node => node.createGeneric() as Any<Role>);
+    }
+    return (out as Interpolated<Role>).createGeneric() as Any<Role>;
+  }
+
+  /** Convenience: evaluate replacements then convert to Selector (BasicSelector or SelectorList) */
+  evalToSelector(context: Context): MaybePromise<Selector> {
+    const out = this.eval(context);
+    if (isThenable(out)) {
+      return (out as Promise<Interpolated<Role>>).then(node => node.createSelector());
+    }
+    return (out as Interpolated<Role>).createSelector();
+  }
+
   /**
    * Just evaluate replacements and return. We don't stringify yet,
    * because depending on the context, it will turn into different
    * node types.
    */
-  override async evalNode(context: Context) {
+  override evalNode(context: Context): MaybePromise<this> {
     let node = this.maybeClone(context);
     let { replacements } = node.value;
-    node.value.replacements = await Promise.all(replacements.map(async (n: Node) => await n.eval(context)));
-    return node;
+
+    const steps: Array<(arr: Node[]) => MaybePromise<Node[]>> = [];
+    for (const n of replacements) {
+      steps.push((arr: Node[]) => {
+        const out = n.eval(context);
+        if (isThenable(out)) {
+          return (out as Promise<Node>).then((v) => {
+            arr.push(v);
+            return arr;
+          });
+        }
+        arr.push(out as Node);
+        return arr;
+      });
+    }
+
+    const result = pipe([] as Node[], ...steps);
+    if (isThenable(result)) {
+      return (result as Promise<Node[]>).then((arr) => {
+        node.value.replacements = arr;
+        return node as this;
+      });
+    }
+    node.value.replacements = result as Node[];
+    return node as this;
   }
 }
 

@@ -2,6 +2,7 @@ import type { Context } from '../context';
 import { Node, defineType } from './node';
 import { Selector } from './selector';
 import { type PrintOptions, getPrintOptions } from './util/print';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 
 export type ExpressionOptions = {
   parens?: boolean;
@@ -17,6 +18,10 @@ export type ExpressionOptions = {
  * @note This extends Selector just because it can be
  * in the selector position (initially).
  */
+export interface Expression extends Selector<Node, ExpressionOptions> {
+  eval(context: Context): MaybePromise<Node>;
+}
+
 export class Expression extends Selector<Node, ExpressionOptions> {
   type = 'Expression' as const;
   shortType = 'expr' as const;
@@ -25,10 +30,11 @@ export class Expression extends Selector<Node, ExpressionOptions> {
     return new Set();
   }
 
-  override async evalNode(context: Context) {
-    let { value } = this;
-    let evald = await value.eval(context);
-    return evald;
+  override evalNode(context: Context): MaybePromise<Node> {
+    const { value } = this;
+    const out = value.eval(context);
+    if (isThenable(out)) return out as Promise<Node>;
+    return out as Node;
   }
 
   override toTrimmedString(options?: PrintOptions): string {

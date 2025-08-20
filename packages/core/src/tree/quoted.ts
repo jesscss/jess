@@ -3,6 +3,7 @@ import { Any } from './any';
 import { Node, defineType } from './node';
 import type { Context } from '../context';
 import { type PrintOptions, getPrintOptions } from './util/print';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 
 export type QuotedOptions = {
   quote?: '"' | '\'';
@@ -39,20 +40,28 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return value instanceof Node ? value.valueOf() : value;
   }
 
-  override async evalNode(context: Context): Promise<Quoted | Any | Interpolated> {
+  override evalNode(context: Context): MaybePromise<Quoted | Any | Interpolated> {
     let { value } = this;
-    if (value instanceof Node) {
-      value = (await value.eval(context));
-    }
-    if (this.options.escaped) {
-      if (value instanceof Node) {
-        return value;
+    const cont = (v: string | Any | Interpolated | Node): Quoted | Any | Interpolated => {
+      value = v as any;
+      if (this.options.escaped) {
+        if (value instanceof Node) {
+          return value as Node as Quoted | Any | Interpolated;
+        }
+        return new Any(value as string);
       }
-      return new Any(value);
+      let quoted = this.maybeClone(context);
+      quoted.value = value as any;
+      return quoted;
+    };
+    if (value instanceof Node) {
+      const out = value.eval(context);
+      if (isThenable(out)) {
+        return (out as Promise<Node | Any | Interpolated>).then(cont);
+      }
+      return cont(out as Node | Any | Interpolated);
     }
-    let quoted = this.maybeClone(context);
-    quoted.value = value;
-    return quoted;
+    return cont(value);
   }
 }
 export const quoted = defineType(Quoted, 'Quoted');

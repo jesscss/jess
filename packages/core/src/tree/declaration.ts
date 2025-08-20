@@ -13,6 +13,7 @@ import { List } from './list';
 import { spaced } from './sequence';
 import { Operation } from './operation';
 import { type PrintOptions, getPrintOptions } from './util/print';
+import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 
 export const enum AssignmentType {
   Default = ':',
@@ -119,19 +120,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return this.declTrimmedString(options);
   }
 
-  override async preEval(context: Context): Promise<this> {
-    if (!this.preEvaluated) {
-      /** We need to clone declarations, because we alter their options */
-      let node = this.clone();
-      node.preEvaluated = true;
-      let { name, value } = node.value;
-      let key: Any<'property'>;
-      if (name instanceof Interpolated) {
-        key = (await name.eval(context)).createGeneric() as Any<'property'>;
-        node.value.name = key;
-      } else {
-        key = name;
-      }
+  override preEval(context: Context): MaybePromise<this> {
+    if (this.preEvaluated) return this;
+    /** We need to clone declarations, because we alter their options */
+    let node = this.clone();
+    node.preEvaluated = true;
+    let { name, value } = node.value;
+    const applyAssignmentNormalization = (key: Any<'property'>) => {
       /** Normalize assignment types */
       let assign = node.options?.assign;
       if (assign) {
@@ -159,7 +154,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             value = assign === AssignmentType.MergeList
               ? new List([ref, value])
               : spaced([ref, value]);
-
             node.value.value = value;
             break;
           }
@@ -184,31 +178,61 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         node.options.assign = AssignmentType.Default;
       }
       return node;
+    };
+
+    if (name instanceof Interpolated) {
+      const maybeKey = (name as Interpolated<'property'>).evalToGeneric(context);
+      if (isThenable(maybeKey)) {
+        return (maybeKey as Promise<Any<'property'>>).then((key) => {
+          node.value.name = key;
+          return applyAssignmentNormalization(key);
+        });
+      }
+      const key = maybeKey as Any<'property'>;
+      node.value.name = key;
+      return applyAssignmentNormalization(key);
     }
-    return this;
+    return applyAssignmentNormalization(name);
   }
 
-  override async evalNode(context: Context) {
-    let node = await this.preEval(context);
-    let { name, value } = node.value;
-    /**
-     * Name may be a variable or a sequence containing a variable
-     *
-     * @todo - is this valid if rulesets pre-emptively evaluate names?
-     */
-    if (name instanceof Interpolated) {
-      node.value.name = (await name.eval(context)).createGeneric() as Any<'property'>;
-    }
-    /** Evaluate the value */
-    if (value instanceof Node) {
-      let newValue = await value.eval(context);
-      if (newValue instanceof Nil) {
-        return newValue.inherit(node);
-      } else {
-        node.value.value = newValue;
+  override evalNode(context: Context): MaybePromise<this | Nil> {
+    return pipe(
+      () => this.preEval(context),
+      (node) => {
+        const { name } = node.value;
+        if (name instanceof Interpolated) {
+          const maybeKey = (name as Interpolated<'property'>).evalToGeneric(context);
+          if (isThenable(maybeKey)) {
+            return (maybeKey as Promise<Any<'property'>>).then((key) => {
+              node.value.name = key;
+              return node;
+            });
+          }
+          node.value.name = maybeKey as Any<'property'>;
+        }
+        return node;
+      },
+      (node) => {
+        const { value } = node.value;
+        if (value instanceof Node) {
+          const maybeNewValue = value.eval(context);
+          if (isThenable(maybeNewValue)) {
+            return (maybeNewValue as Promise<Node>).then((newValue) => {
+              if (newValue instanceof Nil) {
+                return newValue.inherit(node);
+              }
+              node.value.value = newValue;
+              return node;
+            });
+          }
+          if (value instanceof Nil) {
+            return (value as Nil).inherit(node);
+          }
+          node.value.value = value as Node;
+        }
+        return node;
       }
-    }
-    return node;
+    );
   }
 
   /** @todo - move to visitors */

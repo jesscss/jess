@@ -4,6 +4,7 @@ import { Expression } from './expression';
 import { Operation } from './operation';
 import { Node, defineType } from './node';
 import { Dimension } from './dimension';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print';
 // import type { Context } from '../context'
 // import type { OutputCollector } from '../output'
@@ -41,13 +42,15 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     return w.getSince(mark);
   }
 
-  override async evalNode(context: Context): Promise<Node> {
+  override evalNode(context: Context): MaybePromise<Node> {
     let { value } = this;
     if (value) {
       let isOp = isOpOrExpression(value);
       context.parenFrames.push(true);
-      value = await value.eval(context);
-      context.parenFrames.pop();
+      const maybeEvald = value.eval(context);
+      const after = (v: Node): Node => {
+        value = v;
+        context.parenFrames.pop();
       /**
        * Removing nested parens or parens around a single
        * dimension is a bit presumptuous, but I think Less's
@@ -64,6 +67,14 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       if (isOp && !isOpOrExpression(value)) {
         return value;
       }
+      let node = this.maybeClone(context);
+      node.value = value;
+      return node;
+      };
+      if (isThenable(maybeEvald)) {
+        return (maybeEvald as Promise<Node>).then(after);
+      }
+      return after(maybeEvald as Node);
     }
     let node = this.maybeClone(context);
     node.value = value;

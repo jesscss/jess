@@ -3,6 +3,10 @@ import { Node, defineType } from './node';
 import { Bool } from './bool';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
+export interface DefaultGuard extends Node<string> {
+  eval(context: Context): Bool;
+}
+
 export class DefaultGuard extends Node<string> {
   type = 'DefaultGuard' as const;
   shortType = 'defaultguard' as const;
@@ -15,8 +19,8 @@ export class DefaultGuard extends Node<string> {
     return w.getSince(mark);
   }
 
-  override async evalNode(context: Context): Promise<Bool> {
-    return new Bool(Boolean(context.isDefault)).inherit(this);
+  override evalNode(context: Context): Bool {
+    return new Bool(Boolean(context.isDefault));
   }
 }
 export const defaultguard = defineType(DefaultGuard, 'DefaultGuard');

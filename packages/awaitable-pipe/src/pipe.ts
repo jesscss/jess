@@ -1,9 +1,27 @@
 type AnyFn = (a: any) => any;
 
 type Unwrap<T> = T extends Promise<infer U> ? U : T;
-type Apply<In, F> = F extends (a: Unwrap<In>) => infer R
-  ? In extends Promise<any> ? Promise<R> : R
-  : never;
+type ArgOf<F> = F extends (a: infer A) => any ? A : never;
+type RetOf<F> = F extends (a: any) => infer R ? R : never;
+type Apply<In, F> = Unwrap<In> extends ArgOf<F>
+  ? (In extends Promise<any>
+      ? (RetOf<F> extends Promise<any> ? Promise<Awaited<RetOf<F>>> : Promise<RetOf<F>>)
+      : RetOf<F>)
+  : unknown;
+
+type ValidChain<In, Fns extends readonly AnyFn[]> =
+  Fns extends []
+    ? Fns
+    : Fns extends [infer F, ...infer Rest]
+      ? F extends AnyFn
+        ? (Unwrap<In> extends ArgOf<F>
+            ? [F, ...ValidChain<Apply<In, F>, Extract<Rest, readonly AnyFn[]>>]
+            : never)
+        : never
+      : never;
+// Note: we intentionally do not hard-enforce chain validity at the type level to avoid
+// over-constraining overload resolution across diverse call-forms. We still propagate
+// types step-to-step via Apply.
 type PipeResult<In, Fns extends any[], Acc = In> =
   Fns extends [infer F, ...infer Rest]
     ? PipeResult<Apply<Acc, F>, Rest>
@@ -19,13 +37,77 @@ function runAsync(v: any, fns: AnyFn[]): Promise<any> {
 }
 
 // Overloads preserve sync/async result shape
-export function pipe<T, Fns extends AnyFn[]>(
+// Steps-only convenience overloads to provide strong contextual typing
+export function pipe<A, R1>(
+  fn1: () => A,
+  fn2: (a: A) => R1
+): R1;
+export function pipe<A, R1>(
+  fn1: (a?: A) => R1
+): R1;
+export function pipe<A, R1, R2>(
+  fn1: () => A,
+  fn2: (a: A) => R1,
+  fn3: (b: Unwrap<R1>) => R2
+): R2;
+export function pipe<A, R1, R2, R3>(
+  fn1: () => A,
+  fn2: (a: A) => R1,
+  fn3: (b: Unwrap<R1>) => R2,
+  fn4: (c: Unwrap<R2>) => R3
+): R3;
+export function pipe<A, R1, R2, R3, R4>(
+  fn1: () => A,
+  fn2: (a: A) => R1,
+  fn3: (b: Unwrap<R1>) => R2,
+  fn4: (c: Unwrap<R2>) => R3,
+  fn5: (d: Unwrap<R3>) => R4
+): R4;
+export function pipe<A, R1, R2, R3, R4, R5>(
+  fn1: () => A,
+  fn2: (a: A) => R1,
+  fn3: (b: Unwrap<R1>) => R2,
+  fn4: (c: Unwrap<R2>) => R3,
+  fn5: (d: Unwrap<R3>) => R4,
+  fn6: (e: Unwrap<R4>) => R5
+): R5;
+// Input + 1..6 step overloads for contextual typing
+export function pipe<T, R1>(
   input: T | Promise<T> | (() => T) | (() => Promise<T>),
-  ...fns: Fns
-): PipeResult<T, Fns>;
-export function pipe<Fns extends AnyFn[]>(
-  ...fns: Fns
-): PipeResult<undefined, Fns>;
+  fn1: (a: Unwrap<T>) => R1
+): PipeResult<T, [(a: Unwrap<T>) => R1]>;
+export function pipe<T, R1, R2>(
+  input: T | Promise<T> | (() => T) | (() => Promise<T>),
+  fn1: (a: Unwrap<T>) => R1,
+  fn2: (b: Unwrap<R1>) => R2
+): PipeResult<T, [(a: Unwrap<T>) => R1, (b: Unwrap<R1>) => R2]>;
+export function pipe<T, R1, R2, R3>(
+  input: T | Promise<T> | (() => T) | (() => Promise<T>),
+  fn1: (a: Unwrap<T>) => R1,
+  fn2: (b: Unwrap<R1>) => R2,
+  fn3: (c: Unwrap<R2>) => R3
+): PipeResult<T, [(a: Unwrap<T>) => R1, (b: Unwrap<R1>) => R2, (c: Unwrap<R2>) => R3]>;
+export function pipe<T, R1, R2, R3, R4>(
+  input: T | Promise<T> | (() => T) | (() => Promise<T>),
+  fn1: (a: Unwrap<T>) => R1,
+  fn2: (b: Unwrap<R1>) => R2,
+  fn3: (c: Unwrap<R2>) => R3,
+  fn4: (d: Unwrap<R3>) => R4
+): PipeResult<T, [(a: Unwrap<T>) => R1, (b: Unwrap<R1>) => R2, (c: Unwrap<R2>) => R3, (d: Unwrap<R3>) => R4]>;
+export function pipe<T, R1, R2, R3, R4, R5>(
+  input: T | Promise<T> | (() => T) | (() => Promise<T>),
+  fn1: (a: Unwrap<T>) => R1,
+  fn2: (b: Unwrap<R1>) => R2,
+  fn3: (c: Unwrap<R2>) => R3,
+  fn4: (d: Unwrap<R3>) => R4,
+  fn5: (e: Unwrap<R4>) => R5
+): PipeResult<T, [(a: Unwrap<T>) => R1, (b: Unwrap<R1>) => R2, (c: Unwrap<R2>) => R3, (d: Unwrap<R3>) => R4, (e: Unwrap<R4>) => R5]>;
+// Generic accumulator overload: supports arbitrary-length pipelines when the accumulator type is stable
+export function pipe<A>(
+  input: A | Promise<A> | (() => A) | (() => Promise<A>),
+  ...fns: Array<(a: A) => A | Promise<A>>
+): A | Promise<A>;
+// Note: Intentionally omitting generic varargs overloads to improve contextual typing
 export function pipe(...args: any[]): any {
   let input: any;
   let fns: AnyFn[];
@@ -65,6 +147,12 @@ export type SafePipeOptions<R = unknown> = {
   fallback?: R | (() => R);
 };
 
+type RequireAtLeastOne<T, Keys extends keyof T = keyof T> =
+  Pick<T, Exclude<keyof T, Keys>> & {
+    [K in Keys]-?: Required<Pick<T, K>> & Partial<Pick<T, Exclude<Keys, K>>>
+  }[Keys];
+type NonEmptyOptions<R> = RequireAtLeastOne<SafePipeOptions<R>, 'onError' | 'fallback'>;
+
 function resolveFallback<R>(fb: SafePipeOptions<R>['fallback']): R | undefined {
   return typeof fb === 'function' ? (fb as () => R)() : fb;
 }
@@ -96,15 +184,73 @@ function runAsyncSafe<R>(v: any, fns: AnyFn[], opts: SafePipeOptions<R>): Promis
 }
 
 // Overloads for safePipe
-export function safePipe<T, Fns extends AnyFn[], R = PipeResult<T, Fns>>(
+// Input + vararg fixed-arity overloads defined below
+// SafePipe input + 1..6 step overloads for contextual typing
+export function safePipe<T, R1, R = R1>(
   input: T | Promise<T> | (() => T) | (() => Promise<T>),
   options: SafePipeOptions<R>,
-  ...fns: Fns
-): PipeResult<T, Fns> extends Promise<any> ? Promise<R | undefined> : R | undefined;
-export function safePipe<Fns extends AnyFn[], R = PipeResult<undefined, Fns>>(
+  fn1: (a: Unwrap<T>) => R1
+): PipeResult<T, [(a: Unwrap<T>) => R1]> extends Promise<any> ? Promise<R | undefined> : R | undefined;
+export function safePipe<T, R1, R2, R = R2>(
+  input: T | Promise<T> | (() => T) | (() => Promise<T>),
   options: SafePipeOptions<R>,
-  ...fns: Fns
-): PipeResult<undefined, Fns> extends Promise<any> ? Promise<R | undefined> : R | undefined;
+  fn1: (a: Unwrap<T>) => R1,
+  fn2: (b: Unwrap<R1>) => R2
+): PipeResult<T, [(a: Unwrap<T>) => R1, (b: Unwrap<R1>) => R2]> extends Promise<any> ? Promise<R | undefined> : R | undefined;
+export function safePipe<T, R1, R2, R3, R = R3>(
+  input: T | Promise<T> | (() => T) | (() => Promise<T>),
+  options: SafePipeOptions<R>,
+  fn1: (a: Unwrap<T>) => R1,
+  fn2: (b: Unwrap<R1>) => R2,
+  fn3: (c: Unwrap<R2>) => R3
+): PipeResult<T, [(a: Unwrap<T>) => R1, (b: Unwrap<R1>) => R2, (c: Unwrap<R2>) => R3]> extends Promise<any> ? Promise<R | undefined> : R | undefined;
+// SafePipe steps-only (no input, no options) with strong contextual typing
+export function safePipe<A, R1>(
+  fn1: () => A,
+  fn2: (a: A) => R1
+): R1 | undefined;
+export function safePipe<A, R1, R2>(
+  fn1: () => A,
+  fn2: (a: A) => R1,
+  fn3: (b: Unwrap<R1>) => R2
+): R2 | undefined;
+export function safePipe<A, R1, R2, R3>(
+  fn1: () => A,
+  fn2: (a: A) => R1,
+  fn3: (b: Unwrap<R1>) => R2,
+  fn4: (c: Unwrap<R2>) => R3
+): R3 | undefined;
+export function safePipe<A, R1, R2, R3, R4>(
+  fn1: () => A,
+  fn2: (a: A) => R1,
+  fn3: (b: Unwrap<R1>) => R2,
+  fn4: (c: Unwrap<R2>) => R3,
+  fn5: (d: Unwrap<R3>) => R4
+): R4 | undefined;
+export function safePipe<A, R1, R2, R3, R4, R5>(
+  fn1: () => A,
+  fn2: (a: A) => R1,
+  fn3: (b: Unwrap<R1>) => R2,
+  fn4: (c: Unwrap<R2>) => R3,
+  fn5: (d: Unwrap<R3>) => R4,
+  fn6: (e: Unwrap<R4>) => R5
+): R5 | undefined;
+// SafePipe options-first with strong contextual typing
+export function safePipe<A, R1>(
+  options: NonEmptyOptions<R1>,
+  fn1: (a?: A) => R1
+): R1 | undefined;
+export function safePipe<A, R1, R2>(
+  options: NonEmptyOptions<R2>,
+  fn1: (a?: A) => R1,
+  fn2: (b: Unwrap<R1>) => R2
+): R2 | undefined;
+export function safePipe<A, R1, R2, R3>(
+  options: NonEmptyOptions<R3>,
+  fn1: (a?: A) => R1,
+  fn2: (b: Unwrap<R1>) => R2,
+  fn3: (c: Unwrap<R2>) => R3
+): R3 | undefined;
 export function safePipe(...args: any[]): any {
   let input: any;
   let options: SafePipeOptions<any>;

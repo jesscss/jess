@@ -4,6 +4,7 @@ import { defineType } from './node';
 import { Rules } from './rules';
 import type { Node } from './node';
 import { Mixin } from './mixin';
+import { type MaybePromise, isThenable, pipe, tryStep } from '@jesscss/awaitable-pipe';
 
 /**
  * Functions are mixins with a return value,
@@ -14,23 +15,28 @@ import { Mixin } from './mixin';
  *
  * Used by Jess / Sass
  */
+export interface Func extends Mixin {
+  eval(context: Context): MaybePromise<Node>;
+}
+
 export class Func extends Mixin {
   override type = 'Func' as const;
   override shortType = 'fn' as const;
 
   /** @todo - We need to evaluate this like mixins, but with a return value */
-  override async evalNode(context: Context): Promise<Node> {
-    let result = await super.evalNode(context);
-    if (result instanceof Rules) {
-      /** Find the first valid return from the top */
-      const decl = result.find('declaration', 'return', 'Declaration', {
-        searchParents: false
-      });
-      if (!decl) {
-        throw new Error(`Function ${this.value.name} must return a value`);
-      }
-    }
-    return result;
+  override evalNode(context: Context): MaybePromise<Node> {
+    return pipe(
+      () => super.evalNode(context),
+      tryStep((result: Node) => {
+        if (result instanceof Rules) {
+          const decl = result.find('declaration', 'return', 'Declaration', { searchParents: false });
+          if (!decl) {
+            throw new Error(`Function ${this.value.name} must return a value`);
+          }
+        }
+        return result;
+      }, { rethrow: true })
+    );
   }
 }
 

@@ -2,6 +2,7 @@ import { Declaration } from './declaration';
 import { defineType } from './node';
 import type { Context } from '../context';
 import type { Nil } from './nil';
+import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 // import type { OutputCollector } from '../output'
 
 /**
@@ -14,11 +15,15 @@ import type { Nil } from './nil';
  * @todo - is this used?
  */
 export class CustomDeclaration extends Declaration {
-  override async evalNode(context: Context): Promise<this | Nil> {
+  override evalNode(context: Context): MaybePromise<this | Nil> {
     context.inCustom = true;
-    let node = await super.evalNode(context);
-    context.inCustom = false;
-    return node;
+    return pipe(
+      () => super.evalNode(context),
+      (node) => {
+        context.inCustom = false;
+        return node as this | Nil;
+      }
+    );
   }
 
   /** @todo move to visitors */

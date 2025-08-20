@@ -28,6 +28,10 @@ type AngleUnit = 'rad' | 'deg' | 'grad' | 'turn';
 type ConversionUnit = LengthUnit | DurationUnit | AngleUnit;
 type UnitMapEntries = Array<[ConversionUnit, ConversionGroup]>;
 
+export interface Dimension extends Node<DimensionValue> {
+  eval(context: Context): Dimension;
+}
+
 /**
  * A number or dimension
  */

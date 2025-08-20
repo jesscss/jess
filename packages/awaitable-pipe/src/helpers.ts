@@ -7,6 +7,16 @@ export type StepErrorOptions<TIn, R> = {
   rethrow?: boolean;
 };
 
+// Overload: when rethrow is true, output excludes undefined
+export function tryStep<TIn, R>(
+  fn: (input: TIn) => MaybePromise<R>,
+  options: StepErrorOptions<TIn, R> & { rethrow: true }
+): (input: TIn) => MaybePromise<R>;
+// Default overload: may return undefined on error
+export function tryStep<TIn, R>(
+  fn: (input: TIn) => MaybePromise<R>,
+  options?: StepErrorOptions<TIn, R | undefined>
+): (input: TIn) => MaybePromise<R | undefined>;
 export function tryStep<TIn, R>(
   fn: (input: TIn) => MaybePromise<R>,
   options: StepErrorOptions<TIn, R | undefined> = {}

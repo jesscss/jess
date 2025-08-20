@@ -1,6 +1,7 @@
 import { Node, defineType } from './node';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import type { Extend } from './extend';
+import type { Context } from '../context';
 
 /**
  * An extend statement list with no rules
@@ -8,6 +9,10 @@ import type { Extend } from './extend';
  * e.g.
  *  .a:extend(.b), .c:extend(.d);
  */
+export interface ExtendList extends Node<Extend[]> {
+  eval(context: Context): ExtendList;
+}
+
 export class ExtendList extends Node<Extend[]> {
   type = 'ExtendList' as const;
   shortType = 'extendlist' as const;
