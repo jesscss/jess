@@ -4,20 +4,20 @@ import { pipe, safePipe, tryStep, guard, isThenable, isPromise } from '../src';
 describe('tryStep', () => {
   it('captures sync throw and returns fallback', () => {
     const step = tryStep(() => { throw new Error('boom'); }, { fallback: 'X' });
-    const out = pipe('ok', step);
+    const out = pipe(() => 'ok', step);
     expect(out).toBe('X');
   });
 
   it('captures async reject and returns fallback', async () => {
     const step = tryStep(async () => { throw new Error('bad'); }, { fallback: 'Y' });
-    const out = pipe('a', step);
+    const out = pipe(() => 'a', step);
     await expect(out).resolves.toBe('Y');
   });
 
   it('captures async reject, calls onError, returns fallback', async () => {
     const onError = vi.fn();
     const step = tryStep(async () => { throw new Error('oops'); }, { onError, fallback: 'Z' });
-    const out = pipe('inp', step);
+    const out = pipe(() => 'inp', step);
     await expect(out).resolves.toBe('Z');
     expect(onError).toHaveBeenCalledWith(expect.any(Error), 'inp');
   });
@@ -25,7 +25,7 @@ describe('tryStep', () => {
   it('captures async reject, onError throws (swallowed), returns fallback', async () => {
     const onError = vi.fn(() => { throw new Error('handler-fail'); });
     const step = tryStep(async () => { throw new Error('boom'); }, { onError, fallback: 'ZZ' });
-    const out = pipe('v', step);
+    const out = pipe(() => 'v', step);
     await expect(out).resolves.toBe('ZZ');
     expect(onError).toHaveBeenCalledWith(expect.any(Error), 'v');
   });
@@ -40,7 +40,7 @@ describe('tryStep', () => {
 
   it('rethrows when configured', () => {
     const step = tryStep(() => { throw new Error('boom'); }, { rethrow: true });
-    expect(() => pipe('ok', step as any)).toThrowError('boom');
+    expect(() => pipe(() => 'ok', step as any)).toThrowError('boom');
   });
 
   it('rethrows when configured (async)', async () => {
@@ -49,12 +49,20 @@ describe('tryStep', () => {
     await expect(out).rejects.toThrowError('A');
   });
 
+  it('covers runAsyncSafe path through thenable out and catch', async () => {
+    const onError = vi.fn();
+    const step = tryStep(() => ({ then: () => { throw new Error('T'); } } as any), { onError, fallback: 'F' });
+    const out = safePipe({ onError, fallback: 'F' }, () => Promise.resolve('x'), step as any);
+    await expect(out).resolves.toBe('F');
+    expect(onError).toHaveBeenCalled();
+  });
+
   it('passes through value without error (sync and async)', async () => {
     const syncStep = tryStep((n: number) => n * 2);
     expect(pipe(2, syncStep)).toBe(4);
 
     const asyncStep = tryStep(async (s: string) => s + '!');
-    const out = pipe('hi', asyncStep);
+    const out = pipe(() => 'hi', asyncStep);
     await expect(out).resolves.toBe('hi!');
   });
 
@@ -67,7 +75,7 @@ describe('tryStep', () => {
 
     const fbAsync = vi.fn((e: unknown, s: string) => `fb:${String((e as Error).message)}:${s}`);
     const stepAsync = tryStep(async () => { throw new Error('bad'); }, { fallback: fbAsync });
-    const outAsync = pipe('z', stepAsync);
+    const outAsync = pipe(() => 'z', stepAsync);
     await expect(outAsync).resolves.toBe('fb:bad:z');
     expect(fbAsync).toHaveBeenCalledWith(expect.any(Error), 'z');
   });
@@ -97,10 +105,10 @@ describe('guard', () => {
 
   it('supports async predicate', async () => {
     const step = guard(async (s: string) => s.length > 1, (s) => new Error(`short:${s}`));
-    const ok = pipe('hi', step);
+    const ok = pipe(() => 'hi', step);
     await expect(ok).resolves.toBe('hi');
 
-    const bad = pipe('x', step);
+    const bad = pipe(() => 'x', step);
     await expect(bad).rejects.toThrowError('short:x');
   });
 

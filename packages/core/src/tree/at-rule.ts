@@ -53,38 +53,35 @@ export class AtRule extends Node<AtRuleValue> {
     let node = this as AtRule;
     return pipe(
       () => super.evalNode(context),
-      (evaldNode: AtRule) => {
-        node = evaldNode;
-        let rules = node.value.rules;
-        /** Don't let rooted rules bubble past an at-rule */
-        if (rules) {
-          /**
-           * Wrap sub-rules of a media query like Less
-           *
-           * @todo - Make sure this works with and without collapsing
-           */
-          if (context.opts.collapseNesting && context.rulesetFrames.length) {
-            return new Ruleset({
-              selector: new ComplexSelector([new Ampersand()]),
-              rules
-            })
-              .inherit(this)
-              .eval(context);
+      (evaldNode: Node) => {
+        if (evaldNode instanceof AtRule) {
+          node = evaldNode;
+          let rules = node.value.rules;
+          if (rules) {
+            if (context.opts.collapseNesting && context.rulesetFrames.length) {
+              return new Ruleset({
+                selector: new ComplexSelector([new Ampersand()]),
+                rules
+              })
+                .inherit(this)
+                .eval(context);
+            }
+            return node as Node;
           }
-          return node;
         }
+        return evaldNode;
       },
-      (unknownNode) => {
+      (unknownNode: Node) => {
         if (unknownNode instanceof Ruleset) {
           node.value.rules = new Rules([unknownNode]);
-          return node;
+          return node as Node;
         }
         /** @todo - Figure out at-rule bubbling */
         // let rootRules = this.collectRoots();
         // rootRules.forEach(rule => rules.value.push(rule));
         return unknownNode;
       }
-    );
+    ) as MaybePromise<AtRule>;
   }
 
   /** @todo - move to visitors */

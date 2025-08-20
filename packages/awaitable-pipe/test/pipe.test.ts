@@ -5,14 +5,14 @@ describe('pipe', () => {
   it('returns sync value when all steps are sync', () => {
     const upper = (s: string) => s.toUpperCase();
     const exclaim = (s: string) => s + '!';
-    const out = pipe('ok', upper, exclaim);
+    const out = pipe(() => 'ok', upper, exclaim);
     expect(out).toBe('OK!');
   });
 
   it('promotes to Promise when any step is async', async () => {
     const upper = (s: string) => s.toUpperCase();
     const asyncAdd = async (s: string) => s + '!';
-    const out = pipe('ok', upper, asyncAdd);
+    const out = pipe(() => 'ok', upper, asyncAdd);
     expect(out).toBeInstanceOf(Promise);
     await expect(out).resolves.toBe('OK!');
   });
@@ -21,7 +21,7 @@ describe('pipe', () => {
     const s1 = (s: string) => s + '1';
     const asyncStep = async (s: string) => s + '2';
     const s3 = (s: string) => s + '3';
-    const out = pipe('a', s1, asyncStep, s3);
+    const out = pipe(() => 'a', s1, asyncStep, s3);
     await expect(out).resolves.toBe('a123');
   });
 
@@ -29,7 +29,7 @@ describe('pipe', () => {
     const s1 = (s: string) => s + '1';
     const a2 = async (s: string) => s + '2';
     const a3 = async (s: string) => s + '3';
-    const out = pipe('a', s1, a2, a3);
+    const out = pipe(() => 'a', s1, a2, a3);
     await expect(out).resolves.toBe('a123');
   });
 
@@ -51,7 +51,7 @@ describe('pipe', () => {
     const boom = () => {
       throw new Error('nope');
     };
-    expect(() => pipe(boom, (x: unknown) => x)).toThrowError('nope');
+    expect(() => pipe(boom as any, (x: unknown) => x)).toThrowError('nope');
   });
 
   it('works without an initial value (first step receives undefined)', () => {
@@ -65,7 +65,7 @@ describe('pipe', () => {
   });
 
   it('handles Promise as initial input via async tail', async () => {
-    const out = pipe(Promise.resolve('x'), (s: string) => s + 'y');
+    const out = pipe(() => Promise.resolve('x'), (s: string) => s + 'y');
     await expect(out).resolves.toBe('xy');
   });
 
@@ -74,17 +74,23 @@ describe('pipe', () => {
     const out = (pipe as any)();
     expect(out).toBeUndefined();
   });
+
+  it('covers runAsync branch with a thenable mid-stream (ensures branch coverage)', async () => {
+    const thenable = { then: (res: (v: string) => void) => res('x') } as any; // thenable, not full promise
+    const out = pipe(() => 'a', () => thenable, (s: string) => s + '!');
+    await expect(out).resolves.toBe('x!');
+  });
 });
 
 describe('safePipe', () => {
   it('returns value for sync pipeline and never throws', () => {
-    const out = safePipe('ok', {}, (s: string) => s.toUpperCase());
+    const out = safePipe({}, () => 'ok', (s: string) => s.toUpperCase());
     expect(out).toBe('OK');
   });
 
   it('captures sync throw, calls onError once, returns fallback', () => {
     const onError = vi.fn();
-    const out = safePipe('ok', { onError, fallback: 'X' }, () => {
+    const out = safePipe({ onError, fallback: 'X' }, () => 'ok', () => {
       throw new Error('boom');
     }, (s: string) => s.toUpperCase());
     expect(onError).toHaveBeenCalledTimes(1);
@@ -93,7 +99,7 @@ describe('safePipe', () => {
 
   it('sync throw with onError that throws is swallowed and returns fallback', () => {
     const onError = vi.fn(() => { throw new Error('handler-fail'); });
-    const out = safePipe('ok', { onError, fallback: 'X' }, () => {
+    const out = safePipe({ onError, fallback: 'X' }, () => 'ok', () => {
       throw new Error('boom');
     });
     expect(onError).toHaveBeenCalledTimes(1);
@@ -107,7 +113,7 @@ describe('safePipe', () => {
 
   it('returns undefined when no fallback is provided and an error occurs', () => {
     const onError = vi.fn();
-    const out = safePipe('ok', { onError }, () => {
+    const out = safePipe({ onError }, () => 'ok', () => {
       throw new Error('bad');
     }, (s: string) => s.toUpperCase());
     expect(onError).toHaveBeenCalledTimes(1);
@@ -116,7 +122,7 @@ describe('safePipe', () => {
 
   it('promotes to Promise for async steps and rejects/handles appropriately', async () => {
     const asyncStep = async (s: string) => s + '!';
-    const out = safePipe('ok', { onError: vi.fn() }, asyncStep, (s: string) => s + '?');
+    const out = safePipe({ onError: vi.fn() }, () => 'ok', asyncStep, (s: string) => s + '?');
     expect(out).toBeInstanceOf(Promise);
     await expect(out).resolves.toBe('ok!?');
   });
@@ -126,14 +132,18 @@ describe('safePipe', () => {
     expect(out).toBe('abc');
   });
 
-  it('safePipe with input and omitted options defaults to empty options', () => {
-    const out = safePipe('x', {} as SafePipeOptions<string>, (s: string) => s + '!');
+  it('safePipe with omitted options defaults to empty options (options-first)', () => {
+    const out = safePipe({}, () => 'x', (s: string) => s + '!');
     expect(out).toBe('x!');
+  });
+
+  it('throws when input-first is used', () => {
+    expect(() => (safePipe as any)('x', (s: string) => s + '!')).toThrowError(/safePipe requires steps-only or options-first with steps/);
   });
 
   it('handles async rejection with onError and fallback', async () => {
     const onError = vi.fn();
-    const out = safePipe('ok', { onError, fallback: 'F' }, async () => {
+    const out = safePipe({ onError, fallback: 'F' }, () => 'ok', async () => {
       throw new Error('async-fail');
     }, (s: string) => s + '!');
     expect(out).toBeInstanceOf(Promise);
@@ -143,7 +153,7 @@ describe('safePipe', () => {
 
   it('async tail catches sync throw inside then and returns fallback', async () => {
     const onError = vi.fn();
-    const out = safePipe('a', { onError, fallback: 'fb' }, async (s: string) => s + '1', () => {
+    const out = safePipe({ onError, fallback: 'fb' }, () => 'a', async (s: string) => s + '1', () => {
       throw new Error('after-async');
     });
     await expect(out).resolves.toBe('fb');
@@ -156,7 +166,7 @@ describe('safePipe', () => {
       calls += 1;
       if (calls === 1) throw new Error('onError-fail');
     });
-    const out = safePipe('x', { onError, fallback: 'Z' }, async () => {
+    const out = safePipe({ onError, fallback: 'Z' }, () => 'x', async () => {
       throw new Error('async-bang');
     });
     await expect(out).resolves.toBe('Z');
@@ -166,13 +176,13 @@ describe('safePipe', () => {
   it('handles rejection returned by a sync step in async tail', async () => {
     const onError = vi.fn();
     const retRejected = () => Promise.reject(new Error('reject'));
-    const out = safePipe('x', { onError, fallback: 'Y' }, async (s: string) => s + '1', () => retRejected());
+    const out = safePipe({ onError, fallback: 'Y' }, () => 'x', async (s: string) => s + '1', () => retRejected());
     await expect(out).resolves.toBe('Y');
     expect(onError).toHaveBeenCalledTimes(1);
   });
 
-  it('uses async tail immediately when initial input is a Promise', async () => {
-    const out = safePipe(Promise.resolve('a'), { onError: vi.fn() }, (s: string) => s + '1', async (s: string) => s + '2');
+  it('uses async tail with an async first step (initializer)', async () => {
+    const out = safePipe({ onError: vi.fn() }, () => Promise.resolve('a'), (s: string) => s + '1', async (s: string) => s + '2');
     await expect(out).resolves.toBe('a12');
   });
 
@@ -184,27 +194,44 @@ describe('safePipe', () => {
 
   it('supports fallback as a thunk', () => {
     const onError = vi.fn();
-    const out = safePipe('ok', { onError, fallback: () => 'Z' }, () => {
+    const out = safePipe({ onError, fallback: () => 'Z' }, () => 'ok', () => {
       throw new Error('boom');
     });
     expect(onError).toHaveBeenCalledTimes(1);
     expect(out).toBe('Z');
   });
 
-  it('handles initial thunk that throws (sync) and returns fallback', () => {
+  it('safePipe options-first with no steps returns undefined (opts-only branch)', () => {
+    const out = (safePipe as any)({});
+    expect(out).toBeUndefined();
+  });
+
+  it('safePipe handles initial step error with onError (options-first)', () => {
+    const onError = vi.fn();
+    const out = safePipe({ onError, fallback: 'F' }, () => { throw new Error('init'); });
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(out).toBe('F');
+  });
+
+  it('handles step that throws (sync) and returns fallback (options-first)', () => {
     const onError = vi.fn();
     const init = () => { throw new Error('init-fail'); };
-    const out = safePipe(init, { onError, fallback: 'FB' }, (x: unknown) => x);
+    const out = safePipe({ onError, fallback: 'FB' }, init as any, (x: unknown) => x);
     expect(onError).toHaveBeenCalledTimes(1);
     expect(out).toBe('FB');
   });
 
-  it('initial thunk throws and onError throws is swallowed; fallback returned', () => {
+  it('step throws and onError throws is swallowed; fallback returned (options-first)', () => {
     const onError = vi.fn(() => { throw new Error('onError-fail'); });
     const init = () => { throw new Error('init-fail'); };
-    const out = safePipe(init, { onError, fallback: 'FB' }, (x: unknown) => x);
+    const out = safePipe({ onError, fallback: 'FB' }, init as any, (x: unknown) => x);
     expect(onError).toHaveBeenCalledTimes(1);
     expect(out).toBe('FB');
+  });
+
+  it('covers options-first steps-only branch', () => {
+    const out = safePipe({ fallback: 'Z' }, (x?: string) => (x ?? 'a') + 'b');
+    expect(out).toBe('ab');
   });
 });
 

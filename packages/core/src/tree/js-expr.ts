@@ -29,6 +29,7 @@ export class JsExpression extends Node<string> {
 
   /**
    * @todo - install deno-bin to run scripts securely
+   * @todo - Figure out pipe / MaybePromise when this is actually evaluating JS
    */
   override evalNode(context: Context): Promise<Node> {
     return (async () => {

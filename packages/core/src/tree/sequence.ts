@@ -6,6 +6,7 @@ import combinate from 'combinate';
 import { cast } from './util/cast';
 import { compareNodeArray } from './util/compare';
 import { isNode } from '..';
+import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 
 export type SequenceOptions = {
   /**
@@ -67,68 +68,52 @@ export class Sequence extends Node<Node[], SequenceOptions> {
    *
    * @todo - REWRITE
    */
-  override async evalNode(context: Context) {
-    let node = this.maybeClone(context);
-    /** Convert all values to Nodes */
-    for (let [i, n] of node.value.entries()) {
-      node.value[i] = await n.eval(context);
-    }
-
-    /** Remove Nil nodes */
-    node.value = node.value
-      .filter(n => n && !(n instanceof Nil));
-
-    let lists: Record<number, Node[]> | undefined;
-
-    /** @todo - Probably remove on rewrite */
-    for (let [i, n] of node.value.entries()) {
-      if (n instanceof List) {
-        if (!lists) {
-          lists = {
-            [i]: n.value
-          };
-        } else {
-          lists[i] = n.value;
-        }
-      }
-    };
-
-    if (lists) {
-      /**
-       * Create new sequences of the inherited type
-       * @todo - Rewrite -- Object.getPrototypeOf(this).constructor I think is wrong and maybe
-       * should be this.constructor.
-       */
-      let Class = Object.getPrototypeOf(this).constructor;
-      let combinations = combinate(lists);
-      let returnList = new List([] as Node[]).inherit(this);
-
-      /** @todo - create :is() in selector */
-      combinations.forEach((combo) => {
-        let expr = [...node.value];
-        for (let pos in combo) {
-          if (Object.prototype.hasOwnProperty.call(combo, pos)) {
-            expr[pos] = combo[pos] as Node;
+  override evalNode(context: Context): MaybePromise<Node> {
+    return pipe(
+      () => {
+        const node = this.maybeClone(context);
+        return Promise.all(
+          node.value.map(async (n, i) => {
+            node.value[i] = await n.eval(context);
+          })
+        ).then(() => node);
+      },
+      (node) => {
+        node.value = node.value.filter(n => n && !(n instanceof Nil));
+        let lists: Record<number, Node[]> | undefined;
+        for (let [i, n] of node.value.entries()) {
+          if (n instanceof List) {
+            if (!lists) {
+              lists = { [i]: n.value };
+            } else {
+              lists[i] = n.value;
+            }
           }
         }
-        returnList.value.push(new Class(expr));
-      });
-      /**
-       * If the created list has a length of 1,
-       * then it's still a sequence, in which
-       * case we can return the first value
-       */
-      if (returnList.value.length === 1) {
-        return returnList.value[0] as typeof Class;
+        if (lists) {
+          let Class = Object.getPrototypeOf(this).constructor;
+          let combinations = combinate(lists);
+          let returnList = new List([] as Node[]).inherit(this);
+          combinations.forEach((combo) => {
+            let expr = [...node.value];
+            for (let pos in combo) {
+              if (Object.prototype.hasOwnProperty.call(combo, pos)) {
+                expr[pos] = combo[pos] as Node;
+              }
+            }
+            returnList.value.push(new Class(expr));
+          });
+          if (returnList.value.length === 1) {
+            return returnList.value[0] as typeof Class;
+          }
+          return returnList;
+        }
+        if (node.type !== 'Selector' && node.value.length === 1) {
+          return node.value[0]!;
+        }
+        return node;
       }
-      return returnList;
-    }
-
-    /** Selectors maintain wrappers around elements */
-    if (node.type !== 'Selector' && node.value.length === 1) {
-      return node.value[0];
-    }
-    return node;
+    );
   }
 
   /** @todo move to visitors */

@@ -232,7 +232,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         }
         return node;
       }
-    );
+    ) as MaybePromise<this | Nil>;
   }
 
   /** @todo - move to visitors */

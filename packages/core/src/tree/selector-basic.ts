@@ -1,6 +1,7 @@
 import type { Context } from '../context';
 import { defineType } from './node';
 import { SimpleSelector } from './selector-simple';
+import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 
 /**
  * A basic selector
@@ -24,12 +25,16 @@ export class BasicSelector extends SimpleSelector<string> {
     return /^[^.#*]/.test(this.value);
   }
 
-  override async evalNode(context: Context): Promise<BasicSelector> {
-    let node = await super.evalNode(context) as BasicSelector;
-    if (node.isClass) {
-      context.hashClass(node.value);
-    }
-    return node;
+  override evalNode(context: Context): MaybePromise<BasicSelector> {
+    return pipe(
+      () => super.evalNode(context),
+      (node: BasicSelector) => {
+        if (node.isClass) {
+          context.hashClass(node.value);
+        }
+        return node;
+      }
+    );
   }
 
   override valueOf(): string {

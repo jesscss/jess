@@ -1,20 +1,22 @@
 type AnyFn = (a: any) => any;
 
 type Unwrap<T> = T extends Promise<infer U> ? U : T;
-type ArgOf<F> = F extends (a: infer A) => any ? A : never;
 type RetOf<F> = F extends (a: any) => infer R ? R : never;
-type Apply<In, F> = Unwrap<In> extends ArgOf<F>
-  ? (In extends Promise<any>
-      ? (RetOf<F> extends Promise<any> ? Promise<Awaited<RetOf<F>>> : Promise<RetOf<F>>)
-      : RetOf<F>)
-  : unknown;
+type ParamOf<F> = F extends (...args: infer P) => any ? (P extends [infer A, ...any[]] ? A : never) : never;
+type Apply<In, F> =
+  // Zero-arg step: result depends only on return type of F
+  [ParamOf<F>] extends [never]
+    ? RetOf<F>
+    : In extends Promise<any>
+      ? Promise<Awaited<RetOf<F>>>
+      : RetOf<F>;
 
 type ValidChain<In, Fns extends readonly AnyFn[]> =
   Fns extends []
     ? Fns
     : Fns extends [infer F, ...infer Rest]
       ? F extends AnyFn
-        ? (Unwrap<In> extends ArgOf<F>
+        ? (any extends ParamOf<F>
             ? [F, ...ValidChain<Apply<In, F>, Extract<Rest, readonly AnyFn[]>>]
             : never)
         : never
@@ -40,37 +42,37 @@ function runAsync(v: any, fns: AnyFn[]): Promise<any> {
 // Steps-only convenience overloads to provide strong contextual typing
 export function pipe<A, R1>(
   fn1: () => A,
-  fn2: (a: A) => R1
-): R1;
+  fn2: (a: Unwrap<A>) => R1
+): PipeResult<undefined, [() => A, (a: Unwrap<A>) => R1]>;
 export function pipe<A, R1>(
   fn1: (a?: A) => R1
-): R1;
+): PipeResult<undefined, [(a?: A) => R1]>;
 export function pipe<A, R1, R2>(
   fn1: () => A,
-  fn2: (a: A) => R1,
+  fn2: (a: Unwrap<A>) => R1,
   fn3: (b: Unwrap<R1>) => R2
-): R2;
+): PipeResult<undefined, [() => A, (a: Unwrap<A>) => R1, (b: Unwrap<R1>) => R2]>;
 export function pipe<A, R1, R2, R3>(
   fn1: () => A,
-  fn2: (a: A) => R1,
+  fn2: (a: Unwrap<A>) => R1,
   fn3: (b: Unwrap<R1>) => R2,
   fn4: (c: Unwrap<R2>) => R3
-): R3;
+): PipeResult<undefined, [() => A, (a: Unwrap<A>) => R1, (b: Unwrap<R1>) => R2, (c: Unwrap<R2>) => R3]>;
 export function pipe<A, R1, R2, R3, R4>(
   fn1: () => A,
-  fn2: (a: A) => R1,
+  fn2: (a: Unwrap<A>) => R1,
   fn3: (b: Unwrap<R1>) => R2,
   fn4: (c: Unwrap<R2>) => R3,
   fn5: (d: Unwrap<R3>) => R4
-): R4;
+): PipeResult<undefined, [() => A, (a: Unwrap<A>) => R1, (b: Unwrap<R1>) => R2, (c: Unwrap<R2>) => R3, (d: Unwrap<R3>) => R4]>;
 export function pipe<A, R1, R2, R3, R4, R5>(
   fn1: () => A,
-  fn2: (a: A) => R1,
+  fn2: (a: Unwrap<A>) => R1,
   fn3: (b: Unwrap<R1>) => R2,
   fn4: (c: Unwrap<R2>) => R3,
   fn5: (d: Unwrap<R3>) => R4,
   fn6: (e: Unwrap<R4>) => R5
-): R5;
+): PipeResult<undefined, [() => A, (a: Unwrap<A>) => R1, (b: Unwrap<R1>) => R2, (c: Unwrap<R2>) => R3, (d: Unwrap<R3>) => R4, (e: Unwrap<R4>) => R5]>;
 // Input + 1..6 step overloads for contextual typing
 export function pipe<T, R1>(
   input: T | Promise<T> | (() => T) | (() => Promise<T>),
@@ -184,49 +186,46 @@ function runAsyncSafe<R>(v: any, fns: AnyFn[], opts: SafePipeOptions<R>): Promis
 }
 
 // Overloads for safePipe
-// Input + vararg fixed-arity overloads defined below
-// SafePipe input + 1..6 step overloads for contextual typing
-export function safePipe<T, R1, R = R1>(
-  input: T | Promise<T> | (() => T) | (() => Promise<T>),
-  options: SafePipeOptions<R>,
-  fn1: (a: Unwrap<T>) => R1
-): PipeResult<T, [(a: Unwrap<T>) => R1]> extends Promise<any> ? Promise<R | undefined> : R | undefined;
-export function safePipe<T, R1, R2, R = R2>(
-  input: T | Promise<T> | (() => T) | (() => Promise<T>),
-  options: SafePipeOptions<R>,
-  fn1: (a: Unwrap<T>) => R1,
+// Note: input-first forms are not supported. Use options-first and steps-only.
+// Place options-first overloads before steps-only to improve resolution when first arg is an object
+export function safePipe<A, R1>(
+  options: SafePipeOptions<any>,
+  fn1: (a?: A) => R1
+): PipeResult<undefined, [(a?: A) => R1]> extends Promise<any> ? Promise<R1 | undefined> : R1 | undefined;
+export function safePipe<A, R1, R2>(
+  options: SafePipeOptions<any>,
+  fn1: (a?: A) => R1,
   fn2: (b: Unwrap<R1>) => R2
-): PipeResult<T, [(a: Unwrap<T>) => R1, (b: Unwrap<R1>) => R2]> extends Promise<any> ? Promise<R | undefined> : R | undefined;
-export function safePipe<T, R1, R2, R3, R = R3>(
-  input: T | Promise<T> | (() => T) | (() => Promise<T>),
-  options: SafePipeOptions<R>,
-  fn1: (a: Unwrap<T>) => R1,
+): PipeResult<undefined, [(a?: A) => R1, (b: Unwrap<R1>) => R2]> extends Promise<any> ? Promise<R2 | undefined> : R2 | undefined;
+export function safePipe<A, R1, R2, R3>(
+  options: SafePipeOptions<any>,
+  fn1: (a?: A) => R1,
   fn2: (b: Unwrap<R1>) => R2,
   fn3: (c: Unwrap<R2>) => R3
-): PipeResult<T, [(a: Unwrap<T>) => R1, (b: Unwrap<R1>) => R2, (c: Unwrap<R2>) => R3]> extends Promise<any> ? Promise<R | undefined> : R | undefined;
-// SafePipe steps-only (no input, no options) with strong contextual typing
+): PipeResult<undefined, [(a?: A) => R1, (b: Unwrap<R1>) => R2, (c: Unwrap<R2>) => R3]> extends Promise<any> ? Promise<R3 | undefined> : R3 | undefined;
+// SafePipe steps-only (no input, no options)
 export function safePipe<A, R1>(
   fn1: () => A,
   fn2: (a: A) => R1
-): R1 | undefined;
+): PipeResult<undefined, [() => A, (a: A) => R1]> extends Promise<any> ? Promise<R1 | undefined> : R1 | undefined;
 export function safePipe<A, R1, R2>(
   fn1: () => A,
   fn2: (a: A) => R1,
   fn3: (b: Unwrap<R1>) => R2
-): R2 | undefined;
+): PipeResult<undefined, [() => A, (a: A) => R1, (b: Unwrap<R1>) => R2]> extends Promise<any> ? Promise<R2 | undefined> : R2 | undefined;
 export function safePipe<A, R1, R2, R3>(
   fn1: () => A,
   fn2: (a: A) => R1,
   fn3: (b: Unwrap<R1>) => R2,
   fn4: (c: Unwrap<R2>) => R3
-): R3 | undefined;
+): PipeResult<undefined, [() => A, (a: A) => R1, (b: Unwrap<R1>) => R2, (c: Unwrap<R2>) => R3]> extends Promise<any> ? Promise<R3 | undefined> : R3 | undefined;
 export function safePipe<A, R1, R2, R3, R4>(
   fn1: () => A,
   fn2: (a: A) => R1,
   fn3: (b: Unwrap<R1>) => R2,
   fn4: (c: Unwrap<R2>) => R3,
   fn5: (d: Unwrap<R3>) => R4
-): R4 | undefined;
+): PipeResult<undefined, [() => A, (a: A) => R1, (b: Unwrap<R1>) => R2, (c: Unwrap<R2>) => R3, (d: Unwrap<R3>) => R4]> extends Promise<any> ? Promise<R4 | undefined> : R4 | undefined;
 export function safePipe<A, R1, R2, R3, R4, R5>(
   fn1: () => A,
   fn2: (a: A) => R1,
@@ -234,23 +233,7 @@ export function safePipe<A, R1, R2, R3, R4, R5>(
   fn4: (c: Unwrap<R2>) => R3,
   fn5: (d: Unwrap<R3>) => R4,
   fn6: (e: Unwrap<R4>) => R5
-): R5 | undefined;
-// SafePipe options-first with strong contextual typing
-export function safePipe<A, R1>(
-  options: NonEmptyOptions<R1>,
-  fn1: (a?: A) => R1
-): R1 | undefined;
-export function safePipe<A, R1, R2>(
-  options: NonEmptyOptions<R2>,
-  fn1: (a?: A) => R1,
-  fn2: (b: Unwrap<R1>) => R2
-): R2 | undefined;
-export function safePipe<A, R1, R2, R3>(
-  options: NonEmptyOptions<R3>,
-  fn1: (a?: A) => R1,
-  fn2: (b: Unwrap<R1>) => R2,
-  fn3: (c: Unwrap<R2>) => R3
-): R3 | undefined;
+): PipeResult<undefined, [() => A, (a: A) => R1, (b: Unwrap<R1>) => R2, (c: Unwrap<R2>) => R3, (d: Unwrap<R3>) => R4, (e: Unwrap<R4>) => R5]> extends Promise<any> ? Promise<R5 | undefined> : R5 | undefined;
 export function safePipe(...args: any[]): any {
   let input: any;
   let options: SafePipeOptions<any>;
@@ -260,7 +243,11 @@ export function safePipe(...args: any[]): any {
 
   const first = args[0];
   const second = args[1];
-  const looksLikeOptions = (x: unknown): x is SafePipeOptions<any> => !!x && typeof x === 'object' && (('onError' in (x as any)) || ('fallback' in (x as any)));
+  const looksLikeOptions = (x: unknown): x is SafePipeOptions<any> => !!x && typeof x === 'object' && !Array.isArray(x);
+  // Special-case: options-first with no steps should return undefined
+  if (args.length === 1 && !!first && typeof first === 'object') {
+    return undefined as any;
+  }
   const bothFns = typeof first === 'function' && typeof second === 'function';
   if (looksLikeOptions(first) || bothFns) {
     // options-first or steps-only (no explicit input)
@@ -268,23 +255,13 @@ export function safePipe(...args: any[]): any {
     options = looksLikeOptions(first) ? (first as SafePipeOptions<any>) : {};
     fns = (looksLikeOptions(first) ? args.slice(1) : args) as AnyFn[];
   } else {
-    input = first;
-    options = (second as SafePipeOptions<any>) ?? {};
-    fns = (args.slice(2) as unknown[]) as AnyFn[];
+    throw new TypeError('safePipe requires steps-only or options-first with steps');
   }
 
-  try {
-    input = typeof input === 'function' ? (input as any)() : input;
-  } catch (e) {
-    try { options?.onError?.(e); } catch {}
-    return resolveFallback(options?.fallback) as any;
-  }
+  input = undefined;
 
   for (let i = 0; i < fns.length; i++) {
     const fn = fns[i]!;
-    if (isThenable(input)) {
-      return runAsyncSafe(input, fns.slice(i), options) as any;
-    }
     try {
       const out = fn(input);
       if (isThenable(out)) {

@@ -6,6 +6,7 @@ import { Selector } from './selector';
 import { getEntries } from './util/collections';
 import { type PrintOptions, getPrintOptions, OutputWriter } from './util/print.js';
 import { normalizeContinuationIndent } from './util/format';
+import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
@@ -48,16 +49,26 @@ export class SelectorList extends Selector<Selector[]> {
     return this.value.map(v => v.valueOf()).join(',');
   }
 
-  override async evalNode(context: Context): Promise<SelectorList | Selector> {
-    const list = this.maybeClone(context);
-    const { value } = list;
-    for (let [item, i] of getEntries(value)) {
-      value[i] = await item.eval(context) as Selector;
-    }
-    if (value.length === 1) {
-      return value[0]!;
-    }
-    return list;
+  override evalNode(context: Context): MaybePromise<SelectorList | Selector> {
+    return pipe(
+      () => {
+        const list = this.maybeClone(context);
+        const { value } = list;
+        return Promise.all(
+          Array.from(getEntries(value), async ([item, i]) => {
+            value[i] = await item.eval(context) as Selector;
+            return undefined;
+          })
+        ).then(() => list);
+      },
+      (list) => {
+        const { value } = list;
+        if (value.length === 1) {
+          return value[0]!;
+        }
+        return list;
+      }
+    );
   }
 }
 

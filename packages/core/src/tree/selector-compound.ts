@@ -6,6 +6,7 @@ import { Nil } from './nil';
 import { Selector } from './selector';
 import type { SimpleSelector } from './selector-simple';
 import { getEntries } from './util/collections';
+import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 
 /**
  * @example
@@ -62,33 +63,40 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return value;
   }
 
-  override async evalNode(context: Context): Promise<CompoundSelector | Selector | Nil> {
-    const sel = this.maybeClone(context);
-    let { value } = sel;
-    for (let [item, i] of getEntries(value)) {
-      value[i] = await item.eval(context) as SimpleSelector;
-    }
-    /** Bubble tag selectors to the front of compound selectors */
-    value = value
-      .filter(n => n && !(n instanceof Nil))
-      .sort((a, b) => {
-        let aIsElement = !nonElementRegex.test(a.valueOf());
-        let bIsElement = !nonElementRegex.test(b.valueOf());
-        if (aIsElement && bIsElement) {
-          /** Throw an error? */
-          return a.valueOf() < b.valueOf() ? -1 : 1;
+  override evalNode(context: Context): MaybePromise<CompoundSelector | Selector | Nil> {
+    return pipe(
+      () => {
+        const sel = this.maybeClone(context);
+        let { value } = sel;
+        return Promise.all(
+          Array.from(getEntries(value), async ([item, i]) => {
+            value[i] = await item.eval(context) as SimpleSelector;
+            return undefined;
+          })
+        ).then(() => sel);
+      },
+      (sel) => {
+        let { value } = sel;
+        value = value
+          .filter(n => n && !(n instanceof Nil))
+          .sort((a, b) => {
+            let aIsElement = !nonElementRegex.test(a.valueOf());
+            let bIsElement = !nonElementRegex.test(b.valueOf());
+            if (aIsElement && bIsElement) {
+              return a.valueOf() < b.valueOf() ? -1 : 1;
+            }
+            return aIsElement ? -1 : bIsElement ? 1 : 0;
+          });
+        if (value.length === 0) {
+          return (new Nil()).inherit(this);
         }
-        return aIsElement ? -1 : bIsElement ? 1 : 0;
-      });
-
-    if (value.length === 0) {
-      return (new Nil()).inherit(this);
-    }
-    if (value.length === 1) {
-      return value[0]!.inherit(this) as Selector;
-    }
-    sel.value = value;
-    return sel;
+        if (value.length === 1) {
+          return value[0]!.inherit(this) as Selector;
+        }
+        sel.value = value;
+        return sel;
+      }
+    );
   }
 
   /** @todo move to visitors */

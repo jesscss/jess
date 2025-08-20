@@ -321,7 +321,7 @@ export abstract class Node<
    * Processed nodes must always return a Node.
    */
   forEachNode(func: (n: Node) => MaybePromise<Node>) {
-    const steps = [...getEntriesFromNode(this as { value: unknown[] })].map(([value, key, collection]) => {
+    const steps: Array<(x: void) => void | Promise<void>> = [...getEntriesFromNode(this as { value: unknown[] })].map(([value, key, collection]) => {
       return (_: void) => {
         if (!(value instanceof Node)) {
           return;
@@ -336,7 +336,7 @@ export abstract class Node<
       };
     });
 
-    return pipe(...steps);
+    return pipe<void>(undefined, ...steps);
   }
 
   static* nodeAndPrePost(node: Node) {

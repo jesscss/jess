@@ -11,6 +11,7 @@ import type { SimpleSelector } from './selector-simple';
 import type { CompoundSelector } from './selector-compound';
 import { getEntries } from './util/collections';
 import { type PrintOptions, getPrintOptions } from './util/print';
+import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 
 // TODO - fix later
 export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand;
@@ -98,17 +99,26 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   /**
    * @todo - Re-write and simplify, now that we have a distinct CompoundSelector
    */
-  override async evalNode(context: Context): Promise<Selector | Nil> {
-    let selector = this.maybeClone(context);
-    let { value } = selector;
-    for (let [sel, i] of getEntries(value)) {
-      value[i] = await sel.eval(context) as ComplexSelectorComponent;
-    }
-    /** If properly parsed, this shouldn't happen, but check anyway */
-    if (value.length === 1) {
-      return value[0]!.inherit(selector);
-    }
-    return selector;
+  override evalNode(context: Context): MaybePromise<Selector | Nil> {
+    return pipe(
+      () => {
+        const selector = this.maybeClone(context);
+        let { value } = selector;
+        return Promise.all(
+          Array.from(getEntries(value), async ([sel, i]) => {
+            value[i] = await sel.eval(context) as ComplexSelectorComponent;
+            return undefined;
+          })
+        ).then(() => selector);
+      },
+      (selector) => {
+        const { value } = selector;
+        if (value.length === 1) {
+          return value[0]!.inherit(selector);
+        }
+        return selector;
+      }
+    );
   }
   // override async evalNode(context: Context): Promise<ComplexSelector | SelectorList | Nil> {
   //   let selector: ComplexSelector = this.maybeClone(context)

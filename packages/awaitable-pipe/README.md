@@ -7,7 +7,7 @@ A tiny, zero-dependency pipe with friendly types that “just works”: it stays
 - **Stays sync when it can**: all-sync pipelines return a plain value
 - **Goes async when it must**: any async input/step returns a Promise
 - **One place for errors**: `safePipe` gives you a single `onError` + optional `fallback`
-- **Flexible starts**: begin with a value, a Promise, a thunk, or no value at all
+- **Steps-only API**: start with an initializer step (() => value | Promise), or omit it entirely
 - **Typed nicely**: TypeScript keeps the sync/async shape without Result-like wrappers
 
 ## Install
@@ -44,23 +44,23 @@ const safe = safePipe('ok', { onError: console.error, fallback: 'X' }, boom, upp
 
 ## API
 
-### pipe(input?, ...steps)
+### pipe(...steps)
 - **Return shape**: sync returns a value; any async → Promise
 - **Errors**: sync errors throw; async errors reject
 - **Inputs**: value, Promise, thunk (() => value|Promise), or omit (first step gets `undefined`)
 
 ```ts
 // compose sync functions → string
-const a = pipe('hi', (s) => s.trim(), (s) => s.toUpperCase());
+const a = pipe(() => 'hi', (s) => s.trim(), (s) => s.toUpperCase());
 
 // mix in async → Promise<string>
-const b = pipe('hi', async (s) => s + '!', (s) => s + '?');
+const b = pipe(() => 'hi', async (s) => s + '!', (s) => s + '?');
 
 // no initial value
 const c = pipe((x?: number) => (x ?? 1) + 1, (n) => n * 10); // 20
 ```
 
-### safePipe(inputOrOptions, optionsOrStep, ...steps)
+### safePipe(optionsOrStep, ...steps)
 If you prefer not to throw or reject, `safePipe` centralizes error handling. You get an optional `onError` callback and a `fallback` value (or thunk). On error, the pipeline returns the fallback (or `undefined` if you didn’t provide one).
 
 - **Never throws**: errors are caught and routed to `onError`
@@ -69,16 +69,17 @@ If you prefer not to throw or reject, `safePipe` centralizes error handling. You
 
 ```ts
 // Sync-only path
-const r1 = safePipe('ok', { onError: console.warn, fallback: 'X' }, (s: string) => s.toUpperCase()); // 'OK'
+const r1 = safePipe({ onError: console.warn, fallback: 'X' }, () => 'ok', (s: string) => s.toUpperCase()); // 'OK'
 
 // Sync error → fallback
-const r2 = safePipe('ok', { onError: console.warn, fallback: 'X' },
+const r2 = safePipe({ onError: console.warn, fallback: 'X' },
   () => { throw new Error('boom'); },
   (s: string) => s.toUpperCase()
 ); // 'X'
 
 // Async path → Promise<string>
-const r3 = await safePipe('ok', { onError: console.warn, fallback: 'X' },
+const r3 = await safePipe({ onError: console.warn, fallback: 'X' },
+  () => 'ok',
   async (s: string) => s + '!',
   (s: string) => s + '?'
 ); // 'ok!?'
@@ -100,12 +101,12 @@ const r5 = safePipe('ok', { onError: console.warn },
 You can feed the output of one pipe (value or Promise) into another. Types keep up with you.
 
 ```ts
-const p1 = pipe('hi', (s: string) => s.toUpperCase()); // string
-const p2 = pipe(p1, (s) => s + '!');                   // 'HI!'
+const p1 = pipe(() => 'hi', (s: string) => s.toUpperCase()); // string
+const p2 = pipe(() => p1, (s) => s + '!');                   // 'HI!'
 
-const p3 = pipe('hi', async s => s + '!');             // Promise<string>
-const p4 = pipe(p3, (s) => s + '?');                   // Promise<string>
-const fin = await p4;                                  // 'hi!?'
+const p3 = pipe(() => 'hi', async s => s + '!');             // Promise<string>
+const p4 = pipe(() => p3, (s) => s + '?');                   // Promise<string>
+const fin = await p4;                                        // 'hi!?'
 ```
 
 ## Per-step helpers
@@ -123,13 +124,13 @@ const step = tryStep((n: number) => {
   fallback: 0 // could also be (err, n) => 0
 });
 
-const out = pipe(5, step);   // 10
-const out2 = pipe(-1, step); // 0
+const out = pipe(() => 5, step);   // 10
+const out2 = pipe(() => -1, step); // 0
 
 // guard: ensure a condition holds at this step (sync or async)
 const positive = guard((n: number) => n > 0, (n) => new Error(`not positive: ${n}`));
-const ok = pipe(3, positive);         // 3
-// pipe(-2, positive) would throw: Error('not positive: -2')
+const ok = pipe(() => 3, positive);         // 3
+// pipe(() => -2, positive) would throw: Error('not positive: -2')
 ```
 
 ## Why would you want this?
