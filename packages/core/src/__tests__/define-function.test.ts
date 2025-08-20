@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { defineFunction } from '../define-function';
+import { defineFunction, callWithContext } from '../define-function';
+import { Context } from '../context';
 import { expectTypeOf } from 'vitest';
 import { Color, Dimension } from '../tree';
 
@@ -11,7 +12,7 @@ describe('defineFunction', () => {
 
   const myFunc = defineFunction(
     'test',
-    (record: { name: string; value: number }) => `${record.name}: ${record.value}`,
+    (name: string, value: number) => `${name}: ${value}`,
     { params: args }
   );
 
@@ -19,7 +20,7 @@ describe('defineFunction', () => {
     it('should work with valid positional arguments', () => {
       const myFunc = defineFunction(
         'test',
-        (record: { name: string; value: number }) => `${record.name}: ${record.value}`,
+        (name: string, value: number) => `${name}: ${value}`,
         { params: [
           { name: 'name', type: 'string' },
           { name: 'value', type: 'number' }
@@ -154,8 +155,8 @@ describe('defineFunction', () => {
 
       const complexFunc = defineFunction(
         'complex',
-        (record: { name: string; age: number; active: boolean }) =>
-          `${record.name} is ${record.age} years old and is ${record.active ? 'active' : 'inactive'}`,
+        (name: string, age: number, active: boolean) =>
+          `${name} is ${age} years old and is ${active ? 'active' : 'inactive'}`,
         { params: complexArgs }
       );
 
@@ -172,8 +173,8 @@ describe('defineFunction', () => {
 
       const optionalFunc = defineFunction(
         'optional',
-        (record: { required: string; optional?: number }) =>
-          `${record.required}${record.optional ? `: ${record.optional}` : ''}`,
+        (required: string, optional?: number) =>
+          `${required}${optional ? `: ${optional}` : ''}`,
         { params: optionalArgs }
       );
 
@@ -191,7 +192,7 @@ describe('defineFunction', () => {
 
       const requiredFunc = defineFunction(
         'required',
-        (record: { name: string; value: number }) => `${record.name}: ${record.value}`,
+        (name: string, value: number) => `${name}: ${value}`,
         { params: requiredArgs }
       );
 
@@ -212,7 +213,7 @@ describe('defineFunction', () => {
 
       const allOptionalFunc = defineFunction(
         'allOptional',
-        (values: { name?: string; value?: number }) => `${values.name || 'default'}: ${values.value || 0}`,
+        (name?: string, value?: number) => `${name || 'default'}: ${value || 0}`,
         { params: allOptionalArgs }
       );
 
@@ -235,7 +236,7 @@ describe('defineFunction', () => {
 
       const typedFunc = defineFunction(
         'typed',
-        (record: { name: string; value: number }) => `${record.name}: ${record.value}`,
+        (name: string, value: number) => `${name}: ${value}`,
         { params: typedArgs }
       );
 
@@ -257,7 +258,7 @@ describe('defineFunction', () => {
 
       const func = defineFunction(
         'preserveNames',
-        (record: { name: string; age: number; active: boolean }) => `${record.name}: ${record.age}, ${record.active}`,
+        (name: string, age: number, active: boolean) => `${name}: ${age}, ${active}`,
         { params: args }
       );
 
@@ -279,7 +280,7 @@ describe('defineFunction', () => {
 
       const validFunc = defineFunction(
         'valid',
-        (record: { name: string; value: number }) => `${record.name}: ${record.value}`,
+        (name: string, value: number) => `${name}: ${value}`,
         { params: validArgs }
       );
 
@@ -310,7 +311,7 @@ describe('defineFunction', () => {
 
       const func = defineFunction(
         'returnType',
-        (record: { name: string; value: number }): string => `${record.name}: ${record.value}`,
+        (name: string, value: number): string => `${name}: ${value}`,
         { params: args }
       );
 
@@ -348,7 +349,7 @@ describe('defineFunction', () => {
 
       const defaultFunc = defineFunction(
         'defaults',
-        (values: { name: string; age: number; active: boolean }) => `${values.name} (${values.age}) - ${values.active ? 'active' : 'inactive'}`,
+        (name: string, age: number, active: boolean) => `${name} (${age}) - ${active ? 'active' : 'inactive'}`,
         { params: defaultArgs }
       );
 
@@ -372,7 +373,7 @@ describe('defineFunction', () => {
 
       const autoOptionalFunc = defineFunction(
         'autoOptional',
-        (values: { name: string; age: number; city: string }) => `${values.name} (${values.age}) from ${values.city}`,
+        (name: string, age: number, city: string) => `${name} (${age}) from ${city}`,
         { params: autoOptionalArgs }
       );
 
@@ -395,7 +396,7 @@ describe('defineFunction', () => {
 
       const implicitOptionalFunc = defineFunction(
         'implicitOptional',
-        (values: { name: string; count: number; enabled: boolean }) => `${values.name}: ${values.count} items, ${values.enabled ? 'enabled' : 'disabled'}`,
+        (name: string, count: number, enabled: boolean) => `${name}: ${count} items, ${enabled ? 'enabled' : 'disabled'}`,
         { params: implicitOptionalArgs }
       );
 
@@ -418,11 +419,11 @@ describe('defineFunction', () => {
 
       const treeNodeFunc = defineFunction(
         'treeNodes',
-        (values: { color: Color; dimension?: Dimension; alpha?: number }) => {
+        (color: Color, dimension?: Dimension, alpha?: number) => {
           return {
-            colorType: values.color.type,
-            dimensionType: values.dimension?.type || 'none',
-            alpha: values.alpha || 1
+            colorType: color.type,
+            dimensionType: dimension?.type || 'none',
+            alpha: alpha || 1
           };
         },
         { params: treeNodeArgs }
@@ -452,13 +453,72 @@ describe('defineFunction', () => {
         treeNodeFunc('not a color' as any, testDimension);
       }).toThrow('Argument \'color\' must be of type \'Color\'');
     });
+
+    it('should support rest parameters and lazy evaluation', async () => {
+      const calls: string[] = [];
+      class TestNode extends Color {
+        override async evalNode(context: any): Promise<any> {
+          calls.push(`${(this as any).value}`);
+          return this;
+        }
+      }
+
+      const restFunc = defineFunction(
+        'rest',
+        async (...values: Array<() => Promise<Color>>) => {
+          const firstThunk = values[0]!;
+          const first = await firstThunk() as TestNode;
+          return first;
+        },
+        { params: [{ name: 'values', type: Color, rest: true, lazy: true }] }
+      );
+
+      // Call positionally: only first should be evaluated
+      const a = new TestNode('#000');
+      const b = new TestNode('#111');
+      const c = new TestNode('#222');
+      const ctx = new Context();
+      const result = await callWithContext(ctx, restFunc as any, a, b, c);
+      expect(result).toBe(a);
+      // Only first element evaluated lazily upon access
+      expect(calls).toEqual(['#000']);
+    });
+
+    it('should support lazy evaluation of object parameters', async () => {
+      const calls: string[] = [];
+      class TestNode extends Color {
+        override async evalNode(context: any): Promise<any> {
+          calls.push(`${(this as any).value}`);
+          return this;
+        }
+      }
+
+      const objFunc = defineFunction(
+        'obj',
+        async (aThunk: () => Promise<Color>, bThunk: () => Promise<Color>) => {
+          const a = await aThunk() as TestNode;
+          return a;
+        },
+        { params: [
+          { name: 'a', type: Color, lazy: true },
+          { name: 'b', type: Color, lazy: true }
+        ] }
+      );
+
+      const a = new TestNode('#000');
+      const b = new TestNode('#111');
+      const ctx = new Context();
+      const result = await callWithContext(ctx, objFunc as any, { a, b });
+      expect(result).toBe(a);
+      expect(calls).toEqual(['#000']);
+    });
   });
 
   describe('type checking', () => {
     it('should have strong typing for 1 parameter', () => {
       const singleParamFunc = defineFunction(
         'singleParam',
-        (values: { name: string }) => `Hello ${values.name}`,
+        (name: string) => `Hello ${name}`,
         { params: [{ name: 'name', type: 'string' }] }
       );
 
@@ -473,7 +533,7 @@ describe('defineFunction', () => {
     it('should have strong typing for 2 parameters', () => {
       const twoParamFunc = defineFunction(
         'twoParam',
-        (values: { name: string; age: number }) => `${values.name} is ${values.age} years old`,
+        (name: string, age: number) => `${name} is ${age} years old`,
         { params: [
           { name: 'name', type: 'string' },
           { name: 'age', type: 'number' }
@@ -491,7 +551,7 @@ describe('defineFunction', () => {
     it('should have strong typing for 3 parameters', () => {
       const threeParamFunc = defineFunction(
         'threeParam',
-        (values: { name: string; age: number; city: string }) => `${values.name} is ${values.age} from ${values.city}`,
+        (name: string, age: number, city: string) => `${name} is ${age} from ${city}`,
         { params: [
           { name: 'name', type: 'string' },
           { name: 'age', type: 'number' },
@@ -510,8 +570,8 @@ describe('defineFunction', () => {
     it('should have strong typing for 4 parameters', () => {
       const fourParamFunc = defineFunction(
         'fourParam',
-        (values: { name: string; age: number; city: string; active: boolean }) =>
-          `${values.name} is ${values.age} from ${values.city}, ${values.active ? 'active' : 'inactive'}`,
+        (name: string, age: number, city: string, active: boolean) =>
+          `${name} is ${age} from ${city}, ${active ? 'active' : 'inactive'}`,
         { params: [
           { name: 'name', type: 'string' },
           { name: 'age', type: 'number' },
@@ -531,8 +591,8 @@ describe('defineFunction', () => {
     it('should have strong typing for 5 parameters', () => {
       const fiveParamFunc = defineFunction(
         'fiveParam',
-        (values: { name: string; age: number; city: string; active: boolean; score: number }) =>
-          `${values.name} is ${values.age} from ${values.city}, ${values.active ? 'active' : 'inactive'}, score: ${values.score}`,
+        (name: string, age: number, city: string, active: boolean, score: number) =>
+          `${name} is ${age} from ${city}, ${active ? 'active' : 'inactive'}, score: ${score}`,
         { params: [
           { name: 'name', type: 'string' },
           { name: 'age', type: 'number' },
@@ -553,8 +613,8 @@ describe('defineFunction', () => {
     it('should work with 6+ parameters (fallback typing)', () => {
       const sixParamFunc = defineFunction(
         'sixParam',
-        (values: { name: string; age: number; city: string; active: boolean; score: number; level: string }) =>
-          `${values.name} is ${values.age} from ${values.city}, ${values.active ? 'active' : 'inactive'}, score: ${values.score}, level: ${values.level}`,
+        (name: string, age: number, city: string, active: boolean, score: number, level: string) =>
+          `${name} is ${age} from ${city}, ${active ? 'active' : 'inactive'}, score: ${score}, level: ${level}`,
         { params: [
           { name: 'name', type: 'string' },
           { name: 'age', type: 'number' },
@@ -576,8 +636,8 @@ describe('defineFunction', () => {
     it('should work with 7+ parameters (fallback typing)', () => {
       const sevenParamFunc = defineFunction(
         'sevenParam',
-        (values: { name: string; age: number; city: string; active: boolean; score: number; level: string; rank: number }) =>
-          `${values.name} is ${values.age} from ${values.city}, ${values.active ? 'active' : 'inactive'}, score: ${values.score}, level: ${values.level}, rank: ${values.rank}`,
+        (name: string, age: number, city: string, active: boolean, score: number, level: string, rank: number) =>
+          `${name} is ${age} from ${city}, ${active ? 'active' : 'inactive'}, score: ${score}, level: ${level}, rank: ${rank}`,
         { params: [
           { name: 'name', type: 'string' },
           { name: 'age', type: 'number' },
@@ -600,7 +660,7 @@ describe('defineFunction', () => {
     it('should demonstrate parameter name preservation in strong typing', () => {
       const preservedFunc = defineFunction(
         'preserved',
-        (values: { firstName: string; lastName: string; age: number }) => `${values.firstName} ${values.lastName} is ${values.age}`,
+        (firstName: string, lastName: string, age: number) => `${firstName} ${lastName} is ${age}`,
         { params: [
           { name: 'firstName', type: 'string' },
           { name: 'lastName', type: 'string' },
@@ -619,7 +679,7 @@ describe('defineFunction', () => {
     it('should demonstrate optional parameters in strong typing', () => {
       const optionalFunc = defineFunction(
         'optional',
-        (values: { name: string; age?: number; city?: string }) => `${values.name}${values.age ? ` is ${values.age}` : ''}${values.city ? ` from ${values.city}` : ''}`,
+        (name: string, age?: number, city?: string) => `${name}${age ? ` is ${age}` : ''}${city ? ` from ${city}` : ''}`,
         { params: [
           { name: 'name', type: 'string' },
           { name: 'age', type: 'number', optional: true },
@@ -640,7 +700,7 @@ describe('defineFunction', () => {
     it('should demonstrate default values in strong typing', () => {
       const defaultFunc = defineFunction(
         'default',
-        (values: { name: string; age: number; city: string }) => `${values.name} is ${values.age} from ${values.city}`,
+        (name: string, age: number, city: string) => `${name} is ${age} from ${city}`,
         { params: [
           { name: 'name', type: 'string' },
           { name: 'age', type: 'number', default: 25 },

@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { defineFunction } from '../define-function';
 
-describe('defineFunction with record-type functions', () => {
-  // Test the new record-type function signature
+describe('defineFunction with positional functions', () => {
+  // Test positional internal function signature
   const recordFunc = defineFunction(
     'recordTest',
-    (values: { name: string; value: number }) => `${values.name}: ${values.value}`,
+    (name: string, value: number) => `${name}: ${value}`,
     {
       params: [
         { name: 'name', type: 'string' },
@@ -14,25 +14,25 @@ describe('defineFunction with record-type functions', () => {
     }
   );
 
-  it('should work with positional arguments (converted to record internally)', () => {
+  it('should work with positional arguments', () => {
     const result = recordFunc('hello', 42);
     expect(result).toBe('hello: 42');
   });
 
   it('should work with record arguments', () => {
-    const result = recordFunc({ name: 'hello', value: 42 });
+    const result = recordFunc({ name: 'hello', value: 42 } as any);
     expect(result).toBe('hello: 42');
   });
 
   it('should work with hybrid arguments', () => {
-    const result = recordFunc('hello', { value: 42 });
+    const result = recordFunc('hello', { value: 42 } as any);
     expect(result).toBe('hello: 42');
   });
 
   it('should handle defaults properly', () => {
     const funcWithDefaults = defineFunction(
       'withDefaults',
-      (values: { name: string; value?: number }) => `${values.name}: ${values.value ?? 0}`,
+      (name: string, value?: number) => `${name}: ${value ?? 0}`,
       {
         params: [
           { name: 'name', type: 'string' },
@@ -42,7 +42,7 @@ describe('defineFunction with record-type functions', () => {
     );
 
     expect(funcWithDefaults('test')).toBe('test: 100');
-    expect(funcWithDefaults({ name: 'test' })).toBe('test: 100');
+    expect(funcWithDefaults({ name: 'test' } as any)).toBe('test: 100');
     expect(funcWithDefaults('test', 42)).toBe('test: 42');
   });
 

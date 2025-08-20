@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { defineFunction } from '../define-function';
 
 describe('defineFunction - Simple Test', () => {
-  // Test that the new record-type function signature works
+  // Test positional internal function signature
   const testFunc = defineFunction(
     'test',
-    (record: { name: string; value: number }) => `${record.name}: ${record.value}`,
+    (name: string, value: number) => `${name}: ${value}`,
     {
       params: [
         { name: 'name', type: 'string' },
@@ -19,17 +19,17 @@ describe('defineFunction - Simple Test', () => {
   });
 
   it('should work with record arguments', () => {
-    expect(testFunc({ name: 'hello', value: 42 })).toBe('hello: 42');
+    expect(testFunc({ name: 'hello', value: 42 } as any)).toBe('hello: 42');
   });
 
   it('should work with hybrid arguments', () => {
-    expect(testFunc('hello', { value: 42 })).toBe('hello: 42');
+    expect(testFunc('hello', { value: 42 } as any)).toBe('hello: 42');
   });
 
   it('should handle defaults', () => {
     const funcWithDefaults = defineFunction(
       'withDefaults',
-      (record: { name: string; value?: number }) => `${record.name}: ${record.value ?? 0}`,
+      (name: string, value?: number) => `${name}: ${value ?? 0}`,
       {
         params: [
           { name: 'name', type: 'string' },
@@ -39,7 +39,7 @@ describe('defineFunction - Simple Test', () => {
     );
 
     expect(funcWithDefaults('test')).toBe('test: 100');
-    expect(funcWithDefaults({ name: 'test' })).toBe('test: 100');
+    expect(funcWithDefaults({ name: 'test' } as any)).toBe('test: 100');
     expect(funcWithDefaults('test', 42)).toBe('test: 42');
   });
 

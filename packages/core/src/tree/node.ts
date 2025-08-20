@@ -522,6 +522,11 @@ export abstract class Node<
     return this;
   }
 
+  preEvalSync(context: Context): this {
+    // Default: indicate async required if a sync path isn't implemented by subclass
+    throw new Error('AsyncRequired');
+  }
+
   /**
    * This is the method all nodes will override.
    * Individual nodes will specify / narrow return type
@@ -532,6 +537,12 @@ export abstract class Node<
     let node = this.maybeClone(context);
     await node.forEachNode(async n => await n.evalNode(context));
     return node;
+  }
+
+  // Sync-first API: fast-paths should implement these; default throws
+  evalNodeSync(context: Context): Node {
+    // Default: indicate async required
+    throw new Error('AsyncRequired');
   }
 
   static async evalStatic(node: Node, context: Context): Promise<Node> {
@@ -554,6 +565,32 @@ export abstract class Node<
     return returnNode;
   }
 
+  static evalStaticSync(node: Node, context: Context): Node {
+    let returnNode: Node = node;
+    if (!node.preEvaluated) {
+      if (typeof (node as any).preEvalSync !== 'function') {
+        throw new Error('AsyncRequired');
+      }
+      returnNode = (node as any).preEvalSync(context);
+      if (returnNode !== node) {
+        returnNode.inherit(node);
+      }
+      returnNode.preEvaluated = true;
+    }
+    if (!returnNode.evaluated) {
+      if (typeof (returnNode as any).evalNodeSync !== 'function') {
+        throw new Error('AsyncRequired');
+      }
+      returnNode = (returnNode as any).evalNodeSync(context);
+      if (returnNode !== node) {
+        returnNode.inherit(node);
+      }
+      returnNode.preEvaluated = true;
+      returnNode.evaluated = true;
+    }
+    return returnNode;
+  }
+
   /**
    * @note - Make sure you don't call super.eval while evaluating a node. Call it indirectly
    * from another node.
@@ -563,6 +600,10 @@ export abstract class Node<
       throw new Error('Do not call super.eval() from a subclass.');
     }
     return await Node.evalStatic(this, context);
+  }
+
+  evalSync(context: Context): Node {
+    return Node.evalStaticSync(this, context);
   }
 
   /**

@@ -1,3 +1,8 @@
+# Aug 19, 2025
+
+- The LLM informed me that async eval everywhere has a cost (microtasks), so the whole API will be updated to have nodes "opt-in" to async only when needed
+- The LLM had an idea to pass in "lazy" "thunks" when needed, so they would be async functions that could be awaited
+
 # Aug 18, 2025
 
 - Made a new plugin signature with ChatGPT help

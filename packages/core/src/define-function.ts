@@ -12,6 +12,10 @@ export type DefineFunctionOptions = {
     type: ArgType | readonly ArgType[];
     optional?: boolean;
     default?: any;
+    /** Marks this parameter as a variadic rest parameter. Must be the last param. */
+    rest?: boolean;
+    /** If true, provide a thunk (() => Promise<T>) to the internal positional function */
+    lazy?: boolean;
   }[];
   // Future options can be added here
   // example?: boolean;
@@ -56,11 +60,21 @@ type GetOptionalRecordType<T extends DefineFunctionOptions['params']> = {
       ? N
       : never
     : never]?:
-  T[K] extends { type: infer A extends ArgType }
-    ? GetArgType<A>
-    : T[K] extends { type: readonly ArgType[] }
-      ? GetArgType<T[K]['type'][number]>
-      : never;
+  T[K] extends { rest: true }
+    ? (
+        T[K] extends { type: infer A extends ArgType }
+          ? GetArgType<A>[]
+          : T[K] extends { type: readonly ArgType[] }
+            ? GetArgType<T[K]['type'][number]>[]
+            : never
+      )
+    : (
+        T[K] extends { type: infer A extends ArgType }
+          ? GetArgType<A>
+          : T[K] extends { type: readonly ArgType[] }
+            ? GetArgType<T[K]['type'][number]>
+            : never
+      );
 };
 
 // Get record types for named parameters
@@ -89,12 +103,12 @@ type GetPositionalTypes<
 
 export function defineFunction<
   const T extends DefineFunctionOptions,
-  F extends (record: any) => any>(
+  F extends (...args: any[]) => any>(
   name: string,
   fn: F,
   options?: T
 ) {
-  // The external API types remain exactly the same, but internal function must accept record
+  // The external API types remain exactly the same, but internal function accepts positional parameters only
 
   type NamedFunction = {
     (...args: GetPositionalTypes<T['params']>): ReturnType<F>;
@@ -172,30 +186,58 @@ export function defineFunction<
   /**
    * Function that accepts either positional arguments or a record object.
    * Parameter names are inferred from the params array: name, value, etc.
-   * All calls are converted to record format before calling the internal function.
+   * All calls are converted to positional format before calling the internal function.
    */
   const result = function(...args: any[]): ReturnType<F> {
+    const params = options?.params ?? [] as DefineFunctionOptions['params'];
+    const restIndex = params.findIndex(p => (p as any).rest);
+    const hasRest = restIndex >= 0;
+    if (hasRest && restIndex !== params.length - 1) {
+      throw new Error('Rest parameter must be the last parameter');
+    }
     // Check if this is a pure record call (single object argument that's not a class instance)
     if (args.length === 1 && typeof args[0] === 'object' && args[0] !== null && !Array.isArray(args[0])) {
       // Check if it's actually a class instance (like Color, Dimension) - if so, treat as positional
-      const isClassInstance = options?.params?.some(opt =>
+      const isClassInstance = params?.some(opt =>
         typeof opt.type === 'function' && args[0] instanceof opt.type
       );
 
       if (!isClassInstance) {
         // Pure record call - apply defaults and validate
-        const record = { ...args[0] }; // Make a copy to avoid mutating the original
+        const input = args[0] as any;
+        const isLateProxy = !!input && typeof input === 'object' && '_raw' in input;
+        const rawRecord = isLateProxy ? input._raw : { ...input };
 
         // Apply defaults for missing parameters
-        for (const paramDef of options?.params ?? []) {
+        for (const paramDef of params ?? []) {
           const paramName = paramDef.name;
-          if (record[paramName] === undefined && paramDef.default !== undefined) {
-            record[paramName] = paramDef.default;
+          if (rawRecord[paramName] === undefined && paramDef.default !== undefined) {
+            rawRecord[paramName] = paramDef.default;
+          }
+          // Normalize rest param to array
+          if ((paramDef as any).rest) {
+            const current = rawRecord[paramName];
+            if (current === undefined) {
+              rawRecord[paramName] = [];
+            } else if (!Array.isArray(current)) {
+              rawRecord[paramName] = [current];
+            }
           }
         }
 
-        validateArguments(record, options?.params ?? [] as DefineFunctionOptions['params']);
-        return fn(record);
+        validateArguments(rawRecord, params ?? [] as DefineFunctionOptions['params']);
+        const pos: any[] = [];
+        for (let i = 0; i < params.length; i++) {
+          const def = params[i]!;
+          if ((def as any).rest) {
+            const v = rawRecord[def.name];
+            const arr = Array.isArray(v) ? v : (v === undefined ? [] : [v]);
+            pos.push(...arr);
+          } else {
+            pos.push(rawRecord[def.name]);
+          }
+        }
+        return (fn as any)(...pos);
       }
     }
 
@@ -209,10 +251,23 @@ export function defineFunction<
       const mergedRecord: any = {};
 
       // First, set values from positional arguments
-      for (let i = 0; i < positionalArgs.length && i < (options?.params?.length ?? 0); i++) {
-        const paramName = options?.params?.[i]?.name;
-        if (paramName) {
-          mergedRecord[paramName] = positionalArgs[i];
+      if (!hasRest) {
+        for (let i = 0; i < positionalArgs.length && i < (params?.length ?? 0); i++) {
+          const paramName = params?.[i]?.name;
+          if (paramName) {
+            mergedRecord[paramName] = positionalArgs[i];
+          }
+        }
+      } else {
+        for (let i = 0; i < (params?.length ?? 0); i++) {
+          const def = params[i]!;
+          const paramName = def.name;
+          if ((def as any).rest) {
+            mergedRecord[paramName] = positionalArgs.slice(i);
+            break;
+          } else if (i < positionalArgs.length) {
+            mergedRecord[paramName] = positionalArgs[i];
+          }
         }
       }
 
@@ -220,34 +275,78 @@ export function defineFunction<
       Object.assign(mergedRecord, record);
 
       // Apply defaults for missing parameters
-      for (const paramDef of options?.params ?? []) {
+      for (const paramDef of params ?? []) {
         const paramName = paramDef.name;
         if (mergedRecord[paramName] === undefined && paramDef.default !== undefined) {
           mergedRecord[paramName] = paramDef.default;
         }
+        if ((paramDef as any).rest) {
+          const current = mergedRecord[paramName];
+          if (current === undefined) {
+            mergedRecord[paramName] = [];
+          } else if (!Array.isArray(current)) {
+            mergedRecord[paramName] = [current];
+          }
+        }
       }
 
-      validateArguments(mergedRecord, options?.params);
-      return fn(mergedRecord);
+      validateArguments(mergedRecord, params);
+      const pos: any[] = [];
+      for (let i = 0; i < params.length; i++) {
+        const def = params[i]!;
+        if ((def as any).rest) {
+          const v = mergedRecord[def.name];
+          const arr = Array.isArray(v) ? v : (v === undefined ? [] : [v]);
+          pos.push(...arr);
+        } else {
+          pos.push(mergedRecord[def.name]);
+        }
+      }
+      return (fn as any)(...pos);
     } else {
       // Pure positional call - convert to record
       const recordArgs: any = {};
 
       // Map positional arguments to record properties
-      for (let i = 0; i < Math.max(args.length, options?.params?.length ?? 0); i++) {
-        const paramName = options?.params?.[i]?.name;
-        if (paramName) {
-          if (i < args.length) {
+      if (!hasRest) {
+        for (let i = 0; i < Math.max(args.length, params?.length ?? 0); i++) {
+          const paramName = params?.[i]?.name;
+          if (paramName) {
+            if (i < args.length) {
+              recordArgs[paramName] = args[i];
+            } else if (params?.[i]?.default !== undefined) {
+              // Apply default for missing positional argument
+              recordArgs[paramName] = params![i]?.default;
+            }
+          }
+        }
+      } else {
+        for (let i = 0; i < (params?.length ?? 0); i++) {
+          const def = params[i]!;
+          const paramName = def.name;
+          if ((def as any).rest) {
+            recordArgs[paramName] = args.slice(i);
+            break;
+          } else if (i < args.length) {
             recordArgs[paramName] = args[i];
-          } else if (options?.params?.[i]?.default !== undefined) {
-            // Apply default for missing positional argument
-            recordArgs[paramName] = options!.params![i]?.default;
+          } else if (def.default !== undefined) {
+            recordArgs[paramName] = def.default;
           }
         }
       }
 
-      validateArguments(recordArgs, options?.params);
-      return fn(recordArgs);
+      validateArguments(recordArgs, params);
+      const pos: any[] = [];
+      for (let i = 0; i < params.length; i++) {
+        const def = params[i]!;
+        if ((def as any).rest) {
+          const arr = recordArgs[def.name] ?? [];
+          pos.push(...arr);
+        } else {
+          pos.push(recordArgs[def.name]);
+        }
+      }
+      return (fn as any)(...pos);
     }
   } as NamedFunction;
 
@@ -264,6 +363,8 @@ export function defineFunction<
         return options?.params;
       } else if (prop === 'name') {
         return name;
+      } else if (prop === '_internal') {
+        return fn;
       }
       return (target as any)[prop];
     }
@@ -271,7 +372,7 @@ export function defineFunction<
 }
 
 /** This will be called internally by Jess to functions created with defineFunction */
-export function callWithContext(context: Context, fn: (...args: any[]) => any, ...args: any[]) {
+export async function callWithContext(context: Context, fn: (...args: any[]) => any, ...args: any[]) {
   let record: any = {};
 
   if (!(fn as any)?.params && args.some(arg =>
@@ -282,26 +383,53 @@ export function callWithContext(context: Context, fn: (...args: any[]) => any, .
   }
 
   if (!(fn as any)?.params) {
-    /** Treat as normal positional function call */
-    return fn.call(context, ...args);
+    // No metadata; treat as normal positional function call
+    return await (fn as any).call(context, ...args);
   }
 
-  // Map positional arguments to record properties
-  for (let i = 0; i < args.length; i++) {
-    let arg = args[i];
-    if (isNode(arg, 'Collection')) {
-      arg = arg.toObject(false);
-      Object.assign(record, arg);
-      continue;
-    } else if (isPlainObject(arg)) {
-      Object.assign(record, arg);
-      continue;
+  const params = (fn as any)?.params as DefineFunctionOptions['params'] | undefined;
+  const restIndex = params ? params.findIndex(p => (p as any).rest) : -1;
+  const hasRest = (restIndex ?? -1) >= 0;
+
+  // Map positional/record/collection arguments to record properties
+  if (!hasRest) {
+    for (let i = 0; i < args.length; i++) {
+      let arg = args[i];
+      if (isNode(arg, 'Collection')) {
+        arg = arg.toObject(false);
+        Object.assign(record, arg);
+        continue;
+      } else if (isPlainObject(arg)) {
+        Object.assign(record, arg);
+        continue;
+      }
+      const paramName = (fn as any).params[i]?.name as string;
+      if (!paramName) {
+        throw new Error('Function does not support this number of arguments');
+      }
+      record[paramName] = args[i];
     }
-    const paramName = (fn as any).params[i]?.name as string;
-    if (!paramName) {
-      throw new Error('Function does not support this number of arguments');
+  } else {
+    // With rest: fill fixed params, then collect rest
+    for (let i = 0; i < (params?.length ?? 0); i++) {
+      const def = params![i]!;
+      const paramName = def.name;
+      const arg = args[i];
+      if (isNode(arg, 'Collection')) {
+        const obj = arg.toObject(false);
+        Object.assign(record, obj);
+        continue;
+      } else if (isPlainObject(arg)) {
+        Object.assign(record, arg);
+        continue;
+      }
+      if ((def as any).rest) {
+        record[paramName] = args.slice(i);
+        break;
+      } else {
+        record[paramName] = arg;
+      }
     }
-    record[paramName] = args[i];
   }
 
   /**
@@ -309,26 +437,92 @@ export function callWithContext(context: Context, fn: (...args: any[]) => any, .
    * This allows patterns like the if() function to work with references to
    * variables that may not exist.
    */
-  let lateEvalProxy = new Proxy(record, {
-    get(target, prop) {
-      if (prop === '_raw') {
-        return target;
-      }
-      if (prop in target) {
-        let item = target[prop];
-        if (isNode(item) && !item.evaluated) {
-          item = item.eval(context);
-          target[prop] = item;
-        }
-        return item;
-      }
-    },
-    has(target, prop) {
-      return prop in target;
-    }
-  });
+  // No special record proxy path; proceed to positional building with lazy/sync handling
 
-  return fn.call(context, lateEvalProxy);
+  // Positional internal function: build positional args with sync-first, async-fallback and lazy thunks
+  const makeThunk = (val: any) => async () => {
+    let v = val;
+    if (isNode(v) && !v.evaluated) {
+      v = await (v as any).eval(context);
+    }
+    return v;
+  };
+  const evalNowSync = (val: any): any => {
+    if (isNode(val) && !val.evaluated) {
+      if (typeof (val as any).evalSync === 'function') {
+        return (val as any).evalSync(context);
+      }
+      throw new Error('AsyncRequired');
+    }
+    return val;
+  };
+  const evalNowAsync = async (val: any): Promise<any> => {
+    if (isNode(val) && !val.evaluated) {
+      return await (val as any).eval(context);
+    }
+    return val;
+  };
+
+  let needsAsync = false;
+  const positionalArgs: any[] = [];
+  for (let i = 0; i < (params?.length ?? 0); i++) {
+    const def = params![i]!;
+    const name = def.name;
+    if ((def as any).rest) {
+      const v = record[name];
+      const arr: any[] = Array.isArray(v) ? v : (v === undefined ? [] : [v]);
+      if ((def as any).lazy) {
+        positionalArgs.push(...arr.map(item => makeThunk(item)));
+      } else {
+        try {
+          positionalArgs.push(...arr.map(item => evalNowSync(item)));
+        } catch {
+          needsAsync = true;
+        }
+      }
+    } else {
+      const v = record[name];
+      if ((def as any).lazy) {
+        positionalArgs.push(makeThunk(v));
+      } else {
+        try {
+          positionalArgs.push(evalNowSync(v));
+        } catch {
+          needsAsync = true;
+        }
+      }
+    }
+  }
+
+  if (!needsAsync) {
+    return await ((fn as any)._internal).call(context, ...positionalArgs);
+  }
+
+  // Async fallback: rebuild args awaiting eager values
+  const asyncArgs: any[] = [];
+  for (let i = 0; i < (params?.length ?? 0); i++) {
+    const def = params![i]!;
+    const name = def.name;
+    if ((def as any).rest) {
+      const v = record[name];
+      const arr: any[] = Array.isArray(v) ? v : (v === undefined ? [] : [v]);
+      if ((def as any).lazy) {
+        asyncArgs.push(...arr.map(item => makeThunk(item)));
+      } else {
+        for (const item of arr) {
+          asyncArgs.push(await evalNowAsync(item));
+        }
+      }
+    } else {
+      const v = record[name];
+      if ((def as any).lazy) {
+        asyncArgs.push(makeThunk(v));
+      } else {
+        asyncArgs.push(await evalNowAsync(v));
+      }
+    }
+  }
+  return await ((fn as any)._internal).call(context, ...asyncArgs);
 }
 
 /**
@@ -352,21 +546,36 @@ function validateArguments(record: any, params?: DefineFunctionOptions['params']
     // Skip validation for undefined optional arguments
     if (value === undefined) continue;
 
-    if (Array.isArray(expectedType)) {
-      // Check if value matches any of the allowed types
-      const isValid = expectedType.some(type => isValidType(value, type));
-      if (!isValid) {
-        throw new TypeError(
-          `Argument '${paramName}' must be one of: ${expectedType.join(', ')}. Got: ${typeof value}`
-        );
+    const isRest = (paramDef as any).rest === true;
+    if (isRest) {
+      if (!Array.isArray(value)) {
+        throw new TypeError(`Argument '${paramName}' must be an array (rest parameter)`);
+      }
+      const elementTypes = Array.isArray(expectedType) ? expectedType : [expectedType];
+      for (const [idx, el] of (value as any[]).entries()) {
+        const isValid = elementTypes.some(type => isValidType(el, type));
+        if (!isValid) {
+          const typeList = elementTypes.map(t => typeof t === 'function' ? t.name : t).join(', ');
+          throw new TypeError(`Element ${idx} of '${paramName}' must be one of: ${typeList}. Got: ${typeof el}`);
+        }
       }
     } else {
-      // Single type validation
-      if (!isValidType(value, expectedType as ArgType)) {
-        const typeName = typeof expectedType === 'function' ? expectedType.name : expectedType;
-        throw new TypeError(
-          `Argument '${paramName}' must be of type '${typeName}'. Got: ${typeof value}`
-        );
+      if (Array.isArray(expectedType)) {
+        // Check if value matches any of the allowed types
+        const isValid = expectedType.some(type => isValidType(value, type));
+        if (!isValid) {
+          throw new TypeError(
+            `Argument '${paramName}' must be one of: ${expectedType.join(', ')}. Got: ${typeof value}`
+          );
+        }
+      } else {
+        // Single type validation
+        if (!isValidType(value, expectedType as ArgType)) {
+          const typeName = typeof expectedType === 'function' ? expectedType.name : expectedType;
+          throw new TypeError(
+            `Argument '${paramName}' must be of type '${typeName}'. Got: ${typeof value}`
+          );
+        }
       }
     }
   }
