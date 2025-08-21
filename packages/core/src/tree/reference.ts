@@ -10,6 +10,7 @@ import type { Quoted } from './quoted';
 import { atIndex } from './util/collections';
 import type { Num } from './number';
 import { type PrintOptions, getPrintOptions } from './util/print';
+import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 
 /**
  * The type is determined by syntax
@@ -140,101 +141,127 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
    * We don't need to mark evaluated, because a reference
    * should never resolve to itself
    */
-  override async evalNode(context: Context): Promise<Node> {
+  override evalNode(context: Context): MaybePromise<Node> {
     let { target, key } = this.value;
     let { type, fallbackValue, filter: originalFilter } = this.options;
-    let valueKey: string | number;
-    if (isNode(key)) {
-      let evald = await key.eval(context);
-      valueKey = evald.valueOf();
-    } else {
-      valueKey = key;
-    }
-    let resolvedTarget = target ? await target.eval(context) : context.rulesContext;
-    originalFilter ??= () => true;
-    let filter = (n: Node) =>
-      originalFilter(n) && !context.searchScope.has(n);
-    let opts: FindOptions = { filter };
-
-    let returnVal: any;
-    switch (type) {
-      case 'index':
-        if (typeof valueKey === 'number') {
-          /** Look for array-like nodes */
-          if (isNode(resolvedTarget, 'Rules')) {
-            returnVal = resolvedTarget.at(valueKey);
-          } else if (isNode(resolvedTarget, 'JsArray')) {
-            returnVal = atIndex(resolvedTarget.value, valueKey);
+    return pipe(
+      () => {
+        const keyEval = isNode(key) ? key.eval(context) : key;
+        return keyEval;
+      },
+      (keyEval) => {
+        let valueKey = isNode(keyEval) ? keyEval.valueOf() : keyEval;
+        let resolvedTarget = target ? target.eval(context) : context.rulesContext;
+        if (isThenable(resolvedTarget)) {
+          return Promise.all([resolvedTarget, valueKey]);
+        }
+        return [resolvedTarget, valueKey] as [Node, string];
+      },
+      ([resolvedTarget, valueKey]) => {
+        originalFilter ??= () => true;
+        const filter = (n: Node) => originalFilter!(n) && !context.searchScope.has(n);
+        const opts: FindOptions = { filter };
+        let returnVal: any;
+        switch (type) {
+          case 'index':
+            if (typeof valueKey === 'number') {
+              if (isNode(resolvedTarget, 'Rules')) {
+                returnVal = resolvedTarget.at(valueKey);
+              } else if (isNode(resolvedTarget, 'JsArray')) {
+                returnVal = atIndex(resolvedTarget.value, valueKey);
+              }
+            } else {
+              if (isNode(resolvedTarget, 'Rules')) {
+                returnVal = resolvedTarget.find('declaration', `${valueKey}`, undefined, opts);
+              } else if (isNode(resolvedTarget, 'JsObject')) {
+                returnVal = resolvedTarget.value[valueKey];
+              }
+            }
+            break;
+          case 'variable':
+            if (isNode(resolvedTarget, 'Rules')) {
+              returnVal = resolvedTarget.find('declaration', `${valueKey}`, 'VarDeclaration', opts);
+            }
+            break;
+          case 'function':
+            if (isNode(resolvedTarget, 'Rules')) {
+              returnVal = resolvedTarget.find('function', `${valueKey}`, undefined, opts);
+            }
+            break;
+          case 'property':
+            if (isNode(resolvedTarget, 'Rules')) {
+              returnVal = resolvedTarget.find('declaration', `${valueKey}`, 'Declaration', opts);
+            } else if (isNode(resolvedTarget, 'JsObject')) {
+              returnVal = resolvedTarget.value[valueKey];
+            }
+            break;
+          case 'mixin':
+            if (isNode(resolvedTarget, 'Rules')) {
+              returnVal = resolvedTarget.find('mixin', `${valueKey}`, 'Mixin', opts);
+            }
+            break;
+          case 'ruleset':
+            if (isNode(resolvedTarget, 'Rules')) {
+              returnVal = resolvedTarget.find('mixin', `${valueKey}`, 'Ruleset', opts);
+            }
+            break;
+          case 'mixin-ruleset':
+            if (isNode(resolvedTarget, 'Rules')) {
+              returnVal = resolvedTarget.find('mixin', `${valueKey}`, undefined, opts);
+            }
+            break;
+        }
+        return { returnVal, valueKey };
+      },
+      ({ returnVal, valueKey }) => {
+        if (returnVal === undefined) {
+          if (!fallbackValue) {
+            throw new ReferenceError(`"${key}" is not defined`);
           }
-        } else {
-          if (isNode(resolvedTarget, 'Rules')) {
-            returnVal = resolvedTarget.find('declaration', `${valueKey}`, undefined, opts);
-          } else if (isNode(resolvedTarget, 'JsObject')) {
-            returnVal = resolvedTarget.value[valueKey];
+          if (fallbackValue === true) {
+            const any = new Any(`${valueKey}`);
+            any.options.role = this.options.role;
+            return any;
           }
+          return fallbackValue as Node;
         }
-        break;
-      case 'variable':
-        if (isNode(resolvedTarget, 'Rules')) {
-          returnVal = resolvedTarget.find('declaration', `${valueKey}`, 'VarDeclaration', opts);
+        if (isNode(returnVal, 'VarDeclaration')) {
+          context.searchScope.add(returnVal);
+          const inCalc = context.calcFrames.at(-1);
+          if (inCalc) {
+            context.calcFrames.pop();
+          }
+          return pipe(
+            () => returnVal.value.value.eval(context),
+            (evald) => {
+              if (inCalc) {
+                context.calcFrames.push(true);
+              }
+              context.searchScope.delete(returnVal);
+              return evald;
+            }
+          );
         }
-        break;
-      case 'function':
-        if (isNode(resolvedTarget, 'Rules')) {
-          returnVal = resolvedTarget.find('function', `${valueKey}`, undefined, opts);
+        if (isNode(returnVal, 'Declaration')) {
+          context.searchScope.add(returnVal);
+          const inCalc = context.calcFrames.at(-1);
+          if (inCalc) {
+            context.calcFrames.pop();
+          }
+          return pipe(
+            () => returnVal.value.value.eval(context),
+            (evald) => {
+              if (inCalc) {
+                context.calcFrames.push(true);
+              }
+              context.searchScope.delete(returnVal);
+              return evald;
+            }
+          );
         }
-        break;
-      case 'property':
-        if (isNode(resolvedTarget, 'Rules')) {
-          returnVal = resolvedTarget.find('declaration', `${valueKey}`, 'Declaration', opts);
-        } else if (isNode(resolvedTarget, 'JsObject')) {
-          returnVal = resolvedTarget.value[valueKey];
-        }
-        break;
-      case 'mixin':
-        if (isNode(resolvedTarget, 'Rules')) {
-          returnVal = resolvedTarget.find('mixin', `${valueKey}`, 'Mixin', opts);
-        }
-        break;
-      case 'ruleset':
-        if (isNode(resolvedTarget, 'Rules')) {
-          returnVal = resolvedTarget.find('mixin', `${valueKey}`, 'Ruleset', opts);
-        }
-        break;
-      case 'mixin-ruleset':
-        if (isNode(resolvedTarget, 'Rules')) {
-          returnVal = resolvedTarget.find('mixin', `${valueKey}`, undefined, opts);
-        }
-        break;
-    }
-
-    if (returnVal === undefined) {
-      if (!fallbackValue) {
-        throw new ReferenceError(`"${key}" is not defined`);
+        return cast(returnVal);
       }
-      if (fallbackValue === true) {
-        let any = new Any(`${valueKey}`);
-        any.options.role = this.options.role;
-        return any;
-      }
-      return fallbackValue;
-    }
-    if (isNode(returnVal, 'Declaration')) {
-      context.searchScope.add(returnVal);
-      /** Don't consider calc frames for evaluating references */
-      let inCalc = context.calcFrames.at(-1);
-      if (inCalc) {
-        context.calcFrames.pop();
-      }
-      const evald = await returnVal.value.value.eval(context);
-      if (inCalc) {
-        context.calcFrames.push(true);
-      }
-      context.searchScope.delete(returnVal);
-      return evald;
-    } else {
-      return cast(returnVal);
-    }
+    );
   }
 }
 

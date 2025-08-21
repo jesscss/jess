@@ -5,6 +5,7 @@ import { isNode } from './util/is-node';
 import { cast } from './util/cast';
 import { callWithContext } from '../define-function';
 import { type PrintOptions, getPrintOptions } from './util/print';
+import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 
 export type CallValue = {
   /**
@@ -69,50 +70,66 @@ export class Call extends Node<CallValue, CallOptions> {
     return w.getSince(mark);
   }
 
-  override async evalNode(context: Context): Promise<Node> {
-    /** Reset parentheses "state" */
+  override evalNode(context: Context): MaybePromise<Node> {
     context.parenFrames.push(false);
     let { name, args } = this.value;
+    const finalize = (evaluatedName: any, evaluatedArgs: any) => {
+      context.parenFrames.pop();
+      const node = this.maybeClone(context);
+      node.value.name = evaluatedName;
+      node.value.args = evaluatedArgs;
+      return node;
+    };
     if (name instanceof Node) {
-      name = await name.eval(context);
-    }
-
-    if (isNode(name, 'JsFunction')) {
-      try {
-        const fn = name.value;
-        let result: any;
-        if (args) {
-          result = await callWithContext(context, fn, ...args.value);
-        } else {
-          result = await callWithContext(context, fn);
+      return pipe(
+        () => typeof name === 'string' ? name : name.eval(context),
+        (n) => {
+          name = n;
+          if (isNode(name, 'JsFunction')) {
+            const fn = name.value;
+            const out = args ? callWithContext(context, fn, ...args.value) : callWithContext(context, fn);
+            if (out && typeof (out as any).then === 'function') {
+              return (out as Promise<any>).then(result => cast(result).inherit(this));
+            }
+            return cast(out).inherit(this);
+          } else {
+            if (name === 'calc') {
+              context.calcFrames.push(true);
+            }
+            const maybeArgs = args?.eval(context);
+            if (maybeArgs && typeof (maybeArgs as any).then === 'function') {
+              return (maybeArgs as Promise<List | undefined>).then((a) => {
+                if (name === 'calc') {
+                  context.calcFrames.pop();
+                }
+                return finalize(name, a);
+              });
+            }
+            if (name === 'calc') {
+              context.calcFrames.pop();
+            }
+            return finalize(name, maybeArgs);
+          }
         }
-
-        /** Restore parens state */
-        context.parenFrames.pop();
-        /** @todo - mark results as important */
-        return cast(result).inherit(this);
-      } catch (e) {
-        /** Do something with JS errors */
-        if (!this.options?.silentFail) {
-          throw e;
-        }
-      }
+      );
     } else {
       if (name === 'calc') {
         context.calcFrames.push(true);
       }
-      args = await args?.eval(context);
+      const maybeArgs = args?.eval(context);
+      if (maybeArgs && typeof (maybeArgs as any).then === 'function') {
+        return (maybeArgs as Promise<List | undefined>).then((a) => {
+          if (name === 'calc') {
+            context.calcFrames.pop();
+          }
+          return finalize(name, a);
+        });
+      }
       if (name === 'calc') {
         context.calcFrames.pop();
       }
+      return finalize(name, maybeArgs);
     }
-    /** Restore parens state */
-    context.parenFrames.pop();
-
-    let node = this.maybeClone(context);
-    node.value.name = name;
-    node.value.args = args;
-    return node;
   }
 }
 

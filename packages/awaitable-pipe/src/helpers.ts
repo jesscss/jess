@@ -1,5 +1,6 @@
 import type { MaybePromise } from './utils';
 import { isThenable } from './utils';
+export { serialForEach, serialReduce } from './utils';
 
 export type StepErrorOptions<TIn, R> = {
   onError?: (error: unknown, input: TIn) => void;

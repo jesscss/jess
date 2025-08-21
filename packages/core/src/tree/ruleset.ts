@@ -11,6 +11,7 @@ import { Combinator } from './combinator';
 import { ComplexSelector } from './selector-complex';
 import { SelectorList } from './selector-list';
 import { type PrintOptions, getPrintOptions } from './util/print';
+import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -79,14 +80,19 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return w.getSince(mark);
   }
 
-  override async preEval(context: Context): Promise<this> {
+  override preEval(context: Context): MaybePromise<this> {
     if (!this.preEvaluated) {
-      let node = this.maybeClone(context);
+      const node = this.maybeClone(context);
       node.preEvaluated = true;
       node.sourceNode ??= this;
-      let { selector } = node.value;
-      node.value.selector = await selector.eval(context) as Selector | Nil;
-      return node;
+      const { selector } = node.value;
+      return pipe(
+        () => selector.eval(context),
+        (sel) => {
+          node.value.selector = sel as Selector | Nil;
+          return node;
+        }
+      );
     }
     return this;
   }
@@ -149,57 +155,56 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return selector;
   }
 
-  override async evalNode(context: Context): Promise<Ruleset | Nil> {
+  override evalNode(context: Context): MaybePromise<Ruleset | Nil> {
     let rule = this.maybeClone(context);
     rule.options = { ...this.options };
     let frame = atIndex(context.rulesetFrames, -1);
-    /** Store the current frame selector if we need it for serialization */
     if (frame && isNode(frame.selector, 'Selector')) {
       rule.parentSelector = frame.selector;
     }
     let guard = rule.value.guard;
-    if (guard) {
-      let bool = await guard.eval(context);
-      if (!bool.value) {
-        return new Nil();
-      }
-      /** Remove once evaluated */
-      rule.value.guard = undefined;
-    }
-    /** Allow a selector to signal that nesting should be collapsed */
     const collapseNesting = context.opts.collapseNesting;
-    let sels = (await this.selector.eval(context)) as Selector | Nil;
-
-    if (frame && (this.options.hoistToRoot ?? context.opts.collapseNesting)) {
-      rule.options.hoistToRoot = true;
-    }
-    context.opts.collapseNesting = collapseNesting;
-
-    /** If the only selector is a generated :is, unwrap it */
-    if (
-      isNode(sels, 'PseudoSelector')
-      && sels.value.name === ':is'
-      && sels.generated
-    ) {
-      sels = sels.value.arg as Selector;
-    }
-
-    if (sels instanceof Nil) {
-      return sels;
-    }
-
-    rule.value.selector = sels;
-
-    context.rulesetFrames.push(rule);
-    rule.value.rules = await this.value.rules.eval(context);
-    context.rulesetFrames.pop();
-
-    /** Remove empty rules */
-    const rules = rule.value.rules;
-    if (rules.visibleRules().length === 0) {
-      rule.visible = false;
-    }
-    return rule;
+    return pipe(
+      () => guard?.eval(context),
+      (guard) => {
+        if (guard && !guard.value) {
+          return new Nil();
+        }
+        rule.value.guard = undefined;
+        return rule.selector.eval(context);
+      },
+      (sels: Selector | Nil) => {
+        if (frame && (this.options.hoistToRoot ?? context.opts.collapseNesting)) {
+          rule.options.hoistToRoot = true;
+        }
+        context.opts.collapseNesting = collapseNesting;
+        if (
+          isNode(sels, 'PseudoSelector')
+          && sels.value.name === ':is'
+          && sels.generated
+        ) {
+          sels = sels.value.arg as Selector;
+        }
+        if (sels instanceof Nil) {
+          return sels;
+        }
+        rule.value.selector = sels;
+        context.rulesetFrames.push(rule);
+        return this.value.rules.eval(context);
+      },
+      (evaluatedRules: Rules | Nil) => {
+        if (evaluatedRules instanceof Nil) {
+          return evaluatedRules;
+        }
+        context.rulesetFrames.pop();
+        rule.value.rules = evaluatedRules;
+        const rules = rule.value.rules;
+        if (rules.visibleRules().length === 0) {
+          rule.visible = false;
+        }
+        return rule;
+      }
+    );
   }
 
   /** @todo move to ToCssVisitor */

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { pipe, safePipe, tryStep, guard, isThenable, isPromise } from '../src';
+import { pipe, safePipe, tryStep, guard, isThenable, isPromise, serialForEach, serialReduce } from '../src';
 
 describe('tryStep', () => {
   it('captures sync throw and returns fallback', () => {
@@ -96,6 +96,42 @@ describe('guard', () => {
     expect(isPromise(thenable)).toBe(false);
     expect(isThenable(1)).toBe(false);
     expect(isPromise(1)).toBe(false);
+  });
+
+  it('serialForEach runs sync-first and promotes to async when needed', async () => {
+    const calls: number[] = [];
+    const items = [1, 2, 3];
+    const out = serialForEach(items, (n, i) => {
+      calls.push(n);
+      if (i === 1) {
+        return Promise.resolve();
+      }
+      return;
+    });
+    expect(isThenable(out)).toBe(true);
+    await out;
+    expect(calls).toEqual([1, 2, 3]);
+  });
+
+  it('serialReduce runs sync-first and promotes to async when needed', async () => {
+    const items = [1, 2, 3];
+    const out = serialReduce(items, 0, (acc, n, i) => {
+      if (i === 2) return Promise.resolve(acc + n);
+      return acc + n;
+    });
+    expect(isThenable(out)).toBe(true);
+    await expect(out).resolves.toBe(6);
+  });
+
+  it('serialReduce continues after async barrier (covers inner async loop)', async () => {
+    const items = [1, 2, 3];
+    const out = serialReduce(items, 0, (acc, n, i) => {
+      // Make index 1 async so there is at least one remaining element for the inner loop
+      if (i === 1) return Promise.resolve(acc + n);
+      return acc + n;
+    });
+    expect(isThenable(out)).toBe(true);
+    await expect(out).resolves.toBe(6);
   });
 
   it('throws when predicate is false', () => {

@@ -17,6 +17,13 @@ export type InterpolatedValue = {
 
 /**
  * Merge an interface to declare the specific types
+ *
+ * @todo - Instead of extending simple selector, create a selector "wrapper"
+ * that goes around expressions and interpolated values, so that it
+ * casts as a selector after evaluation.
+ *
+ * This would eliminate the need for the `evalToSelector` and `evalToGeneric`
+ * methods, because the wrapper would handle the returned node type.
  */
 export interface Interpolated<
   Role extends AnyRole = AnyRole

@@ -75,7 +75,6 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       if (
         isNode(component, 'Combinator')
         && component.value !== ' '
-        && component.value !== ''
       ) {
         // pre spacing (default to single space when no explicit pre)
         if (!component.pre) {

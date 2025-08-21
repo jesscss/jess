@@ -225,10 +225,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               return node;
             });
           }
-          if (value instanceof Nil) {
+          if (maybeNewValue instanceof Nil) {
             return (value as Nil).inherit(node);
           }
-          node.value.value = value as Node;
+          node.value.value = maybeNewValue as Node;
         }
         return node;
       }

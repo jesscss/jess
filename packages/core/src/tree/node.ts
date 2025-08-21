@@ -540,7 +540,7 @@ export abstract class Node<
    *
    * By default, evals all children
    */
-  evalNode(context: Context): MaybePromise<Node> {
+  protected evalNode(context: Context): MaybePromise<Node> {
     return pipe(
       () => this.maybeClone(context),
       (node) => {

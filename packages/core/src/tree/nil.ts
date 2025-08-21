@@ -4,10 +4,11 @@ import {
   type LocationInfo,
   type NodeOptions
 } from './node';
-import type { TreeContext } from '../context';
+import type { Context, TreeContext } from '../context';
 
 export interface Nil extends Node<''> {
   valueOf(): '';
+  eval(context: Context): Nil;
 }
 
 /**

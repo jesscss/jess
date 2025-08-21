@@ -122,7 +122,6 @@ describe('Rules', () => {
         node = await node.eval(context);
         /** This won't have been resolved, so we need to evaluate it. */
         let result = await getVar(node, 'first')!.eval(context);
-
         expect(`${result}`).toBe('$first: one');
       });
 

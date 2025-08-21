@@ -3,6 +3,10 @@ import { defineType } from './node';
 import { SimpleSelector } from './selector-simple';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 
+export interface BasicSelector extends SimpleSelector<string> {
+  eval(context: Context): BasicSelector;
+}
+
 /**
  * A basic selector
  * @see https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_selectors/Selectors_and_combinators#basic_selectors
@@ -25,9 +29,9 @@ export class BasicSelector extends SimpleSelector<string> {
     return /^[^.#*]/.test(this.value);
   }
 
-  override evalNode(context: Context): MaybePromise<BasicSelector> {
+  override evalNode(context: Context): BasicSelector {
     return pipe(
-      () => super.evalNode(context),
+      () => super.evalNode(context) as BasicSelector,
       (node: BasicSelector) => {
         if (node.isClass) {
           context.hashClass(node.value);

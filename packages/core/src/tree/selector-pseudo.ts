@@ -7,6 +7,7 @@ import { type Context } from '../context';
 import { isNode } from './util/is-node';
 import { Selector } from './selector';
 import { type PrintOptions, getPrintOptions } from './util/print';
+import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 
 export type PseudoSelectorValue = {
   /**
@@ -156,18 +157,23 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     return valueOf;
   }
 
-  override async evalNode(context: Context) {
-    let arg = this.value.arg;
-    let node = this.maybeClone(context);
-    if (!arg) {
+  override evalNode(context: Context): MaybePromise<PseudoSelector> {
+    const currentArg = this.value.arg;
+    const node = this.maybeClone(context);
+    if (!currentArg) {
       return node;
     }
-    /** Reset parentheses "state" */
-    context.parenFrames.push(false);
-    arg = await arg.eval(context);
-    context.parenFrames.pop();
-    node.value.arg = arg;
-    return node;
+    return pipe(
+      () => {
+        context.parenFrames.push(false);
+        return currentArg.eval(context);
+      },
+      (evaluatedArg) => {
+        context.parenFrames.pop();
+        node.value.arg = evaluatedArg;
+        return node;
+      }
+    );
   }
 }
 

@@ -29,9 +29,9 @@ import {
   type Operator,
   type ConditionOperator,
   Ruleset,
-  type SimpleSelector,
   BasicSelector,
   Combinator,
+  type Combinators,
   List,
   Sequence,
   Call,
@@ -452,7 +452,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
         }
         if (
           (s instanceof BasicSelector && (s.isClass || s.isId))
-          || (s instanceof Combinator && (s.value === '>' || s.value === ''))
+          || (s instanceof Combinator && (s.value === '>' || s.value === ' '))
         ) {
           continue;
         }
@@ -546,7 +546,7 @@ export function relativeSelector(this: P, T: TokenMap) {
           let node: ComplexSelector | Extend = $.SUBRULE($.complexSelector, { ARGS: [ctx] });
 
           if (!$.RECORDING_PHASE) {
-            let combinator = new Combinator(co.image, undefined, $.getLocationInfo(co), this.context);
+            let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context);
             let targetNode =
               node instanceof Extend
                 ? node.value.selector

@@ -21,6 +21,7 @@ import type { Condition } from './condition';
 import type { Bool } from './bool';
 import * as Registries from './util/registry-utils';
 import { tryExtendSelector } from './util/extend';
+import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 
 const { isArray } = Array;
 const DEBUG_FINAL_NL = typeof process !== 'undefined' && (process.env as any)?.JESS_DEBUG_FINAL_NL === '1';
@@ -88,7 +89,7 @@ export type RulesOptions = {
 };
 
 export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
-  eval(context: Context): Promise<this>;
+  eval(context: Context): MaybePromise<this>;
 }
 /**
  * The class representing a "declaration list".
@@ -370,7 +371,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * while traversing nested rules. The indexes will help us
    * when searching "upwards" (Sass-style).
    */
-  override async preEval(context: Context): Promise<this> {
+  override preEval(context: Context) {
     if (!this.preEvaluated) {
       let rules = this.maybeClone(context);
       /**
@@ -394,40 +395,36 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return this;
   }
 
-  override async evalNode(context: Context): Promise<this> {
-    let rules = this;
-    if (!this.preEvaluated) {
-      rules = await this.preEval(context);
-    }
-    let evalQueue: EvalQueueMap = new Map();
+  /** Helper to pre-evaluate this rules container if needed */
+  private async _preEvalIfNeeded(context: Context): Promise<this> {
+    return this.preEvaluated ? this : await this.preEval(context);
+  }
 
-    /** Grab current context */
-    let rulesContext = context.rulesContext;
-    let treeContext = context.treeContext;
-    let treeRoot = context.treeRoot;
-    let root = context.root;
+  /** Save current context roots to restore later */
+  private _snapshotContext(context: Context) {
+    return {
+      rulesContext: context.rulesContext,
+      treeContext: context.treeContext,
+      treeRoot: context.treeRoot,
+      root: context.root
+    } as const;
+  }
 
-    /** Set new context while evaluating */
+  /** Setup context for evaluating these rules */
+  private _setupContextForRules(context: Context, rules: Rules) {
+    const treeContext = context.treeContext;
     if (!treeContext || treeContext !== rules.treeContext) {
-      /**
-       * We've encountered a new tree root...
-       * but this isn't the right way to manage this...
-       *
-       * We need a list of _unique_ tree context roots that are visible
-       * from this root AND that are extendable.
-       */
       context.allRoots.push(rules);
       context.treeContext = rules.treeContext;
       context.treeRoot = rules;
-      /** Set this as ultimate root if there isn't a root yet */
       context.root ??= rules;
     }
     context.rulesContext = rules;
+  }
 
-    // let { leakVariablesIntoScope } = context.treeContext ?? {}
-    /**
-     * First, push rules onto an evaluation queue.
-     */
+  /** Build the evaluation queue partitioned by priority */
+  private _buildEvalQueue(rules: Rules): EvalQueueMap {
+    let evalQueue: EvalQueueMap = new Map();
     for (let item of rules) {
       let [, rule] = item;
       let priority = NodeTypeToPriority.get(rule.type) ?? Priority.None;
@@ -435,144 +432,152 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       queue.push(item);
       evalQueue.set(priority, queue);
     }
+    return evalQueue;
+  }
 
+  /** Evaluate the built queues in two rounds: preEval then eval */
+  private _evaluateQueue(rules: Rules, evalQueue: EvalQueueMap, context: Context): MaybePromise<boolean> {
     let rulesToHoist = false;
-
-    /** Now, evaluate the queue in two rounds */
-    for (let method of ['preEval', 'eval'] as const) {
-      for (let i: Priority = Priority.Highest; i >= 0; i--) {
-        let queue = evalQueue.get(i);
-        if (!queue) {
-          continue;
-        }
-        for (let [q, item] of queue.entries()) {
-          let [i, rule] = item;
+    const phases: Array<'preEval' | 'eval'> = ['preEval', 'eval'];
+    const priorities: Priority[] = Array.from({ length: Priority.Highest + 1 }).map((_, i) => (Priority.Highest - i) as Priority);
+    const phaseRun = serialForEach(phases, (method: 'preEval' | 'eval') => {
+      return serialForEach(priorities, (p: Priority) => {
+        const queue = evalQueue.get(p);
+        if (!queue) return;
+        const entries: Array<[number, [number, Node]]> = Array.from(queue.entries()) as any;
+        return serialForEach(entries, ([q, item]: [number, [number, Node]]) => {
+          const [idx, rule] = item;
           if (
-            i === Priority.Highest
+            idx === Priority.Highest
             && method === 'preEval'
             && isNode(rule, 'Declaration')
-            && rule.value.name instanceof Interpolated
+            && (rule as any).value.name instanceof Interpolated
           ) {
             let lowQueue = evalQueue.get(Priority.High) ?? [];
-            lowQueue.push([i, rule]);
+            lowQueue.push([idx, rule]);
             evalQueue.set(Priority.High, lowQueue);
-            continue;
+            return;
           }
-          /** Only evaluated on reference */
           if (method === 'eval' && isNode(rule, 'VarDeclaration')) {
-            continue;
+            return;
           }
-          let result!: Node;
-          result = await rule[method](context);
-          if (result !== rule) {
-            rules.value[i] = result;
-            queue[q] = [i, result];
+          const maybeResult = (rule as any)[method](context) as MaybePromise<Node>;
+          const applyResult = (result: Node) => {
+            if (result !== rule) {
+              rules.value[idx] = result;
+              queue[q] = [idx, result];
+            }
+            if (method === 'eval' && result.options.hoistToRoot) {
+              rulesToHoist = true;
+            }
+            if (method === 'preEval') {
+              rules.registerNode(result);
+            } else if (method === 'eval') {
+              let rulesetType = isNode(result, 'Ruleset')
+                ? 'Ruleset'
+                : isNode(result, 'Mixin')
+                  ? 'Mixin'
+                  : undefined;
+              if (rulesetType === 'Ruleset') {
+                context.treeRoot.register('ruleset', result as Ruleset<RulesetValue>);
+              } else if (rulesetType) {
+                context.treeRoot.register('mixin', result as Mixin);
+              }
+            }
+          };
+          if (isThenable(maybeResult)) {
+            return (maybeResult as Promise<Node>).then(res => applyResult(res));
           }
-          if (method === 'eval' && result.options.hoistToRoot) {
-            rulesToHoist = true;
-          }
-          if (method === 'preEval') {
-            /** Do I need to pass in options? */
-            rules.registerNode(result);
-          } else if (method === 'eval') {
-            /** Register rulesets for extending */
-            let rulesetType = isNode(result, 'Ruleset')
-              ? 'Ruleset'
-              : isNode(result, 'Mixin')
-                ? 'Mixin'
-                : undefined;
-            if (rulesetType === 'Ruleset') {
-              /**
-               * We register it at the tree root for extends,
-               * because extends is a global (file-level) operation.
-               *
-               * We also register it at the ruleset for mixin lookup.
-               *
-               * @todo - fix ruleset type so Ruleset<unknown>
-               */
-              context.treeRoot.register('ruleset', result as Ruleset<RulesetValue>);
-            } else if (rulesetType) {
-              context.treeRoot.register('mixin', result as Mixin);
+          applyResult(maybeResult as Node);
+          return;
+        });
+      });
+    });
+    if (isThenable(phaseRun)) {
+      return (phaseRun as Promise<void>).then(() => rulesToHoist);
+    }
+    return rulesToHoist;
+  }
+
+  /** Bubble hoisted rules to root frame if needed */
+  private _bubbleHoistedRules(context: Context, rules: Rules, rulesToHoist: boolean, hadRoot: Rules | undefined) {
+    let frame = context.rulesetFrames[0];
+    if (!hadRoot || !frame || !rulesToHoist) {
+      return;
+    }
+    let newRules = new Rules([]);
+    const getRulesetCopy = () => {
+      let newFrame = frame.copy(true);
+      for (let n of newFrame.nodes()) {
+        if (isNode((n.value as any).rules, 'Rules') && (n.value as any).rules.index === rules.index) {
+          (n.value as any).rules = newRules;
+          break;
+        }
+      }
+      return newFrame;
+    };
+    let rootRules: Node[] = !rules.value[0]?.options.hoistToRoot ? [getRulesetCopy()] : [];
+    for (let [i, rule] of rules) {
+      if (!rule.options.hoistToRoot) {
+        newRules.push(rule);
+      } else {
+        rootRules.push(rule);
+        let next = atIndex(rules.value, i + 1);
+        if (next && !next.options.hoistToRoot) {
+          newRules = new Rules([]);
+          rootRules.push(getRulesetCopy());
+        }
+      }
+    }
+    let prevFrameIndex = hadRoot.value.indexOf(frame);
+    hadRoot.value.splice(prevFrameIndex, 1, ...rootRules);
+  }
+
+  override evalNode(context: Context): MaybePromise<this> {
+    const saved = this._snapshotContext(context);
+    return pipe(
+      () => this._preEvalIfNeeded(context),
+      (rules: Rules) => {
+        this._setupContextForRules(context, rules);
+        const evalQueue = this._buildEvalQueue(rules);
+        const maybeHoist = this._evaluateQueue(rules, evalQueue, context);
+        if (isThenable(maybeHoist)) {
+          return (maybeHoist as Promise<boolean>).then(rulesToHoist => ({ rules, rulesToHoist }));
+        }
+        return { rules, rulesToHoist: maybeHoist as boolean };
+      },
+      ({ rules, rulesToHoist }: { rules: Rules; rulesToHoist: boolean }) => {
+        if (rules === context.root) {
+          /**
+           * We've evaluated all the rules of the "outer" rules
+           * and we can now resolve any pending extends.
+           *
+           * We need to loop through all roots, but we need to properly respect
+           * import scoping, so this isn't correct yet.
+           */
+          for (let root of context.allRoots) {
+            for (let [find, extendWith, partial] of root.pendingExtends) {
+              let rulesetSet = root.find('ruleset', find.keySet);
+              if (rulesetSet) {
+                rulesetSet.forEach((ruleset) => {
+                  let result = tryExtendSelector(ruleset.selector as Selector, find, extendWith, partial);
+                  if (result) {
+                    /** Just extend it? */
+                    ruleset.value.selector = result.value;
+                  }
+                });
+              }
             }
           }
-          /**
-           * @todo - Figure out if I should try to evaluate again later?
-           * I had this in a try/catch block, but it had hard-to-reason about
-           * behavior.
-          */
-          // if (i === Priority.None) {
-          //   throw e
-          // }
-          // let lowQueue = rules.evalQueue.get(Priority.None) ?? new Queue()
-          // lowQueue.push([i, rule])
-          // rules.evalQueue.set(Priority.None, lowQueue)
-          /** Register in an index - skip declarations already registered */
-
-          // rules.data.setAt(i, rule)
         }
+        this._bubbleHoistedRules(context, rules, rulesToHoist, saved.root);
+        /** Restore contexts */
+        context.rulesContext = saved.rulesContext;
+        context.treeRoot = saved.treeRoot;
+        context.root = saved.root;
+        return rules;
       }
-    }
-    /** Bubble any hoisted rules */
-    let frame = context.rulesetFrames[0];
-    if (root && frame && rulesToHoist) {
-      let newRules = new Rules([]);
-      const getRulesetCopy = () => {
-        let newFrame = frame.copy(true);
-        for (let n of newFrame.nodes()) {
-          if (isNode((n.value as any).rules, 'Rules') && (n.value as any).rules.index === rules.index) {
-            (n.value as any).rules = newRules;
-            break;
-          }
-        }
-        return newFrame;
-      };
-      let rootRules: Node[] = !rules.value[0]?.options.hoistToRoot ? [getRulesetCopy()] : [];
-      for (let [i, rule] of rules) {
-        if (!rule.options.hoistToRoot) {
-          newRules.push(rule);
-        } else {
-          rootRules.push(rule);
-          let next = atIndex(rules.value, i + 1);
-          if (next && !next.options.hoistToRoot) {
-            newRules = new Rules([]);
-            rootRules.push(getRulesetCopy());
-          }
-        }
-      }
-      let prevFrameIndex = root.value.indexOf(frame);
-      /** Splice the new rules where that frame was */
-      root.value.splice(prevFrameIndex, 1, ...rootRules);
-    }
-    if (rules === context.root) {
-      /**
-       * We've evaluated all the rules of the "outer" rules
-       * and we can now resolve any pending extends.
-       *
-       * We need to loop through all roots, but we need to properly respect
-       * import scoping, so this isn't correct yet.
-       */
-      for (let root of context.allRoots) {
-        for (let [find, extendWith, partial] of root.pendingExtends) {
-          let rulesetSet = root.find('ruleset', find.keySet);
-          if (rulesetSet) {
-            rulesetSet.forEach((ruleset) => {
-              let result = tryExtendSelector(ruleset.selector as Selector, find, extendWith, partial);
-              if (result) {
-                /** Just extend it? */
-                ruleset.value.selector = result.value;
-              }
-            });
-          }
-        }
-      }
-    }
-    /**
-     * Restore contexts
-     */
-    context.rulesContext = rulesContext;
-    context.treeRoot = treeRoot;
-    context.root = root;
-    return rules;
+    ) as MaybePromise<this>;
   }
 }
 export const rules = defineType(Rules, 'Rules');

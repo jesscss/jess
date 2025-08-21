@@ -1,5 +1,8 @@
+import type { MaybePromise } from 'awaitable-pipe/dist';
 import { Node, type NodeOptions, type NodeValue, defineType } from './node';
 import type { IfAny } from 'type-fest';
+import type { Context } from '../context';
+import type { Nil } from './nil';
 
 /**
  * This represents anything that is valid in a selector
@@ -11,6 +14,7 @@ import type { IfAny } from 'type-fest';
 
 export interface Selector<T = any, O extends NodeOptions = NodeOptions> extends Node<IfAny<T, NodeValue, T>, O> {
   valueOf(): string;
+  eval(context: Context): MaybePromise<Selector<T>> | MaybePromise<Nil>;
 }
 
 export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> extends Node<IfAny<T, NodeValue, T>, O> {

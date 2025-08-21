@@ -128,7 +128,8 @@ function matchSelectorsNoOptimizations(target: Selector, find: Selector, partial
   };
 }
 
-describe('Selector Performance Benchmarks', () => {
+/** Was used to test fast-path optimizations */
+describe.skip('Selector Performance Benchmarks', () => {
   const runBenchmark = (name: string, fn: () => void, iterations = 10000) => {
     const start = performance.now();
     for (let i = 0; i < iterations; i++) {

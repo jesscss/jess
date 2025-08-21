@@ -2,26 +2,15 @@ import type { Context } from '../context';
 import { defineType } from './node';
 import { Selector } from './selector';
 
-export interface Combinator extends Selector<string> {
+export type Combinators = ' ' | '>' | '+' | '~' | '|' | '||';
+
+export interface Combinator extends Selector<Combinators> {
   eval(context: Context): Combinator;
 }
 
-export class Combinator extends Selector<string> {
+export class Combinator extends Selector<Combinators> {
   type = 'Combinator' as const;
   shortType = 'co' as const;
-
-  override valueOf() {
-    let valueOf = this._valueOf;
-    if (!valueOf) {
-      let { value } = this;
-      /**
-       * Handle space combinators. These get parsed
-       * as empty strings.
-       */
-      valueOf = this._valueOf = value === '' ? ' ' : value;
-    }
-    return valueOf;
-  }
 
   /** @todo move to visitor */
   // toCSS(context: Context, out: OutputCollector) {

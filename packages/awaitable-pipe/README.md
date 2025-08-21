@@ -26,11 +26,11 @@ import { pipe, safePipe } from '@jesscss/awaitable-pipe';
 // Sync stays sync
 const upper = (s: string) => s.toUpperCase();
 const exclaim = (s: string) => s + '!';
-const out = pipe('ok', upper, exclaim);   // 'OK!'
+const out = pipe(() => 'ok', upper, exclaim);   // 'OK!'
 
 // Mixed becomes Promise
 const load = async (s: string) => s + '!';
-const outP = pipe('ok', upper, load);     // Promise<string>
+const outP = pipe(() => 'ok', upper, load);     // Promise<string>
 const result = await outP;                // 'OK!'
 
 // Start without an initial value
@@ -38,9 +38,21 @@ const s2 = pipe((x?: number) => (x ?? 2) * 3); // 6
 
 // Single-point error handling (never throws)
 const boom = () => { throw new Error('nope'); };
-const safe = safePipe('ok', { onError: console.error, fallback: 'X' }, boom, upper);
+const safe = safePipe({ onError: console.error, fallback: 'X' }, () => 'ok', boom, upper);
 // 'X'
 ```
+
+## Why would you want this?
+JavaScript Promises are great, but they aren’t free. Every async hop schedules work, allocates objects, and pushes errors across an async boundary. In hot paths, that overhead can add up.
+
+That said, consider this a micro-optimization! This is really only a faster approach than forced async / await when a very small percentage of unknown function calls result in Promises (< 10% of steps returning Promises in performance testing). If a greater percentage of steps would normally return promises, then using an async / await pattern on all unknown results (regardless of whether or not those results are a Promise, which JavaScript is fine with) will generally be faster than using this library.
+
+### Features
+
+- **Zero extra overhead for sync work**: when your steps are synchronous, you get plain values—no microtasks, no `await`, no extra Promise allocations.
+- **Seamless async when you need it**: if any step is async, the pipeline naturally promotes to a Promise—no special handling required.
+- **Cleaner stacks**: sync-only flows keep straightforward stack traces and easier debugging.
+- **Simple error strategy**: prefer natural throw/reject with `pipe`, or centralize it once with `safePipe` without wrapping results.
 
 ## API
 
@@ -60,12 +72,12 @@ const b = pipe(() => 'hi', async (s) => s + '!', (s) => s + '?');
 const c = pipe((x?: number) => (x ?? 1) + 1, (n) => n * 10); // 20
 ```
 
-### safePipe(optionsOrStep, ...steps)
+### safePipe(options, ...steps)
 If you prefer not to throw or reject, `safePipe` centralizes error handling. You get an optional `onError` callback and a `fallback` value (or thunk). On error, the pipeline returns the fallback (or `undefined` if you didn’t provide one).
 
 - **Never throws**: errors are caught and routed to `onError`
 - **Return shape preserved**: still sync-if-sync, async-if-async
-- **Flexible start**: with a value/Promise/thunk or no initial value (options-first)
+- **Start forms**: options-first (no explicit initial value) or steps-only
 
 ```ts
 // Sync-only path
@@ -84,14 +96,8 @@ const r3 = await safePipe({ onError: console.warn, fallback: 'X' },
   (s: string) => s + '?'
 ); // 'ok!?'
 
-// 1) No initial value (options-first). First step receives undefined.
-const r4 = safePipe({ onError: console.warn, fallback: 0 },
-  (x?: number) => (x ?? 2) * 5,
-  (n) => n + 1
-); // 11
-
-// 2) No fallback provided. On error, returns undefined (never throws).
-const r5 = safePipe('ok', { onError: console.warn },
+// No fallback provided. On error, returns undefined (never throws).
+const r5 = safePipe({ onError: console.warn },
   () => { throw new Error('boom'); },
   (s: string) => s.toUpperCase()
 ); // undefined
@@ -113,7 +119,7 @@ const fin = await p4;                                        // 'hi!?'
 Sometimes you want to guard or handle errors at a specific step without switching the whole pipeline to safe mode. Use these helpers as steps inside `pipe` or `safePipe`:
 
 ```ts
-import { pipe, tryStep, guard } from '@jesscss/awaitable-pipe';
+import { pipe, tryStep, guard, serialForEach, serialReduce } from '@jesscss/awaitable-pipe';
 
 // tryStep: catch at this step only, with optional onError and fallback
 const step = tryStep((n: number) => {
@@ -131,17 +137,20 @@ const out2 = pipe(() => -1, step); // 0
 const positive = guard((n: number) => n > 0, (n) => new Error(`not positive: ${n}`));
 const ok = pipe(() => 3, positive);         // 3
 // pipe(() => -2, positive) would throw: Error('not positive: -2')
+
+// serialForEach: sync-first loop that promotes to async if a step returns a Promise
+const items = [1, 2, 3];
+await serialForEach(items, async (n, i) => {
+  if (i === 1) await new Promise(r => setTimeout(r, 10));
+});
+
+// serialReduce: sync-first reduce that promotes to async on demand
+const sum = await serialReduce(items, 0, async (acc, n, i) => {
+  if (i === 2) await Promise.resolve();
+  return acc + n;
+});
+// sum === 6
 ```
-
-## Why would you want this?
-JavaScript Promises are great, but they aren’t free. Every async hop schedules work, allocates objects, and pushes errors across an async boundary. In hot paths, that overhead adds up.
-
-- **Zero extra overhead for sync work**: when your steps are synchronous, you get plain values—no microtasks, no `await`, no extra Promise allocations.
-- **Seamless async when you need it**: if any step is async, the pipeline naturally promotes to a Promise—no special handling required.
-- **Cleaner stacks**: sync-only flows keep straightforward stack traces and easier debugging.
-- **Simple error strategy**: prefer natural throw/reject with `pipe`, or centralize it once with `safePipe` without wrapping results.
-
-The result: familiar ergonomics, fast by default.
 
 ## License
 MIT

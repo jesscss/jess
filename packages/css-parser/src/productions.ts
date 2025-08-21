@@ -17,6 +17,7 @@ import {
   type ComplexSelectorValue,
   Rules,
   Combinator,
+  type Combinators,
   BasicSelector,
   Ampersand,
   List,
@@ -551,19 +552,27 @@ export function complexSelector(this: C, T: TokenMap) {
         });
         if (!RECORDING_PHASE) {
           if (co) {
-            combinator = $.wrap(new Combinator(co.image, undefined, $.getLocationInfo(co), this.context), 'both');
+            combinator = $.wrap(new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context), 'both');
           } else {
             /** Whitespace combinators are special */
             let startOffset = this.LA(1).startOffset;
             /**
-             * This can be confusing at first, but a whitespace combinator
-             * may not be a literal space character. It could be a newline,
-             * for example. So we store it as an empty string, which we can
-             * test against, and add the actual space character as pre/post
-             * nodes.
+             * Technically, a whitespace combinator may not actually _include_
+             * a literal space (it can be a newline, for example), but we'll just use a
+             * space for now.
              */
-            combinator = new Combinator('', undefined, undefined, this.context);
-            combinator.pre = $.getPrePost(startOffset);
+            combinator = new Combinator(' ', undefined, undefined, this.context);
+            let pre = $.getPrePost(startOffset);
+            if (pre === 1) {
+              pre = 0;
+            } else if (pre) {
+              let last = pre[pre.length - 1];
+              if (typeof last === 'string' && last.endsWith(' ')) {
+                /** remove the last character if a space */
+                pre[pre.length - 1] = last.slice(0, -1);
+              }
+            }
+            combinator.pre = pre;
           }
         }
         let compound: CompoundSelector = $.SUBRULE2($.compoundSelector, { ARGS: [ctx] });
@@ -604,7 +613,7 @@ export function relativeSelector(this: C, T: TokenMap) {
           let complex: Node = $.SUBRULE($.complexSelector, { ARGS: [ctx] });
 
           if (!$.RECORDING_PHASE) {
-            let combinator = new Combinator(co.image, undefined, $.getLocationInfo(co), this.context);
+            let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context);
             if (complex instanceof ComplexSelector) {
               complex.value.unshift(combinator);
               let location = complex.location;

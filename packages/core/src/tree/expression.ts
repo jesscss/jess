@@ -18,22 +18,21 @@ export type ExpressionOptions = {
  * @note This extends Selector just because it can be
  * in the selector position (initially).
  */
-export interface Expression extends Selector<Node, ExpressionOptions> {
+export interface Expression extends Node<Node, ExpressionOptions> {
   eval(context: Context): MaybePromise<Node>;
 }
 
-export class Expression extends Selector<Node, ExpressionOptions> {
+export class Expression extends Node<Node, ExpressionOptions> {
   type = 'Expression' as const;
   shortType = 'expr' as const;
-
-  override get keySet(): Set<string> {
-    return new Set();
-  }
 
   override evalNode(context: Context): MaybePromise<Node> {
     const { value } = this;
     const out = value.eval(context);
-    if (isThenable(out)) return out as Promise<Node>;
+    /** @todo - Cast as selector if the context is within a selector */
+    if (isThenable(out)) {
+      return out as Promise<Node>;
+    }
     return out as Node;
   }
 

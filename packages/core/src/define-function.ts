@@ -2,6 +2,9 @@ import { isPlainObject } from 'lodash-es';
 import { AbstractClass, Class, OmitIndexSignature } from 'type-fest';
 import { isNode } from './tree/util/is-node';
 import type { Context } from './context';
+import { isThenable } from '@jesscss/awaitable-pipe';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
 export type PrimitiveType = 'string' | 'number' | 'boolean' | 'null' | 'undefined';
 export type ArgType = PrimitiveType | Class<any> | AbstractClass<any>;
@@ -372,7 +375,7 @@ export function defineFunction<
 }
 
 /** This will be called internally by Jess to functions created with defineFunction */
-export async function callWithContext(context: Context, fn: (...args: any[]) => any, ...args: any[]) {
+export function callWithContext(context: Context, fn: (...args: any[]) => any, ...args: any[]): MaybePromise<any> {
   let record: any = {};
 
   if (!(fn as any)?.params && args.some(arg =>
@@ -383,8 +386,8 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
   }
 
   if (!(fn as any)?.params) {
-    // No metadata; treat as normal positional function call
-    return await (fn as any).call(context, ...args);
+    // No metadata; treat as normal positional function call (sync or async)
+    return (fn as any).call(context, ...args);
   }
 
   const params = (fn as any)?.params as DefineFunctionOptions['params'] | undefined;
@@ -439,31 +442,14 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
    */
   // No special record proxy path; proceed to positional building with lazy/sync handling
 
-  // Positional internal function: build positional args with sync-first, async-fallback and lazy thunks
-  const makeThunk = (val: any) => async () => {
-    let v = val;
-    if (isNode(v) && !v.evaluated) {
-      v = await (v as any).eval(context);
-    }
-    return v;
-  };
-  const evalNowSync = (val: any): any => {
+  // Positional internal function: build positional args; values may be MaybePromise
+  const makeThunk = (val: any) => (): MaybePromise<any> => {
     if (isNode(val) && !val.evaluated) {
-      if (typeof (val as any).evalSync === 'function') {
-        return (val as any).evalSync(context);
-      }
-      throw new Error('AsyncRequired');
-    }
-    return val;
-  };
-  const evalNowAsync = async (val: any): Promise<any> => {
-    if (isNode(val) && !val.evaluated) {
-      return await (val as any).eval(context);
+      return (val as any).eval(context);
     }
     return val;
   };
 
-  let needsAsync = false;
   const positionalArgs: any[] = [];
   for (let i = 0; i < (params?.length ?? 0); i++) {
     const def = params![i]!;
@@ -474,55 +460,26 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
       if ((def as any).lazy) {
         positionalArgs.push(...arr.map(item => makeThunk(item)));
       } else {
-        try {
-          positionalArgs.push(...arr.map(item => evalNowSync(item)));
-        } catch {
-          needsAsync = true;
-        }
+        positionalArgs.push(...arr.map(item => (isNode(item) && !item.evaluated) ? (item as any).eval(context) : item));
       }
     } else {
       const v = record[name];
       if ((def as any).lazy) {
         positionalArgs.push(makeThunk(v));
       } else {
-        try {
-          positionalArgs.push(evalNowSync(v));
-        } catch {
-          needsAsync = true;
-        }
+        positionalArgs.push((isNode(v) && !v.evaluated) ? (v as any).eval(context) : v);
       }
     }
   }
 
-  if (!needsAsync) {
-    return await ((fn as any)._internal).call(context, ...positionalArgs);
+  // If any positional arg is thenable, await all then call; else call directly
+  const hasAsync = positionalArgs.some(a => isThenable(a));
+  if (hasAsync) {
+    return Promise.all(positionalArgs.map(a => isThenable(a) ? a : Promise.resolve(a))).then((vals) => {
+      return ((fn as any)._internal).call(context, ...vals);
+    });
   }
-
-  // Async fallback: rebuild args awaiting eager values
-  const asyncArgs: any[] = [];
-  for (let i = 0; i < (params?.length ?? 0); i++) {
-    const def = params![i]!;
-    const name = def.name;
-    if ((def as any).rest) {
-      const v = record[name];
-      const arr: any[] = Array.isArray(v) ? v : (v === undefined ? [] : [v]);
-      if ((def as any).lazy) {
-        asyncArgs.push(...arr.map(item => makeThunk(item)));
-      } else {
-        for (const item of arr) {
-          asyncArgs.push(await evalNowAsync(item));
-        }
-      }
-    } else {
-      const v = record[name];
-      if ((def as any).lazy) {
-        asyncArgs.push(makeThunk(v));
-      } else {
-        asyncArgs.push(await evalNowAsync(v));
-      }
-    }
-  }
-  return await ((fn as any)._internal).call(context, ...asyncArgs);
+  return ((fn as any)._internal).call(context, ...positionalArgs);
 }
 
 /**

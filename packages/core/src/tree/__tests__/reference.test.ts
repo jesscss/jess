@@ -1,5 +1,7 @@
 import { ref, rules, decl, vardecl, spaced, any, quoted, expr } from '..';
 import { Context } from '../../context';
+import * as Registries from '../util/registry-utils';
+import { isNode } from '../util/is-node';
 
 let context: Context;
 
