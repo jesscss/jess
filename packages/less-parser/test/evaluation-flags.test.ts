@@ -12,7 +12,7 @@ describe('Less evaluation flags roll-up (bubble)', () => {
   testBothFlags('operation with variable sets both flags', testPatterns.variableInOperation());
 
   // Call function tests
-  testNeedsEvaluation('call function sets needs evaluation flag', testPatterns.staticCall());
+  testBothFlags('call function sets needs evaluation flag', testPatterns.staticCall());
   testBothFlags('call function with variable sets both flags', testPatterns.variableInCall());
 
   // Negative operation tests

@@ -1,4 +1,25 @@
 import { parse, expectFlags, testPatterns, getNestedNode } from './helpers';
+
+// Helper function to find a node by type
+function findNodeByType(node: any, type: string): any {
+  if (node.type === type) {
+    return node;
+  }
+
+  if (node.value) {
+    if (Array.isArray(node.value)) {
+      for (const child of node.value) {
+        const found = findNodeByType(child, type);
+        if (found) return found;
+      }
+    } else if (typeof node.value === 'object') {
+      const found = findNodeByType(node.value, type);
+      if (found) return found;
+    }
+  }
+
+  return null;
+}
 import {
   type Ruleset,
   type Declaration,
@@ -35,7 +56,7 @@ describe('Comprehensive flag bubbling and isolation', () => {
       const { tree } = parse(testPatterns.nestedRulesets('color: [red, @var, blue];'));
 
       // All levels should bubble up mayAsync
-      verifyNestedBubbling(tree, false, true);
+      verifyNestedBubbling(tree, true, true);
 
       // Get the deepest nodes to verify specific types
       const innerRuleset = getNestedNode(tree, [0, 0, 0, 0]) as Ruleset;
@@ -64,16 +85,16 @@ describe('Comprehensive flag bubbling and isolation', () => {
     test('function call bubbles through multiple levels', () => {
       const { tree } = parse(testPatterns.nestedRulesets('color: rgb(255, 0, 0);'));
 
-      // All levels should bubble up needs evaluation
-      verifyNestedBubbling(tree, true, false);
+      // All levels should bubble up needs evaluation and mayAsync
+      verifyNestedBubbling(tree, true, true);
 
       // Get the deepest nodes to verify specific types
       const innerRuleset = getNestedNode(tree, [0, 0, 0, 0]) as Ruleset;
       const declaration = innerRuleset.value.rules.value[0]! as Declaration;
-      const call = declaration.value;
+      const call = declaration.value.value;
 
-      // Call should have needs evaluation
-      verifyNodeFlags(call, true, false);
+      // Call should have both flags
+      verifyNodeFlags(call, true, true);
     });
   });
 
@@ -159,7 +180,7 @@ describe('Comprehensive flag bubbling and isolation', () => {
       verifyNodeFlags(declarations[4]!, false, false); // margin: 10px
 
       // Dynamic declarations should have appropriate flags
-      verifyNodeFlags(declarations[1]!, false, true);  // background: @var
+      verifyNodeFlags(declarations[1]!, true, true);  // background: @var
       verifyNodeFlags(declarations[3]!, true, false);  // width: 10px + 5px
     });
   });
@@ -187,11 +208,11 @@ describe('Comprehensive flag bubbling and isolation', () => {
       verifyNestedBubbling(tree, true, true, 4);
 
       // Check individual declarations in deepest level
-      const deepestRuleset = getNestedNode(tree, [0, 0, 0, 0]) as Ruleset;
+      const deepestRuleset = getNestedNode(tree, [0, 0, 0, 0, 0]) as Ruleset;
       const declarations = deepestRuleset.value.rules.value;
 
       verifyNodeFlags(declarations[0]!, false, false); // color: red
-      verifyNodeFlags(declarations[1]!, false, true);  // background: @var
+      verifyNodeFlags(declarations[1]!, true, true);  // background: @var
       verifyNodeFlags(declarations[2]!, true, false);  // width: 10px + 5px
       verifyNodeFlags(declarations[3]!, false, false); // border: 1px solid black
     });

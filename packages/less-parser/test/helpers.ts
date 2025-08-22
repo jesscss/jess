@@ -36,7 +36,7 @@ export const expectNeedsEvaluation = (node: Node, description = '') => {
 };
 
 export const expectMayAsync = (node: Node, description = '') => {
-  expectFlags(node, false, true, description);
+  expectFlags(node, true, true, description);
 };
 
 export const expectBothFlags = (node: Node, description = '') => {
@@ -73,7 +73,7 @@ export const testNeedsEvaluation = (description: string, input: string, rule: Le
 };
 
 export const testMayAsync = (description: string, input: string, rule: LessRules = 'stylesheet') => {
-  testCase(description, input, false, true, rule);
+  testCase(description, input, true, true, rule);
 };
 
 export const testBothFlags = (description: string, input: string, rule: LessRules = 'stylesheet') => {

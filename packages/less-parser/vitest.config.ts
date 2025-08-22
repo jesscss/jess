@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     name: 'less-parser',
     watch: false,
-    include: ['test/**/*.ts', '**/__tests__/**/*.ts'],
+    include: ['test/**/*.test.ts', '**/__tests__/**/*.test.ts'],
     globals: true,
     coverage: {
       include: ['src/**/*.ts'],

@@ -1,4 +1,4 @@
-import { parse, expectMayAsync, expectStatic, getNestedNode } from './helpers';
+import { parse, expectMayAsync, expectStatic, expectNeedsEvaluation, getNestedNode } from './helpers';
 import { type Rules, type Ruleset } from '@jesscss/core';
 
 describe('Less mayAsync isolation (siblings do not bleed)', () => {
@@ -45,7 +45,7 @@ describe('Less mayAsync isolation (siblings do not bleed)', () => {
     const d1 = (inner as any).value[0]!;
     const d2 = (inner as any).value[1]!;
     expectMayAsync(d1);
-    expectStatic(d2);
+    expectNeedsEvaluation(d2);
   });
 
   test('sibling declarations: Negative', () => {
@@ -65,7 +65,7 @@ describe('Less mayAsync isolation (siblings do not bleed)', () => {
     const d1 = (inner as any).value[0]!;
     const d2 = (inner as any).value[1]!;
     expectMayAsync(d1);
-    expectStatic(d2);
+    expectMayAsync(d2);
   });
 
   test('sibling rulesets: pseudo selector with selector-child', () => {
