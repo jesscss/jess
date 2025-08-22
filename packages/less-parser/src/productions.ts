@@ -58,7 +58,9 @@ import {
   SelectorList,
   Rules,
   type ComplexSelectorComponent,
-  type Selector
+  type Selector,
+  F_MAY_ASYNC,
+  F_NEEDS_EVALUATION
 } from '@jesscss/core';
 
 const isEscapedString = function(this: P, T: TokenMap) {
@@ -98,7 +100,7 @@ export function stylesheet(this: P, T: TokenMap) {
     let root: Node = $.rule(ctx, $.main);
 
     if (!RECORDING_PHASE) {
-      let rules = root?.value;
+      let rules = root?.value as any[];
 
       if (charset) {
         let loc = $.getLocationInfo(charset);
@@ -792,8 +794,8 @@ export function simpleSelector(this: P, T: TokenMap) {
             // Create an Interpolated node for interpolated selectors
             let nameValue = selector.image;
             let nameNode = getInterpolated(nameValue, $.getLocationInfo(selector), this.context);
-            // Since Interpolated nodes are async, set ctx.mayAsync = true to bubble up
-            ctx.mayAsync = true;
+            // Override context to indicate async evaluation needed
+            ctx.nodeState = F_MAY_ASYNC;
             return nameNode;
           }
           return new BasicSelector(selector.image, undefined, $.getLocationInfo(selector), this.context);
@@ -929,6 +931,8 @@ export function importAtRule(this: P, T: TokenMap) {
       }
       const pathStr = getUrlFromNode(urlNode);
       const pathNode = new Quoted(new Any(pathStr, { role: 'urlvalue' }), { quote: '\'' }, undefined, this.context);
+      // Set async flag for style imports
+      ctx.nodeState = F_MAY_ASYNC;
       const imp = new StyleImport({
         path: pathNode
       }, {
@@ -1196,8 +1200,7 @@ export function squareValue(this: P, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
       const blk = new Block(node, { type: 'square' }, location, this.context);
-
-      return blk;
+      return this.createNode(blk, ctx);
     }
   };
 }
@@ -1277,6 +1280,8 @@ export function expressionSum(this: P, T: TokenMap) {
         ]);
 
         if (!RECORDING_PHASE) {
+          // Set needs evaluation flag for operations
+          ctx.nodeState = (ctx.nodeState || 0) | F_NEEDS_EVALUATION;
           left = $.wrap(
             new Operation(
               [$.wrap(left, true), op as Operator, $.wrap(right!)],
@@ -1319,6 +1324,8 @@ export function expressionProduct(this: P, T: TokenMap) {
       let right: Node = $.rule(2, ctx, $.expressionValue);
 
       if (!RECORDING_PHASE) {
+        // Set needs evaluation flag for operations
+        ctx.nodeState = (ctx.nodeState || 0) | F_NEEDS_EVALUATION;
         left = $.wrap(
           new Operation(
             [$.wrap(left, true), op.image as Operator, $.wrap(right)],
@@ -1378,8 +1385,7 @@ export function expressionValue(this: P, T: TokenMap) {
       let location = $.endRule();
       if (minus) {
         const neg = new Negative(node, undefined, location, this.context);
-
-        return neg;
+        return this.createNode(neg, ctx);
       }
       return node;
     }

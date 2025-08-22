@@ -12,7 +12,7 @@ export * from './lessTokens';
 
 const errorMessageProvider = new LessErrorMessageProvider();
 
-type LessRules = keyof ConditionalPick<LessActionsParser, () => CstNode>;
+export type LessRules = keyof ConditionalPick<LessActionsParser, () => CstNode>;
 
 export class Parser {
   lexer: Lexer;
@@ -51,7 +51,6 @@ export class Parser {
     const lexerResult = this.lexer.tokenize(text);
     const lexedTokens: IToken[] = lexerResult.tokens;
     parser.input = lexedTokens;
-    // @ts-expect-error - This is fine
     const tree = parser[rule](...args);
 
     return { tree, lexerResult, errors: parser.errors };

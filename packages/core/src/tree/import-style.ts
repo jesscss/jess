@@ -1,4 +1,4 @@
-import { Node, defineType } from './node';
+import { Node, F_MAY_ASYNC, defineType } from './node';
 import { type Reference } from './reference';
 import { type Rules, type RulesOptions, type RulesVisibility } from './rules';
 import { type Quoted } from './quoted';
@@ -114,8 +114,8 @@ export type StyleImportValue = {
 export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   type = 'StyleImport' as const;
   shortType = 'style' as const;
-  override visible = false;
-  override mayAsync = true;
+  // Implies false visibility
+  override state = F_MAY_ASYNC;
 
   /**
    * @note

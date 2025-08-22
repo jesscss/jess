@@ -1,5 +1,5 @@
 import { type Context } from '../context';
-import { defineType, Node } from './node';
+import { defineType, Node, F_VISIBLE, F_NEEDS_EVALUATION } from './node';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { getValues } from './util/collections';
 import { compareNodeArray } from './util/compare';
@@ -29,6 +29,8 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
 export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   type = 'List';
   shortType = 'list';
+  override state = F_VISIBLE | F_NEEDS_EVALUATION;
+
 
   get length() {
     return this.value.length;

@@ -395,11 +395,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return this;
   }
 
-  /** Helper to pre-evaluate this rules container if needed */
-  private async _preEvalIfNeeded(context: Context): Promise<this> {
-    return this.preEvaluated ? this : await this.preEval(context);
-  }
-
   /** Save current context roots to restore later */
   private _snapshotContext(context: Context) {
     return {
@@ -536,7 +531,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override evalNode(context: Context): MaybePromise<this> {
     const saved = this._snapshotContext(context);
     return pipe(
-      () => this._preEvalIfNeeded(context),
+      () => this.preEval(context),
       (rules: Rules) => {
         this._setupContextForRules(context, rules);
         const evalQueue = this._buildEvalQueue(rules);

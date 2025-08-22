@@ -60,8 +60,7 @@ export function createLexerDefinition(
 ): ILexer {
   const rawTokens = _rawTokens as WritableDeep<RawModeConfig>;
   /**
-   * @todo - get ts-macros working to eliminate XRegExp dependency
-   * @see https://github.com/GoogleFeud/ts-macros/issues/66
+    * @todo - consider alternative approaches to eliminate XRegExp dependency
    */
 
   const fragments: Record<string, RegExp> = buildFragments(rawFragments);

@@ -25,7 +25,7 @@ export class Nil extends Node<''> {
   shortType = 'nil';
   override allowRoot = true;
   override allowRuleRoot = true;
-  override visible = false;
+  override state = 0b0000; // 0b0000 means no flags are set
 
   constructor(
     value?: any,

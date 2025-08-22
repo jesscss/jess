@@ -40,6 +40,7 @@ export class Any<
 > extends Node<string, AnyOptions<Role>> {
   type: AnyRole = 'any';
   shortType = 'any';
+  // Any values are static and don't need evaluation
 }
 export const any = defineType(Any, 'Any', 'any');
 

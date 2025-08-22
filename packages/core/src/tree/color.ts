@@ -38,6 +38,7 @@ export interface Color extends Node<string | ColorFormat> {
 export class Color extends Node<string | ColorFormat> {
   type = 'Color' as const;
   shortType = 'color' as const;
+  // Color values are static and don't need evaluation
 
   private _rgb: [number, number, number] | undefined;
   private _hsl: [number, number, number] | undefined;

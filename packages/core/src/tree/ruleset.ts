@@ -1,4 +1,4 @@
-import { Node, defineType, type NodeOptions } from './node';
+import { Node, F_VISIBLE, defineType, type NodeOptions } from './node';
 import { type Rules } from './rules';
 import type { Context } from '../context';
 import { Nil } from './nil';
@@ -46,8 +46,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   shortType = 'ruleset';
   override allowRuleRoot = true;
   override allowRoot = true;
+  // Ruleset has preEval method but doesn't need to set flags - preEvaluated is tracked as boolean
 
-  override stateRules = ['visible', 'evaluated', 'preEvaluated', 'parentSelector'];
   parentSelector: Selector | undefined;
 
   get selector() {
@@ -80,6 +80,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return w.getSince(mark);
   }
 
+  override inherit(node: Node) {
+    let n = super.inherit(node);
+    n.parentSelector = this.parentSelector;
+    return n;
+  }
+
   override preEval(context: Context): MaybePromise<this> {
     if (!this.preEvaluated) {
       const node = this.maybeClone(context);
@@ -108,9 +114,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return selector;
     }
     const invisibleAmp = new Ampersand({ selector: this.parentSelector });
-    invisibleAmp.visible = false;
+    invisibleAmp.setState(F_VISIBLE, false);
     const invisibleCombinator = new Combinator(' ');
-    invisibleCombinator.visible = false;
+    invisibleCombinator.setState(F_VISIBLE, false);
 
     // Helper to check for ampersand in a selector's nodes
     const hasAmpersand = (sel: Selector) => {
@@ -200,7 +206,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         rule.value.rules = evaluatedRules;
         const rules = rule.value.rules;
         if (rules.visibleRules().length === 0) {
-          rule.visible = false;
+          rule.setState(F_VISIBLE, false);
         }
         return rule;
       }

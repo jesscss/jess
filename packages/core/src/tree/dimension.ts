@@ -38,6 +38,7 @@ export interface Dimension extends Node<DimensionValue> {
 export class Dimension extends Node<DimensionValue> {
   type = 'Dimension';
   shortType = 'dimension';
+  // Dimensions are static and don't need evaluation
 
   private _unitToGroup: Map<string, ConversionGroup> | undefined;
   get unitToGroup() {

@@ -1,4 +1,4 @@
-import { Node, defineType } from './node';
+import { Node, F_VISIBLE, defineType } from './node';
 import type { Condition } from './condition';
 import { type List } from './list';
 import type { Rest } from './rest';
@@ -83,6 +83,7 @@ const COMPOUND_REGEX = /[#.]?[-_a-zA-Z\xA0-\uFFFF][-_a-zA-Z0-9\xA0-\uFFFF]*/ug;
 export class Mixin extends Node<MixinValue, MixinOptions> {
   type = 'Mixin';
   shortType = 'mixin';
+  // Mixin has preEval method but doesn't need to set flags - preEvaluated is tracked as boolean
 
   /** Return a selector-like keySet */
   private _keySet: Set<string> | undefined;

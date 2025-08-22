@@ -64,6 +64,7 @@ export function cast(value: any): Node {
    */
   if (!(value instanceof Node)) {
     node.evaluated = true;
+    node.preEvaluated = true;
   }
   return node;
 }

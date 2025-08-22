@@ -18,7 +18,7 @@ export class ExtendList extends Node<Extend[]> {
   shortType = 'extendlist' as const;
   override allowRoot = true;
   override allowRuleRoot = true;
-  override visible = false;
+  override state = 0b0000; // 0b0000 means no flags are set
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);

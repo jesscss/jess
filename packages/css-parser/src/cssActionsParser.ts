@@ -24,7 +24,9 @@ import {
   Num,
   Rules,
   Any,
-  type Nil
+  type Nil,
+  F_NEEDS_EVALUATION,
+  F_MAY_ASYNC
 } from '@jesscss/core';
 import type { CssErrorMessageProvider } from './cssErrorMessageProvider';
 
@@ -51,10 +53,10 @@ export type RuleContext = {
   firstSelector?: boolean;
   /** If downstream selector rules are part of a qualified rule */
   qualifiedRule?: boolean;
-  /** Parse-time roll-up flag indicating subtree may async */
-  mayAsync?: boolean;
+  /** Parse-time node state bitmask */
+  nodeState?: number;
 
-  [k: string]: object | boolean | string | object[] | undefined;
+  [k: string]: object | boolean | string | object[] | number | undefined;
 };
 
 /**
@@ -445,6 +447,26 @@ export class CssActionsParser extends AdvancedActionsParser {
   }
 
   /**
+   * Creates a node and applies context state management consistently.
+   * This ensures all nodes get proper state handling whether created through $.rule or directly.
+   */
+  protected createNode<T extends Node>(
+    node: T,
+    ctx: RuleContext
+  ): T {
+    // Apply context state to the node
+    node.state |= ctx.nodeState || 0;
+    // Bubble up flags from the node to context
+    if (node.getState(F_MAY_ASYNC)) {
+      ctx.nodeState = (ctx.nodeState || 0) | F_MAY_ASYNC;
+    }
+    if (node.getState(F_NEEDS_EVALUATION)) {
+      ctx.nodeState = (ctx.nodeState || 0) | F_NEEDS_EVALUATION;
+    }
+    return node;
+  }
+
+  /**
    * Unified subrule invoker with minimal boilerplate and built-in ctx/mayAsync handling.
    * idx: 0|1|2|3|4 selects SUBRULE/SUBRULE2/... (0 and 1 map to SUBRULE)
    * overrides: temporary context overrides applied during the subrule call
@@ -509,43 +531,46 @@ export class CssActionsParser extends AdvancedActionsParser {
     if (overrides) {
       Object.assign(ctx, overrides);
     }
-    let result: T;
-    // Start fresh - this rule's mayAsync status will be determined by its children
-    const prevMayAsync = ctx.mayAsync;
-    ctx.mayAsync = false;
+    // Start with a clean slate - let nodes determine their own state
+    const prevNodeState = ctx.nodeState || 0;
+    ctx.nodeState = 0; // Start with no assumptions
 
-    try {
-      // Check if this is a function that takes context (for OR alternatives)
-      if (typeof ruleRef === 'function' && ruleRef.length > 0) {
-        // This is a function that takes context, call it directly
-        result = (ruleRef as (ctx: RuleContext) => T)(ctx);
-        if (result instanceof Node) {
-          // If the returned node is async, bubble it up to the parent context
-          if (result.mayAsync) {
-            ctx.mayAsync = true;
-          }
-          // Also set the node's mayAsync based on the context (for nodes created during parsing)
-          result.mayAsync ||= !!ctx.mayAsync;
-        }
-      } else {
-        // This is a parser rule method, use subrule
-        result = this.subrule(idx, ruleRef as any, { ARGS: [ctx] }) as T;
-        if (result instanceof Node) {
-          // If the returned node is async, bubble it up to the parent context
-          if (result.mayAsync) {
-            ctx.mayAsync = true;
-          }
-          // Also set the node's mayAsync based on the context (for nodes created during parsing)
-          result.mayAsync ||= !!ctx.mayAsync;
-        }
+    let result: T | undefined;
+
+    const processResult = () => {
+      if (result instanceof Node) {
+        this.createNode(result, ctx);
       }
-    } finally {
-      for (const key of keys) {
-        (ctx as any)[key as string] = prev[key] as any;
-      }
-      // Restore the previous mayAsync status, but if this rule became async, bubble it up
-      ctx.mayAsync = prevMayAsync || ctx.mayAsync;
-      return result! as T;
+    };
+
+    // Check if this is a function that takes context (for OR alternatives)
+    if (typeof ruleRef === 'function' && ruleRef.length > 0) {
+      // This is a function that takes context, call it directly
+      result = (ruleRef as (ctx: RuleContext) => T)(ctx);
+      processResult();
+    } else {
+      // This is a parser rule method, use subrule
+      result = this.subrule(idx, ruleRef as any, { ARGS: [ctx] }) as T;
+      processResult();
     }
+    for (const key of keys) {
+      (ctx as any)[key as string] = prev[key] as any;
+    }
+    // Restore the previous node state, but bubble up flags from the result node
+    if (result && result instanceof Node) {
+      // Only bubble up flags from the result node, not from context accumulation
+      if (result.getState(F_MAY_ASYNC)) {
+        ctx.nodeState = (prevNodeState || 0) | F_MAY_ASYNC;
+      } else {
+        ctx.nodeState = prevNodeState || 0;
+      }
+      if (result.getState(F_NEEDS_EVALUATION)) {
+        ctx.nodeState = (ctx.nodeState || 0) | F_NEEDS_EVALUATION;
+      }
+    } else {
+      // No result node, just restore previous state
+      ctx.nodeState = prevNodeState || 0;
+    }
+    return result as T;
   }
 }

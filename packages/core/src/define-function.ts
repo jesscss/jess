@@ -4,6 +4,7 @@ import { isNode } from './tree/util/is-node';
 import type { Context } from './context';
 import { isThenable } from '@jesscss/awaitable-pipe';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import { Node, F_VISIBLE, F_NEEDS_EVALUATION } from './tree/node';
 
 export type PrimitiveType = 'string' | 'number' | 'boolean' | 'null' | 'undefined';
 export type ArgType = PrimitiveType | Class<any> | AbstractClass<any>;

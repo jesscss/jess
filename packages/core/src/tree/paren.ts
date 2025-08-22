@@ -2,7 +2,7 @@ import { type Context } from '../context';
 import { Bool } from './bool';
 import { Expression } from './expression';
 import { Operation } from './operation';
-import { Node, defineType } from './node';
+import { Node, defineType, F_VISIBLE, F_NEEDS_EVALUATION } from './node';
 import { Dimension } from './dimension';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print';
@@ -23,6 +23,8 @@ const isOpOrExpression = (node: Node): node is Operation | Expression => {
 export class Paren extends Node<Node | undefined, ParenOptions> {
   type = 'Paren' as const;
   shortType = 'paren' as const;
+  override state = F_VISIBLE | F_NEEDS_EVALUATION;
+
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);

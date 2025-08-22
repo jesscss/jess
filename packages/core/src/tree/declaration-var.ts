@@ -4,7 +4,7 @@ import {
   type DeclarationOptions
 } from './declaration';
 import { Any, type AnyRole } from './any';
-import { defineType, type LocationInfo, type Node, type TreeContext } from './node';
+import { defineType, F_VISIBLE, type LocationInfo, type Node, type TreeContext } from './node';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export type VarDeclarationOptions = DeclarationOptions & {
@@ -30,7 +30,7 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
   override shortType = 'vardecl';
   override allowRuleRoot = true;
   override allowRoot = true;
-  override visible = false;
+  override state = 0b0000; // 0b0000 means no flags are set
 
   constructor(
     value: DeclarationValue,
@@ -41,7 +41,7 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     super(value, options, location, treeContext);
     /** Parameter declarations are not like var declarations */
     if (options?.paramVar) {
-      this.visible = true;
+      this.setState(F_VISIBLE, true);
     }
   }
 

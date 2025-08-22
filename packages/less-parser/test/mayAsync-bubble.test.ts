@@ -1,96 +1,29 @@
-import { Parser } from '../src';
-
-const parser = new Parser();
-const parse = parser.parse;
+import { testMayAsync, testStatic, testPatterns } from './helpers';
 
 describe('Less mayAsync roll-up (bubble)', () => {
-  test('pure sync tree has mayAsync=false', () => {
-    const { tree } = parse('.a { color: red; width: 10px }', 'stylesheet');
-    expect(tree.mayAsync).toBe(false);
-  });
+  // Static content
+  testStatic('pure sync tree has mayAsync=false', testPatterns.staticRuleset());
 
-  test('variable reference bubbles to root', () => {
-    const { tree } = parse('.a { color: @var }', 'stylesheet');
-    expect(tree.mayAsync).toBe(true);
-  });
+  // Variable references
+  testMayAsync('variable reference bubbles to root', testPatterns.variableReference());
 
-  test('Sequence in declaration bubbles', () => {
-    const { tree } = parse('.a { border: @v solid red }', 'stylesheet');
-    expect(tree.mayAsync).toBe(true);
-  });
+  // Complex structures with variables
+  testMayAsync('Sequence in declaration bubbles', testPatterns.variableInSequence());
+  testMayAsync('List bubbles', testPatterns.variableInList());
+  testMayAsync('Paren bubbles', testPatterns.variableInParen());
+  testMayAsync('Square Block bubbles', testPatterns.variableInSquareBlock());
+  testMayAsync('Operation bubbles', testPatterns.variableInOperation());
+  testMayAsync('Ruleset bubbles', testPatterns.variableReference());
+  testMayAsync('StyleImport bubbles', testPatterns.styleImport());
+  testMayAsync('Mixin body bubbles', '.x() { a: @v } .a { .x(); }');
+  testMayAsync('Negative bubbles', testPatterns.variableInNegative());
+  testMayAsync('Call args bubble', testPatterns.variableInCall());
+  testMayAsync('Guard bubbles', testPatterns.guardWithVariable());
+  testMayAsync('AtRule inner bubbles', testPatterns.atRuleVariable());
 
-  test('List bubbles', () => {
-    const { tree } = parse('.a { shadow: @v, 2px }', 'stylesheet');
-    expect(tree.mayAsync).toBe(true);
-  });
-
-  test('Paren bubbles', () => {
-    const { tree } = parse('.a { color: (@v) }', 'stylesheet');
-    expect(tree.mayAsync).toBe(true);
-  });
-
-  test('Square Block bubbles', () => {
-    const { tree } = parse('.a { prop: [ @v ] }', 'stylesheet');
-    expect(tree.mayAsync).toBe(true);
-  });
-
-  test('Operation bubbles', () => {
-    const { tree } = parse('.a { width: 1 + @v }', 'stylesheet');
-    expect(tree.mayAsync).toBe(true);
-  });
-
-  test('Ruleset bubbles', () => {
-    const { tree } = parse('.a { color: @v }', 'stylesheet');
-    expect(tree.mayAsync).toBe(true);
-  });
-
-  test('StyleImport bubbles', () => {
-    const { tree } = parse('@import \'x.less\';', 'stylesheet');
-    expect(tree.mayAsync).toBe(true);
-  });
-
-  test('Mixin body bubbles', () => {
-    const { tree } = parse('.x() { a: @v } .a { .x(); }', 'stylesheet');
-    expect(tree.mayAsync).toBe(true);
-  });
-
-  test('Negative bubbles', () => {
-    const { tree } = parse('.a { width: -@v }', 'stylesheet');
-    expect(tree.mayAsync).toBe(true);
-  });
-
-  test('Call args bubble', () => {
-    const { tree } = parse('.a { color: rgb(@v,10,10) }', 'stylesheet');
-    expect(tree.mayAsync).toBe(true);
-  });
-
-  test('Guard bubbles', () => {
-    const { tree } = parse('.a when (@v = 1) { color: red }', 'stylesheet');
-    expect(tree.mayAsync).toBe(true);
-  });
-
-  test('AtRule inner bubbles', () => {
-    const { tree } = parse('@media (min-width: 10px) { a { color: @v } }', 'stylesheet');
-    expect(tree.mayAsync).toBe(true);
-  });
-
-  test('Pseudo selector with selector-child bubbles', () => {
-    const { tree } = parse('.a:has(.@{x}) { y: 1 }', 'stylesheet');
-    expect(tree.mayAsync).toBe(true);
-  });
-
-  test('Compound selector bubbles', () => {
-    const { tree } = parse('.foo.@{c} { y: 1 }', 'stylesheet');
-    expect(tree.mayAsync).toBe(true);
-  });
-
-  test('Complex selector bubbles', () => {
-    const { tree } = parse('.x .@{c} .y { z: 1 }', 'stylesheet');
-    expect(tree.mayAsync).toBe(true);
-  });
-
-  test('Selector list bubbles when any branch async', () => {
-    const { tree } = parse('.a, .@{c} { y: 1 }', 'stylesheet');
-    expect(tree.mayAsync).toBe(true);
-  });
+  // Selector interpolation
+  testMayAsync('Pseudo selector with selector-child bubbles', '.a:has(.@{x}) { y: 1 }');
+  testMayAsync('Compound selector bubbles', testPatterns.compoundSelectorInterpolation('@{c}'));
+  testMayAsync('Complex selector bubbles', testPatterns.complexSelectorInterpolation('@{c}'));
+  testMayAsync('Selector list bubbles when any branch async', testPatterns.selectorListInterpolation('@{c}'));
 });

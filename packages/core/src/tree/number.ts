@@ -12,6 +12,7 @@ import { Dimension } from './dimension';
 export class Num extends Dimension {
   override type = 'Number' as const;
   override shortType = 'num' as const;
+  // Numbers are static and don't need evaluation
 
   constructor(value: number, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super({ number: value }, options, location, treeContext);

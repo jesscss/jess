@@ -105,6 +105,21 @@ export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<=';
 
 export type NoOverride<T> = Tagged<T, 'NoOverride'>;
 
+// Node state flags as bitmask
+export const F_VISIBLE = 0b1;
+export const F_MAY_ASYNC = 0b10;
+export const F_NEEDS_EVALUATION = 0b100;
+
+// Default state: only visible is true
+export const F_DEFAULT = F_VISIBLE;
+
+// Future flags can be added here
+// export const CACHED = 0b1000000;
+// export const DIRTY = 0b10000000;
+// export const LOCKED = 0b100000000;
+
+// const FULLY_EVALUATED = F_EVALUATED | F_PRE_EVALUATED;
+
 /**
  * The underlying type for all Jess nodes
  */
@@ -153,17 +168,36 @@ export abstract class Node<
   post: Array<Comment | Nil | string> | 1 | 0 | undefined;
 
   /** Will be copied during inherit */
-  stateRules = ['visible', 'evaluated', 'preEvaluated'];
-  declare renderInvisible: boolean;
-  visible = true;
-  evaluated = false;
+  state = F_DEFAULT;
+
+  /** Runtime tracking: has preEval been run on this node? */
   preEvaluated = false;
 
-  /**
-   * Parse-time or build-time hint that this node (or its subtree) may produce async results.
-   * Defaults to false; specific nodes (e.g., imports) or parser roll-up can set to true.
-   */
-  mayAsync: boolean = false;
+  getState(flag: number) {
+    return (this.state & flag) === flag;
+  }
+
+  setState(flag: number, value: boolean) {
+    if (value) {
+      this.state |= flag;
+    } else {
+      this.state &= ~flag;
+    }
+  }
+
+  get visible() {
+    return this.getState(F_VISIBLE);
+  }
+
+  get evaluated() {
+    return !this.getState(F_NEEDS_EVALUATION);
+  }
+
+  set evaluated(value: boolean) {
+    this.setState(F_NEEDS_EVALUATION, !value);
+  }
+
+  declare renderInvisible: boolean;
 
   allowRoot = false;
   allowRuleRoot = false;
@@ -563,25 +597,24 @@ export abstract class Node<
     let returnNode: Node = node;
     return pipe(
       () => {
-        if (!returnNode.preEvaluated) {
+        if (returnNode.getState(F_NEEDS_EVALUATION) && !returnNode.preEvaluated) {
           return returnNode.preEval(context);
         }
         return returnNode;
       },
       (returnNode) => {
         returnNode.preEvaluated = true;
-        if (!returnNode.evaluated) {
+        if (returnNode.getState(F_NEEDS_EVALUATION)) {
           return returnNode.evalNode(context);
         }
         return returnNode;
       },
       (returnNode) => {
-        returnNode.evaluated = true;
+        // Clear the NEEDS_EVALUATION flag
+        returnNode.state &= ~F_NEEDS_EVALUATION;
         if (returnNode !== node) {
           returnNode.inherit(node);
         }
-        returnNode.preEvaluated = true;
-        returnNode.evaluated = true;
         return returnNode;
       }
     );
@@ -604,12 +637,7 @@ export abstract class Node<
   inherit(node: Node) {
     this._location = node.location;
     this._treeContext = node.treeContext;
-    /** Copy any state rules */
-    for (let rule of this.stateRules || []) {
-      (this as any)[rule] = (node as any)[rule];
-    }
-    this.evaluated &&= node.evaluated;
-    this.preEvaluated &&= node.preEvaluated;
+    this.state = node.state;
     // Note that we need to create new arrays if we mutate pre/post later
     this.pre = node.pre;
     this.post = node.post;
@@ -695,7 +723,7 @@ export abstract class Node<
    * and toTrimmedString() should be overridden instead.
    */
   toString(options?: PrintOptions): string {
-    if (!this.visible && !this.renderInvisible) {
+    if (!this.getState(F_VISIBLE) && !this.renderInvisible) {
       return '';
     }
     options = getPrintOptions(options);

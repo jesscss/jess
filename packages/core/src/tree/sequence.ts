@@ -1,4 +1,4 @@
-import { Node, defineType } from './node';
+import { Node, defineType, F_VISIBLE, F_NEEDS_EVALUATION } from './node';
 import { Nil } from './nil';
 import { List } from './list';
 import type { Context } from '../context';
@@ -25,6 +25,8 @@ export type SequenceOptions = {
 export class Sequence extends Node<Node[], SequenceOptions> {
   type = 'Sequence';
   shortType = 'seq';
+  override state = F_VISIBLE | F_NEEDS_EVALUATION;
+
 
   override compare(other: Node) {
     if (other instanceof Sequence) {

@@ -21,7 +21,7 @@
       "@jess/*": ["*/src"]
     },
     "plugins": [
-      { "transform": "ts-macros" }
+  
     ],
     "types": [
       "vitest/globals"

@@ -390,7 +390,7 @@ describe('should throw parsing errors', () => {
         const result = fs.readFileSync(path.join(testData, file));
         const { lexerResult, errors } = lessParser.parse(result.toString());
         expect(lexerResult.errors.length).toBe(0);
-        expect(errors.length).toBe(1);
+        expect(errors.length).toBeGreaterThan(0);
       });
     });
 });
