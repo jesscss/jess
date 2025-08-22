@@ -1,4 +1,4 @@
-import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, type LocationInfo } from './node';
+import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NEEDS_EVALUATION, type LocationInfo } from './node';
 import type { Context, TreeContext } from '../context';
 import { cast } from './util/cast';
 import type { FindOptions } from './util/registry-utils';
@@ -69,7 +69,7 @@ type ReferenceParams = ConstructorParameters<NodeType>;
 export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   type = 'Reference';
   shortType = 'ref';
-  override state = F_MAY_ASYNC | F_VISIBLE;
+  override state = F_MAY_ASYNC | F_VISIBLE | F_NEEDS_EVALUATION;
 
   constructor(value: ReferenceValue | string, options?: ReferenceOptions, location?: LocationInfo, treeContext?: TreeContext) {
     if (typeof value === 'string') {

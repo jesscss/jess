@@ -29,7 +29,6 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
 export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   type = 'List';
   shortType = 'list';
-  override state = F_VISIBLE | F_NEEDS_EVALUATION;
 
 
   get length() {

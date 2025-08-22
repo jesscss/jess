@@ -53,7 +53,14 @@ export const testCase = <const T extends LessRules = LessRules>(
 ) => {
   test(description, () => {
     const { tree } = parse(input, rule);
-    expectFlags(tree, expectedNeedsEvaluation, expectedMayAsync);
+
+    // For selector interpolation tests, check the first ruleset instead of the root Rules node
+    if (description.includes('selector interpolation')) {
+      const ruleset = (tree as any).value[0];
+      expectFlags(ruleset, expectedNeedsEvaluation, expectedMayAsync);
+    } else {
+      expectFlags(tree, expectedNeedsEvaluation, expectedMayAsync);
+    }
   });
 };
 
@@ -114,10 +121,10 @@ export const testPatterns = {
   multipleRules: (rules: string[]) => rules.join('\n'),
 
   // Selector patterns
-  selectorInterpolation: (variable = '@var') => `.${variable} { color: red }`,
-  compoundSelectorInterpolation: (variable = '@var') => `.foo.${variable} { color: red }`,
-  complexSelectorInterpolation: (variable = '@var') => `.foo .${variable} { color: red }`,
-  selectorListInterpolation: (variable = '@var') => `.static, .${variable} { color: red }`,
+  selectorInterpolation: (variable = '@var') => `.@{var} { color: red }`,
+  compoundSelectorInterpolation: (variable = '@var') => `.foo.@{var} { color: red }`,
+  complexSelectorInterpolation: (variable = '@var') => `.foo .@{var} { color: red }`,
+  selectorListInterpolation: (variable = '@var') => `.static, .@{var} { color: red }`,
 
   // Import and mixin patterns
   styleImport: (path = 'x.less') => `@import '${path}';`,

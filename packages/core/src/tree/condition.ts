@@ -1,5 +1,5 @@
 import { type Context } from '../context';
-import { Node, defineType } from './node';
+import { F_NEEDS_EVALUATION, F_VISIBLE, Node, defineType } from './node';
 import { Bool } from './bool';
 import { Nil } from './nil';
 import { type PrintOptions, getPrintOptions } from './util/print';
@@ -27,6 +27,7 @@ export interface Condition extends Node<ConditionValue, ConditionOptions> {
 export class Condition extends Node<ConditionValue, ConditionOptions> {
   type = 'Condition' as const;
   shortType = 'condition' as const;
+  override state = F_VISIBLE | F_NEEDS_EVALUATION;
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);

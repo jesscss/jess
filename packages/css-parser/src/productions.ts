@@ -1727,7 +1727,8 @@ export function mediaCondition(this: C, T: TokenMap, alt?: AltContext) {
         });
         if (!RECORDING_PHASE) {
           let location = $.endRule();
-          return new QueryCondition(nodes!, undefined, location, this.context);
+          const queryCondition = new QueryCondition(nodes!, undefined, location, this.context);
+          return this.createNode(queryCondition, ctx);
         }
       }
     }
@@ -1764,7 +1765,8 @@ export function mediaConditionWithoutOr(this: C, T: TokenMap, alt?: AltContext) 
         });
 
         if (!RECORDING_PHASE) {
-          return new QueryCondition(nodes!, undefined, $.endRule(), this.context);
+          const queryCondition = new QueryCondition(nodes!, undefined, $.endRule(), this.context);
+          return this.createNode(queryCondition, ctx);
         }
       }
     }
@@ -1786,10 +1788,11 @@ export function mediaNot(this: C, T: TokenMap) {
     let node = $.rule(ctx, $.mediaInParens);
 
     if (!$.RECORDING_PHASE) {
-      return new QueryCondition([
+      const queryCondition = new QueryCondition([
         $.wrap(new Any(token.image, { role: 'keyword' }, $.getLocationInfo(token), this.context)),
         node
       ], undefined, $.endRule(), this.context);
+      return this.createNode(queryCondition, ctx);
     }
   };
 }

@@ -23,7 +23,6 @@ const isOpOrExpression = (node: Node): node is Operation | Expression => {
 export class Paren extends Node<Node | undefined, ParenOptions> {
   type = 'Paren' as const;
   shortType = 'paren' as const;
-  override state = F_VISIBLE | F_NEEDS_EVALUATION;
 
 
   override toTrimmedString(options?: PrintOptions): string {

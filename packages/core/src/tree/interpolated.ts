@@ -46,7 +46,7 @@ export class Interpolated<
 > extends SimpleSelector<InterpolatedValue, AnyOptions<Role>> {
   type = 'Interpolated' as const;
   shortType = 'interpolated' as const;
-  override state = F_MAY_ASYNC | F_VISIBLE;
+  override state = F_VISIBLE | F_MAY_ASYNC | F_NEEDS_EVALUATION;
 
   override valueOf(): string {
     return this.value.source;

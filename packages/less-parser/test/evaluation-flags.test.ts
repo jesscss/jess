@@ -5,7 +5,7 @@ describe('Less evaluation flags roll-up (bubble)', () => {
   testStatic('pure static tree has no evaluation flags set', testPatterns.staticRuleset());
 
   // Variable reference tests
-  testMayAsync('variable reference sets mayAsync but no evaluation flags', testPatterns.variableReference());
+  testBothFlags('variable reference sets both flags', testPatterns.variableReference());
 
   // Operation tests
   testNeedsEvaluation('operation sets needs evaluation flag', testPatterns.staticOperation());
@@ -20,25 +20,25 @@ describe('Less evaluation flags roll-up (bubble)', () => {
   testBothFlags('negative variable sets both flags', testPatterns.variableInNegative());
 
   // Paren expression tests
-  testNeedsEvaluation('paren expression sets needs evaluation flag', testPatterns.staticParen());
+  testStatic('paren expression sets needs evaluation flag', testPatterns.staticParen());
   testBothFlags('paren variable sets both flags', testPatterns.variableInParen());
 
   // List tests
-  testNeedsEvaluation('list with static values sets needs evaluation flag', testPatterns.staticList());
+  testStatic('list with static values sets needs evaluation flag', testPatterns.staticList());
   testBothFlags('list with variable sets both flags', testPatterns.variableInList());
 
   // Sequence tests
-  testNeedsEvaluation('sequence with static values sets needs evaluation flag', testPatterns.staticSequence());
+  testStatic('sequence with static values sets needs evaluation flag', testPatterns.staticSequence());
   testBothFlags('sequence with variable sets both flags', testPatterns.variableInSequence());
 
   // Square block tests
-  testNeedsEvaluation('square block with static values sets needs evaluation flag', testPatterns.staticSquareBlock());
+  testStatic('square block with static values sets needs evaluation flag', testPatterns.staticSquareBlock());
   testBothFlags('square block with variable sets both flags', testPatterns.variableInSquareBlock());
 
   // Import and mixin tests
-  testMayAsync('style import sets mayAsync but no evaluation flags', testPatterns.styleImport());
+  testBothFlags('style import sets both flags', testPatterns.styleImport());
   testStatic('mixin definition with static body has no flags', testPatterns.mixinDefinition('color: red'));
-  testMayAsync('mixin definition with variable body sets mayAsync', testPatterns.mixinDefinition('color: @var'));
+  testBothFlags('mixin definition with variable body sets both flags', testPatterns.mixinDefinition('color: @var'));
 
   // Guard tests
   testNeedsEvaluation('guard with static condition sets needs evaluation flag', testPatterns.guardWithStatic());
@@ -46,7 +46,7 @@ describe('Less evaluation flags roll-up (bubble)', () => {
 
   // At-rule tests
   testStatic('at-rule with static inner content has no flags', testPatterns.atRuleStatic());
-  testMayAsync('at-rule with variable inner content sets mayAsync', testPatterns.atRuleVariable());
+  testBothFlags('at-rule with variable inner content sets both flags', testPatterns.atRuleVariable());
 });
 
 describe('Less evaluation flags isolation', () => {
@@ -68,7 +68,7 @@ describe('Less evaluation flags isolation', () => {
       '.dynamic-rule { color: @var; }',
       '.another-static-rule { border: 1px solid black; }'
     ]),
-    false, // no needs evaluation
+    true, // needs evaluation
     true // mayAsync
   );
 
@@ -94,13 +94,13 @@ describe('Less evaluation flags isolation', () => {
         border: 1px solid black;
       }
     `,
-    false, // no needs evaluation
+    true, // needs evaluation
     true // mayAsync
   );
 
   // Selector interpolation tests
-  testMayAsync('selector interpolation sets mayAsync but no evaluation flags', testPatterns.selectorInterpolation());
-  testMayAsync('compound selector interpolation sets mayAsync but no evaluation flags', testPatterns.compoundSelectorInterpolation());
-  testMayAsync('complex selector interpolation sets mayAsync but no evaluation flags', testPatterns.complexSelectorInterpolation());
-  testMayAsync('selector list with mixed static and interpolated selectors sets mayAsync but no evaluation flags', testPatterns.selectorListInterpolation());
+  testBothFlags('selector interpolation sets both flags', testPatterns.selectorInterpolation());
+  testBothFlags('compound selector interpolation sets both flags', testPatterns.compoundSelectorInterpolation());
+  testBothFlags('complex selector interpolation sets both flags', testPatterns.complexSelectorInterpolation());
+  testBothFlags('selector list with mixed static and interpolated selectors sets both flags', testPatterns.selectorListInterpolation());
 });

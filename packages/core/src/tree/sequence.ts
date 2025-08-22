@@ -25,7 +25,6 @@ export type SequenceOptions = {
 export class Sequence extends Node<Node[], SequenceOptions> {
   type = 'Sequence';
   shortType = 'seq';
-  override state = F_VISIBLE | F_NEEDS_EVALUATION;
 
 
   override compare(other: Node) {

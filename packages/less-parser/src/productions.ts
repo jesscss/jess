@@ -219,16 +219,18 @@ let interpolatedRegex = /([$@]){([^}]+)}/g;
 /** The placeholder we use for interpolation... we should probably use a const exported from @jesscss/core? */
 let charPlaceholder = '{}';
 
-const getInterpolated = (name: string, location: LocationInfo, context: TreeContext): Interpolated => {
+const getInterpolated = (name: string, location: LocationInfo, context: TreeContext, parser?: any, ctx?: RuleContext): Interpolated => {
   const replacements: Node[] = [];
   let result: RegExpExecArray | null;
   let source = name;
   while (result = interpolatedRegex.exec(name)) {
     const [match, propOrVar, value] = result;
     source = source.replace(match, '{}');
-    replacements.push(new Reference({ key: value! }, { type: propOrVar === '$' ? 'property' : 'variable', role: 'ident' }));
+    const reference = new Reference({ key: value! }, { type: propOrVar === '$' ? 'property' : 'variable', role: 'ident' });
+    replacements.push(ctx && parser ? parser.createNode(reference, ctx) : reference);
   }
-  return new Interpolated({ source, replacements }, { role: 'ident' }, location, context);
+  const interpolated = new Interpolated({ source, replacements }, { role: 'ident' }, location, context);
+  return ctx && parser ? parser.createNode(interpolated, ctx) : interpolated;
 };
 
 export function declaration(this: P, T: TokenMap) {
@@ -258,7 +260,7 @@ export function declaration(this: P, T: TokenMap) {
           let nameNode: Node;
           let nameValue = name!.image;
           if (nameValue.includes('@') || nameValue.includes('$')) {
-            nameNode = getInterpolated(nameValue, $.getLocationInfo(name!), this.context);
+            nameNode = getInterpolated(nameValue, $.getLocationInfo(name!), this.context, this, ctx);
           } else {
             nameNode = $.wrap(new Any(name!.image, { role: 'property' }, $.getLocationInfo(name!), this.context), true);
           }
@@ -290,7 +292,7 @@ export function declaration(this: P, T: TokenMap) {
           let nameNode: Node;
           let nameValue = name.image;
           if (nameValue.includes('@') || nameValue.includes('$')) {
-            nameNode = getInterpolated(nameValue, $.getLocationInfo(name), this.context);
+            nameNode = getInterpolated(nameValue, $.getLocationInfo(name), this.context, this, ctx);
           } else {
             nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), this.context), true);
           }
@@ -793,7 +795,7 @@ export function simpleSelector(this: P, T: TokenMap) {
           if (selector.tokenType.name === 'InterpolatedSelector') {
             // Create an Interpolated node for interpolated selectors
             let nameValue = selector.image;
-            let nameNode = getInterpolated(nameValue, $.getLocationInfo(selector), this.context);
+            let nameNode = getInterpolated(nameValue, $.getLocationInfo(selector), this.context, this, ctx);
             // Override context to indicate async evaluation needed
             ctx.nodeState = F_MAY_ASYNC;
             return nameNode;
@@ -924,16 +926,19 @@ export function importAtRule(this: P, T: TokenMap) {
     if (!RECORDING_PHASE) {
       let location = $.endRule();
       if (isAtRule) {
-        return new AtRule({
+        const prelude = new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context);
+        this.createNode(prelude, ctx);
+        const atRule = new AtRule({
           name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context), true),
-          prelude: new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context)
+          prelude: prelude
         }, undefined, location, this.context);
+        return this.createNode(atRule, ctx);
       }
       const pathStr = getUrlFromNode(urlNode);
       const pathNode = new Quoted(new Any(pathStr, { role: 'urlvalue' }), { quote: '\'' }, undefined, this.context);
       // Set async flag for style imports
       ctx.nodeState = F_MAY_ASYNC;
-      const imp = new StyleImport({
+      const imp = this.createNode(new StyleImport({
         path: pathNode
       }, {
         type: 'import',
@@ -941,7 +946,7 @@ export function importAtRule(this: P, T: TokenMap) {
           reference: options!.includes('reference'),
           once: !options!.includes('multiple')
         }
-      }, location, this.context);
+      }, location, this.context), ctx);
       return imp;
     }
   };
@@ -1280,16 +1285,13 @@ export function expressionSum(this: P, T: TokenMap) {
         ]);
 
         if (!RECORDING_PHASE) {
-          // Set needs evaluation flag for operations
-          ctx.nodeState = (ctx.nodeState || 0) | F_NEEDS_EVALUATION;
-          left = $.wrap(
-            new Operation(
-              [$.wrap(left, true), op as Operator, $.wrap(right!)],
-              undefined,
-              $.getLocationFromNodes([left, right!]),
-              this.context
-            )
+          const operation = new Operation(
+            [$.wrap(left, true), op as Operator, $.wrap(right!)],
+            undefined,
+            $.getLocationFromNodes([left, right!]),
+            this.context
           );
+          left = this.createNode(operation, ctx);
 
           return left;
         }
@@ -1326,14 +1328,13 @@ export function expressionProduct(this: P, T: TokenMap) {
       if (!RECORDING_PHASE) {
         // Set needs evaluation flag for operations
         ctx.nodeState = (ctx.nodeState || 0) | F_NEEDS_EVALUATION;
-        left = $.wrap(
-          new Operation(
-            [$.wrap(left, true), op.image as Operator, $.wrap(right)],
-            undefined,
-            $.getLocationFromNodes([left, right]),
-            this.context
-          )
+        const operation = new Operation(
+          [$.wrap(left, true), op.image as Operator, $.wrap(right)],
+          undefined,
+          $.getLocationFromNodes([left, right]),
+          this.context
         );
+        left = this.createNode(operation, ctx);
       }
     });
 
@@ -1373,7 +1374,7 @@ export function expressionValue(this: P, T: TokenMap) {
           if (!RECORDING_PHASE) {
             let location = $.endRule();
             node = $.wrap(node, 'both');
-            const par = new Paren(node, { escaped: !!escape }, location, this.context);
+            const par = this.createNode(new Paren(node, { escaped: !!escape }, location, this.context), ctx);
 
             return par;
           }
@@ -2052,7 +2053,7 @@ export function guardInParens(this: P, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       node = $.wrap(node, 'both');
-      const par = new Paren(node, undefined, $.endRule(), this.context);
+      const par = this.createNode(new Paren(node, undefined, $.endRule(), this.context), ctx);
 
       return par;
     }
@@ -2269,7 +2270,7 @@ export function mixinName(this: P, T: TokenMap) {
       let nameValue = name.image;
       let location = $.getLocationInfo(name);
       if (nameValue.includes('@') || nameValue.includes('$')) {
-        nameNode = getInterpolated(nameValue, location, this.context);
+        nameNode = getInterpolated(nameValue, location, this.context, this, ctx);
         if (asReference) {
           nameNode = new Reference({ key: nameNode as Interpolated }, { type: 'mixin', role: 'name' }, location, this.context);
         }
