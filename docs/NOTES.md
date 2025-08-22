@@ -1,3 +1,8 @@
+# Aug 21, 2025
+
+- Made the awaitable-pipe package to normalize sync / async handling
+- Did a lot of reworking of parsing to tag nodes as maybe async or not
+
 # Aug 19, 2025
 
 - The LLM informed me that async eval everywhere has a cost (microtasks), so the whole API will be updated to have nodes "opt-in" to async only when needed

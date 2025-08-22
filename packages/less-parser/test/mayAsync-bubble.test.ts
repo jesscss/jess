@@ -73,4 +73,24 @@ describe('Less mayAsync roll-up (bubble)', () => {
     const { tree } = parse('@media (min-width: 10px) { a { color: @v } }', 'stylesheet');
     expect(tree.mayAsync).toBe(true);
   });
+
+  test('Pseudo selector with selector-child bubbles', () => {
+    const { tree } = parse('.a:has(.@{x}) { y: 1 }', 'stylesheet');
+    expect(tree.mayAsync).toBe(true);
+  });
+
+  test('Compound selector bubbles', () => {
+    const { tree } = parse('.foo.@{c} { y: 1 }', 'stylesheet');
+    expect(tree.mayAsync).toBe(true);
+  });
+
+  test('Complex selector bubbles', () => {
+    const { tree } = parse('.x .@{c} .y { z: 1 }', 'stylesheet');
+    expect(tree.mayAsync).toBe(true);
+  });
+
+  test('Selector list bubbles when any branch async', () => {
+    const { tree } = parse('.a, .@{c} { y: 1 }', 'stylesheet');
+    expect(tree.mayAsync).toBe(true);
+  });
 });

@@ -70,4 +70,36 @@ describe('Less mayAsync isolation (siblings do not bleed)', () => {
     expect(d1.mayAsync).toBe(true);
     expect(d2.mayAsync).toBe(false);
   });
+
+  test('sibling rulesets: pseudo selector with selector-child', () => {
+    const { tree } = parse('.a:has(.@{x}) { y: 1 } .b:has(.c) { y: 1 }', 'stylesheet');
+    const r1 = tree.at(0)!;
+    const r2 = tree.at(1)!;
+    expect(r1.mayAsync).toBe(true);
+    expect(r2.mayAsync).toBe(false);
+  });
+
+  test('sibling rulesets: compound selector', () => {
+    const { tree } = parse('.foo.@{c} { y: 1 } .bar.baz { y: 1 }', 'stylesheet');
+    const r1 = tree.at(0)!;
+    const r2 = tree.at(1)!;
+    expect(r1.mayAsync).toBe(true);
+    expect(r2.mayAsync).toBe(false);
+  });
+
+  test('sibling rulesets: complex selector', () => {
+    const { tree } = parse('.x .@{c} .y { z: 1 } .x .c .y { z: 1 }', 'stylesheet');
+    const r1 = tree.at(0)!;
+    const r2 = tree.at(1)!;
+    expect(r1.mayAsync).toBe(true);
+    expect(r2.mayAsync).toBe(false);
+  });
+
+  test('sibling rulesets: selector list', () => {
+    const { tree } = parse('.a, .@{c} { y: 1 } .a, .c { y: 1 }', 'stylesheet');
+    const r1 = tree.at(0)!;
+    const r2 = tree.at(1)!;
+    expect(r1.mayAsync).toBe(true);
+    expect(r2.mayAsync).toBe(false);
+  });
 });

@@ -65,7 +65,7 @@ export function stylesheet(this: C, T: TokenMap) {
 
     // Initialize RuleContext for mayAsync bubbling at root
     const ctx: RuleContext = { isRoot: true };
-    let root: Node = $.SUBRULE($.main, { ARGS: [ctx] });
+    let root: Node = $.rule(ctx, $.main);
 
     if (!RECORDING_PHASE) {
       let rules = root.value as Node[];
@@ -89,8 +89,8 @@ export function stylesheet(this: C, T: TokenMap) {
 export function main(this: C, T: TokenMap, alt?: AltContext | Alt) {
   let $ = this;
   alt ??= (ctx: RuleContext = {}) => [
-    { ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [ctx] }) },
-    { ALT: () => $.SUBRULE($.atRule, { ARGS: [ctx] }) }
+    { ALT: () => $.rule(ctx, $.qualifiedRule) },
+    { ALT: () => $.rule(ctx, $.atRule) }
   ];
 
   return (ctx: RuleContext = {}) => {
@@ -144,7 +144,9 @@ export function main(this: C, T: TokenMap, alt?: AltContext | Alt) {
     if (!RECORDING_PHASE) {
       let returnNode = $.getRulesWithComments(rules!, $.getLocationInfo($.LA(1)));
       // Attaches remaining whitespace at the end of rules
-      return $.wrap(returnNode!, true);
+      const wrapped = $.wrap(returnNode!, true);
+      wrapped.mayAsync = !!ctx.mayAsync;
+      return wrapped;
     }
   };
 }
@@ -155,30 +157,11 @@ export function qualifiedRule(this: C, T: TokenMap, selectorAlt?: AltContext) {
   selectorAlt ??= (ctx: RuleContext = {}) => [
     {
       GATE: () => !ctx.inner,
-      ALT: () => {
-        const prevQualified = ctx.qualifiedRule;
-        ctx.qualifiedRule = true;
-        try {
-          return $.SUBRULE($.selectorList, { ARGS: [ctx] });
-        } finally {
-          ctx.qualifiedRule = prevQualified;
-        }
-      }
+      ALT: () => $.rule(ctx, { qualifiedRule: true }, $.selectorList)
     },
     {
       GATE: () => !!ctx.inner,
-      ALT: () => {
-        const prevFirst = ctx.firstSelector;
-        const prevQualified = ctx.qualifiedRule;
-        ctx.firstSelector = true;
-        ctx.qualifiedRule = true;
-        try {
-          return $.SUBRULE($.forgivingSelectorList, { ARGS: [ctx] });
-        } finally {
-          ctx.firstSelector = prevFirst;
-          ctx.qualifiedRule = prevQualified;
-        }
-      }
+      ALT: () => $.rule(ctx, { firstSelector: true, qualifiedRule: true }, $.forgivingSelectorList)
     }
   ];
   // qualifiedRule
@@ -190,7 +173,7 @@ export function qualifiedRule(this: C, T: TokenMap, selectorAlt?: AltContext) {
     let selector = $.OR(selectorAlt(ctx));
 
     $.CONSUME(T.LCurly);
-    let rules = $.SUBRULE($.declarationList);
+    let rules: Rules = $.rule(ctx, $.declarationList);
     $.CONSUME(T.RCurly);
 
     if (!$.RECORDING_PHASE) {
@@ -244,11 +227,11 @@ export function simpleSelector(this: C, T: TokenMap, selectorAlt?: AltContext) {
       GATE: () => !!ctx.inner,
       ALT: () => $.CONSUME(T.Ampersand)
     },
-    { ALT: () => $.SUBRULE($.classSelector) },
-    { ALT: () => $.SUBRULE($.idSelector) },
+    { ALT: () => $.rule(ctx, $.classSelector) },
+    { ALT: () => $.rule(ctx, $.idSelector) },
     { ALT: () => $.CONSUME(T.Star) },
-    { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [ctx] }) },
-    { ALT: () => $.SUBRULE($.attributeSelector) },
+    { ALT: () => $.rule(ctx, $.pseudoSelector) },
+    { ALT: () => $.rule(ctx, $.attributeSelector) },
     /** Supports keyframes selectors */
     { ALT: () => $.CONSUME(T.DimensionInt) },
     { ALT: () => $.CONSUME(T.DimensionNum) }
@@ -283,16 +266,16 @@ export function classSelector(this: C, T: TokenMap) {
   };
 }
 
-export function idSelector(this: C, T: TokenMap, alt?: Alt) {
+export function idSelector(this: C, T: TokenMap, selectorAlt?: AltContext) {
   const $ = this;
 
-  let selectorAlt = alt ?? [
+  selectorAlt ??= (ctx: RuleContext = {}) => [
     { ALT: () => $.CONSUME(T.HashName) },
     { ALT: () => $.CONSUME(T.ColorIdentStart) }
   ];
   /** #id, #FF0000 are both valid ids */
-  return () => {
-    let selector = $.OR(selectorAlt);
+  return (ctx: RuleContext = {}) => {
+    let selector = $.OR(selectorAlt(ctx));
     if (!$.RECORDING_PHASE) {
       return new BasicSelector(selector.image, undefined, $.getLocationInfo(selector), this.context);
     }
@@ -315,7 +298,7 @@ export function pseudoSelector(this: C, T: TokenMap, selectorAlt?: AltContext) {
     {
       ALT: () => {
         let name = $.CONSUME(T.NthPseudoClass);
-        let val = $.SUBRULE($.nthValue);
+        let val = $.SUBRULE($.nthValue, { ARGS: [ctx] });
         $.CONSUME(T.RParen);
 
         return createPseudo(name.image.slice(0, -1), val);
@@ -391,10 +374,10 @@ export function pseudoSelector(this: C, T: TokenMap, selectorAlt?: AltContext) {
   };
 }
 
-export function nthValue(this: C, T: TokenMap, valueAlt?: Alt) {
+export function nthValue(this: C, T: TokenMap, valueAlt?: AltContext) {
   const $ = this;
 
-  valueAlt ??= [
+  valueAlt ??= (ctx: RuleContext = {}) => [
     { ALT: () => $.CONSUME(T.NthOdd) },
     { ALT: () => $.CONSUME(T.NthEven) },
     { ALT: () => $.CONSUME(T.Integer) },
@@ -417,7 +400,7 @@ export function nthValue(this: C, T: TokenMap, valueAlt?: Alt) {
         });
         $.OPTION2(() => {
           $.CONSUME(T.Of);
-          $.SUBRULE($.complexSelector);
+          $.SUBRULE($.complexSelector, { ARGS: [ctx] });
         });
       }
     }
@@ -426,7 +409,7 @@ export function nthValue(this: C, T: TokenMap, valueAlt?: Alt) {
   /**
    * @see https://developer.mozilla.org/en-US/docs/Web/CSS/:nth-child
    */
-  return () => {
+  return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
     let startTokenOffset: number | undefined;
@@ -434,7 +417,7 @@ export function nthValue(this: C, T: TokenMap, valueAlt?: Alt) {
       startTokenOffset = this.LA(1).startOffset;
     }
 
-    $.OR(valueAlt);
+    $.OR(valueAlt(ctx));
 
     if (!RECORDING_PHASE) {
       /** Coelesce all token values into one value */
@@ -460,10 +443,10 @@ export function nthValue(this: C, T: TokenMap, valueAlt?: Alt) {
 // attributeSelector
 //   : LSQUARE WS* identifier (STAR | TILDE | CARET | DOLLAR | PIPE)? EQ WS* (identifier | STRING) WS* (ATTRIBUTE_FLAG WS*)? RSQUARE
 //   ;
-export function attributeSelector(this: C, T: TokenMap, valueAlt?: Alt) {
+export function attributeSelector(this: C, T: TokenMap, valueAlt?: AltContext) {
   const $ = this;
 
-  valueAlt ??= [
+  valueAlt ??= (ctx: RuleContext = {}) => [
     {
       ALT: () => {
         let token = $.CONSUME2(T.Ident);
@@ -475,7 +458,7 @@ export function attributeSelector(this: C, T: TokenMap, valueAlt?: Alt) {
     { ALT: () => $.SUBRULE($.string) }
   ];
 
-  return () => {
+  return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
 
@@ -489,7 +472,7 @@ export function attributeSelector(this: C, T: TokenMap, valueAlt?: Alt) {
         { ALT: () => $.CONSUME(T.Eq) },
         { ALT: () => $.CONSUME(T.AttrMatch) }
       ]);
-      value = $.OR2(valueAlt);
+      value = $.OR2(valueAlt(ctx));
     });
     $.OPTION2(() => mod = $.CONSUME(T.AttrFlag));
     $.CONSUME(T.RSquare);
@@ -780,15 +763,9 @@ export function declarationList(this: C, T: TokenMap, alt?: AltContext) {
    */
 
   alt ??= (ctx: RuleContext = {}) => [
-    { ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] }) },
-    { ALT: () => $.SUBRULE($.innerAtRule) },
-    { ALT: () => {
-      const prevInner = ctx.inner;
-      ctx.inner = true;
-      const result = $.SUBRULE2($.qualifiedRule, { ARGS: [ctx] });
-      ctx.inner = prevInner;
-      return result;
-    } },
+    { ALT: () => $.rule(ctx, $.declaration) },
+    { ALT: () => $.rule(ctx, { inner: true }, $.innerAtRule) },
+    { ALT: () => $.rule(2, ctx, { inner: true }, $.qualifiedRule) },
     { ALT: () => $.CONSUME2(T.Semi) }
   ];
 
@@ -834,7 +811,7 @@ export function declaration(this: C, T: TokenMap, alt?: AltContext) {
         }
         $.startRule();
         $.MANY(() => {
-          let val = $.SUBRULE($.customValue);
+          let val = $.SUBRULE($.customValue, { ARGS: [ctx] });
           if (!RECORDING_PHASE) {
             nodes!.push(val);
           }
@@ -882,15 +859,15 @@ export function declaration(this: C, T: TokenMap, alt?: AltContext) {
  * Multi-modes was the right way to do it with Antlr, but
  * Chevrotain does not support recursive tokens very well.
  */
-export function customValue(this: C, T: TokenMap, alt?: Alt) {
+export function customValue(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
   /** Should be almost anything, but custom blocks need matching closers */
   // Order matters: prefer nested blocks first, then strings, then raw tokens.
   // Avoid knownFunctions here to remove ambiguity with custom blocks.
-  let valueAlt = alt ?? [
-    { ALT: () => $.SUBRULE($.customBlock) },
-    { ALT: () => $.SUBRULE($.string) },
+  alt ??= (ctx: RuleContext = {}) => [
+    { ALT: () => $.SUBRULE($.customBlock, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.string, { ARGS: [ctx] }) },
     {
       ALT: () => {
         const token = $.OR3([
@@ -909,13 +886,13 @@ export function customValue(this: C, T: TokenMap, alt?: Alt) {
     }
   ];
 
-  return () => $.OR(valueAlt);
+  return (ctx: RuleContext = {}) => $.OR(alt(ctx));
 }
 
-export function innerCustomValue(this: C, T: TokenMap, alt?: Alt) {
+export function innerCustomValue(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
-  let valueAlt = alt ?? [
+  alt ??= (ctx: RuleContext = {}) => [
     {
       ALT: () => {
         /** Can also have semi-colons */
@@ -925,10 +902,10 @@ export function innerCustomValue(this: C, T: TokenMap, alt?: Alt) {
         }
       }
     },
-    { ALT: () => $.SUBRULE($.customValue) }
+    { ALT: () => $.SUBRULE($.customValue, { ARGS: [ctx] }) }
   ];
 
-  return () => $.OR(valueAlt);
+  return (ctx: RuleContext = {}) => $.OR(alt(ctx));
 }
 
 /**
@@ -937,11 +914,11 @@ export function innerCustomValue(this: C, T: TokenMap, alt?: Alt) {
  *
  * @todo - In tests, is there a way to test that every token is captured?
  */
-export function extraTokens(this: C, T: TokenMap, alt?: Alt) {
+export function extraTokens(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
-  let valueAlt = alt ?? [
-    { ALT: () => $.SUBRULE($.functionCallLike) },
+  alt ??= (ctx: RuleContext = {}) => [
+    { ALT: () => $.SUBRULE($.functionCallLike, { ARGS: [ctx] }) },
     { ALT: () => $.CONSUME(T.Value) },
     { ALT: () => $.CONSUME(T.CustomProperty) },
     { ALT: () => $.CONSUME(T.Colon) },
@@ -951,8 +928,8 @@ export function extraTokens(this: C, T: TokenMap, alt?: Alt) {
     { ALT: () => $.CONSUME(T.Unknown) }
   ];
 
-  return () => {
-    let node: Node = $.OR(valueAlt);
+  return (ctx: RuleContext = {}) => {
+    let node: Node = $.OR(alt(ctx));
     if (!$.RECORDING_PHASE) {
       if (!(node instanceof Node)) {
         node = $.wrap($.processValueToken(node));
@@ -962,10 +939,10 @@ export function extraTokens(this: C, T: TokenMap, alt?: Alt) {
   };
 }
 
-export function customBlock(this: C, T: TokenMap, alt?: Alt) {
+export function customBlock(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
-  alt ??= [
+  alt ??= (ctx: RuleContext = {}) => [
     {
       ALT: () => {
         let RECORDING_PHASE = $.RECORDING_PHASE;
@@ -986,7 +963,7 @@ export function customBlock(this: C, T: TokenMap, alt?: Alt) {
         ]);
 
         $.MANY(() => {
-          let val = $.SUBRULE($.innerCustomValue);
+          let val = $.SUBRULE($.innerCustomValue, { ARGS: [ctx] });
           if (!$.RECORDING_PHASE) {
             nodes!.push(val);
           }
@@ -1004,7 +981,7 @@ export function customBlock(this: C, T: TokenMap, alt?: Alt) {
         }
         let start = $.CONSUME(T.LSquare);
         $.MANY2(() => {
-          let val = $.SUBRULE2($.innerCustomValue);
+          let val = $.SUBRULE2($.innerCustomValue, { ARGS: [ctx] });
           if (!RECORDING_PHASE) {
             nodes!.push(val);
           }
@@ -1023,7 +1000,7 @@ export function customBlock(this: C, T: TokenMap, alt?: Alt) {
         }
         let start = $.CONSUME(T.LCurly);
         $.MANY3(() => {
-          let val = $.SUBRULE3($.innerCustomValue);
+          let val = $.SUBRULE3($.innerCustomValue, { ARGS: [ctx] });
           if (!RECORDING_PHASE) {
             nodes!.push(val);
           }
@@ -1035,14 +1012,14 @@ export function customBlock(this: C, T: TokenMap, alt?: Alt) {
     }
   ];
 
-  return () => {
+  return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
     let start: IToken | undefined;
     let end: IToken | undefined;
     let nodes: Node[];
 
-    let val = $.OR(alt);
+    let val = $.OR(alt(ctx));
 
     if (!RECORDING_PHASE) {
       ([start, nodes, end] = val);
@@ -1172,18 +1149,18 @@ export function squareValue(this: C, T: TokenMap) {
 //   | '[' identifier ']'
 //   | unknownValue
 //   ;
-export function value(this: C, T: TokenMap, valueAlt?: Alt) {
+export function value(this: C, T: TokenMap, valueAlt?: AltContext) {
   const $ = this;
 
-  valueAlt ??= [
+  valueAlt ??= (ctx: RuleContext = {}) => [
     /** Function should appear before Ident */
-    { ALT: () => $.SUBRULE($.functionCall) },
+    { ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] }) },
     { ALT: () => $.CONSUME(T.Ident) },
     { ALT: () => $.CONSUME(T.Dimension) },
     { ALT: () => $.CONSUME(T.Number) },
     { ALT: () => $.CONSUME(T.Color) },
-    { ALT: () => $.SUBRULE($.string) },
-    { ALT: () => $.SUBRULE($.squareValue) },
+    { ALT: () => $.SUBRULE($.string, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.squareValue, { ARGS: [ctx] }) },
     {
       /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
       GATE: () => $.legacyMode,
@@ -1193,7 +1170,7 @@ export function value(this: C, T: TokenMap, valueAlt?: Alt) {
 
   return (ctx: RuleContext = {}) => {
     $.startRule();
-    let node: Node = $.OR(valueAlt);
+    let node: Node = $.OR(valueAlt(ctx));
     /**
      * Allows slash separators. Note that, structurally, the meaning
      * of slash separators in CSS is inconsistent and ambiguous. It
@@ -1207,7 +1184,7 @@ export function value(this: C, T: TokenMap, valueAlt?: Alt) {
     let additionalValue: Node | undefined;
     $.OPTION(() => {
       $.CONSUME(T.Slash);
-      additionalValue = $.SUBRULE($.value);
+      additionalValue = $.SUBRULE($.value, { ARGS: [ctx] });
     });
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
@@ -1222,10 +1199,10 @@ export function value(this: C, T: TokenMap, valueAlt?: Alt) {
   };
 }
 
-export function string(this: C, T: TokenMap, stringAlt?: Alt) {
+export function string(this: C, T: TokenMap, stringAlt?: AltContext) {
   const $ = this;
 
-  stringAlt ??= [
+  stringAlt ??= (ctx: RuleContext = {}) => [
     {
       ALT: () => {
         $.startRule();
@@ -1256,7 +1233,7 @@ export function string(this: C, T: TokenMap, stringAlt?: Alt) {
     }
   ];
 
-  return () => $.OR(stringAlt);
+  return (ctx: RuleContext = {}) => $.OR(stringAlt(ctx));
 }
 
 /** Implementers can decide to throw errors or warnings or not */
@@ -1293,15 +1270,15 @@ export function mathSum(this: C, T: TokenMap) {
   // mathSum
   //   : mathProduct (WS* ('+' | '-') WS* mathProduct)*
   //   ;
-  return () => {
+  return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
 
-    let left: Node = $.SUBRULE($.mathProduct);
+    let left: Node = $.SUBRULE($.mathProduct, { ARGS: [ctx] });
 
     $.MANY(() => {
       let op = $.OR(opAlt);
-      let right: Node = $.SUBRULE2($.mathProduct);
+      let right: Node = $.SUBRULE2($.mathProduct, { ARGS: [ctx] });
 
       if (!RECORDING_PHASE) {
         left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, this.context);
@@ -1325,15 +1302,15 @@ export function mathProduct(this: C, T: TokenMap) {
     { ALT: () => $.CONSUME(T.Divide) }
   ];
 
-  return () => {
+  return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
 
-    let left: Node = $.SUBRULE($.mathValue);
+    let left: Node = $.SUBRULE($.mathValue, { ARGS: [ctx] });
 
     $.MANY(() => {
       let op = $.OR(opAlt);
-      let right: Node = $.SUBRULE2($.mathValue);
+      let right: Node = $.SUBRULE2($.mathValue, { ARGS: [ctx] });
 
       if (!RECORDING_PHASE) {
         left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, this.context);
@@ -1354,22 +1331,22 @@ export function mathProduct(this: C, T: TokenMap) {
 //   | mathConstant
 //   | '(' WS* mathSum WS* ')'
 //   ;
-export function mathValue(this: C, T: TokenMap, alt?: Alt) {
+export function mathValue(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
-  let valueAlt = alt ?? [
+  alt ??= (ctx: RuleContext = {}) => [
     { ALT: () => $.CONSUME(T.Number) },
     { ALT: () => $.CONSUME(T.Dimension) },
     // Allow identifiers like channel names in color space calcs (e.g., calc(l - 0.1))
     { ALT: () => $.CONSUME(T.Ident) },
     { ALT: () => $.CONSUME(T.MathConstant) },
-    { ALT: () => $.SUBRULE($.knownFunctions) },
-    { ALT: () => $.SUBRULE($.mathParen) }
+    { ALT: () => $.SUBRULE($.knownFunctions, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.mathParen, { ARGS: [ctx] }) }
   ];
 
-  return () => {
+  return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
-    let node: Node = $.OR(valueAlt);
+    let node: Node = $.OR(alt(ctx));
     if (!RECORDING_PHASE) {
       if (!(node instanceof Node)) {
         node = $.processValueToken(node);
@@ -1382,10 +1359,10 @@ export function mathValue(this: C, T: TokenMap, alt?: Alt) {
 export function mathParen(this: C, T: TokenMap) {
   const $ = this;
 
-  return () => {
+  return (ctx: RuleContext = {}) => {
     $.startRule();
     $.CONSUME(T.LParen);
-    let node = $.SUBRULE($.mathSum);
+    let node = $.SUBRULE($.mathSum, { ARGS: [ctx] });
     $.CONSUME(T.RParen);
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
@@ -1401,29 +1378,29 @@ export function mathParen(this: C, T: TokenMap) {
 //   | identifier '(' valueList ')'
 //   ;
 // These have special parsing rules
-export function knownFunctions(this: C, T: TokenMap, alt?: Alt) {
+export function knownFunctions(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
-  let funcAlt = alt ?? [
-    { ALT: () => $.SUBRULE($.urlFunction) },
-    { ALT: () => $.SUBRULE($.varFunction) },
-    { ALT: () => $.SUBRULE($.calcFunction) }
+  alt ??= (ctx: RuleContext = {}) => [
+    { ALT: () => $.SUBRULE($.urlFunction, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.varFunction, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.calcFunction, { ARGS: [ctx] }) }
   ];
 
-  return () => $.OR(funcAlt);
+  return (ctx: RuleContext = {}) => $.OR(alt(ctx));
 }
 
 export function varFunction(this: C, T: TokenMap) {
   const $ = this;
 
-  return () => {
+  return (ctx: RuleContext = {}) => {
     $.startRule();
     $.CONSUME(T.Var);
     let prop = $.CONSUME(T.CustomProperty);
     let args: List | undefined;
     $.OPTION(() => {
       $.CONSUME(T.Comma);
-      args = $.SUBRULE($.valueList);
+      args = $.SUBRULE($.valueList, { ARGS: [ctx] });
     });
     $.CONSUME(T.RParen);
 
@@ -1450,11 +1427,11 @@ export function varFunction(this: C, T: TokenMap) {
 export function calcFunction(this: C, T: TokenMap) {
   const $ = this;
 
-  return () => {
+  return (ctx: RuleContext = {}) => {
     $.startRule();
 
     $.CONSUME(T.Calc);
-    let args = $.SUBRULE($.mathSum);
+    let args = $.SUBRULE($.mathSum, { ARGS: [ctx] });
     $.CONSUME2(T.RParen);
 
     if (!$.RECORDING_PHASE) {
@@ -1467,19 +1444,19 @@ export function calcFunction(this: C, T: TokenMap) {
   };
 }
 
-export function urlFunction(this: C, T: TokenMap, alt?: Alt) {
+export function urlFunction(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
-  let valueAlt = alt ?? [
-    { ALT: () => $.SUBRULE($.string) },
+  alt ??= (ctx: RuleContext = {}) => [
+    { ALT: () => $.SUBRULE($.string, { ARGS: [ctx] }) },
     { ALT: () => $.CONSUME(T.NonQuotedUrl) }
   ];
 
-  return () => {
+  return (ctx: RuleContext = {}) => {
     $.startRule();
 
     $.CONSUME(T.UrlStart);
-    let node: Any | IToken = $.OR(valueAlt);
+    let node: Any | IToken = $.OR(alt(ctx));
     $.CONSUME(T.UrlEnd);
 
     if (!$.RECORDING_PHASE) {
@@ -1511,19 +1488,19 @@ export function atRule(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
   let ruleAlt = alt ?? ((ctx?: RuleContext) => ([
-    { ALT: () => $.SUBRULE($.containerAtRule, { ARGS: [!!ctx?.inner] }) },
-    { ALT: () => $.SUBRULE($.scopeAtRule, { ARGS: [!!ctx?.inner] }) },
-    { ALT: () => $.SUBRULE($.documentAtRule, { ARGS: [!!ctx?.inner] }) },
-    { ALT: () => $.SUBRULE($.layerAtRule, { ARGS: [!!ctx?.inner] }) },
-    { ALT: () => $.SUBRULE($.keyframesAtRule) },
-    { ALT: () => $.SUBRULE($.importAtRule) },
-    { ALT: () => $.SUBRULE($.mediaAtRule, { ARGS: [!!ctx?.inner] }) },
-    { ALT: () => $.SUBRULE($.pageAtRule) },
-    { ALT: () => $.SUBRULE($.fontFaceAtRule) },
-    { ALT: () => $.SUBRULE($.supportsAtRule, { ARGS: [!!ctx?.inner] }) },
-    { ALT: () => $.SUBRULE($.nestedAtRule) },
-    { ALT: () => $.SUBRULE($.nonNestedAtRule) },
-    { ALT: () => $.SUBRULE($.unknownAtRule) }
+    { ALT: () => $.SUBRULE($.containerAtRule, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.scopeAtRule, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.documentAtRule, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.layerAtRule, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.keyframesAtRule, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.importAtRule, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.mediaAtRule, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.pageAtRule, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.fontFaceAtRule, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.supportsAtRule, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.nestedAtRule, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.nonNestedAtRule, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.unknownAtRule, { ARGS: [ctx] }) }
   ]));
 
   return (ctx?: RuleContext) => $.OR(ruleAlt(ctx));
@@ -1537,22 +1514,23 @@ export function atRule(this: C, T: TokenMap, alt?: AltContext) {
 //   : innerMediaAtRule
 //   | unknownAtRule
 //   ;
-export function innerAtRule(this: C, T: TokenMap, alt?: Alt) {
+export function innerAtRule(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
-  let ruleAlt = alt ?? [
-    { ALT: () => $.SUBRULE($.containerAtRule, { ARGS: [true] }) },
-    { ALT: () => $.SUBRULE($.scopeAtRule, { ARGS: [true] }) },
-    { ALT: () => $.SUBRULE($.documentAtRule, { ARGS: [true] }) },
-    { ALT: () => $.SUBRULE($.layerAtRule, { ARGS: [true] }) },
-    { ALT: () => $.SUBRULE($.keyframesAtRule) },
-    { ALT: () => $.SUBRULE($.mediaAtRule, { ARGS: [true] }) },
-    { ALT: () => $.SUBRULE($.supportsAtRule, { ARGS: [true] }) },
-    { ALT: () => $.SUBRULE($.nestedAtRule) },
-    { ALT: () => $.SUBRULE($.unknownAtRule) }
+  alt ??= (ctx: RuleContext = {}) => [
+    { ALT: () => $.rule(ctx, $.containerAtRule) },
+    { ALT: () => $.rule(ctx, $.scopeAtRule) },
+    { ALT: () => $.rule(ctx, $.documentAtRule) },
+    { ALT: () => $.rule(ctx, $.layerAtRule) },
+    { ALT: () => $.rule(ctx, $.keyframesAtRule) },
+    { ALT: () => $.rule(ctx, $.mediaAtRule) },
+    { ALT: () => $.rule(ctx, $.supportsAtRule) },
+    { ALT: () => $.rule(ctx, $.nestedAtRule) },
+    { ALT: () => $.rule(ctx, $.unknownAtRule) }
   ];
 
-  return () => $.OR(ruleAlt);
+  return (ctx: RuleContext = {}) =>
+    $.rule(ctx, { inner: true }, (ctx2: RuleContext) => $.OR(alt(ctx2)));
 }
 
 /**
@@ -1561,15 +1539,15 @@ export function innerAtRule(this: C, T: TokenMap, alt?: Alt) {
 export function atRuleBody(this: C, T: TokenMap) {
   const $ = this;
 
-  return (inner: boolean = false) =>
+  return (ctx: RuleContext = {}) =>
     $.OR([
       {
-        GATE: () => !inner,
-        ALT: () => $.SUBRULE($.main)
+        GATE: () => !ctx.inner,
+        ALT: () => $.rule(ctx, $.main)
       },
       {
-        GATE: () => inner,
-        ALT: () => $.SUBRULE($.declarationList)
+        GATE: () => !!ctx.inner,
+        ALT: () => $.rule(ctx, $.declarationList)
       }
     ]);
 }
@@ -1580,14 +1558,14 @@ export function atRuleBody(this: C, T: TokenMap) {
 export function mediaAtRule(this: C, T: TokenMap) {
   const $ = this;
 
-  return (inner?: boolean) => {
+  return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
     let name = $.CONSUME(T.AtMedia);
     let rules: Rules;
-    let prelude: Node = $.SUBRULE($.mediaQueryList);
+    let prelude: Node = $.rule(ctx, $.mediaQueryList);
     $.CONSUME(T.LCurly);
-    rules = $.SUBRULE($.atRuleBody, { ARGS: [inner] });
+    rules = $.rule(ctx, $.atRuleBody);
     $.CONSUME(T.RCurly);
 
     if (!RECORDING_PHASE) {
@@ -1604,14 +1582,14 @@ export function mediaAtRule(this: C, T: TokenMap) {
 export function mediaQueryList(this: C, T: TokenMap) {
   const $ = this;
 
-  return () => {
+  return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
     let queries: Node[] = RECORDING_PHASE ? undefined as unknown as Node[] : [];
     $.AT_LEAST_ONE_SEP({
       SEP: T.Comma,
       DEF: () => {
-        let query = $.SUBRULE($.mediaQuery);
+        let query = $.rule(ctx, $.mediaQuery);
         if (!RECORDING_PHASE) {
           queries.push(query);
         }
@@ -1637,11 +1615,11 @@ export function mediaQueryList(this: C, T: TokenMap) {
 //   : mediaCondition
 //   | ((NOT | ONLY) WS*)? mediaType (WS* AND WS* mediaConditionWithoutOr)?
 //   ;
-export function mediaQuery(this: C, T: TokenMap, alt?: Alt) {
+export function mediaQuery(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
-  let queryAlt = alt ?? [
-    { ALT: () => $.SUBRULE($.mediaCondition) },
+  alt ??= (ctx: RuleContext = {}) => [
+    { ALT: () => $.rule(ctx, $.mediaCondition) },
     {
       ALT: () => {
         let RECORDING_PHASE = $.RECORDING_PHASE;
@@ -1666,7 +1644,7 @@ export function mediaQuery(this: C, T: TokenMap, alt?: Alt) {
           nodes!.push($.wrap(new Any(token.image, { role: 'keyword' }, $.getLocationInfo(token), this.context)));
           token = undefined;
         }
-        let type = $.SUBRULE($.mediaType);
+        let type = $.rule(ctx, $.mediaType);
 
         if (!RECORDING_PHASE) {
           nodes!.push(type);
@@ -1674,7 +1652,7 @@ export function mediaQuery(this: C, T: TokenMap, alt?: Alt) {
 
         $.OPTION2(() => {
           token = $.CONSUME(T.And);
-          node = $.SUBRULE($.mediaConditionWithoutOr);
+          node = $.rule(ctx, $.mediaConditionWithoutOr);
         });
         if (!RECORDING_PHASE) {
           if (token) {
@@ -1692,7 +1670,7 @@ export function mediaQuery(this: C, T: TokenMap, alt?: Alt) {
     }
   ];
 
-  return () => $.OR(queryAlt);
+  return (ctx: RuleContext = {}) => $.OR(alt(ctx));
 }
 
 /** Doesn't include only, not, and, or, layer */
@@ -1702,18 +1680,18 @@ export function mediaQuery(this: C, T: TokenMap, alt?: Alt) {
 //   | PRINT
 //   | ALL
 //   ;
-export function mediaType(this: C, T: TokenMap, alt?: Alt) {
+export function mediaType(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
-  let typeAlt = alt ?? [
+  alt ??= (ctx: RuleContext = {}) => [
     { ALT: () => $.CONSUME(T.PlainIdent) },
     { ALT: () => $.CONSUME(T.Screen) },
     { ALT: () => $.CONSUME(T.Print) },
     { ALT: () => $.CONSUME(T.All) }
   ];
 
-  return () => {
-    let token = $.OR(typeAlt);
+  return (ctx: RuleContext = {}) => {
+    let token = $.OR(alt(ctx));
     if (!$.RECORDING_PHASE) {
       return $.wrap(new Any(token.image, { role: 'keyword' }, $.getLocationInfo(token), this.context));
     }
@@ -1723,11 +1701,11 @@ export function mediaType(this: C, T: TokenMap, alt?: Alt) {
 // mediaCondition
 //   : mediaNot | mediaInParens ( WS* (mediaAnd* | mediaOr* ))
 //   ;
-export function mediaCondition(this: C, T: TokenMap, alt?: Alt) {
+export function mediaCondition(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
-  let conditionAlt = alt ?? [
-    { ALT: () => $.SUBRULE($.mediaNot) },
+  alt ??= (ctx: RuleContext = {}) => [
+    { ALT: () => $.rule(ctx, $.mediaNot) },
     {
       ALT: () => {
         let RECORDING_PHASE = $.RECORDING_PHASE;
@@ -1736,15 +1714,15 @@ export function mediaCondition(this: C, T: TokenMap, alt?: Alt) {
         if (!RECORDING_PHASE) {
           nodes = [];
         }
-        let node = $.SUBRULE($.mediaInParens);
+        let node = $.rule(ctx, $.mediaInParens);
         if (!RECORDING_PHASE) {
           nodes!.push(node);
         }
         $.MANY(() => {
           let rule =
             $.OR2([
-              { ALT: () => $.SUBRULE($.mediaAnd) },
-              { ALT: () => $.SUBRULE($.mediaOr) }
+              { ALT: () => $.rule(ctx, $.mediaAnd) },
+              { ALT: () => $.rule(ctx, $.mediaOr) }
             ]);
           if (!RECORDING_PHASE) {
             nodes!.push(...rule);
@@ -1758,17 +1736,17 @@ export function mediaCondition(this: C, T: TokenMap, alt?: Alt) {
     }
   ];
 
-  return () => $.OR(conditionAlt);
+  return (ctx: RuleContext = {}) => $.OR(alt(ctx));
 }
 
 // mediaConditionWithoutOr
 //   : mediaNot | mediaInParens (WS* mediaAnd)*
 //   ;
-export function mediaConditionWithoutOr(this: C, T: TokenMap, alt?: Alt) {
+export function mediaConditionWithoutOr(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
-  let conditionAlt = alt ?? [
-    { ALT: () => $.SUBRULE($.mediaNot) },
+  alt ??= (ctx: RuleContext = {}) => [
+    { ALT: () => $.rule(ctx, $.mediaNot) },
     {
       ALT: () => {
         let RECORDING_PHASE = $.RECORDING_PHASE;
@@ -1777,12 +1755,12 @@ export function mediaConditionWithoutOr(this: C, T: TokenMap, alt?: Alt) {
         if (!RECORDING_PHASE) {
           nodes = [];
         }
-        let node = $.SUBRULE($.mediaInParens);
+        let node = $.rule(ctx, $.mediaInParens);
         if (!RECORDING_PHASE) {
           nodes!.push(node);
         }
         $.MANY(() => {
-          let rule = $.SUBRULE($.mediaAnd);
+          let rule = $.rule(ctx, $.mediaAnd);
           if (!RECORDING_PHASE) {
             nodes!.push(...rule);
           }
@@ -1795,7 +1773,7 @@ export function mediaConditionWithoutOr(this: C, T: TokenMap, alt?: Alt) {
     }
   ];
 
-  return () => $.OR(conditionAlt);
+  return (ctx: RuleContext = {}) => $.OR(alt(ctx));
 }
 
 // mediaNot
@@ -1804,11 +1782,11 @@ export function mediaConditionWithoutOr(this: C, T: TokenMap, alt?: Alt) {
 export function mediaNot(this: C, T: TokenMap) {
   const $ = this;
 
-  return () => {
+  return (ctx: RuleContext = {}) => {
     $.startRule();
 
     let token = $.CONSUME(T.Not);
-    let node = $.SUBRULE($.mediaInParens);
+    let node = $.rule(ctx, $.mediaInParens);
 
     if (!$.RECORDING_PHASE) {
       return new QueryCondition([
@@ -1826,9 +1804,9 @@ export function mediaAnd(this: C, T: TokenMap) {
   const $ = this;
 
   /** Returns an array */
-  return () => {
+  return (ctx: RuleContext = {}) => {
     let token = $.CONSUME(T.And);
-    let node = $.SUBRULE($.mediaInParens);
+    let node = $.rule(ctx, $.mediaInParens);
 
     if (!$.RECORDING_PHASE) {
       return [
@@ -1846,9 +1824,9 @@ export function mediaOr(this: C, T: TokenMap) {
   const $ = this;
 
   /** Returns an array */
-  return () => {
+  return (ctx: RuleContext = {}) => {
     let token = $.CONSUME(T.Or);
-    let node = $.SUBRULE($.mediaInParens);
+    let node = $.rule(ctx, $.mediaInParens);
 
     if (!$.RECORDING_PHASE) {
       return [
@@ -1863,15 +1841,15 @@ export function mediaOr(this: C, T: TokenMap) {
 //   : '(' WS* (mediaCondition | mediaFeature) WS* ')'
 //   | generalEnclosed
 //   ;
-export function mediaInParens(this: C, T: TokenMap, alt?: Alt) {
+export function mediaInParens(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
-  let conditionAlt = alt ?? [
-    { ALT: () => $.SUBRULE($.mediaCondition) },
-    { ALT: () => $.SUBRULE($.mediaFeature) }
+  alt ??= (ctx: RuleContext = {}) => [
+    { ALT: () => $.rule(ctx, $.mediaCondition) },
+    { ALT: () => $.rule(ctx, $.mediaFeature) }
   ];
 
-  return () => {
+  return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
     $.CONSUME(T.LParen);
@@ -1888,7 +1866,7 @@ export function mediaInParens(this: C, T: TokenMap, alt?: Alt) {
      * parsing would not be possible. So we only parse
      * "known" media queries.
      */
-    let node = $.OR2(conditionAlt);
+    let node = $.OR2(alt(ctx));
     $.CONSUME(T.RParen);
 
     if (!RECORDING_PHASE) {
@@ -1915,10 +1893,10 @@ export function mediaInParens(this: C, T: TokenMap, alt?: Alt) {
 //   | mediaRange
 // )
 // ;
-export function mediaFeature(this: C, T: TokenMap, alt?: Alt) {
+export function mediaFeature(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
-  let featureAlt = alt ?? [
+  alt ??= (ctx: RuleContext = {}) => [
     {
       ALT: () => {
         let RECORDING_PHASE = $.RECORDING_PHASE;
@@ -1930,7 +1908,7 @@ export function mediaFeature(this: C, T: TokenMap, alt?: Alt) {
             {
               ALT: () => {
                 $.CONSUME(T.Colon);
-                let value = $.SUBRULE($.mfValue);
+                let value = $.rule(ctx, $.mfValue);
                 if (!RECORDING_PHASE) {
                   let location = $.endRule();
                   return $.wrap(
@@ -1944,7 +1922,7 @@ export function mediaFeature(this: C, T: TokenMap, alt?: Alt) {
             },
             {
               ALT: () => {
-                let seq = $.SUBRULE($.mediaRange);
+                let seq = $.rule(ctx, $.mediaRange);
                 if (!RECORDING_PHASE) {
                   let [startOffset, startLine, startColumn] = $.endRule();
                   seq.value.unshift($.wrap(new Any(ident.image, { role: 'ident' }, $.getLocationInfo(ident), this.context)));
@@ -1957,8 +1935,8 @@ export function mediaFeature(this: C, T: TokenMap, alt?: Alt) {
             },
             {
               ALT: () => {
-                let op = $.SUBRULE($.mfComparison);
-                let value = $.SUBRULE($.mfNonIdentifierValue);
+                let op = $.rule(ctx, $.mfComparison);
+                let value = $.rule(ctx, $.mfNonIdentifierValue);
 
                 if (!RECORDING_PHASE) {
                   let location = $.endRule();
@@ -1983,11 +1961,11 @@ export function mediaFeature(this: C, T: TokenMap, alt?: Alt) {
       ALT: () => {
         let RECORDING_PHASE = $.RECORDING_PHASE;
         $.startRule();
-        let rule1 = $.SUBRULE2($.mfNonIdentifierValue);
+        let rule1 = $.rule(2, ctx, $.mfNonIdentifierValue);
         return $.OR3([
           {
             ALT: () => {
-              let op = $.SUBRULE2($.mfComparison);
+              let op = $.rule(2, ctx, $.mfComparison);
               let value = $.CONSUME2(T.Ident);
               if (!RECORDING_PHASE) {
                 let location = $.endRule();
@@ -2001,7 +1979,7 @@ export function mediaFeature(this: C, T: TokenMap, alt?: Alt) {
           },
           {
             ALT: () => {
-              let seq = $.SUBRULE2($.mediaRange);
+              let seq = $.rule(2, ctx, $.mediaRange);
               if (!RECORDING_PHASE) {
                 let [startOffset, startLine, startColumn] = $.endRule();
                 seq.value.unshift(rule1);
@@ -2018,7 +1996,7 @@ export function mediaFeature(this: C, T: TokenMap, alt?: Alt) {
     }
   ];
 
-  return () => $.OR(featureAlt);
+  return (ctx: RuleContext = {}) => $.OR(alt(ctx));
 }
 
 /**
@@ -2028,10 +2006,10 @@ export function mediaFeature(this: C, T: TokenMap, alt?: Alt) {
 //   : mfLt WS* identifier (WS* mfLt WS* mfValue)?
 //   | mfGt WS* identifier (WS* mfGt WS* mfValue)?
 //   ;
-export function mediaRange(this: C, T: TokenMap) {
+export function mediaRange(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
-  let rangeAlt: Array<IOrAlt<[IToken, IToken, IToken | undefined, Node | undefined]>> = [
+  alt ??= (ctx: RuleContext = {}) => [
     {
       ALT: () => {
         let op1 = $.CONSUME(T.MfLt);
@@ -2040,7 +2018,7 @@ export function mediaRange(this: C, T: TokenMap) {
         let val2: Node | undefined;
         $.OPTION(() => {
           op2 = $.CONSUME2(T.MfLt);
-          val2 = $.SUBRULE($.mfValue);
+          val2 = $.rule(ctx, $.mfValue);
         });
         return [op1, val1, op2, val2];
       }
@@ -2053,14 +2031,14 @@ export function mediaRange(this: C, T: TokenMap) {
         let val2: Node | undefined;
         $.OPTION2(() => {
           op2 = $.CONSUME2(T.MfGt);
-          val2 = $.SUBRULE2($.mfValue);
+          val2 = $.rule(2, ctx, $.mfValue);
         });
         return [op1, val1, op2, val2];
       }
     }
   ];
 
-  return () => {
+  return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
 
@@ -2069,7 +2047,7 @@ export function mediaRange(this: C, T: TokenMap) {
     let op2: IToken | undefined;
     let val2: Node | undefined;
 
-    let val = $.OR(rangeAlt);
+    let val = $.OR(alt(ctx));
 
     if (!RECORDING_PHASE) {
       ([op1, val1, op2, val2] = val);
@@ -2094,10 +2072,10 @@ export function mediaRange(this: C, T: TokenMap) {
 //   : number (WS* '/' WS* number)?
 //   | dimension
 //   ;
-export function mfNonIdentifierValue(this: C, T: TokenMap, alt?: Alt) {
+export function mfNonIdentifierValue(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
-  let valueAlt = alt ?? [
+  alt ??= (ctx: RuleContext = {}) => [
     {
       ALT: () => {
         $.startRule();
@@ -2128,17 +2106,17 @@ export function mfNonIdentifierValue(this: C, T: TokenMap, alt?: Alt) {
     }
   ];
 
-  return () => $.OR(valueAlt);
+  return (ctx: RuleContext = {}) => $.OR(alt(ctx));
 }
 
 // mfValue
 //   : mfNonIdentifierValue | identifier
 //   ;
-export function mfValue(this: C, T: TokenMap) {
+export function mfValue(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
-  let valueAlt = [
-    { ALT: () => $.SUBRULE($.mfNonIdentifierValue) },
+  alt ??= (ctx: RuleContext = {}) => [
+    { ALT: () => $.rule(ctx, $.mfNonIdentifierValue) },
     {
       ALT: () => {
         let token = $.CONSUME(T.Ident);
@@ -2149,7 +2127,7 @@ export function mfValue(this: C, T: TokenMap) {
     }
   ];
 
-  return () => $.OR(valueAlt);
+  return (ctx: RuleContext = {}) => $.OR(alt(ctx));
 }
 
 // mfComparison
@@ -2174,17 +2152,17 @@ export function mfComparison(this: C, T: TokenMap) {
 export function pageAtRule(this: C, T: TokenMap) {
   const $ = this;
 
-  return () => {
+  return (ctx: RuleContext = {}) => {
     $.startRule();
 
     let name = $.CONSUME(T.AtPage);
     let selector: Node[] = [];
     $.MANY_SEP({
       SEP: T.Comma,
-      DEF: () => selector.push($.SUBRULE($.pageSelector))
+      DEF: () => selector.push($.rule(ctx, $.pageSelector))
     });
     $.CONSUME(T.LCurly);
-    let rules = $.SUBRULE($.declarationList);
+    let rules = $.rule(ctx, $.declarationList);
     $.CONSUME(T.RCurly);
 
     if (!$.RECORDING_PHASE) {
@@ -2201,7 +2179,7 @@ export function pageAtRule(this: C, T: TokenMap) {
 export function pageSelector(this: C, T: TokenMap) {
   const $ = this;
 
-  return () => {
+  return (ctx: RuleContext = {}) => {
     $.startRule();
     let token = '';
 
@@ -2227,12 +2205,12 @@ export function pageSelector(this: C, T: TokenMap) {
 export function fontFaceAtRule(this: C, T: TokenMap) {
   const $ = this;
 
-  return () => {
+  return (ctx: RuleContext = {}) => {
     $.startRule();
 
     let name = $.CONSUME(T.AtFontFace);
     $.CONSUME(T.LCurly);
-    let rules = $.SUBRULE($.declarationList);
+    let rules = $.rule(ctx, $.declarationList);
     $.CONSUME(T.RCurly);
 
     if (!$.RECORDING_PHASE) {
@@ -2251,15 +2229,15 @@ export function fontFaceAtRule(this: C, T: TokenMap) {
 export function keyframesAtRule(this: C, T: TokenMap) {
   const $ = this;
 
-  return () => {
+  return (ctx: RuleContext = {}) => {
     const RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
 
     let atTok = $.CONSUME(T.AtKeyframes);
     // prelude: a single animation name
-    let preludeNode: Node | undefined = $.SUBRULE($.keyframesName);
+    let preludeNode: Node | undefined = $.rule(ctx, $.keyframesName);
     $.CONSUME(T.LCurly);
-    const rules = $.SUBRULE($.declarationList);
+    const rules = $.rule(ctx, $.declarationList);
     $.CONSUME(T.RCurly);
 
     if (!$.RECORDING_PHASE) {
@@ -2279,7 +2257,7 @@ export function keyframesAtRule(this: C, T: TokenMap) {
  */
 export function keyframesName(this: C, T: TokenMap) {
   const $ = this;
-  return () => {
+  return (ctx: RuleContext = {}) => {
     const RECORDING_PHASE = $.RECORDING_PHASE;
     let node: Node | undefined;
     $.OR({
@@ -2288,7 +2266,7 @@ export function keyframesName(this: C, T: TokenMap) {
           const tok = $.CONSUME(T.Ident);
           if (!RECORDING_PHASE) node = $.wrap($.processValueToken(tok));
         } },
-        { ALT: () => node = $.SUBRULE($.string) }
+        { ALT: () => node = $.rule(ctx, $.string) }
       ]
     });
     return node!;
@@ -2298,19 +2276,19 @@ export function keyframesName(this: C, T: TokenMap) {
 // containerAtRule: @container <prelude>? { main }
 export function containerAtRule(this: C, T: TokenMap) {
   const $ = this;
-  return (inner?: boolean) => {
+  return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
     const name = $.CONSUME(T.AtContainer);
     const preludeNodes: Node[] = !RECORDING_PHASE ? [] : undefined as unknown as Node[];
     $.MANY(() => {
-      const node = $.SUBRULE($.anyOuterValue);
+      const node = $.rule(ctx, $.anyOuterValue);
       if (!RECORDING_PHASE) {
         preludeNodes.push($.wrap(node));
       }
     });
     $.CONSUME(T.LCurly);
-    const rules = $.SUBRULE($.atRuleBody, { ARGS: [inner] });
+    const rules = $.rule(ctx, $.atRuleBody);
     $.CONSUME(T.RCurly);
     if (!$.RECORDING_PHASE) {
       return new AtRule({
@@ -2325,13 +2303,13 @@ export function containerAtRule(this: C, T: TokenMap) {
 // scopeAtRule: @scope <prelude>? { main }
 export function scopeAtRule(this: C, T: TokenMap) {
   const $ = this;
-  return (inner?: boolean) => {
+  return (ctx: RuleContext = {}) => {
     $.startRule();
     const name = $.CONSUME(T.AtScope);
     const preludeNodes: Node[] = [];
-    $.MANY(() => preludeNodes.push($.wrap($.SUBRULE($.anyOuterValue))));
+    $.MANY(() => preludeNodes.push($.wrap($.rule(ctx, $.anyOuterValue))));
     $.CONSUME(T.LCurly);
-    const rules = $.SUBRULE($.atRuleBody, { ARGS: [inner] });
+    const rules = $.rule(ctx, $.atRuleBody);
     $.CONSUME(T.RCurly);
     if (!$.RECORDING_PHASE) {
       return new AtRule({
@@ -2346,13 +2324,13 @@ export function scopeAtRule(this: C, T: TokenMap) {
 // documentAtRule (non-standard): @document <prelude>? { main }
 export function documentAtRule(this: C, T: TokenMap) {
   const $ = this;
-  return (inner?: boolean) => {
+  return (ctx: RuleContext = {}) => {
     $.startRule();
     const name = $.CONSUME(T.AtDocument);
     const preludeNodes: Node[] = [];
-    $.MANY(() => preludeNodes.push($.wrap($.SUBRULE($.anyOuterValue))));
+    $.MANY(() => preludeNodes.push($.wrap($.rule(ctx, $.anyOuterValue))));
     $.CONSUME(T.LCurly);
-    const rules = $.SUBRULE($.atRuleBody, { ARGS: [inner] });
+    const rules = $.rule(ctx, $.atRuleBody);
     $.CONSUME(T.RCurly);
     if (!$.RECORDING_PHASE) {
       return new AtRule({
@@ -2378,7 +2356,7 @@ export function documentAtRule(this: C, T: TokenMap) {
  */
 export function layerAtRule(this: C, T: TokenMap) {
   const $ = this;
-  return (inner?: boolean) => {
+  return (ctx: RuleContext = {}) => {
     const RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
     const atTok = $.CONSUME(T.AtLayer);
@@ -2390,13 +2368,13 @@ export function layerAtRule(this: C, T: TokenMap) {
       {
         ALT: () => {
           $.OPTION(() => {
-            const nameNode: Node = $.SUBRULE($.layerName);
+            const nameNode: Node = $.rule(ctx, $.layerName);
             if (!RECORDING_PHASE) {
               preludeNodes.push($.wrap(nameNode));
             }
           });
           $.CONSUME(T.LCurly);
-          const rules = $.SUBRULE($.atRuleBody, { ARGS: [inner] });
+          const rules = $.rule(ctx, $.atRuleBody);
           $.CONSUME(T.RCurly);
           if (!RECORDING_PHASE) {
             return new AtRule({
@@ -2412,7 +2390,7 @@ export function layerAtRule(this: C, T: TokenMap) {
           $.MANY_SEP({
             SEP: T.Comma,
             DEF: () => {
-              let nameNode: Node = $.SUBRULE2($.layerName);
+              let nameNode: Node = $.rule(2, ctx, $.layerName);
               if (!RECORDING_PHASE) {
                 preludeNodes.push($.wrap(nameNode));
               }
@@ -2436,7 +2414,7 @@ export function layerAtRule(this: C, T: TokenMap) {
  */
 export function layerName(this: C, T: TokenMap) {
   const $ = this;
-  return () => {
+  return (ctx: RuleContext = {}) => {
     const RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
     const nodes: Node[] = RECORDING_PHASE ? ([] as unknown as Node[]) : [];
@@ -2472,13 +2450,13 @@ export function layerName(this: C, T: TokenMap) {
 export function supportsAtRule(this: C, T: TokenMap) {
   const $ = this;
 
-  return (inner?: boolean) => {
+  return (ctx: RuleContext = {}) => {
     $.startRule();
 
     let name = $.CONSUME(T.AtSupports);
-    let prelude = $.SUBRULE($.supportsCondition);
+    let prelude = $.rule(ctx, $.supportsCondition);
     $.CONSUME(T.LCurly);
-    let rules = $.SUBRULE($.atRuleBody, { ARGS: [inner] });
+    let rules = $.rule(ctx, $.atRuleBody);
     $.CONSUME(T.RCurly);
 
     if (!$.RECORDING_PHASE) {
@@ -2501,13 +2479,13 @@ export function supportsAtRule(this: C, T: TokenMap) {
 export function supportsCondition(this: C, T: TokenMap) {
   const $ = this;
 
-  let conditionAlt = [
+  let conditionAlt = (ctx: RuleContext = {}) => [
     {
       GATE: () => $.LA(1).tokenType === T.Not,
       ALT: () => {
         $.startRule();
         let keyword = $.CONSUME(T.Not);
-        let value = $.SUBRULE($.supportsInParens);
+        let value = $.rule(ctx, $.supportsInParens);
 
         if (!$.RECORDING_PHASE) {
           let location = $.endRule();
@@ -2525,7 +2503,7 @@ export function supportsCondition(this: C, T: TokenMap) {
         let RECORDING_PHASE = $.RECORDING_PHASE;
         let [startOffset, startLine, startColumn] = start ?? [];
 
-        let left = $.SUBRULE2($.supportsInParens);
+        let left = $.rule(2, ctx, $.supportsInParens);
 
         /**
          * Can be followed by many ands or many ors
@@ -2535,7 +2513,7 @@ export function supportsCondition(this: C, T: TokenMap) {
             ALT: () => {
               $.AT_LEAST_ONE(() => {
                 let keyword = $.CONSUME(T.And);
-                let right: Node = $.SUBRULE3($.supportsInParens);
+                let right: Node = $.rule(3, ctx, $.supportsInParens);
                 if (!RECORDING_PHASE) {
                   let [,,,endOffset, endLine, endColumn] = right.location;
                   left = new QueryCondition([
@@ -2551,7 +2529,7 @@ export function supportsCondition(this: C, T: TokenMap) {
             ALT: () => {
               $.AT_LEAST_ONE2(() => {
                 let keyword = $.CONSUME(T.Or);
-                let right: Node = $.SUBRULE5($.supportsInParens);
+                let right: Node = $.rule(5, ctx, $.supportsInParens);
                 if (!RECORDING_PHASE) {
                   let [,,,endOffset, endLine, endColumn] = right.location;
                   left = new QueryCondition([
@@ -2577,7 +2555,7 @@ export function supportsCondition(this: C, T: TokenMap) {
     }
   ];
 
-  return () => $.OR(conditionAlt);
+  return (ctx: RuleContext = {}) => $.OR(conditionAlt(ctx));
 }
 
 // supportsInParens
@@ -2588,7 +2566,7 @@ export function supportsCondition(this: C, T: TokenMap) {
 export function supportsInParens(this: C, T: TokenMap) {
   const $ = this;
 
-  let conditionAlt = [
+  let conditionAlt = (ctx: RuleContext = {}) => [
     {
       ALT: () => {
         $.startRule();
@@ -2600,7 +2578,7 @@ export function supportsInParens(this: C, T: TokenMap) {
             GATE: $.noSep,
             ALT: () => {
               $.CONSUME(T.LParen);
-              args = $.SUBRULE($.valueList);
+              args = $.rule(ctx, $.valueList);
               $.CONSUME(T.RParen);
             }
           }
@@ -2625,8 +2603,8 @@ export function supportsInParens(this: C, T: TokenMap) {
          * See the note on media queries.
          */
         let value = $.OR3([
-          { ALT: () => $.SUBRULE($.supportsCondition) },
-          { ALT: () => $.SUBRULE($.declaration) }
+          { ALT: () => $.rule(ctx, $.supportsCondition) },
+          { ALT: () => $.rule(ctx, $.declaration) }
         ]);
         $.CONSUME2(T.RParen);
 
@@ -2641,13 +2619,13 @@ export function supportsInParens(this: C, T: TokenMap) {
     }
   ];
 
-  return () => $.OR(conditionAlt);
+  return (ctx: RuleContext = {}) => $.OR(conditionAlt(ctx));
 }
 
 /** Used within anyOuterValue  */
 export function functionCallLike(this: C, T: TokenMap) {
   const $ = this;
-  return () => {
+  return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
     const name = $.CONSUME(T.FunctionStart);
@@ -2660,7 +2638,7 @@ export function functionCallLike(this: C, T: TokenMap) {
         return tt !== T.RParen && tt !== T.UrlEnd;
       },
       DEF: () => {
-        const node = $.SUBRULE($.anyOuterValue);
+        const node = $.rule(ctx, $.anyOuterValue);
         if (!RECORDING_PHASE) {
           args.push($.wrap(node));
         }
@@ -2684,10 +2662,10 @@ export function functionCallLike(this: C, T: TokenMap) {
   };
 }
 
-export function functionCall(this: C, T: TokenMap, alt?: Alt) {
+export function functionCall(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
-  let funcAlt = alt ?? [
+  alt ??= (ctx: RuleContext = {}) => [
     {
       // Disambiguate known functions by their dedicated tokens
       GATE: () => {
@@ -2696,7 +2674,7 @@ export function functionCall(this: C, T: TokenMap, alt?: Alt) {
           || tokenType === T.Var
           || tokenType === T.Calc;
       },
-      ALT: () => $.SUBRULE($.knownFunctions)
+      ALT: () => $.rule(ctx, $.knownFunctions)
     },
     {
       GATE: () => {
@@ -2711,7 +2689,7 @@ export function functionCall(this: C, T: TokenMap, alt?: Alt) {
         let name = $.CONSUME(T.FunctionStart);
         let args: List | undefined;
 
-        $.OPTION(() => args = $.SUBRULE($.functionCallArgs));
+        $.OPTION(() => args = $.rule(ctx, $.functionCallArgs));
         $.CONSUME(T.RParen);
 
         if (!$.RECORDING_PHASE) {
@@ -2725,7 +2703,7 @@ export function functionCall(this: C, T: TokenMap, alt?: Alt) {
     }
   ];
 
-  return () => $.OR(funcAlt);
+  return (ctx: RuleContext = {}) => $.OR(alt(ctx));
 }
 
 /**
@@ -2748,7 +2726,7 @@ export function functionCallArgs(this: C, T: TokenMap) {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
 
-    let node = $.SUBRULE($.valueSequence, { ARGS: [ctx] });
+    let node = $.rule(ctx, $.valueSequence);
 
     let commaNodes: Node[];
     let semiNodes: Node[];
@@ -2764,7 +2742,7 @@ export function functionCallArgs(this: C, T: TokenMap) {
           GATE: () => !isSemiList,
           ALT: () => {
             $.CONSUME(T.Comma);
-            node = $.SUBRULE2($.valueSequence, { ARGS: [ctx] });
+            node = $.rule(2, ctx, $.valueSequence);
             if (!RECORDING_PHASE) {
               commaNodes!.push($.wrap(node, true));
             }
@@ -2785,7 +2763,7 @@ export function functionCallArgs(this: C, T: TokenMap) {
                 semiNodes.push(commaNodes[0]!);
               }
             }
-            node = $.SUBRULE3($.valueList, { ARGS: [ctx] });
+            node = $.rule(3, ctx, $.valueList);
             if (!RECORDING_PHASE) {
               semiNodes.push($.wrap(node, true));
             }
@@ -2810,7 +2788,7 @@ export function functionCallArgs(this: C, T: TokenMap) {
 export function importAtRule(this: C, T: TokenMap) {
   const $ = this;
 
-  return () => {
+  return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
     let name = $.CONSUME(T.AtImport);
@@ -2818,7 +2796,7 @@ export function importAtRule(this: C, T: TokenMap) {
     if (!RECORDING_PHASE) {
       preludeNodes = [];
     }
-    let node = $.SUBRULE($.importPrelude) as Node;
+    let node = $.rule(ctx, $.importPrelude) as Node;
 
     if (!RECORDING_PHASE) {
       preludeNodes!.push($.wrap(node));
@@ -2826,7 +2804,7 @@ export function importAtRule(this: C, T: TokenMap) {
 
     let extraNodes: Node[] | undefined;
     $.OPTION(() => {
-      extraNodes = $.SUBRULE($.importPostlude) as Node[];
+      extraNodes = $.rule(ctx, $.importPostlude) as Node[];
     });
     if (!RECORDING_PHASE && extraNodes && extraNodes.length) {
       for (const n of extraNodes) preludeNodes!.push(n);
@@ -2846,10 +2824,10 @@ export function importAtRule(this: C, T: TokenMap) {
 /** import prelude: url(...) or "string" */
 export function importPrelude(this: C, T: TokenMap) {
   const $ = this;
-  return () => {
+  return (ctx: RuleContext = {}) => {
     return $.OR([
-      { ALT: () => $.SUBRULE($.urlFunction) },
-      { ALT: () => $.SUBRULE($.string) }
+      { ALT: () => $.rule(ctx, $.urlFunction) },
+      { ALT: () => $.rule(ctx, $.string) }
     ]);
   };
 }
@@ -2857,7 +2835,7 @@ export function importPrelude(this: C, T: TokenMap) {
 /** import postlude: optional layer(), supports(), media. Returns Node[] */
 export function importPostlude(this: C, T: TokenMap) {
   const $ = this;
-  return () => {
+  return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     let nodes: Node[] | undefined;
     if (!RECORDING_PHASE) nodes = [];
@@ -2886,8 +2864,8 @@ export function importPostlude(this: C, T: TokenMap) {
     $.OPTION2(() => {
       let start = $.CONSUME(T.Supports);
       let value = $.OR4([
-        { ALT: () => $.SUBRULE($.supportsCondition) },
-        { ALT: () => $.SUBRULE($.declaration) }
+        { ALT: () => $.rule(ctx, $.supportsCondition) },
+        { ALT: () => $.rule(ctx, $.declaration) }
       ]);
       let end = $.CONSUME2(T.RParen);
       if (!RECORDING_PHASE) {
@@ -2907,7 +2885,7 @@ export function importPostlude(this: C, T: TokenMap) {
 
     /** media query list */
     $.OPTION3(() => {
-      let mediaNode = $.SUBRULE($.mediaQueryList);
+      let mediaNode = $.rule(ctx, $.mediaQueryList);
       if (!RECORDING_PHASE) nodes!.push(mediaNode);
     });
 
@@ -2921,7 +2899,7 @@ export function importPostlude(this: C, T: TokenMap) {
 export function nestedAtRule(this: C, T: TokenMap) {
   const $ = this;
 
-  return () => {
+  return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
 
@@ -2934,14 +2912,14 @@ export function nestedAtRule(this: C, T: TokenMap) {
     }
 
     $.MANY(() => {
-      let value = $.SUBRULE($.anyOuterValue);
+      let value = $.rule(ctx, $.anyOuterValue);
       if (!RECORDING_PHASE) {
         preludeNodes.push($.wrap(value));
       }
     });
     $.CONSUME(T.LCurly);
     // All known nested at-rules use declaration lists in their blocks
-    rules = $.SUBRULE($.declarationList);
+    rules = $.rule(ctx, $.declarationList);
     $.CONSUME(T.RCurly);
 
     if (!$.RECORDING_PHASE) {
@@ -2957,12 +2935,12 @@ export function nestedAtRule(this: C, T: TokenMap) {
 export function nonNestedAtRule(this: C, T: TokenMap) {
   const $ = this;
 
-  return () => {
+  return (ctx: RuleContext = {}) => {
     $.startRule();
     let preludeNodes: Node[] = [];
 
     let name = $.CONSUME(T.AtNonNested);
-    $.MANY(() => preludeNodes.push($.wrap($.SUBRULE($.anyOuterValue))));
+    $.MANY(() => preludeNodes.push($.wrap($.rule(ctx, $.anyOuterValue))));
     $.CONSUME(T.Semi);
 
     if (!$.RECORDING_PHASE) {
@@ -2999,7 +2977,7 @@ export function unknownAtRule(this: C, T: TokenMap) {
     Colon
   } = T;
 
-  return () => {
+  return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
 
@@ -3015,7 +2993,7 @@ export function unknownAtRule(this: C, T: TokenMap) {
 
     let name = $.CONSUME(T.AtKeyword);
     $.MANY(() => {
-      let val = $.SUBRULE($.anyOuterValue);
+      let val = $.rule(ctx, $.anyOuterValue);
       if (!RECORDING_PHASE) {
         preludeNodes.push($.wrap(val, 'both'));
       }
@@ -3061,7 +3039,7 @@ export function unknownAtRule(this: C, T: TokenMap) {
             {
               GATE: () => assumeDeclList,
               ALT: () => {
-                declRules = $.SUBRULE($.atRuleBody, { ARGS: [true] });
+                declRules = $.rule(ctx, { inner: true }, $.atRuleBody);
               }
             },
             {
@@ -3069,7 +3047,7 @@ export function unknownAtRule(this: C, T: TokenMap) {
               ALT: () => {
                 /** Fallback to raw capture */
                 $.MANY9(() => {
-                  const value = $.SUBRULE($.anyInnerValue);
+                  const value = $.rule(ctx, $.anyInnerValue);
                   if (!RECORDING_PHASE) {
                     valueNodes.push($.wrap(value, 'both'));
                   }
@@ -3128,9 +3106,9 @@ export function unknownAtRule(this: C, T: TokenMap) {
 export function anyOuterValue(this: C, T: TokenMap) {
   const $ = this;
 
-  let valueAlt = [
-    { ALT: () => $.SUBRULE($.extraTokens) },
-    { ALT: () => $.SUBRULE($.string) },
+  let valueAlt = (ctx: RuleContext = {}) => [
+    { ALT: () => $.rule(ctx, $.extraTokens) },
+    { ALT: () => $.rule(ctx, $.string) },
     {
       ALT: () => {
         let RECORDING_PHASE = $.RECORDING_PHASE;
@@ -3141,7 +3119,7 @@ export function anyOuterValue(this: C, T: TokenMap) {
         }
         $.CONSUME(T.LParen);
         $.MANY(() => {
-          let val = $.SUBRULE($.anyInnerValue);
+          let val = $.rule(ctx, $.anyInnerValue);
           if (!RECORDING_PHASE) {
             nodes.push($.wrap(val));
           }
@@ -3171,7 +3149,7 @@ export function anyOuterValue(this: C, T: TokenMap) {
 
         $.CONSUME(T.LSquare);
         $.MANY2(() => {
-          let node = $.SUBRULE2($.anyInnerValue);
+          let node = $.rule(2, ctx, $.anyInnerValue);
           if (!RECORDING_PHASE) {
             nodes.push($.wrap(node));
           }
@@ -3191,7 +3169,7 @@ export function anyOuterValue(this: C, T: TokenMap) {
     }
   ];
 
-  return () => $.OR(valueAlt);
+  return (ctx: RuleContext = {}) => $.OR(valueAlt(ctx));
 }
 
 /**
@@ -3208,8 +3186,8 @@ export function anyOuterValue(this: C, T: TokenMap) {
 export function anyInnerValue(this: C, T: TokenMap) {
   const $ = this;
 
-  let valueAlt = [
-    { ALT: () => $.SUBRULE($.anyOuterValue) },
+  let valueAlt = (ctx: RuleContext = {}) => [
+    { ALT: () => $.rule(ctx, $.anyOuterValue) },
     {
       ALT: () => {
         $.startRule();
@@ -3220,7 +3198,7 @@ export function anyInnerValue(this: C, T: TokenMap) {
         }
         $.CONSUME(T.LCurly);
         $.MANY(() => {
-          let node = $.SUBRULE2($.anyInnerValue);
+          let node = $.rule(2, ctx, $.anyInnerValue);
           if (!RECORDING_PHASE) {
             nodes.push(node);
           }
@@ -3250,5 +3228,5 @@ export function anyInnerValue(this: C, T: TokenMap) {
     }
   ];
 
-  return () => $.OR(valueAlt);
+  return (ctx: RuleContext = {}) => $.OR(valueAlt(ctx));
 }

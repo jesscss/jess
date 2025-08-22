@@ -47,9 +47,8 @@ export type CombinedTokenMap = Record<CssTokenType, TokenType> & Record<LessExtr
 export type TokenMap = CombinedTokenMap;
 
 export type RuleContext = CssRuleContext & {
+  selector?: ComplexSelector;
   hasDefault?: boolean;
-  /** Parse-time roll-up flag indicating subtree may async */
-  mayAsync?: boolean;
   /** Selectors in a selector sequence are extended */
   allExtended?: boolean;
   /** Mixin definition */
@@ -66,6 +65,7 @@ export type RuleContext = CssRuleContext & {
   node?: Node;
   ruleIsFinished?: boolean;
   sequences?: Array<ComplexSelector | Extend>;
+  asReference?: boolean;
 };
 /**
  * Unlike the historical Less parser, this parser
@@ -75,9 +75,9 @@ export class LessActionsParser extends CssActionsParser {
   declare T: CssTokenMap;
   looseMode: boolean;
 
-  expressionSum!: Rule<(ctx?: RuleContext) => void>;
-  expressionProduct!: Rule<(ctx?: RuleContext) => void>;
-  expressionValue!: Rule<(ctx?: RuleContext) => void>;
+  expressionSum!: Rule;
+  expressionProduct!: Rule;
+  expressionValue!: Rule;
   functionValueList!: Rule;
   ifFunction!: Rule;
   booleanFunction!: Rule;
@@ -85,38 +85,38 @@ export class LessActionsParser extends CssActionsParser {
   wrappedDeclarationList!: Rule;
 
   varName!: Rule;
-  valueReference!: Rule<(ctx?: RuleContext) => void>;
-  varReference!: Rule<(ctx?: RuleContext) => void>;
+  valueReference!: Rule;
+  varReference!: Rule;
 
   // mixins
   mixinReference!: Rule;
-  mixinName!: Rule<(asReference?: boolean) => void>;
-  mixinOrQualifiedRule!: Rule<(ctx?: RuleContext) => void>;
-  qualifiedRuleBody!: Rule<(ctx?: RuleContext) => void>;
+  mixinName!: Rule;
+  mixinOrQualifiedRule!: Rule;
+  qualifiedRuleBody!: Rule;
   // mixinDefinition!: Rule;
   // mixinCall!: Rule;
   // mixinCallStatement!: Rule;
-  inlineMixinCall!: Rule<(ctx?: RuleContext) => void>;
-  mixinArgs!: Rule<(ctx?: RuleContext) => void>;
-  mixinArgList!: Rule<(ctx?: RuleContext) => void>;
-  mixinArg!: Rule<(ctx?: RuleContext) => void>;
+  inlineMixinCall!: Rule;
+  mixinArgs!: Rule;
+  mixinArgList!: Rule;
+  mixinArg!: Rule;
   anonymousMixinDefinition!: Rule;
 
-  callArgument!: Rule<(ctx?: RuleContext) => void>;
+  callArgument!: Rule;
 
-  extend!: Rule<(selector?: ComplexSelector) => void>;
-  extendList!: Rule<(ctx?: RuleContext) => void>;
+  extend!: Rule;
+  extendList!: Rule;
 
   // namespaces
-  accessors!: Rule<(ctx?: RuleContext) => void>;
+  accessors!: Rule;
 
-  comparison!: Rule<(ctx?: RuleContext) => void>;
-  guard!: Rule<(ctx?: RuleContext) => void>;
-  guardDefault!: Rule<(ctx?: RuleContext) => void>;
-  guardOr!: Rule<(ctx?: RuleContext) => void>;
-  guardAnd!: Rule<(ctx?: RuleContext) => void>;
-  guardInParens!: Rule<(ctx?: RuleContext) => void>;
-  guardInner!: Rule<(ctx?: RuleContext) => void>;
+  comparison!: Rule;
+  guard!: Rule;
+  guardDefault!: Rule;
+  guardOr!: Rule;
+  guardAnd!: Rule;
+  guardInParens!: Rule;
+  guardInner!: Rule;
   guardWithCondition!: Rule;
   guardWithConditionValue!: Rule;
 

@@ -37,7 +37,7 @@ const { isArray } = Array;
 
 export type TokenMap = Record<CssTokenType, TokenType>;
 
-export type Rule<F extends () => void = () => void> = ParserMethod<Parameters<F>, any>;
+export type Rule<F extends (...args: any[]) => void = (ctx?: RuleContext) => void> = ParserMethod<Parameters<F>, any>;
 
 export interface CssParserConfig extends IParserConfig {
   /** Things like star property hacks and IE filters */
@@ -51,6 +51,8 @@ export type RuleContext = {
   firstSelector?: boolean;
   /** If downstream selector rules are part of a qualified rule */
   qualifiedRule?: boolean;
+  /** Parse-time roll-up flag indicating subtree may async */
+  mayAsync?: boolean;
 
   [k: string]: object | boolean | string | object[] | undefined;
 };
@@ -78,34 +80,34 @@ export class CssActionsParser extends AdvancedActionsParser {
 
   /** Rewire, declaring class fields in constructor with `public` */
   stylesheet!: Rule<(options?: Record<string, any>) => void>;
-  main!: Rule<(ctx?: RuleContext) => void>;
-  qualifiedRule!: Rule<(ctx?: RuleContext) => void>;
-  atRule!: Rule<(ctx?: RuleContext) => void>;
-  selectorList!: Rule<(ctx?: RuleContext) => void>;
-  declarationList!: Rule<(ctx?: RuleContext) => void>;
-  forgivingSelectorList!: Rule<(ctx?: RuleContext) => void>;
+  main!: Rule;
+  qualifiedRule!: Rule;
+  atRule!: Rule;
+  selectorList!: Rule;
+  declarationList!: Rule;
+  forgivingSelectorList!: Rule;
   classSelector!: Rule;
   idSelector!: Rule;
-  pseudoSelector!: Rule<(ctx?: RuleContext) => void>;
+  pseudoSelector!: Rule;
   attributeSelector!: Rule;
   nthValue!: Rule;
-  complexSelector!: Rule<(ctx?: RuleContext) => void>;
-  simpleSelector!: Rule<(ctx?: RuleContext) => void>;
-  compoundSelector!: Rule<(ctx?: RuleContext) => void>;
-  relativeSelector!: Rule<(ctx?: RuleContext) => void>;
+  complexSelector!: Rule;
+  simpleSelector!: Rule;
+  compoundSelector!: Rule;
+  relativeSelector!: Rule;
 
-  declaration!: Rule<(ctx?: RuleContext) => void>;
-  valueList!: Rule<(ctx?: RuleContext) => void>;
+  declaration!: Rule;
+  valueList!: Rule;
   /** Often a space-separated sequence */
-  valueSequence!: Rule<(ctx?: RuleContext) => void>;
-  value!: Rule<(ctx?: RuleContext) => void>;
-  squareValue!: Rule<(ctx?: RuleContext) => void>;
+  valueSequence!: Rule;
+  value!: Rule;
+  squareValue!: Rule;
   customValue!: Rule;
   innerCustomValue!: Rule;
 
   functionCall!: Rule;
   functionCallLike!: Rule;
-  functionCallArgs!: Rule<(ctx?: RuleContext) => void>;
+  functionCallArgs!: Rule;
   knownFunctions!: Rule;
   varFunction!: Rule;
   calcFunction!: Rule;
@@ -125,22 +127,22 @@ export class CssActionsParser extends AdvancedActionsParser {
   importAtRule!: Rule;
   importPrelude!: Rule;
   importPostlude!: Rule;
-  mediaAtRule!: Rule<(inner?: boolean) => void>;
-  supportsAtRule!: Rule<(inner?: boolean) => void>;
-  containerAtRule!: Rule<(inner?: boolean) => void>;
-  atRuleBody!: Rule<(inner?: boolean) => void>;
+  mediaAtRule!: Rule;
+  supportsAtRule!: Rule;
+  containerAtRule!: Rule;
+  atRuleBody!: Rule;
   pageAtRule!: Rule;
   keyframesAtRule!: Rule;
   keyframesName!: Rule;
-  layerAtRule!: Rule<(inner?: boolean) => void>;
+  layerAtRule!: Rule;
   layerName!: Rule;
-  scopeAtRule!: Rule<(inner?: boolean) => void>;
-  documentAtRule!: Rule<(inner?: boolean) => void>;
+  scopeAtRule!: Rule;
+  documentAtRule!: Rule;
   pageSelector!: Rule;
   fontFaceAtRule!: Rule;
   nestedAtRule!: Rule;
   nonNestedAtRule!: Rule;
-  unknownAtRule!: Rule<(inner?: boolean) => void>;
+  unknownAtRule!: Rule;
 
   /** `@media` syntax */
   mediaQueryList!: Rule;
@@ -168,8 +170,8 @@ export class CssActionsParser extends AdvancedActionsParser {
   supportsInParens!: Rule;
 
   /** General purpose subrules */
-  anyOuterValue!: Rule<(ctx?: RuleContext) => void>;
-  anyInnerValue!: Rule<(ctx?: RuleContext) => void>;
+  anyOuterValue!: Rule;
+  anyInnerValue!: Rule;
   extraTokens!: Rule;
   customBlock!: Rule;
 
@@ -418,6 +420,111 @@ export class CssActionsParser extends AdvancedActionsParser {
       return new Color(tokValue, undefined, this.getLocationInfo(token), this.context);
     } else {
       return new Any(tokValue, { type: token.tokenType.name }, this.getLocationInfo(token), this.context);
+    }
+  }
+
+  /**
+   * Convenience helper to temporarily set context flags while invoking a subrule.
+   * - Saves current values for provided keys
+   * - Applies overrides via Object.assign
+   * - Invokes callback with the same ctx object
+   * - Restores only the provided keys to their previous values
+   */
+  public callSubRuleWith<T>(
+    ctx: RuleContext,
+    overrides: Partial<RuleContext>,
+    callback: (ctx: RuleContext) => T
+  ): T {
+    const keys = Object.keys(overrides) as Array<keyof RuleContext>;
+    const prev: Partial<RuleContext> = {};
+    for (const key of keys) {
+      prev[key] = ctx[key];
+    }
+    Object.assign(ctx, overrides);
+    try {
+      return callback(ctx);
+    } finally {
+      for (const key of keys) {
+        const oldVal = prev[key];
+        ctx[key] = oldVal;
+      }
+    }
+  }
+
+  /**
+   * Unified subrule invoker with minimal boilerplate and built-in ctx/mayAsync handling.
+   * idx: 0|1|2|3|4 selects SUBRULE/SUBRULE2/... (0 and 1 map to SUBRULE)
+   * overrides: temporary context overrides applied during the subrule call
+   * rule: the parser rule method reference (e.g., this.selectorList)
+   *
+   * Also supports calling functions that take context and return a value (for OR alternatives)
+   */
+  // Unified subrule helper with flexible invocation styles
+  public rule<T = any>(idx: 0 | 1 | 2 | 3 | 4 | 5, ctx: RuleContext, overrides: Partial<RuleContext>, rule: Rule<(ctx?: RuleContext) => void>): T;
+  public rule<T = any>(idx: 0 | 1 | 2 | 3 | 4 | 5, ctx: RuleContext, rule: Rule<(ctx?: RuleContext) => void>): T;
+  public rule<T = any>(ctx: RuleContext, overrides: Partial<RuleContext>, rule: Rule<(ctx?: RuleContext) => void>): T;
+  public rule<T = any>(ctx: RuleContext, rule: Rule<(ctx?: RuleContext) => void>): T;
+  // Support for functions that take context and return a value (for OR alternatives)
+  public rule<T = any>(ctx: RuleContext, overrides: Partial<RuleContext>, fn: (ctx: RuleContext) => T): T;
+  public rule<T = any>(ctx: RuleContext, fn: (ctx: RuleContext) => T): T;
+  public rule<T>(a: any, b: any, c?: any, d?: any): T {
+    let idx: 0 | 1 | 2 | 3 | 4 | 5 = 0 as 0;
+    let ctx: RuleContext;
+    let overrides: Partial<RuleContext> | undefined;
+    let ruleRef: Rule<(ctx?: RuleContext) => void> | ((ctx: RuleContext) => T);
+
+    if (typeof a === 'number') {
+      idx = a as 0 | 1 | 2 | 3 | 4 | 5;
+      ctx = b as RuleContext;
+      if (d !== undefined) {
+        overrides = c as Partial<RuleContext>;
+        ruleRef = d as typeof ruleRef;
+      } else {
+        overrides = undefined;
+        ruleRef = c as typeof ruleRef;
+      }
+    } else {
+      ctx = a as RuleContext;
+      if (typeof c === 'function') {
+        overrides = b as Partial<RuleContext>;
+        ruleRef = c as typeof ruleRef;
+      } else {
+        overrides = undefined;
+        ruleRef = b as typeof ruleRef;
+      }
+    }
+
+    const keys = overrides ? (Object.keys(overrides) as Array<keyof RuleContext>) : [];
+    const prev: Partial<RuleContext> = {};
+    for (const key of keys) {
+      prev[key] = ctx[key];
+    }
+    if (overrides) {
+      Object.assign(ctx, overrides);
+    }
+    const prevMayAsync = ctx.mayAsync === true;
+    try {
+      // Check if this is a function that takes context (for OR alternatives)
+      if (typeof ruleRef === 'function' && ruleRef.length > 0) {
+        // This is a function that takes context, call it directly
+        const result = (ruleRef as (ctx: RuleContext) => T)(ctx);
+        if (result instanceof Node) {
+          (result as any).mayAsync ||= !!ctx.mayAsync;
+        }
+        return result;
+      } else {
+        // This is a parser rule method, use subrule
+        const result = this.subrule(idx, ruleRef as any, { ARGS: [ctx] }) as T;
+        if (result instanceof Node) {
+          (result as any).mayAsync ||= !!ctx.mayAsync;
+        }
+        return result;
+      }
+    } finally {
+      for (const key of keys) {
+        (ctx as any)[key as string] = prev[key] as any;
+      }
+      ctx.mayAsync = prevMayAsync || !!ctx.mayAsync;
     }
   }
 }
