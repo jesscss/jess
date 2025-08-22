@@ -56,7 +56,7 @@ import {
   ComplexSelector,
   CompoundSelector,
   SelectorList,
-  type Rules,
+  Rules,
   type ComplexSelectorComponent,
   type Selector
 } from '@jesscss/core';
@@ -98,7 +98,7 @@ export function stylesheet(this: P, T: TokenMap) {
     let root: Node = $.rule(ctx, $.main);
 
     if (!RECORDING_PHASE) {
-      let rules = root.value as unknown as Node[];
+      let rules = root?.value;
 
       if (charset) {
         let loc = $.getLocationInfo(charset);
@@ -109,7 +109,6 @@ export function stylesheet(this: P, T: TokenMap) {
         rootLoc[2] = loc[2];
       }
 
-      ;root.mayAsync = !!ctx.mayAsync;
       return root;
     }
   };
@@ -366,9 +365,7 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
-    // Begin mayAsync roll-up for this subtree (skip during grammar recording)
-    const prevMayAsync = RECORDING_PHASE ? false : (ctx.mayAsync ?? false);
-    if (!RECORDING_PHASE) ctx.mayAsync = false;
+
     let selector!: Selector;
     let isSelectorList: boolean;
     if (!RECORDING_PHASE) {
@@ -392,9 +389,7 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
       let [startOffset, startLine, startColumn] = selector.location!;
       let { endOffset, endLine, endColumn } = end;
       node._location = [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!];
-      // Snapshot rolled-up mayAsync from subtree onto node and bubble up
-      node.mayAsync = !!ctx.mayAsync;
-      ctx.mayAsync = prevMayAsync || !!node.mayAsync;
+
       return node;
     }
   };
@@ -536,14 +531,12 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                   guard = $.SUBRULE($.guard);
                 });
                 $.CONSUME(T.LCurly);
-                const prevMayAsync = RECORDING_PHASE ? false : (ctx.mayAsync ?? false);
-                if (!RECORDING_PHASE) ctx.mayAsync = false;
+
                 let rules = $.rule(ctx, $.declarationList);
                 $.CONSUME(T.RCurly);
                 if (!RECORDING_PHASE) {
                   const node = new Mixin({ name: selector.valueOf(), params: args, rules, guard }, undefined, $.endRule(), this.context);
-                  node.mayAsync = !!ctx.mayAsync;
-                  ctx.mayAsync = prevMayAsync || !!ctx.mayAsync;
+
                   return node;
                 }
               }
@@ -671,8 +664,7 @@ export function extendList(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
-    const prevMayAsync = RECORDING_PHASE ? false : (ctx.mayAsync ?? false);
-    if (!RECORDING_PHASE) ctx.mayAsync = false;
+
     $.startRule();
 
     let nodes: Array<ComplexSelector | Extend>;
@@ -710,8 +702,7 @@ export function extendList(this: P, T: TokenMap) {
     if (!RECORDING_PHASE) {
       let location = $.endRule();
       const list = new ExtendList(nodes! as Extend[], undefined, location, this.context);
-      list.mayAsync = !!ctx.mayAsync;
-      ctx.mayAsync = prevMayAsync || !!list.mayAsync;
+
       return list;
     }
   };
@@ -786,7 +777,31 @@ export function simpleSelector(this: P, T: TokenMap) {
     { ALT: () => $.CONSUME(T.DimensionNum) }
   ];
 
-  return cssSimpleSelector.call(this, T, selectorAlt as any);
+  return (ctx: RuleContext = {}) => {
+    return $.rule(ctx, (ctx: RuleContext) => {
+      let selector = $.OR(selectorAlt(ctx));
+
+      if (!$.RECORDING_PHASE) {
+        if ($.isToken(selector)) {
+          if (selector.tokenType.name === 'Ampersand') {
+            let ampImg = selector.image;
+            let value = ampImg.slice(1);
+            return new Ampersand(value || undefined, undefined, $.getLocationInfo(selector), this.context);
+          }
+          if (selector.tokenType.name === 'InterpolatedSelector') {
+            // Create an Interpolated node for interpolated selectors
+            let nameValue = selector.image;
+            let nameNode = getInterpolated(nameValue, $.getLocationInfo(selector), this.context);
+            // Since Interpolated nodes are async, set ctx.mayAsync = true to bubble up
+            ctx.mayAsync = true;
+            return nameNode;
+          }
+          return new BasicSelector(selector.image, undefined, $.getLocationInfo(selector), this.context);
+        }
+        return selector as Node;
+      }
+    });
+  };
 }
 
 export function anonymousMixinDefinition(this: P, T: TokenMap) {
@@ -923,8 +938,6 @@ export function importAtRule(this: P, T: TokenMap) {
           once: !options!.includes('multiple')
         }
       }, location, this.context);
-      // StyleImport may async -> bubble to context
-      ctx.mayAsync = true;
       return imp;
     }
   };
@@ -1130,11 +1143,11 @@ export function valueSequence(this: P, T: TokenMap) {
       let location = $.endRule();
       if (nodes!.length === 1) {
         const single = nodes![0]!;
-        single.mayAsync ||= !!ctx.mayAsync;
+
         return single;
       }
       const seq = new Sequence(nodes!, undefined, location, this.context);
-      seq.mayAsync = !!ctx.mayAsync;
+
       return seq;
     }
   };
@@ -1165,18 +1178,15 @@ export function squareValue(this: P, T: TokenMap) {
             nodes = [];
           }
           $.MANY(() => {
-            let node = $.SUBRULE($.anyInnerValue);
+            let node = $.rule(ctx, $.anyInnerValue);
             if (!RECORDING_PHASE) {
               const wrapped = $.wrap(node);
               nodes.push(wrapped);
-              if (wrapped instanceof Node && wrapped.mayAsync) {
-                (ctx as any).mayAsync = true;
-              }
             }
           });
           if (!RECORDING_PHASE) {
             const seq = new Sequence(nodes!, undefined, $.getLocationFromNodes(nodes!), this.context);
-            seq.mayAsync = !!ctx.mayAsync;
+
             return seq;
           }
         }
@@ -1186,7 +1196,7 @@ export function squareValue(this: P, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
       const blk = new Block(node, { type: 'square' }, location, this.context);
-      blk.mayAsync = !!ctx.mayAsync;
+
       return blk;
     }
   };
@@ -1275,7 +1285,7 @@ export function expressionSum(this: P, T: TokenMap) {
               this.context
             )
           );
-          left.mayAsync ||= !!ctx.mayAsync;
+
           return left;
         }
       }
@@ -1283,7 +1293,7 @@ export function expressionSum(this: P, T: TokenMap) {
 
     if (!RECORDING_PHASE) {
       $.endRule();
-      left.mayAsync ||= !!ctx.mayAsync;
+
       return left;
     }
   };
@@ -1317,13 +1327,12 @@ export function expressionProduct(this: P, T: TokenMap) {
             this.context
           )
         );
-        left.mayAsync ||= !!ctx.mayAsync;
       }
     });
 
     if (!RECORDING_PHASE) {
       $.endRule();
-      left.mayAsync ||= !!ctx.mayAsync;
+
       return left;
     }
   };
@@ -1358,7 +1367,7 @@ export function expressionValue(this: P, T: TokenMap) {
             let location = $.endRule();
             node = $.wrap(node, 'both');
             const par = new Paren(node, { escaped: !!escape }, location, this.context);
-            par.mayAsync = !!ctx.mayAsync;
+
             return par;
           }
         }
@@ -1369,7 +1378,7 @@ export function expressionValue(this: P, T: TokenMap) {
       let location = $.endRule();
       if (minus) {
         const neg = new Negative(node, undefined, location, this.context);
-        neg.mayAsync = !!ctx.mayAsync;
+
         return neg;
       }
       return node;
@@ -1589,9 +1598,6 @@ export function varReference(this: P, T: TokenMap) {
     ]);
 
     if (!RECORDING_PHASE) {
-      // Presence of a reference implies potential async at eval time
-      ctx.mayAsync = true;
-      node!.mayAsync = true;
       return $.wrap(node!);
     }
   };
@@ -1699,6 +1705,7 @@ export function functionCallArgs(this: P, T: TokenMap) {
       }
 
       node = $.rule(
+        3,
         ctx,
         { allowComma: true },
         $.callArgument
@@ -1896,7 +1903,7 @@ export function guard(this: P, T: TokenMap) {
           ctx.allowComma = true;
           const node = $.rule(ctx, $.guardOr);
           if (!$.RECORDING_PHASE) {
-            if ((node as any).mayAsync) (ctx as any).mayAsync = true;
+
           }
           return node;
         }
@@ -2040,7 +2047,7 @@ export function guardInParens(this: P, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
       node = $.wrap(node, 'both');
       const par = new Paren(node, undefined, $.endRule(), this.context);
-      (par as any).mayAsync = !!ctx.mayAsync;
+
       return par;
     }
   };

@@ -46,6 +46,7 @@ export class Interpolated<
 > extends SimpleSelector<InterpolatedValue, AnyOptions<Role>> {
   type = 'Interpolated' as const;
   shortType = 'interpolated' as const;
+  override mayAsync = true;
 
   override valueOf(): string {
     return this.value.source;

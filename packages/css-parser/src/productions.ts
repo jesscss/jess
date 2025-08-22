@@ -63,7 +63,6 @@ export function stylesheet(this: C, T: TokenMap) {
       charset = $.CONSUME(T.Charset);
     });
 
-    // Initialize RuleContext for mayAsync bubbling at root
     const ctx: RuleContext = { isRoot: true };
     let root: Node = $.rule(ctx, $.main);
 
@@ -79,8 +78,6 @@ export function stylesheet(this: C, T: TokenMap) {
         rootLoc[2] = loc[2];
       }
 
-      // Root mayAsync mirrors main's roll-up
-      (root as any).mayAsync = !!(ctx as any).mayAsync;
       return root;
     }
   };
@@ -145,7 +142,7 @@ export function main(this: C, T: TokenMap, alt?: AltContext | Alt) {
       let returnNode = $.getRulesWithComments(rules!, $.getLocationInfo($.LA(1)));
       // Attaches remaining whitespace at the end of rules
       const wrapped = $.wrap(returnNode!, true);
-      wrapped.mayAsync = !!ctx.mayAsync;
+
       return wrapped;
     }
   };

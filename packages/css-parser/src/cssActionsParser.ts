@@ -241,14 +241,11 @@ export class CssActionsParser extends AdvancedActionsParser {
   }
 
   protected getRulesWithComments(
-    existingRules: Node[] | undefined,
+    existingRules: Node[] = [],
     nextTokenLocation?: LocationInfo
   ) {
     if (!nextTokenLocation) {
       nextTokenLocation = this.getLocationInfo(this.LA(1));
-    }
-    if (!existingRules) {
-      return undefined;
     }
     let rules = [];
     /**
@@ -301,10 +298,6 @@ export class CssActionsParser extends AdvancedActionsParser {
     const tail = this.getPrePost(nextTokenLocation[0]!);
     const remainder = processPrePost(tail) as 0 | 1 | Array<string | Comment | Nil> | undefined;
     let returnRules: Rules = new Rules(rules, undefined, rules.length ? this.getLocationFromNodes(rules) : undefined, this.context);
-    // Parse-time mayAsync roll-up from child nodes
-    try {
-      (returnRules as any).mayAsync = rules.some((r: any) => r && r.mayAsync === true);
-    } catch {}
     returnRules.post = remainder;
     return returnRules;
   }
@@ -494,6 +487,20 @@ export class CssActionsParser extends AdvancedActionsParser {
       }
     }
 
+    // During grammar recording phase, ctx might be undefined or not a proper RuleContext
+    if (!ctx || typeof ctx !== 'object' || this.RECORDING_PHASE) {
+      // For recording phase, just call the rule without context
+      if (typeof ruleRef === 'function' && ruleRef.length > 0) {
+        // This is a function that takes context, but we don't have ctx during recording
+        // Create a dummy context for recording phase
+        const dummyCtx: RuleContext = {};
+        return (ruleRef as (ctx: RuleContext) => T)(dummyCtx);
+      } else {
+        // This is a parser rule method, use subrule without context
+        return this.subrule(idx, ruleRef as any, { ARGS: [] }) as T;
+      }
+    }
+
     const keys = overrides ? (Object.keys(overrides) as Array<keyof RuleContext>) : [];
     const prev: Partial<RuleContext> = {};
     for (const key of keys) {
@@ -502,29 +509,43 @@ export class CssActionsParser extends AdvancedActionsParser {
     if (overrides) {
       Object.assign(ctx, overrides);
     }
-    const prevMayAsync = ctx.mayAsync === true;
+    let result: T;
+    // Start fresh - this rule's mayAsync status will be determined by its children
+    const prevMayAsync = ctx.mayAsync;
+    ctx.mayAsync = false;
+
     try {
       // Check if this is a function that takes context (for OR alternatives)
       if (typeof ruleRef === 'function' && ruleRef.length > 0) {
         // This is a function that takes context, call it directly
-        const result = (ruleRef as (ctx: RuleContext) => T)(ctx);
+        result = (ruleRef as (ctx: RuleContext) => T)(ctx);
         if (result instanceof Node) {
-          (result as any).mayAsync ||= !!ctx.mayAsync;
+          // If the returned node is async, bubble it up to the parent context
+          if (result.mayAsync) {
+            ctx.mayAsync = true;
+          }
+          // Also set the node's mayAsync based on the context (for nodes created during parsing)
+          result.mayAsync ||= !!ctx.mayAsync;
         }
-        return result;
       } else {
         // This is a parser rule method, use subrule
-        const result = this.subrule(idx, ruleRef as any, { ARGS: [ctx] }) as T;
+        result = this.subrule(idx, ruleRef as any, { ARGS: [ctx] }) as T;
         if (result instanceof Node) {
-          (result as any).mayAsync ||= !!ctx.mayAsync;
+          // If the returned node is async, bubble it up to the parent context
+          if (result.mayAsync) {
+            ctx.mayAsync = true;
+          }
+          // Also set the node's mayAsync based on the context (for nodes created during parsing)
+          result.mayAsync ||= !!ctx.mayAsync;
         }
-        return result;
       }
     } finally {
       for (const key of keys) {
         (ctx as any)[key as string] = prev[key] as any;
       }
-      ctx.mayAsync = prevMayAsync || !!ctx.mayAsync;
+      // Restore the previous mayAsync status, but if this rule became async, bubble it up
+      ctx.mayAsync = prevMayAsync || ctx.mayAsync;
+      return result! as T;
     }
   }
 }

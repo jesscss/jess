@@ -69,6 +69,7 @@ type ReferenceParams = ConstructorParameters<NodeType>;
 export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   type = 'Reference';
   shortType = 'ref';
+  override mayAsync = true;
 
   constructor(value: ReferenceValue | string, options?: ReferenceOptions, location?: LocationInfo, treeContext?: TreeContext) {
     if (typeof value === 'string') {
