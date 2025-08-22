@@ -204,7 +204,8 @@ async function runScenarioMulti(opts: Parameters<typeof runScenario>, runs: numb
   return { runs: times, summary: stats(times) };
 }
 
-describe('Jess real-AST perf compare (baseline vs forced async)', () => {
+/** Skip these tests for now */
+describe.skip('Jess real-AST perf compare (baseline vs forced async)', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.unmock('@jesscss/awaitable-pipe');

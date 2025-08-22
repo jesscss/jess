@@ -82,7 +82,7 @@ export class CssActionsParser extends AdvancedActionsParser {
   qualifiedRule!: Rule<(ctx?: RuleContext) => void>;
   atRule!: Rule<(ctx?: RuleContext) => void>;
   selectorList!: Rule<(ctx?: RuleContext) => void>;
-  declarationList!: Rule;
+  declarationList!: Rule<(ctx?: RuleContext) => void>;
   forgivingSelectorList!: Rule<(ctx?: RuleContext) => void>;
   classSelector!: Rule;
   idSelector!: Rule;
@@ -94,7 +94,7 @@ export class CssActionsParser extends AdvancedActionsParser {
   compoundSelector!: Rule<(ctx?: RuleContext) => void>;
   relativeSelector!: Rule<(ctx?: RuleContext) => void>;
 
-  declaration!: Rule;
+  declaration!: Rule<(ctx?: RuleContext) => void>;
   valueList!: Rule<(ctx?: RuleContext) => void>;
   /** Often a space-separated sequence */
   valueSequence!: Rule<(ctx?: RuleContext) => void>;
@@ -299,6 +299,10 @@ export class CssActionsParser extends AdvancedActionsParser {
     const tail = this.getPrePost(nextTokenLocation[0]!);
     const remainder = processPrePost(tail) as 0 | 1 | Array<string | Comment | Nil> | undefined;
     let returnRules: Rules = new Rules(rules, undefined, rules.length ? this.getLocationFromNodes(rules) : undefined, this.context);
+    // Parse-time mayAsync roll-up from child nodes
+    try {
+      (returnRules as any).mayAsync = rules.some((r: any) => r && r.mayAsync === true);
+    } catch {}
     returnRules.post = remainder;
     return returnRules;
   }

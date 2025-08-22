@@ -80,6 +80,11 @@ describe('pipe', () => {
     const out = pipe(() => 'a', () => thenable, (s: string) => s + '!');
     await expect(out).resolves.toBe('x!');
   });
+
+  it('covers async tail start when initial input is thenable', async () => {
+    const out = pipe(Promise.resolve('a'), (s: string) => s + '1', (s: string) => s + '2');
+    await expect(out).resolves.toBe('a12');
+  });
 });
 
 describe('safePipe', () => {

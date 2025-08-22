@@ -6,7 +6,7 @@ import { Nil } from './nil';
 import { Selector } from './selector';
 import type { SimpleSelector } from './selector-simple';
 import { getEntries } from './util/collections';
-import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 
 /**
  * @example
@@ -68,12 +68,21 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
       () => {
         const sel = this.maybeClone(context);
         let { value } = sel;
-        return Promise.all(
-          Array.from(getEntries(value), async ([item, i]) => {
-            value[i] = await item.eval(context) as SimpleSelector;
-            return undefined;
-          })
-        ).then(() => sel);
+        const maybe = serialForEach(Array.from(getEntries(value)), ([item, i]) => {
+          const out = item.eval(context);
+          if (isThenable(out)) {
+            return (out as Promise<SimpleSelector>).then((res) => {
+              value[i] = res as SimpleSelector;
+              return undefined;
+            });
+          }
+          value[i] = out as SimpleSelector;
+          return undefined;
+        });
+        if (isThenable(maybe)) {
+          return (maybe as Promise<void>).then(() => sel);
+        }
+        return sel;
       },
       (sel) => {
         let { value } = sel;

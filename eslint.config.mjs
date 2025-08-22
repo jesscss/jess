@@ -77,6 +77,7 @@ export default tseslint.config([
 
     rules: {
       ...jsRules,
+      'curly': ['error', 'all'],
       'prefer-const': 0
     }
   }, {
@@ -101,6 +102,7 @@ export default tseslint.config([
       ...jsRules,
       'eol-last': 0,
       'prefer-const': 0,
+      'curly': ['error', 'all'],
       '@typescript-eslint/no-confusing-void-expression': 'off',
       'no-void': 0,
       '@typescript-eslint/consistent-type-assertions': 0,
@@ -164,7 +166,8 @@ export default tseslint.config([
     },
 
     rules: {
-      '@typescript-eslint/no-unused-vars': 0
+      '@typescript-eslint/no-unused-vars': 0,
+      'curly': ['error', 'all']
     }
   }, globalIgnores(['**/node_modules', '**/lib', '**/dist', 'packages/**'])
 ]);

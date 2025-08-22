@@ -33,7 +33,7 @@ export const ExtendErrorType = {
   NOT_FOUND: 'NOT_FOUND' as const,
   ELEMENT_CONFLICT: 'ELEMENT_CONFLICT' as const,
   ID_CONFLICT: 'ID_CONFLICT' as const,
-  AMPERSAND_BOUNDARY: 'AMPERSAND_BOUNDARY' as const,
+  AMPERSAND_BOUNDARY: 'AMPERSAND_BOUNDARY' as const
 } as const;
 
 export class ExtendError extends Error {

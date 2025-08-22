@@ -115,6 +115,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   type = 'StyleImport' as const;
   shortType = 'style' as const;
   override visible = false;
+  override mayAsync = true;
 
   /**
    * @note

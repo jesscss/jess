@@ -159,6 +159,12 @@ export abstract class Node<
   evaluated = false;
   preEvaluated = false;
 
+  /**
+   * Parse-time or build-time hint that this node (or its subtree) may produce async results.
+   * Defaults to false; specific nodes (e.g., imports) or parser roll-up can set to true.
+   */
+  mayAsync: boolean = false;
+
   allowRoot = false;
   allowRuleRoot = false;
 

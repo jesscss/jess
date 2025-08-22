@@ -131,7 +131,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           return ComplexSelector.create([invisibleAmp, invisibleCombinator, sel]);
         }
         if (isNode(sel, 'ComplexSelector')) {
-          const cloned = sel.clone(true);
+          const cloned = (sel as ComplexSelector).clone(true);
           cloned.value.unshift(invisibleAmp, invisibleCombinator);
           return cloned;
         }
@@ -148,7 +148,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return ComplexSelector.create([invisibleAmp, invisibleCombinator, selector]);
     }
     if (isNode(selector, 'ComplexSelector')) {
-      const cloned = selector.clone(true);
+      const cloned = (selector as ComplexSelector).clone(true);
       cloned.value.unshift(invisibleAmp, invisibleCombinator);
       return cloned;
     }

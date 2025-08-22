@@ -100,7 +100,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
         }
         let b = right.eval(context);
         if (isThenable(b)) {
-          return Promise.all([a, b]);
+          return (b as Promise<Node>).then(bb => [a, bb] as const);
         }
         return [a, b];
       },

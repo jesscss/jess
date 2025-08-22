@@ -11,7 +11,7 @@ import type { SimpleSelector } from './selector-simple';
 import type { CompoundSelector } from './selector-compound';
 import { getEntries } from './util/collections';
 import { type PrintOptions, getPrintOptions } from './util/print';
-import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 
 // TODO - fix later
 export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand;
@@ -103,12 +103,21 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       () => {
         const selector = this.maybeClone(context);
         let { value } = selector;
-        return Promise.all(
-          Array.from(getEntries(value), async ([sel, i]) => {
-            value[i] = await sel.eval(context) as ComplexSelectorComponent;
-            return undefined;
-          })
-        ).then(() => selector);
+        const maybe = serialForEach(Array.from(getEntries(value)), ([sel, i]) => {
+          const out = sel.eval(context);
+          if (isThenable(out)) {
+            return (out as Promise<Selector | Nil>).then((res) => {
+              value[i] = res as ComplexSelectorComponent;
+              return undefined;
+            });
+          }
+          value[i] = out as ComplexSelectorComponent;
+          return undefined;
+        });
+        if (isThenable(maybe)) {
+          return (maybe as Promise<void>).then(() => selector);
+        }
+        return selector;
       },
       (selector) => {
         const { value } = selector;

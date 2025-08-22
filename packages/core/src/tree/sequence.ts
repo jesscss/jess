@@ -6,7 +6,7 @@ import combinate from 'combinate';
 import { cast } from './util/cast';
 import { compareNodeArray } from './util/compare';
 import { isNode } from '..';
-import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 
 export type SequenceOptions = {
   /**
@@ -72,11 +72,21 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return pipe(
       () => {
         const node = this.maybeClone(context);
-        return Promise.all(
-          node.value.map(async (n, i) => {
-            node.value[i] = await n.eval(context);
-          })
-        ).then(() => node);
+        const maybe = serialForEach(node.value.map((n, i) => [n, i] as const), ([n, i]) => {
+          const out = n.eval(context);
+          if (isThenable(out)) {
+            return (out as Promise<Node>).then(res => {
+              node.value[i] = res;
+              return undefined;
+            });
+          }
+          node.value[i] = out as Node;
+          return undefined;
+        });
+        if (isThenable(maybe)) {
+          return (maybe as Promise<void>).then(() => node);
+        }
+        return node;
       },
       (node) => {
         node.value = node.value.filter(n => n && !(n instanceof Nil));

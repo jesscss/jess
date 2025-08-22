@@ -1,10 +1,8 @@
-import { type NodeOptions, type NodeValueObject, defineType } from './node';
+import { type NodeOptions, defineType } from './node';
 import { Selector } from './selector';
 
-type SimpleSelectorValue = string | NodeValueObject;
-
 export abstract class SimpleSelector<
-  T extends SimpleSelectorValue = SimpleSelectorValue,
+  T = any,
   O extends NodeOptions = NodeOptions
 > extends Selector<T, O> {}
 

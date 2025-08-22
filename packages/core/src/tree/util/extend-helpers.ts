@@ -184,7 +184,7 @@ export function expandCompoundWithPseudoSelectors(compound: CompoundSelector): C
         // Create new expansions by replacing :is() with its contents
         const newExpansions: CompoundSelector[] = [];
 
-        expansions.forEach((expansion) => {
+        expansions.forEach((expansion: CompoundSelector) => {
           const newComponents = [...expansion.value];
           newComponents.splice(index, 1, ...arg.value); // Replace :is() with its contents
           newExpansions.push(new CompoundSelector(newComponents));
@@ -195,7 +195,7 @@ export function expandCompoundWithPseudoSelectors(compound: CompoundSelector): C
         // Handle :is() with simple selector argument
         const newExpansions: CompoundSelector[] = [];
 
-        expansions.forEach((expansion) => {
+        expansions.forEach((expansion: CompoundSelector) => {
           const newComponents = [...expansion.value];
           newComponents.splice(index, 1, arg); // Replace :is() with the simple selector
           newExpansions.push(new CompoundSelector(newComponents));
@@ -206,14 +206,15 @@ export function expandCompoundWithPseudoSelectors(compound: CompoundSelector): C
         // Handle :is() with selector list argument
         const newExpansions: CompoundSelector[] = [];
 
-        expansions.forEach((expansion) => {
-          arg.value.forEach((listItem) => {
+        const listArg = arg as SelectorList;
+        expansions.forEach((expansion: CompoundSelector) => {
+          listArg.value.forEach((listItem: Selector) => {
             const newComponents = [...expansion.value];
 
             if (isNode(listItem, 'CompoundSelector')) {
               newComponents.splice(index, 1, ...listItem.value);
             } else {
-              newComponents.splice(index, 1, listItem as SimpleSelector);
+              newComponents.splice(index, 1, listItem as any);
             }
 
             newExpansions.push(new CompoundSelector(newComponents));

@@ -7,10 +7,16 @@ export default defineConfig({
     include: ['test/**/*.ts', '**/__tests__/**/*.ts'],
     globals: true,
     setupFiles: ['../../test/setup.ts'],
-    watchExclude: ['**/*', '!**/*.ts'],
+    // watchExclude: ['**/*', '!**/*.ts'],
     coverage: {
       include: ['src/**/*.ts'],
-      100: true
+      // enabled: true,
+      thresholds: {
+        statements: 100,
+        functions: 100,
+        branches: 100,
+        lines: 100
+      }
     }
   }
 });

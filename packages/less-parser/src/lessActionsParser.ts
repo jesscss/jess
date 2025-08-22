@@ -48,6 +48,8 @@ export type TokenMap = CombinedTokenMap;
 
 export type RuleContext = CssRuleContext & {
   hasDefault?: boolean;
+  /** Parse-time roll-up flag indicating subtree may async */
+  mayAsync?: boolean;
   /** Selectors in a selector sequence are extended */
   allExtended?: boolean;
   /** Mixin definition */

@@ -49,7 +49,7 @@ export function stylesheet(this: C, T: TokenMap) {
   // stylesheet
   //   : CHARSET? main EOF
   //   ;
-  return () => {
+  return (options: Record<string, any> = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     let context: TreeContext;
     if (!RECORDING_PHASE) {
@@ -63,7 +63,9 @@ export function stylesheet(this: C, T: TokenMap) {
       charset = $.CONSUME(T.Charset);
     });
 
-    let root: Node = $.SUBRULE($.main, { ARGS: [{ isRoot: true }] });
+    // Initialize RuleContext for mayAsync bubbling at root
+    const ctx: RuleContext = { isRoot: true };
+    let root: Node = $.SUBRULE($.main, { ARGS: [ctx] });
 
     if (!RECORDING_PHASE) {
       let rules = root.value as Node[];
@@ -77,16 +79,18 @@ export function stylesheet(this: C, T: TokenMap) {
         rootLoc[2] = loc[2];
       }
 
+      // Root mayAsync mirrors main's roll-up
+      (root as any).mayAsync = !!(ctx as any).mayAsync;
       return root;
     }
   };
 }
 
-export function main(this: C, T: TokenMap, alt?: Alt) {
+export function main(this: C, T: TokenMap, alt?: AltContext | Alt) {
   let $ = this;
-  let ruleAlt = alt ?? [
-    { ALT: () => $.SUBRULE($.qualifiedRule) },
-    { ALT: () => $.SUBRULE($.atRule) }
+  alt ??= (ctx: RuleContext = {}) => [
+    { ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.atRule, { ARGS: [ctx] }) }
   ];
 
   return (ctx: RuleContext = {}) => {
@@ -118,7 +122,8 @@ export function main(this: C, T: TokenMap, alt?: Alt) {
         || $.LA(0).tokenType === T.Semi
       )),
       DEF: () => {
-        let value = $.OR(ruleAlt);
+        const localAlt = typeof alt === 'function' ? alt(ctx) : alt;
+        let value = $.OR(localAlt);
         if (!RECORDING_PHASE) {
           if (!(value instanceof Node)) {
             /** This is a semi-colon token */
@@ -144,19 +149,38 @@ export function main(this: C, T: TokenMap, alt?: Alt) {
   };
 }
 
-export function qualifiedRule(this: C, T: TokenMap, altContext?: AltContext) {
+export function qualifiedRule(this: C, T: TokenMap, selectorAlt?: AltContext) {
   const $ = this;
 
-  let selectorAlt = altContext ?? ((ctx: RuleContext) => [
+  selectorAlt ??= (ctx: RuleContext = {}) => [
     {
       GATE: () => !ctx.inner,
-      ALT: () => $.SUBRULE($.selectorList, { ARGS: [{ ...ctx, qualifiedRule: true }] })
+      ALT: () => {
+        const prevQualified = ctx.qualifiedRule;
+        ctx.qualifiedRule = true;
+        try {
+          return $.SUBRULE($.selectorList, { ARGS: [ctx] });
+        } finally {
+          ctx.qualifiedRule = prevQualified;
+        }
+      }
     },
     {
       GATE: () => !!ctx.inner,
-      ALT: () => $.SUBRULE($.forgivingSelectorList, { ARGS: [{ ...ctx, firstSelector: true, qualifiedRule: true }] })
+      ALT: () => {
+        const prevFirst = ctx.firstSelector;
+        const prevQualified = ctx.qualifiedRule;
+        ctx.firstSelector = true;
+        ctx.qualifiedRule = true;
+        try {
+          return $.SUBRULE($.forgivingSelectorList, { ARGS: [ctx] });
+        } finally {
+          ctx.firstSelector = prevFirst;
+          ctx.qualifiedRule = prevQualified;
+        }
+      }
     }
-  ]);
+  ];
   // qualifiedRule
   //   : selectorList WS* LCURLY declarationList RCURLY
   //   ;
@@ -201,10 +225,10 @@ export function qualifiedRule(this: C, T: TokenMap, altContext?: AltContext) {
 //   | pseudoSelector
 //   | attributeSelector
 //   ;
-export function simpleSelector(this: C, T: TokenMap, altContext?: AltContext) {
+export function simpleSelector(this: C, T: TokenMap, selectorAlt?: AltContext) {
   const $ = this;
 
-  let selectorAlt = altContext ?? ((ctx: RuleContext) => [
+  selectorAlt ??= (ctx: RuleContext = {}) => [
     {
       /**
        * It used to be the case that, in CSS Nesting, the first selector
@@ -228,7 +252,7 @@ export function simpleSelector(this: C, T: TokenMap, altContext?: AltContext) {
     /** Supports keyframes selectors */
     { ALT: () => $.CONSUME(T.DimensionInt) },
     { ALT: () => $.CONSUME(T.DimensionNum) }
-  ]);
+  ];
 
   return (ctx: RuleContext = {}) => {
     let selector = $.OR(selectorAlt(ctx));
@@ -275,7 +299,7 @@ export function idSelector(this: C, T: TokenMap, alt?: Alt) {
   };
 }
 
-export function pseudoSelector(this: C, T: TokenMap, altContext?: AltContext) {
+export function pseudoSelector(this: C, T: TokenMap, selectorAlt?: AltContext) {
   const $ = this;
   const createPseudo = (name: string, arg?: Node) => {
     if (!$.RECORDING_PHASE) {
@@ -287,7 +311,7 @@ export function pseudoSelector(this: C, T: TokenMap, altContext?: AltContext) {
     }
   };
 
-  let selectorAlt = altContext ?? ((ctx: RuleContext) => [
+  selectorAlt ??= (ctx: RuleContext = {}) => [
     {
       ALT: () => {
         let name = $.CONSUME(T.NthPseudoClass);
@@ -354,7 +378,7 @@ export function pseudoSelector(this: C, T: TokenMap, altContext?: AltContext) {
         return createPseudo(name, values);
       }
     }
-  ]);
+  ];
 
   // pseudoSelector
   //   : NTH_PSEUDO_CLASS '(' WS* nthValue WS* ')'
@@ -367,10 +391,10 @@ export function pseudoSelector(this: C, T: TokenMap, altContext?: AltContext) {
   };
 }
 
-export function nthValue(this: C, T: TokenMap, alt?: Alt) {
+export function nthValue(this: C, T: TokenMap, valueAlt?: Alt) {
   const $ = this;
 
-  let valueAlt = alt ?? [
+  valueAlt ??= [
     { ALT: () => $.CONSUME(T.NthOdd) },
     { ALT: () => $.CONSUME(T.NthEven) },
     { ALT: () => $.CONSUME(T.Integer) },
@@ -436,10 +460,10 @@ export function nthValue(this: C, T: TokenMap, alt?: Alt) {
 // attributeSelector
 //   : LSQUARE WS* identifier (STAR | TILDE | CARET | DOLLAR | PIPE)? EQ WS* (identifier | STRING) WS* (ATTRIBUTE_FLAG WS*)? RSQUARE
 //   ;
-export function attributeSelector(this: C, T: TokenMap, alt?: Alt) {
+export function attributeSelector(this: C, T: TokenMap, valueAlt?: Alt) {
   const $ = this;
 
-  let valueAlt = alt ?? [
+  valueAlt ??= [
     {
       ALT: () => {
         let token = $.CONSUME2(T.Ident);
@@ -731,7 +755,7 @@ export function selectorList(this: C, T: TokenMap) {
   };
 }
 
-export function declarationList(this: C, T: TokenMap, alt?: Alt) {
+export function declarationList(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
   /** * Declarations ***/
   // https://www.w3.org/TR/css-syntax-3/#declaration-list-diagram
@@ -755,20 +779,26 @@ export function declarationList(this: C, T: TokenMap, alt?: Alt) {
    * each alt
    */
 
-  let ruleAlt = alt ?? [
-    { ALT: () => $.SUBRULE($.declaration) },
+  alt ??= (ctx: RuleContext = {}) => [
+    { ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] }) },
     { ALT: () => $.SUBRULE($.innerAtRule) },
-    { ALT: () => $.SUBRULE2($.qualifiedRule, { ARGS: [{ inner: true }] }) },
+    { ALT: () => {
+      const prevInner = ctx.inner;
+      ctx.inner = true;
+      const result = $.SUBRULE2($.qualifiedRule, { ARGS: [ctx] });
+      ctx.inner = prevInner;
+      return result;
+    } },
     { ALT: () => $.CONSUME2(T.Semi) }
   ];
 
-  return main.call(this, T, ruleAlt);
+  return main.call(this, T, alt);
 }
 
-export function declaration(this: C, T: TokenMap, alt?: Alt) {
+export function declaration(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
 
-  let ruleAlt = alt ?? [
+  alt ??= (ctx: RuleContext = {}) => [
     {
       ALT: () => {
         let name: IToken;
@@ -782,7 +812,7 @@ export function declaration(this: C, T: TokenMap, alt?: Alt) {
           }
         ]);
         let assign = $.CONSUME(T.Assign);
-        let value = $.SUBRULE($.valueList);
+        let value = $.SUBRULE($.valueList, { ARGS: [ctx] });
         let important: IToken | undefined;
         $.OPTION(() => {
           important = $.CONSUME(T.Important);
@@ -822,14 +852,14 @@ export function declaration(this: C, T: TokenMap, alt?: Alt) {
   //   : identifier WS* COLON WS* valueList (WS* IMPORTANT)?
   //   | CUSTOM_IDENT WS* COLON CUSTOM_VALUE*
   //   ;
-  return () => {
+  return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
     let name: Any<'property'> | undefined;
     let assign: IToken | undefined;
     let value: Node | undefined;
     let important: IToken | undefined;
-    let val = $.OR(ruleAlt);
+    let val = $.OR(alt(ctx));
 
     if (!RECORDING_PHASE) {
       ([name, assign, value, important] = val);
@@ -935,7 +965,7 @@ export function extraTokens(this: C, T: TokenMap, alt?: Alt) {
 export function customBlock(this: C, T: TokenMap, alt?: Alt) {
   const $ = this;
 
-  let blockAlt = alt ?? [
+  alt ??= [
     {
       ALT: () => {
         let RECORDING_PHASE = $.RECORDING_PHASE;
@@ -1012,7 +1042,7 @@ export function customBlock(this: C, T: TokenMap, alt?: Alt) {
     let end: IToken | undefined;
     let nodes: Node[];
 
-    let val = $.OR(blockAlt);
+    let val = $.OR(alt);
 
     if (!RECORDING_PHASE) {
       ([start, nodes, end] = val);
@@ -1142,10 +1172,10 @@ export function squareValue(this: C, T: TokenMap) {
 //   | '[' identifier ']'
 //   | unknownValue
 //   ;
-export function value(this: C, T: TokenMap, alt?: Alt) {
+export function value(this: C, T: TokenMap, valueAlt?: Alt) {
   const $ = this;
 
-  let valueAlt = alt ?? [
+  valueAlt ??= [
     /** Function should appear before Ident */
     { ALT: () => $.SUBRULE($.functionCall) },
     { ALT: () => $.CONSUME(T.Ident) },
@@ -1192,10 +1222,10 @@ export function value(this: C, T: TokenMap, alt?: Alt) {
   };
 }
 
-export function string(this: C, T: TokenMap, alt?: Alt) {
+export function string(this: C, T: TokenMap, stringAlt?: Alt) {
   const $ = this;
 
-  let stringAlt = alt ?? [
+  stringAlt ??= [
     {
       ALT: () => {
         $.startRule();

@@ -31,11 +31,13 @@ type PipeResult<In, Fns extends any[], Acc = In> =
 
 import { isThenable } from './utils';
 
-function runAsync(v: any, fns: AnyFn[]): Promise<any> {
-  return fns.reduce<Promise<any>>((p, fn) => p.then(val => {
-    const out = fn(val);
-    return isThenable(out) ? out : Promise.resolve(out);
-  }), Promise.resolve(v));
+function runAsync(v: any, fns: AnyFn[], startIndex: number): Promise<any> {
+  let p = Promise.resolve(v);
+  for (let i = startIndex; i < fns.length; i++) {
+    const fn = fns[i]!;
+    p = p.then(val => fn(val));
+  }
+  return p;
 }
 
 // Overloads preserve sync/async result shape
@@ -134,12 +136,16 @@ export function pipe(...args: any[]): any {
     fns = [first as AnyFn];
   }
 
+  if (isThenable(input)) {
+    return runAsync(input, fns, 0) as any;
+  }
   for (let i = 0; i < fns.length; i++) {
     const fn = fns[i]!;
-    if (isThenable(input)) {
-      return runAsync(input, fns.slice(i)) as any;
+    const out = fn(input);
+    if (isThenable(out)) {
+      return runAsync(out, fns, i + 1) as any;
     }
-    input = fn(input);
+    input = out;
   }
   return input as any;
 }
@@ -159,7 +165,7 @@ function resolveFallback<R>(fb: SafePipeOptions<R>['fallback']): R | undefined {
   return typeof fb === 'function' ? (fb as () => R)() : fb;
 }
 
-function runAsyncSafe<R>(v: any, fns: AnyFn[], opts: SafePipeOptions<R>): Promise<R | undefined> {
+function runAsyncSafe<R>(v: any, fns: AnyFn[], startIndex: number, opts: SafePipeOptions<R>): Promise<R | undefined> {
   const { onError, fallback } = opts;
   const callOnError = (e: unknown) => {
     try {
@@ -168,18 +174,25 @@ function runAsyncSafe<R>(v: any, fns: AnyFn[], opts: SafePipeOptions<R>): Promis
       // Swallow errors from onError to keep guarantees: never throw
     }
   };
-  return fns.reduce<Promise<any>>((p, fn) => p.then(val => {
-    try {
-      const out = fn(val);
-      return isThenable(out) ? out : Promise.resolve(out);
-    } catch (e) {
-      callOnError(e);
-      return Promise.resolve(resolveFallback(fallback));
-    }
-  }).catch(e => {
-    callOnError(e);
-    return Promise.resolve(resolveFallback(fallback));
-  }), Promise.resolve(v)).catch(e => {
+  let p: Promise<any> = Promise.resolve(v);
+  for (let i = startIndex; i < fns.length; i++) {
+    const fn = fns[i]!;
+    p = p.then(
+      val => {
+        try {
+          return fn(val);
+        } catch (e) {
+          callOnError(e);
+          return resolveFallback(fallback);
+        }
+      },
+      e => {
+        callOnError(e);
+        return resolveFallback(fallback);
+      }
+    );
+  }
+  return p.catch(e => {
     callOnError(e);
     return resolveFallback(fallback);
   });
@@ -265,7 +278,7 @@ export function safePipe(...args: any[]): any {
     try {
       const out = fn(input);
       if (isThenable(out)) {
-        return runAsyncSafe(out, fns.slice(i + 1), options) as any;
+        return runAsyncSafe(out, fns, i + 1, options) as any;
       }
       input = out;
     } catch (e) {
