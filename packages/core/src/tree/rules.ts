@@ -3,7 +3,9 @@ import {
   defineType,
   type NodeOptions,
   type LocationInfo,
-  type TreeContext
+  type TreeContext,
+  F_VISIBLE,
+  F_NON_STATIC
 } from './node';
 import { Context } from '../context';
 import { isNode } from './util/is-node';
@@ -108,6 +110,7 @@ export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
 export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   type = 'Rules';
   shortType = 'rules';
+  override state = F_VISIBLE | F_NON_STATIC;
   override allowRuleRoot = true;
   override allowRoot = true;
 
@@ -115,6 +118,42 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   mixinRegistry: Registries.MixinRegistry | undefined;
   declarationRegistry: Registries.DeclarationRegistry | undefined;
   functionRegistry: Registries.FunctionRegistry | undefined;
+
+  rulesIndexed = 0;
+  _indexing = false;
+
+  _indexRules() {
+    if (this._indexing) {
+      return; // Prevent recursive indexing
+    }
+    this._indexing = true;
+    try {
+      for (let i = this.rulesIndexed; i < this.value.length; i++) {
+        const node = this.value[i]!;
+        this.registerNode(node);
+      }
+      this.rulesIndexed = this.value.length;
+    } finally {
+      this._indexing = false;
+    }
+  }
+
+  /**
+   * Lazily create registries for types as needed.
+   */
+  register(
+    type: 'ruleset' | 'declaration' | 'mixin' | 'function',
+    node: Node
+  ) {
+    let registry = this[`${type}Registry`];
+    if (!registry) {
+      let className = `${type.charAt(0).toUpperCase()}${type.slice(1)}` as Capitalize<typeof type>;
+      let RegistryClass = Registries[`${className}Registry`];
+      registry = new RegistryClass(this);
+      (this as any)[`${type}Registry`] = registry;
+    }
+    return (registry as any).add(node);
+  }
 
   /**
    * This wrapper is used so we don't prematurely create a registry
@@ -141,6 +180,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       let RegistryClass = Registries[`${className}Registry`];
       registry = new RegistryClass(this);
       (this as any)[`${type}Registry`] = registry;
+    }
+    if (this.rulesIndexed < this.value.length) {
+      this._indexRules();
     }
     return (registry as any).find(keys, filterType, options);
   }
@@ -182,23 +224,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return w.getSince(mark);
   }
 
-  /**
-   * Lazily create registries for types as needed.
-   */
-  register(
-    type: 'ruleset' | 'declaration' | 'mixin' | 'function',
-    node: Node
-  ) {
-    let registry = this[`${type}Registry`];
-    if (!registry) {
-      let className = `${type.charAt(0).toUpperCase()}${type.slice(1)}` as Capitalize<typeof type>;
-      let RegistryClass = Registries[`${className}Registry`];
-      registry = new RegistryClass(this);
-      (this as any)[`${type}Registry`] = registry;
-    }
-    return (registry as any).add(node);
-  }
-
   pendingExtends = new Set<[find: Selector, extendWith: Selector, partial: boolean]>();
 
   constructor(
@@ -230,7 +255,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this._emitRulesBody(childOptions);
     // ensure closing brace is on its own properly indented line
     w.add('\n');
-    if (depth !== 0) { w.add(space); }
+    if (depth !== 0) {
+      w.add(space);
+    }
     w.add('}');
     return w.getSince(mark);
   }
@@ -241,20 +268,26 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const space = ''.padStart(depth * 2);
     const { value } = this;
     const items = value.filter(n => n.visible);
-    if (items.length === 0) { return; }
+    if (items.length === 0) {
+      return;
+    }
 
     // No spacing flags; writer.capture is used where needed
 
     for (let idx = 0; idx < items.length; idx++) {
       const n = items[idx]!;
-      if (idx > 0) { w.add('\n'); }
+      if (idx > 0) {
+        w.add('\n');
+      }
       const isChildRules = n.type === 'Rules';
       if (!isChildRules && depth !== 0) {
         w.add(space);
       }
       // Emit directly to preserve source map segments
       n.toTrimmedString({ ...options, writer: w, depth } as PrintOptions);
-      if (n.requiredSemi && n.options.semi !== false) { w.add(';'); }
+      if (n.requiredSemi && n.options.semi !== false) {
+        w.add(';');
+      }
     }
   }
 
@@ -305,7 +338,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return (this._rulesSet ??= []);
   }
 
-  /** @deprecated - Move to `register` */
   registerNode(node: Node, options?: Record<string, any>) {
     if (isNode(node, 'Rules')) {
       let rulesVisibility = options?.rulesVisibility ?? node.options.rulesVisibility ?? {};
@@ -323,41 +355,93 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       });
     } else if (isNode(node, 'Declaration')) {
       /**
-       * `setDefined` is an immediate mutation of the last found instance
-       *
-       * @todo - This behavior needs to be changed to be aligned with Sass. It should not
-       * mutate the last found instance, and instead should create a new declaration at
-       * the same scope level as the original declaration, but just before where the
-       * current evaluation is at the top level of the current scope.
+       * setDefined works like Sass's !default flag - it finds the original variable
+       * declaration and inserts a new declaration at the same rules level as the
+       * found variable, but before the current nested node.
        */
       if (node.options?.setDefined) {
+        // Skip setDefined logic if we're currently indexing to avoid recursive calls
+        if (this._indexing) {
+          console.log(`[setDefined] Skipping setDefined during indexing for '${node.value.name?.toString()}'`);
+          // We'll handle setDefined after indexing is complete
+          return;
+        }
+
         let key = node.value.name?.toString();
+        console.log(`[setDefined] Looking for variable '${key}' to set`);
         /** Don't set within sibling rules */
         let opts: Registries.FindOptions = {};
         opts.searchParents = true;
         opts.start = node.index;
+        console.log(`[setDefined] Search options: searchParents=${opts.searchParents}, start=${opts.start}`);
         let result = this.find('declaration', key, node.type as 'Declaration', opts);
+        console.log(`[setDefined] Find result for '${key}': ${result ? 'found' : 'not found'}`);
         if (result) {
           if (result.options?.readonly || opts.readonly) {
             throw new ReferenceError(`"${key}" is readonly`);
           }
-          /** Over-write value */
-          result.value.value = node.value.value.copy();
-          /** !important always wins */
-          let important = result.value.important || node.value.important;
-          result.value.important = important;
+
+          // Find the Rules node that contains the found declaration
+          let foundRules: Rules | undefined;
+          let current: Node | undefined = result;
+          while (current && !isNode(current, 'Rules')) {
+            current = current.parent;
+          }
+          foundRules = current as Rules;
+
+          if (!foundRules) {
+            throw new Error(`Could not find parent Rules for declaration '${key}'`);
+          }
+
+          console.log(`[setDefined] Found parent Rules for '${key}', registering new declaration`);
+
+          // Create a new declaration with the same name but our value
+          const newDeclaration = node.copy();
+          newDeclaration.options = { ...newDeclaration.options };
+          newDeclaration.options.setDefined = undefined; // Remove setDefined flag
+
+          // Instead of inserting into the array, just register it in the registry
+          // This way the original declaration keeps its position and index
+          // Assign the new declaration an index that comes after the setDefined declaration
+          // so that only lookups from after the setDefined position will see the new value
+          const originalIndex = result.index;
+          const currentIndex = node.index;
+          const newIndex = currentIndex + 1; // Just after the setDefined declaration
+          newDeclaration.index = newIndex;
+
+          foundRules.register('declaration', newDeclaration);
+
+          console.log(`[setDefined] Successfully registered new declaration for '${key}'`);
         } else {
           throw new ReferenceError(`"${key}" is not defined`);
         }
       }
+
+      /**
+       * Handle conditional assignment (?:) - only register if variable doesn't exist
+       */
+      if (node.options?.assign === '?:') {
+        let key = node.value.name?.toString();
+        let opts: Registries.FindOptions = {};
+        opts.searchParents = true;
+        let result = this.find('declaration', key, node.type as 'Declaration', opts);
+        if (result) {
+          /** Variable already exists, skip registering this declaration */
+          return;
+        }
+      }
+
       this.register('declaration', node);
+    } else if (isNode(node, 'Ruleset')) {
+      this.register('mixin', node);
+    } else if (isNode(node, 'Mixin')) {
+      this.register('mixin', node);
     }
   }
 
   push(node: Node) {
     node.parent = this;
     this.value.push(node);
-    /** @todo - replace with `register` ? */
     this.registerNode(node);
   }
 
@@ -366,33 +450,111 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   /**
-   * Unlike `eval`, preEval of rules within a Rules instance
-   * happens linearly, which helps us assign sequential indexes
-   * while traversing nested rules. The indexes will help us
-   * when searching "upwards" (Sass-style).
+   * Pre-evaluation phase that ensures all nodes are visited and indexed.
+   * This traverses deeply to visit all nodes, but indexes locally.
    */
   override preEval(context: Context) {
     if (!this.preEvaluated) {
       let rules = this.maybeClone(context);
-      /**
-       * Attach this early? Normally the parent will attach
-       * but this causes recursion issues with rules.
-       *
-       * @todo - Should this be added to node.clone()? I need
-       * to think about the implications.
-       */
       rules.preEvaluated = true;
+
+      // Assign index to this rules node if not already set
       if (rules.index === undefined) {
         rules.index = context.ruleCounter++;
       }
-      for (let [, node] of rules) {
+
+      // PreEval all nodes and register them after name resolution
+      for (let i = 0; i < rules.value.length; i++) {
+        const node = rules.value[i]!;
+
+        // Assign index and set up parent relationship
         if (node.index === undefined) {
           node.index = context.ruleCounter++;
         }
+
+        // Always call preEval to ensure deep traversal and name resolution
+        const result = node.preEval(context);
+        if (isThenable(result)) {
+          // Handle async preEval by returning a promise that resolves after all children
+          return result.then((resolvedNode) => {
+            // Update the node if preEval returned a different instance
+            if (resolvedNode !== node) {
+              rules.value[i] = resolvedNode;
+              resolvedNode.parent = rules;
+            }
+
+            // Register the node after preEval (name resolution)
+            rules.registerNode(resolvedNode);
+            if (resolvedNode.type === 'Ruleset') {
+              context.treeRoot?.register('ruleset', resolvedNode as Ruleset<RulesetValue>);
+            }
+
+            // Continue with the rest of the children
+            return this._preEvalRemainingChildren(rules, context, i + 1);
+          });
+        }
+
+        // Update the node if preEval returned a different instance
+        if (result !== node) {
+          rules.value[i] = result;
+          result.parent = rules;
+        }
+
+        // Register the node after preEval (name resolution)
+        rules.registerNode(result);
+        if (result.type === 'Ruleset') {
+          context.treeRoot?.register('ruleset', result as Ruleset<RulesetValue>);
+        }
       }
+
       return rules;
     }
     return this;
+  }
+
+  /**
+   * Helper method to continue preEval'ing remaining children after an async preEval.
+   */
+  private _preEvalRemainingChildren(rules: Rules, context: Context, startIndex: number): MaybePromise<this> {
+    for (let i = startIndex; i < rules.value.length; i++) {
+      const node = rules.value[i]!;
+
+      // Always call preEval to ensure deep traversal and name resolution
+      const result = node.preEval(context);
+      if (isThenable(result)) {
+        // Handle async preEval by returning a promise that resolves after all children
+        return result.then((resolvedNode) => {
+          // Update the node if preEval returned a different instance
+          if (resolvedNode !== node) {
+            rules.value[i] = resolvedNode;
+            resolvedNode.parent = rules;
+          }
+
+          // Register the node after preEval (name resolution)
+          rules.registerNode(resolvedNode);
+          if (resolvedNode.type === 'Ruleset') {
+            context.treeRoot?.register('ruleset', resolvedNode as Ruleset<RulesetValue>);
+          }
+
+          // Continue with the rest of the children
+          return this._preEvalRemainingChildren(rules, context, i + 1);
+        });
+      }
+
+      // Update the node if preEval returned a different instance
+      if (result !== node) {
+        rules.value[i] = result;
+        result.parent = rules;
+      }
+
+      // Register the node after preEval (name resolution)
+      rules.registerNode(result);
+      if (result.type === 'Ruleset') {
+        context.treeRoot?.register('ruleset', result as Ruleset<RulesetValue>);
+      }
+    }
+
+    return rules as this;
   }
 
   /** Save current context roots to restore later */
@@ -430,64 +592,37 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return evalQueue;
   }
 
-  /** Evaluate the built queues in two rounds: preEval then eval */
+  /** Evaluate the built queues in priority order */
   private _evaluateQueue(rules: Rules, evalQueue: EvalQueueMap, context: Context): MaybePromise<boolean> {
     let rulesToHoist = false;
-    const phases: Array<'preEval' | 'eval'> = ['preEval', 'eval'];
     const priorities: Priority[] = Array.from({ length: Priority.Highest + 1 }).map((_, i) => (Priority.Highest - i) as Priority);
-    const phaseRun = serialForEach(phases, (method: 'preEval' | 'eval') => {
-      return serialForEach(priorities, (p: Priority) => {
-        const queue = evalQueue.get(p);
-        if (!queue) {
+    const phaseRun = serialForEach(priorities, (p: Priority) => {
+      const queue = evalQueue.get(p);
+      if (!queue) {
+        return;
+      }
+      const entries: Array<[number, [number, Node]]> = Array.from(queue.entries()) as any;
+      return serialForEach(entries, ([q, item]: [number, [number, Node]]) => {
+        const [idx, rule] = item;
+        /** Var declarations have late evaluation, so they are skipped. */
+        if (isNode(rule, 'VarDeclaration')) {
           return;
         }
-        const entries: Array<[number, [number, Node]]> = Array.from(queue.entries()) as any;
-        return serialForEach(entries, ([q, item]: [number, [number, Node]]) => {
-          const [idx, rule] = item;
-          if (
-            idx === Priority.Highest
-            && method === 'preEval'
-            && isNode(rule, 'Declaration')
-            && (rule as any).value.name instanceof Interpolated
-          ) {
-            let lowQueue = evalQueue.get(Priority.High) ?? [];
-            lowQueue.push([idx, rule]);
-            evalQueue.set(Priority.High, lowQueue);
-            return;
+        const maybeResult = (rule as any).eval(context) as MaybePromise<Node>;
+        const applyResult = (result: Node) => {
+          if (result !== rule) {
+            rules.value[idx] = result;
+            queue[q] = [idx, result];
           }
-          if (method === 'eval' && isNode(rule, 'VarDeclaration')) {
-            return;
+          if (result.options.hoistToRoot) {
+            rulesToHoist = true;
           }
-          const maybeResult = (rule as any)[method](context) as MaybePromise<Node>;
-          const applyResult = (result: Node) => {
-            if (result !== rule) {
-              rules.value[idx] = result;
-              queue[q] = [idx, result];
-            }
-            if (method === 'eval' && result.options.hoistToRoot) {
-              rulesToHoist = true;
-            }
-            if (method === 'preEval') {
-              rules.registerNode(result);
-              let rulesetType = isNode(result, 'Ruleset')
-                ? 'Ruleset'
-                : isNode(result, 'Mixin')
-                  ? 'Mixin'
-                  : undefined;
-              if (rulesetType === 'Ruleset') {
-                context.treeRoot.register('ruleset', result as Ruleset<RulesetValue>);
-                rules.register('mixin', result as Ruleset<RulesetValue>);
-              } else if (rulesetType) {
-                rules.register('mixin', result as Mixin);
-              }
-            }
-          };
-          if (isThenable(maybeResult)) {
-            return (maybeResult as Promise<Node>).then(res => applyResult(res));
-          }
-          applyResult(maybeResult as Node);
-          return;
-        });
+        };
+        if (isThenable(maybeResult)) {
+          return (maybeResult as Promise<Node>).then(res => applyResult(res));
+        }
+        applyResult(maybeResult as Node);
+        return;
       });
     });
     if (isThenable(phaseRun)) {
@@ -533,9 +668,24 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override evalNode(context: Context): MaybePromise<this> {
     const saved = this._snapshotContext(context);
     return pipe(
-      () => this.preEval(context),
-      (rules: Rules) => {
-        this._setupContextForRules(context, rules);
+      () => {
+        this._setupContextForRules(context, this);
+
+        // First, preEval to index and register all nodes
+        const preEvalResult = this.preEval(context);
+        if (isThenable(preEvalResult)) {
+          return preEvalResult.then((rules) => {
+            const evalQueue = this._buildEvalQueue(rules);
+            const maybeHoist = this._evaluateQueue(rules, evalQueue, context);
+            if (isThenable(maybeHoist)) {
+              return (maybeHoist as Promise<boolean>).then(rulesToHoist => ({ rules, rulesToHoist }));
+            }
+            return { rules, rulesToHoist: maybeHoist as boolean };
+          });
+        }
+
+        // Synchronous preEval
+        const rules = preEvalResult;
         const evalQueue = this._buildEvalQueue(rules);
         const maybeHoist = this._evaluateQueue(rules, evalQueue, context);
         if (isThenable(maybeHoist)) {

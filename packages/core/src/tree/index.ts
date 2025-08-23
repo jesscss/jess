@@ -8,7 +8,7 @@
  */
 
 /** Base classes - keep these on top */
-import { Node, type LocationInfo, F_VISIBLE, F_MAY_ASYNC, F_NEEDS_EVALUATION } from './node';
+import { Node, type LocationInfo, F_VISIBLE, F_MAY_ASYNC, F_STATIC, F_NON_STATIC } from './node';
 import { type Operator } from './util/calculate';
 import { Any } from './any';
 import { TreeContext } from '../context';
@@ -43,7 +43,7 @@ Object.defineProperty(Node.prototype, 'treeContext', {
   }
 });
 
-export { Node, TreeContext, type LocationInfo, F_VISIBLE, F_MAY_ASYNC, F_NEEDS_EVALUATION };
+export { Node, TreeContext, type LocationInfo, F_VISIBLE, F_MAY_ASYNC, F_STATIC, F_NON_STATIC };
 
 import { Selector } from './selector';
 import { matchSelectors } from './util/find-extendable-locations';

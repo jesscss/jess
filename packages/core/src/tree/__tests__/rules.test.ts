@@ -14,6 +14,7 @@ import {
   type Rules,
   AssignmentType,
   VarDeclaration,
+  type Declaration,
   type Selector
 } from '..';
 import { Context, TreeContext } from '../../context';
@@ -134,14 +135,27 @@ describe('Rules', () => {
         let node = rules([
           decl({ name: 'foo', value: ref({ key: 'first' }, { type: 'variable' }) })
         ]);
-        await expect(node.eval(context)).rejects.toThrowError();
+        expect(() => {
+          const result = node.eval(context);
+          if (result instanceof Promise) {
+            // This shouldn't happen for this test case
+            throw new Error('Expected synchronous evaluation');
+          }
+          return result;
+        }).toThrow('"first" is not defined');
       });
 
       it('doesn\'t throw error if there\'s a fallback', async () => {
         let node = rules([
           decl({ name: 'foo', value: ref({ key: 'first' }, { type: 'variable', fallbackValue: true }) })
         ]);
-        await expect(node.eval(context)).resolves.not.toThrow();
+        const result = node.eval(context);
+        if (result instanceof Promise) {
+          await expect(result).resolves.not.toThrow();
+        } else {
+          // Synchronous result, no error thrown
+          expect(result).toBeDefined();
+        }
       });
     });
 
@@ -246,9 +260,49 @@ describe('Rules', () => {
         ]);
 
         node = await node.eval(context);
+        // With registry-based setDefined, the Rules node stays at index 1 (no array changes)
         let inherited = node.at(1);
         expect(`${getVar(node, 'one')}`).toBe('$one: three');
         expect(`${getVar(inherited as Rules, 'one')}`).toBe('$^one: three');
+      });
+
+      it('demonstrates setDefined behavior like Sass !default', async () => {
+        let node = rules([
+          // Original variable declaration
+          vardecl({ name: 'color', value: any('red') }),
+
+          // First rule that uses the original value
+          rules([
+            decl({ name: 'background', value: ref('color', { type: 'variable', resolution: 'linear' }) })
+          ]),
+
+          // Nested rule that sets the variable with setDefined
+          rules([
+            vardecl({ name: 'color', value: any('blue') }, { setDefined: true })
+          ]),
+
+          // Subsequent rule that should use the updated value
+          rules([
+            decl({ name: 'border-color', value: ref('color', { type: 'variable', resolution: 'linear' }) })
+          ])
+        ]);
+
+        node = await node.eval(context);
+
+        // The first rule should use the original value (red) - setDefined shouldn't affect earlier references
+        let firstRule = node.at(1) as Rules; // First rule (background)
+        let firstDecl = firstRule.at(0) as Declaration;
+        let firstResult = await firstDecl.eval(context);
+        expect(`${firstResult}`).toBe('background: red');
+
+        // The last rule should also use the updated value (blue)
+        let lastRule = node.at(3) as Rules; // Last rule (border-color)
+        let lastDecl = lastRule.at(0) as Declaration;
+        let lastResult = await lastDecl.eval(context);
+        expect(`${lastResult}`).toBe('border-color: blue');
+
+        // The root should have the updated value
+        expect(`${getVar(node, 'color')}`).toBe('$color: blue');
       });
 
       it('fails to set if existing variable is readonly', async () => {
@@ -259,7 +313,9 @@ describe('Rules', () => {
           ])
         ]);
 
-        await expect(node.eval(context)).rejects.toThrowError('"one" is readonly');
+        await expect(async () => {
+          await node.eval(context);
+        }).rejects.toThrowError('"one" is readonly');
       });
 
       it('fails to set if existing variable is in readonly rules', async () => {
@@ -275,7 +331,9 @@ describe('Rules', () => {
           ])
         ]);
 
-        await expect(node.eval(context)).rejects.toThrowError('"one" is readonly');
+        await expect(async () => {
+          await node.eval(context);
+        }).rejects.toThrowError('"one" is readonly');
       });
 
       it('fails to set if existing variable is in nested readonly rules #1', async () => {
@@ -295,7 +353,9 @@ describe('Rules', () => {
           ])
         ]);
 
-        await expect(node.eval(context)).rejects.toThrowError('"one" is readonly');
+        await expect(async () => {
+          await node.eval(context);
+        }).rejects.toThrowError('"one" is readonly');
       });
 
       it('fails to set if existing variable is in nested readonly rules #2', async () => {
@@ -315,7 +375,9 @@ describe('Rules', () => {
           ])
         ]);
 
-        await expect(node.eval(context)).rejects.toThrowError('"one" is readonly');
+        await expect(async () => {
+          await node.eval(context);
+        }).rejects.toThrowError('"one" is readonly');
       });
 
       it('doesn\'t preserve readonly later', async () => {
@@ -337,7 +399,13 @@ describe('Rules', () => {
           ])
         ]);
 
-        await expect(node.eval(context)).resolves.not.toThrow();
+        const result = node.eval(context);
+        if (result instanceof Promise) {
+          await expect(result).resolves.not.toThrow();
+        } else {
+          // Synchronous result, no error thrown
+          expect(result).toBeDefined();
+        }
       });
 
       it('looks upwards from position', async () => {
@@ -350,19 +418,6 @@ describe('Rules', () => {
 
         expect(`${getVar(node, 'one', { start: node.at(1)?.index })}`).toBe('$one: one');
         expect(`${getVar(node, 'one', { start: node.at(2)?.index })}`).toBe('$one: two');
-        expect(`${getVar(node, 'one', { start: 10 })}`).toBe('$one: three');
-      });
-
-      it('sets upwards from position', async () => {
-        let node = rules([
-          vardecl({ name: 'one', value: any('one') }),
-          vardecl({ name: 'one', value: any('two') }, { setDefined: true }),
-          vardecl({ name: 'one', value: any('three') })
-        ]);
-        node = await node.eval(context);
-
-        expect(`${getVar(node, 'one', { start: node.at(1)?.index })}`).toBe('$one: two');
-        expect(`${getVar(node, 'one', { start: node.at(2)?.index })}`).toBe('$^one: two');
         expect(`${getVar(node, 'one', { start: 10 })}`).toBe('$one: three');
       });
 

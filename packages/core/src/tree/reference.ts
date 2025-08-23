@@ -1,4 +1,4 @@
-import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NEEDS_EVALUATION, type LocationInfo } from './node';
+import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, type LocationInfo } from './node';
 import type { Context, TreeContext } from '../context';
 import { cast } from './util/cast';
 import type { FindOptions } from './util/registry-utils';
@@ -69,7 +69,7 @@ type ReferenceParams = ConstructorParameters<NodeType>;
 export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   type = 'Reference';
   shortType = 'ref';
-  override state = F_MAY_ASYNC | F_VISIBLE | F_NEEDS_EVALUATION;
+  override state = F_MAY_ASYNC | F_VISIBLE | F_NON_STATIC;
 
   constructor(value: ReferenceValue | string, options?: ReferenceOptions, location?: LocationInfo, treeContext?: TreeContext) {
     if (typeof value === 'string') {
@@ -93,11 +93,17 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     let { type = 'variable', resolution, fallbackValue } = this.options;
     let { target, key } = this.value;
     const emitKey = (k: any) => {
-      if (typeof k === 'string' || typeof k === 'number') w.add(String(k), this);
-      else if (k instanceof Node) k.toString(options);
-      else w.add(String(k));
+      if (typeof k === 'string' || typeof k === 'number') {
+        w.add(String(k), this);
+      } else if (k instanceof Node) {
+        k.toString(options);
+      } else {
+        w.add(String(k));
+      }
     };
-    if (target) target.toString(options);
+    if (target) {
+      target.toString(options);
+    }
     if (resolution === 'linear') {
       w.add('^');
     }
@@ -162,6 +168,35 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         originalFilter ??= () => true;
         const filter = (n: Node) => originalFilter!(n) && !context.searchScope.has(n);
         const opts: FindOptions = { filter };
+
+        if (this.options.resolution === 'linear') {
+          // For linear resolution, climb up the parent chain until we find a node with a Rules parent
+          // and use that node's index for linear lookup
+          let startIndex = this.index;
+          let currentNode: Node | undefined = this;
+
+          // If this node doesn't have an index, climb up until we find one
+          if (startIndex === undefined) {
+            while (currentNode && startIndex === undefined) {
+              currentNode = currentNode.parent;
+              if (currentNode) {
+                startIndex = currentNode.index;
+              }
+            }
+          }
+
+          // Now climb up until we find a node that has a Rules parent
+          while (currentNode && currentNode.parent && !isNode(currentNode.parent, 'Rules')) {
+            currentNode = currentNode.parent;
+            if (currentNode && currentNode.index !== undefined) {
+              startIndex = currentNode.index;
+            }
+          }
+
+          if (startIndex !== undefined) {
+            opts.start = startIndex;
+          }
+        }
         let returnVal: any;
         switch (type) {
           case 'index':

@@ -108,7 +108,8 @@ export type NoOverride<T> = Tagged<T, 'NoOverride'>;
 // Node state flags as bitmask
 export const F_VISIBLE = 0b1;
 export const F_MAY_ASYNC = 0b10;
-export const F_NEEDS_EVALUATION = 0b100;
+export const F_STATIC = 0b100;
+export const F_NON_STATIC = 0b1000;
 
 // Default state: only visible is true
 export const F_DEFAULT = F_VISIBLE;
@@ -172,6 +173,8 @@ export abstract class Node<
 
   /** Runtime tracking: has preEval been run on this node? */
   preEvaluated = false;
+  /** Runtime tracking: has eval been run on this node? */
+  evaluated = false;
 
   getState(flag: number) {
     return (this.state & flag) === flag;
@@ -187,14 +190,6 @@ export abstract class Node<
 
   get visible() {
     return this.getState(F_VISIBLE);
-  }
-
-  get evaluated() {
-    return !this.getState(F_NEEDS_EVALUATION);
-  }
-
-  set evaluated(value: boolean) {
-    this.setState(F_NEEDS_EVALUATION, !value);
   }
 
   declare renderInvisible: boolean;
@@ -360,13 +355,13 @@ export abstract class Node<
    *
    * Processed nodes must always return a Node.
    */
-  forEachNode(func: (n: Node) => MaybePromise<Node>) {
-    const steps: Array<(x: void) => void | Promise<void>> = [...getEntriesFromNode(this as { value: unknown[] })].map(([value, key, collection]) => {
+  forEachNode(func: (n: Node, idx?: number) => MaybePromise<Node>) {
+    const steps: Array<(x: void) => void | Promise<void>> = [...getEntriesFromNode(this as { value: unknown[] })].map(([value, key, collection], idx) => {
       return (_: void) => {
         if (!(value instanceof Node)) {
           return;
         }
-        const out = func(value);
+        const out = func(value, idx);
         if (isThenable(out)) {
           return (out as Promise<Node>).then((result) => {
             collection[key] = result;
@@ -571,7 +566,15 @@ export abstract class Node<
    */
   preEval(context: Context): MaybePromise<this> {
     this.preEvaluated = true;
-    return this;
+    return pipe(
+      () => this.forEachNode(n => n.preEval(context)),
+      (out) => {
+        if (isThenable(out)) {
+          return (out as Promise<void>).then(() => this);
+        }
+        return this;
+      }
+    );
   }
 
   /**
@@ -597,21 +600,20 @@ export abstract class Node<
     let returnNode: Node = node;
     return pipe(
       () => {
-        if (returnNode.getState(F_NEEDS_EVALUATION) && !returnNode.preEvaluated) {
+        if (!returnNode.preEvaluated) {
           return returnNode.preEval(context);
         }
         return returnNode;
       },
       (returnNode) => {
         returnNode.preEvaluated = true;
-        if (returnNode.getState(F_NEEDS_EVALUATION)) {
+        if (!returnNode.evaluated) {
           return returnNode.evalNode(context);
         }
         return returnNode;
       },
       (returnNode) => {
-        // Clear the NEEDS_EVALUATION flag
-        returnNode.state &= ~F_NEEDS_EVALUATION;
+        returnNode.evaluated = true;
         if (returnNode !== node) {
           returnNode.inherit(node);
         }
@@ -676,7 +678,9 @@ export abstract class Node<
     const mark = w.mark();
     let value = this[key];
     if (value === undefined) {
-      if (defaultVal) w.add(defaultVal);
+      if (defaultVal) {
+        w.add(defaultVal);
+      }
       return w.getSince(mark);
     } else if (value === 0) {
       return '';
@@ -691,7 +695,9 @@ export abstract class Node<
           node.toString(options);
         } else {
           const s = String(node);
-          if (stripWS && /^\s+$/.test(s)) continue;
+          if (stripWS && /^\s+$/.test(s)) {
+            continue;
+          }
           w.add(s);
         }
       }
@@ -757,7 +763,9 @@ export abstract class Node<
         value.toString(options);
       } else {
         const s = value === undefined ? '' : String(value);
-        if (s) w.add(s, this);
+        if (s) {
+          w.add(s, this);
+        }
       }
     }
     return w.getSince(mark);

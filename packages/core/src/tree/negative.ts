@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, F_NEEDS_EVALUATION } from './node';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC } from './node';
 import type { Context } from '../context';
 import { Dimension } from './dimension';
 import { type MaybePromise, pipe, tryStep } from '@jesscss/awaitable-pipe';
@@ -13,7 +13,7 @@ export interface Negative extends Node<Node> {
 export class Negative extends Node<Node> {
   type = 'Negative' as const;
   shortType = 'negative' as const;
-  override state = F_VISIBLE | F_NEEDS_EVALUATION;
+  override state = F_VISIBLE | F_NON_STATIC;
 
   override evalNode(context: Context): MaybePromise<Node> {
     return pipe(

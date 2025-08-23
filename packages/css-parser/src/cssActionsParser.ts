@@ -25,7 +25,8 @@ import {
   Rules,
   Any,
   type Nil,
-  F_NEEDS_EVALUATION,
+  F_STATIC,
+  F_NON_STATIC,
   F_MAY_ASYNC
 } from '@jesscss/core';
 import type { CssErrorMessageProvider } from './cssErrorMessageProvider';
@@ -75,6 +76,7 @@ export type RuleContext = {
 export class CssActionsParser extends AdvancedActionsParser {
   T: TokenMap;
   legacyMode: boolean;
+  ruleIndex = 0;
 
   declare _errors: Array<IRecognitionException>;
   /** Expose Chevrotain's flag */
@@ -205,6 +207,11 @@ export class CssActionsParser extends AdvancedActionsParser {
     if (this.constructor === CssActionsParser) {
       this.performSelfAnalysis();
     }
+  }
+
+  set input(value: IToken[]) {
+    this.ruleIndex = 0;
+    super.input = value;
   }
 
   protected getLocationFromNodes(nodes: Array<IToken | Node>): LocationInfo | undefined {
@@ -460,9 +467,13 @@ export class CssActionsParser extends AdvancedActionsParser {
     if (node.getState(F_MAY_ASYNC)) {
       ctx.nodeState = (ctx.nodeState || 0) | F_MAY_ASYNC;
     }
-    if (node.getState(F_NEEDS_EVALUATION)) {
-      ctx.nodeState = (ctx.nodeState || 0) | F_NEEDS_EVALUATION;
+    if (node.getState(F_STATIC)) {
+      ctx.nodeState = (ctx.nodeState || 0) | F_STATIC;
     }
+    if (node.getState(F_NON_STATIC)) {
+      ctx.nodeState = (ctx.nodeState || 0) | F_NON_STATIC;
+    }
+    node.index = this.ruleIndex++;
     return node;
   }
 
@@ -483,6 +494,7 @@ export class CssActionsParser extends AdvancedActionsParser {
   public rule<T = any>(ctx: RuleContext, overrides: Partial<RuleContext>, fn: (ctx: RuleContext) => T): T;
   public rule<T = any>(ctx: RuleContext, fn: (ctx: RuleContext) => T): T;
   public rule<T>(a: any, b: any, c?: any, d?: any): T {
+    let index = this.ruleIndex++;
     let idx: 0 | 1 | 2 | 3 | 4 | 5 = 0 as 0;
     let ctx: RuleContext;
     let overrides: Partial<RuleContext> | undefined;
@@ -564,9 +576,13 @@ export class CssActionsParser extends AdvancedActionsParser {
       } else {
         ctx.nodeState = prevNodeState || 0;
       }
-      if (result.getState(F_NEEDS_EVALUATION)) {
-        ctx.nodeState = (ctx.nodeState || 0) | F_NEEDS_EVALUATION;
+      if (result.getState(F_STATIC)) {
+        ctx.nodeState = (ctx.nodeState || 0) | F_STATIC;
       }
+      if (result.getState(F_NON_STATIC)) {
+        ctx.nodeState = (ctx.nodeState || 0) | F_NON_STATIC;
+      }
+      result.index = index;
     } else {
       // No result node, just restore previous state
       ctx.nodeState = prevNodeState || 0;

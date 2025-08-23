@@ -1,9 +1,7 @@
-import { Node, F_VISIBLE, defineType } from './node';
+import { Node, F_VISIBLE, F_NON_STATIC, defineType } from './node';
 import type { Condition } from './condition';
 import { type List } from './list';
-import type { Rest } from './rest';
 import type { Any, AnyRole } from './any';
-import { type VarDeclaration } from './declaration-var';
 import type { Rules } from './rules';
 import { Interpolated } from './interpolated';
 import type { Context } from '../context';
@@ -83,6 +81,7 @@ export type MixinOptions = {
 export class Mixin extends Node<MixinValue, MixinOptions> {
   type = 'Mixin';
   shortType = 'mixin';
+  override state = F_VISIBLE | F_NON_STATIC;
   // Mixin has preEval method but doesn't need to set flags - preEvaluated is tracked as boolean
 
   /** Return a selector-like keySet */
@@ -108,7 +107,9 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     const mark = w.mark();
     w.add(`${name}`);
     w.add('(');
-    if (params) { params.toString(options); }
+    if (params) {
+      params.toString(options);
+    }
     w.add(')');
     if (guard) {
       w.add(' when ');
@@ -129,7 +130,9 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   }
 
   override preEval(context: Context): MaybePromise<this> {
-    if (this.preEvaluated) { return this; }
+    if (!this.preEvaluated) {
+      return super.preEval(context);
+    }
     let node = this.maybeClone(context);
     node.preEvaluated = true;
     let { name } = node.value;

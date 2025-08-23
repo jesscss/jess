@@ -1,4 +1,4 @@
-import { type Node, F_MAY_ASYNC, F_VISIBLE, F_NEEDS_EVALUATION, defineType } from './node';
+import { type Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, defineType } from './node';
 import { Any, type AnyRole, type AnyOptions } from './any';
 import type { Context } from '../context';
 import { isNode } from './util/is-node';
@@ -46,7 +46,7 @@ export class Interpolated<
 > extends SimpleSelector<InterpolatedValue, AnyOptions<Role>> {
   type = 'Interpolated' as const;
   shortType = 'interpolated' as const;
-  override state = F_VISIBLE | F_MAY_ASYNC | F_NEEDS_EVALUATION;
+  override state = F_VISIBLE | F_MAY_ASYNC | F_NON_STATIC;
 
   override valueOf(): string {
     return this.value.source;

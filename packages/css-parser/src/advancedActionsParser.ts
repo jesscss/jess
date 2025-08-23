@@ -93,7 +93,9 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
     let valueLength = value.length;
     let prevToken: IToken | undefined;
     const isSkippedToken = (t?: IToken) => {
-      if (!t) return false;
+      if (!t) {
+        return false;
+      }
       const name = t.tokenType.name;
       return t.tokenType.LABEL === SKIPPED_LABEL || name === WS_NAME || /Comment/i.test(name);
     };

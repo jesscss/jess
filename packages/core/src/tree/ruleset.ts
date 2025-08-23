@@ -121,7 +121,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     // Helper to check for ampersand in a selector's nodes
     const hasAmpersand = (sel: Selector) => {
       for (const node of sel.nodes()) {
-        if (isNode(node, 'Ampersand')) return true;
+        if (isNode(node, 'Ampersand')) {
+          return true;
+        }
       }
 
       return false;

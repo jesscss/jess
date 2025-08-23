@@ -1,4 +1,4 @@
-import { Node, defineType, type LocationInfo, type TreeContext, F_VISIBLE, F_NEEDS_EVALUATION, F_MAY_ASYNC } from './node';
+import { Node, defineType, type LocationInfo, type TreeContext, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC } from './node';
 import { type List } from './list';
 import { type Context } from '../context';
 import { isNode } from './util/is-node';
@@ -51,7 +51,7 @@ export class Call extends Node<CallValue, CallOptions> {
   type = 'Call' as const;
   shortType = 'call' as const;
   override _requiredSemi = true;
-  override state = F_VISIBLE | F_NEEDS_EVALUATION | F_MAY_ASYNC;
+  override state = F_VISIBLE | F_NON_STATIC | F_MAY_ASYNC;
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);

@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, F_NEEDS_EVALUATION } from './node';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC } from './node';
 import type { Context } from '../context';
 import type { Operator } from './util/calculate';
 import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
@@ -17,7 +17,7 @@ export type OperationValue = [
 export class Operation extends Node<OperationValue> {
   type = 'Operation' as const;
   shortType = 'op' as const;
-  override state = F_VISIBLE | F_NEEDS_EVALUATION;
+  override state = F_VISIBLE | F_NON_STATIC;
 
   override evalNode(context: Context): MaybePromise<Node> {
     let n = this.maybeClone(context);

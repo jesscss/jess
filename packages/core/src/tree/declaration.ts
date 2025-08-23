@@ -110,7 +110,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
       value.processPrePost('post', '', options);
       if (!isNode(value, 'Collection')) {
-        if (important) w.add(`${important}`);
+        if (important) {
+          w.add(`${important}`);
+        }
       }
     }
     return w.getSince(mark);
@@ -121,7 +123,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override preEval(context: Context): MaybePromise<this> {
-    if (this.preEvaluated) return this;
+    if (!this.preEvaluated) {
+      return super.preEval(context);
+    }
     /** We need to clone declarations, because we alter their options */
     let node = this.clone();
     node.preEvaluated = true;
@@ -177,6 +181,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         }
         node.options.assign = AssignmentType.Default;
       }
+      const out = node.value.value.preEval(context);
+      if (isThenable(out)) {
+        return out.then((value) => {
+          node.value.value = value;
+          return node;
+        });
+      }
+      node.value.value = out;
       return node;
     };
 

@@ -1,5 +1,5 @@
 import { type Context } from '../context';
-import { F_NEEDS_EVALUATION, F_VISIBLE, Node, defineType } from './node';
+import { F_NON_STATIC, F_VISIBLE, Node, defineType } from './node';
 import { Bool } from './bool';
 import { Nil } from './nil';
 import { type PrintOptions, getPrintOptions } from './util/print';
@@ -27,7 +27,7 @@ export interface Condition extends Node<ConditionValue, ConditionOptions> {
 export class Condition extends Node<ConditionValue, ConditionOptions> {
   type = 'Condition' as const;
   shortType = 'condition' as const;
-  override state = F_VISIBLE | F_NEEDS_EVALUATION;
+  override state = F_VISIBLE | F_NON_STATIC;
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
@@ -35,8 +35,12 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     const mark = w.mark();
     let [left, op, right] = this.value;
     const needsParens = Boolean(right || this.options?.negate);
-    if (this.options?.negate) w.add('not ');
-    if (needsParens) w.add('(');
+    if (this.options?.negate) {
+      w.add('not ');
+    }
+    if (needsParens) {
+      w.add('(');
+    }
     left.toString(options);
     if (op && right) {
       w.add(' ');
@@ -44,7 +48,9 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
       w.add(' ');
       right.toString(options);
     }
-    if (needsParens) w.add(')');
+    if (needsParens) {
+      w.add(')');
+    }
     return w.getSince(mark);
   }
 

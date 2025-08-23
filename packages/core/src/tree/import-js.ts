@@ -1,4 +1,4 @@
-import { F_MAY_ASYNC, F_NEEDS_EVALUATION, Node, defineType } from './node';
+import { F_MAY_ASYNC, F_NON_STATIC, Node, defineType } from './node';
 import { type Quoted } from './quoted';
 
 /**
@@ -25,7 +25,7 @@ export type JsImportValue = {
 export class JsImport extends Node<JsImportValue, JsImportOptions> {
   type = 'JsImport' as const;
   shortType = 'js' as const;
-  override state = F_MAY_ASYNC | F_NEEDS_EVALUATION;
+  override state = F_MAY_ASYNC | F_NON_STATIC;
 }
 
 export const js = defineType<JsImportValue>(JsImport, 'JsImport', 'js');
