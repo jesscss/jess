@@ -3,7 +3,7 @@ import { mathHelper } from '../util/mathHelper';
 
 export default defineFunction(
   'ceil',
-  function({ value }: { value: Dimension | number }) {
+  function(value: Dimension | number) {
     return mathHelper(Math.ceil, ['value'], undefined, value);
   },
   {

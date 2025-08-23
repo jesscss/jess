@@ -10,14 +10,9 @@ import { getColorFunctionValues } from '../util/get-color-func-values';
 
 const rgb = defineFunction(
   'rgb',
-  function(this: Context, { r, g, b }: { r: Node; g: Node; b: Node }) {
+  function(this: Context, r: Node, g: Node, b: Node) {
     const values = getColorFunctionValues(r, g, b);
-    return rgba.call(this, {
-      r: values[0],
-      g: values[1],
-      b: values[2],
-      a: values[3]
-    });
+    return rgba.call(this, values[0], values[1], values[2], values[3]);
   },
   {
     params: [{

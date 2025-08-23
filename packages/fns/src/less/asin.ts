@@ -3,7 +3,7 @@ import { mathHelper } from '../util/mathHelper';
 
 export default defineFunction(
   'asin',
-  function({ value }: { value: Dimension | number }) {
+  function(value: Dimension | number) {
     return mathHelper(Math.asin, ['value'], 'rad', value);
   },
   {

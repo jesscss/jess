@@ -4,7 +4,7 @@ import lodashRound from 'lodash-es/round';
 
 export default defineFunction(
   'round',
-  function({ value, precision = 0 }: { value: Dimension | number; precision?: Dimension | number }) {
+  function(value: Dimension | number, precision: Dimension | number = 0) {
     return mathHelper(lodashRound, ['value', 'precision'], undefined, value, precision);
   },
   {

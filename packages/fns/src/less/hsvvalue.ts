@@ -1,9 +1,15 @@
 import { toHSV } from '../util/to-hsv';
-import { type Color, Dimension } from '@jesscss/core';
+import { Color, defineFunction, Num } from '@jesscss/core';
 
-export default function hsvvalue(color: Color) {
-  return new Dimension([
-    toHSV(color).v * 100,
-    '%'
-  ]);
-}
+export default defineFunction(
+  'hsvvalue',
+  function(color: Color) {
+    return new Num(toHSV(color).v * 100);
+  },
+  {
+    params: [{
+      name: 'color',
+      type: Color
+    }]
+  }
+);

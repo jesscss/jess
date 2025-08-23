@@ -1,6 +1,7 @@
 import { colorBlend } from '../util/colorHelper';
 import { multiplyBase } from './multiply';
 import { screenBase } from './screen';
+import { Color, defineFunction } from '@jesscss/core';
 
 export function overlayBase(cb: number, cs: number) {
   cb *= 2;
@@ -9,4 +10,20 @@ export function overlayBase(cb: number, cs: number) {
     : screenBase(cb - 1, cs);
 }
 
-export default colorBlend.bind(null, overlayBase);
+const overlay = defineFunction(
+  'overlay',
+  function(color1: Color, color2: Color) {
+    return colorBlend(overlayBase, color1, color2);
+  },
+  {
+    params: [{
+      name: 'color1',
+      type: Color
+    }, {
+      name: 'color2',
+      type: Color
+    }]
+  }
+);
+
+export default overlay;

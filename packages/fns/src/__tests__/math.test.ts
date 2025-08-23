@@ -20,50 +20,50 @@ let dim: Dimension;
 describe('math', () => {
   beforeAll(() => {
     context = new Context();
-    dim = new Dimension([2.4, 'px']);
+    dim = new Dimension({ number: 2.4, unit: 'px' });
   });
   it('rejects a non-dimension', () => {
     // @ts-expect-error - incorrect type
-    expect(() => floor('1')).toThrowError('"value" argument must be numeric');
+    expect(() => floor('1')).toThrowError('Argument \'value\' must be one of:');
   });
 
   test('abs', () => {
-    expect(abs.call(context, new Dimension([-2.4, 'px']))).toEqual(new Dimension([2.4, 'px']));
+    expect(abs(new Dimension({ number: -2.4, unit: 'px' }))).toEqual(new Dimension({ number: 2.4, unit: 'px' }));
   });
 
   test('acos', () => {
-    expect(acos.call(context, new Dimension([0.5, 'px']))).toEqual(new Dimension([1.0471975511965979, 'rad']));
+    expect(acos(new Dimension({ number: 0.5, unit: 'px' }))).toEqual(new Dimension({ number: 1.0471975511965979, unit: 'rad' }));
   });
 
   test('asin', () => {
-    expect(asin.call(context, new Dimension([0.5, 'px']))).toEqual(new Dimension([0.5235987755982989, 'rad']));
+    expect(asin(new Dimension({ number: 0.5, unit: 'px' }))).toEqual(new Dimension({ number: 0.5235987755982989, unit: 'rad' }));
   });
 
   test('atan', () => {
-    expect(atan.call(context, new Dimension([0.5, 'px']))).toEqual(new Dimension([0.4636476090008061, 'rad']));
+    expect(atan(new Dimension({ number: 0.5, unit: 'px' }))).toEqual(new Dimension({ number: 0.4636476090008061, unit: 'rad' }));
   });
 
   test('ceil', () => {
-    expect(ceil.call(context, dim)).toEqual(new Dimension([3, 'px']));
+    expect(ceil(dim)).toEqual(new Dimension({ number: 3, unit: 'px' }));
   });
 
   test('cos', () => {
-    expect(cos.call(context, dim)).toEqual(new Dimension([-0.7373937155412454, '']));
+    expect(cos(dim)).toEqual(new Dimension({ number: -0.7373937155412454, unit: '' }));
   });
 
   test('floor', () => {
-    expect(floor.call(context, dim)).toEqual(new Dimension([2, 'px']));
+    expect(floor(dim)).toEqual(new Dimension({ number: 2, unit: 'px' }));
   });
 
   test('sin', () => {
-    expect(sin.call(context, dim)).toEqual(new Dimension([0.675463180551151, '']));
+    expect(sin(dim)).toEqual(new Dimension({ number: 0.675463180551151, unit: '' }));
   });
 
   test('sqrt', () => {
-    expect(sqrt.call(context, dim)).toEqual(new Dimension([1.5491933384829668, 'px']));
+    expect(sqrt(dim)).toEqual(new Dimension({ number: 1.5491933384829668, unit: 'px' }));
   });
 
   test('tan', () => {
-    expect(tan.call(context, dim)).toEqual(new Dimension([-0.9160142896734107, '']));
+    expect(tan(dim)).toEqual(new Dimension({ number: -0.9160142896734107, unit: '' }));
   });
 });

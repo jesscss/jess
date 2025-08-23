@@ -5,7 +5,7 @@ import { Node, Quoted, defineFunction } from '@jesscss/core';
  */
 const e = defineFunction(
   'e',
-  function({ value }: { value: Node }) {
+  function(value: Node) {
     if (value instanceof Quoted) {
       return value.value;
     }

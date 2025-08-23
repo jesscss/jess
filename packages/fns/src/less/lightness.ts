@@ -1,9 +1,15 @@
 import { toHSL } from '../util/to-hsl';
-import { type Color, Dimension } from '@jesscss/core';
+import { Color, defineFunction, Num } from '@jesscss/core';
 
-export default function lightness(color: Color) {
-  return new Dimension([
-    toHSL(color).l * 100,
-    '%'
-  ]);
-}
+export default defineFunction(
+  'lightness',
+  function(color: Color) {
+    return new Num(toHSL(color).l * 100);
+  },
+  {
+    params: [{
+      name: 'color',
+      type: Color
+    }]
+  }
+);

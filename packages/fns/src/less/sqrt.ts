@@ -3,7 +3,7 @@ import { mathHelper } from '../util/mathHelper';
 
 export default defineFunction(
   'sqrt',
-  function({ value }: { value: Dimension | number }) {
+  function(value: Dimension | number) {
     return mathHelper(Math.sqrt, ['value'], undefined, value);
   },
   {

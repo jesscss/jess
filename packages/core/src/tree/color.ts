@@ -7,7 +7,7 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 type ColorValues = [number, number, number, number] | number[];
 
-export const enum ColorFormat {
+export enum ColorFormat {
   HEX,
   RGB,
   HSL

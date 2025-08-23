@@ -1,14 +1,13 @@
-import { isPlainObject } from 'lodash-es';
+import isPlainObject from 'lodash-es/isPlainObject';
 import { AbstractClass, Class, OmitIndexSignature } from 'type-fest';
 import { isNode } from './tree/util/is-node';
 import type { Context } from './context';
 import { isThenable } from '@jesscss/awaitable-pipe';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import { Node, F_VISIBLE, F_NEEDS_EVALUATION } from './tree/node';
 
 export type PrimitiveType = 'string' | 'number' | 'boolean' | 'null' | 'undefined';
 export type ArgType = PrimitiveType | Class<any> | AbstractClass<any>;
-
+export type Lazy<T> = () => MaybePromise<T>;
 export type DefineFunctionOptions = {
   params: readonly {
     name: string;
@@ -41,6 +40,18 @@ type GetArgType<T extends ArgType> =
               ? InstanceType<T>
               : never;
 
+// Helper type to get the inferred type from a parameter definition, accounting for lazy
+type GetParamType<T extends DefineFunctionOptions['params'][number]> =
+  T extends { lazy: true; type: infer A extends ArgType }
+    ? Lazy<GetArgType<A>>
+    : T extends { lazy: true; type: readonly ArgType[] }
+      ? Lazy<GetArgType<T['type'][number]>>
+      : T extends { type: infer A extends ArgType }
+        ? GetArgType<A>
+        : T extends { type: readonly ArgType[] }
+          ? GetArgType<T['type'][number]>
+          : never;
+
 /** This should be getting only required types but it doesn't? */
 type GetBaseRecordType<T extends DefineFunctionOptions['params']> = (
   OmitIndexSignature<{
@@ -49,11 +60,9 @@ type GetBaseRecordType<T extends DefineFunctionOptions['params']> = (
       : T[K] extends { name: infer N extends string }
         ? N
         : never]:
-    T[K] extends { type: infer A extends ArgType }
-      ? GetArgType<A>
-      : T[K] extends { type: readonly ArgType[] }
-        ? GetArgType<T[K]['type'][number]>
-        : never;
+    T[K] extends DefineFunctionOptions['params'][number]
+      ? GetParamType<T[K]>
+      : never;
   }>
 );
 
@@ -65,18 +74,14 @@ type GetOptionalRecordType<T extends DefineFunctionOptions['params']> = {
     : never]?:
   T[K] extends { rest: true }
     ? (
-        T[K] extends { type: infer A extends ArgType }
-          ? GetArgType<A>[]
-          : T[K] extends { type: readonly ArgType[] }
-            ? GetArgType<T[K]['type'][number]>[]
-            : never
+        T[K] extends DefineFunctionOptions['params'][number]
+          ? GetParamType<T[K]>[]
+          : never
       )
     : (
-        T[K] extends { type: infer A extends ArgType }
-          ? GetArgType<A>
-          : T[K] extends { type: readonly ArgType[] }
-            ? GetArgType<T[K]['type'][number]>
-            : never
+        T[K] extends DefineFunctionOptions['params'][number]
+          ? GetParamType<T[K]>
+          : never
       );
 };
 
@@ -91,16 +96,12 @@ type GetPositionalTypes<
 > = T extends readonly [infer First, ...infer Rest]
   ? Rest extends DefineFunctionOptions['params']
     ? First extends { optional: true } | { default: any }
-      ? First extends { type: infer A extends ArgType }
-        ? [(GetArgType<A> | (P & GetRecordType<T>))?, ...GetPositionalTypes<Rest, P>]
-        : First extends { type: readonly ArgType[] }
-          ? [(GetArgType<First['type'][number]> | (P & GetRecordType<T>))?, ...GetPositionalTypes<Rest, P>]
-          : never
-      : First extends { type: infer A extends ArgType }
-        ? [GetArgType<A> | (P & GetRecordType<T>), ...GetPositionalTypes<Rest, P>]
-        : First extends { type: readonly ArgType[] }
-          ? [GetArgType<First['type'][number]> | (P & GetRecordType<T>), ...GetPositionalTypes<Rest, P>]
-          : never
+      ? First extends DefineFunctionOptions['params'][number]
+        ? [(GetParamType<First> | (P & GetRecordType<T>))?, ...GetPositionalTypes<Rest, P>]
+        : never
+      : First extends DefineFunctionOptions['params'][number]
+        ? [GetParamType<First> | (P & GetRecordType<T>), ...GetPositionalTypes<Rest, P>]
+        : never
     : []
   : [];
 
@@ -184,7 +185,11 @@ export function defineFunction<
                                   (...args: any[]): ReturnType<F>;
                                 }
                             : {}
-  );
+  ) & {
+    /** @todo - This inference is not working correctly - fix later */
+    call(thisArg: any, ...args: Parameters<NamedFunction>): ReturnType<F>;
+    apply(thisArg: any, args: Parameters<NamedFunction>): ReturnType<F>;
+  };
 
   /**
    * Function that accepts either positional arguments or a record object.
@@ -199,11 +204,14 @@ export function defineFunction<
       throw new Error('Rest parameter must be the last parameter');
     }
     // Check if this is a pure record call (single object argument that's not a class instance)
-    if (args.length === 1 && typeof args[0] === 'object' && args[0] !== null && !Array.isArray(args[0])) {
+    if (args.length === 1 && isPlainObject(args[0])) {
       // Check if it's actually a class instance (like Color, Dimension) - if so, treat as positional
-      const isClassInstance = params?.some(opt =>
-        typeof opt.type === 'function' && args[0] instanceof opt.type
-      );
+      const isClassInstance = params?.some((opt) => {
+        const types = Array.isArray(opt.type) ? opt.type : [opt.type];
+        return types.some(type =>
+          typeof type === 'function' && args[0] instanceof type
+        );
+      });
 
       if (!isClassInstance) {
         // Pure record call - apply defaults and validate
@@ -245,7 +253,7 @@ export function defineFunction<
     }
 
     // Check if this is a hybrid call (multiple args with last being an object)
-    if (args.length > 1 && typeof args[args.length - 1] === 'object' && args[args.length - 1] !== null && !Array.isArray(args[args.length - 1])) {
+    if (args.length > 1 && isPlainObject(args[args.length - 1])) {
       // Hybrid call: positional args + record
       const positionalArgs = args.slice(0, -1);
       const record = args[args.length - 1];
@@ -320,6 +328,9 @@ export function defineFunction<
             } else if (params?.[i]?.default !== undefined) {
               // Apply default for missing positional argument
               recordArgs[paramName] = params![i]?.default;
+            } else if (params?.[i]?.optional) {
+              // Apply undefined for missing optional argument
+              recordArgs[paramName] = undefined;
             }
           }
         }
@@ -334,6 +345,8 @@ export function defineFunction<
             recordArgs[paramName] = args[i];
           } else if (def.default !== undefined) {
             recordArgs[paramName] = def.default;
+          } else if (def.optional) {
+            recordArgs[paramName] = undefined;
           }
         }
       }
@@ -486,7 +499,9 @@ export function callWithContext(context: Context, fn: (...args: any[]) => any, .
  * Runtime validation function to check argument types and required parameters for record-based calls
  */
 function validateArguments(record: any, params?: DefineFunctionOptions['params']) {
-  if (!params) return;
+  if (!params) {
+    return;
+  }
 
   // Check that all required parameters are provided
   for (const paramDef of params) {
@@ -501,7 +516,14 @@ function validateArguments(record: any, params?: DefineFunctionOptions['params']
     }
 
     // Skip validation for undefined optional arguments
-    if (value === undefined) continue;
+    if (value === undefined) {
+      continue;
+    }
+
+    // Skip validation for lazy parameters since they're passed as thunks
+    if ((paramDef as any).lazy) {
+      continue;
+    }
 
     const isRest = (paramDef as any).rest === true;
     if (isRest) {

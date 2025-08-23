@@ -1,9 +1,15 @@
 import { toHSL } from '../util/to-hsl';
-import { type Color, Dimension } from '@jesscss/core';
+import { Color, defineFunction, Num } from '@jesscss/core';
 
-export default function saturation(color: Color) {
-  return new Dimension([
-    toHSL(color).s * 100,
-    '%'
-  ]);
-}
+export default defineFunction(
+  'saturation',
+  function(color: Color) {
+    return new Num(toHSL(color).s * 100);
+  },
+  {
+    params: [{
+      name: 'color',
+      type: Color
+    }]
+  }
+);

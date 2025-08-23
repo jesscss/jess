@@ -27,7 +27,7 @@ export const mathHelper = (
   }
   const val = input[0];
   unit ??= val instanceof Dimension ? val.value.unit : '';
-  if (!unit) {
+  if (unit === undefined) {
     return new Num(fn(...num(input)));
   }
   return new Dimension({ number: fn(...num(input)), unit });

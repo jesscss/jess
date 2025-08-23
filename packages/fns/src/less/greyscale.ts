@@ -1,10 +1,22 @@
 import {
-  type Color,
+  Color,
   type Context,
-  Dimension
+  Dimension,
+  defineFunction
 } from '@jesscss/core';
 import desaturate from './desaturate';
 
-export default function greyscale(this: Context, color: Color) {
-  return desaturate.call(this, color, new Dimension([100]));
-}
+const greyscale = defineFunction(
+  'greyscale',
+  function(this: Context, color: Color) {
+    return desaturate.call(this, color, new Dimension({ number: 100, unit: '%' }));
+  },
+  {
+    params: [{
+      name: 'color',
+      type: Color
+    }]
+  }
+);
+
+export default greyscale;

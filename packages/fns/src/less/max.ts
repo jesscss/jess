@@ -1,7 +1,4 @@
-import { defineFunction, Node } from '@jesscss/core';
-import { array, instance, assert, type Context } from 'superstruct';
-
-const Struct = array(instance(Node));
+import { defineFunction, Node, type Context } from '@jesscss/core';
 
 /**
  * Return the maximum value
@@ -9,7 +6,6 @@ const Struct = array(instance(Node));
 const max = defineFunction(
   'max',
   function(this: Context, ...values: Node[]) {
-    assert(values, Struct);
     values = values.slice().sort((a, b) => {
       let compare = b.compare(a);
       if (compare === undefined) {

@@ -9,7 +9,7 @@ import { toHSL } from '../util/to-hsl';
 
 export default defineFunction(
   'spin',
-  function(this: Context, { color, amount }: { color: Color; amount: Dimension }) {
+  function(this: Context, color: Color, amount: Dimension) {
     const hsl = toHSL(color);
     const hue = (hsl.h + amount.value.number) % 360;
 

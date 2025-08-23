@@ -1,9 +1,15 @@
-import { type Color, Dimension } from '@jesscss/core';
+import { Color, defineFunction, Num } from '@jesscss/core';
 import { getLuma } from '../util/get-luma';
 
-export default function luma(color: Color) {
-  return new Dimension([
-    getLuma(color) * color.alpha * 100,
-    '%'
-  ]);
-}
+export default defineFunction(
+  'luma',
+  function(color: Color) {
+    return new Num(getLuma(color) * color.alpha * 100);
+  },
+  {
+    params: [{
+      name: 'color',
+      type: Color
+    }]
+  }
+);

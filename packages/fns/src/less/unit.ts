@@ -6,7 +6,7 @@ import {
 
 export default defineFunction(
   'unit',
-  function({ dimension, unit }: { dimension: Dimension; unit?: Any<'keyword'> }) {
+  function(dimension: Dimension, unit?: Any<'keyword'>) {
     return new Dimension(
       unit
         ? {
@@ -22,7 +22,8 @@ export default defineFunction(
       type: Dimension
     }, {
       name: 'unit',
-      type: Any<'keyword'>
+      type: Any,
+      optional: true
     }]
   }
 );

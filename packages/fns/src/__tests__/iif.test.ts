@@ -2,36 +2,40 @@ import {
   iif
 } from '../less';
 
-import { Bool, Condition, Context, Dimension } from '@jesscss/core';
+import { Bool, Context, Dimension } from '@jesscss/core';
 import { beforeAll, describe, it, test, expect } from 'vitest';
 
 let context: Context;
 let dim: Dimension;
 
-describe('math', () => {
+describe('iif', () => {
   beforeAll(() => {
     context = new Context();
-    dim = new Dimension([2.4, 'px']);
+    dim = new Dimension({ number: 2.4, unit: 'px' });
   });
   /**
    * @todo - refine errors later
    * @see https://github.com/ianstormtaylor/superstruct/issues/1194
    */
-  it('rejects a missing trueValue', async () => {
-    // @ts-expect-error - missing arg
-    await expect(iif(new Condition([new Dimension([1, 'px'])]))).rejects.toThrow(); // At path: trueValue -- Expected a `Node` instance, but received: undefined
+  it('rejects a missing thenValue', () => {
+    // @ts-expect-error - missing params
+    expect(() => iif(true)).toThrow('Required argument \'thenValue\' is missing');
   });
-  it('rejects an invalid condition', async () => {
-    // @ts-expect-error - incorrect type
-    await expect(iif(new Dimension([1, 'px']))).rejects.toThrow();  // At path: condition -- Expected a `Condition` instance, but received: 1px
+  it('rejects an invalid condition', () => {
+    // @ts-expect-error - wrong argument type
+    expect(() => iif(new Dimension({ number: 1, unit: 'px' }))).toThrow('Argument \'condition\' must be one of:');
   });
 
   test('iif (true)', async () => {
-    await expect(iif.call(context, new Condition([new Dimension([1, 'px'])]), new Dimension([2, 'px']))).resolves.toMatchObject(new Dimension([2, 'px']));
+    await expect(iif(true, () => new Dimension({ number: 2, unit: 'px' }))).resolves.toMatchObject(new Dimension({ number: 2, unit: 'px' }));
   });
 
   test('iif (false)', async () => {
-    await expect(iif.call(context, new Bool(false), new Dimension([2, 'px']), new Dimension([3, 'px']))).resolves.toMatchObject(new Dimension([3, 'px']));
+    await expect(iif(new Bool(false), () => new Dimension({ number: 2, unit: 'px' }), () => new Dimension({ number: 3, unit: 'px' }))).resolves.toMatchObject(new Dimension({ number: 3, unit: 'px' }));
+  });
+
+  test('iif (false) without elseValue', async () => {
+    await expect(iif(new Bool(false), () => new Dimension({ number: 2, unit: 'px' }))).resolves.toBeUndefined();
   });
 
   /** @todo - add tests to make sure iif lazy evaluates true / false */

@@ -1,4 +1,5 @@
 import { colorBlend } from '../util/colorHelper';
+import { Color, defineFunction } from '@jesscss/core';
 
 export function softlightBase(cb: number, cs: number) {
   let d = 1;
@@ -12,4 +13,18 @@ export function softlightBase(cb: number, cs: number) {
   return cb - (1 - 2 * cs) * e * (d - cb);
 }
 
-export default colorBlend.bind(null, softlightBase);
+export default defineFunction(
+  'softlight',
+  function(color1: Color, color2: Color) {
+    return colorBlend(softlightBase, color1, color2);
+  },
+  {
+    params: [{
+      name: 'color1',
+      type: Color
+    }, {
+      name: 'color2',
+      type: Color
+    }]
+  }
+);

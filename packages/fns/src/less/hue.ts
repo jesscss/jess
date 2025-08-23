@@ -1,6 +1,15 @@
 import { toHSL } from '../util/to-hsl';
-import { type Color, Dimension } from '@jesscss/core';
+import { Color, defineFunction, Num } from '@jesscss/core';
 
-export default function hue(color: Color) {
-  return new Dimension([toHSL(color).h]);
-}
+export default defineFunction(
+  'hue',
+  function(color: Color) {
+    return new Num(toHSL(color).h);
+  },
+  {
+    params: [{
+      name: 'color',
+      type: Color
+    }]
+  }
+);

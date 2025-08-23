@@ -1,5 +1,14 @@
-import { type Color, Num } from '@jesscss/core';
+import { defineFunction, Color, Num } from '@jesscss/core';
 
-export default function red(color: Color) {
-  return new Num(color.rgb[0]);
-}
+export default defineFunction(
+  'red',
+  function(color: Color) {
+    return new Num(color.rgb[0]);
+  },
+  {
+    params: [{
+      name: 'color',
+      type: Color
+    }]
+  }
+);

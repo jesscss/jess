@@ -1,28 +1,33 @@
-import { Color, ColorFormat } from '@jesscss/core';
+import { Color, ColorFormat, Dimension, defineFunction } from '@jesscss/core';
 import { type ColorValue, clamp, getNumber } from '../util/number';
-import { type, assert, number } from 'superstruct';
-import { type ExtendedFn } from '../util';
 
-const Struct = type({
-  h: number(),
-  s: number(),
-  l: number(),
-  a: number()
-});
+const hsla = defineFunction(
+  'hsla',
+  function(this: any, h: ColorValue, s: ColorValue, l: ColorValue, a: ColorValue) {
+    h = getNumber(h) % 360;
+    s = clamp(getNumber(s));
+    l = clamp(getNumber(l));
+    a = clamp(getNumber(a));
 
-const hsla: ExtendedFn = function hsla(h: ColorValue, s: ColorValue, l: ColorValue, a: ColorValue) {
-  h = (getNumber(h) % 360) / 360;
-  s = clamp(getNumber(s));
-  l = clamp(getNumber(l));
-  a = clamp(getNumber(a));
-
-  assert({ h, s, l, a }, Struct);
-
-  const color = new Color(ColorFormat.HSL);
-  color.hsla = [h, s, l, a];
-  return color;
-};
-
-hsla.allowOptional = true;
+    const color = new Color(ColorFormat.HSL);
+    color.hsla = [h, s, l, a];
+    return color;
+  },
+  {
+    params: [{
+      name: 'h',
+      type: [Dimension, 'number']
+    }, {
+      name: 's',
+      type: [Dimension, 'number']
+    }, {
+      name: 'l',
+      type: [Dimension, 'number']
+    }, {
+      name: 'a',
+      type: [Dimension, 'number']
+    }]
+  }
+);
 
 export default hsla;
