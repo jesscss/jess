@@ -6,6 +6,7 @@ import { cast } from './util/cast';
 import { callWithContext } from '../define-function';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
+import { getFunctionFromMixins, type MixinEntry } from './rules';
 
 export type CallValue = {
   /**
@@ -67,7 +68,9 @@ export class Call extends Node<CallValue, CallOptions> {
       args.toString(options);
     }
     w.add(')');
-    if (this.options?.markImportant) w.add(' !important');
+    if (this.options?.markImportant) {
+      w.add(' !important');
+    }
     return w.getSince(mark);
   }
 
@@ -93,6 +96,16 @@ export class Call extends Node<CallValue, CallOptions> {
               return (out as Promise<any>).then(result => cast(result).inherit(this));
             }
             return cast(out).inherit(this);
+          } else if (isNode(name, 'List')) {
+            if (name.value.every(item => isNode(item, 'Mixin') || isNode(item, 'Ruleset'))) {
+              const func = getFunctionFromMixins(name.value as MixinEntry[]);
+              return pipe(
+                () => func.call(context, ...args?.value ?? []),
+                result => result.eval(context)
+              );
+            } else {
+              throw new Error('Expected a mixin or ruleset list');
+            }
           } else {
             if (name === 'calc') {
               context.calcFrames.push(true);

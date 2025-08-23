@@ -58,7 +58,7 @@ export type MixinOptions = {
   unique?: boolean;
 };
 
-const COMPOUND_REGEX = /[#.]?[-_a-zA-Z\xA0-\uFFFF][-_a-zA-Z0-9\xA0-\uFFFF]*/ug;
+// const COMPOUND_REGEX = /[#.]?[-_a-zA-Z\xA0-\uFFFF][-_a-zA-Z0-9\xA0-\uFFFF]*/ug;
 /**
  * someMixin (arg1; arg2: 10px) {
  *   color: black;
@@ -94,8 +94,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       if (!name) {
         return (this._keySet = new Set());
       }
-      let matches = name.toString().match(COMPOUND_REGEX) ?? [];
-      keySet = this._keySet = new Set(matches);
+      keySet = this._keySet = new Set([name.valueOf()]);
     }
     return keySet;
   }
@@ -109,7 +108,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     const mark = w.mark();
     w.add(`${name}`);
     w.add('(');
-    if (params) params.toString(options);
+    if (params) { params.toString(options); }
     w.add(')');
     if (guard) {
       w.add(' when ');
@@ -130,7 +129,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   }
 
   override preEval(context: Context): MaybePromise<this> {
-    if (this.preEvaluated) return this;
+    if (this.preEvaluated) { return this; }
     let node = this.maybeClone(context);
     node.preEvaluated = true;
     let { name } = node.value;

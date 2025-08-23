@@ -230,7 +230,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this._emitRulesBody(childOptions);
     // ensure closing brace is on its own properly indented line
     w.add('\n');
-    if (depth !== 0) w.add(space);
+    if (depth !== 0) { w.add(space); }
     w.add('}');
     return w.getSince(mark);
   }
@@ -241,20 +241,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const space = ''.padStart(depth * 2);
     const { value } = this;
     const items = value.filter(n => n.visible);
-    if (items.length === 0) return;
+    if (items.length === 0) { return; }
 
     // No spacing flags; writer.capture is used where needed
 
     for (let idx = 0; idx < items.length; idx++) {
       const n = items[idx]!;
-      if (idx > 0) w.add('\n');
+      if (idx > 0) { w.add('\n'); }
       const isChildRules = n.type === 'Rules';
       if (!isChildRules && depth !== 0) {
         w.add(space);
       }
       // Emit directly to preserve source map segments
       n.toTrimmedString({ ...options, writer: w, depth } as PrintOptions);
-      if (n.requiredSemi && n.options.semi !== false) w.add(';');
+      if (n.requiredSemi && n.options.semi !== false) { w.add(';'); }
     }
   }
 
@@ -438,7 +438,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const phaseRun = serialForEach(phases, (method: 'preEval' | 'eval') => {
       return serialForEach(priorities, (p: Priority) => {
         const queue = evalQueue.get(p);
-        if (!queue) return;
+        if (!queue) {
+          return;
+        }
         const entries: Array<[number, [number, Node]]> = Array.from(queue.entries()) as any;
         return serialForEach(entries, ([q, item]: [number, [number, Node]]) => {
           const [idx, rule] = item;
@@ -467,7 +469,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
             if (method === 'preEval') {
               rules.registerNode(result);
-            } else if (method === 'eval') {
               let rulesetType = isNode(result, 'Ruleset')
                 ? 'Ruleset'
                 : isNode(result, 'Mixin')
@@ -475,8 +476,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                   : undefined;
               if (rulesetType === 'Ruleset') {
                 context.treeRoot.register('ruleset', result as Ruleset<RulesetValue>);
+                rules.register('mixin', result as Ruleset<RulesetValue>);
               } else if (rulesetType) {
-                context.treeRoot.register('mixin', result as Mixin);
+                rules.register('mixin', result as Mixin);
               }
             }
           };
@@ -639,7 +641,7 @@ interface RulesEntry {
  * Right now, the only nodes that can be registered to the scope for lookups
  */
 // type ScopeNodes = Declaration | VarDeclaration | Mixin | Ruleset | Rules
-type MixinEntry = Mixin | Rules;
+export type MixinEntry = Mixin | Rules;
 
 /**
  * Returns a plain JS function for calling a set of mixins

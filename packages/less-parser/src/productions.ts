@@ -487,7 +487,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
       let leftNode!: Node;
       for (let s of selector.nodes()) {
         if (s instanceof BasicSelector) {
-          leftNode = new Reference({ target: leftNode as Reference, key: s.valueOf() }, { type: 'mixin', role: 'name' }, undefined, this.context);
+          leftNode = new Reference({ target: leftNode as Reference, key: s.valueOf() }, { type: 'mixin-ruleset', role: 'name' }, undefined, this.context);
         }
       }
       /** Finally, pass this reference into a call */
@@ -1096,8 +1096,8 @@ export function unknownAtRule(this: P, T: TokenMap) {
       /** An anonymous mixin call */
       if (!value) {
         const nameRef = nameNode instanceof Interpolated
-          ? new Reference({ key: nameNode }, { type: 'mixin-ruleset', role: 'ident' })
-          : new Reference({ key: nameNode as any }, { type: 'mixin-ruleset', role: 'ident' });
+          ? new Reference({ key: nameNode }, { type: 'mixin-ruleset', role: 'name' })
+          : new Reference({ key: nameNode as any }, { type: 'mixin-ruleset', role: 'name' });
         return new Call({ name: new Expression(nameRef), args: args! }, undefined, location, this.context);
       }
 
@@ -2238,7 +2238,7 @@ export function keyframesName(this: P, T: TokenMap) {
         { ALT: () => node = $.rule(ctx, $.valueReference) },
         { ALT: () => {
           const tok = $.CONSUME(T.Ident);
-          if (!RECORDING_PHASE) node = $.wrap($.processValueToken(tok));
+          if (!RECORDING_PHASE) { node = $.wrap($.processValueToken(tok)); }
         } },
         { ALT: () => node = $.SUBRULE($.string) }
       ]
@@ -2272,11 +2272,11 @@ export function mixinName(this: P, T: TokenMap) {
       if (nameValue.includes('@') || nameValue.includes('$')) {
         nameNode = getInterpolated(nameValue, location, this.context, this, ctx);
         if (asReference) {
-          nameNode = new Reference({ key: nameNode as Interpolated }, { type: 'mixin', role: 'name' }, location, this.context);
+          nameNode = new Reference({ key: nameNode as Interpolated }, { type: 'mixin-ruleset', role: 'name' }, location, this.context);
         }
       } else {
         if (asReference) {
-          nameNode = new Reference({ key: nameValue }, { type: 'mixin', role: 'name' }, location, this.context);
+          nameNode = new Reference({ key: nameValue }, { type: 'mixin-ruleset', role: 'name' }, location, this.context);
         } else {
           nameNode = $.wrap(new Any(nameValue, { role: 'name' }, $.getLocationInfo(name), this.context), true);
         }
@@ -2298,7 +2298,7 @@ export function mixinReference(this: P, T: TokenMap) {
       let rightNode = $.rule(2, ctx, { asReference: true }, $.mixinName);
       if (!RECORDING_PHASE) {
         const loc = $.getLocationFromNodes([leftNode, rightNode]);
-        leftNode = new Reference({ target: new Call({ name: leftNode }), key: rightNode }, { type: 'mixin', role: 'name' }, loc, this.context);
+        leftNode = new Reference({ target: new Call({ name: leftNode }), key: rightNode }, { type: 'mixin-ruleset', role: 'name' }, loc, this.context);
       }
     });
     return leftNode;
@@ -2366,7 +2366,7 @@ export function inlineMixinCall(this: P, T: TokenMap) {
     if (!RECORDING_PHASE) {
       if (nodeContext) {
         const combinedLoc = $.getLocationFromNodes([nodeContext, ref]);
-        ref = new Reference({ target: new Call({ name: nodeContext }), key: ref }, { type: 'mixin' }, combinedLoc, this.context);
+        ref = new Reference({ target: new Call({ name: nodeContext }), key: ref }, { type: 'mixin-ruleset' }, combinedLoc, this.context);
       }
       node = new Call({ name: ref }, undefined, ref.location, this.context);
     }
@@ -2466,7 +2466,7 @@ export function accessors(this: P, T: TokenMap) {
 
   /** The node passed in is what we're looking up on */
   return (ctx: RuleContext = {}) => {
-    let nodeContext = ctx.node!;
+    let nodeContext = ctx.node! as Reference;
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
     let keyToken: IToken | undefined;
@@ -2485,10 +2485,10 @@ export function accessors(this: P, T: TokenMap) {
           let tokenStr = keyToken.image;
           let tokenStart = tokenStr[0];
           if (tokenStart === '@') {
-            key = new Reference(tokenStr.slice(1), { type: 'variable' }, $.getLocationInfo(keyToken), this.context);
+            key = new Reference({ target: nodeContext, key: tokenStr.slice(1) }, { type: 'variable' }, $.getLocationInfo(keyToken), this.context);
           } else {
             key = tokenStart === '$' ? tokenStr.slice(1) : tokenStr;
-            key = new Reference(tokenStr, { type: 'property' }, $.getLocationInfo(keyToken), this.context);
+            key = new Reference({ target: nodeContext, key: tokenStr }, { type: 'property' }, $.getLocationInfo(keyToken), this.context);
           }
         }
       } else {

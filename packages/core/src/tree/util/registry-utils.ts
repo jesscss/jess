@@ -300,6 +300,8 @@ export class MixinRegistry extends Registry<
         } else {
           this._indexSelectorStart(mixin, selector.keySet);
         }
+      } else {
+        this._indexSelectorStart(mixin, mixin.keySet);
       }
     }
     this.pendingItems.clear();
@@ -340,8 +342,12 @@ export class MixinRegistry extends Registry<
     let outer: Array<{ value: Mixin | Ruleset; match: string[] }> | undefined;
     while (rules) {
       let [startKey, ...search] = keyList;
-      const existing = rules.mixinRegistry?._findMatches(startKey!);
-      if (rules === this.rules) {
+      let registry = rules.mixinRegistry;
+      if (registry) {
+        registry.indexPendingItems();
+      }
+      const existing = registry?.index.get(startKey!);
+      if (existing && !outer) {
         outer = existing;
       }
 
@@ -395,6 +401,13 @@ export class MixinRegistry extends Registry<
       } while (rules && rules.type !== 'Rules');
     }
     return outer;
+  }
+
+  override find(keys: string | string[], filterType?: 'Mixin' | 'Ruleset', options?: FindOptions) {
+    const result = this._findMatches(keys, filterType, options);
+    if (result) {
+      return result.map(({ value }) => value);
+    }
   }
 }
 
@@ -605,9 +618,9 @@ export class DeclarationRegistry extends Registry<Declaration> {
 }
 
 function arraysEqual(a: string[], b: string[]) {
-  if (a.length !== b.length) return false;
+  if (a.length !== b.length) { return false; }
   for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
+    if (a[i] !== b[i]) { return false; }
   }
   return true;
 }
