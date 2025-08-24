@@ -209,7 +209,7 @@ let interpolatedRegex = /([$@]){([^}]+)}/g;
 /** The placeholder we use for interpolation... we should probably use a const exported from @jesscss/core? */
 let charPlaceholder = '{}';
 
-const getInterpolated = (name: string, location: LocationInfo, context: TreeContext, parser?: any, ctx?: RuleContext): Interpolated => {
+const getInterpolated = (name: string, location: LocationInfo, context: TreeContext): Interpolated => {
   const replacements: Node[] = [];
   let result: RegExpExecArray | null;
   let source = name;
@@ -217,10 +217,9 @@ const getInterpolated = (name: string, location: LocationInfo, context: TreeCont
     const [match, propOrVar, value] = result;
     source = source.replace(match, '{}');
     const reference = new Reference({ key: value! }, { type: propOrVar === '$' ? 'property' : 'variable', role: 'ident' });
-    replacements.push(ctx && parser ? parser.createNode(reference, ctx) : reference);
+    replacements.push(reference);
   }
-  const interpolated = new Interpolated({ source, replacements }, { role: 'ident' }, location, context);
-  return ctx && parser ? parser.createNode(interpolated, ctx) : interpolated;
+  return new Interpolated({ source, replacements }, { role: 'ident' }, location, context);
 };
 
 export function declaration(this: P, T: TokenMap) {
@@ -250,7 +249,7 @@ export function declaration(this: P, T: TokenMap) {
           let nameNode: Node;
           let nameValue = name!.image;
           if (nameValue.includes('@') || nameValue.includes('$')) {
-            nameNode = getInterpolated(nameValue, $.getLocationInfo(name!), this.context, this, ctx);
+            nameNode = getInterpolated(nameValue, $.getLocationInfo(name!), this.context);
           } else {
             nameNode = $.wrap(new Any(name!.image, { role: 'property' }, $.getLocationInfo(name!), this.context), true);
           }
@@ -282,7 +281,7 @@ export function declaration(this: P, T: TokenMap) {
           let nameNode: Node;
           let nameValue = name.image;
           if (nameValue.includes('@') || nameValue.includes('$')) {
-            nameNode = getInterpolated(nameValue, $.getLocationInfo(name), this.context, this, ctx);
+            nameNode = getInterpolated(nameValue, $.getLocationInfo(name), this.context);
           } else {
             nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), this.context), true);
           }
@@ -756,7 +755,7 @@ export function simpleSelector(this: P, T: TokenMap) {
         if (selector.tokenType.name === 'InterpolatedSelector') {
           // Create an Interpolated node for interpolated selectors
           let nameValue = selector.image;
-          let nameNode = getInterpolated(nameValue, $.getLocationInfo(selector), this.context, this, ctx);
+          let nameNode = getInterpolated(nameValue, $.getLocationInfo(selector), this.context);
 
           return nameNode;
         }
@@ -1466,7 +1465,7 @@ export function booleanFunction(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     $.startRule();
     let name = $.CONSUME(T.BooleanFunction);
-    let arg: Condition = $.rule(ctx, { inValueList: true }, $.guardOr);
+    let arg: Condition = $.SUBRULE($.guardOr, { ARGS: [{ ...ctx, inValueList: true }] });
     $.CONSUME(T.RParen);
 
     if (!$.RECORDING_PHASE) {
@@ -1520,7 +1519,7 @@ export function varReference(this: P, T: TokenMap) {
       },
       {
         ALT: () => {
-          let token = $.rule(ctx, $.varName);
+          let token = $.SUBRULE($.varName, { ARGS: [ctx] });
           if (!RECORDING_PHASE) {
             return new Reference(token.image.slice(1), { type: 'variable' }, $.getLocationInfo(token), this.context);
           }
@@ -1541,10 +1540,9 @@ export function varReference(this: P, T: TokenMap) {
         /** Only variables can have accessors */
         GATE: () => node?.options?.type === 'variable',
         ALT: () => {
-          node = $.rule(
-            ctx,
-            { node: node! },
-            $.accessors
+          node = $.SUBRULE(
+            $.accessors,
+            { ARGS: [{ ...ctx, node: node! }] }
           );
         }
       },
@@ -1562,8 +1560,8 @@ export function valueReference(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     return $.OR([
-      { ALT: () => $.rule(ctx, $.varReference) },
-      { ALT: () => $.rule(ctx, $.inlineMixinCall) }
+      { ALT: () => $.SUBRULE($.varReference, { ARGS: [ctx] }) },
+      { ALT: () => $.SUBRULE($.inlineMixinCall, { ARGS: [ctx] }) }
     ]);
   };
 }
@@ -1582,7 +1580,7 @@ export function functionCall(this: P, T: TokenMap) {
           || tokenType === T.IfFunction
           || tokenType === T.BooleanFunction;
       },
-      ALT: () => $.rule(ctx, $.knownFunctions)
+      ALT: () => $.SUBRULE($.knownFunctions, { ARGS: [ctx] })
     },
     {
       // Generic function via FunctionStart token
@@ -1598,7 +1596,7 @@ export function functionCall(this: P, T: TokenMap) {
         $.startRule();
         const fnStart = $.CONSUME(T.FunctionStart);
         let args: List | undefined;
-        $.OPTION(() => args = $.rule(ctx, $.functionCallArgs));
+        $.OPTION(() => args = $.SUBRULE($.functionCallArgs, { ARGS: [ctx] }));
         $.CONSUME(T.RParen);
         if (!$.RECORDING_PHASE) {
           const location = $.endRule();
@@ -1623,7 +1621,7 @@ export function functionCallArgs(this: P, T: TokenMap) {
     // Inside function arguments, allow inner tokens like ':'
     const prevInner = ctx.inner;
     ctx.inner = true;
-    let node = $.rule(ctx, $.callArgument);
+    let node = $.SUBRULE($.callArgument, { ARGS: [ctx] });
 
     let commaNodes: Node[];
     let semiNodes: Node[];
@@ -1636,7 +1634,7 @@ export function functionCallArgs(this: P, T: TokenMap) {
     // First, consume any comma-separated arguments
     $.MANY(() => {
       $.CONSUME(T.Comma);
-      node = $.rule(2, ctx, $.callArgument);
+      node = $.SUBRULE2($.callArgument, { ARGS: [ctx] });
       if (!RECORDING_PHASE) {
         commaNodes!.push($.wrap(node, true));
       }
@@ -1651,31 +1649,20 @@ export function functionCallArgs(this: P, T: TokenMap) {
       if (!RECORDING_PHASE) {
         // Aggregate the previous set of comma-nodes as the first semi item
         if (commaNodes.length > 1) {
-          let commaList = $.createNode(new List(commaNodes, undefined, $.getLocationFromNodes(commaNodes), this.context), ctx);
-          semiNodes.push(commaList);
+          semiNodes.push(new List(commaNodes, undefined, $.getLocationFromNodes(commaNodes), this.context));
         } else {
           semiNodes.push(commaNodes[0]!);
         }
       }
 
-      node = $.rule(
-        3,
-        ctx,
-        { allowComma: true },
-        $.callArgument
-      );
+      node = $.SUBRULE3($.callArgument, { ARGS: [{ ...ctx, allowComma: true }] });
       if (!RECORDING_PHASE) {
         semiNodes.push($.wrap(node, true));
       }
 
       $.MANY2(() => {
         $.CONSUME2(T.Semi);
-        node = $.rule(
-          4,
-          ctx,
-          { allowComma: true },
-          $.callArgument
-        );
+        node = $.SUBRULE4($.callArgument, { ARGS: [{ ...ctx, allowComma: true }] });
         if (!RECORDING_PHASE) {
           semiNodes.push($.wrap(node, true));
         }
@@ -1700,20 +1687,20 @@ export function value(this: P, T: TokenMap) {
       /** Function should appear before Ident */
       {
         GATE: () => tokenMatcher($.LA(1), T.FunctionStart),
-        ALT: () => $.rule(ctx, $.functionCall)
+        ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] })
       },
-      { ALT: () => $.rule(ctx, $.inlineMixinCall) },
-      { ALT: () => $.rule(ctx, $.varReference) },
+      { ALT: () => $.SUBRULE($.inlineMixinCall, { ARGS: [ctx] }) },
+      { ALT: () => $.SUBRULE($.varReference, { ARGS: [ctx] }) },
       { ALT: () => $.CONSUME(T.Ident) },
       { ALT: () => $.CONSUME(T.DefaultGuardFunc) },
       { ALT: () => $.CONSUME(T.Dimension) },
       { ALT: () => $.CONSUME(T.Number) },
       { ALT: () => $.CONSUME(T.Color) },
-      { ALT: () => $.rule(ctx, $.string) },
+      { ALT: () => $.SUBRULE($.string, { ARGS: [ctx] }) },
       { ALT: () => $.CONSUME(T.JavaScript) },
       /** Explicitly not marked as an ident */
       { ALT: () => $.CONSUME(T.When) },
-      { ALT: () => $.rule(ctx, $.squareValue) },
+      { ALT: () => $.SUBRULE($.squareValue, { ARGS: [ctx] }) },
       {
         GATE: () => $.looseMode && !!ctx.inner,
         ALT: () => $.CONSUME(T.Colon)
@@ -1740,7 +1727,7 @@ export function value(this: P, T: TokenMap) {
     ]);
     if (!$.RECORDING_PHASE) {
       if (!(node instanceof Node)) {
-        node = $.processValueToken(node, ctx);
+        node = $.processValueToken(node);
       }
       return $.wrap(node);
     }
@@ -1805,18 +1792,18 @@ export function mathValue(this: P, T: TokenMap) {
     { ALT: () => $.CONSUME(T.Dimension) },
     // Allow identifiers like channel names in color space calcs (e.g., calc(l - 0.1))
     { ALT: () => $.CONSUME(T.Ident) },
-    { ALT: () => $.rule(ctx, $.functionCall) },
+    { ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] }) },
     {
       /** Only allow escaped strings in calc */
       GATE: () => $.LA(1).image.startsWith('~'),
-      ALT: () => $.rule(ctx, $.string)
+      ALT: () => $.SUBRULE($.string, { ARGS: [ctx] })
     },
     {
       /** For some reason, e() goes here instead of $.function */
       GATE: () => $.LA(2).tokenType !== T.LParen,
       ALT: () => $.CONSUME(T.MathConstant)
     },
-    { ALT: () => $.rule(ctx, $.mathParen) }
+    { ALT: () => $.SUBRULE($.mathParen, { ARGS: [ctx] }) }
   ];
 
   return cssMathValue.call(this, T, valueAlt);
@@ -1850,12 +1837,12 @@ export function guard(this: P, T: TokenMap) {
     return $.OR2([
       {
         GATE: () => !!ctx.inValueList,
-        ALT: () => $.rule(ctx, $.comparison)
+        ALT: () => $.SUBRULE($.comparison, { ARGS: [ctx] })
       },
       {
         ALT: () => {
           ctx.allowComma = true;
-          const node = $.rule(ctx, $.guardOr);
+          const node = $.SUBRULE($.guardOr, { ARGS: [ctx] });
           if (!$.RECORDING_PHASE) {
 
           }
@@ -1877,7 +1864,7 @@ export function guardOr(this: P, T: TokenMap) {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
 
-    let left = $.rule(ctx, $.guardAnd);
+    let left = $.SUBRULE($.guardAnd, { ARGS: [ctx] });
     let right: Node | undefined;
     $.MANY({
       GATE: () => {
@@ -1893,7 +1880,7 @@ export function guardOr(this: P, T: TokenMap) {
           { ALT: () => $.CONSUME(T.Comma) },
           { ALT: () => $.CONSUME(T.Or) }
         ]);
-        right = $.rule(2, ctx, $.guardAnd);
+        right = $.SUBRULE2($.guardAnd, { ARGS: [ctx] });
         if (!RECORDING_PHASE) {
           let location = $.endRule();
           $.startRule();
@@ -1951,7 +1938,7 @@ export function guardAnd(this: P, T: TokenMap) {
         $.OPTION(() => not = $.CONSUME(T.Not));
         let allowComma = ctx.allowComma;
         ctx.allowComma = false;
-        let right = $.rule(ctx, $.guardInParens);
+        let right = $.SUBRULE($.guardInParens, { ARGS: [ctx] });
         ctx.allowComma = allowComma;
         if (!RECORDING_PHASE && not) {
           let [,,, endOffset, endLine, endColumn] = right.location!;
@@ -1987,11 +1974,11 @@ export function guardInParens(this: P, T: TokenMap) {
   return (ctx: RuleContext) => {
     $.startRule();
     let node = $.OR([
-      { ALT: () => $.rule(ctx, $.guardDefault) },
+      { ALT: () => $.SUBRULE($.guardDefault, { ARGS: [ctx] }) },
       {
         ALT: () => {
           $.CONSUME(T.LParen);
-          let node = $.rule(ctx, $.guardInner);
+          let node = $.SUBRULE($.guardInner, { ARGS: [ctx] });
           $.CONSUME(T.RParen);
           return node;
         }
@@ -2000,9 +1987,7 @@ export function guardInParens(this: P, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       node = $.wrap(node, 'both');
-      const par = this.createNode(new Paren(node, undefined, $.endRule(), this.context), ctx);
-
-      return par;
+      return new Paren(node, undefined, $.endRule(), this.context);
     }
   };
 }
@@ -2012,7 +1997,7 @@ export function guardInner(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) =>
     $.OR([
-      { ALT: () => $.rule(ctx, $.comparison) },
+      { ALT: () => $.SUBRULE($.comparison, { ARGS: [ctx] }) },
       {
         GATE: () => {
           let tokenType = $.LA(1).tokenType;
@@ -2020,10 +2005,10 @@ export function guardInner(this: P, T: TokenMap) {
             && tokenType !== T.DefaultGuardFunc
             && tokenType !== T.DefaultGuardIdent;
         },
-        ALT: () => $.rule(ctx, $.value)
+        ALT: () => $.SUBRULE($.value, { ARGS: [ctx] })
       },
       {
-        ALT: () => $.rule(ctx, $.guardOr)
+        ALT: () => $.SUBRULE($.guardOr, { ARGS: [ctx] })
       }
     ]);
 }
@@ -2039,21 +2024,21 @@ export function guardWithConditionValue(this: P, T: TokenMap) {
         ]);
       }
     },
-    { ALT: () => $.rule(ctx, $.guardInParens) }
+    { ALT: () => $.SUBRULE($.guardInParens, { ARGS: [ctx] }) }
   ]);
 }
 
 export function guardWithCondition(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
-    $.rule(ctx, $.guardWithConditionValue);
+    $.SUBRULE($.guardWithConditionValue, { ARGS: [ctx] });
     $.AT_LEAST_ONE(() => {
       $.OR([
         { ALT: () => $.CONSUME(T.Or) },
         { ALT: () => $.CONSUME(T.And) },
         { ALT: () => $.CONSUME(T.Comma) }
       ]);
-      $.rule(2, ctx, $.guardWithConditionValue);
+      $.SUBRULE2($.guardWithConditionValue, { ARGS: [ctx] });
     });
   };
 }
@@ -2077,10 +2062,10 @@ export function comparison(this: P, T: TokenMap) {
   ];
 
   return (ctx: RuleContext = {}) => {
-    let left = $.rule(ctx, $.valueList);
+    let left = $.SUBRULE($.valueList, { ARGS: [ctx] });
     // $.OPTION(() => {
     let op = $.OR(opAlt);
-    let right = $.rule(2, ctx, $.valueList);
+    let right = $.SUBRULE2($.valueList, { ARGS: [ctx] });
     if (!$.RECORDING_PHASE) {
       let opStr = op.image;
       if (opStr === '=>') {
@@ -2108,18 +2093,18 @@ export function innerAtRule(this: P, T: TokenMap) {
   const $ = this;
 
   let ruleAlt = (ctx: RuleContext = {}) => [
-    { ALT: () => $.rule(ctx, { inner: true }, $.mediaAtRule) },
-    { ALT: () => $.rule(ctx, { inner: true }, $.supportsAtRule) },
-    { ALT: () => $.rule(ctx, { inner: true }, $.layerAtRule) },
-    { ALT: () => $.rule(ctx, { inner: true }, $.containerAtRule) },
-    { ALT: () => $.rule(ctx, { inner: true }, $.keyframesAtRule) },
-    { ALT: () => $.rule(ctx, { inner: true }, $.documentAtRule) },
-    { ALT: () => $.rule(ctx, $.importAtRule) },
-    { ALT: () => $.rule(ctx, $.pageAtRule) },
-    { ALT: () => $.rule(ctx, $.fontFaceAtRule) },
-    { ALT: () => $.rule(ctx, $.nestedAtRule) },
-    { ALT: () => $.rule(ctx, $.nonNestedAtRule) },
-    { ALT: () => $.rule(ctx, { inner: true }, $.unknownAtRule) }
+    { ALT: () => $.SUBRULE($.mediaAtRule, { ARGS: [{ ...ctx, inner: true }] }) },
+    { ALT: () => $.SUBRULE($.supportsAtRule, { ARGS: [{ ...ctx, inner: true }] }) },
+    { ALT: () => $.SUBRULE($.layerAtRule, { ARGS: [{ ...ctx, inner: true }] }) },
+    { ALT: () => $.SUBRULE($.containerAtRule, { ARGS: [{ ...ctx, inner: true }] }) },
+    { ALT: () => $.SUBRULE($.keyframesAtRule, { ARGS: [{ ...ctx, inner: true }] }) },
+    { ALT: () => $.SUBRULE($.documentAtRule, { ARGS: [{ ...ctx, inner: true }] }) },
+    { ALT: () => $.SUBRULE($.importAtRule, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.pageAtRule, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.fontFaceAtRule, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.nestedAtRule, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.nonNestedAtRule, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.unknownAtRule, { ARGS: [{ ...ctx, inner: true }] }) }
   ];
 
   return cssInnerAtRule.call(this, T, ruleAlt);
@@ -2139,7 +2124,7 @@ export function layerName(this: P, T: TokenMap) {
 
     // First segment: variable reference or plain ident
     const first = $.OR([
-      { ALT: () => $.rule(ctx, $.valueReference) },
+      { ALT: () => $.SUBRULE($.valueReference, { ARGS: [ctx] }) },
       { ALT: () => $.CONSUME(T.Ident) }
     ]);
 
@@ -2147,7 +2132,7 @@ export function layerName(this: P, T: TokenMap) {
       if (first instanceof Node) {
         nodes.push($.wrap(first));
       } else {
-        nodes.push($.wrap($.processValueToken(first, ctx)));
+        nodes.push($.wrap($.processValueToken(first)));
       }
     }
 
@@ -2157,7 +2142,7 @@ export function layerName(this: P, T: TokenMap) {
       DEF: () => {
         const seg = $.CONSUME(T.DotName);
         if (!RECORDING_PHASE) {
-          nodes.push($.wrap($.processValueToken(seg, ctx)));
+          nodes.push($.wrap($.processValueToken(seg)));
         }
       }
     });
@@ -2182,11 +2167,11 @@ export function keyframesName(this: P, T: TokenMap) {
     let node: Node | undefined;
     $.OR({
       DEF: [
-        { ALT: () => node = $.rule(ctx, $.valueReference) },
+        { ALT: () => node = $.SUBRULE($.valueReference, { ARGS: [ctx] }) },
         { ALT: () => {
           const tok = $.CONSUME(T.Ident);
           if (!RECORDING_PHASE) {
-            node = $.wrap($.processValueToken(tok, ctx));
+            node = $.wrap($.processValueToken(tok));
           }
         } },
         { ALT: () => node = $.SUBRULE($.string) }
@@ -2219,7 +2204,7 @@ export function mixinName(this: P, T: TokenMap) {
       let nameValue = name.image;
       let location = $.getLocationInfo(name);
       if (nameValue.includes('@') || nameValue.includes('$')) {
-        nameNode = getInterpolated(nameValue, location, this.context, this, ctx);
+        nameNode = getInterpolated(nameValue, location, this.context);
         if (asReference) {
           nameNode = new Reference({ key: nameNode as Interpolated }, { type: 'mixin-ruleset', role: 'name' }, location, this.context);
         }
@@ -2241,10 +2226,10 @@ export function mixinReference(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
-    let leftNode = $.rule(ctx, { asReference: true }, $.mixinName);
+    let leftNode = $.SUBRULE($.mixinName, { ARGS: [{ ...ctx, asReference: true }] });
     $.MANY(() => {
       $.OPTION(() => $.CONSUME(T.Gt));
-      let rightNode = $.rule(2, ctx, { asReference: true }, $.mixinName);
+      let rightNode = $.SUBRULE2($.mixinName, { ARGS: [{ ...ctx, asReference: true }] });
       if (!RECORDING_PHASE) {
         const loc = $.getLocationFromNodes([leftNode, rightNode]);
         leftNode = new Reference({ target: new Call({ name: leftNode }), key: rightNode }, { type: 'mixin-ruleset', role: 'name' }, loc, this.context);
@@ -2311,7 +2296,7 @@ export function inlineMixinCall(this: P, T: TokenMap) {
 
     let argList: List | undefined;
     let node: Node;
-    let ref = $.rule(ctx, $.mixinReference);
+    let ref = $.SUBRULE($.mixinReference, { ARGS: [ctx] });
     if (!RECORDING_PHASE) {
       if (nodeContext) {
         const combinedLoc = $.getLocationFromNodes([nodeContext, ref]);
@@ -2323,12 +2308,12 @@ export function inlineMixinCall(this: P, T: TokenMap) {
       {
         ALT: () => {
           ctx.node = node;
-          node = $.rule(ctx, $.accessors);
+          node = $.SUBRULE($.accessors, { ARGS: [ctx] });
         }
       },
       {
         ALT: () => {
-          argList = $.rule(ctx, $.mixinArgs);
+          argList = $.SUBRULE($.mixinArgs, { ARGS: [ctx] });
           if (!RECORDING_PHASE) {
             const RParen = $.LA(0);
             const loc = $.getLocationFromNodes([node, RParen]);
@@ -2338,7 +2323,7 @@ export function inlineMixinCall(this: P, T: TokenMap) {
             {
               ALT: () => {
                 ctx.node = node;
-                node = $.rule(2, ctx, $.accessors);
+                node = $.SUBRULE2($.accessors, { ARGS: [ctx] });
               }
             },
             {
@@ -2360,14 +2345,14 @@ export function mixinDefinition(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     // Disambiguate definition vs call: name + args must be followed by optional guard and a block
     $.startRule();
-    const name = $.rule(ctx, $.mixinName);
-    const params = $.rule(ctx, { isDefinition: true }, $.mixinArgs);
+    const name = $.SUBRULE($.mixinName, { ARGS: [ctx] });
+    const params = $.SUBRULE($.mixinArgs, { ARGS: [{ ...ctx, isDefinition: true }] });
 
     let guard: Condition | undefined;
-    $.OPTION(() => guard = $.rule(ctx, $.guard));
+    $.OPTION(() => guard = $.SUBRULE($.guard, { ARGS: [ctx] }));
     // Require a block start to qualify as a definition
     $.CONSUME(T.LCurly);
-    const rulesInner = $.rule(ctx, $.declarationList);
+    const rulesInner = $.SUBRULE($.declarationList, { ARGS: [ctx] });
     $.CONSUME(T.RCurly);
 
     if (!$.RECORDING_PHASE) {
@@ -2384,7 +2369,7 @@ export function mixinArgs(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     let args: List | undefined;
     $.CONSUME(T.LParen);
-    $.OPTION(() => args = $.rule(ctx, $.mixinArgList));
+    $.OPTION(() => args = $.SUBRULE($.mixinArgList, { ARGS: [ctx] }));
     $.CONSUME(T.RParen);
     return args;
   };
@@ -2458,7 +2443,7 @@ export function accessors(this: P, T: TokenMap) {
       $.OR2([
         {
           ALT: () => {
-            let args = $.rule(ctx, $.mixinArgs);
+            let args = $.SUBRULE($.mixinArgs, { ARGS: [ctx] });
             if (!RECORDING_PHASE) {
               let [startOffset, startLine, startColumn] = returnNode.location;
               let { endOffset, endLine, endColumn } = $.LA(0);
@@ -2468,13 +2453,13 @@ export function accessors(this: P, T: TokenMap) {
         },
         {
           ALT: () => {
-            returnNode = $.rule(ctx, { node: returnNode }, $.inlineMixinCall);
+            returnNode = $.SUBRULE($.inlineMixinCall, { ARGS: [{ ...ctx, node: returnNode }] });
             return returnNode;
           }
         },
         {
           ALT: () => {
-            returnNode = $.rule(ctx, { node: returnNode }, $.accessors);
+            returnNode = $.SUBRULE($.accessors, { ARGS: [{ ...ctx, node: returnNode }] });
             return returnNode;
           }
         }
@@ -2497,7 +2482,7 @@ export function mixinArgList(this: P, T: TokenMap) {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
 
-    let node = $.rule(ctx, $.mixinArg);
+    let node = $.SUBRULE($.mixinArg, { ARGS: [ctx] });
 
     let commaNodes: Node[] | undefined;
     let semiNodes: Node[];
@@ -2516,7 +2501,7 @@ export function mixinArgList(this: P, T: TokenMap) {
             GATE: () => !isSemiList,
             ALT: () => {
               $.CONSUME(T.Comma);
-              let node = $.rule(2, ctx, $.mixinArg);
+              let node = $.SUBRULE2($.mixinArg, { ARGS: [ctx] });
               if (!RECORDING_PHASE) {
                 commaNodes!.push($.wrap(node, true));
               }
@@ -2572,7 +2557,7 @@ export function mixinArgList(this: P, T: TokenMap) {
                   ALT: () => {
                     const prevAllow = ctx.allowComma;
                     ctx.allowComma = true;
-                    node = $.rule(3, ctx, $.mixinArg);
+                    node = $.SUBRULE3($.mixinArg, { ARGS: [ctx] });
                     ctx.allowComma = prevAllow;
                     if (!RECORDING_PHASE) {
                       semiNodes.push($.wrap(node, true));
@@ -2636,16 +2621,16 @@ export function mixinArg(this: P, T: TokenMap) {
     return $.OR([
       {
         GATE: () => !isDeclaration,
-        ALT: () => $.rule(ctx, $.callArgument)
+        ALT: () => $.SUBRULE($.callArgument, { ARGS: [ctx] })
       },
       {
         GATE: () => isDeclaration,
         ALT: () => {
           $.startRule();
-          let name = $.rule(2, ctx, $.varName);
+          let name = $.SUBRULE2($.varName, { ARGS: [ctx] });
           $.CONSUME(T.Colon);
           /** Default value */
-          let value = $.rule(2, ctx, $.callArgument);
+          let value = $.SUBRULE2($.callArgument, { ARGS: [ctx] });
 
           if (!RECORDING_PHASE) {
             let location = $.endRule();
@@ -2705,14 +2690,14 @@ export function callArgument(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     return $.OR([
-      { ALT: () => $.rule(ctx, $.anonymousMixinDefinition) },
+      { ALT: () => $.SUBRULE($.anonymousMixinDefinition, { ARGS: [ctx] }) },
       {
         GATE: () => !ctx.allowComma,
-        ALT: () => $.rule(ctx, $.valueSequence)
+        ALT: () => $.SUBRULE($.valueSequence, { ARGS: [ctx] })
       },
       {
         GATE: () => !!ctx.allowComma,
-        ALT: () => $.rule(ctx, $.valueList)
+        ALT: () => $.SUBRULE($.valueList, { ARGS: [ctx] })
       }
     ]);
   };

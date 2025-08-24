@@ -1528,8 +1528,7 @@ export function innerAtRule(this: C, T: TokenMap, alt?: AltContext) {
     { ALT: () => $.SUBRULE($.unknownAtRule, { ARGS: [ctx] }) }
   ];
 
-  return (ctx: RuleContext = {}) =>
-    $.SUBRULE((ctx2: RuleContext) => $.OR(alt(ctx2)), { ARGS: [{ ...ctx, inner: true }] });
+  return (ctx: RuleContext = {}) => $.OR(alt({ ...ctx, inner: true }));
 }
 
 /**

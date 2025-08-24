@@ -110,6 +110,8 @@ export const F_VISIBLE = 0b1;
 export const F_MAY_ASYNC = 0b10;
 export const F_STATIC = 0b100;
 export const F_NON_STATIC = 0b1000;
+/** Whether or not a physical ampersand is in this selector */
+export const F_AMPERSAND = 0b10000;
 
 // Default state: only visible is true
 export const F_DEFAULT = F_VISIBLE;
@@ -292,11 +294,21 @@ export abstract class Node<
    * @note - This will not process the children nodes of children nodes.
    */
   private _processNodes<T>(value: T): T {
+    let state = this.state;
     for (let val of getValues(value)) {
       if (val instanceof Node) {
         val.parent = this;
+        if (val.getState(F_NON_STATIC)) {
+          state |= F_NON_STATIC;
+        } else if (val.getState(F_STATIC)) {
+          state |= F_STATIC;
+        }
+        if (val.getState(F_AMPERSAND) && this.type !== 'Rules') {
+          state |= F_AMPERSAND;
+        }
       }
     }
+    this.state = state;
     return value;
   }
 
