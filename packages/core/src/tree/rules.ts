@@ -3,9 +3,7 @@ import {
   defineType,
   type NodeOptions,
   type LocationInfo,
-  type TreeContext,
-  F_VISIBLE,
-  F_NON_STATIC
+  type TreeContext
 } from './node';
 import { Context } from '../context';
 import { isNode } from './util/is-node';
@@ -110,7 +108,6 @@ export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
 export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   type = 'Rules';
   shortType = 'rules';
-  override state = F_VISIBLE | F_NON_STATIC;
   override allowRuleRoot = true;
   override allowRoot = true;
 

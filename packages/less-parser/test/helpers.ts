@@ -1,6 +1,6 @@
 import type { IParseResult } from 'css-parser/lib/cssParser';
 import { Parser, type LessRules } from '../src';
-import { F_MAY_ASYNC, F_NEEDS_EVALUATION, type Node, type Rules } from '@jesscss/core';
+import { F_MAY_ASYNC, F_STATIC, F_NON_STATIC, type Node, type Rules } from '@jesscss/core';
 
 const parser = new Parser();
 
@@ -18,36 +18,36 @@ export function parse(input: string, rule?: LessRules) {
 // Flag assertion helpers
 export const expectFlags = (
   node: Node,
-  needsEvaluation: boolean,
+  isStatic: boolean,
   mayAsync: boolean,
   description = ''
 ) => {
   const prefix = description ? `${description}: ` : '';
-  expect(node.getState(F_NEEDS_EVALUATION)).toBe(needsEvaluation);
+  expect(node.getState(F_STATIC)).toBe(isStatic);
   expect(node.getState(F_MAY_ASYNC)).toBe(mayAsync);
 };
 
 export const expectStatic = (node: Node, description = '') => {
-  expectFlags(node, false, false, description);
-};
-
-export const expectNeedsEvaluation = (node: Node, description = '') => {
   expectFlags(node, true, false, description);
 };
 
+export const expectNonStatic = (node: Node, description = '') => {
+  expectFlags(node, false, false, description);
+};
+
 export const expectMayAsync = (node: Node, description = '') => {
-  expectFlags(node, true, true, description);
+  expectFlags(node, false, true, description);
 };
 
 export const expectBothFlags = (node: Node, description = '') => {
-  expectFlags(node, true, true, description);
+  expectFlags(node, false, true, description);
 };
 
 // Test case helpers
 export const testCase = <const T extends LessRules = LessRules>(
   description: string,
   input: string,
-  expectedNeedsEvaluation: boolean,
+  expectedIsStatic: boolean,
   expectedMayAsync: boolean,
   rule: T = 'stylesheet' as T
 ) => {
@@ -57,27 +57,27 @@ export const testCase = <const T extends LessRules = LessRules>(
     // For selector interpolation tests, check the first ruleset instead of the root Rules node
     if (description.includes('selector interpolation')) {
       const ruleset = (tree as any).value[0];
-      expectFlags(ruleset, expectedNeedsEvaluation, expectedMayAsync);
+      expectFlags(ruleset, expectedIsStatic, expectedMayAsync);
     } else {
-      expectFlags(tree, expectedNeedsEvaluation, expectedMayAsync);
+      expectFlags(tree, expectedIsStatic, expectedMayAsync);
     }
   });
 };
 
 export const testStatic = (description: string, input: string, rule: LessRules = 'stylesheet') => {
-  testCase(description, input, false, false, rule);
-};
-
-export const testNeedsEvaluation = (description: string, input: string, rule: LessRules = 'stylesheet') => {
   testCase(description, input, true, false, rule);
 };
 
+export const testNonStatic = (description: string, input: string, rule: LessRules = 'stylesheet') => {
+  testCase(description, input, false, false, rule);
+};
+
 export const testMayAsync = (description: string, input: string, rule: LessRules = 'stylesheet') => {
-  testCase(description, input, true, true, rule);
+  testCase(description, input, false, true, rule);
 };
 
 export const testBothFlags = (description: string, input: string, rule: LessRules = 'stylesheet') => {
-  testCase(description, input, true, true, rule);
+  testCase(description, input, false, true, rule);
 };
 
 // Common test patterns
@@ -167,24 +167,24 @@ export const testDeepBubbling = (
   description: string,
   input: string,
   nodePath: number[],
-  expectedNeedsEvaluation: boolean,
+  expectedIsStatic: boolean,
   expectedMayAsync: boolean
 ) => {
   test(description, () => {
     const { tree } = parse(input);
     const node = getNestedNode(tree, nodePath);
-    expectFlags(node, expectedNeedsEvaluation, expectedMayAsync);
+    expectFlags(node, expectedIsStatic, expectedMayAsync);
   });
 };
 
 export const testIsolation = (
   description: string,
   input: string,
-  expectedNeedsEvaluation: boolean,
+  expectedIsStatic: boolean,
   expectedMayAsync: boolean
 ) => {
   test(description, () => {
     const { tree } = parse(input);
-    expectFlags(tree, expectedNeedsEvaluation, expectedMayAsync);
+    expectFlags(tree, expectedIsStatic, expectedMayAsync);
   });
 };

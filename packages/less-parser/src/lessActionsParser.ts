@@ -16,9 +16,7 @@ import {
   JsExpression,
   type Node,
   type Extend,
-  type ComplexSelector,
-  F_MAY_ASYNC,
-  F_NEEDS_EVALUATION
+  type ComplexSelector
 } from '@jesscss/core';
 
 import { type LessTokenType, type LessExtraTokenType } from './lessTokens';
@@ -137,7 +135,6 @@ export class LessActionsParser extends CssActionsParser {
 
     /** Less extensions */
     for (let [key, value] of Object.entries(productions)) {
-      // @ts-expect-error - `this` is fine
       let rule = value.call(this, T);
       if (key in cssProductions) {
         this.OVERRIDE_RULE(key, rule);
@@ -162,25 +159,5 @@ export class LessActionsParser extends CssActionsParser {
       return new JsExpression(token.image, undefined, this.getLocationInfo(token), this.context);
     }
     return super.processValueToken(token);
-  }
-
-  /**
-   * Creates a node and applies context state management consistently.
-   * This ensures all nodes get proper state handling whether created through $.rule or directly.
-   */
-  protected createNode<T extends Node>(
-    node: T,
-    ctx: RuleContext
-  ): T {
-    // Apply context state to the node
-    node.state |= ctx.nodeState || 0;
-    // Bubble up flags from the node to context
-    if (node.getState(F_MAY_ASYNC)) {
-      ctx.nodeState = (ctx.nodeState || 0) | F_MAY_ASYNC;
-    }
-    if (node.getState(F_NEEDS_EVALUATION)) {
-      ctx.nodeState = (ctx.nodeState || 0) | F_NEEDS_EVALUATION;
-    }
-    return node;
   }
 }

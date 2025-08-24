@@ -58,9 +58,7 @@ import {
   SelectorList,
   Rules,
   type ComplexSelectorComponent,
-  type Selector,
-  F_MAY_ASYNC,
-  F_NEEDS_EVALUATION
+  type Selector
 } from '@jesscss/core';
 
 const isEscapedString = function(this: P, T: TokenMap) {
@@ -97,7 +95,7 @@ export function stylesheet(this: P, T: TokenMap) {
     });
 
     const ctx: RuleContext = { isRoot: true } as any;
-    let root: Node = $.rule(ctx, $.main);
+    let root: Node = $.SUBRULE($.main, { ARGS: [ctx] });
 
     if (!RECORDING_PHASE) {
       let rules = root?.value as any[];
@@ -121,14 +119,14 @@ export function main(this: P, T: TokenMap) {
 
   const ruleAlt = (ctx: RuleContext = {}) => [
     // { GATE: () => looksLikeMixinDefinition.call($, T), ALT: () => $.SUBRULE($.mixinDefinition) },
-    { ALT: () => $.rule(ctx, $.functionCall) },
-    { ALT: () => $.rule(ctx, $.extendList) },
+    { ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.extendList, { ARGS: [ctx] }) },
     {
       GATE: () => {
         let next = $.LA(1).tokenType;
         return next === T.DotName || next === T.HashName || next === T.ColorIdentStart;
       },
-      ALT: () => $.rule(ctx, $.mixinOrQualifiedRule)
+      ALT: () => $.SUBRULE($.mixinOrQualifiedRule, { ARGS: [ctx] })
     },
     {
       GATE: () => {
@@ -137,9 +135,9 @@ export function main(this: P, T: TokenMap) {
           && next !== T.HashName
           && next !== T.ColorIdentStart;
       },
-      ALT: () => $.rule(ctx, $.qualifiedRule)
+      ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [ctx] })
     },
-    { ALT: () => $.rule(ctx, $.atRule) },
+    { ALT: () => $.SUBRULE($.atRule, { ARGS: [ctx] }) },
 
     /**
      * Historically, Less allows `@charset` anywhere,
@@ -164,21 +162,17 @@ export function declarationList(this: P, T: TokenMap) {
   const $ = this;
 
   let ruleAlt = (ctx: RuleContext = {}) => [
-    { ALT: () => $.rule(ctx, $.declaration) },
-    { ALT: () => $.rule(ctx, $.extendList) },
-    { ALT: () => $.rule(ctx, $.functionCall) },
-    { ALT: () => $.rule(ctx, $.innerAtRule) },
+    { ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.extendList, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.innerAtRule, { ARGS: [ctx] }) },
     {
       GATE: () => {
         let next = $.LA(1).tokenType;
         return next === T.DotName || next === T.HashName || next === T.ColorIdentStart;
       },
       ALT: () => {
-        return $.rule(
-          ctx,
-          { inner: true },
-          $.mixinOrQualifiedRule
-        );
+        return $.SUBRULE($.mixinOrQualifiedRule, { ARGS: [{ ...ctx, inner: true }] });
       }
     },
     {
@@ -189,11 +183,7 @@ export function declarationList(this: P, T: TokenMap) {
           && next !== T.ColorIdentStart;
       },
       ALT: () => {
-        return $.rule(
-          ctx,
-          { inner: true },
-          $.qualifiedRule
-        );
+        return $.SUBRULE($.qualifiedRule, { ARGS: [{ ...ctx, inner: true }] });
       }
     },
     { ALT: () => $.CONSUME2(T.Semi) }
@@ -250,7 +240,7 @@ export function declaration(this: P, T: TokenMap) {
           }
         ]);
         let assign = $.CONSUME(T.Assign);
-        let value = $.rule(ctx, $.valueList);
+        let value = $.SUBRULE($.valueList, { ARGS: [ctx] });
         let important: IToken | undefined;
 
         $.OPTION(() => {
@@ -282,7 +272,7 @@ export function declaration(this: P, T: TokenMap) {
         let assign = $.CONSUME2(T.Assign);
         $.startRule();
         $.MANY(() => {
-          let val = $.rule(ctx, $.customValue);
+          let val = $.SUBRULE($.customValue, { ARGS: [ctx] });
           if (!RECORDING_PHASE) {
             nodes!.push(val);
           }
@@ -320,7 +310,7 @@ export function mediaInParens(this: P, T: TokenMap) {
       {
         /** Allow escaped strings */
         GATE: isEscaped,
-        ALT: () => $.rule(ctx, $.string)
+        ALT: () => $.SUBRULE($.string, { ARGS: [ctx] })
       },
       /**
        * After Less evaluation, should throw an error
@@ -328,11 +318,7 @@ export function mediaInParens(this: P, T: TokenMap) {
        */
       {
         ALT: () => {
-          return $.rule(
-            ctx,
-            { requireAccessorsAfterMixinCall: true },
-            $.valueReference
-          );
+          return $.SUBRULE($.valueReference, { ARGS: [{ ...ctx, requireAccessorsAfterMixinCall: true }] });
         }
       },
       {
@@ -351,14 +337,14 @@ export function mfValue(this: P, T: TokenMap) {
      * and it's up to the Less author to know
      * if it's valid.
      */
-    $.rule(ctx, $.expressionSum);
+    $.SUBRULE($.expressionSum, { ARGS: [ctx] });
 }
 
 export function wrappedDeclarationList(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.CONSUME(T.LCurly);
-    let rules = $.rule(ctx, $.declarationList);
+    let rules = $.SUBRULE($.declarationList, { ARGS: [ctx] });
     $.CONSUME(T.RCurly);
     return rules;
   };
@@ -381,11 +367,11 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
     $.OPTION4({
       GATE: () => !isSelectorList,
       DEF: () => {
-        guard = $.rule(2, ctx, $.guard);
+        guard = $.SUBRULE2($.guard, { ARGS: [ctx] });
       }
     });
     $.CONSUME2(T.LCurly);
-    let rules = $.rule(2, ctx, $.declarationList);
+    let rules = $.SUBRULE2($.declarationList, { ARGS: [ctx] });
     let end = $.CONSUME2(T.RCurly);
     if (!RECORDING_PHASE) {
       let location: LocationInfo;
@@ -406,21 +392,13 @@ export function qualifiedRule(this: P, T: TokenMap, altContext?: AltContext) {
     {
       GATE: () => !ctx.inner,
       ALT: () => {
-        return $.rule(
-          ctx,
-          { qualifiedRule: true },
-          $.selectorList
-        );
+        return $.SUBRULE($.selectorList, { ARGS: [{ ...ctx, qualifiedRule: true }] });
       }
     },
     {
       GATE: () => !!ctx.inner,
       ALT: () => {
-        return $.rule(
-          ctx,
-          { firstSelector: true, qualifiedRule: true },
-          $.forgivingSelectorList
-        );
+        return $.SUBRULE($.forgivingSelectorList, { ARGS: [{ ...ctx, firstSelector: true, qualifiedRule: true }] });
       }
     }
   ]);
@@ -429,11 +407,7 @@ export function qualifiedRule(this: P, T: TokenMap, altContext?: AltContext) {
   //   ;
   return (ctx: RuleContext = {}) => {
     let selector = $.OR(selectorAlt(ctx));
-    return $.rule(
-      ctx,
-      { selector },
-      $.qualifiedRuleBody
-    );
+    return $.SUBRULE($.qualifiedRuleBody, { ARGS: [{ ...ctx, selector }] });
   };
 }
 
@@ -455,21 +429,13 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
       {
         GATE: () => !ctx.inner,
         ALT: () => {
-          return $.rule(
-            ctx,
-            { qualifiedRule: true },
-            $.selectorList
-          );
+          return $.SUBRULE($.selectorList, { ARGS: [{ ...ctx, qualifiedRule: true }] });
         }
       },
       {
         GATE: () => !!ctx.inner,
         ALT: () => {
-          return $.rule(
-            ctx,
-            { firstSelector: true, qualifiedRule: true },
-            $.forgivingSelectorList
-          );
+          return $.SUBRULE($.forgivingSelectorList, { ARGS: [{ ...ctx, firstSelector: true, qualifiedRule: true }] });
         }
       }
     ]);
@@ -536,7 +502,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                 });
                 $.CONSUME(T.LCurly);
 
-                let rules = $.rule(ctx, $.declarationList);
+                let rules = $.SUBRULE($.declarationList, { ARGS: [ctx] });
                 $.CONSUME(T.RCurly);
                 if (!RECORDING_PHASE) {
                   const node = new Mixin({ name: selector.valueOf(), params: args, rules, guard }, undefined, $.endRule(), this.context);
@@ -556,7 +522,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                 if (!RECORDING_PHASE) {
                   location = $.endRule();
                 }
-                let result = $.OPTION3(() => $.rule(ctx, { node: createMixinCall(location) }, $.accessors));
+                let result = $.OPTION3(() => $.SUBRULE($.accessors, { ARGS: [{ ...ctx, node: createMixinCall(location) }] }));
                 return result ?? createMixinCall(location!);
               }
             }
@@ -569,11 +535,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
           if (!RECORDING_PHASE) {
             $.endRule();
           }
-          return $.rule(
-            ctx,
-            { selector, isSelectorList },
-            $.qualifiedRuleBody
-          );
+          return $.SUBRULE($.qualifiedRuleBody, { ARGS: [{ ...ctx, selector, isSelectorList }] });
         }
       },
       {
@@ -601,7 +563,7 @@ export function relativeSelector(this: P, T: TokenMap) {
       {
         ALT: () => {
           let co = $.CONSUME(T.Combinator);
-          let node: ComplexSelector | Extend = $.rule(ctx, $.complexSelector);
+          let node: ComplexSelector | Extend = $.SUBRULE($.complexSelector, { ARGS: [ctx] });
 
           if (!$.RECORDING_PHASE) {
             let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context);
@@ -630,7 +592,7 @@ export function relativeSelector(this: P, T: TokenMap) {
         }
       },
       {
-        ALT: () => $.rule(2, ctx, $.complexSelector)
+        ALT: () => $.SUBRULE2($.complexSelector, { ARGS: [ctx] })
       }
     ]);
   };
@@ -651,7 +613,7 @@ export function complexSelector(this: P, T: TokenMap) {
     $.OPTION2({
       GATE: () => isQualifiedRule,
       DEF: () => {
-        selector = $.rule(ctx, { selector: selector as ComplexSelector }, $.extend);
+        selector = $.SUBRULE($.extend, { ARGS: [{ ...ctx, selector: selector as ComplexSelector }] });
       }
     });
 
@@ -686,15 +648,15 @@ export function extendList(this: P, T: TokenMap) {
           sel = $.OR([
             {
               GATE: () => !!ctx.inner,
-              ALT: () => $.rule(ctx, $.relativeSelector)
+              ALT: () => $.SUBRULE($.relativeSelector, { ARGS: [ctx] })
             },
             {
               GATE: () => !ctx.inner,
-              ALT: () => $.rule(ctx, $.complexSelector)
+              ALT: () => $.SUBRULE($.complexSelector, { ARGS: [ctx] })
             }
           ]);
         });
-        ext = $.rule(ctx, { selector: sel as ComplexSelector }, $.extend);
+        ext = $.SUBRULE($.extend, { ARGS: [{ ...ctx, selector: sel as ComplexSelector }] });
         if (!RECORDING_PHASE) {
           nodes.push(ext!);
         }
@@ -717,7 +679,7 @@ export function extend(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     let start = $.CONSUME(T.Extend);
-    let target = $.rule(ctx, $.selectorList);
+    let target = $.SUBRULE($.selectorList, { ARGS: [ctx] });
     let flag: IToken | undefined;
     let selector = ctx.selector;
     $.OPTION(() => flag = $.CONSUME(T.All));
@@ -782,29 +744,26 @@ export function simpleSelector(this: P, T: TokenMap) {
   ];
 
   return (ctx: RuleContext = {}) => {
-    return $.rule(ctx, (ctx: RuleContext) => {
-      let selector = $.OR(selectorAlt(ctx));
+    let selector = $.OR(selectorAlt(ctx));
 
-      if (!$.RECORDING_PHASE) {
-        if ($.isToken(selector)) {
-          if (selector.tokenType.name === 'Ampersand') {
-            let ampImg = selector.image;
-            let value = ampImg.slice(1);
-            return new Ampersand(value || undefined, undefined, $.getLocationInfo(selector), this.context);
-          }
-          if (selector.tokenType.name === 'InterpolatedSelector') {
-            // Create an Interpolated node for interpolated selectors
-            let nameValue = selector.image;
-            let nameNode = getInterpolated(nameValue, $.getLocationInfo(selector), this.context, this, ctx);
-            // Override context to indicate async evaluation needed
-            ctx.nodeState = F_MAY_ASYNC;
-            return nameNode;
-          }
-          return new BasicSelector(selector.image, undefined, $.getLocationInfo(selector), this.context);
+    if (!$.RECORDING_PHASE) {
+      if ($.isToken(selector)) {
+        if (selector.tokenType.name === 'Ampersand') {
+          let ampImg = selector.image;
+          let value = ampImg.slice(1);
+          return new Ampersand(value || undefined, undefined, $.getLocationInfo(selector), this.context);
         }
-        return selector as Node;
+        if (selector.tokenType.name === 'InterpolatedSelector') {
+          // Create an Interpolated node for interpolated selectors
+          let nameValue = selector.image;
+          let nameNode = getInterpolated(nameValue, $.getLocationInfo(selector), this.context, this, ctx);
+
+          return nameNode;
+        }
+        return new BasicSelector(selector.image, undefined, $.getLocationInfo(selector), this.context);
       }
-    });
+      return selector as Node;
+    }
   };
 }
 
@@ -816,10 +775,10 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
     let params: List | undefined;
     $.OPTION(() => {
       $.CONSUME(T.AnonMixinStart);
-      params = $.rule(ctx, { isDefinition: true }, $.mixinArgList);
+      params = $.SUBRULE($.mixinArgList, { ARGS: [{ ...ctx, isDefinition: true }] });
       $.CONSUME(T.RParen);
     });
-    let rules = $.rule(ctx, $.wrappedDeclarationList);
+    let rules = $.SUBRULE($.wrappedDeclarationList, { ARGS: [ctx] });
 
     if (!$.RECORDING_PHASE) {
       return new Mixin({ params, rules }, undefined, $.endRule(), this.context);
@@ -887,8 +846,8 @@ export function importAtRule(this: P, T: TokenMap) {
     });
 
     let urlNode: Quoted | Call = $.OR([
-      { ALT: () => $.rule(ctx, $.urlFunction) },
-      { ALT: () => $.rule(ctx, $.string) }
+      { ALT: () => $.SUBRULE($.urlFunction, { ARGS: [ctx] }) },
+      { ALT: () => $.SUBRULE($.string, { ARGS: [ctx] }) }
     ]);
 
     let isAtRule: boolean | undefined;
@@ -927,18 +886,16 @@ export function importAtRule(this: P, T: TokenMap) {
       let location = $.endRule();
       if (isAtRule) {
         const prelude = new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context);
-        this.createNode(prelude, ctx);
         const atRule = new AtRule({
           name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context), true),
           prelude: prelude
         }, undefined, location, this.context);
-        return this.createNode(atRule, ctx);
+        return atRule;
       }
       const pathStr = getUrlFromNode(urlNode);
       const pathNode = new Quoted(new Any(pathStr, { role: 'urlvalue' }), { quote: '\'' }, undefined, this.context);
-      // Set async flag for style imports
-      ctx.nodeState = F_MAY_ASYNC;
-      const imp = this.createNode(new StyleImport({
+
+      return new StyleImport({
         path: pathNode
       }, {
         type: 'import',
@@ -946,8 +903,7 @@ export function importAtRule(this: P, T: TokenMap) {
           reference: options!.includes('reference'),
           once: !options!.includes('multiple')
         }
-      }, location, this.context), ctx);
-      return imp;
+      }, location, this.context);
     }
   };
 }
@@ -1020,7 +976,7 @@ export function unknownAtRule(this: P, T: TokenMap) {
          */
         GATE: isVariableLike,
         ALT: () => {
-          name = $.rule(ctx, $.varName);
+          name = $.SUBRULE($.varName, { ARGS: [ctx] });
           $.CONSUME(T.Colon);
           return $.OR4([
             /**
@@ -1034,7 +990,7 @@ export function unknownAtRule(this: P, T: TokenMap) {
                 return type === T.AnonMixinStart || type === T.LCurly;
               },
               ALT: () => {
-                value = $.rule(ctx, $.anonymousMixinDefinition);
+                value = $.SUBRULE($.anonymousMixinDefinition, { ARGS: [ctx] });
                 $.OPTION2(() => $.CONSUME2(T.Semi));
                 return value;
               }
@@ -1045,7 +1001,7 @@ export function unknownAtRule(this: P, T: TokenMap) {
                 return type !== T.AnonMixinStart && type !== T.LCurly;
               },
               ALT: () => {
-                value = $.rule(ctx, { allowMixinCallWithoutAccessor: true }, $.valueList);
+                value = $.SUBRULE($.valueList, { ARGS: [{ ...ctx, allowMixinCallWithoutAccessor: true }] });
                 $.OPTION(() => {
                   important = $.CONSUME(T.Important);
                 });
@@ -1068,8 +1024,8 @@ export function unknownAtRule(this: P, T: TokenMap) {
          * @dr(arg1, arg2);
          */
         ALT: () => {
-          name = $.rule(2, ctx, $.varName);
-          args = $.rule(ctx, $.mixinArgs);
+          name = $.SUBRULE2($.varName, { ARGS: [ctx] });
+          args = $.SUBRULE($.mixinArgs, { ARGS: [ctx] });
           return args;
         }
       },
@@ -1127,7 +1083,7 @@ export function valueSequence(this: P, T: TokenMap) {
         GATE: () => $.looseMode,
         ALT: () => {
           $.MANY(() => {
-            let value = $.rule(ctx, $.expressionSum);
+            let value = $.SUBRULE($.expressionSum, { ARGS: [ctx] });
             if (!RECORDING_PHASE) {
               nodes.push(value);
             }
@@ -1139,7 +1095,7 @@ export function valueSequence(this: P, T: TokenMap) {
         /** @todo - create warning if there isn't a value */
         ALT: () => {
           $.AT_LEAST_ONE(() => {
-            let value = $.rule(2, ctx, $.expressionSum);
+            let value = $.SUBRULE2($.expressionSum, { ARGS: [ctx] });
             if (!RECORDING_PHASE) {
               nodes.push(value);
             }
@@ -1187,7 +1143,7 @@ export function squareValue(this: P, T: TokenMap) {
             nodes = [];
           }
           $.MANY(() => {
-            let node = $.rule(ctx, $.anyInnerValue);
+            let node = $.SUBRULE($.anyInnerValue, { ARGS: [ctx] });
             if (!RECORDING_PHASE) {
               const wrapped = $.wrap(node);
               nodes.push(wrapped);
@@ -1205,7 +1161,7 @@ export function squareValue(this: P, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
       const blk = new Block(node, { type: 'square' }, location, this.context);
-      return this.createNode(blk, ctx);
+      return blk;
     }
   };
 }
@@ -1223,7 +1179,7 @@ export function expressionSum(this: P, T: TokenMap) {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
 
-    let left = $.rule(ctx, $.expressionProduct);
+    let left = $.SUBRULE($.expressionProduct, { ARGS: [ctx] });
 
     $.MANY({
       /**
@@ -1255,7 +1211,7 @@ export function expressionSum(this: P, T: TokenMap) {
               if (!RECORDING_PHASE) {
                 op = opToken.image;
               }
-              right = $.rule(2, ctx, $.expressionProduct);
+              right = $.SUBRULE2($.expressionProduct, { ARGS: [ctx] });
             }
           },
           /** This will be interpreted by Less as a complete expression */
@@ -1291,7 +1247,7 @@ export function expressionSum(this: P, T: TokenMap) {
             $.getLocationFromNodes([left, right!]),
             this.context
           );
-          left = this.createNode(operation, ctx);
+          left = operation;
 
           return left;
         }
@@ -1319,22 +1275,20 @@ export function expressionProduct(this: P, T: TokenMap) {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
 
-    let left = $.rule(ctx, $.expressionValue);
+    let left = $.SUBRULE($.expressionValue, { ARGS: [ctx] });
 
     $.MANY(() => {
       let op = $.OR(opAlt);
-      let right: Node = $.rule(2, ctx, $.expressionValue);
+      let right: Node = $.SUBRULE2($.expressionValue, { ARGS: [ctx] });
 
       if (!RECORDING_PHASE) {
-        // Set needs evaluation flag for operations
-        ctx.nodeState = (ctx.nodeState || 0) | F_NEEDS_EVALUATION;
         const operation = new Operation(
           [$.wrap(left, true), op.image as Operator, $.wrap(right)],
           undefined,
           $.getLocationFromNodes([left, right]),
           this.context
         );
-        left = this.createNode(operation, ctx);
+        left = operation;
       }
     });
 
@@ -1364,29 +1318,22 @@ export function expressionValue(this: P, T: TokenMap) {
           });
 
           $.CONSUME(T.LParen);
-          let node = $.rule(
-            ctx,
-            { inner: true },
-            $.valueList
-          );
+          let node = $.SUBRULE($.valueList, { ARGS: [{ ...ctx, inner: true }] });
           $.CONSUME(T.RParen);
 
           if (!RECORDING_PHASE) {
             let location = $.endRule();
             node = $.wrap(node, 'both');
-            const par = this.createNode(new Paren(node, { escaped: !!escape }, location, this.context), ctx);
-
-            return par;
+            return new Paren(node, { escaped: !!escape }, location, this.context);
           }
         }
       },
-      { ALT: () => $.rule(ctx, $.value) }
+      { ALT: () => $.SUBRULE($.value, { ARGS: [ctx] }) }
     ]);
     if (!RECORDING_PHASE) {
       let location = $.endRule();
       if (minus) {
-        const neg = new Negative(node, undefined, location, this.context);
-        return this.createNode(neg, ctx);
+        return new Negative(node, undefined, location, this.context);
       }
       return node;
     }
@@ -1423,7 +1370,7 @@ export function nthValue(this: P, T: TokenMap) {
         });
         $.OPTION2(() => {
           $.CONSUME(T.Of);
-          $.rule(ctx, $.complexSelector);
+          $.SUBRULE($.complexSelector, { ARGS: [ctx] });
         });
       }
     }
@@ -1436,11 +1383,11 @@ export function knownFunctions(this: P, T: TokenMap) {
   const $ = this;
 
   let functions = (ctx: RuleContext = {}) => [
-    { ALT: () => $.rule(ctx, $.urlFunction) },
-    { ALT: () => $.rule(ctx, $.varFunction) },
-    { ALT: () => $.rule(ctx, $.calcFunction) },
-    { ALT: () => $.rule(ctx, $.ifFunction) },
-    { ALT: () => $.rule(ctx, $.booleanFunction) }
+    { ALT: () => $.SUBRULE($.urlFunction, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.varFunction, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.calcFunction, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.ifFunction, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.booleanFunction, { ARGS: [ctx] }) }
   ];
 
   return cssKnownFunctions.call(this, T, functions);
@@ -1457,7 +1404,7 @@ export function ifFunction(this: P, T: TokenMap) {
 
     $.startRule();
 
-    let node: Node = $.rule(ctx, { inValueList: true }, $.guardInner);
+    let node: Node = $.SUBRULE($.guardInner, { ARGS: [{ ...ctx, inValueList: true }] });
     let args: Node[];
 
     if (!RECORDING_PHASE) {
@@ -1468,13 +1415,13 @@ export function ifFunction(this: P, T: TokenMap) {
       {
         ALT: () => {
           $.CONSUME(T.Semi);
-          node = $.rule(ctx, { allowAnonymousMixins: true }, $.valueList);
+          node = $.SUBRULE($.valueList, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
           if (!RECORDING_PHASE) {
             args.push(node);
           }
           $.OPTION(() => {
             $.CONSUME2(T.Semi);
-            node = $.rule(2, ctx, { allowAnonymousMixins: true }, $.valueList);
+            node = $.SUBRULE2($.valueList, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
             if (!RECORDING_PHASE) {
               args.push(node);
             }
@@ -1484,13 +1431,13 @@ export function ifFunction(this: P, T: TokenMap) {
       {
         ALT: () => {
           $.CONSUME(T.Comma);
-          node = $.rule(ctx, { allowAnonymousMixins: true }, $.valueSequence);
+          node = $.SUBRULE($.valueSequence, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
           if (!RECORDING_PHASE) {
             args.push(node);
           }
           $.OPTION2(() => {
             $.CONSUME2(T.Comma);
-            node = $.rule(2, ctx, { allowAnonymousMixins: true }, $.valueSequence);
+            node = $.SUBRULE2($.valueSequence, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
             if (!RECORDING_PHASE) {
               args.push(node);
             }
@@ -1704,7 +1651,7 @@ export function functionCallArgs(this: P, T: TokenMap) {
       if (!RECORDING_PHASE) {
         // Aggregate the previous set of comma-nodes as the first semi item
         if (commaNodes.length > 1) {
-          let commaList = new List(commaNodes, undefined, $.getLocationFromNodes(commaNodes), this.context);
+          let commaList = $.createNode(new List(commaNodes, undefined, $.getLocationFromNodes(commaNodes), this.context), ctx);
           semiNodes.push(commaList);
         } else {
           semiNodes.push(commaNodes[0]!);
@@ -1793,7 +1740,7 @@ export function value(this: P, T: TokenMap) {
     ]);
     if (!$.RECORDING_PHASE) {
       if (!(node instanceof Node)) {
-        node = $.processValueToken(node);
+        node = $.processValueToken(node, ctx);
       }
       return $.wrap(node);
     }
@@ -2200,7 +2147,7 @@ export function layerName(this: P, T: TokenMap) {
       if (first instanceof Node) {
         nodes.push($.wrap(first));
       } else {
-        nodes.push($.wrap($.processValueToken(first)));
+        nodes.push($.wrap($.processValueToken(first, ctx)));
       }
     }
 
@@ -2210,7 +2157,7 @@ export function layerName(this: P, T: TokenMap) {
       DEF: () => {
         const seg = $.CONSUME(T.DotName);
         if (!RECORDING_PHASE) {
-          nodes.push($.wrap($.processValueToken(seg)));
+          nodes.push($.wrap($.processValueToken(seg, ctx)));
         }
       }
     });
@@ -2238,7 +2185,9 @@ export function keyframesName(this: P, T: TokenMap) {
         { ALT: () => node = $.rule(ctx, $.valueReference) },
         { ALT: () => {
           const tok = $.CONSUME(T.Ident);
-          if (!RECORDING_PHASE) { node = $.wrap($.processValueToken(tok)); }
+          if (!RECORDING_PHASE) {
+            node = $.wrap($.processValueToken(tok, ctx));
+          }
         } },
         { ALT: () => node = $.SUBRULE($.string) }
       ]

@@ -1,4 +1,4 @@
-import { Node, F_VISIBLE, F_NON_STATIC, defineType } from './node';
+import { Node, defineType } from './node';
 import type { Condition } from './condition';
 import { type List } from './list';
 import type { Any, AnyRole } from './any';
@@ -81,7 +81,6 @@ export type MixinOptions = {
 export class Mixin extends Node<MixinValue, MixinOptions> {
   type = 'Mixin';
   shortType = 'mixin';
-  override state = F_VISIBLE | F_NON_STATIC;
   // Mixin has preEval method but doesn't need to set flags - preEvaluated is tracked as boolean
 
   /** Return a selector-like keySet */

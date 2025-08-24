@@ -2,7 +2,7 @@ import { Parser } from '../src';
 import { type Node, type Rules, type Ruleset, type Declaration, type Operation } from '@jesscss/core';
 import { Context } from '@jesscss/core';
 
-describe('Evaluation optimization', () => {
+describe('Static optimization', () => {
   const parser = new Parser();
   let context: Context;
 
@@ -10,7 +10,7 @@ describe('Evaluation optimization', () => {
     context = new Context();
   });
 
-  test('static declarations have no evaluation flags', () => {
+  test('static declarations have static flags', () => {
     // Parse a static ruleset
     const { tree } = parser.parse('.a { color: red; width: 10px; }');
 
@@ -28,7 +28,7 @@ describe('Evaluation optimization', () => {
     expect(declaration.getState(0b10)).toBe(false);  // F_MAY_ASYNC
   });
 
-  test('dynamic declarations have evaluation flags', () => {
+  test('dynamic declarations have non-static flags', () => {
     // Parse a ruleset with a variable reference
     const { tree } = parser.parse('.a { color: @var; width: 10px; }');
 
@@ -46,7 +46,7 @@ describe('Evaluation optimization', () => {
     expect(declaration.getState(0b10)).toBe(true);   // F_MAY_ASYNC
   });
 
-  test('operations always have evaluation flags', () => {
+  test('operations always have non-static flags', () => {
     // Parse a ruleset with a static operation
     const { tree } = parser.parse('.a { width: 1 + 2; }');
 
@@ -65,7 +65,7 @@ describe('Evaluation optimization', () => {
     expect(operation!.getState(0b10)).toBe(false);  // F_MAY_ASYNC (static operation)
   });
 
-  test('function calls always have evaluation flags', () => {
+  test('function calls always have non-static flags', () => {
     // Parse a ruleset with a static function call
     const { tree } = parser.parse('.a { color: rgb(255, 0, 0); }');
 
@@ -84,7 +84,7 @@ describe('Evaluation optimization', () => {
     expect(call!.getState(0b10)).toBe(true);   // F_MAY_ASYNC (function calls are potentially async)
   });
 
-  test('static container nodes have no evaluation flags', () => {
+  test('static container nodes have static flags', () => {
     // Parse a ruleset with static container nodes
     const { tree } = parser.parse('.a { shadow: 1px, 2px; border: 1px solid red; }');
 
@@ -113,7 +113,7 @@ describe('Evaluation optimization', () => {
     expect(sequence!.getState(0b10)).toBe(false);  // F_MAY_ASYNC
   });
 
-  test('nested static rulesets have no evaluation flags', () => {
+  test('nested static rulesets have static flags', () => {
     // Parse a ruleset with nested static rulesets
     const { tree } = parser.parse('.a { .b { color: red; } .c { width: 10px; } }');
 
@@ -132,7 +132,7 @@ describe('Evaluation optimization', () => {
     expect(nestedRulesets[1]!.getState(0b10)).toBe(false);  // F_MAY_ASYNC
   });
 
-  test('at-rules with static content have no evaluation flags', () => {
+  test('at-rules with static content have static flags', () => {
     // Parse a ruleset with an at-rule containing static content
     const { tree } = parser.parse('.a { @media screen { color: red; } }');
 
@@ -160,11 +160,15 @@ function findNodeByType(node: any, type: string): any {
     if (Array.isArray(node.value)) {
       for (const child of node.value) {
         const found = findNodeByType(child, type);
-        if (found) return found;
+        if (found) {
+          return found;
+        }
       }
     } else if (typeof node.value === 'object') {
       const found = findNodeByType(node.value, type);
-      if (found) return found;
+      if (found) {
+        return found;
+      }
     }
   }
 

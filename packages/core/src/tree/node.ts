@@ -10,7 +10,7 @@ import type { Nil } from './nil';
 import { getEntriesFromNode, getValues } from './util/collections';
 import type { Comment } from './comment';
 import { type PrintOptions, getPrintOptions } from './util/print';
-import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 
 export type { TreeContext };
 
@@ -356,22 +356,19 @@ export abstract class Node<
    * Processed nodes must always return a Node.
    */
   forEachNode(func: (n: Node, idx?: number) => MaybePromise<Node>) {
-    const steps: Array<(x: void) => void | Promise<void>> = [...getEntriesFromNode(this as { value: unknown[] })].map(([value, key, collection], idx) => {
-      return (_: void) => {
-        if (!(value instanceof Node)) {
-          return;
-        }
-        const out = func(value, idx);
-        if (isThenable(out)) {
-          return (out as Promise<Node>).then((result) => {
-            collection[key] = result;
-          });
-        }
-        collection[key] = out as Node;
-      };
+    const entries = [...getEntriesFromNode(this as { value: unknown[] })];
+    return serialForEach(entries, ([value, key, collection]: [unknown, string | number, any], idx: number) => {
+      if (!(value instanceof Node)) {
+        return;
+      }
+      const out = func(value, idx);
+      if (isThenable(out)) {
+        return (out as Promise<Node>).then((result) => {
+          collection[key] = result;
+        });
+      }
+      collection[key] = out as Node;
     });
-
-    return pipe<void>(undefined, ...steps);
   }
 
   static* nodeAndPrePost(node: Node) {
@@ -530,7 +527,7 @@ export abstract class Node<
   private _createMinimalNil(): Node {
     const nilish = Object.create(this.constructor.prototype);
     nilish.type = 'Nil';
-    nilish.visible = false;
+    nilish.setState(F_VISIBLE, false);
     nilish.value = '';
     return nilish;
   }

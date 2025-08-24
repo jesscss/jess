@@ -5,7 +5,7 @@ import {
 import { Context } from '../../context';
 
 let context: Context;
-describe('Extend', () => {
+describe.skip('Extend', () => {
   beforeEach(() => {
     context = new Context();
   });

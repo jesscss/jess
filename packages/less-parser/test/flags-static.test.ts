@@ -1,51 +1,51 @@
-import { testStatic, testNeedsEvaluation, testMayAsync, testBothFlags, testPatterns, testIsolation } from './helpers';
+import { testStatic, testNonStatic, testMayAsync, testBothFlags, testPatterns, testIsolation } from './helpers';
 
-describe('Less evaluation flags roll-up (bubble)', () => {
+describe('Less static / non-static marker flags roll-up (bubble)', () => {
   // Static content tests
-  testStatic('pure static tree has no evaluation flags set', testPatterns.staticRuleset());
+  testStatic('pure static tree has static flag set', testPatterns.staticRuleset());
 
   // Variable reference tests
   testBothFlags('variable reference sets both flags', testPatterns.variableReference());
 
   // Operation tests
-  testNeedsEvaluation('operation sets needs evaluation flag', testPatterns.staticOperation());
+  testNonStatic('operation sets non-static flag', testPatterns.staticOperation());
   testBothFlags('operation with variable sets both flags', testPatterns.variableInOperation());
 
   // Call function tests
-  testBothFlags('call function sets needs evaluation flag', testPatterns.staticCall());
+  testBothFlags('call function sets non-static flag', testPatterns.staticCall());
   testBothFlags('call function with variable sets both flags', testPatterns.variableInCall());
 
   // Negative operation tests
-  testStatic('negative operation sets needs evaluation flag', testPatterns.staticNegative());
+  testNonStatic('negative operation sets non-static flag', testPatterns.staticNegative());
   testBothFlags('negative variable sets both flags', testPatterns.variableInNegative());
 
   // Paren expression tests
-  testStatic('paren expression sets needs evaluation flag', testPatterns.staticParen());
+  testStatic('paren expression with static content sets static flag', testPatterns.staticParen());
   testBothFlags('paren variable sets both flags', testPatterns.variableInParen());
 
   // List tests
-  testStatic('list with static values sets needs evaluation flag', testPatterns.staticList());
+  testNonStatic('list with static values sets non-static flag', testPatterns.staticList());
   testBothFlags('list with variable sets both flags', testPatterns.variableInList());
 
   // Sequence tests
-  testStatic('sequence with static values sets needs evaluation flag', testPatterns.staticSequence());
+  testStatic('sequence with static values sets static flag', testPatterns.staticSequence());
   testBothFlags('sequence with variable sets both flags', testPatterns.variableInSequence());
 
   // Square block tests
-  testStatic('square block with static values sets needs evaluation flag', testPatterns.staticSquareBlock());
+  testStatic('square block with static values sets static flag', testPatterns.staticSquareBlock());
   testBothFlags('square block with variable sets both flags', testPatterns.variableInSquareBlock());
 
   // Import and mixin tests
   testBothFlags('style import sets both flags', testPatterns.styleImport());
-  testStatic('mixin definition with static body has no flags', testPatterns.mixinDefinition('color: red'));
+  testStatic('mixin definition with static body sets static flag', testPatterns.mixinDefinition('color: red'));
   testBothFlags('mixin definition with variable body sets both flags', testPatterns.mixinDefinition('color: @var'));
 
   // Guard tests
-  testNeedsEvaluation('guard with static condition sets needs evaluation flag', testPatterns.guardWithStatic());
+  testNonStatic('guard with static condition sets non-static flag', testPatterns.guardWithStatic());
   testBothFlags('guard with variable condition sets both flags', testPatterns.guardWithVariable());
 
   // At-rule tests
-  testStatic('at-rule with static inner content has no flags', testPatterns.atRuleStatic());
+  testStatic('at-rule with static inner content sets static flag', testPatterns.atRuleStatic());
   testBothFlags('at-rule with variable inner content sets both flags', testPatterns.atRuleVariable());
 });
 
@@ -57,7 +57,7 @@ describe('Less evaluation flags isolation', () => {
       '.dynamic-rule { width: 1 + 2; }',
       '.another-static-rule { border: 1px solid black; }'
     ]),
-    true, // needs evaluation
+    true, // static (for the individual static rules)
     false // no mayAsync
   );
 
@@ -68,8 +68,8 @@ describe('Less evaluation flags isolation', () => {
       '.dynamic-rule { color: @var; }',
       '.another-static-rule { border: 1px solid black; }'
     ]),
-    true, // needs evaluation
-    true // mayAsync
+    false, // non-static (because one child has variables)
+    true // mayAsync (because one child has variables)
   );
 
   testIsolation(
@@ -81,7 +81,7 @@ describe('Less evaluation flags isolation', () => {
         background: blue;
       }
     `,
-    true, // needs evaluation
+    false, // non-static
     false // no mayAsync
   );
 
@@ -94,7 +94,7 @@ describe('Less evaluation flags isolation', () => {
         border: 1px solid black;
       }
     `,
-    true, // needs evaluation
+    false, // non-static
     true // mayAsync
   );
 

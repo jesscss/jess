@@ -24,10 +24,7 @@ import {
   Num,
   Rules,
   Any,
-  type Nil,
-  F_STATIC,
-  F_NON_STATIC,
-  F_MAY_ASYNC
+  type Nil
 } from '@jesscss/core';
 import type { CssErrorMessageProvider } from './cssErrorMessageProvider';
 
@@ -54,8 +51,6 @@ export type RuleContext = {
   firstSelector?: boolean;
   /** If downstream selector rules are part of a qualified rule */
   qualifiedRule?: boolean;
-  /** Parse-time node state bitmask */
-  nodeState?: number;
 
   [k: string]: object | boolean | string | object[] | number | undefined;
 };
@@ -390,13 +385,14 @@ export class CssActionsParser extends AdvancedActionsParser {
     const getNumber = (finalValue: number) =>
       new Num(finalValue, undefined, this.getLocationInfo(token), this.context);
 
+    let result: Node;
     if (tokenMatcher(token, T.Ident)) {
       /** @todo - check to see if it's a color */
       // In value position, treat as a generic identifier
-      return new Any(tokValue, undefined, this.getLocationInfo(token), this.context);
+      result = new Any(tokValue, undefined, this.getLocationInfo(token), this.context);
     } else if (tokenMatcher(token, T.Dimension)) {
       dimValue = { number: parseFloat(token.payload[0]), unit: token.payload[1] };
-      return getDimension(dimValue);
+      result = getDimension(dimValue);
     } else if (tokName === 'MathConstant') {
       switch (tokValue.toLowerCase()) {
         case 'pi':
@@ -414,15 +410,16 @@ export class CssActionsParser extends AdvancedActionsParser {
         case 'nan':
           numValue = NaN;
       }
-      return getNumber(numValue!);
+      result = getNumber(numValue!);
     } else if (tokenMatcher(token, T.Number)) {
       numValue = parseFloat(tokValue);
-      return getNumber(numValue);
+      result = getNumber(numValue);
     } else if (tokenMatcher(token, T.Color)) {
-      return new Color(tokValue, undefined, this.getLocationInfo(token), this.context);
+      result = new Color(tokValue, undefined, this.getLocationInfo(token), this.context);
     } else {
-      return new Any(tokValue, { type: token.tokenType.name }, this.getLocationInfo(token), this.context);
+      result = new Any(tokValue, { type: token.tokenType.name }, this.getLocationInfo(token), this.context);
     }
+    return result;
   }
 
   /**
@@ -451,142 +448,5 @@ export class CssActionsParser extends AdvancedActionsParser {
         ctx[key] = oldVal;
       }
     }
-  }
-
-  /**
-   * Creates a node and applies context state management consistently.
-   * This ensures all nodes get proper state handling whether created through $.rule or directly.
-   */
-  protected createNode<T extends Node>(
-    node: T,
-    ctx: RuleContext
-  ): T {
-    // Apply context state to the node
-    node.state |= ctx.nodeState || 0;
-    // Bubble up flags from the node to context
-    if (node.getState(F_MAY_ASYNC)) {
-      ctx.nodeState = (ctx.nodeState || 0) | F_MAY_ASYNC;
-    }
-    if (node.getState(F_STATIC)) {
-      ctx.nodeState = (ctx.nodeState || 0) | F_STATIC;
-    }
-    if (node.getState(F_NON_STATIC)) {
-      ctx.nodeState = (ctx.nodeState || 0) | F_NON_STATIC;
-    }
-    node.index = this.ruleIndex++;
-    return node;
-  }
-
-  /**
-   * Unified subrule invoker with minimal boilerplate and built-in ctx/mayAsync handling.
-   * idx: 0|1|2|3|4 selects SUBRULE/SUBRULE2/... (0 and 1 map to SUBRULE)
-   * overrides: temporary context overrides applied during the subrule call
-   * rule: the parser rule method reference (e.g., this.selectorList)
-   *
-   * Also supports calling functions that take context and return a value (for OR alternatives)
-   */
-  // Unified subrule helper with flexible invocation styles
-  public rule<T = any>(idx: 0 | 1 | 2 | 3 | 4 | 5, ctx: RuleContext, overrides: Partial<RuleContext>, rule: Rule<(ctx?: RuleContext) => void>): T;
-  public rule<T = any>(idx: 0 | 1 | 2 | 3 | 4 | 5, ctx: RuleContext, rule: Rule<(ctx?: RuleContext) => void>): T;
-  public rule<T = any>(ctx: RuleContext, overrides: Partial<RuleContext>, rule: Rule<(ctx?: RuleContext) => void>): T;
-  public rule<T = any>(ctx: RuleContext, rule: Rule<(ctx?: RuleContext) => void>): T;
-  // Support for functions that take context and return a value (for OR alternatives)
-  public rule<T = any>(ctx: RuleContext, overrides: Partial<RuleContext>, fn: (ctx: RuleContext) => T): T;
-  public rule<T = any>(ctx: RuleContext, fn: (ctx: RuleContext) => T): T;
-  public rule<T>(a: any, b: any, c?: any, d?: any): T {
-    let index = this.ruleIndex++;
-    let idx: 0 | 1 | 2 | 3 | 4 | 5 = 0 as 0;
-    let ctx: RuleContext;
-    let overrides: Partial<RuleContext> | undefined;
-    let ruleRef: Rule<(ctx?: RuleContext) => void> | ((ctx: RuleContext) => T);
-
-    if (typeof a === 'number') {
-      idx = a as 0 | 1 | 2 | 3 | 4 | 5;
-      ctx = b as RuleContext;
-      if (d !== undefined) {
-        overrides = c as Partial<RuleContext>;
-        ruleRef = d as typeof ruleRef;
-      } else {
-        overrides = undefined;
-        ruleRef = c as typeof ruleRef;
-      }
-    } else {
-      ctx = a as RuleContext;
-      if (typeof c === 'function') {
-        overrides = b as Partial<RuleContext>;
-        ruleRef = c as typeof ruleRef;
-      } else {
-        overrides = undefined;
-        ruleRef = b as typeof ruleRef;
-      }
-    }
-
-    // During grammar recording phase, ctx might be undefined or not a proper RuleContext
-    if (!ctx || typeof ctx !== 'object' || this.RECORDING_PHASE) {
-      // For recording phase, just call the rule without context
-      if (typeof ruleRef === 'function' && ruleRef.length > 0) {
-        // This is a function that takes context, but we don't have ctx during recording
-        // Create a dummy context for recording phase
-        const dummyCtx: RuleContext = {};
-        return (ruleRef as (ctx: RuleContext) => T)(dummyCtx);
-      } else {
-        // This is a parser rule method, use subrule without context
-        return this.subrule(idx, ruleRef as any, { ARGS: [] }) as T;
-      }
-    }
-
-    const keys = overrides ? (Object.keys(overrides) as Array<keyof RuleContext>) : [];
-    const prev: Partial<RuleContext> = {};
-    for (const key of keys) {
-      prev[key] = ctx[key];
-    }
-    if (overrides) {
-      Object.assign(ctx, overrides);
-    }
-    // Start with a clean slate - let nodes determine their own state
-    const prevNodeState = ctx.nodeState || 0;
-    ctx.nodeState = 0; // Start with no assumptions
-
-    let result: T | undefined;
-
-    const processResult = () => {
-      if (result instanceof Node) {
-        this.createNode(result, ctx);
-      }
-    };
-
-    // Check if this is a function that takes context (for OR alternatives)
-    if (typeof ruleRef === 'function' && ruleRef.length > 0) {
-      // This is a function that takes context, call it directly
-      result = (ruleRef as (ctx: RuleContext) => T)(ctx);
-      processResult();
-    } else {
-      // This is a parser rule method, use subrule
-      result = this.subrule(idx, ruleRef as any, { ARGS: [ctx] }) as T;
-      processResult();
-    }
-    for (const key of keys) {
-      (ctx as any)[key as string] = prev[key] as any;
-    }
-    // Restore the previous node state, but bubble up flags from the result node
-    if (result && result instanceof Node) {
-      // Only bubble up flags from the result node, not from context accumulation
-      if (result.getState(F_MAY_ASYNC)) {
-        ctx.nodeState = (prevNodeState || 0) | F_MAY_ASYNC;
-      } else {
-        ctx.nodeState = prevNodeState || 0;
-      }
-      if (result.getState(F_STATIC)) {
-        ctx.nodeState = (ctx.nodeState || 0) | F_STATIC;
-      }
-      if (result.getState(F_NON_STATIC)) {
-        ctx.nodeState = (ctx.nodeState || 0) | F_NON_STATIC;
-      }
-      result.index = index;
-    } else {
-      // No result node, just restore previous state
-      ctx.nodeState = prevNodeState || 0;
-    }
-    return result as T;
   }
 }

@@ -1,9 +1,8 @@
-import { Node, defineType, F_VISIBLE, F_NEEDS_EVALUATION } from './node';
+import { Node, defineType } from './node';
 import { Nil } from './nil';
 import { List } from './list';
 import type { Context } from '../context';
 import combinate from 'combinate';
-import { cast } from './util/cast';
 import { compareNodeArray } from './util/compare';
 import { isNode } from '..';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
@@ -25,7 +24,6 @@ export type SequenceOptions = {
 export class Sequence extends Node<Node[], SequenceOptions> {
   type = 'Sequence';
   shortType = 'seq';
-
 
   override compare(other: Node) {
     if (other instanceof Sequence) {
@@ -76,7 +74,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         const maybe = serialForEach(node.value.map((n, i) => [n, i] as const), ([n, i]) => {
           const out = n.eval(context);
           if (isThenable(out)) {
-            return (out as Promise<Node>).then(res => {
+            return (out as Promise<Node>).then((res) => {
               node.value[i] = res;
               return undefined;
             });

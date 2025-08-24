@@ -1,5 +1,5 @@
 import { type Context } from '../context';
-import { defineType, Node, F_VISIBLE, F_NEEDS_EVALUATION } from './node';
+import { defineType, Node } from './node';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { getValues } from './util/collections';
 import { compareNodeArray } from './util/compare';
@@ -30,7 +30,6 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   type = 'List';
   shortType = 'list';
 
-
   get length() {
     return this.value.length;
   }
@@ -46,7 +45,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     let { value } = this;
     let length = value.length - 1;
     const mark = w.mark();
-    if (value.length === 0) return '';
+    if (value.length === 0) {
+      return '';
+    }
     // Print first item as-is
     value[0]!.toString(options);
     // Subsequent items: emit sep; capture next item to decide spacing precisely

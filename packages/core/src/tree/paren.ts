@@ -2,7 +2,7 @@ import { type Context } from '../context';
 import { Bool } from './bool';
 import { Expression } from './expression';
 import { Operation } from './operation';
-import { Node, defineType, F_VISIBLE, F_NEEDS_EVALUATION } from './node';
+import { Node, defineType } from './node';
 import { Dimension } from './dimension';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print';
@@ -24,13 +24,14 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   type = 'Paren' as const;
   shortType = 'paren' as const;
 
-
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
     const escapeChar = this.options?.escaped ? '~' : '';
-    if (escapeChar) w.add(escapeChar, this);
+    if (escapeChar) {
+      w.add(escapeChar, this);
+    }
     w.add('(');
     if (this.value) {
       if (this.value instanceof Node) {
@@ -52,25 +53,25 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       const after = (v: Node): Node => {
         value = v;
         context.parenFrames.pop();
-      /**
+        /**
        * Removing nested parens or parens around a single
        * dimension is a bit presumptuous, but I think Less's
        * argument is that it's unnecessary at runtime,
        * so it's really just a DX tool that can be ignored
        * on output.
        */
-      while (value instanceof Paren && value.value) {
-        value = value.value;
-      }
-      if (value instanceof Bool || value instanceof Dimension) {
-        return value;
-      }
-      if (isOp && !isOpOrExpression(value)) {
-        return value;
-      }
-      let node = this.maybeClone(context);
-      node.value = value;
-      return node;
+        while (value instanceof Paren && value.value) {
+          value = value.value;
+        }
+        if (value instanceof Bool || value instanceof Dimension) {
+          return value;
+        }
+        if (isOp && !isOpOrExpression(value)) {
+          return value;
+        }
+        let node = this.maybeClone(context);
+        node.value = value;
+        return node;
       };
       if (isThenable(maybeEvald)) {
         return (maybeEvald as Promise<Node>).then(after);

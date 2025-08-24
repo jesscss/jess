@@ -1,4 +1,4 @@
-import { Node, defineType, type LocationInfo, type NodeOptions } from './node';
+import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC, F_VISIBLE } from './node';
 import type { Context, TreeContext } from '../context';
 
 export type AnyRole =
@@ -40,6 +40,7 @@ export class Any<
 > extends Node<string, AnyOptions<Role>> {
   type: AnyRole = 'any';
   shortType = 'any';
+  override state = F_VISIBLE | F_STATIC;
   // Any values are static and don't need evaluation
 }
 export const any = defineType(Any, 'Any', 'any');

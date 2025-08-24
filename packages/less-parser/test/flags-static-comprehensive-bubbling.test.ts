@@ -1,5 +1,12 @@
 import { parse, expectFlags, testPatterns, getNestedNode } from './helpers';
 
+import {
+  type Ruleset,
+  type Declaration,
+  type List,
+  type Operation
+} from '@jesscss/core';
+
 // Helper function to find a node by type
 function findNodeByType(node: any, type: string): any {
   if (node.type === type) {
@@ -10,22 +17,20 @@ function findNodeByType(node: any, type: string): any {
     if (Array.isArray(node.value)) {
       for (const child of node.value) {
         const found = findNodeByType(child, type);
-        if (found) return found;
+        if (found) {
+          return found;
+        }
       }
     } else if (typeof node.value === 'object') {
       const found = findNodeByType(node.value, type);
-      if (found) return found;
+      if (found) {
+        return found;
+      }
     }
   }
 
   return null;
 }
-import {
-  type Ruleset,
-  type Declaration,
-  type List,
-  type Operation
-} from '@jesscss/core';
 
 // Helper function to verify flag bubbling through nested levels
 const verifyNestedBubbling = (
