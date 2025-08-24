@@ -69,13 +69,14 @@ type ReferenceParams = ConstructorParameters<NodeType>;
 export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   type = 'Reference';
   shortType = 'ref';
-  override state = F_MAY_ASYNC | F_VISIBLE | F_NON_STATIC;
 
   constructor(value: ReferenceValue | string, options?: ReferenceOptions, location?: LocationInfo, treeContext?: TreeContext) {
     if (typeof value === 'string') {
       value = { key: value };
     }
     super(value, options, location, treeContext);
+    // References are always non-static and may be async
+    this.state |= F_MAY_ASYNC | F_VISIBLE | F_NON_STATIC;
   }
 
   override valueOf() {

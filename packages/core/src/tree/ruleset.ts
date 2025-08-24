@@ -1,4 +1,4 @@
-import { Node, F_VISIBLE, defineType, type NodeOptions } from './node';
+import { Node, F_VISIBLE, F_AMPERSAND, defineType, type NodeOptions } from './node';
 import { type Rules } from './rules';
 import type { Context } from '../context';
 import { Nil } from './nil';
@@ -114,20 +114,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return selector;
     }
     const invisibleAmp = new Ampersand({ selector: this.parentSelector });
-    invisibleAmp.setState(F_VISIBLE, false);
+    invisibleAmp.removeFlag(F_VISIBLE);
     const invisibleCombinator = new Combinator(' ');
-    invisibleCombinator.setState(F_VISIBLE, false);
+    invisibleCombinator.removeFlag(F_VISIBLE);
 
     // Helper to check for ampersand in a selector's nodes
-    const hasAmpersand = (sel: Selector) => {
-      for (const node of sel.nodes()) {
-        if (isNode(node, 'Ampersand')) {
-          return true;
-        }
-      }
-
-      return false;
-    };
+    const hasAmpersand = (sel: Selector) => sel.hasFlag(F_AMPERSAND);
 
     // If selector is a SelectorList, process each item
     if (isNode(selector, 'SelectorList')) {
@@ -208,7 +200,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         rule.value.rules = evaluatedRules;
         const rules = rule.value.rules;
         if (rules.visibleRules().length === 0) {
-          rule.setState(F_VISIBLE, false);
+          rule.removeFlag(F_VISIBLE);
         }
         return rule;
       }

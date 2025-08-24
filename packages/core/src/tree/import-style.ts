@@ -114,8 +114,12 @@ export type StyleImportValue = {
 export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   type = 'StyleImport' as const;
   shortType = 'style' as const;
-  // Implies false visibility
-  override state = F_MAY_ASYNC | F_NON_STATIC;
+
+  constructor(value: StyleImportValue, options?: StyleImportOptions, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    // Style imports are always non-static and may be async
+    this.state |= F_MAY_ASYNC | F_NON_STATIC;
+  }
 
   /**
    * @note

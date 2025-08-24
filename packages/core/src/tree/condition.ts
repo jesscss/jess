@@ -27,7 +27,12 @@ export interface Condition extends Node<ConditionValue, ConditionOptions> {
 export class Condition extends Node<ConditionValue, ConditionOptions> {
   type = 'Condition' as const;
   shortType = 'condition' as const;
-  override state = F_VISIBLE | F_NON_STATIC;
+
+  constructor(value: ConditionValue, options?: ConditionOptions, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    // Conditions are always non-static, but can inherit may_async from children
+    this.addFlags(F_VISIBLE, F_NON_STATIC);
+  }
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);

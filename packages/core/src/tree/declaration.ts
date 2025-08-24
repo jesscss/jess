@@ -1,4 +1,5 @@
 import {
+  F_STATIC,
   Node,
   defineType,
   type LocationInfo
@@ -123,11 +124,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override preEval(context: Context): MaybePromise<this> {
-    if (!this.preEvaluated) {
-      return super.preEval(context);
-    }
     /** We need to clone declarations, because we alter their options */
-    let node = this.clone();
+    let node = this.maybeClone(context);
     node.preEvaluated = true;
     let { name, value } = node.value;
     const applyAssignmentNormalization = (key: Any<'property'>) => {
@@ -208,23 +206,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override evalNode(context: Context): MaybePromise<this | Nil> {
+    if (this.preEvaluated && this.value.value.hasFlag(F_STATIC)) {
+      this.evaluated = true;
+      return this;
+    }
     return pipe(
       () => this.preEval(context),
       (node) => {
-        const { name } = node.value;
-        if (name instanceof Interpolated) {
-          const maybeKey = (name as Interpolated<'property'>).evalToGeneric(context);
-          if (isThenable(maybeKey)) {
-            return (maybeKey as Promise<Any<'property'>>).then((key) => {
-              node.value.name = key;
-              return node;
-            });
-          }
-          node.value.name = maybeKey as Any<'property'>;
-        }
-        return node;
-      },
-      (node) => {
+        /** Pre-eval already evaluated the name, just need to do value */
         const { value } = node.value;
         if (value instanceof Node) {
           const maybeNewValue = value.eval(context);

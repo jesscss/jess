@@ -40,7 +40,9 @@ export class SelectorList extends Selector<Selector[]> {
       }
       // Emit trimmed selector (no outer pre/post) to avoid duplicating newlines
       this.value[i]!.toTrimmedString(options);
-      if (i < length - 1) w.add(',');
+      if (i < length - 1) {
+        w.add(',');
+      }
     }
     return w.getSince(mark);
   }
@@ -57,7 +59,7 @@ export class SelectorList extends Selector<Selector[]> {
         const maybe = serialForEach(Array.from(getEntries(value)), ([item, i]) => {
           const out = item.eval(context);
           if (isThenable(out)) {
-            return (out as Promise<Selector>).then(res => {
+            return (out as Promise<Selector>).then((res) => {
               value[i] = res as Selector;
               return undefined;
             });

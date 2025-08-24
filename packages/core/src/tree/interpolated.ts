@@ -46,7 +46,12 @@ export class Interpolated<
 > extends SimpleSelector<InterpolatedValue, AnyOptions<Role>> {
   type = 'Interpolated' as const;
   shortType = 'interpolated' as const;
-  override state = F_VISIBLE | F_MAY_ASYNC | F_NON_STATIC;
+
+  constructor(value: InterpolatedValue, options?: AnyOptions<Role>, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    // Interpolated nodes are always non-static and may be async
+    this.state |= F_VISIBLE | F_MAY_ASYNC | F_NON_STATIC;
+  }
 
   override valueOf(): string {
     return this.value.source;

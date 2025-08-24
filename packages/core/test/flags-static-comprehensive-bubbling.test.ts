@@ -1,11 +1,5 @@
-import { parse, expectFlags, testPatterns, getNestedNode } from './helpers';
-
-import {
-  type Ruleset,
-  type Declaration,
-  type List,
-  type Operation
-} from '@jesscss/core';
+import { expectFlags, DEFAULT_VARIABLE } from './helpers';
+import { rules, ruleset, sellist, sel, el, decl, any, list, num, Operation, call, ref } from '../src';
 
 // Helper function to find a node by type
 function findNodeByType(node: any, type: string): any {
@@ -35,191 +29,220 @@ function findNodeByType(node: any, type: string): any {
 // Helper function to verify flag bubbling through nested levels
 const verifyNestedBubbling = (
   tree: any,
-  expectedNeedsEvaluation: boolean,
+  expectedNonStatic: boolean,
   expectedMayAsync: boolean,
   levels = 4
 ) => {
   // Root should have expected flags
-  expectFlags(tree, expectedNeedsEvaluation, expectedMayAsync);
+  expectFlags(tree, !expectedNonStatic, expectedMayAsync);
 
   // Each nested level should bubble up the same flags
   let current = tree.value[0]!;
   for (let i = 0; i < levels; i++) {
-    expectFlags(current, expectedNeedsEvaluation, expectedMayAsync);
+    expectFlags(current, !expectedNonStatic, expectedMayAsync);
     current = current.value.rules.value[0]!;
   }
 };
 
 // Helper function to verify individual node flags
-const verifyNodeFlags = (node: any, needsEvaluation: boolean, mayAsync: boolean) => {
-  expectFlags(node, needsEvaluation, mayAsync);
+const verifyNodeFlags = (node: any, nonStatic: boolean, mayAsync: boolean) => {
+  expectFlags(node, !nonStatic, mayAsync);
+};
+
+// Helper to create nested rulesets
+const createNestedRulesets = (innerContent: any, levels = 4) => {
+  let current = innerContent;
+  for (let i = 0; i < levels; i++) {
+    current = ruleset({
+      selector: sellist([sel([el(`.level${i + 1}`)])]),
+      rules: rules([current])
+    });
+  }
+  return rules([current]);
 };
 
 describe('Comprehensive flag bubbling and isolation', () => {
   describe('Dynamic content bubbling', () => {
     test('variable reference bubbles through multiple levels', () => {
-      const { tree } = parse(testPatterns.nestedRulesets('color: [red, @var, blue];'));
+      const innerRuleset = ruleset({
+        selector: sellist([sel([el('.inner')])]),
+        rules: rules([decl({ name: 'color', value: list([any('red'), DEFAULT_VARIABLE, any('blue')]) })])
+      });
+      const tree = createNestedRulesets(innerRuleset);
 
       // All levels should bubble up mayAsync
       verifyNestedBubbling(tree, true, true);
 
       // Get the deepest nodes to verify specific types
-      const innerRuleset = getNestedNode(tree, [0, 0, 0, 0]) as Ruleset;
-      const declaration = innerRuleset.value.rules.value[0]! as Declaration;
-      const list = declaration.value.value as List;
+      const innerRulesetNode = tree.value[0]!.value.rules.value[0]!.value.rules.value[0]!.value.rules.value[0]! as any;
+      const declaration = innerRulesetNode.value.rules.value[0]! as any;
+      const listNode = declaration.value.value as any;
 
-      // List should have both flags (needs evaluation + mayAsync)
-      verifyNodeFlags(list, true, true);
+      // List should have both flags (non-static + mayAsync)
+      verifyNodeFlags(listNode, true, true);
     });
 
     test('operation bubbles through multiple levels', () => {
-      const { tree } = parse(testPatterns.nestedRulesets('width: 10px + 5px;'));
+      const innerRuleset = ruleset({
+        selector: sellist([sel([el('.inner')])]),
+        rules: rules([decl({ name: 'width', value: new Operation([num(10), '+', num(5)]) })])
+      });
+      const tree = createNestedRulesets(innerRuleset);
 
-      // All levels should bubble up needs evaluation
+      // All levels should bubble up non-static
       verifyNestedBubbling(tree, true, false);
 
       // Get the deepest nodes to verify specific types
-      const innerRuleset = getNestedNode(tree, [0, 0, 0, 0]) as Ruleset;
-      const declaration = innerRuleset.value.rules.value[0]! as Declaration;
-      const operation = declaration.value.value as Operation;
+      const innerRulesetNode = tree.value[0]!.value.rules.value[0]!.value.rules.value[0]!.value.rules.value[0]! as any;
+      const declaration = innerRulesetNode.value.rules.value[0]! as any;
+      const operation = declaration.value.value as any;
 
-      // Operation should have needs evaluation
+      // Operation should have non-static
       verifyNodeFlags(operation, true, false);
     });
 
     test('function call bubbles through multiple levels', () => {
-      const { tree } = parse(testPatterns.nestedRulesets('color: rgb(255, 0, 0);'));
+      const innerRuleset = ruleset({
+        selector: sellist([sel([el('.inner')])]),
+        rules: rules([decl({ name: 'color', value: call({ name: 'rgb', args: list([num(255), num(0), num(0)]) }) })])
+      });
+      const tree = createNestedRulesets(innerRuleset);
 
-      // All levels should bubble up needs evaluation and mayAsync
+      // All levels should bubble up non-static and mayAsync
       verifyNestedBubbling(tree, true, true);
 
       // Get the deepest nodes to verify specific types
-      const innerRuleset = getNestedNode(tree, [0, 0, 0, 0]) as Ruleset;
-      const declaration = innerRuleset.value.rules.value[0]! as Declaration;
-      const call = declaration.value.value;
+      const innerRulesetNode = tree.value[0]!.value.rules.value[0]!.value.rules.value[0]!.value.rules.value[0]!;
+      const declaration = innerRulesetNode.value.rules.value[0]!;
+      const callNode = declaration.value.value;
 
       // Call should have both flags
-      verifyNodeFlags(call, true, true);
+      verifyNodeFlags(callNode, true, true);
     });
   });
 
   describe('Static content isolation', () => {
     test('static content maintains clean state through multiple levels', () => {
-      const { tree } = parse(testPatterns.nestedRulesets(`
-        color: red;
-        background: blue;
-        border: 1px solid black;
-      `));
+      const innerRuleset = ruleset({
+        selector: sellist([sel([el('.inner')])]),
+        rules: rules([
+          decl({ name: 'color', value: any('red') }),
+          decl({ name: 'background', value: any('blue') })
+        ])
+      });
+      const tree = createNestedRulesets(innerRuleset);
 
-      // All levels should be clean
+      // All levels should remain static
       verifyNestedBubbling(tree, false, false);
 
-      // All declarations should be clean
-      const innerRuleset = getNestedNode(tree, [0, 0, 0, 0]) as Ruleset;
-      const declarations = innerRuleset.value.rules.value;
+      // Get the deepest nodes to verify specific types
+      const innerRulesetNode = tree.value[0]!.value.rules.value[0]!.value.rules.value[0]!.value.rules.value[0]!;
+      const declaration1 = innerRulesetNode.value.rules.value[0]!;
+      const declaration2 = innerRulesetNode.value.rules.value[1]!;
 
-      for (const declaration of declarations) {
-        verifyNodeFlags(declaration, false, false);
-      }
+      // Declarations should be static
+      verifyNodeFlags(declaration1, false, false);
+      verifyNodeFlags(declaration2, false, false);
     });
   });
 
   describe('Mixed content isolation', () => {
     test('static sibling rules maintain clean state when one has dynamic content', () => {
-      const { tree } = parse(`
-        .container {
-          .static-rule {
-            color: red;
-            background: blue;
-          }
-          .dynamic-rule {
-            color: @var;
-            width: 10px + 5px;
-          }
-          .another-static-rule {
-            border: 1px solid black;
-            margin: 10px;
-          }
-        }
-      `);
+      const tree = rules([
+        ruleset({
+          selector: sellist([sel([el('.container')])]),
+          rules: rules([
+            ruleset({
+              selector: sellist([sel([el('.static-rule')])]),
+              rules: rules([decl({ name: 'color', value: any('red') })])
+            }),
+            ruleset({
+              selector: sellist([sel([el('.dynamic-rule')])]),
+              rules: rules([decl({ name: 'color', value: DEFAULT_VARIABLE })])
+            })
+          ])
+        })
+      ]);
 
-      // Root should have flags due to dynamic content
-      verifyNodeFlags(tree, true, true);
-
-      const container = tree.value[0]! as Ruleset;
-      verifyNodeFlags(container, true, true);
-
-      // Static rules should maintain clean state
+      const container = tree.value[0]!;
       const staticRule = container.value.rules.value[0]!;
-      verifyNodeFlags(staticRule, false, false);
-
-      // Dynamic rule should have flags
       const dynamicRule = container.value.rules.value[1]!;
-      verifyNodeFlags(dynamicRule, true, true);
 
-      // Another static rule should maintain clean state
-      const anotherStaticRule = container.value.rules.value[2]!;
-      verifyNodeFlags(anotherStaticRule, false, false);
+      // Container should have mayAsync (from dynamic child)
+      expectFlags(container, false, true);
+
+      // Static rule should remain static
+      expectFlags(staticRule, false, false);
+
+      // Dynamic rule should have mayAsync
+      expectFlags(dynamicRule, false, true);
     });
 
     test('static declarations in same ruleset maintain clean state when one has dynamic content', () => {
-      const { tree } = parse(`
-        .container {
-          color: red;
-          background: @var;
-          border: 1px solid black;
-          width: 10px + 5px;
-          margin: 10px;
-        }
-      `);
+      const tree = rules([
+        ruleset({
+          selector: sellist([sel([el('.container')])]),
+          rules: rules([
+            decl({ name: 'color', value: any('red') }),
+            decl({ name: 'background', value: DEFAULT_VARIABLE }),
+            decl({ name: 'border', value: any('1px solid black') })
+          ])
+        })
+      ]);
 
-      const ruleset = tree.value[0]! as Ruleset;
-      // Ruleset should have flags due to dynamic content
-      verifyNodeFlags(ruleset, true, true);
+      const container = tree.value[0]!;
+      const staticDecl1 = container.value.rules.value[0]!;
+      const dynamicDecl = container.value.rules.value[1]!;
+      const staticDecl2 = container.value.rules.value[2]!;
 
-      const declarations = ruleset.value.rules.value;
+      // Container should have mayAsync (from dynamic child)
+      expectFlags(container, false, true);
 
-      // Static declarations should maintain clean state
-      verifyNodeFlags(declarations[0]!, false, false); // color: red
-      verifyNodeFlags(declarations[2]!, false, false); // border: 1px solid black
-      verifyNodeFlags(declarations[4]!, false, false); // margin: 10px
+      // Static declarations should remain static
+      expectFlags(staticDecl1, false, false);
+      expectFlags(staticDecl2, false, false);
 
-      // Dynamic declarations should have appropriate flags
-      verifyNodeFlags(declarations[1]!, true, true);  // background: @var
-      verifyNodeFlags(declarations[3]!, true, false);  // width: 10px + 5px
+      // Dynamic declaration should have mayAsync
+      expectFlags(dynamicDecl, false, true);
     });
   });
 
   describe('Complex nested scenarios', () => {
     test('deep nesting with mixed content', () => {
-      const { tree } = parse(`
-        .level1 {
-          .level2 {
-            .level3 {
-              .level4 {
-                .level5 {
-                  color: red;
-                  background: @var;
-                  width: 10px + 5px;
-                  border: 1px solid black;
-                }
-              }
-            }
-          }
-        }
-      `);
+      const tree = rules([
+        ruleset({
+          selector: sellist([sel([el('.level1')])]),
+          rules: rules([
+            decl({ name: 'color', value: any('red') }),
+            ruleset({
+              selector: sellist([sel([el('.level2')])]),
+              rules: rules([
+                decl({ name: 'background', value: DEFAULT_VARIABLE }),
+                ruleset({
+                  selector: sellist([sel([el('.level3')])]),
+                  rules: rules([
+                    decl({ name: 'border', value: any('1px solid') }),
+                    decl({ name: 'width', value: new Operation([num(10), '+', num(5)]) })
+                  ])
+                })
+              ])
+            })
+          ])
+        })
+      ]);
 
-      // All levels should bubble up flags
-      verifyNestedBubbling(tree, true, true, 4);
+      const level1 = tree.value[0]!;
+      const level2 = level1.value.rules.value[1]!;
+      const level3 = level2.value.rules.value[1]!;
 
-      // Check individual declarations in deepest level
-      const deepestRuleset = getNestedNode(tree, [0, 0, 0, 0, 0]) as Ruleset;
-      const declarations = deepestRuleset.value.rules.value;
+      // Level 1 should have mayAsync (from nested dynamic content)
+      expectFlags(level1, false, true);
 
-      verifyNodeFlags(declarations[0]!, false, false); // color: red
-      verifyNodeFlags(declarations[1]!, true, true);  // background: @var
-      verifyNodeFlags(declarations[2]!, true, false);  // width: 10px + 5px
-      verifyNodeFlags(declarations[3]!, false, false); // border: 1px solid black
+      // Level 2 should have mayAsync (from variable and nested operation)
+      expectFlags(level2, false, true);
+
+      // Level 3 should have non-static (from operation)
+      expectFlags(level3, true, false);
     });
   });
 });

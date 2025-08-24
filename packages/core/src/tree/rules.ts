@@ -437,7 +437,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   push(node: Node) {
-    node.parent = this;
+    this.adopt(node);
     this.value.push(node);
     this.registerNode(node);
   }
@@ -477,7 +477,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             // Update the node if preEval returned a different instance
             if (resolvedNode !== node) {
               rules.value[i] = resolvedNode;
-              resolvedNode.parent = rules;
+              rules.adopt(resolvedNode);
             }
 
             // Register the node after preEval (name resolution)
@@ -494,7 +494,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         // Update the node if preEval returned a different instance
         if (result !== node) {
           rules.value[i] = result;
-          result.parent = rules;
+          rules.adopt(result);
         }
 
         // Register the node after preEval (name resolution)
@@ -524,7 +524,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           // Update the node if preEval returned a different instance
           if (resolvedNode !== node) {
             rules.value[i] = resolvedNode;
-            resolvedNode.parent = rules;
+            rules.adopt(resolvedNode);
           }
 
           // Register the node after preEval (name resolution)
@@ -541,7 +541,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Update the node if preEval returned a different instance
       if (result !== node) {
         rules.value[i] = result;
-        result.parent = rules;
+        rules.adopt(result);
       }
 
       // Register the node after preEval (name resolution)

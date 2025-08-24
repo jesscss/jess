@@ -51,7 +51,12 @@ export class Call extends Node<CallValue, CallOptions> {
   type = 'Call' as const;
   shortType = 'call' as const;
   override _requiredSemi = true;
-  override state = F_VISIBLE | F_NON_STATIC | F_MAY_ASYNC;
+
+  constructor(value: CallValue, options?: CallOptions, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    // Function calls are always non-static and may be async
+    this.state |= F_VISIBLE | F_NON_STATIC | F_MAY_ASYNC;
+  }
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);

@@ -41,7 +41,7 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     super(value, options, location, treeContext);
     /** Parameter declarations are not like var declarations */
     if (options?.paramVar) {
-      this.setState(F_VISIBLE, true);
+      this.addFlag(F_VISIBLE);
     }
   }
 

@@ -1,19 +1,291 @@
-import type { IParseResult } from 'css-parser/lib/cssParser';
-import { Parser, type LessRules } from '../src';
-import { F_MAY_ASYNC, F_STATIC, F_NON_STATIC, type Node, type Rules } from '@jesscss/core';
+import {
+  F_MAY_ASYNC, F_STATIC, F_NON_STATIC,
+  type Node, type Rules, Any,
+  // Simplified API
+  decl, any, sel, el, sellist, rules, ruleset, spaced, ref, call, Operation, list, paren, negative, atrule, mixin, condition, QueryCondition, interpolated, num,
+  // Additional types for test helpers
+  StyleImport, Quoted
+} from '../src';
 
-const parser = new Parser();
+// Default node instances
+const DEFAULT_COLOR = any('red');
+const DEFAULT_WIDTH = any('10px');
+const DEFAULT_SELECTOR = el('.a');
+export const DEFAULT_VARIABLE = ref('var', { type: 'variable' });
+const DEFAULT_OPERATION = new Operation([num(1), '+', num(2)]);
+const DEFAULT_CALL = call({ name: 'rgb', args: list([any('255'), any('0'), any('0')]) });
+const DEFAULT_NEGATIVE = negative(any('10px'));
+const DEFAULT_PAREN = paren(any('red'));
+const DEFAULT_LIST = list([any('1px'), any('2px')]);
+const DEFAULT_SEQUENCE = spaced([any('1px'), any('solid'), any('red')]);
 
-// Core parsing helper
-export function parse(input: string): IParseResult<Rules>;
-export function parse(input: string, rule: 'stylesheet'): IParseResult<Rules>;
-export function parse(input: string, rule?: LessRules): IParseResult<Node>;
-export function parse(input: string, rule?: LessRules) {
-  if (!rule || rule === 'stylesheet') {
-    return parser.parse(input);
+// Simplified API helpers
+export function createStaticRuleset(selector = DEFAULT_SELECTOR, declarations: Node[] = []) {
+  if (declarations.length === 0) {
+    declarations = [
+      decl({ name: 'color', value: DEFAULT_COLOR }),
+      decl({ name: 'width', value: DEFAULT_WIDTH })
+    ];
   }
-  return parser.parse(input, rule);
-};
+
+  return rules([
+    ruleset({
+      selector: sellist([sel([selector])]),
+      rules: rules(declarations)
+    })
+  ]);
+}
+
+export function createVariableReference(property = 'color', variable = DEFAULT_VARIABLE) {
+  return rules([
+    ruleset({
+      selector: sellist([sel([DEFAULT_SELECTOR])]),
+      rules: rules([
+        decl({ name: property, value: variable })
+      ])
+    })
+  ]);
+}
+
+export function createOperation(operation = DEFAULT_OPERATION) {
+  return rules([
+    ruleset({
+      selector: sellist([sel([DEFAULT_SELECTOR])]),
+      rules: rules([
+        decl({ name: 'width', value: operation })
+      ])
+    })
+  ]);
+}
+
+export function createVariableInOperation(operation = new Operation([num(1), '+', DEFAULT_VARIABLE])) {
+  return rules([
+    ruleset({
+      selector: sellist([sel([DEFAULT_SELECTOR])]),
+      rules: rules([
+        decl({ name: 'width', value: operation })
+      ])
+    })
+  ]);
+}
+
+export function createCall(functionCall = DEFAULT_CALL) {
+  return rules([
+    ruleset({
+      selector: sellist([sel([DEFAULT_SELECTOR])]),
+      rules: rules([
+        decl({ name: 'color', value: functionCall })
+      ])
+    })
+  ]);
+}
+
+export function createVariableInCall(functionCall = call({ name: 'rgb', args: list([DEFAULT_VARIABLE, any('0'), any('0')]) })) {
+  return rules([
+    ruleset({
+      selector: sellist([sel([DEFAULT_SELECTOR])]),
+      rules: rules([
+        decl({ name: 'color', value: functionCall })
+      ])
+    })
+  ]);
+}
+
+export function createNegative(negValue = DEFAULT_NEGATIVE) {
+  return rules([
+    ruleset({
+      selector: sellist([sel([DEFAULT_SELECTOR])]),
+      rules: rules([
+        decl({ name: 'width', value: negValue })
+      ])
+    })
+  ]);
+}
+
+export function createVariableInNegative(negValue = negative(DEFAULT_VARIABLE)) {
+  return rules([
+    ruleset({
+      selector: sellist([sel([DEFAULT_SELECTOR])]),
+      rules: rules([
+        decl({ name: 'width', value: negValue })
+      ])
+    })
+  ]);
+}
+
+export function createParen(parenValue = DEFAULT_PAREN) {
+  return rules([
+    ruleset({
+      selector: sellist([sel([DEFAULT_SELECTOR])]),
+      rules: rules([
+        decl({ name: 'color', value: parenValue })
+      ])
+    })
+  ]);
+}
+
+export function createVariableInParen(parenValue = paren(DEFAULT_VARIABLE)) {
+  return rules([
+    ruleset({
+      selector: sellist([sel([DEFAULT_SELECTOR])]),
+      rules: rules([
+        decl({ name: 'color', value: parenValue })
+      ])
+    })
+  ]);
+}
+
+export function createList(listValue = DEFAULT_LIST) {
+  return rules([
+    ruleset({
+      selector: sellist([sel([DEFAULT_SELECTOR])]),
+      rules: rules([
+        decl({ name: 'shadow', value: listValue })
+      ])
+    })
+  ]);
+}
+
+export function createVariableInList(listValue = list([DEFAULT_VARIABLE, any('2px')])) {
+  return rules([
+    ruleset({
+      selector: sellist([sel([DEFAULT_SELECTOR])]),
+      rules: rules([
+        decl({ name: 'shadow', value: listValue })
+      ])
+    })
+  ]);
+}
+
+export function createSequence(sequenceValue = DEFAULT_SEQUENCE) {
+  return rules([
+    ruleset({
+      selector: sellist([sel([DEFAULT_SELECTOR])]),
+      rules: rules([
+        decl({ name: 'border', value: sequenceValue })
+      ])
+    })
+  ]);
+}
+
+export function createVariableInSequence(sequenceValue = spaced([DEFAULT_VARIABLE, any('solid'), any('red')])) {
+  return rules([
+    ruleset({
+      selector: sellist([sel([DEFAULT_SELECTOR])]),
+      rules: rules([
+        decl({ name: 'border', value: sequenceValue })
+      ])
+    })
+  ]);
+}
+
+export function createSquareBlock(squareValue = list([any('1'), any('2')])) {
+  return rules([
+    ruleset({
+      selector: sellist([sel([DEFAULT_SELECTOR])]),
+      rules: rules([
+        decl({ name: 'prop', value: squareValue })
+      ])
+    })
+  ]);
+}
+
+export function createVariableInSquareBlock(squareValue = list([DEFAULT_VARIABLE, any('2')])) {
+  return rules([
+    ruleset({
+      selector: sellist([sel([DEFAULT_SELECTOR])]),
+      rules: rules([
+        decl({ name: 'prop', value: squareValue })
+      ])
+    })
+  ]);
+}
+
+export function createStyleImport(importPath = any('x.less')) {
+  return rules([
+    new StyleImport({
+      path: new Quoted(importPath.valueOf(), { quote: '\'' })
+    }, {
+      type: 'import'
+    })
+  ]);
+}
+
+export function createMixinDefinition(bodyDecl = decl({ name: 'color', value: DEFAULT_COLOR })) {
+  return rules([
+    mixin({
+      name: any('mixin'),
+      rules: rules([bodyDecl])
+    })
+  ]);
+}
+
+export function createGuardWithStatic(guardCondition = condition([num(1), '=', num(1)])) {
+  return rules([
+    ruleset({
+      selector: sellist([sel([DEFAULT_SELECTOR])]),
+      rules: rules([
+        decl({ name: 'color', value: DEFAULT_COLOR })
+      ]),
+      guard: guardCondition
+    })
+  ]);
+}
+
+export function createGuardWithVariable(guardCondition = condition([DEFAULT_VARIABLE, '=', num(1)])) {
+  return rules([
+    ruleset({
+      selector: sellist([sel([DEFAULT_SELECTOR])]),
+      rules: rules([
+        decl({ name: 'color', value: DEFAULT_COLOR })
+      ]),
+      guard: guardCondition
+    })
+  ]);
+}
+
+export function createAtRuleStatic(atRuleContent = createStaticRuleset(el('.a'), [decl({ name: 'color', value: DEFAULT_COLOR })])) {
+  return rules([
+    atrule({
+      name: new Any('media', { role: 'atkeyword' }),
+      prelude: any('screen'),
+      rules: atRuleContent
+    })
+  ]);
+}
+
+export function createAtRuleVariable(atRuleContent = createVariableReference('color', DEFAULT_VARIABLE)) {
+  return rules([
+    atrule({
+      name: new Any('media', { role: 'atkeyword' }),
+      prelude: any('screen'),
+      rules: atRuleContent
+    })
+  ]);
+}
+
+export function createSelectorInterpolation(interpolatedSelector = interpolated({ source: '.{}', replacements: [DEFAULT_VARIABLE] })) {
+  return rules([
+    ruleset({
+      selector: sellist([sel([interpolatedSelector])]),
+      rules: rules([
+        decl({ name: 'color', value: DEFAULT_COLOR })
+      ])
+    })
+  ]);
+}
+
+export function createMultipleRules(ruleNodes: Node[] = []) {
+  if (ruleNodes.length === 0) {
+    ruleNodes = [
+      createVariableReference(),
+      createOperation(),
+      createStaticRuleset()
+    ];
+  }
+
+  return rules(ruleNodes.flatMap(rule => (rule as any).value));
+}
 
 // Flag assertion helpers
 export const expectFlags = (
@@ -23,8 +295,8 @@ export const expectFlags = (
   description = ''
 ) => {
   const prefix = description ? `${description}: ` : '';
-  expect(node.getState(F_STATIC)).toBe(isStatic);
-  expect(node.getState(F_MAY_ASYNC)).toBe(mayAsync);
+  expect(node.hasFlag(F_STATIC)).toBe(isStatic);
+  expect(node.hasFlag(F_MAY_ASYNC)).toBe(mayAsync);
 };
 
 export const expectStatic = (node: Node, description = '') => {
@@ -44,100 +316,105 @@ export const expectBothFlags = (node: Node, description = '') => {
 };
 
 // Test case helpers
-export const testCase = <const T extends LessRules = LessRules>(
+export const testCase = (
   description: string,
-  input: string,
+  createTree: () => Node,
   expectedIsStatic: boolean,
-  expectedMayAsync: boolean,
-  rule: T = 'stylesheet' as T
+  expectedMayAsync: boolean
 ) => {
   test(description, () => {
-    const { tree } = parse(input, rule);
-
-    // For selector interpolation tests, check the first ruleset instead of the root Rules node
-    if (description.includes('selector interpolation')) {
-      const ruleset = (tree as any).value[0];
-      expectFlags(ruleset, expectedIsStatic, expectedMayAsync);
-    } else {
-      expectFlags(tree, expectedIsStatic, expectedMayAsync);
-    }
+    const node = createTree();
+    expectFlags(node, expectedIsStatic, expectedMayAsync);
   });
 };
 
-export const testStatic = (description: string, input: string, rule: LessRules = 'stylesheet') => {
-  testCase(description, input, true, false, rule);
+export const testStatic = (description: string, createTree: () => Node) => {
+  testCase(description, createTree, true, false);
 };
 
-export const testNonStatic = (description: string, input: string, rule: LessRules = 'stylesheet') => {
-  testCase(description, input, false, false, rule);
+export const testNonStatic = (description: string, createTree: () => Node) => {
+  testCase(description, createTree, false, false);
 };
 
-export const testMayAsync = (description: string, input: string, rule: LessRules = 'stylesheet') => {
-  testCase(description, input, false, true, rule);
+export const testMayAsync = (description: string, createTree: () => Node) => {
+  testCase(description, createTree, false, true);
 };
 
-export const testBothFlags = (description: string, input: string, rule: LessRules = 'stylesheet') => {
-  testCase(description, input, false, true, rule);
+export const testBothFlags = (description: string, createTree: () => Node) => {
+  testCase(description, createTree, false, true);
 };
 
 // Common test patterns
 export const testPatterns = {
   // Static content patterns
-  staticRuleset: (selector = '.a') => `${selector} { color: red; width: 10px }`,
-  staticDeclaration: (property = 'color', value = 'red') => `.a { ${property}: ${value} }`,
+  staticRuleset: (selector = DEFAULT_SELECTOR) => () => createStaticRuleset(selector),
+  staticDeclaration: (property = 'color', value = DEFAULT_COLOR) => () => createStaticRuleset(DEFAULT_SELECTOR, [decl({ name: property, value })]),
 
   // Variable patterns
-  variableReference: (property = 'color', variable = '@var') => `.a { ${property}: ${variable} }`,
-  variableInOperation: (operation = '1 + @var') => `.a { width: ${operation} }`,
-  variableInCall: (functionName = 'rgb', args = '@var, 0, 0') => `.a { color: ${functionName}(${args}) }`,
-  variableInNegative: (variable = '@var') => `.a { width: -${variable} }`,
-  variableInParen: (variable = '@var') => `.a { color: (${variable}) }`,
-  variableInList: (items = '@var, 2px') => `.a { shadow: ${items} }`,
-  variableInSequence: (items = '@var solid red') => `.a { border: ${items} }`,
-  variableInSquareBlock: (items = '@var, 2') => `.a { prop: [ ${items} ] }`,
+  variableReference: (property = 'color', variable = DEFAULT_VARIABLE) => () => createVariableReference(property, variable),
+  variableInOperation: (operation = new Operation([num(1), '+', DEFAULT_VARIABLE])) => () => createVariableInOperation(operation),
+  variableInCall: (functionCall = call({ name: 'rgb', args: list([DEFAULT_VARIABLE, any('0'), any('0')]) })) => () => createVariableInCall(functionCall),
+  variableInNegative: (negValue = negative(DEFAULT_VARIABLE)) => () => createVariableInNegative(negValue),
+  variableInParen: (parenValue = paren(DEFAULT_VARIABLE)) => () => createVariableInParen(parenValue),
+  variableInList: (listValue = list([DEFAULT_VARIABLE, any('2px')])) => () => createVariableInList(listValue),
+  variableInSequence: (sequenceValue = spaced([DEFAULT_VARIABLE, any('solid'), any('red')])) => () => createVariableInSequence(sequenceValue),
+  variableInSquareBlock: (squareValue = list([DEFAULT_VARIABLE, any('2')])) => () => createVariableInSquareBlock(squareValue),
 
   // Operation patterns
-  staticOperation: (operation = '1 + 2') => `.a { width: ${operation} }`,
-  staticCall: (functionName = 'rgb', args = '255, 0, 0') => `.a { color: ${functionName}(${args}) }`,
-  staticNegative: (value = '10px') => `.a { width: -${value} }`,
-  staticParen: (value = 'red') => `.a { color: (${value}) }`,
-  staticList: (items = '1px, 2px') => `.a { shadow: ${items} }`,
-  staticSequence: (items = '1px solid red') => `.a { border: ${items} }`,
-  staticSquareBlock: (items = '1, 2') => `.a { prop: [ ${items} ] }`,
+  staticOperation: (operation = DEFAULT_OPERATION) => () => createOperation(operation),
+  staticCall: (functionCall = DEFAULT_CALL) => () => createCall(functionCall),
+  staticNegative: (negValue = DEFAULT_NEGATIVE) => () => createNegative(negValue),
+  staticParen: (parenValue = DEFAULT_PAREN) => () => createParen(parenValue),
+  staticList: (listValue = DEFAULT_LIST) => () => createList(listValue),
+  staticSequence: (sequenceValue = DEFAULT_SEQUENCE) => () => createSequence(sequenceValue),
+  staticSquareBlock: (squareValue = list([any('1'), any('2')])) => () => createSquareBlock(squareValue),
 
   // Complex patterns
-  nestedRulesets: (innerContent: string) => `
-    .container {
-      .nested {
-        .deep {
-          .inner {
-            ${innerContent}
-          }
-        }
-      }
-    }
-  `,
+  nestedRulesets: (innerContent: Node = decl({ name: 'color', value: DEFAULT_COLOR })) => () => {
+    // Simplified nested ruleset creation
+    return rules([
+      ruleset({
+        selector: sellist([sel([el('.container')])]),
+        rules: rules([
+          ruleset({
+            selector: sellist([sel([el('.nested')])]),
+            rules: rules([
+              ruleset({
+                selector: sellist([sel([el('.deep')])]),
+                rules: rules([
+                  ruleset({
+                    selector: sellist([sel([el('.inner')])]),
+                    rules: rules([innerContent])
+                  })
+                ])
+              })
+            ])
+          })
+        ])
+      })
+    ]);
+  },
 
-  multipleRules: (rules: string[]) => rules.join('\n'),
+  multipleRules: (ruleNodes: Rules[] = []) => () => createMultipleRules(ruleNodes),
 
   // Selector patterns
-  selectorInterpolation: (variable = '@var') => `.@{var} { color: red }`,
-  compoundSelectorInterpolation: (variable = '@var') => `.foo.@{var} { color: red }`,
-  complexSelectorInterpolation: (variable = '@var') => `.foo .@{var} { color: red }`,
-  selectorListInterpolation: (variable = '@var') => `.static, .@{var} { color: red }`,
+  selectorInterpolation: (interpolatedSelector = interpolated({ source: '.{}', replacements: [DEFAULT_VARIABLE] })) => () => createSelectorInterpolation(interpolatedSelector),
+  compoundSelectorInterpolation: (interpolatedSelector = interpolated({ source: '.{}', replacements: [DEFAULT_VARIABLE] })) => () => createSelectorInterpolation(interpolatedSelector),
+  complexSelectorInterpolation: (interpolatedSelector = interpolated({ source: '.{}', replacements: [DEFAULT_VARIABLE] })) => () => createSelectorInterpolation(interpolatedSelector),
+  selectorListInterpolation: (interpolatedSelector = interpolated({ source: '.{}', replacements: [DEFAULT_VARIABLE] })) => () => createSelectorInterpolation(interpolatedSelector),
 
   // Import and mixin patterns
-  styleImport: (path = 'x.less') => `@import '${path}';`,
-  mixinDefinition: (body: string) => `.mixin() { ${body} }`,
-  mixinCall: (name = 'x') => `.a { .${name}(); }`,
+  styleImport: (importPath = any('x.less')) => () => createStyleImport(importPath),
+  mixinDefinition: (bodyDecl = decl({ name: 'color', value: DEFAULT_COLOR })) => () => createMixinDefinition(bodyDecl),
+  mixinCall: (name = 'x') => () => createStaticRuleset(DEFAULT_SELECTOR, [decl({ name: 'color', value: DEFAULT_COLOR })]),
 
   // Guard patterns
-  guardWithStatic: (condition = '1 = 1') => `.a when (${condition}) { color: red }`,
-  guardWithVariable: (condition = '@var = 1') => `.a when (${condition}) { color: red }`,
+  guardWithStatic: (guardCondition = condition([num(1), '=', num(1)])) => () => createGuardWithStatic(guardCondition),
+  guardWithVariable: (guardCondition = condition([DEFAULT_VARIABLE, '=', num(1)])) => () => createGuardWithVariable(guardCondition),
 
   // At-rule patterns
-  atRuleStatic: (content = '.a { color: red }') => `@media screen { ${content} }`,
-  atRuleVariable: (content = '.a { color: @var }') => `@media screen { ${content} }`
+  atRuleStatic: (atRuleContent = createStaticRuleset(el('.a'), [decl({ name: 'color', value: DEFAULT_COLOR })])) => () => createAtRuleStatic(atRuleContent),
+  atRuleVariable: (atRuleContent = createVariableReference('color', DEFAULT_VARIABLE)) => () => createAtRuleVariable(atRuleContent)
 };
 
 // Deep node access helpers
@@ -165,13 +442,13 @@ export const getNestedNode = (tree: Node, path: number[]): Node => {
 // Comprehensive test helpers
 export const testDeepBubbling = (
   description: string,
-  input: string,
+  createTree: () => Rules,
   nodePath: number[],
   expectedIsStatic: boolean,
   expectedMayAsync: boolean
 ) => {
   test(description, () => {
-    const { tree } = parse(input);
+    const tree = createTree();
     const node = getNestedNode(tree, nodePath);
     expectFlags(node, expectedIsStatic, expectedMayAsync);
   });
@@ -179,12 +456,12 @@ export const testDeepBubbling = (
 
 export const testIsolation = (
   description: string,
-  input: string,
+  createTree: () => Rules,
   expectedIsStatic: boolean,
   expectedMayAsync: boolean
 ) => {
   test(description, () => {
-    const { tree } = parse(input);
+    const tree = createTree();
     expectFlags(tree, expectedIsStatic, expectedMayAsync);
   });
 };

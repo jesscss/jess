@@ -43,7 +43,15 @@ export class Any<
   override state = F_VISIBLE | F_STATIC;
   // Any values are static and don't need evaluation
 }
-export const any = defineType(Any, 'Any', 'any');
+
+// Custom any function that properly handles role narrowing
+export function any<Role extends AnyRole = AnyRole>(
+  value: string,
+  options?: AnyOptions<Role>
+): Any<Role> {
+  return new Any(value, options);
+}
+defineType(Any, 'Any');
 
 /** Legacy class - remove? */
 export class Anonymous<

@@ -19,7 +19,11 @@ export class Comment extends Node<string, CommentOptions> {
   override allowRuleRoot = true;
 
   override evalNode(context: Context): Comment {
-    this.setState(F_VISIBLE, !this.options.lineComment);
+    if (!this.options.lineComment) {
+      this.addFlag(F_VISIBLE);
+    } else {
+      this.removeFlag(F_VISIBLE);
+    }
     return this as Comment;
   }
 }

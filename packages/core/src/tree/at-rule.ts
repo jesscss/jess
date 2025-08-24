@@ -1,4 +1,4 @@
-import { Node, defineType } from './node';
+import { Node, defineType, F_STATIC } from './node';
 import { ComplexSelector } from './selector-complex';
 import { Ampersand } from './ampersand';
 import { Ruleset } from './ruleset';
@@ -6,7 +6,7 @@ import type { Any } from './any';
 import { Rules } from './rules';
 import type { Context } from '../context';
 import { type PrintOptions, getPrintOptions } from './util/print';
-import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 
 export type AtRuleValue = {
   name: Any<'atkeyword'>;
@@ -52,7 +52,38 @@ export class AtRule extends Node<AtRuleValue> {
   override evalNode(context: Context): MaybePromise<AtRule> {
     let node = this as AtRule;
     return pipe(
-      () => super.evalNode(context),
+      () => {
+        node = node.maybeClone(context);
+        let { prelude } = node.value;
+        if (prelude) {
+          if (prelude.hasFlag(F_STATIC)) {
+            prelude.evaluated = true;
+          } else {
+            let out = prelude.eval(context);
+            if (isThenable(out)) {
+              return (out as Promise<Node>).then((n) => {
+                node.value.prelude = n;
+                return node;
+              });
+            }
+            node.value.prelude = out;
+          }
+        }
+      },
+      () => {
+        let { rules } = node.value;
+        if (rules) {
+          let out = rules.eval(context);
+          if (isThenable(out)) {
+            return (out as Promise<Rules>).then((r) => {
+              node.value.rules = r;
+              return node;
+            });
+          }
+          node.value.rules = out;
+        }
+        return node;
+      },
       (evaldNode: Node) => {
         if (evaldNode instanceof AtRule) {
           node = evaldNode;

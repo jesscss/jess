@@ -178,20 +178,8 @@ export abstract class Node<
   /** Runtime tracking: has eval been run on this node? */
   evaluated = false;
 
-  getState(flag: number) {
-    return (this.state & flag) === flag;
-  }
-
-  setState(flag: number, value: boolean) {
-    if (value) {
-      this.state |= flag;
-    } else {
-      this.state &= ~flag;
-    }
-  }
-
   get visible() {
-    return this.getState(F_VISIBLE);
+    return this.hasFlag(F_VISIBLE);
   }
 
   declare renderInvisible: boolean;
@@ -234,7 +222,11 @@ export abstract class Node<
    */
   declare sourceNode: Node;
 
-  /** The parent node of this node */
+  /**
+   * The parent node of this node. Usually, this
+   * shouldn't be set directly. Instead, a parent should use
+   * parent.adopt(thisNode);
+   */
   parent: Node | undefined;
 
   nil!: () => Nil;
@@ -290,25 +282,69 @@ export abstract class Node<
   }
 
   /**
+   * Add a flag to the node's state
+   * Handles STATIC/NON_STATIC exclusivity automatically
+   */
+  addFlag(flag: number) {
+    // NON_STATIC takes precedence over STATIC
+    if (flag === F_STATIC && this.hasFlag(F_NON_STATIC)) {
+      return;
+    }
+    this.state |= flag;
+    // Handle STATIC/NON_STATIC exclusivity
+    if (flag === F_NON_STATIC) {
+      this.state &= ~F_STATIC;
+    }
+  }
+
+  /**
+   * Remove a flag from the node's state
+   */
+  removeFlag(flag: number) {
+    this.state &= ~flag;
+  }
+
+  /**
+   * Check if the node has a specific flag
+   */
+  hasFlag(flag: number): boolean {
+    return (this.state & flag) !== 0;
+  }
+
+  /**
+   * Add multiple flags to the node's state
+   */
+  addFlags(...flags: number[]) {
+    for (const flag of flags) {
+      this.state |= flag;
+    }
+  }
+
+  adopt(node: Node) {
+    node.parent = this;
+    if (node.hasFlag(F_NON_STATIC)) {
+      this.addFlag(F_NON_STATIC);
+    } else if (node.hasFlag(F_STATIC)) {
+      this.addFlag(F_STATIC);
+    }
+    if (node.hasFlag(F_MAY_ASYNC)) {
+      this.addFlag(F_MAY_ASYNC);
+    }
+    if (node.hasFlag(F_AMPERSAND) && this.type !== 'Rules') {
+      this.addFlag(F_AMPERSAND);
+    }
+  }
+
+  /**
    * Assign parent to sub-nodes
    * @note - This will not process the children nodes of children nodes.
    */
   private _processNodes<T>(value: T): T {
-    let state = this.state;
     for (let val of getValues(value)) {
       if (val instanceof Node) {
-        val.parent = this;
-        if (val.getState(F_NON_STATIC)) {
-          state |= F_NON_STATIC;
-        } else if (val.getState(F_STATIC)) {
-          state |= F_STATIC;
-        }
-        if (val.getState(F_AMPERSAND) && this.type !== 'Rules') {
-          state |= F_AMPERSAND;
-        }
+        this.adopt(val);
       }
     }
-    this.state = state;
     return value;
   }
 
@@ -539,7 +575,7 @@ export abstract class Node<
   private _createMinimalNil(): Node {
     const nilish = Object.create(this.constructor.prototype);
     nilish.type = 'Nil';
-    nilish.setState(F_VISIBLE, false);
+    nilish.removeFlag(F_VISIBLE);
     nilish.value = '';
     return nilish;
   }
@@ -738,7 +774,7 @@ export abstract class Node<
    * and toTrimmedString() should be overridden instead.
    */
   toString(options?: PrintOptions): string {
-    if (!this.getState(F_VISIBLE) && !this.renderInvisible) {
+    if (!this.hasFlag(F_VISIBLE) && !this.renderInvisible) {
       return '';
     }
     options = getPrintOptions(options);

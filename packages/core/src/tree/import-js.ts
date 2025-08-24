@@ -25,7 +25,12 @@ export type JsImportValue = {
 export class JsImport extends Node<JsImportValue, JsImportOptions> {
   type = 'JsImport' as const;
   shortType = 'js' as const;
-  override state = F_MAY_ASYNC | F_NON_STATIC;
+
+  constructor(value: JsImportValue, options?: JsImportOptions, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    // JS imports are always non-static and may be async
+    this.state |= F_MAY_ASYNC | F_NON_STATIC;
+  }
 }
 
 export const js = defineType<JsImportValue>(JsImport, 'JsImport', 'js');
