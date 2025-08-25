@@ -438,7 +438,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         rules.index = context.ruleCounter++;
       }
 
-      // PreEval all nodes and register them after name resolution
+      // First pass: Register VarDeclaration nodes immediately for hoisting
       for (let i = 0; i < rules.value.length; i++) {
         const node = rules.value[i]!;
 
@@ -446,6 +446,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (node.index === undefined) {
           node.index = context.ruleCounter++;
         }
+
+        // Register VarDeclaration nodes immediately for variable hoisting
+        if (isNode(node, 'VarDeclaration')) {
+          rules.registerNode(node);
+        }
+      }
+
+      // Second pass: PreEval all nodes
+      for (let i = 0; i < rules.value.length; i++) {
+        const node = rules.value[i]!;
 
         // Always call preEval to ensure deep traversal and name resolution
         const result = node.preEval(context);
@@ -458,8 +468,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               rules.adopt(resolvedNode);
             }
 
-            // Register the node after preEval (name resolution)
-            rules.registerNode(resolvedNode);
+            // Register the node after preEval (name resolution) if not already registered
+            if (!isNode(node, 'VarDeclaration')) {
+              rules.registerNode(resolvedNode);
+            }
             if (resolvedNode.type === 'Ruleset') {
               context.treeRoot?.register('ruleset', resolvedNode as Ruleset<RulesetValue>);
             }
@@ -475,8 +487,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           rules.adopt(result);
         }
 
-        // Register the node after preEval (name resolution)
-        rules.registerNode(result);
+        // Register the node after preEval (name resolution) if not already registered
+        if (!isNode(node, 'VarDeclaration')) {
+          rules.registerNode(result);
+        }
         if (result.type === 'Ruleset') {
           context.treeRoot?.register('ruleset', result as Ruleset<RulesetValue>);
         }
@@ -505,8 +519,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             rules.adopt(resolvedNode);
           }
 
-          // Register the node after preEval (name resolution)
-          rules.registerNode(resolvedNode);
+          // Register the node after preEval (name resolution) if not already registered
+          if (!isNode(node, 'VarDeclaration')) {
+            rules.registerNode(resolvedNode);
+          }
           if (resolvedNode.type === 'Ruleset') {
             context.treeRoot?.register('ruleset', resolvedNode as Ruleset<RulesetValue>);
           }
@@ -522,8 +538,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         rules.adopt(result);
       }
 
-      // Register the node after preEval (name resolution)
-      rules.registerNode(result);
+      // Register the node after preEval (name resolution) if not already registered
+      if (!isNode(node, 'VarDeclaration')) {
+        rules.registerNode(result);
+      }
       if (result.type === 'Ruleset') {
         context.treeRoot?.register('ruleset', result as Ruleset<RulesetValue>);
       }

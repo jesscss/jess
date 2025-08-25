@@ -360,6 +360,34 @@ export class Context {
     };
   }
 
+  /**
+   * Find the appropriate plugin for parsing based on type or extension
+   */
+  private findParserPlugin(type?: string, extension?: string): PluginInterface {
+    const plugins = this.plugins;
+
+    if (type) {
+      const plugin = plugins.find(plugin => plugin.name === type);
+      if (!plugin) {
+        throw new Error(`Plugin "${type}" not found`);
+      }
+      if (!plugin.parse) {
+        throw new Error(`Plugin "${type}" does not support parsing`);
+      }
+      return plugin;
+    }
+
+    if (extension) {
+      const plugin = plugins.find(plugin => plugin.supportedExtensions?.includes(extension) && plugin.parse);
+      if (!plugin) {
+        throw new Error(`No plugin found for extension "${extension}"`);
+      }
+      return plugin;
+    }
+
+    throw new Error('No plugin type or extension specified');
+  }
+
   async getTree(importPath: string, importOptions: ImportOptions = {}) {
     const { resolvedPath, triedPaths, friendlyPath } = await this._getPath(importPath);
     const { type } = importOptions;
@@ -383,25 +411,7 @@ export class Context {
     }
 
     const ext = path.extname(resolvedPath);
-
-    let plugin: PluginInterface | undefined;
-
-    if (type) {
-      plugin = plugins.find(plugin => plugin.name === type);
-      if (!plugin) {
-        throw new Error(`Plugin "${type}" not found`);
-      }
-      if (!plugin.parse) {
-        throw new Error(`Plugin "${type}" does not support parsing`);
-      }
-    }
-
-    if (!plugin) {
-      plugin = plugins.find(plugin => plugin.supportedExtensions?.includes(ext) && plugin.parse);
-      if (!plugin) {
-        throw new Error(`File "${friendlyPath}" not supported`);
-      }
-    }
+    const plugin = this.findParserPlugin(type, ext);
 
     const source = await sourceGetter.getSource!(resolvedPath);
     const tree = await plugin.parse!(resolvedPath, source);
@@ -415,6 +425,31 @@ export class Context {
     }
 
     throw new Error(`File "${friendlyPath}" not supported`);
+  }
+
+  /**
+   * Parse a string content directly using the appropriate plugin
+   */
+  async parseString(content: string, options: {
+    filePath?: string;
+    type?: string;
+    extension?: string;
+  } = {}) {
+    const { filePath, type, extension } = options;
+    const virtualPath = filePath || `virtual.${extension || 'less'}`;
+    const ext = extension || path.extname(virtualPath);
+
+    const plugin = this.findParserPlugin(type, ext);
+    const tree = await plugin.parse!(virtualPath, content);
+
+    if (!tree) {
+      throw new Error('Failed to parse content');
+    }
+
+    return {
+      node: tree,
+      resolvedPath: virtualPath
+    };
   }
 
   /**

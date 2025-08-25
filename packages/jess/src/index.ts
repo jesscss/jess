@@ -20,10 +20,10 @@ export class JessCompiler {
   ) {}
 
   /**
-   * Render CSS and (optionally) a runtime module
+   * Create a context with the configured plugins
    */
-  async render(filePath: string) {
-    const opts: ConfigOptions = merge({}, this.opts, getConfig(path.dirname(filePath)));
+  private createContext(filePath?: string): Context {
+    const opts: ConfigOptions = merge({}, this.opts, filePath ? getConfig(path.dirname(filePath)) : {});
     const { plugins, ...rest } = opts;
     /** @todo Add CSS and Jess plugins */
     let corePlugins = [
@@ -39,10 +39,44 @@ export class JessCompiler {
         pluginMap.set(plugin.name, plugin);
       }
     }
-    const context = new Context(rest, [...pluginMap.values()]);
+    return new Context(rest, [...pluginMap.values()]);
+  }
+
+  /**
+   * Render CSS from a file path
+   */
+  async render(filePath: string) {
+    const context = this.createContext(filePath);
 
     try {
       const { node } = await context.getTree(filePath);
+      const evald = await node.eval(context);
+      const css = evald.toString();
+      return css;
+    } catch (err: any) {
+      logger.error(err.toString());
+      throw err;
+    }
+  }
+
+  /**
+   * Render CSS from a string content
+   */
+  async renderString(content: string, options: {
+    filePath?: string;
+    language?: string;
+    extension?: string;
+  } = {}) {
+    const { filePath, language, extension } = options;
+    const context = this.createContext(filePath);
+
+    try {
+      const { node } = await context.parseString(content, {
+        filePath,
+        type: language,
+        extension
+      });
+
       const evald = await node.eval(context);
       const css = evald.toString();
       return css;
