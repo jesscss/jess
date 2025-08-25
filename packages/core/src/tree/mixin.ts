@@ -1,10 +1,10 @@
-import { Node, defineType } from './node';
+import { F_VISIBLE, Node, defineType, type LocationInfo } from './node';
 import type { Condition } from './condition';
 import { type List } from './list';
 import type { Any, AnyRole } from './any';
 import type { Rules } from './rules';
 import { Interpolated } from './interpolated';
-import type { Context } from '../context';
+import type { Context, TreeContext } from '../context';
 import type { Declaration } from './declaration';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -81,6 +81,12 @@ export type MixinOptions = {
 export class Mixin extends Node<MixinValue, MixinOptions> {
   type = 'Mixin';
   shortType = 'mixin';
+
+  constructor(value: MixinValue, options?: MixinOptions, location?: LocationInfo, context?: TreeContext) {
+    super(value, options, location, context);
+    this.removeFlag(F_VISIBLE);
+  }
+
   // Mixin has preEval method but doesn't need to set flags - preEvaluated is tracked as boolean
 
   /** Return a selector-like keySet */

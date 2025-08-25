@@ -57,6 +57,7 @@ import {
   CompoundSelector,
   SelectorList,
   Rules,
+  Nil,
   type ComplexSelectorComponent,
   type Selector
 } from '@jesscss/core';
@@ -2421,8 +2422,8 @@ export function accessors(this: P, T: TokenMap) {
           if (tokenStart === '@') {
             key = new Reference({ target: nodeContext, key: tokenStr.slice(1) }, { type: 'variable' }, $.getLocationInfo(keyToken), this.context);
           } else {
+            // For simple identifiers, just use the string as the key, not a Reference
             key = tokenStart === '$' ? tokenStr.slice(1) : tokenStr;
-            key = new Reference({ target: nodeContext, key: tokenStr }, { type: 'property' }, $.getLocationInfo(keyToken), this.context);
           }
         }
       } else {
@@ -2431,7 +2432,7 @@ export function accessors(this: P, T: TokenMap) {
       const location = $.endRule();
       // Replace Lookup with a Reference targeting the current nodeContext
       const targetRef = nodeContext as Reference | Node;
-      returnNode = new Reference({ target: targetRef as any, key: key as any }, { type: 'declaration' }, location, this.context);
+      returnNode = new Reference({ target: targetRef as any, key: key as any }, { type: 'property' }, location, this.context);
     }
     /**
      * Allows chaining of lookups / calls
@@ -2620,14 +2621,28 @@ export function mixinArg(this: P, T: TokenMap) {
 
     return $.OR([
       {
-        GATE: () => !isDeclaration,
+        GATE: () => !isDeclaration && !isDefinition,
         ALT: () => $.SUBRULE($.callArgument, { ARGS: [ctx] })
+      },
+      {
+        GATE: () => !isDeclaration && isDefinition && atStart,
+        ALT: () => {
+          $.startRule();
+          let name = $.SUBRULE2($.varName, { ARGS: [ctx] });
+          if (!RECORDING_PHASE) {
+            let location = $.endRule();
+            return new VarDeclaration({
+              name: new Any(name.image.slice(1), { role: 'property' }, $.getLocationInfo(name), this.context),
+              value: new Nil(undefined, undefined, location, this.context)
+            }, { paramVar: true }, location, this.context);
+          }
+        }
       },
       {
         GATE: () => isDeclaration,
         ALT: () => {
           $.startRule();
-          let name = $.SUBRULE2($.varName, { ARGS: [ctx] });
+          let name = $.SUBRULE3($.varName, { ARGS: [ctx] });
           $.CONSUME(T.Colon);
           /** Default value */
           let value = $.SUBRULE2($.callArgument, { ARGS: [ctx] });

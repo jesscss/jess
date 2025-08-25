@@ -1,5 +1,6 @@
 import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC, F_VISIBLE } from './node';
 import type { Context, TreeContext } from '../context';
+import { type MaybePromise } from '@jesscss/awaitable-pipe';
 
 export type AnyRole =
   'ident'
@@ -41,7 +42,12 @@ export class Any<
   type: AnyRole = 'any';
   shortType = 'any';
   override state = F_VISIBLE | F_STATIC;
+  
   // Any values are static and don't need evaluation
+  override evalNode(context: Context): MaybePromise<Node> {
+    console.log('🔍 Any.evalNode - value:', this.value, 'state:', this.state);
+    return this;
+  }
 }
 
 // Custom any function that properly handles role narrowing
