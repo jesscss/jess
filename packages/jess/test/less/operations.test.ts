@@ -30,7 +30,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('width: 15px');
       expect(css).toContain('height: 20px');
     });
@@ -43,7 +43,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('width: 15px');
       expect(css).toContain('height: 20px');
     });

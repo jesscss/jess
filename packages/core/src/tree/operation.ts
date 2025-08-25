@@ -33,7 +33,7 @@ export class Operation extends Node<OperationValue> {
       if (isThenable(maybeRight)) {
         return (maybeRight as Promise<Node>).then((r) => {
           if (context.shouldOperate(op)) {
-            return l.operate(r, op, context).inherit(this);
+            return l.operate(r, op, context);
           }
           n.value = [l, op, r];
           return n;
@@ -41,7 +41,7 @@ export class Operation extends Node<OperationValue> {
       }
       const r = maybeRight as Node;
       if (context.shouldOperate(op)) {
-        return l.operate(r, op, context).inherit(this);
+        return l.operate(r, op, context);
       }
       n.value = [l, op, r];
       return n;

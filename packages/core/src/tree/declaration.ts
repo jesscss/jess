@@ -102,14 +102,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       // Emit value exactly as captured (no trimming, no added spaces)
       value.toString(options);
     } else {
-      value.processPrePost('pre', ' ', options);
-      const beforeVal = w.mark();
-      const valStr = value.toTrimmedString(options);
-      const emittedVal = w.getSince(beforeVal);
-      if (!emittedVal && valStr) {
-        w.add(valStr);
-      }
-      value.processPrePost('post', '', options);
+      // Capture value output to normalize spacing after ':'
+      const valOut = w.capture(() => value.toTrimmedString(options));
+      // Ensure exactly one space after ':' by removing leading whitespace and adding one space
+      w.add(' ');
+      w.add(valOut.replace(/^\s+/, ''));
       if (!isNode(value, 'Collection')) {
         if (important) {
           w.add(`${important}`);
