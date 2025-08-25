@@ -128,6 +128,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     let node = this.maybeClone(context);
     node.preEvaluated = true;
     let { name, value } = node.value;
+
     const applyAssignmentNormalization = (key: Any<'property'>) => {
       /** Normalize assignment types */
       let assign = node.options?.assign;
@@ -211,8 +212,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return this;
     }
     return pipe(
-      () => this.preEval(context),
-      (node) => {
+      () => {
+        let node = this;
         /** Pre-eval already evaluated the name, just need to do value */
         const { value } = node.value;
         if (value instanceof Node) {

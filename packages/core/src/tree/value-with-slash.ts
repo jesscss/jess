@@ -20,42 +20,38 @@ export class SlashValue extends List {
   override shortType = 'slash';
 
   override evalNode(context: Context): MaybePromise<Node> {
-    return pipe(
-      () => this.maybeClone(context),
-      (list) => {
-        if (!context.shouldOperate('/')) {
-          return list as Node;
-        }
-        let { value } = list;
-        if (value.length !== 2) {
-          throw new Error('A SlashValue must have exactly two members');
-        }
-        let left = list.value[0]!;
-        let preLeft: Node[] | undefined;
-        let preRight: Node[] | undefined;
-        if (isNode(left, 'Sequence')) {
-          value = left.value;
-          left = value[left.value.length - 1]!;
-          preLeft = value.slice(0, -1);
-        }
-        let right = list.value[1]!;
-        if (isNode(right, 'Sequence')) {
-          value = right.value;
-          right = value[0]!;
-          preRight = value.slice(1);
-        }
-        let op = new Operation([left, '/', right]);
-        if (preLeft) {
-          if (preRight) {
-            return (new Sequence([...preLeft, op, ...preRight])).eval(context);
-          }
-          return (new Sequence([...preLeft, op])).eval(context);
-        } else if (preRight) {
-          return (new Sequence([op, ...preRight])).eval(context);
-        }
-        return op.eval(context);
+    let list = this;
+    if (!context.shouldOperate('/')) {
+      return list as Node;
+    }
+    let { value } = list;
+    if (value.length !== 2) {
+      throw new Error('A SlashValue must have exactly two members');
+    }
+    let left = list.value[0]!;
+    let preLeft: Node[] | undefined;
+    let preRight: Node[] | undefined;
+    if (isNode(left, 'Sequence')) {
+      value = left.value;
+      left = value[left.value.length - 1]!;
+      preLeft = value.slice(0, -1);
+    }
+    let right = list.value[1]!;
+    if (isNode(right, 'Sequence')) {
+      value = right.value;
+      right = value[0]!;
+      preRight = value.slice(1);
+    }
+    let op = new Operation([left, '/', right]);
+    if (preLeft) {
+      if (preRight) {
+        return (new Sequence([...preLeft, op, ...preRight])).eval(context);
       }
-    );
+      return (new Sequence([...preLeft, op])).eval(context);
+    } else if (preRight) {
+      return (new Sequence([op, ...preRight])).eval(context);
+    }
+    return op.eval(context);
   }
 }
 

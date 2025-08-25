@@ -44,7 +44,9 @@ export class Extend extends Selector<ExtendValue> {
     const w = options.writer!;
     let { target, selector } = this.value;
     const mark = w.mark();
-    if (selector) selector.toString(options);
+    if (selector) {
+      selector.toString(options);
+    }
     w.add(':extend(');
     target.toString(options);
     w.add(')');

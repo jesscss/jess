@@ -25,7 +25,7 @@ export class Operation extends Node<OperationValue> {
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    let n = this.maybeClone(context);
+    let n = this;
     let [left, op, right] = n.value;
     const maybeLeft = left.eval(context);
     const handle = (l: Node): MaybePromise<Node> => {

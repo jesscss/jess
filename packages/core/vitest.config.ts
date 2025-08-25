@@ -5,7 +5,7 @@ export default defineConfig({
     name: 'core',
     testTimeout: 30_000,
     watch: false,
-    include: ['test/**/*.ts', '!test/setup.ts', '**/__tests__/**/*.ts', '!src/old_tree/**/*'],
+    include: ['test/**/*.test.ts', '!test/setup.ts', '**/__tests__/**/*.ts', '!src/old_tree/**/*'],
     globals: true,
     setupFiles: ['../../test/setup.ts', './test/setup.ts'],
     coverage: {

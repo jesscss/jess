@@ -66,7 +66,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   override evalNode(context: Context): MaybePromise<CompoundSelector | Selector | Nil> {
     return pipe(
       () => {
-        const sel = this.maybeClone(context);
+        const sel = this;
         let { value } = sel;
         const maybe = serialForEach(Array.from(getEntries(value)), ([item, i]) => {
           const out = item.eval(context);

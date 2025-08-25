@@ -80,7 +80,9 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         const last = arg.value.length - 1;
         for (let i = 0; i <= last; i++) {
           arg.value[i]!.toString(options);
-          if (i < last) w.add(', ');
+          if (i < last) {
+            w.add(', ');
+          }
         }
       } else {
         arg.toString(options);
@@ -159,7 +161,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
 
   override evalNode(context: Context): MaybePromise<PseudoSelector> {
     const currentArg = this.value.arg;
-    const node = this.maybeClone(context);
+    const node = this;
     if (!currentArg) {
       return node;
     }

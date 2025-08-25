@@ -70,7 +70,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   override evalNode(context: Context): MaybePromise<Node> {
     return pipe(
       () => {
-        const node = this.maybeClone(context);
+        const node = this;
         const maybe = serialForEach(node.value.map((n, i) => [n, i] as const), ([n, i]) => {
           const out = n.eval(context);
           if (isThenable(out)) {

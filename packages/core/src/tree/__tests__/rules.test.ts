@@ -44,11 +44,11 @@ function getVarWithContext(context: Context, n: Rules, key: string, opts: FindOp
 
 describe('Rules', () => {
   beforeAll(() => {
-    Node.prototype.renderInvisible = true;
+    Node.prototype.fullRender = true;
   });
 
   afterAll(() => {
-    Node.prototype.renderInvisible = false;
+    Node.prototype.fullRender = false;
   });
 
   let getProp = getPropWithContext.bind(context, context);

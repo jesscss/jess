@@ -54,7 +54,7 @@ export class SelectorList extends Selector<Selector[]> {
   override evalNode(context: Context): MaybePromise<SelectorList | Selector> {
     return pipe(
       () => {
-        const list = this.maybeClone(context);
+        const list = this;
         const { value } = list;
         const maybe = serialForEach(Array.from(getEntries(value)), ([item, i]) => {
           const out = item.eval(context);

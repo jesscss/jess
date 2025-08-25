@@ -76,7 +76,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     }
     super(value, options, location, treeContext);
     // References are always non-static and may be async
-    this.state |= F_MAY_ASYNC | F_VISIBLE | F_NON_STATIC;
+    this.addFlags(F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC);
   }
 
   override valueOf() {
@@ -259,6 +259,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             const any = new Any(`${valueKey}`);
             any.options.role = this.options.role;
             return any;
+          }
+          // Evaluate the fallbackValue if it's a Node
+          if (fallbackValue instanceof Node) {
+            return fallbackValue.eval(context);
           }
           return fallbackValue as Node;
         }

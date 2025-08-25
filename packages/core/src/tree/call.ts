@@ -55,7 +55,7 @@ export class Call extends Node<CallValue, CallOptions> {
   constructor(value: CallValue, options?: CallOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     // Function calls are always non-static and may be async
-    this.state |= F_VISIBLE | F_NON_STATIC | F_MAY_ASYNC;
+    this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }
 
   override toTrimmedString(options?: PrintOptions) {
@@ -84,7 +84,7 @@ export class Call extends Node<CallValue, CallOptions> {
     let { name, args } = this.value;
     const finalize = (evaluatedName: any, evaluatedArgs: any) => {
       context.parenFrames.pop();
-      const node = this.maybeClone(context);
+      const node = this;
       node.value.name = evaluatedName;
       node.value.args = evaluatedArgs;
       return node;

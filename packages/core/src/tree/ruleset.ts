@@ -156,7 +156,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   override evalNode(context: Context): MaybePromise<Ruleset | Nil> {
-    let rule = this.maybeClone(context);
+    let rule = this;
     rule.options = { ...this.options };
     let frame = atIndex(context.rulesetFrames, -1);
     if (frame && isNode(frame.selector, 'Selector')) {

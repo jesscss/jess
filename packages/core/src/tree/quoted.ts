@@ -28,7 +28,9 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     const mark = w.mark();
     let { quote = '"', escaped } = this.options ?? {};
     let escapeChar = escaped ? '~' : '';
-    if (escapeChar) w.add(escapeChar, this);
+    if (escapeChar) {
+      w.add(escapeChar, this);
+    }
     w.add(quote);
     super.toTrimmedString(options);
     w.add(quote);

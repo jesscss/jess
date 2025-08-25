@@ -120,7 +120,9 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
     const { appendValue } = this.value;
     if (appendValue !== undefined) {
       w.add('&(');
-      if (appendValue) w.add(appendValue, this);
+      if (appendValue) {
+        w.add(appendValue, this);
+      }
       w.add(')');
     } else {
       w.add('&', this);

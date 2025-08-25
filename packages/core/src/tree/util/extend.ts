@@ -473,7 +473,7 @@ function handleCompoundFullExtend(
   // Single loop to handle both :is() extension and regular component matching
   for (let i = 0; i < target.value.length; i++) {
     const comp = target.value[i];
-    if (!comp) continue;
+    if (!comp) { continue; }
 
     // Check if this is an existing :is() pseudo-selector that might contain the find
     // ONLY :is() allows boundary crossing - all other pseudo-selectors are atomic units
@@ -721,8 +721,8 @@ function createValidatedIsWrapper(
 
     for (const child of contextSelector.value) {
       if (isNode(child, 'BasicSelector')) {
-        if (child.isTag) contextElements++;
-        if (child.isId) contextIds++;
+        if (child.isTag) { contextElements++; }
+        if (child.isId) { contextIds++; }
       }
     }
 
@@ -732,13 +732,13 @@ function createValidatedIsWrapper(
       let selectorIds = 0;
 
       if (isNode(selector, 'BasicSelector')) {
-        if (selector.isTag) selectorElements++;
-        if (selector.isId) selectorIds++;
+        if (selector.isTag) { selectorElements++; }
+        if (selector.isId) { selectorIds++; }
       } else if (isNode(selector, 'CompoundSelector')) {
         for (const child of selector.value) {
           if (isNode(child, 'BasicSelector')) {
-            if (child.isTag) selectorElements++;
-            if (child.isId) selectorIds++;
+            if (child.isTag) { selectorElements++; }
+            if (child.isId) { selectorIds++; }
           }
         }
       }
@@ -767,13 +767,13 @@ function createValidatedIsWrapper(
 
     for (const selector of selectors) {
       if (isNode(selector, 'BasicSelector')) {
-        if (selector.isTag) elementCount++;
-        if (selector.isId) idCount++;
+        if (selector.isTag) { elementCount++; }
+        if (selector.isId) { idCount++; }
       } else if (isNode(selector, 'CompoundSelector')) {
         for (const child of selector.value) {
           if (isNode(child, 'BasicSelector')) {
-            if (child.isTag) elementCount++;
-            if (child.isId) idCount++;
+            if (child.isTag) { elementCount++; }
+            if (child.isId) { idCount++; }
           }
         }
       }
@@ -1288,8 +1288,8 @@ function isValidCompoundSelector(components: any[]): boolean {
 
   for (const component of components) {
     if (isNode(component, 'BasicSelector')) {
-      if (component.isTag) elementCount++;
-      if (component.isId) idCount++;
+      if (component.isTag) { elementCount++; }
+      if (component.isId) { idCount++; }
 
       // Invalid if we have more than one element or ID
       if (elementCount > 1 || idCount > 1) {

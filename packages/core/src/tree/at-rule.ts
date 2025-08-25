@@ -53,7 +53,6 @@ export class AtRule extends Node<AtRuleValue> {
     let node = this as AtRule;
     return pipe(
       () => {
-        node = node.maybeClone(context);
         let { prelude } = node.value;
         if (prelude) {
           if (prelude.hasFlag(F_STATIC)) {

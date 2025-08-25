@@ -182,7 +182,7 @@ export abstract class Node<
     return this.hasFlag(F_VISIBLE);
   }
 
-  declare renderInvisible: boolean;
+  declare fullRender: boolean;
 
   allowRoot = false;
   allowRuleRoot = false;
@@ -316,7 +316,7 @@ export abstract class Node<
    */
   addFlags(...flags: number[]) {
     for (const flag of flags) {
-      this.state |= flag;
+      this.addFlag(flag);
     }
   }
 
@@ -603,23 +603,21 @@ export abstract class Node<
   }
 
   /**
-   * `preEval` is used for things like interpolated variables
-   * in declaration names, mixin names, interpolated strings in imports etc.
+   * `preEval` takes the following steps, which are extended in subclasses:
+   * 1. Clone the node (if the source node is wanted/needed)
+   * 2. Set `preEvaluated` to true
+   * 3. pre-evaluate all children
+   * 4. Return the node
    *
-   * In other words, values that must be evaluated before other nodes
-   * are evaluated.
+   * Mostly this is overridden to resolve names before registering.
    */
   preEval(context: Context): MaybePromise<this> {
-    this.preEvaluated = true;
-    return pipe(
-      () => this.forEachNode(n => n.preEval(context)),
-      (out) => {
-        if (isThenable(out)) {
-          return (out as Promise<void>).then(() => this);
-        }
-        return this;
-      }
-    );
+    let node = this.maybeClone(context);
+    let out = node.forEachNode(n => n.preEval(context));
+    if (isThenable(out)) {
+      return (out as Promise<void>).then(() => node);
+    }
+    return node;
   }
 
   /**
@@ -629,16 +627,11 @@ export abstract class Node<
    * By default, evals all children
    */
   protected evalNode(context: Context): MaybePromise<Node> {
-    return pipe(
-      () => this.maybeClone(context),
-      (node) => {
-        const out = node.forEachNode((n: Node) => n.eval(context));
-        if (isThenable(out)) {
-          return (out as Promise<void>).then(() => node);
-        }
-        return node;
-      }
-    );
+    let out = this.forEachNode((n: Node) => n.eval(context));
+    if (isThenable(out)) {
+      return (out as Promise<void>).then(() => this);
+    }
+    return this;
   }
 
   static evalStatic(node: Node, context: Context): MaybePromise<Node> {
@@ -652,6 +645,9 @@ export abstract class Node<
       },
       (returnNode) => {
         returnNode.preEvaluated = true;
+        if (returnNode !== node) {
+          returnNode.inherit(node);
+        }
         if (!returnNode.evaluated) {
           return returnNode.evalNode(context);
         }
@@ -684,7 +680,12 @@ export abstract class Node<
   inherit(node: Node) {
     this._location = node.location;
     this._treeContext = node.treeContext;
-    this.state = node.state;
+    /** Set state carefully */
+    this.state |= node.state;
+    if (node.hasFlag(F_NON_STATIC)) {
+      /** Effectively wipes a static flag if it exists */
+      this.addFlag(F_NON_STATIC);
+    }
     // Note that we need to create new arrays if we mutate pre/post later
     this.pre = node.pre;
     this.post = node.post;
@@ -774,7 +775,7 @@ export abstract class Node<
    * and toTrimmedString() should be overridden instead.
    */
   toString(options?: PrintOptions): string {
-    if (!this.hasFlag(F_VISIBLE) && !this.renderInvisible) {
+    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
       return '';
     }
     options = getPrintOptions(options);
@@ -859,4 +860,4 @@ export abstract class Node<
 }
 
 /** When converting Less/Sass to Jess, we'll switch this flag temporarily */
-Node.prototype.renderInvisible = false;
+Node.prototype.fullRender = false;

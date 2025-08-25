@@ -54,7 +54,9 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     const before = w.mark();
     const s = this.declTrimmedString(options);
     const emitted = w.getSince(before);
-    if (!emitted && s) w.add(s);
+    if (!emitted && s) {
+      w.add(s);
+    }
     return w.getSince(mark);
   }
 }

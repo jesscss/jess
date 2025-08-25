@@ -29,7 +29,7 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
   constructor(value: JsImportValue, options?: JsImportOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     // JS imports are always non-static and may be async
-    this.state |= F_MAY_ASYNC | F_NON_STATIC;
+    this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }
 }
 

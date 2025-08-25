@@ -50,7 +50,7 @@ export class Interpolated<
   constructor(value: InterpolatedValue, options?: AnyOptions<Role>, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     // Interpolated nodes are always non-static and may be async
-    this.state |= F_VISIBLE | F_MAY_ASYNC | F_NON_STATIC;
+    this.addFlags(F_VISIBLE, F_MAY_ASYNC, F_NON_STATIC);
   }
 
   override valueOf(): string {
@@ -134,7 +134,7 @@ export class Interpolated<
    * node types.
    */
   override evalNode(context: Context): MaybePromise<this> {
-    let node = this.maybeClone(context);
+    let node = this;
     let { replacements } = node.value;
 
     const steps: Array<(arr: Node[]) => MaybePromise<Node[]>> = [];

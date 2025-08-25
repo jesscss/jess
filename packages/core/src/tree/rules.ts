@@ -185,7 +185,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   override toString(options?: PrintOptions): string {
-    if (!this.visible && !this.renderInvisible) {
+    if (!this.visible && !this.fullRender) {
       return '';
     }
     options = getPrintOptions(options);
@@ -359,20 +359,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (node.options?.setDefined) {
         // Skip setDefined logic if we're currently indexing to avoid recursive calls
         if (this._indexing) {
-          console.log(`[setDefined] Skipping setDefined during indexing for '${node.value.name?.toString()}'`);
           // We'll handle setDefined after indexing is complete
           return;
         }
 
         let key = node.value.name?.toString();
-        console.log(`[setDefined] Looking for variable '${key}' to set`);
         /** Don't set within sibling rules */
         let opts: Registries.FindOptions = {};
         opts.searchParents = true;
         opts.start = node.index;
-        console.log(`[setDefined] Search options: searchParents=${opts.searchParents}, start=${opts.start}`);
         let result = this.find('declaration', key, node.type as 'Declaration', opts);
-        console.log(`[setDefined] Find result for '${key}': ${result ? 'found' : 'not found'}`);
         if (result) {
           if (result.options?.readonly || opts.readonly) {
             throw new ReferenceError(`"${key}" is readonly`);
@@ -390,8 +386,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             throw new Error(`Could not find parent Rules for declaration '${key}'`);
           }
 
-          console.log(`[setDefined] Found parent Rules for '${key}', registering new declaration`);
-
           // Create a new declaration with the same name but our value
           const newDeclaration = node.copy();
           newDeclaration.options = { ...newDeclaration.options };
@@ -407,24 +401,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           newDeclaration.index = newIndex;
 
           foundRules.register('declaration', newDeclaration);
-
-          console.log(`[setDefined] Successfully registered new declaration for '${key}'`);
         } else {
           throw new ReferenceError(`"${key}" is not defined`);
-        }
-      }
-
-      /**
-       * Handle conditional assignment (?:) - only register if variable doesn't exist
-       */
-      if (node.options?.assign === '?:') {
-        let key = node.value.name?.toString();
-        let opts: Registries.FindOptions = {};
-        opts.searchParents = true;
-        let result = this.find('declaration', key, node.type as 'Declaration', opts);
-        if (result) {
-          /** Variable already exists, skip registering this declaration */
-          return;
         }
       }
 
@@ -464,7 +442,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       for (let i = 0; i < rules.value.length; i++) {
         const node = rules.value[i]!;
 
-        // Assign index and set up parent relationship
+        // Assign index
         if (node.index === undefined) {
           node.index = context.ruleCounter++;
         }
@@ -476,7 +454,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           return result.then((resolvedNode) => {
             // Update the node if preEval returned a different instance
             if (resolvedNode !== node) {
-              rules.value[i] = resolvedNode;
+              rules.value[i] = resolvedNode.inherit(node);
               rules.adopt(resolvedNode);
             }
 
@@ -493,7 +471,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
         // Update the node if preEval returned a different instance
         if (result !== node) {
-          rules.value[i] = result;
+          rules.value[i] = result.inherit(node);
           rules.adopt(result);
         }
 
@@ -667,22 +645,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return pipe(
       () => {
         this._setupContextForRules(context, this);
-
-        // First, preEval to index and register all nodes
-        const preEvalResult = this.preEval(context);
-        if (isThenable(preEvalResult)) {
-          return preEvalResult.then((rules) => {
-            const evalQueue = this._buildEvalQueue(rules);
-            const maybeHoist = this._evaluateQueue(rules, evalQueue, context);
-            if (isThenable(maybeHoist)) {
-              return (maybeHoist as Promise<boolean>).then(rulesToHoist => ({ rules, rulesToHoist }));
-            }
-            return { rules, rulesToHoist: maybeHoist as boolean };
-          });
-        }
-
         // Synchronous preEval
-        const rules = preEvalResult;
+        const rules = this;
         const evalQueue = this._buildEvalQueue(rules);
         const maybeHoist = this._evaluateQueue(rules, evalQueue, context);
         if (isThenable(maybeHoist)) {

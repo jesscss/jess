@@ -118,7 +118,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   constructor(value: StyleImportValue, options?: StyleImportOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     // Style imports are always non-static and may be async
-    this.state |= F_MAY_ASYNC | F_NON_STATIC;
+    this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }
 
   /**
@@ -131,7 +131,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
    * How do extends work then?
    */
   override evalNode(context: Context): MaybePromise<this> {
-    let node = this.maybeClone(context);
+    let node = this;
     const { path, with: withValues } = node.value;
     const { options } = node;
     options.importOptions ??= {};
