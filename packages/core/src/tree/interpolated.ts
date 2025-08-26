@@ -137,29 +137,47 @@ export class Interpolated<
     let node = this;
     let { replacements } = node.value;
 
-    const steps: Array<(arr: Node[]) => MaybePromise<Node[]>> = [];
+    // Evaluate all replacements
+    const evaluatedReplacements: Node[] = [];
+    let hasAsync = false;
+    let asyncPromises: Promise<Node>[] = [];
+
     for (const n of replacements) {
-      steps.push((arr: Node[]) => {
-        const out = n.eval(context);
-        if (isThenable(out)) {
-          return (out as Promise<Node>).then((v) => {
-            arr.push(v);
-            return arr;
-          });
-        }
-        arr.push(out as Node);
-        return arr;
-      });
+      const out = n.eval(context);
+      if (isThenable(out)) {
+        hasAsync = true;
+        asyncPromises.push(out as Promise<Node>);
+      } else {
+        evaluatedReplacements.push(out as Node);
+      }
     }
 
-    const result = pipe([] as Node[], ...steps);
-    if (isThenable(result)) {
-      return (result as Promise<Node[]>).then((arr) => {
-        node.value.replacements = arr;
+    if (hasAsync) {
+      // Handle async evaluation
+      return Promise.all(asyncPromises).then((asyncResults) => {
+        // Combine sync and async results in order
+        const allResults: Node[] = [];
+        let syncIndex = 0;
+        let asyncIndex = 0;
+        
+        for (const n of replacements) {
+          const out = n.eval(context);
+          if (isThenable(out)) {
+            allResults.push(asyncResults[asyncIndex]!);
+            asyncIndex++;
+          } else {
+            allResults.push(evaluatedReplacements[syncIndex]!);
+            syncIndex++;
+          }
+        }
+        
+        node.value.replacements = allResults;
         return node as this;
       });
     }
-    node.value.replacements = result as Node[];
+
+    // All evaluations were synchronous
+    node.value.replacements = evaluatedReplacements;
     return node as this;
   }
 }

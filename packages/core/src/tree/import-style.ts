@@ -2,6 +2,7 @@ import { Node, F_MAY_ASYNC, F_NON_STATIC, defineType } from './node';
 import { type Reference } from './reference';
 import { type Rules, type RulesOptions, type RulesVisibility } from './rules';
 import { type Quoted } from './quoted';
+import { Url } from './url';
 import { type Context } from '../context';
 import { isNode } from './util/is-node';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -82,7 +83,7 @@ export type StyleImportOptions = {
 };
 
 export type StyleImportValue = {
-  path: Quoted;
+  path: Quoted | Url;
 
   /** Values to inject */
   with?: {
@@ -138,8 +139,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     const { type, importOptions } = options;
     const maybePath = path.eval(context);
     if (isThenable(maybePath)) {
-      return (maybePath as Promise<Quoted>).then(async (p) => {
-        const finalPath = p.valueOf();
+      return (maybePath as Promise<Quoted | Url>).then(async (p) => {
+        const finalPath = p instanceof Url ? p.value.valueOf() : p.valueOf();
         let { node: rules, resolvedPath } = await context.getTree(finalPath, importOptions);
         let evaldRules = context.evaldTrees.get(resolvedPath);
         if (withValues) {
@@ -183,7 +184,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         return node;
       });
     }
-    const finalPath = (maybePath as Quoted).valueOf();
+    const finalPath = (maybePath as Quoted | Url) instanceof Url ? (maybePath as Url).value.valueOf() : (maybePath as Quoted).valueOf();
     /**
      * @todo - Add options
      *

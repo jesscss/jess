@@ -75,7 +75,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       value = { key: value };
     }
     super(value, options, location, treeContext);
-    console.log('🔍 Reference constructor - value:', value, 'options:', options);
     // References are always non-static and may be async
     this.addFlags(F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC);
   }
@@ -153,7 +152,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   override evalNode(context: Context): MaybePromise<Node> {
     let { target, key } = this.value;
     let { type, fallbackValue, filter: originalFilter } = this.options;
-    console.log('🔍 Reference.evalNode - original key:', key?.constructor?.name, 'key value:', key?.valueOf?.());
     return pipe(
       () => {
         const keyEval = isNode(key) ? key.eval(context) : key;
@@ -201,7 +199,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           }
         }
         let returnVal: any;
-        console.log('🔍 Reference.evalNode - type:', type, 'valueKey:', valueKey, 'resolvedTarget type:', resolvedTarget?.constructor?.name);
         switch (type) {
           case 'index':
             if (typeof valueKey === 'number') {
@@ -230,9 +227,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             break;
           case 'property':
             if (isNode(resolvedTarget, 'Rules')) {
-              console.log('🔍 Property accessor - searching for', valueKey, 'in Rules node');
               returnVal = resolvedTarget.find('declaration', `${valueKey}`, 'Declaration', opts);
-              console.log('🔍 Property accessor result:', returnVal);
             } else if (isNode(resolvedTarget, 'JsObject')) {
               returnVal = resolvedTarget.value[valueKey];
             }
@@ -256,9 +251,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         return { returnVal, valueKey };
       },
       ({ returnVal, valueKey }) => {
-        console.log('🔍 Processing returnVal:', returnVal?.constructor?.name, 'valueKey:', valueKey);
         if (returnVal === undefined) {
-          console.log('🔍 returnVal is undefined, throwing error with key:', key);
           if (!fallbackValue) {
             throw new ReferenceError(`"${key}" is not defined`);
           }
@@ -298,11 +291,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           }
           return pipe(
             () => {
-              console.log('🔍 Evaluating Declaration value:', returnVal.value.value?.constructor?.name, 'value:', returnVal.value.value?.valueOf?.());
               return returnVal.value.value.eval(context);
             },
             (evald) => {
-              console.log('🔍 Declaration value evaluation result:', evald?.constructor?.name, 'value:', evald?.valueOf?.());
               if (inCalc) {
                 context.calcFrames.push(true);
               }

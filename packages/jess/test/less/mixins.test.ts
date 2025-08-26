@@ -21,7 +21,7 @@ describe('Mixins', () => {
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('color: red');
       expect(css).toContain('background: blue');
     });

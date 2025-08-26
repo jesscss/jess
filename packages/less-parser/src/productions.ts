@@ -119,7 +119,6 @@ export function main(this: P, T: TokenMap) {
   const $ = this;
 
   const ruleAlt = (ctx: RuleContext = {}) => [
-    // { GATE: () => looksLikeMixinDefinition.call($, T), ALT: () => $.SUBRULE($.mixinDefinition) },
     { ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] }) },
     { ALT: () => $.SUBRULE($.extendList, { ARGS: [ctx] }) },
     {
@@ -418,6 +417,49 @@ export function qualifiedRule(this: P, T: TokenMap, altContext?: AltContext) {
 export function mixinOrQualifiedRule(this: P, T: TokenMap) {
   const $ = this;
 
+  // Helper function to convert Any nodes to VarDeclaration nodes for mixin definition parameters
+  const convertArgsForDefinition = (args: List<Node> | undefined) => {
+    if (!args || !args.value) {
+      return;
+    }
+
+    for (let i = 0; i < args.value.length; i++) {
+      const node = args.value[i]!;
+      const location = node.location && node.location.length > 0 ? node.location as LocationInfo : undefined;
+
+      // If it's an Any node with role: 'name', convert it to VarDeclaration for mixin definition parameters
+      if (node instanceof Any && node.options?.role === 'name') {
+        // Reuse the existing Any node but change its role to 'property' for the name
+        node.options.role = 'property';
+        args.value[i] = new VarDeclaration({
+          name: node,
+          value: new Nil(undefined, undefined, location, this.context)
+        }, { paramVar: true }, location, this.context);
+      }
+      // Rest nodes with string values can stay as-is for mixin definitions
+    }
+  };
+
+  // Helper function to convert Any nodes to Reference nodes for mixin call arguments
+  const convertArgsForCall = (args: List<Node> | undefined) => {
+    if (!args || !args.value) {
+      return;
+    }
+
+    for (let i = 0; i < args.value.length; i++) {
+      const node = args.value[i]!;
+      const location = node.location && node.location.length > 0 ? node.location as LocationInfo : undefined;
+
+      // If it's an Any node with role: 'name', convert it to Reference for mixin call arguments
+      if (node instanceof Any && node.options?.role === 'name') {
+        args.value[i] = new Reference({ key: node.value }, { type: 'variable' }, location, this.context);
+      } else if (node instanceof Rest && typeof node.value === 'string') {
+        // If it's a Rest node with a string value, convert it to Rest with Reference for mixin call arguments
+        args.value[i] = new Rest(new Reference({ key: node.value }, { type: 'variable' }, location, this.context), undefined, location, this.context);
+      }
+    }
+  };
+
   // qualifiedRule
   //   : selectorList WS* LCURLY declarationList RCURLY
   //   ;
@@ -505,6 +547,8 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                 let rules = $.SUBRULE($.declarationList, { ARGS: [ctx] });
                 $.CONSUME(T.RCurly);
                 if (!RECORDING_PHASE) {
+                  // Convert Any nodes to VarDeclaration nodes for mixin definition parameters
+                  convertArgsForDefinition(args);
                   const node = new Mixin({ name: selector.valueOf(), params: args, rules, guard }, undefined, $.endRule(), this.context);
 
                   return node;
@@ -521,6 +565,8 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                 let location: LocationInfo;
                 if (!RECORDING_PHASE) {
                   location = $.endRule();
+                  // Convert Any nodes to Reference nodes for mixin call arguments
+                  convertArgsForCall(args);
                 }
                 let result = $.OPTION3(() => $.SUBRULE($.accessors, { ARGS: [{ ...ctx, node: createMixinCall(location) }] }));
                 return result ?? createMixinCall(location!);
@@ -2193,7 +2239,8 @@ export function mixinName(this: P, T: TokenMap) {
     { ALT: () => $.CONSUME(T.HashName) },
     { ALT: () => $.CONSUME(T.ColorIdentStart) },
     { ALT: () => $.CONSUME(T.DotName) },
-    { ALT: () => $.CONSUME(T.InterpolatedIdent) }
+    { ALT: () => $.CONSUME(T.InterpolatedIdent) },
+    { ALT: () => $.CONSUME(T.InterpolatedSelector) }
   ];
 
   /** e.g. .mixin, #mixin */
@@ -2340,30 +2387,6 @@ export function inlineMixinCall(this: P, T: TokenMap) {
   };
 }
 
-export function mixinDefinition(this: P, T: TokenMap) {
-  const $ = this;
-
-  return (ctx: RuleContext = {}) => {
-    // Disambiguate definition vs call: name + args must be followed by optional guard and a block
-    $.startRule();
-    const name = $.SUBRULE($.mixinName, { ARGS: [ctx] });
-    const params = $.SUBRULE($.mixinArgs, { ARGS: [{ ...ctx, isDefinition: true }] });
-
-    let guard: Condition | undefined;
-    $.OPTION(() => guard = $.SUBRULE($.guard, { ARGS: [ctx] }));
-    // Require a block start to qualify as a definition
-    $.CONSUME(T.LCurly);
-    const rulesInner = $.SUBRULE($.declarationList, { ARGS: [ctx] });
-    $.CONSUME(T.RCurly);
-
-    if (!$.RECORDING_PHASE) {
-      const location = $.endRule();
-      const rules = rulesInner;
-      return new Mixin({ name, params, rules, guard }, { hasDefault: !!ctx.hasDefault }, location, this.context);
-    }
-  };
-}
-
 export function mixinArgs(this: P, T: TokenMap) {
   const $ = this;
 
@@ -2482,7 +2505,6 @@ export function mixinArgList(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
-
     let node = $.SUBRULE($.mixinArg, { ARGS: [ctx] });
 
     let commaNodes: Node[] | undefined;
@@ -2621,20 +2643,53 @@ export function mixinArg(this: P, T: TokenMap) {
 
     return $.OR([
       {
-        GATE: () => !isDeclaration && !isDefinition,
-        ALT: () => $.SUBRULE($.callArgument, { ARGS: [ctx] })
-      },
-      {
-        GATE: () => !isDeclaration && isDefinition && atStart,
+        GATE: () => !isDeclaration && atStart && $.LA(2).tokenType === T.Ellipsis,
         ALT: () => {
           $.startRule();
           let name = $.SUBRULE2($.varName, { ARGS: [ctx] });
+          let ellipsis;
+          /**
+           * Mixin definitions can have a spread parameter, which
+           * means it will match a variable number of elements
+           * at the end.
+           *
+           * However, mixin calls can have a spread argument,
+           * which means it will expand a variable representing
+           * a list, which, to my knowledge, is an undocumented
+           * feature of Less (and only exists in mixin calls?)
+           *
+           * @todo - Intuitively, shouldn't this be available
+           * elsewhere in the language? Or would there be no
+           * reason?
+           */
+          $.OPTION(() => ellipsis = $.CONSUME(T.Ellipsis));
           if (!RECORDING_PHASE) {
-            let location = $.endRule();
-            return new VarDeclaration({
-              name: new Any(name.image.slice(1), { role: 'property' }, $.getLocationInfo(name), this.context),
-              value: new Nil(undefined, undefined, location, this.context)
-            }, { paramVar: true }, location, this.context);
+            let varName = name.image.slice(1);
+            if (ellipsis) {
+              // For rest parameters, use string which can be converted to Reference later if needed
+              return new Rest(varName, undefined, $.endRule(), this.context);
+            } else {
+              return new Any(varName, { role: 'name' }, $.endRule(), this.context);
+            }
+          }
+        }
+      },
+      {
+        GATE: () => !isDeclaration && !atStart,
+        ALT: () => $.SUBRULE($.callArgument, { ARGS: [ctx] })
+      },
+      {
+        GATE: () => !isDeclaration && atStart && $.LA(2).tokenType !== T.Ellipsis && $.LA(2).tokenType !== T.RParen && $.LA(2).tokenType !== T.Comma && $.LA(2).tokenType !== T.Semi,
+        ALT: () => $.SUBRULE3($.callArgument, { ARGS: [ctx] })
+      },
+      {
+        GATE: () => !isDeclaration && atStart && $.LA(2).tokenType !== T.Ellipsis && ($.LA(2).tokenType === T.RParen || $.LA(2).tokenType === T.Comma || $.LA(2).tokenType === T.Semi),
+        ALT: () => {
+          $.startRule();
+          let name = $.SUBRULE3($.varName, { ARGS: [ctx] });
+          if (!RECORDING_PHASE) {
+            let varName = name.image.slice(1);
+            return new Any(varName, { role: 'name' }, $.endRule(), this.context);
           }
         }
       },
@@ -2642,7 +2697,7 @@ export function mixinArg(this: P, T: TokenMap) {
         GATE: () => isDeclaration,
         ALT: () => {
           $.startRule();
-          let name = $.SUBRULE3($.varName, { ARGS: [ctx] });
+          let name = $.SUBRULE4($.varName, { ARGS: [ctx] });
           $.CONSUME(T.Colon);
           /** Default value */
           let value = $.SUBRULE2($.callArgument, { ARGS: [ctx] });
@@ -2656,40 +2711,7 @@ export function mixinArg(this: P, T: TokenMap) {
           }
         }
       },
-      // {
-      //   /**
-      //    * Mixin definitions can have a spread parameter, which
-      //    * means it will match a variable number of elements
-      //    * at the end.
-      //    *
-      //    * However, mixin calls can have a spread argument,
-      //    * which means it will expand a variable representing
-      //    * a list, which, to my knowledge, is an undocumented
-      //    * feature of Less (and only exists in mixin calls?)
-      //    *
-      //    * @todo - Intuitively, shouldn't this be available
-      //    * elsewhere in the language? Or would there be no
-      //    * reason?
-      //    */
-      //   GATE: () => atStart,
-      //   ALT: () => {
-      //     $.startRule();
-      //     let name = $.SUBRULE($.varName);
-      //     let ellipsis;
-      //     $.OPTION(() => ellipsis = $.CONSUME(T.Ellipsis));
-      //     if (!RECORDING_PHASE) {
-      //       let varName = name.image.slice(1);
-      //       if (ellipsis) {
-      //         /** @todo - turn this into a reference if a call */
-      //         return new Rest(varName, undefined, $.endRule(), this.context);
 
-      //         // return new Rest(new Reference(varName, { type: 'variable' }, $.getLocationInfo(name), this.context), undefined, location, this.context);
-      //       } else {
-      //         return new Any(varName, { role: 'name' }, $.endRule(), this.context);
-      //       }
-      //     }
-      //   }
-      // },
       {
         ALT: () => {
           let ellipsis = $.CONSUME2(T.Ellipsis);
@@ -2705,7 +2727,10 @@ export function callArgument(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     return $.OR([
-      { ALT: () => $.SUBRULE($.anonymousMixinDefinition, { ARGS: [ctx] }) },
+      {
+        GATE: () => $.LA(1).tokenType === T.AnonMixinStart || $.LA(1).tokenType === T.LCurly,
+        ALT: () => $.SUBRULE($.anonymousMixinDefinition, { ARGS: [ctx] })
+      },
       {
         GATE: () => !ctx.allowComma,
         ALT: () => $.SUBRULE($.valueSequence, { ARGS: [ctx] })

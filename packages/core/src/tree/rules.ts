@@ -3,7 +3,8 @@ import {
   defineType,
   type NodeOptions,
   type LocationInfo,
-  type TreeContext
+  type TreeContext,
+  F_STATIC
 } from './node';
 import { Context } from '../context';
 import { isNode } from './util/is-node';
@@ -425,7 +426,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   /**
-   * Pre-evaluation phase that ensures all nodes are visited and indexed.
    * This traverses deeply to visit all nodes, but indexes locally.
    */
   override preEval(context: Context) {
@@ -433,78 +433,187 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       let rules = this.maybeClone(context);
       rules.preEvaluated = true;
 
+      // Save current context and set up new context for variable lookups during preEval
+      const saved = this._snapshotContext(context);
+      this._setupContextForRules(context, rules);
+
       // Assign index to this rules node if not already set
       if (rules.index === undefined) {
         rules.index = context.ruleCounter++;
       }
 
-      // First pass: Register VarDeclaration nodes immediately for hoisting
-      for (let i = 0; i < rules.value.length; i++) {
-        const node = rules.value[i]!;
-
-        // Assign index
-        if (node.index === undefined) {
-          node.index = context.ruleCounter++;
-        }
-
-        // Register VarDeclaration nodes immediately for variable hoisting
-        if (isNode(node, 'VarDeclaration')) {
-          rules.registerNode(node);
-        }
-      }
-
-      // Second pass: PreEval all nodes
-      for (let i = 0; i < rules.value.length; i++) {
-        const node = rules.value[i]!;
-
-        // Always call preEval to ensure deep traversal and name resolution
-        const result = node.preEval(context);
-        if (isThenable(result)) {
-          // Handle async preEval by returning a promise that resolves after all children
-          return result.then((resolvedNode) => {
-            // Update the node if preEval returned a different instance
-            if (resolvedNode !== node) {
-              rules.value[i] = resolvedNode.inherit(node);
-              rules.adopt(resolvedNode);
-            }
-
-            // Register the node after preEval (name resolution) if not already registered
-            if (!isNode(node, 'VarDeclaration')) {
-              rules.registerNode(resolvedNode);
-            }
-            if (resolvedNode.type === 'Ruleset') {
-              context.treeRoot?.register('ruleset', resolvedNode as Ruleset<RulesetValue>);
-            }
-
-            // Continue with the rest of the children
-            return this._preEvalRemainingChildren(rules, context, i + 1);
-          });
-        }
-
-        // Update the node if preEval returned a different instance
-        if (result !== node) {
-          rules.value[i] = result.inherit(node);
-          rules.adopt(result);
-        }
-
-        // Register the node after preEval (name resolution) if not already registered
-        if (!isNode(node, 'VarDeclaration')) {
-          rules.registerNode(result);
-        }
-        if (result.type === 'Ruleset') {
-          context.treeRoot?.register('ruleset', result as Ruleset<RulesetValue>);
-        }
-      }
-
-      return rules;
+      // Multi-pass registration system for handling interpolated names
+      return this._multiPassPreEval(rules, context, saved);
     }
     return this;
   }
 
   /**
+   * Multi-pass preEval system to handle interpolated names and dependencies
+   */
+  private _multiPassPreEval(rules: Rules, context: Context, saved: any): MaybePromise<this> {
+    // First pass: Only register nodes with static names
+    const staticNodes: Node[] = [];
+    const dynamicNodes: Node[] = [];
+
+    for (let i = 0; i < rules.value.length; i++) {
+      const node = rules.value[i]!;
+
+      // Assign index
+      if (node.index === undefined) {
+        node.index = context.ruleCounter++;
+      }
+
+      // Check if node has a static name (can be registered immediately)
+      if (this._hasStaticName(node)) {
+        staticNodes.push(node);
+        this._registerNodeIfEligible(rules, node, context);
+      } else {
+        dynamicNodes.push(node);
+      }
+    }
+
+    // If no dynamic nodes, we're done
+    if (dynamicNodes.length === 0) {
+      // Restore context after preEval is complete
+      context.rulesContext = saved.rulesContext;
+      context.treeRoot = saved.treeRoot;
+      context.root = saved.root;
+      return rules as this;
+    }
+
+    // Multi-pass resolution of dynamic nodes
+    return this._resolveDynamicNodes(rules, context, saved, dynamicNodes);
+  }
+
+  /**
+   * Helper to check if a value is static (either a Node with F_STATIC flag or a primitive value)
+   */
+  private _isStatic(value: any): boolean {
+    if (value && typeof value.hasFlag === 'function') {
+      return value.hasFlag(F_STATIC);
+    }
+    // Primitive values (strings, numbers, etc.) are considered static
+    return true;
+  }
+
+  /**
+   * Check if a node has a static name that can be registered immediately
+   */
+  private _hasStaticName(node: Node): boolean {
+    if (isNode(node, 'VarDeclaration')) {
+      const name = node.value.name;
+      return this._isStatic(name);
+    }
+    if (isNode(node, 'Mixin')) {
+      const name = node.value.name;
+      return this._isStatic(name);
+    }
+    if (isNode(node, 'StyleImport')) {
+      const path = node.value.path;
+      return this._isStatic(path);
+    }
+    // For other node types, assume they can be registered if they have static names
+    return node.hasFlag(F_STATIC);
+  }
+
+  /**
+   * Register a node if it's eligible for registration
+   */
+  private _registerNodeIfEligible(rules: Rules, node: Node, context: Context) {
+    if (isNode(node, 'Declaration')) {
+      rules.registerNode(node);
+    } else if (isNode(node, 'Mixin')) {
+      rules.registerNode(node);
+    } else if (isNode(node, 'Ruleset')) {
+      context.treeRoot?.register('ruleset', node as Ruleset<RulesetValue>);
+    }
+  }
+
+  /**
+   * Multi-pass resolution of dynamic nodes with interpolated names
+   */
+  private _resolveDynamicNodes(rules: Rules, context: Context, saved: any, dynamicNodes: Node[]): MaybePromise<this> {
+    const unresolvedNodes: Node[] = [...dynamicNodes];
+    const resolvedNodes: Node[] = [];
+    let firstError: Error | undefined;
+
+    const attemptResolution = (): MaybePromise<this> => {
+      const stillUnresolved: Node[] = [];
+      let madeProgress = false;
+
+      for (const node of unresolvedNodes) {
+        try {
+          // Try to preEval the node
+          const result = node.preEval(context);
+
+          if (isThenable(result)) {
+            // Handle async preEval
+            return (result as Promise<Node>).then((resolvedNode) => {
+              if (this._hasStaticName(resolvedNode)) {
+                resolvedNodes.push(resolvedNode);
+                this._registerNodeIfEligible(rules, resolvedNode, context);
+                madeProgress = true;
+              } else {
+                stillUnresolved.push(resolvedNode);
+              }
+              return attemptResolution();
+            });
+          }
+
+          // Check if the node now has a static name
+          if (this._hasStaticName(result)) {
+            resolvedNodes.push(result);
+            this._registerNodeIfEligible(rules, result, context);
+            madeProgress = true;
+          } else {
+            stillUnresolved.push(result);
+          }
+        } catch (error) {
+          if (!firstError) {
+            firstError = error as Error;
+          }
+          stillUnresolved.push(node);
+        }
+      }
+
+      // Update the rules with resolved nodes
+      for (let i = 0; i < rules.value.length; i++) {
+        const node = rules.value[i]!;
+        const resolvedNode = resolvedNodes.find(n => n.index === node.index);
+        if (resolvedNode && resolvedNode !== node) {
+          rules.value[i] = resolvedNode.inherit(node);
+          rules.adopt(resolvedNode);
+        }
+      }
+
+      // If we made progress, try again
+      if (madeProgress && stillUnresolved.length > 0) {
+        unresolvedNodes.length = 0;
+        unresolvedNodes.push(...stillUnresolved);
+        return attemptResolution();
+      }
+
+      // If we still have unresolved nodes and we're done with rules evaluation, throw the first error
+      if (stillUnresolved.length > 0 && firstError) {
+        throw firstError;
+      }
+
+      // Restore context after preEval is complete
+      context.rulesContext = saved.rulesContext;
+      context.treeRoot = saved.treeRoot;
+      context.root = saved.root;
+
+      return rules as this;
+    };
+
+    return attemptResolution();
+  }
+
+  /**
    * Helper method to continue preEval'ing remaining children after an async preEval.
    */
-  private _preEvalRemainingChildren(rules: Rules, context: Context, startIndex: number): MaybePromise<this> {
+  private _preEvalRemainingChildren(rules: Rules, context: Context, startIndex: number, saved?: any): MaybePromise<this> {
     for (let i = startIndex; i < rules.value.length; i++) {
       const node = rules.value[i]!;
 
@@ -528,7 +637,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
 
           // Continue with the rest of the children
-          return this._preEvalRemainingChildren(rules, context, i + 1);
+          return this._preEvalRemainingChildren(rules, context, i + 1, saved);
         });
       }
 
@@ -545,6 +654,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (result.type === 'Ruleset') {
         context.treeRoot?.register('ruleset', result as Ruleset<RulesetValue>);
       }
+    }
+
+    // Restore context after preEval is complete (for async case)
+    if (saved) {
+      context.rulesContext = saved.rulesContext;
+      context.treeRoot = saved.treeRoot;
+      context.root = saved.root;
     }
 
     return rules as this;

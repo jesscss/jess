@@ -215,7 +215,7 @@ function $preBuildTokens() {
      */
       {
         name: 'InterpolatedSelector',
-        pattern: ['[.#]{{interpolated}}', groupCapture],
+        pattern: ['[.#]{{ident}}?{{interpolated}}(?:{{interpolated}}|{{nmchar}})*', groupCapture],
         categories: ['Interpolated', 'Selector'],
         start_chars_hint: ['.', '#'],
         line_breaks: true
