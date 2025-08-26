@@ -187,6 +187,9 @@ importers:
       chevrotain-allstar:
         specifier: ~0.3.0
         version: 0.3.1(chevrotain@11.0.3)
+      color-name:
+        specifier: ~2.0.0
+        version: 2.0.0
       lodash-es:
         specifier: ~4.17.21
         version: 4.17.21
@@ -197,6 +200,9 @@ importers:
       '@jesscss/shared':
         specifier: workspace:*
         version: link:../_shared
+      '@types/color-name':
+        specifier: ^1.1.1
+        version: 1.1.5
       '@types/lodash-es':
         specifier: ~4.17.8
         version: 4.17.12
@@ -2231,6 +2237,9 @@ packages:
 
   '@types/chai@5.2.2':
     resolution: {integrity: sha512-8kB30R7Hwqf40JPiKhVzodJs2Qc1ZJ5zuT3uzw5Hq/dhNCl3G3l83jfpdI1e20BP348+fV7VIL/+FxaXkqBmWg==}
+
+  '@types/color-name@1.1.5':
+    resolution: {integrity: sha512-j2K5UJqGTxeesj6oQuGpMgifpT5k9HprgQd8D1Y0lOFqKHl3PJu5GMeS4Y5EgjS55AE6OQxf8mPED9uaGbf4Cg==}
 
   '@types/connect-history-api-fallback@1.5.4':
     resolution: {integrity: sha512-n6Cr2xS1h4uAulPRdlw6Jl6s1oG8KrVilPN2yUITEs+K48EzMJJ3W1xy8K5eWuFvjp3R74AOIGSmp2UfBJ8HFw==}
@@ -10300,6 +10309,8 @@ snapshots:
   '@types/chai@5.2.2':
     dependencies:
       '@types/deep-eql': 4.0.2
+
+  '@types/color-name@1.1.5': {}
 
   '@types/connect-history-api-fallback@1.5.4':
     dependencies:

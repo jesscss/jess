@@ -21,9 +21,12 @@ export function getHsla(this: Context, origColor: Color, hsl: HSLA) {
   if (color) {
     const value = origColor.value;
     if (typeof value === 'number') {
-      color.value = value;
+      color.value = { rgba: [value, value, value, 1], format: ColorFormat.RGB };
     } else {
-      color.value = ColorFormat.RGB;
+      // Don't overwrite the value if it already has rgba set
+      if (!color.value.rgba) {
+        color.value = { format: ColorFormat.RGB };
+      }
     }
     return color;
   }

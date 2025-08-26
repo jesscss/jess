@@ -9,7 +9,11 @@ const hsla = defineFunction(
     l = clamp(getNumber(l));
     a = clamp(getNumber(a));
 
-    const color = new Color(ColorFormat.HSL);
+    // Convert HSL to RGB for storage
+    const color = new Color({
+      format: ColorFormat.HSL,
+      rgba: [0, 0, 0, a] // Placeholder, will be set by hsla setter
+    });
     color.hsla = [h, s, l, a];
     return color;
   },

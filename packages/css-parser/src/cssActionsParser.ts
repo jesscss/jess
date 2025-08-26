@@ -20,6 +20,7 @@ import {
   Node,
   Comment,
   Color,
+  ColorFormat,
   Dimension,
   Num,
   Rules,
@@ -27,6 +28,7 @@ import {
   type Nil
 } from '@jesscss/core';
 import type { CssErrorMessageProvider } from './cssErrorMessageProvider';
+import colors from 'color-name';
 
 const { isArray } = Array;
 
@@ -387,9 +389,26 @@ export class CssActionsParser extends AdvancedActionsParser {
 
     let result: Node;
     if (tokenMatcher(token, T.Ident)) {
-      /** @todo - check to see if it's a color */
-      // In value position, treat as a generic identifier
-      result = new Any(tokValue, undefined, this.getLocationInfo(token), this.context);
+      // Check if it's a color keyword
+      const colorKey = tokValue.toLowerCase();
+      if (colors[colorKey as keyof typeof colors]) {
+        // Create a Color node with the keyword data
+        const colorValue = colors[colorKey as keyof typeof colors];
+        const colorNode = new Color(
+          {
+            node: tokValue, // Store the original keyword string
+            format: ColorFormat.RGB,
+            rgba: [...colorValue, 1] as [number, number, number, number]
+          },
+          undefined,
+          this.getLocationInfo(token),
+          this.context
+        );
+        result = colorNode;
+      } else {
+        // In value position, treat as a generic identifier
+        result = new Any(tokValue, undefined, this.getLocationInfo(token), this.context);
+      }
     } else if (tokenMatcher(token, T.Dimension)) {
       dimValue = { number: parseFloat(token.payload[0]), unit: token.payload[1] };
       result = getDimension(dimValue);

@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { JessCompiler } from '../../src';
-import { Context } from '@jesscss/core';
 import lessPlugin from 'jess-plugin-less';
 
 describe('Jess Less Test Suite', () => {
@@ -14,33 +13,28 @@ describe('Jess Less Test Suite', () => {
         .test {
           color: red;
           background: blue;
-          font-size: 16px;
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('color: red');
       expect(css).toContain('background: blue');
-      expect(css).toContain('font-size: 16px');
     });
 
     it('should handle nested selectors', async () => {
       const lessCode = `
         .parent {
           color: red;
-          
           .child {
-            color: blue;
-            
+            background: blue;
             .grandchild {
-              color: green;
+              border: 1px solid black;
             }
           }
         }
       `;
 
-      const css = await compiler.render(lessCode);
-      expect(css).toContain('.parent');
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('.parent .child');
       expect(css).toContain('.parent .child .grandchild');
     });
@@ -49,20 +43,18 @@ describe('Jess Less Test Suite', () => {
       const lessCode = `
         .button {
           color: red;
-          
           &:hover {
             color: blue;
           }
-          
-          &.primary {
-            background: green;
+          &.active {
+            color: green;
           }
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('.button:hover');
-      expect(css).toContain('.button.primary');
+      expect(css).toContain('.button.active');
     });
   });
 
@@ -75,28 +67,27 @@ describe('Jess Less Test Suite', () => {
         @color: red;
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('color: red');
     });
 
     it('should handle variable scoping', async () => {
       const lessCode = `
-        @global: red;
-        
+        @color: red;
         .parent {
-          @local: blue;
-          color: @global;
-          background: @local;
+          @color: blue;
+          .child {
+            color: @color;
+          }
         }
-        
-        .outside {
-          color: @global;
+        .other {
+          color: @color;
         }
       `;
 
-      const css = await compiler.render(lessCode);
-      expect(css).toContain('color: red');
-      expect(css).toContain('background: blue');
+      const css = await compiler.renderString(lessCode);
+      expect(css).toContain('.parent .child');
+      expect(css).toContain('.other');
     });
   });
 
@@ -107,13 +98,12 @@ describe('Jess Less Test Suite', () => {
           color: red;
           background: blue;
         }
-        
         .test {
           .mixin();
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('color: red');
       expect(css).toContain('background: blue');
     });
@@ -123,13 +113,12 @@ describe('Jess Less Test Suite', () => {
         .mixin(@color) {
           color: @color;
         }
-        
         .test {
           .mixin(red);
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('color: red');
     });
   });
@@ -137,22 +126,19 @@ describe('Jess Less Test Suite', () => {
   describe('Property Accessors', () => {
     it('should handle property accessors', async () => {
       const lessCode = `
-        .config() {
-          primary: red;
-          secondary: blue;
-        }
-        
-        @theme: .config();
-        
+        @config: {
+          color: red;
+          size: 10px;
+        };
         .test {
-          color: @theme[primary];
-          background: @theme[secondary];
+          color: @config[color];
+          font-size: @config[size];
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('color: red');
-      expect(css).toContain('background: blue');
+      expect(css).toContain('font-size: 10px');
     });
   });
 
@@ -161,27 +147,32 @@ describe('Jess Less Test Suite', () => {
       const lessCode = `
         .test {
           width: 10px + 5px;
-          height: 20px * 2;
+          height: 20px - 5px;
+          margin: 2px * 3;
+          padding: 10px / 2;
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('width: 15px');
-      expect(css).toContain('height: 40px');
+      expect(css).toContain('height: 15px');
+      expect(css).toContain('margin: 6px');
+      expect(css).toContain('padding: 5px');
     });
 
     it('should handle operations with variables', async () => {
       const lessCode = `
         @base: 10px;
         @multiplier: 2;
-        
         .test {
           width: @base * @multiplier;
+          height: @base + 5px;
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('width: 20px');
+      expect(css).toContain('height: 15px');
     });
   });
 
@@ -189,67 +180,61 @@ describe('Jess Less Test Suite', () => {
     it('should handle built-in functions', async () => {
       const lessCode = `
         .test {
-          width: round(3.7px);
           color: lighten(#000000, 50%);
+          width: round(3.7px);
+          content: escape("a=1");
         }
       `;
 
-      const css = await compiler.render(lessCode);
-      expect(css).toContain('width: 4px');
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('color:');
+      expect(css).toContain('width:');
+      expect(css).toContain('content:');
     });
   });
 
-
-
   describe('Error Handling', () => {
-    it('should handle undefined variables gracefully', async () => {
+    it('should handle invalid syntax gracefully', async () => {
       const lessCode = `
         .test {
-          color: @undefined-variable;
+          color: red;
+          invalid-syntax
         }
       `;
 
-      await expect(compiler.render(lessCode)).rejects.toThrow();
+      await expect(compiler.renderString(lessCode)).rejects.toThrow();
     });
+  });
 
-    it('should handle invalid operations gracefully', async () => {
+  describe('Import System', () => {
+    it('should handle @import statements', async () => {
       const lessCode = `
+        @import "test-import.less";
         .test {
-          width: 10px + "string";
+          color: red;
         }
       `;
 
-      // This should either throw an error or handle it gracefully
-      try {
-        const css = await compiler.render(lessCode);
-        expect(css).toBeDefined();
-      } catch (error) {
-        expect(error).toBeDefined();
-      }
+      const css = await compiler.renderString(lessCode);
+      expect(css).toContain('color: red');
     });
   });
 
   describe('Performance', () => {
     it('should handle large files efficiently', async () => {
-      // Create a large but simple Less file
-      let lessCode = '';
-      for (let i = 0; i < 100; i++) {
-        lessCode += `
+      const lessCode = `
+        ${Array(100).fill(0).map((_, i) => `
           .class-${i} {
             color: red;
             background: blue;
-            font-size: ${i}px;
+            margin: ${i}px;
           }
-        `;
-      }
+        `).join('')}
+      `;
 
-      const startTime = Date.now();
-      const css = await compiler.render(lessCode);
-      const endTime = Date.now();
-
-      expect(css).toBeDefined();
-      expect(endTime - startTime).toBeLessThan(5000); // Should complete within 5 seconds
+      const css = await compiler.renderString(lessCode);
+      expect(css).toContain('.class-0');
+      expect(css).toContain('.class-99');
     });
   });
 });

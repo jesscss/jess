@@ -2,6 +2,7 @@ import {
   defineFunction,
   Node,
   Color,
+  ColorFormat,
   Quoted
 } from '@jesscss/core';
 import colors from 'color-name';
@@ -20,9 +21,11 @@ export default defineFunction(
     }
     let colorValue = colors[value];
     if (colorValue) {
-      let returnColor = new Color(value);
-      returnColor.rgba = colorValue;
-      return returnColor;
+      return new Color({
+        node: value,
+        format: ColorFormat.RGB,
+        rgba: [...colorValue, 1] as [number, number, number, number]
+      });
     }
     if (colorRegex.test(value)) {
       return new Color(value);

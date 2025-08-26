@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { JessCompiler } from '../src/index';
+import { JessCompiler } from '../../src';
+import lessPlugin from 'jess-plugin-less';
 
 describe('Property Accessor', () => {
   it('should handle property accessors correctly', async () => {
-    const compiler = new JessCompiler();
+    const compiler = new JessCompiler({
+      plugins: [lessPlugin()]
+    });
 
     const lessCode = `
 .mk-map() {
@@ -16,24 +19,13 @@ describe('Property Accessor', () => {
 h1 { color: @p[text]; }
 `;
 
-    // Write the test file
-    const fs = await import('fs/promises');
-    await fs.writeFile('./test-property-accessor.less', lessCode);
-
     try {
-      const css = await compiler.render('./test-property-accessor.less');
+      const css = await compiler.renderString(lessCode);
       console.log('Generated CSS:', css);
-      expect(css).toContain('color:white');
+      expect(css).toContain('color: white');
     } catch (error) {
       console.error('Error:', error);
       throw error;
-    } finally {
-      // Clean up
-      try {
-        await fs.unlink('./test-property-accessor.less');
-      } catch (e) {
-        // Ignore cleanup errors
-      }
     }
   });
 });

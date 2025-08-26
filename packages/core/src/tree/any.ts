@@ -42,10 +42,9 @@ export class Any<
   type: AnyRole = 'any';
   shortType = 'any';
   override state = F_VISIBLE | F_STATIC;
-  
+
   // Any values are static and don't need evaluation
   override evalNode(context: Context): MaybePromise<Node> {
-    console.log('🔍 Any.evalNode - value:', this.value, 'state:', this.state);
     return this;
   }
 }
