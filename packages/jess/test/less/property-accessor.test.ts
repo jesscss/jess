@@ -21,10 +21,8 @@ h1 { color: @p[text]; }
 
     try {
       const css = await compiler.renderString(lessCode);
-      console.log('Generated CSS:', css);
       expect(css).toContain('color: white');
     } catch (error) {
-      console.error('Error:', error);
       throw error;
     }
   });

@@ -13,10 +13,8 @@ describe('Basic Mixins', () => {
 
     try {
       const css = await compiler.renderString(lessCode);
-      console.log('CSS output:', css);
       expect(css).toBeDefined();
     } catch (error) {
-      console.error('Parse error:', error);
       throw error;
     }
   });
@@ -30,10 +28,8 @@ describe('Basic Mixins', () => {
 
     try {
       const css = await compiler.renderString(lessCode);
-      console.log('CSS output:', css);
       expect(css).toBeDefined();
     } catch (error) {
-      console.error('Parse error:', error);
       throw error;
     }
   });
@@ -51,10 +47,8 @@ describe('Basic Mixins', () => {
 
     try {
       const css = await compiler.renderString(lessCode);
-      console.log('CSS output:', css);
       expect(css).toContain('color: red');
     } catch (error) {
-      console.error('Parse error:', error);
       throw error;
     }
   });

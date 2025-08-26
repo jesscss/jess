@@ -240,8 +240,6 @@ export class Color extends Node<ColorData> {
     const w = options.writer!;
     const mark = w.mark();
 
-    console.log('🔍 Color.toTrimmedString - value:', this.value, 'type:', typeof this.value);
-
     // If value has a node that's a Node, serialize it directly
     if (this.value.node && isNode(this.value.node)) {
       w.add(this.value.node.toTrimmedString(options), this);
