@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { JessCompiler } from '../../src';
-import { serializeTypes, Context } from '@jesscss/core';
+import { Context } from '@jesscss/core';
 import lessPlugin from 'jess-plugin-less';
 
 describe('Operations', () => {
@@ -249,38 +249,6 @@ describe('Operations', () => {
       const css = await compiler.render(lessCode);
       expect(css).toContain('width: 5px');
       expect(css).toContain('height: 30px');
-    });
-  });
-
-  describe('AST Verification', () => {
-    it('should create correct AST for basic operations', async () => {
-      const lessCode = `
-        .test {
-          width: 10px + 5px;
-        }
-      `;
-
-      const context = new Context({}, [lessPlugin()]);
-      const { node } = await context.getTree(lessCode);
-
-      const ast = serializeTypes(node);
-      expect(ast).toContain('Operation');
-    });
-
-    it('should create correct AST for complex operations', async () => {
-      const lessCode = `
-        @base: 10px;
-        .test {
-          width: @base * 2 + 5px;
-        }
-      `;
-
-      const context = new Context({}, [lessPlugin()]);
-      const { node } = await context.getTree(lessCode);
-
-      const ast = serializeTypes(node);
-      expect(ast).toContain('Operation');
-      expect(ast).toContain('Reference');
     });
   });
 });

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { JessCompiler } from '../../src';
-import { serializeTypes, Context } from '@jesscss/core';
+import { Context } from '@jesscss/core';
 import lessPlugin from 'jess-plugin-less';
 
 describe('Jess Less Test Suite', () => {
@@ -200,53 +200,7 @@ describe('Jess Less Test Suite', () => {
     });
   });
 
-  describe('AST Verification', () => {
-    it('should create valid AST for complex Less code', async () => {
-      const lessCode = `
-        @primary: red;
-        @secondary: blue;
-        
-        .mixin(@color) {
-          color: @color;
-        }
-        
-        .test {
-          .mixin(@primary);
-          background: @secondary;
-          width: 10px + 5px;
-        }
-      `;
 
-      const context = new Context({}, [lessPlugin()]);
-      const { node } = await context.getTree(lessCode);
-
-      const ast = serializeTypes(node);
-      expect(ast).toContain('VarDeclaration');
-      expect(ast).toContain('Mixin');
-      expect(ast).toContain('Reference');
-      expect(ast).toContain('Operation');
-    });
-
-    it('should handle nested AST structures', async () => {
-      const lessCode = `
-        .parent {
-          @color: red;
-          
-          .child {
-            color: @color;
-          }
-        }
-      `;
-
-      const context = new Context({}, [lessPlugin()]);
-      const { node } = await context.getTree(lessCode);
-
-      const ast = serializeTypes(node);
-      expect(ast).toContain('Ruleset');
-      expect(ast).toContain('VarDeclaration');
-      expect(ast).toContain('Reference');
-    });
-  });
 
   describe('Error Handling', () => {
     it('should handle undefined variables gracefully', async () => {

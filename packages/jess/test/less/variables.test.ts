@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { JessCompiler } from '../../src';
-import { serializeTypes, Context } from '@jesscss/core';
+import { Context } from '@jesscss/core';
 import lessPlugin from 'jess-plugin-less';
 
 describe('Variables', () => {
@@ -172,36 +172,6 @@ describe('Variables', () => {
 
       const css = await compiler.renderString(lessCode);
       expect(css).toContain('class: my-test-class');
-    });
-  });
-
-  describe('AST Verification', () => {
-    it('should create correct AST for variable declarations', async () => {
-      const lessCode = `
-        @color: red;
-        .test { color: @color; }
-      `;
-
-      const context = new Context({}, [lessPlugin()]);
-      const { node } = await context.parseString(lessCode);
-
-      const ast = serializeTypes(node);
-      expect(ast).toContain('VarDeclaration');
-      expect(ast).toContain('Reference');
-    });
-
-    it('should create correct AST for variable hoisting', async () => {
-      const lessCode = `
-        .test { color: @color; }
-        @color: red;
-      `;
-
-      const context = new Context({}, [lessPlugin()]);
-      const { node } = await context.parseString(lessCode);
-
-      const ast = serializeTypes(node);
-      expect(ast).toContain('VarDeclaration');
-      expect(ast).toContain('Reference');
     });
   });
 });

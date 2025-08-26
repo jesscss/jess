@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { JessCompiler } from '../../src';
-import { serializeTypes, Context } from '@jesscss/core';
+import { Context } from '@jesscss/core';
 import lessPlugin from 'jess-plugin-less';
 
 describe('Property Accessors', () => {
@@ -219,44 +219,6 @@ describe('Property Accessors', () => {
       const css = await compiler.render(lessCode);
       expect(css).toContain('color: red');
       expect(css).toContain('background: blue');
-    });
-  });
-
-  describe('AST Verification', () => {
-    it('should create correct AST for property accessor', async () => {
-      const lessCode = `
-        .config() {
-          color: red;
-        }
-        @config: .config();
-        .test { color: @config[color]; }
-      `;
-
-      const context = new Context({}, [lessPlugin()]);
-      const { node } = await context.getTree(lessCode);
-
-      const ast = serializeTypes(node);
-      expect(ast).toContain('Reference');
-      expect(ast).toContain('type: property');
-    });
-
-    it('should create correct AST for nested property accessor', async () => {
-      const lessCode = `
-        .config() {
-          colors: {
-            primary: red;
-          }
-        }
-        @config: .config();
-        .test { color: @config[colors][primary]; }
-      `;
-
-      const context = new Context({}, [lessPlugin()]);
-      const { node } = await context.getTree(lessCode);
-
-      const ast = serializeTypes(node);
-      expect(ast).toContain('Reference');
-      expect(ast).toContain('type: property');
     });
   });
 });

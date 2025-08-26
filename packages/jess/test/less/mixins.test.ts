@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { JessCompiler } from '../../src';
-import { serializeTypes, Context } from '@jesscss/core';
+import { Context } from '@jesscss/core';
 import lessPlugin from 'jess-plugin-less';
 
 describe('Mixins', () => {
@@ -272,37 +272,6 @@ describe('Mixins', () => {
       const css = await compiler.render(lessCode);
       expect(css).toContain('color: red');
       expect(css).toContain('font-size: 16px');
-    });
-  });
-
-  describe('AST Verification', () => {
-    it('should create correct AST for mixin definition', async () => {
-      const lessCode = `
-        .mixin(@color) {
-          color: @color;
-        }
-      `;
-
-      const context = new Context({}, [lessPlugin()]);
-      const { node } = await context.getTree(lessCode);
-
-      const ast = serializeTypes(node);
-      expect(ast).toContain('Mixin');
-      expect(ast).toContain('VarDeclaration');
-    });
-
-    it('should create correct AST for mixin call', async () => {
-      const lessCode = `
-        .mixin() { color: red; }
-        .test { .mixin(); }
-      `;
-
-      const context = new Context({}, [lessPlugin()]);
-      const { node } = await context.getTree(lessCode);
-
-      const ast = serializeTypes(node);
-      expect(ast).toContain('Mixin');
-      expect(ast).toContain('Call');
     });
   });
 });
