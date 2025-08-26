@@ -1,5 +1,8 @@
 import { expect } from 'vitest';
 
+// Set TEST environment variable for packages that depend on it
+process.env.TEST = 'true';
+
 expect.extend({
   /** Normalizes CSS-ish strings */
   toMatchCss(received: string, expected: string) {

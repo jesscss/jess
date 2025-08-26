@@ -103,10 +103,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       value.toString(options);
     } else {
       // Capture value output to normalize spacing after ':'
-      const valOut = w.capture(() => value.toTrimmedString(options));
+      const valOut = w.capture(() => value.toString(options));
       // Ensure exactly one space after ':' by removing leading whitespace and adding one space
       w.add(' ');
-      w.add(valOut.replace(/^\s+/, ''));
+      w.add(valOut.replace(/^\s+/, '')); // Remove leading whitespace onlyu have
       if (!isNode(value, 'Collection')) {
         if (important) {
           w.add(`${important}`);

@@ -56,7 +56,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('width: 10px');
       expect(css).toContain('height: 10px');
     });
@@ -76,7 +76,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('width: 20px');
       expect(css).toContain('height: 15px');
       expect(css).toContain('margin: 8px');
@@ -95,7 +95,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('width: 80px');
       expect(css).toContain('height: 60px');
       expect(css).toContain('area: 5000px');
@@ -111,7 +111,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('color: #ffffff');
       expect(css).toContain('background: #ffff00');
     });
@@ -127,7 +127,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('color: #ffff00');
     });
   });
@@ -142,7 +142,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('width: 75%');
       expect(css).toContain('height: 80vh');
       expect(css).toContain('font-size: 1.5em');
@@ -156,7 +156,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       // Note: Less handles mixed units differently, this is just to test parsing
       expect(css).toContain('width:');
       expect(css).toContain('height:');
@@ -172,7 +172,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('width: 30px');
       expect(css).toContain('height: 20px');
     });
@@ -185,7 +185,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('width: 40px');
       expect(css).toContain('height: 5px');
     });
@@ -200,7 +200,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('width: calc(100% - 20px)');
       expect(css).toContain('height: calc(50vh + 10px)');
     });
@@ -216,7 +216,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('width: calc(100% - 20px)');
       expect(css).toContain('height: calc(50vh + 10px)');
     });
@@ -232,7 +232,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('width: 10px');
       expect(css).toContain('height: 0px');
       expect(css).toContain('margin: 5px');
@@ -246,7 +246,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.render(lessCode);
+      const css = await compiler.renderString(lessCode);
       expect(css).toContain('width: 5px');
       expect(css).toContain('height: 30px');
     });

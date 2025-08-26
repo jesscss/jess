@@ -43,6 +43,8 @@
     "ci": "pnpm run -r ci && pnpm run lint",
     "lint:fix": "eslint --fix '**/*.{mjs,cjs,js,ts}'",
     "lint": "eslint '**/*.{mjs,cjs,js,ts}'",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage",
     "preinstall": "npx only-allow pnpm"
   },
   "repository": {
