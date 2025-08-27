@@ -207,8 +207,6 @@ export function declarationList(this: P, T: TokenMap) {
 // }
 
 let interpolatedRegex = /([$@]){([^}]+)}/g;
-/** The placeholder we use for interpolation... we should probably use a const exported from @jesscss/core? */
-let charPlaceholder = '{}';
 
 const getInterpolated = (name: string, location: LocationInfo, context: TreeContext): Interpolated => {
   const replacements: Node[] = [];
@@ -216,7 +214,7 @@ const getInterpolated = (name: string, location: LocationInfo, context: TreeCont
   let source = name;
   while (result = interpolatedRegex.exec(name)) {
     const [match, propOrVar, value] = result;
-    source = source.replace(match, '{}');
+    source = source.replace(match, INTERPOLATION_PLACEHOLDER);
     const reference = new Reference({ key: value! }, { type: propOrVar === '$' ? 'property' : 'variable', role: 'ident' });
     replacements.push(reference);
   }
@@ -968,7 +966,7 @@ const getInterpolatedOrString = (name: string): Interpolated | string => {
   let end = name.slice(nextPos);
 
   return new Interpolated({
-    source: start + charPlaceholder,
+    source: start + INTERPOLATION_PLACEHOLDER,
     replacements: [
       new Reference(getInterpolatedOrString(end) as string, { type: end.startsWith('@') ? 'variable' : 'property', role: 'ident' })
     ]

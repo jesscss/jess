@@ -2,8 +2,21 @@
   "name": "jess",
   "version": "2.0.0-alpha.1",
   "description": "JavaScript Enhanced Style Sheets",
-  "main": "lib/index",
-  "types": "lib/index",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./lib/index.js",
+      "types": "./lib/index.d.ts",
+      "source": "./src/index.ts"
+    },
+    "./*": {
+      "types": "./lib/*.d.ts",
+      "import": "./lib/*.js",
+      "source": "./src/*.ts"
+    },
+    "./package.json": "./package.json"
+  },
   "bin": "./bin/cli.js",
   "files": [
     "lib"
@@ -13,7 +26,7 @@
   },
   "dependencies": {
     "@jesscss/core": "workspace:2.0.0-alpha.1",
-    "jess-plugin-less": "workspace:2.0.0-alpha.1",
+    "@jesscss/plugin-less": "workspace:2.0.0-alpha.1",
     "@jesscss/patch-css": "workspace:2.0.0-alpha.1",
     "chalk": "^5.2.0",
     "cosmiconfig": "^8.3.6",

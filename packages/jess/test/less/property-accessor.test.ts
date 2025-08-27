@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { JessCompiler } from '../../src';
-import lessPlugin from 'jess-plugin-less';
+import lessPlugin from '@jesscss/plugin-less';
 
 describe('Property Accessor', () => {
   it('should handle property accessors correctly', async () => {

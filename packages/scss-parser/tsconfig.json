@@ -8,6 +8,6 @@
     "outDir": "./lib",
     "rootDir": "."
   },
-  "include": ["src/**/*", "test/**/*", "vitest.config.ts"],
+  "include": ["src/**/*", "test/**/*"],
   "exclude": ["node_modules", "lib"]
 }

@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { invalidLess } from '@jesscss/shared';
 import { JessCompiler } from '../src';
-import lessPlugin from 'jess-plugin-less';
+import lessPlugin from '@jesscss/plugin-less';
 
 const testData = path.dirname(require.resolve('@less/test-data'));
 

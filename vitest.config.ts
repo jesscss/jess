@@ -2,11 +2,24 @@ import { defineConfig } from 'vitest/config';
 import { resolve } from 'path';
 
 export default defineConfig({
+  resolve: {
+    // Prefer "source" so imports from @acme/* pull TS from src/
+    mainFields: ['source', 'module', 'exports', 'main']
+  },
   test: {
     watch: false,
     // Set TEST environment variable for packages that depend on it
     env: {
       TEST: 'true'
+    },
+    deps: {
+      // Transpile workspace libs instead of treating them as prebuilt node_modules
+      inline: [/^@jesscss\//]
+    },
+    server: {
+      deps: {
+        inline: [/^@jesscss\//]
+      }
     },
     // Ensure environment variables are passed to test processes
     environment: 'node',

@@ -11,7 +11,7 @@ import {
   type Rules,
   getErrorFromParser
 } from '@jesscss/core';
-import * as lessFunctions from '@jesscss/fns/lib/less';
+import * as lessFunctions from '@jesscss/fns';
 import { Parser } from '@jesscss/less-parser';
 import path from 'node:path';
 

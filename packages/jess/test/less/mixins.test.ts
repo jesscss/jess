@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { JessCompiler } from '../../src';
 import { Context } from '@jesscss/core';
-import lessPlugin from 'jess-plugin-less';
+import lessPlugin from '@jesscss/plugin-less';
 
 describe('Mixins', () => {
   const compiler = new JessCompiler({

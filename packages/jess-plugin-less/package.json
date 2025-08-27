@@ -1,12 +1,25 @@
 {
-  "name": "jess-plugin-less",
+  "name": "@jesscss/plugin-less",
   "publishConfig": {
     "access": "public"
   },
   "description": "A Less stylesheet engine for Jess",
   "version": "2.0.0-alpha.1",
-  "main": "lib/index",
-  "types": "lib/index",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./lib/index.js",
+      "types": "./lib/index.d.ts",
+      "source": "./src/index.ts"
+    },
+    "./*": {
+      "types": "./lib/*.d.ts",
+      "import": "./lib/*.js",
+      "source": "./src/*.ts"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "lib"
   ],

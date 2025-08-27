@@ -276,15 +276,15 @@ importers:
       '@jesscss/patch-css':
         specifier: workspace:2.0.0-alpha.1
         version: link:../patch-css
+      '@jesscss/plugin-less':
+        specifier: workspace:2.0.0-alpha.1
+        version: link:../jess-plugin-less
       chalk:
         specifier: ^5.2.0
         version: 5.4.1
       cosmiconfig:
         specifier: ^8.3.6
         version: 8.3.6(typescript@5.8.3)
-      jess-plugin-less:
-        specifier: workspace:2.0.0-alpha.1
-        version: link:../jess-plugin-less
       lodash-es:
         specifier: ^4.17.21
         version: 4.17.21

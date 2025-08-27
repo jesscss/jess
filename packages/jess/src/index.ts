@@ -8,7 +8,7 @@ import {
   logger
 } from '@jesscss/core';
 import merge from 'lodash-es/merge';
-import lessPlugin from 'jess-plugin-less';
+import lessPlugin from '@jesscss/plugin-less';
 
 export type ConfigOptions = TreeContextOptions & {
   plugins?: PluginInterface[];
