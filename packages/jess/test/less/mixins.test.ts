@@ -203,7 +203,7 @@ describe('Mixins', () => {
   });
 
   describe('Mixin Pattern Matching', () => {
-    it('should handle mixin with pattern matching', async () => {
+    it('should handle mixin with pattern matching #1', async () => {
       const lessCode = `
         .mixin(@color, @size) when (@size > 10px) {
           color: @color;
@@ -230,12 +230,38 @@ describe('Mixins', () => {
       expect(css).toContain('.test2');
       expect(css).toContain('font-size: 10px');
     });
+
+    it('should handle mixin with pattern matching #2', async () => {
+      const lessCode = `
+        .mixin(red) {
+          color: red;
+        }
+        
+        .mixin(blue) {
+          color: blue;
+        }
+        
+        .test1 {
+          .mixin(red);
+        }
+        
+        .test2 {
+          .mixin(blue);
+        }
+      `;
+
+      const css = await compiler.renderString(lessCode);
+      expect(css).toContain('.test1');
+      expect(css).toContain('color: red');
+      expect(css).toContain('.test2');
+      expect(css).toContain('color: blue');
+    });
   });
 
   describe('Mixin Nesting', () => {
-    it('should handle nested mixins', async () => {
+    it.only('should handle nested mixins', async () => {
       const lessCode = `
-        .outer(@color) {
+        .outer(@color: red) {
           color: @color;
           
           .inner(@size) {

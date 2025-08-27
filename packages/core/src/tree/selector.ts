@@ -1,4 +1,4 @@
-import type { MaybePromise } from 'awaitable-pipe/dist';
+import type { MaybePromise } from 'awaitable-pipe';
 import { Node, type NodeOptions, type NodeValue, defineType } from './node';
 import type { IfAny } from 'type-fest';
 import type { Context } from '../context';

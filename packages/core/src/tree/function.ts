@@ -24,7 +24,7 @@ export class Func extends Mixin {
   override shortType = 'fn' as const;
 
   /** @todo - We need to evaluate this like mixins, but with a return value */
-  override evalNode(context: Context): MaybePromise<Node> {
+  evalCall(context: Context): MaybePromise<Node> {
     return pipe(
       () => super.evalNode(context),
       tryStep((result: Node) => {

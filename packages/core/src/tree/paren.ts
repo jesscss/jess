@@ -78,7 +78,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       }
       return after(maybeEvald as Node);
     }
-    let node = this.maybeClone(context);
+    let node = this;
     node.value = value;
     return node;
   }

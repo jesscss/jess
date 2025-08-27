@@ -183,6 +183,10 @@ export class Context {
 
   treeContext!: TreeContext;
 
+  /**
+   * This is set when entering rulesets so that child nodes
+   * can use this to lookup values.
+   */
   rulesContext!: Rules;
   /** Entire context root (ultimate root) */
   root!: Rules;
@@ -201,11 +205,6 @@ export class Context {
     return (this._searchScope ??= new Set());
   }
 
-  /**
-   * This is set when entering rulesets so that child nodes
-   * can use this to lookup values.
-   */
-  scope: Rules | undefined;
   /**
    * The file (eval) context should have the same ID at compile-time
    * as run-time, so this ID will be set in `toModule()` output

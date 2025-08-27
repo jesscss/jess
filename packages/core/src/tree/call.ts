@@ -101,16 +101,6 @@ export class Call extends Node<CallValue, CallOptions> {
               return (out as Promise<any>).then(result => cast(result).inherit(this));
             }
             return cast(out).inherit(this);
-          } else if (isNode(name, 'List')) {
-            if (name.value.every(item => isNode(item, 'Mixin') || isNode(item, 'Ruleset'))) {
-              const func = getFunctionFromMixins(name.value as MixinEntry[]);
-              return pipe(
-                () => func.call(context, ...args?.value ?? []),
-                result => result.eval(context)
-              );
-            } else {
-              throw new Error('Expected a mixin or ruleset list');
-            }
           } else {
             if (name === 'calc') {
               context.calcFrames.push(true);

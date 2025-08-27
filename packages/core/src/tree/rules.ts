@@ -23,6 +23,8 @@ import type { Bool } from './bool';
 import * as Registries from './util/registry-utils';
 import { tryExtendSelector } from './util/extend';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
+import { Nil } from './nil';
+import type { VarDeclaration } from './declaration-var';
 
 const { isArray } = Array;
 const DEBUG_FINAL_NL = typeof process !== 'undefined' && (process.env as any)?.JESS_DEBUG_FINAL_NL === '1';
@@ -916,7 +918,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      * (Any mixin with a mis-match of
      * arguments fails.)
      */
-    let argEntries = isPlainObject(args[0]) ? Object.entries(args[0]) : null;
     for (let i = 0; i < mixinLength; i++) {
       let mixin = mixinArr[i]!;
       let isPlainRule = isNode(mixin, 'Rules');
@@ -929,60 +930,43 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         mixinCandidates.push(mixin);
       } else {
         /** The mixin has parameters, so let's check args to see if there's a match */
-        let params = (mixin as Mixin).value.params!.clone();
-        let positions = new Set(params.value.map((_, i) => i));
-        /**
-         * First argument can be a plain object with named params
-         * e.g. { a: 1, b: 2 }
-         */
-        let argPos = 0;
-        if (argEntries) {
-          argPos = 1;
-          let namedMap = new Map(argEntries);
-          /**
-           * We iterate through params instead of args,
-           * because we need to track the position
-           * of each parameter.
-           */
-          for (let [i, param] of params) {
-            if (isNode(param, 'VarDeclaration')) {
-              let key = String(param.value.name);
-              let namedValue = namedMap.get(key);
-              /** Replace our param value with the passed in named value */
-              if (namedValue) {
-                params.value[i] = cast(namedValue);
-                /**
-                 * Because we've assigned a named value, any
-                 * positional arguments will be shifted.
-                 */
-                positions.delete(i);
-                namedMap.delete(key);
-              } else {
-                /** This mixin is not a match */
-                break;
-              }
+        let params = (mixin as Mixin).value.params!.copy(true);
+        let positions = params.length;
+        let requiredPositions = 0;
+        for (let param of params.value) {
+          if (isNode(param, 'VarDeclaration')) {
+            if (param.value.value instanceof Nil) {
+              requiredPositions++;
             }
+          } else if (!isNode(param, 'Rest')) {
+            requiredPositions++;
           }
-          if (namedMap.size) {
-            /** This mixin is not a match */
+        }
+        let argPos = 0;
+        let match = true;
+        for (let i = 0; i < positions; i++) {
+          let arg = args[argPos];
+          if (!arg) {
             continue;
           }
-        }
-        /**
-         * Now we can check remaining positional matches
-         * against the remaining parameters.
-         */
-        if (args.length - argPos !== positions.size) {
-          /** This mixin is not a match */
-          continue;
-        }
-        let match = true;
-
-        for (let i of positions) {
-          let arg = args[argPos];
-          let param = params.value[i]!;
+          let param: Node | undefined;
+          if (isNode(arg, 'VarDeclaration')) {
+            param = params.value.find(
+              (p, i) => isNode(p, 'VarDeclaration') && p.value.name.valueOf() === arg.value.name.valueOf()
+            );
+            if (param) {
+              arg = arg.value.value;
+            }
+          } else {
+            param = params.value[i];
+            arg = cast(arg);
+          }
+          if (!param) {
+            match = false;
+            break;
+          }
           if (isNode(param, 'VarDeclaration')) {
-            param.value.value = cast(arg);
+            param.value.value = arg;
           } else if (isNode(param, 'Rest')) {
             param.value = spaced(args.slice(argPos));
             /** Check a pattern-matching node */
@@ -992,6 +976,14 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             break;
           }
           argPos++;
+        }
+        /**
+         * Now we can check remaining positional matches
+         * against the remaining parameters.
+         */
+        if (argPos < requiredPositions) {
+          /** This mixin is not a match */
+          continue;
         }
         if (match) {
           (mixin as Mixin).value.params = params;
@@ -1056,8 +1048,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         continue;
       }
       /** Create new rules, and add the candidate rules, to add to scope */
-      let rules = new Rules([]);
-      rules.push(candidate.value.rules);
+      let rules = candidate.value.rules.copy(true);
 
       /** Now we need to add our parameters, if any */
       let params = candidate.value.params;
@@ -1070,11 +1061,12 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         }
       }
       /** Now we can evaluate our guards, if any */
-      let guard: Condition | Bool | undefined = candidate.value.guard;
+      let guard: Condition | Bool | undefined = candidate.value.guard?.copy(true);
       let passes = true;
-      let incomingScope = thisContext.scope;
-      thisContext.scope = rules;
+      let rulesContext = thisContext.rulesContext;
+      thisContext.rulesContext = rules;
       if (guard) {
+        /** Allow lookup on the inherited rules */
         passes = false;
         /** All nodes need context to be evaluated */
         thisContext.isDefault = !hasMatch;
@@ -1088,7 +1080,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         let newRules = await rules.eval(thisContext);
         outputRules.push([newRules, i]);
       }
-      thisContext.scope = incomingScope;
+      thisContext.rulesContext = rulesContext;
     }
     /**
      * Now that we have output rules, we sort them by

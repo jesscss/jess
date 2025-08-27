@@ -155,6 +155,9 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   }
 
   /** Since this is a mixin definition, it's not evaluated until it's called. */
+  override evalNode(context: Context) {
+    return this;
+  }
 
   // override async evalNode(context: Context): Promise<Rules | Expression> {
   //   let { name, body, params, guard } = this.value

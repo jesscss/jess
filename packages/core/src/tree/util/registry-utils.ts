@@ -502,7 +502,6 @@ export class DeclarationRegistry extends Registry<Declaration> {
     filterType: 'VarDeclaration' | 'Declaration' = 'VarDeclaration',
     options?: FindOptions
   ): Declaration | undefined {
-    this.indexPendingItems();
     let declCandidate: [
       declaration: Declaration,
       read?: boolean

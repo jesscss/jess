@@ -11,6 +11,8 @@ import { atIndex } from './util/collections';
 import type { Num } from './number';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
+import { getFunctionFromMixins } from './rules';
+import type { MixinEntry } from './rules';
 
 /**
  * The type is determined by syntax
@@ -61,6 +63,8 @@ export type ReferenceOptions = {
 
 type NodeType = typeof Node<ReferenceValue, ReferenceOptions>;
 type ReferenceParams = ConstructorParameters<NodeType>;
+
+const { isArray } = Array;
 
 /**
  * This is a variable or property reference,
@@ -166,6 +170,17 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         return [resolvedTarget, valueKey] as [Node, string];
       },
       ([resolvedTarget, valueKey]) => {
+        /**
+         * If we're looking something up on a function, we presume
+         * it needs to be called first, and that it has no arguments.
+         */
+        if (isNode(resolvedTarget, 'JsFunction')) {
+          resolvedTarget = resolvedTarget.value.call(context);
+          return Promise.all([resolvedTarget, valueKey]);
+        }
+        return [resolvedTarget, valueKey] as [Node, string];
+      },
+      ([resolvedTarget, valueKey]) => {
         originalFilter ??= () => true;
         const filter = (n: Node) => originalFilter!(n) && !context.searchScope.has(n);
         const opts: FindOptions = { filter };
@@ -199,6 +214,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           }
         }
         let returnVal: any;
+
         switch (type) {
           case 'index':
             if (typeof valueKey === 'number') {
@@ -282,8 +298,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               return evald;
             }
           );
-        }
-        if (isNode(returnVal, 'Declaration')) {
+        } else if (isNode(returnVal, 'Declaration')) {
           context.searchScope.add(returnVal);
           const inCalc = context.calcFrames.at(-1);
           if (inCalc) {
@@ -301,6 +316,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               return evald;
             }
           );
+        } else if (isArray(returnVal)) {
+          if (returnVal.every(item => isNode(item, 'Mixin') || isNode(item, 'Ruleset'))) {
+            return cast(getFunctionFromMixins(returnVal as MixinEntry[]));
+          }
         }
         return cast(returnVal);
       }
