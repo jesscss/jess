@@ -60,7 +60,8 @@ export class LessPlugin extends AbstractPlugin {
       leakVariablesIntoScope: true,
       mathMode: this.mathMode,
       unitMode: this.unitMode,
-      plugin: this
+      plugin: this,
+      collapseNesting: this.opts.collapseNesting
     });
     const { tree, errors, lexerResult } = this.parser.parse(source, 'stylesheet', { context });
     if (errors.length || lexerResult.errors.length) {
