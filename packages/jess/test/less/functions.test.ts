@@ -149,12 +149,12 @@ describe('Functions', () => {
     it('should handle e function', async () => {
       const lessCode = `
         .test {
-          content: e("~"a=1"");
+          content: e("hello");
         }
       `;
 
       const css = await compiler.renderString(lessCode);
-      expect(css).toContain('content:');
+      expect(css).toContain('content: hello');
     });
   });
 

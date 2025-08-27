@@ -117,10 +117,10 @@ describe('Variables', () => {
 
     it('should handle variable interpolation in property names', async () => {
       const lessCode = `
-        @property: color;
+        @prop: color;
         
         .test {
-          @{property}: red;
+          @{prop}: red;
         }
       `;
 

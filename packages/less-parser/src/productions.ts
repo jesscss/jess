@@ -59,7 +59,8 @@ import {
   Rules,
   Nil,
   type ComplexSelectorComponent,
-  type Selector
+  type Selector,
+  INTERPOLATION_PLACEHOLDER
 } from '@jesscss/core';
 
 const isEscapedString = function(this: P, T: TokenMap) {
@@ -990,8 +991,7 @@ export function unknownAtRule(this: P, T: TokenMap) {
     if (!isColon) {
       return false;
     }
-    let isVariable = !$.preSkippedTokenMap.has(token.startOffset)
-      || $.postSkippedTokenMap.has(token.endOffset!);
+    let isVariable = !$.preSkippedTokenMap.has(token.startOffset);
     return isVariable;
   };
 
@@ -1801,6 +1801,12 @@ export function string(this: P, T: TokenMap) {
           }
           let location = $.endRule();
           let value = contents?.image;
+
+          // Handle interpolation in string contents
+          if (value && (value.includes('@{') || value.includes('${'))) {
+            return new Quoted(processStringInterpolation(value, location, this.context), { quote: quoteImg as '"' | '\'', escaped }, location, this.context);
+          }
+
           return new Quoted(new Any(value ?? '', { role: 'any' }), { quote: quoteImg as '"' | '\'', escaped }, location, this.context);
         }
       }
@@ -1821,6 +1827,12 @@ export function string(this: P, T: TokenMap) {
           }
           let location = $.endRule();
           let value = contents?.image;
+
+          // Handle interpolation in string contents
+          if (value && (value.includes('@{') || value.includes('${'))) {
+            return new Quoted(processStringInterpolation(value, location, this.context), { quote: quoteImg as '"' | '\'', escaped }, location, this.context);
+          }
+
           return new Quoted(new Any(value ?? '', { role: 'any' }), { quote: quoteImg as '"' | '\'', escaped }, location, this.context);
         }
       }
@@ -1828,6 +1840,28 @@ export function string(this: P, T: TokenMap) {
   ];
 
   return (ctx: RuleContext = {}) => $.OR(stringAlt);
+}
+
+// Helper function to process string interpolation
+function processStringInterpolation(value: string, location: LocationInfo, context: TreeContext): Any | Interpolated {
+  const interpolatedRegex = /[@$]\{([^}]+)\}/g;
+  const replacements: Node[] = [];
+  let result: RegExpExecArray | null;
+  let source = value;
+
+  while (result = interpolatedRegex.exec(value)) {
+    const [match, varName] = result;
+    source = source.replace(match, INTERPOLATION_PLACEHOLDER);
+    const type = match.startsWith('@') ? 'variable' : 'property';
+    const reference = new Reference(varName!, { type, role: 'ident' }, location, context);
+    replacements.push(reference);
+  }
+
+  if (replacements.length > 0) {
+    return new Interpolated({ source, replacements }, { role: 'ident' }, location, context);
+  }
+
+  return new Any(value, { role: 'any' }, location, context);
 }
 
 export function mathValue(this: P, T: TokenMap) {

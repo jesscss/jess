@@ -286,8 +286,8 @@ describe('OutputWriter', () => {
       const segments = w.getSegments();
 
       expect(segments).toHaveLength(1);
-      expect(segments[0].genLine).toBe(0);
-      expect(segments[0].genColumn).toBe(0);
+      expect(segments[0]!.genLine).toBe(0);
+      expect(segments[0]!.genColumn).toBe(0);
     });
 
     it('multiple segments track positions correctly', () => {
@@ -308,10 +308,10 @@ describe('OutputWriter', () => {
 
       const segments = w.getSegments();
       expect(segments).toHaveLength(2);
-      expect(segments[0].genLine).toBe(0);
-      expect(segments[0].genColumn).toBe(0);
-      expect(segments[1].genLine).toBe(0);
-      expect(segments[1].genColumn).toBe(5);
+      expect(segments[0]!.genLine).toBe(0);
+      expect(segments[0]!.genColumn).toBe(0);
+      expect(segments[1]!.genLine).toBe(0);
+      expect(segments[1]!.genColumn).toBe(5);
     });
 
     it('segments handle newlines correctly', () => {
@@ -326,8 +326,8 @@ describe('OutputWriter', () => {
       const segments = w.getSegments();
 
       expect(segments).toHaveLength(1);
-      expect(segments[0].genLine).toBe(0);
-      expect(segments[0].genColumn).toBe(0);
+      expect(segments[0]!.genLine).toBe(0);
+      expect(segments[0]!.genColumn).toBe(0);
     });
 
     it('restore with segments maintains correct mapping', () => {
@@ -350,8 +350,8 @@ describe('OutputWriter', () => {
       // Adding after restore should work correctly
       w.add('after', mockOrigin);
       expect(w.getSegments()).toHaveLength(1);
-      expect(w.getSegments()[0].genLine).toBe(0);
-      expect(w.getSegments()[0].genColumn).toBe(6); // after 'before'
+      expect(w.getSegments()[0]!.genLine).toBe(0);
+      expect(w.getSegments()[0]!.genColumn).toBe(6); // after 'before'
     });
   });
 

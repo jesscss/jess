@@ -9,8 +9,12 @@ import type { Selector } from './selector';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 
+// Placeholder that's very unlikely to appear in user strings
+export const INTERPOLATION_PLACEHOLDER = '\u0000\u0001';
+const INTERPOLATION_PLACEHOLDER_REGEXP = /\u0000\u0001/g;
+
 export type InterpolatedValue = {
-  /** String with {} placeholders */
+  /** String with INTERPOLATION_PLACEHOLDER placeholders */
   source: string;
   replacements: Node[];
 };
@@ -61,7 +65,7 @@ export class Interpolated<
     let { source } = this.value;
     let output = source;
     let i = 0;
-    output = output.replace(/{}/g, (_) => {
+    output = output.replace(INTERPOLATION_PLACEHOLDER_REGEXP, () => {
       return replacements[i++]?.toTrimmedString(options) ?? '';
     });
     return output;
@@ -80,7 +84,7 @@ export class Interpolated<
    */
   createSelector() {
     let { source, replacements } = this.value;
-    let segments = source.split('{}');
+    let segments = source.split(INTERPOLATION_PLACEHOLDER);
     let output = '';
     let list: string[] = [];
     for (let [i, replacement] of replacements.entries()) {
@@ -159,7 +163,7 @@ export class Interpolated<
         const allResults: Node[] = [];
         let syncIndex = 0;
         let asyncIndex = 0;
-        
+
         for (const n of replacements) {
           const out = n.eval(context);
           if (isThenable(out)) {
@@ -170,7 +174,7 @@ export class Interpolated<
             syncIndex++;
           }
         }
-        
+
         node.value.replacements = allResults;
         return node as this;
       });

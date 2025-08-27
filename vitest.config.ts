@@ -43,7 +43,7 @@ export default defineConfig({
       '**/node_modules/**',
       '**/dist/**',
       '**/lib/**',
-      '**/src/old_tree/**/*'
+      '**/jess_old/**/*'
     ],
     // Global setup file - use absolute path so it works from any subfolder
     setupFiles: [resolve(__dirname, './test/setup.ts')],
