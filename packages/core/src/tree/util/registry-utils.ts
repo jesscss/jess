@@ -14,6 +14,8 @@ const { isArray } = Array;
 
 export type DeclarationFindOptions = {
   filter?: (n: Node) => boolean;
+  candidates?: Set<Node>;
+  findAll?: boolean;
   /** This gets set if any parent is set to readonly */
   readonly?: boolean;
   searchParents?: boolean;
@@ -52,6 +54,74 @@ export abstract class Registry<
       }
     }
     this.pendingItems.clear();
+  }
+
+  _searchRulesChildren(
+    key: string,
+    filterType: 'VarDeclaration' | 'Declaration' | 'Mixin',
+    options: FindOptions = {}
+  ) {
+    let rules = this.rules;
+    let findType = filterType === 'Mixin' ? 'mixin' as const : 'declaration' as const;
+    let findAll = Boolean(options.findAll);
+    let {
+      candidates = new Set(),
+      start,
+      readonly,
+      local
+    } = options;
+    let firstValue = candidates.values().next().value;
+    if (rules._rulesSet) {
+      let { rulesSet } = rules;
+      /**
+       * Only consider rules after the last found declaration (if relevant)
+       * and before the start position (if relevant)
+       */
+      rulesSet = rulesSet.filter((n) => {
+        return (findAll || (firstValue && n.node.index > firstValue.index))
+          && (start === undefined || n.node.index < start)
+          && (!(local && Boolean(n.node.options?.local)))
+          && ['optional', 'public'].includes(n.rulesVisibility?.[filterType] ?? '');
+      });
+
+      let length = rulesSet.length;
+      if (length) {
+        for (let i = length - 1; i >= 0; i--) {
+          let r = rulesSet.at(i)!;
+          /** Locals can be searched once but not twice */
+          let newLocal = local || Boolean(r.node.options?.local);
+          let newOpts = options ? { ...options, readonly: readonly || r.readonly } : { readonly: readonly || r.readonly };
+          newOpts.searchParents = false;
+          newOpts.local = newLocal;
+          newOpts.start = undefined;
+          let result = r.node.find(findType, key, filterType, newOpts);
+          if (result) {
+            /**
+             * If it's a public declaration, and it's the lower-most declaration,
+             * it wins.
+             */
+            if (!findAll && r.rulesVisibility?.[filterType] === 'public') {
+              if (options && newOpts.readonly) {
+                options.readonly = true;
+              }
+              return result;
+            }
+            /**
+             * If we're looking for a declaration and its optional OR
+             * we're looking for a mixin, then we need to keep searching.
+             */
+            options.readonly ||= newOpts.readonly;
+            if (isArray(result)) {
+              for (const node of result) {
+                candidates.add(node);
+              }
+            } else {
+              candidates.add(result);
+            }
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -317,14 +387,11 @@ export class MixinRegistry extends Registry<
    * @todo - Not sure how recursion works here with the match overflow and returning
    * proper arrays.
    */
-  _findMatches(
+  override find(
     keys: string | string[],
     filterType: 'Mixin' | 'Ruleset' | undefined = undefined,
-    options: {
-      searchParents?: boolean;
-      candidates?: Set<Mixin | Ruleset>;
-    } = {}
-  ): Array<{ value: Mixin | Ruleset; match: string[] }> | undefined {
+    options: FindOptions = {}
+  ): (Mixin | Ruleset)[] | undefined {
     let keyList: string[] | undefined;
 
     if (isArray(keys)) {
@@ -338,8 +405,7 @@ export class MixinRegistry extends Registry<
     }
 
     let rules: Rules | undefined = this.rules;
-    let { searchParents = true, candidates } = options;
-    let outer: Array<{ value: Mixin | Ruleset; match: string[] }> | undefined;
+    let { searchParents = true, candidates = new Set() } = options;
     while (rules) {
       let [startKey, ...search] = keyList;
       let registry = rules.mixinRegistry;
@@ -347,9 +413,6 @@ export class MixinRegistry extends Registry<
         registry.indexPendingItems();
       }
       const existing = registry?.index.get(startKey!);
-      if (existing && !outer) {
-        outer = existing;
-      }
 
       if (existing) {
         for (const { value, match } of existing) {
@@ -372,18 +435,24 @@ export class MixinRegistry extends Registry<
             ) {
             // Recursively search in this mixin's registry
               let subRules = value.value.rules;
-              const subCandidates =
-                subRules.mixinRegistry?._findMatches(remainder, filterType, {
-                  searchParents: false,
-                  candidates: (candidates ??= new Set())
-                });
-              if (subCandidates) {
-                candidates = candidates!.union(new Set(subCandidates.map(({ value }) => value)));
-              }
+              subRules.mixinRegistry?.find(remainder, filterType, {
+                searchParents: false,
+                candidates
+              });
             }
           }
         }
       }
+      this._searchRulesChildren(
+        startKey!,
+        'Mixin',
+        {
+          searchParents: false,
+          candidates,
+          findAll: true
+        }
+      );
+
       if (!searchParents) {
         break;
       }
@@ -400,14 +469,7 @@ export class MixinRegistry extends Registry<
         }
       } while (rules && rules.type !== 'Rules');
     }
-    return outer;
-  }
-
-  override find(keys: string | string[], filterType?: 'Mixin' | 'Ruleset', options?: FindOptions) {
-    const result = this._findMatches(keys, filterType, options);
-    if (result) {
-      return result.map(({ value }) => value);
-    }
+    return candidates.size ? [...candidates] as (Mixin | Ruleset)[] : undefined;
   }
 }
 
@@ -502,10 +564,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
     filterType: 'VarDeclaration' | 'Declaration' = 'VarDeclaration',
     options?: FindOptions
   ): Declaration | undefined {
-    let declCandidate: [
-      declaration: Declaration,
-      read?: boolean
-    ] | undefined;
+    let declCandidate = new Set<Declaration>();
     let rules: Rules | undefined = this.rules;
     let isPublic = false;
     const {
@@ -513,8 +572,10 @@ export class DeclarationRegistry extends Registry<Declaration> {
       local = false,
       start
     } = options ?? {};
+    let newReadonly: boolean | undefined = false;
     while (rules) {
       let currentReadonly = options?.readonly || rules.options.readonly;
+      newReadonly = currentReadonly;
       let registry = rules.declarationRegistry;
       if (registry) {
         registry.indexPendingItems();
@@ -534,66 +595,25 @@ export class DeclarationRegistry extends Registry<Declaration> {
       if (list?.length) {
         let result = rules.declarationRegistry?._findClosestByStart(list, start);
         if (result) {
-          declCandidate = [result, result.options.readonly || currentReadonly];
+          newReadonly ||= result.options.readonly;
+          declCandidate = new Set([result]);
         }
         isPublic = true;
       }
+      let searchChildrenOptions = {
+        ...options,
+        searchParents: false,
+        readonly: newReadonly,
+        candidates: declCandidate
+      };
 
-      if (rules._rulesSet) {
-        let { rulesSet } = rules;
-        /**
-         * Only consider rules after the last found declaration (if relevant)
-         * and before the start position (if relevant)
-         */
-        rulesSet = rulesSet.filter((n) => {
-          return (!declCandidate || n.node.index > declCandidate[0].index)
-            && (start === undefined || n.node.index < start)
-            && (!(local && Boolean(n.node.options?.local)))
-            && (
-              n.rulesVisibility?.[filterType] === 'optional'
-              || n.rulesVisibility?.[filterType] === 'public'
-            );
-        });
+      rules.declarationRegistry?._searchRulesChildren(key, filterType, searchChildrenOptions);
 
-        let length = rulesSet.length;
-        if (length) {
-          for (let i = length - 1; i >= 0; i--) {
-            let r = rulesSet.at(i)!;
-            /** Locals can be searched once but not twice */
-            let newLocal = local || Boolean(r.node.options?.local);
-            let newOpts = options ? { ...options, readonly: currentReadonly || r.readonly } : { readonly: currentReadonly || r.readonly };
-            newOpts.searchParents = false;
-            newOpts.local = newLocal;
-            newOpts.start = undefined;
-            let result = r.node.find('declaration', key, filterType, newOpts);
-            if (result) {
-              /**
-               * If it's public, and it's the lower-most declaration,
-               * it wins.
-               */
-              if (r.rulesVisibility?.[filterType] === 'public') {
-                if (options && newOpts.readonly) {
-                  options.readonly = true;
-                }
-                return result;
-              }
-              /**
-               * The declaration is optional, so we need to keep searching.
-               * If we already have a candidate, that means we have a local
-               * value which should win.
-               */
-              if (!declCandidate) {
-                declCandidate = [result, newOpts.readonly];
-              }
-            }
-          }
-        }
-      }
       if (isPublic || !searchParents) {
-        if (options && declCandidate?.[1]) {
+        if (options && searchChildrenOptions.readonly) {
           options.readonly = true;
         }
-        return declCandidate?.[0];
+        return declCandidate.values().next().value;
       }
 
       do {
@@ -609,10 +629,10 @@ export class DeclarationRegistry extends Registry<Declaration> {
         }
       } while (rules && !isNode(rules, 'Rules'));
     }
-    if (options && declCandidate?.[1]) {
+    if (options && newReadonly) {
       options.readonly = true;
     }
-    return declCandidate?.[0];
+    return declCandidate.values().next().value;
   }
 }
 

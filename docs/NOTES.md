@@ -31,7 +31,10 @@ This will be the config file for both less / jess
 export default {
   // Jess / Less compile settings
   compile: {
-
+    plugins: []
+  },
+  output: {
+    minify: false
   },
   language: {
     less: {
@@ -76,12 +79,14 @@ Extend Scopes
 - Include mixin by namespace, different reference syntax
 
 ```scss
-value: $foo; // variable ref
-value: $.foo; // var or prop ref
-value: $.~foo; // prop ref
+value: $foo; // or $.$foo - variable ref
+value: $.foo; // prop ref
+value: $^foo; // upward var foo lookup
+value: $[0]; // offset of 0 in current rules
+value: $[-1]; // offset of -1 in current rules
 value: $ns.$foo; // var 'foo' in ns
-value: $ns.foo; // var or prop 'foo' in ns
-value: $ns.~foo; // prop 'foo' in ns
+value: $ns.foo; // prop 'foo' in ns
+value: $ns[0]; // should throw an error for multiple returned rules
 
 $|mixin(); // mixin include
 $*(.rule)(); // selector include

@@ -11,20 +11,20 @@ import { isNode } from './util/is-node';
 import { cast } from './util/cast';
 import { type Ruleset, type RulesetValue } from './ruleset';
 import { type Mixin } from './mixin';
-import { Interpolated } from './interpolated';
 import type { Selector } from './selector';
 import { spaced, Sequence } from './sequence';
 import { type PrintOptions, getPrintOptions } from './util/print';
 
 import { atIndex } from './util/collections';
-import isPlainObject from 'lodash-es/isPlainObject';
 import type { Condition } from './condition';
 import type { Bool } from './bool';
 import * as Registries from './util/registry-utils';
 import { tryExtendSelector } from './util/extend';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil';
-import type { VarDeclaration } from './declaration-var';
+import { VarDeclaration } from './declaration-var';
+import { Any } from './any';
+import { List } from './list';
 
 const { isArray } = Array;
 const DEBUG_FINAL_NL = typeof process !== 'undefined' && (process.env as any)?.JESS_DEBUG_FINAL_NL === '1';
@@ -128,11 +128,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     this._indexing = true;
     try {
-      for (let i = this.rulesIndexed; i < this.value.length; i++) {
-        const node = this.value[i]!;
+      let value = this.value;
+      let length = value.length;
+      for (let i = this.rulesIndexed; i < length; i++) {
+        const node = value[i]!;
         this.registerNode(node);
       }
-      this.rulesIndexed = this.value.length;
+      this.rulesIndexed = length;
     } finally {
       this._indexing = false;
     }
@@ -163,6 +165,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   find(type: 'declaration', keys: string, filterType?: string, options?: Registries.DeclarationFindOptions): ReturnType<Registries.DeclarationRegistry['find']> | undefined;
   find(type: 'mixin', keys: string | string[], filterType?: string, options?: Registries.FindOptions): ReturnType<Registries.MixinRegistry['find']> | undefined;
   find(type: 'function', keys: string, filterType?: string, options?: Registries.FindOptions): ReturnType<Registries.FunctionRegistry['find']> | undefined;
+  find(type: 'ruleset' | 'declaration' | 'mixin' | 'function', key: string, filterType: string, options?: Registries.FindOptions): ReturnType<Registries.RulesetRegistry['find']> | ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.MixinRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined;
   find(
     type: 'ruleset' | 'declaration' | 'mixin' | 'function',
     keys: string | string[] | Set<string>,
@@ -345,6 +348,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       /** These are public by default */
       rulesVisibility.Declaration ??= 'public';
       rulesVisibility.Ruleset ??= 'public';
+      rulesVisibility.Mixin ??= 'public';
 
       /** Either one set as readonly will win */
       let readonly = Boolean(options?.readonly || node.options.readonly);
@@ -1059,6 +1063,15 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             rules.register('declaration', param);
           }
         }
+        rules.register('declaration', new VarDeclaration({
+          name: new Any('arguments', { role: 'property' }),
+          value: new List(params.value.map((p) => {
+            if (isNode(p, 'VarDeclaration')) {
+              return p.value.value;
+            }
+            return p;
+          }))
+        }));
       }
       /** Now we can evaluate our guards, if any */
       let guard: Condition | Bool | undefined = candidate.value.guard?.copy(true);

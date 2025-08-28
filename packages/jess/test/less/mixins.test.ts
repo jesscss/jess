@@ -259,7 +259,7 @@ describe('Mixins', () => {
   });
 
   describe('Mixin Nesting', () => {
-    it.only('should handle nested mixins', async () => {
+    it('should handle nested mixins', async () => {
       const lessCode = `
         .outer(@color: red) {
           color: @color;
@@ -287,7 +287,7 @@ describe('Mixins', () => {
         .mixin(@color, @size) {
           color: @color;
           font-size: @size;
-          border: 1px solid @arguments;
+          args: @arguments;
         }
         
         .test {
@@ -298,6 +298,7 @@ describe('Mixins', () => {
       const css = await compiler.renderString(lessCode);
       expect(css).toContain('color: red');
       expect(css).toContain('font-size: 16px');
+      expect(css).toContain('args: red, 16px');
     });
   });
 });
