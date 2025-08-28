@@ -50,22 +50,20 @@ describe('Property Accessors', () => {
 
     it('should handle property accessor with nested rulesets', async () => {
       const lessCode = `
-        .nested-config() {
-          colors: {
+        @config: {
+          @colors: {
             primary: red;
             secondary: blue;
           }
-          sizes: {
+          @sizes: {
             small: 12px;
             large: 20px;
           }
         }
 
-        @config: .nested-config();
-
         .test {
-          color: @config[colors][primary];
-          font-size: @config[sizes][large];
+          color: @config[@colors][primary];
+          font-size: @config[@sizes][large];
         }
       `;
 

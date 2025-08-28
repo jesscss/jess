@@ -259,25 +259,88 @@ describe('serializeTypes coverage', () => {
     `);
   });
 
-  test('import with url', () => {
-    const { tree } = parser.parse('@import url("file.less");');
+  test('@import "file.less" parsed as StyleImport', () => {
+    const { tree } = parser.parse('@import "file.less";');
     expect(serializeTypes(tree)).toContainString(`
       (StyleImport
+        type: 'import'
+        importOptions: {
+          reference: false
+          once: true
+        }
         path: 
           (Quoted
-            (any [role=urlvalue] '')
+            (any [role=any] 'file.less')
           )
       )
     `);
   });
 
-  test('import with string', () => {
-    const { tree } = parser.parse('@import "file.less";');
+  test('@import "file.css" parsed as import AtRule', () => {
+    const { tree } = parser.parse('@import "file.css";');
+    expect(serializeTypes(tree)).toContainString(`
+      (AtRule
+        name: 
+          (any [role=atkeyword] '@import')
+        prelude: 
+          (Sequence
+            [
+              (Quoted
+                (any [role=any] 'file.css')
+              )
+            ]
+          )
+      )
+    `);
+  });
+
+  test('@import (less, reference) "file" with options', () => {
+    const { tree } = parser.parse('@import (less, reference) "file";');
     expect(serializeTypes(tree)).toContainString(`
       (StyleImport
+        type: 'import'
+        importOptions: {
+          reference: true
+          once: true
+        }
         path: 
           (Quoted
-            (any [role=urlvalue] 'file.less')
+            (any [role=any] 'file')
+          )
+      )
+    `);
+  });
+
+  test('@import (css) "file.css" with css option', () => {
+    const { tree } = parser.parse('@import (css) "file.css";');
+    expect(serializeTypes(tree)).toContainString(`
+      (AtRule
+        name: 
+          (any [role=atkeyword] '@import')
+        prelude: 
+          (Sequence
+            [
+              (Quoted
+                (any [role=any] 'file.css')
+              )
+            ]
+          )
+      )
+    `);
+  });
+
+  test('@import (multiple) "file.less" with multiple option', () => {
+    const { tree } = parser.parse('@import (multiple) "file.less";');
+    expect(serializeTypes(tree)).toContainString(`
+      (StyleImport
+        type: 'import'
+        importOptions: {
+          reference: false
+          once: false
+        }
+        path: 
+          (Quoted
+            (any [role=any] 'file.less')
           )
       )
     `);

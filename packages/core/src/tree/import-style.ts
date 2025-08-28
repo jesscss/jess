@@ -140,7 +140,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     const maybePath = path.eval(context);
     if (isThenable(maybePath)) {
       return (maybePath as Promise<Quoted | Url>).then(async (p) => {
-        const finalPath = p instanceof Url ? p.value.valueOf() : p.valueOf();
+        const finalPath = p.valueOf();
         let { node: rules, resolvedPath } = await context.getTree(finalPath, importOptions);
         let evaldRules = context.evaldTrees.get(resolvedPath);
         if (withValues) {
@@ -184,7 +184,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         return node;
       });
     }
-    const finalPath = (maybePath as Quoted | Url) instanceof Url ? (maybePath as Url).value.valueOf() : (maybePath as Quoted).valueOf();
+    const finalPath = maybePath.valueOf();
     /**
      * @todo - Add options
      *
@@ -197,7 +197,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
      */
     // sync path eval still requires async getTree, so return a promise from here
     return (async () => {
-      let { node: rules, resolvedPath } = await context.getTree(finalPath, importOptions);
+      let { node: rules, resolvedPath } = await context.getTree(finalPath as string, importOptions);
       let evaldRules = context.evaldTrees.get(resolvedPath);
       if (withValues) {
         if (withValues.type === 'set' && evaldRules) {

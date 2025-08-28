@@ -152,7 +152,18 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
   if (isJessNode(value)) {
     const inner = '\n' + serializeNode(value, depth + 1, opts, visiting);
     visiting.delete(n);
-    return `${open}${inner}\n${pad})`;
+    let result = `${open}${inner}\n${pad})`;
+
+    // Special case for StyleImport: add options to the serialization
+    if (typeName === 'StyleImport' && (n as any).options) {
+      const options = (n as any).options;
+      const optionsStr = serializePlainObject(options, depth, opts, visiting);
+      if (optionsStr) {
+        result = `${open}\n${optionsStr}${inner}\n${pad})`;
+      }
+    }
+
+    return result;
   }
 
   // Special-case Number plain object: print compact form
@@ -176,10 +187,18 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
   if (isPlainObject(value)) {
     const inner = serializePlainObject(value as Record<string, unknown>, depth, opts, visiting);
     visiting.delete(n);
-    if (inner) {
-      return `${open}\n${inner}\n${pad})`;
+    let result = inner ? `${open}\n${inner}\n${pad})` : `${open})`;
+
+    // Special case for StyleImport: add options to the serialization
+    if (typeName === 'StyleImport' && (n as any).options) {
+      const options = (n as any).options;
+      const optionsStr = serializePlainObject(options, depth, opts, visiting);
+      if (optionsStr) {
+        result = `${open}\n${optionsStr}${inner ? '\n' + inner : ''}\n${pad})`;
+      }
     }
-    return `${open})`;
+
+    return result;
   }
 
   visiting.delete(n);

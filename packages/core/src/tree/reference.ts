@@ -163,6 +163,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       },
       (keyEval) => {
         let valueKey = isNode(keyEval) ? keyEval.valueOf() : keyEval;
+        
+
+        
         let resolvedTarget = target ? target.eval(context) : context.rulesContext;
         if (isThenable(resolvedTarget)) {
           return (resolvedTarget as Promise<Node>).then(rt => [rt, valueKey] as [Node, string]);

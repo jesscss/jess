@@ -13,7 +13,9 @@ describe('Import URL', () => {
       }
     `;
 
-    const css = await compiler.renderString(lessCode);
+    const css = await compiler.renderString(lessCode, {
+      filePath: process.cwd() + '/test/less/import-url.test.less'
+    });
     expect(css).toContain('.test');
     expect(css).toContain('color: red');
   });
@@ -27,7 +29,9 @@ describe('Import URL', () => {
       }
     `;
 
-    const css = await compiler.renderString(lessCode);
+    const css = await compiler.renderString(lessCode, {
+      filePath: process.cwd() + '/test/less/import-url.test.less'
+    });
     expect(css).toContain('@import url("test.css")');
     expect(css).toContain('.test');
     expect(css).toContain('color: red');
@@ -42,10 +46,11 @@ describe('Import URL', () => {
       }
     `;
 
-    const css = await compiler.renderString(lessCode);
+    const css = await compiler.renderString(lessCode, {
+      filePath: process.cwd() + '/test/less/import-url.test.less'
+    });
     expect(css).toContain('@import url("http://example.com/file.less")');
     expect(css).toContain('.test');
     expect(css).toContain('color: red');
   });
 });
-

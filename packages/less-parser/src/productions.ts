@@ -57,6 +57,7 @@ import {
   CompoundSelector,
   SelectorList,
   Rules,
+  Url,
   Nil,
   type ComplexSelectorComponent,
   type Selector,
@@ -941,29 +942,7 @@ export function importAtRule(this: P, T: TokenMap) {
   const $ = this;
 
   const isCssUrl = (url: string) =>
-    url.endsWith('.css') || url.startsWith('http');
-
-  const getUrlFromNode = (urlNode: Quoted | Call): string => {
-    let url: string = '';
-    if (urlNode instanceof Quoted) {
-      url = urlNode.valueOf();
-    } else {
-      let args = urlNode.value.args;
-      if (args && args.value && args.value.length > 0) {
-        let innerUrlNode = args.value[0]!;
-        /**
-         * A url function will have either a quoted value
-         * or a general (un-quoted) value
-         */
-        if (innerUrlNode instanceof Quoted) {
-          url = innerUrlNode.valueOf();
-        } else if (innerUrlNode instanceof Any) {
-          url = innerUrlNode.value;
-        }
-      }
-    }
-    return url;
-  };
+    url.endsWith('.css') || url.startsWith('http') || url.startsWith('//');
 
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
@@ -991,7 +970,7 @@ export function importAtRule(this: P, T: TokenMap) {
       $.CONSUME(T.RParen);
     });
 
-    let urlNode: Quoted | Call = $.OR([
+    let urlNode: Quoted | Url = $.OR([
       { ALT: () => $.SUBRULE($.urlFunction, { ARGS: [ctx] }) },
       { ALT: () => $.SUBRULE($.string, { ARGS: [ctx] }) }
     ]);
@@ -1002,7 +981,7 @@ export function importAtRule(this: P, T: TokenMap) {
       if (options!.includes('css')) {
         isAtRule = true;
       } else {
-        let url = getUrlFromNode(urlNode);
+        let url = urlNode.valueOf();
         if (isCssUrl(url)) {
           isAtRule = true;
         }
@@ -1038,11 +1017,9 @@ export function importAtRule(this: P, T: TokenMap) {
         }, undefined, location, this.context);
         return atRule;
       }
-      const pathStr = getUrlFromNode(urlNode);
-      const pathNode = new Quoted(new Any(pathStr, { role: 'urlvalue' }), { quote: '\'' }, undefined, this.context);
 
       return new StyleImport({
-        path: pathNode
+        path: urlNode
       }, {
         type: 'import',
         importOptions: {
@@ -2540,6 +2517,7 @@ export function accessors(this: P, T: TokenMap) {
     $.CONSUME(T.RSquare);
 
     if (!RECORDING_PHASE) {
+      let isVariableKey = false;
       if (keyToken) {
         if (keyToken.tokenType === T.NestedReference) {
           key = getReferenceFromLookupToken(keyToken);
@@ -2547,7 +2525,9 @@ export function accessors(this: P, T: TokenMap) {
           let tokenStr = keyToken.image;
           let tokenStart = tokenStr[0];
           if (tokenStart === '@') {
-            key = new Reference({ target: nodeContext, key: tokenStr.slice(1) }, { type: 'variable' }, $.getLocationInfo(keyToken), this.context);
+            // Strip the @ prefix for variable accessors
+            key = tokenStr.slice(1);
+            isVariableKey = true;
           } else {
             // For simple identifiers, just use the string as the key, not a Reference
             key = tokenStart === '$' ? tokenStr.slice(1) : tokenStr;
@@ -2559,7 +2539,13 @@ export function accessors(this: P, T: TokenMap) {
       const location = $.endRule();
       // Replace Lookup with a Reference targeting the current nodeContext
       const targetRef = nodeContext as Reference | Node;
-      returnNode = new Reference({ target: targetRef as any, key: key as any }, { type: 'property' }, location, this.context);
+
+      // Determine the type based on the key
+      let refType: 'property' | 'variable' = 'property';
+      if (isVariableKey) {
+        refType = 'variable';
+      }
+      returnNode = new Reference({ target: targetRef as any, key: key as any }, { type: refType }, location, this.context);
     }
     /**
      * Allows chaining of lookups / calls

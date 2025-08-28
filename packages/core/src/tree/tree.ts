@@ -29,6 +29,8 @@ import type { Selector } from './selector';
 import type { JsObject } from './js-object';
 import type { JsArray } from './js-array';
 import type { Num } from './number';
+import type { Url } from './url';
+import type { Quoted } from './quoted';
 
 export type Nodes = {
   Ampersand: typeof Ampersand;
@@ -63,4 +65,6 @@ export type Nodes = {
   Collection: typeof Collection;
   Rest: typeof Rest;
   Sequence: typeof Sequence;
+  Url: typeof Url;
+  Quoted: typeof Quoted;
 };

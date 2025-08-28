@@ -225,7 +225,9 @@ describe('Jess Less Test Suite', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, {
+        filePath: process.cwd() + '/test/less/suite.test.less'
+      });
       expect(css).toContain('color: red');
     });
   });

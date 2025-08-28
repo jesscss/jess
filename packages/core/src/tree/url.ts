@@ -2,6 +2,7 @@ import { Node, defineType } from './node';
 import { type Quoted } from './quoted';
 import { type Any } from './any';
 import { getPrintOptions, type PrintOptions } from './util/print';
+import { isNode } from './util/is-node';
 
 /**
  * e.g. url('foo.png')
@@ -12,6 +13,17 @@ export class Url extends Node<Quoted | Any> {
   /**
    * @todo - enable URL rewriting
    */
+  override valueOf(): string {
+    let value: Node | string = this.value;
+    if (isNode(value, 'Quoted')) {
+      value = value.value;
+      if (isNode(value)) {
+        return String(value.value);
+      }
+      return value;
+    }
+    return (value as Any).value;
+  }
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
