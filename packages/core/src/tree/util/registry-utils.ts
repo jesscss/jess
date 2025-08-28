@@ -78,10 +78,12 @@ export abstract class Registry<
        * and before the start position (if relevant)
        */
       rulesSet = rulesSet.filter((n) => {
-        return (findAll || (firstValue && n.node.index > firstValue.index))
+        const visibility = n.rulesVisibility?.[filterType] ?? '';
+        const isVisible = ['optional', 'public'].includes(visibility);
+        return (findAll || !firstValue || n.node.index > firstValue.index)
           && (start === undefined || n.node.index < start)
           && (!(local && Boolean(n.node.options?.local)))
-          && ['optional', 'public'].includes(n.rulesVisibility?.[filterType] ?? '');
+          && isVisible;
       });
 
       let length = rulesSet.length;
@@ -104,7 +106,15 @@ export abstract class Registry<
               if (options && newOpts.readonly) {
                 options.readonly = true;
               }
-              return result;
+              // Add to candidates and stop searching this rule
+              if (isArray(result)) {
+                for (const node of result) {
+                  candidates.add(node);
+                }
+              } else {
+                candidates.add(result);
+              }
+              break; // Stop searching this rule
             }
             /**
              * If we're looking for a declaration and its optional OR
@@ -609,11 +619,25 @@ export class DeclarationRegistry extends Registry<Declaration> {
 
       rules.declarationRegistry?._searchRulesChildren(key, filterType, searchChildrenOptions);
 
+      // If we found a declaration in children, check if it's public
+      if (declCandidate.size > 0) {
+        const result = declCandidate.values().next().value;
+        // Check if this is a public declaration (not optional)
+        // For now, assume all declarations in children are public since _searchRulesChildren
+        // should have returned immediately for public declarations
+        isPublic = true; // Set isPublic to true so we don't continue searching parents
+        if (options && searchChildrenOptions.readonly) {
+          options.readonly = true;
+        }
+        return result;
+      }
+
       if (isPublic || !searchParents) {
         if (options && searchChildrenOptions.readonly) {
           options.readonly = true;
         }
-        return declCandidate.values().next().value;
+        const result = declCandidate.values().next().value;
+        return result;
       }
 
       do {

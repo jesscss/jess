@@ -84,6 +84,7 @@ export class LessActionsParser extends CssActionsParser {
 
   wrappedDeclarationList!: Rule;
 
+  varDeclarationOrCall!: Rule;
   varName!: Rule;
   valueReference!: Rule;
   varReference!: Rule;

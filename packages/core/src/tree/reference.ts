@@ -12,7 +12,7 @@ import type { Num } from './number';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { getFunctionFromMixins } from './rules';
-import type { MixinEntry } from './rules';
+import type { MixinEntry, Rules } from './rules';
 
 /**
  * The type is determined by syntax
@@ -178,6 +178,22 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           resolvedTarget = resolvedTarget.value.call(context);
           return Promise.all([resolvedTarget, valueKey]);
         }
+
+        /**
+         * If we're looking something up on a mixin, we need to evaluate
+         * its rules to get the Rules node first.
+         */
+        if (isNode(resolvedTarget, 'Mixin')) {
+          const mixinResult = resolvedTarget.value.rules.eval(context);
+          if (isThenable(mixinResult)) {
+            return (mixinResult as Promise<Rules>).then((rules) => {
+              return [rules, valueKey] as [Node, string];
+            });
+          } else {
+            resolvedTarget = mixinResult as Rules;
+            return [resolvedTarget, valueKey] as [Node, string];
+          }
+        }
         return [resolvedTarget, valueKey] as [Node, string];
       },
       ([resolvedTarget, valueKey]) => {
@@ -225,7 +241,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               }
             } else {
               if (isNode(resolvedTarget, 'Rules')) {
+                console.log('Looking for declaration:', valueKey, 'in Rules node');
+                console.log('Rules node type:', resolvedTarget.type);
                 returnVal = resolvedTarget.find('declaration', `${valueKey}`, undefined, opts);
+                console.log('Find result:', returnVal);
               } else if (isNode(resolvedTarget, 'JsObject')) {
                 returnVal = resolvedTarget.value[valueKey];
               }

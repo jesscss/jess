@@ -1,6 +1,15 @@
 import { Parser } from '../src';
 import { serializeTypes } from '@jesscss/core';
 
+// Import the actual placeholder from core
+import { INTERPOLATION_PLACEHOLDER } from '@jesscss/core';
+
+// Helper function to extract Interpolated nodes from serialized output
+function extractInterpolatedNodes(serialized: string): string[] {
+  const matches = serialized.match(/\(Interpolated[^)]*\)[\s\S]*?\)/g);
+  return matches || [];
+}
+
 const parser = new Parser();
 
 describe('serializeTypes coverage', () => {
@@ -11,7 +20,12 @@ describe('serializeTypes coverage', () => {
         name: 
           (any [role=ident] 'color')
         value: 
-          (any 'red')
+          (Color
+            node: 'red'
+            format: 1
+            rgba:
+            [255, 0, 0, 1]
+          )
       )
     `);
   });
@@ -72,7 +86,12 @@ describe('serializeTypes coverage', () => {
         args: 
           (List
             [
-              (any 'red')
+              (Color
+                node: 'red'
+                format: 1
+                rgba:
+                [255, 0, 0, 1]
+              )
             ]
           )
       )
@@ -106,7 +125,12 @@ describe('serializeTypes coverage', () => {
                     name: 
                       (any [role=property] 'color')
                     value: 
-                      (any 'red')
+                      (Color
+                        node: 'red'
+                        format: 1
+                        rgba:
+                        [255, 0, 0, 1]
+                      )
                   )
                 ]
               )
@@ -131,35 +155,31 @@ describe('serializeTypes coverage', () => {
   test('interpolated selector', () => {
     const { tree } = parser.parse('.@{prefix}-button { color: red; }');
     expect(serializeTypes(tree)).toContainString(`
-      (Interpolated [role=ident]
-        source: '.{}-button'
-        replacements:
-        [
-          (Reference [role=ident]
-            key: 'prefix'
-          )
-        ]
-      )
+        (Interpolated [role=ident]
+          source: '.${INTERPOLATION_PLACEHOLDER}-button'
+          replacements:
+          [
+            (Reference [role=ident]
+              key: 'prefix'
+            )
+          ]
+        )
     `);
   });
 
   test('interpolated property name', () => {
     const { tree } = parser.parse('.test { @{prop}: red; }');
     expect(serializeTypes(tree)).toContainString(`
-      (Declaration
-        name: 
-          (Interpolated [role=ident]
-            source: '{}'
-            replacements:
-            [
-              (Reference [role=ident]
-                key: 'prop'
-              )
-            ]
-          )
-        value: 
-          (any 'red')
-      )
+      name: 
+        (Interpolated [role=ident]
+          source: '${INTERPOLATION_PLACEHOLDER}'
+          replacements:
+          [
+            (Reference [role=ident]
+              key: 'prop'
+            )
+          ]
+        )
     `);
   });
 
@@ -181,7 +201,12 @@ describe('serializeTypes coverage', () => {
                 name: 
                   (any [role=property] 'color')
                 value: 
-                  (any 'red')
+                  (Color
+                    node: 'red'
+                    format: 1
+                    rgba:
+                    [255, 0, 0, 1]
+                  )
               )
             ]
           )
@@ -253,6 +278,51 @@ describe('serializeTypes coverage', () => {
         path: 
           (Quoted
             (any [role=urlvalue] 'file.less')
+          )
+      )
+    `);
+  });
+
+  /** If it has a colon and a space after it, it's a variable declaration */
+  test('parse known at-rule as variable declaration', () => {
+    const result = parser.parse('@property: foo;');
+
+    expect(serializeTypes(result.tree)).toContainString(`
+      (VarDeclaration
+        name: 
+          (any [role=ident] 'property')
+        value: 
+          (any 'foo')
+      )
+    `);
+  });
+
+  /** If it has a colon and no spaces, still a variable declaration */
+  test('parse known at-rule as variable declaration', () => {
+    const result = parser.parse('@property:foo;');
+
+    expect(serializeTypes(result.tree)).toContainString(`
+      (VarDeclaration
+        name: 
+          (any [role=ident] 'property')
+        value: 
+          (any 'foo')
+      )
+    `);
+  });
+
+  /** If it has a parens immediately after, it's a call */
+  test('parse known at-rule as variable call', () => {
+    const { tree } = parser.parse('@media();');
+
+    expect(serializeTypes(tree)).toContainString(`
+      (Call
+        name: 
+          (Expression
+            (Reference [role=name]
+              key: 
+                (any [role=ident] 'media')
+            )
           )
       )
     `);

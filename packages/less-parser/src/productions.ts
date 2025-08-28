@@ -116,79 +116,180 @@ export function stylesheet(this: P, T: TokenMap) {
   };
 }
 
+/**
+   * Starts with a colon, with these conditions
+   *  1. It is not preceded by a space or
+   *  2. If it is preceded by a space, then it is
+   *     followed by a space.
+   */
+function isVariableLike(this: P, T: TokenMap) {
+  const $ = this;
+  let token = $.LA(2);
+  let isColon = token.tokenType === T.Colon;
+  let isParen = token.tokenType === T.LParen;
+  let postToken = $.LA(3);
+
+  // During recording phase, preSkippedTokenMap might not exist
+  if (!$.preSkippedTokenMap) {
+    return false;
+  }
+
+  if (!isColon && !isParen) {
+    return false;
+  }
+  let isVariable = !$.preSkippedTokenMap.has(token.startOffset)
+    || (isColon && $.preSkippedTokenMap.has(postToken.startOffset));
+  return isVariable;
+};
+
 export function main(this: P, T: TokenMap) {
   const $ = this;
 
-  const ruleAlt = (ctx: RuleContext = {}) => [
-    { ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] }) },
-    { ALT: () => $.SUBRULE($.extendList, { ARGS: [ctx] }) },
-    {
-      GATE: () => {
-        let next = $.LA(1).tokenType;
-        return next === T.DotName || next === T.HashName || next === T.ColorIdentStart;
+  const ruleAlt = (ctx: RuleContext = {}) => {
+    let isVariable = isVariableLike.call(this, T);
+    return [
+      { ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] }) },
+      { ALT: () => $.SUBRULE($.extendList, { ARGS: [ctx] }) },
+      {
+        GATE: () => {
+          let next = $.LA(1).tokenType;
+          return next === T.DotName || next === T.HashName || next === T.ColorIdentStart;
+        },
+        ALT: () => $.SUBRULE($.mixinOrQualifiedRule, { ARGS: [ctx] })
       },
-      ALT: () => $.SUBRULE($.mixinOrQualifiedRule, { ARGS: [ctx] })
-    },
-    {
-      GATE: () => {
-        let next = $.LA(1).tokenType;
-        return next !== T.DotName
-          && next !== T.HashName
-          && next !== T.ColorIdentStart;
+      {
+        GATE: () => {
+          let next = $.LA(1).tokenType;
+          return next !== T.DotName
+            && next !== T.HashName
+            && next !== T.ColorIdentStart;
+        },
+        ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [ctx] })
       },
-      ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [ctx] })
-    },
-    { ALT: () => $.SUBRULE($.atRule, { ARGS: [ctx] }) },
+      {
+        GATE: () => isVariable,
+        ALT: () => $.SUBRULE($.varDeclarationOrCall, { ARGS: [ctx] })
+      },
+      {
+        GATE: () => !isVariable,
+        ALT: () => $.SUBRULE($.atRule, { ARGS: [ctx] })
+      },
 
+      /**
+       * Historically, Less allows `@charset` anywhere,
+       * to avoid outputting it in the wrong place.
+       * Ideally, this would result in an error if, say,
+       * the `@charset` was defined at the bottom of the file,
+       * but that wasn't the solution made.
+       * @see https://github.com/less/less.js/issues/2126
+       */
+      {
+        GATE: () => $.looseMode,
+        ALT: () => $.CONSUME(T.Charset)
+      },
+      { ALT: () => $.CONSUME2(T.Semi) }
+      // { ALT: () => $.SUBRULE($.mixinCall) }
+    ];
+  };
+
+  return (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE;
+
+    const isRoot = !!ctx.isRoot;
+    let context: TreeContext;
+
+    if (!RECORDING_PHASE) {
+      context = this.context;
+    }
+    let rules: Node[];
+
+    if (!RECORDING_PHASE) {
+      rules = [];
+    }
+
+    let requiredSemi = false;
+
+    let lastRule: Node | undefined;
     /**
-     * Historically, Less allows `@charset` anywhere,
-     * to avoid outputting it in the wrong place.
-     * Ideally, this would result in an error if, say,
-     * the `@charset` was defined at the bottom of the file,
-     * but that wasn't the solution made.
-     * @see https://github.com/less/less.js/issues/2126
+     * In this production rule, semi-colons are not required
+     * but this is repurposed by declarationList and by Less / Sass,
+     * so that's why this gate is here.
      */
-    {
-      GATE: () => $.looseMode,
-      ALT: () => $.CONSUME(T.Charset)
-    },
-    { ALT: () => $.CONSUME2(T.Semi) }
-    // { ALT: () => $.SUBRULE($.mixinCall) }
-  ];
+    $.MANY({
+      GATE: () => !requiredSemi || (requiredSemi && (
+        $.LA(1).tokenType === T.Semi
+        || $.LA(0).tokenType === T.Semi
+      )),
+      DEF: () => {
+        const localAlt = typeof ruleAlt === 'function' ? ruleAlt(ctx) : ruleAlt;
+        let value = $.OR(localAlt);
+        if (!RECORDING_PHASE) {
+          if (!(value instanceof Node)) {
+            /** This is a semi-colon token */
+            if (lastRule) {
+              lastRule.options.semi = true;
+            } else {
+              rules.push(new Any(';', { role: 'semi' }, $.getLocationInfo($.LA(1)), context));
+            }
+          } else {
+            requiredSemi = !!value.requiredSemi;
+            rules.push(value);
+            lastRule = value;
+          }
+        }
+      }
+    });
 
-  return cssMain.call(this, T, ruleAlt as any);
+    if (!RECORDING_PHASE) {
+      let returnNode = $.getRulesWithComments(rules!, $.getLocationInfo($.LA(1)));
+      // Attaches remaining whitespace at the end of rules
+      const wrapped = $.wrap(returnNode!, true);
+
+      return wrapped;
+    }
+  };
 }
 
 export function declarationList(this: P, T: TokenMap) {
   const $ = this;
 
-  let ruleAlt = (ctx: RuleContext = {}) => [
-    { ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] }) },
-    { ALT: () => $.SUBRULE($.extendList, { ARGS: [ctx] }) },
-    { ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] }) },
-    { ALT: () => $.SUBRULE($.innerAtRule, { ARGS: [ctx] }) },
-    {
-      GATE: () => {
-        let next = $.LA(1).tokenType;
-        return next === T.DotName || next === T.HashName || next === T.ColorIdentStart;
+  let ruleAlt = (ctx: RuleContext = {}) => {
+    let isVariable = isVariableLike.call(this, T);
+    return [
+      { ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] }) },
+      { ALT: () => $.SUBRULE($.extendList, { ARGS: [ctx] }) },
+      { ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] }) },
+      {
+        GATE: () => isVariable,
+        ALT: () => $.SUBRULE($.varDeclarationOrCall, { ARGS: [ctx] })
       },
-      ALT: () => {
-        return $.SUBRULE($.mixinOrQualifiedRule, { ARGS: [{ ...ctx, inner: true }] });
-      }
-    },
-    {
-      GATE: () => {
-        let next = $.LA(1).tokenType;
-        return next !== T.DotName
-          && next !== T.HashName
-          && next !== T.ColorIdentStart;
+      {
+        GATE: () => !isVariable,
+        ALT: () => $.SUBRULE($.innerAtRule, { ARGS: [ctx] })
       },
-      ALT: () => {
-        return $.SUBRULE($.qualifiedRule, { ARGS: [{ ...ctx, inner: true }] });
-      }
-    },
-    { ALT: () => $.CONSUME2(T.Semi) }
-  ];
+      {
+        GATE: () => {
+          let next = $.LA(1).tokenType;
+          return next === T.DotName || next === T.HashName || next === T.ColorIdentStart;
+        },
+        ALT: () => {
+          return $.SUBRULE($.mixinOrQualifiedRule, { ARGS: [{ ...ctx, inner: true }] });
+        }
+      },
+      {
+        GATE: () => {
+          let next = $.LA(1).tokenType;
+          return next !== T.DotName
+            && next !== T.HashName
+            && next !== T.ColorIdentStart;
+        },
+        ALT: () => {
+          return $.SUBRULE($.qualifiedRule, { ARGS: [{ ...ctx, inner: true }] });
+        }
+      },
+      { ALT: () => $.CONSUME2(T.Semi) }
+    ];
+  };
 
   return (ctx: RuleContext = {}) => cssMain.call(this, T, ruleAlt)(ctx);
 }
@@ -974,26 +1075,8 @@ const getInterpolatedOrString = (name: string): Interpolated | string => {
 };
 
 /** Less variables */
-export function unknownAtRule(this: P, T: TokenMap) {
+export function varDeclarationOrCall(this: P, T: TokenMap) {
   const $ = this;
-
-  /**
-   * Starts with a colon, with these conditions
-   *  1. It is not preceded by a space or
-   *  2. If it is preceded by a space, then it is
-   *     followed by a space.
-   */
-  const isVariableLike = () => {
-    let token = $.LA(2);
-    let isColon = token.tokenType === T.Colon;
-    if (!isColon) {
-      return false;
-    }
-    let isVariable = !$.preSkippedTokenMap.has(token.startOffset);
-    return isVariable;
-  };
-
-  const isNotVariableLike = () => !isVariableLike();
 
   /**
    * Less doesn't allow variable variables anymore? It used to. Not sure
@@ -1007,22 +1090,20 @@ export function unknownAtRule(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     $.startRule();
 
-    let name: IToken;
+    let name = $.SUBRULE($.varName, { ARGS: [ctx] });
     let value: Node | undefined;
     let args: List | undefined;
     let important: IToken | undefined;
 
-    let returnVal: Node | undefined = $.OR2([
+    $.OR([
       {
         /**
          * This is a variable declaration
          * Disallows `@atrule :foo;` because it resembles a pseudo-selector
          */
-        GATE: isVariableLike,
         ALT: () => {
-          name = $.SUBRULE($.varName, { ARGS: [ctx] });
           $.CONSUME(T.Colon);
-          return $.OR4([
+          return $.OR2([
             /**
              * This needs to be gated early, even though it is
              * gated again in the valueList production, because
@@ -1057,7 +1138,7 @@ export function unknownAtRule(this: P, T: TokenMap) {
       },
       /** This is a variable call */
       {
-        GATE: () => $.noSep(1) && $.LA(2).tokenType === T.LParen,
+        GATE: () => $.noSep() && $.LA(1).tokenType === T.LParen,
         /**
          * This is a change from Less 1.x-4.x
          * e.g.
@@ -1068,23 +1149,14 @@ export function unknownAtRule(this: P, T: TokenMap) {
          * @dr(arg1, arg2);
          */
         ALT: () => {
-          name = $.SUBRULE2($.varName, { ARGS: [ctx] });
           args = $.SUBRULE($.mixinArgs, { ARGS: [ctx] });
           return args;
         }
-      },
-      /** Just a regular unknown at-rule */
-      {
-        GATE: isNotVariableLike,
-        ALT: cssUnknownAtRule.call(this, T)
       }
     ]);
 
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
-      if (returnVal instanceof AtRule) {
-        return returnVal;
-      }
       let nameVal: string | Interpolated = getInterpolatedOrString(name!.image);
       let nameNode: Node;
       if (!(nameVal instanceof Interpolated)) {
@@ -2647,7 +2719,7 @@ export function mixinArgList(this: P, T: TokenMap) {
 export function varName(this: P, T: TokenMap) {
   const $ = this;
   let nameAlt = [
-    { ALT: () => $.CONSUME(T.AtKeyword) },
+    { ALT: () => $.CONSUME(T.AtName) },
     { ALT: () => $.CONSUME(T.AtKeywordLessExtension) }
   ];
   return () => $.OR(nameAlt);

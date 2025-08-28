@@ -6,7 +6,6 @@ import { cast } from './util/cast';
 import { callWithContext } from '../define-function';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
-import { getFunctionFromMixins, type MixinEntry } from './rules';
 
 export type CallValue = {
   /**
