@@ -14,10 +14,13 @@ import {
   Reference,
   DefaultGuard,
   JsExpression,
+  Interpolated,
+  Any,
   type Node,
   type Extend,
   type ComplexSelector
 } from '@jesscss/core';
+import { getInterpolatedOrString } from './utils';
 
 import { type LessTokenType, type LessExtraTokenType } from './lessTokens';
 import * as productions from './productions';
@@ -159,6 +162,13 @@ export class LessActionsParser extends CssActionsParser {
       return new DefaultGuard(token.image, undefined, this.getLocationInfo(token), this.context);
     } else if (tokenType === TT['JavaScript']) {
       return new JsExpression(token.image, undefined, this.getLocationInfo(token), this.context);
+    } else if (tokenType === TT['InterpolatedIdent']) {
+      const result = getInterpolatedOrString(token.image, this.getLocationInfo(token), this.context);
+      if (result instanceof Interpolated) {
+        return result;
+      } else {
+        return new Any(result, { role: 'ident' }, this.getLocationInfo(token), this.context);
+      }
     }
     return super.processValueToken(token);
   }

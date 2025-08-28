@@ -142,7 +142,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     node.preEvaluated = true;
     let { name } = node.value;
     if (name && name instanceof Interpolated) {
-      const maybeKey = (name as Interpolated<'name'>).evalToGeneric(context);
+      const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return (maybeKey as Promise<Any<'name'>>).then((key) => {
           node.value.name = key;

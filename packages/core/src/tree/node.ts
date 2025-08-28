@@ -597,8 +597,11 @@ export abstract class Node<
         return nilNode.inherit(n);
       }
     );
-    newNode.stripPrePost(newNode, 'pre');
-    newNode.stripPrePost(newNode, 'post');
+    /** Don't return pre / post on copied nodes? */
+    newNode.pre = undefined;
+    newNode.post = undefined;
+    // newNode.stripPrePost(newNode, 'pre');
+    // newNode.stripPrePost(newNode, 'post');
     return newNode;
   }
 

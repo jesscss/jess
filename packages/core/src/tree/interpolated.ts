@@ -1,4 +1,4 @@
-import { type Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, defineType } from './node';
+import { Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, defineType } from './node';
 import { Any, type AnyRole, type AnyOptions } from './any';
 import type { Context } from '../context';
 import { isNode } from './util/is-node';
@@ -31,8 +31,8 @@ export type InterpolatedValue = {
  */
 export interface Interpolated<
   Role extends AnyRole = AnyRole
-> extends SimpleSelector<InterpolatedValue, AnyOptions<Role>> {
-  eval(context: Context): MaybePromise<Interpolated<Role>>;
+> extends Node<InterpolatedValue, AnyOptions<Role>> {
+  eval(context: Context): MaybePromise<Any<Role>>;
 }
 /**
  * An interpolated value is one that contains
@@ -47,7 +47,7 @@ export interface Interpolated<
  */
 export class Interpolated<
   Role extends AnyRole = AnyRole
-> extends SimpleSelector<InterpolatedValue, AnyOptions<Role>> {
+> extends Node<InterpolatedValue, AnyOptions<Role>> {
   type = 'Interpolated' as const;
   shortType = 'interpolated' as const;
 
@@ -62,12 +62,19 @@ export class Interpolated<
   }
 
   replace(replacements: Node[], options?: PrintOptions): string {
+    options = getPrintOptions(options);
     let { source } = this.value;
     let output = source;
     let i = 0;
+    // Use capture to isolate replacement node output when we have an OutputWriter
+    const w = options.writer!;
     output = output.replace(INTERPOLATION_PLACEHOLDER_REGEXP, () => {
-      return replacements[i++]?.toTrimmedString(options) ?? '';
+      const replacement = replacements[i++];
+      const result = w.capture(() => replacement?.toTrimmedString(options) ?? '');
+      // Trim whitespace to avoid issues with Sequence nodes that have pre/post spacing
+      return result.trim();
     });
+
     return output;
   }
 
@@ -75,7 +82,8 @@ export class Interpolated<
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    w.add(this.replace(this.value.replacements, options), this);
+    const result = this.replace(this.value.replacements, options);
+    w.add(result, this);
     return w.getSince(mark);
   }
 
@@ -109,27 +117,30 @@ export class Interpolated<
   }
 
   createGeneric() {
-    let any = new Any<Role>(this.toTrimmedString()).inherit(this);
+    const trimmedString = this.toTrimmedString();
+    let any = new Any<Role>(trimmedString).inherit(this);
     any.options.role = this.options.role;
     return any;
   }
 
-  /** Convenience: evaluate replacements then convert to Any<Role> */
-  evalToGeneric(context: Context): MaybePromise<Any<Role>> {
-    const out = this.eval(context);
-    if (isThenable(out)) {
-      return (out as Promise<Interpolated<Role>>).then(node => node.createGeneric() as Any<Role>);
-    }
-    return (out as Interpolated<Role>).createGeneric() as Any<Role>;
-  }
-
   /** Convenience: evaluate replacements then convert to Selector (BasicSelector or SelectorList) */
   evalToSelector(context: Context): MaybePromise<Selector> {
-    const out = this.eval(context);
+    const out = this._evalToInterpolated(context);
     if (isThenable(out)) {
       return (out as Promise<Interpolated<Role>>).then(node => node.createSelector());
     }
     return (out as Interpolated<Role>).createSelector();
+  }
+
+  override evalNode(context: Context): MaybePromise<Any> {
+    const out = this._evalToInterpolated(context);
+    if (isThenable(out)) {
+      return (out as Promise<Interpolated<Role>>).then((node) => {
+        return node.createGeneric();
+      });
+    }
+    const result = (out as Interpolated<Role>).createGeneric();
+    return result;
   }
 
   /**
@@ -137,7 +148,7 @@ export class Interpolated<
    * because depending on the context, it will turn into different
    * node types.
    */
-  override evalNode(context: Context): MaybePromise<this> {
+  _evalToInterpolated(context: Context): MaybePromise<this> {
     let node = this;
     let { replacements } = node.value;
 

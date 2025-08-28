@@ -63,6 +63,7 @@ import {
   type Selector,
   INTERPOLATION_PLACEHOLDER
 } from '@jesscss/core';
+import { getInterpolatedOrString } from './utils';
 
 const isEscapedString = function(this: P, T: TokenMap) {
   const next = this.LA(1);
@@ -1031,26 +1032,6 @@ export function importAtRule(this: P, T: TokenMap) {
   };
 }
 
-/* This is for variable variables (e.g. `@id-@num`) */
-const getInterpolatedOrString = (name: string): Interpolated | string => {
-  let nextPos = name.indexOf('@', 1);
-  if (nextPos === -1) {
-    nextPos = name.indexOf('$', 1);
-  }
-  if (nextPos === -1) {
-    return name.slice(1);
-  }
-  let start = name.slice(1, nextPos);
-  let end = name.slice(nextPos);
-
-  return new Interpolated({
-    source: start + INTERPOLATION_PLACEHOLDER,
-    replacements: [
-      new Reference(getInterpolatedOrString(end) as string, { type: end.startsWith('@') ? 'variable' : 'property', role: 'ident' })
-    ]
-  }, { role: 'ident' });
-};
-
 /** Less variables */
 export function varDeclarationOrCall(this: P, T: TokenMap) {
   const $ = this;
@@ -1785,6 +1766,9 @@ export function value(this: P, T: TokenMap) {
       },
       { ALT: () => $.SUBRULE($.inlineMixinCall, { ARGS: [ctx] }) },
       { ALT: () => $.SUBRULE($.varReference, { ARGS: [ctx] }) },
+      {
+        ALT: () => $.CONSUME(T.InterpolatedIdent)
+      },
       { ALT: () => $.CONSUME(T.Ident) },
       { ALT: () => $.CONSUME(T.DefaultGuardFunc) },
       { ALT: () => $.CONSUME(T.Dimension) },
@@ -2500,6 +2484,7 @@ export function accessors(this: P, T: TokenMap) {
     { ALT: () => $.CONSUME(T.NestedReference) },
     { ALT: () => $.CONSUME(T.AtKeyword) },
     { ALT: () => $.CONSUME(T.PropertyReference) },
+    { ALT: () => $.CONSUME(T.InterpolatedIdent) },
     { ALT: () => $.CONSUME(T.Ident) }
   ];
 
@@ -2509,7 +2494,7 @@ export function accessors(this: P, T: TokenMap) {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
     let keyToken: IToken | undefined;
-    let key: string | number | Reference;
+    let key: string | number | Reference | Interpolated;
     let returnNode: Node;
 
     $.CONSUME(T.LSquare);
@@ -2521,6 +2506,9 @@ export function accessors(this: P, T: TokenMap) {
       if (keyToken) {
         if (keyToken.tokenType === T.NestedReference) {
           key = getReferenceFromLookupToken(keyToken);
+        } else if (keyToken.tokenType === T.InterpolatedIdent) {
+          // Handle interpolated identifiers
+          key = getInterpolatedOrString(keyToken.image, $.getLocationInfo(keyToken), this.context);
         } else {
           let tokenStr = keyToken.image;
           let tokenStart = tokenStr[0];

@@ -21,12 +21,10 @@ export type SourceSegment = {
   origColumn: number;  // 0-based
 };
 
-export function getPrintOptions(options?: PrintOptions): PrintOptions {
-  options = options ?? {
-    writer: new OutputWriter()
-  };
+export function getPrintOptions(options?: PrintOptions): PrintOptions & { writer: OutputWriter } {
+  options = options ?? {};
   options.writer ??= new OutputWriter();
-  return options;
+  return options as PrintOptions & { writer: OutputWriter };
 }
 
 export class OutputWriter implements OutputWriter {
@@ -42,7 +40,9 @@ export class OutputWriter implements OutputWriter {
   get column() { return this._column; }
 
   add(text: string, originParam?: unknown): void {
-    if (!text) return;
+    if (!text) {
+      return;
+    }
     this.chunks.push(text);
 
     // Record a mapping segment if we have origin location info
@@ -78,7 +78,9 @@ export class OutputWriter implements OutputWriter {
     this._line++;
     for (;;) {
       const next = text.indexOf('\n', i + 1);
-      if (next === -1) break;
+      if (next === -1) {
+        break;
+      }
       this._line++;
       i = next;
     }
@@ -91,13 +93,17 @@ export class OutputWriter implements OutputWriter {
   }
 
   getSince(mark: number): string {
-    if (mark < 0 || mark > this.chunks.length) return '';
+    if (mark < 0 || mark > this.chunks.length) {
+      return '';
+    }
     return this.chunks.slice(mark).join('');
   }
 
   /** Restore writer state to a given mark, discarding appended chunks and segments */
   restore(mark: number): void {
-    if (mark < 0 || mark > this.chunks.length) return;
+    if (mark < 0 || mark > this.chunks.length) {
+      return;
+    }
     this.chunks.length = mark;
     const pos = this._positions[mark - 1];
     if (pos) {

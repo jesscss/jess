@@ -13,6 +13,7 @@ import { type PrintOptions, getPrintOptions } from './util/print';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { getFunctionFromMixins } from './rules';
 import type { MixinEntry, Rules } from './rules';
+import type { Interpolated } from './interpolated';
 
 /**
  * The type is determined by syntax
@@ -41,7 +42,8 @@ export type ReferenceValue = {
     | Num // $.key or $[key] or $*key
     | Quoted // $['key']
     | Selector // $*(.selector)
-    | Reference; // $.key
+    | Reference // $.key
+    | Interpolated; // @{variable} interpolation
 };
 
 export type ReferenceOptions = {
@@ -163,9 +165,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       },
       (keyEval) => {
         let valueKey = isNode(keyEval) ? keyEval.valueOf() : keyEval;
-        
 
-        
         let resolvedTarget = target ? target.eval(context) : context.rulesContext;
         if (isThenable(resolvedTarget)) {
           return (resolvedTarget as Promise<Node>).then(rt => [rt, valueKey] as [Node, string]);
@@ -244,10 +244,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               }
             } else {
               if (isNode(resolvedTarget, 'Rules')) {
-                console.log('Looking for declaration:', valueKey, 'in Rules node');
-                console.log('Rules node type:', resolvedTarget.type);
                 returnVal = resolvedTarget.find('declaration', `${valueKey}`, undefined, opts);
-                console.log('Find result:', returnVal);
               } else if (isNode(resolvedTarget, 'JsObject')) {
                 returnVal = resolvedTarget.value[valueKey];
               }
@@ -299,10 +296,11 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             return any;
           }
           // Evaluate the fallbackValue if it's a Node
-          if (fallbackValue instanceof Node) {
-            return fallbackValue.eval(context);
+          let out = fallbackValue.eval(context);
+          if (isThenable(out)) {
+            return (out as Promise<Node>).then(node => node.copy());
           }
-          return fallbackValue as Node;
+          return out.copy();
         }
         if (isNode(returnVal, 'VarDeclaration')) {
           context.searchScope.add(returnVal);
@@ -335,7 +333,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 context.calcFrames.push(true);
               }
               context.searchScope.delete(returnVal);
-              return evald;
+              return evald.copy();
             }
           );
         } else if (isArray(returnVal)) {

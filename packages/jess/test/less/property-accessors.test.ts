@@ -105,7 +105,8 @@ describe('Property Accessors', () => {
         @suffix: mary;
 
         .test {
-          color: @config[@{prefix}@{suffix}];
+          @prop: @{prefix}@{suffix};
+          color: @config[@prop];
         }
       `;
 

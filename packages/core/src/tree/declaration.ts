@@ -189,9 +189,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     };
 
     if (name instanceof Interpolated) {
-      const maybeKey = (name as Interpolated<'property'>).evalToGeneric(context);
+      const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
-        return (maybeKey as Promise<Any<'property'>>).then((key) => {
+        return maybeKey.then((key) => {
           node.value.name = key;
           return applyAssignmentNormalization(key);
         });
