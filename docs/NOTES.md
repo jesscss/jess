@@ -1,3 +1,19 @@
+# Aug 28, 2025
+
+## What We Accomplished Today
+- **Fixed critical variable lookup bug**: Resolved key mismatch in `DeclarationRegistry` where `VarDeclaration` nodes were stored with `@` prefix but looked up without it
+- **Fixed property accessor evaluation**: Updated `accessors` function to correctly evaluate variable keys in property accessors like `@config[@key]`
+- **Improved test coverage**: 107/114 tests now passing (up from widespread failures)
+- **Cleaned up debugging code**: Removed all console.log statements from core files
+
+## What's Next
+- **Nested ruleset property accessors**: `@config[@colors][primary]` syntax not working - need to implement nested ruleset parsing and property access
+- **Namespace lookups**: `#namespace > .scoped-mixin()` not resolving correctly - need namespace resolution system
+- **Static name resolution**: Some mixin and ruleset lookups failing (e.g., `.ruleset`, `.scoped-mixin`)
+- **Grammar ambiguity warnings**: Several parser warnings about ambiguous alternatives in value rules
+
+---
+
 # Aug 21, 2025
 
 - Made the awaitable-pipe package to normalize sync / async handling

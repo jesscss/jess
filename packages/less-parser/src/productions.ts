@@ -1118,7 +1118,9 @@ export function varDeclarationOrCall(this: P, T: TokenMap) {
       let nameVal: string | Interpolated = getInterpolatedOrString(name!.image);
       let nameNode: Node;
       if (!(nameVal instanceof Interpolated)) {
-        nameNode = new Any(nameVal, { role: 'ident' }, $.getLocationInfo(name!), this.context);
+        // Strip @ prefix for variable declarations
+        const varName = nameVal.startsWith('@') ? nameVal.slice(1) : nameVal;
+        nameNode = new Any(varName, { role: 'ident' }, $.getLocationInfo(name!), this.context);
       } else {
         nameNode = nameVal;
       }
@@ -2467,19 +2469,6 @@ export function mixinArgs(this: P, T: TokenMap) {
 export function accessors(this: P, T: TokenMap) {
   const $ = this;
 
-  const getReferenceFromLookupToken = (token: IToken) => {
-    let tokenStr = token.image;
-    let firstChar = tokenStr[0];
-    if (firstChar !== '$' && firstChar !== '@') {
-      /** Treat idents as property lookups */
-      tokenStr = '$' + tokenStr;
-    }
-    let key = getInterpolatedOrString(tokenStr);
-    let type: 'variable' | 'property' = tokenStr.startsWith('@') ? 'variable' : 'property';
-
-    return new Reference({ key }, { type }, $.getLocationInfo(token), this.context);
-  };
-
   let keyAlt = [
     { ALT: () => $.CONSUME(T.NestedReference) },
     { ALT: () => $.CONSUME(T.AtKeyword) },
@@ -2504,22 +2493,16 @@ export function accessors(this: P, T: TokenMap) {
     if (!RECORDING_PHASE) {
       let isVariableKey = false;
       if (keyToken) {
+        // Handle all token types consistently
         if (keyToken.tokenType === T.NestedReference) {
-          key = getReferenceFromLookupToken(keyToken);
-        } else if (keyToken.tokenType === T.InterpolatedIdent) {
-          // Handle interpolated identifiers
-          key = getInterpolatedOrString(keyToken.image, $.getLocationInfo(keyToken), this.context);
-        } else {
+          // For NestedReference, add $ prefix if not present
           let tokenStr = keyToken.image;
-          let tokenStart = tokenStr[0];
-          if (tokenStart === '@') {
-            // Strip the @ prefix for variable accessors
-            key = tokenStr.slice(1);
-            isVariableKey = true;
-          } else {
-            // For simple identifiers, just use the string as the key, not a Reference
-            key = tokenStart === '$' ? tokenStr.slice(1) : tokenStr;
+          if (!tokenStr.startsWith('$') && !tokenStr.startsWith('@')) {
+            tokenStr = '$' + tokenStr;
           }
+          key = getInterpolatedOrString(tokenStr, $.getLocationInfo(keyToken), this.context);
+        } else {
+          key = getInterpolatedOrString(keyToken.image, $.getLocationInfo(keyToken), this.context);
         }
       } else {
         key = -1;
@@ -2528,12 +2511,32 @@ export function accessors(this: P, T: TokenMap) {
       // Replace Lookup with a Reference targeting the current nodeContext
       const targetRef = nodeContext as Reference | Node;
 
-      // Determine the type based on the key
-      let refType: 'property' | 'variable' = 'property';
-      if (isVariableKey) {
-        refType = 'variable';
+      // For property accessors, we need to handle variable keys differently
+      // If the key is a variable (starts with @), we need to evaluate it first
+      if (typeof key === 'string' && key.startsWith('@')) {
+        // Create a Reference to evaluate the variable key
+        const keyVarName = key.slice(1); // Remove @ prefix
+        const keyRef = new Reference(keyVarName, { type: 'variable' }, location, this.context);
+        // Create a Reference that will evaluate the key and then look up the property
+        returnNode = new Reference({ target: targetRef as any, key: keyRef }, { type: 'property' }, location, this.context);
+      } else {
+        // Handle literal keys and other cases
+        let refType: 'property' | 'variable' = 'property';
+        let finalKey = key;
+
+        if (typeof key === 'string') {
+          if (key.startsWith('$')) {
+            finalKey = key.slice(1); // Remove $ prefix for property lookup
+          }
+        } else if (key instanceof Interpolated) {
+          // For interpolated keys, check the source and slice if needed
+          if (key.value.source.startsWith('$')) {
+            key.value.source = key.value.source.slice(1);
+          }
+        }
+
+        returnNode = new Reference({ target: targetRef as any, key: finalKey as any }, { type: refType }, location, this.context);
       }
-      returnNode = new Reference({ target: targetRef as any, key: key as any }, { type: refType }, location, this.context);
     }
     /**
      * Allows chaining of lookups / calls

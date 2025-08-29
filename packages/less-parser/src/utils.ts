@@ -56,7 +56,8 @@ export const getInterpolatedOrString = (name: string, location?: any, context?: 
   const dollarPos = name.indexOf('$', 1);
 
   if (atPos === -1 && dollarPos === -1) {
-    return name.slice(1);
+    // For simple @ or $ prefixes, return the full string as literal
+    return name;
   }
 
   const nextPos = atPos !== -1 ? atPos : dollarPos;

@@ -6,10 +6,10 @@ describe('Basic Variables', () => {
 
   it('should handle simple variable declaration and usage', async () => {
     const lessCode = `
-      @color: red;
+      @myColor: red;
       
       .test {
-        color: @color;
+        color: @myColor;
       }
     `;
 
@@ -19,12 +19,12 @@ describe('Basic Variables', () => {
 
   it('should handle multiple variables', async () => {
     const lessCode = `
-      @primary: blue;
-      @secondary: green;
+      @myPrimary: blue;
+      @mySecondary: green;
       
       .test {
-        color: @primary;
-        background: @secondary;
+        color: @myPrimary;
+        background: @mySecondary;
       }
     `;
 
@@ -33,4 +33,3 @@ describe('Basic Variables', () => {
     expect(css).toContain('background: green');
   });
 });
-

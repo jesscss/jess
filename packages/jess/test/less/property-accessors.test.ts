@@ -119,10 +119,8 @@ describe('Property Accessors', () => {
     it('should handle property accessor from mixin return value', async () => {
       const lessCode = `
         .get-config() {
-          return {
-            color: red;
-            size: 16px;
-          }
+          color: red;
+          size: 16px;
         }
 
         @config: .get-config();
@@ -141,10 +139,8 @@ describe('Property Accessors', () => {
     it('should handle property accessor with mixin parameters', async () => {
       const lessCode = `
         .create-config(@theme) {
-          return {
-            color: @theme;
-            background: white;
-          }
+          color: @theme;
+          background: white;
         }
 
         @config: .create-config(red);

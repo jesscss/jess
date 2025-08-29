@@ -93,7 +93,6 @@ export abstract class Registry<
           /** Locals can be searched once but not twice */
           let newLocal = local || Boolean(r.node.options?.local);
           let newOpts = options ? { ...options, readonly: readonly || r.readonly } : { readonly: readonly || r.readonly };
-          newOpts.searchParents = false;
           newOpts.local = newLocal;
           newOpts.start = undefined;
           let result = r.node.find(findType, key, filterType, newOpts);
@@ -582,6 +581,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
       local = false,
       start
     } = options ?? {};
+
     let newReadonly: boolean | undefined = false;
     while (rules) {
       let currentReadonly = options?.readonly || rules.options.readonly;
