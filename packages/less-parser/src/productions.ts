@@ -61,7 +61,8 @@ import {
   Nil,
   type ComplexSelectorComponent,
   type Selector,
-  INTERPOLATION_PLACEHOLDER
+  INTERPOLATION_PLACEHOLDER,
+  type ReferenceOptions
 } from '@jesscss/core';
 import { getInterpolatedOrString } from './utils';
 
@@ -670,7 +671,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                   // Convert Any nodes to Reference nodes for mixin call arguments
                   convertArgsForCall(args);
                 }
-                let result = $.OPTION3(() => $.SUBRULE($.accessors, { ARGS: [{ ...ctx, node: createMixinCall(location) }] }));
+                let result = $.OPTION3(() => $.SUBRULE($.lookupOrCall, { ARGS: [{ ...ctx, node: createMixinCall(location) }] }));
                 return result ?? createMixinCall(location!);
               }
             }
@@ -1616,7 +1617,7 @@ export function varReference(this: P, T: TokenMap) {
         GATE: () => node?.options?.type === 'variable',
         ALT: () => {
           node = $.SUBRULE(
-            $.accessors,
+            $.lookupOrCall,
             { ARGS: [{ ...ctx, node: node! }] }
           );
         }
@@ -1636,7 +1637,7 @@ export function valueReference(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     return $.OR([
       { ALT: () => $.SUBRULE($.varReference, { ARGS: [ctx] }) },
-      { ALT: () => $.SUBRULE($.inlineMixinCall, { ARGS: [ctx] }) }
+      { ALT: () => $.SUBRULE($.mixinReference, { ARGS: [ctx] }) }
     ]);
   };
 }
@@ -1759,21 +1760,15 @@ export function value(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     let node: Node = $.OR([
-      /** Function should appear before Ident */
-      {
-        GATE: () => tokenMatcher($.LA(1), T.FunctionStart),
-        ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] })
-      },
-      { ALT: () => $.SUBRULE($.inlineMixinCall, { ARGS: [ctx] }) },
+      { ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] }) },
+      /** @todo - mixinReference will sometimes capture colors */
+      { ALT: () => $.SUBRULE($.mixinReference, { ARGS: [ctx] }) },
       { ALT: () => $.SUBRULE($.varReference, { ARGS: [ctx] }) },
-      {
-        ALT: () => $.CONSUME(T.InterpolatedIdent)
-      },
       { ALT: () => $.CONSUME(T.Ident) },
       { ALT: () => $.CONSUME(T.DefaultGuardFunc) },
       { ALT: () => $.CONSUME(T.Dimension) },
       { ALT: () => $.CONSUME(T.Number) },
-      { ALT: () => $.CONSUME(T.Color) },
+      { ALT: () => $.CONSUME(T.ColorIntStart) },
       { ALT: () => $.SUBRULE($.string, { ARGS: [ctx] }) },
       { ALT: () => $.CONSUME(T.JavaScript) },
       /** Explicitly not marked as an ident */
@@ -1782,16 +1777,6 @@ export function value(this: P, T: TokenMap) {
       {
         GATE: () => $.looseMode && !!ctx.inner,
         ALT: () => $.CONSUME(T.Colon)
-      },
-      {
-        /** Allow plain classes */
-        GATE: () => $.looseMode,
-        ALT: () => $.CONSUME(T.DotName)
-      },
-      {
-        /** Allow plain Ids */
-        GATE: () => $.looseMode,
-        ALT: () => $.CONSUME(T.HashName)
       },
       {
         GATE: () => $.looseMode,
@@ -2319,11 +2304,11 @@ export function mixinName(this: P, T: TokenMap) {
       if (nameValue.includes('@') || nameValue.includes('$')) {
         nameNode = getInterpolated(nameValue, location, this.context);
         if (asReference) {
-          nameNode = new Reference({ key: nameNode as Interpolated }, { type: 'mixin-ruleset', role: 'name' }, location, this.context);
+          nameNode = new Reference({ target: ctx.node as Call | Reference, key: nameNode as Interpolated }, { type: 'mixin-ruleset', role: 'name' }, location, this.context);
         }
       } else {
         if (asReference) {
-          nameNode = new Reference({ key: nameValue }, { type: 'mixin-ruleset', role: 'name' }, location, this.context);
+          nameNode = new Reference({ target: ctx.node as Call | Reference, key: nameValue }, { type: 'mixin-ruleset', role: 'name' }, location, this.context);
         } else {
           nameNode = $.wrap(new Any(nameValue, { role: 'name' }, $.getLocationInfo(name), this.context), true);
         }
@@ -2333,122 +2318,44 @@ export function mixinName(this: P, T: TokenMap) {
   };
 }
 
-/** @todo - should these names be Jess-normalized when saved? */
-export function mixinReference(this: P, T: TokenMap) {
-  const $ = this;
-
-  return (ctx: RuleContext = {}) => {
-    let RECORDING_PHASE = $.RECORDING_PHASE;
-    let leftNode = $.SUBRULE($.mixinName, { ARGS: [{ ...ctx, asReference: true }] });
-    $.MANY(() => {
-      $.OPTION(() => $.CONSUME(T.Gt));
-      let rightNode = $.SUBRULE2($.mixinName, { ARGS: [{ ...ctx, asReference: true }] });
-      if (!RECORDING_PHASE) {
-        const loc = $.getLocationFromNodes([leftNode, rightNode]);
-        leftNode = new Reference({ target: new Call({ name: leftNode }), key: rightNode }, { type: 'mixin-ruleset', role: 'name' }, loc, this.context);
-      }
-    });
-    return leftNode;
-  };
-}
-
-/** e.g. #ns > .mixin() */
-// export function mixinCall(this: P, T: TokenMap) {
-//   const $ = this;
-
-//   return () => {
-//     let RECORDING_PHASE = $.RECORDING_PHASE;
-//     $.startRule();
-//     let ref = $.SUBRULE($.mixinReference);
-//     let semi: boolean | undefined;
-//     let argList: List | undefined;
-//     let important: IToken | undefined;
-//     /** Either needs to end in parens or in a semi-colon (or both) */
-//     $.OR([
-//       {
-//         ALT: () => {
-//           argList = $.SUBRULE($.mixinArgs);
-//           $.OPTION2(() => important = $.CONSUME(T.Important));
-//           $.OPTION3(() => {
-//             semi = true;
-//             $.CONSUME(T.Semi);
-//           });
-//         }
-//       },
-//       {
-//         ALT: () => {
-//           semi = true;
-//           $.CONSUME2(T.Semi);
-//         }
-//       }
-//     ]);
-//     if (!RECORDING_PHASE) {
-//       const location = $.endRule();
-//       const node = new Call({ name: ref, args: argList }, { markImportant: !!important }, location, this.context);
-//       if (semi) node.options.semi = true;
-//       return node;
-//     }
-//   };
-// }
-
 /**
  * Used within a value. These can be
  * chained more recursively, unlike
  * Less 1.x-4.x
  *   e.g. .mixin1() > .mixin2[@val1].ns() > .sub-mixin[@val2]
  *
- * Note: unlike valueReference, an inline mixin call doesn't
- * needs args or accessors.
+ * This production intelligently decides whether to produce a Call or Reference
+ * based on whether there are parentheses at the end:
+ * - foo: #id; // Reference
+ * - foo: .class; // Reference
+ * - foo: #id > .scoped; // Reference
+ * - foo: #id > .scoped(); // Call
+ * - foo: #id[]; // Reference with accessor
+ * - foo: #id > .scoped[foo]; // Reference with accessor
+ * - foo: #id > .scoped[@ref](); // Call with accessor
  */
-export function inlineMixinCall(this: P, T: TokenMap) {
+export function mixinReference(this: P, T: TokenMap) {
   const $ = this;
 
   return (ctx: RuleContext = {}) => {
-    let nodeContext = ctx.node;
-    let RECORDING_PHASE = $.RECORDING_PHASE;
+    let leftNode = $.SUBRULE($.mixinName, { ARGS: [{ ...ctx, asReference: true }] });
 
-    let argList: List | undefined;
-    let node: Node;
-    let ref = $.SUBRULE($.mixinReference, { ARGS: [ctx] });
-    if (!RECORDING_PHASE) {
-      if (nodeContext) {
-        const combinedLoc = $.getLocationFromNodes([nodeContext, ref]);
-        ref = new Reference({ target: new Call({ name: nodeContext }), key: ref }, { type: 'mixin-ruleset' }, combinedLoc, this.context);
-      }
-      node = new Call({ name: ref }, undefined, ref.location, this.context);
-    }
-    $.OR([
-      {
-        ALT: () => {
-          ctx.node = node;
-          node = $.SUBRULE($.accessors, { ARGS: [ctx] });
-        }
+    $.MANY({
+      GATE: () => {
+        let next = $.LA(1).tokenType;
+        return $.noSep() && (next === T.LParen || next === T.LSquare);
       },
-      {
-        ALT: () => {
-          argList = $.SUBRULE($.mixinArgs, { ARGS: [ctx] });
-          if (!RECORDING_PHASE) {
-            const RParen = $.LA(0);
-            const loc = $.getLocationFromNodes([node, RParen]);
-            node = new Call({ name: ref, args: argList }, undefined, loc, this.context);
-          }
-          $.OR2([
-            {
-              ALT: () => {
-                ctx.node = node;
-                node = $.SUBRULE2($.accessors, { ARGS: [ctx] });
-              }
-            },
-            {
-              GATE: () => !ctx.requireAccessorsAfterMixinCall,
-              ALT: () => EMPTY_ALT()
-            }
-          ]);
-        }
+      DEF: () => {
+        leftNode = $.SUBRULE($.lookupOrCall, { ARGS: [{ ...ctx, node: leftNode }] });
       }
-    ]);
+    });
 
-    return node!;
+    $.OPTION(() => {
+      $.OPTION2(() => $.CONSUME(T.Gt));
+      leftNode = $.SUBRULE2($.mixinReference, { ARGS: [{ ...ctx, node: leftNode }] });
+    });
+
+    return leftNode;
   };
 }
 
@@ -2464,7 +2371,7 @@ export function mixinArgs(this: P, T: TokenMap) {
   };
 }
 
-export function accessors(this: P, T: TokenMap) {
+export function lookupOrCall(this: P, T: TokenMap) {
   const $ = this;
 
   let keyAlt = [
@@ -2475,74 +2382,128 @@ export function accessors(this: P, T: TokenMap) {
     { ALT: () => $.CONSUME(T.Ident) }
   ];
 
-  /** The node passed in is what we're looking up on */
   return (ctx: RuleContext = {}) => {
-    let nodeContext = ctx.node! as Reference;
-    let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
-    let keyToken: IToken | undefined;
-    let key: string | number | Reference | Interpolated;
-    let returnNode: Node;
-
-    $.CONSUME(T.LSquare);
-    $.OPTION(() => keyToken = $.OR(keyAlt));
-    $.CONSUME(T.RSquare);
-
-    if (!RECORDING_PHASE) {
-      const location = $.endRule();
-      if (keyToken) {
-        let tokenStr = keyToken.image;
-        let type: 'variable' | 'property' = tokenStr.startsWith('@') ? 'variable' : 'property';
-        // Handle all token types consistently
-        if (keyToken.tokenType === T.NestedReference) {
-          // For NestedReference, add $ prefix if not present
-          let tokenStr = keyToken.image;
-          if (!tokenStr.startsWith('$') && !tokenStr.startsWith('@')) {
-            tokenStr = '$' + tokenStr;
-          }
-        }
-        let result = getInterpolatedOrString(tokenStr, $.getLocationInfo(keyToken), this.context);
-        returnNode = new Reference({ target: nodeContext, key: result }, { type }, location, this.context);
-      } else {
-        key = -1;
-        returnNode = new Reference({ target: nodeContext, key }, { type: 'index' }, location, this.context);
-      }
-    }
-    /**
-     * Allows chaining of lookups / calls
-     * @note - In Less, an additional call or accessor implies
-     * that the previous accessor is a mixin call, therefore
-     * it should be returned as a Call node.
-     */
-    $.OPTION2(() => {
-      $.OR2([
-        {
-          ALT: () => {
-            let args = $.SUBRULE($.mixinArgs, { ARGS: [ctx] });
-            if (!RECORDING_PHASE) {
-              let [startOffset, startLine, startColumn] = returnNode.location;
-              let { endOffset, endLine, endColumn } = $.LA(0);
-              returnNode = new Call({ name: returnNode, args }, undefined, [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!], this.context);
+    let RECORDING_PHASE = $.RECORDING_PHASE;
+    return $.OR([
+      {
+        ALT: () => {
+          let keyToken: IToken | undefined;
+          $.CONSUME(T.LSquare);
+          $.OPTION(() => keyToken = $.OR2(keyAlt));
+          $.CONSUME(T.RSquare);
+          if (!RECORDING_PHASE) {
+            if (keyToken) {
+              let tokenStr = keyToken.image;
+              let type: 'variable' | 'property' = tokenStr.startsWith('@') ? 'variable' : 'property';
+              // Handle all token types consistently
+              if (keyToken.tokenType === T.NestedReference) {
+                // For NestedReference, add $ prefix if not present
+                let tokenStr = keyToken.image;
+                if (!tokenStr.startsWith('$') && !tokenStr.startsWith('@')) {
+                  tokenStr = '$' + tokenStr;
+                }
+              }
+              let result = getInterpolatedOrString(tokenStr, $.getLocationInfo(keyToken), this.context);
+              return new Reference({ target: ctx.node as Call | Reference, key: result }, { type }, $.endRule(), this.context);
+            } else {
+              return new Reference({ target: ctx.node as Call | Reference, key: -1 }, { type: 'index' }, $.endRule(), this.context);
             }
           }
-        },
-        {
-          ALT: () => {
-            returnNode = $.SUBRULE($.inlineMixinCall, { ARGS: [{ ...ctx, node: returnNode }] });
-            return returnNode;
-          }
-        },
-        {
-          ALT: () => {
-            returnNode = $.SUBRULE($.accessors, { ARGS: [{ ...ctx, node: returnNode }] });
-            return returnNode;
+        }
+      },
+      {
+        ALT: () => {
+          let args = $.SUBRULE($.mixinArgs, { ARGS: [ctx] });
+          if (!RECORDING_PHASE) {
+            return new Call({ name: ctx.node as Call | Reference, args }, undefined, $.endRule(), this.context);
           }
         }
-      ]);
-    });
-    return returnNode!;
+      }
+    ]);
   };
 }
+
+// export function accessors(this: P, T: TokenMap) {
+//   const $ = this;
+
+//   let keyAlt = [
+//     { ALT: () => $.CONSUME(T.NestedReference) },
+//     { ALT: () => $.CONSUME(T.AtKeyword) },
+//     { ALT: () => $.CONSUME(T.PropertyReference) },
+//     { ALT: () => $.CONSUME(T.InterpolatedIdent) },
+//     { ALT: () => $.CONSUME(T.Ident) }
+//   ];
+
+//   /** The node passed in is what we're looking up on */
+//   return (ctx: RuleContext = {}) => {
+//     let nodeContext = ctx.node! as Reference;
+//     let RECORDING_PHASE = $.RECORDING_PHASE;
+//     $.startRule();
+//     let keyToken: IToken | undefined;
+//     let key: string | number | Reference | Interpolated;
+//     let returnNode: Node;
+
+//     $.CONSUME(T.LSquare);
+//     $.OPTION(() => keyToken = $.OR(keyAlt));
+//     $.CONSUME(T.RSquare);
+
+//     if (!RECORDING_PHASE) {
+//       const location = $.endRule();
+//       if (keyToken) {
+//         let tokenStr = keyToken.image;
+//         let type: 'variable' | 'property' = tokenStr.startsWith('@') ? 'variable' : 'property';
+//         // Handle all token types consistently
+//         if (keyToken.tokenType === T.NestedReference) {
+//           // For NestedReference, add $ prefix if not present
+//           let tokenStr = keyToken.image;
+//           if (!tokenStr.startsWith('$') && !tokenStr.startsWith('@')) {
+//             tokenStr = '$' + tokenStr;
+//           }
+//         }
+//         let result = getInterpolatedOrString(tokenStr, $.getLocationInfo(keyToken), this.context);
+//         console.log('DEBUG accessors - tokenStr:', tokenStr, 'result:', result, 'type:', type, 'nodeContext:', nodeContext);
+//         returnNode = new Reference({ target: nodeContext, key: result }, { type }, location, this.context);
+//       } else {
+//         key = -1;
+//         returnNode = new Reference({ target: nodeContext, key }, { type: 'index' }, location, this.context);
+//       }
+//     }
+//     /**
+//      * Allows chaining of lookups / calls
+//      * @note - In Less, an additional call or accessor implies
+//      * that the previous accessor is a mixin call, therefore
+//      * it should be returned as a Call node.
+//      */
+//     $.OPTION2(() => {
+//       $.OR2([
+//         {
+//           ALT: () => {
+//             let args = $.SUBRULE($.mixinArgs, { ARGS: [ctx] });
+//             if (!RECORDING_PHASE) {
+//               let [startOffset, startLine, startColumn] = returnNode.location;
+//               let { endOffset, endLine, endColumn } = $.LA(0);
+//               returnNode = new Call({ name: returnNode, args }, undefined, [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!], this.context);
+//             }
+//           }
+//         },
+//         {
+//           ALT: () => {
+//             returnNode = $.SUBRULE($.inlineMixinCall, { ARGS: [{ ...ctx, node: returnNode }] });
+//             return returnNode;
+//           }
+//         },
+//         {
+//           ALT: () => {
+//             returnNode = $.SUBRULE($.accessors, { ARGS: [{ ...ctx, node: returnNode }] });
+//             return returnNode;
+//           }
+//         }
+//       ]);
+//     });
+//     return returnNode!;
+//   };
+// }
 
 /**
  * @see https://lesscss.org/features/#mixins-feature-mixins-parametric-feature

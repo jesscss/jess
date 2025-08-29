@@ -100,7 +100,6 @@ export class LessActionsParser extends CssActionsParser {
   // mixinDefinition!: Rule;
   // mixinCall!: Rule;
   // mixinCallStatement!: Rule;
-  inlineMixinCall!: Rule;
   mixinArgs!: Rule;
   mixinArgList!: Rule;
   mixinArg!: Rule;
@@ -112,7 +111,8 @@ export class LessActionsParser extends CssActionsParser {
   extendList!: Rule;
 
   // namespaces
-  accessors!: Rule;
+  // accessors!: Rule;
+  lookupOrCall!: Rule;
 
   comparison!: Rule;
   guard!: Rule;

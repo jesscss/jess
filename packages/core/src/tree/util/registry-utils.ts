@@ -354,6 +354,7 @@ export class MixinRegistry extends Registry<
 
     if (keySet?.size) {
       const [startKey, ...rest] = keySet;
+      console.log('DEBUG _indexSelectorStart - mixin:', isNode(mixin, 'Mixin') ? mixin.value.name : 'ruleset', 'keySet:', Array.from(keySet), 'startKey:', startKey);
       const existing = index.get(startKey!);
       if (existing) {
         existing.push({ value: mixin, match: rest });

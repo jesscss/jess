@@ -390,4 +390,298 @@ describe('serializeTypes coverage', () => {
       )
     `);
   });
+
+  test('namespace reference - simple id', () => {
+    const { tree } = parser.parse('@ref: #id;');
+
+    expect(serializeTypes(tree)).toContainString(`
+      (VarDeclaration
+        name: 
+          (any [role=ident] 'ref')
+        value: 
+          (Reference [role=name]
+            key: '#id'
+          )
+      )
+    `);
+  });
+
+  test('namespace reference - simple class', () => {
+    const { tree } = parser.parse('@ref: .class;');
+
+    expect(serializeTypes(tree)).toContainString(`
+      (VarDeclaration
+        name: 
+          (any [role=ident] 'ref')
+        value: 
+          (Reference [role=name]
+            key: '.class'
+          )
+      )
+    `);
+  });
+
+  test('namespace reference - complex selector', () => {
+    const { tree } = parser.parse('@ref: #namespace > .scoped-mixin;');
+
+    expect(serializeTypes(tree)).toContainString(`
+      (VarDeclaration
+        name: 
+          (any [role=ident] 'ref')
+        value: 
+          (Reference [role=name]
+            target: 
+              (Reference [role=name]
+                key: '#namespace'
+              )
+            key: 
+              '.scoped-mixin'
+          )
+      )
+    `);
+  });
+
+  test('namespace call - simple id with parentheses', () => {
+    const { tree } = parser.parse('@ref: #id();');
+
+    expect(serializeTypes(tree)).toContainString(`
+      (VarDeclaration
+        name: 
+          (any [role=ident] 'ref')
+        value: 
+          (Call
+            name: 
+              (Reference [role=name]
+                key: '#id'
+              )
+          )
+      )
+    `);
+  });
+
+  test('namespace call - complex selector with parentheses', () => {
+    const { tree } = parser.parse('@ref: #namespace > .scoped-mixin();');
+
+    expect(serializeTypes(tree)).toContainString(`
+      (VarDeclaration
+        name: 
+          (any [role=ident] 'ref')
+        value: 
+          (Call
+            name: 
+              (Reference [role=name]
+                target: 
+                  (Reference [role=name]
+                    key: '#namespace'
+                  )
+                key: 
+                  (any [role=name] '.scoped-mixin')
+              )
+          )
+      )
+    `);
+  });
+
+  test('namespace reference with accessor', () => {
+    const { tree } = parser.parse('@ref: #id[property];');
+
+    expect(serializeTypes(tree)).toContainString(`
+      (VarDeclaration
+        name: 
+          (any [role=ident] 'ref')
+        value: 
+          (Reference
+            target: 
+              (Reference [role=name]
+                key: '#id'
+              )
+            key: 'property'
+          )
+      )
+    `);
+  });
+
+  test('namespace reference with complex selector and accessor', () => {
+    const { tree } = parser.parse('@ref: #namespace > .scoped-mixin[property];');
+
+    expect(serializeTypes(tree)).toContainString(`
+      (VarDeclaration
+        name: 
+          (any [role=ident] 'ref')
+        value: 
+          (Reference
+            target: 
+              (Reference [role=name]
+                target: 
+                  (Reference [role=name]
+                    key: '#namespace'
+                  )
+                key: 
+                  (any [role=name] '.scoped-mixin')
+              )
+            key: 'property'
+          )
+      )
+    `);
+  });
+
+  test('namespace call with accessor and parentheses', () => {
+    const { tree } = parser.parse('@ref: #namespace > .scoped-mixin[@ref]();');
+
+    expect(serializeTypes(tree)).toContainString(`
+      (VarDeclaration
+        name: 
+          (any [role=ident] 'ref')
+        value: 
+          (Call
+            name: 
+              (Reference
+                target: 
+                  (Reference [role=name]
+                    target: 
+                      (Reference [role=name]
+                        key: '#namespace'
+                      )
+                    key: 
+                      (any [role=name] '.scoped-mixin')
+                  )
+                key: 'ref'
+              )
+          )
+      )
+    `);
+  });
+
+  test('chained mixin calls - simple chain', () => {
+    const { tree } = parser.parse('@ref: .mixin1() > .mixin2();');
+
+    expect(serializeTypes(tree)).toContainString(`
+      (VarDeclaration
+        name: 
+          (any [role=ident] 'ref')
+        value: 
+          (Reference [role=name]
+            target: 
+              (Call
+                name: 
+                  (Reference [role=name]
+                    key: '.mixin1'
+                  )
+                args: 
+                  (List [])
+              )
+            key: 
+              (any [role=name] '.mixin2')
+          )
+      )
+    `);
+  });
+
+  test('chained mixin calls - with arguments', () => {
+    const { tree } = parser.parse('@ref: .mixin1(foo: bar) > .mixin2();');
+
+    expect(serializeTypes(tree)).toContainString(`
+      (VarDeclaration
+        name: 
+          (any [role=ident] 'ref')
+        value: 
+          (Reference [role=name]
+            target: 
+              (Call
+                name: 
+                  (Reference [role=name]
+                    key: '.mixin1'
+                  )
+                args: 
+                  (List [
+                    (Declaration
+                      name: 
+                        (any [role=ident] 'foo')
+                      value: 
+                        (any [role=ident] 'bar')
+                    )
+                  ])
+              )
+            key: 
+              (any [role=name] '.mixin2')
+          )
+      )
+    `);
+  });
+
+  test('chained mixin calls - complex chain with accessors', () => {
+    const { tree } = parser.parse('@ref: .mixin1(foo: bar) > .mixin2[@val1].ns() > .sub-mixin[@val2];');
+
+    expect(serializeTypes(tree)).toContainString(`
+      (VarDeclaration
+        name: 
+          (any [role=ident] 'ref')
+        value: 
+          (Reference [role=name]
+            target: 
+              (Reference [role=name]
+                target: 
+                  (Reference [role=name]
+                    target: 
+                      (Call
+                        name: 
+                          (Reference [role=name]
+                            key: '.mixin1'
+                          )
+                        args: 
+                          (List [
+                            (Declaration
+                              name: 
+                                (any [role=ident] 'foo')
+                              value: 
+                                (any [role=ident] 'bar')
+                            )
+                          ])
+                      )
+                    key: 
+                      (any [role=name] '.mixin2')
+                  )
+                key: 'val1'
+              )
+            key: 
+              (any [role=name] '.sub-mixin')
+          )
+      )
+    `);
+  });
+
+  test('chained mixin calls - deep nesting', () => {
+    const { tree } = parser.parse('@ref: .mixin1() > .mixin2() > .mixin3() > .mixin4();');
+
+    expect(serializeTypes(tree)).toContainString(`
+      (VarDeclaration
+        name: 
+          (any [role=ident] 'ref')
+        value: 
+          (Reference [role=name]
+            target: 
+              (Reference [role=name]
+                target: 
+                  (Reference [role=name]
+                    target: 
+                      (Call
+                        name: 
+                          (Reference [role=name]
+                            key: '.mixin1'
+                          )
+                        args: 
+                          (List [])
+                      )
+                    key: 
+                      (any [role=name] '.mixin2')
+                  )
+                key: 
+                  (any [role=name] '.mixin3')
+              )
+            key: 
+              (any [role=name] '.mixin4')
+          )
+      )
+    `);
+  });
 });
