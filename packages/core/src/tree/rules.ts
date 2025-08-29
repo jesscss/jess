@@ -1091,6 +1091,16 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       }
       if (passes) {
         let newRules = await rules.eval(thisContext);
+        /**
+         * Make everything public, so that we can access these
+         * these variables in the parent scope, or when doing lookups.
+         */
+        newRules.options.rulesVisibility = {
+          Ruleset: 'public',
+          Declaration: 'public',
+          VarDeclaration: 'public',
+          Mixin: 'public'
+        };
         outputRules.push([newRules, i]);
       }
       thisContext.rulesContext = rulesContext;

@@ -1115,12 +1115,10 @@ export function varDeclarationOrCall(this: P, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
-      let nameVal: string | Interpolated = getInterpolatedOrString(name!.image);
+      let nameVal = getInterpolatedOrString(name!.image);
       let nameNode: Node;
       if (!(nameVal instanceof Interpolated)) {
-        // Strip @ prefix for variable declarations
-        const varName = nameVal.startsWith('@') ? nameVal.slice(1) : nameVal;
-        nameNode = new Any(varName, { role: 'ident' }, $.getLocationInfo(name!), this.context);
+        nameNode = new Any(nameVal, { role: 'ident' }, $.getLocationInfo(name!), this.context);
       } else {
         nameNode = nameVal;
       }
@@ -2491,8 +2489,10 @@ export function accessors(this: P, T: TokenMap) {
     $.CONSUME(T.RSquare);
 
     if (!RECORDING_PHASE) {
-      let isVariableKey = false;
+      const location = $.endRule();
       if (keyToken) {
+        let tokenStr = keyToken.image;
+        let type: 'variable' | 'property' = tokenStr.startsWith('@') ? 'variable' : 'property';
         // Handle all token types consistently
         if (keyToken.tokenType === T.NestedReference) {
           // For NestedReference, add $ prefix if not present
@@ -2500,42 +2500,12 @@ export function accessors(this: P, T: TokenMap) {
           if (!tokenStr.startsWith('$') && !tokenStr.startsWith('@')) {
             tokenStr = '$' + tokenStr;
           }
-          key = getInterpolatedOrString(tokenStr, $.getLocationInfo(keyToken), this.context);
-        } else {
-          key = getInterpolatedOrString(keyToken.image, $.getLocationInfo(keyToken), this.context);
         }
+        let result = getInterpolatedOrString(tokenStr, $.getLocationInfo(keyToken), this.context);
+        returnNode = new Reference({ target: nodeContext, key: result }, { type }, location, this.context);
       } else {
         key = -1;
-      }
-      const location = $.endRule();
-      // Replace Lookup with a Reference targeting the current nodeContext
-      const targetRef = nodeContext as Reference | Node;
-
-      // For property accessors, we need to handle variable keys differently
-      // If the key is a variable (starts with @), we need to evaluate it first
-      if (typeof key === 'string' && key.startsWith('@')) {
-        // Create a Reference to evaluate the variable key
-        const keyVarName = key.slice(1); // Remove @ prefix
-        const keyRef = new Reference(keyVarName, { type: 'variable' }, location, this.context);
-        // Create a Reference that will evaluate the key and then look up the property
-        returnNode = new Reference({ target: targetRef as any, key: keyRef }, { type: 'property' }, location, this.context);
-      } else {
-        // Handle literal keys and other cases
-        let refType: 'property' | 'variable' = 'property';
-        let finalKey = key;
-
-        if (typeof key === 'string') {
-          if (key.startsWith('$')) {
-            finalKey = key.slice(1); // Remove $ prefix for property lookup
-          }
-        } else if (key instanceof Interpolated) {
-          // For interpolated keys, check the source and slice if needed
-          if (key.value.source.startsWith('$')) {
-            key.value.source = key.value.source.slice(1);
-          }
-        }
-
-        returnNode = new Reference({ target: targetRef as any, key: finalKey as any }, { type: refType }, location, this.context);
+        returnNode = new Reference({ target: nodeContext, key }, { type: 'index' }, location, this.context);
       }
     }
     /**

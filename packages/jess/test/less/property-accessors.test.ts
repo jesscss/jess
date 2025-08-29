@@ -85,7 +85,64 @@ describe('Property Accessors', () => {
         @key: primary;
 
         .test {
-          color: @config[@key];
+          color: @config[$@key];
+        }
+      `;
+
+      const css = await compiler.renderString(lessCode);
+      expect(css).toContain('color: red');
+    });
+
+    it('should handle variable accessor with variable keys (#1)', async () => {
+      const lessCode = `
+        .config() {
+          @primary: red;
+          @secondary: blue;
+        }
+
+        @config: .config();
+        @key: primary;
+
+        .test {
+          color: @config[@@key];
+        }
+      `;
+
+      const css = await compiler.renderString(lessCode);
+      expect(css).toContain('color: red');
+    });
+
+    it('should handle variable accessor with variable keys (#2)', async () => {
+      const lessCode = `
+        .config() {
+          @primary: red;
+          @secondary: blue;
+        }
+
+        @config: .config();
+
+        .test {
+          key: primary;
+          color: @config[@$key];
+        }
+      `;
+
+      const css = await compiler.renderString(lessCode);
+      expect(css).toContain('color: red');
+    });
+
+    it('should handle variable accessor with variable keys (#3)', async () => {
+      const lessCode = `
+        .config() {
+          primary: red;
+          secondary: blue;
+        }
+
+        @config: .config();
+
+        .test {
+          key: primary;
+          color: @config[$$key];
         }
       `;
 
@@ -106,7 +163,7 @@ describe('Property Accessors', () => {
 
         .test {
           @prop: @{prefix}@{suffix};
-          color: @config[@prop];
+          color: @config[$@prop];
         }
       `;
 

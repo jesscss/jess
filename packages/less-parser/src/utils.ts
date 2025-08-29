@@ -56,14 +56,17 @@ export const getInterpolatedOrString = (name: string, location?: any, context?: 
   const dollarPos = name.indexOf('$', 1);
 
   if (atPos === -1 && dollarPos === -1) {
-    // For simple @ or $ prefixes, return the full string as literal
-    return name;
+    if (name.startsWith('@') || name.startsWith('$')) {
+      return name.slice(1);
+    } else {
+      return name;
+    }
   }
 
   const nextPos = atPos !== -1 ? atPos : dollarPos;
   const start = name.slice(1, nextPos);
   const end = name.slice(nextPos);
-  const isVariable = atPos !== -1;
+  let type = end.startsWith('@') ? 'variable' as const : 'property' as const;
 
   // For @id-@num variable variables, we need to create an Interpolated node
   const endResult = getInterpolatedOrString(end, location, context);
@@ -73,21 +76,20 @@ export const getInterpolatedOrString = (name: string, location?: any, context?: 
       replacements: [
         new Reference(
           { key: endResult },
-          { type: isVariable ? 'variable' : 'property', role: 'ident' }
+          { type, role: 'ident' }
         )
       ]
     }, { role: 'ident' });
   } else {
-    // endResult is already an Interpolated node, so we need to handle this differently
-    // This is a complex case where we have nested variable variables
+    /**
+     * endResult is already an Interpolated node, so we need to handle this
+     * differently.
+     *
+     * @todo - test deep nesting
+     */
     return new Interpolated({
       source: start + INTERPOLATION_PLACEHOLDER,
-      replacements: [
-        new Reference(
-          { key: endResult.value.source },
-          { type: isVariable ? 'variable' : 'property', role: 'ident' }
-        )
-      ]
+      replacements: [endResult]
     }, { role: 'ident' });
   }
 };
