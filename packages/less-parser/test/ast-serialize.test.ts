@@ -475,7 +475,7 @@ describe('serializeTypes coverage', () => {
                     key: '#namespace'
                   )
                 key: 
-                  (any [role=name] '.scoped-mixin')
+                  '.scoped-mixin'
               )
           )
       )
@@ -516,8 +516,7 @@ describe('serializeTypes coverage', () => {
                   (Reference [role=name]
                     key: '#namespace'
                   )
-                key: 
-                  (any [role=name] '.scoped-mixin')
+                key: '.scoped-mixin'
               )
             key: 'property'
           )
@@ -542,8 +541,7 @@ describe('serializeTypes coverage', () => {
                       (Reference [role=name]
                         key: '#namespace'
                       )
-                    key: 
-                      (any [role=name] '.scoped-mixin')
+                    key: '.scoped-mixin'
                   )
                 key: 'ref'
               )
@@ -560,91 +558,107 @@ describe('serializeTypes coverage', () => {
         name: 
           (any [role=ident] 'ref')
         value: 
-          (Reference [role=name]
-            target: 
-              (Call
-                name: 
-                  (Reference [role=name]
-                    key: '.mixin1'
+          (Call
+            name: 
+              (Reference [role=name]
+                target: 
+                  (Call
+                    name: 
+                      (Reference [role=name]
+                        key: '.mixin1'
+                      )
                   )
-                args: 
-                  (List [])
+                key: 
+                  '.mixin2'
               )
-            key: 
-              (any [role=name] '.mixin2')
           )
       )
     `);
   });
 
   test('chained mixin calls - with arguments', () => {
-    const { tree } = parser.parse('@ref: .mixin1(foo: bar) > .mixin2();');
+    const { tree } = parser.parse('@ref: .mixin1(@foo: bar) > .mixin2();');
 
     expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
         name: 
           (any [role=ident] 'ref')
         value: 
-          (Reference [role=name]
-            target: 
-              (Call
-                name: 
-                  (Reference [role=name]
-                    key: '.mixin1'
+          (Call
+            name: 
+              (Reference [role=name]
+                target: 
+                  (Call
+                    name: 
+                      (Reference [role=name]
+                        key: '.mixin1'
+                      )
+                    args: 
+                      (List
+                        [
+                          (VarDeclaration
+                            name: 
+                              (any [role=property] 'foo')
+                            value: 
+                              (any 'bar')
+                          )
+                        ]
+                      )
                   )
-                args: 
-                  (List [
-                    (Declaration
-                      name: 
-                        (any [role=ident] 'foo')
-                      value: 
-                        (any [role=ident] 'bar')
-                    )
-                  ])
+                key: '.mixin2'
               )
-            key: 
-              (any [role=name] '.mixin2')
           )
       )
     `);
   });
 
   test('chained mixin calls - complex chain with accessors', () => {
-    const { tree } = parser.parse('@ref: .mixin1(foo: bar) > .mixin2[@val1].ns() > .sub-mixin[@val2];');
+    const { tree } = parser.parse('@ref: .mixin1(@foo: bar) > .mixin2[@val1].ns() > .sub-mixin[@val2];');
 
     expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
         name: 
           (any [role=ident] 'ref')
         value: 
-          (Reference [role=name]
+          (Reference
             target: 
               (Reference [role=name]
                 target: 
-                  (Reference [role=name]
-                    target: 
-                      (Call
-                        name: 
-                          (Reference [role=name]
-                            key: '.mixin1'
+                  (Call
+                    name: 
+                      (Reference [role=name]
+                        target: 
+                          (Reference
+                            target: 
+                              (Reference [role=name]
+                                target: 
+                                  (Call
+                                    name: 
+                                      (Reference [role=name]
+                                        key: '.mixin1'
+                                      )
+                                    args: 
+                                      (List
+                                        [
+                                          (VarDeclaration
+                                            name: 
+                                              (any [role=property] 'foo')
+                                            value: 
+                                              (any 'bar')
+                                          )
+                                        ]
+                                      )
+                                  )
+                                key: '.mixin2'
+                              )
+                            key: 'val1'
                           )
-                        args: 
-                          (List [
-                            (Declaration
-                              name: 
-                                (any [role=ident] 'foo')
-                              value: 
-                                (any [role=ident] 'bar')
-                            )
-                          ])
+                        key: '.ns'
                       )
-                    key: 
-                      (any [role=name] '.mixin2')
                   )
-                key: 'val1'
+                key: '.sub-mixin'
               )
-            key: 
-              (any [role=name] '.sub-mixin')
+            key: 'val2'
           )
       )
     `);
@@ -658,28 +672,32 @@ describe('serializeTypes coverage', () => {
         name: 
           (any [role=ident] 'ref')
         value: 
-          (Reference [role=name]
-            target: 
+          (Call
+            name: 
               (Reference [role=name]
                 target: 
-                  (Reference [role=name]
-                    target: 
-                      (Call
-                        name: 
-                          (Reference [role=name]
-                            key: '.mixin1'
+                  (Call
+                    name: 
+                      (Reference [role=name]
+                        target: 
+                          (Call
+                            name: 
+                              (Reference [role=name]
+                                target: 
+                                  (Call
+                                    name: 
+                                      (Reference [role=name]
+                                        key: '.mixin1'
+                                      )
+                                  )
+                                key: '.mixin2'
+                              )
                           )
-                        args: 
-                          (List [])
+                        key: '.mixin3'
                       )
-                    key: 
-                      (any [role=name] '.mixin2')
                   )
-                key: 
-                  (any [role=name] '.mixin3')
+                key: '.mixin4'
               )
-            key: 
-              (any [role=name] '.mixin4')
           )
       )
     `);

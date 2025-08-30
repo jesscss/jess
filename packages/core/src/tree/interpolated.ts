@@ -7,7 +7,7 @@ import { SelectorList } from './selector-list';
 import { SimpleSelector } from './selector-simple';
 import type { Selector } from './selector';
 import { type PrintOptions, getPrintOptions } from './util/print';
-import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
 
 // Placeholder that's very unlikely to appear in user strings
 export const INTERPOLATION_PLACEHOLDER = '\u0000\u0001';
@@ -61,16 +61,13 @@ export class Interpolated<
     return this.value.source;
   }
 
-  replace(replacements: Node[], options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  replace(replacements: Node[]): string {
     let { source } = this.value;
     let output = source;
     let i = 0;
-    // Use capture to isolate replacement node output when we have an OutputWriter
-    const w = options.writer!;
     output = output.replace(INTERPOLATION_PLACEHOLDER_REGEXP, () => {
       const replacement = replacements[i++];
-      const result = w.capture(() => replacement?.toTrimmedString(options) ?? '');
+      const result = replacement ? String(replacement.valueOf()) : '';
       // Trim whitespace to avoid issues with Sequence nodes that have pre/post spacing
       return result.trim();
     });
@@ -82,7 +79,7 @@ export class Interpolated<
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const result = this.replace(this.value.replacements, options);
+    const result = this.replace(this.value.replacements);
     w.add(result, this);
     return w.getSince(mark);
   }
@@ -152,48 +149,20 @@ export class Interpolated<
     let node = this;
     let { replacements } = node.value;
 
-    // Evaluate all replacements
-    const evaluatedReplacements: Node[] = [];
-    let hasAsync = false;
-    let asyncPromises: Promise<Node>[] = [];
-
-    for (const n of replacements) {
+    let maybe = serialForEach(replacements, (n, idx) => {
       const out = n.eval(context);
       if (isThenable(out)) {
-        hasAsync = true;
-        asyncPromises.push(out as Promise<Node>);
-      } else {
-        evaluatedReplacements.push(out as Node);
+        return (out as Promise<Node>).then((result) => {
+          replacements[idx] = result;
+        });
       }
+      replacements[idx] = out as Node;
+      return undefined;
+    });
+    if (isThenable(maybe)) {
+      return (maybe as Promise<void>).then(() => node);
     }
-
-    if (hasAsync) {
-      // Handle async evaluation
-      return Promise.all(asyncPromises).then((asyncResults) => {
-        // Combine sync and async results in order
-        const allResults: Node[] = [];
-        let syncIndex = 0;
-        let asyncIndex = 0;
-
-        for (const n of replacements) {
-          const out = n.eval(context);
-          if (isThenable(out)) {
-            allResults.push(asyncResults[asyncIndex]!);
-            asyncIndex++;
-          } else {
-            allResults.push(evaluatedReplacements[syncIndex]!);
-            syncIndex++;
-          }
-        }
-
-        node.value.replacements = allResults;
-        return node as this;
-      });
-    }
-
-    // All evaluations were synchronous
-    node.value.replacements = evaluatedReplacements;
-    return node as this;
+    return node;
   }
 }
 

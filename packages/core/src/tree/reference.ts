@@ -280,9 +280,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             break;
           case 'mixin-ruleset':
             if (isNode(resolvedTarget, 'Rules')) {
-              console.log('DEBUG mixin-ruleset lookup - valueKey:', valueKey, 'resolvedTarget:', resolvedTarget);
               returnVal = resolvedTarget.find('mixin', `${valueKey}`, undefined, opts);
-              console.log('DEBUG mixin-ruleset result:', returnVal);
             }
             break;
         }

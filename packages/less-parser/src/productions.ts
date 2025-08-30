@@ -1759,16 +1759,40 @@ export function value(this: P, T: TokenMap) {
   const $ = this;
 
   return (ctx: RuleContext = {}) => {
+    let isColor = false;
+    if (!$.RECORDING_PHASE) {
+      let tt1 = $.LA(1).tokenType;
+      let tt2 = $.LA(2).tokenType;
+      isColor =
+        (
+          tt1 === T.ColorIdentStart
+          || tt1 === T.ColorIntStart
+        )
+        && tt2 !== T.LParen
+        && tt2 !== T.LSquare
+        && tt2 !== T.Gt
+        && tt2 !== T.HashName
+        && tt2 !== T.DotName
+        && tt2 !== T.InterpolatedIdent
+        && tt2 !== T.InterpolatedSelector
+        && tt2 !== T.ColorIdentStart;
+    }
     let node: Node = $.OR([
       { ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] }) },
       /** @todo - mixinReference will sometimes capture colors */
-      { ALT: () => $.SUBRULE($.mixinReference, { ARGS: [ctx] }) },
+      {
+        GATE: () => !isColor,
+        ALT: () => $.SUBRULE($.mixinReference, { ARGS: [ctx] })
+      },
+      {
+        GATE: () => isColor,
+        ALT: () => $.CONSUME(T.Color)
+      },
       { ALT: () => $.SUBRULE($.varReference, { ARGS: [ctx] }) },
       { ALT: () => $.CONSUME(T.Ident) },
       { ALT: () => $.CONSUME(T.DefaultGuardFunc) },
       { ALT: () => $.CONSUME(T.Dimension) },
       { ALT: () => $.CONSUME(T.Number) },
-      { ALT: () => $.CONSUME(T.ColorIntStart) },
       { ALT: () => $.SUBRULE($.string, { ARGS: [ctx] }) },
       { ALT: () => $.CONSUME(T.JavaScript) },
       /** Explicitly not marked as an ident */

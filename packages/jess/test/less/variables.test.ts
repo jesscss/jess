@@ -130,8 +130,8 @@ describe('Variables', () => {
 
     it('should handle variable interpolation in URLs', async () => {
       const lessCode = `
-        @path: images;
-        @file: logo.png;
+        @path: 'images';
+        @file: 'logo.png';
         
         .test {
           background-image: url('@{path}/@{file}');
