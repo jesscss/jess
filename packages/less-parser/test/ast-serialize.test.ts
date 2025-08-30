@@ -501,6 +501,12 @@ describe('serializeTypes coverage', () => {
     `);
   });
 
+  test.only('variable reference with accessor', () => {
+    const { tree } = parser.parse('@ref: @config[$@prop];');
+
+    console.log(serializeTypes(tree));
+  });
+
   test('namespace reference with complex selector and accessor', () => {
     const { tree } = parser.parse('@ref: #namespace > .scoped-mixin[property];');
 

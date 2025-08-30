@@ -173,9 +173,14 @@ mixin-2() {
 
 ~double: @(~size) > $(size * 2);
 
-.container {
+:is(.container, .blah).foo {
   $ > .mixin();
   width: $double(10px);
+}
+
+.box {
+  @extend .container;
+  :extend(.container.foo);
 }
 ```
 

@@ -189,7 +189,9 @@ export class Dimension extends Node<DimensionValue> {
     let { number, unit = '' } = this.value;
     const numberStr = `${round(number, 8)}`.toLowerCase();
     w.add(numberStr, this);
-    if (unit) w.add(unit);
+    if (unit) {
+      w.add(unit);
+    }
     return w.getSince(mark);
   }
 

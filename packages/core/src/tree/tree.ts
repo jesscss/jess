@@ -31,6 +31,7 @@ import type { JsArray } from './js-array';
 import type { Num } from './number';
 import type { Url } from './url';
 import type { Quoted } from './quoted';
+import type { Color } from './color';
 
 export type Nodes = {
   Ampersand: typeof Ampersand;
@@ -67,4 +68,5 @@ export type Nodes = {
   Sequence: typeof Sequence;
   Url: typeof Url;
   Quoted: typeof Quoted;
+  Color: typeof Color;
 };

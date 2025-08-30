@@ -354,7 +354,6 @@ export class MixinRegistry extends Registry<
 
     if (keySet?.size) {
       const [startKey, ...rest] = keySet;
-      console.log('DEBUG _indexSelectorStart - mixin:', isNode(mixin, 'Mixin') ? mixin.value.name : 'ruleset', 'keySet:', Array.from(keySet), 'startKey:', startKey);
       const existing = index.get(startKey!);
       if (existing) {
         existing.push({ value: mixin, match: rest });
@@ -418,11 +417,9 @@ export class MixinRegistry extends Registry<
     let { searchParents = true, candidates = new Set() } = options;
     while (rules) {
       let [startKey, ...search] = keyList;
-      let registry = rules.mixinRegistry;
-      if (registry) {
-        registry.indexPendingItems();
-      }
-      const existing = registry?.index.get(startKey!);
+      let registry = rules.getRegistry('mixin');
+      registry.indexPendingItems();
+      const existing = registry.index.get(startKey!);
 
       if (existing) {
         for (const { value, match } of existing) {
@@ -445,7 +442,7 @@ export class MixinRegistry extends Registry<
             ) {
             // Recursively search in this mixin's registry
               let subRules = value.value.rules;
-              subRules.mixinRegistry?.find(remainder, filterType, {
+              subRules.getRegistry('mixin').find(remainder, filterType, {
                 searchParents: false,
                 candidates
               });
@@ -587,11 +584,9 @@ export class DeclarationRegistry extends Registry<Declaration> {
     while (rules) {
       let currentReadonly = options?.readonly || rules.options.readonly;
       newReadonly = currentReadonly;
-      let registry = rules.declarationRegistry;
-      if (registry) {
-        registry.indexPendingItems();
-      }
-      let set = registry?.index.get(key);
+      let registry = rules.getRegistry('declaration');
+      registry.indexPendingItems();
+      let set = registry.index.get(key);
       let list = set ? [...set] : undefined;
       if (list) {
         list = list.filter(
@@ -604,7 +599,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
         );
       }
       if (list?.length) {
-        let result = rules.declarationRegistry?._findClosestByStart(list, start);
+        let result = rules.getRegistry('declaration')._findClosestByStart(list, start);
         if (result) {
           newReadonly ||= result.options.readonly;
           declCandidate = new Set([result]);
@@ -618,7 +613,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
         candidates: declCandidate
       };
 
-      rules.declarationRegistry?._searchRulesChildren(key, filterType, searchChildrenOptions);
+      rules.getRegistry('declaration')._searchRulesChildren(key, filterType, searchChildrenOptions);
 
       // If we found a declaration in children, check if it's public
       if (declCandidate.size > 0) {

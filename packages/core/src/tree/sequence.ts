@@ -76,11 +76,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
           if (isThenable(out)) {
             return (out as Promise<Node>).then((res) => {
               node.value[i] = res;
-              return undefined;
             });
           }
           node.value[i] = out as Node;
-          return undefined;
         });
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => node);
@@ -99,6 +97,10 @@ export class Sequence extends Node<Node[], SequenceOptions> {
             }
           }
         }
+        /**
+         * List bubbling
+         * @todo - Is this behavior we still want?
+         */
         if (lists) {
           let Class = Object.getPrototypeOf(this).constructor;
           let combinations = combinate(lists);

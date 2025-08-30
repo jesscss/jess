@@ -1,11 +1,6 @@
 {
   "extends": "../../tsconfig.json",
-  "references": [
-    { "path": "../core"},
-    { "path": "../css-parser"}
-  ],
   "compilerOptions": {
-    "composite": true,
     "outDir": "./lib",
     "rootDir": ".",
     "skipLibCheck": true,

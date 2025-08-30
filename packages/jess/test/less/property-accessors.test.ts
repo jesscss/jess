@@ -73,6 +73,24 @@ describe('Property Accessors', () => {
     });
   });
 
+  describe('Ambiguous mixin references', () => {
+    it('should handle a color as a mixin reference', async () => {
+      const lessCode = `
+        #FF0 {
+          color: red;
+        }
+        @ref: #FF0;
+
+        .test {
+          color: @ref[color];
+        }
+      `;
+
+      const css = await compiler.renderString(lessCode);
+      expect(css).toContain('color: red');
+    });
+  });
+
   describe('Property Accessor with Variables', () => {
     it('should handle property accessor with variable keys', async () => {
       const lessCode = `

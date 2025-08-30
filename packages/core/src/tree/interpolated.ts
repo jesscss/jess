@@ -160,7 +160,7 @@ export class Interpolated<
       return undefined;
     });
     if (isThenable(maybe)) {
-      return (maybe as Promise<void>).then(() => node);
+      return maybe.then(() => node);
     }
     return node;
   }

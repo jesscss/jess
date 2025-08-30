@@ -157,21 +157,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return (registry as any).add(node);
   }
 
-  /**
-   * This wrapper is used so we don't prematurely create a registry
-   * just to search it.
-   */
-  find(type: 'ruleset', keys: string | string[] | Set<string>, filterType?: string, options?: Registries.FindOptions): ReturnType<Registries.RulesetRegistry['find']> | undefined;
-  find(type: 'declaration', keys: string, filterType?: string, options?: Registries.DeclarationFindOptions): ReturnType<Registries.DeclarationRegistry['find']> | undefined;
-  find(type: 'mixin', keys: string | string[], filterType?: string, options?: Registries.FindOptions): ReturnType<Registries.MixinRegistry['find']> | undefined;
-  find(type: 'function', keys: string, filterType?: string, options?: Registries.FindOptions): ReturnType<Registries.FunctionRegistry['find']> | undefined;
-  find(type: 'ruleset' | 'declaration' | 'mixin' | 'function', key: string, filterType: string, options?: Registries.FindOptions): ReturnType<Registries.RulesetRegistry['find']> | ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.MixinRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined;
-  find(
-    type: 'ruleset' | 'declaration' | 'mixin' | 'function',
-    keys: string | string[] | Set<string>,
-    filterType?: string,
-    options: Registries.FindOptions = {}
-  ): ReturnType<Registries.RulesetRegistry['find']> | ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.MixinRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined {
+  getRegistry(type: 'ruleset'): Registries.RulesetRegistry;
+  getRegistry(type: 'declaration'): Registries.DeclarationRegistry;
+  getRegistry(type: 'mixin'): Registries.MixinRegistry;
+  getRegistry(type: 'function'): Registries.FunctionRegistry;
+  getRegistry(type: 'ruleset' | 'declaration' | 'mixin' | 'function'): Registries.RulesetRegistry | Registries.DeclarationRegistry | Registries.MixinRegistry | Registries.FunctionRegistry;
+  getRegistry(type: 'ruleset' | 'declaration' | 'mixin' | 'function') {
     let registry = this[`${type}Registry`];
     if (!registry) {
       /**
@@ -187,6 +178,25 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (this.rulesIndexed < this.value.length) {
       this._indexRules();
     }
+    return registry;
+  }
+
+  /**
+   * This wrapper is used so we don't prematurely create a registry
+   * just to search it.
+   */
+  find(type: 'ruleset', keys: string | string[] | Set<string>, filterType?: string, options?: Registries.FindOptions): ReturnType<Registries.RulesetRegistry['find']> | undefined;
+  find(type: 'declaration', keys: string, filterType?: string, options?: Registries.DeclarationFindOptions): ReturnType<Registries.DeclarationRegistry['find']> | undefined;
+  find(type: 'mixin', keys: string | string[], filterType?: string, options?: Registries.FindOptions): ReturnType<Registries.MixinRegistry['find']> | undefined;
+  find(type: 'function', keys: string, filterType?: string, options?: Registries.FindOptions): ReturnType<Registries.FunctionRegistry['find']> | undefined;
+  find(type: 'ruleset' | 'declaration' | 'mixin' | 'function', key: string, filterType: string, options?: Registries.FindOptions): ReturnType<Registries.RulesetRegistry['find']> | ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.MixinRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined;
+  find(
+    type: 'ruleset' | 'declaration' | 'mixin' | 'function',
+    keys: string | string[] | Set<string>,
+    filterType?: string,
+    options: Registries.FindOptions = {}
+  ): ReturnType<Registries.RulesetRegistry['find']> | ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.MixinRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined {
+    let registry = this.getRegistry(type);
     return (registry as any).find(keys, filterType, options);
   }
 

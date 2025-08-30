@@ -1616,10 +1616,16 @@ export function varReference(this: P, T: TokenMap) {
         /** Only variables can have accessors */
         GATE: () => node?.options?.type === 'variable',
         ALT: () => {
-          node = $.SUBRULE(
-            $.lookupOrCall,
-            { ARGS: [{ ...ctx, node: node! }] }
-          );
+          $.AT_LEAST_ONE(() => {
+            node = $.SUBRULE(
+              $.lookupOrCall,
+              { ARGS: [{ ...ctx, node: node! }] }
+            );
+          });
+          $.OPTION(() => {
+            $.OPTION2(() => $.CONSUME(T.Gt));
+            node = $.SUBRULE($.mixinReference, { ARGS: [{ ...ctx, node: node! }] });
+          });
         }
       },
       { ALT: EMPTY_ALT() }
@@ -1759,37 +1765,59 @@ export function value(this: P, T: TokenMap) {
   const $ = this;
 
   return (ctx: RuleContext = {}) => {
-    let isColor = false;
-    if (!$.RECORDING_PHASE) {
-      let tt1 = $.LA(1).tokenType;
-      let tt2 = $.LA(2).tokenType;
-      isColor =
-        (
-          tt1 === T.ColorIdentStart
-          || tt1 === T.ColorIntStart
-        )
-        && tt2 !== T.LParen
-        && tt2 !== T.LSquare
-        && tt2 !== T.Gt
-        && tt2 !== T.HashName
-        && tt2 !== T.DotName
-        && tt2 !== T.InterpolatedIdent
-        && tt2 !== T.InterpolatedSelector
-        && tt2 !== T.ColorIdentStart;
-    }
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    let _isMixinReference = undefined as boolean | undefined;
+    const isMixinReference = () => {
+      if (_isMixinReference === undefined) {
+        let tt1 = $.LA(1).tokenType;
+        let tt2 = $.LA(2).tokenType;
+        /**
+         * We'll allow a few "bare" mixin references without parens
+         * or square brackets, but not if they'll conflict with
+         * other syntax.
+         */
+        _isMixinReference =
+        tt1 === T.DotName
+        || tt1 === T.HashName
+        || tt1 === T.InterpolatedSelector
+        || (
+          (
+            tt1 === T.ColorIdentStart
+            || tt1 === T.InterpolatedSelector
+          ) && (
+            tt2 === T.Gt
+            || tt2 === T.DotName
+            || tt2 === T.HashName
+            || tt2 === T.InterpolatedSelector
+            || (
+              $.noSep(1)
+              && (
+                tt2 === T.LParen
+                || tt2 === T.LSquare
+                || tt2 === T.HashName
+                || tt2 === T.DotName
+              )
+            )
+          )
+        );
+      }
+      return _isMixinReference;
+    };
     let node: Node = $.OR([
       { ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] }) },
-      /** @todo - mixinReference will sometimes capture colors */
       {
-        GATE: () => !isColor,
+        GATE: isMixinReference,
         ALT: () => $.SUBRULE($.mixinReference, { ARGS: [ctx] })
       },
       {
-        GATE: () => isColor,
+        GATE: () => !isMixinReference(),
         ALT: () => $.CONSUME(T.Color)
       },
+      {
+        GATE: () => !isMixinReference(),
+        ALT: () => $.CONSUME(T.Ident)
+      },
       { ALT: () => $.SUBRULE($.varReference, { ARGS: [ctx] }) },
-      { ALT: () => $.CONSUME(T.Ident) },
       { ALT: () => $.CONSUME(T.DefaultGuardFunc) },
       { ALT: () => $.CONSUME(T.Dimension) },
       { ALT: () => $.CONSUME(T.Number) },

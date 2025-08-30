@@ -158,20 +158,42 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   override evalNode(context: Context): MaybePromise<Node> {
     let { target, key } = this.value;
     let { type, fallbackValue, filter: originalFilter } = this.options;
+    let resolvedTarget = target ? target.eval(context) : this.rulesParent;
     return pipe(
       () => {
-        const keyEval = isNode(key) ? key.eval(context) : key;
-        return keyEval;
+        return resolvedTarget;
       },
-      (keyEval) => {
-        let valueKey = isNode(keyEval) ? keyEval.valueOf() : keyEval;
-
-        let resolvedTarget = target ? target.eval(context) : context.rulesContext;
-
-        if (isThenable(resolvedTarget)) {
-          return (resolvedTarget as Promise<Node>).then(rt => [rt, valueKey] as [Node, string]);
+      (resolvedTarget) => {
+        let out = isNode(key) ? key.eval(context) : key;
+        if (isThenable(out)) {
+          return out.then(k => [resolvedTarget, k.valueOf()] as [any, string]);
         }
-        return [resolvedTarget, valueKey] as [Node, string];
+        return [resolvedTarget, out] as [any, string];
+      },
+      ([resolvedTarget, valueKey]) => {
+        /**
+         * If we don't have rules yet, assume that this node
+         * was an ambiguous reference to a mixin (such as a valid color
+         * or an interpolated identifier). In that case, try to resolve
+         * it as a reference to a mixin.
+         *
+         * (We have to do this for Less.)
+         */
+        if (resolvedTarget instanceof Node) {
+          let type = resolvedTarget.type;
+          if (type !== 'Rules' && type !== 'JsFunction' && type !== 'Mixin') {
+            let targetKey = isNode(resolvedTarget, 'Color') ? String(resolvedTarget.value.node) : resolvedTarget.valueOf();
+            if (typeof targetKey === 'string') {
+              let ref = new Reference(targetKey, { type: 'mixin-ruleset' });
+              ref.parent = this;
+              return Promise.all([
+                ref.eval(context),
+                valueKey
+              ]);
+            }
+          }
+        }
+        return [resolvedTarget, valueKey] as [any, string];
       },
       ([resolvedTarget, valueKey]) => {
         /**
@@ -182,6 +204,12 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           resolvedTarget = resolvedTarget.value.call(context);
           return Promise.all([resolvedTarget, valueKey]);
         }
+        // if (typeof resolvedTarget === 'function') {
+        //   return Promise.all([
+        //     resolvedTarget.call(context),
+        //     valueKey
+        //   ]);
+        // }
 
         /**
          * If we're looking something up on a mixin, we need to evaluate
@@ -198,6 +226,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             return [resolvedTarget, valueKey] as [Node, string];
           }
         }
+
         return [resolvedTarget, valueKey] as [Node, string];
       },
       ([resolvedTarget, valueKey]) => {
@@ -303,23 +332,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           }
           return out.copy();
         }
-        if (isNode(returnVal, 'VarDeclaration')) {
-          context.searchScope.add(returnVal);
-          const inCalc = context.calcFrames.at(-1);
-          if (inCalc) {
-            context.calcFrames.pop();
-          }
-          return pipe(
-            () => returnVal.value.value.eval(context),
-            (evald) => {
-              if (inCalc) {
-                context.calcFrames.push(true);
-              }
-              context.searchScope.delete(returnVal);
-              return evald;
-            }
-          );
-        } else if (isNode(returnVal, 'Declaration')) {
+        if (isNode(returnVal, ['Declaration', 'VarDeclaration'])) {
           context.searchScope.add(returnVal);
           const inCalc = context.calcFrames.at(-1);
           if (inCalc) {

@@ -11,6 +11,7 @@ import { getEntriesFromNode, getValues } from './util/collections';
 import type { Comment } from './comment';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
+import type { Rules } from './rules';
 
 export type { TreeContext };
 
@@ -396,6 +397,17 @@ export abstract class Node<
     }
 
     return instance;
+  }
+
+  get rulesParent(): Rules | undefined {
+    let possibleRules: Node | undefined = this;
+    while (possibleRules?.type !== 'Rules') {
+      possibleRules = possibleRules.parent;
+      if (!possibleRules) {
+        return undefined;
+      }
+    }
+    return possibleRules as Rules;
   }
 
   /**

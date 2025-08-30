@@ -110,12 +110,14 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     let { name, rules, params, guard } = this.value;
     let { isFunctionWith } = this.options;
     const mark = w.mark();
-    w.add(`${name}`);
-    w.add('(');
-    if (params) {
-      params.toString(options);
+    w.add(name ? `${name}` : '@');
+    if (name || params || guard) {
+      w.add('(');
+      if (params) {
+        params.toString(options);
+      }
+      w.add(')');
     }
-    w.add(')');
     if (guard) {
       w.add(' when ');
       w.add(`${guard}`);
@@ -127,7 +129,9 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       w.add(' ');
       (rules.at(0) as Declaration).value.value.toString(options);
     } else {
-      w.add(' ');
+      if (name || params || guard) {
+        w.add(' ');
+      }
       // Emit rules directly into shared writer; do not re-add return value
       rules.toBraced(depth, options);
     }
