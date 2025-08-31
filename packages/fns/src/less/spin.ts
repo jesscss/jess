@@ -2,20 +2,23 @@ import {
   type Context,
   Color,
   Dimension,
-  defineFunction
+  defineFunction,
+  ColorFormat
 } from '@jesscss/core';
-import { getHsla } from '../util/get-hsla';
-import { toHSL } from '../util/to-hsl';
 
 export default defineFunction(
   'spin',
   function(this: Context, color: Color, amount: Dimension) {
-    const hsl = toHSL(color);
-    const hue = (hsl.h + amount.value.number) % 360;
+    const [h, s, l] = color._hsl;
+    const hue = (h + amount.value.number) % 360;
+    const adjustedHue = hue < 0 ? 360 + hue : hue;
 
-    hsl.h = hue < 0 ? 360 + hue : hue;
-
-    return getHsla.call(this, color, hsl);
+    // Create new color with adjusted hue, preserving original format
+    return new Color({
+      format: color.value.format,
+      hsl: [adjustedHue, s, l],
+      alpha: color._alpha
+    }).inherit(color);
   },
   {
     params: [{

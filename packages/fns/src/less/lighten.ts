@@ -3,14 +3,28 @@ import {
   type Context,
   Color,
   Dimension,
-  Node
+  Node,
+  ColorFormat
 } from '@jesscss/core';
-import { adjustHSL } from '../util/get-hsla';
 
 export default defineFunction(
   'lighten',
   function(this: Context, color: Color, amount: Dimension, method?: Node) {
-    return adjustHSL.call(this, 'l', '+', color, amount, method);
+    const [h, s, l] = color._hsl;
+    let adjustAmount = amount.value.number / 100;
+
+    if (method && method.value === 'relative') {
+      adjustAmount = l * adjustAmount;
+    }
+
+    const newLightness = l + adjustAmount;
+
+    // Create new color with adjusted lightness, preserving original format
+    return new Color({
+      format: color.value.format,
+      hsl: [h, s, newLightness],
+      alpha: color._alpha
+    }).inherit(color);
   },
   {
     params: [{

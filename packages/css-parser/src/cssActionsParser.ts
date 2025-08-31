@@ -397,8 +397,9 @@ export class CssActionsParser extends AdvancedActionsParser {
         const colorNode = new Color(
           {
             node: tokValue, // Store the original keyword string
-            format: ColorFormat.RGB,
-            rgba: [...colorValue, 1] as [number, number, number, number]
+            format: ColorFormat.HEX,
+            rgb: colorValue,
+            alpha: 1
           },
           undefined,
           this.getLocationInfo(token),

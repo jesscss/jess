@@ -1,36 +1,45 @@
-import { Color, ColorFormat, Dimension, defineFunction } from '@jesscss/core';
-import { type ColorValue, clamp, getNumber } from '../util/number';
+import { Color, ColorFormat, Dimension, defineFunction, type FunctionThis, Call } from '@jesscss/core';
+import { normalizeHue, percentOf, alphaToNumber } from '@jesscss/core';
 
 const hsla = defineFunction(
   'hsla',
-  function(this: any, h: ColorValue, s: ColorValue, l: ColorValue, a: ColorValue) {
-    h = getNumber(h, true) % 360;
-    s = clamp(getNumber(s, true));
-    l = clamp(getNumber(l, true));
-    a = clamp(getNumber(a));
-
-    // Convert HSL to RGB for storage
+  async function(this: FunctionThis, h: number, s: number, l: number, a: number) {
+    // Create a color with HSL format and store the original function call
     const color = new Color({
       format: ColorFormat.HSL,
-      rgba: [0, 0, 0, a] // Placeholder, will be set by hsla setter
+      hsl: [h, s, l],
+      alpha: a
     });
-    color.hsla = [h, s, l, a];
+
+    // Store the original function call
+    if (this?.args) {
+      color.value.node = new Call({
+        name: 'hsla',
+        args: await this.args()
+      });
+    }
+
     return color;
   },
   {
     params: [{
       name: 'h',
-      type: [Dimension, 'number']
+      type: Dimension,
+      convert: [normalizeHue()]
     }, {
       name: 's',
-      type: [Dimension, 'number']
+      type: Dimension,
+      convert: [percentOf(1)]
     }, {
       name: 'l',
-      type: [Dimension, 'number']
+      type: Dimension,
+      convert: [percentOf(1)]
     }, {
       name: 'a',
-      type: [Dimension, 'number']
-    }]
+      type: Dimension,
+      convert: [alphaToNumber()]
+    }],
+    splitSequence: true
   }
 );
 

@@ -1,5 +1,5 @@
 import { expectFlags, DEFAULT_VARIABLE } from './helpers';
-import { rules, ruleset, sellist, sel, el, decl, any, list, num, Operation, call, ref, paren, negative, atrule, interpolated, type Ruleset, type Declaration } from '../src';
+import { rules, ruleset, sellist, sel, el, decl, any, list, num, op, call, ref, paren, negative, atrule, interpolated, interpolatedSelector, type Ruleset, type Declaration } from '../src';
 
 describe('Flag isolation', () => {
   describe('MayAsync isolation (siblings do not bleed)', () => {
@@ -80,8 +80,8 @@ describe('Flag isolation', () => {
         ruleset({
           selector: sellist([sel([el('.a')])]),
           rules: rules([
-            decl({ name: 'o1', value: new Operation([num(1), '+', ref('@v', { type: 'variable' })]) }),
-            decl({ name: 'o2', value: new Operation([num(1), '+', num(2)]) })
+            decl({ name: 'o1', value: op([num(1), '+', ref('@v', { type: 'variable' })]) }),
+            decl({ name: 'o2', value: op([num(1), '+', num(2)]) })
           ])
         })
       ]);
@@ -132,7 +132,7 @@ describe('Flag isolation', () => {
     test('sibling rulesets: pseudo selector with selector-child', () => {
       const tree = rules([
         ruleset({
-          selector: sellist([sel([el('.a:has('), interpolated({ source: '.{}', replacements: [DEFAULT_VARIABLE] }), el(')')])]),
+          selector: sellist([sel([el('.a:has('), interpolatedSelector(interpolated({ source: '.\u0000\u0001', replacements: [DEFAULT_VARIABLE] })), el(')')])]),
           rules: rules([decl({ name: 'y', value: any('1') })])
         }),
         ruleset({
@@ -149,7 +149,7 @@ describe('Flag isolation', () => {
     test('sibling rulesets: compound selector', () => {
       const tree = rules([
         ruleset({
-          selector: sellist([sel([el('.foo'), interpolated({ source: '.{}', replacements: [DEFAULT_VARIABLE] })])]),
+          selector: sellist([sel([el('.foo'), interpolatedSelector(interpolated({ source: '.\u0000\u0001', replacements: [DEFAULT_VARIABLE] }))])]),
           rules: rules([decl({ name: 'y', value: any('1') })])
         }),
         ruleset({
@@ -166,7 +166,7 @@ describe('Flag isolation', () => {
     test('sibling rulesets: complex selector', () => {
       const tree = rules([
         ruleset({
-          selector: sellist([sel([el('.x '), interpolated({ source: '.{}', replacements: [DEFAULT_VARIABLE] }), el(' .y')])]),
+          selector: sellist([sel([el('.x '), interpolatedSelector(interpolated({ source: '.\u0000\u0001', replacements: [DEFAULT_VARIABLE] })), el(' .y')])]),
           rules: rules([decl({ name: 'z', value: any('1') })])
         }),
         ruleset({
@@ -183,7 +183,7 @@ describe('Flag isolation', () => {
     test('sibling rulesets: selector list', () => {
       const tree = rules([
         ruleset({
-          selector: sellist([sel([el('.a, '), interpolated({ source: '.{}', replacements: [DEFAULT_VARIABLE] })])]),
+          selector: sellist([sel([el('.a, '), interpolatedSelector(interpolated({ source: '.{}', replacements: [DEFAULT_VARIABLE] }))])]),
           rules: rules([decl({ name: 'y', value: any('1') })])
         }),
         ruleset({
@@ -274,7 +274,7 @@ describe('Flag isolation', () => {
                   selector: sellist([sel([el('.level3')])]),
                   rules: rules([
                     decl({ name: 'border', value: any('1px solid') }),
-                    decl({ name: 'width', value: new Operation([num(10), '+', num(5)]) })
+                    decl({ name: 'width', value: op([num(10), '+', num(5)]) })
                   ])
                 })
               ])

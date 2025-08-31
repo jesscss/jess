@@ -1,22 +1,22 @@
 import { extendSelector } from '../extend';
 import { el, sel, compound, co } from '../../..';
 import { isNode } from '../is-node';
-import { Combinator } from '../../combinator';
+import { type Combinator, type Combinators } from '../../combinator';
 
 /**
  * Test suite to verify that all combinators (>, +, ~, space) are properly preserved
  * during selector extension operations, not hardcoded to '>'
  */
 describe('Combinator Preservation in Extensions', () => {
-  function createComplexSelector(firstClass: string, combinator: string, secondClass: string) {
+  function createComplexSelector(firstClass: string, combinator: Combinators, secondClass: string) {
     return sel([
       compound([el('.parent'), el(firstClass)]),
-      co(combinator),
+      co(combinator as Combinators),
       el(secondClass)
     ]);
   }
 
-  function testCombinatorPreservation(combinator: string, testName: string) {
+  function testCombinatorPreservation(combinator: Combinators, testName: string) {
     it(`should preserve ${combinator} combinator in complex partial extend`, () => {
       const complexSelector = createComplexSelector('.foo', combinator, '.child');
       const target = el('.foo');
@@ -30,7 +30,7 @@ describe('Combinator Preservation in Extensions', () => {
         const components = result.value;
         const foundCombinator = components.find(c => isNode(c, 'Combinator'));
         expect(foundCombinator).toBeDefined();
-        expect((foundCombinator as Combinator).value).toBe(combinator);
+        expect(foundCombinator?.value).toBe(combinator);
       }
     });
   }

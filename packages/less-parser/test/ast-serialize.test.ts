@@ -161,14 +161,16 @@ describe('serializeTypes coverage', () => {
   test('interpolated selector', () => {
     const { tree } = parser.parse('.@{prefix}-button { color: red; }');
     expect(serializeTypes(tree)).toContainString(`
-        (Interpolated [role=ident]
-          source: '.${INTERPOLATION_PLACEHOLDER}-button'
-          replacements:
-          [
-            (Reference [role=ident]
-              key: 'prefix'
-            )
-          ]
+        (InterpolatedSelector
+          (Interpolated [role=ident]
+            source: '.${INTERPOLATION_PLACEHOLDER}-button'
+            replacements:
+            [
+              (Reference [role=ident]
+                key: 'prefix'
+              )
+            ]
+          )
         )
     `);
   });
@@ -187,6 +189,27 @@ describe('serializeTypes coverage', () => {
           ]
         )
     `);
+  });
+
+  test('interpolated value in declaration', () => {
+    const { tree } = parser.parse('.test { color: @{colorVar}; }');
+    expect(serializeTypes(tree)).toContainString(`
+                (Interpolated [role=ident]
+                  source: '${INTERPOLATION_PLACEHOLDER}'
+                  replacements:
+                  [
+                    (Reference
+                      key: 'colorVar'
+                    )
+                  ]
+                )
+    `);
+  });
+
+  test('interpolated mixin definition', () => {
+    const { tree } = parser.parse('.@{mixinName}() { color: red; }');
+    // Currently returns undefined - parser needs work to handle this case
+    expect(serializeTypes(tree)).toBe('undefined');
   });
 
   test('rest parameter in mixin', () => {

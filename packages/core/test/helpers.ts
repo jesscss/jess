@@ -2,7 +2,7 @@ import {
   F_MAY_ASYNC, F_STATIC, F_NON_STATIC,
   type Node, type Rules, Any,
   // Simplified API
-  decl, any, sel, el, sellist, rules, ruleset, spaced, ref, call, Operation, list, paren, negative, atrule, mixin, condition, QueryCondition, interpolated, num,
+  decl, any, sel, el, sellist, rules, ruleset, spaced, ref, call, op, list, paren, negative, atrule, mixin, condition, QueryCondition, interpolated, interpolatedSelector, num,
   // Additional types for test helpers
   StyleImport, Quoted
 } from '../src';
@@ -12,7 +12,7 @@ const DEFAULT_COLOR = any('red');
 const DEFAULT_WIDTH = any('10px');
 const DEFAULT_SELECTOR = el('.a');
 export const DEFAULT_VARIABLE = ref('var', { type: 'variable' });
-const DEFAULT_OPERATION = new Operation([num(1), '+', num(2)]);
+const DEFAULT_OPERATION = op([num(1), '+', num(2)]);
 const DEFAULT_CALL = call({ name: 'rgb', args: list([any('255'), any('0'), any('0')]) });
 const DEFAULT_NEGATIVE = negative(any('10px'));
 const DEFAULT_PAREN = paren(any('red'));
@@ -58,7 +58,7 @@ export function createOperation(operation = DEFAULT_OPERATION) {
   ]);
 }
 
-export function createVariableInOperation(operation = new Operation([num(1), '+', DEFAULT_VARIABLE])) {
+export function createVariableInOperation(operation = op([num(1), '+', DEFAULT_VARIABLE])) {
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
@@ -264,10 +264,10 @@ export function createAtRuleVariable(atRuleContent = createVariableReference('co
   ]);
 }
 
-export function createSelectorInterpolation(interpolatedSelector = interpolated({ source: '.{}', replacements: [DEFAULT_VARIABLE] })) {
+export function createSelectorInterpolation(interpolatedNode = interpolated({ source: '.\u0000\u0001', replacements: [DEFAULT_VARIABLE] })) {
   return rules([
     ruleset({
-      selector: sellist([sel([interpolatedSelector])]),
+      selector: sellist([sel([interpolatedSelector(interpolatedNode)])]),
       rules: rules([
         decl({ name: 'color', value: DEFAULT_COLOR })
       ])
@@ -352,7 +352,7 @@ export const testPatterns = {
 
   // Variable patterns
   variableReference: (property = 'color', variable = DEFAULT_VARIABLE) => () => createVariableReference(property, variable),
-  variableInOperation: (operation = new Operation([num(1), '+', DEFAULT_VARIABLE])) => () => createVariableInOperation(operation),
+  variableInOperation: (operation = op([num(1), '+', DEFAULT_VARIABLE])) => () => createVariableInOperation(operation),
   variableInCall: (functionCall = call({ name: 'rgb', args: list([DEFAULT_VARIABLE, any('0'), any('0')]) })) => () => createVariableInCall(functionCall),
   variableInNegative: (negValue = negative(DEFAULT_VARIABLE)) => () => createVariableInNegative(negValue),
   variableInParen: (parenValue = paren(DEFAULT_VARIABLE)) => () => createVariableInParen(parenValue),
@@ -398,10 +398,10 @@ export const testPatterns = {
   multipleRules: (ruleNodes: Rules[] = []) => () => createMultipleRules(ruleNodes),
 
   // Selector patterns
-  selectorInterpolation: (interpolatedSelector = interpolated({ source: '.{}', replacements: [DEFAULT_VARIABLE] })) => () => createSelectorInterpolation(interpolatedSelector),
-  compoundSelectorInterpolation: (interpolatedSelector = interpolated({ source: '.{}', replacements: [DEFAULT_VARIABLE] })) => () => createSelectorInterpolation(interpolatedSelector),
-  complexSelectorInterpolation: (interpolatedSelector = interpolated({ source: '.{}', replacements: [DEFAULT_VARIABLE] })) => () => createSelectorInterpolation(interpolatedSelector),
-  selectorListInterpolation: (interpolatedSelector = interpolated({ source: '.{}', replacements: [DEFAULT_VARIABLE] })) => () => createSelectorInterpolation(interpolatedSelector),
+  selectorInterpolation: (interpolatedSelector = interpolated({ source: '.\u0000\u0001', replacements: [DEFAULT_VARIABLE] })) => () => createSelectorInterpolation(interpolatedSelector),
+  compoundSelectorInterpolation: (interpolatedSelector = interpolated({ source: '.\u0000\u0001', replacements: [DEFAULT_VARIABLE] })) => () => createSelectorInterpolation(interpolatedSelector),
+  complexSelectorInterpolation: (interpolatedSelector = interpolated({ source: '.\u0000\u0001', replacements: [DEFAULT_VARIABLE] })) => () => createSelectorInterpolation(interpolatedSelector),
+  selectorListInterpolation: (interpolatedSelector = interpolated({ source: '.\u0000\u0001', replacements: [DEFAULT_VARIABLE] })) => () => createSelectorInterpolation(interpolatedSelector),
 
   // Import and mixin patterns
   styleImport: (importPath = any('x.less')) => () => createStyleImport(importPath),

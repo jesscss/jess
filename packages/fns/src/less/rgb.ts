@@ -1,33 +1,54 @@
 import {
-  type Node,
-  type Context,
+  type FunctionThis,
   Dimension,
-  Sequence,
-  defineFunction
+  Color,
+  ColorFormat,
+  defineFunction,
+  Call
 } from '@jesscss/core';
-import rgba from './rgba';
-import { getColorFunctionValues } from '../util/get-color-func-values';
+import { percentOf, toNumber } from '@jesscss/core';
 
 const rgb = defineFunction(
   'rgb',
-  function(this: Context, r: Sequence | Dimension, g: Dimension, b: Dimension) {
-    const values = getColorFunctionValues(r, g, b);
-    return rgba.call(this, values[0], values[1], values[2], values[3]);
+  async function(this: FunctionThis, r: number, g: number, b: number) {
+    console.log('RGB function called with:', { r, g, b, rType: typeof r, gType: typeof g, bType: typeof b });
+    // Create a color with RGB format and store the original function call
+    const color = new Color({
+      format: ColorFormat.RGB,
+      rgb: [r, g, b],
+      alpha: 1
+    });
+
+    // Store the original function call
+    if (this?.args) {
+      color.value.node = new Call({
+        name: 'rgb',
+        args: await this.args()
+      });
+    }
+
+    return color;
   },
   {
-    params: [{
-      name: 'r',
-      type: [Sequence, Dimension, 'number']
-    }, {
-      name: 'g',
-      type: [Dimension, 'number']
-    }, {
-      name: 'b',
-      type: [Dimension, 'number']
-    }]
+    params: [
+      {
+        name: 'r',
+        type: Dimension,
+        convert: [percentOf(255), toNumber()]
+      },
+      {
+        name: 'g',
+        type: Dimension,
+        convert: [percentOf(255), toNumber()]
+      },
+      {
+        name: 'b',
+        type: Dimension,
+        convert: [percentOf(255), toNumber()]
+      }
+    ],
+    splitSequence: true
   }
 );
-
-// rgb.allowOptional = true;
 
 export default rgb;

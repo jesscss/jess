@@ -1,0 +1,41 @@
+import type { Context } from '../context';
+import { defineType } from './node';
+import { SimpleSelector } from './selector-simple';
+import { Selector } from './selector';
+import { Interpolated } from './interpolated';
+import { type MaybePromise } from '@jesscss/awaitable-pipe';
+
+export interface InterpolatedSelector extends SimpleSelector<Interpolated> {
+  eval(context: Context): MaybePromise<Selector>;
+}
+
+/**
+ * A selector that wraps an interpolated value
+ * This allows interpolation to be used in selector contexts
+ */
+export class InterpolatedSelector extends SimpleSelector<Interpolated> {
+  type = 'InterpolatedSelector' as const;
+  shortType = 'interpolated-selector' as const;
+
+  get isClass() {
+    return /^\./.test(this.valueOf());
+  }
+
+  get isId() {
+    return /^#/.test(this.valueOf());
+  }
+
+  get isTag() {
+    return /^[^.#*]/.test(this.valueOf());
+  }
+
+  override evalNode(context: Context): MaybePromise<Selector> {
+    return this.value.evalToSelector(context);
+  }
+
+  override valueOf(): string {
+    return this.value.valueOf();
+  }
+}
+
+export const interpolatedSelector = defineType(InterpolatedSelector, 'InterpolatedSelector', 'interpolated-selector');

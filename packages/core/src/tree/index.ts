@@ -116,6 +116,7 @@ export * from './reference';
 export * from './import-style';
 export * from './import-js';
 export * from './interpolated';
+export * from './selector-interpolated';
 export * from './default-guard';
 export * from './rest';
 export * from './url';

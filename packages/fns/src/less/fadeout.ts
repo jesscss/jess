@@ -3,14 +3,28 @@ import {
   Color,
   Dimension,
   Node,
-  defineFunction
+  defineFunction,
+  ColorFormat
 } from '@jesscss/core';
-import { adjustHSL } from '../util/get-hsla';
 
 const fadeout = defineFunction(
   'fadeout',
   function(this: Context, color: Color, amount: Dimension, method?: Node) {
-    return adjustHSL.call(this, 'a', '-', color, amount, method);
+    let adjustAmount = amount.value.number / 100;
+
+    if (method && method.value === 'relative') {
+      adjustAmount = color._alpha * adjustAmount;
+    }
+
+    const newAlpha = color._alpha - adjustAmount;
+
+    // Create new color with adjusted alpha, preserving original format
+    return new Color({
+      format: color.value.format,
+      rgb: color._rgb,
+      hsl: color._hsl,
+      alpha: newAlpha
+    }).inherit(color);
   },
   {
     params: [{

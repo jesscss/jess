@@ -3,14 +3,28 @@ import {
   type Context,
   Color,
   Dimension,
-  Node
+  Node,
+  ColorFormat
 } from '@jesscss/core';
-import { adjustHSL } from '../util/get-hsla';
 
 export default defineFunction(
   'saturate',
   function(this: Context, color: Color, amount: Dimension, method?: Node) {
-    return adjustHSL.call(this, 's', '+', color, amount, method);
+    const [h, s, l] = color._hsl;
+    let adjustAmount = amount.value.number / 100;
+
+    if (method && method.value === 'relative') {
+      adjustAmount = s * adjustAmount;
+    }
+
+    const newSaturation = s + adjustAmount;
+
+    // Create new color with adjusted saturation, preserving original format
+    return new Color({
+      format: color.value.format,
+      hsl: [h, newSaturation, l],
+      alpha: color._alpha
+    }).inherit(color);
   },
   {
     params: [{

@@ -1,16 +1,21 @@
 import {
   Color,
+  ColorFormat,
   Dimension,
   type Context,
   defineFunction
 } from '@jesscss/core';
 import mix from './mix';
-import rgb from './rgb';
 
 const tint = defineFunction(
   'tint',
   function(this: Context, color: Color, amount: Dimension) {
-    return mix.call(this, rgb.call(this, 255, 255, 255), color, amount);
+    const white = new Color({
+      format: ColorFormat.RGB,
+      rgb: [255, 255, 255],
+      alpha: 1
+    });
+    return mix.call(this, white, color, amount);
   },
   {
     params: [{

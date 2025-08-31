@@ -1,16 +1,21 @@
 import {
   Color,
+  ColorFormat,
   Dimension,
   type Context,
   defineFunction
 } from '@jesscss/core';
 import mix from './mix';
-import rgb from './rgb';
 
 const shade = defineFunction(
   'shade',
   function(this: Context, color: Color, amount: Dimension) {
-    return mix.call(this, rgb.call(this, 0, 0, 0), color, amount);
+    const black = new Color({
+      format: ColorFormat.RGB,
+      rgb: [0, 0, 0],
+      alpha: 1
+    });
+    return mix.call(this, black, color, amount);
   },
   {
     params: [{

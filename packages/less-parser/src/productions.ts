@@ -40,6 +40,7 @@ import {
   Quoted,
   AtRule,
   Interpolated,
+  InterpolatedSelector,
   Reference,
   Dimension,
   Num,
@@ -613,7 +614,8 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
       return leftNode;
     };
 
-    let isPossibleMixinDefinition = selector instanceof BasicSelector && (selector.isClass || selector.isId);
+    let isPossibleMixinDefinition = (selector instanceof BasicSelector && (selector.isClass || selector.isId))
+      || (selector instanceof InterpolatedSelector && (selector.isClass || selector.isId));
     let isPossibleMixinCall = true;
     if (!isSelectorList && !isPossibleMixinDefinition && !RECORDING_PHASE) {
       for (let s of selector.nodes()) {
@@ -623,6 +625,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
         }
         if (
           (s instanceof BasicSelector && (s.isClass || s.isId))
+          || (s instanceof InterpolatedSelector && (s.isClass || s.isId))
           || (s instanceof Combinator && (s.value === '>' || s.value === ' '))
         ) {
           continue;
@@ -910,11 +913,11 @@ export function simpleSelector(this: P, T: TokenMap) {
           return new Ampersand(value || undefined, undefined, $.getLocationInfo(selector), this.context);
         }
         if (selector.tokenType.name === 'InterpolatedSelector') {
-          // Create an Interpolated node for interpolated selectors
+          // Create an InterpolatedSelector wrapper for interpolated selectors
           let nameValue = selector.image;
-          let nameNode = getInterpolated(nameValue, $.getLocationInfo(selector), this.context);
+          let interpolatedNode = getInterpolated(nameValue, $.getLocationInfo(selector), this.context);
 
-          return nameNode;
+          return new InterpolatedSelector(interpolatedNode, undefined, $.getLocationInfo(selector), this.context);
         }
         return new BasicSelector(selector.image, undefined, $.getLocationInfo(selector), this.context);
       }
