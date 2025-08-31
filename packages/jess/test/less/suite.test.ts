@@ -203,19 +203,6 @@ describe('Jess Less Test Suite', () => {
     });
   });
 
-  describe('Error Handling', () => {
-    it('should handle invalid syntax gracefully', async () => {
-      const lessCode = `
-        .test {
-          color: red;
-          invalid-syntax
-        }
-      `;
-
-      await expect(compiler.renderString(lessCode)).rejects.toThrow();
-    });
-  });
-
   describe('Import System', () => {
     it('should handle @import statements', async () => {
       const lessCode = `

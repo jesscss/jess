@@ -2,6 +2,7 @@ import {
   type Node,
   Operation,
   type Dimension,
+  type Color,
   Sequence
 } from '@jesscss/core';
 import { getNumber } from './number';
@@ -9,7 +10,7 @@ import { getNumber } from './number';
 /**
  * Allows for comma-less syntax
  */
-export function getColorFunctionValues(one: Node, two: Node, three: Node) {
+export function getColorFunctionValues(one: Sequence | Dimension, two: Dimension, three: Dimension) {
   /**
    * Comma-less syntax
    *   e.g. rgb(0 128 255 / 50%)
@@ -21,13 +22,13 @@ export function getColorFunctionValues(one: Node, two: Node, three: Node) {
     two = val[1]!;
     three = val[2]!;
     /**
-   * @todo - should this be normalized in
-   *   function caller? Or parsed differently?
-   */
+     * @todo - should this be normalized in
+     *   function caller? Or parsed differently?
+     */
     if (three instanceof Operation) {
-      const op = three
-      ;([three, ,alpha] = op.value);
+      const op = three as Operation;
+      ([three, ,alpha] = op.value as [Dimension, string, Dimension]);
     }
   }
-  return ([one, two, three, alpha].map(v => getNumber(v)) as [number, number, number, number]);
+  return ([one, two, three, alpha].map(v => getNumber(v, true)) as [number, number, number, number]);
 }

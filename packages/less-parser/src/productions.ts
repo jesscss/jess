@@ -227,17 +227,24 @@ export function main(this: P, T: TokenMap) {
         const localAlt = typeof ruleAlt === 'function' ? ruleAlt(ctx) : ruleAlt;
         let value = $.OR(localAlt);
         if (!RECORDING_PHASE) {
-          if (!(value instanceof Node)) {
-            /** This is a semi-colon token */
-            if (lastRule) {
-              lastRule.options.semi = true;
+          /** @todo - When do we not have a value? */
+          if (value) {
+            if (!(value instanceof Node)) {
+              /** This is a semi-colon or charset token */
+              if (value.image.includes('@charset')) {
+                rules.push(new Any(value.image, { role: 'charset' }, $.getLocationInfo(value), context));
+              } else {
+                if (lastRule) {
+                  lastRule.options.semi = true;
+                } else {
+                  rules.push(new Any(';', { role: 'semi' }, $.getLocationInfo($.LA(1)), context));
+                }
+              }
             } else {
-              rules.push(new Any(';', { role: 'semi' }, $.getLocationInfo($.LA(1)), context));
+              requiredSemi = !!value.requiredSemi;
+              rules.push(value);
+              lastRule = value;
             }
-          } else {
-            requiredSemi = !!value.requiredSemi;
-            rules.push(value);
-            lastRule = value;
           }
         }
       }

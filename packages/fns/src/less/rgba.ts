@@ -8,7 +8,7 @@ import { getNumber, type ColorValue } from '../util/number';
 const rgba = defineFunction(
   'rgba',
   function(this: Context, r: ColorValue, g: ColorValue, b: ColorValue, a: ColorValue) {
-    const values = [r, g, b, a].map(v => getNumber(v));
+    const values = [r, g, b, a].map(v => getNumber(v, true));
     return new Color(values);
   },
   {

@@ -3,11 +3,13 @@ import type {
   Ruleset,
   Rules,
   ImportOptions,
-  Node
+  Node,
+  Any
 } from './tree';
 import { type Operator } from './tree/util/calculate';
 import type { PluginInterface } from './plugin';
 import * as path from 'node:path';
+import { isNode } from './tree/util/is-node';
 
 export const enum MathMode {
   /**
@@ -31,8 +33,6 @@ export const enum UnitMode {
    */
   STRICT = 1
 }
-
-const { isArray } = Array;
 
 export interface ContextOptions {
   /** Hash classes for module output */
@@ -182,6 +182,12 @@ export class Context {
   readonly opts: ContextOptions;
 
   treeContext!: TreeContext;
+
+  /**
+   * A feature ported from Less - we suppress any `@charset`
+   * after the first one.
+   */
+  currentCharset?: Any;
 
   /**
    * This is set when entering rulesets so that child nodes
@@ -543,11 +549,34 @@ export class Context {
     return `.${mapVal}`;
   }
 
-  shouldOperate(op: Operator) {
+  shouldOperate(op: Operator, left: Node, right: Node) {
     const mathMode = this.opts.mathMode;
     const inParens = this.parenFrames.at(-1);
     const inCalc = this.calcFrames.at(-1);
     if (inCalc) {
+      /** Only collapse safe units */
+      if (
+        isNode(left, 'Dimension')
+        && isNode(right, 'Dimension')
+      ) {
+        let lUnit = left.value.unit;
+        let rUnit = right.value.unit;
+        if (
+          (op === '+' || op === '-')
+          && lUnit === rUnit
+        ) {
+          return true;
+        }
+        /** Can't make square units */
+        if (op === '*' && (!lUnit || !rUnit)) {
+          return true;
+        }
+        /** Can't divide by a unit */
+        if (op === '/' && !lUnit) {
+          return true;
+        }
+      }
+
       return false;
     }
     /** Parens for Less/SCSS will set `canOperate` to true */

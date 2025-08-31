@@ -597,7 +597,7 @@ export abstract class Node<
    * This is used for variable referencing and
    * selector extending.
    */
-  copy(deep?: boolean): this {
+  copy(deep?: boolean, trim?: boolean): this {
     const newNode = this.clone(
       deep,
       (n) => {
@@ -609,11 +609,13 @@ export abstract class Node<
         return nilNode.inherit(n);
       }
     );
-    /** Don't return pre / post on copied nodes? */
-    newNode.pre = undefined;
-    newNode.post = undefined;
-    // newNode.stripPrePost(newNode, 'pre');
-    // newNode.stripPrePost(newNode, 'post');
+    if (trim) {
+      newNode.pre = undefined;
+      newNode.post = undefined;
+    } else {
+      newNode.stripPrePost(newNode, 'pre');
+      newNode.stripPrePost(newNode, 'post');
+    }
     return newNode;
   }
 
@@ -626,7 +628,7 @@ export abstract class Node<
    *
    * Mostly this is overridden to resolve names before registering.
    */
-  preEval(context: Context): MaybePromise<this> {
+  preEval(context: Context): MaybePromise<Node> {
     let node = this.maybeClone(context);
     let out = node.forEachNode(n => n.preEval(context));
     if (isThenable(out)) {
@@ -702,8 +704,8 @@ export abstract class Node<
       this.addFlag(F_NON_STATIC);
     }
     // Note that we need to create new arrays if we mutate pre/post later
-    this.pre = node.pre;
-    this.post = node.post;
+    this.pre ||= node.pre;
+    this.post ||= node.post;
     this.sourceNode = node.sourceNode;
     this.index ??= node.index;
     this.parent = node.parent;
@@ -750,15 +752,11 @@ export abstract class Node<
       return w.getSince(mark);
     } else if (isArray(value)) {
       // Handle Node[] array - call toString() on each node (they will emit into writer)
-      const stripWS = false; // rollback aggressive whitespace stripping
       for (let node of value) {
         if (node instanceof Node) {
           node.toString(options);
         } else {
           const s = String(node);
-          if (stripWS && /^\s+$/.test(s)) {
-            continue;
-          }
           w.add(s);
         }
       }

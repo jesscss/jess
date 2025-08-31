@@ -13,12 +13,18 @@ function extractInterpolatedNodes(serialized: string): string[] {
 const parser = new Parser();
 
 describe('serializeTypes coverage', () => {
+  test('charset', () => {
+    const { tree } = parser.parse('@charset "UTF-8";');
+    expect(serializeTypes(tree)).toContainString(`
+      (Any [role=charset] '@charset "UTF-8";')
+    `);
+  });
   test('variable declaration', () => {
     const { tree } = parser.parse('@color: red;');
     expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
         name: 
-          (any [role=ident] 'color')
+          (Any [role=ident] 'color')
         value: 
           (Color
             node: 'red'
@@ -40,7 +46,7 @@ describe('serializeTypes coverage', () => {
             [
               (VarDeclaration
                 name: 
-                  (any [role=property] 'color')
+                  (Any [role=property] 'color')
                 value: 
                   (Nil '')
               )
@@ -51,7 +57,7 @@ describe('serializeTypes coverage', () => {
             [
               (Declaration
                 name: 
-                  (any [role=property] 'color')
+                  (Any [role=property] 'color')
                 value: 
                   (Reference
                     key: 'color'
@@ -115,7 +121,7 @@ describe('serializeTypes coverage', () => {
     expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
         name: 
-          (any [role=ident] 'rules')
+          (Any [role=ident] 'rules')
         value: 
           (Mixin
             rules: 
@@ -123,7 +129,7 @@ describe('serializeTypes coverage', () => {
                 [
                   (Declaration
                     name: 
-                      (any [role=property] 'color')
+                      (Any [role=property] 'color')
                     value: 
                       (Color
                         node: 'red'
@@ -199,7 +205,7 @@ describe('serializeTypes coverage', () => {
             [
               (Declaration
                 name: 
-                  (any [role=property] 'color')
+                  (Any [role=property] 'color')
                 value: 
                   (Color
                     node: 'red'
@@ -270,7 +276,7 @@ describe('serializeTypes coverage', () => {
         }
         path: 
           (Quoted
-            (any [role=any] 'file.less')
+            (Any [role=any] 'file.less')
           )
       )
     `);
@@ -281,12 +287,12 @@ describe('serializeTypes coverage', () => {
     expect(serializeTypes(tree)).toContainString(`
       (AtRule
         name: 
-          (any [role=atkeyword] '@import')
+          (Any [role=atkeyword] '@import')
         prelude: 
           (Sequence
             [
               (Quoted
-                (any [role=any] 'file.css')
+                (Any [role=any] 'file.css')
               )
             ]
           )
@@ -305,7 +311,7 @@ describe('serializeTypes coverage', () => {
         }
         path: 
           (Quoted
-            (any [role=any] 'file')
+            (Any [role=any] 'file')
           )
       )
     `);
@@ -316,12 +322,12 @@ describe('serializeTypes coverage', () => {
     expect(serializeTypes(tree)).toContainString(`
       (AtRule
         name: 
-          (any [role=atkeyword] '@import')
+          (Any [role=atkeyword] '@import')
         prelude: 
           (Sequence
             [
               (Quoted
-                (any [role=any] 'file.css')
+                (Any [role=any] 'file.css')
               )
             ]
           )
@@ -340,7 +346,7 @@ describe('serializeTypes coverage', () => {
         }
         path: 
           (Quoted
-            (any [role=any] 'file.less')
+            (Any [role=any] 'file.less')
           )
       )
     `);
@@ -353,9 +359,9 @@ describe('serializeTypes coverage', () => {
     expect(serializeTypes(result.tree)).toContainString(`
       (VarDeclaration
         name: 
-          (any [role=ident] 'property')
+          (Any [role=ident] 'property')
         value: 
-          (any 'foo')
+          (Any 'foo')
       )
     `);
   });
@@ -367,9 +373,9 @@ describe('serializeTypes coverage', () => {
     expect(serializeTypes(result.tree)).toContainString(`
       (VarDeclaration
         name: 
-          (any [role=ident] 'property')
+          (Any [role=ident] 'property')
         value: 
-          (any 'foo')
+          (Any 'foo')
       )
     `);
   });
@@ -384,7 +390,7 @@ describe('serializeTypes coverage', () => {
           (Expression
             (Reference [role=name]
               key: 
-                (any [role=ident] 'media')
+                (Any [role=ident] 'media')
             )
           )
       )
@@ -397,7 +403,7 @@ describe('serializeTypes coverage', () => {
     expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
         name: 
-          (any [role=ident] 'ref')
+          (Any [role=ident] 'ref')
         value: 
           (Reference [role=name]
             key: '#id'
@@ -412,7 +418,7 @@ describe('serializeTypes coverage', () => {
     expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
         name: 
-          (any [role=ident] 'ref')
+          (Any [role=ident] 'ref')
         value: 
           (Reference [role=name]
             key: '.class'
@@ -427,7 +433,7 @@ describe('serializeTypes coverage', () => {
     expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
         name: 
-          (any [role=ident] 'ref')
+          (Any [role=ident] 'ref')
         value: 
           (Reference [role=name]
             target: 
@@ -447,7 +453,7 @@ describe('serializeTypes coverage', () => {
     expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
         name: 
-          (any [role=ident] 'ref')
+          (Any [role=ident] 'ref')
         value: 
           (Call
             name: 
@@ -465,7 +471,7 @@ describe('serializeTypes coverage', () => {
     expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
         name: 
-          (any [role=ident] 'ref')
+          (Any [role=ident] 'ref')
         value: 
           (Call
             name: 
@@ -488,7 +494,7 @@ describe('serializeTypes coverage', () => {
     expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
         name: 
-          (any [role=ident] 'ref')
+          (Any [role=ident] 'ref')
         value: 
           (Reference
             target: 
@@ -501,10 +507,32 @@ describe('serializeTypes coverage', () => {
     `);
   });
 
-  test.only('variable reference with accessor', () => {
+  test('variable reference with accessor', () => {
     const { tree } = parser.parse('@ref: @config[$@prop];');
 
-    console.log(serializeTypes(tree));
+    expect(serializeTypes(tree)).toContainString(`
+      (VarDeclaration
+        name: 
+          (Any [role=ident] 'ref')
+        value: 
+          (Reference
+            target: 
+              (Reference
+                key: 'config'
+              )
+            key: 
+              (Interpolated [role=ident]
+                source: '${INTERPOLATION_PLACEHOLDER}'
+                replacements:
+                [
+                  (Reference [role=ident]
+                    key: 'prop'
+                  )
+                ]
+              )
+          )
+      )
+    `);
   });
 
   test('namespace reference with complex selector and accessor', () => {
@@ -513,7 +541,7 @@ describe('serializeTypes coverage', () => {
     expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
         name: 
-          (any [role=ident] 'ref')
+          (Any [role=ident] 'ref')
         value: 
           (Reference
             target: 
@@ -536,7 +564,7 @@ describe('serializeTypes coverage', () => {
     expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
         name: 
-          (any [role=ident] 'ref')
+          (Any [role=ident] 'ref')
         value: 
           (Call
             name: 
@@ -562,7 +590,7 @@ describe('serializeTypes coverage', () => {
     expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
         name: 
-          (any [role=ident] 'ref')
+          (Any [role=ident] 'ref')
         value: 
           (Call
             name: 
@@ -588,7 +616,7 @@ describe('serializeTypes coverage', () => {
     expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
         name: 
-          (any [role=ident] 'ref')
+          (Any [role=ident] 'ref')
         value: 
           (Call
             name: 
@@ -604,9 +632,9 @@ describe('serializeTypes coverage', () => {
                         [
                           (VarDeclaration
                             name: 
-                              (any [role=property] 'foo')
+                              (Any [role=property] 'foo')
                             value: 
-                              (any 'bar')
+                              (Any 'bar')
                           )
                         ]
                       )
@@ -624,7 +652,7 @@ describe('serializeTypes coverage', () => {
     expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
         name: 
-          (any [role=ident] 'ref')
+          (Any [role=ident] 'ref')
         value: 
           (Reference
             target: 
@@ -648,9 +676,9 @@ describe('serializeTypes coverage', () => {
                                         [
                                           (VarDeclaration
                                             name: 
-                                              (any [role=property] 'foo')
+                                              (Any [role=property] 'foo')
                                             value: 
-                                              (any 'bar')
+                                              (Any 'bar')
                                           )
                                         ]
                                       )
@@ -676,7 +704,7 @@ describe('serializeTypes coverage', () => {
     expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
         name: 
-          (any [role=ident] 'ref')
+          (Any [role=ident] 'ref')
         value: 
           (Call
             name: 

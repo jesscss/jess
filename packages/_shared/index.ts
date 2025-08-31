@@ -48,6 +48,12 @@ export const notSameSerialized = [
  * parser and therefore catches more errors.
  */
 export const invalidLess = [
+  /**
+   * Jess simplifies calc expressions
+   * in ways that Less doesn't, so output won't
+   * match. It's tested separately in Jess tests.
+   */
+  'less/_main/calc.less',
   /** This file is full of errors. */
   'less/_main/css-3.less',
 

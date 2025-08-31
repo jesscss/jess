@@ -215,22 +215,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       w.add(bodyStr);
     }
     const depth = options.depth ?? 0;
-    if (depth === 0 && DEBUG_FINAL_NL) {
-      const rootPostPreview = w.capture(() => this.processPrePost('post', '', options));
-      const last = [...this.value].reverse().find(n => n.visible);
-      const lastPostPreview = last ? w.capture(() => last.processPrePost('post', '', options)) : '';
-      console.error('[jess:final-nl]', {
-        rootPostType: typeof this.post,
-        rootPostPreview,
-        lastType: last?.type,
-        lastPostPreview
-      });
-    }
     // If no explicit Rules.post at root, propagate last child's post
     if (depth === 0 && (this.post === 0 || this.post === undefined)) {
-      const last = [...this.value].reverse().find(n => n.visible);
-      if (last) {
-        last.processPrePost('post', '', options);
+      let lastVisible: Node | undefined;
+      for (let i = this.value.length - 1; i >= 0; i--) {
+        const n = this.value[i]!;
+        if (n.visible) {
+          lastVisible = n;
+          break;
+        }
+      }
+      if (lastVisible) {
+        lastVisible.processPrePost('post', '', options);
       }
     }
     this.processPrePost('post', '', options);
@@ -297,7 +293,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         w.add(space);
       }
       // Emit directly to preserve source map segments
-      n.toTrimmedString({ ...options, writer: w, depth } as PrintOptions);
+      let rule = w.capture(() => n.toTrimmedString({ ...options, writer: w, depth } as PrintOptions));
+      w.add(rule); // .replace(/[\n\s]+$/, '')
       if (n.requiredSemi && n.options.semi !== false) {
         w.add(';');
       }
@@ -481,7 +478,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
 
       // Check if node has a static name (can be registered immediately)
-      if (this._hasStaticName(node)) {
+      if (node.type === 'Any' && node.options.role === 'charset') {
+        /** Special case where we register the charset node immediately */
+        rules.value[i] = (node as Any).preEval(context);
+      } else if (this._hasStaticName(node)) {
         staticNodes.push(node);
         this._registerNodeIfEligible(rules, node, context);
       } else {
@@ -1089,6 +1089,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       let rulesContext = thisContext.rulesContext;
       thisContext.rulesContext = rules;
       if (guard) {
+        guard.parent = rules;
         /** Allow lookup on the inherited rules */
         passes = false;
         /** All nodes need context to be evaluated */

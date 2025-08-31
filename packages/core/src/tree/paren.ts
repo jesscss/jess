@@ -54,12 +54,12 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         value = v;
         context.parenFrames.pop();
         /**
-       * Removing nested parens or parens around a single
-       * dimension is a bit presumptuous, but I think Less's
-       * argument is that it's unnecessary at runtime,
-       * so it's really just a DX tool that can be ignored
-       * on output.
-       */
+         * Removing nested parens or parens around a single
+         * dimension is a bit presumptuous, but I think Less's
+         * argument is that it's unnecessary at runtime,
+         * so it's really just a DX tool that can be ignored
+         * on output.
+         */
         while (value instanceof Paren && value.value) {
           value = value.value;
         }

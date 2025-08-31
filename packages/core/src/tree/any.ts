@@ -1,6 +1,7 @@
 import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC, F_VISIBLE } from './node';
 import type { Context, TreeContext } from '../context';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
+import { Nil } from './nil';
 
 export type AnyRole =
   'ident'
@@ -39,9 +40,21 @@ export interface Any<
 export class Any<
   Role extends AnyRole = AnyRole
 > extends Node<string, AnyOptions<Role>> {
-  type: AnyRole = 'any';
+  type = 'Any';
   shortType = 'any';
   override state = F_VISIBLE | F_STATIC;
+
+  override preEval(context: Context): this | Nil {
+    this.preEvaluated = true;
+    if (this.options.role === 'charset') {
+      if (context.currentCharset) {
+        /** @todo - Throw error in the future? */
+        return new Nil();
+      }
+      context.currentCharset = this;
+    }
+    return this;
+  }
 
   // Any values are static and don't need evaluation
   override evalNode(context: Context): MaybePromise<Node> {

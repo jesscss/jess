@@ -100,6 +100,75 @@ describe('Operations', () => {
       expect(css).toContain('height: 60px');
       expect(css).toContain('area: 5000px');
     });
+
+    it('should preserve spacing', async () => {
+      const lessCode = `
+        .test {
+          foo: 1 + 2 calc(3 + 4) 5 + 6;
+        }
+      `;
+
+      const css = await compiler.renderString(lessCode);
+      expect(css).toContain('foo: 3 7 11');
+    });
+
+    it('should reduce calc operations and expressions', async () => {
+      const lessCode = `
+        @val: 10px;
+        .no-math {
+          @c: 10px + 20px;
+          @calc: (@val + 30px);
+          root: calc(100% - @c);
+          root2: calc(100% - @calc);
+          @var: 50vh/2;
+          width: calc(50% + (@var - 20px));
+          height: calc(50% + ((@var - 20px)));
+          min-height: calc(((10vh)) + calc((5vh)));
+          foo: 1 + 2 calc(3 + 4) 5 + 6;
+          @floor: floor(1 + .1);
+          bar: calc(@floor + 20%);
+        }
+
+        .b {
+          @a: 10px;
+          @b: 10px;
+
+          one: calc(100% - ((min(@a + @b))));
+          two: calc(100% - (((@a + @b))));
+          three: calc(e('100%') - (3 * 1));
+          four: calc(~'100%' - (3 * 1));
+          nested: calc(calc(2.25rem + 2px) - 1px * 2);
+        }
+
+        .c {
+          @v: 10px;
+          height: calc(100% - ((@v * 3) + (@v * 2)));
+        }
+      `;
+
+      const css = await compiler.renderString(lessCode);
+      expect(css).toContainString(`
+        .no-math {
+          root: calc(100% - 30px);
+          root2: calc(100% - 40px);
+          width: calc(50% + (25vh - 20px));
+          height: calc(50% + (25vh - 20px));
+          min-height: 15vh;
+          foo: 3 7 11;
+          bar: calc(1 + 20%);
+        }
+        .b {
+          one: calc(100% - 20px);
+          two: calc(100% - 20px);
+          three: calc(100% - 3);
+          four: calc(100% - 3);
+          nested: calc((2.25rem + 2px) - 2px);
+        }
+        .c {
+          height: calc(100% - 50px);
+        }
+      `);
+    });
   });
 
   describe('Color Operations', () => {

@@ -4,6 +4,12 @@ import { serializeTypes } from '@jesscss/core';
 const cssParser = new CssParser();
 
 describe('serializeTypes coverage', () => {
+  test('charset', () => {
+    const { tree } = cssParser.parse('@charset "UTF-8";');
+    expect(serializeTypes(tree)).toContainString(`
+      (Any [role=charset] '@charset "UTF-8";')
+    `);
+  });
   test('single rule with declaration', () => {
     const { tree } = cssParser.parse('a { b: c; }');
     expect(serializeTypes(tree)).toBeString(`
@@ -17,9 +23,9 @@ describe('serializeTypes coverage', () => {
                 [
                   (Declaration
                     name: 
-                      (any [role=property] 'b')
+                      (Any [role=property] 'b')
                     value: 
-                      (any 'c')
+                      (Any 'c')
                   )
                 ]
               )
@@ -54,7 +60,7 @@ describe('serializeTypes coverage', () => {
           op: '='
           value:
             (Quoted
-              (any [role=any] 'bar')
+              (Any [role=any] 'bar')
             )
           mod: 'i'
         )
@@ -89,7 +95,7 @@ describe('serializeTypes coverage', () => {
     const out = serializeTypes(tree);
     expect(out).toContainString(`
       (Url
-        (any [role=urlvalue] 'foo')
+        (Any [role=urlvalue] 'foo')
       )
     `);
   });
@@ -100,7 +106,7 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (Declaration
         name:
-          (any [role=property] 'w')
+          (Any [role=property] 'w')
         value:
           (Dimension
             number: 10
@@ -110,7 +116,7 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (Declaration
         name:
-          (any [role=property] 'z')
+          (Any [role=property] 'z')
         value:
           (Number 2)
     `);
@@ -122,7 +128,7 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (Declaration
         name:
-          (any [role=property] 'm')
+          (Any [role=property] 'm')
         value:
           (List
             [
@@ -135,7 +141,7 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (Declaration
         name:
-          (any [role=property] 'n')
+          (Any [role=property] 'n')
         value:
           (Sequence
             [
@@ -153,7 +159,7 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (AtRule
         name:
-          (any [role=atkeyword] '@media')
+          (Any [role=atkeyword] '@media')
     `);
   });
 });

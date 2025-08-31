@@ -328,9 +328,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           // Evaluate the fallbackValue if it's a Node
           let out = fallbackValue.eval(context);
           if (isThenable(out)) {
-            return (out as Promise<Node>).then(node => node.copy());
+            return (out as Promise<Node>).then(node => node);
           }
-          return out.copy();
+          return out;
         }
         if (isNode(returnVal, ['Declaration', 'VarDeclaration'])) {
           context.searchScope.add(returnVal);
@@ -347,7 +347,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 context.calcFrames.push(true);
               }
               context.searchScope.delete(returnVal);
-              return evald.copy();
+              return evald.copy(true, true);
             }
           );
         } else if (isArray(returnVal)) {

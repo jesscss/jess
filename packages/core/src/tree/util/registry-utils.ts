@@ -470,7 +470,7 @@ export class MixinRegistry extends Registry<
          * which means these rules can reach into the parent file that imports
          * this one.
          */
-        if (isNode(rules, 'StyleImport') && rules.options.type !== 'import') {
+        if (rules && isNode(rules.sourceNode, 'StyleImport') && rules.sourceNode.options.type !== 'import') {
           rules = undefined;
           break;
         }
@@ -524,7 +524,7 @@ export class FunctionRegistry extends Registry<JsFunction, JsFunction> {
         /**
          * If we reach an import boundary, skip the scope until we get to the top level.
          */
-        if (isNode(rules, 'StyleImport') && rules.options.type !== 'import') {
+        if (rules && isNode(rules.sourceNode, 'StyleImport') && rules.sourceNode.options.type !== 'import') {
           findRoot = true;
         }
       } while (!findRoot && rules && rules.type !== 'Rules');
@@ -643,7 +643,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
          * which means these rules can reach into the parent file that imports
          * this one.
          */
-        if (isNode(rules, 'StyleImport') && rules.options.type !== 'import') {
+        if (rules && isNode(rules.sourceNode, 'StyleImport') && rules.sourceNode.options.type !== 'import') {
           rules = undefined;
           break;
         }

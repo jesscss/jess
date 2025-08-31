@@ -12,7 +12,9 @@ export type OperationValue = [
 ];
 
 /**
- * A math operation
+ * A math operation OR a value with a slash. CSS is ambiguous
+ * in syntax about which is which, so we just classify `value / value`
+ * as an operation.
  */
 export class Operation extends Node<OperationValue> {
   type = 'Operation' as const;
@@ -28,28 +30,30 @@ export class Operation extends Node<OperationValue> {
     let n = this;
     let [left, op, right] = n.value;
     const maybeLeft = left.eval(context);
-    const handle = (l: Node): MaybePromise<Node> => {
-      const maybeRight = right.eval(context);
-      if (isThenable(maybeRight)) {
-        return (maybeRight as Promise<Node>).then((r) => {
-          if (context.shouldOperate(op)) {
-            return l.operate(r, op, context);
-          }
-          n.value = [l, op, r];
-          return n;
-        });
-      }
-      const r = maybeRight as Node;
-      if (context.shouldOperate(op)) {
-        return l.operate(r, op, context);
+    const finalize = (l: Node, r: Node): MaybePromise<Node> => {
+      if (context.shouldOperate(op, l, r)) {
+        let out = l.operate(r, op, context);
+        out.pre = left.pre;
+        out.post = right.post;
+        return out;
       }
       n.value = [l, op, r];
       return n;
     };
+    const handleLeft = (l: Node): MaybePromise<Node> => {
+      const maybeRight = right.eval(context);
+      if (isThenable(maybeRight)) {
+        return (maybeRight as Promise<Node>).then((r) => {
+          return finalize(l, r);
+        });
+      }
+      const r = maybeRight as Node;
+      return finalize(l, r);
+    };
     if (isThenable(maybeLeft)) {
-      return (maybeLeft as Promise<Node>).then(handle);
+      return (maybeLeft as Promise<Node>).then(handleLeft);
     }
-    return handle(maybeLeft as Node);
+    return handleLeft(maybeLeft as Node);
   }
 }
 

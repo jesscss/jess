@@ -32,6 +32,7 @@ import type { Num } from './number';
 import type { Url } from './url';
 import type { Quoted } from './quoted';
 import type { Color } from './color';
+import type { Reference } from './reference';
 
 export type Nodes = {
   Ampersand: typeof Ampersand;
@@ -69,4 +70,5 @@ export type Nodes = {
   Url: typeof Url;
   Quoted: typeof Quoted;
   Color: typeof Color;
+  Reference: typeof Reference;
 };

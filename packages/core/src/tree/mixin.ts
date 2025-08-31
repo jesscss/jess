@@ -140,7 +140,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
 
   override preEval(context: Context): MaybePromise<this> {
     if (!this.preEvaluated) {
-      return super.preEval(context);
+      return super.preEval(context) as MaybePromise<this>;
     }
     let node = this.maybeClone(context);
     node.preEvaluated = true;
