@@ -1,14 +1,14 @@
 import * as glob from 'glob';
 import * as fs from 'fs';
 import * as path from 'path';
-import { invalidLess } from '@jesscss/shared';
 import { JessCompiler } from '../../src';
 import lessPlugin from '@jesscss/plugin-less';
 
 const testData = path.dirname(require.resolve('@less/test-data'));
 
-const compiler = new JessCompiler({
-  collapseNesting: false, // Default to no nesting collapse for general tests
+// Test nesting behavior specifically
+const nestingCompiler = new JessCompiler({
+  collapseNesting: true, // Test nesting collapsing
   plugins: [
     lessPlugin({
       mathMode: 0
@@ -16,21 +16,15 @@ const compiler = new JessCompiler({
   ]
 });
 
-// Files that should be tested in specialized test files
-const specializedTests = [
-  'less/_main/colors.less', // Tested in colors.test.ts
-  'less/_main/nesting.less' // Tested in nesting.test.ts
-];
+describe('Nesting Behavior', () => {
+  // Only test files that are specifically about nesting
+  const nestingFiles = glob.sync(path.join(testData, 'less/_main/nesting.less'));
 
-describe('Can render Less files to CSS', () => {
-  const files = glob.sync(path.join(testData, 'less/_main/*.less'));
-  files
+  nestingFiles
     .map(value => path.relative(testData, value))
-    .filter(value => !invalidLess.includes(value))
-    .filter(value => !specializedTests.includes(value)) // Skip files tested elsewhere
     .sort()
     .forEach((file) => {
-      it(`${path.join(testData, file)}`, async () => {
+      it(`should handle nesting in ${file}`, async () => {
         const lessPath = path.join(testData, file);
         const cssPath = lessPath.replace(/\.less$/, '.css').replace('/less/', '/css/');
 
@@ -39,12 +33,12 @@ describe('Can render Less files to CSS', () => {
           return;
         }
 
-        const css = fs.readFileSync(cssPath).toString();
-        const output = await compiler.render(lessPath);
+        const expectedCss = fs.readFileSync(cssPath).toString();
+        const output = await nestingCompiler.render(lessPath);
 
         // Normalize whitespace for comparison
         const normalizedOutput = output.trim().replace(/\s+/g, ' ');
-        const normalizedExpected = css.trim().replace(/\s+/g, ' ');
+        const normalizedExpected = expectedCss.trim().replace(/\s+/g, ' ');
 
         expect(normalizedOutput).toBe(normalizedExpected);
       });

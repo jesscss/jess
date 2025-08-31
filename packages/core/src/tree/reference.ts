@@ -158,7 +158,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   override evalNode(context: Context): MaybePromise<Node> {
     let { target, key } = this.value;
     let { type, fallbackValue, filter: originalFilter } = this.options;
-    let resolvedTarget = target ? target.eval(context) : this.rulesParent;
+    let resolvedTarget = target ? target.eval(context) : this.rulesParent ?? context.rulesContext;
     return pipe(
       () => {
         return resolvedTarget;

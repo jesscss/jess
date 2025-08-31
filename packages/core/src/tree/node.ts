@@ -652,30 +652,31 @@ export abstract class Node<
   }
 
   static evalStatic(node: Node, context: Context): MaybePromise<Node> {
-    let returnNode: Node = node;
+    let preEvaluatedNode: Node;
     return pipe(
       () => {
-        if (!returnNode.preEvaluated) {
-          return returnNode.preEval(context);
+        if (!node.preEvaluated) {
+          return node.preEval(context);
         }
-        return returnNode;
+        return node;
       },
-      (returnNode) => {
-        returnNode.preEvaluated = true;
-        if (returnNode !== node) {
-          returnNode.inherit(node);
+      (preEvald) => {
+        preEvaluatedNode = preEvald;
+        preEvaluatedNode.preEvaluated = true;
+        if (preEvald !== node) {
+          preEvaluatedNode.inherit(node);
         }
-        if (!returnNode.evaluated) {
-          return returnNode.evalNode(context);
+        if (!preEvaluatedNode.evaluated) {
+          return preEvaluatedNode.evalNode(context);
         }
-        return returnNode;
+        return preEvaluatedNode;
       },
-      (returnNode) => {
-        returnNode.evaluated = true;
-        if (returnNode !== node) {
-          returnNode.inherit(node);
+      (evald) => {
+        evald.evaluated = true;
+        if (preEvaluatedNode !== evald) {
+          evald.inherit(preEvaluatedNode);
         }
-        return returnNode;
+        return evald;
       }
     );
   }

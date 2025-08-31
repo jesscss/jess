@@ -73,6 +73,8 @@ export interface TreeContextOptions extends ContextOptions {
   /**
    * For instances where a new tree needs to inherit from scope
    * (like Less / SCSS `@import` rule)
+   *
+   * @todo - remove?
    */
   parentScope?: Rules;
   scope?: Rules;
@@ -80,10 +82,20 @@ export interface TreeContextOptions extends ContextOptions {
   isModule?: boolean;
 
   file?: {
+    /** Filename, e.g. "main.jess" */
     name: string;
+
+    /** Absolute directory containing the file (no filename) */
     path: string;
+
+    /** Absolute file path (directory + filename) */
     fullPath: string;
-    // contents: string[]
+
+    /** Full file contents (recommended for code-frames) */
+    source?: string;
+
+    /** Lazy cache of line-start offsets (built on demand) */
+    lines?: Uint32Array;
   };
 
   [k: string]: any;

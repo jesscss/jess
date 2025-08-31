@@ -45,7 +45,14 @@
     "lint": "eslint '**/*.{mjs,cjs,js,ts}'",
     "test": "vitest",
     "test:coverage": "vitest --coverage",
-    "preinstall": "npx only-allow pnpm"
+    "preinstall": "npx only-allow pnpm",
+    "setup:test-data": "node scripts/setup-test-data.js",
+    "postinstall": "npm run setup:test-data",
+    "test:less": "node scripts/test-less.js",
+    "test:less:colors": "node scripts/test-less.js colors",
+    "test:less:nesting": "node scripts/test-less.js nesting",
+    "test:less:functions": "node scripts/test-less.js functions",
+    "cleanup:test-data": "node scripts/cleanup-test-data.js"
   },
   "repository": {
     "type": "git",

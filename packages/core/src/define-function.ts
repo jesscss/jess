@@ -336,7 +336,7 @@ function splitSequenceIntoArgs(sequence: Sequence, context: Context): any[] {
 }
 
 /** This will be called internally by Jess to functions created with defineFunction */
-export function callWithContext(context: Context, fn: (...args: any[]) => any, ...args: any[]): MaybePromise<any> {
+export async function callWithContext(context: Context, fn: (...args: any[]) => any, ...args: any[]): Promise<any> {
   if (!(fn as any)?.options?.params && args.some(arg =>
     (isNode(arg) && arg.type === 'Collection')
     || isPlainObject(arg))
@@ -374,11 +374,8 @@ export function callWithContext(context: Context, fn: (...args: any[]) => any, .
     args: () => originalArgsList.eval(context)
   };
 
-  // Build positional arguments with evaluation and validation
-  const positionalArgs = buildCallWithContextPositionalArgs(record, params, context);
-
-  // Validate non-lazy, non-rest arguments
-  validateCallWithContextArgs(positionalArgs, params);
+  // Build positional arguments with evaluation, validation, and conversion
+  const positionalArgs = await buildCallWithContextPositionalArgs(record, params, context);
 
   // Call the function with the evaluated arguments
   return ((fn as any)._internal).call(functionThis, ...positionalArgs);
@@ -620,11 +617,11 @@ function parseCallWithContextArgs(args: any[], params: DefineFunctionOptions['pa
 /**
  * Builds positional arguments for callWithContext with evaluation
  */
-function buildCallWithContextPositionalArgs(
+async function buildCallWithContextPositionalArgs(
   record: any,
   params: DefineFunctionOptions['params'] | undefined,
   context: Context
-): any[] {
+): Promise<any[]> {
   const positionalArgs: any[] = [];
 
   for (let i = 0; i < (params?.length ?? 0); i++) {
@@ -639,6 +636,10 @@ function buildCallWithContextPositionalArgs(
       } else {
         positionalArgs.push(...arr.map((item) => {
           let processedItem: any = (isNode(item) && !item.evaluated) ? (item as any).eval(context) : item;
+
+          // Validate AFTER evaluation but BEFORE conversion
+          validateArgumentIfNeeded(processedItem, def, 'Argument');
+
           // Apply conversion plugins if defined
           if (def.convert && processedItem instanceof Dimension) {
             processedItem = applyConversionPlugins(processedItem, def.convert);
@@ -652,6 +653,25 @@ function buildCallWithContextPositionalArgs(
         positionalArgs.push(createThunk(v, def, context));
       } else {
         let processedValue: any = (isNode(v) && !v.evaluated) ? (v as any).eval(context) : v;
+
+        // Handle async evaluation
+        if (isThenable(processedValue)) {
+          return (processedValue as Promise<any>).then(async (resolvedValue) => {
+            // Validate AFTER evaluation but BEFORE conversion
+            validateArgumentIfNeeded(resolvedValue, def, 'Argument');
+
+            // Apply conversion plugins if defined
+            if (def.convert && resolvedValue instanceof Dimension) {
+              resolvedValue = applyConversionPlugins(resolvedValue, def.convert);
+            }
+            positionalArgs.push(resolvedValue);
+            return positionalArgs;
+          });
+        }
+
+        // Validate AFTER evaluation but BEFORE conversion
+        validateArgumentIfNeeded(processedValue, def, 'Argument');
+
         // Apply conversion plugins if defined
         if (def.convert && processedValue instanceof Dimension) {
           processedValue = applyConversionPlugins(processedValue, def.convert);
@@ -665,16 +685,16 @@ function buildCallWithContextPositionalArgs(
 }
 
 /**
- * Validates callWithContext arguments
+ * Validates callWithContext arguments from record (before conversion)
  */
-function validateCallWithContextArgs(positionalArgs: any[], params: DefineFunctionOptions['params'] | undefined): void {
+function validateCallWithContextArgs(record: any, params: DefineFunctionOptions['params'] | undefined): void {
   if (!params) {
     return;
   }
 
-  for (let i = 0; i < Math.min(positionalArgs.length, params.length); i++) {
+  for (let i = 0; i < params.length; i++) {
     const def = params[i]!;
-    const value = positionalArgs[i];
+    const value = record[def.name];
 
     // Skip validation for lazy parameters since they're passed as thunks
     if ((def as any).lazy) {
@@ -763,7 +783,7 @@ function validateArguments(record: any, params?: DefineFunctionOptions['params']
         }
       }
     } else {
-      const validation = validateValue(value, expectedType, paramName);
+      const validation = validateValue(value, expectedType, paramName, 'Argument');
       if (!validation.isValid) {
         throw new TypeError(validation.errorMessage);
       }
@@ -777,6 +797,22 @@ function validateArguments(record: any, params?: DefineFunctionOptions['params']
 interface ValidationResult {
   isValid: boolean;
   errorMessage?: string;
+}
+
+/**
+ * Validate argument if needed (checks for lazy and undefined values)
+ */
+function validateArgumentIfNeeded(
+  value: any,
+  def: any,
+  prefix: string = 'Parameter'
+): void {
+  if (!(def as any).lazy && value !== undefined) {
+    const validation = validateValue(value, def.type, def.name, prefix);
+    if (!validation.isValid) {
+      throw new TypeError(validation.errorMessage);
+    }
+  }
 }
 
 /**
