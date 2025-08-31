@@ -8,13 +8,9 @@ export type ConversionPlugin = (value: unknown) => number | unknown;
  * @param base - The base value to convert percentages to (e.g., 255 for RGB, 100 for HSL)
  */
 export const percentOf = (base: number): ConversionPlugin => (value: unknown) => {
-  console.log(`percentOf(${base}) called with:`, value, 'type:', typeof value, 'instanceof Dimension:', value instanceof Dimension);
   if (value instanceof Dimension && value.value.unit === '%') {
-    const result = value.value.number * base / 100;
-    console.log(`percentOf(${base}) returning:`, result);
-    return result;
+    return value.value.number * base / 100;
   }
-  console.log(`percentOf(${base}) returning unchanged:`, value);
   return value;
 };
 
@@ -98,13 +94,9 @@ export const alphaToNumber = (): ConversionPlugin => (value: unknown) => {
  * Converts any dimension to a number (removes units)
  */
 export const toNumber = (): ConversionPlugin => (value: unknown) => {
-  console.log('toNumber() called with:', value, 'type:', typeof value, 'instanceof Dimension:', value instanceof Dimension);
   if (value instanceof Dimension) {
-    const result = value.value.number; // Extract number froDimension
-    console.log('toNumber() returning:', result);
-    return result;
+    return value.value.number; // Extract number from Dimension
   }
-  console.log('toNumber() returning unchanged:', value);
   return value; // Don't know how to handle this, pass through
 };
 

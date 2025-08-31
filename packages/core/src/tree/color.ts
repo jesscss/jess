@@ -48,13 +48,11 @@ export class Color extends Node<ColorData> {
     location?: ConstructorParameters<typeof Node<ColorData>>[2],
     context?: ConstructorParameters<typeof Node<ColorData>>[3]
   ) {
-    console.log('Color constructor called with:', value, 'type:', typeof value, 'isArray:', isArray(value));
     let colorData: ColorData;
 
     if (isArray(value)) {
       // Handle color array [r, g, b, a]
       const [r, g, b, a] = value as [number, number, number, number];
-      console.log('Color array values:', { r, g, b, a, rType: typeof r, gType: typeof g, bType: typeof b });
       colorData = {
         rgb: [r, g, b],
         alpha: a,
@@ -62,7 +60,6 @@ export class Color extends Node<ColorData> {
       };
     } else if (typeof value === 'object' && value !== null && !isNode(value)) {
       // Handle ColorData object
-      console.log('ColorData object:', value);
       colorData = value as ColorData;
 
       // Validate that we have either rgb, hsl, or a node to parse

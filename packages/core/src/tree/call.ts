@@ -95,6 +95,7 @@ export class Call extends Node<CallValue, CallOptions> {
         );
         return cast(result);
       } catch (e) {
+        console.log('DEBUG error:', e);
         let newCall = this.clone().inherit(this);
         newCall.value.name = isNode(name, 'Reference') && name.options.fallbackValue === true
           ? String(name.value.key)

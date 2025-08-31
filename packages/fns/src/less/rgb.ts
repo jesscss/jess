@@ -11,7 +11,6 @@ import { percentOf, toNumber } from '@jesscss/core';
 const rgb = defineFunction(
   'rgb',
   async function(this: FunctionThis, r: number, g: number, b: number) {
-    console.log('RGB function called with:', { r, g, b, rType: typeof r, gType: typeof g, bType: typeof b });
     // Create a color with RGB format and store the original function call
     const color = new Color({
       format: ColorFormat.RGB,

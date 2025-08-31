@@ -402,17 +402,13 @@ function validateRestParameterPosition(params: DefineFunctionOptions['params']):
  * Applies conversion plugins to a value
  */
 function applyConversionPlugins(value: unknown, plugins: ConversionPlugin[]): unknown {
-  console.log('applyConversionPlugins called with:', value, 'plugins:', plugins.length);
   let result: unknown = value;
 
   // Apply conversion plugins in sequence
   for (const plugin of plugins) {
-    console.log('Applying plugin:', plugin.name || 'anonymous');
     result = plugin(result);
-    console.log('Plugin result:', result, 'type:', typeof result);
   }
 
-  console.log('applyConversionPlugins final result:', result, 'type:', typeof result);
   return result;
 }
 
@@ -546,13 +542,10 @@ function buildPositionalArgs(record: any, params: DefineFunctionOptions['params'
         positionalArgs.push(...arr.map(item => createThunk(item, def)));
       } else {
         positionalArgs.push(...arr.map((item) => {
-          console.log('Processing item:', item, 'def.convert:', !!def.convert, 'item instanceof Dimension:', item instanceof Dimension);
           // Apply conversion plugins if defined
           if (def.convert && item instanceof Dimension) {
-            console.log('Applying conversion plugins to:', item);
             return applyConversionPlugins(item, def.convert);
           }
-          console.log('Not applying conversion plugins, returning:', item);
           return item;
         }));
       }
@@ -561,13 +554,10 @@ function buildPositionalArgs(record: any, params: DefineFunctionOptions['params'
       if ((def as any).lazy) {
         positionalArgs.push(createThunk(v, def));
       } else {
-        console.log('Processing single value:', v, 'def.convert:', !!def.convert, 'v instanceof Dimension:', v instanceof Dimension);
         // Apply conversion plugins if defined
         if (def.convert && v instanceof Dimension) {
-          console.log('Applying conversion plugins to single value:', v);
           positionalArgs.push(applyConversionPlugins(v, def.convert));
         } else {
-          console.log('Not applying conversion plugins to single value, returning:', v);
           positionalArgs.push(v);
         }
       }
@@ -719,10 +709,9 @@ function createThunk(val: any, paramDef: any, context?: Context): () => MaybePro
 
     // Validate the evaluated result if we have param definition
     if (paramDef && !(paramDef as any).rest) {
-      if (!isValidType(result, paramDef.type as ArgType)) {
-        const typeName = typeof paramDef.type === 'function' ? paramDef.type.name : paramDef.type;
-        const actualType = typeof result === 'object' && result !== null ? result.constructor?.name || typeof result : typeof result;
-        throw new TypeError(`Argument '${paramDef.name}' must be of type '${typeName}'. Got: ${actualType}`);
+      const validation = validateValue(result, paramDef.type, paramDef.name);
+      if (!validation.isValid) {
+        throw new TypeError(validation.errorMessage);
       }
     }
 
@@ -768,33 +757,79 @@ function validateArguments(record: any, params?: DefineFunctionOptions['params']
       const elementTypes = Array.isArray(expectedType) ? expectedType : [expectedType];
       for (let idx = 0; idx < (value as any[]).length; idx++) {
         const el = (value as any[])[idx];
-        const isValid = elementTypes.some(type => isValidType(el, type));
-        if (!isValid) {
-          const typeList = elementTypes.map(t => typeof t === 'function' ? t.name : t).join(', ');
-          const actualType = typeof el === 'object' && el !== null ? el.constructor?.name || typeof el : typeof el;
-          throw new TypeError(`Element ${idx} of '${paramName}' must be of type '${typeList}'. Got: ${actualType}`);
+        const validation = validateArrayElements([el], elementTypes, paramName);
+        if (!validation.isValid) {
+          throw new TypeError(validation.errorMessage);
         }
       }
     } else {
-      if (Array.isArray(expectedType)) {
-        // Check if value matches any of the allowed types
-        const isValid = expectedType.some(type => isValidType(value, type));
-        if (!isValid) {
-          throw new TypeError(
-            `Argument '${paramName}' must be one of: ${expectedType.join(', ')}. Got: ${typeof value}`
-          );
-        }
-      } else {
-        // Single type validation
-        if (!isValidType(value, expectedType as ArgType)) {
-          const typeName = typeof expectedType === 'function' ? expectedType.name : expectedType;
-          throw new TypeError(
-            `Argument '${paramName}' must be of type '${typeName}'. Got: ${typeof value}`
-          );
-        }
+      const validation = validateValue(value, expectedType, paramName);
+      if (!validation.isValid) {
+        throw new TypeError(validation.errorMessage);
       }
     }
   }
+}
+
+/**
+ * Centralized validation result
+ */
+interface ValidationResult {
+  isValid: boolean;
+  errorMessage?: string;
+}
+
+/**
+ * Centralized validation function
+ */
+function validateValue(value: any, expectedType: ArgType | readonly ArgType[], paramName: string, context: string = 'Argument'): ValidationResult {
+  // Handle array of types (union types)
+  if (Array.isArray(expectedType)) {
+    const isValid = expectedType.some(type => isValidType(value, type));
+    if (!isValid) {
+      const typeList = expectedType.map((t: any) => typeof t === 'function' ? t.name : t).join(', ');
+      const actualType = typeof value === 'object' && value !== null ? value.constructor?.name || typeof value : typeof value;
+      return {
+        isValid: false,
+        errorMessage: `${context} '${paramName}' must be one of: ${typeList}. Got: ${actualType}`
+      };
+    }
+    return { isValid: true };
+  }
+
+  // Handle single type
+  if (!isValidType(value, expectedType as ArgType)) {
+    const typeName = typeof expectedType === 'function' ? expectedType.name : expectedType;
+    const actualType = typeof value === 'object' && value !== null ? value.constructor?.name || typeof value : typeof value;
+    return {
+      isValid: false,
+      errorMessage: `${context} '${paramName}' must be of type '${typeName}'. Got: ${actualType}`
+    };
+  }
+
+  return { isValid: true };
+}
+
+/**
+ * Validate array elements (for rest parameters)
+ */
+function validateArrayElements(value: any[], elementTypes: ArgType | readonly ArgType[], paramName: string, context: string = 'Argument'): ValidationResult {
+  const types = Array.isArray(elementTypes) ? elementTypes : [elementTypes];
+
+  for (let idx = 0; idx < value.length; idx++) {
+    const el = value[idx];
+    const isValid = types.some(type => isValidType(el, type));
+    if (!isValid) {
+      const typeList = types.map((t: any) => typeof t === 'function' ? t.name : t).join(', ');
+      const actualType = typeof el === 'object' && el !== null ? el.constructor?.name || typeof el : typeof el;
+      return {
+        isValid: false,
+        errorMessage: `Element ${idx} of '${paramName}' must be of type '${typeList}'. Got: ${actualType}`
+      };
+    }
+  }
+
+  return { isValid: true };
 }
 
 /**
@@ -859,11 +894,8 @@ function validateArgument(value: any, def: any, context: string = 'argument'): v
 
   // Validate regular parameters
   const expectedType = def.type;
-  if (!isValidType(value, expectedType as ArgType)) {
-    const typeName = typeof expectedType === 'function' ? expectedType.name : expectedType;
-    const actualType = typeof value === 'object' && value !== null ? value.constructor?.name || typeof value : typeof value;
-    throw new TypeError(
-      `${context} '${def.name}' must be of type '${typeName}'. Got: ${actualType}`
-    );
+  const validation = validateValue(value, expectedType, def.name, context);
+  if (!validation.isValid) {
+    throw new TypeError(validation.errorMessage);
   }
 }
