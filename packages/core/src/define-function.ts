@@ -378,7 +378,13 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
   const positionalArgs = await buildCallWithContextPositionalArgs(record, params, context);
 
   // Call the function with the evaluated arguments
-  return ((fn as any)._internal).call(functionThis, ...positionalArgs);
+  // Mixin functions expect Context as 'this', not FunctionThis
+  if ((fn as any)._internal) {
+    return ((fn as any)._internal).call(functionThis, ...positionalArgs);
+  } else {
+    // For mixin functions and other functions that expect Context as 'this'
+    return (fn as any).call(context, ...positionalArgs);
+  }
 }
 
 // ============================================================================

@@ -1,177 +1,122 @@
-# Jess Less Test Suite
+# Less Tests
 
-This directory contains all Less-specific tests for the Jess compiler.
+This directory contains tests for Less functionality, organized with clear separation of concerns.
 
-## Test Files
+## Test Organization
 
-### Core Feature Tests
-- **`variables.test.ts`** - Variable declaration, usage, hoisting, scoping, and interpolation
-- **`mixins.test.ts`** - Mixin definition, usage, parameters, guards, and pattern matching
-- **`property-accessors.test.ts`** - Property accessor syntax (`@variable[property]`)
-- **`operations.test.ts`** - Mathematical operations, arithmetic, and calculations
-- **`functions.test.ts`** - Built-in Less functions (color, math, string, type functions)
-- **`suite.test.ts`** - Comprehensive test suite covering all major Less features
+### 1. Custom Tests (Our Own Tests)
+Located in individual `.test.ts` files, these are our own test cases for specific Less features:
 
-### Legacy/Compatibility Tests
-- **`less.ts`** - Tests against official Less test data for compatibility
-- **`property-accessor.test.ts`** - Original property accessor test
-- **`property-accessor-serialize.test.ts`** - AST serialization test for property accessors
+- **`variables.test.ts`** - Variable declarations and usage
+- **`mixins.test.ts`** - Mixins and mixin patterns  
+- **`nesting.test.ts`** - Nesting and parent selectors
+- **`operations.test.ts`** - Math and color operations
+- **`colors.test.ts`** - Color functions and formats
+- **`functions.test.ts`** - Built-in functions and utilities
+- **`selectors.test.ts`** - Selectors and property interpolation
+- **`import-url.test.ts`** - Import functionality
+- **`token-debug.test.ts`** - Debug and token testing
+- **`all-less.test.ts`** - Main test runner for test-data files
+- **`suite.test.ts`** - Test suite configuration
 
-## Running Less Tests
+### 2. Test-Data Tests (Comprehensive Less Test Suite)
+The `@less/test-data` package contains 70+ comprehensive test directories covering all Less features.
 
-### Run All Less Tests
+## Usage
+
+### Run Custom Tests by Feature
 ```bash
-pnpm test less/
+# Run all custom tests
+pnpm test:less:custom
+
+# Run specific test files
+pnpm test packages/jess/test/less/variables.test.ts
+pnpm test packages/jess/test/less/mixins.test.ts
+pnpm test packages/jess/test/less/nesting.test.ts
+pnpm test packages/jess/test/less/operations.test.ts
+pnpm test packages/jess/test/less/colors.test.ts
+pnpm test packages/jess/test/less/functions.test.ts
+pnpm test packages/jess/test/less/property-accessors.test.ts
+pnpm test packages/jess/test/less/import-url.test.ts
+pnpm test packages/jess/test/less/token-debug.test.ts
+
+# Run specific test files by feature
+pnpm test packages/jess/test/less/variables.test.ts
+pnpm test packages/jess/test/less/mixins.test.ts
+pnpm test packages/jess/test/less/operations.test.ts
+pnpm test packages/jess/test/less/functions.test.ts
+pnpm test packages/jess/test/less/property-accessors.test.ts
 ```
 
-### Run Specific Less Test File
+### Run Test-Data Tests
 ```bash
-pnpm test less/variables.test.ts
-pnpm test less/mixins.test.ts
-pnpm test less/property-accessors.test.ts
-pnpm test less/operations.test.ts
-pnpm test less/functions.test.ts
-pnpm test less/suite.test.ts
+# Run all test-data tests
+pnpm test:less:test-data
+
+# Run specific test-data files
+pnpm test packages/jess/test/less/all-less.test.ts -- --test-file="node_modules/@less/test-data/tests-unit/variables/variables.less"
+pnpm test packages/jess/test/less/all-less.test.ts -- --test-file="node_modules/@less/test-data/tests-unit/mixins/mixins.less"
+
+# Run test-data with specific patterns
+pnpm test packages/jess/test/less/all-less.test.ts -- --test-pattern="variables"
+pnpm test packages/jess/test/less/all-less.test.ts -- --test-pattern="mixins"
 ```
 
-### Run Legacy Less Tests
+### Direct Vitest Commands
 ```bash
-pnpm test less/less.ts
+# Run specific test file
+pnpm test packages/jess/test/less/variables.test.ts
+
+# Run all custom tests
+pnpm test packages/jess/test/less/*.test.ts
+
+# Run test-data files
+pnpm test packages/jess/test/less/all-less.test.ts
+
+# Run with Vitest options
+pnpm test packages/jess/test/less --reporter=verbose
+pnpm test packages/jess/test/less --run
 ```
 
-## Test Categories
+## Feature Categories
 
-### 1. Variables (`variables.test.ts`)
-- Basic variable declaration and usage
-- Variable hoisting (using variables before declaration)
-- Variable scoping (global vs local variables)
-- Variable shadowing
-- Variable interpolation in selectors, property names, and URLs
-- Variable arithmetic and concatenation
-- AST verification for variable nodes
+### Custom Tests
+- **variables**: Variable declarations, interpolation, scope
+- **mixins**: Mixins, parameters, patterns, guards
+- **nesting**: Nesting, parent selector (`&`)
+- **operations**: Math operations, color operations
+- **colors**: Color functions, formats
+- **functions**: Built-in functions, utilities
+- **selectors**: Selectors, property interpolation
+- **imports**: Import functionality
+- **debug**: Debug and token testing
 
-### 2. Mixins (`mixins.test.ts`)
-- Basic mixin definition and usage
-- Mixins without parentheses
-- Multiple mixin calls
-- Mixin parameters (single, multiple, default values)
-- Named parameters
-- Mixin guards (`when` conditions)
-- Pattern matching with guards
-- Nested mixins
-- `@arguments` variable
-- AST verification for mixin nodes
+### Test-Data Tests
+- **variables**: Variable declarations, interpolation, scope (2 dirs)
+- **mixins**: Mixins, parameters, patterns, guards (10 dirs)
+- **nesting**: Nesting, parent selector, scope (2 dirs)
+- **operations**: Math operations, color operations (2 dirs)
+- **colors**: Color functions, formats, operations (1 dir)
+- **functions**: Built-in functions, each, extract/length (3 dirs)
+- **extend**: Extend, extend all, chaining (7 dirs)
+- **imports**: Import types, reference imports, remote imports (9 dirs)
+- **selectors**: Selectors, property interpolation, CSS features (11 dirs)
+- **strings**: String operations, whitespace (2 dirs)
+- **advanced**: Advanced features (detached rulesets, lazy eval, merge, media) (8 dirs)
+- **edge-cases**: Edge cases and error handling (5 dirs)
 
-### 3. Property Accessors (`property-accessors.test.ts`)
-- Basic property accessor syntax
-- Multiple properties
-- Nested rulesets
-- Variable keys
-- Computed keys with interpolation
-- Mixin return values
-- Namespace access
-- Edge cases and error handling
-- AST verification for property accessor nodes
+## Benefits
 
-### 4. Operations (`operations.test.ts`)
-- Basic arithmetic (addition, subtraction, multiplication, division)
-- Operations with variables
-- Complex operations with parentheses
-- Color arithmetic
-- Unit operations
-- Mixed unit handling
-- `calc()` function support
-- Edge cases (zero, negative values)
-- AST verification for operation nodes
+1. **Clear Separation**: Custom tests vs comprehensive test-data tests
+2. **Feature-Focused**: Test specific features in isolation
+3. **No Duplication**: Each test file has a specific purpose
+4. **Flexible**: Run custom tests, test-data, or both
+5. **Maintainable**: Easy to add new tests to appropriate files
+6. **Comprehensive**: Includes both our tests and the extensive test-data suite
 
-### 5. Functions (`functions.test.ts`)
-- Color functions (`lighten`, `darken`, `saturate`, `desaturate`, `fade`, `mix`)
-- Math functions (`round`, `ceil`, `floor`, `percentage`)
-- String functions (`escape`, `e`)
-- List functions (`length`, `extract`)
-- Type functions (`isnumber`, `isstring`, `iscolor`, `iskeyword`, `isurl`, `ispixel`, `isem`, `ispercentage`, `isunit`)
-- Misc functions (`default`, `unit`, `getunit`)
-- Functions with variables
-- AST verification for function calls
+## Workflow
 
-### 6. Comprehensive Suite (`suite.test.ts`)
-- Core language features (basic CSS, nested selectors, parent selector)
-- Variable system (hoisting, scoping)
-- Mixin system (basic, parameters)
-- Property accessors
-- Operations (arithmetic, variables)
-- Functions (built-in)
-- AST verification for complex code
-- Error handling
-- Performance testing
-
-## Less-Specific Features
-
-### Variable Interpolation
-Less supports variable interpolation in selectors, property names, and URLs:
-```less
-@prefix: my;
-.@{prefix}-class {
-  @{property}: value;
-  background: url('@{path}/image.jpg');
-}
-```
-
-### Property Accessors
-Less allows accessing properties from rulesets:
-```less
-.config() {
-  primary: red;
-  secondary: blue;
-}
-@theme: .config();
-.test { color: @theme[primary]; }
-```
-
-### Mixin Guards
-Less supports conditional mixin application:
-```less
-.mixin(@color) when (@color = red) {
-  color: @color;
-}
-.mixin(@color) when (@color = blue) {
-  color: @color;
-}
-```
-
-### Color Operations
-Less supports color arithmetic:
-```less
-@primary: #ff0000;
-@secondary: #00ff00;
-.test { color: @primary + @secondary; }
-```
-
-## Compatibility Testing
-
-The `less.ts` file runs tests against the official Less test data to ensure Jess maintains compatibility with the standard Less language. This includes:
-
-- Syntax compatibility
-- Feature parity
-- Edge case handling
-- Error message consistency
-
-## Debugging Less Tests
-
-To debug failing Less tests:
-
-1. **Check AST output** - Use `serializeTypes()` to inspect the generated AST
-2. **Compare with Less** - Verify expected behavior against the official Less compiler
-3. **Test isolation** - Create minimal test cases to reproduce issues
-4. **Check variable hoisting** - Ensure variables are available when referenced
-5. **Verify mixin resolution** - Check that mixins are found and applied correctly
-
-## Future Enhancements
-
-Planned Less test improvements:
-
-- **Performance benchmarks** - Compare Jess performance with Less
-- **Plugin compatibility** - Test Jess with Less plugins
-- **Version compatibility** - Test against different Less versions
-- **Real-world scenarios** - Test with actual Less projects
-- **Error recovery** - Test compiler recovery from various error conditions
+1. **Development**: Use custom tests for quick feedback
+2. **Feature Testing**: Use test-data tests for comprehensive coverage
+3. **CI/CD**: Run both custom and test-data tests
+4. **Debugging**: Run specific feature categories to isolate issues

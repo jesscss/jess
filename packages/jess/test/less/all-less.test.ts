@@ -18,13 +18,17 @@ const compiler = new JessCompiler({
 
 // Files that should be tested in specialized test files
 const specializedTests = [
-  'less/_main/colors.less', // Tested in colors.test.ts
-  'less/_main/nesting.less' // Tested in nesting.test.ts
+  'tests-unit/color-functions/colors.less', // Tested in colors.test.ts
+  'tests-unit/nesting/nesting.less' // Tested in nesting.test.ts
 ];
 
 describe('Can render Less files to CSS', () => {
-  const files = glob.sync(path.join(testData, 'less/_main/*.less'));
-  files
+  // Get all .less files from tests-unit and tests-config directories
+  const unitFiles = glob.sync(path.join(testData, 'tests-unit/*/*.less'));
+  const configFiles = glob.sync(path.join(testData, 'tests-config/*/*.less'));
+  const allFiles = [...unitFiles, ...configFiles];
+
+  allFiles
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))
     .filter(value => !specializedTests.includes(value)) // Skip files tested elsewhere
@@ -32,7 +36,8 @@ describe('Can render Less files to CSS', () => {
     .forEach((file) => {
       it(`${path.join(testData, file)}`, async () => {
         const lessPath = path.join(testData, file);
-        const cssPath = lessPath.replace(/\.less$/, '.css').replace('/less/', '/css/');
+        // CSS files are now co-located with .less files
+        const cssPath = lessPath.replace(/\.less$/, '.css');
 
         if (!fs.existsSync(cssPath)) {
           console.warn(`No expected CSS file found for ${file}, skipping test`);

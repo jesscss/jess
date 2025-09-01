@@ -66,6 +66,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (selector instanceof Nil) {
       return '';
     }
+
+    // If collapseNesting is enabled, we need to flatten nested rulesets
+    if (options.collapseNesting) {
+      return this.toFlattenedString(options);
+    }
+
     const mark = w.mark();
     // Capture selector output to normalize only trailing space before '{'
     const selOut = w.capture(() => selector.toTrimmedString(options));
@@ -79,6 +85,57 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     rules.toBraced(depth, options);
     return w.getSince(mark);
   }
+
+  /**
+   * Output flattened CSS when collapseNesting is enabled
+   * This creates separate rulesets for each nested level instead of nesting
+   */
+  private toFlattenedString(options: PrintOptions): string {
+    const w = options.writer!;
+    const { selector, rules } = this.value;
+
+    // Output the current ruleset first
+    const mark = w.mark();
+    const selOut = w.capture(() => selector.toTrimmedString(options));
+    w.add(selOut.replace(/\s+$/, ''));
+    w.add(' ');
+
+    // Emit only declarations in this block
+    const depth = (options.depth ?? 0);
+    const declOnly = rules.clone();
+    declOnly.value = rules.value.filter((r: any) => r && r.type === 'Declaration');
+    if (declOnly.value.length > 0) {
+      declOnly.toBraced(depth, options);
+    } else {
+      // Still emit empty braces if no declarations? For now, emit empty block
+      // to preserve structure
+      declOnly.toBraced(depth, options);
+    }
+
+    // Now, emit each nested ruleset as a sibling with the already-evaluated selector
+    const childOptions = { ...options, collapseNesting: false } as PrintOptions;
+    for (const child of rules.value) {
+      if (child && child.type === 'Ruleset') {
+        w.add('\n');
+        const childSelOut = w.capture(() => (child as any).value.selector.toTrimmedString(childOptions));
+        w.add(childSelOut.replace(/\s+$/, ''));
+        w.add(' ');
+        (child as any).value.rules.toBraced(depth, childOptions);
+      }
+    }
+
+    return w.getSince(mark);
+  }
+
+  /**
+   * Get all rules from this ruleset, separating declarations from nested rulesets
+   */
+  // Removed helper that tried to collect and rewrite; we emit directly from children
+
+  /**
+   * Create a flattened selector by replacing invisible ampersands with the current selector
+   */
+  // Removed string-based ampersand replacement; selectors are already resolved in AST
 
   override inherit(node: Node) {
     let n = super.inherit(node);

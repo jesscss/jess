@@ -8,31 +8,9 @@ import type {
 } from './tree';
 import { type Operator } from './tree/util/calculate';
 import type { PluginInterface } from './plugin';
+import { MathMode, UnitMode } from './types';
 import * as path from 'node:path';
 import { isNode } from './tree/util/is-node';
-
-export const enum MathMode {
-  /**
-   * @note - A Jess file always performs math for expressions,
-   * but that's because expressions are only parsed as such
-   * when wrapped with `#()`, whereas Less & SCSS try to
-   * parse expressions in regular value sequences.
-   */
-  ALWAYS = 0,
-  PARENS_DIVISION = 1,
-  PARENS = 2
-}
-
-export const enum UnitMode {
-  /** Less's default 1.x-4.x */
-  LOOSE = 0,
-  /**
-   * @todo - I think Less's current strict unit mode is weirder,
-   * so this may need another mode depending on behavior. But
-   * if it's too weird, it could be a breaking change.
-   */
-  STRICT = 1
-}
 
 export interface ContextOptions {
   /** Hash classes for module output */

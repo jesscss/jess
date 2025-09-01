@@ -5,17 +5,17 @@
  */
 export const invalidCSSOutput = [
   /** Intentionally produces invalid CSS */
-  'css/_main/import-inline.css',
-  'css/_main/import-reference.css',
+  'tests-unit/import-inline/import-inline.css',
+  'tests-unit/import-reference/import-reference.css',
 
   /** intentionally invalid property name */
-  'css/_main/property-name-interp.css',
+  'tests-unit/property-name-interp/property-name-interp.css',
 
   /** invalid attribute selector */
-  'css/_main/css-3.css',
+  'tests-unit/css-3/css-3.css',
 
   /** invalid attribute selector */
-  'css/_main/selectors.css',
+  'tests-unit/selectors/selectors.css',
 
   /**
    * All of these contain a property with no value,
@@ -23,20 +23,20 @@ export const invalidCSSOutput = [
    *
    * @todo - Non custom props with no value should be auto-removed (or be unset?)
    */
-  'css/_main/extract-and-length.css',
-  'css/_main/functions.css',
-  'css/_main/javascript.css'
+  'tests-unit/extract-and-length/extract-and-length.css',
+  'tests-unit/functions/functions.css',
+  'tests-unit/javascript/javascript.css'
 ];
 
 export const notSameSerialized = [
   /** Serialization issues */
   /** Has a pi value that was not rounded properly */
-  'css/_main/plugin.css',
+  'tests-unit/plugin/plugin.css',
   /** It's valid but not formatted, which we're also testing */
-  'css/_main/plugin-module.css',
-  'css/_main/import.css',
-  'css/_main/import-interpolation.css',
-  'css/_main/directives-bubling.css'
+  'tests-unit/plugin-module/plugin-module.css',
+  'tests-unit/import/import.css',
+  'tests-unit/import-interpolation/import-interpolation.css',
+  'tests-unit/directives-bubling/directives-bubling.css'
 ];
 
 /**
@@ -53,33 +53,33 @@ export const invalidLess = [
    * in ways that Less doesn't, so output won't
    * match. It's tested separately in Jess tests.
    */
-  'less/_main/calc.less',
+  'tests-unit/calc/calc.less',
   /** This file is full of errors. */
-  'less/_main/css-3.less',
+  'tests-unit/css-3/css-3.less',
 
-  'less/_main/css-guards.less',
-  'less/_main/extract-and-length.less',
-  'less/_main/functions.less',
-  'less/_main/mixins-interpolated.less',
+  'tests-unit/css-guards/css-guards.less',
+  'tests-unit/extract-and-length/extract-and-length.less',
+  'tests-unit/functions/functions.less',
+  'tests-unit/mixins-interpolated/mixins-interpolated.less',
 
   /** @todo */
-  'less/_main/permissive-parse.less',
-  'less/_main/property-name-interp.less',
-  'less/compression/compression.less',
+  'tests-unit/permissive-parse/permissive-parse.less',
+  'tests-unit/property-name-interp/property-name-interp.less',
+  'tests-config/compression/compression.less',
 
-  // 'less/math/parens-division/new-division.less',
-  'less/math/strict/css.less',
-  'less/_main/import/invalid-css.less',
+  // 'tests-config/math/parens-division/new-division.less',
+  'tests-config/math-strict/css.less',
+  'tests-unit/import/invalid-css.less',
 
   /** Contains invalid `[prop=10%]` */
-  'less/_main/selectors.less',
+  'tests-unit/selectors/selectors.less',
 
   /**
    * This has a variable in a `@charset`, which definitely
    * should not be allowed.
    */
-  'less/_main/variables-in-at-rules.less',
+  'tests-unit/variables-in-at-rules/variables-in-at-rules.less',
 
   /** Has an unsupported token - `alpha(opacity=@var)` */
-  'less/_main/variables.less'
+  'tests-unit/variables/variables.less'
 ];

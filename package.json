@@ -52,6 +52,8 @@
     "test:less:colors": "node scripts/test-less.js colors",
     "test:less:nesting": "node scripts/test-less.js nesting",
     "test:less:functions": "node scripts/test-less.js functions",
+    "test:less:custom": "vitest packages/jess/test/less --exclude=**/all-less.test.ts",
+    "test:less:test-data": "vitest packages/jess/test/less/all-less.test.ts",
     "cleanup:test-data": "node scripts/cleanup-test-data.js"
   },
   "repository": {

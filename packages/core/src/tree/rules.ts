@@ -925,7 +925,17 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     const mixinLength = mixinArr.length;
     let mixinCandidates: MixinEntry[] = [];
     let evalCandidates: Array<[MixinEntry, number]>;
-    let thisContext = this instanceof Context ? this : new Context();
+    // When called via callWithContext, 'this' is functionThis, not Context
+    // We need to extract the context from functionThis or use a fallback
+    let thisContext: Context;
+    if (this instanceof Context) {
+      thisContext = this;
+    } else if (this && typeof this === 'object' && 'context' in this) {
+      // This is functionThis from callWithContext
+      thisContext = (this as any).context;
+    } else {
+      thisContext = new Context();
+    }
     /**
      * Check named and positional arguments
      * against mixins, to see which ones match.

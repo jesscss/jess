@@ -17,7 +17,7 @@ const colorCompiler = new JessCompiler({
 });
 
 describe('Color Functions', () => {
-  const colorFiles = glob.sync(path.join(testData, 'less/_main/colors.less'));
+  const colorFiles = glob.sync(path.join(testData, 'tests-unit/color-functions/*.less'));
 
   colorFiles
     .map(value => path.relative(testData, value))

@@ -1,4 +1,5 @@
-import { type Context, UnitMode } from '../context';
+import { type Context } from '../context';
+import { UnitMode } from '../types';
 import { Color, ColorFormat } from './color';
 import {
   Node,

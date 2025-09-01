@@ -129,28 +129,28 @@ describe('can parse all Jess stylesheets', () => {
 
 const invalidCSSOutput = [
   /** Contains a less unquoted string in root */
-  'css/_main/css-escapes.css',
+  'tests-unit/css-escapes/css-escapes.css',
 
   /** Intentionally produces invalid CSS */
-  'css/_main/import-inline.css',
-  'css/_main/import-reference.css',
+  'tests-unit/import-inline/import-inline.css',
+  'tests-unit/import-reference/import-reference.css',
 
   /** intentionally invalid property name */
-  'css/_main/property-name-interp.css',
+  'tests-unit/property-name-interp/property-name-interp.css',
 
   /** invalid attribute selector */
-  'css/_main/css-3.css',
+  'tests-unit/css-3/css-3.css',
 
   /** Invalid class selector .123 */
-  'css/_main/mixins-interpolated.css',
+  'tests-unit/mixins-interpolated/mixins-interpolated.css',
 
   /** invalid attribute selector */
-  'css/_main/selectors.css'
+  'tests-unit/selectors/selectors.css'
 ]
 
 describe('can parse all Less CSS output', () => {
   const testData = path.dirname(require.resolve('@less/test-data'))
-  const files = glob.sync(path.join(testData, 'css/_main/*.css'))
+  const files = glob.sync(path.join(testData, 'tests-unit/*/*.css'))
   files
     .map(value => path.relative(testData, value))
     .filter(value => !invalidCSSOutput.includes(value))

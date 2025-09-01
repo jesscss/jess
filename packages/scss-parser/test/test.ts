@@ -210,37 +210,37 @@ describe('can parse any rule', () => {
  */
 const invalidLess = [
   /** This file is full of errors. */
-  'less/_main/css-3.less',
+  'tests-unit/css-3/css-3.less',
 
-  'less/_main/css-guards.less',
-  'less/_main/extract-and-length.less',
-  'less/_main/functions.less',
-  'less/_main/mixins-interpolated.less',
+  'tests-unit/css-guards/css-guards.less',
+  'tests-unit/extract-and-length/extract-and-length.less',
+  'tests-unit/functions/functions.less',
+  'tests-unit/mixins-interpolated/mixins-interpolated.less',
 
   /** @todo */
-  'less/_main/permissive-parse.less',
-  'less/_main/property-name-interp.less',
-  'less/compression/compression.less',
-  'less/main/always/no-sm-operations.less',
+  'tests-unit/permissive-parse/permissive-parse.less',
+  'tests-unit/property-name-interp/property-name-interp.less',
+  'tests-config/compression/compression.less',
+  'tests-config/math-always/no-sm-operations.less',
 
   /**
    * This one uses a valid CSS number '+4' as a math expression.
    * This is an ambiguous error in Less which doesn't recognize
    * '+4' as a single unit.
    */
-  'less/math/always/mixins-guards.less',
+  'tests-config/math-always/mixins-guards.less',
 
-  'less/math/always/no-sm-operations.less',
-  'less/math/parens-division/new-division.less',
-  'less/math/strict/css.less',
-  'less/_main/import/invalid-css.less',
+  'tests-config/math-always/no-sm-operations.less',
+  'tests-config/math-parens-division/new-division.less',
+  'tests-config/math-strict/css.less',
+  'tests-unit/import/invalid-css.less',
 
   /** Contains invalid `[prop=10%]` */
-  'less/_main/selectors.less'
+  'tests-unit/selectors/selectors.less'
 ];
 
 describe('can parse all Less stylesheets', () => {
-  const files = glob.sync(path.join(testData, 'less/**/*.less'));
+  const files = glob.sync(path.join(testData, 'tests-unit/**/*.less'));
   files
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))

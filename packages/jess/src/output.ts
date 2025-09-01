@@ -1,4 +1,4 @@
-import type { LocationInfo } from './tree';
+import type { LocationInfo } from '@jesscss/core';
 
 export class OutputCollector {
   strings: string[] = [];

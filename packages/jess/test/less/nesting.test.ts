@@ -8,17 +8,20 @@ const testData = path.dirname(require.resolve('@less/test-data'));
 
 // Test nesting behavior specifically
 const nestingCompiler = new JessCompiler({
-  collapseNesting: true, // Test nesting collapsing
-  plugins: [
-    lessPlugin({
-      mathMode: 0
-    })
-  ]
+  output: { collapseNesting: true }, // Test nesting collapsing
+  compile: {
+    plugins: [
+      lessPlugin({
+        mathMode: 0
+      })
+    ]
+  },
+  language: {} // Required by StylesConfig
 });
 
 describe('Nesting Behavior', () => {
   // Only test files that are specifically about nesting
-  const nestingFiles = glob.sync(path.join(testData, 'less/_main/nesting.less'));
+  const nestingFiles = glob.sync(path.join(testData, 'tests-unit/nesting/*.less'));
 
   nestingFiles
     .map(value => path.relative(testData, value))
@@ -42,5 +45,8 @@ describe('Nesting Behavior', () => {
 
         expect(normalizedOutput).toBe(normalizedExpected);
       });
+    });
+});
+
     });
 });

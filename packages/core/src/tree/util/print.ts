@@ -2,6 +2,7 @@ export type PrintOptions = {
   depth?: number;
   writer?: OutputWriter;
   compress?: boolean;
+  collapseNesting?: boolean;
 };
 
 export interface OutputWriter {
