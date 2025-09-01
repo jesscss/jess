@@ -120,7 +120,42 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         const childSelOut = w.capture(() => (child as any).value.selector.toTrimmedString(childOptions));
         w.add(childSelOut.replace(/\s+$/, ''));
         w.add(' ');
-        (child as any).value.rules.toBraced(depth, childOptions);
+
+        // For nested rulesets, we need to recursively flatten them
+        if (options.collapseNesting) {
+          // Output only declarations from this nested ruleset
+          const nestedDeclOnly = (child as any).value.rules.clone();
+          nestedDeclOnly.value = (child as any).value.rules.value.filter((r: any) => r && r.type === 'Declaration');
+          if (nestedDeclOnly.value.length > 0) {
+            nestedDeclOnly.toBraced(depth, childOptions);
+          } else {
+            // Still emit empty braces if no declarations
+            nestedDeclOnly.toBraced(depth, childOptions);
+          }
+
+          // Now recursively process any deeper nested rulesets
+          for (const nestedChild of (child as any).value.rules.value) {
+            if (nestedChild && nestedChild.type === 'Ruleset') {
+              w.add('\n');
+              const nestedSelOut = w.capture(() => nestedChild.value.selector.toTrimmedString(childOptions));
+              w.add(nestedSelOut.replace(/\s+$/, ''));
+              w.add(' ');
+
+              // Output only declarations from the deeper nested ruleset
+              const deeperDeclOnly = nestedChild.value.rules.clone();
+              deeperDeclOnly.value = nestedChild.value.rules.value.filter((r: any) => r && r.type === 'Declaration');
+              if (deeperDeclOnly.value.length > 0) {
+                deeperDeclOnly.toBraced(depth, childOptions);
+              } else {
+                // Still emit empty braces if no declarations
+                deeperDeclOnly.toBraced(depth, childOptions);
+              }
+            }
+          }
+        } else {
+          // Just output the rules normally
+          (child as any).value.rules.toBraced(depth, childOptions);
+        }
       }
     }
 
@@ -161,7 +196,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   /** Attach an (invisible) ampersand to the selector(s) if it's not already there */
-  getImplicitSelector() {
+  getImplicitSelector(collapseNesting = false) {
     if (!this.parentSelector) {
       return this.selector;
     }
@@ -171,9 +206,13 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return selector;
     }
     const invisibleAmp = new Ampersand({ selector: this.parentSelector });
-    invisibleAmp.removeFlag(F_VISIBLE);
+    if (!collapseNesting) {
+      invisibleAmp.removeFlag(F_VISIBLE);
+    }
     const invisibleCombinator = new Combinator(' ');
-    invisibleCombinator.removeFlag(F_VISIBLE);
+    if (!collapseNesting) {
+      invisibleCombinator.removeFlag(F_VISIBLE);
+    }
 
     // Helper to check for ampersand in a selector's nodes
     const hasAmpersand = (sel: Selector) => sel.hasFlag(F_AMPERSAND);
@@ -228,19 +267,51 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           return new Nil();
         }
         rule.value.guard = undefined;
-        return rule.selector.eval(context);
+
+        // Always use getImplicitSelector when there's a parent selector
+        if (rule.parentSelector) {
+          return rule.getImplicitSelector(collapseNesting).eval(context);
+        } else {
+          return rule.selector.eval(context);
+        }
       },
       (sels: Selector | Nil) => {
         if (frame && (this.options.hoistToRoot ?? context.opts.collapseNesting)) {
           rule.options.hoistToRoot = true;
         }
         context.opts.collapseNesting = collapseNesting;
+        // Unwrap generated :is() pseudo-selectors if they're the first component of a ComplexSelector
         if (
           isNode(sels, 'PseudoSelector')
           && sels.value.name === ':is'
           && sels.generated
         ) {
-          sels = sels.value.arg as Selector;
+          // Check if this :is() is the first component of a ComplexSelector
+          const parent = context.rulesetFrames[context.rulesetFrames.length - 1];
+          if (parent && parent.value && parent.value.selector) {
+            const parentSelector = parent.value.selector;
+            if (isNode(parentSelector, 'ComplexSelector') && parentSelector.value[0] === sels) {
+              // This :is() is the first component, so unwrap it
+              sels = sels.value.arg as Selector;
+            }
+          }
+        }
+
+        // Also check if the selector is a ComplexSelector that contains a :is() as its first component
+        if (isNode(sels, 'ComplexSelector')) {
+          if (
+            isNode(sels.value[0], 'PseudoSelector')
+            && sels.value[0].value.name === ':is'
+            && sels.value[0].generated
+          ) {
+            // Only unwrap if the :is() contains a ComplexSelector, not a SelectorList
+            const unwrappedSelector = sels.value[0].value.arg as Selector;
+            if (isNode(unwrappedSelector, 'ComplexSelector')) {
+              // Replace the first component with the unwrapped selector
+              const newComponents = [unwrappedSelector, ...sels.value.slice(1)];
+              sels = ComplexSelector.create(newComponents);
+            }
+          }
         }
         if (sels instanceof Nil) {
           return sels;

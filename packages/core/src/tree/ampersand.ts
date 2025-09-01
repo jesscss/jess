@@ -1,4 +1,4 @@
-import { defineType, type NodeOptions, type LocationInfo, type TreeContext } from './node';
+import { defineType, type NodeOptions, type LocationInfo, type TreeContext, F_AMPERSAND } from './node';
 import { Nil } from './nil';
 import type { Context } from '../context';
 import { SimpleSelector } from './selector-simple';
@@ -13,7 +13,7 @@ export type AmpersandValue = {
    * The only value that may exist is an anonymous value
    * This is represented as &(). Any &() will signal
    * a forced output (as well as an adjacent ident starting with
-   * a dash)
+   * a dash or numbers)
    *
    * @example
      .rule {
@@ -85,6 +85,8 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
       finalValue.selector = value.selector;
     }
     super(finalValue, options, location, treeContext);
+    // Set the F_AMPERSAND flag so it bubbles up to parent selectors
+    this.addFlag(F_AMPERSAND);
   }
 
   override get keySet() {
@@ -132,36 +134,43 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
 
   /** Hmm this should never return Extend */
   override evalNode(context: Context): Selector | Nil {
-    const { appendValue } = this.value;
+    const { appendValue, selector: storedSelector } = this.value;
     if ((appendValue ?? context.opts.collapseNesting) || this.options.hoistToRoot) {
-      let frame = atIndex(context.rulesetFrames, -1);
-      if (frame) {
-        let selector = frame.selector.copy(true);
-        if (appendValue && !isNode(selector, 'Nil')) {
-          let doAppendValue = (n: Selector) => {
-            for (let s of n.nodes(true)) {
-              /** Find the last simple selector and attempt to append */
-              if (isNode(s, 'SimpleSelector')) {
-                if (typeof s.value === 'string') {
-                  s.value += appendValue;
-                  break;
-                }
-                throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
-              }
-            }
-          };
-
-          if (isNode(selector, 'SelectorList')) {
-            selector.value.forEach(doAppendValue);
-          } else {
-            doAppendValue(selector);
-          }
-        }
-        context.opts.collapseNesting = true;
-        return PseudoSelector.create({ name: ':is', arg: selector });
+      // Use the stored selector if available, otherwise fall back to frame selector
+      let selector = storedSelector ? storedSelector.copy(true) : atIndex(context.rulesetFrames, -1)?.selector.copy(true);
+      if (!selector) {
+        return new Nil();
       }
-      return new Nil();
+
+      if (appendValue && !isNode(selector, 'Nil')) {
+        let doAppendValue = (n: Selector) => {
+          for (let s of n.nodes(true)) {
+            /** Find the last simple selector and attempt to append */
+            if (isNode(s, 'SimpleSelector')) {
+              if (typeof s.value === 'string') {
+                s.value += appendValue;
+                break;
+              }
+              throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
+            }
+          }
+        };
+
+        if (isNode(selector, 'SelectorList')) {
+          selector.value.forEach(doAppendValue);
+        } else {
+          doAppendValue(selector);
+        }
+      }
+
+      // Wrap in :is() if the selector is a list (has commas) or a complex selector (has combinators)
+      if (isNode(selector, 'SelectorList') || isNode(selector, 'ComplexSelector')) {
+        return PseudoSelector.create({ name: ':is', arg: selector });
+      } else {
+        return selector;
+      }
     }
+
     const amp: Ampersand = this.maybeClone(context);
     let frame = atIndex(context.rulesetFrames, -1);
     /**

@@ -1,7 +1,8 @@
 import { type Combinator } from './combinator';
 import { type Ampersand } from './ampersand';
 import {
-  defineType
+  defineType,
+  F_VISIBLE
 } from './node';
 import type { Context } from '../context';
 import { type Nil } from './nil';
