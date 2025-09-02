@@ -226,4 +226,290 @@ describe('CSS Nesting Collapse', () => {
       }`
     );
   });
+
+  // At-rule bubbling and collapsing tests
+  it('should bubble @media rules to root level', async () => {
+    const node = rules([
+      ruleset({
+        selector: sel([el('.parent')]),
+        rules: rules([
+          decl({ name: 'color', value: spaced([el('red')]) }),
+          atrule({
+            name: any('@media'),
+            prelude: any('(max-width: 768px)'),
+            rules: rules([
+              ruleset({
+                selector: sel([el('.child')]),
+                rules: rules([
+                  decl({ name: 'background', value: spaced([el('blue')]) })
+                ])
+              })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(context);
+    const css = evald.toString({ collapseNesting: true });
+
+    expect(css).toBeString(`
+      .parent {
+        color: red;
+      }
+      @media (max-width: 768px) {
+        .parent .child {
+          background: blue;
+        }
+      }`
+    );
+  });
+
+  it('should bubble @supports rules to root level', async () => {
+    const node = rules([
+      ruleset({
+        selector: sel([el('.parent')]),
+        rules: rules([
+          decl({ name: 'color', value: spaced([el('red')]) }),
+          atrule({
+            name: any('@supports'),
+            prelude: any('(display: grid)'),
+            rules: rules([
+              ruleset({
+                selector: sel([el('.child')]),
+                rules: rules([
+                  decl({ name: 'display', value: spaced([el('grid')]) })
+                ])
+              })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(context);
+    const css = evald.toString({ collapseNesting: true });
+
+    expect(css).toBeString(`
+      .parent {
+        color: red;
+      }
+      @supports (display: grid) {
+        .parent .child {
+          display: grid;
+        }
+      }`
+    );
+  });
+
+  it('should combine nested @media rules', async () => {
+    const node = rules([
+      ruleset({
+        selector: sel([el('.parent')]),
+        rules: rules([
+          decl({ name: 'color', value: spaced([el('red')]) }),
+          atrule({
+            name: any('@media'),
+            prelude: any('(max-width: 768px)'),
+            rules: rules([
+              decl({ name: 'font-size', value: spaced([el('14px')]) }),
+              atrule({
+                name: any('@media'),
+                prelude: any('(max-width: 480px)'),
+                rules: rules([
+                  ruleset({
+                    selector: sel([el('.child')]),
+                    rules: rules([
+                      decl({ name: 'background', value: spaced([el('blue')]) })
+                    ])
+                  })
+                ])
+              })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(context);
+    const css = evald.toString({ collapseNesting: true });
+
+    expect(css).toBeString(`
+      .parent {
+        color: red;
+      }
+      @media (max-width: 768px) {
+        .parent {
+          font-size: 14px;
+        }
+      }
+      @media (max-width: 768px) and (max-width: 480px) {
+        .parent .child {
+          background: blue;
+        }
+      }`
+    );
+  });
+
+  it('should handle rulesets nested inside at-rules', async () => {
+    const node = rules([
+      ruleset({
+        selector: sel([el('.parent')]),
+        rules: rules([
+          decl({ name: 'color', value: spaced([el('red')]) }),
+          atrule({
+            name: any('@media'),
+            prelude: any('(max-width: 768px)'),
+            rules: rules([
+              decl({ name: 'font-size', value: spaced([el('14px')]) }),
+              ruleset({
+                selector: sel([el('.child')]),
+                rules: rules([
+                  decl({ name: 'background', value: spaced([el('blue')]) }),
+                  ruleset({
+                    selector: sel([el('.grandchild')]),
+                    rules: rules([
+                      decl({ name: 'border', value: spaced([el('1px solid')]) })
+                    ])
+                  })
+                ])
+              })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(context);
+    const css = evald.toString({ collapseNesting: true });
+
+    expect(css).toBeString(`
+      .parent {
+        color: red;
+      }
+      @media (max-width: 768px) {
+        .parent {
+          font-size: 14px;
+        }
+        .parent .child {
+          background: blue;
+        }
+        .parent .child .grandchild {
+          border: 1px solid;
+        }
+      }`
+    );
+  });
+
+  it('should handle multiple at-rules with nested rulesets', async () => {
+    const node = rules([
+      ruleset({
+        selector: sel([el('.parent')]),
+        rules: rules([
+          decl({ name: 'color', value: spaced([el('red')]) }),
+          atrule({
+            name: any('@media'),
+            prelude: any('(max-width: 768px)'),
+            rules: rules([
+              ruleset({
+                selector: sel([el('.mobile-child')]),
+                rules: rules([
+                  decl({ name: 'display', value: spaced([el('block')]) })
+                ])
+              })
+            ])
+          }),
+          atrule({
+            name: any('@supports'),
+            prelude: any('(display: flex)'),
+            rules: rules([
+              ruleset({
+                selector: sel([el('.flex-child')]),
+                rules: rules([
+                  decl({ name: 'display', value: spaced([el('flex')]) })
+                ])
+              })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(context);
+    const css = evald.toString({ collapseNesting: true });
+
+    expect(css).toBeString(`
+      .parent {
+        color: red;
+      }
+      @media (max-width: 768px) {
+        .parent .mobile-child {
+          display: block;
+        }
+      }
+      @supports (display: flex) {
+        .parent .flex-child {
+          display: flex;
+        }
+      }`
+    );
+  });
+
+  it('should handle complex nested at-rule scenarios', async () => {
+    const node = rules([
+      ruleset({
+        selector: sel([el('.container')]),
+        rules: rules([
+          decl({ name: 'padding', value: spaced([el('20px')]) }),
+          atrule({
+            name: any('@media'),
+            prelude: any('(max-width: 768px)'),
+            rules: rules([
+              decl({ name: 'padding', value: spaced([el('10px')]) }),
+              atrule({
+                name: any('@supports'),
+                prelude: any('(display: grid)'),
+                rules: rules([
+                  ruleset({
+                    selector: sel([el('.grid-item')]),
+                    rules: rules([
+                      decl({ name: 'grid-column', value: spaced([el('span 2')]) })
+                    ])
+                  })
+                ])
+              }),
+              ruleset({
+                selector: sel([el('.mobile-item')]),
+                rules: rules([
+                  decl({ name: 'margin', value: spaced([el('5px')]) })
+                ])
+              })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(context);
+    const css = evald.toString({ collapseNesting: true });
+
+    expect(css).toBeString(`
+      .container {
+        padding: 20px;
+      }
+      @media (max-width: 768px) {
+        .container {
+          padding: 10px;
+        }
+        @supports (display: grid) {
+          .container .grid-item {
+            grid-column: span 2;
+          }
+        }
+        .container .mobile-item {
+          margin: 5px;
+        }
+      }`
+    );
+  });
 });

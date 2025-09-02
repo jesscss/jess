@@ -10,6 +10,9 @@ import { Ampersand } from './ampersand';
 import { Combinator } from './combinator';
 import { ComplexSelector } from './selector-complex';
 import { SelectorList } from './selector-list';
+import { sel } from './selector-complex';
+import { amp } from './ampersand';
+import { co } from './combinator';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 
@@ -67,11 +70,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return '';
     }
 
-    // If collapseNesting is enabled, we need to flatten nested rulesets
-    if (options.collapseNesting) {
-      return this.toFlattenedString(options);
-    }
-
     const mark = w.mark();
     // Capture selector output to normalize only trailing space before '{'
     const selOut = w.capture(() => selector.toTrimmedString(options));
@@ -86,92 +84,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return w.getSince(mark);
   }
 
-  /**
-   * Output flattened CSS when collapseNesting is enabled
-   * This creates separate rulesets for each nested level instead of nesting
-   */
-  private toFlattenedString(options: PrintOptions): string {
-    const w = options.writer!;
-    const { selector, rules } = this.value;
-
-    // Output the current ruleset first
-    const mark = w.mark();
-    const selOut = w.capture(() => selector.toTrimmedString(options));
-    w.add(selOut.replace(/\s+$/, ''));
-    w.add(' ');
-
-    // Emit only declarations in this block
-    const depth = (options.depth ?? 0);
-    const declOnly = rules.clone();
-    declOnly.value = rules.value.filter((r: any) => r && r.type === 'Declaration');
-    if (declOnly.value.length > 0) {
-      declOnly.toBraced(depth, options);
-    } else {
-      // Still emit empty braces if no declarations? For now, emit empty block
-      // to preserve structure
-      declOnly.toBraced(depth, options);
-    }
-
-    // Now, emit each nested ruleset as a sibling with the already-evaluated selector
-    const childOptions = { ...options, collapseNesting: false } as PrintOptions;
-    for (const child of rules.value) {
-      if (child && child.type === 'Ruleset') {
-        w.add('\n');
-        const childSelOut = w.capture(() => (child as any).value.selector.toTrimmedString(childOptions));
-        w.add(childSelOut.replace(/\s+$/, ''));
-        w.add(' ');
-
-        // For nested rulesets, we need to recursively flatten them
-        if (options.collapseNesting) {
-          // Output only declarations from this nested ruleset
-          const nestedDeclOnly = (child as any).value.rules.clone();
-          nestedDeclOnly.value = (child as any).value.rules.value.filter((r: any) => r && r.type === 'Declaration');
-          if (nestedDeclOnly.value.length > 0) {
-            nestedDeclOnly.toBraced(depth, childOptions);
-          } else {
-            // Still emit empty braces if no declarations
-            nestedDeclOnly.toBraced(depth, childOptions);
-          }
-
-          // Now recursively process any deeper nested rulesets
-          for (const nestedChild of (child as any).value.rules.value) {
-            if (nestedChild && nestedChild.type === 'Ruleset') {
-              w.add('\n');
-              const nestedSelOut = w.capture(() => nestedChild.value.selector.toTrimmedString(childOptions));
-              w.add(nestedSelOut.replace(/\s+$/, ''));
-              w.add(' ');
-
-              // Output only declarations from the deeper nested ruleset
-              const deeperDeclOnly = nestedChild.value.rules.clone();
-              deeperDeclOnly.value = nestedChild.value.rules.value.filter((r: any) => r && r.type === 'Declaration');
-              if (deeperDeclOnly.value.length > 0) {
-                deeperDeclOnly.toBraced(depth, childOptions);
-              } else {
-                // Still emit empty braces if no declarations
-                deeperDeclOnly.toBraced(depth, childOptions);
-              }
-            }
-          }
-        } else {
-          // Just output the rules normally
-          (child as any).value.rules.toBraced(depth, childOptions);
-        }
-      }
-    }
-
-    return w.getSince(mark);
-  }
-
-  /**
-   * Get all rules from this ruleset, separating declarations from nested rulesets
-   */
-  // Removed helper that tried to collect and rewrite; we emit directly from children
-
-  /**
-   * Create a flattened selector by replacing invisible ampersands with the current selector
-   */
-  // Removed string-based ampersand replacement; selectors are already resolved in AST
-
+  /** @todo - remove? */
   override inherit(node: Node) {
     let n = super.inherit(node);
     n.parentSelector = this.parentSelector;
@@ -195,60 +108,35 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return this;
   }
 
-  /** Attach an (invisible) ampersand to the selector(s) if it's not already there */
-  getImplicitSelector(collapseNesting = false) {
-    if (!this.parentSelector) {
-      return this.selector;
+  addImplicitAmpersand(parentSelector: Selector, selector: Selector, collapseNesting = false): Selector {
+    if (selector.hasFlag(F_AMPERSAND)) {
+      return selector;
     }
+    let amp = Ampersand.create({ selector: parentSelector });
+    if (collapseNesting) {
+      amp.removeFlag(F_VISIBLE);
+    }
+    let comb = Combinator.create(' ');
+    if (collapseNesting) {
+      comb.removeFlag(F_VISIBLE);
+    }
+    if (selector instanceof ComplexSelector) {
+      return ComplexSelector.create([amp, comb, ...selector.value]).inherit(selector);
+    }
+    return ComplexSelector.create([amp, comb, selector]).inherit(selector);
+  }
 
-    const selector = this.selector;
+  /** Attach an (invisible) ampersand to the selector(s) if it's not already there */
+  getImplicitSelector(parentSelector: Selector, collapseNesting = false) {
+    let selector = this.selector;
     if (selector instanceof Nil) {
       return selector;
     }
-    const invisibleAmp = new Ampersand({ selector: this.parentSelector });
-    if (!collapseNesting) {
-      invisibleAmp.removeFlag(F_VISIBLE);
-    }
-    const invisibleCombinator = new Combinator(' ');
-    if (!collapseNesting) {
-      invisibleCombinator.removeFlag(F_VISIBLE);
-    }
-
-    // Helper to check for ampersand in a selector's nodes
-    const hasAmpersand = (sel: Selector) => sel.hasFlag(F_AMPERSAND);
-
-    // If selector is a SelectorList, process each item
-    if (isNode(selector, 'SelectorList')) {
-      const newList = selector.value.map((sel) => {
-        if (hasAmpersand(sel)) {
-          return sel;
-        }
-        if (isNode(sel, 'CompoundSelector') || isNode(sel, 'SimpleSelector')) {
-          return ComplexSelector.create([invisibleAmp, invisibleCombinator, sel]);
-        }
-        if (isNode(sel, 'ComplexSelector')) {
-          const cloned = (sel as ComplexSelector).clone(true);
-          cloned.value.unshift(invisibleAmp, invisibleCombinator);
-          return cloned;
-        }
-        return sel;
-      });
-      return SelectorList.create(newList);
-    }
-
-    // If selector is not a list, check for ampersand
-    if (hasAmpersand(selector)) {
+    if (selector instanceof SelectorList) {
+      selector.value = selector.value.map(sel => this.addImplicitAmpersand(parentSelector, sel, collapseNesting));
       return selector;
     }
-    if (isNode(selector, 'CompoundSelector') || isNode(selector, 'SimpleSelector')) {
-      return ComplexSelector.create([invisibleAmp, invisibleCombinator, selector]);
-    }
-    if (isNode(selector, 'ComplexSelector')) {
-      const cloned = (selector as ComplexSelector).clone(true);
-      cloned.value.unshift(invisibleAmp, invisibleCombinator);
-      return cloned;
-    }
-    return selector;
+    return this.addImplicitAmpersand(parentSelector, selector, collapseNesting);
   }
 
   override evalNode(context: Context): MaybePromise<Ruleset | Nil> {
@@ -267,10 +155,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           return new Nil();
         }
         rule.value.guard = undefined;
+        let parentSelector = context.rulesetFrames.at(-1)?.selector;
 
         // Always use getImplicitSelector when there's a parent selector
-        if (rule.parentSelector) {
-          return rule.getImplicitSelector(collapseNesting).eval(context);
+        if (parentSelector && !(parentSelector instanceof Nil)) {
+          return rule.getImplicitSelector(parentSelector, collapseNesting).eval(context);
         } else {
           return rule.selector.eval(context);
         }
@@ -318,13 +207,16 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         }
         rule.value.selector = sels;
         context.rulesetFrames.push(rule);
+        context.frames.push(rule as any);
         return this.value.rules.eval(context);
       },
       (evaluatedRules: Rules | Nil) => {
         if (evaluatedRules instanceof Nil) {
           return evaluatedRules;
         }
+
         context.rulesetFrames.pop();
+        context.frames.pop();
         rule.value.rules = evaluatedRules;
         const rules = rule.value.rules;
         if (rules.visibleRules().length === 0) {

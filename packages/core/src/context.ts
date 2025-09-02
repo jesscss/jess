@@ -215,14 +215,10 @@ export class Context {
     return (this._classMap ??= new Map());
   }
 
-  /**
-   * The ruleset (qualified rule) frames. This is used to resolve
-   * '&' when we need to.
-   */
-  rulesetFrames: Array<Ruleset<any>> = [];
-
-  /** Like `@media` */
-  atRuleFrames: AtRule[] = [];
+  /** Frames for nested rulesets, used for selector evaluation */
+  rulesetFrames: Ruleset[] = [];
+  /** Unified frames array for flat rendering when collapseNesting is true */
+  frames: (Ruleset | AtRule)[] = [];
 
   /**
    * We push a boolean to this array when entering a calc() call

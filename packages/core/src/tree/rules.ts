@@ -277,6 +277,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const space = ''.padStart(depth * 2);
     const { value } = this;
     const items = value.filter(n => n.visible);
+
+    console.log('=== _emitRulesBody DEBUG ===');
+    console.log('Total rules:', value.length);
+    console.log('Visible rules:', items.length);
+    console.log('collapseNesting:', options.collapseNesting);
+    for (let i = 0; i < value.length; i++) {
+      const rule = value[i];
+      if (rule) {
+        console.log(`  Rule ${i}:`, rule.type, 'visible:', rule.visible, 'collapseNesting:', options.collapseNesting);
+      }
+    }
+
     if (items.length === 0) {
       return;
     }
@@ -293,7 +305,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         w.add(space);
       }
       // Emit directly to preserve source map segments
+      // Skip at-rules when collapseNesting is true since they're handled manually in Ruleset.toFlattenedString
+      if (options.collapseNesting && n.type === 'AtRule') {
+        console.log('Skipping at-rule due to collapseNesting:', n.type);
+        continue;
+      }
+      console.log('Emitting rule:', n.type);
       let rule = w.capture(() => n.toTrimmedString({ ...options, writer: w, depth } as PrintOptions));
+      console.log('DEBUG: rule result from toTrimmedString:', JSON.stringify(rule));
       w.add(rule); // .replace(/[\n\s]+$/, '')
       if (n.requiredSemi && n.options.semi !== false) {
         w.add(';');

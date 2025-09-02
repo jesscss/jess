@@ -1,6 +1,7 @@
 import { Node, defineType, F_STATIC } from './node';
 import { ComplexSelector } from './selector-complex';
 import { Ampersand } from './ampersand';
+import { amp } from './ampersand';
 import { Ruleset } from './ruleset';
 import type { Any } from './any';
 import { Rules } from './rules';
@@ -27,25 +28,28 @@ export class AtRule extends Node<AtRuleValue> {
     options = getPrintOptions(options);
     const w = options.writer!;
     let { name, prelude, rules } = this.value;
+
     const mark = w.mark();
-    // Emit name without trailing whitespace by using its trimmed serializer
-    name.toTrimmedString(options);
-    const hasPrelude = Boolean(prelude);
-    if (hasPrelude) {
-      // Ensure exactly one space before the prelude and trim only join-boundary whitespace
-      const preludeOut = w.capture(() => prelude!.toTrimmedString(options));
-      const normalized = preludeOut.replace(/^\s+/, '').replace(/\s+$/, '');
+
+    // Emit name
+    name.toString(options);
+
+    if (prelude) {
+      // Ensure there's a space between name and prelude
       w.add(' ');
-      w.add(normalized);
+      prelude.toString(options);
     }
+
     if (rules) {
-      // Ensure exactly one space between the last token (name or prelude) and '{'
+      // Ensure there's a space before the rules
       w.add(' ');
       const depth = options.depth ?? 0;
+      // For rules, we can call toBraced directly since it writes to the writer
       rules.toBraced(depth, options);
     } else {
       w.add(';');
     }
+
     return w.getSince(mark);
   }
 
@@ -90,7 +94,7 @@ export class AtRule extends Node<AtRuleValue> {
           if (rules) {
             if (context.opts.collapseNesting && context.rulesetFrames.length) {
               return new Ruleset({
-                selector: new ComplexSelector([new Ampersand()]),
+                selector: amp(),
                 rules
               })
                 .inherit(this)
