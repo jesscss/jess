@@ -10,10 +10,11 @@ import { Context } from '../context';
 import { isNode } from './util/is-node';
 import { cast } from './util/cast';
 import { type Ruleset, type RulesetValue } from './ruleset';
+import { type AtRule } from './at-rule';
 import { type Mixin } from './mixin';
 import type { Selector } from './selector';
 import { spaced, Sequence } from './sequence';
-import { type PrintOptions, getPrintOptions } from './util/print';
+import { type PrintOptions, getPrintOptions, type OutputWriter } from './util/print';
 
 import { atIndex } from './util/collections';
 import type { Condition } from './condition';
@@ -278,17 +279,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const { value } = this;
     const items = value.filter(n => n.visible);
 
-    console.log('=== _emitRulesBody DEBUG ===');
-    console.log('Total rules:', value.length);
-    console.log('Visible rules:', items.length);
-    console.log('collapseNesting:', options.collapseNesting);
-    for (let i = 0; i < value.length; i++) {
-      const rule = value[i];
-      if (rule) {
-        console.log(`  Rule ${i}:`, rule.type, 'visible:', rule.visible, 'collapseNesting:', options.collapseNesting);
-      }
-    }
-
     if (items.length === 0) {
       return;
     }
@@ -304,19 +294,41 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!isChildRules && depth !== 0) {
         w.add(space);
       }
+
       // Emit directly to preserve source map segments
-      // Skip at-rules when collapseNesting is true since they're handled manually in Ruleset.toFlattenedString
-      if (options.collapseNesting && n.type === 'AtRule') {
-        console.log('Skipping at-rule due to collapseNesting:', n.type);
-        continue;
-      }
-      console.log('Emitting rule:', n.type);
       let rule = w.capture(() => n.toTrimmedString({ ...options, writer: w, depth } as PrintOptions));
-      console.log('DEBUG: rule result from toTrimmedString:', JSON.stringify(rule));
       w.add(rule); // .replace(/[\n\s]+$/, '')
       if (n.requiredSemi && n.options.semi !== false) {
         w.add(';');
       }
+    }
+  }
+
+    /**
+   * Renders with optional frame-based flattening
+   * @param options PrintOptions for rendering
+   * @param renderOpening Function to render the opening (selector/prelude + opening brace)
+   */
+  renderWithFrameFlattening(
+    options: PrintOptions,
+    renderOpening: () => void
+  ) {
+    const w = options.writer!;
+
+    // Check if any children need hoisting
+    const hasHoistedChildren = this.value.some(n =>
+      isNode(n, ['AtRule', 'Ruleset']) && (n as any).options?.hoistToRoot
+    );
+
+    if (hasHoistedChildren) {
+      // Children need hoisting, so skip opening and render children at root level
+      // No opening brace, no closing brace - just render children flat
+      this.toTrimmedString({ ...options, depth: 0 });
+    } else {
+      // Normal rendering - render opening, children, and closing
+      renderOpening();
+      this.toTrimmedString(options);
+      w.add('}');
     }
   }
 
@@ -755,8 +767,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const maybeResult = (rule as any).eval(context) as MaybePromise<Node>;
         const applyResult = (result: Node) => {
           if (result !== rule) {
-            rules.value[idx] = result;
-            queue[q] = [idx, result];
+            // Check if the result is an AtRule or Ruleset with rootRules
+            if ((result.type === 'AtRule' || result.type === 'Ruleset') && (result as any).rootRules) {
+              rules.value[idx] = (result as any).rootRules;
+              queue[q] = [idx, (result as any).rootRules];
+            } else {
+              rules.value[idx] = result;
+              queue[q] = [idx, result];
+            }
           }
           if (result.options.hoistToRoot) {
             rulesToHoist = true;
@@ -773,40 +791,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return (phaseRun as Promise<void>).then(() => rulesToHoist);
     }
     return rulesToHoist;
-  }
-
-  /** Bubble hoisted rules to root frame if needed */
-  private _bubbleHoistedRules(context: Context, rules: Rules, rulesToHoist: boolean, hadRoot: Rules | undefined) {
-    let frame = context.rulesetFrames[0];
-    if (!hadRoot || !frame || !rulesToHoist) {
-      return;
-    }
-    let newRules = new Rules([]);
-    const getRulesetCopy = () => {
-      let newFrame = frame.copy(true);
-      for (let n of newFrame.nodes()) {
-        if (isNode((n.value as any).rules, 'Rules') && (n.value as any).rules.index === rules.index) {
-          (n.value as any).rules = newRules;
-          break;
-        }
-      }
-      return newFrame;
-    };
-    let rootRules: Node[] = !rules.value[0]?.options.hoistToRoot ? [getRulesetCopy()] : [];
-    for (let [i, rule] of rules) {
-      if (!rule.options.hoistToRoot) {
-        newRules.push(rule);
-      } else {
-        rootRules.push(rule);
-        let next = atIndex(rules.value, i + 1);
-        if (next && !next.options.hoistToRoot) {
-          newRules = new Rules([]);
-          rootRules.push(getRulesetCopy());
-        }
-      }
-    }
-    let prevFrameIndex = hadRoot.value.indexOf(frame);
-    hadRoot.value.splice(prevFrameIndex, 1, ...rootRules);
   }
 
   override evalNode(context: Context): MaybePromise<this> {
@@ -847,7 +831,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
           }
         }
-        this._bubbleHoistedRules(context, rules, rulesToHoist, saved.root);
         /** Restore contexts */
         context.rulesContext = saved.rulesContext;
         context.treeRoot = saved.treeRoot;

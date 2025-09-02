@@ -134,9 +134,13 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
     if (selector instanceof SelectorList) {
       selector.value = selector.value.map(sel => this.addImplicitAmpersand(parentSelector, sel, collapseNesting));
-      return selector;
+    } else {
+      selector = this.addImplicitAmpersand(parentSelector, selector, collapseNesting);
     }
-    return this.addImplicitAmpersand(parentSelector, selector, collapseNesting);
+    if (collapseNesting) {
+      selector.options.hoistToRoot = true;
+    }
+    return selector;
   }
 
   override evalNode(context: Context): MaybePromise<Ruleset | Nil> {
@@ -148,6 +152,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
     let guard = rule.value.guard;
     const collapseNesting = context.opts.collapseNesting;
+
+    // Store frames snapshot for collapseNesting serialization
+    if (collapseNesting) {
+      (rule as any).frames = [...context.frames];
+    }
     return pipe(
       () => guard?.eval(context),
       (guard) => {
@@ -159,16 +168,16 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
         // Always use getImplicitSelector when there's a parent selector
         if (parentSelector && !(parentSelector instanceof Nil)) {
-          return rule.getImplicitSelector(parentSelector, collapseNesting).eval(context);
+          const result = rule.getImplicitSelector(parentSelector, collapseNesting);
+          return result.eval(context);
         } else {
           return rule.selector.eval(context);
         }
       },
       (sels: Selector | Nil) => {
         if (frame && (this.options.hoistToRoot ?? context.opts.collapseNesting)) {
-          rule.options.hoistToRoot = true;
+          this.options.hoistToRoot = true;
         }
-        context.opts.collapseNesting = collapseNesting;
         // Unwrap generated :is() pseudo-selectors if they're the first component of a ComplexSelector
         if (
           isNode(sels, 'PseudoSelector')
@@ -219,10 +228,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         context.frames.pop();
         rule.value.rules = evaluatedRules;
         const rules = rule.value.rules;
+
         if (rules.visibleRules().length === 0) {
           rule.removeFlag(F_VISIBLE);
         }
-        return rule;
+
+        return rule as any;
       }
     );
   }

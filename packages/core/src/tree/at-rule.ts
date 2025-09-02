@@ -55,6 +55,12 @@ export class AtRule extends Node<AtRuleValue> {
 
   override evalNode(context: Context): MaybePromise<AtRule> {
     let node = this as AtRule;
+
+    // Store frames snapshot for collapseNesting serialization
+    if (context.opts.collapseNesting) {
+      (node as any).frames = [...context.frames];
+    }
+
     return pipe(
       () => {
         let { prelude } = node.value;
