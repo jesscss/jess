@@ -15,6 +15,7 @@ import { amp } from './ampersand';
 import { co } from './combinator';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
+import type { AtRule } from './at-rule';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -50,8 +51,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   override allowRuleRoot = true;
   override allowRoot = true;
   // Ruleset has preEval method but doesn't need to set flags - preEvaluated is tracked as boolean
-
-  parentSelector: Selector | undefined;
+  frames: (Ruleset | AtRule)[] | undefined;
 
   get selector() {
     return this.value.selector;
@@ -71,24 +71,35 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
 
     const mark = w.mark();
-    // Capture selector output to normalize only trailing space before '{'
+    if (this.frames) {
+      rules.renderWithFrameFlattening(options, this);
+      return w.getSince(mark);
+    }
+
     const selOut = w.capture(() => selector.toTrimmedString(options));
     // Emit selector without trailing whitespace
     w.add(selOut.replace(/\s+$/, ''));
     // Ensure exactly one space before '{'
     w.add(' ');
-    // rules.toBraced needs depth updates
-    const depth = (options.depth ?? 0);
-    // Emit rules with braces using parent-managed newlines/indents
-    rules.toBraced(depth, options);
+
+    rules.toBraced(options);
+
     return w.getSince(mark);
   }
 
-  /** @todo - remove? */
-  override inherit(node: Node) {
-    let n = super.inherit(node);
-    n.parentSelector = this.parentSelector;
-    return n;
+  /** Render the opening of this ruleset (selector) */
+  renderOpening(options: PrintOptions): void {
+    const w = options.writer!;
+    const { selector } = this.value;
+    const depth = options.depth ?? 0;
+    const space = ''.padStart(depth * 2);
+
+    if (!(selector instanceof Nil)) {
+      const selOut = w.capture(() => selector.toTrimmedString(options));
+      w.add(space);
+      w.add(selOut.replace(/\s+$/, ''));
+      w.add(' {\n');
+    }
   }
 
   override preEval(context: Context): MaybePromise<this> {
@@ -113,11 +124,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return selector;
     }
     let amp = Ampersand.create({ selector: parentSelector });
-    if (collapseNesting) {
+    if (!collapseNesting) {
       amp.removeFlag(F_VISIBLE);
     }
     let comb = Combinator.create(' ');
-    if (collapseNesting) {
+    if (!collapseNesting) {
       comb.removeFlag(F_VISIBLE);
     }
     if (selector instanceof ComplexSelector) {
@@ -147,15 +158,15 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     let rule = this;
     rule.options = { ...this.options };
     let frame = atIndex(context.rulesetFrames, -1);
-    if (frame && isNode(frame.selector, 'Selector')) {
-      rule.parentSelector = frame.selector;
-    }
+    // if (frame && isNode(frame.selector, 'Selector')) {
+    //   rule.parentSelector = frame.selector;
+    // }
     let guard = rule.value.guard;
     const collapseNesting = context.opts.collapseNesting;
 
     // Store frames snapshot for collapseNesting serialization
     if (collapseNesting) {
-      (rule as any).frames = [...context.frames];
+      this.frames = [...context.frames];
     }
     return pipe(
       () => guard?.eval(context),
@@ -215,7 +226,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           return sels;
         }
         rule.value.selector = sels;
-        context.rulesetFrames.push(rule);
+        context.rulesetFrames.push(rule as Ruleset);
         context.frames.push(rule as any);
         return this.value.rules.eval(context);
       },
@@ -229,7 +240,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         rule.value.rules = evaluatedRules;
         const rules = rule.value.rules;
 
-        if (rules.visibleRules().length === 0) {
+        // Don't remove visibility flag when collapseNesting is enabled
+        // because the ruleset will be flattened to root level
+        if (rules.visibleRules().length === 0 && !collapseNesting) {
           rule.removeFlag(F_VISIBLE);
         }
 

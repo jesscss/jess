@@ -14,7 +14,7 @@ import { type AtRule } from './at-rule';
 import { type Mixin } from './mixin';
 import type { Selector } from './selector';
 import { spaced, Sequence } from './sequence';
-import { type PrintOptions, getPrintOptions, type OutputWriter } from './util/print';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 import { atIndex } from './util/collections';
 import type { Condition } from './condition';
@@ -253,9 +253,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * Used by Ruleset, Mixins, and AtRules etc to render
    * rules with braces.
    */
-  toBraced(depth: number = 0, options?: PrintOptions) {
-    options = getPrintOptions({ ...options, depth });
-    const w = options.writer!;
+  toBraced(options?: PrintOptions) {
+    let opts = getPrintOptions(options);
+    let depth = opts.depth;
+    const w = opts.writer!;
     const mark = w.mark();
     let space = ''.padStart((depth) * 2);
     w.add('{');
@@ -301,34 +302,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (n.requiredSemi && n.options.semi !== false) {
         w.add(';');
       }
-    }
-  }
-
-    /**
-   * Renders with optional frame-based flattening
-   * @param options PrintOptions for rendering
-   * @param renderOpening Function to render the opening (selector/prelude + opening brace)
-   */
-  renderWithFrameFlattening(
-    options: PrintOptions,
-    renderOpening: () => void
-  ) {
-    const w = options.writer!;
-
-    // Check if any children need hoisting
-    const hasHoistedChildren = this.value.some(n =>
-      isNode(n, ['AtRule', 'Ruleset']) && (n as any).options?.hoistToRoot
-    );
-
-    if (hasHoistedChildren) {
-      // Children need hoisting, so skip opening and render children at root level
-      // No opening brace, no closing brace - just render children flat
-      this.toTrimmedString({ ...options, depth: 0 });
-    } else {
-      // Normal rendering - render opening, children, and closing
-      renderOpening();
-      this.toTrimmedString(options);
-      w.add('}');
     }
   }
 
@@ -751,6 +724,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /** Evaluate the built queues in priority order */
   private _evaluateQueue(rules: Rules, evalQueue: EvalQueueMap, context: Context): MaybePromise<boolean> {
     let rulesToHoist = false;
+
     const priorities: Priority[] = Array.from({ length: Priority.Highest + 1 }).map((_, i) => (Priority.Highest - i) as Priority);
     const phaseRun = serialForEach(priorities, (p: Priority) => {
       const queue = evalQueue.get(p);
@@ -760,21 +734,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const entries: Array<[number, [number, Node]]> = Array.from(queue.entries()) as any;
       return serialForEach(entries, ([q, item]: [number, [number, Node]]) => {
         const [idx, rule] = item;
+
         /** Var declarations have late evaluation, so they are skipped. */
         if (isNode(rule, 'VarDeclaration')) {
           return;
         }
         const maybeResult = (rule as any).eval(context) as MaybePromise<Node>;
+
         const applyResult = (result: Node) => {
           if (result !== rule) {
-            // Check if the result is an AtRule or Ruleset with rootRules
-            if ((result.type === 'AtRule' || result.type === 'Ruleset') && (result as any).rootRules) {
-              rules.value[idx] = (result as any).rootRules;
-              queue[q] = [idx, (result as any).rootRules];
-            } else {
-              rules.value[idx] = result;
-              queue[q] = [idx, result];
-            }
+            rules.value[idx] = result;
+            queue[q] = [idx, result];
           }
           if (result.options.hoistToRoot) {
             rulesToHoist = true;
@@ -787,6 +757,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return;
       });
     });
+
     if (isThenable(phaseRun)) {
       return (phaseRun as Promise<void>).then(() => rulesToHoist);
     }
@@ -839,7 +810,98 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     ) as MaybePromise<this>;
   }
+
+  /**
+   * Renders with optional frame-based flattening for collapseNesting
+   * @param options PrintOptions for rendering
+   * @param renderOpening Function to render the opening (selector/prelude + opening brace)
+   * @param frames Optional frames snapshot for flattening context
+   */
+  renderWithFrameFlattening(
+    options: PrintOptions,
+    currentNode: Ruleset | AtRule
+  ) {
+    let opts = getPrintOptions(options);
+    let w = options.writer!;
+
+    // If we have frames, we need to flatten
+    let originalDepth = opts.depth;
+    let newDepth = 0;
+
+    for (let frame of currentNode.frames!) {
+      if (isNode(frame, 'AtRule')) {
+        newDepth++;
+      }
+    }
+
+    let isAtRule = currentNode.type === 'AtRule';
+    let rules = currentNode.value.rules!;
+    let length = rules.value.length;
+    let space = '  '.padStart(newDepth * 2);
+    /**
+     * This may be hard to follow at first, but while rendering a hoisted
+     * node, we don't render its opening until we reach the first
+     * non-hoisted child. This is so we don't render a ruleset opening
+     * or at-rule opening just to immediately close it with empty braces.
+     */
+    for (let i = 0; i < length; i++) {
+      const child = rules.value[i]!;
+      if (!child.visible) {
+        continue;
+      }
+
+      let isHoistedChild = isNode(child, ['AtRule', 'Ruleset']) && child.frames;
+
+      if (isAtRule || (i === 0 && (!isHoistedChild))) {
+        currentNode.renderOpening({ ...options, depth: newDepth });
+      }
+      let rule = w.capture(() => child.toTrimmedString({ ...options, writer: w, depth: newDepth } as PrintOptions));
+      if (!isHoistedChild) {
+        w.add(space);
+        w.add(rule);
+      } else {
+        let childDepth = newDepth;
+        for (let frame of (child as AtRule | Ruleset).frames!) {
+          if (isNode(frame, 'AtRule')) {
+            childDepth++;
+          }
+        }
+        /** "close" all current open frames */
+        for (let d = originalDepth; d >= childDepth; d--) {
+          space = ''.padStart(d * 2);
+          w.add(`${space}}\n`);
+        }
+        w.add(rule);
+        if (i < length - 1) {
+          /** More declarations, we need to re-open */
+          for (let d = newDepth; d < originalDepth + 1; d++) {
+            let frame = currentNode.frames![d];
+            if (frame) {
+              frame.renderOpening({ ...options, depth: d });
+            }
+          }
+        } else {
+          if (currentNode.frames!.length === 0) {
+            for (let d = originalDepth; d >= newDepth; d--) {
+              space = ''.padStart(d * 2);
+              w.add(`${space}}\n`);
+            }
+          }
+          // if (currentNode.frames!.length === 0) {
+          //   w.add('}\n');
+          // }
+        }
+      }
+      if (child.requiredSemi && child.options.semi !== false) {
+        w.add(';');
+      }
+      if (!isHoistedChild) {
+        w.add('\n');
+      }
+    }
+  }
 }
+
 export const rules = defineType(Rules, 'Rules');
 
 type EvalQueueMap = Map<Priority, Array<[number, Node]>>;

@@ -1,7 +1,4 @@
-import { Node, defineType, F_STATIC } from './node';
-import { ComplexSelector } from './selector-complex';
-import { Ampersand } from './ampersand';
-import { amp } from './ampersand';
+import { Node, defineType, F_STATIC, type NodeOptions } from './node';
 import { Ruleset } from './ruleset';
 import type { Any } from './any';
 import { Rules } from './rules';
@@ -16,13 +13,20 @@ export type AtRuleValue = {
   rules?: Rules;
 };
 
+export type AtRuleOptions = NodeOptions & {
+  /** Whether it will bubble outside selectors inside when collapsing nesting */
+  nestable?: boolean;
+};
+
 /**
  * A rule like @charset or @media
  */
-export class AtRule extends Node<AtRuleValue> {
+export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   type = 'AtRule' as const;
   shortType = 'atrule' as const;
   override allowRoot = true;
+
+  frames: (Ruleset | AtRule)[] | undefined;
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
@@ -30,6 +34,11 @@ export class AtRule extends Node<AtRuleValue> {
     let { name, prelude, rules } = this.value;
 
     const mark = w.mark();
+
+    if (this.frames && rules) {
+      rules.renderWithFrameFlattening(options, this);
+      return w.getSince(mark);
+    }
 
     // Emit name
     name.toString(options);
@@ -43,9 +52,9 @@ export class AtRule extends Node<AtRuleValue> {
     if (rules) {
       // Ensure there's a space before the rules
       w.add(' ');
-      const depth = options.depth ?? 0;
+
       // For rules, we can call toBraced directly since it writes to the writer
-      rules.toBraced(depth, options);
+      rules.toBraced(options);
     } else {
       w.add(';');
     }
@@ -53,12 +62,26 @@ export class AtRule extends Node<AtRuleValue> {
     return w.getSince(mark);
   }
 
+  /** Render the opening of this at-rule (name and prelude) */
+  renderOpening(options: PrintOptions): void {
+    const w = options.writer!;
+    const { name, prelude } = this.value;
+    const depth = options.depth ?? 0;
+    w.add(''.padStart(depth * 2));
+    name.toString(options);
+    if (prelude) {
+      w.add(' ');
+      prelude.toString(options);
+    }
+    w.add(' {\n');
+  }
+
   override evalNode(context: Context): MaybePromise<AtRule> {
     let node = this as AtRule;
 
     // Store frames snapshot for collapseNesting serialization
-    if (context.opts.collapseNesting) {
-      (node as any).frames = [...context.frames];
+    if (context.opts.collapseNesting || node.options.collapseNesting) {
+      node.frames = [...context.frames];
     }
 
     return pipe(
@@ -82,6 +105,7 @@ export class AtRule extends Node<AtRuleValue> {
       () => {
         let { rules } = node.value;
         if (rules) {
+          context.frames.push(node);
           let out = rules.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Rules>).then((r) => {
@@ -92,34 +116,6 @@ export class AtRule extends Node<AtRuleValue> {
           node.value.rules = out;
         }
         return node;
-      },
-      (evaldNode: Node) => {
-        if (evaldNode instanceof AtRule) {
-          node = evaldNode;
-          let rules = node.value.rules;
-          if (rules) {
-            if (context.opts.collapseNesting && context.rulesetFrames.length) {
-              return new Ruleset({
-                selector: amp(),
-                rules
-              })
-                .inherit(this)
-                .eval(context);
-            }
-            return node as Node;
-          }
-        }
-        return evaldNode;
-      },
-      (unknownNode: Node) => {
-        if (unknownNode instanceof Ruleset) {
-          node.value.rules = new Rules([unknownNode]);
-          return node as Node;
-        }
-        /** @todo - Figure out at-rule bubbling */
-        // let rootRules = this.collectRoots();
-        // rootRules.forEach(rule => rules.value.push(rule));
-        return unknownNode;
       }
     ) as MaybePromise<AtRule>;
   }

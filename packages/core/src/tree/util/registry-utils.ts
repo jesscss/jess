@@ -3,7 +3,7 @@ import type { Selector } from '../selector';
 import type { Rules } from '../rules';
 import { isNode } from './is-node';
 import type { Mixin } from '../mixin';
-import type { Nil } from '../nil';
+import { Nil } from '../nil';
 import type { Node } from '../node';
 import type { JsFunction } from '../js-function';
 import type { Func } from '../function';
@@ -233,7 +233,7 @@ export class RulesetRegistry extends Registry<Ruleset> {
     const index = this.index;
     for (const ruleset of this.pendingItems) {
       /** Make sure we're indexing according to the ruleset's context */
-      const selector = ruleset.getImplicitSelector();
+      const selector = ruleset.selector instanceof Nil ? ruleset.selector : ruleset.getImplicitSelector(ruleset.selector);
       if (selector && 'keySet' in selector) {
         for (const key of selector.keySet) {
           const existing = index.get(key);

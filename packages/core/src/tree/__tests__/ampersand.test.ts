@@ -92,9 +92,7 @@ describe('Ampersand', () => {
     let node = wrapAmpList([sel([amp()])]);
     context = new Context({ collapseNesting: true });
 
-    console.log('=== EVAL DEBUG ===');
     let evald = await node.eval(context);
-    console.log('=== END EVAL DEBUG ===');
 
     const css = evald.toString({ collapseNesting: true });
     expect(css).toBeString(`

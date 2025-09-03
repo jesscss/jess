@@ -43,21 +43,27 @@ export default defineConfig({
     // Enable globals for describe, test, etc.
     globals: true,
     // Include all test files from all packages - use absolute paths relative to config file
-    include: [
-      resolve(__dirname, 'packages/*/test/**/*.test.ts'),
-      resolve(__dirname, 'packages/*/test/**/*.spec.ts'),
-      resolve(__dirname, 'packages/*/**/__tests__/**/*.ts'),
-      resolve(__dirname, 'test/**/*.test.ts'),
-      resolve(__dirname, 'test/**/*.spec.ts')
+
+    projects: [
+      'packages/*',
+      {
+        extends: true,
+        test: {
+          include: [
+            '**/__tests__/**/*.ts',
+            'test/**/*.test.ts',
+            'test/**/*.spec.ts'
+          ],
+          exclude: [
+            'test/setup.ts',
+            'node_modules/**',
+            'dist/**',
+            'lib/**'
+          ]
+        }
+      }
     ],
-    // Exclude setup files and build artifacts
-    exclude: [
-      resolve(__dirname, '**/test/setup.ts'),
-      resolve(__dirname, '**/node_modules/**'),
-      resolve(__dirname, '**/dist/**'),
-      resolve(__dirname, '**/lib/**'),
-      resolve(__dirname, '**/jess_old/**/*')
-    ],
+
     // Global setup file - use absolute path so it works from any subfolder
     setupFiles: [resolve(__dirname, './test/setup.ts')],
     // Disable coverage by default to save memory

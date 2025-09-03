@@ -1,6 +1,6 @@
 import { defineType } from './node';
 import { Rules } from './rules';
-import { type PrintOptions } from './util/print';
+import { getPrintOptions, type PrintOptions } from './util/print';
 
 /**
  * A collection is essentially like an anonymous mixin,
@@ -18,8 +18,7 @@ export class Collection extends Rules {
   override shortType = 'coll' as const;
 
   override toTrimmedString(options?: PrintOptions) {
-    const depth = options?.depth ?? 0;
-    return this.toBraced(depth, options);
+    return this.toBraced(options);
   }
 }
 

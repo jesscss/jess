@@ -1,3 +1,5 @@
+import type { Context } from '../../context';
+
 export type PrintOptions = {
   depth?: number;
   writer?: OutputWriter;
@@ -23,8 +25,9 @@ export type SourceSegment = {
   origColumn: number;  // 0-based
 };
 
-export function getPrintOptions(options?: PrintOptions): PrintOptions & { writer: OutputWriter } {
+export function getPrintOptions(options?: PrintOptions): PrintOptions & { writer: OutputWriter; depth: number } {
   options = options ?? {};
+  options.depth ??= 0;
   options.writer ??= new OutputWriter();
   return options as PrintOptions & { writer: OutputWriter };
 }
