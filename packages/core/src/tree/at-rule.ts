@@ -1,10 +1,11 @@
-import { Node, defineType, F_STATIC, type NodeOptions } from './node';
+import { Node, defineType, F_STATIC, type NodeOptions, type LocationInfo } from './node';
 import { Ruleset } from './ruleset';
 import type { Any } from './any';
 import { Rules } from './rules';
-import type { Context } from '../context';
+import type { Context, TreeContext } from '../context';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
+import { Ampersand } from './ampersand';
 
 export type AtRuleValue = {
   name: Any<'atkeyword'>;
@@ -26,6 +27,19 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   shortType = 'atrule' as const;
   override allowRoot = true;
 
+  constructor(value: AtRuleValue, options?: AtRuleOptions, location?: LocationInfo, treeContext?: TreeContext) {
+    super(value, options, location, treeContext);
+    /** Normally set by parser, but convenience for API */
+    if (
+      options?.nestable === undefined
+    ) {
+      let name = value.name.value;
+      if (['@media', '@supports', '@layer', '@container', '@scope'].includes(name)) {
+        this.options.nestable = true;
+      }
+    }
+  }
+
   frames: (Ruleset | AtRule)[] | undefined;
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -35,9 +49,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
     const mark = w.mark();
 
-    if (this.frames && rules) {
-      rules.renderWithFrameFlattening(options, this);
-      return w.getSince(mark);
+    if (this.options.hoistToRoot) {
+      if (rules) {
+        rules.renderWithFrameFlattening(options, this);
+        return w.getSince(mark);
+      }
+      options = { ...options, depth: 0 };
     }
 
     // Emit name
@@ -80,7 +97,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     let node = this as AtRule;
 
     // Store frames snapshot for collapseNesting serialization
-    if (context.opts.collapseNesting || node.options.collapseNesting) {
+    if (context.opts.collapseNesting || node.options.hoistToRoot) {
       node.frames = [...context.frames];
     }
 
@@ -105,7 +122,17 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       () => {
         let { rules } = node.value;
         if (rules) {
+          node.options.hoistToRoot ||= context.opts.collapseNesting;
           context.frames.push(node);
+          if (node.options.nestable && node.options.hoistToRoot) {
+            let existingRules = rules;
+            rules = Rules.create([
+              Ruleset.create({
+                selector: Ampersand.create(undefined),
+                rules: Rules.create([existingRules])
+              })
+            ]).inherit(existingRules);
+          }
           let out = rules.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Rules>).then((r) => {
@@ -115,6 +142,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           }
           node.value.rules = out;
         }
+        return node;
+      },
+      () => {
         return node;
       }
     ) as MaybePromise<AtRule>;

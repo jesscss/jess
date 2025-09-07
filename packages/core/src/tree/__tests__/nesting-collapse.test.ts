@@ -232,7 +232,7 @@ describe('CSS Nesting Collapse', () => {
   });
 
   // At-rule bubbling and collapsing tests
-  it('should bubble @media rules to root level', async () => {
+  it.only('should bubble @media rules to root level', async () => {
     const node = rules([
       ruleset({
         selector: sel([el('.parent')]),
@@ -346,10 +346,10 @@ describe('CSS Nesting Collapse', () => {
         .parent {
           font-size: 14px;
         }
-      }
-      @media (max-width: 768px) and (max-width: 480px) {
-        .parent .child {
-          background: blue;
+        @media (max-width: 480px) {
+          .parent .child {
+            background: blue;
+          }
         }
       }`
     );

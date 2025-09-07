@@ -71,7 +71,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
 
     const mark = w.mark();
-    if (this.frames) {
+    if (this.options.hoistToRoot) {
       rules.renderWithFrameFlattening(options, this);
       return w.getSince(mark);
     }
@@ -226,6 +226,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           return sels;
         }
         rule.value.selector = sels;
+        rule.options.hoistToRoot ||= context.opts.collapseNesting;
         context.rulesetFrames.push(rule as Ruleset);
         context.frames.push(rule as any);
         return this.value.rules.eval(context);

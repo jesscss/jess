@@ -826,18 +826,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     // If we have frames, we need to flatten
     let originalDepth = opts.depth;
-    let newDepth = 0;
 
-    for (let frame of currentNode.frames!) {
-      if (isNode(frame, 'AtRule')) {
-        newDepth++;
-      }
-    }
+    let atRuleframes: AtRule[] = currentNode.frames!.filter(frame => isNode(frame, 'AtRule')) as AtRule[];
+    let newDepth = atRuleframes.length;
 
     let isAtRule = currentNode.type === 'AtRule';
     let rules = currentNode.value.rules!;
     let length = rules.value.length;
-    let space = '  '.padStart(newDepth * 2);
+    let space = ''.padStart(newDepth * 2);
     /**
      * This may be hard to follow at first, but while rendering a hoisted
      * node, we don't render its opening until we reach the first
@@ -852,24 +848,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       let isHoistedChild = isNode(child, ['AtRule', 'Ruleset']) && child.frames;
 
-      if (isAtRule || (i === 0 && (!isHoistedChild))) {
-        currentNode.renderOpening({ ...options, depth: newDepth });
-      }
       let rule = w.capture(() => child.toTrimmedString({ ...options, writer: w, depth: newDepth } as PrintOptions));
-      if (!isHoistedChild) {
-        w.add(space);
-        w.add(rule);
-      } else {
-        let childDepth = newDepth;
-        for (let frame of (child as AtRule | Ruleset).frames!) {
-          if (isNode(frame, 'AtRule')) {
-            childDepth++;
+      if (isHoistedChild) {
+        if (i !== 0) {
+          /** "close" all current open frames */
+          for (let d = originalDepth; d >= 0; d--) {
+            let space = ''.padStart(d * 2);
+            w.add(`${space}}\n`);
           }
-        }
-        /** "close" all current open frames */
-        for (let d = originalDepth; d >= childDepth; d--) {
-          space = ''.padStart(d * 2);
-          w.add(`${space}}\n`);
         }
         w.add(rule);
         if (i < length - 1) {
@@ -880,24 +866,35 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               frame.renderOpening({ ...options, depth: d });
             }
           }
-        } else {
-          if (currentNode.frames!.length === 0) {
-            for (let d = originalDepth; d >= newDepth; d--) {
-              space = ''.padStart(d * 2);
-              w.add(`${space}}\n`);
-            }
+        }
+      } else {
+        for (let d = 0; d < newDepth; d++) {
+          let frame = atRuleframes[d];
+          if (frame) {
+            frame.renderOpening({ ...options, depth: d });
           }
-          // if (currentNode.frames!.length === 0) {
-          //   w.add('}\n');
-          // }
+        }
+        currentNode.renderOpening({ ...options, depth: newDepth });
+        w.add(`  ${space}`);
+        w.add(rule);
+        if (child.requiredSemi && child.options.semi !== false) {
+          w.add(';');
+        }
+        w.add('\n');
+        if (i === length - 1) {
+          /** No more declarations, close the frames we opened */
+          for (let d = newDepth; d >= 0; d--) {
+            space = ''.padStart(d * 2);
+            w.add(`${space}}\n`);
+          }
         }
       }
-      if (child.requiredSemi && child.options.semi !== false) {
-        w.add(';');
-      }
-      if (!isHoistedChild) {
-        w.add('\n');
-      }
+      // if (child.requiredSemi && child.options.semi !== false) {
+      //   w.add(';');
+      // }
+      // if (!isHoistedChild) {
+      //   w.add('\n');
+      // }
     }
   }
 }

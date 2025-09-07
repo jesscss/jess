@@ -1572,7 +1572,7 @@ export function mediaAtRule(this: C, T: TokenMap) {
         name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context), true),
         prelude: $.wrap(prelude, true),
         rules
-      }, undefined, location, this.context);
+      }, { nestable: true }, location, this.context);
     }
   };
 }
@@ -2294,7 +2294,7 @@ export function containerAtRule(this: C, T: TokenMap) {
         name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context), true),
         prelude: preludeNodes.length ? $.wrap(new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context), 'both') : undefined,
         rules
-      }, undefined, $.endRule(), this.context);
+      }, { nestable: true }, $.endRule(), this.context);
     }
   };
 }
@@ -2315,7 +2315,7 @@ export function scopeAtRule(this: C, T: TokenMap) {
         name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context), true),
         prelude: preludeNodes.length ? $.wrap(new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context), 'both') : undefined,
         rules
-      }, undefined, $.endRule(), this.context);
+      }, { nestable: true }, $.endRule(), this.context);
     }
   };
 }
@@ -2380,7 +2380,7 @@ export function layerAtRule(this: C, T: TokenMap) {
               name: $.wrap(new Any(atTok.image, { role: 'atkeyword' }, $.getLocationInfo(atTok), this.context), true),
               prelude: preludeNodes.length ? $.wrap(new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context), 'both') : undefined,
               rules
-            }, undefined, $.endRule(), this.context);
+            }, { nestable: true }, $.endRule(), this.context);
           }
         }
       },
@@ -2464,7 +2464,7 @@ export function supportsAtRule(this: C, T: TokenMap) {
         name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context), true),
         prelude: $.wrap(prelude, 'both'),
         rules
-      }, undefined, location, this.context);
+      }, { nestable: true }, location, this.context);
     }
   };
 }
