@@ -215,7 +215,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (bodyEmitted.length === 0 && bodyStr) {
       w.add(bodyStr);
     }
-    const depth = options.depth ?? 0;
+    const depth = options.frameState?.at(-1)?.depth ?? 0;
     // If no explicit Rules.post at root, propagate last child's post
     if (depth === 0 && (this.post === 0 || this.post === undefined)) {
       let lastVisible: Node | undefined;
@@ -275,7 +275,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _emitRulesBody(options: PrintOptions) {
     const w = options.writer!;
-    const depth = options.depth ?? 0;
+    const depth = options.frameState?.at(-1)?.depth ?? 0;
     const space = ''.padStart(depth * 2);
     const { value } = this;
     const items = value.filter(n => n.visible);
@@ -297,7 +297,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
 
       // Emit directly to preserve source map segments
-      let rule = w.capture(() => n.toTrimmedString({ ...options, writer: w, depth } as PrintOptions));
+      let rule = w.capture(() => n.toTrimmedString({ ...options }));
       w.add(rule); // .replace(/[\n\s]+$/, '')
       if (n.requiredSemi && n.options.semi !== false) {
         w.add(';');
@@ -813,9 +813,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   /**
    * Renders with optional frame-based flattening for collapseNesting
+   *
+   * @note - This is a more efficient way to "hoist" rules to the root
+   * than Less's approach, where arrays are copied and flattened. Instead,
+   * the nested structure is preserved, and we just track the frames we're in.
+   * Once we need to hoist a child, we print closing braces for the current frame,
+   * render the opening of the new frame, and continue rendering the child.
+   *
+   * This also allows us to properly match CSS's nesting behavior, since we don't
+   * push "hoisted" rules to the end of the current frame.
+   *
    * @param options PrintOptions for rendering
-   * @param renderOpening Function to render the opening (selector/prelude + opening brace)
-   * @param frames Optional frames snapshot for flattening context
+   * @param currentNode The node to render
    */
   renderWithFrameFlattening(
     options: PrintOptions,
@@ -823,17 +832,25 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   ) {
     let opts = getPrintOptions(options);
     let w = options.writer!;
+    let mark = w.mark();
+    let frameState = opts.frameState ??= [];
+    opts.frameState = frameState;
 
     // If we have frames, we need to flatten
-    let originalDepth = opts.depth;
+    let currentState = frameState.at(-1) ?? { depth: 0 };
+    let currentDepth = currentState.depth;
 
-    let atRuleframes: AtRule[] = currentNode.frames!.filter(frame => isNode(frame, 'AtRule')) as AtRule[];
-    let newDepth = atRuleframes.length;
+    let newFrames: (AtRule | Ruleset)[] = currentNode.frames!.filter(frame => isNode(frame, 'AtRule')) as AtRule[];
+    newFrames.push(currentNode);
+    let newFramesStartIndex = 0;
 
+    /**
+     * If the current open frames equals the at-rule frames we need, then we don't need to
+     * close and re-render them.
+     */
     let isAtRule = currentNode.type === 'AtRule';
     let rules = currentNode.value.rules!;
     let length = rules.value.length;
-    let space = ''.padStart(newDepth * 2);
     /**
      * This may be hard to follow at first, but while rendering a hoisted
      * node, we don't render its opening until we reach the first
@@ -848,53 +865,75 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       let isHoistedChild = isNode(child, ['AtRule', 'Ruleset']) && child.frames;
 
-      let rule = w.capture(() => child.toTrimmedString({ ...options, writer: w, depth: newDepth } as PrintOptions));
+      /** Skip over frames we're currently in */
+      for (let i = 0; i < newFrames.length; i++) {
+        if (newFrames[i] === frameState.at(i)?.frame) {
+          newFramesStartIndex++;
+        } else {
+          break;
+        }
+      }
+
       if (isHoistedChild) {
         if (i !== 0) {
-          /** "close" all current open frames */
-          for (let d = originalDepth; d >= 0; d--) {
+          /**
+           * "close" all current open frames
+           * up to any containing at-rules.
+           */
+          for (let d = frameState.length - 1; d >= 0; d--) {
             let space = ''.padStart(d * 2);
+            let frame = frameState[d]!.frame;
+            if (isNode(frame, 'AtRule')) {
+              break;
+            }
+            let state = frameState.pop();
+            if (!state?.frame) {
+              break;
+            }
             w.add(`${space}}\n`);
           }
         }
-        w.add(rule);
+        child.toTrimmedString(opts);
         if (i < length - 1) {
           /** More declarations, we need to re-open */
-          for (let d = newDepth; d < originalDepth + 1; d++) {
+          for (let d = newFramesStartIndex; d < newFrames.length; d++) {
             let frame = currentNode.frames![d];
             if (frame) {
-              frame.renderOpening({ ...options, depth: d });
+              frameState.push({ frame, depth: d });
+              frame.renderOpening(opts);
             }
           }
         }
       } else {
-        for (let d = 0; d < newDepth; d++) {
-          let frame = atRuleframes[d];
+        let d = newFramesStartIndex;
+        for (; d < newFrames.length; d++) {
+          let frame = newFrames[d];
           if (frame) {
-            frame.renderOpening({ ...options, depth: d });
+            frameState.push({ frame, depth: d });
+            frame.renderOpening(opts);
           }
         }
-        currentNode.renderOpening({ ...options, depth: newDepth });
-        w.add(`  ${space}`);
-        w.add(rule);
+        let space = ''.padStart(d * 2);
+        w.add(space);
+
+        let out = w.capture(() => child.toTrimmedString(opts));
+        w.add(out);
         if (child.requiredSemi && child.options.semi !== false) {
           w.add(';');
         }
         w.add('\n');
-        if (i === length - 1) {
-          /** No more declarations, close the frames we opened */
-          for (let d = newDepth; d >= 0; d--) {
-            space = ''.padStart(d * 2);
-            w.add(`${space}}\n`);
+      }
+      if (i === length - 1) {
+        /** No more declarations, close the frames we opened */
+        for (let d = frameState.length - 1; d >= newFramesStartIndex; d--) {
+          let space = ''.padStart(d * 2);
+          let state = frameState.pop();
+          if (!state?.frame) {
+            break;
           }
+          w.add(`${space}}\n`);
         }
       }
-      // if (child.requiredSemi && child.options.semi !== false) {
-      //   w.add(';');
-      // }
-      // if (!isHoistedChild) {
-      //   w.add('\n');
-      // }
     }
   }
 }

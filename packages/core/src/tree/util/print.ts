@@ -1,7 +1,13 @@
 import type { Context } from '../../context';
+import type { AtRule } from '../at-rule';
+import type { Ruleset } from '../ruleset';
 
 export type PrintOptions = {
-  depth?: number;
+  /** Tracks what ruleset or at-rule body we're in, at what depth */
+  frameState?: {
+    frame?: Ruleset | AtRule;
+    depth: number;
+  }[];
   writer?: OutputWriter;
   compress?: boolean;
   collapseNesting?: boolean;
@@ -25,9 +31,8 @@ export type SourceSegment = {
   origColumn: number;  // 0-based
 };
 
-export function getPrintOptions(options?: PrintOptions): PrintOptions & { writer: OutputWriter; depth: number } {
+export function getPrintOptions(options?: PrintOptions): PrintOptions & { writer: OutputWriter } {
   options = options ?? {};
-  options.depth ??= 0;
   options.writer ??= new OutputWriter();
   return options as PrintOptions & { writer: OutputWriter };
 }

@@ -54,7 +54,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         rules.renderWithFrameFlattening(options, this);
         return w.getSince(mark);
       }
-      options = { ...options, depth: 0 };
+      options = { ...options, frameState: options.frameState ?? [{ depth: 0 }] };
     }
 
     // Emit name
@@ -83,7 +83,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   renderOpening(options: PrintOptions): void {
     const w = options.writer!;
     const { name, prelude } = this.value;
-    const depth = options.depth ?? 0;
+    const depth = options.frameState?.at(-1)?.depth ?? 0;
     w.add(''.padStart(depth * 2));
     name.toString(options);
     if (prelude) {
@@ -129,7 +129,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             rules = Rules.create([
               Ruleset.create({
                 selector: Ampersand.create(undefined),
-                rules: Rules.create([existingRules])
+                rules: existingRules
               })
             ]).inherit(existingRules);
           }
@@ -145,6 +145,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         return node;
       },
       () => {
+        context.frames.pop();
         return node;
       }
     ) as MaybePromise<AtRule>;

@@ -232,7 +232,7 @@ describe('CSS Nesting Collapse', () => {
   });
 
   // At-rule bubbling and collapsing tests
-  it.only('should bubble @media rules to root level', async () => {
+  it('should bubble @media rules to root level', async () => {
     const node = rules([
       ruleset({
         selector: sel([el('.parent')]),
@@ -306,7 +306,7 @@ describe('CSS Nesting Collapse', () => {
     );
   });
 
-  it('should combine nested @media rules', async () => {
+  it('should merge multiple hoisted @media rules', async () => {
     const node = rules([
       ruleset({
         selector: sel([el('.parent')]),

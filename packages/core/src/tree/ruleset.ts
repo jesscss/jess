@@ -91,7 +91,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   renderOpening(options: PrintOptions): void {
     const w = options.writer!;
     const { selector } = this.value;
-    const depth = options.depth ?? 0;
+    const depth = options.frameState?.at(-1)?.depth ?? 0;
     const space = ''.padStart(depth * 2);
 
     if (!(selector instanceof Nil)) {
