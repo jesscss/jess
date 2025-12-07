@@ -255,13 +255,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   toBraced(options?: PrintOptions) {
     let opts = getPrintOptions(options);
-    let depth = opts.depth;
+    let depth = opts.frameState?.at(-1)?.depth ?? 0;
     const w = opts.writer!;
     const mark = w.mark();
     let space = ''.padStart((depth) * 2);
     w.add('{');
     // emit body at increased depth; start with a single newline, body handles indent
-    const childOptions = { ...options, depth: depth + 1 } as PrintOptions;
+    const childOptions = { ...options, frameState: [{ depth: depth + 1 }] } satisfies PrintOptions;
     childOptions.writer!.add('\n');
     this._emitRulesBody(childOptions);
     // ensure closing brace is on its own properly indented line

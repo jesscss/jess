@@ -12,8 +12,8 @@ export class RawRules extends Rules {
   override allowRuleRoot = true;
 
   // Do not add newlines/indent; emit children exactly as-is
-  override toBraced(depth: number = 0, options?: PrintOptions) {
-    options = getPrintOptions({ ...options, depth });
+  override toBraced(options?: PrintOptions) {
+    options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
     w.add('{');
