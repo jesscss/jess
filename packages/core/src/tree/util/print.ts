@@ -45,6 +45,8 @@ export class OutputWriter implements OutputWriter {
   private _positions: Array<{ line: number; column: number; segments: number }> = [];
   /** Diagnostic: remember the origin that last wrote a trailing newline */
   private _lastNewlineOrigin: unknown = undefined;
+  /** Store segments from the most recent capture for merging when content is added back */
+  private _capturedSegments: SourceSegment[] | null = null;
 
   get line() { return this._line; }
   get column() { return this._column; }
@@ -54,6 +56,28 @@ export class OutputWriter implements OutputWriter {
       return;
     }
     this.chunks.push(text);
+
+    const currentLine = this._line;
+    const currentColumn = this._column;
+
+    // If we have captured segments and we're adding with an origin, merge them
+    // This happens when captured content is added back (e.g., in Declaration.declTrimmedString)
+    if (this._capturedSegments && originParam) {
+      // Adjust captured segment positions to current writer position and add them
+      for (const seg of this._capturedSegments) {
+        // If segment is on the same line as capture start, add column offset
+        // If segment is on a different line, column is already correct (relative to that line)
+        const adjustedColumn = seg.genLine === 0 ? currentColumn + seg.genColumn : seg.genColumn;
+        this._segments.push({
+          genLine: currentLine + seg.genLine,
+          genColumn: adjustedColumn,
+          source: seg.source,
+          origLine: seg.origLine,
+          origColumn: seg.origColumn
+        });
+      }
+      this._capturedSegments = null; // Clear after merging
+    }
 
     // Record a mapping segment if we have origin location info
     const origin: any = originParam as any;
@@ -81,6 +105,10 @@ export class OutputWriter implements OutputWriter {
     if (i === -1) {
       this._column += text.length;
       this._positions.push({ line: this._line, column: this._column, segments: this._segments.length });
+      // Clear captured segments if we added content without origin (normal add, not merging captured content)
+      if (!originParam) {
+        this._capturedSegments = null;
+      }
       return;
     }
 
@@ -96,6 +124,10 @@ export class OutputWriter implements OutputWriter {
     }
     this._column = text.length - (i + 1);
     this._positions.push({ line: this._line, column: this._column, segments: this._segments.length });
+    // Clear captured segments if we added content without origin
+    if (!originParam) {
+      this._capturedSegments = null;
+    }
   }
 
   mark(): number {
@@ -134,10 +166,11 @@ export class OutputWriter implements OutputWriter {
     const segmentsBefore = this._segments.length;
     fn();
     const s = this.getSince(m);
+    // Store segments created during capture (but don't add to main buffer)
     const segmentsCreated = this._segments.slice(segmentsBefore);
     this.restore(m);
-    // Re-add segments that were created during capture
-    this._segments.push(...segmentsCreated);
+    // Store captured segments for potential merging when content is added back
+    this._capturedSegments = segmentsCreated.length > 0 ? segmentsCreated : null;
     return s;
   }
 
