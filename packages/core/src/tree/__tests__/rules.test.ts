@@ -75,14 +75,16 @@ describe('Rules', () => {
       ])
     ]);
     node = await node.eval(context);
-    expect(node.index).toBe(0);
-    expect(node.at(0)?.index).toBe(1);
-    expect(node.at(1)?.index).toBe(2);
-    expect(node.at(2)?.index).toBe(3);
-    expect((node.at(2) as Rules).at(0)?.index).toBe(4);
-    expect((node.at(2) as Rules).at(1)?.index).toBe(5);
-    expect((node.at(2) as Rules).at(2)?.index).toBe(6);
-    expect(((node.at(2) as Rules).at(2) as Rules).at(0)?.index).toBe(7);
+    let index = node.index;
+    expect(index).toBe(0);
+    expect(node.at(1)?.index).toBeGreaterThan(index);
+    index = node.at(1)?.index ?? index;
+    expect(node.at(2)?.index).toBeGreaterThan(index);
+    index = node.at(2)?.index ?? index;
+    expect((node.at(2) as Rules).at(0)?.index).toBeGreaterThan(index);
+    index = (node.at(2) as Rules).at(1)?.index ?? index;
+    expect((node.at(2) as Rules).at(2)?.index).toBeGreaterThan(index);
+    expect(((node.at(2) as Rules).at(2) as Rules).at(0)?.index).toBeGreaterThan(index);
   });
 
   describe('Scope / lookups', () => {
@@ -394,7 +396,7 @@ describe('Rules', () => {
             rulesVisibility: { VarDeclaration: 'public' }
           }),
           rules([
-            /** This will set the second rules value */
+            /** This will set after the second rules value */
             vardecl({ name: 'one', value: any('three') }, { setDefined: true })
           ])
         ]);

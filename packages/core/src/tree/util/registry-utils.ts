@@ -574,7 +574,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
     let declCandidate = new Set<Declaration>();
     let rules: Rules | undefined = this.rules;
     let isPublic = false;
-    const {
+    let {
       searchParents = true,
       local = false,
       start
@@ -638,6 +638,10 @@ export class DeclarationRegistry extends Registry<Declaration> {
 
       do {
         rules = rules?.parent as Rules;
+        /** If we're searching linearly, update the start position to the parent node index */
+        // if (start !== undefined && rules) {
+        //   start = rules.index;
+        // }
         /**
          * If we reach an import boundary, stop unless it's an `@import`
          * which means these rules can reach into the parent file that imports

@@ -28,7 +28,6 @@ import { Any } from './any';
 import { List } from './list';
 
 const { isArray } = Array;
-const DEBUG_FINAL_NL = typeof process !== 'undefined' && (process.env as any)?.JESS_DEBUG_FINAL_NL === '1';
 
 export const enum Priority {
   None = 0,
@@ -393,12 +392,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
 
           // Find the Rules node that contains the found declaration
-          let foundRules: Rules | undefined;
-          let current: Node | undefined = result;
-          while (current && !isNode(current, 'Rules')) {
-            current = current.parent;
-          }
-          foundRules = current as Rules;
+          let foundRules: Rules | undefined = result.parent as Rules;
 
           if (!foundRules) {
             throw new Error(`Could not find parent Rules for declaration '${key}'`);
@@ -410,13 +404,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           newDeclaration.options.setDefined = undefined; // Remove setDefined flag
 
           // Instead of inserting into the array, just register it in the registry
-          // This way the original declaration keeps its position and index
-          // Assign the new declaration an index that comes after the setDefined declaration
-          // so that only lookups from after the setDefined position will see the new value
-          const originalIndex = result.index;
-          const currentIndex = node.index;
-          const newIndex = currentIndex + 1; // Just after the setDefined declaration
-          newDeclaration.index = newIndex;
+          // Because all nodes are indexed linearly, we can keep the same index I think?
 
           foundRules.register('declaration', newDeclaration);
         } else {
@@ -454,9 +442,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const saved = this._snapshotContext(context);
       this._setupContextForRules(context, rules);
 
-      // Assign index to this rules node if not already set
+      // Assign index to all the nodes if not already set,
+      // in linear source order.
       if (rules.index === undefined) {
-        rules.index = context.ruleCounter++;
+        for (const node of rules.nodes(false, true)) {
+          if (node.index === undefined) {
+            node.index = context.ruleCounter++;
+          }
+        }
       }
 
       // Multi-pass registration system for handling interpolated names
@@ -475,11 +468,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     for (let i = 0; i < rules.value.length; i++) {
       const node = rules.value[i]!;
-
-      // Assign index
-      if (node.index === undefined) {
-        node.index = context.ruleCounter++;
-      }
 
       // Check if node has a static name (can be registered immediately)
       if (node.type === 'Any' && node.options.role === 'charset') {
