@@ -100,16 +100,17 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const isCustomProperty = `${name}`.startsWith('--');
     if (isCustomProperty) {
       // Emit value exactly as captured (no trimming, no added spaces)
+      // For custom properties, we can't easily pass origin, so segments may be lost
       value.toString(options);
     } else {
       // Capture value output to normalize spacing after ':'
       const valOut = w.capture(() => value.toString(options));
       // Ensure exactly one space after ':' by removing leading whitespace and adding one space
       w.add(' ');
-      w.add(valOut.replace(/^\s+/, '')); // Remove leading whitespace onlyu have
+      w.add(valOut.replace(/^\s+/, ''), this); // Pass declaration as origin to preserve location info
       if (!isNode(value, 'Collection')) {
         if (important) {
-          w.add(`${important}`);
+          w.add(`${important}`, this);
         }
       }
     }

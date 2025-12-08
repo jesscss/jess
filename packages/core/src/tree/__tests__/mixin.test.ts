@@ -1,9 +1,15 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl } from '..';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node } from '..';
 import { Context } from '../../context';
 
 let context: Context;
 
 describe('Mixin', () => {
+  beforeAll(() => {
+    Node.prototype.fullRender = true;
+  });
+  afterAll(() => {
+    Node.prototype.fullRender = false;
+  });
   beforeEach(() => {
     context = new Context();
     context.depth = 2;

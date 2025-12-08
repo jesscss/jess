@@ -131,9 +131,13 @@ export class OutputWriter implements OutputWriter {
   /** Capture output from a function without committing to the main buffer */
   capture(fn: () => void): string {
     const m = this.mark();
+    const segmentsBefore = this._segments.length;
     fn();
     const s = this.getSince(m);
+    const segmentsCreated = this._segments.slice(segmentsBefore);
     this.restore(m);
+    // Re-add segments that were created during capture
+    this._segments.push(...segmentsCreated);
     return s;
   }
 

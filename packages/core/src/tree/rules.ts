@@ -297,9 +297,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       // Emit directly to preserve source map segments
       let rule = w.capture(() => n.toTrimmedString({ ...options }));
-      w.add(rule); // .replace(/[\n\s]+$/, '')
+      w.add(rule, n); // Pass node as origin to preserve location info
       if (n.requiredSemi && n.options.semi !== false) {
-        w.add(';');
+        w.add(';', n);
       }
     }
   }

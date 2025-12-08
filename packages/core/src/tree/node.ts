@@ -800,7 +800,7 @@ export abstract class Node<
     const bodyStr = this.toTrimmedString(options);
     const bodyEmitted = w.getSince(bodyMark);
     if (bodyEmitted.length === 0 && bodyStr) {
-      w.add(bodyStr);
+      w.add(bodyStr, this);
     }
     this.processPrePost('post', '', options);
     return w.getSince(mark);
