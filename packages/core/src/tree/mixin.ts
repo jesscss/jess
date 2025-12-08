@@ -106,7 +106,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    const depth = options.depth ?? 0;
+    const depth = options.frameState?.at(-1)?.depth ?? 0;
     let { name, rules, params, guard } = this.value;
     let { isFunctionWith } = this.options;
     const mark = w.mark();

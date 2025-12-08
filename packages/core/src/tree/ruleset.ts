@@ -10,6 +10,7 @@ import { Ampersand } from './ampersand';
 import { Combinator } from './combinator';
 import { ComplexSelector } from './selector-complex';
 import { SelectorList } from './selector-list';
+import { CompoundSelector } from './selector-compound';
 import { sel } from './selector-complex';
 import { amp } from './ampersand';
 import { co } from './combinator';
@@ -123,7 +124,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (selector.hasFlag(F_AMPERSAND)) {
       return selector;
     }
-    let amp = Ampersand.create({ selector: parentSelector });
+    let amp = Ampersand.create({ selector: parentSelector.copy(true) });
     if (!collapseNesting) {
       amp.removeFlag(F_VISIBLE);
     }
@@ -144,7 +145,18 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return selector;
     }
     if (selector instanceof SelectorList) {
-      selector.value = selector.value.map(sel => this.addImplicitAmpersand(parentSelector, sel, collapseNesting));
+      let mutated = false;
+      for (let i = 0; i < (selector as SelectorList).value.length; i++) {
+        let sel = (selector as SelectorList).value[i]!;
+        let result = this.addImplicitAmpersand(parentSelector, sel, collapseNesting);
+        if (result !== sel) {
+          if (!mutated) {
+            selector = selector.clone(true);
+          }
+          (selector as SelectorList).value[i] = result;
+          mutated = true;
+        }
+      }
     } else {
       selector = this.addImplicitAmpersand(parentSelector, selector, collapseNesting);
     }
@@ -189,20 +201,27 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         if (frame && (this.options.hoistToRoot ?? context.opts.collapseNesting)) {
           this.options.hoistToRoot = true;
         }
-        // Unwrap generated :is() pseudo-selectors if they're the first component of a ComplexSelector
+        // Unwrap generated :is() pseudo-selectors if they're the ruleset's only selector
+        // or if they're the first component of a ComplexSelector in the parent
         if (
           isNode(sels, 'PseudoSelector')
           && sels.value.name === ':is'
           && sels.generated
         ) {
-          // Check if this :is() is the first component of a ComplexSelector
+          // Check if this :is() is the first component of a ComplexSelector in the parent
           const parent = context.rulesetFrames[context.rulesetFrames.length - 1];
           if (parent && parent.value && parent.value.selector) {
             const parentSelector = parent.value.selector;
             if (isNode(parentSelector, 'ComplexSelector') && parentSelector.value[0] === sels) {
-              // This :is() is the first component, so unwrap it
+              // This :is() is the first component of the parent's ComplexSelector, so unwrap it
+              sels = sels.value.arg as Selector;
+            } else {
+              // This :is() is the ruleset's only selector (not part of a SelectorList), so unwrap it
               sels = sels.value.arg as Selector;
             }
+          } else {
+            // No parent, so this :is() is the ruleset's only selector, unwrap it
+            sels = sels.value.arg as Selector;
           }
         }
 
@@ -220,6 +239,19 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
               const newComponents = [unwrappedSelector, ...sels.value.slice(1)];
               sels = ComplexSelector.create(newComponents);
             }
+          }
+        }
+
+        // Unwrap generated :is() if it's the only component of a CompoundSelector
+        if (isNode(sels, 'CompoundSelector') && sels.value.length === 1) {
+          const onlyComponent = sels.value[0];
+          if (
+            isNode(onlyComponent, 'PseudoSelector')
+            && onlyComponent.value.name === ':is'
+            && onlyComponent.generated
+          ) {
+            // Unwrap the :is() - use its argument as the selector
+            sels = onlyComponent.value.arg as Selector;
           }
         }
         if (sels instanceof Nil) {
