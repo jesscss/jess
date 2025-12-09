@@ -16,6 +16,7 @@ import {
   type Rules,
   Node
 } from '..';
+import { isNode } from '../util/is-node';
 import { Context } from '../../context';
 import type { PluginInterface } from '../../plugin';
 import type { FindOptions } from '../util/registry-utils';
@@ -157,7 +158,8 @@ describe('Style import', () => {
         style({
           path: quoted(any('composed.jess'))
         }, {
-          type: 'compose'
+          type: 'compose',
+          namespace: '*'
         })
       ]);
 
@@ -208,7 +210,8 @@ describe('Style import', () => {
         style({
           path: quoted(any('composed.jess'))
         }, {
-          type: 'compose'
+          type: 'compose',
+          namespace: '*'
         }),
         ruleset({
           selector: sellist([sel([el('.parent')])]),
@@ -274,7 +277,8 @@ describe('Style import', () => {
         style({
           path: quoted(any('composed.jess'))
         }, {
-          type: 'compose'
+          type: 'compose',
+          namespace: '*'
         }),
         ruleset({
           selector: sellist([sel([el('.parent')])]),
@@ -422,7 +426,8 @@ describe('Style import', () => {
         style({
           path: quoted(any('composed.jess'))
         }, {
-          type: 'compose'
+          type: 'compose',
+          namespace: '*'
         }),
         vardecl({ name: 'composedVar', value: any('modified') })
       ]);
@@ -470,6 +475,7 @@ describe('Style import', () => {
           path: quoted(any('composed.jess'))
         }, {
           type: 'compose',
+          namespace: '*',
           importOptions: { readonly: false }
         }),
         vardecl({ name: 'composedVar', value: any('modified') })
@@ -527,33 +533,33 @@ describe('Style import', () => {
             type: 'with'
           }
         }, {
-          type: 'compose'
+          type: 'compose',
+          namespace: '*'
         })
       ]);
 
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
-      // When 'with' is used, withValues.node is cloned and the imported rules are unshifted into it
-      // So the structure is: [imported rules (unshifted at index 0), ...injected variables]
-      // The imported rules should contain the ruleset from the library file
-      const importedRules = composedRules.at(0) as Rules;
-      // The imported rules should contain the ruleset at index 0
-      const composedRuleset = importedRules.at(0);
-      // Check if it's actually a Ruleset node
-      if (composedRuleset && (composedRuleset as any).type === 'Ruleset') {
-        const composedDecl = (composedRuleset as any).value.rules.at(0);
-        const resolved = await composedDecl.eval(context);
-        expect(`${resolved}`).toBe('color: purple;');
-      } else {
-        // If the structure is different, try to find the declaration directly
-        // The variable should be resolved to 'purple' because of the injected variable
-        const decl = getVarWithContext(context, composedRules, 'primaryColor');
-        expect(decl).toBeDefined();
-        if (decl) {
-          const resolved = await decl.eval(context);
-          expect(`${resolved}`).toBe('purple');
-        }
-      }
+
+      // Test 1: Verify injected variables are accessible
+      const injectedVar = getVarWithContext(context, composedRules, 'primaryColor');
+      expect(injectedVar).toBeDefined();
+      // The variable declaration exists, which means the injection worked
+      // We can verify the value by evaluating the variable's value property
+      const injectedVarValueNode = injectedVar!.value.value;
+      const injectedVarValue = await injectedVarValueNode.eval(context);
+      expect(`${injectedVarValue}`).toBe('purple');
+
+      // Test 2: Verify computed values based on injected variables are correct
+      // Find the ruleset and its declaration
+      const foundRuleset = Array.from(composedRules.value).find(
+        node => isNode(node, 'Ruleset')
+      );
+      expect(foundRuleset).toBeDefined();
+      const foundDecl = (foundRuleset as any).value.rules.at(0);
+      expect(foundDecl).toBeDefined();
+      const resolved = await foundDecl.eval(context);
+      expect(`${resolved}`).toBe('color: purple');
     });
 
     it('can inject variables with "set" type', async () => {
@@ -577,16 +583,201 @@ describe('Style import', () => {
             type: 'set'
           }
         }, {
-          type: 'compose'
+          type: 'compose',
+          namespace: '*'
         })
       ]);
 
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
-      const composedRuleset = composedRules.at(0);
-      const composedDecl = (composedRuleset as any).value.rules.at(0);
-      const resolved = await composedDecl.eval(context);
-      expect(`${resolved}`).toBe('color: orange;');
+
+      // Test 1: Verify injected variables are accessible
+      const injectedVar = getVarWithContext(context, composedRules, 'primaryColor');
+      expect(injectedVar).toBeDefined();
+      // The variable declaration exists, which means the injection worked
+      // We can verify the value by evaluating the variable's value property
+      const injectedVarValueNode = injectedVar!.value.value;
+      const injectedVarValue = await injectedVarValueNode.eval(context);
+      expect(`${injectedVarValue}`).toBe('orange');
+
+      // Test 2: Verify computed values based on injected variables are correct
+      // Find the ruleset and its declaration
+      const foundRuleset = Array.from(composedRules.value).find(
+        node => isNode(node, 'Ruleset')
+      );
+      expect(foundRuleset).toBeDefined();
+      const foundDecl = (foundRuleset as any).value.rules.at(0);
+      expect(foundDecl).toBeDefined();
+      const resolved = await foundDecl.eval(context);
+      expect(`${resolved}`).toBe('color: orange');
+    });
+
+    it('updates computed variables with "with" type - scope lookup', async () => {
+      // Test that when we inject a variable, dependent variables are updated
+      // This tests scope-based lookup ($var)
+      const libraryPath = resolve(process.cwd(), 'library.jess');
+      context.sourceTrees.set(libraryPath, rules([
+        vardecl({ name: 'baseColor', value: any('red') }),
+        vardecl({ name: 'derivedColor', value: ref('baseColor', { type: 'variable' }) })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('library.jess')),
+          with: {
+            node: rules([
+              vardecl({ name: 'baseColor', value: any('blue') })
+            ]),
+            type: 'with'
+          }
+        }, {
+          type: 'compose',
+          namespace: '*'
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const composedRules = evald.at(0) as Rules;
+
+      // Verify baseColor has the injected value
+      const baseColor = getVarWithContext(context, composedRules, 'baseColor');
+      expect(baseColor).toBeDefined();
+      const baseColorValue = await baseColor!.value.value.eval(context);
+      expect(`${baseColorValue}`).toBe('blue');
+
+      // Verify derivedColor reflects the injected value (scope lookup)
+      const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
+      expect(derivedColor).toBeDefined();
+      const derivedColorValue = await derivedColor!.value.value.eval(context);
+      expect(`${derivedColorValue}`).toBe('blue');
+    });
+
+    it('updates computed variables with "with" type - linear lookup', async () => {
+      // Test that when we inject a variable, dependent variables are updated
+      // This tests linear lookup ($^var)
+      const libraryPath = resolve(process.cwd(), 'library.jess');
+      context.sourceTrees.set(libraryPath, rules([
+        vardecl({ name: 'baseColor', value: any('red') }),
+        vardecl({ name: 'derivedColor', value: ref('baseColor', { type: 'variable', resolution: 'linear' }) })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('library.jess')),
+          with: {
+            node: rules([
+              vardecl({ name: 'baseColor', value: any('green') })
+            ]),
+            type: 'with'
+          }
+        }, {
+          type: 'compose',
+          namespace: '*'
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const composedRules = evald.at(0) as Rules;
+
+      // Verify baseColor has the injected value
+      const baseColor = getVarWithContext(context, composedRules, 'baseColor');
+      expect(baseColor).toBeDefined();
+      const baseColorValue = await baseColor!.value.value.eval(context);
+      expect(`${baseColorValue}`).toBe('green');
+
+      // Verify derivedColor reflects the injected value (linear lookup)
+      const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
+      expect(derivedColor).toBeDefined();
+      const derivedColorValue = await derivedColor!.value.value.eval(context);
+      expect(`${derivedColorValue}`).toBe('green');
+    });
+
+    it('updates computed variables with "set" type - scope lookup', async () => {
+      // Test that when we inject a variable with "set", dependent variables are updated
+      // This tests scope-based lookup ($var)
+      const libraryPath = resolve(process.cwd(), 'library.jess');
+      context.sourceTrees.set(libraryPath, rules([
+        vardecl({ name: 'baseColor', value: any('red') }),
+        vardecl({ name: 'derivedColor', value: ref('baseColor', { type: 'variable' }) })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('library.jess')),
+          with: {
+            node: rules([
+              vardecl({ name: 'baseColor', value: any('yellow') })
+            ]),
+            type: 'set'
+          }
+        }, {
+          type: 'compose',
+          namespace: '*'
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const composedRules = evald.at(0) as Rules;
+
+      // Verify baseColor has the injected value
+      const baseColor = getVarWithContext(context, composedRules, 'baseColor');
+      expect(baseColor).toBeDefined();
+      const baseColorValue = await baseColor!.value.value.eval(context);
+      expect(`${baseColorValue}`).toBe('yellow');
+
+      // Verify derivedColor reflects the injected value (scope lookup)
+      const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
+      expect(derivedColor).toBeDefined();
+      const derivedColorValue = await derivedColor!.value.value.eval(context);
+      expect(`${derivedColorValue}`).toBe('yellow');
+    });
+
+    it('updates computed variables with "set" type - linear lookup', async () => {
+      // Test that when we inject a variable with "set", dependent variables are updated
+      // This tests linear lookup ($^var)
+      const libraryPath = resolve(process.cwd(), 'library.jess');
+      context.sourceTrees.set(libraryPath, rules([
+        vardecl({ name: 'baseColor', value: any('red') }),
+        vardecl({ name: 'derivedColor', value: ref('baseColor', { type: 'variable', resolution: 'linear' }) })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('library.jess')),
+          with: {
+            node: rules([
+              vardecl({ name: 'baseColor', value: any('cyan') })
+            ]),
+            type: 'set'
+          }
+        }, {
+          type: 'compose',
+          namespace: '*'
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const composedRules = evald.at(0) as Rules;
+
+      // When 'set' is used, structure is flattened:
+      // [new injected variables (not found), ...all nodes from imported rules (with replacements)]
+      // All variables are in the same Rules scope
+
+      // Verify baseColor was injected (should be the injected one, not the original)
+      const baseColor = getVarWithContext(context, composedRules, 'baseColor');
+      expect(baseColor).toBeDefined();
+      const baseColorValue = await baseColor!.value.value.eval(context);
+      expect(`${baseColorValue}`).toBe('cyan');
+
+      // Verify derivedColor reflects the injected value (linear lookup)
+      // derivedColor is in the composed rules (flattened structure)
+      // It should be able to find the injected baseColor in the same scope
+      const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
+      expect(derivedColor).toBeDefined();
+      // The value should already be evaluated during the import evaluation
+      // and should have used the injected baseColor
+      const derivedColorValue = await derivedColor!.value.value.eval(context);
+      expect(`${derivedColorValue}`).toBe('cyan');
     });
 
     it('throws if "set" is used more than once', async () => {
@@ -606,7 +797,8 @@ describe('Style import', () => {
             type: 'set'
           }
         }, {
-          type: 'compose'
+          type: 'compose',
+          namespace: '*'
         })
       ]);
       await node1.eval(context);
@@ -622,7 +814,8 @@ describe('Style import', () => {
             type: 'set'
           }
         }, {
-          type: 'compose'
+          type: 'compose',
+          namespace: '*'
         })
       ]);
 

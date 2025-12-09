@@ -5,6 +5,8 @@ import { type Quoted } from './quoted';
 import { Url } from './url';
 import { type Context } from '../context';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { isNode } from './util/is-node';
+import { normalizeFilenameToNamespace } from './util/format';
 
 /**
  * This class is for Jess / Sass+ / Less-style imports,
@@ -195,9 +197,100 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         if (withValues.type === 'set' && evaldRules) {
           throw new Error('Cannot configure a stylesheet more than once.');
         }
-        let withRules = withValues.node.clone(true) as Rules;
-        withRules.value.unshift(rules);
-        rules = withRules;
+        // Clone the imported rules so we can modify them
+        let modifiedRules = rules.clone(true) as Rules;
+        // withValues.node might be a Reference, so evaluate it first to get Rules
+        let withRulesNode = withValues.node;
+        if (isNode(withRulesNode, 'Reference')) {
+          // Evaluate the reference to get the actual Rules
+          const evaluated = await withRulesNode.eval(context);
+          if (!isNode(evaluated, 'Rules')) {
+            throw new Error('with/set node must evaluate to Rules');
+          }
+          withRulesNode = evaluated;
+        }
+        // withRules don't need to be cloned because they are used once
+        let withRules = withRulesNode as Rules;
+
+        // Build the declaration registry for efficient lookups
+        // This avoids O(n*m) complexity when we have many injected variables
+        // First, register all nodes in modifiedRules so they're in the registry
+        for (const node of modifiedRules.value) {
+          modifiedRules.registerNode(node);
+        }
+        const declarationRegistry = modifiedRules.getRegistry('declaration');
+        declarationRegistry.indexPendingItems();
+
+        // Separate injected variables into two groups:
+        // 1. Variables that replace existing ones (found in imported rules)
+        // 2. Variables that are new (not found in imported rules)
+        const newVariables: Node[] = [];
+
+        // For each injected variable, find and replace the first matching declaration
+        // in the imported rules, OR if not found, add it to newVariables to inject at the top.
+        // This ensures the injected value "overrides" the original.
+        // Works correctly for both scope lookup ($var) and linear lookup ($^var):
+        // - For linear lookup: injected vars come first, so they're found first
+        // - For scope lookup: original is replaced, so injected value wins
+        for (const injectedNode of withRules.value) {
+          if (isNode(injectedNode, 'VarDeclaration')) {
+            const varName = injectedNode.value.name?.toString();
+            if (varName) {
+              // Use the registry for efficient lookup instead of linear search
+              const declarations = declarationRegistry.index.get(varName);
+              if (declarations) {
+                // Find the first VarDeclaration in the set (sorted by index)
+                const existingDecl = Array.from(declarations).find(decl => isNode(decl, 'VarDeclaration'));
+
+                if (existingDecl) {
+                  // Remove the old declaration from the registry
+                  declarations.delete(existingDecl);
+                  // Find its index in the array and replace it
+                  const index = modifiedRules.value.indexOf(existingDecl);
+                  if (index !== -1) {
+                    // Adopt the new node and replace in array
+                    modifiedRules.adopt(injectedNode);
+                    modifiedRules.value[index] = injectedNode;
+                    // Add the new declaration to the registry
+                    declarations.add(injectedNode);
+                    // Register the new node so it's properly indexed
+                    modifiedRules.registerNode(injectedNode);
+                  }
+                } else {
+                  // Not found, add to newVariables to inject at the top
+                  newVariables.push(injectedNode);
+                }
+              } else {
+                // Not found in registry, add to newVariables to inject at the top
+                newVariables.push(injectedNode);
+              }
+            } else {
+              // Non-variable nodes (if any) are kept as-is
+              newVariables.push(injectedNode);
+            }
+          } else {
+            // Non-VarDeclaration nodes are kept as-is
+            newVariables.push(injectedNode);
+          }
+        }
+
+        // Create the final rules structure:
+        // [new injected variables (not found in imported), ...all nodes from modified imported rules (with replacements)]
+        // Injected variables that aren't found should be at the TOP so they're found first
+        // for linear lookup ($^var)
+        // We flatten the structure so all variables are in the same Rules scope
+        const finalRules = new Rules([]);
+        // First, add new injected variables that weren't found in imported rules (at the top)
+        for (const newNode of newVariables) {
+          finalRules.adopt(newNode);
+          finalRules.value.push(newNode);
+        }
+        // Then, add all nodes from the modified imported rules (flattened, with replacements)
+        for (const node of modifiedRules.value) {
+          finalRules.adopt(node);
+          finalRules.value.push(node);
+        }
+        rules = finalRules;
       }
       /** Freshly evaluate the rules in these circumstances
        * - `with` (or `set`) values are present

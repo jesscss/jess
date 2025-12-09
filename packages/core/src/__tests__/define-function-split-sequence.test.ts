@@ -328,7 +328,7 @@ describe('defineFunction - splitSequence', () => {
         }).toThrow('Argument \'a\' must be of type \'Color\'');
       });
 
-      it('should validate callWithContext calls with type mismatches', () => {
+      it('should validate callWithContext calls with type mismatches', async () => {
         const func = defineFunction(
           'test',
           (a: Color) => `received: ${a.type}`,
@@ -338,10 +338,10 @@ describe('defineFunction - splitSequence', () => {
         const dimension = new Dimension({ number: 10, unit: 'px' });
         const ctx = new Context();
 
-        // This should throw a runtime error
-        expect(() => {
-          callWithContext(ctx, func as any, dimension);
-        }).toThrow('Argument \'a\' must be of type \'Color\'');
+        // This should throw a runtime error (callWithContext is async)
+        await expect(
+          callWithContext(ctx, func as any, dimension)
+        ).rejects.toThrow('Argument \'a\' must be of type \'Color\'');
       });
 
       it('should validate lazy parameters when thunks are called', async () => {

@@ -392,7 +392,7 @@ describe('Rules', () => {
         }
         // Rules is a Node with a value array, so use .value.length or check if it's a Rules node
         if (!isNode(boxRules, 'Rules')) {
-          throw new Error(`Expected Rules, got ${boxRules.type}`);
+          throw new Error(`Expected Rules, got ${(boxRules as any)?.type || 'undefined'}`);
         }
         expect(boxRules.value.length).toBe(2);
 
@@ -425,7 +425,7 @@ describe('Rules', () => {
           throw new Error('Expected .box3 ruleset to have rules');
         }
         if (!isNode(box3Rules, 'Rules')) {
-          throw new Error(`Expected Rules, got ${box3Rules.type}`);
+          throw new Error(`Expected Rules, got ${(box3Rules as any)?.type || 'undefined'}`);
         }
         expect(box3Rules.value.length).toBe(2);
 
