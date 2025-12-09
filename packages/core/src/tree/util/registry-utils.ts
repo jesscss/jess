@@ -271,6 +271,12 @@ export class RulesetRegistry extends Registry<Ruleset> {
     // Index any pending rulesets first
     this.indexPendingRulesets();
 
+    const keyArray = Array.isArray(keys) ? keys : Array.from(keys);
+    console.log('[DEBUG] RulesetRegistry.find() searching for keys:', keyArray);
+    console.log('[DEBUG] RulesetRegistry index size:', this.index.size);
+    console.log('[DEBUG] RulesetRegistry index keys:', Array.from(this.index.keys()));
+    console.log('[DEBUG] RulesetRegistry rules._rulesSet length:', this.rules._rulesSet?.length ?? 0);
+
     let candidates: Set<Ruleset> | undefined = undefined;
 
     // Use intersection to whittle down candidates with each subsequent key
@@ -278,6 +284,15 @@ export class RulesetRegistry extends Registry<Ruleset> {
       // const key = targetKeys[i]!;
       const keyRulesets = this.index.get(key);
       if (!keyRulesets || keyRulesets.size === 0) {
+        // If no matches in current registry, search imported Rules in rulesSet
+        if (candidates === undefined) {
+          // First key, search imported Rules
+          const importedCandidates = this._searchRulesChildrenForRulesets(keys);
+          if (importedCandidates && importedCandidates.size > 0) {
+            candidates = importedCandidates;
+            continue; // Found candidates in imported Rules, continue with next key
+          }
+        }
         return; // No matches for this key, so no candidates
       }
 
@@ -297,7 +312,113 @@ export class RulesetRegistry extends Registry<Ruleset> {
         return undefined;
       }
     }
+
+    // Also search imported Rules in rulesSet for additional candidates
+    // This allows extends to find rulesets from imported stylesheets
+    const importedCandidates = this._searchRulesChildrenForRulesets(keys);
+    if (importedCandidates && importedCandidates.size > 0) {
+      if (candidates) {
+        // Merge with existing candidates
+        for (const ruleset of importedCandidates) {
+          candidates.add(ruleset);
+        }
+      } else {
+        candidates = importedCandidates;
+      }
+    }
+
     return candidates?.size ? [...candidates] : undefined;
+  }
+
+  /**
+   * Search through imported Rules in rulesSet for rulesets matching the keys
+   */
+  private _searchRulesChildrenForRulesets(keys: string[] | Set<string>): Set<Ruleset> | undefined {
+    let rules = this.rules;
+    let candidates: Set<Ruleset> | undefined = undefined;
+    const keyArray = Array.isArray(keys) ? keys : Array.from(keys);
+    console.log('[DEBUG] _searchRulesChildrenForRulesets: searching for keys:', keyArray, 'in rules:', rules === this.rules);
+    if (rules._rulesSet) {
+      let { rulesSet } = rules;
+      console.log('[DEBUG] _searchRulesChildrenForRulesets: rulesSet length:', rulesSet.length);
+      // Filter to only public/optional rulesets (similar to _searchRulesChildren)
+      rulesSet = rulesSet.filter((n) => {
+        const visibility = n.rulesVisibility?.Ruleset ?? '';
+        const isVisible = ['optional', 'public'].includes(visibility);
+        console.log('[DEBUG] _searchRulesChildrenForRulesets: checking imported Rules, visibility:', visibility, 'isVisible:', isVisible, 'node value length:', n.node.value.length);
+        return isVisible;
+      });
+
+      let length = rulesSet.length;
+      console.log('[DEBUG] _searchRulesChildrenForRulesets: filtered rulesSet length:', length);
+      if (length) {
+        for (let i = length - 1; i >= 0; i--) {
+          let r = rulesSet.at(i)!;
+          console.log('[DEBUG] _searchRulesChildrenForRulesets: searching in imported Rules node', i, 'value length:', r.node.value.length);
+          console.log('[DEBUG] _searchRulesChildrenForRulesets: imported Rules identity:', r.node);
+          console.log('[DEBUG] _searchRulesChildrenForRulesets: imported Rules preEvaluated:', r.node.preEvaluated);
+          // Check if the imported Rules has a ruleset registry
+          const importedRulesetRegistry = r.node.getRegistry('ruleset');
+          importedRulesetRegistry.indexPendingRulesets();
+          console.log('[DEBUG] _searchRulesChildrenForRulesets: imported Rules registry index size:', importedRulesetRegistry.index.size);
+          console.log('[DEBUG] _searchRulesChildrenForRulesets: imported Rules registry index keys:', Array.from(importedRulesetRegistry.index.keys()));
+          console.log('[DEBUG] _searchRulesChildrenForRulesets: imported Rules registry pendingItems size:', importedRulesetRegistry.pendingItems.size);
+          // Also check the treeRoot's registry if the imported Rules has one
+          if (r.node.treeContext) {
+            // The imported Rules should have been its own treeRoot when evaluated
+            // But we need to search in the correct registry
+            console.log('[DEBUG] _searchRulesChildrenForRulesets: imported Rules treeContext file:', r.node.treeContext?.file?.name ?? 'unknown');
+          }
+          // Search for rulesets in the imported Rules
+          let result = r.node.find('ruleset', keys);
+          console.log('[DEBUG] _searchRulesChildrenForRulesets: result from imported Rules.find():', result?.length ?? 0);
+          if (result && result.length > 0) {
+            console.log('[DEBUG] _searchRulesChildrenForRulesets: found rulesets:', result.map(r => r.selector?.toString() ?? 'unknown'));
+            if (candidates) {
+              // Merge with existing candidates
+              for (const ruleset of result) {
+                candidates.add(ruleset);
+              }
+            } else {
+              // First match, create candidates set
+              candidates = new Set(result);
+            }
+          } else {
+            console.log('[DEBUG] _searchRulesChildrenForRulesets: No rulesets found in imported Rules for keys:', keyArray);
+            // Try searching directly in the imported Rules' value for rulesets
+            console.log('[DEBUG] _searchRulesChildrenForRulesets: Manually checking imported Rules value for rulesets');
+            for (const childNode of r.node.value) {
+              if (isNode(childNode, 'Ruleset')) {
+                const selectorStr = childNode.selector?.toString() ?? 'unknown';
+                console.log('[DEBUG] _searchRulesChildrenForRulesets: Found ruleset in value:', selectorStr);
+                const selectorKeySet = childNode.selector?.keySet;
+                if (selectorKeySet) {
+                  const keyArray = Array.isArray(keys) ? keys : Array.from(keys);
+                  const selectorKeys = Array.from(selectorKeySet);
+                  console.log('[DEBUG] _searchRulesChildrenForRulesets: selector keys:', selectorKeys, 'search keys:', keyArray);
+                  // Check if any search key matches any selector key
+                  const hasMatch = keyArray.some(key => selectorKeys.includes(key));
+                  if (hasMatch) {
+                    console.log('[DEBUG] _searchRulesChildrenForRulesets: Manual match found!');
+                    if (candidates) {
+                      candidates.add(childNode);
+                    } else {
+                      candidates = new Set([childNode]);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      } else {
+        console.log('[DEBUG] _searchRulesChildrenForRulesets: No visible imported Rules to search');
+      }
+    } else {
+      console.log('[DEBUG] _searchRulesChildrenForRulesets: rules._rulesSet is undefined or empty');
+    }
+    console.log('[DEBUG] _searchRulesChildrenForRulesets: returning candidates:', candidates?.size ?? 0);
+    return candidates;
   }
 }
 

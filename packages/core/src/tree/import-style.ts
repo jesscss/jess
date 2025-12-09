@@ -197,7 +197,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         if (withValues.type === 'set' && evaldRules) {
           throw new Error('Cannot configure a stylesheet more than once.');
         }
-        // Clone the imported rules so we can modify them
+        // Clone the imported rules BEFORE evaluation so registries are populated on the clone
         let modifiedRules = rules.clone(true) as Rules;
         // withValues.node might be a Reference, so evaluate it first to get Rules
         let withRulesNode = withValues.node;
@@ -310,7 +310,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           context.evaldTrees.set(resolvedPath, rules);
         }
       } else {
-        rules = evaldRules.clone();
+        // Clone the unevaluated rules BEFORE evaluation so registries are populated on the clone
+        // This ensures registration happens post-clone, not on the cached evaldRules
+        rules = rules.clone(true) as Rules;
+        let preserveOriginalNodes = context.preserveOriginalNodes;
+        context.preserveOriginalNodes = true;
+        // Note: For compose type, we don't set rules.parent = node
+        // (only import type needs this for older import behavior)
+        rules = await rules.eval(context);
+        context.preserveOriginalNodes = preserveOriginalNodes;
       }
 
       return node.getFinalRules(rules);

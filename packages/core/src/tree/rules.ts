@@ -351,7 +351,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return (this._rulesSet ??= []);
   }
 
-  registerNode(node: Node, options?: Record<string, any>) {
+  registerNode(node: Node, options?: Record<string, any>, context?: Context) {
     if (isNode(node, 'Rules')) {
       let rulesVisibility = options?.rulesVisibility ?? node.options.rulesVisibility ?? {};
 
@@ -367,6 +367,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         rulesVisibility,
         readonly
       });
+
+      // Note: Rulesets from imported Rules are registered in treeRoot's registry
+      // after evaluation completes (in evalNode), when treeRoot is guaranteed to be set
     } else if (isNode(node, 'Declaration')) {
       /**
        * setDefined works like Sass's !default flag - it finds the original variable
@@ -437,10 +440,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (!this.preEvaluated) {
       let rules = this.maybeClone(context);
       rules.preEvaluated = true;
+      console.log('[DEBUG] Rules.preEval: Starting preEval, value length:', rules.value.length, 'treeContext file:', rules.treeContext?.file?.name ?? 'unknown');
 
       // Save current context and set up new context for variable lookups during preEval
       const saved = this._snapshotContext(context);
       this._setupContextForRules(context, rules);
+      console.log('[DEBUG] Rules.preEval: After _setupContextForRules, context.treeRoot === rules:', context.treeRoot === rules);
 
       // Assign index to all the nodes if not already set,
       // in linear source order.
@@ -475,8 +480,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         rules.value[i] = (node as Any).preEval(context);
       } else if (this._hasStaticName(node)) {
         staticNodes.push(node);
+        console.log('[DEBUG] _multiPassPreEval: Registering static node:', node.type, 'hasStaticName:', this._hasStaticName(node));
         this._registerNodeIfEligible(rules, node, context);
       } else {
+        console.log('[DEBUG] _multiPassPreEval: Node is dynamic:', node.type, 'hasStaticName:', this._hasStaticName(node));
         dynamicNodes.push(node);
       }
     }
@@ -521,6 +528,28 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const path = node.value.path;
       return this._isStatic(path);
     }
+    if (isNode(node, 'Ruleset')) {
+      // After preEval, the selector should be resolved to static identifiers
+      // Check if the selector is static (not the ruleset node itself)
+      // If the ruleset has been preEvaluated, the selector should be static
+      if (node.preEvaluated) {
+        const selector = node.value.selector;
+        // After preEval, selector is evaluated and should be static
+        // Check if selector has F_STATIC flag, or if it's a basic selector (which is always static)
+        if (selector && 'hasFlag' in selector && typeof selector.hasFlag === 'function') {
+          return selector.hasFlag(F_STATIC);
+        }
+        // If selector doesn't have hasFlag, assume it's static after preEval
+        // (preEval resolves names to static identifiers)
+        return true;
+      }
+      // Before preEval, check if selector itself is static
+      const selector = node.value.selector;
+      if (selector && 'hasFlag' in selector && typeof selector.hasFlag === 'function') {
+        return selector.hasFlag(F_STATIC);
+      }
+      return false;
+    }
     // For other node types, assume they can be registered if they have static names
     return node.hasFlag(F_STATIC);
   }
@@ -558,6 +587,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (isThenable(result)) {
             // Handle async preEval
             return (result as Promise<Node>).then((resolvedNode) => {
+              // Register rulesets after preEval regardless of static name
+              if (resolvedNode.type === 'Ruleset') {
+                const selectorStr = (resolvedNode as Ruleset).selector?.toString() ?? 'unknown';
+                console.log('[DEBUG] _resolveDynamicNodes: Registering ruleset (async) after preEval:', selectorStr);
+                context.treeRoot?.register('ruleset', resolvedNode as Ruleset<RulesetValue>);
+              }
               if (this._hasStaticName(resolvedNode)) {
                 resolvedNodes.push(resolvedNode);
                 this._registerNodeIfEligible(rules, resolvedNode, context);
@@ -567,6 +602,25 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               }
               return attemptResolution();
             });
+          }
+
+          // Register rulesets after preEval regardless of static name
+          if (result.type === 'Ruleset') {
+            const selectorStr = (result as Ruleset).selector?.toString() ?? 'unknown';
+            console.log('[DEBUG] _resolveDynamicNodes: Registering ruleset (sync) after preEval:', selectorStr);
+            console.log('[DEBUG] _resolveDynamicNodes: context.treeRoot === rules:', context.treeRoot === rules, 'rules value length:', rules.value.length);
+            console.log('[DEBUG] _resolveDynamicNodes: rules identity:', rules);
+            console.log('[DEBUG] _resolveDynamicNodes: context.treeRoot identity:', context.treeRoot);
+            context.treeRoot?.register('ruleset', result as Ruleset<RulesetValue>);
+            // Also register to rules itself to ensure it's in the local registry
+            rules.register('ruleset', result as Ruleset<RulesetValue>);
+            // Check if it was actually registered
+            if (context.treeRoot) {
+              const treeRootRegistry = context.treeRoot.getRegistry('ruleset');
+              console.log('[DEBUG] _resolveDynamicNodes: After registration, treeRoot registry index size:', treeRootRegistry.index.size, 'keys:', Array.from(treeRootRegistry.index.keys()));
+            }
+            const rulesRegistry = rules.getRegistry('ruleset');
+            console.log('[DEBUG] _resolveDynamicNodes: After registration, rules registry index size:', rulesRegistry.index.size, 'keys:', Array.from(rulesRegistry.index.keys()));
           }
 
           // Check if the node now has a static name
@@ -641,6 +695,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             rules.registerNode(resolvedNode);
           }
           if (resolvedNode.type === 'Ruleset') {
+            const selectorStr = (resolvedNode as Ruleset).selector?.toString() ?? 'unknown';
+            console.log('[DEBUG] preEval: Registering ruleset to treeRoot:', selectorStr, 'treeRoot:', context.treeRoot === rules);
             context.treeRoot?.register('ruleset', resolvedNode as Ruleset<RulesetValue>);
           }
 
@@ -660,6 +716,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         rules.registerNode(result);
       }
       if (result.type === 'Ruleset') {
+        const selectorStr = (result as Ruleset).selector?.toString() ?? 'unknown';
+        console.log('[DEBUG] preEval: Registering ruleset to treeRoot (sync):', selectorStr, 'treeRoot:', context.treeRoot === rules);
         context.treeRoot?.register('ruleset', result as Ruleset<RulesetValue>);
       }
     }
@@ -691,7 +749,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       context.allRoots.push(rules);
       context.treeContext = rules.treeContext;
       context.treeRoot = rules;
+      const wasRootSet = context.root !== undefined;
       context.root ??= rules;
+      console.log('[DEBUG] _setupContextForRules: Added new root to allRoots, total roots:', context.allRoots.length);
+      console.log('[DEBUG] _setupContextForRules: New treeRoot is Rules with', rules.value.length, 'children');
+      console.log('[DEBUG] _setupContextForRules: context.root was set:', !wasRootSet, 'context.root === rules:', context.root === rules);
     }
     context.rulesContext = rules;
   }
@@ -769,10 +831,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               // Set the index of the imported Rules to the StyleImport's index
               // so we can compare Rules indices when determining which variable was declared later
               result.index = idx;
+              console.log('[DEBUG] _evaluateQueue: Registering imported Rules node, value length:', result.value.length);
+              console.log('[DEBUG] _evaluateQueue: Imported Rules has rulesSet length:', result.rulesSet?.length ?? 0);
+              console.log('[DEBUG] _evaluateQueue: Current context.treeRoot:', context.treeRoot === rules);
+              console.log('[DEBUG] _evaluateQueue: Imported Rules treeContext:', result.treeContext?.file?.name ?? 'unknown');
               rules.registerNode(result, {
                 rulesVisibility: result.options.rulesVisibility,
                 readonly: result.options.readonly
-              });
+              }, context);
             }
           }
           if (result.options.hoistToRoot) {
@@ -825,6 +891,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return { rules, rulesToHoist: maybeHoist as boolean };
       },
       ({ rules, rulesToHoist }: { rules: Rules; rulesToHoist: boolean }) => {
+        // Note: Rulesets from imported Rules are already registered to their own treeRoot
+        // during preEval when the imported Rules node is evaluated. The extend search
+        // loops through allRoots, so it should find them. The _searchRulesChildrenForRulesets
+        // method in RulesetRegistry also searches imported Rules' registries.
+
         // After all evaluation stages, check if any variables in the current Rules
         // shadow readonly variables from imported Rules (compose type) at the same level
         // Only check direct children of the Rules node, not nested variables (e.g., inside rulesets)
@@ -858,7 +929,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
 
-        if (rules === context.root) {
+        // Check if we're at the outermost level BEFORE restoring context
+        // Use the first root in allRoots as the outermost root
+        const outermostRoot = context.allRoots.length > 0 ? context.allRoots[0] : context.root;
+        const isOutermost = rules === outermostRoot;
+        console.log('[DEBUG] evalNode: Checking if rules === outermostRoot:', isOutermost);
+        console.log('[DEBUG] evalNode: rules value length:', rules.value.length, 'outermostRoot value length:', outermostRoot?.value.length ?? 0);
+        console.log('[DEBUG] evalNode: allRoots length:', context.allRoots.length);
+
+        if (isOutermost) {
           /**
            * We've evaluated all the rules of the "outer" rules
            * and we can now resolve any pending extends.
@@ -866,12 +945,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
            * We need to loop through all roots, but we need to properly respect
            * import scoping, so this isn't correct yet.
            */
+          console.log('[DEBUG] Extend: Processing extends, allRoots length:', context.allRoots.length);
           for (let root of context.allRoots) {
-            for (let [find, extendWith, partial] of root.pendingExtends) {
-              let rulesetSet = root.find('ruleset', find.keySet);
+            console.log('[DEBUG] Extend: Checking root, pendingExtends:', root.pendingExtends.size, 'value length:', root.value.length);
+            for (let [target, selectorWithExtend, partial] of root.pendingExtends) {
+              // target = what to extend with (e.g., .base)
+              // selectorWithExtend = the selector that has the extend (e.g., .child)
+              // We need to find rulesets matching selectorWithExtend and extend them with target
+              // extendSelector(target, find, extendWith, partial) where:
+              //   target = the selector to extend (ruleset.selector, e.g., .child)
+              //   find = what to find within target (selectorWithExtend, e.g., .child)
+              //   extendWith = what to extend with (target, e.g., .base)
+              let rulesetSet = root.find('ruleset', selectorWithExtend.keySet);
               if (rulesetSet) {
                 rulesetSet.forEach((ruleset) => {
-                  let result = tryExtendSelector(ruleset.selector as Selector, find, extendWith, partial);
+                  let result = tryExtendSelector(ruleset.selector as Selector, selectorWithExtend, target, partial);
                   if (result) {
                     /** Just extend it? */
                     ruleset.value.selector = result.value;
@@ -883,8 +971,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         /** Restore contexts */
         context.rulesContext = saved.rulesContext;
-        context.treeRoot = saved.treeRoot;
-        context.root = saved.root;
+        // Only restore context.treeRoot if saved.treeRoot is defined and we're not at the outermost level
+        // If saved.treeRoot is undefined, it means we're at the outermost level, so keep context.treeRoot as is
+        // This ensures extends evaluated during selector evaluation can still access the correct treeRoot
+        if (saved.treeRoot !== undefined && !isOutermost) {
+          context.treeRoot = saved.treeRoot;
+        }
+        // Only restore context.root if we're not at the outermost level (where it was originally set)
+        // If saved.root is undefined, it means we're at the outermost level, so keep context.root as is
+        if (saved.root !== undefined && !isOutermost) {
+          context.root = saved.root;
+        }
+        console.log('[DEBUG] evalNode: After restore, context.root:', context.root?.value.length ?? 'undefined');
         return rules;
       }
     ) as MaybePromise<this>;

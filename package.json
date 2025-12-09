@@ -46,8 +46,6 @@
     "test": "vitest",
     "test:coverage": "vitest --coverage",
     "preinstall": "npx only-allow pnpm",
-    "setup:test-data": "node scripts/setup-test-data.js",
-    "postinstall": "npm run setup:test-data",
     "test:less": "node scripts/test-less.js",
     "test:less:colors": "node scripts/test-less.js colors",
     "test:less:nesting": "node scripts/test-less.js nesting",

@@ -1,5 +1,16 @@
 # Cursor Rules
 
+## Change Tracking
+
+We maintain a daily log of changes and improvements in `.cursor/changes.md`. This file should be updated at the end of each day with:
+- Recent fixes and improvements
+- Ongoing work and issues
+- Notable changes to architecture or patterns
+
+**Important**: When updating `changes.md`, always add the most recent changes at the **top** of the file, tagged with the current date (e.g., `## 2025-Dec-9`). This ensures the latest work is always visible first.
+
+See `.cursor/changes.md` for the latest updates.
+
 ## Debugging Methodology
 
 When investigating bugs or failures, always use scientific principles to understand the root cause:

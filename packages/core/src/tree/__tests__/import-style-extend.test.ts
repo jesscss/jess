@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
 import {
   style,
   rules,
@@ -8,16 +8,21 @@ import {
   extend,
   quoted,
   any,
-  type Rules
+  type Rules,
+  Node
 } from '..';
 import { Context } from '../../context';
 import { ruleset } from '..';
 import { resolve } from 'node:path';
-import { createTestContext } from './import-style.test';
+import { createTestContext } from './import-style-test-helpers';
 
 let context: Context;
 
 describe('Style import extend behavior', () => {
+  beforeAll(() => {
+    Node.prototype.fullRender = true;
+  });
+
   beforeEach(() => {
     context = createTestContext();
   });
