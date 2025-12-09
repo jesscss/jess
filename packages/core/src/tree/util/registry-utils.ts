@@ -80,10 +80,11 @@ export abstract class Registry<
       rulesSet = rulesSet.filter((n) => {
         const visibility = n.rulesVisibility?.[filterType] ?? '';
         const isVisible = ['optional', 'public'].includes(visibility);
-        // Skip local nodes when searching from outside (local === false)
-        // Local nodes can only be searched when we're already in a local context
+        // Local nodes can only be searched once - if we've already passed through
+        // a local boundary (local === true), we cannot search another local node
+        // This prevents re-exporting local variables to parent's parent
         const isLocalNode = Boolean(n.node.options?.local);
-        const skipLocalNode = !local && isLocalNode;
+        const skipLocalNode = local && isLocalNode; // Skip if already in local context
         return (findAll || !firstValue || n.node.index > firstValue.index)
           && (start === undefined || n.node.index < start)
           && !skipLocalNode
@@ -418,7 +419,7 @@ export class MixinRegistry extends Registry<
     }
 
     let rules: Rules | undefined = this.rules;
-    let { searchParents = true, candidates = new Set() } = options;
+    let { searchParents = true, local = false, candidates = new Set() } = options ?? {};
     while (rules) {
       let [startKey, ...search] = keyList;
       let registry = rules.getRegistry('mixin');
@@ -448,8 +449,9 @@ export class MixinRegistry extends Registry<
               let subRules = value.value.rules;
               subRules.getRegistry('mixin').find(remainder, filterType, {
                 searchParents: false,
-                candidates
-              });
+                local,
+                candidates: candidates as Set<Node>
+              } as FindOptions);
             }
           }
         }
@@ -459,7 +461,8 @@ export class MixinRegistry extends Registry<
         'Mixin',
         {
           searchParents: false,
-          candidates,
+          local,
+          candidates: candidates as Set<Node>,
           findAll: true
         }
       );

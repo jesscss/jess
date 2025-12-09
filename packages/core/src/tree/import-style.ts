@@ -124,9 +124,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (isProtected) {
       Ruleset = 'private';
     } else if (reference) {
-      // Reference option makes rulesets and mixins optional
+      /**
+       * Not sure if this is true.
+       * They won't be output, but that's not the same as being optional,
+       * UNLESS we're extending the word 'optional' to mean "not output".
+       *
+       * I think what we mean here by "optional" it "not ouptut unless extended".
+       * Our test for reference therefore should mimic Less behavior.
+       */
       Ruleset = 'optional';
-      Mixin = 'optional';
     }
 
     /**
@@ -135,11 +141,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
      * have different import settings.
      *
      * For compose type:
-     * - By default, variables and mixins are local (not visible to parent)
-     * - If 'export' flag is set, variables and mixins are forwarded (visible to parent)
+     * - Variables and mixins are visible to the direct parent (the file that imports them)
+     * - If 'export' flag is set, variables and mixins are also forwarded to downstream stylesheets
+     * - The 'local' flag means: visible to direct parent, but not re-exported to parent's parent
      */
     let out = evaluatedRules.clone();
-    // If export is set, don't set local (variables/mixins should be visible to parent)
+    // Import type: variables are visible and re-exported (not local)
+    // Compose type: variables are visible to parent, but not re-exported unless export is set
     const isLocal = type === 'compose' && !isExport;
     out.options = {
       rulesVisibility: { Ruleset, Declaration, Mixin, VarDeclaration },

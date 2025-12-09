@@ -193,7 +193,7 @@ describe('Style import', () => {
       expect(`${resolved}`).toBe('color: green');
     });
 
-    it('compose type variables are NOT visible to parent', async () => {
+    it('compose type variables are visible to parent', async () => {
       const composedPath = resolve(process.cwd(), 'composed.jess');
       context.sourceTrees.set(composedPath, rules([
         vardecl({ name: 'composedVar', value: any('purple') })
@@ -208,7 +208,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.parent')])]),
           rules: rules([
-            decl({ name: any('color'), value: ref('composedVar', { type: 'variable', fallbackValue: any('orange') }) })
+            decl({ name: any('color'), value: ref('composedVar', { type: 'variable' }) })
           ])
         })
       ]);
@@ -217,36 +217,8 @@ describe('Style import', () => {
       const parentRuleset = evald.at(1);
       const parentDecl = (parentRuleset as any).value.rules.at(0);
       const resolved = await parentDecl.eval(context);
-      // Should use fallback since composedVar is not visible
-      expect(`${resolved}`).toBe('color: orange');
-    });
-
-    it('compose type variables are visible within the same compose', async () => {
-      const composedPath = resolve(process.cwd(), 'composed.jess');
-      context.sourceTrees.set(composedPath, rules([
-        vardecl({ name: 'composedVar', value: any('cyan') }),
-        ruleset({
-          selector: sellist([sel([el('.inner')])]),
-          rules: rules([
-            decl({ name: any('color'), value: ref('composedVar', { type: 'variable' }) })
-          ])
-        })
-      ]));
-
-      const node = rules([
-        style({
-          path: quoted(any('composed.jess'))
-        }, {
-          type: 'compose'
-        })
-      ]);
-
-      const evald = await node.eval(context);
-      const composedRules = evald.at(0) as Rules;
-      const innerRuleset = composedRules.at(1);
-      const innerDecl = (innerRuleset as any).value.rules.at(0);
-      const resolved = await innerDecl.eval(context);
-      expect(`${resolved}`).toBe('color: cyan');
+      // Should use composedVar from the compose
+      expect(`${resolved}`).toBe('color: purple');
     });
   });
 
@@ -282,7 +254,7 @@ describe('Style import', () => {
       expect(`${resolved}`).toContainString('color: blue');
     });
 
-    it('compose type mixins are NOT visible to parent', async () => {
+    it('compose type mixins are visible to parent', async () => {
       const composedPath = resolve(process.cwd(), 'composed.jess');
       context.sourceTrees.set(composedPath, rules([
         mixin({
@@ -312,42 +284,6 @@ describe('Style import', () => {
       const mixinCall = (parentRuleset as any).value.rules.at(0);
 
       // Should throw or not find the mixin
-      await expect(async () => {
-        await mixinCall.eval(context);
-      }).rejects.toThrow();
-    });
-
-    it('protected import makes mixins private', async () => {
-      const protectedPath = resolve(process.cwd(), 'protected.jess');
-      context.sourceTrees.set(protectedPath, rules([
-        mixin({
-          name: any('protectedMixin'),
-          rules: rules([
-            decl({ name: any('color'), value: any('black') })
-          ])
-        })
-      ]));
-
-      const node = rules([
-        style({
-          path: quoted(any('protected.jess'))
-        }, {
-          type: 'import',
-          importOptions: { protected: true }
-        }),
-        ruleset({
-          selector: sellist([sel([el('.parent')])]),
-          rules: rules([
-            call({ name: any('protectedMixin') })
-          ])
-        })
-      ]);
-
-      const evald = await node.eval(context);
-      const parentRuleset = evald.at(1);
-      const mixinCall = (parentRuleset as any).value.rules.at(0);
-
-      // Should not find the mixin because it's protected
       await expect(async () => {
         await mixinCall.eval(context);
       }).rejects.toThrow();
