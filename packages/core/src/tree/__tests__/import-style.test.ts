@@ -242,7 +242,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.parent')])]),
           rules: rules([
-            call({ name: any('importedMixin') })
+            call({ name: ref('importedMixin', { type: 'mixin' }) })
           ])
         })
       ]);
@@ -274,7 +274,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.parent')])]),
           rules: rules([
-            call({ name: any('composedMixin') })
+            call({ name: ref('composedMixin', { type: 'mixin' }) })
           ])
         })
       ]);
@@ -282,11 +282,8 @@ describe('Style import', () => {
       const evald = await node.eval(context);
       const parentRuleset = evald.at(1);
       const mixinCall = (parentRuleset as any).value.rules.at(0);
-
-      // Should throw or not find the mixin
-      await expect(async () => {
-        await mixinCall.eval(context);
-      }).rejects.toThrow();
+      const resolved = await mixinCall.eval(context);
+      expect(`${resolved}`).toContainString('color: yellow');
     });
 
     it('reference import makes mixins optional', async () => {
@@ -311,7 +308,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.parent')])]),
           rules: rules([
-            call({ name: any('referencedMixin') })
+            call({ name: ref('referencedMixin', { type: 'mixin' }) })
           ])
         })
       ]);
@@ -425,12 +422,10 @@ describe('Style import', () => {
         vardecl({ name: 'composedVar', value: any('modified') })
       ]);
 
-      const evald = await node.eval(context);
-      const composedRules = evald.at(0) as Rules;
-      const varDecl = getVarWithContext(context, composedRules, 'composedVar');
-
-      // Should still have original value because it's readonly
-      expect(`${varDecl}`).toBe('$composedVar: initial');
+      // Should throw because readonly variables cannot be shadowed
+      await expect(async () => {
+        await node.eval(context);
+      }).rejects.toThrowError('"composedVar" is readonly');
     });
 
     it('import type is NOT readonly by default', async () => {
@@ -479,7 +474,8 @@ describe('Style import', () => {
     });
 
     it('readonly can be set for import', async () => {
-      context.sourceTrees.set('imported.jess', rules([
+      const importedPath = resolve(process.cwd(), 'imported.jess');
+      context.sourceTrees.set(importedPath, rules([
         vardecl({ name: 'importedVar', value: any('initial') })
       ]));
 
@@ -493,12 +489,10 @@ describe('Style import', () => {
         vardecl({ name: 'importedVar', value: any('modified') })
       ]);
 
-      const evald = await node.eval(context);
-      const importedRules = evald.at(0) as Rules;
-      const varDecl = getVarWithContext(context, importedRules, 'importedVar');
-
-      // Should still have original value because readonly was set
-      expect(`${varDecl}`).toBe('$importedVar: initial');
+      // Should throw because readonly variables cannot be shadowed
+      await expect(async () => {
+        await node.eval(context);
+      }).rejects.toThrowError('"importedVar" is readonly');
     });
   });
 

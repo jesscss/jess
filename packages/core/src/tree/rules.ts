@@ -362,6 +362,30 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       /** Either one set as readonly will win */
       let readonly = Boolean(options?.readonly || node.options.readonly);
+      
+      // When registering imported Rules, check if any variables in the current Rules
+      // shadow readonly variables from the imported Rules
+      if (readonly) {
+        let importedRegistry = node.getRegistry('declaration');
+        importedRegistry.indexPendingItems();
+        // Check each variable in the imported Rules
+        for (const [key, declarations] of importedRegistry.index) {
+          for (const decl of declarations) {
+            if (isNode(decl, 'VarDeclaration')) {
+              // Check if a variable with this name exists in the current Rules' value array
+              for (const childNode of this.value) {
+                if (isNode(childNode, 'VarDeclaration')) {
+                  let childKey = childNode.value.name?.toString();
+                  if (childKey === key) {
+                    throw new ReferenceError(`"${key}" is readonly`);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      
       this.rulesSet.push({
         node,
         rulesVisibility,
@@ -764,7 +788,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             // If a StyleImport evaluated to Rules, register them in the parent's _rulesSet
             // so variables from the import can be found by the parent
             if (isNode(result, 'Rules')) {
-              rules.registerNode(result);
+              rules.registerNode(result, {
+                rulesVisibility: result.options.rulesVisibility,
+                readonly: result.options.readonly
+              });
             }
           }
           if (result.options.hoistToRoot) {
@@ -1234,7 +1261,13 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       let guard: Condition | Bool | undefined = candidate.value.guard?.copy(true);
       let passes = true;
       let rulesContext = thisContext.rulesContext;
+      // Store the call site position for call-time resolution
+      // The call site is where rulesContext is (the parent rules containing the mixin call)
+      let callSiteIndex = rulesContext?.index;
       thisContext.rulesContext = rules;
+      if (callSiteIndex !== undefined) {
+        thisContext.callSiteIndex = callSiteIndex;
+      }
       if (guard) {
         guard.parent = rules;
         /** Allow lookup on the inherited rules */
@@ -1262,6 +1295,12 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         outputRules.push([newRules, i]);
       }
       thisContext.rulesContext = rulesContext;
+      // Restore call site index (or clear it if we're exiting the mixin)
+      if (rulesContext) {
+        thisContext.callSiteIndex = rulesContext.index;
+      } else {
+        thisContext.callSiteIndex = undefined;
+      }
     }
     /**
      * Now that we have output rules, we sort them by

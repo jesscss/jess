@@ -10,6 +10,7 @@ import {
   any,
   call,
   ref,
+  mixin,
   Node,
   type Rules,
   AssignmentType,
@@ -19,6 +20,7 @@ import {
 } from '..';
 import { Context, TreeContext } from '../../context';
 import type { FindOptions } from '../util/registry-utils';
+import { isNode } from '../util/is-node';
 
 let context: Context;
 
@@ -268,7 +270,7 @@ describe('Rules', () => {
         expect(`${getVar(inherited as Rules, 'one')}`).toBe('$^one: three');
       });
 
-      it('demonstrates setDefined behavior like Sass !default', async () => {
+      it('demonstrates setDefined behavior like Sass !global', async () => {
         let node = rules([
           // Original variable declaration
           vardecl({ name: 'color', value: any('red') }),
@@ -305,6 +307,154 @@ describe('Rules', () => {
 
         // The root should have the updated value
         expect(`${getVar(node, 'color')}`).toBe('$color: blue');
+      });
+
+      it('demonstrates Sass !global behavior with mixins - mixin resolves variables at include time', async () => {
+        // This test demonstrates the Sass behavior where:
+        // 1. A mixin is defined that uses a variable
+        // 2. The mixin is included before a !global assignment - it uses the original value
+        // 3. The mixin is included after a !global assignment - it uses the new value
+        //
+        // In Sass:
+        //   $color: red;
+        //   @mixin my-mixin() { color: $color; }
+        //   .box { color: $color; @include my-mixin(); }
+        //   .box2 { $color: blue !global; }
+        //   .box3 { color: $color; @include my-mixin(); }
+        //
+        // Output:
+        //   .box { color: red; color: red; }
+        //   .box3 { color: blue; color: blue; }
+        //
+        // This test demonstrates Sass !global behavior with mixins using call-time resolution.
+        //
+        // Solution implemented: `$~color` syntax for call-time resolution.
+        // - `$color` = scoped lookup (Less-style)
+        // - `$^color` = linear lookup from definition position (Sass-style for regular code)
+        // - `$~color` = linear lookup from call site position (Sass-style for mixins/functions)
+        //
+        // When a mixin uses `$~color`, the variable is resolved at the call site, allowing
+        // !global assignments to affect mixin behavior correctly.
+
+        let node = rules([
+          // Global variable declaration
+          vardecl({ name: 'color', value: any('red') }),
+
+          // Mixin definition that uses the variable with call-time resolution
+          // In Jess, this would be: my-mixin() { color: $~color; }
+          // This makes the mixin resolve the variable at call time, not definition time
+          mixin({
+            name: any('my-mixin'),
+            rules: rules([
+              decl({ name: 'color', value: ref('color', { type: 'variable', resolution: 'call-time' }) })
+            ])
+          }),
+
+          // .box uses the variable directly and includes the mixin (both should be red)
+          ruleset({
+            selector: sellist([sel([el('.box')])]),
+            rules: rules([
+              decl({ name: 'color', value: ref('color', { type: 'variable', resolution: 'linear' }) }),
+              call({ name: ref('my-mixin', { type: 'mixin' }) })
+            ])
+          }),
+
+          // .box2 sets the variable with !global (setDefined)
+          ruleset({
+            selector: sellist([sel([el('.box2')])]),
+            rules: rules([
+              vardecl({ name: 'color', value: any('blue') }, { setDefined: true })
+            ])
+          }),
+
+          // .box3 uses the variable directly and includes the mixin (both should be blue)
+          ruleset({
+            selector: sellist([sel([el('.box3')])]),
+            rules: rules([
+              decl({ name: 'color', value: ref('color', { type: 'variable', resolution: 'linear' }) }),
+              call({ name: ref('my-mixin', { type: 'mixin' }) })
+            ])
+          })
+        ]);
+
+        node = await node.eval(context);
+
+        // Structure after eval: [vardecl (0), mixin (1), boxRuleset (2), box2Ruleset (3), box3Ruleset (4)]
+        // Access rulesets directly by index
+        let boxRuleset = node.at(2);
+        if (!boxRuleset || !isNode(boxRuleset, 'Ruleset')) {
+          throw new Error(`Expected Ruleset at index 2, got ${boxRuleset?.type || 'undefined'}`);
+        }
+        // After evaluation, rulesets are still Rulesets, access via .value.rules
+        let boxRules = boxRuleset.value.rules;
+        if (!boxRules) {
+          throw new Error('Expected .box ruleset to have rules');
+        }
+        // Rules is a Node with a value array, so use .value.length or check if it's a Rules node
+        if (!isNode(boxRules, 'Rules')) {
+          throw new Error(`Expected Rules, got ${boxRules.type}`);
+        }
+        expect(boxRules.value.length).toBe(2);
+
+        // First declaration: color: $color
+        let boxDecl1 = await boxRules.at(0)!.eval(context);
+        expect(`${boxDecl1}`).toBe('color: red');
+
+        // Second: mixin call
+        let boxMixinCall = boxRules.at(1);
+        if (!boxMixinCall) {
+          throw new Error('Expected mixin call at index 1');
+        }
+        let boxMixinResult = await boxMixinCall.eval(context);
+        // Mixin call returns Rules containing the mixin's rules
+        if (!isNode(boxMixinResult, 'Rules')) {
+          throw new Error('Expected mixin call to return Rules');
+        }
+        let boxMixinRules = boxMixinResult;
+        expect(boxMixinRules.value.length).toBeGreaterThan(0);
+        let boxMixinDecl = await boxMixinRules.at(0)!.eval(context);
+        expect(`${boxMixinDecl}`).toBe('color: red;');
+
+        // Find the .box3 ruleset (index 4)
+        let box3Ruleset = node.at(4);
+        if (!box3Ruleset || !isNode(box3Ruleset, 'Ruleset')) {
+          throw new Error(`Expected Ruleset at index 4, got ${box3Ruleset?.type || 'undefined'}`);
+        }
+        let box3Rules = box3Ruleset.value.rules;
+        if (!box3Rules) {
+          throw new Error('Expected .box3 ruleset to have rules');
+        }
+        if (!isNode(box3Rules, 'Rules')) {
+          throw new Error(`Expected Rules, got ${box3Rules.type}`);
+        }
+        expect(box3Rules.value.length).toBe(2);
+
+        // First declaration: color: $color
+        let box3Decl1 = await box3Rules.at(0)!.eval(context);
+        expect(`${box3Decl1}`).toBe('color: blue');
+
+        // Second: mixin call
+        let box3MixinCall = box3Rules.at(1);
+        if (!box3MixinCall) {
+          throw new Error('Expected mixin call at index 1');
+        }
+        let box3MixinResult = await box3MixinCall.eval(context);
+        if (!isNode(box3MixinResult, 'Rules')) {
+          throw new Error('Expected mixin call to return Rules');
+        }
+        let box3MixinRules = box3MixinResult;
+        expect(box3MixinRules.value.length).toBeGreaterThan(0);
+        let box3MixinDecl = await box3MixinRules.at(0)!.eval(context);
+        // With call-time resolution ($~color), the mixin should resolve the variable
+        // at the call site, so it should be 'blue' (the value after !global assignment)
+        expect(`${box3MixinDecl}`).toBe('color: blue;');
+
+        // The root should have the updated value
+        let rootColor = getVar(node, 'color');
+        if (!rootColor) {
+          throw new Error('Expected color variable to be defined');
+        }
+        expect(`${rootColor}`).toBe('$color: blue');
       });
 
       it('fails to set if existing variable is readonly', async () => {

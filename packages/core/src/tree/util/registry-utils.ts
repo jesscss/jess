@@ -456,7 +456,7 @@ export class MixinRegistry extends Registry<
           }
         }
       }
-      this._searchRulesChildren(
+      registry._searchRulesChildren(
         startKey!,
         'Mixin',
         {

@@ -51,7 +51,13 @@ export type ReferenceOptions = {
    * What kind of lookup are we doing?
    */
   type?: 'index' | 'declaration' | 'variable' | 'property' | 'function' | 'mixin' | 'ruleset' | 'mixin-ruleset';
-  resolution?: 'scope' | 'linear';
+  /**
+   * Resolution strategy:
+   * - 'scope': Search in scope (Less-style, default)
+   * - 'linear': Search linearly from definition position (Sass-style for regular code)
+   * - 'call-time': Search linearly from call site position (Sass-style for mixins/functions)
+   */
+  resolution?: 'scope' | 'linear' | 'call-time';
   /**
    * Optional references just resolve to the string
    * representation if the fallback value is set to true.
@@ -113,6 +119,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     }
     if (resolution === 'linear') {
       w.add('^');
+    } else if (resolution === 'call-time') {
+      w.add('~');
     }
     switch (type) {
       case 'index':
@@ -260,6 +268,37 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
 
           if (startIndex !== undefined) {
             opts.start = startIndex;
+          }
+        } else if (this.options.resolution === 'call-time') {
+          // For call-time resolution, use the call site's position (context.callSiteIndex)
+          // instead of the definition position. This allows mixins to resolve variables
+          // at the time they're called, not when they're defined.
+          if (context.callSiteIndex !== undefined) {
+            opts.start = context.callSiteIndex;
+          } else {
+            // Fall back to linear resolution if we can't find a call site
+            let startIndex = this.index;
+            let currentNode: Node | undefined = this;
+
+            if (startIndex === undefined) {
+              while (currentNode && startIndex === undefined) {
+                currentNode = currentNode.parent;
+                if (currentNode) {
+                  startIndex = currentNode.index;
+                }
+              }
+            }
+
+            while (currentNode && currentNode.parent && !isNode(currentNode.parent, 'Rules')) {
+              currentNode = currentNode.parent;
+              if (currentNode && currentNode.index !== undefined) {
+                startIndex = currentNode.index;
+              }
+            }
+
+            if (startIndex !== undefined) {
+              opts.start = startIndex;
+            }
           }
         }
         let returnVal: any;

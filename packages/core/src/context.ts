@@ -184,6 +184,11 @@ export class Context {
    * can use this to lookup values.
    */
   rulesContext!: Rules;
+  /**
+   * When evaluating inside a mixin/function, this tracks the call site position
+   * for call-time variable resolution ($~variable).
+   */
+  callSiteIndex?: number;
   /** Entire context root (ultimate root) */
   root!: Rules;
   /** Set so that we can do ruleset selector lookup for extend */
