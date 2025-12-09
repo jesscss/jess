@@ -85,7 +85,18 @@ export abstract class Registry<
         // This prevents re-exporting local variables to parent's parent
         const isLocalNode = Boolean(n.node.options?.local);
         const skipLocalNode = local && isLocalNode; // Skip if already in local context
-        return (findAll || !firstValue || n.node.index > firstValue.index)
+        // If we already have a candidate (firstValue exists), we should still search imported Rules
+        // to compare them and determine which was declared later.
+        // The original condition (findAll || !firstValue) was preventing comparison.
+        // We need to search imported Rules when:
+        // 1. findAll is true (search all)
+        // 2. firstValue doesn't exist (initial lookup - search imported Rules to find the variable)
+        // 3. firstValue exists AND candidates was explicitly passed with items (comparison context)
+        //    This happens when DeclarationRegistry.find calls _searchRulesChildren after finding a local variable
+        //    The key difference: if candidates was passed from DeclarationRegistry.find, it will have the local variable
+        //    If candidates is empty or wasn't passed, we're in initial lookup mode
+        const isComparisonContext = firstValue && candidates.size > 0;
+        return (findAll || !firstValue || isComparisonContext)
           && (start === undefined || n.node.index < start)
           && !skipLocalNode
           && isVisible;
@@ -604,12 +615,17 @@ export class DeclarationRegistry extends Registry<Declaration> {
               || options.filter(n)
             )
         );
+        // Sort by index for _findClosestByStart (which uses binary search)
+        if (list.length > 1) {
+          list.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+        }
       }
       if (list?.length) {
         let result = rules.getRegistry('declaration')._findClosestByStart(list, start);
         if (result) {
           newReadonly ||= result.options.readonly;
-          declCandidate = new Set([result]);
+          // Add to candidates instead of replacing
+          declCandidate.add(result);
         }
         isPublic = true;
       }
@@ -622,9 +638,30 @@ export class DeclarationRegistry extends Registry<Declaration> {
 
       rules.getRegistry('declaration')._searchRulesChildren(key, filterType, searchChildrenOptions);
 
-      // If we found a declaration in children, check if it's public
+      // If we found declarations, compare by Rules node sibling index (where the Rules appears in parent)
+      // Variable indices are only used for linear lookups within the same Rules
       if (declCandidate.size > 0) {
-        const result = declCandidate.values().next().value;
+        let bestResult: Declaration | undefined;
+        let bestRulesIndex = -1;
+        for (const candidate of declCandidate) {
+          // Get the Rules node that contains this variable
+          const candidateRules = candidate.rulesParent;
+          // Get the Rules node's index as a sibling in its parent Rules
+          // For variables in the current Rules (the one we're searching in), treat it as having
+          // the highest index since it's the "current scope" and should win over imported Rules
+          // For variables in imported Rules, use the imported Rules' index (set when registered)
+          const candidateRulesIndex = candidateRules === rules
+            ? Number.MAX_SAFE_INTEGER // Current Rules: treat as highest priority
+            : (candidateRules?.index ?? -1); // Imported Rules' index (set when registered)
+
+          // Compare by Rules node sibling index - the Rules that appears later wins
+          if (candidateRulesIndex > bestRulesIndex) {
+            bestRulesIndex = candidateRulesIndex;
+            bestResult = candidate;
+          }
+        }
+        // If we found a result, return it; otherwise return the first one
+        const result = bestResult || declCandidate.values().next().value;
         // Check if this is a public declaration (not optional)
         // For now, assume all declarations in children are public since _searchRulesChildren
         // should have returned immediately for public declarations

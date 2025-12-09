@@ -362,30 +362,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       /** Either one set as readonly will win */
       let readonly = Boolean(options?.readonly || node.options.readonly);
-      
-      // When registering imported Rules, check if any variables in the current Rules
-      // shadow readonly variables from the imported Rules
-      if (readonly) {
-        let importedRegistry = node.getRegistry('declaration');
-        importedRegistry.indexPendingItems();
-        // Check each variable in the imported Rules
-        for (const [key, declarations] of importedRegistry.index) {
-          for (const decl of declarations) {
-            if (isNode(decl, 'VarDeclaration')) {
-              // Check if a variable with this name exists in the current Rules' value array
-              for (const childNode of this.value) {
-                if (isNode(childNode, 'VarDeclaration')) {
-                  let childKey = childNode.value.name?.toString();
-                  if (childKey === key) {
-                    throw new ReferenceError(`"${key}" is readonly`);
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-      
       this.rulesSet.push({
         node,
         rulesVisibility,
@@ -758,7 +734,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
 
         // Check if this node should be skipped (already moved to retry queue)
-        if (retriedNodes.has(rule)) {
+        // BUT: if we're at Priority.None, we should process it even if it was retried
+        // because this is the retry attempt
+        if (retriedNodes.has(rule) && p > Priority.None) {
           return;
         }
 
@@ -768,7 +746,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         } catch (error) {
           // If evaluation failed and we haven't retried this node yet,
           // and we're not already at the none priority, retry at none priority
-          if (p > Priority.None) {
+          if (p > Priority.None && !retriedNodes.has(rule)) {
             retriedNodes.add(rule);
             // Move to lowest priority queue for retry
             const lowQueue = evalQueue.get(Priority.None) || [];
@@ -788,6 +766,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             // If a StyleImport evaluated to Rules, register them in the parent's _rulesSet
             // so variables from the import can be found by the parent
             if (isNode(result, 'Rules')) {
+              // Set the index of the imported Rules to the StyleImport's index
+              // so we can compare Rules indices when determining which variable was declared later
+              result.index = idx;
               rules.registerNode(result, {
                 rulesVisibility: result.options.rulesVisibility,
                 readonly: result.options.readonly
@@ -803,13 +784,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             applyResult(res);
           }).catch((error) => {
             // Handle async errors - retry at lower priority if not already retried
-            if (p > Priority.None) {
+            if (p > Priority.None && !retriedNodes.has(rule)) {
               retriedNodes.add(rule);
               // Move to lowest priority queue for retry
               const lowQueue = evalQueue.get(Priority.None) || [];
               lowQueue.push([idx, rule]);
               evalQueue.set(Priority.None, lowQueue);
               // Skip processing for now, will be retried at Priority.None
+              // Return undefined to resolve the promise (error will be thrown on retry)
               return;
             }
             // If we're already at the lowest priority, rethrow
@@ -843,6 +825,39 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return { rules, rulesToHoist: maybeHoist as boolean };
       },
       ({ rules, rulesToHoist }: { rules: Rules; rulesToHoist: boolean }) => {
+        // After all evaluation stages, check if any variables in the current Rules
+        // shadow readonly variables from imported Rules (compose type) at the same level
+        // Only check direct children of the Rules node, not nested variables (e.g., inside rulesets)
+        if (rules.rulesSet.length > 0) {
+          let currentRegistry = rules.getRegistry('declaration');
+          currentRegistry.indexPendingItems();
+          for (const entry of rules.rulesSet) {
+            if (entry.readonly) {
+              let importedRegistry = entry.node.getRegistry('declaration');
+              importedRegistry.indexPendingItems();
+              for (const [key, declarations] of importedRegistry.index) {
+                for (const decl of declarations) {
+                  if (isNode(decl, 'VarDeclaration')) {
+                    // Check if a variable with this name exists in the current Rules' registry
+                    let currentDeclarations = currentRegistry.index.get(key);
+                    if (currentDeclarations) {
+                      for (const currentDecl of currentDeclarations) {
+                        if (isNode(currentDecl, 'VarDeclaration') && !currentDecl.options?.setDefined) {
+                          // Only throw if the variable is a direct child of the Rules node (same level)
+                          // Nested variables (e.g., inside rulesets) are allowed to shadow
+                          if (currentDecl.parent === rules) {
+                            throw new ReferenceError(`"${key}" is readonly`);
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
         if (rules === context.root) {
           /**
            * We've evaluated all the rules of the "outer" rules
