@@ -134,6 +134,60 @@ describe('guard', () => {
     await expect(out).resolves.toBe(6);
   });
 
+  it('serialForEach continues with remaining items when inner step returns Promise', async () => {
+    const calls: number[] = [];
+    const items = [1, 2, 3, 4, 5];
+    const out = serialForEach(items, (n, i) => {
+      // Item at index 1 returns a Promise (simulating nested async operation)
+      if (i === 1) {
+        return Promise.resolve().then(() => {
+          calls.push(n);
+        });
+      }
+      // Item at index 0 should be processed synchronously
+      if (i === 0) {
+        calls.push(n);
+        return;
+      }
+      // Items after index 1 should be processed after the Promise resolves
+      calls.push(n);
+      return;
+    });
+    expect(isThenable(out)).toBe(true);
+    await out;
+    expect(calls).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('serialForEach handles nested serialForEach that returns Promise', async () => {
+    const outerCalls: number[] = [];
+    const innerCalls: number[] = [];
+    const items = [1, 2, 3];
+    const out = serialForEach(items, (n, i) => {
+      outerCalls.push(n);
+      // At index 1, return a Promise from nested serialForEach
+      if (i === 1) {
+        const innerItems = [10, 20];
+        const innerResult = serialForEach(innerItems, (m, j) => {
+          innerCalls.push(m);
+          // Make the inner step async
+          if (j === 0) {
+            return Promise.resolve().then(() => {
+              innerCalls.push(m * 2);
+            });
+          }
+          return;
+        });
+        // Return the Promise from inner serialForEach
+        return innerResult;
+      }
+      return;
+    });
+    expect(isThenable(out)).toBe(true);
+    await out;
+    expect(outerCalls).toEqual([1, 2, 3]);
+    expect(innerCalls).toEqual([10, 20, 20]);
+  });
+
   it('throws when predicate is false', () => {
     const step = guard((n: number) => n > 0, (n) => new Error(`bad:${n}`));
     expect(() => pipe(-1, step)).toThrowError('bad:-1');

@@ -1,6 +1,6 @@
 import { Node, F_MAY_ASYNC, F_NON_STATIC, defineType } from './node';
 import { type Reference } from './reference';
-import { Rules, type RulesOptions, type RulesVisibility } from './rules';
+import { rules, Rules, type RulesOptions, type RulesVisibility } from './rules';
 import { type Quoted } from './quoted';
 import { Url } from './url';
 import { type Context } from '../context';
@@ -35,6 +35,10 @@ export type ImportOptions = {
   multiple?: boolean;
   /** Rulesets can't be extended, the extend "search" will stop at this import. */
   protected?: boolean;
+  /** Variables and mixins are forwarded to a downstream stylesheet. */
+  export?: boolean;
+  /** Shorthand for `reference`, `export`, and `protected` all set to true. */
+  forward?: boolean;
   /** Variables can't be reassigned (default is true for `@-compose` and false for `@-import`). */
   readonly?: boolean;
   [key: string]: any;
@@ -42,24 +46,7 @@ export type ImportOptions = {
 
 export type StyleImportOptions = {
   /**
-   * Affects scoping and evaluation
-   *
-   * - `use`
-   *   - ✅ parent has access to `@-use` scope
-   *   - ✅ selectors are rendered in output
-   *   - ❌ file imported by `@-use` does not have access to parent scope
-   * - `include`
-   *   - ❌ parent does NOT have access to `@-include` scope
-   *   - ✅ selectors are rendered in output
-   *   - ❌ file imported by `@-include` does not have access to parent scope
-   * - `import`
-   *   - ✅ parent has access to `@-import` scope
-   *   - ✅ selectors are rendered in output
-   *   - ✅ file imported by `@-import` has access to parent scope
-   * - `reference`
-   *   - ✅ parent has access to `@-reference` scope
-   *   - ❌ selectors are NOT rendered in output (but can be replaced / made visible with extend)
-   *   - ❌ file imported by `@-reference` does not have access to parent scope
+   * Old-style `@import` type or new `@-compose` type.
    */
   type: 'import' | 'compose';
 
@@ -97,9 +84,6 @@ export type StyleImportValue = {
      */
     type: 'with' | 'set';
   };
-
-  /** Post-evaluation rules */
-  rules?: Rules;
 };
 
 export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> {
@@ -122,6 +106,50 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     super(value, options, location, treeContext);
     // Style imports are always non-static and may be async
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
+  }
+
+  getFinalRules(evaluatedRules: Rules) {
+    let { importOptions, type } = this.options;
+    // Handle 'forward' as shorthand for reference, export, and protected
+    const forward = importOptions!.forward;
+    const reference = importOptions!.reference || forward;
+    const isExport = importOptions!.export || forward;
+    const isProtected = importOptions!.protected || forward;
+
+    let Ruleset: RulesVisibility = 'public';
+    let Declaration: RulesVisibility = 'public';
+    let Mixin: RulesVisibility = 'public';
+    let VarDeclaration: RulesVisibility = 'public';
+
+    if (isProtected) {
+      Ruleset = 'private';
+    } else if (reference) {
+      // Reference option makes rulesets and mixins optional
+      Ruleset = 'optional';
+      Mixin = 'optional';
+    }
+
+    /**
+     * Create a rules wrapper so we can set visibility.
+     * The inner rules may be static, but the import may
+     * have different import settings.
+     *
+     * For compose type:
+     * - By default, variables and mixins are local (not visible to parent)
+     * - If 'export' flag is set, variables and mixins are forwarded (visible to parent)
+     */
+    let out = evaluatedRules.clone();
+    // If export is set, don't set local (variables/mixins should be visible to parent)
+    const isLocal = type === 'compose' && !isExport;
+    out.options = {
+      rulesVisibility: { Ruleset, Declaration, Mixin, VarDeclaration },
+      local: isLocal,
+      readonly: importOptions!.readonly ?? (type === 'compose' ? true : false)
+    };
+    // Set sourceNode so variable lookups know they can cross import boundaries
+    out.sourceNode = this;
+    this.adopt(out);
+    return out;
   }
 
   /**
@@ -163,36 +191,28 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         withRules.value.unshift(rules);
         rules = withRules;
       }
-      if (!evaldRules || type === 'import') {
+      /** Freshly evaluate the rules in these circumstances
+       * - `with` (or `set`) values are present
+       * - the rules have not been evaluated yet
+       * - the import type is `import`
+      */
+      if (withValues || !evaldRules || type === 'import') {
         let preserveOriginalNodes = context.preserveOriginalNodes;
         context.preserveOriginalNodes = true;
+        if (type === 'import') {
+          /** Needed at evaluation time for older import type */
+          rules.parent = node;
+        }
         rules = await rules.eval(context);
         context.preserveOriginalNodes = preserveOriginalNodes;
         if (withValues?.type === 'set') {
           context.evaldTrees.set(resolvedPath, rules);
         }
       } else {
-        rules = evaldRules;
+        rules = evaldRules.clone();
       }
-      let Ruleset: RulesVisibility = 'public';
-      let Declaration: RulesVisibility = 'public';
-      let Mixin: RulesVisibility = 'public';
-      if (importOptions.protected) {
-        Ruleset = 'private';
-      } else if (importOptions.reference) {
-        Ruleset = 'optional';
-      }
-      /**
-       * Create a rules wrapper so we can set visibility.
-       * The inner rules may be static, but the import may
-       * have different import settings.
-       */
-      let out = new Rules([rules], {
-        rulesVisibility: { Ruleset, Declaration, Mixin },
-        local: type === 'compose',
-        readonly: importOptions.readonly ?? type === 'compose' ? true : false
-      });
-      return out;
+
+      return node.getFinalRules(rules);
     };
     if (isThenable(maybePath)) {
       return (maybePath as Promise<Quoted | Url>).then(async (p) => {
@@ -205,4 +225,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   }
 }
 
-export const style = defineType<StyleImportValue>(StyleImport, 'StyleImport', 'style');
+defineType<StyleImportValue>(StyleImport, 'StyleImport', 'style');
+
+export const style = (...args: ConstructorParameters<typeof StyleImport>) => {
+  return new StyleImport(...args);
+};

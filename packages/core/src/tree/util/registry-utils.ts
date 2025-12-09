@@ -80,9 +80,13 @@ export abstract class Registry<
       rulesSet = rulesSet.filter((n) => {
         const visibility = n.rulesVisibility?.[filterType] ?? '';
         const isVisible = ['optional', 'public'].includes(visibility);
+        // Skip local nodes when searching from outside (local === false)
+        // Local nodes can only be searched when we're already in a local context
+        const isLocalNode = Boolean(n.node.options?.local);
+        const skipLocalNode = !local && isLocalNode;
         return (findAll || !firstValue || n.node.index > firstValue.index)
           && (start === undefined || n.node.index < start)
-          && (!(local && Boolean(n.node.options?.local)))
+          && !skipLocalNode
           && isVisible;
       });
 

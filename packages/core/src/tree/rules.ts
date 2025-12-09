@@ -712,6 +712,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /** Evaluate the built queues in priority order */
   private _evaluateQueue(rules: Rules, evalQueue: EvalQueueMap, context: Context): MaybePromise<boolean> {
     let rulesToHoist = false;
+    // Track nodes that have been retried to avoid infinite loops
+    const retriedNodes = new Set<Node>();
 
     const priorities: Priority[] = Array.from({ length: Priority.Highest + 1 }).map((_, i) => (Priority.Highest - i) as Priority);
     const phaseRun = serialForEach(priorities, (p: Priority) => {
@@ -720,30 +722,77 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return;
       }
       const entries: Array<[number, [number, Node]]> = Array.from(queue.entries()) as any;
-      return serialForEach(entries, ([q, item]: [number, [number, Node]]) => {
+      const innerResult = serialForEach(entries, ([q, item]: [number, [number, Node]]) => {
         const [idx, rule] = item;
 
-        /** Var declarations have late evaluation, so they are skipped. */
+        /**
+         * Var declarations have late evaluation, so they are skipped.
+         * (Meaning: they are not evaluated until they are referenced.)
+         */
         if (isNode(rule, 'VarDeclaration')) {
           return;
         }
-        const maybeResult = (rule as any).eval(context) as MaybePromise<Node>;
+
+        // Check if this node should be skipped (already moved to retry queue)
+        if (retriedNodes.has(rule)) {
+          return;
+        }
+
+        let maybeResult: MaybePromise<Node>;
+        try {
+          maybeResult = (rule as any).eval(context) as MaybePromise<Node>;
+        } catch (error) {
+          // If evaluation failed and we haven't retried this node yet,
+          // and we're not already at the none priority, retry at none priority
+          if (p > Priority.None) {
+            retriedNodes.add(rule);
+            // Move to lowest priority queue for retry
+            const lowQueue = evalQueue.get(Priority.None) || [];
+            lowQueue.push([idx, rule]);
+            evalQueue.set(Priority.None, lowQueue);
+            // Skip processing for now, will be retried at Priority.None
+            return;
+          }
+          // If we're already at the lowest priority, rethrow
+          throw error;
+        }
 
         const applyResult = (result: Node) => {
           if (result !== rule) {
             rules.value[idx] = result;
             queue[q] = [idx, result];
+            // If a StyleImport evaluated to Rules, register them in the parent's _rulesSet
+            // so variables from the import can be found by the parent
+            if (isNode(result, 'Rules')) {
+              rules.registerNode(result);
+            }
           }
           if (result.options.hoistToRoot) {
             rulesToHoist = true;
           }
         };
         if (isThenable(maybeResult)) {
-          return (maybeResult as Promise<Node>).then(res => applyResult(res));
+          return (maybeResult as Promise<Node>).then((res) => {
+            applyResult(res);
+          }).catch((error) => {
+            // Handle async errors - retry at lower priority if not already retried
+            if (p > Priority.None) {
+              retriedNodes.add(rule);
+              // Move to lowest priority queue for retry
+              const lowQueue = evalQueue.get(Priority.None) || [];
+              lowQueue.push([idx, rule]);
+              evalQueue.set(Priority.None, lowQueue);
+              // Skip processing for now, will be retried at Priority.None
+              return;
+            }
+            // If we're already at the lowest priority, rethrow
+            throw error;
+          });
         }
         applyResult(maybeResult as Node);
         return;
       });
+      return innerResult;
     });
 
     if (isThenable(phaseRun)) {
@@ -939,11 +988,11 @@ const NodeTypeToPriority = new Map([
   /** First, register vars and props */
   ['VarDeclaration', Priority.Highest],
   ['Declaration', Priority.Highest],
-  /** Then, register other items that can be "looked up" */
-  ['Mixin', Priority.High],
-  ['Ruleset', Priority.High],
   /** Then, resolve imports */
-  ['StyleImport', Priority.Medium],
+  ['StyleImport', Priority.High],
+  /** Then, register other items that can be "looked up" */
+  ['Mixin', Priority.Medium],
+  ['Ruleset', Priority.Medium],
   /** Then, resolve any calls */
   ['Call', Priority.Low]
   /** Then, everything else? */
