@@ -1400,8 +1400,42 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       if (params) {
         for (let i = 0; i < params.value.length; i++) {
           let param = params.value[i]!;
-          if (isNode(param, ['VarDeclaration', 'Rest'])) {
-            /** @todo - Register Rest */
+          if (isNode(param, 'Rest')) {
+            // Rest parameters need to be converted to VarDeclaration for registration
+            // Auto-generate a name if Rest doesn't have one (Less allows unnamed rest params)
+            let restName: string;
+            if (typeof param.value === 'string') {
+              restName = param.value;
+            } else {
+              // Auto-generate name: "rest", "rest1", "rest2", etc. based on position
+              // Check if there are other rest params to avoid conflicts
+              let restCount = 0;
+              for (let j = 0; j < i; j++) {
+                const p = params.value[j]!;
+                if (isNode(p, 'Rest')) {
+                  restCount++;
+                }
+              }
+              restName = restCount === 0 ? 'rest' : `rest${restCount + 1}`;
+            }
+
+            // Convert Rest to VarDeclaration so it can be registered and referenced
+            // The Rest's value (list of remaining arguments) was already set during matching
+            // Ensure param.value is a Node (it should be a Sequence/List from spaced())
+            const restValue = isNode(param.value)
+              ? param.value
+              : (param.value ? new Any(String(param.value)) : new Nil());
+            const restVarDecl = new VarDeclaration({
+              name: new Any(restName, { role: 'property' }),
+              value: restValue
+            }, { paramVar: true });
+
+            // Replace Rest with VarDeclaration in params
+            params.value[i] = restVarDecl;
+            param = restVarDecl;
+          }
+
+          if (isNode(param, 'VarDeclaration')) {
             // Adopt the param to set parent relationship, then register
             rules.adopt(param);
             // Parameters aren't in rules.value, so they don't get an index automatically
@@ -1413,7 +1447,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             rules.registerNode(param);
           }
           // Note: Any with role: 'property' should have been converted to VarDeclaration during matching
-          // If we see one here, it's an error - params should all be VarDeclaration or Rest by now
+          // If we see one here, it's an error - params should all be VarDeclaration by now
         }
         rules.register('declaration', new VarDeclaration({
           name: new Any('arguments', { role: 'property' }),
@@ -1425,6 +1459,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
               // Should have been converted, but handle just in case
               return new Nil();
             }
+            // Rest should have been converted to VarDeclaration by now
             return p;
           }))
         }));
