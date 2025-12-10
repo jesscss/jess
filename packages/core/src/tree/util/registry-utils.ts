@@ -365,17 +365,21 @@ export class RulesetRegistry extends Registry<Ruleset> {
             // Try searching directly in the imported Rules' value for rulesets
             for (const childNode of r.node.value) {
               if (isNode(childNode, 'Ruleset')) {
-                const selectorKeySet = childNode.selector?.keySet;
-                if (selectorKeySet) {
-                  const keyArray = Array.isArray(keys) ? keys : Array.from(keys);
-                  const selectorKeys = Array.from(selectorKeySet);
-                  // Check if any search key matches any selector key
-                  const hasMatch = keyArray.some(key => selectorKeys.includes(key));
-                  if (hasMatch) {
-                    if (candidates) {
-                      candidates.add(childNode);
-                    } else {
-                      candidates = new Set([childNode]);
+                const selector = childNode.selector;
+                if (selector && !isNode(selector, 'Nil')) {
+                  const selectorKeySet = selector.keySet;
+                  if (selectorKeySet) {
+                    const keyArray = Array.isArray(keys) ? keys : Array.from(keys);
+                    const selectorKeys = Array.from(selectorKeySet);
+                    // Check if any search key matches any selector key
+                    const hasMatch = keyArray.some(key => selectorKeys.includes(key));
+                    if (hasMatch) {
+                      const ruleset = childNode as Ruleset;
+                      if (candidates) {
+                        candidates.add(ruleset);
+                      } else {
+                        candidates = new Set([ruleset]);
+                      }
                     }
                   }
                 }

@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { JessCompiler } from '../../src';
+import { Compiler } from '../../src';
 import { Context } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 
 describe('Functions', () => {
-  const compiler = new JessCompiler({
-    plugins: [lessPlugin()]
+  const compiler = new Compiler({
+    compile: {
+      plugins: [lessPlugin()]
+    }
   });
 
   describe('Built-in Color Functions', () => {
@@ -17,7 +19,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color:');
       expect(css).toContain('background:');
     });
@@ -30,7 +32,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color:');
       expect(css).toContain('background:');
     });
@@ -42,7 +44,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color:');
     });
 
@@ -53,7 +55,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color:');
     });
 
@@ -64,7 +66,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color:');
     });
 
@@ -75,7 +77,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color:');
     });
   });
@@ -89,7 +91,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: 4px');
       expect(css).toContain('height: 2em');
     });
@@ -102,7 +104,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: 4px');
       expect(css).toContain('height: 3em');
     });
@@ -115,7 +117,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: 3px');
       expect(css).toContain('height: 2em');
     });
@@ -128,7 +130,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: 50%');
       expect(css).toContain('height: 25%');
     });
@@ -142,7 +144,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('content:');
     });
 
@@ -153,7 +155,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('content: hello');
     });
   });
@@ -166,7 +168,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('count:');
     });
 
@@ -177,7 +179,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('value:');
     });
   });
@@ -190,7 +192,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('result:');
     });
 
@@ -201,7 +203,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('result:');
     });
 
@@ -212,7 +214,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('result:');
     });
 
@@ -223,7 +225,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('result:');
     });
 
@@ -234,7 +236,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('result:');
     });
 
@@ -245,7 +247,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('result:');
     });
 
@@ -256,7 +258,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('result:');
     });
 
@@ -267,7 +269,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('result:');
     });
 
@@ -278,7 +280,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('result:');
     });
   });
@@ -291,7 +293,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('value:');
     });
 
@@ -302,7 +304,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('value:');
     });
 
@@ -313,7 +315,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('value:');
     });
   });
@@ -329,7 +331,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color:');
     });
 
@@ -343,7 +345,7 @@ describe('Functions', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width:');
     });
   });

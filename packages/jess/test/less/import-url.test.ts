@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { JessCompiler } from '../../src';
+import { Compiler } from '../../src';
 
 describe('Import URL', () => {
-  const compiler = new JessCompiler();
+  const compiler = new Compiler();
 
   it('should handle @import url("file.less")', async () => {
     const lessCode = `
@@ -14,7 +14,8 @@ describe('Import URL', () => {
     `;
 
     const css = await compiler.renderString(lessCode, {
-      filePath: process.cwd() + '/test/less/import-url.test.less'
+      filePath: process.cwd() + '/test/less/import-url.test.less',
+      language: 'less'
     });
     expect(css).toContain('.test');
     expect(css).toContain('color: red');
@@ -30,7 +31,8 @@ describe('Import URL', () => {
     `;
 
     const css = await compiler.renderString(lessCode, {
-      filePath: process.cwd() + '/test/less/import-url.test.less'
+      filePath: process.cwd() + '/test/less/import-url.test.less',
+      language: 'less'
     });
     expect(css).toContain('@import url("test.css")');
     expect(css).toContain('.test');
@@ -47,7 +49,8 @@ describe('Import URL', () => {
     `;
 
     const css = await compiler.renderString(lessCode, {
-      filePath: process.cwd() + '/test/less/import-url.test.less'
+      filePath: process.cwd() + '/test/less/import-url.test.less',
+      language: 'less'
     });
     expect(css).toContain('@import url("http://example.com/file.less")');
     expect(css).toContain('.test');

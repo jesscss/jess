@@ -180,6 +180,8 @@ export class Context {
    * after the first one.
    */
   currentCharset?: Any;
+  /** Track whether charset has been emitted during toString to avoid duplicates */
+  charsetEmitted?: boolean;
 
   /**
    * This is set when entering rulesets so that child nodes
@@ -444,7 +446,7 @@ export class Context {
     extension?: string;
   } = {}) {
     const { filePath, type, extension } = options;
-    const virtualPath = filePath || `virtual.${extension || 'less'}`;
+    const virtualPath = filePath || `virtual.${extension || 'jess'}`;
     const ext = extension || path.extname(virtualPath);
 
     const plugin = this.findParserPlugin(type, ext);

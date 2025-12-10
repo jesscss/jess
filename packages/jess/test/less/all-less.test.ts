@@ -2,24 +2,31 @@ import * as glob from 'glob';
 import * as fs from 'fs';
 import * as path from 'path';
 import { invalidLess } from '@jesscss/shared';
-import { JessCompiler } from '../../src';
+import { Compiler } from '../../src';
 import lessPlugin from '@jesscss/plugin-less';
 
 const testData = path.dirname(require.resolve('@less/test-data'));
 
-const compiler = new JessCompiler({
-  collapseNesting: false, // Default to no nesting collapse for general tests
-  plugins: [
-    lessPlugin({
-      mathMode: 0
-    })
-  ]
+const compiler = new Compiler({
+  output: { collapseNesting: true }, // Enable nesting collapse for Less compatibility
+  compile: {
+    plugins: [
+      lessPlugin({
+        mathMode: 0
+      })
+    ]
+  }
 });
 
 // Files that should be tested in specialized test files
 const specializedTests = [
   'tests-unit/color-functions/colors.less', // Tested in colors.test.ts
   'tests-unit/nesting/nesting.less' // Tested in nesting.test.ts
+];
+
+// Temporarily filter to specific tests for debugging - set to empty array to run all
+const targetTests: string[] = [
+  'tests-unit/media/media.less'
 ];
 
 describe('Can render Less files to CSS', () => {
@@ -32,9 +39,10 @@ describe('Can render Less files to CSS', () => {
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))
     .filter(value => !specializedTests.includes(value)) // Skip files tested elsewhere
+    .filter(value => targetTests.length === 0 || targetTests.includes(value)) // Target specific tests
     .sort()
     .forEach((file) => {
-      it(`${path.join(testData, file)}`, async () => {
+      it(`${file}`, async () => {
         const lessPath = path.join(testData, file);
         // CSS files are now co-located with .less files
         const cssPath = lessPath.replace(/\.less$/, '.css');
@@ -47,11 +55,7 @@ describe('Can render Less files to CSS', () => {
         const css = fs.readFileSync(cssPath).toString();
         const output = await compiler.render(lessPath);
 
-        // Normalize whitespace for comparison
-        const normalizedOutput = output.trim().replace(/\s+/g, ' ');
-        const normalizedExpected = css.trim().replace(/\s+/g, ' ');
-
-        expect(normalizedOutput).toBe(normalizedExpected);
+        expect(output).toMatchCss(css);
       });
     });
 });

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { JessCompiler } from '../../src';
+import { Compiler } from '../../src';
 
 describe('Basic Mixins', () => {
-  const compiler = new JessCompiler();
+  const compiler = new Compiler();
 
   it('should parse simple mixin definition', async () => {
     const lessCode = `
@@ -12,7 +12,7 @@ describe('Basic Mixins', () => {
     `;
 
     try {
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toBeDefined();
     } catch (error) {
       throw error;
@@ -27,7 +27,7 @@ describe('Basic Mixins', () => {
     `;
 
     try {
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toBeDefined();
     } catch (error) {
       throw error;
@@ -46,7 +46,7 @@ describe('Basic Mixins', () => {
     `;
 
     try {
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
     } catch (error) {
       throw error;

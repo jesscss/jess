@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { JessCompiler } from '../../src';
+import { Compiler } from '../../src';
 import { Context } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 
 describe('Property Accessors', () => {
-  const compiler = new JessCompiler({
-    plugins: [lessPlugin()]
+  const compiler = new Compiler({
+    compile: {
+      plugins: [lessPlugin()]
+    }
   });
 
   describe('Basic Property Accessors', () => {
@@ -21,7 +23,7 @@ describe('Property Accessors', () => {
         h1 { color: @p[text]; }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: white');
     });
 
@@ -42,7 +44,7 @@ describe('Property Accessors', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: blue');
       expect(css).toContain('background: green');
       expect(css).toContain('font-size: 16px');
@@ -67,7 +69,7 @@ describe('Property Accessors', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
       expect(css).toContain('font-size: 20px');
     });
@@ -86,7 +88,7 @@ describe('Property Accessors', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
     });
   });
@@ -107,7 +109,7 @@ describe('Property Accessors', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
     });
 
@@ -126,7 +128,7 @@ describe('Property Accessors', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
     });
 
@@ -145,7 +147,7 @@ describe('Property Accessors', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
     });
 
@@ -164,7 +166,7 @@ describe('Property Accessors', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
     });
 
@@ -185,7 +187,7 @@ describe('Property Accessors', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
     });
   });
@@ -206,7 +208,7 @@ describe('Property Accessors', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
       expect(css).toContain('font-size: 16px');
     });
@@ -226,7 +228,7 @@ describe('Property Accessors', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
       expect(css).toContain('background: white');
     });
@@ -248,7 +250,7 @@ describe('Property Accessors', () => {
       `;
 
       // This should throw an error for the non-existent property
-      await expect(compiler.renderString(lessCode)).rejects.toThrow();
+      await expect(compiler.renderString(lessCode, { language: 'less' })).rejects.toThrow();
     });
 
     it('should handle property accessor with empty ruleset', async () => {
@@ -264,7 +266,7 @@ describe('Property Accessors', () => {
       `;
 
       // This should throw an error for accessing property from empty ruleset
-      await expect(compiler.renderString(lessCode)).rejects.toThrow();
+      await expect(compiler.renderString(lessCode, { language: 'less' })).rejects.toThrow();
     });
   });
 
@@ -286,7 +288,7 @@ describe('Property Accessors', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
       expect(css).toContain('background: blue');
     });

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { JessCompiler } from '../../src';
+import { Compiler } from '../../src';
 
 describe('Interpolated Names', () => {
-  const compiler = new JessCompiler();
+  const compiler = new Compiler();
 
   describe('Declaration Names', () => {
     it('should handle interpolated declaration names', async () => {
@@ -15,7 +15,7 @@ describe('Interpolated Names', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('.color-red');
       expect(css).toContain('color: red');
     });
@@ -29,7 +29,7 @@ describe('Interpolated Names', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('background: blue');
     });
   });
@@ -45,7 +45,7 @@ describe('Interpolated Names', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('.primary');
       expect(css).toContain('color: blue');
     });
@@ -61,10 +61,9 @@ describe('Interpolated Names', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('.theme-dark');
       expect(css).toContain('background: black');
     });
   });
 });
-

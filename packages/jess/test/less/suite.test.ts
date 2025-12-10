@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { JessCompiler } from '../../src';
+import { Compiler } from '../../src';
 import lessPlugin from '@jesscss/plugin-less';
 
 describe('Jess Less Test Suite', () => {
-  const compiler = new JessCompiler({
-    plugins: [lessPlugin()]
+  const compiler = new Compiler({
+    compile: {
+      plugins: [lessPlugin()]
+    }
   });
 
   // TODO: collapseNesting feature needs to be implemented for Less-style flattening
@@ -20,7 +22,7 @@ describe('Jess Less Test Suite', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
       expect(css).toContain('background: blue');
     });
@@ -38,7 +40,7 @@ describe('Jess Less Test Suite', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       // Test that nested selectors are preserved (not flattened)
       expect(css).toContain('.parent');
       expect(css).toContain('.child');
@@ -58,7 +60,7 @@ describe('Jess Less Test Suite', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       // Test that parent selector references are preserved (not flattened)
       expect(css).toContain('&:hover');
       expect(css).toContain('&.active');
@@ -74,7 +76,7 @@ describe('Jess Less Test Suite', () => {
         @color: red;
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
     });
 
@@ -92,7 +94,7 @@ describe('Jess Less Test Suite', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       // Test that variable scoping works correctly
       // .child should use the scoped @color: blue
       expect(css).toContain('color: blue');
@@ -113,7 +115,7 @@ describe('Jess Less Test Suite', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
       expect(css).toContain('background: blue');
     });
@@ -128,7 +130,7 @@ describe('Jess Less Test Suite', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
     });
   });
@@ -146,7 +148,7 @@ describe('Jess Less Test Suite', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
       expect(css).toContain('font-size: 10px');
     });
@@ -163,7 +165,7 @@ describe('Jess Less Test Suite', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: 15px');
       expect(css).toContain('height: 15px');
       expect(css).toContain('margin: 6px');
@@ -180,7 +182,7 @@ describe('Jess Less Test Suite', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: 20px');
       expect(css).toContain('height: 15px');
     });
@@ -196,7 +198,7 @@ describe('Jess Less Test Suite', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color:');
       expect(css).toContain('width:');
       expect(css).toContain('content:');
@@ -213,7 +215,8 @@ describe('Jess Less Test Suite', () => {
       `;
 
       const css = await compiler.renderString(lessCode, {
-        filePath: process.cwd() + '/test/less/suite.test.less'
+        filePath: process.cwd() + '/test/less/suite.test.less',
+        language: 'less'
       });
       expect(css).toContain('color: red');
     });
@@ -231,7 +234,7 @@ describe('Jess Less Test Suite', () => {
         `).join('')}
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('.class-0');
       expect(css).toContain('.class-99');
     });

@@ -207,6 +207,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+
+    // At root level, prepend @charset if one was collected during evaluation (only once)
+    const depth = options.frameState?.at(-1)?.depth ?? 0;
+    const ctx = options.context;
+    if (depth === 0 && ctx?.currentCharset && !ctx.charsetEmitted) {
+      const charset = ctx.currentCharset;
+      // Use capture to avoid double-writing (toTrimmedString writes to writer AND returns the string)
+      const charsetStr = w.capture(() => charset.toTrimmedString(options));
+      w.add(charsetStr, charset);
+      w.add('\n');
+      ctx.charsetEmitted = true;
+    }
+
     this.processPrePost('pre', '', options);
     const bodyMark = w.mark();
     const bodyStr = this.toTrimmedString(options);
@@ -214,7 +227,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (bodyEmitted.length === 0 && bodyStr) {
       w.add(bodyStr);
     }
-    const depth = options.frameState?.at(-1)?.depth ?? 0;
     // If no explicit Rules.post at root, propagate last child's post
     if (depth === 0 && (this.post === 0 || this.post === undefined)) {
       let lastVisible: Node | undefined;
@@ -277,7 +289,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const depth = options.frameState?.at(-1)?.depth ?? 0;
     const space = ''.padStart(depth * 2);
     const { value } = this;
-    const items = value.filter(n => n.visible);
+    // Skip charset nodes - they are collected and prepended at root level
+    const items = value.filter(n => n.visible && !(n.type === 'Any' && (n as any).options?.role === 'charset'));
 
     if (items.length === 0) {
       return;

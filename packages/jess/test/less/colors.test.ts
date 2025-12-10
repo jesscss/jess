@@ -1,19 +1,20 @@
 import * as glob from 'glob';
 import * as fs from 'fs';
 import * as path from 'path';
-import { JessCompiler } from '../../src';
+import { Compiler } from '../../src';
 import lessPlugin from '@jesscss/plugin-less';
 
 const testData = path.dirname(require.resolve('@less/test-data'));
 
 // Test color functions without nesting collapsing
-const colorCompiler = new JessCompiler({
-  collapseNesting: false, // Don't test nesting behavior in color tests
-  plugins: [
-    lessPlugin({
-      mathMode: 0
-    })
-  ]
+const colorCompiler = new Compiler({
+  compile: {
+    plugins: [
+      lessPlugin({
+        mathMode: 0
+      })
+    ]
+  }
 });
 
 describe('Color Functions', () => {

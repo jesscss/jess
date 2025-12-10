@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { JessCompiler } from '../../src';
+import { Compiler } from '../../src';
 import { Context } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 
 describe('Operations', () => {
-  const compiler = new JessCompiler({
-    plugins: [lessPlugin()]
+  const compiler = new Compiler({
+    compile: {
+      plugins: [lessPlugin()]
+    }
   });
 
   describe('Basic Arithmetic Operations', () => {
@@ -17,7 +19,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: 15px');
       expect(css).toContain('height: 30px');
     });
@@ -30,7 +32,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: 15px');
       expect(css).toContain('height: 20px');
     });
@@ -43,7 +45,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: 15px');
       expect(css).toContain('height: 20px');
     });
@@ -56,7 +58,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: 10px');
       expect(css).toContain('height: 10px');
     });
@@ -76,7 +78,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: 20px');
       expect(css).toContain('height: 15px');
       expect(css).toContain('margin: 8px');
@@ -95,7 +97,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: 80px');
       expect(css).toContain('height: 60px');
       expect(css).toContain('area: 5000px');
@@ -108,7 +110,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('foo: 3 7 11');
     });
 
@@ -146,7 +148,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContainString(`
         .no-math {
           root: calc(100% - 30px);
@@ -180,7 +182,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: #ffffff');
       expect(css).toContain('background: #ffff00');
     });
@@ -196,7 +198,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: #ffff00');
     });
   });
@@ -211,7 +213,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: 75%');
       expect(css).toContain('height: 80vh');
       expect(css).toContain('font-size: 1.5em');
@@ -225,7 +227,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       // Note: Less handles mixed units differently, this is just to test parsing
       expect(css).toContain('width:');
       expect(css).toContain('height:');
@@ -241,7 +243,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: 30px');
       expect(css).toContain('height: 20px');
     });
@@ -254,7 +256,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: 40px');
       expect(css).toContain('height: 5px');
     });
@@ -269,7 +271,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: calc(100% - 20px)');
       expect(css).toContain('height: calc(50vh + 10px)');
     });
@@ -285,7 +287,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: calc(100% - 20px)');
       expect(css).toContain('height: calc(50vh + 10px)');
     });
@@ -301,7 +303,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: 10px');
       expect(css).toContain('height: 0px');
       expect(css).toContain('margin: 5px');
@@ -315,7 +317,7 @@ describe('Operations', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: 5px');
       expect(css).toContain('height: 30px');
     });

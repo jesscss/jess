@@ -9,7 +9,7 @@ This file is updated daily with the most recent changes and improvements made to
 
 ### New extend syntax
 
-- Resolved to use `@-extend ns|.selector`. ChatGPT convinced me. Default value is all. We can do Less's default behavior (exact) with something like `@-extend-match`
+- Resolved to use `$extend ns|.selector`. ChatGPT convinced me. Default value is `all`. We can do Less's default behavior (exact) with something like `$extend .selector !exact`
 - `@-compose` is protected from extends by default, unless we add `(mutable)`
 - Add `@-export` instead of `@forward`, to export / include everything but not make the API / vars locally available.
 

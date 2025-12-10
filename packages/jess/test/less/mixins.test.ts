@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { JessCompiler } from '../../src';
+import { Compiler } from '../../src';
 import { Context } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 
 describe('Mixins', () => {
-  const compiler = new JessCompiler({
-    plugins: [lessPlugin()]
+  const compiler = new Compiler({
+    compile: {
+      plugins: [lessPlugin()]
+    }
   });
 
   describe('Basic Mixins', () => {
@@ -21,7 +23,7 @@ describe('Mixins', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
       expect(css).toContain('background: blue');
     });
@@ -37,7 +39,7 @@ describe('Mixins', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
     });
 
@@ -57,7 +59,7 @@ describe('Mixins', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
       expect(css).toContain('background: blue');
     });
@@ -75,7 +77,7 @@ describe('Mixins', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
     });
 
@@ -91,7 +93,7 @@ describe('Mixins', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
       expect(css).toContain('font-size: 16px');
     });
@@ -116,7 +118,7 @@ describe('Mixins', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('.test1');
       expect(css).toContain('color: red');
       expect(css).toContain('font-size: 16px');
@@ -138,7 +140,7 @@ describe('Mixins', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: blue');
       expect(css).toContain('font-size: 20px');
     });
@@ -166,7 +168,7 @@ describe('Mixins', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('.test1');
       expect(css).toContain('color: red');
       expect(css).toContain('background: white');
@@ -194,7 +196,7 @@ describe('Mixins', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('.test1');
       expect(css).toContain('color: red');
       expect(css).toContain('.test2');
@@ -224,7 +226,7 @@ describe('Mixins', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('.test1');
       expect(css).toContain('font-size: 16px');
       expect(css).toContain('.test2');
@@ -250,7 +252,7 @@ describe('Mixins', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('.test1');
       expect(css).toContain('color: red');
       expect(css).toContain('.test2');
@@ -275,7 +277,7 @@ describe('Mixins', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
       expect(css).toContain('font-size: 16px');
     });
@@ -295,7 +297,7 @@ describe('Mixins', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
       expect(css).toContain('font-size: 16px');
       expect(css).toContain('args: red, 16px');

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { JessCompiler } from '../../src';
+import { Compiler } from '../../src';
 
 describe('Basic Variables', () => {
-  const compiler = new JessCompiler();
+  const compiler = new Compiler();
 
   it('should handle simple variable declaration and usage', async () => {
     const lessCode = `
@@ -13,7 +13,7 @@ describe('Basic Variables', () => {
       }
     `;
 
-    const css = await compiler.renderString(lessCode);
+    const css = await compiler.renderString(lessCode, { language: 'less' });
     expect(css).toContain('color: red');
   });
 
@@ -28,7 +28,7 @@ describe('Basic Variables', () => {
       }
     `;
 
-    const css = await compiler.renderString(lessCode);
+    const css = await compiler.renderString(lessCode, { language: 'less' });
     expect(css).toContain('color: blue');
     expect(css).toContain('background: green');
   });

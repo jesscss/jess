@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { JessCompiler } from '../../src';
+import { Compiler } from '../../src';
 
 describe('Static Names', () => {
-  const compiler = new JessCompiler();
+  const compiler = new Compiler();
 
   describe('Declaration Names', () => {
     it('should handle static declaration names', async () => {
@@ -16,7 +16,7 @@ describe('Static Names', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
       expect(css).toContain('margin: 20px');
     });
@@ -33,7 +33,7 @@ describe('Static Names', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
       expect(css).toContain('background: blue');
     });
@@ -49,7 +49,7 @@ describe('Static Names', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
     });
   });
@@ -66,7 +66,7 @@ describe('Static Names', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: blue');
       expect(css).toContain('background: green');
     });
@@ -84,7 +84,7 @@ describe('Static Names', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('padding: 10px');
       expect(css).toContain('border: 1px solid black');
       expect(css).toContain('background: blue');
@@ -104,7 +104,7 @@ describe('Static Names', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
       expect(css).toContain('background: blue');
     });

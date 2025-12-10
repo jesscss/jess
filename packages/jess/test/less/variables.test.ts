@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { JessCompiler } from '../../src';
+import { Compiler } from '../../src';
 import { Context } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 
 describe('Variables', () => {
-  const compiler = new JessCompiler({
-    plugins: [lessPlugin()]
+  const compiler = new Compiler({
+    compile: {
+      plugins: [lessPlugin()]
+    }
   });
 
   describe('Basic Variable Declaration and Usage', () => {
@@ -17,7 +19,7 @@ describe('Variables', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
     });
 
@@ -29,7 +31,7 @@ describe('Variables', () => {
         @color: red;
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
     });
 
@@ -46,7 +48,7 @@ describe('Variables', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: blue');
       expect(css).toContain('background: green');
       expect(css).toContain('font-size: 16px');
@@ -73,7 +75,7 @@ describe('Variables', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
       expect(css).toContain('background: blue');
     });
@@ -92,7 +94,7 @@ describe('Variables', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('.test');
       expect(css).toContain('color: blue');
       expect(css).toContain('.other');
@@ -111,7 +113,7 @@ describe('Variables', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('.my-class');
     });
 
@@ -124,7 +126,7 @@ describe('Variables', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color: red');
     });
 
@@ -138,7 +140,7 @@ describe('Variables', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('background-image: url(\'images/logo.png\')');
     });
   });
@@ -155,7 +157,7 @@ describe('Variables', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('margin: 20px');
       expect(css).toContain('padding: 15px');
     });
@@ -170,7 +172,7 @@ describe('Variables', () => {
         }
       `;
 
-      const css = await compiler.renderString(lessCode);
+      const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('class: my-test-class');
     });
   });

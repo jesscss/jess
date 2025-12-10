@@ -1,13 +1,13 @@
 import * as glob from 'glob';
 import * as fs from 'fs';
 import * as path from 'path';
-import { JessCompiler } from '../../src';
+import { Compiler } from '../../src';
 import lessPlugin from '@jesscss/plugin-less';
 
 const testData = path.dirname(require.resolve('@less/test-data'));
 
 // Test nesting behavior specifically
-const nestingCompiler = new JessCompiler({
+const nestingCompiler = new Compiler({
   output: { collapseNesting: true }, // Test nesting collapsing
   compile: {
     plugins: [
@@ -45,8 +45,5 @@ describe('Nesting Behavior', () => {
 
         expect(normalizedOutput).toBe(normalizedExpected);
       });
-    });
-});
-
     });
 });

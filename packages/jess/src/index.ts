@@ -13,7 +13,7 @@ import lessPlugin from '@jesscss/plugin-less';
 
 export type ConfigOptions = StylesConfig;
 
-export class JessCompiler {
+export class Compiler {
   constructor(
     public opts: ConfigOptions = {
       compile: {},
@@ -76,9 +76,10 @@ export class JessCompiler {
       const { node } = await context.getTree(filePath);
       const evald = await node.eval(context);
 
-      // Create print options with collapseNesting setting
+      // Create print options with collapseNesting setting and context for charset handling
       const printOptions: PrintOptions = {
-        collapseNesting: context.opts.collapseNesting
+        collapseNesting: context.opts.collapseNesting,
+        context
       };
 
       const css = evald.toString(printOptions);
@@ -110,13 +111,13 @@ export class JessCompiler {
 
       const evald = await node.eval(context);
 
-      // Create print options with collapseNesting setting
+      // Create print options with collapseNesting setting and context for charset handling
       const printOptions: PrintOptions = {
-        collapseNesting: context.opts.collapseNesting
+        collapseNesting: context.opts.collapseNesting,
+        context
       };
 
       const css = evald.toString(printOptions);
-      return css;
     } catch (err: any) {
       logger.error(err.toString());
       throw err;
