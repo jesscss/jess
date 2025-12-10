@@ -4,7 +4,15 @@ This file is updated daily with the most recent changes and improvements made to
 
 **Note**: Most recent changes are always at the top. Add new entries with the current date (e.g., `## 2025-Dec-9`) at the top of this file. Make sure we query a live date service to get current date.
 
+
 ## 2025-Dec-9
+
+### New extend syntax
+
+- Resolved to use `@-extend ns|.selector`. ChatGPT convinced me. Default value is all. We can do Less's default behavior (exact) with something like `@-extend-match`
+- `@-compose` is protected from extends by default, unless we add `(mutable)`
+- Add `@-export` instead of `@forward`, to export / include everything but not make the API / vars locally available.
+
 
 ### Extend Processing Fixes
 - **Fixed extend processing logic in `rules.ts`**: Corrected the order of parameters when calling `tryExtendSelector`. The extend was finding the wrong ruleset - it should find rulesets matching the selector that has the extend (e.g., `.child`), not the target (e.g., `.base`).

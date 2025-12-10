@@ -303,7 +303,7 @@ describe('Style import', () => {
       expect(`${importedRuleset}`).toContainString('.imported');
     });
 
-    it('protected import makes rulesets private', async () => {
+    it('non-mutable import makes rulesets private', async () => {
       const protectedPath = resolve(process.cwd(), 'protected.jess');
       context.sourceTrees.set(protectedPath, rules([
         ruleset({
@@ -319,7 +319,7 @@ describe('Style import', () => {
           path: quoted(any('protected.jess'))
         }, {
           type: 'import',
-          importOptions: { protected: true }
+          importOptions: { mutable: false }
         })
       ]);
 

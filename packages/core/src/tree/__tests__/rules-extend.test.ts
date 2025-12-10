@@ -47,11 +47,11 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const childRuleset = evald.at(1);
-      expect(childRuleset).toBeDefined();
-      // The selector should be extended to include .base
-      expect(`${childRuleset}`).toContainString('.base');
-      expect(`${childRuleset}`).toContainString('.child');
+      // For .child:-extend(.base), the .base ruleset should be extended with .child
+      const baseRuleset = evald.at(0);
+      expect(baseRuleset).toBeDefined();
+      expect(`${baseRuleset}`).toContainString('.base');
+      expect(`${baseRuleset}`).toContainString('.child');
     });
   });
 
@@ -81,10 +81,12 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const child1Ruleset = evald.at(1);
-      const child2Ruleset = evald.at(2);
-      expect(`${child1Ruleset}`).toContainString('.base');
-      expect(`${child2Ruleset}`).toContainString('.base');
+      // For .child1:-extend(.base) and .child2:-extend(.base),
+      // the .base ruleset should be extended with both .child1 and .child2
+      const baseRuleset = evald.at(0);
+      expect(`${baseRuleset}`).toContainString('.base');
+      expect(`${baseRuleset}`).toContainString('.child1');
+      expect(`${baseRuleset}`).toContainString('.child2');
     });
   });
 
@@ -110,11 +112,12 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const childRuleset = evald.at(1);
-      expect(childRuleset).toBeDefined();
-      // Partial extend should create :is() wrapper
-      expect(`${childRuleset}`).toContainString('.base');
-      expect(`${childRuleset}`).toContainString('.child');
+      // For .parent > .child:-extend(.base all), the .parent > .base ruleset
+      // should be extended with .parent > .child
+      const baseRuleset = evald.at(0);
+      expect(baseRuleset).toBeDefined();
+      expect(`${baseRuleset}`).toContainString('.base');
+      expect(`${baseRuleset}`).toContainString('.child');
     });
   });
 
@@ -139,10 +142,12 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const secondaryRuleset = evald.at(1);
-      expect(secondaryRuleset).toBeDefined();
-      expect(`${secondaryRuleset}`).toContainString('.primary');
-      expect(`${secondaryRuleset}`).toContainString('.secondary');
+      // For .btn.secondary:-extend(.btn.primary), the .btn.primary ruleset
+      // should be extended with .btn.secondary
+      const primaryRuleset = evald.at(0);
+      expect(primaryRuleset).toBeDefined();
+      expect(`${primaryRuleset}`).toContainString('.primary');
+      expect(`${primaryRuleset}`).toContainString('.secondary');
     });
 
     it('should extend selectors with pseudo-classes', async () => {

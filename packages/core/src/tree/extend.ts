@@ -1,6 +1,7 @@
-import { defineType } from './node';
+import { defineType, type Node } from './node';
 import { type Context } from '../context';
 import { Selector } from './selector';
+import type { Rules } from './rules';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 
@@ -55,36 +56,25 @@ export class Extend extends Selector<ExtendValue> {
 
   override evalNode(context: Context): MaybePromise<Selector> {
     let { selector, target, flag } = this.value;
-    const targetStr = target?.toString() ?? 'unknown';
-    // Find the Rules that contains this extend by walking up the parent chain
-    // The extend is in a ruleset's selector, so we need to find the Rules that contains that ruleset
-    let containingRules: Rules | undefined;
-    let node: Node | undefined = this.parent;
-    while (node) {
-      if (node.type === 'Rules') {
-        containingRules = node as Rules;
-        break;
-      }
-      node = node.parent;
+    // Get current extend root from registry stack
+    const extendRoot = context.extendRoots.getCurrentExtendRoot();
+    if (!extendRoot) {
+      // No extend root available - this shouldn't happen, but handle gracefully
+      // Fall back to evaluating selector without registering extend
+      return selector.eval(context) as MaybePromise<Selector>;
     }
-    // Fall back to context.treeRoot if we can't find the containing Rules
-    const treeRoot = containingRules || context.treeRoot;
-    console.log('[DEBUG] Extend.evalNode: Adding extend for target:', targetStr, 'treeRoot exists:', !!treeRoot, 'containingRules found:', !!containingRules);
+
     const maybeSel = selector.eval(context);
     if (isThenable(maybeSel)) {
       return (maybeSel as Promise<Selector>).then((sel) => {
-        const selStr = sel?.toString() ?? 'unknown';
-        console.log('[DEBUG] Extend.evalNode: Adding extend (async) - target:', targetStr, 'selector:', selStr);
-        treeRoot?.pendingExtends.add([target, sel, flag === ExtendFlag.All]);
-        console.log('[DEBUG] Extend.evalNode: pendingExtends size after add:', treeRoot?.pendingExtends.size ?? 0);
+        // Register extend to context with extend root reference
+        context.extends.push([target, sel, flag === ExtendFlag.All, extendRoot]);
         return sel;
       });
     }
     const sel = maybeSel as Selector;
-    const selStr = sel?.toString() ?? 'unknown';
-    console.log('[DEBUG] Extend.evalNode: Adding extend (sync) - target:', targetStr, 'selector:', selStr);
-    treeRoot?.pendingExtends.add([target, sel, flag === ExtendFlag.All]);
-    console.log('[DEBUG] Extend.evalNode: pendingExtends size after add:', treeRoot?.pendingExtends.size ?? 0);
+    // Register extend to context with extend root reference
+    context.extends.push([target, sel, flag === ExtendFlag.All, extendRoot]);
     return sel;
   }
 }

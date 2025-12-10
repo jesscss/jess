@@ -4,8 +4,10 @@ import type {
   Rules,
   ImportOptions,
   Node,
-  Any
+  Any,
+  Selector
 } from './tree';
+import { ExtendRootRegistry } from './tree/util/extend-roots';
 import { type Operator } from './tree/util/calculate';
 import type { PluginInterface } from './plugin';
 import { MathMode, UnitMode } from './types';
@@ -195,6 +197,15 @@ export class Context {
   treeRoot!: Rules;
   allRoots: Rules[] = [];
 
+  /** Extend roots registry for managing extend scoping */
+  extendRoots!: ExtendRootRegistry;
+
+  /**
+   * Registered extends with their extend root context
+   * Format: [target, selectorWithExtend, partial, extendRoot]
+   */
+  extends: Array<[target: Selector, selectorWithExtend: Selector, partial: boolean, extendRoot: Rules]> = [];
+
   /**
    * When doing any kind of lookup, the current node and resolved
    * nodes in the search chain are added to prevent recursion errors.
@@ -279,6 +290,7 @@ export class Context {
   constructor(opts: ContextOptions = {}, plugins?: PluginInterface[]) {
     this.opts = opts;
     this.plugins = plugins ?? [];
+    this.extendRoots = new ExtendRootRegistry();
   }
 
   /** Full resolved path -> tree */

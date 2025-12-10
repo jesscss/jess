@@ -133,14 +133,41 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
               })
             ]).inherit(existingRules);
           }
+
+          // Register extend root for nestable at-rules (including @layer)
+          let pushedExtendRoot = false;
+          if (node.options.nestable) {
+            const parentExtendRoot = context.extendRoots.getCurrentExtendRoot();
+            // Extract layer name for @layer at-rules
+            let layerName: string | undefined;
+            const atRuleName = node.value.name?.toTrimmedString?.() ?? node.value.name?.toString?.() ?? '';
+            if (atRuleName === '@layer' && node.value.prelude) {
+              const preludeStr = node.value.prelude.toTrimmedString?.() ?? node.value.prelude.toString?.() ?? '';
+              if (preludeStr) {
+                // Check if parent has a layer name and concatenate
+                const parentLayerName = parentExtendRoot ? context.extendRoots.getLayerName(parentExtendRoot) : undefined;
+                layerName = parentLayerName ? `${parentLayerName}.${preludeStr}` : preludeStr;
+              }
+            }
+            context.extendRoots.registerRoot(rules, parentExtendRoot, { layerName });
+            context.extendRoots.pushExtendRoot(rules);
+            pushedExtendRoot = true;
+          }
+
           let out = rules.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Rules>).then((r) => {
               node.value.rules = r;
+              if (pushedExtendRoot) {
+                context.extendRoots.popExtendRoot();
+              }
               return node;
             });
           }
           node.value.rules = out;
+          if (pushedExtendRoot) {
+            context.extendRoots.popExtendRoot();
+          }
         }
         return node;
       },

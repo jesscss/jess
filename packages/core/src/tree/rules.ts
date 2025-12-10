@@ -440,12 +440,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (!this.preEvaluated) {
       let rules = this.maybeClone(context);
       rules.preEvaluated = true;
-      console.log('[DEBUG] Rules.preEval: Starting preEval, value length:', rules.value.length, 'treeContext file:', rules.treeContext?.file?.name ?? 'unknown');
 
       // Save current context and set up new context for variable lookups during preEval
       const saved = this._snapshotContext(context);
       this._setupContextForRules(context, rules);
-      console.log('[DEBUG] Rules.preEval: After _setupContextForRules, context.treeRoot === rules:', context.treeRoot === rules);
+      // Register main root as extend root if this is the root (needed for extends in preEval)
+      // We need to check if this rules is the context.root AND the extendRoots.root is not set yet
+      const isMainRoot = rules === context.root && !context.extendRoots.root;
+      if (isMainRoot) {
+        context.extendRoots.registerRoot(rules);
+        context.extendRoots.pushExtendRoot(rules);
+      }
 
       // Assign index to all the nodes if not already set,
       // in linear source order.
@@ -480,10 +485,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         rules.value[i] = (node as Any).preEval(context);
       } else if (this._hasStaticName(node)) {
         staticNodes.push(node);
-        console.log('[DEBUG] _multiPassPreEval: Registering static node:', node.type, 'hasStaticName:', this._hasStaticName(node));
         this._registerNodeIfEligible(rules, node, context);
       } else {
-        console.log('[DEBUG] _multiPassPreEval: Node is dynamic:', node.type, 'hasStaticName:', this._hasStaticName(node));
         dynamicNodes.push(node);
       }
     }
@@ -589,8 +592,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             return (result as Promise<Node>).then((resolvedNode) => {
               // Register rulesets after preEval regardless of static name
               if (resolvedNode.type === 'Ruleset') {
-                const selectorStr = (resolvedNode as Ruleset).selector?.toString() ?? 'unknown';
-                console.log('[DEBUG] _resolveDynamicNodes: Registering ruleset (async) after preEval:', selectorStr);
                 context.treeRoot?.register('ruleset', resolvedNode as Ruleset<RulesetValue>);
               }
               if (this._hasStaticName(resolvedNode)) {
@@ -606,21 +607,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
           // Register rulesets after preEval regardless of static name
           if (result.type === 'Ruleset') {
-            const selectorStr = (result as Ruleset).selector?.toString() ?? 'unknown';
-            console.log('[DEBUG] _resolveDynamicNodes: Registering ruleset (sync) after preEval:', selectorStr);
-            console.log('[DEBUG] _resolveDynamicNodes: context.treeRoot === rules:', context.treeRoot === rules, 'rules value length:', rules.value.length);
-            console.log('[DEBUG] _resolveDynamicNodes: rules identity:', rules);
-            console.log('[DEBUG] _resolveDynamicNodes: context.treeRoot identity:', context.treeRoot);
             context.treeRoot?.register('ruleset', result as Ruleset<RulesetValue>);
             // Also register to rules itself to ensure it's in the local registry
             rules.register('ruleset', result as Ruleset<RulesetValue>);
-            // Check if it was actually registered
-            if (context.treeRoot) {
-              const treeRootRegistry = context.treeRoot.getRegistry('ruleset');
-              console.log('[DEBUG] _resolveDynamicNodes: After registration, treeRoot registry index size:', treeRootRegistry.index.size, 'keys:', Array.from(treeRootRegistry.index.keys()));
-            }
-            const rulesRegistry = rules.getRegistry('ruleset');
-            console.log('[DEBUG] _resolveDynamicNodes: After registration, rules registry index size:', rulesRegistry.index.size, 'keys:', Array.from(rulesRegistry.index.keys()));
           }
 
           // Check if the node now has a static name
@@ -695,8 +684,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             rules.registerNode(resolvedNode);
           }
           if (resolvedNode.type === 'Ruleset') {
-            const selectorStr = (resolvedNode as Ruleset).selector?.toString() ?? 'unknown';
-            console.log('[DEBUG] preEval: Registering ruleset to treeRoot:', selectorStr, 'treeRoot:', context.treeRoot === rules);
             context.treeRoot?.register('ruleset', resolvedNode as Ruleset<RulesetValue>);
           }
 
@@ -716,8 +703,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         rules.registerNode(result);
       }
       if (result.type === 'Ruleset') {
-        const selectorStr = (result as Ruleset).selector?.toString() ?? 'unknown';
-        console.log('[DEBUG] preEval: Registering ruleset to treeRoot (sync):', selectorStr, 'treeRoot:', context.treeRoot === rules);
         context.treeRoot?.register('ruleset', result as Ruleset<RulesetValue>);
       }
     }
@@ -751,9 +736,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       context.treeRoot = rules;
       const wasRootSet = context.root !== undefined;
       context.root ??= rules;
-      console.log('[DEBUG] _setupContextForRules: Added new root to allRoots, total roots:', context.allRoots.length);
-      console.log('[DEBUG] _setupContextForRules: New treeRoot is Rules with', rules.value.length, 'children');
-      console.log('[DEBUG] _setupContextForRules: context.root was set:', !wasRootSet, 'context.root === rules:', context.root === rules);
     }
     context.rulesContext = rules;
   }
@@ -831,10 +813,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               // Set the index of the imported Rules to the StyleImport's index
               // so we can compare Rules indices when determining which variable was declared later
               result.index = idx;
-              console.log('[DEBUG] _evaluateQueue: Registering imported Rules node, value length:', result.value.length);
-              console.log('[DEBUG] _evaluateQueue: Imported Rules has rulesSet length:', result.rulesSet?.length ?? 0);
-              console.log('[DEBUG] _evaluateQueue: Current context.treeRoot:', context.treeRoot === rules);
-              console.log('[DEBUG] _evaluateQueue: Imported Rules treeContext:', result.treeContext?.file?.name ?? 'unknown');
               rules.registerNode(result, {
                 rulesVisibility: result.options.rulesVisibility,
                 readonly: result.options.readonly
@@ -881,6 +859,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return pipe(
       () => {
         this._setupContextForRules(context, this);
+        // Extend root should already be registered in preEval, but ensure it's on the stack
+        // (it might have been popped if this is a nested Rules evaluation)
+        const isMainRoot = this === context.root;
+        if (isMainRoot && context.extendRoots.extendRootStack.length === 0) {
+          context.extendRoots.pushExtendRoot(this);
+        }
         // Synchronous preEval
         const rules = this;
         const evalQueue = this._buildEvalQueue(rules);
@@ -933,39 +917,45 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         // Use the first root in allRoots as the outermost root
         const outermostRoot = context.allRoots.length > 0 ? context.allRoots[0] : context.root;
         const isOutermost = rules === outermostRoot;
-        console.log('[DEBUG] evalNode: Checking if rules === outermostRoot:', isOutermost);
-        console.log('[DEBUG] evalNode: rules value length:', rules.value.length, 'outermostRoot value length:', outermostRoot?.value.length ?? 0);
-        console.log('[DEBUG] evalNode: allRoots length:', context.allRoots.length);
 
         if (isOutermost) {
           /**
-           * We've evaluated all the rules of the "outer" rules
-           * and we can now resolve any pending extends.
-           *
-           * We need to loop through all roots, but we need to properly respect
-           * import scoping, so this isn't correct yet.
+           * Process all registered extends using the extend roots registry system.
+           * Only process at the outermost level after all evaluation is complete.
            */
-          console.log('[DEBUG] Extend: Processing extends, allRoots length:', context.allRoots.length);
-          for (let root of context.allRoots) {
-            console.log('[DEBUG] Extend: Checking root, pendingExtends:', root.pendingExtends.size, 'value length:', root.value.length);
-            for (let [target, selectorWithExtend, partial] of root.pendingExtends) {
-              // target = what to extend with (e.g., .base)
-              // selectorWithExtend = the selector that has the extend (e.g., .child)
-              // We need to find rulesets matching selectorWithExtend and extend them with target
-              // extendSelector(target, find, extendWith, partial) where:
-              //   target = the selector to extend (ruleset.selector, e.g., .child)
-              //   find = what to find within target (selectorWithExtend, e.g., .child)
-              //   extendWith = what to extend with (target, e.g., .base)
-              let rulesetSet = root.find('ruleset', selectorWithExtend.keySet);
-              if (rulesetSet) {
-                rulesetSet.forEach((ruleset) => {
-                  let result = tryExtendSelector(ruleset.selector as Selector, selectorWithExtend, target, partial);
-                  if (result) {
-                    /** Just extend it? */
-                    ruleset.value.selector = result.value;
-                  }
-                });
+          for (const [target, selectorWithExtend, partial, extendRoot] of context.extends) {
+            // Get accessible roots for this extend's root
+            const accessibleRoots = context.extendRoots.getAccessibleRoots(extendRoot);
+
+            // For .child:-extend(.base):
+            // - target = .base (what to find)
+            // - selectorWithExtend = .child (the selector that had the extend)
+            // - We want to find rulesets matching .base and extend them with .child
+            // Find rulesets matching target (the selector we're extending) in accessible roots
+            let rulesetSet: Ruleset[] | undefined;
+            for (const searchRoot of accessibleRoots) {
+              const found = searchRoot.find('ruleset', target.keySet);
+              if (found) {
+                if (rulesetSet) {
+                  rulesetSet.push(...found);
+                } else {
+                  rulesetSet = found;
+                }
               }
+            }
+
+            // Apply extends to found rulesets
+            // tryExtendSelector(target, find, extendWith, partial)
+            // - target: the selector to extend (ruleset.selector, which matches target from extend)
+            // - find: what to find within target (target - we're looking for target in itself)
+            // - extendWith: what to extend with (selectorWithExtend - the selector that had the extend)
+            if (rulesetSet) {
+              rulesetSet.forEach((ruleset) => {
+                let result = tryExtendSelector(ruleset.selector as Selector, target, selectorWithExtend, partial);
+                if (result) {
+                  ruleset.value.selector = result.value;
+                }
+              });
             }
           }
         }
@@ -982,7 +972,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (saved.root !== undefined && !isOutermost) {
           context.root = saved.root;
         }
-        console.log('[DEBUG] evalNode: After restore, context.root:', context.root?.value.length ?? 'undefined');
+        // Pop extend root if we pushed it (check if this is still the root)
+        if (rules === context.root) {
+          context.extendRoots.popExtendRoot();
+        }
         return rules;
       }
     ) as MaybePromise<this>;

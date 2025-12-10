@@ -23,8 +23,8 @@ importers:
         specifier: ~9.31.0
         version: 9.31.0
       '@less/test-data':
-        specifier: ^4.4.2
-        version: 4.4.2
+        specifier: ^4.5.0
+        version: 4.5.0
       '@rollup/plugin-commonjs':
         specifier: ^24.1.0
         version: 24.1.0(rollup@3.29.5)
@@ -1889,8 +1889,8 @@ packages:
   '@leichtgewicht/ip-codec@2.0.5':
     resolution: {integrity: sha512-Vo+PSpZG2/fmgmiNzYK9qWRh8h/CHrwD0mo1h1DzL4yzHNSfWYujGTYsWGreD000gcgmZ7K4Ys6Tx9TxtsKdDw==}
 
-  '@less/test-data@4.4.2':
-    resolution: {integrity: sha512-AsL222mIwg5fcQOsDsOl+vHvP5o2Xvvd1s9y9qA08ZeOytvkaa8wZUA5gTBr+B8qb9SacHjZcoDixkNmyPhGqQ==}
+  '@less/test-data@4.5.0':
+    resolution: {integrity: sha512-yRKxUb/sbyRLced6KbeagepzGijvFWo81xsW5TKH6jtSTWuaIEID6ig1jsya+hHlPzLzigiSqvQctd9O+TvrnA==}
 
   '@manypkg/find-root@1.1.0':
     resolution: {integrity: sha512-mki5uBvhHzO8kYYix/WRy2WX8S3B5wdVSc9D6KcU5lQNglP2yt58/VfLuAK49glRXChosY8ap2oJ1qgma3GUVA==}
@@ -6255,7 +6255,7 @@ packages:
 
   puppeteer@19.11.1:
     resolution: {integrity: sha512-39olGaX2djYUdhaQQHDZ0T0GwEp+5f9UB9HmEP0qHfdQHIq0xGQZuAZ5TLnJIc/88SrPLpEflPC+xUqOTv3c5g==}
-    deprecated: < 24.9.0 is no longer supported
+    deprecated: < 24.15.0 is no longer supported
 
   qs@6.13.0:
     resolution: {integrity: sha512-+38qI9SOr8tfZ4QmJNplMUxqjbe7LKvvZgWdExBOmd+egZTtjLB67Gu0HRX3u/XOq7UU2Nx6nsjvS16Z9uwfpg==}
@@ -9924,7 +9924,7 @@ snapshots:
   '@jridgewell/source-map@0.3.6':
     dependencies:
       '@jridgewell/gen-mapping': 0.3.12
-      '@jridgewell/trace-mapping': 0.3.25
+      '@jridgewell/trace-mapping': 0.3.30
 
   '@jridgewell/sourcemap-codec@1.5.0': {}
 
@@ -9940,7 +9940,7 @@ snapshots:
 
   '@leichtgewicht/ip-codec@2.0.5': {}
 
-  '@less/test-data@4.4.2': {}
+  '@less/test-data@4.5.0': {}
 
   '@manypkg/find-root@1.1.0':
     dependencies:

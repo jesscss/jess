@@ -35,12 +35,13 @@ export type ImportOptions = {
    * @todo - Investigate what Sass does.
    */
   multiple?: boolean;
-  /** Rulesets can't be extended, the extend "search" will stop at this import. */
-  protected?: boolean;
+  /**
+   * Allow extends to reach into this import.
+   * Default is false for @-compose (protected by default), true for @-import.
+   */
+  mutable?: boolean;
   /** Variables and mixins are forwarded to a downstream stylesheet. */
   export?: boolean;
-  /** Shorthand for `reference`, `export`, and `protected` all set to true. */
-  forward?: boolean;
   /** Variables can't be reassigned (default is true for `@-compose` and false for `@-import`). */
   readonly?: boolean;
   [key: string]: any;
@@ -112,11 +113,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
   getFinalRules(evaluatedRules: Rules) {
     let { importOptions, type } = this.options;
-    // Handle 'forward' as shorthand for reference, export, and protected
-    const forward = importOptions!.forward;
-    const reference = importOptions!.reference || forward;
-    const isExport = importOptions!.export || forward;
-    const isProtected = importOptions!.protected || forward;
+    const reference = importOptions!.reference;
+    const isExport = importOptions!.export;
+    // For compose type, default is protected (not mutable). For import type, default is mutable.
+    // mutable: false on @import explicitly makes it protected.
+    const isProtected = type === 'compose'
+      ? !importOptions!.mutable // compose: protected unless mutable: true
+      : importOptions!.mutable === false; // import: mutable unless explicitly mutable: false
 
     let Ruleset: RulesVisibility = 'public';
     let Declaration: RulesVisibility = 'public';
@@ -292,6 +295,22 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         }
         rules = finalRules;
       }
+      // For compose type, register and push extend root BEFORE evaluation
+      // so extends inside the import use the correct root
+      const parentExtendRoot = context.extendRoots.getCurrentExtendRoot();
+      let pushedExtendRoot = false;
+      if (type === 'compose') {
+        // Register the Rules as an extend root (use rules before cloning/evaluation)
+        // We'll update the registration after evaluation if the Rules changes
+        // For compose type, default is protected (not mutable)
+        const isComposeProtected = !importOptions!.mutable;
+        context.extendRoots.registerRoot(rules, parentExtendRoot, {
+          isProtected: isComposeProtected
+        });
+        context.extendRoots.pushExtendRoot(rules);
+        pushedExtendRoot = true;
+      }
+
       /** Freshly evaluate the rules in these circumstances
        * - `with` (or `set`) values are present
        * - the rules have not been evaluated yet
@@ -319,6 +338,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         // (only import type needs this for older import behavior)
         rules = await rules.eval(context);
         context.preserveOriginalNodes = preserveOriginalNodes;
+      }
+
+      // Pop extend root if we pushed one
+      if (pushedExtendRoot) {
+        context.extendRoots.popExtendRoot();
       }
 
       return node.getFinalRules(rules);
