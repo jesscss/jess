@@ -193,4 +193,3 @@ export class ExtendRootRegistry {
     return preludeStr;
   }
 }
-

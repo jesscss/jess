@@ -430,7 +430,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       this.register('declaration', node);
     } else if (isNode(node, 'Ruleset')) {
+      // Register to 'mixin' for mixin calls and 'ruleset' for extends
+      // Register to 'mixin' for mixin calls and 'ruleset' for extends
       this.register('mixin', node);
+      this.register('ruleset', node);
     } else if (isNode(node, 'Mixin')) {
       this.register('mixin', node);
     }
@@ -489,32 +492,56 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const staticNodes: Node[] = [];
     const dynamicNodes: Node[] = [];
 
-    for (let i = 0; i < rules.value.length; i++) {
-      const node = rules.value[i]!;
-
+    // Process each node with static name, handling both sync and async preEval
+    const processResult = serialForEach(rules.value, (node, index) => {
       // Check if node has a static name (can be registered immediately)
       if (node.type === 'Any' && node.options.role === 'charset') {
         /** Special case where we register the charset node immediately */
-        rules.value[i] = (node as Any).preEval(context);
-      } else if (this._hasStaticName(node)) {
-        staticNodes.push(node);
-        this._registerNodeIfEligible(rules, node, context);
+        rules.value[index] = (node as Any).preEval(context);
+        return;
+      }
+      if (this._hasStaticName(node)) {
+        // Pre-evaluate nodes with static names before registration
+        // This ensures selectors are evaluated and keySets are available for rulesets
+        const preEvald = node.preEval(context);
+        if (isThenable(preEvald)) {
+          return (preEvald as Promise<Node>).then((preEvaldNode) => {
+            rules.value[index] = preEvaldNode;
+            // After async preEval, check if it still has a static name
+            if (this._hasStaticName(preEvaldNode)) {
+              staticNodes.push(preEvaldNode);
+              this._registerNodeIfEligible(rules, preEvaldNode, context);
+            } else {
+              dynamicNodes.push(preEvaldNode);
+            }
+          });
+        }
+        rules.value[index] = preEvald as Node;
+        const nodeToRegister = preEvald as Node;
+        staticNodes.push(nodeToRegister);
+        this._registerNodeIfEligible(rules, nodeToRegister, context);
       } else {
         dynamicNodes.push(node);
       }
-    }
+    });
 
-    // If no dynamic nodes, we're done
-    if (dynamicNodes.length === 0) {
-      // Restore context after preEval is complete
-      context.rulesContext = saved.rulesContext;
-      context.treeRoot = saved.treeRoot;
-      context.root = saved.root;
-      return rules as this;
-    }
+    const finish = () => {
+      // If no dynamic nodes, we're done
+      if (dynamicNodes.length === 0) {
+        // Restore context after preEval is complete
+        context.rulesContext = saved.rulesContext;
+        context.treeRoot = saved.treeRoot;
+        context.root = saved.root;
+        return rules as this;
+      }
+      // Multi-pass resolution of dynamic nodes
+      return this._resolveDynamicNodes(rules, context, saved, dynamicNodes);
+    };
 
-    // Multi-pass resolution of dynamic nodes
-    return this._resolveDynamicNodes(rules, context, saved, dynamicNodes);
+    if (isThenable(processResult)) {
+      return (processResult as Promise<void>).then(() => finish());
+    }
+    return finish();
   }
 
   /**
@@ -545,22 +572,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return this._isStatic(path);
     }
     if (isNode(node, 'Ruleset')) {
-      // After preEval, the selector should be resolved to static identifiers
-      // Check if the selector is static (not the ruleset node itself)
-      // If the ruleset has been preEvaluated, the selector should be static
-      if (node.preEvaluated) {
-        const selector = node.value.selector;
-        // After preEval, selector is evaluated and should be static
-        // Check if selector has F_STATIC flag, or if it's a basic selector (which is always static)
-        if (selector && 'hasFlag' in selector && typeof selector.hasFlag === 'function') {
-          return selector.hasFlag(F_STATIC);
-        }
-        // If selector doesn't have hasFlag, assume it's static after preEval
-        // (preEval resolves names to static identifiers)
+      const selector = node.value.selector;
+      // BasicSelector, CompoundSelector, ComplexSelector etc. are always static
+      // Only Interpolated selectors need resolution
+      if (isNode(selector, ['BasicSelector', 'CompoundSelector', 'ComplexSelector', 'SelectorList'])) {
         return true;
       }
-      // Before preEval, check if selector itself is static
-      const selector = node.value.selector;
+      // After preEval, the selector should be resolved to static identifiers
+      if (node.preEvaluated) {
+        return true;
+      }
+      // Check F_STATIC flag for other selector types
       if (selector && 'hasFlag' in selector && typeof selector.hasFlag === 'function') {
         return selector.hasFlag(F_STATIC);
       }
@@ -579,7 +601,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     } else if (isNode(node, 'Mixin')) {
       rules.registerNode(node);
     } else if (isNode(node, 'Ruleset')) {
-      context.treeRoot?.register('ruleset', node as Ruleset<RulesetValue>);
+      // registerNode handles both 'mixin' and 'ruleset' registries
+      rules.registerNode(node);
     }
   }
 
@@ -605,7 +628,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             return (result as Promise<Node>).then((resolvedNode) => {
               // Register rulesets after preEval regardless of static name
               if (resolvedNode.type === 'Ruleset') {
-                context.treeRoot?.register('ruleset', resolvedNode as Ruleset<RulesetValue>);
+                // registerNode handles both 'mixin' and 'ruleset' registries
+                rules.registerNode(resolvedNode);
               }
               if (this._hasStaticName(resolvedNode)) {
                 resolvedNodes.push(resolvedNode);
@@ -620,9 +644,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
           // Register rulesets after preEval regardless of static name
           if (result.type === 'Ruleset') {
-            context.treeRoot?.register('ruleset', result as Ruleset<RulesetValue>);
-            // Also register to rules itself to ensure it's in the local registry
-            rules.register('ruleset', result as Ruleset<RulesetValue>);
+            // registerNode handles both 'mixin' and 'ruleset' registries
+            rules.registerNode(result);
           }
 
           // Check if the node now has a static name
@@ -696,9 +719,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (!isNode(node, 'VarDeclaration')) {
             rules.registerNode(resolvedNode);
           }
-          if (resolvedNode.type === 'Ruleset') {
-            context.treeRoot?.register('ruleset', resolvedNode as Ruleset<RulesetValue>);
-          }
 
           // Continue with the rest of the children
           return this._preEvalRemainingChildren(rules, context, i + 1, saved);
@@ -714,9 +734,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Register the node after preEval (name resolution) if not already registered
       if (!isNode(node, 'VarDeclaration')) {
         rules.registerNode(result);
-      }
-      if (result.type === 'Ruleset') {
-        context.treeRoot?.register('ruleset', result as Ruleset<RulesetValue>);
       }
     }
 
@@ -1245,6 +1262,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             if (param.value.value instanceof Nil) {
               requiredPositions++;
             }
+          } else if (isNode(param, 'Any') && param.options.role === 'property') {
+            // Any with role: 'property' is a parameter without default (consistent with variable names)
+            requiredPositions++;
           } else if (!isNode(param, 'Rest')) {
             requiredPositions++;
           }
@@ -1259,14 +1279,25 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           let param: Node | undefined;
           if (isNode(arg, 'VarDeclaration')) {
             param = params.value.find(
-              (p, i) => isNode(p, 'VarDeclaration') && p.value.name.valueOf() === arg.value.name.valueOf()
+              (p, i) => {
+                if (isNode(p, 'VarDeclaration')) {
+                  return p.value.name.valueOf() === arg.value.name.valueOf();
+                }
+                if (isNode(p, 'Any') && p.options.role === 'property') {
+                  return p.valueOf() === arg.value.name.valueOf();
+                }
+                return false;
+              }
             );
             if (param) {
-              arg = arg.value.value;
+              // Evaluate the argument value before assigning it to the parameter
+              arg = await cast(arg.value.value).eval(thisContext);
             }
           } else {
             param = params.value[i];
-            arg = cast(arg);
+            // Evaluate the argument before assigning it to the parameter
+            // This ensures that references (e.g., ref({ key: 'color' })) are resolved
+            arg = await cast(arg).eval(thisContext);
           }
           if (!param) {
             match = false;
@@ -1274,6 +1305,13 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           }
           if (isNode(param, 'VarDeclaration')) {
             param.value.value = arg;
+          } else if (isNode(param, 'Any') && param.options.role === 'property') {
+            // Convert Any with role: 'property' to VarDeclaration for registration
+            const varDecl = new VarDeclaration({
+              name: param as Any<'property'>,
+              value: arg
+            });
+            params.value[i] = varDecl;
           } else if (isNode(param, 'Rest')) {
             param.value = spaced(args.slice(argPos));
             /** Check a pattern-matching node */
@@ -1360,17 +1398,32 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       /** Now we need to add our parameters, if any */
       let params = candidate.value.params;
       if (params) {
-        for (let param of params.value) {
+        for (let i = 0; i < params.value.length; i++) {
+          let param = params.value[i]!;
           if (isNode(param, ['VarDeclaration', 'Rest'])) {
             /** @todo - Register Rest */
-            rules.register('declaration', param);
+            // Adopt the param to set parent relationship, then register
+            rules.adopt(param);
+            // Parameters aren't in rules.value, so they don't get an index automatically
+            // Assign negative indices so they're conceptually "before" the rules and found first
+            if (param.index === undefined) {
+              // Use negative indices starting from -1, -2, etc. so they sort before regular rules
+              param.index = -(i + 1);
+            }
+            rules.registerNode(param);
           }
+          // Note: Any with role: 'property' should have been converted to VarDeclaration during matching
+          // If we see one here, it's an error - params should all be VarDeclaration or Rest by now
         }
         rules.register('declaration', new VarDeclaration({
           name: new Any('arguments', { role: 'property' }),
           value: new List(params.value.map((p) => {
             if (isNode(p, 'VarDeclaration')) {
               return p.value.value;
+            }
+            if (isNode(p, 'Any') && p.options.role === 'property') {
+              // Should have been converted, but handle just in case
+              return new Nil();
             }
             return p;
           }))

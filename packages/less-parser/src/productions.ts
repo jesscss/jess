@@ -1920,26 +1920,79 @@ export function string(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => $.OR(stringAlt);
 }
 
-// Helper function to process string interpolation
+/**
+ * Find interpolation patterns like @{...} or ${...}, handling nested braces.
+ * Returns an array of { start, end, prefix, content } for each match.
+ */
+function findInterpolations(value: string): Array<{ start: number; end: number; prefix: string; content: string }> {
+  const matches: Array<{ start: number; end: number; prefix: string; content: string }> = [];
+  let i = 0;
+
+  while (i < value.length) {
+    // Look for @{ or ${
+    if ((value[i] === '@' || value[i] === '$') && value[i + 1] === '{') {
+      const prefix = value[i]!;
+      const start = i;
+      i += 2; // Skip @{ or ${
+      let braceCount = 1;
+      const contentStart = i;
+
+      // Find matching closing brace, counting nested braces
+      while (i < value.length && braceCount > 0) {
+        if (value[i] === '{') {
+          braceCount++;
+        } else if (value[i] === '}') {
+          braceCount--;
+        }
+        i++;
+      }
+
+      if (braceCount === 0) {
+        const content = value.slice(contentStart, i - 1);
+        matches.push({ start, end: i, prefix, content });
+      }
+    } else {
+      i++;
+    }
+  }
+
+  return matches;
+}
+
+// Helper function to process string interpolation (handles nested @{...} patterns)
 function processStringInterpolation(value: string, location: LocationInfo, context: TreeContext): Any | Interpolated {
-  const interpolatedRegex = /[@$]\{([^}]+)\}/g;
+  const matches = findInterpolations(value);
+
+  if (matches.length === 0) {
+    return new Any(value, { role: 'any' }, location, context);
+  }
+
   const replacements: Node[] = [];
-  let result: RegExpExecArray | null;
   let source = value;
+  let offset = 0;
 
-  while (result = interpolatedRegex.exec(value)) {
-    const [match, varName] = result;
-    source = source.replace(match, INTERPOLATION_PLACEHOLDER);
-    const type = match.startsWith('@') ? 'variable' : 'property';
-    const reference = new Reference(varName!, { type, role: 'ident' }, location, context);
-    replacements.push(reference);
+  for (const match of matches) {
+    const adjustedStart = match.start - offset;
+    const adjustedEnd = match.end - offset;
+    const before = source.slice(0, adjustedStart);
+    const after = source.slice(adjustedEnd);
+    source = before + INTERPOLATION_PLACEHOLDER + after;
+    offset += (match.end - match.start) - INTERPOLATION_PLACEHOLDER.length;
+
+    const type = match.prefix === '@' ? 'variable' : 'property';
+
+    // Recursively process the content in case it has nested interpolation
+    const innerResult = processStringInterpolation(match.content, location, context);
+    if (innerResult instanceof Interpolated) {
+      // The content itself has interpolation - create an Interpolated reference
+      replacements.push(new Reference({ key: innerResult }, { type, role: 'ident' }, location, context));
+    } else {
+      // Simple variable reference
+      replacements.push(new Reference(match.content, { type, role: 'ident' }, location, context));
+    }
   }
 
-  if (replacements.length > 0) {
-    return new Interpolated({ source, replacements }, { role: 'ident' }, location, context);
-  }
-
-  return new Any(value, { role: 'any' }, location, context);
+  return new Interpolated({ source, replacements }, { role: 'ident' }, location, context);
 }
 
 export function mathValue(this: P, T: TokenMap) {

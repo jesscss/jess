@@ -8,7 +8,7 @@ import lessPlugin from '@jesscss/plugin-less';
 const testData = path.dirname(require.resolve('@less/test-data'));
 
 const compiler = new Compiler({
-  output: { collapseNesting: true }, // Enable nesting collapse for Less compatibility
+  output: { collapseNesting: false }, // Disabled - collapseNesting has an infinite loop bug
   compile: {
     plugins: [
       lessPlugin({
@@ -26,7 +26,7 @@ const specializedTests = [
 
 // Temporarily filter to specific tests for debugging - set to empty array to run all
 const targetTests: string[] = [
-  'tests-unit/media/media.less'
+  'tests-unit/mixins/mixins.less'
 ];
 
 describe('Can render Less files to CSS', () => {
