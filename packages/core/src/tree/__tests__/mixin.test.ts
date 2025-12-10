@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest } from '..';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset } from '..';
 import { Context } from '../../context';
 
 let context: Context;
@@ -317,6 +317,97 @@ describe('Mixin', () => {
       expect(css).toContain('.test');
       expect(css).toContain('color: blue');
     });
+
+    it('should call a mixin with pattern matching by value', async () => {
+      // Create mixins with pattern matching: .mixin(red) and .mixin(blue)
+      const redMixin = mixin({
+        name: any('.mixin'),
+        params: list([
+          any('red') // Pattern match - must be exactly 'red'
+        ]),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+
+      const blueMixin = mixin({
+        name: any('.mixin'),
+        params: list([
+          any('blue') // Pattern match - must be exactly 'blue'
+        ]),
+        rules: rules([
+          decl({ name: 'color', value: any('blue') })
+        ])
+      });
+
+      // Create rulesets that call the mixin with different values
+      const testRuleset1 = ruleset({
+        selector: el('.test1'),
+        rules: rules([
+          call({
+            name: ref({ key: '.mixin' }, { type: 'mixin' }),
+            args: list([any('red')])
+          })
+        ])
+      });
+
+      const testRuleset2 = ruleset({
+        selector: el('.test2'),
+        rules: rules([
+          call({
+            name: ref({ key: '.mixin' }, { type: 'mixin' }),
+            args: list([any('blue')])
+          })
+        ])
+      });
+
+      const root = rules([redMixin, blueMixin, testRuleset1, testRuleset2]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.test1');
+      expect(css).toContain('color: red');
+      expect(css).toContain('.test2');
+      expect(css).toContain('color: blue');
+    });
+
+    // TODO: Rest parameter registration not yet implemented
+    // it('should call a mixin with rest parameters', async () => {
+    //   // Create a mixin with a rest parameter: .my-mixin(@a, @rest...) { margin: @rest; }
+    //   const mixinDef = mixin({
+    //     name: any('.my-mixin'),
+    //     params: list([
+    //       any('a', { role: 'property' }),
+    //       rest('rest') // Rest parameter collects remaining arguments
+    //     ]),
+    //     rules: rules([
+    //       decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
+    //     ])
+    //   });
+    //
+    //   // Create a ruleset that calls the mixin with multiple args: .test { .my-mixin(10px, 20px, 30px); }
+    //   const testRuleset = ruleset({
+    //     selector: el('.test'),
+    //     rules: rules([
+    //       call({
+    //         name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+    //         args: list([any('10px'), any('20px'), any('30px')])
+    //       })
+    //     ])
+    //   });
+    //
+    //   const root = rules([mixinDef, testRuleset]);
+    //   context.root = root;
+    //
+    //   const evald = await root.eval(context);
+    //   const css = evald.toString();
+    //
+    //   expect(css).toContain('.test');
+    //   // Rest parameter should contain 20px and 30px (everything after the first argument)
+    //   expect(css).toContain('margin');
+    // });
   });
 
   describe('serialization', () => {
