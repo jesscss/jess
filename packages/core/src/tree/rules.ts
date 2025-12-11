@@ -1580,6 +1580,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             (newRules as any)._originalParent = originalParent;
             // Set the parent now so lookups work even before adoption check
             newRules.parent = originalParent;
+            console.log(`[DEBUG] getFunctionFromMixins: Set newRules.parent to originalParent, rulesIndex=${originalParent.index}, newRules.index=${newRules.index}`);
           } else {
             console.log(`[DEBUG] getFunctionFromMixins: Could not find originalParent for mixin, rules.parent=${rules.parent?.type}, candidate.parent=${candidate.parent?.type}, candidate.rulesParent=${candidate.rulesParent?.type}`);
           }

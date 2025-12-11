@@ -5,6 +5,28 @@ This file is updated daily with the most recent changes and improvements made to
 **Note**: Most recent changes are always at the top. Add new entries with the current date (e.g., `## 2025-Dec-9`) at the top of this file. Make sure we query a live date service to get current date.
 
 
+## 2025-Dec-10
+
+### Mixin Lookup Debugging
+
+- **Fixed Set destructuring issue**: Discovered that Sets can be destructured directly in JavaScript (no need for `Array.from()`). Reverted unnecessary conversion in `_indexSelectorStart`.
+- **Added debug logging**: Added extensive debug logging to trace mixin registration and lookup:
+  - `MixinRegistry.find`: Logs what keys are being looked up, what's in the registry, and traversal through parent chain
+  - `Reference.evalNode`: Logs mixin-ruleset lookups and results
+  - `getFunctionFromMixins`: Logs when parent is set on Rules returned from mixin calls
+- **Identified parent chain issue**: Discovered that Rules returned from mixin calls need to have their parent set to the original mixin definition context (not the calling context) for lookups to work correctly. In Less, mixins resolve lookups from the mixin definition context, not the caller context.
+- **Fixed parent preservation**: Modified `getFunctionFromMixins` to:
+  - Set `newRules.parent` to the original mixin's Rules parent (where the mixin was defined)
+  - Store `_originalParent` flag to identify mixin results
+  - Skip `adopt()` call for mixin results in `applyResult` to preserve the parent chain
+  - Added fallback to use `candidate.rulesParent` if direct parent lookup fails
+- **Created mixin lookup scope test**: Created `mixin-lookup-scope.test.ts` to test Less behavior for variable and mixin lookups from mixin definition vs caller context (for future reference).
+
+### Current Issue
+
+- **Parent chain not working in all cases**: Some lookups still show `rulesIndex=undefined` with no parent, preventing traversal to find mixins. The parent IS being set correctly in `getFunctionFromMixins` (confirmed via debug logs showing `rulesIndex=0`), but some Rules instances used for lookups don't have their parent set or it's being lost somewhere in the evaluation chain.
+- **Next steps**: Need to investigate why some Rules instances lose their parent - possibly during `rules.eval()` or when Rules are returned from mixin function calls and integrated into the parent Rules.
+
 ## 2025-Dec-9
 
 ### New extend syntax
