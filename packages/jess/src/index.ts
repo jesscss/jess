@@ -59,10 +59,6 @@ export class Compiler {
       collapseNesting: config.output?.collapseNesting
     };
 
-    // Debug logging - avoid circular references
-    console.log('JessCompiler createContext - config keys:', Object.keys(config));
-    console.log('JessCompiler createContext - contextOptions keys:', Object.keys(contextOptions));
-
     return new Context(contextOptions, [...pluginMap.values()]);
   }
 
@@ -118,6 +114,7 @@ export class Compiler {
       };
 
       const css = evald.toString(printOptions);
+      return css;
     } catch (err: any) {
       logger.error(err.toString());
       throw err;

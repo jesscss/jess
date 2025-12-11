@@ -303,4 +303,43 @@ describe('Mixins', () => {
       expect(css).toContain('args: red, 16px');
     });
   });
+
+  describe('Recursive Mixins', () => {
+    it('should handle recursive mixin calls without infinite loops', async () => {
+      const lessCode = `
+        .recursion() {
+          color: black;
+        }
+        .test-rule-rec {
+          .recursion {
+            .recursion();
+          }
+        }
+      `;
+
+      // This should complete without hanging or OOM
+      const css = await compiler.renderString(lessCode, { language: 'less' });
+      expect(css).toContain('.test-rule-rec');
+      expect(css).toContain('.recursion');
+    });
+
+    it('should handle clearfix pattern without infinite loops', async () => {
+      const lessCode = `
+        .clearfix() {
+          // ...
+        }
+        .clearfix {
+          .clearfix();
+        }
+        .foo {
+          .clearfix();
+        }
+      `;
+
+      // This should complete without hanging or OOM
+      const css = await compiler.renderString(lessCode, { language: 'less' });
+      expect(css).toContain('.clearfix');
+      expect(css).toContain('.foo');
+    });
+  });
 });

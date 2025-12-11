@@ -154,7 +154,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       registry = new RegistryClass(this);
       (this as any)[`${type}Registry`] = registry;
     }
-    return (registry as any).add(node);
+    const result = (registry as any).add(node);
+    return result;
   }
 
   getRegistry(type: 'ruleset'): Registries.RulesetRegistry;
@@ -257,7 +258,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   * [Symbol.iterator]() {
-    yield* this.value.entries();
+    let value = this.value;
+    /**
+     * This should always be the case? But at one point something somewhere
+     * set the value to undefined I think, so just leaving this defensively.
+     */
+    if (isArray(value)) {
+      yield* value.entries();
+    }
   }
 
   /**
@@ -613,8 +621,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const unresolvedNodes: Node[] = [...dynamicNodes];
     const resolvedNodes: Node[] = [];
     let firstError: Error | undefined;
+    let resolutionAttempts = 0;
+    const MAX_RESOLUTION_ATTEMPTS = 100;
 
     const attemptResolution = (): MaybePromise<this> => {
+      resolutionAttempts++;
+      if (resolutionAttempts > MAX_RESOLUTION_ATTEMPTS) {
+        throw new Error(`_resolveDynamicNodes exceeded ${MAX_RESOLUTION_ATTEMPTS} attempts: rulesIndex=${rules.index} unresolvedCount=${unresolvedNodes.length}`);
+      }
       const stillUnresolved: Node[] = [];
       let madeProgress = false;
 
@@ -777,7 +791,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       let [, rule] = item;
       let priority = NodeTypeToPriority.get(rule.type) ?? Priority.None;
       let queue = evalQueue.get(priority) ?? [];
-      queue.push(item);
+      queue.push(item as [number, Node]);
       evalQueue.set(priority, queue);
     }
     return evalQueue;
@@ -843,10 +857,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               // Set the index of the imported Rules to the StyleImport's index
               // so we can compare Rules indices when determining which variable was declared later
               result.index = idx;
+              // Adopt the Rules into the parent so parent chain is set up for lookups
+              rules.adopt(result);
               rules.registerNode(result, {
                 rulesVisibility: result.options.rulesVisibility,
                 readonly: result.options.readonly
               }, context);
+            } else {
+              // For non-Rules results, adopt them to set up parent chain
+              rules.adopt(result);
+              // If the result is Rules (from a mixin call), set its index and ensure parent is set
+              if (isNode(result, 'Rules')) {
+                result.index = idx;
+              }
             }
           }
           if (result.options.hoistToRoot) {
@@ -897,6 +920,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         // Synchronous preEval
         const rules = this;
+        if (rules.evaluated) {
+          return { rules, rulesToHoist: false };
+        }
         const evalQueue = this._buildEvalQueue(rules);
         const maybeHoist = this._evaluateQueue(rules, evalQueue, context);
         if (isThenable(maybeHoist)) {
@@ -1488,18 +1514,52 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         }
       }
       if (passes) {
-        let newRules = await rules.eval(thisContext);
-        /**
-         * Make everything public, so that we can access these
-         * these variables in the parent scope, or when doing lookups.
-         */
-        newRules.options.rulesVisibility = {
-          Ruleset: 'public',
-          Declaration: 'public',
-          VarDeclaration: 'public',
-          Mixin: 'public'
-        };
-        outputRules.push([newRules, i]);
+        // Check for recursion: if this mixin is already in searchScope, skip it
+        // to prevent infinite loops (e.g., .recursion { .recursion(); })
+        // Uses the same mechanism as variable recursion detection
+        if (thisContext.searchScope.has(candidate)) {
+          // Recursive call detected - return empty Rules to break the loop
+          // In Less, recursive mixins without guards are allowed but should not cause infinite loops
+          const emptyRules = new Rules([]);
+          emptyRules.options.rulesVisibility = {
+            Ruleset: 'public',
+            Declaration: 'public',
+            VarDeclaration: 'public',
+            Mixin: 'public'
+          };
+          // Set parent for empty Rules too (for consistency)
+          if (rulesContext && isNode(rulesContext, 'Rules')) {
+            emptyRules.parent = rulesContext;
+          }
+          outputRules.push([emptyRules, i]);
+          continue;
+        }
+
+        // Mark this mixin as being evaluated (similar to how variables are tracked)
+        thisContext.searchScope.add(candidate);
+        try {
+          let newRules = await rules.eval(thisContext);
+          /**
+           * Make everything public, so that we can access these
+           * these variables in the parent scope, or when doing lookups.
+           */
+          newRules.options.rulesVisibility = {
+            Ruleset: 'public',
+            Declaration: 'public',
+            VarDeclaration: 'public',
+            Mixin: 'public'
+          };
+          // Set the parent of this Rules to the calling Rules context (where the mixin call is located)
+          // This allows lookups from within this mixin's Rules to traverse up to find mixins/variables
+          // defined in the calling scope
+          if (rulesContext && isNode(rulesContext, 'Rules')) {
+            newRules.parent = rulesContext;
+          }
+          outputRules.push([newRules, i]);
+        } finally {
+          // Remove from searchScope when done (allows re-evaluation in different contexts)
+          thisContext.searchScope.delete(candidate);
+        }
       }
       thisContext.rulesContext = rulesContext;
       // Restore call site index (or clear it if we're exiting the mixin)

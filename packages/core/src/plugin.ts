@@ -92,7 +92,8 @@ export abstract class AbstractPlugin implements PluginInterface {
 
   /** Default source getter */
   async getSource(absoluteFilePath: string): Promise<string> {
-    return await readFile(absoluteFilePath, 'utf8');
+    const result = await readFile(absoluteFilePath, 'utf8');
+    return result;
   }
 
   /** Gets the first match using from the filesystem that exists */

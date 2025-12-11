@@ -111,6 +111,8 @@ export abstract class Registry<
           let newOpts = options ? { ...options, readonly: readonly || r.readonly } : { readonly: readonly || r.readonly };
           newOpts.local = newLocal;
           newOpts.start = undefined;
+          // _searchRulesChildren should never search parents - only search within imported Rules
+          newOpts.searchParents = false;
           let result = r.node.find(findType, key, filterType, newOpts);
           if (result) {
             /**
@@ -462,23 +464,31 @@ export class MixinRegistry extends Registry<
 
     if (keySet?.size) {
       const [startKey, ...rest] = keySet;
+      console.log(`[DEBUG] _indexSelectorStart: Indexing mixin with startKey="${startKey}" rest=[${rest.join(', ')}] keySet=[${Array.from(keySet).join(', ')}] mixinType=${mixin.type}`);
       const existing = index.get(startKey!);
       if (existing) {
         existing.push({ value: mixin, match: rest });
+        console.log(`[DEBUG] _indexSelectorStart: Added to existing entry, total entries=${existing.length}`);
       } else {
         index.set(startKey!, [{ value: mixin, match: rest }]);
+        console.log(`[DEBUG] _indexSelectorStart: Created new entry for key="${startKey}"`);
       }
+    } else {
+      console.log(`[DEBUG] _indexSelectorStart: keySet is empty or undefined, size=${keySet?.size ?? 'undefined'}`);
     }
   }
 
   override indexPendingItems() {
+    console.log(`[DEBUG] indexPendingItems: Processing ${this.pendingItems.size} pending mixins`);
     for (const mixin of this.pendingItems) {
       if (isNode(mixin, 'Ruleset')) {
         let selector = mixin.value.selector;
         if (isNode(selector, 'Nil')) {
+          console.log(`[DEBUG] indexPendingItems: Skipping Ruleset with Nil selector`);
           continue;
         }
 
+        console.log(`[DEBUG] indexPendingItems: Processing Ruleset selectorType=${selector.type} selectorValueOf=${selector.valueOf()}`);
         if (isNode(selector, 'SelectorList')) {
           /** Selector list's selectors are individually registered */
           for (const sel of selector.value) {
@@ -491,6 +501,7 @@ export class MixinRegistry extends Registry<
         this._indexSelectorStart(mixin, mixin.keySet);
       }
     }
+    console.log(`[DEBUG] indexPendingItems: Registry keys after indexing: [${Array.from(this.index.keys()).join(', ')}]`);
     this.pendingItems.clear();
   }
 
@@ -523,11 +534,19 @@ export class MixinRegistry extends Registry<
 
     let rules: Rules | undefined = this.rules;
     let { searchParents = true, local = false, candidates = new Set() } = options ?? {};
+    let visitedRules = new Set<Rules>();
+    console.log(`[DEBUG] MixinRegistry.find: Looking up keys=[${keyList.join(', ')}] filterType=${filterType} rulesIndex=${rules?.index}`);
     while (rules) {
+      if (visitedRules.has(rules)) {
+        break;
+      }
+      visitedRules.add(rules);
       let [startKey, ...search] = keyList;
       let registry = rules.getRegistry('mixin');
       registry.indexPendingItems();
+      console.log(`[DEBUG] MixinRegistry.find: Registry keys: [${Array.from(registry.index.keys()).join(', ')}] looking for startKey="${startKey}"`);
       const existing = registry.index.get(startKey!);
+      console.log(`[DEBUG] MixinRegistry.find: Found ${existing?.length ?? 0} entries for key="${startKey}"`);
 
       if (existing) {
         for (const { value, match } of existing) {
@@ -571,8 +590,10 @@ export class MixinRegistry extends Registry<
       );
 
       if (!searchParents) {
+        console.log(`[DEBUG] MixinRegistry.find: searchParents=false, stopping search`);
         break;
       }
+      console.log(`[DEBUG] MixinRegistry.find: Traversing to parent Rules, current rulesIndex=${rules?.index}`);
       do {
         rules = rules?.parent as Rules;
         /**
@@ -581,11 +602,18 @@ export class MixinRegistry extends Registry<
          * this one.
          */
         if (rules && isNode(rules.sourceNode, 'StyleImport') && rules.sourceNode.options.type !== 'import') {
+          console.log(`[DEBUG] MixinRegistry.find: Hit import boundary, stopping`);
           rules = undefined;
           break;
         }
       } while (rules && rules.type !== 'Rules');
+      if (rules) {
+        console.log(`[DEBUG] MixinRegistry.find: Now searching in parent Rules rulesIndex=${rules.index}`);
+      } else {
+        console.log(`[DEBUG] MixinRegistry.find: No more parent Rules to search`);
+      }
     }
+    console.log(`[DEBUG] MixinRegistry.find: Final result: ${candidates.size} candidates found`);
     return candidates.size ? [...candidates] as (Mixin | Ruleset)[] : undefined;
   }
 }

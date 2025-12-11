@@ -13,6 +13,7 @@ import type { PluginInterface } from './plugin';
 import { MathMode, UnitMode } from './types';
 import * as path from 'node:path';
 import { isNode } from './tree/util/is-node';
+import { isThenable } from '@jesscss/awaitable-pipe';
 
 export interface ContextOptions {
   /** Hash classes for module output */
@@ -212,7 +213,8 @@ export class Context {
    * When doing any kind of lookup, the current node and resolved
    * nodes in the search chain are added to prevent recursion errors.
    *
-   * We use a set here because we look it up for filtering
+   * We use a set here because we look it up for filtering.
+   * Also used to track mixins currently being evaluated to prevent infinite recursion.
    */
   private _searchScope: Set<Node> | undefined;
   get searchScope() {
@@ -424,7 +426,10 @@ export class Context {
     const plugin = this.findParserPlugin(type, ext);
 
     const source = await sourceGetter.getSource!(resolvedPath);
-    const tree = await plugin.parse!(resolvedPath, source);
+    const parseResult = plugin.parse!(resolvedPath, source);
+    const tree = isThenable(parseResult)
+      ? await parseResult
+      : parseResult;
     if (tree) {
       this.sourceTrees.set(resolvedPath, tree);
       return {

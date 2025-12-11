@@ -347,15 +347,22 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             }
             break;
           case 'mixin-ruleset':
+            console.log(`[DEBUG] Reference.evalNode: mixin-ruleset lookup, resolvedTarget type=${resolvedTarget?.type} isRules=${isNode(resolvedTarget, 'Rules')} valueKey="${valueKey}"`);
             if (isNode(resolvedTarget, 'Rules')) {
+              console.log(`[DEBUG] Reference.evalNode: Looking up mixin-ruleset key="${valueKey}" rulesIndex=${resolvedTarget.index}`);
               returnVal = resolvedTarget.find('mixin', `${valueKey}`, undefined, opts);
+              console.log(`[DEBUG] Reference.evalNode: Lookup result found=${returnVal !== undefined} isArray=${Array.isArray(returnVal)}`);
+            } else {
+              console.log(`[DEBUG] Reference.evalNode: resolvedTarget is not Rules, cannot lookup mixin`);
             }
             break;
         }
         return { returnVal, valueKey };
       },
       ({ returnVal, valueKey }) => {
+        console.log(`[DEBUG] Reference.evalNode: Processing returnVal type=${typeof returnVal} isArray=${Array.isArray(returnVal)} isNode=${returnVal && 'type' in returnVal ? returnVal.type : 'N/A'}`);
         if (returnVal === undefined) {
+          console.log(`[DEBUG] Reference.evalNode: returnVal is undefined, key="${key}" valueKey="${valueKey}"`);
           if (!fallbackValue) {
             throw new ReferenceError(`"${key}" is not defined`);
           }
@@ -390,8 +397,13 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             }
           );
         } else if (isArray(returnVal)) {
-          if (returnVal.every(item => isNode(item, 'Mixin') || isNode(item, 'Ruleset'))) {
-            return cast(getFunctionFromMixins(returnVal as MixinEntry[]));
+          console.log(`[DEBUG] Reference.evalNode: returnVal is array with ${returnVal.length} items`);
+          const allValid = returnVal.every(item => isNode(item, 'Mixin') || isNode(item, 'Ruleset'));
+          console.log(`[DEBUG] Reference.evalNode: All items are Mixin/Ruleset: ${allValid}`);
+          if (allValid) {
+            const func = getFunctionFromMixins(returnVal as MixinEntry[]);
+            console.log(`[DEBUG] Reference.evalNode: getFunctionFromMixins returned type=${typeof func} isNode=${func && 'type' in func ? func.type : 'N/A'}`);
+            return cast(func);
           }
         }
         return cast(returnVal);
