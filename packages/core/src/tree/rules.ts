@@ -857,8 +857,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               // Set the index of the imported Rules to the StyleImport's index
               // so we can compare Rules indices when determining which variable was declared later
               result.index = idx;
-              // Adopt the Rules into the parent so parent chain is set up for lookups
-              rules.adopt(result);
+              // Check if this Rules came from a mixin call (has _originalParent stored)
+              const isMixinResult = (result as any)._originalParent !== undefined;
+              if (isMixinResult) {
+                // For Rules from mixin calls, don't adopt - preserve the original parent
+                // (where the mixin was defined) so lookups can traverse correctly
+                // The Rules is already in the value array, so it's part of the output
+                delete (result as any)._originalParent;
+              } else {
+                // For Rules from imports, adopt them into the parent
+                rules.adopt(result);
+              }
               rules.registerNode(result, {
                 rulesVisibility: result.options.rulesVisibility,
                 readonly: result.options.readonly
@@ -866,10 +875,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             } else {
               // For non-Rules results, adopt them to set up parent chain
               rules.adopt(result);
-              // If the result is Rules (from a mixin call), set its index and ensure parent is set
-              if (isNode(result, 'Rules')) {
-                result.index = idx;
-              }
             }
           }
           if (result.options.hoistToRoot) {
@@ -1420,6 +1425,11 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       }
       /** Create new rules, and add the candidate rules, to add to scope */
       let rules = candidate.value.rules.copy(true);
+      // Preserve the parent from the original mixin's Rules so lookups can traverse up
+      // The parent should be where the mixin was defined (source position)
+      if (candidate.value.rules.parent) {
+        rules.parent = candidate.value.rules.parent;
+      }
 
       /** Now we need to add our parameters, if any */
       let params = candidate.value.params;
@@ -1528,8 +1538,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             Mixin: 'public'
           };
           // Set parent for empty Rules too (for consistency)
-          if (rulesContext && isNode(rulesContext, 'Rules')) {
-            emptyRules.parent = rulesContext;
+          if (candidate.parent && isNode(candidate.parent, 'Rules')) {
+            emptyRules.parent = candidate.parent;
           }
           outputRules.push([emptyRules, i]);
           continue;
@@ -1549,11 +1559,29 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             VarDeclaration: 'public',
             Mixin: 'public'
           };
-          // Set the parent of this Rules to the calling Rules context (where the mixin call is located)
-          // This allows lookups from within this mixin's Rules to traverse up to find mixins/variables
-          // defined in the calling scope
-          if (rulesContext && isNode(rulesContext, 'Rules')) {
-            newRules.parent = rulesContext;
+          // In Less, lookups from within a mixin resolve from the mixin definition context,
+          // not the caller context. Set the parent to the Rules that contains the mixin definition.
+          // Prefer rules.parent (from the copied Rules) over candidate.parent, as it's more direct
+          // Store the original parent so we can preserve it (we won't call adopt for mixin results)
+          let originalParent: Rules | undefined;
+          if (rules.parent && isNode(rules.parent, 'Rules')) {
+            originalParent = rules.parent;
+          } else if (candidate.parent && isNode(candidate.parent, 'Rules')) {
+            originalParent = candidate.parent;
+          } else {
+            // Fallback: try to find the Rules parent using rulesParent helper
+            const rulesParent = candidate.rulesParent;
+            if (rulesParent) {
+              originalParent = rulesParent;
+            }
+          }
+          // Store original parent on the Rules so we can preserve it (don't adopt mixin results)
+          if (originalParent) {
+            (newRules as any)._originalParent = originalParent;
+            // Set the parent now so lookups work even before adoption check
+            newRules.parent = originalParent;
+          } else {
+            console.log(`[DEBUG] getFunctionFromMixins: Could not find originalParent for mixin, rules.parent=${rules.parent?.type}, candidate.parent=${candidate.parent?.type}, candidate.rulesParent=${candidate.rulesParent?.type}`);
           }
           outputRules.push([newRules, i]);
         } finally {
