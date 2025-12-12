@@ -185,12 +185,21 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
    * should never resolve to itself
    */
   override evalNode(context: Context): MaybePromise<Node> {
+    // Check if this Reference is being evaluated while we're in a mixin evaluation context
+    // (i.e., while evaluating a mixin's rules, we encounter a Reference that would call back)
+    if (context.isEvaluatingReferenceInContext(this)) {
+      // Recursion detected - this call is being evaluated again in the same mixin context
+      // Throw an error that can be caught to exclude this match
+      throw new ReferenceError(`Recursive mixin call detected`);
+    }
+    // Mark this Reference as being evaluated in the current mixin context (if we're in one)
+    context.startEvaluatingReferenceInContext(this);
     let { target, key } = this.value;
     let { type, fallbackValue, filter: originalFilter } = this.options;
     // Track reference chain for clearing remainders at outermost level
     context.pushReference();
     let resolvedTarget = target ? target.eval(context) : this.rulesParent ?? context.rulesContext;
-    return pipe(
+    const result = pipe(
       () => {
         if (isThenable(resolvedTarget)) {
           return (resolvedTarget as Promise<any>).then(result => result);
@@ -473,6 +482,22 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         return result;
       }
     );
+    // Handle both sync and async results to ensure cleanup
+    if (isThenable(result)) {
+      return result.then(
+        (res) => {
+          context.stopEvaluatingReference(this);
+          return res;
+        },
+        (err) => {
+          context.stopEvaluatingReference(this);
+          throw err;
+        }
+      );
+    } else {
+      context.stopEvaluatingReference(this);
+      return result;
+    }
   }
 }
 

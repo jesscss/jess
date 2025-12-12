@@ -5,6 +5,23 @@ This file is updated daily with the most recent changes and improvements made to
 **Note**: Most recent changes are always at the top. Add new entries with the current date (e.g., `## 2025-Dec-9`) at the top of this file. Make sure we query a live date service to get current date.
 
 
+## 2025-Dec-11
+
+- More mixin debugging. I think my plan now for handling recursion is this:
+
+1. When a call node starts evaluation, add the call's sourceNode to call stack (in context).
+2. When a reference starts / ends, add to reference stack (in context).
+3. When a mixin match is found, evaluate it.
+4. If the call with the same sourceNode is called (with same stringified params?), detect a recursion and throw an error.
+5. Error is bubbled up to mixin rules evaluation, and that is removed as a candidate.
+6. In the case of static rules / ruleset, mark the current frames. If the last frame of the candidate matches the current frame stack, remove as a candidate.
+
+So that we don't error too early, we might need to parse differently, because the call has to know if rules are going to be just used for lookup,
+or if rules are going to be a target for the next reference. Maybe we can do this with the call stack? Or maybe actually in the rules.ts. It's adding the rules as a child of another rules that's the only problem... but by then, its
+too late, because the mixin will have returned multiple matches potentially...
+
+So maybe all we can do is the error thrown at the call level.
+
 ## 2025-Dec-10
 
 ### Mixin Lookup Debugging

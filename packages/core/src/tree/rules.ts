@@ -325,6 +325,47 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return;
     }
 
+    // #region agent log - check for circular references in Rules
+    const rulesInValue = items.filter(n => n.type === 'Rules') as Rules[];
+    const containsSelf = rulesInValue.some(r => r === this);
+    if (containsSelf) {
+      debugLog('rules.ts:316', 'Rules contains itself in value array!', {
+        rulesIndex: this.index,
+        rulesInValueCount: rulesInValue.length,
+        rulesInValueIndices: rulesInValue.map(r => r.index),
+        valueLength: value.length,
+        itemsLength: items.length,
+        note: 'checking why Rules contains itself'
+      }, 'H');
+    }
+    // Check for circular references: if any child Rules contains this Rules
+    for (const childRules of rulesInValue) {
+      const childRulesValue = childRules.value;
+      const childContainsThis = childRulesValue.some(n => n === this);
+      if (childContainsThis) {
+        debugLog('rules.ts:316', 'Child Rules contains parent Rules (circular reference)!', {
+          parentRulesIndex: this.index,
+          childRulesIndex: childRules.index,
+          childRulesValueLength: childRulesValue.length,
+          note: 'child Rules contains parent Rules, creating circular reference'
+        }, 'H');
+      }
+      // Check if child Rules contains any Rules that contains this Rules (longer cycle)
+      const rulesInChild = childRulesValue.filter(n => n.type === 'Rules') as Rules[];
+      for (const grandchildRules of rulesInChild) {
+        const grandchildContainsThis = grandchildRules.value.some(n => n === this);
+        if (grandchildContainsThis) {
+          debugLog('rules.ts:316', 'Grandchild Rules contains ancestor Rules (circular reference)!', {
+            parentRulesIndex: this.index,
+            childRulesIndex: childRules.index,
+            grandchildRulesIndex: grandchildRules.index,
+            note: 'grandchild Rules contains ancestor Rules, creating circular reference'
+          }, 'H');
+        }
+      }
+    }
+    // #endregion
+
     // No spacing flags; writer.capture is used where needed
 
     for (let idx = 0; idx < items.length; idx++) {
@@ -1435,10 +1476,23 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         continue;
       }
       if (isNode(candidate, 'Ruleset')) {
-        // For Rulesets, use their rules directly without copying
-        // (Rulesets don't have parameters like Mixins, so no need to copy)
-        hasMatch = true;
-        outputRules.push([(candidate as Ruleset).value.rules, i]);
+        // For Rulesets, check if their Rules are already being evaluated (recursion detection)
+        const rulesetRules = (candidate as Ruleset).value.rules;
+        if (thisContext.isEvaluatingMixinRules(rulesetRules)) {
+          // Recursion detected - skip this candidate
+          continue;
+        }
+        // Mark as being evaluated
+        thisContext.startEvaluatingMixinRules(rulesetRules);
+        try {
+          // For Rulesets, use their rules directly without copying
+          // (Rulesets don't have parameters like Mixins, so no need to copy)
+          hasMatch = true;
+          outputRules.push([rulesetRules, i]);
+        } finally {
+          // Note: We don't stop evaluating here because the Rules will be evaluated later
+          // We'll stop when the Rules evaluation completes
+        }
         continue;
       }
       /** Create new rules, and add the candidate rules, to add to scope */
@@ -1557,23 +1611,15 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         }
       }
       if (passes) {
-        // Check for recursion: if this mixin is already in searchScope, skip it
-        // to prevent infinite loops (e.g., .recursion { .recursion(); })
-        // Uses the same mechanism as variable recursion detection
+      // Check for recursion: if this mixin is already in searchScope, skip it
+      // to prevent infinite loops (e.g., .recursion { .recursion(); })
+      // Uses the same mechanism as variable recursion detection
         if (thisContext.searchScope.has(candidate)) {
-          // #region agent log
+        // #region agent log
           debugLog('rules.ts:1541', 'Skipping candidate already in searchScope', { candidateType: candidate.type, rulesIndex: rules.index }, 'J');
           // #endregion
-          // Recursive call detected - return empty Rules to break the loop
-          // In Less, recursive mixins without guards are allowed but should not cause infinite loops
-          const emptyRules = new Rules([]);
-          emptyRules.options.rulesVisibility = {
-            Ruleset: 'public',
-            Declaration: 'public',
-            VarDeclaration: 'public',
-            Mixin: 'public'
-          };
-          outputRules.push([emptyRules, i]);
+          // Recursive call detected - skip this candidate (don't add to outputRules)
+          // This allows other candidates to still match
           continue;
         }
 
@@ -1618,10 +1664,21 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             Mixin: 'public'
           };
           outputRules.push([newRules, i]);
+        } catch (error) {
+          // If recursion was detected (ReferenceError), skip this candidate
+          // This allows other candidates to still match
+          if (error instanceof ReferenceError && (error as any).message?.includes('Recursive mixin call')) {
+            // Skip this candidate - recursion detected
+            continue;
+          }
+          // Re-throw other errors
+          throw error;
         } finally {
           // Remove from searchScope when done (allows re-evaluation in different contexts)
           thisContext.searchScope.delete(candidate);
           thisContext.searchScope.delete(rules);
+          // Stop tracking this Rules as being evaluated
+          thisContext.stopEvaluatingMixinRules(rules);
         }
       }
       thisContext.rulesContext = rulesContext;
@@ -1637,8 +1694,69 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      * their original order
      */
     let rulesArr = outputRules.sort((a, b) => a[1] - b[1]).map(r => r[0]);
+    // #region agent log - check for circular references before creating output
+    const rulesArrIndices = rulesArr.map(r => r.index);
+    debugLog('rules.ts:1639', 'Creating output Rules', {
+      rulesArrLength: rulesArr.length,
+      rulesArrIndices,
+      note: 'checking for potential circular references'
+    }, 'H');
+    // #endregion
     /** Create a rules wrapper */
     let output = new Rules(rulesArr);
+    // #region agent log - check for circular references in output Rules
+    const rulesInOutput = output.value.filter(n => n.type === 'Rules') as Rules[];
+    const anyContainsOutput = rulesInOutput.some(r => r === output);
+    if (anyContainsOutput) {
+      debugLog('rules.ts:1641', 'Output Rules contains itself!', {
+        outputIndex: output.index,
+        rulesInOutputCount: rulesInOutput.length,
+        rulesInOutputIndices: rulesInOutput.map(r => r.index),
+        note: 'output Rules contains itself in value array'
+      }, 'H');
+    }
+    // Check if any Rules in output contains output (direct or indirect)
+    for (const childRules of rulesInOutput) {
+      const childRulesValue = childRules.value;
+      const childContainsOutput = childRulesValue.some(n => n === output);
+      if (childContainsOutput) {
+        debugLog('rules.ts:1641', 'Child Rules contains output Rules (circular reference)!', {
+          outputIndex: output.index,
+          childRulesIndex: childRules.index,
+          note: 'a Rules in output.value contains output itself'
+        }, 'H');
+      }
+      // Check for longer cycles: child Rules contains another Rules that contains output
+      const rulesInChild = childRulesValue.filter(n => n.type === 'Rules') as Rules[];
+      for (const grandchildRules of rulesInChild) {
+        const grandchildContainsOutput = grandchildRules.value.some(n => n === output);
+        if (grandchildContainsOutput) {
+          debugLog('rules.ts:1641', 'Grandchild Rules contains output Rules (circular reference)!', {
+            outputIndex: output.index,
+            childRulesIndex: childRules.index,
+            grandchildRulesIndex: grandchildRules.index,
+            note: 'grandchild Rules contains output Rules, creating circular reference'
+          }, 'H');
+        }
+      }
+    }
+    // Check for circular references between Rules in output (A contains B, B contains A)
+    for (let i = 0; i < rulesInOutput.length; i++) {
+      for (let j = i + 1; j < rulesInOutput.length; j++) {
+        const rulesA = rulesInOutput[i]!;
+        const rulesB = rulesInOutput[j]!;
+        const aContainsB = rulesA.value.some(n => n === rulesB);
+        const bContainsA = rulesB.value.some(n => n === rulesA);
+        if (aContainsB && bContainsA) {
+          debugLog('rules.ts:1641', 'Circular reference between Rules in output!', {
+            rulesAIndex: rulesA.index,
+            rulesBIndex: rulesB.index,
+            note: 'Rules A contains B and B contains A, creating circular reference'
+          }, 'H');
+        }
+      }
+    }
+    // #endregion
 
     // #region agent log
     // Check what's in the output Rules' registry
