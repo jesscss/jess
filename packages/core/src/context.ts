@@ -5,7 +5,8 @@ import type {
   ImportOptions,
   Node,
   Any,
-  Selector
+  Selector,
+  Mixin
 } from './tree';
 import { ExtendRootRegistry } from './tree/util/extend-roots';
 import { type Operator } from './tree/util/calculate';
@@ -246,6 +247,35 @@ export class Context {
    * should be performed or not.
    */
   calcFrames: boolean[] = [];
+
+  /**
+   * Track matched keys from partial matches for chained calls like .jo.ki()
+   * Maps Rulesets/Mixins to their matched keys so far (e.g., { Ruleset: [".jo"] })
+   * When looking up the next key, we accumulate it and use registry lookup to verify the match
+   */
+  private _partialMatchKeys: Map<Ruleset | Mixin, string[]> | undefined;
+  get partialMatchKeys() {
+    return (this._partialMatchKeys ??= new Map());
+  }
+
+  /**
+   * Stack to track reference call chain for clearing matched keys at outermost level
+   */
+  private _referenceStack: number = 0;
+  get referenceStack() {
+    return this._referenceStack;
+  }
+
+  pushReference() {
+    this._referenceStack++;
+  }
+
+  popReference() {
+    this._referenceStack--;
+    if (this._referenceStack === 0 && this._partialMatchKeys) {
+      this._partialMatchKeys.clear();
+    }
+  }
 
   /**
    * We push a boolean to this array when entering parens call

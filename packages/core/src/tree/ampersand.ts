@@ -138,6 +138,40 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
     if ((appendValue ?? context.opts.collapseNesting) || this.options.hoistToRoot) {
       // Use the stored selector if available, otherwise fall back to frame selector
       let selector = storedSelector ? storedSelector.copy(true) : atIndex(context.rulesetFrames, -1)?.selector.copy(true);
+      // #region agent log
+      if (selector) {
+        const resolvedSelector = selector.valueOf();
+        const isResolvingToChips = resolvedSelector === '.chips' || resolvedSelector?.endsWith('.chips');
+        if (isResolvingToChips) {
+          const topFrame = atIndex(context.rulesetFrames, -1);
+          const topFrameSelector = topFrame?.selector?.valueOf();
+          const framesInfo = context.rulesetFrames.map((f, i) => ({
+            index: i,
+            selector: f.selector?.valueOf(),
+            rulesetIndex: f.index
+          }));
+          const { appendFileSync } = require('node:fs');
+          const { join } = require('node:path');
+          const logPath = join(__dirname, '../../../../.cursor/debug.log');
+          appendFileSync(logPath, JSON.stringify({
+            location: 'ampersand.ts:140',
+            message: 'Ampersand resolving to .chips',
+            data: {
+              resolvedSelector,
+              topFrameSelector,
+              storedSelector: storedSelector?.valueOf(),
+              framesInfo,
+              rulesetFramesLength: context.rulesetFrames.length,
+              note: 'tracking if ampersand resolves to .chips causing duplicate'
+            },
+            timestamp: Date.now(),
+            sessionId: 'debug-session',
+            runId: 'run1',
+            hypothesisId: 'H'
+          }) + '\n');
+        }
+      }
+      // #endregion
       if (!selector) {
         return new Nil();
       }

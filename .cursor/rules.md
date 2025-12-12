@@ -53,3 +53,15 @@ When investigating bugs or failures, always use scientific principles to underst
 - Make targeted fixes that address the root cause
 - Verify your understanding before making changes, but don't overthink - test and iterate
 
+## Type Safety and Code Quality
+
+**NEVER**:
+- Use `as any` casts to work around type errors. If a property belongs on a type, add it to the type definition. Only use type casts when absolutely necessary, and prefer specific type casts (e.g., `as Set<Rules>`) over `as any`.
+- Use inline type imports (e.g., `import('./mixin').Mixin`). Always import types at the top of the file using standard import syntax.
+
+**DO**:
+- Add properties to type definitions when they're needed
+- Import types at the top of the file
+- Use specific type casts when necessary (e.g., `as Set<Rules>`), but prefer adding to type definitions
+- **Lazily initialize collections**: Use lazy initialization patterns like `(foo ??= new Map()).has()` or `(foo ??= new Set()).add()` for Sets, Maps, Arrays, and other objects unless it's guaranteed that the code path/function will always create that object, in which case initialize it at the top of the function.
+

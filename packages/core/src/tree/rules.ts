@@ -26,8 +26,29 @@ import { Nil } from './nil';
 import { VarDeclaration } from './declaration-var';
 import { Any } from './any';
 import { List } from './list';
+import { appendFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const { isArray } = Array;
+
+// Debug logging helper
+const debugLog = (location: string, message: string, data: any, hypothesisId: string) => {
+  try {
+    const logPath = join(__dirname, '../../../../.cursor/debug.log');
+    const logEntry = JSON.stringify({
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+      sessionId: 'debug-session',
+      runId: 'run1',
+      hypothesisId
+    }) + '\n';
+    appendFileSync(logPath, logEntry, 'utf8');
+  } catch (e) {
+    // Silently fail if file write doesn't work
+  }
+};
 
 export const enum Priority {
   None = 0,
@@ -857,17 +878,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               // Set the index of the imported Rules to the StyleImport's index
               // so we can compare Rules indices when determining which variable was declared later
               result.index = idx;
-              // Check if this Rules came from a mixin call (has _originalParent stored)
-              const isMixinResult = (result as any)._originalParent !== undefined;
-              if (isMixinResult) {
-                // For Rules from mixin calls, don't adopt - preserve the original parent
-                // (where the mixin was defined) so lookups can traverse correctly
-                // The Rules is already in the value array, so it's part of the output
-                delete (result as any)._originalParent;
-              } else {
-                // For Rules from imports, adopt them into the parent
-                rules.adopt(result);
-              }
+              rules.adopt(result);
               rules.registerNode(result, {
                 rulesVisibility: result.options.rulesVisibility,
                 readonly: result.options.readonly
@@ -1233,7 +1244,7 @@ interface RulesEntry {
  * Right now, the only nodes that can be registered to the scope for lookups
  */
 // type ScopeNodes = Declaration | VarDeclaration | Mixin | Ruleset | Rules
-export type MixinEntry = Mixin | Rules;
+export type MixinEntry = Mixin | Rules | Ruleset;
 
 /**
  * Returns a plain JS function for calling a set of mixins
@@ -1423,7 +1434,29 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         outputRules.push([candidate, i]);
         continue;
       }
+      if (isNode(candidate, 'Ruleset')) {
+        // For Rulesets, use their rules directly without copying
+        // (Rulesets don't have parameters like Mixins, so no need to copy)
+        hasMatch = true;
+        outputRules.push([(candidate as Ruleset).value.rules, i]);
+        continue;
+      }
       /** Create new rules, and add the candidate rules, to add to scope */
+      // #region agent log - track when .chips Ruleset is being copied
+      const candidateSelector = isNode(candidate, 'Ruleset') ? (candidate as Ruleset).selector?.valueOf() : undefined;
+      const isChipsCandidate = candidateSelector === '.chips' || (typeof candidateSelector === 'string' && candidateSelector.includes('.chips'));
+      if (isChipsCandidate) {
+        const stackTrace = new Error().stack;
+        const callerInfo = stackTrace?.split('\n').slice(1, 6).join(' | ') || 'no-stack';
+        debugLog('rules.ts:1438', 'Copying rules from .chips Ruleset candidate', {
+          candidateSelector,
+          candidateIndex: (candidate as any).index,
+          candidateEvaluated: (candidate as any).evaluated,
+          callerInfo,
+          note: 'tracking when .chips Ruleset is found as candidate and its rules are copied'
+        }, 'H');
+      }
+      // #endregion
       let rules = candidate.value.rules.copy(true);
       // Preserve the parent from the original mixin's Rules so lookups can traverse up
       // The parent should be where the mixin was defined (source position)
@@ -1528,6 +1561,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         // to prevent infinite loops (e.g., .recursion { .recursion(); })
         // Uses the same mechanism as variable recursion detection
         if (thisContext.searchScope.has(candidate)) {
+          // #region agent log
+          debugLog('rules.ts:1541', 'Skipping candidate already in searchScope', { candidateType: candidate.type, rulesIndex: rules.index }, 'J');
+          // #endregion
           // Recursive call detected - return empty Rules to break the loop
           // In Less, recursive mixins without guards are allowed but should not cause infinite loops
           const emptyRules = new Rules([]);
@@ -1537,18 +1573,40 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             VarDeclaration: 'public',
             Mixin: 'public'
           };
-          // Set parent for empty Rules too (for consistency)
-          if (candidate.parent && isNode(candidate.parent, 'Rules')) {
-            emptyRules.parent = candidate.parent;
-          }
           outputRules.push([emptyRules, i]);
           continue;
         }
 
         // Mark this mixin as being evaluated (similar to how variables are tracked)
         thisContext.searchScope.add(candidate);
+        // #region agent log
+        const candidateSelector = isNode(candidate, 'Ruleset') ? (candidate as Ruleset).selector?.valueOf() : undefined;
+        const candidateRulesetIndex = isNode(candidate, 'Ruleset') ? (candidate as Ruleset).index : undefined;
+        const chipsInFrames = thisContext.rulesetFrames.filter(f => f.index === 98);
+        const candidateAsRuleset = isNode(candidate, 'Ruleset') ? candidate as Ruleset : null;
+        const chipsInFramesInfo = chipsInFrames.map((f, i) => ({
+          index: i,
+          frameIndex: f.index,
+          selector: f.selector?.valueOf(),
+          isSameRef: candidateAsRuleset ? f === candidateAsRuleset : false
+        }));
+        debugLog('rules.ts:1575', 'Evaluating candidate', { candidateType: candidate.type, candidateSelector, candidateRulesetIndex, rulesIndex: rules.index, searchScopeSize: thisContext.searchScope.size, chipsInFramesCount: chipsInFrames.length, chipsInFramesInfo, note: 'checking if .chips is already in frames when evaluating' }, 'J');
+        // #endregion
         try {
           let newRules = await rules.eval(thisContext);
+          // #region agent log
+          const mixinRegistryAfterEval = newRules.getRegistry('mixin');
+          mixinRegistryAfterEval.indexPendingItems();
+          const registryKeysAfterEval = Array.from(mixinRegistryAfterEval.index.keys());
+          // Check what nodes are in the Rules value array
+          const valueNodeTypes = newRules.value.map((node, idx) => ({
+            idx,
+            type: node.type,
+            selector: node.type === 'Ruleset' ? (node as any).value?.selector?.valueOf() : undefined,
+            keySet: node.type === 'Ruleset' ? ((node as any).value?.selector?.keySet ? Array.from((node as any).value.selector.keySet) : undefined) : undefined
+          }));
+          debugLog('rules.ts:1552', 'After rules.eval in getFunctionFromMixins', { candidateType: candidate.type, newRulesIndex: newRules.index, registryKeys: registryKeysAfterEval, rulesValueLength: newRules.value.length, valueNodeTypes }, 'F');
+          // #endregion
           /**
            * Make everything public, so that we can access these
            * these variables in the parent scope, or when doing lookups.
@@ -1559,35 +1617,11 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             VarDeclaration: 'public',
             Mixin: 'public'
           };
-          // In Less, lookups from within a mixin resolve from the mixin definition context,
-          // not the caller context. Set the parent to the Rules that contains the mixin definition.
-          // Prefer rules.parent (from the copied Rules) over candidate.parent, as it's more direct
-          // Store the original parent so we can preserve it (we won't call adopt for mixin results)
-          let originalParent: Rules | undefined;
-          if (rules.parent && isNode(rules.parent, 'Rules')) {
-            originalParent = rules.parent;
-          } else if (candidate.parent && isNode(candidate.parent, 'Rules')) {
-            originalParent = candidate.parent;
-          } else {
-            // Fallback: try to find the Rules parent using rulesParent helper
-            const rulesParent = candidate.rulesParent;
-            if (rulesParent) {
-              originalParent = rulesParent;
-            }
-          }
-          // Store original parent on the Rules so we can preserve it (don't adopt mixin results)
-          if (originalParent) {
-            (newRules as any)._originalParent = originalParent;
-            // Set the parent now so lookups work even before adoption check
-            newRules.parent = originalParent;
-            console.log(`[DEBUG] getFunctionFromMixins: Set newRules.parent to originalParent, rulesIndex=${originalParent.index}, newRules.index=${newRules.index}`);
-          } else {
-            console.log(`[DEBUG] getFunctionFromMixins: Could not find originalParent for mixin, rules.parent=${rules.parent?.type}, candidate.parent=${candidate.parent?.type}, candidate.rulesParent=${candidate.rulesParent?.type}`);
-          }
           outputRules.push([newRules, i]);
         } finally {
           // Remove from searchScope when done (allows re-evaluation in different contexts)
           thisContext.searchScope.delete(candidate);
+          thisContext.searchScope.delete(rules);
         }
       }
       thisContext.rulesContext = rulesContext;
@@ -1605,6 +1639,24 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     let rulesArr = outputRules.sort((a, b) => a[1] - b[1]).map(r => r[0]);
     /** Create a rules wrapper */
     let output = new Rules(rulesArr);
+
+    // #region agent log
+    // Check what's in the output Rules' registry
+    if (rulesArr.length > 0) {
+      const firstRule = rulesArr[0];
+      if (firstRule && isNode(firstRule, 'Rules')) {
+        const firstRuleMixinRegistry = firstRule.getRegistry('mixin');
+        firstRuleMixinRegistry.indexPendingItems();
+        const firstRuleRegistryKeys = Array.from(firstRuleMixinRegistry.index.keys());
+        debugLog('rules.ts:1612', 'Output Rules created, checking first rule registry', { firstRuleIndex: firstRule.index, firstRuleRegistryKeys, outputRulesCount: rulesArr.length }, 'F');
+      }
+    }
+    // Check what's in the output Rules' registry (it should aggregate from children)
+    const outputMixinRegistry = output.getRegistry('mixin');
+    outputMixinRegistry.indexPendingItems();
+    const outputRegistryKeys = Array.from(outputMixinRegistry.index.keys());
+    debugLog('rules.ts:1625', 'Output Rules registry', { outputIndex: output.index, outputRegistryKeys }, 'F');
+    // #endregion
 
     /** Now push all rules into the rules value */
     if (this instanceof Context) {

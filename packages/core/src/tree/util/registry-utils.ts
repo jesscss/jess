@@ -8,9 +8,33 @@ import type { Node } from '../node';
 import type { JsFunction } from '../js-function';
 import type { Func } from '../function';
 import type { Declaration } from '../declaration';
+import type { Context } from '../../context';
 import { atIndex } from './collections';
+import { appendFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const { isArray } = Array;
+
+// Debug logging helper
+const debugLog = (location: string, message: string, data: any, hypothesisId: string) => {
+  try {
+    // registry-utils.ts is in tree/util/, so we need one more level up than reference.ts/rules.ts
+    const logPath = join(__dirname, '../../../../../.cursor/debug.log');
+    const logEntry = JSON.stringify({
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+      sessionId: 'debug-session',
+      runId: 'run1',
+      hypothesisId
+    }) + '\n';
+    appendFileSync(logPath, logEntry, 'utf8');
+  } catch (e) {
+    // Log error to console to see if writes are failing
+    console.error(`[DEBUG LOG ERROR] ${location}: ${message}`, e);
+  }
+};
 
 export type DeclarationFindOptions = {
   filter?: (n: Node) => boolean;
@@ -24,7 +48,9 @@ export type DeclarationFindOptions = {
 };
 
 export type FindOptions = DeclarationFindOptions & {
-  [key: string]: any;
+  childFilterType?: 'Mixin' | 'Ruleset' | undefined;
+  context?: Context;
+  searchedRules?: Set<Rules>;
 };
 
 export abstract class Registry<
@@ -68,8 +94,14 @@ export abstract class Registry<
       candidates = new Set(),
       start,
       readonly,
-      local
+      local,
+      childFilterType,
+      context
     } = options;
+    // childFilterType is the filterType to use when calling child Rules.find
+    // If not provided, use filterType (for backward compatibility with DeclarationRegistry)
+    // Note: childFilterType can be undefined to mean "don't filter" (accept both Mixin and Ruleset)
+    const actualChildFilterType = 'childFilterType' in options ? childFilterType : filterType;
     let firstValue = candidates.values().next().value;
     if (rules._rulesSet) {
       let { rulesSet } = rules;
@@ -104,8 +136,14 @@ export abstract class Registry<
 
       let length = rulesSet.length;
       if (length) {
+        // Get searchedRules from options to prevent re-searching the same Rules nodes
+        const searchedRules = options?.searchedRules;
         for (let i = length - 1; i >= 0; i--) {
           let r = rulesSet.at(i)!;
+          // Skip if we've already searched this Rules node to prevent infinite recursion
+          if (searchedRules && searchedRules.has(r.node)) {
+            continue;
+          }
           /** Locals can be searched once but not twice */
           let newLocal = local || Boolean(r.node.options?.local);
           let newOpts = options ? { ...options, readonly: readonly || r.readonly } : { readonly: readonly || r.readonly };
@@ -113,7 +151,12 @@ export abstract class Registry<
           newOpts.start = undefined;
           // _searchRulesChildren should never search parents - only search within imported Rules
           newOpts.searchParents = false;
-          let result = r.node.find(findType, key, filterType, newOpts);
+          if (context) {
+            newOpts.context = context;
+          }
+          // Use actualChildFilterType which may be undefined for mixin-ruleset lookups
+          // filterType parameter is used to SELECT registry, actualChildFilterType is used to FILTER results
+          let result = r.node.find(findType, key, actualChildFilterType as any, newOpts);
           if (result) {
             /**
              * If it's a public declaration, and it's the lower-most declaration,
@@ -138,6 +181,41 @@ export abstract class Registry<
              * we're looking for a mixin, then we need to keep searching.
              */
             options.readonly ||= newOpts.readonly;
+            if (isArray(result)) {
+              for (const node of result) {
+                candidates.add(node);
+              }
+            } else {
+              candidates.add(result);
+            }
+          }
+        }
+      }
+    }
+    // Also search direct child Rules nodes (not just rulesSet)
+    // This handles cases like wrapper Rules from getFunctionFromMixins
+    // where child Rules are in rules.value, not in rulesSet
+    const searchedRules = options?.searchedRules;
+    if (rules.value) {
+      for (const childNode of rules.value) {
+        if (isNode(childNode, 'Rules')) {
+          const childRules = childNode as Rules;
+          // Skip if we've already searched this Rules node to prevent infinite recursion
+          if (searchedRules && searchedRules.has(childRules)) {
+            continue;
+          }
+          // Search in the child Rules - this will trigger indexing via find()
+          const newOpts = options ? { ...options, readonly: readonly } : { readonly: readonly };
+          newOpts.searchParents = false;
+          newOpts.local = local;
+          if (context) {
+            newOpts.context = context;
+          }
+          newOpts.start = undefined;
+          // Use actualChildFilterType which may be undefined for mixin-ruleset lookups
+          // filterType parameter is used to SELECT registry, actualChildFilterType is used to FILTER results
+          const result = childRules.find(findType, key, actualChildFilterType as any, newOpts);
+          if (result) {
             if (isArray(result)) {
               for (const node of result) {
                 candidates.add(node);
@@ -459,56 +537,233 @@ export class MixinRegistry extends Registry<
   // }
 
   private _indexSelectorStart(mixin: Ruleset | Mixin, keySet: Set<string>) {
-    // const keyList = this.getSimpleKeyList(selector);
     const index = this.index;
 
     if (keySet?.size) {
-      const [startKey, ...rest] = keySet;
-      console.log(`[DEBUG] _indexSelectorStart: Indexing mixin with startKey="${startKey}" rest=[${rest.join(', ')}] keySet=[${Array.from(keySet).join(', ')}] mixinType=${mixin.type}`);
+      // Filter out non-indexable selectors
+      // Universal selectors (*) and pseudo-selectors (:hover, :before, etc.) should not be indexed
+      const indexableKeys = Array.from(keySet).filter((key) => {
+        return typeof key === 'string' && !key.startsWith('*') && !key.startsWith(':');
+      });
+
+      if (indexableKeys.length === 0) {
+        return; // Nothing to index
+      }
+
+      const [startKey, ...rest] = indexableKeys;
+      // #region agent log
+      debugLog('registry-utils.ts:553', 'Indexing mixin/ruleset', { startKey, rest, selector: isNode(mixin, 'Ruleset') ? (mixin as Ruleset).value.selector?.valueOf() : undefined, mixinType: mixin.type, rulesIndex: this.rules.index }, 'F');
+      // #endregion
       const existing = index.get(startKey!);
       if (existing) {
         existing.push({ value: mixin, match: rest });
-        console.log(`[DEBUG] _indexSelectorStart: Added to existing entry, total entries=${existing.length}`);
       } else {
         index.set(startKey!, [{ value: mixin, match: rest }]);
-        console.log(`[DEBUG] _indexSelectorStart: Created new entry for key="${startKey}"`);
       }
-    } else {
-      console.log(`[DEBUG] _indexSelectorStart: keySet is empty or undefined, size=${keySet?.size ?? 'undefined'}`);
     }
   }
 
   override indexPendingItems() {
-    console.log(`[DEBUG] indexPendingItems: Processing ${this.pendingItems.size} pending mixins`);
     for (const mixin of this.pendingItems) {
       if (isNode(mixin, 'Ruleset')) {
         let selector = mixin.value.selector;
         if (isNode(selector, 'Nil')) {
-          console.log(`[DEBUG] indexPendingItems: Skipping Ruleset with Nil selector`);
           continue;
         }
-
-        console.log(`[DEBUG] indexPendingItems: Processing Ruleset selectorType=${selector.type} selectorValueOf=${selector.valueOf()}`);
         if (isNode(selector, 'SelectorList')) {
           /** Selector list's selectors are individually registered */
           for (const sel of selector.value) {
+            // #region agent log
+            const keySetArray = Array.from(sel.keySet);
+            debugLog('registry-utils.ts:576', 'Indexing SelectorList selector', { selectorValueOf: sel.valueOf(), keySet: keySetArray, rulesetSelector: selector.valueOf() }, 'H');
+            // #endregion
             this._indexSelectorStart(mixin, sel.keySet);
           }
         } else {
+          // #region agent log
+          const keySetArray = Array.from(selector.keySet);
+          debugLog('registry-utils.ts:582', 'Indexing single selector', { selectorValueOf: selector.valueOf(), keySet: keySetArray, rulesetSelector: selector.valueOf(), mixinParent: mixin.parent?.type, mixinParentSelector: isNode(mixin.parent, 'Ruleset') ? (mixin.parent as any).value?.selector?.valueOf() : undefined }, 'H');
+          // #endregion
           this._indexSelectorStart(mixin, selector.keySet);
         }
       } else {
+        // #region agent log
+        const keySetArray = Array.from(mixin.keySet);
+        debugLog('registry-utils.ts:588', 'Indexing Mixin', { keySet: keySetArray }, 'H');
+        // #endregion
         this._indexSelectorStart(mixin, mixin.keySet);
       }
     }
-    console.log(`[DEBUG] indexPendingItems: Registry keys after indexing: [${Array.from(this.index.keys()).join(', ')}]`);
     this.pendingItems.clear();
   }
 
   /**
-   * Find candidate mixins (or rulesets, or both) that might match the target selector
+   * Check if an entry matches the search criteria.
+   * Handles exact matches, partial matches (compound selector completion), and recursive searches.
+   * This consolidates the matching logic to avoid duplication.
+   */
+  private _checkEntryMatch(
+    value: Mixin | Ruleset,
+    match: string[],
+    startKey: string,
+    search: string[],
+    filterType: 'Mixin' | 'Ruleset' | undefined,
+    candidates: Set<Mixin | Ruleset>,
+    options?: FindOptions
+  ): boolean {
+    // Apply filter if provided (e.g., to exclude nodes in searchScope)
+    if (options?.filter && !options.filter(value)) {
+      return false;
+    }
+
+    // For mixin-ruleset lookups (filterType is undefined), accept both Mixin and Ruleset types
+    // When filterType is 'Mixin' or 'Ruleset', filter to that specific type only
+    if (filterType && value.type !== filterType) {
+      return false;
+    }
+
+    // Exact match: all match keys match all search keys
+    if (arraysEqual(match, search)) {
+      candidates.add(value);
+      return true;
+    }
+
+    // Compound selector completion: searching for a single key (search is empty) and we found a match with additional keys.
+    // This handles cases like searching for ".jo" when ".jo.ki" exists.
+    // The Ruleset can be called to get a Rules node, and then ".ki" can be looked up in that Rules node.
+    // This supports compound selector completion: .jo.ki() matches .jo { .ki {} }, .jo.ki {}, etc.
+    // Only match if the match array contains actual selectors (starting with . or #), not universal selectors (*) or combinators
+    if (search.length === 0 && match.length > 0 && isNode(value, 'Ruleset')) {
+      // Check if match array contains actual selectors (not just universal selectors or combinators)
+      const hasActualSelectors = match.some(key => typeof key === 'string' && (key.startsWith('.') || key.startsWith('#')));
+      if (hasActualSelectors && !candidates.has(value)) {
+        // #region agent log
+        const selector = isNode(value, 'Ruleset') ? (value as Ruleset).value.selector : undefined;
+        const selectorValueOf = selector && !isNode(selector, 'Nil') ? selector.valueOf() : undefined;
+        const selectorKeySet = selector && !isNode(selector, 'Nil') ? Array.from(selector.keySet) : [];
+        const selectorType = selector && !isNode(selector, 'Nil') ? selector.type : undefined;
+        const rulesetParent = value.parent;
+        const rulesetParentType = rulesetParent?.type;
+        const rulesetParentSelector = isNode(rulesetParent, 'Ruleset') ? (rulesetParent as Ruleset).value.selector && !isNode((rulesetParent as Ruleset).value.selector, 'Nil') ? (rulesetParent as Ruleset).value.selector.valueOf() : undefined : undefined;
+        // Check if selector is a ComplexSelector and what its components are
+        const selectorComponents = selector && !isNode(selector, 'Nil') && 'value' in selector ? (selector as any).value : undefined;
+        const selectorComponentTypes = Array.isArray(selectorComponents) ? selectorComponents.map((c: any) => c?.type) : undefined;
+        debugLog('registry-utils.ts:673', 'Adding compound selector candidate for partial match', { startKey, match, valueType: value.type, selectorValueOf, selectorKeySet, selectorType, selectorComponentTypes, rulesetParentType, rulesetParentSelector, note: 'checking selector structure to see why keySet includes parent keys' }, 'G');
+        // #endregion
+        // Store the matched keys so far (e.g., [".jo"]) for chained calls like .jo.ki()
+        // When looking up the next key, we'll accumulate it and use registry lookup to verify the match
+        if (options?.context) {
+          options.context.partialMatchKeys.set(value, [startKey]);
+        }
+        candidates.add(value);
+        return true;
+      }
+    }
+
+    // Partial match: startKey appears in the match array (for cases where key is indexed under a different startKey)
+    if (search.length === 0 && match.includes(startKey)) {
+      // #region agent log
+      debugLog('registry-utils.ts:607', 'Found partial match in match array', { startKey, matchIndex: match.indexOf(startKey), match }, 'F');
+      // #endregion
+      candidates.add(value);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if a Ruleset/Mixin matches a given array of keys using the same logic as the registry
+   * This uses the indexed match arrays (same as _checkEntryMatch) rather than direct selector comparison
+   * @param value The Ruleset or Mixin to check
+   * @param keys The array of keys to match against (e.g., [".jo", ".ki"])
+   * @returns true if the Ruleset/Mixin matches the keys using registry matching logic
+   */
+  checkRulesetMatchesKeys(value: Mixin | Ruleset, keys: string[]): boolean {
+    if (!keys || keys.length === 0) {
+      return false;
+    }
+
+    // Get the selector's keySet and extract indexable keys (same as _indexSelectorStart)
+    let indexableKeys: string[] = [];
+    if (isNode(value, 'Ruleset')) {
+      const selector = value.value.selector;
+      if (isNode(selector, 'Nil')) {
+        return false;
+      }
+      if (isNode(selector, 'SelectorList')) {
+        // For selector lists, check if any selector matches
+        return selector.value.some((sel) => {
+          const selKeys = Array.from(sel.keySet).filter(key =>
+            typeof key === 'string' && !key.startsWith('*') && !key.startsWith(':')
+          );
+          if (selKeys.length === 0) { return false; }
+          // #region agent log
+          debugLog('registry-utils.ts:680', 'Checking SelectorList selector', { selKeys, keys, selectorValueOf: sel.valueOf() }, 'H');
+          // #endregion
+          // Check if keys appear in sequence in this selector's keys
+          return this._checkKeysSubsequence(selKeys, keys);
+        });
+      }
+      const keySet = selector.keySet;
+      if (!keySet || keySet.size === 0) {
+        return false;
+      }
+      indexableKeys = Array.from(keySet).filter((key) => {
+        return typeof key === 'string' && !key.startsWith('*') && !key.startsWith(':');
+      });
+      // #region agent log
+      const fullKeySetArray = Array.from(keySet);
+      debugLog('registry-utils.ts:695', 'Checking Ruleset keySet', { indexableKeys, fullKeySet: fullKeySetArray, keys, selectorValueOf: selector.valueOf(), keySetSize: keySet.size, note: 'indexableKeys is what we use for matching, selectorValueOf may include parent context' }, 'H');
+      // #endregion
+    } else {
+      const keySet = value.keySet;
+      if (!keySet || keySet.size === 0) {
+        return false;
+      }
+      indexableKeys = Array.from(keySet).filter((key) => {
+        return typeof key === 'string' && !key.startsWith('*') && !key.startsWith(':');
+      });
+    }
+
+    if (indexableKeys.length === 0) {
+      return false;
+    }
+
+    // Check if the provided keys appear in sequence in the selector's indexable keys
+    // The keySet should only contain keys from the Ruleset's own selector, not parent context
+    return this._checkKeysSubsequence(indexableKeys, keys);
+  }
+
+  /**
+   * Internal helper that checks if the provided keys appear in sequence within the selector's keys
    *
-   * @todo - Prevent infinite recursion when a mixin calls itself.
+   * For compound selectors like `#header .milk .chips .jo.ki`, when we search for `.jo`, we get:
+   * - The full selector's indexable keys: `["#header", ".milk", ".chips", ".jo", ".ki"]`
+   * - When checking if accumulated keys `[".jo", ".ki"]` match, we check if they appear in sequence
+   */
+  private _checkKeysSubsequence(selectorKeys: string[], searchKeys: string[]): boolean {
+    if (searchKeys.length === 0) {
+      return false;
+    }
+
+    // Check if searchKeys is a subsequence of selectorKeys (searchKeys appear in order)
+    let searchIndex = 0;
+    for (const selectorKey of selectorKeys) {
+      if (searchIndex < searchKeys.length && selectorKey === searchKeys[searchIndex]) {
+        searchIndex++;
+      }
+    }
+
+    const matches = searchIndex === searchKeys.length;
+    // #region agent log
+    debugLog('registry-utils.ts:727', 'Checking keys subsequence', { selectorKeys, searchKeys, matches, searchIndex }, 'H');
+    // #endregion
+    return matches;
+  }
+
+  /**
+   * Find candidate mixins (or rulesets, or both) that might match the target selector
    *
    * ...also...
    *
@@ -533,30 +788,33 @@ export class MixinRegistry extends Registry<
     }
 
     let rules: Rules | undefined = this.rules;
-    let { searchParents = true, local = false, candidates = new Set() } = options ?? {};
-    let visitedRules = new Set<Rules>();
-    console.log(`[DEBUG] MixinRegistry.find: Looking up keys=[${keyList.join(', ')}] filterType=${filterType} rulesIndex=${rules?.index}`);
+    let { searchParents = true, local = false, candidates = new Set(), context } = options ?? {};
+    // Track which Rules nodes we've already searched to prevent infinite recursion
+    // Use the searchedRules from options if it exists, otherwise create a new Set
+    const searchedRules = options?.searchedRules || new Set<Rules>();
+    if (options) {
+      options.searchedRules = searchedRules;
+    }
     while (rules) {
-      if (visitedRules.has(rules)) {
+      // If we've already searched this Rules node, skip it to prevent recursion
+      if (searchedRules.has(rules)) {
         break;
       }
-      visitedRules.add(rules);
+      // Don't add to searchedRules yet - we'll add it after we finish searching (including children)
       let [startKey, ...search] = keyList;
       let registry = rules.getRegistry('mixin');
       registry.indexPendingItems();
-      console.log(`[DEBUG] MixinRegistry.find: Registry keys: [${Array.from(registry.index.keys()).join(', ')}] looking for startKey="${startKey}"`);
+      // #region agent log
+      // Use a more reliable identifier - track Rules node identity by value length and parent
+      const rulesId = `${rules.value.length}_${rules.parent ? 'hasParent' : 'noParent'}_${Date.now()}`;
+      debugLog('registry-utils.ts:671', 'Searching in Rules node', { startKey, rulesId, registrySize: registry.index.size, searchKeys: keyList, rulesValueLength: rules.value.length }, 'F');
+      // #endregion
       const existing = registry.index.get(startKey!);
-      console.log(`[DEBUG] MixinRegistry.find: Found ${existing?.length ?? 0} entries for key="${startKey}"`);
 
       if (existing) {
         for (const { value, match } of existing) {
-          if (filterType && value.type !== filterType) {
-            continue;
-          }
-
-          // If all match keys match all search keys, add as candidate
-          if (arraysEqual(match, search)) {
-            (candidates ??= new Set()).add(value);
+          // Check for exact match, compound selector completion, or partial match
+          if (this._checkEntryMatch(value, match, startKey!, search, filterType, candidates as Set<Mixin | Ruleset>, options)) {
             continue;
           }
 
@@ -565,35 +823,73 @@ export class MixinRegistry extends Registry<
             const remainder = search.slice(match.length);
             if (
               (isNode(value, 'Ruleset'))
-              || (isNode(value, 'Mixin') && (!value.value.params || value.value.params.length === 0))
+              || (isNode(value, 'Mixin') && (!value.value.params || (value.value.params?.length ?? 0) === 0))
             ) {
             // Recursively search in this mixin's registry
               let subRules = value.value.rules;
-              subRules.getRegistry('mixin').find(remainder, filterType, {
+              const recursiveResult = subRules.getRegistry('mixin').find(remainder, filterType, {
                 searchParents: false,
                 local,
-                candidates: candidates as Set<Node>
+                candidates: candidates as Set<Node>,
+                context,
+                filter: options?.filter
               } as FindOptions);
             }
           }
         }
       }
-      registry._searchRulesChildren(
-        startKey!,
-        'Mixin',
-        {
-          searchParents: false,
-          local,
-          candidates: candidates as Set<Node>,
-          findAll: true
+
+      // If direct lookup failed and we're searching for a single key (search is empty),
+      // also check all entries to see if startKey appears in their match arrays.
+      // This handles cases like searching for ".biohazard" when it's indexed under "#container"
+      // with match: ["#header", ".milk", ".secure-zone", ".biohazard"]
+      let checkedAllEntries = false;
+      if (!existing && search.length === 0) {
+        // #region agent log
+        debugLog('registry-utils.ts:590', 'Direct lookup failed, checking all entries for partial match', { startKey, registrySize: registry.index.size }, 'F');
+        // #endregion
+        checkedAllEntries = true;
+        for (const [indexKey, entries] of registry.index.entries()) {
+          for (const { value, match } of entries) {
+            // #region agent log
+            debugLog('registry-utils.ts:728', 'Checking entry for partial match', { startKey, indexKey, match, valueType: value.type, selector: isNode(value, 'Ruleset') ? (value as Ruleset).value.selector?.valueOf() : undefined }, 'F');
+            // #endregion
+            // Use the consolidated match checking logic
+            this._checkEntryMatch(value, match, startKey!, search, filterType, candidates as Set<Mixin | Ruleset>, options);
+          }
         }
-      );
+      }
+
+      // Always search children if we haven't found candidates yet
+      // The registry might be empty (e.g., wrapper Rules nodes from getFunctionFromMixins),
+      // but the child Rules nodes might have the Rulesets we need
+      // Only skip searching children if we found candidates AND we've checked all entries AND the registry has entries
+      // (meaning we found everything we need in this Rules node)
+      const shouldSearchChildren = candidates.size === 0 || !checkedAllEntries || registry.index.size === 0;
+
+      if (shouldSearchChildren) {
+        registry._searchRulesChildren(
+          startKey!,
+          'Mixin', // This selects which registry to search (mixin vs declaration)
+          {
+            searchParents: false,
+            local,
+            candidates: candidates as Set<Node>,
+            findAll: true,
+            childFilterType: filterType, // Pass the original filterType to use when calling child Rules.find
+            context,
+            filter: options?.filter,
+            searchedRules: searchedRules // Pass through to prevent re-searching
+          }
+        );
+      }
+
+      // Mark this Rules node as searched after we've finished searching it (including children)
+      searchedRules.add(rules);
 
       if (!searchParents) {
-        console.log(`[DEBUG] MixinRegistry.find: searchParents=false, stopping search`);
         break;
       }
-      console.log(`[DEBUG] MixinRegistry.find: Traversing to parent Rules, current rulesIndex=${rules?.index}`);
       do {
         rules = rules?.parent as Rules;
         /**
@@ -602,18 +898,11 @@ export class MixinRegistry extends Registry<
          * this one.
          */
         if (rules && isNode(rules.sourceNode, 'StyleImport') && rules.sourceNode.options.type !== 'import') {
-          console.log(`[DEBUG] MixinRegistry.find: Hit import boundary, stopping`);
           rules = undefined;
           break;
         }
       } while (rules && rules.type !== 'Rules');
-      if (rules) {
-        console.log(`[DEBUG] MixinRegistry.find: Now searching in parent Rules rulesIndex=${rules.index}`);
-      } else {
-        console.log(`[DEBUG] MixinRegistry.find: No more parent Rules to search`);
-      }
     }
-    console.log(`[DEBUG] MixinRegistry.find: Final result: ${candidates.size} candidates found`);
     return candidates.size ? [...candidates] as (Mixin | Ruleset)[] : undefined;
   }
 }
