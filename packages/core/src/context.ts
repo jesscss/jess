@@ -250,16 +250,6 @@ export class Context {
    */
   calcFrames: boolean[] = [];
 
-  /**
-   * Track matched keys from partial matches for chained calls like .jo.ki()
-   * Maps Rulesets/Mixins to their matched keys so far (e.g., { Ruleset: [".jo"] })
-   * When looking up the next key, we accumulate it and use registry lookup to verify the match
-   */
-  private _partialMatchKeys: Map<Ruleset | Mixin, string[]> | undefined;
-  get partialMatchKeys() {
-    return (this._partialMatchKeys ??= new Map());
-  }
-
   private _callStack: Node[] | undefined;
   get callStack() {
     return (this._callStack ??= []);
@@ -279,70 +269,9 @@ export class Context {
 
   popReference() {
     this._referenceStack--;
-    if (this._referenceStack === 0 && this._partialMatchKeys) {
-      this._partialMatchKeys.clear();
-    }
   }
 
-  /** Track mixin/ruleset Rules nodes currently being evaluated (the call chain) */
-  private _evaluatingMixinRules: Set<Rules> = new Set();
-
-  /** Check if a Rules node (from a mixin/ruleset) is currently being evaluated */
-  isEvaluatingMixinRules(rules: Rules): boolean {
-    // Check by sourceNode to handle cloned nodes
-    if (!rules.sourceNode) {
-      return this._evaluatingMixinRules.has(rules);
-    }
-    // Check if any Rules in the set has the same sourceNode
-    for (const evaluatingRules of this._evaluatingMixinRules) {
-      if (evaluatingRules.sourceNode === rules.sourceNode) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /** Mark a Rules node (from a mixin/ruleset) as being evaluated */
-  startEvaluatingMixinRules(rules: Rules) {
-    this._evaluatingMixinRules.add(rules);
-  }
-
-  /** Unmark a Rules node (from a mixin/ruleset) as being evaluated */
-  stopEvaluatingMixinRules(rules: Rules) {
-    this._evaluatingMixinRules.delete(rules);
-  }
-
-  /** Track Reference nodes being evaluated within the current mixin call context */
-  private _evaluatingReferencesInContext: Set<Node> = new Set();
-
-  /** Check if a Reference node is being evaluated while we're in the same mixin evaluation context */
-  isEvaluatingReferenceInContext(ref: Node): boolean {
-    // Only check if we're currently evaluating a mixin (have Rules in the call chain)
-    if (this._evaluatingMixinRules.size === 0) {
-      return false;
-    }
-    // Check by sourceNode to handle cloned nodes
-    if (!ref.sourceNode) {
-      return this._evaluatingReferencesInContext.has(ref);
-    }
-    // Check if any Reference in the set has the same sourceNode
-    for (const evaluatingRef of this._evaluatingReferencesInContext) {
-      if (evaluatingRef.sourceNode === ref.sourceNode) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /** Mark a Reference node as being evaluated in the current mixin context */
-  startEvaluatingReferenceInContext(ref: Node) {
-    this._evaluatingReferencesInContext.add(ref);
-  }
-
-  /** Unmark a Reference node as being evaluated in the current mixin context */
-  stopEvaluatingReferenceInContext(ref: Node) {
-    this._evaluatingReferencesInContext.delete(ref);
-  }
+  rulesEvalStack: Rules[] = [];
 
   /**
    * We push a boolean to this array when entering parens call

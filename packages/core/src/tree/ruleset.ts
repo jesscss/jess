@@ -124,7 +124,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (selector.hasFlag(F_AMPERSAND)) {
       return selector;
     }
-    let amp = Ampersand.create({ selector: parentSelector.copy(true) });
+    let amp = Ampersand.create({});
     // Mark as implicit so it can be excluded from visibleKeySet for indexing
     amp.addFlag(F_IMPLICIT_AMPERSAND);
     if (!collapseNesting) {
@@ -137,7 +137,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (selector instanceof ComplexSelector) {
       return ComplexSelector.create([amp, comb, ...selector.value]).inherit(selector);
     }
-    return ComplexSelector.create([amp, comb, selector]).inherit(selector);
+    const returnVal = ComplexSelector.create([amp, comb, selector]).inherit(selector);
+    returnVal.parent = this;
+    return returnVal;
   }
 
   /** Attach an (invisible) ampersand to the selector(s) if it's not already there */

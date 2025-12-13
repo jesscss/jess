@@ -632,12 +632,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const resolvedNodes: Node[] = [];
     let firstError: Error | undefined;
     let resolutionAttempts = 0;
-    const MAX_RESOLUTION_ATTEMPTS = 100;
+    const MAX_RESOLUTION_ATTEMPTS = 5;
 
     const attemptResolution = (): MaybePromise<this> => {
       resolutionAttempts++;
       if (resolutionAttempts > MAX_RESOLUTION_ATTEMPTS) {
-        throw new Error(`_resolveDynamicNodes exceeded ${MAX_RESOLUTION_ATTEMPTS} attempts: rulesIndex=${rules.index} unresolvedCount=${unresolvedNodes.length}`);
+        throw new Error(`Could not resolve node.`);
       }
       const stillUnresolved: Node[] = [];
       let madeProgress = false;
@@ -767,7 +767,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       context.treeRoot = saved.treeRoot;
       context.root = saved.root;
     }
-
     return rules as this;
   }
 
@@ -902,6 +901,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   override evalNode(context: Context): MaybePromise<this> {
     const saved = this._snapshotContext(context);
+    if (context.rulesEvalStack.includes(this.sourceNode as Rules)) {
+      throw new ReferenceError('Recursive call detected');
+    }
+    context.rulesEvalStack.push(this.sourceNode as Rules);
     return pipe(
       () => {
         this._setupContextForRules(context, this);
@@ -988,7 +991,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 if (rulesetSet) {
                   rulesetSet.push(...found);
                 } else {
-                  rulesetSet = found;
+                  // not sure why the agent removed this?
+                  // rulesetSet = found;
                 }
               }
             }
@@ -1025,6 +1029,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (rules === context.root) {
           context.extendRoots.popExtendRoot();
         }
+        context.rulesEvalStack.pop();
         return rules;
       }
     ) as MaybePromise<this>;
@@ -1221,7 +1226,7 @@ interface RulesEntry {
  * Right now, the only nodes that can be registered to the scope for lookups
  */
 // type ScopeNodes = Declaration | VarDeclaration | Mixin | Ruleset | Rules
-export type MixinEntry = Mixin | Rules | Ruleset;
+export type MixinEntry = Mixin | Ruleset;
 
 /**
  * Returns a plain JS function for calling a set of mixins
@@ -1364,6 +1369,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      */
     let hasDefault = false;
     evalCandidates = mixinCandidates
+      .filter((candidate) => {
+        return !thisContext.rulesEvalStack.includes(candidate.value.rules.sourceNode as Rules);
+      })
       .map<[MixinEntry, number]>(
         (candidate, i) => {
           let isDefault = candidate.options?.hasDefault;
@@ -1405,55 +1413,17 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      */
     let hasMatch = false;
     let outputRules: Array<[Rules, number]> = [];
+    let failedCandidates: MixinEntry[] | undefined;
     for (let [candidate, i] of evalCandidates) {
-      if (isNode(candidate, 'Rules')) {
-        hasMatch = true;
-        outputRules.push([candidate, i]);
-        continue;
-      }
       if (isNode(candidate, 'Ruleset')) {
-        // For Rulesets, check if their Rules are already being evaluated (recursion detection)
-        const rulesetRules = (candidate as Ruleset).value.rules;
-        if (thisContext.isEvaluatingMixinRules(rulesetRules)) {
-          // Recursion detected - skip this candidate
-          continue;
-        }
-        // Mark as being evaluated
-        thisContext.startEvaluatingMixinRules(rulesetRules);
-        try {
-          // Copy the rules to avoid shared state issues during evaluation
-          // Even though Rulesets don't have parameters, we need to copy to ensure
-          // each mixin call gets its own independent Rules instance
-          // Note: copy(true) should create nodes with evaluated=false by default
-          // but we explicitly reset to ensure ampersands can be re-evaluated
-          let rules = rulesetRules.copy(true);
-          const rulesetsAfterCopy = rules.value.filter(n => isNode(n, 'Ruleset'));
-          rules.evaluated = false;
-          rules.preEvaluated = false;
-          // Reset Ruleset selectors to their original values from the selector's sourceNode
-          // The selector's sourceNode should have the original selector with ampersand
-          // (stored during evalNode when we set this.value.selector.sourceNode = result)
-          for (const ruleset of rulesetsAfterCopy) {
-            const selector = ruleset.value.selector;
-            if (selector && selector.sourceNode) {
-              // Use the selector's sourceNode which has the ampersand structure
-              ruleset.value.selector = selector.sourceNode.copy(true) as Selector | Nil;
-            }
-          }
-          // Preserve the parent from the original ruleset's Rules so lookups can traverse up
-          if (rulesetRules.parent) {
-            rules.parent = rulesetRules.parent;
-          }
-          hasMatch = true;
-          outputRules.push([rules, i]);
-        } finally {
-          // Note: We don't stop evaluating here because the Rules will be evaluated later
-          // We'll stop when the Rules evaluation completes
-        }
+        const rules = (candidate as Ruleset).value.rules;
+        hasMatch = true;
+        outputRules.push([rules.copy(true), i]);
         continue;
       }
+      let rules = candidate.value.rules;
       /** Create new rules, and add the candidate rules, to add to scope */
-      let rules = candidate.value.rules.copy(true);
+      rules = rules.copy(true);
       // Preserve the parent from the original mixin's Rules so lookups can traverse up
       // The parent should be where the mixin was defined (source position)
       if (candidate.value.rules.parent) {
@@ -1552,49 +1522,50 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           passes = true;
         }
       }
-      if (passes) {
+      if (!passes) {
+        (failedCandidates ??= []).push(candidate);
+        continue;
+      }
       // Check for recursion: if this mixin is already in searchScope, skip it
       // to prevent infinite loops (e.g., .recursion { .recursion(); })
       // Uses the same mechanism as variable recursion detection
-        if (thisContext.searchScope.has(candidate)) {
-          // Recursive call detected - skip this candidate (don't add to outputRules)
-          // This allows other candidates to still match
+      if (thisContext.searchScope.has(candidate)) {
+        // Recursive call detected - skip this candidate (don't add to outputRules)
+        // This allows other candidates to still match
+        continue;
+      }
+
+      // Mark this mixin as being evaluated (similar to how variables are tracked)
+      thisContext.searchScope.add(candidate);
+      try {
+        let newRules = await rules.eval(thisContext);
+        /**
+           * Make everything public, so that we can access these
+           * variables in the parent scope, or when doing lookups.
+           */
+        newRules.options.rulesVisibility = {
+          Ruleset: 'public',
+          Declaration: 'public',
+          VarDeclaration: 'public',
+          Mixin: 'public'
+        };
+        outputRules.push([newRules, i]);
+      } catch (error) {
+        // If recursion was detected (ReferenceError), skip this candidate
+        // This allows other candidates to still match
+        if (error instanceof ReferenceError && (error as any).message?.includes('Recursive mixin call')) {
+          // Skip this candidate - recursion detected
           continue;
         }
-
-        // Mark this mixin as being evaluated (similar to how variables are tracked)
-        thisContext.searchScope.add(candidate);
-        try {
-          let newRules = await rules.eval(thisContext);
-          /**
-           * Make everything public, so that we can access these
-           * these variables in the parent scope, or when doing lookups.
-           */
-          newRules.options.rulesVisibility = {
-            Ruleset: 'public',
-            Declaration: 'public',
-            VarDeclaration: 'public',
-            Mixin: 'public'
-          };
-          outputRules.push([newRules, i]);
-        } catch (error) {
-          // If recursion was detected (ReferenceError), skip this candidate
-          // This allows other candidates to still match
-          if (error instanceof ReferenceError && (error as any).message?.includes('Recursive mixin call')) {
-            // Skip this candidate - recursion detected
-            continue;
-          }
-          // Re-throw other errors
-          throw error;
-        } finally {
-          // Remove from searchScope when done (allows re-evaluation in different contexts)
-          thisContext.searchScope.delete(candidate);
-          thisContext.searchScope.delete(rules);
-          // Stop tracking this Rules as being evaluated
-          thisContext.stopEvaluatingMixinRules(rules);
-        }
+        // Re-throw other errors
+        throw error;
+      } finally {
+        // Remove from searchScope when done (allows re-evaluation in different contexts)
+        thisContext.searchScope.delete(candidate);
+        thisContext.searchScope.delete(rules);
       }
-      thisContext.rulesContext = rulesContext;
+
+      // thisContext.rulesContext = rulesContext;
       // Restore call site index (or clear it if we're exiting the mixin)
       if (rulesContext) {
         thisContext.callSiteIndex = rulesContext.index;
@@ -1602,17 +1573,47 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         thisContext.callSiteIndex = undefined;
       }
     }
+    if (
+      evalCandidates.length === 0
+      || failedCandidates?.length === evalCandidates.length) {
+      throw new ReferenceError('No matching mixins found.');
+    }
     /**
      * Now that we have output rules, we sort them by
      * their original order
      */
     let rulesArr = outputRules.sort((a, b) => a[1] - b[1]).map(r => r[0]);
-    /** Create a rules wrapper */
-    let output = new Rules(rulesArr);
+    /** Create a rules wrapper - but optimize to avoid unnecessary nesting */
+    let output: Rules;
+    if (rulesArr.length === 1 && isNode(rulesArr[0], 'Rules')) {
+      const singleRules = rulesArr[0] as Rules;
+      // If the Rules only has one value, unwrap it - return a Rules with just that value
+      if (singleRules.value.length === 1) {
+        output = new Rules([singleRules.value[0]!]);
+      } else {
+        // Multiple values, use it as-is
+        output = singleRules;
+      }
+    } else {
+      // Multiple items - spread their values into a new Rules
+      const flattened: Node[] = [];
+      for (const item of rulesArr) {
+        if (isNode(item, 'Rules')) {
+          flattened.push(...item.value);
+        } else {
+          flattened.push(item);
+        }
+      }
+      output = new Rules(flattened);
+    }
 
     /** Now push all rules into the rules value */
     if (this instanceof Context) {
-      return output;
+      let evald = output.eval(this);
+      if (isThenable(evald)) {
+        return await evald;
+      }
+      return evald;
     } else {
       return output.toObject();
     }

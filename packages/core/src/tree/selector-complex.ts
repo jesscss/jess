@@ -84,21 +84,26 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     for (let i = 0; i < length; i++) {
       let component = value[i]!;
       /** Add some combinator spacing */
-      if (
-        isNode(component, 'Combinator')
-        && component.value !== ' '
-      ) {
-        // pre spacing (default to single space when no explicit pre)
-        if (!component.pre) {
-          w.add(' ');
-        } else {
-          component.processPrePost('pre', '', options);
+      if (isNode(component, 'Combinator')) {
+        /** Skip spacing if the previous node is a Nil */
+        if (isNode(value[i - 1], 'Nil')) {
+          continue;
         }
-        component.toTrimmedString(options);
-        if (!component.post) {
-          w.add(' ');
+        if (component.value !== ' ') {
+          // pre spacing (default to single space when no explicit pre)
+          if (!component.pre) {
+            w.add(' ');
+          } else {
+            component.processPrePost('pre', '', options);
+          }
+          component.toTrimmedString(options);
+          if (!component.post) {
+            w.add(' ');
+          } else {
+            component.processPrePost('post', '', options);
+          }
         } else {
-          component.processPrePost('post', '', options);
+          component.toString(options);
         }
       } else {
         component.toString(options);

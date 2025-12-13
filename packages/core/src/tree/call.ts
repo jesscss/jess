@@ -6,6 +6,7 @@ import { cast } from './util/cast';
 import { callWithContext } from '../define-function';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { Paren } from './paren';
+import { isThenable } from '@jesscss/awaitable-pipe';
 
 export type CallValue = {
   /**
@@ -102,8 +103,26 @@ export class Call extends Node<CallValue, CallOptions> {
             : callWithContext(context, fn)
         );
         context.callStack.pop();
-        return cast(result);
+        if (isNode(result)) {
+          let evald = result.eval(context);
+          if (isThenable(evald)) {
+            evald = await evald;
+            return evald;
+          }
+          return evald;
+        }
+        let castResult = cast(result);
+        if (isNode(castResult, 'Rules') && castResult.value.length === 1) {
+          return castResult.value[0]!;
+        }
+        return castResult;
       } catch (e) {
+        if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
+          if (isNode(name, 'Reference')) {
+            throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
+          }
+          throw e;
+        }
         if (!this.options?.silentFail) {
           throw e;
         }

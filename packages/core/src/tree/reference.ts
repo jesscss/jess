@@ -167,15 +167,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
    * should never resolve to itself
    */
   override evalNode(context: Context): MaybePromise<Node> {
-    // Check if this Reference is being evaluated while we're in a mixin evaluation context
-    // (i.e., while evaluating a mixin's rules, we encounter a Reference that would call back)
-    if (context.isEvaluatingReferenceInContext(this)) {
-      // Recursion detected - this call is being evaluated again in the same mixin context
-      // Throw an error that can be caught to exclude this match
-      throw new ReferenceError(`Recursive mixin call detected`);
-    }
-    // Mark this Reference as being evaluated in the current mixin context (if we're in one)
-    context.startEvaluatingReferenceInContext(this);
     let { target, key } = this.value;
     let { type, fallbackValue, filter: originalFilter } = this.options;
     // Track reference chain for clearing remainders at outermost level
@@ -264,30 +255,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
          * We accumulate the new key and use registry lookup to verify the compound match
          */
         if (isNode(resolvedTarget, ['Mixin', 'Ruleset'])) {
-          // Check if this Ruleset/Mixin has matched keys from a previous partial match
-          const matchedKeys = context.partialMatchKeys.get(resolvedTarget);
-          if (matchedKeys && matchedKeys.length > 0) {
-            // Accumulate the new key (valueKey can be string or string[])
-            const valueKeyArray = Array.isArray(valueKey) ? valueKey : [valueKey];
-            const accumulatedKeys = [...matchedKeys, ...valueKeyArray];
-            // Use the registry's utility method to directly check if the Ruleset matches the accumulated keys
-            // We need to find the Rules node that contains this Ruleset to access its registry
-            const parentRules = resolvedTarget.parent;
-            if (isNode(parentRules, 'Rules')) {
-              const mixinRegistry = parentRules.getRegistry('mixin');
-              // Directly check if the Ruleset matches the accumulated keys using registry matching logic
-              const matches = mixinRegistry.checkRulesetMatchesKeys(resolvedTarget as any, accumulatedKeys);
-              if (matches) {
-                // Update the matched keys
-                context.partialMatchKeys.set(resolvedTarget, accumulatedKeys);
-                // Return the Ruleset/Mixin itself for the chained call
-                return [resolvedTarget, valueKey] as [Node, string];
-              }
-              // If it didn't match, remove from partialMatchKeys and continue with normal evaluation
-              context.partialMatchKeys.delete(resolvedTarget);
-            }
-          }
-
           const mixinResult = resolvedTarget.value.rules.eval(context);
           if (isThenable(mixinResult)) {
             return (mixinResult as Promise<Rules>).then((rules) => {
@@ -431,7 +398,15 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       ({ returnVal, valueKey }) => {
         if (returnVal === undefined) {
           if (!fallbackValue) {
-            throw new ReferenceError(`"${key}" is not defined`);
+            switch (type) {
+              case 'mixin':
+                throw new ReferenceError(`No matching mixins found for '${valueKey}'`);
+              case 'ruleset':
+                throw new ReferenceError(`No matching rulesets found for '${valueKey}'`);
+              case 'mixin-ruleset':
+                throw new ReferenceError(`No matching mixins found for '${valueKey}'`);
+            }
+            throw new ReferenceError(`'${key}' is not defined`);
           }
           if (fallbackValue === true) {
             const any = new Any(`${valueKey}`);
