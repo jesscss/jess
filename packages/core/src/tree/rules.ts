@@ -318,12 +318,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const depth = options.frameState?.at(-1)?.depth ?? 0;
     const space = ''.padStart(depth * 2);
     const { value } = this;
-    // #region agent log
     if (!Array.isArray(value)) {
-      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:301', message: 'ERROR: Rules.value is not an array!', data: { valueType: typeof value, value: value, valueConstructor: value?.constructor?.name, thisType: this.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'L' }) }).catch(() => {});
-      throw new Error(`Rules.value is not an array! Type: ${typeof value}, Constructor: ${value?.constructor?.name}`);
+      throw new Error(`Rules.value is not an array! Type: ${typeof value}`);
     }
-    // #endregion
     // Skip charset nodes - they are collected and prepended at root level
     const items = value.filter(n => n.visible && !(n.type === 'Any' && (n as any).options?.role === 'charset'));
 
@@ -1268,9 +1265,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
   async function returnFunc(this: unknown, ...args: any[]): Promise<Rules | Record<string, string>>;
   async function returnFunc(this: Context, ...args: any[]): Promise<Rules>;
   async function returnFunc(this: Context | unknown, ...args: any[]) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1248', message: 'getFunctionFromMixins entry', data: { mixinCount: mixinArr.length, mixins: mixinArr.map(m => ({ type: m.type, selector: isNode(m, 'Ruleset') ? m.value.selector.valueOf() : 'N/A', hasParams: isNode(m, 'Mixin') ? !!m.value.params : false })), argsCount: args.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
-    // #endregion
     const mixinLength = mixinArr.length;
     let mixinCandidates: MixinEntry[] = [];
     let evalCandidates: Array<[MixinEntry, number]>;
@@ -1385,9 +1379,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         }
       }
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1362', message: 'After parameter matching', data: { mixinCandidatesCount: mixinCandidates.length, mixinCandidates: mixinCandidates.map(m => ({ type: m.type, selector: isNode(m, 'Ruleset') ? m.value.selector.valueOf() : 'N/A' })), rulesEvalStackLength: thisContext.rulesEvalStack.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => {});
-    // #endregion
     /**
      * Alright, we have mixin candidates (mixins that match
      * by arity, pattern, and/or named arguments), now what?
@@ -1399,11 +1390,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     evalCandidates = mixinCandidates
       .filter((candidate) => {
         const inStack = thisContext.rulesEvalStack.includes(candidate.value.rules.sourceNode as Rules);
-        // #region agent log
-        if (inStack) {
-          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1373', message: 'Candidate filtered by rulesEvalStack', data: { candidateType: candidate.type, candidateSelector: isNode(candidate, 'Ruleset') ? candidate.value.selector.valueOf() : 'N/A' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => {});
-        }
-        // #endregion
         return !inStack;
       })
       .map<[MixinEntry, number]>(
@@ -1439,9 +1425,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         return 0;
       });
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1408', message: 'Before evalCandidates check', data: { evalCandidatesCount: evalCandidates.length, evalCandidates: evalCandidates.map(([m]) => ({ type: m.type, selector: isNode(m, 'Ruleset') ? m.value.selector.valueOf() : 'N/A' })) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => {});
-    // #endregion
 
     if (evalCandidates.length === 0) {
       throw new ReferenceError('No matching mixins found.');
@@ -1458,24 +1441,16 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       if (isNode(candidate, 'Ruleset')) {
         const rules = await (candidate as Ruleset).value.rules.copy(true).eval(thisContext);
         hasMatch = true;
-        // #region agent log
-        if (rules.type !== 'Rules' && rules.type !== 'Nil') {
-          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1440', message: 'ERROR: Ruleset eval returned non-Rules/non-Nil!', data: { actualType: rules.type, valueIsArray: Array.isArray((rules as any).value), valueType: typeof (rules as any).value }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'N' }) }).catch(() => {});
-        }
         if (rules.type === 'Nil') {
-          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1440', message: 'Ruleset eval returned Nil, skipping', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'N' }) }).catch(() => {});
           continue; // Skip Nil results
         }
         if (rules.type === 'Rules' && !Array.isArray(rules.value)) {
-          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1440', message: 'ERROR: Rules.value is not an array!', data: { valueType: typeof rules.value, value: rules.value }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'N' }) }).catch(() => {});
           throw new Error(`Rules.value is not an array! Type: ${typeof rules.value}, Value: ${rules.value}`);
         }
         // Skip empty Rules (e.g., containing only invisible nodes like comments)
         if (rules.type === 'Rules' && rules.value.length === 0) {
-          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1440', message: 'Ruleset eval returned empty Rules, skipping', data: {}, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'N' }) }).catch(() => {});
           continue; // Skip empty Rules
         }
-        // #endregion
         outputRules.push([rules, i]);
         continue;
       }
@@ -1595,13 +1570,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       // Mark this mixin as being evaluated (similar to how variables are tracked)
       thisContext.searchScope.add(candidate);
       try {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1557', message: 'Before evaluating mixin rules', data: { candidateType: candidate.type, candidateSelector: isNode(candidate, 'Ruleset') ? candidate.value.selector.valueOf() : 'N/A', rulesParent: rules.parent ? `Rules(${(rules.parent as Rules).value.length} items)` : 'none', rulesContextItems: thisContext.rulesContext?.value.length || 0, rulesContextParent: thisContext.rulesContext?.parent ? `${thisContext.rulesContext.parent.type}` : 'none' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'G' }) }).catch(() => {});
-        // #endregion
         let newRules = await rules.eval(thisContext);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1559', message: 'After evaluating mixin rules', data: { newRulesItems: newRules.value.length, newRulesParent: newRules.parent ? `${newRules.parent.type}(${isNode(newRules.parent, 'Rules') ? (newRules.parent as Rules).value.length : 'N/A'})` : 'none', rulesContextParent: thisContext.rulesContext?.parent ? `${thisContext.rulesContext.parent.type}` : 'none' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'G' }) }).catch(() => {});
-        // #endregion
         /**
            * Make everything public, so that we can access these
            * variables in the parent scope, or when doing lookups.
@@ -1612,9 +1581,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           VarDeclaration: 'public',
           Mixin: 'public'
         };
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1572', message: 'Pushing evaluated Rules to outputRules', data: { newRulesItems: newRules.value.length, outputRulesCount: outputRules.length, newRulesValueTypes: newRules.value.map((n: Node) => ({ type: n.type, value: n.type === 'Declaration' ? `${(n as any).value.name}: ${(n as any).value.value}` : 'N/A' })).slice(0, 3) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'J' }) }).catch(() => {});
-        // #endregion
         outputRules.push([newRules, i]);
       } catch (error) {
         // If recursion was detected (ReferenceError), skip this candidate
@@ -1650,25 +1616,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       .filter(r => r.visibleRules().length > 0);
     /** Create a rules wrapper - but optimize to avoid unnecessary nesting */
     let output: Rules;
-    // #region agent log
     const savedRulesContext = thisContext.rulesContext;
-    // Find the root Rules by traversing up from savedRulesContext
-    let rootRules: Rules | undefined = savedRulesContext;
-    while (rootRules?.parent) {
-      const parent = rootRules.parent;
-      if (isNode(parent, 'Rules')) {
-        rootRules = parent;
-      } else {
-        break;
-      }
-    }
-    fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1615', message: 'Creating output Rules', data: { rulesArrLength: rulesArr.length, savedRulesContextItems: savedRulesContext?.value.length || 0, savedRulesContextParent: savedRulesContext?.parent ? `${savedRulesContext.parent.type}` : 'none', rootRulesItems: rootRules?.value.length || 0 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H' }) }).catch(() => {});
-    // #endregion
     if (rulesArr.length === 1 && isNode(rulesArr[0], 'Rules')) {
       const singleRules = rulesArr[0] as Rules;
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1625', message: 'Checking singleRules', data: { singleRulesValueIsArray: Array.isArray(singleRules.value), singleRulesValueType: typeof singleRules.value, singleRulesValueLength: Array.isArray(singleRules.value) ? singleRules.value.length : 'N/A', firstValueType: Array.isArray(singleRules.value) ? typeof singleRules.value[0] : 'N/A', firstValue: Array.isArray(singleRules.value) ? (singleRules.value[0]?.type || typeof singleRules.value[0]) : 'N/A' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'K' }) }).catch(() => {});
-      // #endregion
       // If the Rules only has one value, unwrap it - return a Rules with just that value
       if (singleRules.value.length === 1) {
         output = new Rules([singleRules.value[0]!]);
@@ -1682,20 +1632,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       for (const item of rulesArr) {
         flattened.push(...item.value.filter(r => r.visible));
       }
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1683', message: 'Before creating output Rules from flattened', data: { flattenedLength: flattened.length, flattenedTypes: flattened.map(n => ({ type: n.type, valueType: typeof (n as any).value })).slice(0, 5) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'P' }) }).catch(() => {});
-      // #endregion
       output = new Rules(flattened);
-      // #region agent log
-      if (!Array.isArray(output.value)) {
-        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1695', message: 'ERROR: output.value is not an array after new Rules()!', data: { valueType: typeof output.value, value: output.value, flattenedLength: flattened.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'Q' }) }).catch(() => {});
-        throw new Error(`output.value is not an array after new Rules()! Type: ${typeof output.value}`);
-      }
-      // #endregion
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1640', message: 'After creating output Rules', data: { outputItems: output.value.length, outputParent: output.parent ? `${output.parent.type}` : 'none', outputValueTypes: output.value.map((n: Node) => ({ type: n.type, value: n.type === 'Declaration' ? `${(n as any).value.name}: ${(n as any).value.value}` : 'N/A' })).slice(0, 5) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'J' }) }).catch(() => {});
-    // #endregion
 
     /** Since this is a wrapper, and rules are all evaluated, consider it evaluated */
     output.preEvaluated = true;

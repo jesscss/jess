@@ -8,7 +8,7 @@ import lessPlugin from '@jesscss/plugin-less';
 const testData = path.dirname(require.resolve('@less/test-data'));
 
 const compiler = new Compiler({
-  output: { collapseNesting: false }, // Disabled - collapseNesting has an infinite loop bug
+  output: { collapseNesting: false },
   compile: {
     plugins: [
       lessPlugin({
@@ -55,7 +55,7 @@ describe('Can render Less files to CSS', () => {
         const css = fs.readFileSync(cssPath).toString();
         const output = await compiler.render(lessPath);
 
-        expect(output).toMatchCss(css);
+        expect(output).toBeString(css);
       });
     });
 });

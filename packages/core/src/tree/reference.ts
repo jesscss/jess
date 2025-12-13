@@ -172,15 +172,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     // Track reference chain for clearing remainders at outermost level
     context.pushReference();
     let resolvedTarget = target ? target.eval(context) : this.rulesParent ?? context.rulesContext;
-    // #region agent log
-    if (isThenable(resolvedTarget)) {
-      (resolvedTarget as Promise<any>).then((rt: any) => {
-        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'reference.ts:174',message:'resolvedTarget (async)',data:{hasTarget:!!target,hasRulesParent:!!this.rulesParent,rulesContextItems:context.rulesContext?.value.length||0,resolvedTargetType:rt?.type||'none',resolvedTargetItems:rt?.value?.length||0,resolvedTargetHasParent:!!rt?.parent,resolvedTargetParentType:rt?.parent?.type||'none'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'})}).catch(()=>{});
-      });
-    } else {
-      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'reference.ts:174',message:'resolvedTarget (sync)',data:{hasTarget:!!target,hasRulesParent:!!this.rulesParent,rulesContextItems:context.rulesContext?.value.length||0,resolvedTargetType:resolvedTarget?.type||'none',resolvedTargetItems:resolvedTarget?.value?.length||0,resolvedTargetHasParent:!!resolvedTarget?.parent,resolvedTargetParentType:resolvedTarget?.parent?.type||'none'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'})}).catch(()=>{});
-    }
-    // #endregion
     const result = pipe(
       () => {
         if (isThenable(resolvedTarget)) {
