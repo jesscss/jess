@@ -1,19 +1,276 @@
-import { mixin, rules, el, decl, any, ref, Node, call, ruleset } from '..';
+import { mixin, rules, el, decl, any, ref, Node, call, ruleset, compound } from '..';
 import { Context } from '../../context';
 import { JessError } from '../../jess-error';
 
 let context: Context;
 
+// Helper to check for errors without serializing the resolved value
+async function expectRejects<T>(
+  promiseOrValue: Promise<T> | T,
+  ErrorType?: new (...args: any[]) => Error,
+  messagePattern?: RegExp
+): Promise<void> {
+  let error: unknown;
+  try {
+    await Promise.resolve(promiseOrValue);
+    // Create error that will point to the call site
+    const err = new Error('Expected promise to reject, but it resolved');
+    // Remove this function from the stack trace so it points to the call site
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(err, expectRejects);
+    } else {
+      // Fallback: remove the first line (this function) from stack
+      const stack = err.stack?.split('\n');
+      if (stack && stack.length > 1) {
+        err.stack = stack.slice(1).join('\n');
+      }
+    }
+    throw err;
+  } catch (e) {
+    if (e instanceof Error && e.message === 'Expected promise to reject, but it resolved') {
+      throw e;
+    }
+    error = e;
+  }
+  if (!error) {
+    const err = new Error('Expected promise to reject, but it resolved');
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(err, expectRejects);
+    }
+    throw err;
+  }
+  if (ErrorType && !(error instanceof ErrorType)) {
+    const errorName = error instanceof Error ? error.constructor.name : 'unknown';
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    const err = new Error(`Expected error to be instance of ${ErrorType.name}, but got ${errorName}: ${errorMsg}`);
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(err, expectRejects);
+    }
+    throw err;
+  }
+  if (messagePattern) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    if (!messagePattern.test(errorMsg)) {
+      const err = new Error(`Expected error message to match ${messagePattern}, but got: ${errorMsg}`);
+      if (Error.captureStackTrace) {
+        Error.captureStackTrace(err, expectRejects);
+      }
+      throw err;
+    }
+  }
+}
+
 describe('Mixin Recursion Detection', () => {
-  beforeAll(() => {
-    Node.prototype.fullRender = true;
-  });
-  afterAll(() => {
-    Node.prototype.fullRender = false;
-  });
   beforeEach(() => {
-    context = new Context();
+    context = new Context({
+      collapseNesting: true
+    });
     context.depth = 2;
+  });
+
+  describe.only('nested mixin calls that should succeed', () => {
+    it('should be able to call a nested mixin', async () => {
+      // .foo {
+      //   .bar {
+      //     color: red;
+      //   }
+      // }
+      // .output {
+      //   .foo.bar();
+      // }
+      const fooRuleset = ruleset({
+        selector: el('.foo'),
+        rules: rules([
+          ruleset({
+            selector: el('.bar'),
+            rules: rules([decl({ name: 'color', value: any('red') })])
+          })
+        ])
+      });
+      const outputRuleset = ruleset({
+        selector: el('.output'),
+        rules: rules([
+          call({
+            name: ref({
+              key: compound([el('.foo'), el('.bar')])
+            }, { type: 'mixin-ruleset' })
+          })
+        ])
+      });
+      const root = rules([fooRuleset, outputRuleset]);
+      context.root = root;
+      const evald = await root.eval(context);
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .foo .bar {
+          color: red;
+        }
+        .output {
+          color: red;
+        }
+      `);
+    });
+
+    it('should be able to match a compound selector', async () => {
+      // .foo.bar {
+      //   color: red;
+      // }
+      // .output {
+      //   .foo.bar();
+      // }
+      const fooRuleset = ruleset({
+        selector: compound([el('.foo'), el('.bar')]),
+        rules: rules([decl({ name: 'color', value: any('red') })])
+      });
+      const outputRuleset = ruleset({
+        selector: el('.output'),
+        rules: rules([
+          call({
+            name: ref({
+              key: compound([el('.foo'), el('.bar')])
+            }, { type: 'mixin-ruleset' })
+          })
+        ])
+      });
+      const root = rules([fooRuleset, outputRuleset]);
+      context.root = root;
+      const evald = await root.eval(context);
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .foo.bar {
+          color: red;
+        }
+        .output {
+          color: red;
+        }
+      `);
+    });
+
+    it('should be able to call nested mixin from within container #1', async () => {
+      // .container {
+      //   .foo {
+      //     .bar {
+      //       color: blue;
+      //     }
+      //   }
+      //   .foo.bar();
+      // }
+      const containerRuleset = ruleset({
+        selector: el('.container'),
+        rules: rules([
+          ruleset({
+            selector: el('.foo'),
+            rules: rules([
+              ruleset({
+                selector: el('.bar'),
+                rules: rules([decl({ name: 'color', value: any('blue') })])
+              })
+            ])
+          }),
+          call({
+            name: ref({
+              key: compound([el('.foo'), el('.bar')])
+            }, { type: 'mixin-ruleset' })
+          })
+        ])
+      });
+      const root = rules([containerRuleset]);
+      context.root = root;
+      const evald = await root.eval(context);
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .container .foo .bar {
+          color: blue;
+        }
+        .container {
+          color: blue;
+        }
+      `);
+    });
+
+    it('should be able to call nested mixin from within container #2', async () => {
+      // .container {
+      //   .foo {
+      //     .bar {
+      //       color: blue;
+      //     }
+      //   }
+      //   .container.foo.bar();
+      // }
+      const containerRuleset = ruleset({
+        selector: el('.container'),
+        rules: rules([
+          ruleset({
+            selector: el('.foo'),
+            rules: rules([
+              ruleset({
+                selector: el('.bar'),
+                rules: rules([decl({ name: 'color', value: any('blue') })])
+              })
+            ])
+          }),
+          call({
+            name: ref({
+              key: compound([el('.container'), el('.foo'), el('.bar')])
+            }, { type: 'mixin-ruleset' })
+          })
+        ])
+      });
+      const root = rules([containerRuleset]);
+      context.root = root;
+      const evald = await root.eval(context);
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .container .foo .bar {
+          color: blue;
+        }
+        .container {
+          color: blue;
+        }
+      `);
+    });
+
+    it('should be able to call nested mixin from outside container', async () => {
+      // .container {
+      //   .foo {
+      //     .bar {
+      //       color: blue;
+      //     }
+      //   }
+      // }
+      // .container.foo();
+      const containerRuleset = ruleset({
+        selector: el('.container'),
+        rules: rules([
+          ruleset({
+            selector: el('.foo'),
+            rules: rules([
+              ruleset({
+                selector: el('.bar'),
+                rules: rules([decl({ name: 'color', value: any('blue') })])
+              })
+            ])
+          })
+        ])
+      });
+      const outputRuleset = call({
+        name: ref({
+          key: compound([el('.container'), el('.foo')])
+        }, { type: 'mixin-ruleset' })
+      });
+      const root = rules([containerRuleset, outputRuleset]);
+      context.root = root;
+      const evald = await root.eval(context);
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .container .foo .bar {
+          color: blue;
+        }
+        .bar {
+          color: blue;
+        }
+      `);
+    });
   });
 
   describe('recursive mixin calls that should fail', () => {
@@ -30,7 +287,12 @@ describe('Mixin Recursion Detection', () => {
           ruleset({
             selector: el('.bar'),
             rules: rules([
-              call({ name: ref({ key: '.foo.bar' }, { type: 'mixin-ruleset' }) }),
+              call({
+                name: ref({
+                  target: call({ name: ref({ key: '.foo' }, { type: 'mixin-ruleset' }) }),
+                  key: '.bar'
+                }, { type: 'mixin-ruleset' })
+              }),
               decl({ name: 'color', value: any('red') })
             ])
           })
@@ -40,8 +302,7 @@ describe('Mixin Recursion Detection', () => {
       const root = rules([fooRuleset]);
       context.root = root;
 
-      await expect(root.eval(context)).rejects.toThrow(ReferenceError);
-      await expect(root.eval(context)).rejects.toThrow(/not defined|No matching definition/);
+      await expectRejects(root.eval(context), ReferenceError, /not defined|No matching definition/);
     });
 
     it('should fail when calling .foo() from within .foo .bar (would cause recursion)', async () => {
@@ -67,8 +328,7 @@ describe('Mixin Recursion Detection', () => {
       const root = rules([fooRuleset]);
       context.root = root;
 
-      await expect(root.eval(context)).rejects.toThrow(ReferenceError);
-      await expect(root.eval(context)).rejects.toThrow(/not defined|No matching definition/);
+      await expectRejects(root.eval(context), ReferenceError, /not defined|No matching definition/);
     });
 
     it('should fail when calling .clearfix() from within .clearfix (direct self-reference)', async () => {
@@ -85,8 +345,7 @@ describe('Mixin Recursion Detection', () => {
       const root = rules([clearfixRuleset]);
       context.root = root;
 
-      await expect(root.eval(context)).rejects.toThrow(ReferenceError);
-      await expect(root.eval(context)).rejects.toThrow(/not defined|No matching definition/);
+      await expectRejects(root.eval(context), ReferenceError, /not defined|No matching definition/);
     });
 
     it('should fail when duplicate .foo .bar blocks both call .foo.bar() (would cause mutual recursion)', async () => {
@@ -131,8 +390,7 @@ describe('Mixin Recursion Detection', () => {
       const root = rules([fooRuleset1, fooRuleset2]);
       context.root = root;
 
-      await expect(root.eval(context)).rejects.toThrow(ReferenceError);
-      await expect(root.eval(context)).rejects.toThrow(/not defined|No matching definition/);
+      await expectRejects(root.eval(context), ReferenceError, /not defined|No matching definition/);
     });
 
     it('should fail when mixin A calls mixin B, and mixin B would call mixin A (mutual recursion)', async () => {
@@ -170,8 +428,7 @@ describe('Mixin Recursion Detection', () => {
       const rootWithCall = rules([aRuleset, bRuleset, testRuleset]);
       context.root = rootWithCall;
 
-      await expect(rootWithCall.eval(context)).rejects.toThrow(ReferenceError);
-      await expect(rootWithCall.eval(context)).rejects.toThrow(/not defined|No matching definition/);
+      await expectRejects(rootWithCall.eval(context), undefined, /not defined|No matching definition/);
     });
   });
 

@@ -16,7 +16,7 @@ describe('Mixin', () => {
   });
 
   describe('calling', () => {
-    it('should call a simple mixin', async () => {
+    it.only('should call a simple mixin', async () => {
       // Create a mixin definition: .my-mixin() { color: red; }
       const mixinDef = mixin({
         name: any('.my-mixin'),

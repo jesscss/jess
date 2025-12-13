@@ -21,34 +21,12 @@ import type { Condition } from './condition';
 import type { Bool } from './bool';
 import * as Registries from './util/registry-utils';
 import { tryExtendSelector } from './util/extend';
-import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, pipe, isThenable, serialForEach, tryStep } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil';
 import { VarDeclaration } from './declaration-var';
 import { Any } from './any';
 import { List } from './list';
-import { appendFileSync } from 'node:fs';
-import { join } from 'node:path';
-
 const { isArray } = Array;
-
-// Debug logging helper
-const debugLog = (location: string, message: string, data: any, hypothesisId: string) => {
-  try {
-    const logPath = join(__dirname, '../../../../.cursor/debug.log');
-    const logEntry = JSON.stringify({
-      location,
-      message,
-      data,
-      timestamp: Date.now(),
-      sessionId: 'debug-session',
-      runId: 'run1',
-      hypothesisId
-    }) + '\n';
-    appendFileSync(logPath, logEntry, 'utf8');
-  } catch (e) {
-    // Silently fail if file write doesn't work
-  }
-};
 
 export const enum Priority {
   None = 0,
@@ -310,6 +288,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       w.add(space);
     }
     w.add('}');
+    // At root level (depth === 0), don't add a newline after the closing brace
+    // The parent _emitRulesBody will add the newline before the next item
+    // For nested rules (depth > 0), the newline is handled by the parent's _emitRulesBody
     return w.getSince(mark);
   }
 
@@ -321,57 +302,87 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Skip charset nodes - they are collected and prepended at root level
     const items = value.filter(n => n.visible && !(n.type === 'Any' && (n as any).options?.role === 'charset'));
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
+      method: 'POST',
+      // eslint-disable-next-line @typescript-eslint/naming-convention
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        location: 'rules.ts:297',
+        message: '_emitRulesBody called',
+        data: {
+          depth,
+          itemsLength: items.length,
+          itemTypes: items.map(n => n.type)
+        },
+        timestamp: Date.now(),
+        sessionId: 'debug-session',
+        runId: 'run1',
+        hypothesisId: 'C'
+      })
+    }).catch(() => {});
+    // #endregion
+
     if (items.length === 0) {
       return;
     }
 
-    // #region agent log - check for circular references in Rules
-    const rulesInValue = items.filter(n => n.type === 'Rules') as Rules[];
-    const containsSelf = rulesInValue.some(r => r === this);
-    if (containsSelf) {
-      debugLog('rules.ts:316', 'Rules contains itself in value array!', {
-        rulesIndex: this.index,
-        rulesInValueCount: rulesInValue.length,
-        rulesInValueIndices: rulesInValue.map(r => r.index),
-        valueLength: value.length,
-        itemsLength: items.length,
-        note: 'checking why Rules contains itself'
-      }, 'H');
-    }
-    // Check for circular references: if any child Rules contains this Rules
-    for (const childRules of rulesInValue) {
-      const childRulesValue = childRules.value;
-      const childContainsThis = childRulesValue.some(n => n === this);
-      if (childContainsThis) {
-        debugLog('rules.ts:316', 'Child Rules contains parent Rules (circular reference)!', {
-          parentRulesIndex: this.index,
-          childRulesIndex: childRules.index,
-          childRulesValueLength: childRulesValue.length,
-          note: 'child Rules contains parent Rules, creating circular reference'
-        }, 'H');
-      }
-      // Check if child Rules contains any Rules that contains this Rules (longer cycle)
-      const rulesInChild = childRulesValue.filter(n => n.type === 'Rules') as Rules[];
-      for (const grandchildRules of rulesInChild) {
-        const grandchildContainsThis = grandchildRules.value.some(n => n === this);
-        if (grandchildContainsThis) {
-          debugLog('rules.ts:316', 'Grandchild Rules contains ancestor Rules (circular reference)!', {
-            parentRulesIndex: this.index,
-            childRulesIndex: childRules.index,
-            grandchildRulesIndex: grandchildRules.index,
-            note: 'grandchild Rules contains ancestor Rules, creating circular reference'
-          }, 'H');
-        }
-      }
-    }
-    // #endregion
-
     // No spacing flags; writer.capture is used where needed
 
+    let previousEndsWithNewline = false;
     for (let idx = 0; idx < items.length; idx++) {
       const n = items[idx]!;
       if (idx > 0) {
-        w.add('\n');
+        // Only add newline if previous item didn't end with one
+        // This prevents double newlines when renderWithFrameFlattening already added one
+        if (!previousEndsWithNewline) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
+            method: 'POST',
+            // eslint-disable-next-line @typescript-eslint/naming-convention
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              location: 'rules.ts:318',
+              message: '_emitRulesBody adding newline before item',
+              data: {
+                idx,
+                depth,
+                nodeType: n.type,
+                itemsLength: items.length,
+                previousEndsWithNewline
+              },
+              timestamp: Date.now(),
+              sessionId: 'debug-session',
+              runId: 'run1',
+              hypothesisId: 'C'
+            })
+          }).catch(() => {});
+          // #endregion
+          w.add('\n');
+        } else {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
+            method: 'POST',
+            // eslint-disable-next-line @typescript-eslint/naming-convention
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              location: 'rules.ts:318',
+              message: '_emitRulesBody skipping newline (previous ended with newline)',
+              data: {
+                idx,
+                depth,
+                nodeType: n.type,
+                itemsLength: items.length,
+                previousEndsWithNewline
+              },
+              timestamp: Date.now(),
+              sessionId: 'debug-session',
+              runId: 'run1',
+              hypothesisId: 'C'
+            })
+          }).catch(() => {});
+          // #endregion
+        }
       }
       const isChildRules = n.type === 'Rules';
       if (!isChildRules && depth !== 0) {
@@ -380,9 +391,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       // Emit directly to preserve source map segments
       let rule = w.capture(() => n.toTrimmedString({ ...options }));
+      // Check if the captured output ends with a newline
+      previousEndsWithNewline = rule.endsWith('\n');
       w.add(rule, n); // Pass node as origin to preserve location info
       if (n.requiredSemi && n.options.semi !== false) {
         w.add(';', n);
+        previousEndsWithNewline = false; // Semicolon means it doesn't end with newline
       }
     }
   }
@@ -890,70 +904,122 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           return;
         }
 
-        let maybeResult: MaybePromise<Node>;
-        try {
-          maybeResult = (rule as any).eval(context) as MaybePromise<Node>;
-        } catch (error) {
-          // If evaluation failed and we haven't retried this node yet,
-          // and we're not already at the none priority, retry at none priority
-          if (p > Priority.None && !retriedNodes.has(rule)) {
-            retriedNodes.add(rule);
-            // Move to lowest priority queue for retry
-            const lowQueue = evalQueue.get(Priority.None) || [];
-            lowQueue.push([idx, rule]);
-            evalQueue.set(Priority.None, lowQueue);
-            // Skip processing for now, will be retried at Priority.None
-            return;
-          }
-          // If we're already at the lowest priority, rethrow
-          throw error;
+        // #region agent log
+        if (rule.type === 'Call') {
+          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
+            method: 'POST',
+            // eslint-disable-next-line @typescript-eslint/naming-convention
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              location: 'rules.ts:907',
+              message: 'Rules.evalNode: evaluating Call',
+              data: {
+                idx,
+                priority: p,
+                ruleType: rule.type
+              },
+              timestamp: Date.now(),
+              sessionId: 'debug-session',
+              runId: 'run1',
+              hypothesisId: 'F'
+            })
+          }).catch(() => {});
         }
-
-        const applyResult = (result: Node) => {
-          if (result !== rule) {
-            rules.value[idx] = result;
-            queue[q] = [idx, result];
-            // If a StyleImport evaluated to Rules, register them in the parent's _rulesSet
-            // so variables from the import can be found by the parent
-            if (isNode(result, 'Rules')) {
-              // Set the index of the imported Rules to the StyleImport's index
-              // so we can compare Rules indices when determining which variable was declared later
-              result.index = idx;
-              rules.adopt(result);
-              rules.registerNode(result, {
-                rulesVisibility: result.options.rulesVisibility,
-                readonly: result.options.readonly
-              }, context);
-            } else {
-              // For non-Rules results, adopt them to set up parent chain
-              rules.adopt(result);
+        // #endregion
+        return pipe(
+          tryStep(() => rule.eval(context), {
+            onError(error) {
+              // If evaluation failed and we haven't retried this node yet,
+              // and we're not already at the none priority, retry at none priority
+              if (p > Priority.None && !retriedNodes.has(rule)) {
+                retriedNodes.add(rule);
+                // Move to lowest priority queue for retry
+                const lowQueue = evalQueue.get(Priority.None) || [];
+                lowQueue.push([idx, rule]);
+                evalQueue.set(Priority.None, lowQueue);
+                // Skip processing for now, will be retried at Priority.None
+                return;
+              }
+              // If we're already at the lowest priority, rethrow
+              throw error;
             }
-          }
-          if (result.options.hoistToRoot) {
-            rulesToHoist = true;
-          }
-        };
-        if (isThenable(maybeResult)) {
-          return (maybeResult as Promise<Node>).then((res) => {
-            applyResult(res);
-          }).catch((error) => {
-            // Handle async errors - retry at lower priority if not already retried
-            if (p > Priority.None && !retriedNodes.has(rule)) {
-              retriedNodes.add(rule);
-              // Move to lowest priority queue for retry
-              const lowQueue = evalQueue.get(Priority.None) || [];
-              lowQueue.push([idx, rule]);
-              evalQueue.set(Priority.None, lowQueue);
-              // Skip processing for now, will be retried at Priority.None
-              // Return undefined to resolve the promise (error will be thrown on retry)
+          }),
+          (result: Node | undefined) => {
+            // If result is undefined (onError returned without throwing), skip processing
+            if (result === undefined) {
               return;
             }
-            // If we're already at the lowest priority, rethrow
-            throw error;
-          });
-        }
-        applyResult(maybeResult as Node);
-        return;
+            // Apply the result
+            if (result !== rule) {
+              // #region agent log
+              if (rule.type === 'Call') {
+                fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
+                  method: 'POST',
+                  // eslint-disable-next-line @typescript-eslint/naming-convention
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    location: 'rules.ts:931',
+                    message: 'Rules.evalNode: Call result different from rule',
+                    data: {
+                      idx,
+                      ruleType: rule.type,
+                      resultType: result.type,
+                      isRules: result.type === 'Rules',
+                      resultEqualsRule: result === rule
+                    },
+                    timestamp: Date.now(),
+                    sessionId: 'debug-session',
+                    runId: 'run1',
+                    hypothesisId: 'F'
+                  })
+                }).catch(() => {});
+              }
+              // #endregion
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
+                method: 'POST',
+                // eslint-disable-next-line @typescript-eslint/naming-convention
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  location: 'rules.ts:931',
+                  message: 'Rules.evalNode: replacing node with result',
+                  data: {
+                    idx,
+                    ruleType: rule.type,
+                    resultType: result.type,
+                    isRules: result.type === 'Rules',
+                    isCall: rule.type === 'Call'
+                  },
+                  timestamp: Date.now(),
+                  sessionId: 'debug-session',
+                  runId: 'run1',
+                  hypothesisId: 'E'
+                })
+              }).catch(() => {});
+              // #endregion
+              rules.value[idx] = result;
+              queue[q] = [idx, result];
+              // If a StyleImport evaluated to Rules, register them in the parent's _rulesSet
+              // so variables from the import can be found by the parent
+              if (isNode(result, 'Rules')) {
+                // Set the index of the imported Rules to the StyleImport's index
+                // so we can compare Rules indices when determining which variable was declared later
+                result.index = idx;
+                rules.adopt(result);
+                rules.registerNode(result, {
+                  rulesVisibility: result.options.rulesVisibility,
+                  readonly: result.options.readonly
+                }, context);
+              } else {
+                // For non-Rules results, adopt them to set up parent chain
+                rules.adopt(result);
+              }
+            }
+            if (result.options.hoistToRoot) {
+              rulesToHoist = true;
+            }
+          }
+        );
       });
       return innerResult;
     });
@@ -1123,7 +1189,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let currentState = frameState.at(-1) ?? { depth: 0 };
     let currentDepth = currentState.depth;
 
-    let newFrames: (AtRule | Ruleset)[] = currentNode.frames!.filter(frame => isNode(frame, 'AtRule')) as AtRule[];
+    let newFrames: (AtRule | Ruleset)[] = (currentNode.frames ?? []).filter(frame => isNode(frame, 'AtRule')) as AtRule[];
     newFrames.push(currentNode);
     let newFramesStartIndex = 0;
 
@@ -1173,9 +1239,56 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             if (!state?.frame) {
               break;
             }
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
+              method: 'POST',
+              // eslint-disable-next-line @typescript-eslint/naming-convention
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                location: 'rules.ts:1100',
+                message: 'Closing brace before hoisted child',
+                data: {
+                  depth: d,
+                  currentDepth,
+                  frameStateLength: frameState.length,
+                  newFramesStartIndex,
+                  i,
+                  length,
+                  isLastItem: i === length - 1,
+                  childType: child.type
+                },
+                timestamp: Date.now(),
+                sessionId: 'debug-session',
+                runId: 'run1',
+                hypothesisId: 'A'
+              })
+            }).catch(() => {});
+            // #endregion
             w.add(`${space}}\n`);
           }
         }
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
+          method: 'POST',
+          // eslint-disable-next-line @typescript-eslint/naming-convention
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: 'rules.ts:1103',
+            message: 'Rendering hoisted child',
+            data: {
+              i,
+              length,
+              childType: child.type,
+              currentDepth,
+              frameStateLength: frameState.length
+            },
+            timestamp: Date.now(),
+            sessionId: 'debug-session',
+            runId: 'run1',
+            hypothesisId: 'A'
+          })
+        }).catch(() => {});
+        // #endregion
         child.toTrimmedString(opts);
         if (i < length - 1) {
           /** More declarations, we need to re-open */
@@ -1485,10 +1598,20 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         // Mark as being evaluated
         thisContext.startEvaluatingMixinRules(rulesetRules);
         try {
-          // For Rulesets, use their rules directly without copying
-          // (Rulesets don't have parameters like Mixins, so no need to copy)
+          // Copy the rules to avoid shared state issues during evaluation
+          // Even though Rulesets don't have parameters, we need to copy to ensure
+          // each mixin call gets its own independent Rules instance
+          // Note: copy(true) should create nodes with evaluated=false by default
+          // but we explicitly reset to ensure ampersands can be re-evaluated
+          let rules = rulesetRules.copy(true);
+          rules.evaluated = false;
+          rules.preEvaluated = false;
+          // Preserve the parent from the original ruleset's Rules so lookups can traverse up
+          if (rulesetRules.parent) {
+            rules.parent = rulesetRules.parent;
+          }
           hasMatch = true;
-          outputRules.push([rulesetRules, i]);
+          outputRules.push([rules, i]);
         } finally {
           // Note: We don't stop evaluating here because the Rules will be evaluated later
           // We'll stop when the Rules evaluation completes
@@ -1496,21 +1619,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         continue;
       }
       /** Create new rules, and add the candidate rules, to add to scope */
-      // #region agent log - track when .chips Ruleset is being copied
-      const candidateSelector = isNode(candidate, 'Ruleset') ? (candidate as Ruleset).selector?.valueOf() : undefined;
-      const isChipsCandidate = candidateSelector === '.chips' || (typeof candidateSelector === 'string' && candidateSelector.includes('.chips'));
-      if (isChipsCandidate) {
-        const stackTrace = new Error().stack;
-        const callerInfo = stackTrace?.split('\n').slice(1, 6).join(' | ') || 'no-stack';
-        debugLog('rules.ts:1438', 'Copying rules from .chips Ruleset candidate', {
-          candidateSelector,
-          candidateIndex: (candidate as any).index,
-          candidateEvaluated: (candidate as any).evaluated,
-          callerInfo,
-          note: 'tracking when .chips Ruleset is found as candidate and its rules are copied'
-        }, 'H');
-      }
-      // #endregion
       let rules = candidate.value.rules.copy(true);
       // Preserve the parent from the original mixin's Rules so lookups can traverse up
       // The parent should be where the mixin was defined (source position)
@@ -1615,9 +1723,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       // to prevent infinite loops (e.g., .recursion { .recursion(); })
       // Uses the same mechanism as variable recursion detection
         if (thisContext.searchScope.has(candidate)) {
-        // #region agent log
-          debugLog('rules.ts:1541', 'Skipping candidate already in searchScope', { candidateType: candidate.type, rulesIndex: rules.index }, 'J');
-          // #endregion
           // Recursive call detected - skip this candidate (don't add to outputRules)
           // This allows other candidates to still match
           continue;
@@ -1625,33 +1730,32 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
 
         // Mark this mixin as being evaluated (similar to how variables are tracked)
         thisContext.searchScope.add(candidate);
-        // #region agent log
-        const candidateSelector = isNode(candidate, 'Ruleset') ? (candidate as Ruleset).selector?.valueOf() : undefined;
-        const candidateRulesetIndex = isNode(candidate, 'Ruleset') ? (candidate as Ruleset).index : undefined;
-        const chipsInFrames = thisContext.rulesetFrames.filter(f => f.index === 98);
-        const candidateAsRuleset = isNode(candidate, 'Ruleset') ? candidate as Ruleset : null;
-        const chipsInFramesInfo = chipsInFrames.map((f, i) => ({
-          index: i,
-          frameIndex: f.index,
-          selector: f.selector?.valueOf(),
-          isSameRef: candidateAsRuleset ? f === candidateAsRuleset : false
-        }));
-        debugLog('rules.ts:1575', 'Evaluating candidate', { candidateType: candidate.type, candidateSelector, candidateRulesetIndex, rulesIndex: rules.index, searchScopeSize: thisContext.searchScope.size, chipsInFramesCount: chipsInFrames.length, chipsInFramesInfo, note: 'checking if .chips is already in frames when evaluating' }, 'J');
-        // #endregion
         try {
           let newRules = await rules.eval(thisContext);
           // #region agent log
-          const mixinRegistryAfterEval = newRules.getRegistry('mixin');
-          mixinRegistryAfterEval.indexPendingItems();
-          const registryKeysAfterEval = Array.from(mixinRegistryAfterEval.index.keys());
-          // Check what nodes are in the Rules value array
-          const valueNodeTypes = newRules.value.map((node, idx) => ({
-            idx,
-            type: node.type,
-            selector: node.type === 'Ruleset' ? (node as any).value?.selector?.valueOf() : undefined,
-            keySet: node.type === 'Ruleset' ? ((node as any).value?.selector?.keySet ? Array.from((node as any).value.selector.keySet) : undefined) : undefined
-          }));
-          debugLog('rules.ts:1552', 'After rules.eval in getFunctionFromMixins', { candidateType: candidate.type, newRulesIndex: newRules.index, registryKeys: registryKeysAfterEval, rulesValueLength: newRules.value.length, valueNodeTypes }, 'F');
+          // Check if Rulesets inside have frames set
+          const rulesetsInRules = newRules.value.filter((n) => isNode(n, 'Ruleset'));
+          const rulesetsWithFrames = rulesetsInRules.filter((n) => (n as Ruleset).frames !== undefined);
+          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
+            method: 'POST',
+            // eslint-disable-next-line @typescript-eslint/naming-convention
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              location: 'rules.ts:1734',
+              message: 'getFunctionFromMixins: after rules.eval, checking Rulesets for frames',
+              data: {
+                rulesLength: newRules.value.length,
+                rulesetsCount: rulesetsInRules.length,
+                rulesetsWithFramesCount: rulesetsWithFrames.length,
+                collapseNesting: thisContext.opts.collapseNesting,
+                contextFramesLength: thisContext.frames?.length ?? 0
+              },
+              timestamp: Date.now(),
+              sessionId: 'debug-session',
+              runId: 'run1',
+              hypothesisId: 'G'
+            })
+          }).catch(() => {});
           // #endregion
           /**
            * Make everything public, so that we can access these
@@ -1694,87 +1798,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      * their original order
      */
     let rulesArr = outputRules.sort((a, b) => a[1] - b[1]).map(r => r[0]);
-    // #region agent log - check for circular references before creating output
-    const rulesArrIndices = rulesArr.map(r => r.index);
-    debugLog('rules.ts:1639', 'Creating output Rules', {
-      rulesArrLength: rulesArr.length,
-      rulesArrIndices,
-      note: 'checking for potential circular references'
-    }, 'H');
-    // #endregion
     /** Create a rules wrapper */
     let output = new Rules(rulesArr);
-    // #region agent log - check for circular references in output Rules
-    const rulesInOutput = output.value.filter(n => n.type === 'Rules') as Rules[];
-    const anyContainsOutput = rulesInOutput.some(r => r === output);
-    if (anyContainsOutput) {
-      debugLog('rules.ts:1641', 'Output Rules contains itself!', {
-        outputIndex: output.index,
-        rulesInOutputCount: rulesInOutput.length,
-        rulesInOutputIndices: rulesInOutput.map(r => r.index),
-        note: 'output Rules contains itself in value array'
-      }, 'H');
-    }
-    // Check if any Rules in output contains output (direct or indirect)
-    for (const childRules of rulesInOutput) {
-      const childRulesValue = childRules.value;
-      const childContainsOutput = childRulesValue.some(n => n === output);
-      if (childContainsOutput) {
-        debugLog('rules.ts:1641', 'Child Rules contains output Rules (circular reference)!', {
-          outputIndex: output.index,
-          childRulesIndex: childRules.index,
-          note: 'a Rules in output.value contains output itself'
-        }, 'H');
-      }
-      // Check for longer cycles: child Rules contains another Rules that contains output
-      const rulesInChild = childRulesValue.filter(n => n.type === 'Rules') as Rules[];
-      for (const grandchildRules of rulesInChild) {
-        const grandchildContainsOutput = grandchildRules.value.some(n => n === output);
-        if (grandchildContainsOutput) {
-          debugLog('rules.ts:1641', 'Grandchild Rules contains output Rules (circular reference)!', {
-            outputIndex: output.index,
-            childRulesIndex: childRules.index,
-            grandchildRulesIndex: grandchildRules.index,
-            note: 'grandchild Rules contains output Rules, creating circular reference'
-          }, 'H');
-        }
-      }
-    }
-    // Check for circular references between Rules in output (A contains B, B contains A)
-    for (let i = 0; i < rulesInOutput.length; i++) {
-      for (let j = i + 1; j < rulesInOutput.length; j++) {
-        const rulesA = rulesInOutput[i]!;
-        const rulesB = rulesInOutput[j]!;
-        const aContainsB = rulesA.value.some(n => n === rulesB);
-        const bContainsA = rulesB.value.some(n => n === rulesA);
-        if (aContainsB && bContainsA) {
-          debugLog('rules.ts:1641', 'Circular reference between Rules in output!', {
-            rulesAIndex: rulesA.index,
-            rulesBIndex: rulesB.index,
-            note: 'Rules A contains B and B contains A, creating circular reference'
-          }, 'H');
-        }
-      }
-    }
-    // #endregion
-
-    // #region agent log
-    // Check what's in the output Rules' registry
-    if (rulesArr.length > 0) {
-      const firstRule = rulesArr[0];
-      if (firstRule && isNode(firstRule, 'Rules')) {
-        const firstRuleMixinRegistry = firstRule.getRegistry('mixin');
-        firstRuleMixinRegistry.indexPendingItems();
-        const firstRuleRegistryKeys = Array.from(firstRuleMixinRegistry.index.keys());
-        debugLog('rules.ts:1612', 'Output Rules created, checking first rule registry', { firstRuleIndex: firstRule.index, firstRuleRegistryKeys, outputRulesCount: rulesArr.length }, 'F');
-      }
-    }
-    // Check what's in the output Rules' registry (it should aggregate from children)
-    const outputMixinRegistry = output.getRegistry('mixin');
-    outputMixinRegistry.indexPendingItems();
-    const outputRegistryKeys = Array.from(outputMixinRegistry.index.keys());
-    debugLog('rules.ts:1625', 'Output Rules registry', { outputIndex: output.index, outputRegistryKeys }, 'F');
-    // #endregion
 
     /** Now push all rules into the rules value */
     if (this instanceof Context) {

@@ -17,27 +17,6 @@ import { co } from './combinator';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule';
-import { appendFileSync } from 'node:fs';
-import { join } from 'node:path';
-
-// Debug logging helper
-const debugLog = (location: string, message: string, data: any, hypothesisId: string) => {
-  try {
-    const logPath = join(__dirname, '../../../../.cursor/debug.log');
-    const logEntry = JSON.stringify({
-      location,
-      message,
-      data,
-      timestamp: Date.now(),
-      sessionId: 'debug-session',
-      runId: 'run1',
-      hypothesisId
-    }) + '\n';
-    appendFileSync(logPath, logEntry);
-  } catch (e) {
-    // Ignore logging errors
-  }
-};
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -127,22 +106,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   override preEval(context: Context): MaybePromise<this> {
     if (!this.preEvaluated) {
       const node = this.maybeClone(context);
-      // #region agent log
-      const selectorValue = node.value.selector?.valueOf();
-      const isChips = selectorValue === '.chips' || selectorValue?.includes('.chips');
-      if (isChips) {
-        const stackTrace = new Error().stack;
-        const callerInfo = stackTrace?.split('\n').slice(1, 5).join(' | ') || 'no-stack';
-        debugLog('ruleset.ts:129', 'Cloning Ruleset with .chips selector in preEval', {
-          selectorValue,
-          rulesetIndex: node.index,
-          originalIndex: this.index,
-          isSameInstance: node === this,
-          callerInfo,
-          note: 'tracking when .chips Ruleset is cloned'
-        }, 'H');
-      }
-      // #endregion
       node.preEvaluated = true;
       node.sourceNode ??= this;
       const { selector } = node.value;
@@ -178,21 +141,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   /** Attach an (invisible) ampersand to the selector(s) if it's not already there */
   getImplicitSelector(parentSelector: Selector, collapseNesting = false) {
     let selector = this.selector;
-    // #region agent log - track implicit ampersand for .chips
-    const currentSelectorValue = selector?.valueOf();
-    const parentSelectorValue = parentSelector?.valueOf();
-    const isChips = currentSelectorValue === '.chips' || (typeof currentSelectorValue === 'string' && currentSelectorValue.includes('.chips'));
-    if (isChips) {
-      debugLog('ruleset.ts:179', 'getImplicitSelector called on .chips Ruleset', {
-        currentSelectorValue,
-        parentSelectorValue,
-        rulesetIndex: this.index,
-        rulesetEvaluated: this.evaluated,
-        collapseNesting,
-        note: 'checking if implicit ampersand is mutating .chips selector'
-      }, 'H');
-    }
-    // #endregion
     if (selector instanceof Nil) {
       return selector;
     }
@@ -212,17 +160,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     } else {
       selector = this.addImplicitAmpersand(parentSelector, selector, collapseNesting);
     }
-    // #region agent log - track result of implicit ampersand for .chips
-    if (isChips) {
-      const resultSelectorValue = selector?.valueOf();
-      debugLog('ruleset.ts:204', 'getImplicitSelector result for .chips', {
-        resultSelectorValue,
-        wasMutated: resultSelectorValue !== currentSelectorValue,
-        rulesetIndex: this.index,
-        note: 'checking if selector was mutated by implicit ampersand'
-      }, 'H');
-    }
-    // #endregion
     if (collapseNesting) {
       selector.options.hoistToRoot = true;
     }
@@ -230,41 +167,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   override evalNode(context: Context): MaybePromise<Ruleset | Nil> {
-    // #region agent log
-    const currentSelector = this.selector?.valueOf();
-    const isChips = currentSelector === '.chips' || (typeof currentSelector === 'string' && currentSelector.includes('.chips'));
-    if (isChips) {
-      const rulesetIndex = this.index;
-      const stackTrace = new Error().stack;
-      const callerInfo = stackTrace?.split('\n').slice(1, 4).join(' | ') || 'no-stack';
-      const alreadyInFrames = context.rulesetFrames.some(f => f === this);
-      const framesWithChips = context.rulesetFrames.filter((f) => {
-        const sel = f.selector?.valueOf();
-        return sel === '.chips' || (typeof sel === 'string' && sel.includes('.chips'));
-      });
-      const framesWithChipsInfo = framesWithChips.map((f) => {
-        const sel = f.selector?.valueOf();
-        return {
-          stackIndex: context.rulesetFrames.indexOf(f),
-          frameIndex: f.index,
-          isSameRef: f === this,
-          frameSelector: sel,
-          frameSelectorIncludesChips: sel === '.chips' || (typeof sel === 'string' && sel.includes('.chips'))
-        };
-      });
-      debugLog('ruleset.ts:232', 'Evaluating .chips Ruleset', {
-        currentSelector,
-        rulesetIndex,
-        rulesetEvaluated: this.evaluated,
-        alreadyInFrames,
-        framesWithChipsCount: framesWithChips.length,
-        framesWithChipsInfo,
-        callerInfo,
-        rulesetFramesLength: context.rulesetFrames.length,
-        note: 'tracking if .chips is evaluated twice or selector is mutated'
-      }, 'H');
-    }
-    // #endregion
     if (this.evaluated) {
       return this;
     }
@@ -289,16 +191,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         }
         this.value.guard = undefined;
         let parentSelector = context.rulesetFrames.at(-1)?.selector;
-        // #region agent log
-        const currentRulesetSelector = this.selector?.valueOf();
-        const rulesetFramesInfo = context.rulesetFrames.map((f, i) => ({
-          index: i,
-          selector: f.selector?.valueOf(),
-          type: f.type
-        }));
-        const parentSelectorValueOf = parentSelector && !(parentSelector instanceof Nil) ? parentSelector.valueOf() : undefined;
-        debugLog('ruleset.ts:190', 'Getting parentSelector from rulesetFrames', { currentRulesetSelector, rulesetFramesLength: context.rulesetFrames.length, rulesetFramesInfo, parentSelectorValueOf, note: 'checking if rulesetFrames has wrong entries' }, 'H');
-        // #endregion
 
         // Always use getImplicitSelector when there's a parent selector
         // BUT: if the parent Ruleset in frames is the same instance/index as this Ruleset,
@@ -372,22 +264,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         if (sels instanceof Nil) {
           return sels;
         }
-        // #region agent log - track selector assignment for .chips
-        const beforeSelectorValue = this.selector?.valueOf();
-        const newSelectorValue = sels?.valueOf();
-        const isChips = beforeSelectorValue === '.chips' || (typeof beforeSelectorValue === 'string' && beforeSelectorValue.includes('.chips'))
-          || newSelectorValue === '.chips' || (typeof newSelectorValue === 'string' && newSelectorValue.includes('.chips'));
-        if (isChips) {
-          debugLog('ruleset.ts:340', 'Assigning selector to .chips Ruleset', {
-            beforeSelectorValue,
-            newSelectorValue,
-            rulesetIndex: this.index,
-            rulesetEvaluated: this.evaluated,
-            isSameInstance: this.selector === sels,
-            note: 'checking if selector is being mutated on .chips Ruleset'
-          }, 'H');
-        }
-        // #endregion
         this.value.selector = sels;
         this.options.hoistToRoot ||= context.opts.collapseNesting;
         context.rulesetFrames.push(this as Ruleset);
@@ -395,24 +271,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         return this.value.rules.eval(context);
       },
       (evaluatedRules: Rules | Nil) => {
-        const currentRulesetIndex = this.index;
-        // #region agent log
-        const framesBeforePop = context.rulesetFrames.map((f, i) => ({
-          index: i,
-          selector: f.selector?.valueOf(),
-          type: f.type
-        }));
-        const expectedPoppedSelector = this.selector?.valueOf();
-        const actualTopFrameSelector = framesBeforePop.length > 0 ? framesBeforePop[framesBeforePop.length - 1]?.selector : undefined;
-        const isNil = evaluatedRules instanceof Nil;
-        debugLog('ruleset.ts:306', 'About to pop Ruleset from rulesetFrames', { expectedPoppedSelector, actualTopFrameSelector, framesBeforePopLength: context.rulesetFrames.length, framesBeforePop, isNil, note: 'popping Ruleset from frames' }, 'H');
-        // #endregion
-
         // ALWAYS pop the frame, even if evaluatedRules is Nil, to prevent frame accumulation
-        // #region agent log
-        const poppedRulesetSelector = framesBeforePop.length > 0 ? framesBeforePop[framesBeforePop.length - 1]?.selector : undefined;
-        debugLog('ruleset.ts:318', 'Popping Ruleset from rulesetFrames', { poppedRulesetSelector, expectedPoppedSelector, framesBeforePopLength: context.rulesetFrames.length, framesBeforePop, isNil, note: 'always popping to prevent frame leak' }, 'H');
-        // #endregion
         context.rulesetFrames.pop();
         context.frames.pop();
 

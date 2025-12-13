@@ -554,41 +554,6 @@ export abstract class Node<
     }
     let newNode = new Class(newValue, { ...this.options }, this.location, this.treeContext);
     newNode.inherit(this);
-    // #region agent log - track Ruleset cloning with .chips selector
-    if (newNode.type === 'Ruleset') {
-      const rulesetNode = newNode as any;
-      const rulesetValue = rulesetNode.value;
-      const selector = rulesetValue?.selector;
-      if (selector && typeof selector.valueOf === 'function') {
-        const selectorValue = selector.valueOf();
-        const isChips = selectorValue === '.chips' || (typeof selectorValue === 'string' && selectorValue.includes('.chips'));
-        if (isChips) {
-          const { appendFileSync } = require('node:fs');
-          const { join } = require('node:path');
-          const logPath = join(__dirname, '../../../../.cursor/debug.log');
-          const stackTrace = new Error().stack;
-          const callerInfo = stackTrace?.split('\n').slice(1, 6).join(' | ') || 'no-stack';
-          appendFileSync(logPath, JSON.stringify({
-            location: 'node.ts:555',
-            message: 'Cloning Ruleset with .chips selector',
-            data: {
-              selectorValue,
-              rulesetIndex: rulesetNode.index,
-              originalIndex: (this as any).index,
-              isSameInstance: newNode === this,
-              deep,
-              callerInfo,
-              note: 'tracking when .chips Ruleset is cloned'
-            },
-            timestamp: Date.now(),
-            sessionId: 'debug-session',
-            runId: 'run1',
-            hypothesisId: 'H'
-          }) + '\n');
-        }
-      }
-    }
-    // #endregion
 
     cloneFn ??= n => n.clone(deep);
 

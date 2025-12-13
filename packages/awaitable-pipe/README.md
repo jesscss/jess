@@ -133,6 +133,35 @@ const step = tryStep((n: number) => {
 const out = pipe(() => 5, step);   // 10
 const out2 = pipe(() => -1, step); // 0
 
+// onError can throw to rethrow the error (or a transformed error) for upstream handling
+const stepWithRethrow = tryStep((input: string) => {
+  if (input === 'bad') throw new ReferenceError('not found');
+  return input.toUpperCase();
+}, {
+  onError: (error, input) => {
+    // Conditionally rethrow based on error type
+    if (error instanceof ReferenceError) {
+      throw error; // Re-throw for upstream handling
+    }
+    // Otherwise, just log - fallback will be used
+    console.log('Handled error:', error);
+  },
+  fallback: 'default'
+});
+
+const result1 = pipe(() => 'good', stepWithRethrow); // 'GOOD'
+const result2 = pipe(() => 'bad', stepWithRethrow);  // Throws ReferenceError
+const result3 = pipe(() => 'other', stepWithRethrow); // 'default' (if step throws non-ReferenceError)
+
+// Or use rethrow: true to always rethrow after onError
+const alwaysRethrow = tryStep((n: number) => {
+  if (n < 0) throw new Error('no negatives');
+  return n * 2;
+}, {
+  onError: (err, n) => console.warn('Error:', err),
+  rethrow: true // Always rethrow the original error after onError
+});
+
 // guard: ensure a condition holds at this step (sync or async)
 const positive = guard((n: number) => n > 0, (n) => new Error(`not positive: ${n}`));
 const ok = pipe(() => 3, positive);         // 3

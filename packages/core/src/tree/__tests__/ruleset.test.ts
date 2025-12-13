@@ -15,7 +15,17 @@ describe('Rule', () => {
         decl({ name: 'color', value: any('#eee') })
       ])
     });
-    expect(`${node}`).toBe('foo {\n  border: 1px solid black;\n  color: #eee;\n}');
+    let nodes = rules([node, node]);
+    expect(`${nodes}`).toBeString(`
+      foo {
+        border: 1px solid black;
+        color: #eee;
+      }
+      foo {
+        border: 1px solid black;
+        color: #eee;
+      }
+    `);
   });
   // it('should serialize to a module', () => {
   //   let node = rule({

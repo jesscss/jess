@@ -14,8 +14,6 @@ import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { getFunctionFromMixins } from './rules';
 import type { MixinEntry, Rules } from './rules';
 import type { Interpolated } from './interpolated';
-import { appendFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 /**
  * The type is determined by syntax
@@ -75,25 +73,6 @@ type NodeType = typeof Node<ReferenceValue, ReferenceOptions>;
 type ReferenceParams = ConstructorParameters<NodeType>;
 
 const { isArray } = Array;
-
-// Debug logging helper
-const debugLog = (location: string, message: string, data: any, hypothesisId: string) => {
-  try {
-    const logPath = join(__dirname, '../../../../.cursor/debug.log');
-    const logEntry = JSON.stringify({
-      location,
-      message,
-      data,
-      timestamp: Date.now(),
-      sessionId: 'debug-session',
-      runId: 'run1',
-      hypothesisId
-    }) + '\n';
-    appendFileSync(logPath, logEntry, 'utf8');
-  } catch (e) {
-    // Silently fail if file write doesn't work
-  }
-};
 
 /**
  * This is a variable or property reference,
@@ -209,7 +188,19 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       (resolvedTarget) => {
         let out = isNode(key) ? key.eval(context) : key;
         if (isThenable(out)) {
-          return out.then(k => [resolvedTarget, k.valueOf()] as [any, string]);
+          return out.then((k) => {
+            // If key is a Selector (CompoundSelector, ComplexSelector, etc.), extract keySet as array
+            if (isNode(k, 'Selector')) {
+              const keyArray = Array.from(k.keySet);
+              return [resolvedTarget, keyArray] as [any, string[]];
+            }
+            return [resolvedTarget, k.valueOf()] as [any, string];
+          });
+        }
+        // If key is a Selector (CompoundSelector, ComplexSelector, etc.), extract keySet as array
+        if (isNode(out, 'Selector')) {
+          const keyArray = Array.from(out.keySet);
+          return [resolvedTarget, keyArray] as [any, string[]];
         }
         return [resolvedTarget, out] as [any, string];
       },
@@ -236,7 +227,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             }
           }
         }
-        return [resolvedTarget, valueKey] as [any, string];
+        return [resolvedTarget, valueKey] as [any, string | string[]];
       },
       ([resolvedTarget, valueKey]) => {
         /**
@@ -273,23 +264,16 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           // Check if this Ruleset/Mixin has matched keys from a previous partial match
           const matchedKeys = context.partialMatchKeys.get(resolvedTarget);
           if (matchedKeys && matchedKeys.length > 0) {
-            // Accumulate the new key
-            const accumulatedKeys = [...matchedKeys, valueKey];
+            // Accumulate the new key (valueKey can be string or string[])
+            const valueKeyArray = Array.isArray(valueKey) ? valueKey : [valueKey];
+            const accumulatedKeys = [...matchedKeys, ...valueKeyArray];
             // Use the registry's utility method to directly check if the Ruleset matches the accumulated keys
             // We need to find the Rules node that contains this Ruleset to access its registry
             const parentRules = resolvedTarget.parent;
             if (isNode(parentRules, 'Rules')) {
               const mixinRegistry = parentRules.getRegistry('mixin');
-              // #region agent log
-              const selectorStr = isNode(resolvedTarget, 'Ruleset') ? (resolvedTarget as any).value.selector?.valueOf() : undefined;
-              const actualKeySet = isNode(resolvedTarget, 'Ruleset') ? Array.from((resolvedTarget as any).value.selector?.keySet || []) : Array.from((resolvedTarget as any).keySet || []);
-              debugLog('reference.ts:275', 'Checking compound match with accumulated keys', { matchedKeys, valueKey, accumulatedKeys, selectorValueOf: selectorStr, actualKeySet, rulesetType: resolvedTarget.type, note: 'actualKeySet is what we use for matching, selectorValueOf may include parent context' }, 'H');
-              // #endregion
               // Directly check if the Ruleset matches the accumulated keys using registry matching logic
               const matches = mixinRegistry.checkRulesetMatchesKeys(resolvedTarget as any, accumulatedKeys);
-              // #region agent log
-              debugLog('reference.ts:280', 'Compound match result', { matches, accumulatedKeys, selectorValueOf: selectorStr, actualKeySet }, 'H');
-              // #endregion
               if (matches) {
                 // Update the matched keys
                 context.partialMatchKeys.set(resolvedTarget, accumulatedKeys);
@@ -314,7 +298,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           }
         }
 
-        return [resolvedTarget, valueKey] as [Node, string];
+        return [resolvedTarget, valueKey] as [Node, string | string[]];
       },
       ([resolvedTarget, valueKey]) => {
         originalFilter ??= () => true;
@@ -391,43 +375,51 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 returnVal = atIndex(resolvedTarget.value, valueKey);
               }
             } else {
+              const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
               if (isNode(resolvedTarget, 'Rules')) {
-                returnVal = resolvedTarget.find('declaration', `${valueKey}`, undefined, opts);
+                returnVal = resolvedTarget.find('declaration', `${keyStr}`, undefined, opts);
               } else if (isNode(resolvedTarget, 'JsObject')) {
-                returnVal = resolvedTarget.value[valueKey];
+                returnVal = resolvedTarget.value[keyStr];
               }
             }
             break;
           case 'variable':
             if (isNode(resolvedTarget, 'Rules')) {
-              returnVal = resolvedTarget.find('declaration', `${valueKey}`, 'VarDeclaration', opts);
+              const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
+              returnVal = resolvedTarget.find('declaration', `${keyStr}`, 'VarDeclaration', opts);
             }
             break;
           case 'function':
             if (isNode(resolvedTarget, 'Rules')) {
-              returnVal = resolvedTarget.find('function', `${valueKey}`, undefined, opts);
+              const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
+              returnVal = resolvedTarget.find('function', `${keyStr}`, undefined, opts);
             }
             break;
           case 'property':
             if (isNode(resolvedTarget, 'Rules')) {
-              returnVal = resolvedTarget.find('declaration', `${valueKey}`, 'Declaration', opts);
+              const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
+              returnVal = resolvedTarget.find('declaration', `${keyStr}`, 'Declaration', opts);
             } else if (isNode(resolvedTarget, 'JsObject')) {
-              returnVal = resolvedTarget.value[valueKey];
+              const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
+              returnVal = resolvedTarget.value[keyStr];
             }
             break;
           case 'mixin':
             if (isNode(resolvedTarget, 'Rules')) {
-              returnVal = resolvedTarget.find('mixin', `${valueKey}`, 'Mixin', opts);
+              const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
+              returnVal = resolvedTarget.find('mixin', `${keyStr}`, 'Mixin', opts);
             }
             break;
           case 'ruleset':
             if (isNode(resolvedTarget, 'Rules')) {
-              returnVal = resolvedTarget.find('mixin', `${valueKey}`, 'Ruleset', opts);
+              const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
+              returnVal = resolvedTarget.find('mixin', `${keyStr}`, 'Ruleset', opts);
             }
             break;
           case 'mixin-ruleset':
             if (isNode(resolvedTarget, 'Rules')) {
-              returnVal = resolvedTarget.find('mixin', `${valueKey}`, undefined, opts);
+              // valueKey can be string or string[] - find() accepts both
+              returnVal = resolvedTarget.find('mixin', valueKey, undefined, opts);
             }
             break;
         }
@@ -471,11 +463,73 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         } else if (isArray(returnVal)) {
           // Only pass Mixins and Rulesets to getFunctionFromMixins
           const allMixins = returnVal.every(item => isNode(item, ['Mixin', 'Ruleset']));
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
+            method: 'POST',
+            // eslint-disable-next-line @typescript-eslint/naming-convention
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              location: 'reference.ts:464',
+              message: 'Reference.evalNode: checking returnVal array',
+              data: {
+                isArray: isArray(returnVal),
+                arrayLength: isArray(returnVal) ? returnVal.length : 0,
+                allMixins,
+                itemTypes: isArray(returnVal) ? returnVal.map((item: any) => item?.type ?? typeof item) : []
+              },
+              timestamp: Date.now(),
+              sessionId: 'debug-session',
+              runId: 'run1',
+              hypothesisId: 'C'
+            })
+          }).catch(() => {});
+          // #endregion
           if (allMixins) {
             const func = getFunctionFromMixins(returnVal as MixinEntry[]);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
+              method: 'POST',
+              // eslint-disable-next-line @typescript-eslint/naming-convention
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                location: 'reference.ts:467',
+                message: 'Reference.evalNode: calling getFunctionFromMixins',
+                data: {
+                  funcType: typeof func,
+                  isFunction: typeof func === 'function'
+                },
+                timestamp: Date.now(),
+                sessionId: 'debug-session',
+                runId: 'run1',
+                hypothesisId: 'C'
+              })
+            }).catch(() => {});
+            // #endregion
             return cast(func);
           }
         }
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
+          method: 'POST',
+          // eslint-disable-next-line @typescript-eslint/naming-convention
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: 'reference.ts:471',
+            message: 'Reference.evalNode: final returnVal',
+            data: {
+              returnValType: returnVal?.type ?? typeof returnVal,
+              isArray: isArray(returnVal),
+              isRules: returnVal?.type === 'Rules',
+              isMixin: returnVal?.type === 'Mixin',
+              isRuleset: returnVal?.type === 'Ruleset'
+            },
+            timestamp: Date.now(),
+            sessionId: 'debug-session',
+            runId: 'run1',
+            hypothesisId: 'C'
+          })
+        }).catch(() => {});
+        // #endregion
         const result = cast(returnVal);
         // Pop reference and clear remainders if we're at the outermost level
         context.popReference();
@@ -486,16 +540,16 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     if (isThenable(result)) {
       return result.then(
         (res) => {
-          context.stopEvaluatingReference(this);
+          // context.stopEvaluatingReference(this);
           return res;
         },
         (err) => {
-          context.stopEvaluatingReference(this);
+          // context.stopEvaluatingReference(this);
           throw err;
         }
       );
     } else {
-      context.stopEvaluatingReference(this);
+      // context.stopEvaluatingReference(this);
       return result;
     }
   }
