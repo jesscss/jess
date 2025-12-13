@@ -536,31 +536,6 @@ export class MixinRegistry extends Registry<
       }
 
       const [startKey, ...rest] = indexableKeys;
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-        method: 'POST',
-        // eslint-disable-next-line @typescript-eslint/naming-convention
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'registry-utils.ts:524',
-          message: 'MixinRegistry._indexSelectorStart: indexing',
-          data: {
-            mixinIndex: mixin.index,
-            mixinType: mixin.type,
-            keySet: Array.from(keySet),
-            indexableKeys,
-            startKey,
-            rest,
-            rulesIndex: (mixin.parent as Rules)?.index,
-            usingVisibleKeySet: true
-          },
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          runId: 'run1',
-          hypothesisId: 'L'
-        })
-      }).catch(() => {});
-      // #endregion
       const existing = index.get(startKey!);
       if (existing) {
         existing.push({ value: mixin, match: rest });
@@ -583,36 +558,6 @@ export class MixinRegistry extends Registry<
         // Use sourceNode if available - it has the original selector with implicit ampersand
         // Use visibleKeySet to get only the visible selectors (ignoring invisible ampersands)
         const selectorToIndex = (selector.sourceNode || selector) as Selector;
-        // #region agent log
-        const visibleKeySetArray = isNode(selectorToIndex, 'SelectorList')
-          ? selectorToIndex.value.map(sel => Array.from(sel.visibleKeySet)).flat()
-          : Array.from(selectorToIndex.visibleKeySet);
-        const keySetArray = isNode(selectorToIndex, 'SelectorList')
-          ? selectorToIndex.value.map(sel => Array.from(sel.keySet)).flat()
-          : Array.from(selectorToIndex.keySet);
-        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-          method: 'POST',
-          // eslint-disable-next-line @typescript-eslint/naming-convention
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'registry-utils.ts:583',
-            message: 'MixinRegistry.indexPendingItems: using visibleKeySet',
-            data: {
-              rulesetIndex: mixin.index,
-              selectorString: selector.toString(),
-              sourceNodeString: selector.sourceNode?.toString() || 'none',
-              selectorToIndexString: selectorToIndex.toString(),
-              visibleKeySet: visibleKeySetArray,
-              keySet: keySetArray,
-              usingSourceNode: !!selector.sourceNode
-            },
-            timestamp: Date.now(),
-            sessionId: 'debug-session',
-            runId: 'run1',
-            hypothesisId: 'S'
-          })
-        }).catch(() => {});
-        // #endregion
         if (isNode(selectorToIndex, 'SelectorList')) {
           /** Selector list's selectors are individually registered */
           for (const sel of selectorToIndex.value) {
@@ -748,65 +693,12 @@ export class MixinRegistry extends Registry<
     if (options) {
       options.searchedRules = searchedRules;
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-      method: 'POST',
-      // eslint-disable-next-line @typescript-eslint/naming-convention
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        location: 'registry-utils.ts:732',
-        message: 'MixinRegistry.find: starting search',
-        data: {
-          keys: keyList.join('.'),
-          keyList,
-          filterType,
-          rulesIndex: rules?.index,
-          searchParents,
-          local,
-          searchedRulesSize: searchedRules.size
-        },
-        timestamp: Date.now(),
-        sessionId: 'debug-session',
-        runId: 'run1',
-        hypothesisId: 'C'
-      })
-    }).catch(() => {});
-    // #endregion
     while (rules) {
       // Don't add to searchedRules yet - we'll add it after we finish searching (including children)
       let [startKey, ...search] = keyList;
       let registry = rules.getRegistry('mixin');
       registry.indexPendingItems();
       const existing = registry.index.get(startKey!);
-      // #region agent log
-      const indexKeys = Array.from(registry.index.keys());
-      const indexEntries = Array.from(registry.index.entries()).map(([key, entries]) => ({
-        key,
-        count: entries.length,
-        matches: entries.map((e: { value: Mixin | Ruleset; match: string[] }) => e.match)
-      }));
-      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-        method: 'POST',
-        // eslint-disable-next-line @typescript-eslint/naming-convention
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'registry-utils.ts:766',
-          message: 'MixinRegistry.find: checking index',
-          data: {
-            startKey,
-            searchKeys: search,
-            existingEntries: existing?.length ?? 0,
-            rulesIndex: rules?.index,
-            indexKeys,
-            indexEntries
-          },
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          runId: 'run1',
-          hypothesisId: 'D'
-        })
-      }).catch(() => {});
-      // #endregion
 
       // With the new indexing (by local visible keys), nested rulesets are indexed under their own keys
       // So we only need to check entries under the startKey - no need to scan all entries
@@ -824,32 +716,6 @@ export class MixinRegistry extends Registry<
         }
       }
 
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-        method: 'POST',
-        // eslint-disable-next-line @typescript-eslint/naming-convention
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'registry-utils.ts:901',
-          message: 'MixinRegistry.find: allEntriesToCheck',
-          data: {
-            startKey,
-            search,
-            existingLength: existing?.length ?? 0,
-            allEntriesToCheckLength: allEntriesToCheck.length,
-            allEntriesToCheck: allEntriesToCheck.map(({ value, match }) => ({
-              valueType: value.type,
-              valueIndex: value.index,
-              match
-            }))
-          },
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          runId: 'run1',
-          hypothesisId: 'X'
-        })
-      }).catch(() => {});
-      // #endregion
       if (allEntriesToCheck.length > 0) {
         const targetMatch = search.length === 0 ? [startKey!] : search;
         for (const { value, match } of allEntriesToCheck) {
@@ -867,69 +733,12 @@ export class MixinRegistry extends Registry<
           // If match equals [startKey] OR match is empty (meaning this ruleset IS the startKey),
           // we need to search inside it for the remaining search keys
           if (search.length > 0 && (arraysEqual(match, [startKey!]) || match.length === 0)) {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-              method: 'POST',
-              // eslint-disable-next-line @typescript-eslint/naming-convention
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                location: 'registry-utils.ts:916',
-                message: 'MixinRegistry.find: checking if should search inside ruleset',
-                data: {
-                  startKey,
-                  search,
-                  match,
-                  matchIsEmpty: match.length === 0,
-                  matchEqualsStartKey: arraysEqual(match, [startKey!]),
-                  valueType: value.type,
-                  valueIndex: value.index
-                },
-                timestamp: Date.now(),
-                sessionId: 'debug-session',
-                runId: 'run1',
-                hypothesisId: 'W'
-              })
-            }).catch(() => {});
-            // #endregion
             if (
               (isNode(value, 'Ruleset'))
               || (isNode(value, 'Mixin') && (!value.value.params || (value.value.params?.length ?? 0) === 0))
             ) {
               let subRules = value.value.rules;
               const subMixinRegistry = subRules.getRegistry('mixin');
-              // When searching inside a nested ruleset, we need to search for the remaining keys
-              // But also check if any entries have a match that ends with those keys
-              // (e.g., if we're searching for [".bar"] inside .foo, and .bar is indexed with [".foo", ".bar"],
-              // we need to find it by checking if the match ends with [".bar"])
-              subMixinRegistry.indexPendingItems();
-              // #region agent log
-              const subIndexKeys = Array.from(subMixinRegistry.index.keys());
-              const subIndexEntries = Array.from(subMixinRegistry.index.entries()).map(([key, entries]) => ({
-                key,
-                count: entries.length,
-                matches: entries.map((e: { value: Mixin | Ruleset; match: string[] }) => e.match)
-              }));
-              fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-                method: 'POST',
-                // eslint-disable-next-line @typescript-eslint/naming-convention
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  location: 'registry-utils.ts:927',
-                  message: 'MixinRegistry.find: searching inside nested ruleset',
-                  data: {
-                    parentMatch: match,
-                    searchKeys: search,
-                    subRulesIndex: subRules?.index,
-                    subIndexKeys,
-                    subIndexEntries
-                  },
-                  timestamp: Date.now(),
-                  sessionId: 'debug-session',
-                  runId: 'run1',
-                  hypothesisId: 'V'
-                })
-              }).catch(() => {});
-              // #endregion
               // With the new indexing, nested rulesets are indexed by their local visible keys
               // So we can just do a normal recursive search - no need to check for matches ending with search
               // When searching inside a nested ruleset with searchParents: false, we don't need searchedRules

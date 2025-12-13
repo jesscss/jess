@@ -37,6 +37,7 @@ export type ReferenceValue = {
   target?: Reference | Call | undefined;
   key:
     string
+    | string[]
     | Any
     | number // $[0] or $.0
     | Num // $.key or $[key] or $*key
@@ -110,6 +111,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         w.add(String(k), this);
       } else if (k instanceof Node) {
         k.toString(options);
+      } else if (Array.isArray(k)) {
+        w.add(k.map(k => String(k)).join(''));
       } else {
         w.add(String(k));
       }
@@ -419,52 +422,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           case 'mixin-ruleset':
             if (isNode(resolvedTarget, 'Rules')) {
               // valueKey can be string or string[] - find() accepts both
-              // #region agent log
-              const valueKeyStr = Array.isArray(valueKey) ? valueKey.join('.') : valueKey;
-              fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-                method: 'POST',
-                // eslint-disable-next-line @typescript-eslint/naming-convention
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  location: 'reference.ts:419',
-                  message: 'Reference.evalNode: searching for mixin-ruleset',
-                  data: {
-                    valueKey: valueKeyStr,
-                    valueKeyArray: Array.isArray(valueKey) ? valueKey : [valueKey],
-                    resolvedTargetType: resolvedTarget.type,
-                    resolvedTargetIndex: resolvedTarget.index,
-                    rulesetFramesLength: context.rulesetFrames.length
-                  },
-                  timestamp: Date.now(),
-                  sessionId: 'debug-session',
-                  runId: 'run1',
-                  hypothesisId: 'A'
-                })
-              }).catch(() => {});
-              // #endregion
               returnVal = resolvedTarget.find('mixin', valueKey, undefined, opts);
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-                method: 'POST',
-                // eslint-disable-next-line @typescript-eslint/naming-convention
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  location: 'reference.ts:422',
-                  message: 'Reference.evalNode: after find() for mixin-ruleset',
-                  data: {
-                    valueKey: valueKeyStr,
-                    returnValIsUndefined: returnVal === undefined,
-                    returnValIsArray: Array.isArray(returnVal),
-                    returnValLength: Array.isArray(returnVal) ? returnVal.length : 0,
-                    returnValTypes: Array.isArray(returnVal) ? returnVal.map((item: any) => item?.type) : (returnVal?.type ?? typeof returnVal)
-                  },
-                  timestamp: Date.now(),
-                  sessionId: 'debug-session',
-                  runId: 'run1',
-                  hypothesisId: 'B'
-                })
-              }).catch(() => {});
-              // #endregion
             }
             break;
         }

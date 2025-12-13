@@ -129,27 +129,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     amp.addFlag(F_IMPLICIT_AMPERSAND);
     if (!collapseNesting) {
       amp.removeFlag(F_VISIBLE);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-        method: 'POST',
-        // eslint-disable-next-line @typescript-eslint/naming-convention
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'ruleset.ts:129',
-          message: 'Ruleset.addImplicitAmpersand: removing F_VISIBLE from ampersand',
-          data: {
-            rulesetIndex: this.index,
-            collapseNesting,
-            ampHasVisibleFlag: amp.hasFlag(F_VISIBLE),
-            parentSelectorString: parentSelector.toString()
-          },
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          runId: 'run1',
-          hypothesisId: 'U'
-        })
-      }).catch(() => {});
-      // #endregion
     }
     let comb = Combinator.create(' ');
     if (!collapseNesting) {
@@ -232,74 +211,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         const isParentSameRuleset = parentFrame && (parentFrame === this || parentFrame.index === this.index);
         if (parentSelector && !(parentSelector instanceof Nil) && !isParentSameRuleset) {
           const result = this.getImplicitSelector(parentSelector, collapseNesting);
-          // #region agent log
-          // Check if result has an Ampersand and if it's visible
-          let ampersandInResult: any = null;
-          if (isNode(result, 'ComplexSelector')) {
-            const firstComponent = result.value[0];
-            if (isNode(firstComponent, 'Ampersand')) {
-              ampersandInResult = {
-                hasVisibleFlag: firstComponent.hasFlag(F_VISIBLE),
-                hasSelectorValue: firstComponent.value.selector !== undefined
-              };
-            }
-          }
-          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-            method: 'POST',
-            // eslint-disable-next-line @typescript-eslint/naming-convention
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              location: 'ruleset.ts:211',
-              message: 'Ruleset.evalNode: before cloning result for sourceNode',
-              data: {
-                rulesetIndex: this.index,
-                resultString: result.toString(),
-                collapseNesting,
-                ampersandInResult
-              },
-              timestamp: Date.now(),
-              sessionId: 'debug-session',
-              runId: 'run1',
-              hypothesisId: 'O'
-            })
-          }).catch(() => {});
-          // #endregion
           /** Store the implicit ampersand with the selector - CLONE it so it doesn't get mutated */
           const clonedResult = result.copy(true);
-          // #region agent log
-          // Check if cloned result has an Ampersand and if it's visible
-          let ampersandInCloned: any = null;
-          if (isNode(clonedResult, 'ComplexSelector')) {
-            const firstComponent = clonedResult.value[0];
-            if (isNode(firstComponent, 'Ampersand')) {
-              ampersandInCloned = {
-                hasVisibleFlag: firstComponent.hasFlag(F_VISIBLE),
-                hasSelectorValue: firstComponent.value.selector !== undefined
-              };
-            }
-          }
-          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-            method: 'POST',
-            // eslint-disable-next-line @typescript-eslint/naming-convention
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              location: 'ruleset.ts:240',
-              message: 'Ruleset.evalNode: after cloning and making ampersands invisible in sourceNode',
-              data: {
-                rulesetIndex: this.index,
-                clonedResultString: clonedResult.toString(),
-                ampersandInCloned,
-                flagsPreserved: ampersandInResult && ampersandInCloned
-                  ? ampersandInResult.hasVisibleFlag === ampersandInCloned.hasVisibleFlag
-                  : 'N/A'
-              },
-              timestamp: Date.now(),
-              sessionId: 'debug-session',
-              runId: 'run1',
-              hypothesisId: 'U'
-            })
-          }).catch(() => {});
-          // #endregion
           this.value.selector.sourceNode = clonedResult;
           return result.eval(context);
         } else {
@@ -369,52 +282,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         }
         // Preserve the sourceNode from the current selector before replacing it
         const preservedSourceNode = this.value.selector?.sourceNode;
-        // #region agent log
-        const preservedSourceNodeString = preservedSourceNode?.toString();
-        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-          method: 'POST',
-          // eslint-disable-next-line @typescript-eslint/naming-convention
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'ruleset.ts:280',
-            message: 'Ruleset.evalNode: preserving sourceNode before replacing selector',
-            data: {
-              rulesetIndex: this.index,
-              preservedSourceNodeString,
-              selsString: sels?.toString(),
-              preservedSourceNodeIsSame: preservedSourceNode === this.value.selector?.sourceNode
-            },
-            timestamp: Date.now(),
-            sessionId: 'debug-session',
-            runId: 'run1',
-            hypothesisId: 'Q'
-          })
-        }).catch(() => {});
-        // #endregion
         this.value.selector = sels;
         // Restore the sourceNode on the new selector so it's available when copying
         if (preservedSourceNode && this.value.selector) {
           this.value.selector.sourceNode = preservedSourceNode;
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-            method: 'POST',
-            // eslint-disable-next-line @typescript-eslint/naming-convention
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              location: 'ruleset.ts:290',
-              message: 'Ruleset.evalNode: after restoring sourceNode',
-              data: {
-                rulesetIndex: this.index,
-                sourceNodeString: this.value.selector.sourceNode?.toString(),
-                sourceNodeChanged: preservedSourceNodeString !== this.value.selector.sourceNode?.toString()
-              },
-              timestamp: Date.now(),
-              sessionId: 'debug-session',
-              runId: 'run1',
-              hypothesisId: 'R'
-            })
-          }).catch(() => {});
-          // #endregion
         }
         this.options.hoistToRoot ||= context.opts.collapseNesting;
         context.rulesetFrames.push(this as Ruleset);

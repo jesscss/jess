@@ -449,7 +449,7 @@ describe('Mixin Recursion Detection', () => {
           ruleset({
             selector: el('.bar'),
             rules: rules([
-              call({ name: ref({ key: '.foo.foo' }, { type: 'mixin-ruleset' }) }),
+              call({ name: ref({ key: ['.foo', '.foo'] }, { type: 'mixin-ruleset' }) }),
               decl({ name: 'color', value: any('red') })
             ])
           }),
