@@ -16,7 +16,7 @@ describe('Mixin', () => {
   });
 
   describe('calling', () => {
-    it.only('should call a simple mixin', async () => {
+    it('should call a simple mixin', async () => {
       // Create a mixin definition: .my-mixin() { color: red; }
       const mixinDef = mixin({
         name: any('.my-mixin'),
@@ -230,7 +230,7 @@ describe('Mixin', () => {
         guard: condition([
           expr(ref({ key: 'color' }, { type: 'variable' })),
           '=',
-          expr(any('red'))
+          any('red')
         ]),
         rules: rules([
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })

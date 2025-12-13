@@ -1406,6 +1406,10 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       });
     }
 
+    if (evalCandidates.length === 0) {
+      throw new ReferenceError('No matching mixins found.');
+    }
+
     /**
      * Now we have a set of mixins that can return rulesets,
      * but first we need to create a new scope for each mixin,
@@ -1413,7 +1417,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      */
     let hasMatch = false;
     let outputRules: Array<[Rules, number]> = [];
-    let failedCandidates: MixinEntry[] | undefined;
     for (let [candidate, i] of evalCandidates) {
       if (isNode(candidate, 'Ruleset')) {
         const rules = (candidate as Ruleset).value.rules;
@@ -1523,7 +1526,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         }
       }
       if (!passes) {
-        (failedCandidates ??= []).push(candidate);
         continue;
       }
       // Check for recursion: if this mixin is already in searchScope, skip it
@@ -1573,11 +1575,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         thisContext.callSiteIndex = undefined;
       }
     }
-    if (
-      evalCandidates.length === 0
-      || failedCandidates?.length === evalCandidates.length) {
-      throw new ReferenceError('No matching mixins found.');
-    }
+
     /**
      * Now that we have output rules, we sort them by
      * their original order
