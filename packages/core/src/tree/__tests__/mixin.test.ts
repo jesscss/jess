@@ -3,6 +3,62 @@ import { Context } from '../../context';
 
 let context: Context;
 
+// Helper to check for errors without serializing the resolved value
+async function expectRejects<T>(
+  promiseOrValue: Promise<T> | T,
+  ErrorType?: new (...args: any[]) => Error,
+  messagePattern?: RegExp
+): Promise<void> {
+  let error: unknown;
+  try {
+    await Promise.resolve(promiseOrValue);
+    // Create error that will point to the call site
+    const err = new Error('Expected promise to reject, but it resolved');
+    // Remove this function from the stack trace so it points to the call site
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(err, expectRejects);
+    } else {
+      // Fallback: remove the first line (this function) from stack
+      const stack = err.stack?.split('\n');
+      if (stack && stack.length > 1) {
+        err.stack = stack.slice(1).join('\n');
+      }
+    }
+    throw err;
+  } catch (e) {
+    if (e instanceof Error && e.message === 'Expected promise to reject, but it resolved') {
+      throw e;
+    }
+    error = e;
+  }
+  if (!error) {
+    const err = new Error('Expected promise to reject, but it resolved');
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(err, expectRejects);
+    }
+    throw err;
+  }
+  if (ErrorType && !(error instanceof ErrorType)) {
+    const errorName = error instanceof Error ? error.constructor.name : 'unknown';
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    const err = new Error(`Expected error to be instance of ${ErrorType.name}, but got ${errorName}: ${errorMsg}`);
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(err, expectRejects);
+    }
+    throw err;
+  }
+  if (messagePattern) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    if (!messagePattern.test(errorMsg)) {
+      const err = new Error(`Expected error message to match ${messagePattern}, but got: ${errorMsg}`);
+      if (Error.captureStackTrace) {
+        Error.captureStackTrace(err, expectRejects);
+      }
+      throw err;
+    }
+  }
+}
+
 describe('Mixin', () => {
   beforeAll(() => {
     Node.prototype.fullRender = true;
@@ -442,6 +498,338 @@ describe('Mixin', () => {
       expect(css).toContain('.test');
       // Rest parameter should contain 20px and 30px (everything after the first argument)
       expect(css).toContain('margin');
+    });
+  });
+
+  describe('rest parameter matching and assignment', () => {
+    it('should match a mixin with rest parameter and assign empty rest when no extra args provided', async () => {
+      // Create a mixin with a rest parameter: .my-mixin(@a, @rest...) { padding: @rest; }
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        params: list([
+          any('a', { role: 'property' }),
+          rest('rest')
+        ]),
+        rules: rules([
+          decl({ name: 'padding', value: ref({ key: 'rest' }, { type: 'variable' }) })
+        ])
+      });
+
+      // Create a ruleset that calls the mixin with only the required arg: .test { .my-mixin(10px); }
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: rules([
+          call({
+            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+            args: list([any('10px')]) // Only one arg, rest should be empty
+          })
+        ])
+      });
+
+      const root = rules([mixinDef, testRuleset]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.test');
+      // Rest parameter should be empty or contain empty list
+      expect(css).toContain('padding');
+    });
+
+    it('should match a mixin with rest parameter and assign single value to rest', async () => {
+      // Create a mixin with a rest parameter: .my-mixin(@a, @rest...) { margin: @rest; }
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        params: list([
+          any('a', { role: 'property' }),
+          rest('rest')
+        ]),
+        rules: rules([
+          decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
+        ])
+      });
+
+      // Create a ruleset that calls the mixin with two args: .test { .my-mixin(10px, 20px); }
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: rules([
+          call({
+            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+            args: list([any('10px'), any('20px')]) // Rest should contain 20px
+          })
+        ])
+      });
+
+      const root = rules([mixinDef, testRuleset]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.test');
+      expect(css).toContain('margin');
+      // Rest parameter should contain 20px
+      expect(css).toContain('20px');
+    });
+
+    it('should match a mixin with rest parameter and assign multiple values to rest', async () => {
+      // Create a mixin with a rest parameter: .my-mixin(@a, @rest...) { padding: @rest; }
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        params: list([
+          any('a', { role: 'property' }),
+          rest('rest')
+        ]),
+        rules: rules([
+          decl({ name: 'padding', value: ref({ key: 'rest' }, { type: 'variable' }) })
+        ])
+      });
+
+      // Create a ruleset that calls the mixin with many args: .test { .my-mixin(10px, 20px, 30px, 40px); }
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: rules([
+          call({
+            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+            args: list([any('10px'), any('20px'), any('30px'), any('40px')]) // Rest should contain 20px, 30px, 40px
+          })
+        ])
+      });
+
+      const root = rules([mixinDef, testRuleset]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.test');
+      expect(css).toContain('padding');
+      // Rest parameter should contain the remaining values
+      expect(css).toContain('20px');
+      expect(css).toContain('30px');
+      expect(css).toContain('40px');
+    });
+
+    it('should match a mixin with rest parameter when multiple required params before rest', async () => {
+      // Create a mixin with multiple params before rest: .my-mixin(@a, @b, @rest...) { margin: @rest; }
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        params: list([
+          any('a', { role: 'property' }),
+          any('b', { role: 'property' }),
+          rest('rest')
+        ]),
+        rules: rules([
+          decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
+        ])
+      });
+
+      // Create a ruleset that calls the mixin: .test { .my-mixin(10px, 20px, 30px, 40px); }
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: rules([
+          call({
+            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+            args: list([any('10px'), any('20px'), any('30px'), any('40px')]) // Rest should contain 30px, 40px
+          })
+        ])
+      });
+
+      const root = rules([mixinDef, testRuleset]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.test');
+      expect(css).toContain('margin');
+      // Rest parameter should contain values after the first two
+      expect(css).toContain('30px');
+      expect(css).toContain('40px');
+    });
+
+    it('should use rest variable in multiple declarations within mixin', async () => {
+      // Create a mixin that uses rest in multiple places: .my-mixin(@a, @rest...) { margin: @rest; padding: @rest; }
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        params: list([
+          any('a', { role: 'property' }),
+          rest('rest')
+        ]),
+        rules: rules([
+          decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) }),
+          decl({ name: 'padding', value: ref({ key: 'rest' }, { type: 'variable' }) })
+        ])
+      });
+
+      // Create a ruleset that calls the mixin: .test { .my-mixin(10px, 20px, 30px); }
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: rules([
+          call({
+            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+            args: list([any('10px'), any('20px'), any('30px')])
+          })
+        ])
+      });
+
+      const root = rules([mixinDef, testRuleset]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.test');
+      expect(css).toContain('margin');
+      expect(css).toContain('padding');
+      // Both should use the rest variable
+      expect(css).toContain('20px');
+      expect(css).toContain('30px');
+    });
+
+    it('should match mixin with rest parameter over mixin without rest when both exist', async () => {
+      // Create a mixin without rest: .my-mixin(@a, @b) { color: red; }
+      const mixinWithoutRest = mixin({
+        name: any('.my-mixin'),
+        params: list([
+          any('a', { role: 'property' }),
+          any('b', { role: 'property' })
+        ]),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+
+      // Create a mixin with rest: .my-mixin(@a, @rest...) { color: blue; }
+      const mixinWithRest = mixin({
+        name: any('.my-mixin'),
+        params: list([
+          any('a', { role: 'property' }),
+          rest('rest')
+        ]),
+        rules: rules([
+          decl({ name: 'color', value: any('blue') })
+        ])
+      });
+
+      // Create a ruleset that calls with exact 2 args: .test1 { .my-mixin(10px, 20px); }
+      const testRuleset1 = ruleset({
+        selector: el('.test1'),
+        rules: rules([
+          call({
+            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+            args: list([any('10px'), any('20px')]) // Matches mixinWithoutRest exactly
+          })
+        ])
+      });
+
+      // Create a ruleset that calls with 3 args: .test2 { .my-mixin(10px, 20px, 30px); }
+      const testRuleset2 = ruleset({
+        selector: el('.test2'),
+        rules: rules([
+          call({
+            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+            args: list([any('10px'), any('20px'), any('30px')]) // Should match mixinWithRest
+          })
+        ])
+      });
+
+      const root = rules([mixinWithoutRest, mixinWithRest, testRuleset1, testRuleset2]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.test1');
+      expect(css).toContain('color: red'); // Should match mixinWithoutRest
+      expect(css).toContain('.test2');
+      expect(css).toContain('color: blue'); // Should match mixinWithRest
+    });
+  });
+
+  describe('arity failures', () => {
+    it('should fail when calling a mixin with too few arguments (missing required parameter)', async () => {
+      // Create a mixin with a required parameter: .my-mixin(@color) { color: @color; }
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        params: list([
+          any('color', { role: 'property' }) // Required parameter without default
+        ]),
+        rules: rules([
+          decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
+        ])
+      });
+
+      // Create a ruleset that calls the mixin without args: .test { .my-mixin(); }
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: rules([
+          call({ name: ref({ key: '.my-mixin' }, { type: 'mixin' }) })
+        ])
+      });
+
+      const root = rules([mixinDef, testRuleset]);
+      context.root = root;
+
+      await expectRejects(root.eval(context), ReferenceError, /No matching mixins/);
+    });
+
+    it('should fail when calling a mixin with too few arguments (multiple required parameters)', async () => {
+      // Create a mixin with multiple required parameters: .my-mixin(@color, @size) { color: @color; font-size: @size; }
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        params: list([
+          any('color', { role: 'property' }),
+          any('size', { role: 'property' })
+        ]),
+        rules: rules([
+          decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
+          decl({ name: 'font-size', value: ref({ key: 'size' }, { type: 'variable' }) })
+        ])
+      });
+
+      // Create a ruleset that calls the mixin with only one arg: .test { .my-mixin(red); }
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: rules([
+          call({
+            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+            args: list([any('red')]) // Only one argument, but two are required
+          })
+        ])
+      });
+
+      const root = rules([mixinDef, testRuleset]);
+      context.root = root;
+
+      await expectRejects(root.eval(context), ReferenceError, /No matching mixins/);
+    });
+
+    it('should fail when calling a mixin with no parameters but providing arguments', async () => {
+      // Create a mixin with no parameters: .my-mixin() { color: red; }
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+
+      // Create a ruleset that calls the mixin with args: .test { .my-mixin(blue); }
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: rules([
+          call({
+            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+            args: list([any('blue')]) // One argument, but mixin has no parameters
+          })
+        ])
+      });
+
+      const root = rules([mixinDef, testRuleset]);
+      context.root = root;
+
+      await expectRejects(root.eval(context), ReferenceError, /No matching mixins/);
     });
   });
 
