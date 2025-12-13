@@ -88,100 +88,17 @@ export class Call extends Node<CallValue, CallOptions> {
     let { name, args } = this.value;
     let n = typeof name === 'string' ? name : await name.eval(context);
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-      method: 'POST',
-      // eslint-disable-next-line @typescript-eslint/naming-convention
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        location: 'call.ts:89',
-        message: 'Call.evalNode: name evaluated',
-        data: {
-          nameType: typeof name === 'string' ? 'string' : name.type,
-          evaluatedType: typeof n === 'string' ? 'string' : (n?.type ?? typeof n),
-          isJsFunction: typeof n !== 'string' && isNode(n, 'JsFunction'),
-          isFunction: typeof n === 'function'
-        },
-        timestamp: Date.now(),
-        sessionId: 'debug-session',
-        runId: 'run1',
-        hypothesisId: 'A'
-      })
-    }).catch(() => {});
-    // #endregion
-
     if (isNode(n, 'JsFunction')) {
       const fn = n.value;
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-        method: 'POST',
-        // eslint-disable-next-line @typescript-eslint/naming-convention
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'call.ts:113',
-          message: 'Call.evalNode: calling JsFunction',
-          data: {
-            hasArgs: !!args,
-            argsLength: args ? args.value?.length : 0,
-            fnType: typeof fn
-          },
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          runId: 'run1',
-          hypothesisId: 'D'
-        })
-      }).catch(() => {});
-      // #endregion
       try {
         const result = await (
           args
             ? callWithContext(context, fn, ...args.value)
             : callWithContext(context, fn)
         );
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-          method: 'POST',
-          // eslint-disable-next-line @typescript-eslint/naming-convention
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'call.ts:113',
-            message: 'Call.evalNode: JsFunction call result',
-            data: {
-              resultType: result?.type ?? typeof result,
-              isRules: result?.type === 'Rules',
-              isNode: result instanceof Node,
-              rulesLength: result?.type === 'Rules' ? (result as any).value?.length : 0,
-              rulesTypes: result?.type === 'Rules' ? (result as any).value?.map((n: any) => n?.type) : []
-            },
-            timestamp: Date.now(),
-            sessionId: 'debug-session',
-            runId: 'run1',
-            hypothesisId: 'D'
-          })
-        }).catch(() => {});
-        // #endregion
         context.callStack.pop();
         return cast(result);
       } catch (e) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-          method: 'POST',
-          // eslint-disable-next-line @typescript-eslint/naming-convention
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'call.ts:113',
-            message: 'Call.evalNode: JsFunction call error',
-            data: {
-              error: String(e),
-              errorStack: e instanceof Error ? e.stack : undefined
-            },
-            timestamp: Date.now(),
-            sessionId: 'debug-session',
-            runId: 'run1',
-            hypothesisId: 'D'
-          })
-        }).catch(() => {});
-        // #endregion
         let newCall = this.clone().inherit(this);
         newCall.value.name = isNode(name, 'Reference') && name.options.fallbackValue === true
           ? String(name.value.key)
@@ -192,25 +109,6 @@ export class Call extends Node<CallValue, CallOptions> {
       }
     } else if (typeof n === 'function') {
       // Check if n is a function (from getFunctionFromMixins) - handle BEFORE popping stacks
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-        method: 'POST',
-        // eslint-disable-next-line @typescript-eslint/naming-convention
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'call.ts:113',
-          message: 'Call.evalNode: calling function from mixin',
-          data: {
-            hasArgs: !!args,
-            argsLength: args ? (args as any).value?.length : 0
-          },
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          runId: 'run1',
-          hypothesisId: 'B'
-        })
-      }).catch(() => {});
-      // #endregion
       if (n === 'calc') {
         context.calcFrames.push(true);
       }
@@ -224,47 +122,10 @@ export class Call extends Node<CallValue, CallOptions> {
             ? callWithContext(context, n, ...(args as any).value)
             : callWithContext(context, n)
         );
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-          method: 'POST',
-          // eslint-disable-next-line @typescript-eslint/naming-convention
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'call.ts:113',
-            message: 'Call.evalNode: function call result',
-            data: {
-              resultType: result?.type ?? typeof result,
-              isRules: result?.type === 'Rules'
-            },
-            timestamp: Date.now(),
-            sessionId: 'debug-session',
-            runId: 'run1',
-            hypothesisId: 'B'
-          })
-        }).catch(() => {});
-        // #endregion
         context.parenFrames.pop();
         context.callStack.pop();
         return cast(result);
       } catch (e) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-          method: 'POST',
-          // eslint-disable-next-line @typescript-eslint/naming-convention
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'call.ts:113',
-            message: 'Call.evalNode: function call error',
-            data: {
-              error: String(e)
-            },
-            timestamp: Date.now(),
-            sessionId: 'debug-session',
-            runId: 'run1',
-            hypothesisId: 'B'
-          })
-        }).catch(() => {});
-        // #endregion
         let newCall = this.clone().inherit(this);
         newCall.value.name = isNode(name, 'Reference') && name.options.fallbackValue === true
           ? String(name.value.key)

@@ -463,73 +463,11 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         } else if (isArray(returnVal)) {
           // Only pass Mixins and Rulesets to getFunctionFromMixins
           const allMixins = returnVal.every(item => isNode(item, ['Mixin', 'Ruleset']));
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-            method: 'POST',
-            // eslint-disable-next-line @typescript-eslint/naming-convention
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              location: 'reference.ts:464',
-              message: 'Reference.evalNode: checking returnVal array',
-              data: {
-                isArray: isArray(returnVal),
-                arrayLength: isArray(returnVal) ? returnVal.length : 0,
-                allMixins,
-                itemTypes: isArray(returnVal) ? returnVal.map((item: any) => item?.type ?? typeof item) : []
-              },
-              timestamp: Date.now(),
-              sessionId: 'debug-session',
-              runId: 'run1',
-              hypothesisId: 'C'
-            })
-          }).catch(() => {});
-          // #endregion
           if (allMixins) {
             const func = getFunctionFromMixins(returnVal as MixinEntry[]);
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-              method: 'POST',
-              // eslint-disable-next-line @typescript-eslint/naming-convention
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                location: 'reference.ts:467',
-                message: 'Reference.evalNode: calling getFunctionFromMixins',
-                data: {
-                  funcType: typeof func,
-                  isFunction: typeof func === 'function'
-                },
-                timestamp: Date.now(),
-                sessionId: 'debug-session',
-                runId: 'run1',
-                hypothesisId: 'C'
-              })
-            }).catch(() => {});
-            // #endregion
             return cast(func);
           }
         }
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-          method: 'POST',
-          // eslint-disable-next-line @typescript-eslint/naming-convention
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'reference.ts:471',
-            message: 'Reference.evalNode: final returnVal',
-            data: {
-              returnValType: returnVal?.type ?? typeof returnVal,
-              isArray: isArray(returnVal),
-              isRules: returnVal?.type === 'Rules',
-              isMixin: returnVal?.type === 'Mixin',
-              isRuleset: returnVal?.type === 'Ruleset'
-            },
-            timestamp: Date.now(),
-            sessionId: 'debug-session',
-            runId: 'run1',
-            hypothesisId: 'C'
-          })
-        }).catch(() => {});
-        // #endregion
         const result = cast(returnVal);
         // Pop reference and clear remainders if we're at the outermost level
         context.popReference();

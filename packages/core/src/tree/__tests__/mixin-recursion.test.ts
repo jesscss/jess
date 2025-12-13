@@ -68,7 +68,7 @@ describe('Mixin Recursion Detection', () => {
     context.depth = 2;
   });
 
-  describe.only('nested mixin calls that should succeed', () => {
+  describe('nested mixin calls that should succeed', () => {
     it('should be able to call a nested mixin', async () => {
       // .foo {
       //   .bar {
@@ -146,7 +146,7 @@ describe('Mixin Recursion Detection', () => {
       `);
     });
 
-    it('should be able to call nested mixin from within container #1', async () => {
+    it.only('should be able to call nested mixin from within container #1', async () => {
       // .container {
       //   .foo {
       //     .bar {

@@ -302,27 +302,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Skip charset nodes - they are collected and prepended at root level
     const items = value.filter(n => n.visible && !(n.type === 'Any' && (n as any).options?.role === 'charset'));
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-      method: 'POST',
-      // eslint-disable-next-line @typescript-eslint/naming-convention
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        location: 'rules.ts:297',
-        message: '_emitRulesBody called',
-        data: {
-          depth,
-          itemsLength: items.length,
-          itemTypes: items.map(n => n.type)
-        },
-        timestamp: Date.now(),
-        sessionId: 'debug-session',
-        runId: 'run1',
-        hypothesisId: 'C'
-      })
-    }).catch(() => {});
-    // #endregion
-
     if (items.length === 0) {
       return;
     }
@@ -336,52 +315,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         // Only add newline if previous item didn't end with one
         // This prevents double newlines when renderWithFrameFlattening already added one
         if (!previousEndsWithNewline) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-            method: 'POST',
-            // eslint-disable-next-line @typescript-eslint/naming-convention
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              location: 'rules.ts:318',
-              message: '_emitRulesBody adding newline before item',
-              data: {
-                idx,
-                depth,
-                nodeType: n.type,
-                itemsLength: items.length,
-                previousEndsWithNewline
-              },
-              timestamp: Date.now(),
-              sessionId: 'debug-session',
-              runId: 'run1',
-              hypothesisId: 'C'
-            })
-          }).catch(() => {});
-          // #endregion
           w.add('\n');
-        } else {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-            method: 'POST',
-            // eslint-disable-next-line @typescript-eslint/naming-convention
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              location: 'rules.ts:318',
-              message: '_emitRulesBody skipping newline (previous ended with newline)',
-              data: {
-                idx,
-                depth,
-                nodeType: n.type,
-                itemsLength: items.length,
-                previousEndsWithNewline
-              },
-              timestamp: Date.now(),
-              sessionId: 'debug-session',
-              runId: 'run1',
-              hypothesisId: 'C'
-            })
-          }).catch(() => {});
-          // #endregion
         }
       }
       const isChildRules = n.type === 'Rules';
@@ -904,28 +838,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           return;
         }
 
-        // #region agent log
-        if (rule.type === 'Call') {
-          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-            method: 'POST',
-            // eslint-disable-next-line @typescript-eslint/naming-convention
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              location: 'rules.ts:907',
-              message: 'Rules.evalNode: evaluating Call',
-              data: {
-                idx,
-                priority: p,
-                ruleType: rule.type
-              },
-              timestamp: Date.now(),
-              sessionId: 'debug-session',
-              runId: 'run1',
-              hypothesisId: 'F'
-            })
-          }).catch(() => {});
-        }
-        // #endregion
         return pipe(
           tryStep(() => rule.eval(context), {
             onError(error) {
@@ -951,52 +863,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
             // Apply the result
             if (result !== rule) {
-              // #region agent log
-              if (rule.type === 'Call') {
-                fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-                  method: 'POST',
-                  // eslint-disable-next-line @typescript-eslint/naming-convention
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    location: 'rules.ts:931',
-                    message: 'Rules.evalNode: Call result different from rule',
-                    data: {
-                      idx,
-                      ruleType: rule.type,
-                      resultType: result.type,
-                      isRules: result.type === 'Rules',
-                      resultEqualsRule: result === rule
-                    },
-                    timestamp: Date.now(),
-                    sessionId: 'debug-session',
-                    runId: 'run1',
-                    hypothesisId: 'F'
-                  })
-                }).catch(() => {});
-              }
-              // #endregion
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-                method: 'POST',
-                // eslint-disable-next-line @typescript-eslint/naming-convention
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  location: 'rules.ts:931',
-                  message: 'Rules.evalNode: replacing node with result',
-                  data: {
-                    idx,
-                    ruleType: rule.type,
-                    resultType: result.type,
-                    isRules: result.type === 'Rules',
-                    isCall: rule.type === 'Call'
-                  },
-                  timestamp: Date.now(),
-                  sessionId: 'debug-session',
-                  runId: 'run1',
-                  hypothesisId: 'E'
-                })
-              }).catch(() => {});
-              // #endregion
               rules.value[idx] = result;
               queue[q] = [idx, result];
               // If a StyleImport evaluated to Rules, register them in the parent's _rulesSet
@@ -1239,56 +1105,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             if (!state?.frame) {
               break;
             }
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-              method: 'POST',
-              // eslint-disable-next-line @typescript-eslint/naming-convention
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                location: 'rules.ts:1100',
-                message: 'Closing brace before hoisted child',
-                data: {
-                  depth: d,
-                  currentDepth,
-                  frameStateLength: frameState.length,
-                  newFramesStartIndex,
-                  i,
-                  length,
-                  isLastItem: i === length - 1,
-                  childType: child.type
-                },
-                timestamp: Date.now(),
-                sessionId: 'debug-session',
-                runId: 'run1',
-                hypothesisId: 'A'
-              })
-            }).catch(() => {});
-            // #endregion
             w.add(`${space}}\n`);
           }
         }
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-          method: 'POST',
-          // eslint-disable-next-line @typescript-eslint/naming-convention
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'rules.ts:1103',
-            message: 'Rendering hoisted child',
-            data: {
-              i,
-              length,
-              childType: child.type,
-              currentDepth,
-              frameStateLength: frameState.length
-            },
-            timestamp: Date.now(),
-            sessionId: 'debug-session',
-            runId: 'run1',
-            hypothesisId: 'A'
-          })
-        }).catch(() => {});
-        // #endregion
         child.toTrimmedString(opts);
         if (i < length - 1) {
           /** More declarations, we need to re-open */
@@ -1604,8 +1423,19 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           // Note: copy(true) should create nodes with evaluated=false by default
           // but we explicitly reset to ensure ampersands can be re-evaluated
           let rules = rulesetRules.copy(true);
+          const rulesetsAfterCopy = rules.value.filter(n => isNode(n, 'Ruleset'));
           rules.evaluated = false;
           rules.preEvaluated = false;
+          // Reset Ruleset selectors to their original values from the selector's sourceNode
+          // The selector's sourceNode should have the original selector with ampersand
+          // (stored during evalNode when we set this.value.selector.sourceNode = result)
+          for (const ruleset of rulesetsAfterCopy) {
+            const selector = ruleset.value.selector;
+            if (selector && selector.sourceNode) {
+              // Use the selector's sourceNode which has the ampersand structure
+              ruleset.value.selector = selector.sourceNode.copy(true) as Selector | Nil;
+            }
+          }
           // Preserve the parent from the original ruleset's Rules so lookups can traverse up
           if (rulesetRules.parent) {
             rules.parent = rulesetRules.parent;
@@ -1732,31 +1562,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         thisContext.searchScope.add(candidate);
         try {
           let newRules = await rules.eval(thisContext);
-          // #region agent log
-          // Check if Rulesets inside have frames set
-          const rulesetsInRules = newRules.value.filter((n) => isNode(n, 'Ruleset'));
-          const rulesetsWithFrames = rulesetsInRules.filter((n) => (n as Ruleset).frames !== undefined);
-          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', {
-            method: 'POST',
-            // eslint-disable-next-line @typescript-eslint/naming-convention
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              location: 'rules.ts:1734',
-              message: 'getFunctionFromMixins: after rules.eval, checking Rulesets for frames',
-              data: {
-                rulesLength: newRules.value.length,
-                rulesetsCount: rulesetsInRules.length,
-                rulesetsWithFramesCount: rulesetsWithFrames.length,
-                collapseNesting: thisContext.opts.collapseNesting,
-                contextFramesLength: thisContext.frames?.length ?? 0
-              },
-              timestamp: Date.now(),
-              sessionId: 'debug-session',
-              runId: 'run1',
-              hypothesisId: 'G'
-            })
-          }).catch(() => {});
-          // #endregion
           /**
            * Make everything public, so that we can access these
            * these variables in the parent scope, or when doing lookups.

@@ -166,6 +166,16 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return selector;
   }
 
+  override copy(deep?: boolean): this {
+    const node = super.copy(deep);
+    const originalSelector = node.value.selector;
+    const selectorSourceNode = originalSelector?.sourceNode;
+    if (originalSelector && selectorSourceNode) {
+      node.value.selector = selectorSourceNode.copy(true) as Selector | Nil;
+    }
+    return node;
+  }
+
   override evalNode(context: Context): MaybePromise<Ruleset | Nil> {
     if (this.evaluated) {
       return this;
@@ -199,9 +209,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         const isParentSameRuleset = parentFrame && (parentFrame === this || parentFrame.index === this.index);
         if (parentSelector && !(parentSelector instanceof Nil) && !isParentSameRuleset) {
           const result = this.getImplicitSelector(parentSelector, collapseNesting);
+          /** Store the implicit ampersand with the selector */
+          this.value.selector.sourceNode = result;
           return result.eval(context);
         } else {
-          return this.selector.eval(context);
+          // No parent selector, so just return the selector as-is (no evaluation needed)
+          return this.selector;
         }
       },
       (sels: Selector | Nil) => {
@@ -264,7 +277,13 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         if (sels instanceof Nil) {
           return sels;
         }
+        // Preserve the sourceNode from the current selector before replacing it
+        const preservedSourceNode = this.value.selector?.sourceNode;
         this.value.selector = sels;
+        // Restore the sourceNode on the new selector so it's available when copying
+        if (preservedSourceNode && this.value.selector) {
+          this.value.selector.sourceNode = preservedSourceNode;
+        }
         this.options.hoistToRoot ||= context.opts.collapseNesting;
         context.rulesetFrames.push(this as Ruleset);
         context.frames.push(this);
