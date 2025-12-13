@@ -7,6 +7,7 @@ import { isNode } from './util/is-node';
 import { type Selector } from './selector';
 import { atIndex } from './util/collections';
 import { type PrintOptions, getPrintOptions } from './util/print';
+import { F_VISIBLE } from './node';
 
 export type AmpersandValue = {
   /**
@@ -101,10 +102,21 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
     const { selector } = this.value;
     if (selector && 'keySet' in selector) {
       this._keySet = selector.keySet;
+      // For visibleKeySet, if this ampersand has a selector value, it's an implicit ampersand
+      // (added by getImplicitSelector). For indexing purposes, we want to exclude implicit ampersands
+      // regardless of visibility, so always set visibleKeySet to empty when there's a selector value
+      if (this.hasFlag(F_VISIBLE) && !selector) {
+        // Only include visibleKeySet if visible AND no selector value (explicit ampersand)
+        this._visibleKeySet = new Set();
+      } else {
+        // Implicit ampersand (has selector value) or invisible - exclude from visibleKeySet
+        this._visibleKeySet = new Set();
+      }
       this._canFastReject = selector.canFastReject;
       return;
     }
     this._keySet = new Set(['&']);
+    this._visibleKeySet = new Set();
   }
 
   override valueOf() {

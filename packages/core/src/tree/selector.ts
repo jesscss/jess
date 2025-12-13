@@ -1,5 +1,5 @@
 import type { MaybePromise } from 'awaitable-pipe';
-import { Node, type NodeOptions, type NodeValue, defineType } from './node';
+import { F_VISIBLE, Node, type NodeOptions, type NodeValue, defineType } from './node';
 import type { IfAny } from 'type-fest';
 import type { Context } from '../context';
 import type { Nil } from './nil';
@@ -28,11 +28,20 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
    * by the key sets in the extend scope.
    */
   protected _keySet: Set<string> | undefined;
+  /** Used for mixin registry indexing - only includes visible selectors */
+  protected _visibleKeySet: Set<string> | undefined;
   get keySet(): Set<string> {
     if (!this._keySet) {
       this._computeKeySetAndFastReject();
     }
     return this._keySet!;
+  }
+
+  get visibleKeySet(): Set<string> {
+    if (!this._visibleKeySet) {
+      this._computeKeySetAndFastReject();
+    }
+    return this._visibleKeySet!;
   }
 
   /**
@@ -56,7 +65,13 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
    */
   protected _computeKeySetAndFastReject(): void {
     // Default implementation - subclasses override
-    this._keySet = new Set([String(this.valueOf())]);
+    let value = String(this.valueOf());
+    this._keySet = new Set([value]);
+    if (this.hasFlag(F_VISIBLE)) {
+      this._visibleKeySet = this._keySet;
+    } else {
+      this._visibleKeySet = new Set();
+    }
     this._canFastReject = true;
   }
 }

@@ -43,26 +43,29 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     const hasSelectorListArg = isNode(arg, 'SelectorList');
 
     if (hasSelectorArg || hasSelectorListArg) {
-      const combinedKeySet = new Set<string>();
-
       if (hasSelectorListArg) {
         // SelectorList argument - union all selector keySets
         let combinedKeySet = new Set<string>();
+        let combinedVisibleKeySet = new Set<string>();
         for (const selector of arg.value) {
           combinedKeySet = combinedKeySet.union(selector.keySet);
+          combinedVisibleKeySet = combinedVisibleKeySet.union(selector.visibleKeySet);
         }
         // Trust the SelectorList's canFastReject (should be false for alternatives)
         this._keySet = combinedKeySet;
+        this._visibleKeySet = combinedVisibleKeySet;
         this._canFastReject = arg.canFastReject;
       } else if (hasSelectorArg) {
         // Single Selector argument - use its keySet
         this._keySet = arg.keySet;
+        this._visibleKeySet = arg.visibleKeySet;
         // Trust the selector's canFastReject
         this._canFastReject = arg.canFastReject;
       }
     } else {
       // For other pseudo-selectors (like :hover, :focus), use valueOf
       this._keySet = new Set([this.valueOf()]);
+      this._visibleKeySet = this._keySet;
       // Other pseudo-selectors are safe for fast rejection
       this._canFastReject = true;
     }

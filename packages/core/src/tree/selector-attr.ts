@@ -30,10 +30,21 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     const mark = w.mark();
     const { name, op, value, mod } = this.value;
     w.add('[');
-    if (typeof name === 'string') { w.add(name, this); } else { name.toString(options); }
-    if (op) w.add(op);
-    if (value) value.toString(options);
-    if (mod) { w.add(' '); w.add(mod); }
+    if (typeof name === 'string') {
+      w.add(name, this);
+    } else {
+      name.toString(options);
+    }
+    if (op) {
+      w.add(op);
+    }
+    if (value) {
+      value.toString(options);
+    }
+    if (mod) {
+      w.add(' ');
+      w.add(mod);
+    }
     w.add(']');
     return w.getSince(mark);
   }

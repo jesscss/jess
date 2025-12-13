@@ -2,7 +2,8 @@ import { type Combinator } from './combinator';
 import { type Ampersand } from './ampersand';
 import {
   defineType,
-  F_VISIBLE
+  F_VISIBLE,
+  F_IMPLICIT_AMPERSAND
 } from './node';
 import type { Context } from '../context';
 import { type Nil } from './nil';
@@ -42,6 +43,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
 
   protected override _computeKeySetAndFastReject(): void {
     let combinedKeySet = new Set<string>();
+    let combinedVisibleKeySet = new Set<string>();
     let canFastReject = true;
 
     for (const component of this.value) {
@@ -54,6 +56,14 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       const selector = component as Selector;
       combinedKeySet = combinedKeySet.union(selector.keySet);
 
+      // Only add to visibleKeySet if the component is visible AND not an implicit ampersand
+      // Implicit ampersands should be excluded from visibleKeySet for indexing purposes,
+      // regardless of visibility (they're added by getImplicitSelector, not written by user)
+      if (component.hasFlag(F_VISIBLE) && !component.hasFlag(F_IMPLICIT_AMPERSAND)) {
+        combinedVisibleKeySet = combinedVisibleKeySet.union(selector.visibleKeySet);
+      }
+      // If component is invisible (like an implicit ampersand), its visibleKeySet should be empty anyway
+
       // If any selector component can't fast reject, this complex selector can't either
       if (!selector.canFastReject) {
         canFastReject = false;
@@ -61,6 +71,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     }
 
     this._keySet = combinedKeySet;
+    this._visibleKeySet = combinedVisibleKeySet;
     this._canFastReject = canFastReject;
   }
 

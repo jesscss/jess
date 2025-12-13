@@ -841,6 +841,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return pipe(
           tryStep(() => rule.eval(context), {
             onError(error) {
+              // ReferenceErrors (e.g., from mixin lookups) should not be retried - they should fail immediately
+              if (error instanceof ReferenceError) {
+                throw error;
+              }
               // If evaluation failed and we haven't retried this node yet,
               // and we're not already at the none priority, retry at none priority
               if (p > Priority.None && !retriedNodes.has(rule)) {

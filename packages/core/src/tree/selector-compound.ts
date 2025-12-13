@@ -22,11 +22,13 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
 
   protected override _computeKeySetAndFastReject(): void {
     let combinedKeySet = new Set<string>();
+    let combinedVisibleKeySet = new Set<string>();
     let canFastReject = true;
 
     for (const selector of this.value) {
       // Union each child's keySet
       combinedKeySet = combinedKeySet.union(selector.keySet);
+      combinedVisibleKeySet = combinedVisibleKeySet.union(selector.visibleKeySet);
       // If any child can't fast reject, this compound can't either
       if (!selector.canFastReject) {
         canFastReject = false;
@@ -34,6 +36,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     }
 
     this._keySet = combinedKeySet;
+    this._visibleKeySet = combinedVisibleKeySet;
     this._canFastReject = canFastReject;
   }
 

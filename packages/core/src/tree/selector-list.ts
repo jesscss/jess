@@ -15,12 +15,14 @@ export class SelectorList extends Selector<Selector[]> {
 
   protected override _computeKeySetAndFastReject(): void {
     let combinedKeySet = new Set<string>();
-
+    let combinedVisibleKeySet = new Set<string>();
     for (const selector of this.value) {
       combinedKeySet = combinedKeySet.union(selector.keySet);
+      combinedVisibleKeySet = combinedVisibleKeySet.union(selector.visibleKeySet);
     }
 
     this._keySet = combinedKeySet;
+    this._visibleKeySet = combinedVisibleKeySet;
     // SelectorLists represent alternatives - can't use fast rejection
     this._canFastReject = false;
   }

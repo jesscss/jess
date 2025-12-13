@@ -113,6 +113,8 @@ export const F_STATIC = 0b100;
 export const F_NON_STATIC = 0b1000;
 /** Whether or not a physical ampersand is in this selector */
 export const F_AMPERSAND = 0b10000;
+/** Whether an ampersand was implicitly added (not written by user) */
+export const F_IMPLICIT_AMPERSAND = 0b100000;
 
 // Default state: only visible is true
 export const F_DEFAULT = F_VISIBLE;
@@ -698,12 +700,8 @@ export abstract class Node<
   inherit(node: Node) {
     this._location = node.location;
     this._treeContext = node.treeContext;
-    /** Set state carefully */
-    this.state |= node.state;
-    if (node.hasFlag(F_NON_STATIC)) {
-      /** Effectively wipes a static flag if it exists */
-      this.addFlag(F_NON_STATIC);
-    }
+    /** Copy state exactly (not OR, to preserve removed flags) */
+    this.state = node.state;
     // Note that we need to create new arrays if we mutate pre/post later
     this.pre ||= node.pre;
     this.post ||= node.post;

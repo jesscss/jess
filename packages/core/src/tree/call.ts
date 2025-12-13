@@ -58,6 +58,7 @@ export class Call extends Node<CallValue, CallOptions> {
   }
 
   override toTrimmedString(options?: PrintOptions) {
+    const { silentFail } = this.options;
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
@@ -66,6 +67,9 @@ export class Call extends Node<CallValue, CallOptions> {
       w.add(name, this);
     } else {
       name.toString(options);
+    }
+    if (silentFail) {
+      w.add('?');
     }
     w.add('(');
     if (args) {
@@ -88,8 +92,9 @@ export class Call extends Node<CallValue, CallOptions> {
     let { name, args } = this.value;
     let n = typeof name === 'string' ? name : await name.eval(context);
 
-    if (isNode(n, 'JsFunction')) {
-      const fn = n.value;
+    let fn = isNode(n, 'JsFunction') ? n.value : n;
+
+    if (typeof fn === 'function') {
       try {
         const result = await (
           args
@@ -99,39 +104,14 @@ export class Call extends Node<CallValue, CallOptions> {
         context.callStack.pop();
         return cast(result);
       } catch (e) {
+        if (!this.options?.silentFail) {
+          throw e;
+        }
         let newCall = this.clone().inherit(this);
         newCall.value.name = isNode(name, 'Reference') && name.options.fallbackValue === true
           ? String(name.value.key)
           : String(n.valueOf());
         newCall.value.args = await args?.eval(context);
-        context.callStack.pop();
-        return newCall;
-      }
-    } else if (typeof n === 'function') {
-      // Check if n is a function (from getFunctionFromMixins) - handle BEFORE popping stacks
-      if (n === 'calc') {
-        context.calcFrames.push(true);
-      }
-      args = await args?.eval(context);
-      if (n === 'calc') {
-        context.calcFrames.pop();
-      }
-      try {
-        const result = await (
-          args
-            ? callWithContext(context, n, ...(args as any).value)
-            : callWithContext(context, n)
-        );
-        context.parenFrames.pop();
-        context.callStack.pop();
-        return cast(result);
-      } catch (e) {
-        let newCall = this.clone().inherit(this);
-        newCall.value.name = isNode(name, 'Reference') && name.options.fallbackValue === true
-          ? String(name.value.key)
-          : String(n);
-        newCall.value.args = args;
-        context.parenFrames.pop();
         context.callStack.pop();
         return newCall;
       }
