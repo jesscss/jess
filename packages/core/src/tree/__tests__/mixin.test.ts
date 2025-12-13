@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest } from '..';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound } from '..';
 import { Context } from '../../context';
 
 let context: Context;
@@ -498,6 +498,54 @@ describe('Mixin', () => {
       expect(css).toContain('.test');
       // Rest parameter should contain 20px and 30px (everything after the first argument)
       expect(css).toContain('margin');
+    });
+
+    it('should call a mixin with multiple nested compound selectors', async () => {
+      // .do .re .mi .fa {
+      //   .sol .la {
+      //     .si {
+      //       color: cyan;
+      //     }
+      //   }
+      // }
+      // .mutli-selector-parents {
+      //   .do.re.mi.fa.sol.la.si();
+      // }
+      const node = rules([
+        ruleset({
+          selector: sel([el('.do'), co(' '), el('.re'), co(' '), el('.mi'), co(' '), el('.fa')]),
+          rules: rules([
+            ruleset({
+              selector: sel([el('.sol'), co(' '), el('.la')]),
+              rules: rules([
+                ruleset({
+                  selector: sel([el('.si')]),
+                  rules: rules([
+                    decl({ name: 'color', value: any('cyan') })
+                  ])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.mutli-selector-parents'),
+          rules: rules([
+            call({ name: ref({ key: compound([el('.do'), el('.re'), el('.mi'), el('.fa'), el('.sol'), el('.la'), el('.si')]) }, { type: 'mixin-ruleset' }) })
+          ])
+        })
+      ]);
+      context.opts.collapseNesting = true;
+      let evald = await node.eval(context);
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .do .re .mi .fa .sol .la .si {
+          color: cyan;
+        }
+        .mutli-selector-parents {
+          color: cyan;
+        }
+      `);
     });
   });
 

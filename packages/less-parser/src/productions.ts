@@ -604,11 +604,28 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
         return;
       }
       let leftNode!: Node;
-      for (let s of selector.nodes()) {
-        if (s instanceof BasicSelector) {
-          leftNode = new Reference({ target: leftNode as Reference, key: s.valueOf() }, { type: 'mixin-ruleset', role: 'name' }, undefined, this.context);
+
+      // If selector is a CompoundSelector, ComplexSelector, or single BasicSelector (but not SelectorList),
+      // create a single Reference with the selector instance as the key instead of nested references.
+      // This handles cases like .foo.bar() or .foo > .bar() as a single call.
+      // Note: .foo().bar() still creates nested calls because .foo() is parsed separately.
+      if (!isSelectorList && (
+        selector instanceof CompoundSelector
+        || selector instanceof ComplexSelector
+        || selector instanceof BasicSelector
+      )) {
+        // Create a single Reference with the selector instance as the key
+        leftNode = new Reference({ key: selector }, { type: 'mixin-ruleset', role: 'name' }, undefined, this.context);
+      } else {
+        // For other cases (like SelectorList or when we need nested references),
+        // iterate through selector nodes and create nested references
+        for (let s of selector.nodes()) {
+          if (s instanceof BasicSelector) {
+            leftNode = new Reference({ target: leftNode as Reference, key: s.valueOf() }, { type: 'mixin-ruleset', role: 'name' }, undefined, this.context);
+          }
         }
       }
+
       /** Finally, pass this reference into a call */
       leftNode = new Call({ name: leftNode, args }, { markImportant: !!important }, location, this.context);
       return leftNode;

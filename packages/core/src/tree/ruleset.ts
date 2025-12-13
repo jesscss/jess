@@ -307,7 +307,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
         // Don't remove visibility flag when collapseNesting is enabled
         // because the ruleset will be flattened to root level
-        if (rules.visibleRules().length === 0 && !collapseNesting) {
+        // Also don't remove it if the ruleset has a selector - empty rulesets should still be output
+        // (e.g., when a mixin guard doesn't match, the ruleset should still appear, just empty)
+        if (rules.visibleRules().length === 0 && collapseNesting) {
           this.removeFlag(F_VISIBLE);
         }
 

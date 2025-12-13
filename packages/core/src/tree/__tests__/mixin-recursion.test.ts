@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, ref, Node, call, ruleset, compound } from '..';
+import { mixin, rules, el, decl, any, ref, Node, call, ruleset, compound, Comment } from '..';
 import { Context } from '../../context';
 import { JessError } from '../../jess-error';
 
@@ -502,6 +502,60 @@ describe('Mixin Recursion Detection', () => {
 
       expect(css).toContain('.foo');
       expect(css).toContain('color: blue');
+    });
+
+    it('should succeed when multiple .clearfix rulesets call .clearfix() mixin (no recursion)', async () => {
+      // .clearfix {
+      //   zoom: 1;
+      // }
+      // .clearfix {
+      //   .clearfix();
+      // }
+      // .clearfix {
+      //   .clearfix();
+      // }
+      // .clearfix {
+      //   .clearfix();
+      // }
+      // The first .clearfix ruleset is the mixin definition that can be called
+      const clearfixMixin = ruleset({
+        selector: el('.clearfix'),
+        rules: rules([
+          new Comment('// .clearfix', { lineComment: true })
+        ])
+      });
+
+      // These rulesets call .clearfix() - they should find the first one, not themselves
+      const clearfixRuleset1 = ruleset({
+        selector: el('.clearfix'),
+        rules: rules([
+          call({ name: ref({ key: '.clearfix' }, { type: 'mixin-ruleset' }) })
+        ])
+      });
+
+      const clearfixRuleset2 = ruleset({
+        selector: el('.clearfix'),
+        rules: rules([
+          call({ name: ref({ key: '.clearfix' }, { type: 'mixin-ruleset' }) })
+        ])
+      });
+
+      const clearfixRuleset3 = ruleset({
+        selector: el('.clearfix'),
+        rules: rules([
+          call({ name: ref({ key: '.clearfix' }, { type: 'mixin-ruleset' }) })
+        ])
+      });
+
+      const root = rules([clearfixMixin, clearfixRuleset1, clearfixRuleset2, clearfixRuleset3]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      // Each .clearfix ruleset should have called the first .clearfix() mixin
+      expect(css).toBeString(``);
+      // Should not throw recursion error
     });
   });
 });

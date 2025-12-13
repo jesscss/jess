@@ -673,6 +673,9 @@ export class MixinRegistry extends Registry<
     filterType: 'Mixin' | 'Ruleset' | undefined = undefined,
     options: FindOptions = {}
   ): (Mixin | Ruleset)[] | undefined {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'registry-utils.ts:675',message:'MixinRegistry.find entry',data:{keys:Array.isArray(keys)?keys:[keys],filterType},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     let keyList: string[] | undefined;
 
     if (isArray(keys)) {
@@ -687,6 +690,15 @@ export class MixinRegistry extends Registry<
 
     let rules: Rules | undefined = this.rules;
     let { searchParents = true, local = false, candidates = new Set(), context } = options ?? {};
+    // #region agent log
+    const parentChain: string[] = [];
+    let currentRules: Rules | undefined = this.rules;
+    while (currentRules) {
+      parentChain.push(`Rules(${currentRules.value.length} items)`);
+      currentRules = currentRules.parent as Rules | undefined;
+    }
+    fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'registry-utils.ts:688',message:'Starting find with rules context',data:{keys:Array.isArray(keys)?keys:[keys],searchParents,startingRulesItems:this.rules?.value.length||0,parentChainLength:parentChain.length,parentChain},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
     // Track which Rules nodes we've already searched to prevent infinite recursion
     // Use the searchedRules from options if it exists, otherwise create a new Set
     const searchedRules = options?.searchedRules || new Set<Rules>();
@@ -699,6 +711,9 @@ export class MixinRegistry extends Registry<
       let registry = rules.getRegistry('mixin');
       registry.indexPendingItems();
       const existing = registry.index.get(startKey!);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'registry-utils.ts:704',message:'Search iteration',data:{startKey,search,existingCount:existing?.length||0,indexSize:registry.index.size,allKeys:Array.from(registry.index.keys())},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
 
       // With the new indexing (by local visible keys), nested rulesets are indexed under their own keys
       // So we only need to check entries under the startKey - no need to scan all entries
@@ -757,12 +772,21 @@ export class MixinRegistry extends Registry<
 
           // If there are more search keys than match keys, recursively search inside this ruleset
           // This handles cases where match is a prefix of search (e.g., match=[".foo"], search=[".foo", ".bar"])
-          if (search.length > match.length) {
-            // If match is a prefix of search, search for the full remaining search keys
-            // Otherwise, search for the remainder after the match
-            const searchKeys = arraysEqual(match, search.slice(0, match.length))
-              ? search  // Match is a prefix, search for full remaining keys
-              : search.slice(match.length);  // Match is not a prefix, search for remainder
+          // Or when match is empty (ruleset IS the startKey) and we need to search inside for the full search
+          const shouldRecurse = search.length > 0 && (search.length > match.length || match.length === 0);
+          const isPrefix = match.length > 0 && arraysEqual(match, search.slice(0, match.length));
+          if (shouldRecurse) {
+            let searchKeys: string[];
+            if (match.length === 0) {
+              // Match is empty, meaning this ruleset IS the startKey, search inside for the full search
+              searchKeys = search;
+            } else if (isPrefix) {
+              // Match is a prefix of search, search for the remainder after the match
+              searchKeys = search.slice(match.length);
+            } else {
+              // Match is not a prefix of search - skip this ruleset, it doesn't match
+              continue;
+            }
             if (
               (isNode(value, 'Ruleset'))
               || (isNode(value, 'Mixin') && (!value.value.params || (value.value.params?.length ?? 0) === 0))
@@ -802,10 +826,17 @@ export class MixinRegistry extends Registry<
       searchedRules.add(rules);
 
       if (!searchParents) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'registry-utils.ts:819',message:'Not searching parents',data:{searchParents},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
         break;
       }
       do {
+        const prevRules = rules;
         rules = rules?.parent as Rules;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'registry-utils.ts:825',message:'Traversing parent chain',data:{hasParent:!!rules,parentType:rules?.type,parentItems:rules?.value.length||0,prevRulesItems:prevRules?.value.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
         /**
          * If we reach an import boundary, stop unless it's an `@import`
          * which means these rules can reach into the parent file that imports
@@ -817,7 +848,11 @@ export class MixinRegistry extends Registry<
         }
       } while (rules && rules.type !== 'Rules');
     }
-    return candidates.size ? [...candidates] as (Mixin | Ruleset)[] : undefined;
+    const result = candidates.size ? [...candidates] as (Mixin | Ruleset)[] : undefined;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'registry-utils.ts:830',message:'MixinRegistry.find exit',data:{keys:Array.isArray(keys)?keys:[keys],resultCount:result?.length||0,resultTypes:result?.map(r=>({type:r.type,selector:isNode(r,'Ruleset')?r.value.selector.valueOf():'N/A'}))||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    return result;
   }
 }
 

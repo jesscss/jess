@@ -1,108 +1,83 @@
 {
-  // Use IntelliSense to learn about possible attributes.
-  // Hover to view descriptions of existing attributes.
-  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
   "version": "0.2.0",
   "configurations": [
-
     {
       "type": "node",
       "request": "launch",
-      "name": "Debug Current Test File",
-      "autoAttachChildProcesses": true,
-      "skipFiles": ["<node_internals>/**"], // "**/css-parser/lib/advancedCstParser.js" // "**/node_modules/**"
-      "program": "${workspaceRoot}/node_modules/vitest/vitest.mjs",
-      "args": ["run", "${relativeFile}"],
-      "smartStep": true,
-      "console": "integratedTerminal"
-    },
-    {
-      "type": "node",
-      "request": "launch",
-      "name": "Jess v2 runtime Tests",
-      "cwd": "${workspaceFolder}/packages/jessv2",
-      "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
-      "args": [
-        "-r",
-        "ts-node/register",
-        "-u",
-        "bdd",
-        "--timeout",
-        "999999",
-        "--colors",
-        "${workspaceFolder}/packages/jessv2/src/scope/**/__tests__/*.ts"
+      "name": "Debug Vitest (Current File)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "exec",
+        "vitest",
+        "--inspect-brk",
+        "--no-coverage",
+        "--run",
+        "${relativeFile}"
       ],
-      "internalConsoleOptions": "openOnSessionStart"
-    },
-    {
-      "type": "node",
-      "request": "launch",
-      "name": "CSS Parsing Tests",
       "autoAttachChildProcesses": true,
-      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
-      "cwd": "${workspaceFolder}/packages/css-parser",
-      "program": "${workspaceFolder}/node_modules/vitest/vitest.mjs",
-      "args": [
-        "run",
-        "${workspaceFolder}/packages/css-parser/test/**/*.ts"
-      ],
-      "smartStep": true,
+      "skipFiles": ["<node_internals>/**"],
       "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "resolveSourceMapLocations": [
+        "${workspaceFolder}/**",
+        "!**/node_modules/**"
+      ],
+      "sourceMaps": true,
+      "outFiles": [
+        "${workspaceFolder}/packages/*/lib/**/*.js",
+        "${workspaceFolder}/packages/*/src/**/*.ts"
+      ]
     },
     {
       "type": "node",
       "request": "launch",
-      "name": "Jess Parsing Tests",
-      "cwd": "${workspaceFolder}/packages/parser",
-      "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
-      "args": [
-        "-r",
-        "ts-node/register",
-        "-u",
-        "bdd",
-        "--timeout",
-        "999999",
-        "--colors",
-        "${workspaceFolder}/packages/parser/test/**/*.ts"
+      "name": "Debug Vitest (All Tests)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "exec",
+        "vitest",
+        "--inspect-brk",
+        "--no-coverage",
+        "--run"
       ],
-      "internalConsoleOptions": "openOnSessionStart"
+      "autoAttachChildProcesses": true,
+      "skipFiles": ["<node_internals>/**"],
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "resolveSourceMapLocations": [
+        "${workspaceFolder}/**",
+        "!**/node_modules/**"
+      ],
+      "sourceMaps": true,
+      "outFiles": [
+        "${workspaceFolder}/packages/*/lib/**/*.js",
+        "${workspaceFolder}/packages/*/src/**/*.ts"
+      ]
     },
     {
       "type": "node",
       "request": "launch",
-      "name": "Main (jess) Tests",
-      "cwd": "${workspaceFolder}/packages/jess",
-      "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
-      "args": [
-        "-r",
-        "ts-node/register",
-        "-u",
-        "bdd",
-        "--timeout",
-        "999999",
-        "--colors",
-        "${workspaceFolder}/packages/jess/test/*.ts",
-        "${workspaceFolder}/packages/jess/src/**/__tests__/*.ts"
+      "name": "Debug Vitest (Watch Mode)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "exec",
+        "vitest",
+        "--inspect-brk",
+        "--no-coverage"
       ],
-      "internalConsoleOptions": "openOnSessionStart"
-    },
-    {
-      "type": "node",
-      "request": "launch",
-      "name": "rollup-plugin-jess tests",
-      "cwd": "${workspaceFolder}/packages/rollup-plugin-jess",
-      "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
-      "args": [
-        "-r",
-        "ts-node/register",
-        "-u",
-        "bdd",
-        "--timeout",
-        "999999",
-        "--colors",
-        "${workspaceFolder}/packages/rollup-plugin-jess/test/*.ts"
+      "autoAttachChildProcesses": true,
+      "skipFiles": ["<node_internals>/**"],
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "resolveSourceMapLocations": [
+        "${workspaceFolder}/**",
+        "!**/node_modules/**"
       ],
-      "internalConsoleOptions": "openOnSessionStart"
+      "sourceMaps": true,
+      "outFiles": [
+        "${workspaceFolder}/packages/*/lib/**/*.js",
+        "${workspaceFolder}/packages/*/src/**/*.ts"
+      ]
     }
   ]
 }

@@ -244,6 +244,11 @@ export abstract class Node<
   }
 
   set value(val: Data) {
+    // #region agent log
+    if (this.type === 'Rules' && !Array.isArray(val) && typeof val === 'string') {
+      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'node.ts:246', message: 'ERROR: Setting Rules.value to string!', data: { valType: typeof val, val: val, stack: new Error().stack?.split('\n').slice(1, 5).join('\n') }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'L' }) }).catch(() => {});
+    }
+    // #endregion
     this._value = this._tryProxyWrap(val);
   }
 
@@ -587,7 +592,8 @@ export abstract class Node<
 
   /** Minimal nil fallback for edge cases where prototype method isn't attached yet */
   private _createMinimalNil(): Node {
-    const nilish = Object.create(this.constructor.prototype);
+    // @ts-expect-error - normally an abstract class
+    const nilish = new Node();
     nilish.type = 'Nil';
     nilish.removeFlag(F_VISIBLE);
     nilish.value = '';
@@ -701,7 +707,10 @@ export abstract class Node<
     this._location = node.location;
     this._treeContext = node.treeContext;
     /** Copy state exactly (not OR, to preserve removed flags) */
-    this.state = node.state;
+    // Only sync F_VISIBLE flag, preserve all other flags
+    if (!node.hasFlag(F_VISIBLE)) {
+      this.removeFlag(F_VISIBLE);
+    }
     // Note that we need to create new arrays if we mutate pre/post later
     this.pre ||= node.pre;
     this.post ||= node.post;
