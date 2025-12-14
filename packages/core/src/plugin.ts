@@ -1,6 +1,6 @@
 import type { Rules } from './tree/rules';
 import { join, isAbsolute, extname, resolve } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import type { Visitor } from './visitor';
 
@@ -92,8 +92,31 @@ export abstract class AbstractPlugin implements PluginInterface {
 
   /** Default source getter */
   async getSource(absoluteFilePath: string): Promise<string> {
-    const result = await readFile(absoluteFilePath, 'utf8');
-    return result;
+    // #region agent log
+    const logPath = '/Users/matthew/git/oss/jess/.cursor/debug-sync.log';
+    try { writeFileSync(logPath, `getSource entry: ${absoluteFilePath}\n`, { flag: 'a' }); } catch {}
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plugin.ts:94',message:'getSource entry',data:{absoluteFilePath},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    try {
+      // #region agent log
+      try { writeFileSync(logPath, `getSource calling readFile: ${absoluteFilePath}\n`, { flag: 'a' }); } catch {}
+      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plugin.ts:96',message:'getSource calling readFile',data:{absoluteFilePath},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      const result = await readFile(absoluteFilePath, 'utf8');
+      // #region agent log
+      try { writeFileSync(logPath, `getSource readFile completed: ${absoluteFilePath}, length: ${result.length}\n`, { flag: 'a' }); } catch {}
+      try { writeFileSync(logPath, `getSource about to return\n`, { flag: 'a' }); } catch {}
+      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plugin.ts:98',message:'getSource readFile completed',data:{absoluteFilePath,resultLength:result.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      try { writeFileSync(logPath, `getSource returning result\n`, { flag: 'a' }); } catch {}
+      return result;
+    } catch (error: any) {
+      // #region agent log
+      try { writeFileSync(logPath, `getSource error: ${absoluteFilePath}, ${error?.toString()}\n`, { flag: 'a' }); } catch {}
+      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plugin.ts:101',message:'getSource error',data:{absoluteFilePath,error:error?.toString(),errorMessage:error?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      throw error;
+    }
   }
 
   /** Gets the first match using from the filesystem that exists */
