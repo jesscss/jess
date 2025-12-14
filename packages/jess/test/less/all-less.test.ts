@@ -1,13 +1,13 @@
 import * as glob from 'glob';
-import * as fs from 'fs';
 import * as path from 'path';
 import { invalidLess } from '@jesscss/shared';
 import { Compiler } from '../../src';
+import { getTestCases } from '../test-utils';
 import lessPlugin from '@jesscss/plugin-less';
 
 const testData = path.dirname(require.resolve('@less/test-data'));
 
-const compiler = new Compiler({
+const baseCompiler = new Compiler({
   output: { collapseNesting: true },
   compile: {
     plugins: [
@@ -26,7 +26,7 @@ const specializedTests = [
 
 // Temporarily filter to specific tests for debugging - set to empty array to run all
 const targetTests: string[] = [
-  'tests-unit/mixins/mixins.less'
+  // 'tests-unit/mixins/mixins.less'
 ];
 
 describe('Can render Less files to CSS', () => {
@@ -42,20 +42,40 @@ describe('Can render Less files to CSS', () => {
     .filter(value => targetTests.length === 0 || targetTests.includes(value)) // Target specific tests
     .sort()
     .forEach((file) => {
-      it(`${file}`, async () => {
-        const lessPath = path.join(testData, file);
-        // CSS files are now co-located with .less files
-        const cssPath = lessPath.replace(/\.less$/, '.css');
+      const lessPath = path.join(testData, file);
 
-        if (!fs.existsSync(cssPath)) {
-          console.warn(`No expected CSS file found for ${file}, skipping test`);
-          return;
-        }
+      try {
+        const testCases = getTestCases(lessPath);
 
-        const css = fs.readFileSync(cssPath).toString();
-        const output = await compiler.render(lessPath);
+        testCases.forEach((testCase, index) => {
+          const testName = testCases.length > 1 ? `${file} [${index + 1}/${testCases.length}]` : file;
+          const configSuffix = testCases.length > 1 ? ` (${path.basename(testCase.expectedFile)})` : '';
 
-        expect(output).toBeString(css);
-      });
+          it(`${testName}${configSuffix}`, async () => {
+            const expectedCss = require('fs').readFileSync(testCase.expectedFile, 'utf8');
+
+            // Merge test case config with base compiler config
+            // The test case config overrides base config options
+            const testCompiler = new Compiler({
+              ...baseCompiler.opts,
+              ...testCase.config,
+              // Merge output options
+              output: {
+                ...baseCompiler.opts.output,
+                ...testCase.config.output
+              }
+            });
+
+            const actualCss = await testCompiler.render(lessPath);
+
+            expect(actualCss).toBeString(expectedCss.trim());
+          });
+        });
+      } catch (error: any) {
+        // If getTestCases throws (no files found), create a failing test
+        it(`${file}`, () => {
+          throw error;
+        });
+      }
     });
 });

@@ -1,4 +1,5 @@
 import * as path from 'path';
+import mergeWith from 'lodash-es/mergeWith';
 import { getConfig } from './config';
 import {
   Context,
@@ -8,10 +9,22 @@ import {
   // type JessError,
   logger
 } from '@jesscss/core';
-import merge from 'lodash-es/merge';
 import lessPlugin from '@jesscss/plugin-less';
 
 export type ConfigOptions = StylesConfig;
+
+const { isArray } = Array;
+
+/**
+ * Customizer for mergeWith that concatenates arrays instead of replacing them
+ */
+function arrayConcatCustomizer(objValue: any, srcValue: any): any {
+  if (isArray(objValue) && isArray(srcValue)) {
+    return [...objValue, ...srcValue];
+  }
+  // Return undefined to use default merge behavior for non-arrays
+  return undefined;
+}
 
 export class Compiler {
   constructor(
@@ -26,11 +39,21 @@ export class Compiler {
    * Create a context with the configured plugins
    */
   private createContext(filePath?: string, renderOptions?: Partial<ConfigOptions>): Context {
-    const config: ConfigOptions = merge({
+    // Merge order: file config -> compiler opts -> render options
+    const fileConfig = filePath ? getConfig(filePath) : {};
+    const baseConfig: ConfigOptions = {
       compile: {},
       output: {},
       language: {}
-    }, this.opts, filePath ? getConfig(path.dirname(filePath)) : {}, renderOptions || {});
+    };
+
+    const config: ConfigOptions = mergeWith(
+      baseConfig,
+      fileConfig,
+      this.opts,
+      renderOptions || {},
+      arrayConcatCustomizer
+    );
     // Extract plugins from compile.plugins
     const plugins = config.compile?.plugins;
     /** @todo Add CSS and Jess plugins */
