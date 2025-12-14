@@ -8,7 +8,7 @@ import lessPlugin from '@jesscss/plugin-less';
 const testData = path.dirname(require.resolve('@less/test-data'));
 
 const compiler = new Compiler({
-  output: { collapseNesting: false },
+  output: { collapseNesting: true },
   compile: {
     plugins: [
       lessPlugin({

@@ -687,6 +687,7 @@ export class MixinRegistry extends Registry<
 
     let rules: Rules | undefined = this.rules;
     let { searchParents = true, local = false, candidates = new Set(), context } = options ?? {};
+
     // Track which Rules nodes we've already searched to prevent infinite recursion
     // Use the searchedRules from options if it exists, otherwise create a new Set
     const searchedRules = options?.searchedRules || new Set<Rules>();
@@ -739,6 +740,7 @@ export class MixinRegistry extends Registry<
             ) {
               let subRules = value.value.rules;
               const subMixinRegistry = subRules.getRegistry('mixin');
+              subMixinRegistry.indexPendingItems();
               // With the new indexing, nested rulesets are indexed by their local visible keys
               // So we can just do a normal recursive search - no need to check for matches ending with search
               // When searching inside a nested ruleset with searchParents: false, we don't need searchedRules
@@ -778,6 +780,7 @@ export class MixinRegistry extends Registry<
             ) {
               let subRules = value.value.rules;
               const subMixinRegistry = subRules.getRegistry('mixin');
+              subMixinRegistry.indexPendingItems();
               subMixinRegistry.find(searchKeys, filterType, {
                 searchParents: false,
                 local,

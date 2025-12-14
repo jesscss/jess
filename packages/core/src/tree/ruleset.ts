@@ -10,10 +10,6 @@ import { Ampersand } from './ampersand';
 import { Combinator } from './combinator';
 import { ComplexSelector } from './selector-complex';
 import { SelectorList } from './selector-list';
-import { CompoundSelector } from './selector-compound';
-import { sel } from './selector-complex';
-import { amp } from './ampersand';
-import { co } from './combinator';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule';
@@ -108,7 +104,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       const node = this.maybeClone(context);
       node.preEvaluated = true;
       node.sourceNode ??= this;
-      const { selector } = node.value;
+      let { selector } = node.value;
+      let parentSelector = context.rulesetFrames.at(-1)?.selector;
+      if (parentSelector && !(parentSelector instanceof Nil)) {
+        selector = node.getImplicitSelector(parentSelector, context.opts.collapseNesting);
+        selector.sourceNode = node === this ? selector.clone(true) : selector;
+      }
       return pipe(
         () => selector.eval(context),
         (sel) => {
@@ -135,6 +136,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       comb.removeFlag(F_VISIBLE);
     }
     if (selector instanceof ComplexSelector) {
+      if (selector.value[0] instanceof Combinator) {
+        return ComplexSelector.create([amp, ...selector.value]).inherit(selector);
+      }
       return ComplexSelector.create([amp, comb, ...selector.value]).inherit(selector);
     }
     const returnVal = ComplexSelector.create([amp, comb, selector]).inherit(selector);
@@ -172,11 +176,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   override copy(deep?: boolean): this {
     const node = super.copy(deep);
-    const originalSelector = node.value.selector;
-    const selectorSourceNode = originalSelector?.sourceNode;
-    if (originalSelector && selectorSourceNode) {
-      node.value.selector = selectorSourceNode.copy(true) as Selector | Nil;
-    }
+    const selectorSourceNode = this.value.selector.sourceNode;
+    node.value.selector = selectorSourceNode.copy(true) as Selector | Nil;
+    node.value.selector.sourceNode = selectorSourceNode;
     return node;
   }
 
@@ -204,23 +206,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           return new Nil();
         }
         this.value.guard = undefined;
-        let parentSelector = context.rulesetFrames.at(-1)?.selector;
-
-        // Always use getImplicitSelector when there's a parent selector
-        // BUT: if the parent Ruleset in frames is the same instance/index as this Ruleset,
-        // we should not use it as the parent (to prevent infinite recursion)
-        const parentFrame = atIndex(context.rulesetFrames, -1);
-        const isParentSameRuleset = parentFrame && (parentFrame === this || parentFrame.index === this.index);
-        if (parentSelector && !(parentSelector instanceof Nil) && !isParentSameRuleset) {
-          const result = this.getImplicitSelector(parentSelector, collapseNesting);
-          /** Store the implicit ampersand with the selector - CLONE it so it doesn't get mutated */
-          const clonedResult = result.copy(true);
-          this.value.selector.sourceNode = clonedResult;
-          return result.eval(context);
-        } else {
-          // No parent selector, so just return the selector as-is (no evaluation needed)
-          return this.selector;
-        }
+        return this.selector.eval(context);
       },
       (sels: Selector | Nil) => {
         if (frame && (this.options.hoistToRoot ?? context.opts.collapseNesting)) {

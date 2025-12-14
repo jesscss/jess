@@ -641,6 +641,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     } else if (isNode(node, 'Mixin')) {
       rules.registerNode(node);
     } else if (isNode(node, 'Ruleset')) {
+      // #region agent log
+      const selectorStr = String(node.value.selector?.valueOf?.() || 'unknown');
+      const hasSourceNode = !!node.value.selector?.sourceNode;
+      const sourceNodeStr = String(node.value.selector?.sourceNode?.valueOf?.() || 'none');
+      const shouldLog = selectorStr.includes('amp') || selectorStr.includes('support') || selectorStr.includes('higher') || sourceNodeStr.includes('amp') || sourceNodeStr.includes('support') || sourceNodeStr.includes('higher');
+      if (shouldLog) {
+        const rulesParent = rules.parent ? `${rules.parent.type}` : 'root';
+        const rulesItems = rules.value.length;
+        // eslint-disable-next-line @typescript-eslint/naming-convention
+        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:643', message: 'Registering nested ruleset', data: { selectorStr, hasSourceNode, sourceNodeStr, rulesParent, rulesItems, collapseNesting: context?.opts?.collapseNesting }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'F' }) }).catch(() => {});
+      }
+      // #endregion
       // registerNode handles both 'mixin' and 'ruleset' registries
       rules.registerNode(node);
     }
