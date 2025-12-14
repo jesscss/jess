@@ -328,6 +328,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return;
     }
 
+    // #region agent log
+    const shouldLog = items.some(n => isNode(n, 'Declaration'));
+    if (shouldLog) {
+      const frameStateStr = options.frameState?.map(f => `{frame:${f.frame?.type || 'none'},depth:${f.depth}}`).join(',') || 'none';
+      // eslint-disable-next-line @typescript-eslint/naming-convention
+      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:316', message: '_emitRulesBody entry', data: { depth, frameState: frameStateStr, itemsCount: items.length, itemsTypes: items.map(n => n.type) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
+    }
+    // #endregion
+
     // No spacing flags; writer.capture is used where needed
 
     let previousEndsWithNewline = false;

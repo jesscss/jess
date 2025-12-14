@@ -90,6 +90,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
           continue;
         }
         if (component.value !== ' ') {
+          // For non-space combinators (>, +, ~, etc.), handle spacing explicitly
           // pre spacing (default to single space when no explicit pre)
           if (!component.pre) {
             w.add(' ');

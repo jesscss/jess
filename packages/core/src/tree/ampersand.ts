@@ -153,6 +153,9 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
       if (!selector) {
         return new Nil();
       }
+      /** Remove any surrounding whitespace */
+      selector.pre = undefined;
+      selector.post = undefined;
 
       if (appendValue && !isNode(selector, 'Nil')) {
         let doAppendValue = (n: Selector) => {

@@ -94,7 +94,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (!(selector instanceof Nil)) {
       const selOut = w.capture(() => selector.toTrimmedString(options));
       w.add(space);
-      w.add(selOut.replace(/\s+$/, ''));
+      w.add(selOut.replace(/\s+$/, '').replace(/\s+/g, ' '));
       w.add(' {\n');
     }
   }

@@ -7,6 +7,7 @@ import { Selector } from './selector';
 import type { SimpleSelector } from './selector-simple';
 import { getEntries } from './util/collections';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
+import type { PrintOptions } from './util/print';
 
 /**
  * @example
@@ -66,6 +67,26 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return value;
   }
 
+  override toTrimmedString(options?: PrintOptions): string {
+    // #region agent log
+    const selectorStr = this.valueOf();
+    const shouldLog = selectorStr.includes('button') && selectorStr.includes('large');
+    if (shouldLog) {
+      const components = this.value.map((c, i) => ({
+        index: i,
+        value: c.valueOf(),
+        post: (c as any).post,
+        pre: (c as any).pre,
+        type: c.type
+      }));
+      // eslint-disable-next-line @typescript-eslint/naming-convention
+      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'selector-compound.ts:toTrimmedString', message: 'Serializing compound selector', data: { selectorStr, components }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
+    }
+    // #endregion
+    // Call base implementation which calls toString() on each component
+    return super.toTrimmedString(options);
+  }
+
   override evalNode(context: Context): MaybePromise<CompoundSelector | Selector | Nil> {
     return pipe(
       () => {
@@ -104,6 +125,11 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
         }
         if (value.length === 1) {
           return value[0]!.inherit(this) as Selector;
+        }
+        // Clear post on all components except the last one
+        // Components in a compound selector are joined without spaces
+        for (let i = 0; i < value.length - 1; i++) {
+          (value[i] as any).post = undefined;
         }
         sel.value = value;
         return sel;
