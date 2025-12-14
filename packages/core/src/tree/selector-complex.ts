@@ -11,6 +11,8 @@ import { isNode } from './util/is-node';
 import { Selector } from './selector';
 import type { SimpleSelector } from './selector-simple';
 import type { CompoundSelector } from './selector-compound';
+import { BasicSelector } from './selector-basic';
+import { PseudoSelector } from './selector-pseudo';
 import { getEntries } from './util/collections';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
@@ -139,6 +141,20 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       },
       (selector) => {
         const { value } = selector;
+        // Unwrap :is() PseudoSelectors that contain a single BasicSelector
+        // This handles cases where ampersands are replaced with :is(selector) during mixin evaluation
+        for (let i = 0; i < value.length; i++) {
+          const component = value[i];
+          if (
+            isNode(component, 'PseudoSelector')
+            && component.value.name === ':is'
+            && component.value.arg
+            && isNode(component.value.arg, 'BasicSelector')
+          ) {
+            // Unwrap :is(basicSelector) to just basicSelector
+            value[i] = component.value.arg as ComplexSelectorComponent;
+          }
+        }
         if (value.length === 1) {
           return value[0]!.inherit(selector);
         }

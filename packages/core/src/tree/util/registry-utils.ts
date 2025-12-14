@@ -525,16 +525,19 @@ export class MixinRegistry extends Registry<
     const index = this.index;
 
     if (keySet?.size) {
-      // Filter out non-indexable selectors
+      // Check if the selector contains any non-indexable selectors
       // Universal selectors (*) and pseudo-selectors (:hover, :before, etc.) should not be indexed
-      const indexableKeys = Array.from(keySet).filter((key) => {
-        return typeof key === 'string' && !key.startsWith('*') && !key.startsWith(':');
+      // If the selector contains ANY non-indexable selector, the entire mixin/ruleset should not be registered
+      const hasNonIndexableKeys = Array.from(keySet).some((key) => {
+        return typeof key === 'string' && (key.startsWith('*') || key.startsWith(':'));
       });
 
-      if (indexableKeys.length === 0) {
-        return; // Nothing to index
+      if (hasNonIndexableKeys) {
+        return; // Don't register mixins/rulesets with non-indexable selectors
       }
 
+      // All keys are indexable, so proceed with indexing
+      const indexableKeys = Array.from(keySet);
       const [startKey, ...rest] = indexableKeys;
       const existing = index.get(startKey!);
       if (existing) {

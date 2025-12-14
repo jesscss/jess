@@ -68,21 +68,6 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    // #region agent log
-    const selectorStr = this.valueOf();
-    const shouldLog = selectorStr.includes('button') && selectorStr.includes('large');
-    if (shouldLog) {
-      const components = this.value.map((c, i) => ({
-        index: i,
-        value: c.valueOf(),
-        post: (c as any).post,
-        pre: (c as any).pre,
-        type: c.type
-      }));
-      // eslint-disable-next-line @typescript-eslint/naming-convention
-      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'selector-compound.ts:toTrimmedString', message: 'Serializing compound selector', data: { selectorStr, components }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
-    }
-    // #endregion
     // Call base implementation which calls toString() on each component
     return super.toTrimmedString(options);
   }

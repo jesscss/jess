@@ -14,6 +14,7 @@ import { Any } from './any';
 import { TreeContext } from '../context';
 import { Nil } from './nil';
 import { compare } from './util/compare';
+import { Rules } from './rules';
 /**
  * We bind these here to avoid circular dependencies
  * between Context and Node

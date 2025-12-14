@@ -244,11 +244,6 @@ export abstract class Node<
   }
 
   set value(val: Data) {
-    // #region agent log
-    if (this.type === 'Rules' && !Array.isArray(val) && typeof val === 'string') {
-      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'node.ts:246', message: 'ERROR: Setting Rules.value to string!', data: { valType: typeof val, val: val, stack: new Error().stack?.split('\n').slice(1, 5).join('\n') }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'L' }) }).catch(() => {});
-    }
-    // #endregion
     this._value = this._tryProxyWrap(val);
   }
 
@@ -617,6 +612,12 @@ export abstract class Node<
         return nilNode.inherit(n);
       }
     );
+    if (this.hasFlag(F_AMPERSAND)) {
+      newNode.addFlag(F_AMPERSAND);
+    }
+    if (this.hasFlag(F_IMPLICIT_AMPERSAND)) {
+      newNode.addFlag(F_IMPLICIT_AMPERSAND);
+    }
     if (trim) {
       newNode.pre = undefined;
       newNode.post = undefined;

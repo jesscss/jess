@@ -79,16 +79,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     // Ensure exactly one space before '{'
     w.add(' ');
 
-    // #region agent log
-    const hasDeclarations = rules.value.some(n => isNode(n, 'Declaration'));
-    if (hasDeclarations) {
-      const currentDepth = options.frameState?.at(-1)?.depth ?? 0;
-      const frameStateStr = options.frameState?.map(f => `{frame:${f.frame?.type || 'none'},depth:${f.depth}}`).join(',') || 'none';
-      // eslint-disable-next-line @typescript-eslint/naming-convention
-      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ruleset.ts:82', message: 'Ruleset.toTrimmedString calling toBraced', data: { currentDepth, frameState: frameStateStr }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => {});
-    }
-    // #endregion
-
     rules.toBraced(options);
 
     return w.getSince(mark);

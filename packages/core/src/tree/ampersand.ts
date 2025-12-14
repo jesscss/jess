@@ -1,4 +1,4 @@
-import { defineType, type NodeOptions, type LocationInfo, type TreeContext, F_AMPERSAND } from './node';
+import { defineType, type NodeOptions, type LocationInfo, type TreeContext, F_AMPERSAND, F_IMPLICIT_AMPERSAND } from './node';
 import { Nil } from './nil';
 import type { Context } from '../context';
 import { SimpleSelector } from './selector-simple';
@@ -149,7 +149,8 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
     const { appendValue, selector: storedSelector } = this.value;
     if ((appendValue ?? context.opts.collapseNesting) || this.options.hoistToRoot) {
       // Use the stored selector if available, otherwise fall back to frame selector
-      let selector = storedSelector ? storedSelector.copy(true) : atIndex(context.rulesetFrames, -1)?.selector.copy(true);
+      let frame = atIndex(context.rulesetFrames, -1);
+      let selector = storedSelector ? storedSelector.copy(true) : frame?.selector.copy(true);
       if (!selector) {
         return new Nil();
       }
@@ -179,11 +180,13 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
       }
 
       // Wrap in :is() if the selector is a list (has commas) or a complex selector (has combinators)
+      let result: Selector | Nil;
       if (isNode(selector, 'SelectorList') || isNode(selector, 'ComplexSelector')) {
-        return PseudoSelector.create({ name: ':is', arg: selector });
+        result = PseudoSelector.create({ name: ':is', arg: selector });
       } else {
-        return selector;
+        result = selector;
       }
+      return result;
     }
 
     const amp: Ampersand = this.maybeClone(context);

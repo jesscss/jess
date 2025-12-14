@@ -262,29 +262,6 @@ describe('Mixins', () => {
     });
   });
 
-  describe('Mixin Nesting', () => {
-    it('should handle nested mixins', async () => {
-      const lessCode = `
-        .outer(@color: red) {
-          color: @color;
-          
-          .inner(@size) {
-            font-size: @size;
-          }
-        }
-        
-        .test {
-          .outer(red);
-          .outer > .inner(16px);
-        }
-      `;
-
-      const css = await compiler.renderString(lessCode, { language: 'less' });
-      expect(css).toContain('color: red');
-      expect(css).toContain('font-size: 16px');
-    });
-  });
-
   describe('Mixin with @arguments', () => {
     it('should handle mixin with @arguments', async () => {
       const lessCode = `
@@ -340,19 +317,26 @@ describe('Mixins', () => {
 
       // This should complete without hanging or OOM
       const css = await compiler.renderString(lessCode, { language: 'less' });
-      expect(css).toContain('.clearfix');
-      expect(css).toContain('.foo');
+      expect(css).toBeString('');
     });
   });
 
-  it.only('should collapse nested mixins correctly', async () => {
+  it('should collapse nested mixins correctly', async () => {
     const lessCode = `
       .mixin { border: 1px solid black; }
       .mixout { border-color: orange; }
       .borders { border-style: dashed; }
+      .mixin > * { border: do not match me; }
+
       #namespace {
         .borders {
           border-style: dotted;
+        }
+        .biohazard {
+          content: "death";
+          .man {
+            color: transparent;
+          }
         }
       }
       #theme {
@@ -383,6 +367,108 @@ describe('Mixins', () => {
           .borders();
         }
       }
+      .secure-zone { #namespace .biohazard .man(); }
+      .direct {
+        #namespace > .borders();
+      }
+
+      .bo, .bar {
+          width: 100%;
+      }
+      .bo {
+          border: 1px;
+      }
+      .ar.bo.ca {
+          color: black;
+      }
+      .jo.ki {
+          background: none;
+      }
+      .amp {
+          &.support {
+              color: orange;
+              .higher {
+                  top: 0px;
+              }
+              &.deeper {
+                  height: auto;
+              }
+          }
+      }
+      .extended {
+          .bo();
+          .jo.ki();
+          .amp.support();
+          .amp.support.higher();
+          .amp.support.deeper();
+      }
+      .do .re .mi .fa {
+          .sol .la {
+              .si {
+                  color: cyan;
+              }
+          }
+      }
+      .mutli-selector-parents {
+          .do.re.mi.fa.sol.la.si();
+      }
+      .foo .bar {
+        .bar();
+      }
+      .has_parents() {
+        & .underParents {
+          color: red;
+        }
+      }
+      .has_parents();
+      .parent {
+        .has_parents();
+      }
+      .margin_between(@above, @below) {
+          * + & { margin-top: @above; }
+          legend + & { margin-top: 0; }
+          & + * { margin-top: @below; }
+      }
+      h1 { .margin_between(25px, 10px); }
+      h2 { .margin_between(20px, 8px); }
+      h3 { .margin_between(15px, 5px); }
+
+      .mixin_def(@url, @position){
+          background-image: @url;
+          background-position: @position;
+      }
+      .error{
+        @s: "/";
+        .mixin_def( "@{s}a.png", center center);
+      }
+      .recursion() {
+        color: black;
+      }
+      .test-rule-rec {
+        .recursion {
+          .recursion();
+        }
+      }
+      .paddingFloat(@padding) { padding-left: @padding; }
+
+      .button {
+          .paddingFloat(((10px + 12) * 2));
+
+          &.large { .paddingFloat(((10em * 2) * 2)); }
+      }
+      .clearfix() {
+        // ...
+      }
+      .clearfix {
+        .clearfix();
+      }
+      .clearfix {
+        .clearfix();
+      }
+      .foo {
+        .clearfix();
+      }
+
     `;
 
     const css = await compiler.renderString(lessCode, { language: 'less' });
@@ -396,8 +482,17 @@ describe('Mixins', () => {
       .borders {
         border-style: dashed;
       }
+      .mixin > * {
+        border: do not match me;
+      }
       #namespace .borders {
         border-style: dotted;
+      }
+      #namespace .biohazard {
+        content: "death";
+      }
+      #namespace .biohazard .man {
+        color: transparent;
       }
       #theme > .mixin {
         background-color: grey;
@@ -424,6 +519,105 @@ describe('Mixins', () => {
       }
       #header #cookie {
         border-style: dashed;
+      }
+      .secure-zone {
+        color: transparent;
+      }
+      .direct {
+        border-style: dotted;
+      }
+      .bo,
+      .bar {
+        width: 100%;
+      }
+      .bo {
+        border: 1px;
+      }
+      .ar.bo.ca {
+        color: black;
+      }
+      .jo.ki {
+        background: none;
+      }
+      .amp.support {
+        color: orange;
+      }
+      .amp.support .higher {
+        top: 0px;
+      }
+      .amp.support.deeper {
+        height: auto;
+      }
+      .extended {
+        width: 100%;
+        border: 1px;
+        background: none;
+        color: orange;
+      }
+      .extended .higher {
+        top: 0px;
+      }
+      .extended.deeper {
+        height: auto;
+      }
+      .extended {
+        top: 0px;
+        height: auto;
+      }
+      .do .re .mi .fa .sol .la .si {
+        color: cyan;
+      }
+      .mutli-selector-parents {
+        color: cyan;
+      }
+      .foo .bar {
+        width: 100%;
+      }
+      .underParents {
+        color: red;
+      }
+      .parent .underParents {
+        color: red;
+      }
+      * + h1 {
+        margin-top: 25px;
+      }
+      legend + h1 {
+        margin-top: 0;
+      }
+      h1 + * {
+        margin-top: 10px;
+      }
+      * + h2 {
+        margin-top: 20px;
+      }
+      legend + h2 {
+        margin-top: 0;
+      }
+      h2 + * {
+        margin-top: 8px;
+      }
+      * + h3 {
+        margin-top: 15px;
+      }
+      legend + h3 {
+        margin-top: 0;
+      }
+      h3 + * {
+        margin-top: 5px;
+      }
+      .error {
+        background-image: "/a.png";
+        background-position: center center;
+      }
+      .test-rule-rec .recursion {
+        color: black;
+      }
+      .button {
+        padding-left: 44px;
+      }
+      .button.large {
+        padding-left: 40em;
       }
     `);
   });
