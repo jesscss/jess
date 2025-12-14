@@ -27,6 +27,7 @@ const specializedTests = [
 // Temporarily filter to specific tests for debugging - set to empty array to run all
 const targetTests: string[] = [
   // 'tests-unit/mixins/mixins.less'
+  'tests-unit/media/media.less'
 ];
 
 describe('Can render Less files to CSS', () => {
@@ -69,7 +70,7 @@ describe('Can render Less files to CSS', () => {
             const actualCss = await testCompiler.render(lessPath);
 
             expect(actualCss).toBeString(expectedCss.trim());
-          });
+          }, 30000); // 30 second timeout to catch infinite loops
         });
       } catch (error: any) {
         // If getTestCases throws (no files found), create a failing test

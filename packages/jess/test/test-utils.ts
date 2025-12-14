@@ -39,10 +39,17 @@ export function getTestCases(lessFilePath: string): TestCase[] {
     } else {
       // Fall back to {name}.css with merged config options
       if (fs.existsSync(defaultCssPath)) {
-        testCases.push({
-          expectedFile: defaultCssPath,
-          config: outputConfig.config
-        });
+        // Only add if we haven't already added this exact test case
+        const alreadyAdded = testCases.some(
+          tc => tc.expectedFile === defaultCssPath &&
+          JSON.stringify(tc.config) === JSON.stringify(outputConfig.config)
+        );
+        if (!alreadyAdded) {
+          testCases.push({
+            expectedFile: defaultCssPath,
+            config: outputConfig.config
+          });
+        }
       }
       // If default doesn't exist either, we'll check at the end
     }

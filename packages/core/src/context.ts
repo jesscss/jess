@@ -427,12 +427,21 @@ export class Context {
   }
 
   async getTree(importPath: string, importOptions: ImportOptions = {}) {
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'context.ts:429',message:'getTree entry',data:{importPath,sourceTreesSize:this.sourceTrees.size},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     const { resolvedPath, triedPaths, friendlyPath } = await this._getPath(importPath);
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'context.ts:431',message:'getTree after _getPath',data:{resolvedPath,hasCached:this.sourceTrees.has(resolvedPath)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     const { type } = importOptions;
     /**
      * We already have resolved this file and parsed it.
      */
     if (this.sourceTrees.has(resolvedPath)) {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'context.ts:436',message:'getTree returning cached',data:{resolvedPath},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       return {
         node: this.sourceTrees.get(resolvedPath)!,
         triedPaths,
@@ -450,12 +459,23 @@ export class Context {
 
     const ext = path.extname(resolvedPath);
     const plugin = this.findParserPlugin(type, ext);
-
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'context.ts:454',message:'getTree calling getSource',data:{resolvedPath,ext},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     const source = await sourceGetter.getSource!(resolvedPath);
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'context.ts:455',message:'getTree calling parse',data:{resolvedPath,sourceLength:source.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     const parseResult = plugin.parse!(resolvedPath, source);
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'context.ts:456',message:'getTree parse returned',data:{resolvedPath,isThenable:isThenable(parseResult)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     const tree = isThenable(parseResult)
       ? await parseResult
       : parseResult;
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'context.ts:460',message:'getTree exit',data:{resolvedPath,treeType:tree?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     if (tree) {
       this.sourceTrees.set(resolvedPath, tree);
       return {

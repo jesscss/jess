@@ -831,6 +831,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   /** Evaluate the built queues in priority order */
   private _evaluateQueue(rules: Rules, evalQueue: EvalQueueMap, context: Context): MaybePromise<boolean> {
+    // #region agent log
+    const totalRules = Array.from(evalQueue.values()).reduce((sum, q) => sum + q.length, 0);
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'rules.ts:833',message:'_evaluateQueue entry',data:{rulesIndex:rules.index,totalRules,framesDepth:context.rulesetFrames.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     let rulesToHoist = false;
     // Track nodes that have been retried to avoid infinite loops
     const retriedNodes = new Set<Node>();
@@ -844,6 +848,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const entries: Array<[number, [number, Node]]> = Array.from(queue.entries()) as any;
       const innerResult = serialForEach(entries, ([q, item]: [number, [number, Node]]) => {
         const [idx, rule] = item;
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'rules.ts:846',message:'_evaluateQueue processing rule',data:{ruleType:rule.type,ruleIndex:rule.index,priority:p,retried:retriedNodes.has(rule)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
 
         /**
          * Var declarations have late evaluation, so they are skipped.
@@ -923,6 +930,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<this> {
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'rules.ts:932',message:'Rules.evalNode entry',data:{rulesIndex:this.index,evaluated:this.evaluated,rulesCount:this.value.length,framesDepth:context.rulesetFrames.length,stackDepth:context.rulesEvalStack.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     const saved = this._snapshotContext(context);
     context.rulesEvalStack.push(this.sourceNode as Rules);
     return pipe(
@@ -937,6 +947,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         // Synchronous preEval
         const rules = this;
         if (rules.evaluated) {
+          // #region agent log
+          fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'rules.ts:946',message:'Rules.evalNode already evaluated',data:{rulesIndex:rules.index},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          // #endregion
           return { rules, rulesToHoist: false };
         }
         const evalQueue = this._buildEvalQueue(rules);
@@ -1050,6 +1063,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           context.extendRoots.popExtendRoot();
         }
         context.rulesEvalStack.pop();
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'rules.ts:1066',message:'Rules.evalNode exit',data:{rulesIndex:rules.index,rulesEvaluated:rules.evaluated},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         return rules;
       }
     ) as MaybePromise<this>;
