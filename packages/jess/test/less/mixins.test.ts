@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { Compiler } from '../../src';
-import { Context } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 
 describe('Mixins', () => {
   const compiler = new Compiler({
+    output: {
+      collapseNesting: true
+    },
     compile: {
       plugins: [lessPlugin()]
     }
@@ -341,5 +343,88 @@ describe('Mixins', () => {
       expect(css).toContain('.clearfix');
       expect(css).toContain('.foo');
     });
+  });
+
+  it.only('should collapse nested mixins correctly', async () => {
+    const lessCode = `
+      .mixin { border: 1px solid black; }
+      .mixout { border-color: orange; }
+      .borders { border-style: dashed; }
+      #namespace {
+        .borders {
+          border-style: dotted;
+        }
+      }
+      #theme {
+        > .mixin {
+          background-color: grey;
+        }
+      }
+      #container {
+        color: black;
+        .mixin();
+        .mixout ();
+        #theme > .mixin();
+      }
+
+      #header {
+        .milk {
+          color: inherit;
+          .mixin();
+          #theme > .mixin();
+        }
+        #cookie {
+          .chips {
+            #namespace .borders();
+            .calories {
+              #container();
+            }
+          }
+          .borders();
+        }
+      }
+    `;
+
+    const css = await compiler.renderString(lessCode, { language: 'less' });
+    expect(css).toBeString(`
+      .mixin {
+        border: 1px solid black;
+      }
+      .mixout {
+        border-color: orange;
+      }
+      .borders {
+        border-style: dashed;
+      }
+      #namespace .borders {
+        border-style: dotted;
+      }
+      #theme > .mixin {
+        background-color: grey;
+      }
+      #container {
+        color: black;
+        border: 1px solid black;
+        border-color: orange;
+        background-color: grey;
+      }
+      #header .milk {
+        color: inherit;
+        border: 1px solid black;
+        background-color: grey;
+      }
+      #header #cookie .chips {
+        border-style: dotted;
+      }
+      #header #cookie .chips .calories {
+        color: black;
+        border: 1px solid black;
+        border-color: orange;
+        background-color: grey;
+      }
+      #header #cookie {
+        border-style: dashed;
+      }
+    `);
   });
 });

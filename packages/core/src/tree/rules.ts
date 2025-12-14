@@ -298,7 +298,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let space = ''.padStart((depth) * 2);
     w.add('{');
     // emit body at increased depth; start with a single newline, body handles indent
-    const childOptions = { ...options, frameState: [{ depth: depth + 1 }] } satisfies PrintOptions;
+    const childOptions = { ...options, frameState: [...(opts.frameState ?? []), { depth: depth + 1 }] } satisfies PrintOptions;
+    // #region agent log
+    const hasDeclarations = this.value.some(n => isNode(n, 'Declaration'));
+    if (hasDeclarations) {
+      const frameStateStr = childOptions.frameState?.map(f => `{frame:${f.frame?.type || 'none'},depth:${f.depth}}`).join(',') || 'none';
+      // eslint-disable-next-line @typescript-eslint/naming-convention
+      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:293', message: 'toBraced setting childOptions', data: { parentDepth: depth, childDepth: depth + 1, frameState: frameStateStr }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => {});
+    }
+    // #endregion
     childOptions.writer!.add('\n');
     this._emitRulesBody(childOptions);
     // ensure closing brace is on its own properly indented line
@@ -318,9 +326,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const depth = options.frameState?.at(-1)?.depth ?? 0;
     const space = ''.padStart(depth * 2);
     const { value } = this;
-    if (!Array.isArray(value)) {
-      throw new Error(`Rules.value is not an array! Type: ${typeof value}`);
-    }
+
     // Skip charset nodes - they are collected and prepended at root level
     const items = value.filter(n => n.visible && !(n.type === 'Any' && (n as any).options?.role === 'charset'));
 
@@ -329,7 +335,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
 
     // #region agent log
-    const shouldLog = items.some(n => isNode(n, 'Declaration'));
+    const shouldLog = items.some(n => isNode(n, 'Declaration') || isNode(n, 'Rules'));
     if (shouldLog) {
       const frameStateStr = options.frameState?.map(f => `{frame:${f.frame?.type || 'none'},depth:${f.depth}}`).join(',') || 'none';
       // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -355,7 +361,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
 
       // Emit directly to preserve source map segments
-      let rule = w.capture(() => n.toTrimmedString({ ...options }));
+      // For child Rules nodes, pass the same frameState (don't increment depth)
+      // Rules nodes inside Rules nodes are at the same level
+      const childOptions = isChildRules ? { ...options, frameState: options.frameState } : options;
+      let rule = w.capture(() => n.toTrimmedString(childOptions));
       // Check if the captured output ends with a newline
       previousEndsWithNewline = rule.endsWith('\n');
       w.add(rule, n); // Pass node as origin to preserve location info
@@ -1100,6 +1109,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let frameState = opts.frameState ??= [];
     opts.frameState = frameState;
 
+    // Track the initial frameState length - we'll close back to this at the end
+    const initialFrameStateLength = frameState.length;
+    // Track which frames we actually open during this call
+    const openedFrames: (Ruleset | AtRule)[] = [];
+
     // If we have frames, we need to flatten
     let currentState = frameState.at(-1) ?? { depth: 0 };
     let currentDepth = currentState.depth;
@@ -1121,6 +1135,36 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
      * non-hoisted child. This is so we don't render a ruleset opening
      * or at-rule opening just to immediately close it with empty braces.
      */
+    // Check if this ruleset has any hoisted children (nested rulesets that will be flattened)
+    // If it has hoisted children, we should NOT close the frame early - it needs to stay open
+    // until all children (including hoisted ones) are rendered
+    // Note: hoisted children might be direct children OR nested inside Rules nodes (from mixin calls)
+    const hasHoistedChildren = rules.value.some((child) => {
+      if (isNode(child, ['AtRule', 'Ruleset']) && child.frames) {
+        return true; // Direct hoisted child
+      }
+      // Check if this is a Rules node that contains hoisted rulesets
+      if (isNode(child, 'Rules')) {
+        return child.value.some(
+          grandchild => isNode(grandchild, ['AtRule', 'Ruleset']) && grandchild.frames
+        );
+      }
+      return false;
+    });
+    // #region agent log
+    const currentNodeSelectorStr1 = currentNode.type === 'Ruleset'
+      ? (() => {
+          try {
+            return (currentNode as Ruleset).value.selector?.toTrimmedString() ?? 'nil';
+          } catch {
+            return 'error';
+          }
+        })()
+      : 'AtRule';
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1138', message: 'renderWithFrameFlattening hasHoistedChildren check', data: { hasHoistedChildren, rulesCount: rules.value.length, currentNodeSelector: currentNodeSelectorStr1 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run4', hypothesisId: 'I' }) }).catch(() => {});
+    // #endregion
+
     for (let i = 0; i < length; i++) {
       const child = rules.value[i]!;
       if (!child.visible) {
@@ -1130,6 +1174,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       let isHoistedChild = isNode(child, ['AtRule', 'Ruleset']) && child.frames;
 
       /** Skip over frames we're currently in */
+      // #region agent log
+      const currentNodeSelectorStr = currentNode.type === 'Ruleset'
+        ? (() => {
+            try {
+              return (currentNode as Ruleset).value.selector?.toTrimmedString() ?? 'nil';
+            } catch {
+              return 'error';
+            }
+          })()
+        : 'AtRule';
+      // eslint-disable-next-line @typescript-eslint/naming-convention
+      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1167', message: 'renderWithFrameFlattening checking newFramesStartIndex', data: { newFramesLength: newFrames.length, newFramesStartIndexBefore: newFramesStartIndex, frameStateLength: frameState.length, currentNodeSelector: currentNodeSelectorStr, childIsHoisted: isHoistedChild, childType: child.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run5', hypothesisId: 'J' }) }).catch(() => {});
+      // #endregion
       for (let i = 0; i < newFrames.length; i++) {
         if (newFrames[i] === frameState.at(i)?.frame) {
           newFramesStartIndex++;
@@ -1137,6 +1194,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           break;
         }
       }
+      // #region agent log
+      // eslint-disable-next-line @typescript-eslint/naming-convention
+      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1174', message: 'renderWithFrameFlattening newFramesStartIndex after', data: { newFramesStartIndexAfter: newFramesStartIndex }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run5', hypothesisId: 'J' }) }).catch(() => {});
+      // #endregion
 
       if (isHoistedChild) {
         if (i !== 0) {
@@ -1144,60 +1205,297 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
            * "close" all current open frames
            * up to any containing at-rules.
            */
-          for (let d = frameState.length - 1; d >= 0; d--) {
-            let space = ''.padStart(d * 2);
-            let frame = frameState[d]!.frame;
+          // Close frames in reverse order until we hit an AtRule
+          // Also remove them from openedFrames since they're being closed early
+          while (frameState.length > 0) {
+            let state = frameState[frameState.length - 1];
+            if (!state?.frame) {
+              frameState.pop();
+              continue;
+            }
+            let frame = state.frame;
             if (isNode(frame, 'AtRule')) {
               break;
             }
-            let state = frameState.pop();
-            if (!state?.frame) {
-              break;
+            frameState.pop();
+            // Remove from openedFrames if it's there (it should be at the end)
+            if (openedFrames.length > 0 && openedFrames[openedFrames.length - 1] === frame) {
+              openedFrames.pop();
             }
+            let space = ''.padStart(state.depth * 2);
             w.add(`${space}}\n`);
           }
         }
         child.toTrimmedString(opts);
+        // #region agent log
+        const currentNodeSelectorStr2 = currentNode.type === 'Ruleset'
+          ? (() => {
+              try {
+                return (currentNode as Ruleset).value.selector?.toTrimmedString() ?? 'nil';
+              } catch {
+                return 'error';
+              }
+            })()
+          : 'AtRule';
+        const childSelectorStr = isNode(child, 'Ruleset')
+          ? (() => {
+              try {
+                return (child as Ruleset).value.selector?.toTrimmedString() ?? 'nil';
+              } catch {
+                return 'error';
+              }
+            })()
+          : child.type;
+        // eslint-disable-next-line @typescript-eslint/naming-convention
+        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1193', message: 'renderWithFrameFlattening after hoisted child', data: { i, length, hasMoreChildren: i < length - 1, currentNodeSelector: currentNodeSelectorStr2, childSelector: childSelectorStr }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run5', hypothesisId: 'J' }) }).catch(() => {});
+        // #endregion
         if (i < length - 1) {
-          /** More declarations, we need to re-open */
-          for (let d = newFramesStartIndex; d < newFrames.length; d++) {
-            let frame = currentNode.frames![d];
-            if (frame) {
-              frameState.push({ frame, depth: d });
-              frame.renderOpening(opts);
+          // Check if there are any non-hoisted children after this hoisted child
+          // If so, we need to re-open frames for them
+          const hasMoreNonHoistedChildren = (() => {
+            for (let j = i + 1; j < length; j++) {
+              const nextChild = rules.value[j];
+              if (nextChild && nextChild.visible) {
+                const nextIsHoisted = isNode(nextChild, ['AtRule', 'Ruleset']) && nextChild.frames;
+                if (!nextIsHoisted) {
+                  return true; // There's a non-hoisted child coming, so we need to re-open frames
+                }
+              }
+            }
+            return false; // Only hoisted children remain, so don't re-open frames
+          })();
+          // #region agent log
+          const currentNodeSelectorStr3 = currentNode.type === 'Ruleset'
+            ? (() => {
+                try {
+                  return (currentNode as Ruleset).value.selector?.toTrimmedString() ?? 'nil';
+                } catch {
+                  return 'error';
+                }
+              })()
+            : 'AtRule';
+          // eslint-disable-next-line @typescript-eslint/naming-convention
+          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1200', message: 'renderWithFrameFlattening checking if should re-open frames', data: { hasMoreNonHoistedChildren, currentNodeSelector: currentNodeSelectorStr3 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run5', hypothesisId: 'J' }) }).catch(() => {});
+          // #endregion
+          if (hasMoreNonHoistedChildren) {
+            /** More declarations, we need to re-open */
+            // Use newFrames instead of currentNode.frames to ensure we're opening the correct frames
+            for (let d = newFramesStartIndex; d < newFrames.length; d++) {
+              let frame = newFrames[d];
+              if (frame) {
+                frameState.push({ frame, depth: d });
+                openedFrames.push(frame);
+                frame.renderOpening(opts);
+              }
             }
           }
         }
       } else {
-        let d = newFramesStartIndex;
-        for (; d < newFrames.length; d++) {
-          let frame = newFrames[d];
-          if (frame) {
-            frameState.push({ frame, depth: d });
-            frame.renderOpening(opts);
+        // This is a non-hoisted child (declaration, etc.)
+        // Per the comment: "we don't render its opening until we reach the first non-hoisted child"
+        // So we only open frames if this is the first non-hoisted child we've encountered
+        const isFirstNonHoistedChild = (() => {
+          for (let j = 0; j < i; j++) {
+            const prevChild = rules.value[j];
+            if (prevChild && prevChild.visible) {
+              const prevIsHoisted = isNode(prevChild, ['AtRule', 'Ruleset']) && prevChild.frames;
+              if (!prevIsHoisted) {
+                return false; // There was a previous non-hoisted child, so frames are already open
+              }
+            }
           }
-        }
-        let space = ''.padStart(d * 2);
-        w.add(space);
+          return true; // This is the first non-hoisted child, so we need to open frames now
+        })();
+        // #region agent log
+        const currentNodeSelectorStr4 = currentNode.type === 'Ruleset'
+          ? (() => {
+              try {
+                return (currentNode as Ruleset).value.selector?.toTrimmedString() ?? 'nil';
+              } catch {
+                return 'error';
+              }
+            })()
+          : 'AtRule';
+        // eslint-disable-next-line @typescript-eslint/naming-convention
+        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1243', message: 'renderWithFrameFlattening non-hoisted child', data: { isFirstNonHoistedChild, i, currentNodeSelector: currentNodeSelectorStr4, childType: child.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run5', hypothesisId: 'J' }) }).catch(() => {});
+        // #endregion
 
-        let out = w.capture(() => child.toTrimmedString(opts));
+        // Track the frameState length before we push any new frames
+        // This is the point we'll close back to at the end
+        const frameStateLengthBeforePush = frameState.length;
+        let d = newFramesStartIndex;
+        // Only open frames if this is the first non-hoisted child
+        // (if all children are hoisted, frames never open, which is correct)
+        if (isFirstNonHoistedChild) {
+          // Only open the current node's frame (the last frame in newFrames)
+          // Don't open parent frames that were never opened (e.g., #header with only hoisted children)
+          // Parent frames that were opened will already be in frameState (accounted for by newFramesStartIndex)
+          const currentFrame = newFrames[newFrames.length - 1];
+          if (currentFrame) {
+            // Check if the current frame is already in frameState
+            const alreadyInFrameState = frameState.some(state => state.frame === currentFrame);
+            if (!alreadyInFrameState) {
+              d = newFrames.length - 1;
+              frameState.push({ frame: currentFrame, depth: d });
+              openedFrames.push(currentFrame);
+              currentFrame.renderOpening(opts);
+            } else {
+              // Frame is already open, use its depth
+              d = frameState.findIndex(state => state.frame === currentFrame);
+              if (d === -1) {
+                d = newFrames.length - 1;
+              }
+            }
+          }
+        } else {
+          // Frames are already open from a previous non-hoisted child
+          // We still need to set d correctly for indentation
+          // d should be the depth of the last frame in frameState (which is the current ruleset)
+          d = frameState.length > 0 ? frameState[frameState.length - 1]!.depth : newFramesStartIndex;
+        }
+
+        // #region agent log
+        const isRulesNode = isNode(child, 'Rules');
+        if (isRulesNode) {
+          const frameStateBefore = frameState.map(f => `{frame:${f.frame?.type || 'none'},depth:${f.depth}}`).join(',');
+          const collapseNesting = opts.collapseNesting ?? false;
+          // eslint-disable-next-line @typescript-eslint/naming-convention
+          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1180', message: 'renderWithFrameFlattening before child Rules.toTrimmedString', data: { frameStateBefore, frameStateLength: frameState.length, frameStateLengthBeforePush, newFramesStartIndex, d, collapseNesting, currentDepth }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
+        }
+        // #endregion
+
+        // For Rules nodes, pass a copy of frameState to prevent nested rendering from mutating
+        // the shared frameState array that renderWithFrameFlattening manages
+        // Rules nodes handle their own indentation based on frameState depth
+        // When collapseNesting is true, all rulesets are hoisted to root (depth 0),
+        // but declarations inside should still be indented (depth 1)
+        // Don't add placeholder frames - instead, pass the target depth via the last frame's depth
+        // or create a proper frame entry if we need to increment depth
+        let childOpts = opts;
+        if (isRulesNode) {
+          const targetDepth = opts.collapseNesting ? 1 : (frameState.length > 0 ? frameState[frameState.length - 1]!.depth + 1 : d + 1);
+          // If we have frames, use the last frame's depth + 1, otherwise create a minimal frame entry
+          // But don't add it to the shared frameState - create a copy for the child
+          const childFrameState = frameState.length > 0
+            ? [...frameState.slice(0, -1), { ...frameState[frameState.length - 1]!, depth: targetDepth }]
+            : [{ depth: targetDepth }];
+          childOpts = { ...opts, frameState: childFrameState };
+        }
+        if (!isRulesNode) {
+          let space = ''.padStart(d * 2);
+          w.add(space);
+        }
+        let out = w.capture(() => child.toTrimmedString(childOpts));
         w.add(out);
         if (child.requiredSemi && child.options.semi !== false) {
           w.add(';');
         }
         w.add('\n');
-      }
-      if (i === length - 1) {
-        /** No more declarations, close the frames we opened */
-        for (let d = frameState.length - 1; d >= newFramesStartIndex; d--) {
-          let space = ''.padStart(d * 2);
-          let state = frameState.pop();
-          if (!state?.frame) {
-            break;
+
+        // #region agent log
+        if (isRulesNode) {
+          const frameStateAfter = frameState.map(f => `{frame:${f.frame?.type || 'none'},depth:${f.depth}}`).join(',');
+          // eslint-disable-next-line @typescript-eslint/naming-convention
+          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1198', message: 'renderWithFrameFlattening after child Rules.toTrimmedString', data: { frameStateAfter, frameStateLength: frameState.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => {});
+        }
+        // #endregion
+
+        // If we've just rendered the last non-hoisted child (declaration) and there are hoisted children,
+        // we need to close the current ruleset frame before rendering hoisted children as siblings
+        // Also, if there are no hoisted children and this is the last child, close the frame
+        const isLastNonHoistedChild = !isHoistedChild && (() => {
+          // Check if there are any more non-hoisted children after this one
+          for (let j = i + 1; j < length; j++) {
+            const nextChild = rules.value[j];
+            if (nextChild && nextChild.visible) {
+              const nextIsHoisted = isNode(nextChild, ['AtRule', 'Ruleset']) && nextChild.frames;
+              if (!nextIsHoisted) {
+                return false; // There's another non-hoisted child coming
+              }
+            }
           }
-          w.add(`${space}}\n`);
+          return true; // This is the last non-hoisted child
+        })();
+
+        if (isLastNonHoistedChild && frameState.length > initialFrameStateLength) {
+          // #region agent log
+          const currentNodeSelectorStr5 = currentNode.type === 'Ruleset'
+            ? (() => {
+                try {
+                  return (currentNode as Ruleset).value.selector?.toTrimmedString() ?? 'nil';
+                } catch {
+                  return 'error';
+                }
+              })()
+            : 'AtRule';
+          // eslint-disable-next-line @typescript-eslint/naming-convention
+          fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1255', message: 'renderWithFrameFlattening closing frame after last declaration', data: { frameStateLength: frameState.length, initialFrameStateLength, hasHoistedChildren, currentNodeSelector: currentNodeSelectorStr5 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run4', hypothesisId: 'I' }) }).catch(() => {});
+          // #endregion
+          // Close frames in reverse order until we're back to the initial state
+          // This closes the current ruleset frame so hoisted children can be rendered as siblings
+          while (frameState.length > initialFrameStateLength) {
+            let state = frameState[frameState.length - 1];
+            if (!state?.frame) {
+              frameState.pop();
+              continue;
+            }
+            // Don't close AtRules here - they should stay open
+            if (isNode(state.frame, 'AtRule')) {
+              break;
+            }
+            frameState.pop();
+            // Remove from openedFrames
+            if (openedFrames.length > 0 && openedFrames[openedFrames.length - 1] === state.frame) {
+              openedFrames.pop();
+            }
+            let space = ''.padStart(state.depth * 2);
+            // #region agent log
+            // eslint-disable-next-line @typescript-eslint/naming-convention
+            fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1270', message: 'renderWithFrameFlattening closing frame after declarations', data: { frameType: state.frame.type, depth: state.depth, spaceLength: space.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run4', hypothesisId: 'I' }) }).catch(() => {});
+            // #endregion
+            w.add(`${space}}\n`);
+          }
         }
       }
+    }
+
+    // At the end, close any frames that were opened during this renderWithFrameFlattening call
+    // Close frames in reverse order of how we opened them
+    // #region agent log
+    const finalFrameStateLength = frameState.length;
+    const framesToClose = openedFrames.length;
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1247', message: 'renderWithFrameFlattening end-of-function closing', data: { initialFrameStateLength, finalFrameStateLength, framesToClose, openedFramesCount: openedFrames.length, currentNodeType: currentNode.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'H' }) }).catch(() => {});
+    // #endregion
+    // Close frames in reverse order - pop from frameState and verify it matches our opened frames
+    for (let i = openedFrames.length - 1; i >= 0; i--) {
+      const expectedFrame = openedFrames[i];
+      if (!expectedFrame) {
+        break;
+      }
+      if (frameState.length === 0) {
+        // #region agent log
+        // eslint-disable-next-line @typescript-eslint/naming-convention
+        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1267', message: 'renderWithFrameFlattening end closing - frameState empty', data: { expectedFrameType: expectedFrame.type, openedFramesRemaining: i + 1 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'H' }) }).catch(() => {});
+        // #endregion
+        break;
+      }
+      let state = frameState[frameState.length - 1];
+      if (!state?.frame || state.frame !== expectedFrame) {
+        // Frame doesn't match - might have been closed already or frameState is corrupted
+        // #region agent log
+        // eslint-disable-next-line @typescript-eslint/naming-convention
+        fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1273', message: 'renderWithFrameFlattening end closing - frame mismatch', data: { expectedFrameType: expectedFrame.type, actualFrameType: state?.frame?.type, frameStateLength: frameState.length, openedFramesRemaining: i + 1 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'H' }) }).catch(() => {});
+        // #endregion
+        break;
+      }
+      frameState.pop();
+      let space = ''.padStart(state.depth * 2);
+      // #region agent log
+      // eslint-disable-next-line @typescript-eslint/naming-convention
+      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1280', message: 'renderWithFrameFlattening end closing brace', data: { frameType: state.frame?.type, depth: state.depth, spaceLength: space.length, expectedFrameType: expectedFrame.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run3', hypothesisId: 'H' }) }).catch(() => {});
+      // #endregion
+      w.add(`${space}}\n`);
     }
   }
 }
@@ -1655,6 +1953,14 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       }
       output = new Rules(flattened);
     }
+
+    // #region agent log
+    const hasDeclarations = output.value.some(n => isNode(n, 'Declaration'));
+    if (hasDeclarations) {
+      // eslint-disable-next-line @typescript-eslint/naming-convention
+      fetch('http://127.0.0.1:7242/ingest/1edfe575-2050-4a93-8751-72368827c42e', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1621', message: 'getFunctionFromMixins returning Rules', data: { outputValueCount: output.value.length, outputValueTypes: output.value.map(n => n.type) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => {});
+    }
+    // #endregion
 
     /** Since this is a wrapper, and rules are all evaluated, consider it evaluated */
     output.preEvaluated = true;
