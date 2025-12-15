@@ -6,6 +6,7 @@ import combinate from 'combinate';
 import { compareNodeArray } from './util/compare';
 import { isNode } from '..';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 export type SequenceOptions = {
   /**
@@ -30,6 +31,52 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return compareNodeArray(this.value, other.value);
     }
     return super.compare(other);
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    const { value } = this;
+    const length = value.length;
+
+    if (length === 0) {
+      return '';
+    }
+
+    // Serialize first node with toString() to preserve comments
+    value[0]!.toString(options);
+
+    // Serialize subsequent nodes with normalized spacing
+    for (let i = 1; i < length; i++) {
+      const node = value[i]!;
+      // For sequences, normalize spacing based on actual serialized output (including pre/post)
+      // If direct child has explicit pre === 0, respect that (no space)
+      if (node.pre === 0) {
+        // Explicitly no space - respect that, but still use toString() to preserve comments
+        node.toString(options);
+      } else {
+        // Check what's already written (previous node's output) to see if it ends with space
+        const currentMark = w.mark();
+        const writtenSoFar = w.getSince(mark);
+        const prevEndsWithSpace = writtenSoFar.endsWith(' ');
+        w.restore(currentMark);
+
+        // Capture current node's output to check if it starts with space
+        // This captures the serialized output including pre/post from child nodes
+        const currentNodeOut = w.capture(() => node.toString(options));
+        const currentStartsWithSpace = currentNodeOut.startsWith(' ');
+
+        if (!prevEndsWithSpace && !currentStartsWithSpace) {
+          // No space present - add single space before node
+          w.add(' ');
+        }
+        // Write the captured output (node was already serialized in capture())
+        w.add(currentNodeOut);
+      }
+    }
+
+    return w.getSince(mark);
   }
 
   override operate(b: Node, op: string, context: Context): Sequence | List {

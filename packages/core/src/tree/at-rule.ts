@@ -58,19 +58,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       options = { ...options, frameState: options.frameState ?? [{ depth: 0 }] };
     }
 
-    // Emit name
-    name.toString(options);
-
-    if (prelude) {
-      // Ensure there's a space between name and prelude
-      w.add(' ');
-      prelude.toString(options);
-    }
+    this.renderOpening(options);
 
     if (rules) {
-      // Ensure there's a space before the rules
-      w.add(' ');
-
       // For rules, we can call toBraced directly since it writes to the writer
       rules.toBraced(options);
     } else {
@@ -83,15 +73,35 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   /** Render the opening of this at-rule (name and prelude) */
   renderOpening(options: PrintOptions): void {
     const w = options.writer!;
-    const { name, prelude } = this.value;
+    const { name, prelude, rules } = this.value;
     const depth = options.frameState?.at(-1)?.depth ?? 0;
     w.add(''.padStart(depth * 2));
-    name.toString(options);
+    const nameOut = name.toString(options);
+    // 3. See if name endsWith whitespace (any whitespace character)
+    const nameEndsWithSpace = /\s$/.test(nameOut);
     if (prelude) {
-      w.add(' ');
-      prelude.toString(options);
+      const preludeOut = w.capture(() => prelude.toString(options));
+
+      // 4. See if prelude startsWith whitespace (any whitespace character)
+      const preludeStartsWithSpace = /^\s/.test(preludeOut);
+
+      // IF NEITHER, OUTPUT WITH ONE SPACE
+      if (!nameEndsWithSpace && !preludeStartsWithSpace) {
+        w.add(' ');
+      }
+      // Emit prelude (with leading space removed)
+      w.add(preludeOut);
+      if (rules) {
+        const preludeEndsWithSpace = /\s$/.test(preludeOut);
+        if (!preludeEndsWithSpace) {
+          w.add(' ');
+        }
+      }
+    } else {
+      if (!nameEndsWithSpace && rules) {
+        w.add(' ');
+      }
     }
-    w.add(' {\n');
   }
 
   override evalNode(context: Context): MaybePromise<AtRule> {

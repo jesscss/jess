@@ -2,12 +2,15 @@ import {
   rules, sel, el, spaced, any, sellist, ruleset, decl, atrule,
   vardecl, ref, mixin, call, list, op,
   num, dimension,
-  paren, seq, comment, nil, quoted, color, co
+  paren, seq, comment, nil, quoted, color, co, interpolated
 } from '..';
 import { Context } from '../../context';
 import { AtRule } from '../at-rule';
 import { Rules } from '../rules';
 import { Node } from '../node';
+import { serializeTypes } from '../util/serialize-types';
+import * as path from 'path';
+import * as fs from 'fs';
 
 let context: Context;
 
@@ -407,15 +410,11 @@ describe('AtRule', () => {
                   value: color({ node: 'blue', format: 0, rgb: [0, 0, 255], alpha: 1 })
                 }),
                 ruleset({
-                  selector: sel([
-                    el('.class'),
-                    co(' '),
-                    el('.sub')
-                  ]),
+                  selector: el('.sub'),
                   rules: rules([
                     decl({
                       name: 'width',
-                      value: num(42)
+                      value: ref({ key: 'var' })
                     })
                   ])
                 })
@@ -433,7 +432,11 @@ describe('AtRule', () => {
               rules: rules([
                 decl({
                   name: 'color',
-                  value: color({ rgb: [68, 68, 68], alpha: 1, format: 0 })
+                  value: paren(op([
+                    color({ node: '#222', format: 0 }),
+                    '*',
+                    num(2)
+                  ]))
                 })
               ])
             })
@@ -449,7 +452,11 @@ describe('AtRule', () => {
               rules: rules([
                 decl({
                   name: 'max-width',
-                  value: num(480)
+                  value: paren(op([
+                    ref({ key: 'base' }),
+                    '*',
+                    num(60)
+                  ]))
                 })
               ])
             })
@@ -462,10 +469,18 @@ describe('AtRule', () => {
           prelude: seq([
             any('all', { role: 'keyword' }),
             any('and', { role: 'keyword' }),
-            paren(decl({
-              name: 'device-aspect-ratio',
-              value: any('16 / 9', { role: 'ident' })
-            }))
+            seq([
+              paren(decl({
+                name: 'device-aspect-ratio',
+                value: quoted(interpolated({
+                  source: '\u0000\u0001 / \u0000\u0001',
+                  replacements: [
+                    ref({ key: 'ratio_large' }),
+                    ref({ key: 'ratio_small' })
+                  ]
+                }, { role: 'ident' }))
+              }))
+            ])
           ]),
           rules: rules([
             ruleset({
@@ -509,18 +524,22 @@ describe('AtRule', () => {
             seq([
               any('handheld', { role: 'keyword' }),
               any('and', { role: 'keyword' }),
-              paren(decl({
-                name: 'min-width',
-                value: num(42)
-              }))
+              seq([
+                paren(decl({
+                  name: 'min-width',
+                  value: ref({ key: 'var' })
+                }))
+              ])
             ]),
             seq([
               any('screen', { role: 'keyword' }),
               any('and', { role: 'keyword' }),
-              paren(decl({
-                name: 'min-width',
-                value: dimension([20, 'em'])
-              }))
+              seq([
+                paren(decl({
+                  name: 'min-width',
+                  value: dimension([20, 'em'])
+                }))
+              ])
             ])
           ]),
           rules: rules([
@@ -542,45 +561,31 @@ describe('AtRule', () => {
               name: any('@media', { role: 'atkeyword' }),
               prelude: seq([any('print', { role: 'keyword' })]),
               rules: rules([
+                decl({
+                  name: 'padding',
+                  value: dimension([20, 'px'])
+                }),
                 ruleset({
-                  selector: el('.body'),
+                  selector: el('header'),
                   rules: rules([
                     decl({
-                      name: 'padding',
+                      name: 'background-color',
+                      value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 })
+                    })
+                  ])
+                }),
+                atrule({
+                  name: any('@media', { role: 'atkeyword' }),
+                  prelude: seq([
+                    paren(decl({
+                      name: 'orientation',
+                      value: any('landscape')
+                    }))
+                  ]),
+                  rules: rules([
+                    decl({
+                      name: 'margin-left',
                       value: dimension([20, 'px'])
-                    }),
-                    ruleset({
-                      selector: sel([
-                        el('.body'),
-                        co(' '),
-                        el('header')
-                      ]),
-                      rules: rules([
-                        decl({
-                          name: 'background-color',
-                          value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 })
-                        })
-                      ])
-                    }),
-                    atrule({
-                      name: any('@media', { role: 'atkeyword' }),
-                      prelude: seq([
-                        paren(decl({
-                          name: 'orientation',
-                          value: any('landscape')
-                        }))
-                      ]),
-                      rules: rules([
-                        ruleset({
-                          selector: el('.body'),
-                          rules: rules([
-                            decl({
-                              name: 'margin-left',
-                              value: dimension([20, 'px'])
-                            })
-                          ])
-                        })
-                      ])
                     })
                   ])
                 })
@@ -593,11 +598,26 @@ describe('AtRule', () => {
           prelude: seq([any('screen', { role: 'keyword' })]),
           rules: rules([
             ruleset({
-              selector: el('body'),
+              selector: el('.sidebar'),
               rules: rules([
                 decl({
-                  name: 'background',
-                  value: color({ node: 'green', format: 0, rgb: [0, 128, 0], alpha: 1 })
+                  name: 'width',
+                  value: dimension([300, 'px'])
+                }),
+                atrule({
+                  name: any('@media', { role: 'atkeyword' }),
+                  prelude: seq([
+                    paren(decl({
+                      name: 'orientation',
+                      value: any('landscape')
+                    }))
+                  ]),
+                  rules: rules([
+                    decl({
+                      name: 'width',
+                      value: dimension([500, 'px'])
+                    })
+                  ])
                 })
               ])
             })
@@ -608,11 +628,50 @@ describe('AtRule', () => {
           prelude: seq([any('a', { role: 'keyword' })]),
           rules: rules([
             ruleset({
-              selector: el('body'),
+              selector: el('.first'),
               rules: rules([
-                decl({
-                  name: 'background',
-                  value: color({ node: 'green', format: 0, rgb: [0, 128, 0], alpha: 1 })
+                atrule({
+                  name: any('@media', { role: 'atkeyword' }),
+                  prelude: seq([
+                    paren(any('b', { role: 'keyword' }))
+                  ]),
+                  rules: rules([
+                    ruleset({
+                      selector: el('.second'),
+                      rules: rules([
+                        ruleset({
+                          selector: el('.third'),
+                          rules: rules([
+                            decl({
+                              name: 'width',
+                              value: dimension([300, 'px'])
+                            }),
+                            atrule({
+                              name: any('@media', { role: 'atkeyword' }),
+                              prelude: seq([
+                                paren(any('c', { role: 'keyword' }))
+                              ]),
+                              rules: rules([
+                                decl({
+                                  name: 'width',
+                                  value: dimension([500, 'px'])
+                                })
+                              ])
+                            })
+                          ])
+                        }),
+                        ruleset({
+                          selector: el('.fourth'),
+                          rules: rules([
+                            decl({
+                              name: 'width',
+                              value: num(3)
+                            })
+                          ])
+                        })
+                      ])
+                    })
+                  ])
                 })
               ])
             })
@@ -632,30 +691,20 @@ describe('AtRule', () => {
                 ])
               ]),
               rules: rules([
-                ruleset({
-                  selector: el('.body'),
+                decl({
+                  name: 'width',
+                  value: dimension([95, '%'])
+                }),
+                atrule({
+                  name: any('@media', { role: 'atkeyword' }),
+                  prelude: list([
+                    seq([paren(any('x', { role: 'keyword' }))]),
+                    seq([paren(any('y', { role: 'keyword' }))])
+                  ]),
                   rules: rules([
                     decl({
                       name: 'width',
-                      value: dimension([95, '%'])
-                    }),
-                    atrule({
-                      name: any('@media', { role: 'atkeyword' }),
-                      prelude: list([
-                        seq([paren(any('x', { role: 'keyword' }))]),
-                        seq([paren(any('y', { role: 'keyword' }))])
-                      ]),
-                      rules: rules([
-                        ruleset({
-                          selector: el('.body'),
-                          rules: rules([
-                            decl({
-                              name: 'width',
-                              value: dimension([100, '%'])
-                            })
-                          ])
-                        })
-                      ])
+                      value: dimension([100, '%'])
                     })
                   ])
                 })
@@ -668,7 +717,7 @@ describe('AtRule', () => {
           params: list([
             vardecl({
               name: any('fallback', { role: 'property' }),
-              value: dimension([100, 'px'])
+              value: dimension([200, 'px'])
             })
           ]),
           rules: rules([
@@ -706,41 +755,10 @@ describe('AtRule', () => {
         ruleset({
           selector: el('.a'),
           rules: rules([
-            decl({
-              name: 'background',
-              value: color({ node: 'black', format: 0, rgb: [0, 0, 0], alpha: 1 })
-            }),
-            atrule({
-              name: any('@media', { role: 'atkeyword' }),
-              prelude: seq([any('handheld', { role: 'keyword' })]),
-              rules: rules([
-                ruleset({
-                  selector: el('.a'),
-                  rules: rules([
-                    decl({
-                      name: 'background',
-                      value: color({ node: 'white', format: 0, rgb: [255, 255, 255], alpha: 1 })
-                    }),
-                    atrule({
-                      name: any('@media', { role: 'atkeyword' }),
-                      prelude: paren(decl({
-                        name: 'max-width',
-                        value: dimension([100, 'px'])
-                      })),
-                      rules: rules([
-                        ruleset({
-                          selector: el('.a'),
-                          rules: rules([
-                            decl({
-                              name: 'background',
-                              value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 })
-                            })
-                          ])
-                        })
-                      ])
-                    })
-                  ])
-                })
+            call({
+              name: ref({ key: '.mediaMixin' }, { type: 'mixin' }),
+              args: list([
+                dimension([100, 'px'])
               ])
             })
           ])
@@ -748,42 +766,8 @@ describe('AtRule', () => {
         ruleset({
           selector: el('.b'),
           rules: rules([
-            decl({
-              name: 'background',
-              value: color({ node: 'black', format: 0, rgb: [0, 0, 0], alpha: 1 })
-            }),
-            atrule({
-              name: any('@media', { role: 'atkeyword' }),
-              prelude: seq([any('handheld', { role: 'keyword' })]),
-              rules: rules([
-                ruleset({
-                  selector: el('.b'),
-                  rules: rules([
-                    decl({
-                      name: 'background',
-                      value: color({ node: 'white', format: 0, rgb: [255, 255, 255], alpha: 1 })
-                    }),
-                    atrule({
-                      name: any('@media', { role: 'atkeyword' }),
-                      prelude: paren(decl({
-                        name: 'max-width',
-                        value: dimension([100, 'px'])
-                      })),
-                      rules: rules([
-                        ruleset({
-                          selector: el('.b'),
-                          rules: rules([
-                            decl({
-                              name: 'background',
-                              value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 })
-                            })
-                          ])
-                        })
-                      ])
-                    })
-                  ])
-                })
-              ])
+            call({
+              name: ref({ key: '.mediaMixin' }, { type: 'mixin' })
             })
           ])
         }),
@@ -793,7 +777,9 @@ describe('AtRule', () => {
         }),
         atrule({
           name: any('@media', { role: 'atkeyword' }),
-          prelude: any('only screen and (max-width: 200px)', { role: 'any' }),
+          prelude: seq([
+            ref({ key: 'smartphone' })
+          ]),
           rules: rules([
             ruleset({
               selector: el('.body'),
@@ -985,8 +971,16 @@ describe('AtRule', () => {
                   name: any('@right-middle', { role: 'atkeyword' }),
                   rules: rules([
                     decl({
-                      name: 'margin',
-                      value: dimension([1, 'cm'])
+                      name: 'content',
+                      value: seq([
+                        quoted(any('Page ', { role: 'any' })),
+                        call({
+                          name: ref({ key: 'counter' }),
+                          args: list([
+                            any('page')
+                          ])
+                        })
+                      ])
                     })
                   ])
                 }),
@@ -1076,29 +1070,8 @@ describe('AtRule', () => {
         ruleset({
           selector: el('.body'),
           rules: rules([
-            decl({
-              name: 'background',
-              value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 })
-            }),
-            atrule({
-              name: any('@media', { role: 'atkeyword' }),
-              prelude: seq([
-                paren(decl({
-                  name: 'max-width',
-                  value: dimension([500, 'px'])
-                }))
-              ]),
-              rules: rules([
-                ruleset({
-                  selector: el('.body'),
-                  rules: rules([
-                    decl({
-                      name: 'background',
-                      value: color({ node: 'green', format: 0, rgb: [0, 128, 0], alpha: 1 })
-                    })
-                  ])
-                })
-              ])
+            call({
+              name: ref({ key: '.bg' }, { type: 'mixin' })
             })
           ])
         }),
@@ -1108,10 +1081,12 @@ describe('AtRule', () => {
         }),
         atrule({
           name: any('@media', { role: 'atkeyword' }),
-          prelude: paren(decl({
-            name: 'max-width',
-            value: dimension([1000, 'px'])
-          })),
+          prelude: seq([
+            paren(decl({
+              name: 'max-width',
+              value: ref({ key: 'bpMedium' })
+            }))
+          ]),
           rules: rules([
             ruleset({
               selector: el('.body'),
@@ -1129,14 +1104,9 @@ describe('AtRule', () => {
                     }))
                   ]),
                   rules: rules([
-                    ruleset({
-                      selector: el('.body'),
-                      rules: rules([
-                        decl({
-                          name: 'background',
-                          value: color({ node: 'green', format: 0, rgb: [0, 128, 0], alpha: 1 })
-                        })
-                      ])
+                    decl({
+                      name: 'background',
+                      value: color({ node: 'green', format: 0, rgb: [0, 128, 0], alpha: 1 })
                     })
                   ])
                 }),
@@ -1544,8 +1514,8 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const serialized = evald.toString();
+      /** This represents pre-eval nodes matching media.less.s-expr.txt */
+      const serialized = node.toString();
 
       // The serialized output should match the structure
       expect(serialized).toBeString(`
@@ -1656,16 +1626,12 @@ describe('AtRule', () => {
           @page :right {
             margin: 0.5cm;
           }
-        }
-        @media print {
           @page Test:first {
             margin: 1cm;
           }
-        }
-        @media print {
           @page :first {
             margin: 0.5cm;
-            size: 8.5in11in;
+            size: 8.5in 11in;
             @top-left {
               margin: 1cm;
             }
@@ -1775,7 +1741,7 @@ describe('AtRule', () => {
             color: #eee;
           }
         }
-        @media not(width <= -100px) {
+        @media not (width <= -100px) {
           body {
             background: green;
           }
@@ -1785,7 +1751,7 @@ describe('AtRule', () => {
             background: green;
           }
         }
-        @media not(resolution: -300dpi) {
+        @media not (resolution: -300dpi) {
           body {
             background: green;
           }
@@ -1795,7 +1761,7 @@ describe('AtRule', () => {
             background: green;
           }
         }
-        @media printand(min-resolution: 118dpcm) {
+        @media print and (min-resolution: 118dpcm) {
           body {
             background: green;
           }

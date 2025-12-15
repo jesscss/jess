@@ -4,14 +4,14 @@ import type { Context } from '../context';
 import { isNode } from './util/is-node';
 import { BasicSelector } from './selector-basic';
 import { SelectorList } from './selector-list';
-import { SimpleSelector } from './selector-simple';
 import type { Selector } from './selector';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
 
 // Placeholder that's very unlikely to appear in user strings
-export const INTERPOLATION_PLACEHOLDER = '\u0000\u0001';
-const INTERPOLATION_PLACEHOLDER_REGEXP = /\u0000\u0001/g;
+// but is also easily typeable for tests
+export const INTERPOLATION_PLACEHOLDER = '%%';
+const INTERPOLATION_PLACEHOLDER_REGEXP = /%%/g;
 
 export type InterpolatedValue = {
   /** String with INTERPOLATION_PLACEHOLDER placeholders */

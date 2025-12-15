@@ -94,8 +94,14 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (!(selector instanceof Nil)) {
       const selOut = w.capture(() => selector.toTrimmedString(options));
       w.add(space);
-      w.add(selOut.replace(/\s+$/, '').replace(/[ \t]+/g, ' '));
-      w.add(' {\n');
+      // For SelectorList, preserve newlines and indentation (only remove trailing whitespace)
+      // For other selectors, normalize spacing (collapse multiple spaces/tabs to single space)
+      if (isNode(selector, 'SelectorList')) {
+        w.add(selOut.replace(/\s+$/, ''));
+      } else {
+        w.add(selOut.replace(/\s+$/, '').replace(/[ \t]+/g, ' '));
+      }
+      w.add(' ');
     }
   }
 

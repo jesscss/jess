@@ -1089,9 +1089,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let currentState = frameState.at(-1) ?? { depth: 0 };
     let currentDepth = currentState.depth;
 
-    let newFrames: (AtRule | Ruleset)[] = (currentNode.frames ?? []).filter(frame => isNode(frame, 'AtRule')) as AtRule[];
+    // Build newFrames from currentNode.frames, but filter out frames that are already open in frameState
+    // This prevents reopening frames that can't be hoisted past (e.g., @page inside @media)
+    let framesFromParent = (currentNode.frames ?? []).filter(frame => isNode(frame, 'AtRule')) as AtRule[];
+    let newFrames: (AtRule | Ruleset)[] = [];
+    for (const frame of framesFromParent) {
+      // Only include frames that aren't already in frameState
+      if (!frameState.some(state => state.frame === frame)) {
+        newFrames.push(frame);
+      }
+    }
+    // Always include currentNode itself (it's the frame we're rendering)
     newFrames.push(currentNode);
-    let newFramesStartIndex = 0;
 
     /**
      * If the current open frames equals the at-rule frames we need, then we don't need to
@@ -1115,9 +1124,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         continue;
       }
 
-      /** Skip over frames we're currently in */
-      for (let i = 0; i < newFrames.length; i++) {
-        if (newFrames[i] === frameState.at(i)?.frame) {
+      /** Recalculate which frames are already open by comparing newFrames with current frameState */
+      let newFramesStartIndex = 0;
+      for (let j = 0; j < newFrames.length; j++) {
+        if (frameState.length > j && newFrames[j] === frameState[j]?.frame) {
           newFramesStartIndex++;
         } else {
           break;
@@ -1165,14 +1175,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           // This is a non-hoisted child (Declaration, etc.)
           // Per the comment: "we don't render its opening until we reach the first non-hoisted child"
           // Use frameState as the source of truth - if frames aren't open yet, open them now
-          let d = frameStartIndex;
+          // Recalculate which frames are already open by comparing currentFrames with frameState
+          // This is important because frameState may have changed during recursive traversal
+          let alreadyOpenCount = 0;
+          for (let i = 0; i < currentFrames.length; i++) {
+            if (frameState.length > i && frameState[i]?.frame === currentFrames[i]) {
+              alreadyOpenCount++;
+            } else {
+              break;
+            }
+          }
+          let d = alreadyOpenCount;
           // If frames aren't open yet (frameState is at initial length), open them now
           if (frameState.length === initialFrameStateLength) {
-            // Only open frames that actually exist in currentFrames
-            // frameStartIndex might be out of bounds if we're recursively traversing Rules nodes from mixin evaluation
-            const actualStartIndex = Math.max(0, Math.min(frameStartIndex, currentFrames.length - 1));
-            // Open all frames in currentFrames that aren't already open, starting from actualStartIndex
-            for (let frameIdx = actualStartIndex; frameIdx < currentFrames.length; frameIdx++) {
+            // Open all frames in currentFrames that aren't already open, starting from alreadyOpenCount
+            for (let frameIdx = alreadyOpenCount; frameIdx < currentFrames.length; frameIdx++) {
               const frameToOpen = currentFrames[frameIdx];
               if (!frameToOpen) {
                 continue;
@@ -1184,14 +1201,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 frameState.push({ frame: frameToOpen, depth: d });
                 openedFrames.push(frameToOpen);
                 frameToOpen.renderOpening(opts);
+                w.add('{\n');
               }
             }
             // After opening all frames, declarations should be indented at the last frame's depth + 1
-            d = frameState.length > 0 ? frameState[frameState.length - 1]!.depth + 1 : frameStartIndex + 1;
+            d = frameState.length > 0 ? frameState[frameState.length - 1]!.depth + 1 : alreadyOpenCount + 1;
           } else {
             // Frames are already open from a previous non-hoisted child
             // Declarations should be indented at the last frame's depth + 1
-            d = frameState.length > 0 ? frameState[frameState.length - 1]!.depth + 1 : frameStartIndex + 1;
+            d = frameState.length > 0 ? frameState[frameState.length - 1]!.depth + 1 : alreadyOpenCount + 1;
           }
 
           const isRulesNode = isNode(node, 'Rules');

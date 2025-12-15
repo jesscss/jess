@@ -105,9 +105,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     } else {
       // Capture value output to normalize spacing after ':'
       const valOut = w.capture(() => value.toString(options));
-      // Ensure exactly one space after ':' by removing leading whitespace and adding one space
+      // Normalize spacing: collapse multiple spaces/tabs to single space, remove leading/trailing whitespace
+      const normalizedValue = valOut.replace(/^\s+/, '').replace(/\s+$/, '').replace(/[ \t]+/g, ' ');
+      // Ensure exactly one space after ':' by adding one space
       w.add(' ');
-      w.add(valOut.replace(/^\s+/, ''), this); // Pass declaration as origin to preserve location info
+      w.add(normalizedValue, this); // Pass declaration as origin to preserve location info
       if (!isNode(value, 'Collection')) {
         if (important) {
           w.add(`${important}`, this);

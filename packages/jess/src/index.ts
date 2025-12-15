@@ -38,7 +38,7 @@ export class Compiler {
   /**
    * Create a context with the configured plugins
    */
-  private createContext(filePath?: string, renderOptions?: Partial<ConfigOptions>): Context {
+  createContext(filePath?: string, renderOptions?: Partial<ConfigOptions>): Context {
     // #region agent log
     fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'index.ts:41', message: 'createContext entry', data: { filePath: filePath || 'none' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
     // #endregion
