@@ -4,7 +4,7 @@ import type { Rules } from '../rules';
 import { isNode } from './is-node';
 import type { Mixin } from '../mixin';
 import { Nil } from '../nil';
-import type { Node } from '../node';
+import { Node } from '../node';
 import type { JsFunction } from '../js-function';
 import type { Func } from '../function';
 import type { Declaration } from '../declaration';
@@ -65,6 +65,14 @@ export abstract class Registry<
     options: FindOptions = {}
   ) {
     let rules = this.rules;
+    // CRITICAL FIX: Initialize searchedRules if not provided, and add current Rules BEFORE any recursive calls
+    // The flaw in the original algorithm: when _searchRulesChildren calls childRules.find(), that creates
+    // a new search context via DeclarationRegistry.find(), which may not preserve searchedRules tracking.
+    // By initializing it here and adding the current Rules immediately, we ensure tracking persists.
+    const searchedRules = options?.searchedRules ?? new Set<Rules>();
+    if (!searchedRules.has(rules)) {
+      searchedRules.add(rules);
+    }
     let findType = filterType === 'Mixin' ? 'mixin' as const : 'declaration' as const;
     let findAll = Boolean(options.findAll);
     let {
@@ -80,7 +88,7 @@ export abstract class Registry<
     // Note: childFilterType can be undefined to mean "don't filter" (accept both Mixin and Ruleset)
     const actualChildFilterType = 'childFilterType' in options ? childFilterType : filterType;
     let firstValue = candidates.values().next().value;
-    if (rules._rulesSet) {
+      if (rules._rulesSet) {
       let { rulesSet } = rules;
       /**
        * Only consider rules after the last found declaration (if relevant)
@@ -113,13 +121,15 @@ export abstract class Registry<
 
       let length = rulesSet.length;
       if (length) {
-        // Get searchedRules from options to prevent re-searching the same Rules nodes
-        const searchedRules = options?.searchedRules;
+        // searchedRules is already initialized above and includes the current Rules
         for (let i = length - 1; i >= 0; i--) {
           let r = rulesSet.at(i)!;
           // Skip if we've already searched this Rules node to prevent infinite recursion
           if (searchedRules && searchedRules.has(r.node)) {
             continue;
+          }
+          if (r.node === rules) {
+            throw new Error(`Rules node contains itself in rulesSet`);
           }
           /** Locals can be searched once but not twice */
           let newLocal = local || Boolean(r.node.options?.local);
@@ -129,9 +139,8 @@ export abstract class Registry<
           // _searchRulesChildren should never search parents - only search within imported Rules
           newOpts.searchParents = false;
           // Pass through searchedRules to prevent circular references
-          if (searchedRules) {
-            newOpts.searchedRules = searchedRules;
-          }
+          // searchedRules is always defined (initialized above)
+          newOpts.searchedRules = searchedRules;
           if (context) {
             newOpts.context = context;
           }
@@ -173,45 +182,11 @@ export abstract class Registry<
         }
       }
     }
-    // Also search direct child Rules nodes (not just rulesSet)
-    // This handles cases like wrapper Rules from getFunctionFromMixins
-    // where child Rules are in rules.value, not in rulesSet
-    const searchedRules = options?.searchedRules;
-    if (rules.value) {
-      for (const childNode of rules.value) {
-        if (isNode(childNode, 'Rules')) {
-          const childRules = childNode as Rules;
-          // Skip if we've already searched this Rules node to prevent infinite recursion
-          if (searchedRules && searchedRules.has(childRules)) {
-            continue;
-          }
-          // Search in the child Rules - this will trigger indexing via find()
-          const newOpts = options ? { ...options, readonly: readonly } : { readonly: readonly };
-          newOpts.searchParents = false;
-          newOpts.local = local;
-          // Pass through searchedRules to prevent circular references
-          if (searchedRules) {
-            newOpts.searchedRules = searchedRules;
-          }
-          if (context) {
-            newOpts.context = context;
-          }
-          newOpts.start = undefined;
-          // Use actualChildFilterType which may be undefined for mixin-ruleset lookups
-          // filterType parameter is used to SELECT registry, actualChildFilterType is used to FILTER results
-          const result = childRules.find(findType, key, actualChildFilterType as any, newOpts);
-          if (result) {
-            if (isArray(result)) {
-              for (const node of result) {
-                candidates.add(node);
-              }
-            } else {
-              candidates.add(result);
-            }
-          }
-        }
-      }
-    }
+    // REMOVED: Manual iteration through rules.value for child Rules nodes
+    // If a Rules node is in rules.value and should be searchable, it should be registered
+    // via registerNode() which adds it to rulesSet. We already search rulesSet above.
+    // Manually iterating through rules.value creates infinite loops when a Rules node
+    // appears in its own children, and is unnecessary since registered Rules are in rulesSet.
   }
 
   /**
@@ -939,7 +914,14 @@ export class DeclarationRegistry extends Registry<Declaration> {
     } = options ?? {};
 
     let newReadonly: boolean | undefined = false;
+    // Track visited Rules nodes in the parent chain to detect circular parent chains
+    const visitedRules = new Set<Rules>();
     while (rules) {
+      // CRITICAL: Check for circular parent chain
+      if (visitedRules.has(rules)) {
+        throw new Error(`Circular parent chain detected in DeclarationRegistry.find`);
+      }
+      visitedRules.add(rules);
       let currentReadonly = options?.readonly || rules.options.readonly;
       newReadonly = currentReadonly;
       let registry = rules.getRegistry('declaration');
@@ -969,11 +951,22 @@ export class DeclarationRegistry extends Registry<Declaration> {
         }
         isPublic = true;
       }
+      // Initialize searchedRules to prevent infinite recursion when searching child Rules
+      // This is critical: if a Rules node appears in its own children, we need to track it
+      const searchedRules = options?.searchedRules ?? new Set<Rules>();
+      if (!searchedRules.has(rules)) {
+        searchedRules.add(rules);
+      }
+      // CRITICAL: When searching children, we MUST set searchParents: false to prevent
+      // infinite loops. Children searches should never traverse up the parent chain.
+      // If options.searchParents is true, we're in a parent search context, and searching
+      // children should not trigger another parent search.
       let searchChildrenOptions = {
         ...options,
-        searchParents: false,
+        searchParents: false, // Always false when searching children
         readonly: newReadonly,
-        candidates: declCandidate
+        candidates: declCandidate,
+        searchedRules: searchedRules
       };
 
       rules.getRegistry('declaration')._searchRulesChildren(key, filterType, searchChildrenOptions);

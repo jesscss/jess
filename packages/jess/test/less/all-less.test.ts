@@ -70,7 +70,7 @@ describe('Can render Less files to CSS', () => {
             const actualCss = await testCompiler.render(lessPath);
 
             expect(actualCss).toBeString(expectedCss.trim());
-          }, 30000); // 30 second timeout to catch infinite loops
+          }, 5000); // 5 second timeout to catch infinite loops
         });
       } catch (error: any) {
         // If getTestCases throws (no files found), create a failing test

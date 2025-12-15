@@ -94,10 +94,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<AtRule> {
-    // #region agent log
-    const atRuleName = this.value.name?.toTrimmedString?.() ?? this.value.name?.toString?.() ?? '';
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'at-rule.ts:96',message:'AtRule.evalNode entry',data:{atRuleName,atRuleIndex:this.index,evaluated:this.evaluated,framesDepth:context.rulesetFrames.length,hasRules:!!this.value.rules},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
     let node = this as AtRule;
 
     // Store frames snapshot for collapseNesting serialization
@@ -126,10 +122,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       () => {
         let { rules } = node.value;
         if (rules) {
-          // #region agent log
-          const framesDepthBefore = context.frames.length;
-          fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'at-rule.ts:126',message:'AtRule pushing frame before rules.eval',data:{atRuleName,atRuleIndex:node.index,framesDepthBefore,rulesCount:rules.value.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-          // #endregion
           node.options.hoistToRoot ||= context.opts.collapseNesting;
           context.frames.push(node);
           if (node.options.nestable && node.options.hoistToRoot) {
@@ -140,6 +132,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                 rules: existingRules
               })
             ]).inherit(existingRules);
+            rules.parent = node;
           }
 
           // Register extend root for nestable at-rules (including @layer)
@@ -180,10 +173,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         return node;
       },
       () => {
-        // #region agent log
-        const framesDepthBefore = context.frames.length;
-        fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'at-rule.ts:175',message:'AtRule popping frame',data:{atRuleName,atRuleIndex:node.index,framesDepthBefore},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
         context.frames.pop();
         return node;
       }

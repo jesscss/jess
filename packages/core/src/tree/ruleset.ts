@@ -13,7 +13,6 @@ import { SelectorList } from './selector-list';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule';
-import { logger } from '../logger';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -143,7 +142,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return ComplexSelector.create([amp, comb, ...selector.value]).inherit(selector);
     }
     const returnVal = ComplexSelector.create([amp, comb, selector]).inherit(selector);
-    returnVal.parent = this;
     return returnVal;
   }
 
@@ -186,12 +184,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   override evalNode(context: Context): MaybePromise<Ruleset | Nil> {
     // #region agent log
     const rulesetId = `${this.index ?? '?'}`;
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ruleset.ts:186',message:'Ruleset.evalNode entry',data:{rulesetIndex:this.index,evaluated:this.evaluated,framesDepth:context.rulesetFrames.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ruleset.ts:186', message: 'Ruleset.evalNode entry', data: { rulesetIndex: this.index, evaluated: this.evaluated, framesDepth: context.rulesetFrames.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => {});
     // #endregion
-    
+
     if (this.evaluated) {
       // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ruleset.ts:190',message:'Ruleset.evalNode already evaluated',data:{rulesetIndex:this.index},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ruleset.ts:190', message: 'Ruleset.evalNode already evaluated', data: { rulesetIndex: this.index }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
       // #endregion
       return this;
     }
@@ -208,7 +206,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (collapseNesting) {
       this.frames = [...context.frames];
     }
-    
+
     return pipe(
       () => {
         return guard?.eval(context);
@@ -216,7 +214,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       (guard) => {
         if (guard && !guard.value) {
           // #region agent log
-          fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ruleset.ts:217',message:'Ruleset guard failed',data:{rulesetIndex:this.index},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ruleset.ts:217', message: 'Ruleset guard failed', data: { rulesetIndex: this.index }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => {});
           // #endregion
           return new Nil();
         }
@@ -293,7 +291,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         this.options.hoistToRoot ||= context.opts.collapseNesting;
         // #region agent log
         const framesDepthBefore = context.rulesetFrames.length;
-        fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ruleset.ts:293',message:'Ruleset pushing frame',data:{rulesetIndex:this.index,framesDepthBefore,rulesCount:this.value.rules.value.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ruleset.ts:293', message: 'Ruleset pushing frame', data: { rulesetIndex: this.index, framesDepthBefore, rulesCount: this.value.rules.value.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => {});
         // #endregion
         context.rulesetFrames.push(this as Ruleset);
         context.frames.push(this);
@@ -302,7 +300,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       (evaluatedRules: Rules | Nil) => {
         // #region agent log
         const framesDepthBefore = context.rulesetFrames.length;
-        fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ruleset.ts:300',message:'Ruleset popping frame',data:{rulesetIndex:this.index,framesDepthBefore},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ruleset.ts:300', message: 'Ruleset popping frame', data: { rulesetIndex: this.index, framesDepthBefore }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => {});
         // #endregion
         // ALWAYS pop the frame, even if evaluatedRules is Nil, to prevent frame accumulation
         context.rulesetFrames.pop();

@@ -831,10 +831,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   /** Evaluate the built queues in priority order */
   private _evaluateQueue(rules: Rules, evalQueue: EvalQueueMap, context: Context): MaybePromise<boolean> {
-    // #region agent log
-    const totalRules = Array.from(evalQueue.values()).reduce((sum, q) => sum + q.length, 0);
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'rules.ts:833',message:'_evaluateQueue entry',data:{rulesIndex:rules.index,totalRules,framesDepth:context.rulesetFrames.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     let rulesToHoist = false;
     // Track nodes that have been retried to avoid infinite loops
     const retriedNodes = new Set<Node>();
@@ -848,9 +844,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const entries: Array<[number, [number, Node]]> = Array.from(queue.entries()) as any;
       const innerResult = serialForEach(entries, ([q, item]: [number, [number, Node]]) => {
         const [idx, rule] = item;
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'rules.ts:846',message:'_evaluateQueue processing rule',data:{ruleType:rule.type,ruleIndex:rule.index,priority:p,retried:retriedNodes.has(rule)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
 
         /**
          * Var declarations have late evaluation, so they are skipped.
@@ -930,9 +923,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<this> {
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'rules.ts:932',message:'Rules.evalNode entry',data:{rulesIndex:this.index,evaluated:this.evaluated,rulesCount:this.value.length,framesDepth:context.rulesetFrames.length,stackDepth:context.rulesEvalStack.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     const saved = this._snapshotContext(context);
     context.rulesEvalStack.push(this.sourceNode as Rules);
     return pipe(
@@ -947,9 +937,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         // Synchronous preEval
         const rules = this;
         if (rules.evaluated) {
-          // #region agent log
-          fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'rules.ts:946',message:'Rules.evalNode already evaluated',data:{rulesIndex:rules.index},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-          // #endregion
           return { rules, rulesToHoist: false };
         }
         const evalQueue = this._buildEvalQueue(rules);
@@ -1063,9 +1050,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           context.extendRoots.popExtendRoot();
         }
         context.rulesEvalStack.pop();
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'rules.ts:1066',message:'Rules.evalNode exit',data:{rulesIndex:rules.index,rulesEvaluated:rules.evaluated},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
         return rules;
       }
     ) as MaybePromise<this>;
@@ -1518,16 +1502,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       if (isNode(candidate, 'Ruleset')) {
         const rules = await (candidate as Ruleset).value.rules.copy(true).eval(thisContext);
         hasMatch = true;
-        if (rules.type === 'Nil') {
-          continue; // Skip Nil results
-        }
-        if (rules.type === 'Rules' && !Array.isArray(rules.value)) {
-          throw new Error(`Rules.value is not an array! Type: ${typeof rules.value}, Value: ${rules.value}`);
-        }
         // Skip empty Rules (e.g., containing only invisible nodes like comments)
-        if (rules.type === 'Rules' && rules.value.length === 0) {
-          continue; // Skip empty Rules
-        }
         outputRules.push([rules, i]);
         continue;
       }
@@ -1536,7 +1511,10 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       rules = rules.copy(true);
       // Preserve the parent from the original mixin's Rules so lookups can traverse up
       // The parent should be where the mixin was defined (source position)
-      if (candidate.value.rules.parent) {
+      // CRITICAL: We need the parent for variable lookup, but we must avoid cycles.
+      // If the original parent equals the current rulesContext, setting it would create a cycle
+      // because we're about to set thisContext.rulesContext = rules (line 1615)
+      if (candidate.value.rules.parent && candidate.value.rules.parent !== thisContext.rulesContext) {
         rules.parent = candidate.value.rules.parent;
       }
 
@@ -1689,20 +1667,11 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      */
     let rulesArr = outputRules
       .sort((a, b) => a[1] - b[1])
-      .map(r => r[0])
-      .filter(r => r.visibleRules().length > 0);
+      .map(r => r[0]);
     /** Create a rules wrapper - but optimize to avoid unnecessary nesting */
     let output: Rules;
-    const savedRulesContext = thisContext.rulesContext;
-    if (rulesArr.length === 1 && isNode(rulesArr[0], 'Rules')) {
-      const singleRules = rulesArr[0] as Rules;
-      // If the Rules only has one value, unwrap it - return a Rules with just that value
-      if (singleRules.value.length === 1) {
-        output = new Rules([singleRules.value[0]!]);
-      } else {
-        // Multiple values, use it as-is
-        output = singleRules;
-      }
+    if (rulesArr.length === 1) {
+      output = rulesArr[0]!;
     } else {
       // Multiple items - spread their values into a new Rules
       const flattened: Node[] = [];

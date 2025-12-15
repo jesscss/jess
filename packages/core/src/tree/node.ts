@@ -12,7 +12,6 @@ import type { Comment } from './comment';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules';
-import { logger } from '../logger';
 
 export type { TreeContext };
 
@@ -231,7 +230,15 @@ export abstract class Node<
    * shouldn't be set directly. Instead, a parent should use
    * parent.adopt(thisNode);
    */
-  parent: Node | undefined;
+  _parent: Node | undefined;
+
+  get parent(): Node | undefined {
+    return this._parent;
+  }
+
+  set parent(parent: Node | undefined) {
+    this._parent = parent;
+  }
 
   nil!: () => Nil;
 
@@ -637,6 +644,8 @@ export abstract class Node<
    * 4. Return the node
    *
    * Mostly this is overridden to resolve names before registering.
+   *
+   * @todo - Update preEval / eval to use static evaluation based on flags.
    */
   preEval(context: Context): MaybePromise<Node> {
     let node = this.maybeClone(context);
@@ -654,48 +663,25 @@ export abstract class Node<
    * By default, evals all children
    */
   protected evalNode(context: Context): MaybePromise<Node> {
-    // #region agent log
-    const nodeId = `${this.type}#${this.index ?? '?'}`;
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'node.ts:656',message:'evalNode entry',data:{nodeType:this.type,nodeIndex:this.index,evaluated:this.evaluated,framesDepth:context.rulesetFrames.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     let out = this.forEachNode((n: Node) => {
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'node.ts:661',message:'evalNode child eval',data:{parentType:this.type,parentIndex:this.index,childType:n.type,childIndex:n.index,childEvaluated:n.evaluated},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       return n.eval(context);
     });
     if (isThenable(out)) {
       return (out as Promise<void>).then(() => {
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'node.ts:667',message:'evalNode exit async',data:{nodeType:this.type,nodeIndex:this.index},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         return this;
       });
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'node.ts:671',message:'evalNode exit sync',data:{nodeType:this.type,nodeIndex:this.index},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     return this;
   }
 
   static evalStatic(node: Node, context: Context): MaybePromise<Node> {
-    // #region agent log
-    const nodeId = `${node.type}#${node.index ?? '?'}`;
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'node.ts:674',message:'evalStatic entry',data:{nodeType:node.type,nodeIndex:node.index,preEvaluated:node.preEvaluated,evaluated:node.evaluated,framesDepth:context.rulesetFrames.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     let preEvaluatedNode: Node;
-    
+
     return pipe(
       () => {
         if (!node.preEvaluated) {
-          // #region agent log
-          fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'node.ts:682',message:'evalStatic calling preEval',data:{nodeType:node.type,nodeIndex:node.index},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-          // #endregion
           return node.preEval(context);
         }
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'node.ts:686',message:'evalStatic already preEvaluated',data:{nodeType:node.type,nodeIndex:node.index},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         return node;
       },
       (preEvald) => {
@@ -705,20 +691,11 @@ export abstract class Node<
           preEvaluatedNode.inherit(node);
         }
         if (!preEvaluatedNode.evaluated) {
-          // #region agent log
-          fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'node.ts:696',message:'evalStatic calling evalNode',data:{nodeType:preEvaluatedNode.type,nodeIndex:preEvaluatedNode.index},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-          // #endregion
           return preEvaluatedNode.evalNode(context);
         }
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'node.ts:699',message:'evalStatic already evaluated',data:{nodeType:preEvaluatedNode.type,nodeIndex:preEvaluatedNode.index},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         return preEvaluatedNode;
       },
       (evald) => {
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'node.ts:703',message:'evalStatic exit',data:{nodeType:evald.type,nodeIndex:evald.index},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         evald.evaluated = true;
         if (preEvaluatedNode !== evald) {
           evald.inherit(preEvaluatedNode);
@@ -755,7 +732,6 @@ export abstract class Node<
     this.post ||= node.post;
     this.sourceNode = node.sourceNode;
     this.index ??= node.index;
-    this.parent = node.parent;
     return this;
   }
 

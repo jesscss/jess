@@ -4,6 +4,36 @@
 
 - The user will always verify an implementation / fix plan before proceeding with code changes.
 
+## AST Structure Requirements
+
+**CRITICAL - AST Structure Invariants**:
+
+The Abstract Syntax Tree (AST) must maintain a valid tree structure at all times. These invariants are **MANDATORY** and **MUST NEVER** be violated:
+
+1. **No Self-Parenting**: A node **CANNOT** have itself as a parent. This is a fundamental tree structure requirement.
+   - `node.parent === node` is **FORBIDDEN** and indicates a critical bug
+   - This must be prevented at **ALL COSTS** - it creates invalid AST structure
+   - The `Node.adopt()` method includes a check to prevent this; any code that sets `node.parent` directly must also check for self-parenting
+   - If a node appears as its own child (e.g., `Rules` node contains itself in `rules.value` or `rules._rulesSet`), this is a **CRITICAL BUG** that must be fixed at the source
+
+2. **No Circular Parent Chains**: A node **CANNOT** be an ancestor of itself.
+   - If traversing `node.parent` eventually leads back to `node`, this is a circular reference and indicates a critical bug
+   - Circular parent chains break tree traversal algorithms and cause infinite loops
+
+3. **Valid Parent-Child Relationships**: 
+   - When a node is added as a child (via `adopt()`, `push()`, or direct assignment to `value` arrays), the parent-child relationship must be valid
+   - A node cannot be added to its own children (e.g., a `Rules` node cannot contain itself in its `value` array or `_rulesSet`)
+
+**Enforcement**:
+- `Node.adopt()` includes a runtime check that throws an error if a node attempts to adopt itself
+- Registry search methods check for self-references and throw errors if detected
+- Any code that manipulates parent-child relationships must ensure these invariants are maintained
+
+**When These Invariants Are Violated**:
+- **DO NOT** work around the issue by adding filters or skipping nodes
+- **DO** find and fix the root cause where the invalid relationship is being created
+- The bug is in the code that creates the invalid structure, not in the code that traverses it
+
 ## Debugging
 
 - Debugging instrumentation should never stringify a node with .toString() or .toTrimmedString() because that could cause state errors with frameState tracking.
