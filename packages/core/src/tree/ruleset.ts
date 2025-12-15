@@ -1,5 +1,5 @@
 import { Node, F_VISIBLE, F_AMPERSAND, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions } from './node';
-import { type Rules } from './rules';
+import { Rules } from './rules';
 import type { Context } from '../context';
 import { Nil } from './nil';
 import type { Condition } from './condition';
@@ -11,7 +11,7 @@ import { Combinator } from './combinator';
 import { ComplexSelector } from './selector-complex';
 import { SelectorList } from './selector-list';
 import { type PrintOptions, getPrintOptions } from './util/print';
-import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule';
 
 export type RulesetValue = {
@@ -268,7 +268,22 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           }
         }
         if (sels instanceof Nil) {
-          return sels;
+          // If selector evaluates to Nil, return the rules body directly instead of the ruleset
+          // This allows rules to be output even when there's no selector context
+          // We don't push frames because there's no selector context
+          // Store Nil in selector so next step can detect this case
+          this.value.selector = sels;
+          const evaluatedRules = this.value.rules.eval(context);
+          // Update this.value.rules to point to evaluated Rules to prevent circular reference
+          // when debug code traverses the AST
+          if (isThenable(evaluatedRules)) {
+            return (evaluatedRules as Promise<Rules>).then((rules) => {
+              this.value.rules = rules;
+              return rules;
+            });
+          }
+          this.value.rules = evaluatedRules as Rules;
+          return evaluatedRules;
         }
         // Preserve the sourceNode from the current selector before replacing it
         const preservedSourceNode = this.value.selector?.sourceNode;
@@ -283,7 +298,14 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         return this.value.rules.eval(context);
       },
       (evaluatedRules: Rules | Nil) => {
-        // ALWAYS pop the frame, even if evaluatedRules is Nil, to prevent frame accumulation
+        // If selector was Nil, evaluatedRules is already Rules (not wrapped in Ruleset)
+        // In that case, return it directly without wrapping back in Ruleset
+        if (this.value.selector instanceof Nil) {
+          // Selector was Nil, so we already returned Rules directly - just return it
+          return evaluatedRules as any;
+        }
+
+        // Normal case: selector was not Nil, so we pushed frames and need to pop them
         context.rulesetFrames.pop();
         context.frames.pop();
 

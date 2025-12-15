@@ -6,6 +6,8 @@ import type { Context, TreeContext } from '../context';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { Ampersand } from './ampersand';
+import { isNode } from './util/is-node';
+import { Nil } from './nil';
 
 export type AtRuleValue = {
   name: Any<'atkeyword'>;
@@ -46,7 +48,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     let { name, prelude, rules } = this.value;
-
     const mark = w.mark();
 
     if (this.options.hoistToRoot) {
@@ -155,17 +156,29 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             pushedExtendRoot = true;
           }
 
+          let onlyRuleSetChild = isNode(rules.value[0], 'Ruleset');
+
           let out = rules.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Rules>).then((r) => {
-              node.value.rules = r;
+              // If the only rule was a ruleset, and it evaluated to Rules,
+              // discard the extra rules wrapper
+              if (onlyRuleSetChild && isNode(r.value[0], 'Rules')) {
+                node.value.rules = r.value[0];
+              } else {
+                node.value.rules = r;
+              }
               if (pushedExtendRoot) {
                 context.extendRoots.popExtendRoot();
               }
               return node;
             });
           }
-          node.value.rules = out;
+          if (onlyRuleSetChild && isNode(out.value[0], 'Rules')) {
+            node.value.rules = out.value[0];
+          } else {
+            node.value.rules = out;
+          }
           if (pushedExtendRoot) {
             context.extendRoots.popExtendRoot();
           }

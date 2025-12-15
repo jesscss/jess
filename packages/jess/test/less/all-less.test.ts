@@ -4,6 +4,7 @@ import { invalidLess } from '@jesscss/shared';
 import { Compiler } from '../../src';
 import { getTestCases } from '../test-utils';
 import lessPlugin from '@jesscss/plugin-less';
+import { serializeTypes } from '@jesscss/core';
 
 const testData = path.dirname(require.resolve('@less/test-data'));
 
@@ -67,9 +68,17 @@ describe('Can render Less files to CSS', () => {
               }
             });
 
-            const actualCss = await testCompiler.render(lessPath);
+            const { tree, context } = await testCompiler.compile(lessPath);
 
-            expect(actualCss).toBeString(expectedCss.trim());
+            const sExpr = serializeTypes(tree);
+            if (file === 'tests-unit/media/media.less') {
+              // Write S-expression to file for at-rule.test.ts
+              const fs = require('fs');
+              const outputPath = path.join(__dirname, 'media.less.s-expr.txt');
+              fs.writeFileSync(outputPath, sExpr, 'utf8');
+            }
+
+            expect(tree.toString({ context })).toBeString(expectedCss.trim());
           }, 5000); // 5 second timeout to catch infinite loops
         });
       } catch (error: any) {

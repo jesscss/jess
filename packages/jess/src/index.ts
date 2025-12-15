@@ -40,15 +40,15 @@ export class Compiler {
    */
   private createContext(filePath?: string, renderOptions?: Partial<ConfigOptions>): Context {
     // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:41',message:'createContext entry',data:{filePath:filePath||'none'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'index.ts:41', message: 'createContext entry', data: { filePath: filePath || 'none' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
     // #endregion
     // Merge order: file config -> compiler opts -> render options
     // #region agent log
-    if (filePath) fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:44',message:'createContext calling getConfig',data:{filePath},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    if (filePath) { fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'index.ts:44', message: 'createContext calling getConfig', data: { filePath }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {}); }
     // #endregion
     const fileConfig = filePath ? getConfig(filePath) : {};
     // #region agent log
-    if (filePath) fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:46',message:'createContext getConfig completed',data:{filePath,hasConfig:!!fileConfig},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    if (filePath) { fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'index.ts:46', message: 'createContext getConfig completed', data: { filePath, hasConfig: !!fileConfig }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {}); }
     // #endregion
     const baseConfig: ConfigOptions = {
       compile: {},
@@ -94,49 +94,58 @@ export class Compiler {
     return new Context(contextOptions, [...pluginMap.values()]);
   }
 
-  /**
-   * Render CSS from a file path
-   */
-  async render(filePath: string, options?: Partial<ConfigOptions>) {
+  async compile(filePath: string, options?: Partial<ConfigOptions>) {
     // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:92',message:'render starting',data:{filePath},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'index.ts:92', message: 'render starting', data: { filePath }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
     // #endregion
     // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:95',message:'calling createContext',data:{filePath},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'index.ts:95', message: 'calling createContext', data: { filePath }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
     // #endregion
     const context = this.createContext(filePath, options);
     // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:97',message:'createContext completed',data:{filePath},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'index.ts:97', message: 'createContext completed', data: { filePath }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
     // #endregion
 
     try {
       // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:101',message:'calling getTree',data:{filePath},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'index.ts:101', message: 'calling getTree', data: { filePath }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
       // #endregion
       const { node } = await context.getTree(filePath);
       // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:101',message:'getTree completed, starting eval',data:{nodeType:node.type,nodeIndex:node.index},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
-      
-      const evald = await node.eval(context);
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:105',message:'eval completed, converting to string',data:{evaldType:evald.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'index.ts:101', message: 'getTree completed, starting eval', data: { nodeType: node.type, nodeIndex: node.index }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
       // #endregion
 
-      // Create print options with collapseNesting setting and context for charset handling
+      const evald = await node.eval(context);
+      return { tree: evald, context };
+    } catch (err: any) {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'index.ts:115', message: 'render error', data: { error: err.toString() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
+      // #endregion
+      logger.error(err.toString());
+      throw err;
+    }
+  }
+
+  /**
+   * Render CSS from a file path
+   */
+  async render(filePath: string, options?: Partial<ConfigOptions>) {
+    try {
+      const { tree, context } = await this.compile(filePath, options);
+
       const printOptions: PrintOptions = {
         collapseNesting: context.opts.collapseNesting,
         context
       };
 
-      const css = evald.toString(printOptions);
+      const css = tree.toString(printOptions);
       // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:112',message:'toString completed',data:{cssLength:css.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'index.ts:112', message: 'toString completed', data: { cssLength: css.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
       // #endregion
       return css;
     } catch (err: any) {
       // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:115',message:'render error',data:{error:err.toString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'index.ts:115', message: 'render error', data: { error: err.toString() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
       // #endregion
       logger.error(err.toString());
       throw err;
