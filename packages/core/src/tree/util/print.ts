@@ -8,6 +8,8 @@ export type PrintOptions = {
     frame?: Ruleset | AtRule;
     depth: number;
   }[];
+  /** Current indentation depth (set by parent, used by children) */
+  depth?: number;
   writer?: OutputWriter;
   compress?: boolean;
   collapseNesting?: boolean;
@@ -34,7 +36,69 @@ export type SourceSegment = {
 export function getPrintOptions(options?: PrintOptions): PrintOptions & { writer: OutputWriter } {
   options = options ?? {};
   options.writer ??= new OutputWriter();
+  // Always ensure frameState exists - nodes should not need to check for it
+  options.frameState ??= [];
   return options as PrintOptions & { writer: OutputWriter };
+}
+
+/**
+ * Calculate depth from frameState by finding the last AtRule frame.
+ * Returns the AtRule's depth + 1, or 0 if no AtRule frame is found (root level).
+ */
+export function calculateDepthFromFrameState(frameState?: PrintOptions['frameState']): number {
+  if (!frameState) {
+    return 0;
+  }
+  for (let i = frameState.length - 1; i >= 0; i--) {
+    const state = frameState[i];
+    // Skip depth markers - only look at actual frames
+    if (state?.frame && state.frame.type === 'AtRule') {
+      return state.depth + 1;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Find the last depth marker in frameState (entry without a frame property).
+ * Returns the depth value, or undefined if no depth marker is found.
+ */
+export function findDepthMarker(frameState?: PrintOptions['frameState']): number | undefined {
+  if (!frameState) {
+    return undefined;
+  }
+  for (let i = frameState.length - 1; i >= 0; i--) {
+    const state = frameState[i];
+    if (state && !state.frame) {
+      return state.depth;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Execute a callback with a child depth marker pushed to frameState.
+ * The depth marker is automatically popped after the callback returns.
+ * 
+ * @param options - PrintOptions with frameState
+ * @param parentDepth - The depth of the parent node
+ * @param callback - Function to execute with the child depth marker in frameState
+ * @returns The return value of the callback
+ */
+export function withChildDepth<T>(
+  options: PrintOptions,
+  parentDepth: number,
+  callback: (options: PrintOptions) => T
+): T {
+  // frameState is guaranteed to exist by getPrintOptions
+  const frameState = options.frameState!;
+  const childDepth = parentDepth + 1;
+  frameState.push({ depth: childDepth });
+  try {
+    return callback(options);
+  } finally {
+    frameState.pop();
+  }
 }
 
 export class OutputWriter implements OutputWriter {

@@ -3,7 +3,7 @@ import { Ruleset } from './ruleset';
 import type { Any } from './any';
 import { Rules } from './rules';
 import type { Context, TreeContext } from '../context';
-import { type PrintOptions, getPrintOptions } from './util/print';
+import { type PrintOptions, getPrintOptions, findDepthMarker, withChildDepth } from './util/print';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { Ampersand } from './ampersand';
 import { isNode } from './util/is-node';
@@ -52,20 +52,57 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
     if (this.options.hoistToRoot) {
       if (rules) {
+        // renderWithFrameFlattening will add this at-rule to frameState when it renders it
         rules.renderWithFrameFlattening(options, this);
         return w.getSince(mark);
       }
-      options = { ...options, frameState: options.frameState ?? [{ depth: 0 }] };
     }
 
-    this.renderOpening(options);
+    // frameState is guaranteed to exist by getPrintOptions
+    const frameState = options.frameState!;
+    // Use options.depth if provided (set by parent), otherwise calculate based on hoisting
+    let currentDepth = options.depth;
+    if (currentDepth === undefined) {
+      if (this.options.hoistToRoot) {
+        // Hoisted at-rules: check if we're inside another hoisted at-rule
+        const lastAtRuleFrame = frameState.filter(s => s?.frame?.type === 'AtRule').at(-1);
+        if (lastAtRuleFrame?.frame && (lastAtRuleFrame.frame as AtRule).options.hoistToRoot) {
+          // Inside a hoisted at-rule - nestable at-rules should use parent's depth (stay at same level)
+          currentDepth = lastAtRuleFrame.depth;
+        } else {
+          // At root level - hoisted at-rules start at depth 0
+          currentDepth = 0;
+        }
+      } else {
+        // Non-hoisted: if no depth provided, we're at root (depth 0)
+        currentDepth = 0;
+      }
+    }
+    // #region agent log
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'at-rule.ts:88', message: 'AtRule currentDepth calculation', data: { hoistToRoot: this.options.hoistToRoot, calculatedCurrentDepth: currentDepth, optionsDepth: options.depth, frameStateLength: frameState.length, hasAtRuleFrames: frameState.some(s => s?.frame?.type === 'AtRule'), lastFrameDepth: frameState[frameState.length - 1]?.depth, lastFrameHasFrame: !!frameState[frameState.length - 1]?.frame, collapseNesting: options.collapseNesting }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'depth-refactor', hypothesisId: 'A' }) }).catch(() => {});
+    // #endregion
+    
+    // Push this at-rule to frameState for frame tracking (not for depth)
+    frameState.push({ frame: this, depth: currentDepth });
+    // Set depth for renderOpening and children
+    const renderOptions = { ...options, frameState, depth: currentDepth };
+    // #region agent log
+    // eslint-disable-next-line
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'at-rule.ts:103', message: 'AtRule pushing to frameState', data: { currentDepth, frameStateLength: frameState.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'depth-refactor', hypothesisId: 'D' }) }).catch(() => {});
+    // #endregion
+    this.renderOpening(renderOptions);
 
     if (rules) {
-      // For rules, we can call toBraced directly since it writes to the writer
-      rules.toBraced(options);
+      // Set depth for children (rules.toBraced) - children should be one level deeper
+      const childOptions = { ...renderOptions, depth: currentDepth + 1 };
+      rules.toBraced(childOptions);
     } else {
       w.add(';');
     }
+    
+    // Pop the at-rule we added to frameState
+    frameState.pop();
 
     return w.getSince(mark);
   }
@@ -74,7 +111,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   renderOpening(options: PrintOptions): void {
     const w = options.writer!;
     const { name, prelude, rules } = this.value;
-    const depth = options.frameState?.at(-1)?.depth ?? 0;
+    // Use options.depth if provided (set by parent), otherwise we're at root (depth 0)
+    const depth = options.depth ?? 0;
+    // #region agent log
+    // eslint-disable-next-line
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'at-rule.ts:121', message: 'AtRule renderOpening', data: { depth, optionsDepth: options.depth }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'depth-refactor', hypothesisId: 'D' }) }).catch(() => {});
+    // #endregion
     w.add(''.padStart(depth * 2));
     const nameOut = name.toString(options);
     // 3. See if name endsWith whitespace (any whitespace character)
