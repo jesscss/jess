@@ -14,7 +14,7 @@ import { type AtRule } from './at-rule';
 import { type Mixin } from './mixin';
 import type { Selector } from './selector';
 import { spaced, Sequence } from './sequence';
-import { type PrintOptions, getPrintOptions, findDepthMarker, calculateDepthFromFrameState } from './util/print';
+import { type PrintOptions, getPrintOptions } from './util/print';
 
 import { atIndex } from './util/collections';
 import type { Condition } from './condition';
@@ -292,30 +292,24 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   toBraced(options?: PrintOptions) {
     let opts = getPrintOptions(options);
-    // frameState is guaranteed to exist by getPrintOptions
-    const optsFrameState = opts.frameState!;
-    // Use options.depth if provided (set by parent), otherwise calculate from frameState
-    const depthMarker = findDepthMarker(optsFrameState);
-    // At root level (no depth provided, no marker, no frames), depth should be 0
-    const depth = opts.depth ?? depthMarker ?? calculateDepthFromFrameState(optsFrameState) ?? 0;
-    const w = opts.writer!;
-    const mark = w.mark();
-    let space = ''.padStart((depth) * 2);
-    w.add('{');
-    // Set depth for _emitRulesBody to use (instead of pushing to frameState)
-    const childOptions = { ...opts, depth };
+    // Use options.depth if provided, otherwise calculate from frameState
+    const depth = opts.depth ?? opts.frameState?.at(-1)?.depth ?? 0;
     // #region agent log
     // eslint-disable-next-line
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:305', message: 'toBraced using depth', data: { depth, optionsDepth: opts.depth, hadDepthMarker: depthMarker !== undefined, frameStateLength: optsFrameState.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'depth-refactor', hypothesisId: 'C' }) }).catch(() => {});
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:293', message: 'toBraced entry', data: { depth, optionsDepth: opts.depth, frameStateDepth: opts.frameState?.at(-1)?.depth, frameStateLength: opts.frameState?.length ?? 0 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-fix-v2', hypothesisId: 'A' }) }).catch(() => {});
     // #endregion
+    const w = opts.writer!;
+    const mark = w.mark();
+    let space = ''.padStart(depth * 2);
+    w.add('{');
+    // Set depth for _emitRulesBody - children should be one level deeper
+    const childOptions = { ...opts, depth: depth + 1 };
     childOptions.writer!.add('\n');
     this._emitRulesBody(childOptions);
     // ensure closing brace is on its own properly indented line
-    // The closing brace should be at the parent's depth (depth - 1), not the child depth
     w.add('\n');
-    const parentDepth = depth > 0 ? depth - 1 : 0;
-    if (parentDepth !== 0) {
-      w.add(''.padStart(parentDepth * 2));
+    if (depth !== 0) {
+      w.add(space);
     }
     w.add('}');
     // At root level (depth === 0), don't add a newline after the closing brace
@@ -326,17 +320,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _emitRulesBody(options: PrintOptions) {
     const w = options.writer!;
-    // Calculate depth for children inside a brace block
-    // Use options.depth if provided (set by parent), otherwise calculate from frameState
-    // frameState is guaranteed to exist by getPrintOptions
-    const frameState = options.frameState!;
-    const depthMarker = findDepthMarker(frameState);
-    // At root level (no depth provided, no marker, no frames), depth should be 0
-    const depth = options.depth ?? depthMarker ?? calculateDepthFromFrameState(frameState) ?? 0;
+    // Use options.depth if provided, otherwise calculate from frameState
+    const depth = options.depth ?? options.frameState?.at(-1)?.depth ?? 0;
     // #region agent log
-    const frameStateDetails = frameState.map((s, i) => ({ index: i, depth: s.depth, hasFrame: !!s.frame, frameType: s.frame?.type }));
     // eslint-disable-next-line
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:340', message: '_emitRulesBody depth calculation', data: { calculatedDepth: depth, optionsDepth: options.depth, depthMarker, frameStateLength: frameState.length, frameStateDetails, hasAtRuleFrames: frameState.some((s: any) => s?.frame?.type === 'AtRule'), lastAtRuleDepth: frameState.filter((s: any) => s?.frame?.type === 'AtRule').at(-1)?.depth, itemsCount: this.value.filter(n => n.visible && !(n.type === 'Any' && (n as any).options?.role === 'charset')).length, itemTypes: this.value.filter(n => n.visible && !(n.type === 'Any' && (n as any).options?.role === 'charset')).map(n => n.type), collapseNesting: options.collapseNesting }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'depth-refactor', hypothesisId: 'C' }) }).catch(() => {});
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:317', message: '_emitRulesBody entry', data: { depth, optionsDepth: options.depth, frameStateDepth: options.frameState?.at(-1)?.depth, frameStateLength: options.frameState?.length ?? 0, itemsCount: this.value.filter(n => n.visible && !(n.type === 'Any' && (n as any).options?.role === 'charset')).length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-fix-v2', hypothesisId: 'B' }) }).catch(() => {});
     // #endregion
     const space = ''.padStart(depth * 2);
     const { value } = this;
@@ -361,20 +349,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
       const isChildRules = n.type === 'Rules';
-      // Rulesets and AtRules handle their own indentation via renderOpening
-      // Only indent simple nodes (declarations, etc.) here
       const isRulesetOrAtRule = n.type === 'Ruleset' || n.type === 'AtRule';
+      // Add indentation only for simple nodes (declarations, etc.)
+      // Ruleset and AtRule nodes indent themselves in renderOpening
       if (!isChildRules && !isRulesetOrAtRule && depth !== 0) {
         w.add(space);
       }
 
-      // For at-rules and rulesets, set options.depth so they use the depth we provide
-      // They should not calculate it themselves
-      const childOptions = { ...options, depth };
+      // Emit directly to preserve source map segments
+      // For child Rules nodes, pass the same depth (don't increment depth)
+      // Rules nodes inside Rules nodes are at the same level
+      const childOptions = isChildRules ? { ...options, depth } : { ...options, depth };
       // #region agent log
-
-      if (isRulesetOrAtRule) {
-        fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:377', message: '_emitRulesBody setting depth for child', data: { childType: n.type, depthProvided: depth, collapseNesting: options.collapseNesting }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'depth-refactor', hypothesisId: 'D' }) }).catch(() => {});
+      if (n.type === 'AtRule' || n.type === 'Ruleset') {
+        // eslint-disable-next-line
+        fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:350', message: '_emitRulesBody calling child', data: { childType: n.type, depthProvided: depth, isChildRules, nodeName: (n as any).value?.name?.toString?.() || (n as any).value?.selector?.toString?.() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-fix-v2', hypothesisId: 'C' }) }).catch(() => {});
       }
       // #endregion
       let rule = w.capture(() => n.toTrimmedString(childOptions));
@@ -1105,6 +1094,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     currentNode: Ruleset | AtRule
   ) {
     let opts = getPrintOptions(options);
+    // #region agent log
+    // eslint-disable-next-line
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1089', message: 'renderWithFrameFlattening entry', data: { optionsDepth: options.depth, optsDepth: opts.depth, currentNodeType: currentNode.type, currentNodeName: (currentNode as any).value?.name?.toString?.() || (currentNode as any).value?.selector?.toString?.() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-fix-v2', hypothesisId: 'H' }) }).catch(() => {});
+    // #endregion
     let w = options.writer!;
     let mark = w.mark();
     // frameState is guaranteed to exist by getPrintOptions
@@ -1118,10 +1111,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // If we have frames, we need to flatten
     let currentState = frameState.at(-1) ?? { depth: 0 };
     let currentDepth = currentState.depth;
-    // #region agent log
-    // eslint-disable-next-line
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1128', message: 'renderWithFrameFlattening entry', data: { currentNodeType: currentNode.type, initialFrameStateLength, currentDepth, frameStateDetails: frameState.map((s, i) => ({ index: i, depth: s.depth, hasFrame: !!s.frame, frameType: s.frame?.type })), collapseNesting: opts.collapseNesting, hoistToRoot: (currentNode as any).options?.hoistToRoot }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'depth-analysis', hypothesisId: 'A' }) }).catch(() => {});
-    // #endregion
 
     // Build newFrames from currentNode.frames, but filter out frames that are already open in frameState
     // This prevents reopening frames that can't be hoisted past (e.g., @page inside @media)
@@ -1135,30 +1124,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     // Always include currentNode itself (it's the frame we're rendering)
     newFrames.push(currentNode);
-
-    // If currentNode is an AtRule or Ruleset and its header will be rendered,
-    // add it to frameState now (before processing children) so nested children can reference it
-    // Check if currentNode is already in frameState
-    const currentNodeInFrameState = frameState.some(state => state.frame === currentNode);
-    let currentNodeWasAdded = false;
-    if (!currentNodeInFrameState && (isNode(currentNode, 'AtRule') || isNode(currentNode, 'Ruleset'))) {
-      // Calculate depth for currentNode - use the last frame's depth + 1, or 0 if at root
-      let currentNodeDepth = 0;
-      if (frameState.length > 0) {
-        const lastFrame = frameState[frameState.length - 1]?.frame;
-        const lastDepth = frameState[frameState.length - 1]!.depth;
-        // For nestable at-rules inside hoisted at-rules, use parent's depth (same level)
-        if (isNode(currentNode, 'AtRule') && currentNode.options.nestable
-          && isNode(lastFrame, 'AtRule') && lastFrame.options.hoistToRoot) {
-          currentNodeDepth = lastDepth;
-        } else {
-          currentNodeDepth = lastDepth + 1;
-        }
-      }
-      frameState.push({ frame: currentNode, depth: currentNodeDepth });
-      // Track that we added currentNode so we can account for it when checking if frames are open
-      currentNodeWasAdded = true;
-    }
 
     /**
      * If the current open frames equals the at-rule frames we need, then we don't need to
@@ -1182,6 +1147,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         continue;
       }
 
+      // Check if the next child is non-hoisted (needs frames to be open)
+      let nextChildIsNonHoisted = false;
+      for (let j = i + 1; j < length; j++) {
+        const nextChild = rules.value[j];
+        if (!nextChild?.visible) {
+          continue;
+        }
+        const isNextHoisted = isNode(nextChild, ['AtRule', 'Ruleset'])
+          && Object.prototype.hasOwnProperty.call(nextChild, 'frames');
+        if (!isNextHoisted) {
+          nextChildIsNonHoisted = true;
+        }
+        break; // Only check the next visible child
+      }
+
       /** Recalculate which frames are already open by comparing newFrames with current frameState */
       let newFramesStartIndex = 0;
       for (let j = 0; j < newFrames.length; j++) {
@@ -1194,7 +1174,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       // Recursively traverse through Rules nodes and hoisted children until we find a non-hoisted child
       // Track frames as we go, and render openings/closings when we hit actual content
-      const renderChildRecursive = (node: Node, currentFrames: (Ruleset | AtRule)[], frameStartIndex: number): void => {
+      const renderChildRecursive = (node: Node, currentFrames: (Ruleset | AtRule)[], frameStartIndex: number, shouldReopenFrames: boolean): void => {
         // Check if this is a hoisted Ruleset/AtRule
         const isAtRuleOrRuleset = isNode(node, ['AtRule', 'Ruleset']);
         const hasFramesProperty = isAtRuleOrRuleset && Object.prototype.hasOwnProperty.call(node, 'frames');
@@ -1202,6 +1182,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
         if (isHoisted) {
           // Close any open frames (except AtRules) before rendering this hoisted child
+          // Track which frames we close so we can re-open them if the next child is non-hoisted
+          const closedFrames: Array<{ frame: Ruleset | AtRule; depth: number }> = [];
           while (frameState.length > initialFrameStateLength) {
             let state = frameState[frameState.length - 1];
             if (!state?.frame) {
@@ -1213,6 +1195,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               break;
             }
             frameState.pop();
+            closedFrames.unshift({ frame, depth: state.depth }); // unshift to maintain order for re-opening
             if (openedFrames.length > 0 && openedFrames[openedFrames.length - 1] === frame) {
               openedFrames.pop();
             }
@@ -1220,22 +1203,40 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             w.add(`${space}}\n`);
           }
           // Render the hoisted child (it will handle its own frame tracking)
-          // Ensure frameState is passed to the hoisted child so it knows about parent frames
-          const hoistedOpts = { ...opts, frameState };
-          // #region agent log
-
-          if (isNode(node, 'AtRule')) {
-            fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1197', message: 'renderWithFrameFlattening calling toTrimmedString on hoisted at-rule', data: { frameStateLength: frameState.length, frameStateDetails: frameState.map((s, i) => ({ index: i, depth: s.depth, hasFrame: !!s.frame, frameType: s.frame?.type })) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'depth-refactor', hypothesisId: 'F' }) }).catch(() => {});
+          node.toTrimmedString(opts);
+          // Re-open frames if the next child is non-hoisted (needs frames to be open)
+          // Just add them back to frameState without re-rendering the headers
+          if (shouldReopenFrames && closedFrames.length > 0) {
+            for (const closedFrame of closedFrames) {
+              frameState.push({ frame: closedFrame.frame, depth: closedFrame.depth });
+              openedFrames.push(closedFrame.frame);
+              // Don't re-render the opening - it was already rendered, we just need to track it
+            }
           }
-          // #endregion
-          node.toTrimmedString(hoistedOpts);
         } else if (isNode(node, 'Rules')) {
           // Recursively traverse Rules nodes
           const rulesNode = node as Rules;
-          for (const nestedChild of rulesNode.value) {
-            if (nestedChild.visible) {
-              renderChildRecursive(nestedChild, currentFrames, frameStartIndex);
+          const nestedLength = rulesNode.value.length;
+          for (let nestedIdx = 0; nestedIdx < nestedLength; nestedIdx++) {
+            const nestedChild = rulesNode.value[nestedIdx];
+            if (!nestedChild?.visible) {
+              continue;
             }
+            // Check if the next nested child is non-hoisted
+            let nextNestedIsNonHoisted = false;
+            for (let j = nestedIdx + 1; j < nestedLength; j++) {
+              const nextNested = rulesNode.value[j];
+              if (!nextNested?.visible) {
+                continue;
+              }
+              const isNextHoisted = isNode(nextNested, ['AtRule', 'Ruleset'])
+                && Object.prototype.hasOwnProperty.call(nextNested, 'frames');
+              if (!isNextHoisted) {
+                nextNestedIsNonHoisted = true;
+              }
+              break;
+            }
+            renderChildRecursive(nestedChild, currentFrames, frameStartIndex, nextNestedIsNonHoisted);
           }
         } else {
           // This is a non-hoisted child (Declaration, etc.)
@@ -1251,103 +1252,88 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               break;
             }
           }
-          // Calculate depth for the next frame to open
-          // Use the depth of the last frame in frameState, or alreadyOpenCount if frameState is empty
-          let d: number;
-          if (frameState.length > 0) {
-            d = frameState[frameState.length - 1]!.depth + 1;
-          } else {
-            // No frames in frameState - use alreadyOpenCount as depth
-            d = alreadyOpenCount;
-          }
-          // If frames aren't open yet, open them now
-          // We need to open frames starting from alreadyOpenCount
-          // Skip currentNode itself (it's at index alreadyOpenCount if it's the first frame to open)
-          for (let frameIdx = alreadyOpenCount; frameIdx < currentFrames.length; frameIdx++) {
-            const frameToOpen = currentFrames[frameIdx];
-            if (!frameToOpen) {
-              continue;
-            }
-            // Check if this frame is already in frameState
-            const alreadyInFrameState = frameState.some(state => state.frame === frameToOpen);
-            if (!alreadyInFrameState) {
-              // Calculate depth based on current frameState depth
-              // If frameState is empty and we're at the absolute root (initialFrameStateLength === 0 and no parent frames),
-              // this is the first frame - use depth 0 (root level)
-              // Otherwise, if frameState is empty but we have parent frames (currentNode.frames has entries),
-              // we're inside a ruleset/at-rule, so use depth 1
-              // If frameState has entries:
-              //   - For nestable at-rules inside hoisted at-rules, use parent's depth (same level)
-              //   - For non-nestable at-rules, use parent depth + 1 (nested deeper)
-              if (frameState.length === 0) {
-                // First frame - check if we're at absolute root
-                // If initialFrameStateLength is 0, we're at absolute root (depth 0)
-                // Otherwise, we're inside something that called renderWithFrameFlattening (depth 1)
-                if (initialFrameStateLength === 0) {
-                  // At absolute root - depth should be 0
-                  d = 0;
-                } else {
-                  // Inside a ruleset/at-rule that called renderWithFrameFlattening - depth should be 1
-                  d = 1;
-                }
-                // #region agent log
-                // eslint-disable-next-line @typescript-eslint/naming-convention
-                fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1271', message: 'renderWithFrameFlattening opening frame with empty frameState', data: { calculatedDepth: d, initialFrameStateLength, frameType: frameToOpen.type, frameStateLength: frameState.length, currentNodeType: currentNode.type, currentNodeInFrameState: frameState.some(s => s.frame === currentNode) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'frameState-tracking', hypothesisId: 'G' }) }).catch(() => {});
-                // #endregion
-              } else {
-                const currentDepth = frameState[frameState.length - 1]!.depth;
-                const lastFrame = frameState[frameState.length - 1]?.frame;
-                // Check if this is a nestable at-rule inside a hoisted at-rule
-                if (isNode(frameToOpen, 'AtRule') && frameToOpen.options.nestable
-                  && isNode(lastFrame, 'AtRule') && lastFrame.options.hoistToRoot) {
-                  // Nestable at-rule inside hoisted at-rule - use parent's depth (same level)
-                  d = currentDepth;
-                } else {
-                  // Non-nestable or not inside hoisted at-rule - nest deeper
-                  d = currentDepth + 1;
-                }
-                // #region agent log
-                // eslint-disable-next-line @typescript-eslint/naming-convention
-                fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1285', message: 'renderWithFrameFlattening opening frame with non-empty frameState', data: { calculatedDepth: d, frameStateLength: frameState.length, lastFrameDepth: currentDepth, lastFrameType: lastFrame?.type, frameType: frameToOpen.type, isNestable: isNode(frameToOpen, 'AtRule') && frameToOpen.options.nestable, lastFrameHoisted: isNode(lastFrame, 'AtRule') && lastFrame.options.hoistToRoot }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'frameState-tracking', hypothesisId: 'G' }) }).catch(() => {});
-                // #endregion
+          let d = alreadyOpenCount;
+          // If frames aren't open yet (frameState is at initial length), open them now
+          if (frameState.length === initialFrameStateLength) {
+            // Open all frames in currentFrames that aren't already open, starting from alreadyOpenCount
+            for (let frameIdx = alreadyOpenCount; frameIdx < currentFrames.length; frameIdx++) {
+              const frameToOpen = currentFrames[frameIdx];
+              if (!frameToOpen) {
+                continue;
               }
+              // Check if this frame is already in frameState
+              const alreadyInFrameState = frameState.some(state => state.frame === frameToOpen);
               // #region agent log
               // eslint-disable-next-line
-               fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1263', message: 'renderWithFrameFlattening depth calculation for frame', data: { calculatedDepth: d, frameStateLength: frameState.length, initialFrameStateLength, frameType: frameToOpen.type, isNestable: isNode(frameToOpen, 'AtRule') && frameToOpen.options.nestable, lastFrameDepth: frameState[frameState.length - 1]?.depth, lastFrameType: frameState[frameState.length - 1]?.frame?.type, lastFrameHoisted: isNode(frameState[frameState.length - 1]?.frame, 'AtRule') && (frameState[frameState.length - 1]?.frame as AtRule).options.hoistToRoot, frameStateDetails: frameState.map((s, i) => ({ index: i, depth: s.depth, hasFrame: !!s.frame, frameType: s.frame?.type })) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'depth-refactor', hypothesisId: 'B' }) }).catch(() => {});
+              fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1220', message: 'renderWithFrameFlattening checking frame', data: { frameType: frameToOpen.type, frameName: (frameToOpen as any).value?.name?.toString?.() || (frameToOpen as any).value?.selector?.toString?.(), alreadyInFrameState, frameStateLength: frameState.length, initialFrameStateLength }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-fix-v2', hypothesisId: 'G' }) }).catch(() => {});
               // #endregion
-              // #region agent log
-              // eslint-disable-next-line
-               fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1251', message: 'renderWithFrameFlattening pushing frame', data: { frameStateLengthBefore: frameState.length, calculatedDepth: d, frameType: frameToOpen.type, isFirstFrame: frameState.length === 0, isNestable: isNode(frameToOpen, 'AtRule') && frameToOpen.options.nestable, parentHoisted: isNode(frameState[frameState.length - 1]?.frame, 'AtRule') && (frameState[frameState.length - 1]?.frame as AtRule).options.hoistToRoot }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-debug-9', hypothesisId: 'D' }) }).catch(() => {});
-              // #endregion
-              frameState.push({ frame: frameToOpen, depth: d });
-              openedFrames.push(frameToOpen);
-              // Set depth for renderOpening
-              const renderOpts = { ...opts, depth: d };
-              frameToOpen.renderOpening(renderOpts);
-              w.add('{\n');
-              d++; // Increment depth for next frame
+              if (!alreadyInFrameState) {
+              // Calculate depth for this frame:
+              // Depth is determined by the number of boundaried at-rules (at-rules that can't be hoisted past)
+              // Rulesets don't affect depth - only at-rules do
+              // A "hoisted to root" node resets at zero unless there are at-rules it can't hoist past
+
+                // Find the last at-rule depth in frameState (ignore rulesets)
+                let lastAtRuleDepth = -1;
+                for (let i = frameState.length - 1; i >= 0; i--) {
+                  const state = frameState[i];
+                  if (state?.frame && isNode(state.frame, 'AtRule')) {
+                    lastAtRuleDepth = state.depth;
+                    break;
+                  }
+                }
+
+                // Count how many at-rules are in frameState (for determining if we're at root)
+                let atRuleCount = 0;
+                for (let i = 0; i < frameState.length; i++) {
+                  const state = frameState[i];
+                  if (state?.frame && isNode(state.frame, 'AtRule')) {
+                    atRuleCount++;
+                  }
+                }
+
+                // Check if this frame is hoisted (it's in currentNode.frames, meaning it was hoisted)
+                const isHoisted = isNode(frameToOpen, 'AtRule') && frameToOpen.options.hoistToRoot
+                  && framesFromParent.includes(frameToOpen as AtRule);
+
+                if (atRuleCount === 0 && isHoisted) {
+                // No at-rules in frameState and frame is hoisted - start at depth 0
+                  d = 0;
+                } else if (lastAtRuleDepth >= 0) {
+                // There are at-rules it can't hoist past - nest deeper
+                  d = lastAtRuleDepth + 1;
+                } else {
+                // No at-rules, but not hoisted - use opts.depth or frameIdx
+                  d = opts.depth ?? frameIdx;
+                }
+                // #region agent log
+                // eslint-disable-next-line
+              fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1201', message: 'renderWithFrameFlattening opening frame', data: { calculatedDepth: d, optsDepth: opts.depth, frameStateLength: frameState.length, lastFrameDepth: frameState[frameState.length - 1]?.depth, frameIdx, frameType: frameToOpen.type, frameName: (frameToOpen as any).value?.name?.toString?.() || (frameToOpen as any).value?.selector?.toString?.() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-fix-v2', hypothesisId: 'D' }) }).catch(() => {});
+                // #endregion
+                frameState.push({ frame: frameToOpen, depth: d });
+                openedFrames.push(frameToOpen);
+                // Set depth for renderOpening - node will indent itself
+                const renderOpts = { ...opts, depth: d };
+                frameToOpen.renderOpening(renderOpts);
+                w.add('{\n');
+              }
             }
+            // After opening all frames, declarations should be indented at the last frame's depth + 1
+            // For non-hoisted children, both at-rules AND rulesets affect depth
+            d = frameState.length > 0 ? frameState[frameState.length - 1]!.depth + 1 : alreadyOpenCount + 1;
+          } else {
+            // Frames are already open from a previous non-hoisted child
+            // Declarations should be indented at the last frame's depth + 1
+            // For non-hoisted children, both at-rules AND rulesets affect depth
+            d = frameState.length > 0 ? frameState[frameState.length - 1]!.depth + 1 : alreadyOpenCount + 1;
           }
-          // After opening all frames, declarations should be indented at the last frame's depth + 1
-          // Use the last actual frame (with frame property) for depth calculation
-          let lastFrameDepth = 0;
-          for (let i = frameState.length - 1; i >= 0; i--) {
-            const state = frameState[i];
-            if (state?.frame) {
-              lastFrameDepth = state.depth;
-              break;
-            }
-          }
-          d = lastFrameDepth + 1;
 
           const isRulesNode = isNode(node, 'Rules');
           // Set depth for children - use calculated depth d
           const childOpts = { ...opts, depth: d };
           // #region agent log
           // eslint-disable-next-line
-            if (isRulesNode) {
-            fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1293', message: 'renderWithFrameFlattening childOpts creation for Rules', data: { isRulesNode: true, depthProvided: d, collapseNesting: opts.collapseNesting }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'depth-refactor', hypothesisId: 'E' }) }).catch(() => {});
-          }
+          fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1220', message: 'renderWithFrameFlattening rendering child', data: { childType: node.type, depthProvided: d, frameStateLength: frameState.length, lastFrameDepth: frameState[frameState.length - 1]?.depth, isRulesNode, nodeName: (node as any).value?.name?.toString?.() || (node as any).value?.selector?.toString?.() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-fix-v2', hypothesisId: 'E' }) }).catch(() => {});
           // #endregion
           if (!isRulesNode) {
             let space = ''.padStart(d * 2);
@@ -1362,11 +1348,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       };
 
-      renderChildRecursive(child, newFrames, newFramesStartIndex);
+      renderChildRecursive(child, newFrames, newFramesStartIndex, nextChildIsNonHoisted);
     }
 
     // At the end, close any frames that were opened during this renderWithFrameFlattening call
-    // Close frames in reverse order of how we opened them
+    // This only happens if there are no more children
     // Close frames in reverse order - pop from frameState and verify it matches our opened frames
     for (let i = openedFrames.length - 1; i >= 0; i--) {
       const expectedFrame = openedFrames[i];
@@ -1384,13 +1370,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       frameState.pop();
       let space = ''.padStart(state.depth * 2);
       w.add(`${space}}\n`);
-    }
-    // Remove currentNode from frameState if we added it (it was added for tracking, not for closing)
-    if (currentNodeWasAdded) {
-      const lastState = frameState[frameState.length - 1];
-      if (lastState?.frame === currentNode) {
-        frameState.pop();
-      }
     }
   }
 }

@@ -10,7 +10,7 @@ import { Ampersand } from './ampersand';
 import { Combinator } from './combinator';
 import { ComplexSelector } from './selector-complex';
 import { SelectorList } from './selector-list';
-import { type PrintOptions, getPrintOptions, findDepthMarker, withChildDepth } from './util/print';
+import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule';
 
@@ -79,15 +79,14 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     // Ensure exactly one space before '{'
     w.add(' ');
 
-    // Use options.depth if provided (set by parent), otherwise we're at root (depth 0)
-    const rulesetDepth = options.depth ?? 0;
+    // Use options.depth if provided, otherwise calculate from frameState
+    const depth = options.depth ?? options.frameState?.at(-1)?.depth ?? 0;
     // #region agent log
     // eslint-disable-next-line
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ruleset.ts:84', message: 'Ruleset depth calculation', data: { rulesetDepth, optionsDepth: options.depth, frameStateLength: options.frameState?.length ?? 0, collapseNesting: options.collapseNesting, hoistToRoot: this.options.hoistToRoot }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'depth-refactor', hypothesisId: 'A' }) }).catch(() => {});
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ruleset.ts:82', message: 'Ruleset toTrimmedString', data: { rulesetDepth: depth, optionsDepth: options.depth, frameStateDepth: options.frameState?.at(-1)?.depth, selector: selector.toString() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-fix-v2', hypothesisId: 'F' }) }).catch(() => {});
     // #endregion
-    // Set depth for children (rules.toBraced) - children should be one level deeper
-    const childOptions = { ...options, depth: rulesetDepth + 1 };
-    rules.toBraced(childOptions);
+    // Pass the ruleset's own depth to toBraced - it will increment for content
+    rules.toBraced({ ...options, depth });
 
     return w.getSince(mark);
   }
@@ -96,11 +95,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   renderOpening(options: PrintOptions): void {
     const w = options.writer!;
     const { selector } = this.value;
-    // Use options.depth if provided (set by parent), otherwise we're at root (depth 0)
-    const depth = options.depth ?? 0;
+    // Nodes indent themselves - use options.depth if provided, otherwise calculate from frameState
+    const depth = options.depth ?? options.frameState?.at(-1)?.depth ?? 0;
     // #region agent log
     // eslint-disable-next-line
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ruleset.ts:108',message:'Ruleset renderOpening depth',data:{selector:selector.toString(),depth,optionsDepth:options.depth},timestamp:Date.now(),sessionId:'debug-session',runId:'depth-refactor',hypothesisId:'A'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ruleset.ts:95', message: 'Ruleset renderOpening', data: { depth, optionsDepth: options.depth, frameStateDepth: options.frameState?.at(-1)?.depth, selector: selector.toString() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-fix-v2', hypothesisId: 'J' }) }).catch(() => {});
     // #endregion
     const space = ''.padStart(depth * 2);
 

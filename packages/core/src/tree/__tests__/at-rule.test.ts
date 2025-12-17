@@ -1,7 +1,7 @@
 import {
   rules, sel, el, spaced, any, sellist, ruleset, decl, atrule,
   vardecl, ref, mixin, call, list, op,
-  num, dimension,
+  num, dimension, amp,
   paren, seq, comment, nil, quoted, color, co, interpolated
 } from '..';
 import { Context } from '../../context';
@@ -16,11 +16,11 @@ let context: Context;
 
 describe('AtRule', () => {
   beforeEach(() => {
-    context = new Context({ collapseNesting: true });
+    context = new Context();
   });
 
   describe('nested @media rules', () => {
-    it('should handle nested @media rules inside rulesets', async () => {
+    it.only('should handle nested @media rules inside rulesets', async () => {
       // Represents: .body { @media print { padding: 20px; } }
       const node = rules([
         ruleset({
@@ -44,6 +44,58 @@ describe('AtRule', () => {
         .body {
           @media print {
             padding: 20px;
+          }
+        }
+      `);
+    });
+
+    /**
+     * We need to hoist rulesets that have Less-style ampersands
+     * that add to the inherited selector.
+     */
+    it('should collapse ampersands when we need to', async () => {
+      // Represents:
+      // .body {
+      //   @media print {
+      //     padding: 20px;
+      //     &-1 {
+      //       color: black;
+      //     }
+      //   }
+      // }
+      const node = rules([
+        ruleset({
+          selector: sel([el('.body')]),
+          rules: rules([
+            atrule({
+              name: any('@media', { role: 'atkeyword' }),
+              prelude: seq([any('print', { role: 'keyword' })]),
+              rules: rules([
+                decl({ name: 'padding', value: dimension([20, 'px']) }),
+                ruleset({
+                  selector: sel([amp('-1')]),
+                  rules: rules([
+                    decl({ name: 'color', value: any('black') })
+                  ])
+                })
+              ])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = evald.toString();
+
+      expect(css).toBeString(`
+        .body {
+          @media print {
+            padding: 20px;
+          }
+        }
+        @media print {
+          .body-1 {
+            color: black;
           }
         }
       `);
@@ -120,7 +172,7 @@ describe('AtRule', () => {
                 name: any('@media', { role: 'atkeyword' }),
                 prelude: seq([paren(decl({
                   name: 'max-width',
-                  value: ref({ key: 'fallback' })
+                  value: ref({ key: 'fallback' }, { type: 'variable' })
                 }))]),
                 rules: rules([
                   decl({ name: 'background', value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 }) })
@@ -136,7 +188,7 @@ describe('AtRule', () => {
           selector: sel([el('.a')]),
           rules: rules([
             call({
-              name: ref({ key: '.mediaMixin' }, { type: 'mixin' }),
+              name: ref({ key: '.mediaMixin' }, { type: 'mixin-ruleset' }),
               args: list([dimension([100, 'px'])])
             })
           ])
@@ -365,7 +417,7 @@ describe('AtRule', () => {
               }))]),
               rules: rules([
                 call({
-                  name: ref({ key: '.nav-justified' }, { type: 'mixin' })
+                  name: ref({ key: '.nav-justified' }, { type: 'mixin-ruleset' })
                 })
               ])
             })
@@ -392,8 +444,9 @@ describe('AtRule', () => {
     });
   });
 
-  describe.only('serialization test for media.less AST', () => {
-    it('should serialize the exact AST structure from media.less.s-expr.txt', async () => {
+  describe('serialization test for media.less AST', () => {
+    it.only('should serialize the exact AST structure from media.less.s-expr.txt', async () => {
+      context.opts.collapseNesting = true;
       // Build the AST exactly as represented in media.less.s-expr.txt
       const node = rules([
         comment('// For now, variables can\'t be declared…', { lineComment: true }),
@@ -414,7 +467,7 @@ describe('AtRule', () => {
                   rules: rules([
                     decl({
                       name: 'width',
-                      value: ref({ key: 'var' })
+                      value: ref({ key: 'var' }, { type: 'variable' })
                     })
                   ])
                 })
@@ -453,7 +506,7 @@ describe('AtRule', () => {
                 decl({
                   name: 'max-width',
                   value: paren(op([
-                    ref({ key: 'base' }),
+                    ref({ key: 'base' }, { type: 'variable' }),
                     '*',
                     num(60)
                   ]))
@@ -473,12 +526,12 @@ describe('AtRule', () => {
               paren(decl({
                 name: 'device-aspect-ratio',
                 value: quoted(interpolated({
-                  source: '\u0000\u0001 / \u0000\u0001',
+                  source: '%% / %%',
                   replacements: [
-                    ref({ key: 'ratio_large' }),
-                    ref({ key: 'ratio_small' })
+                    ref({ key: 'ratio_large' }, { type: 'variable' }),
+                    ref({ key: 'ratio_small' }, { type: 'variable' })
                   ]
-                }, { role: 'ident' }))
+                }, { role: 'ident' }), { escaped: true })
               }))
             ])
           ]),
@@ -527,7 +580,7 @@ describe('AtRule', () => {
               seq([
                 paren(decl({
                   name: 'min-width',
-                  value: ref({ key: 'var' })
+                  value: ref({ key: 'var' }, { type: 'variable' })
                 }))
               ])
             ]),
@@ -738,7 +791,7 @@ describe('AtRule', () => {
                   prelude: seq([
                     paren(decl({
                       name: 'max-width',
-                      value: ref({ key: 'fallback' })
+                      value: ref({ key: 'fallback' }, { type: 'variable' })
                     }))
                   ]),
                   rules: rules([
@@ -756,7 +809,7 @@ describe('AtRule', () => {
           selector: el('.a'),
           rules: rules([
             call({
-              name: ref({ key: '.mediaMixin' }, { type: 'mixin' }),
+              name: ref({ key: '.mediaMixin' }, { type: 'mixin-ruleset' }),
               args: list([
                 dimension([100, 'px'])
               ])
@@ -767,18 +820,18 @@ describe('AtRule', () => {
           selector: el('.b'),
           rules: rules([
             call({
-              name: ref({ key: '.mediaMixin' }, { type: 'mixin' })
+              name: ref({ key: '.mediaMixin' }, { type: 'mixin-ruleset' })
             })
           ])
         }),
         vardecl({
           name: any('smartphone', { role: 'ident' }),
-          value: quoted(any('only screen and (max-width: 200px)', { role: 'any' }))
+          value: quoted(any('only screen and (max-width: 200px)', { role: 'any' }), { escaped: true })
         }),
         atrule({
           name: any('@media', { role: 'atkeyword' }),
           prelude: seq([
-            ref({ key: 'smartphone' })
+            ref({ key: 'smartphone' }, { type: 'variable' })
           ]),
           rules: rules([
             ruleset({
@@ -975,7 +1028,7 @@ describe('AtRule', () => {
                       value: seq([
                         quoted(any('Page ', { role: 'any' })),
                         call({
-                          name: ref({ key: 'counter' }),
+                          name: any('counter', { role: 'ident' }),
                           args: list([
                             any('page')
                           ])
@@ -1071,7 +1124,7 @@ describe('AtRule', () => {
           selector: el('.body'),
           rules: rules([
             call({
-              name: ref({ key: '.bg' }, { type: 'mixin' })
+              name: ref({ key: '.bg' }, { type: 'mixin-ruleset' })
             })
           ])
         }),
@@ -1084,7 +1137,7 @@ describe('AtRule', () => {
           prelude: seq([
             paren(decl({
               name: 'max-width',
-              value: ref({ key: 'bpMedium' })
+              value: ref({ key: 'bpMedium' }, { type: 'variable' })
             }))
           ]),
           rules: rules([
@@ -1514,8 +1567,9 @@ describe('AtRule', () => {
         })
       ]);
 
-      /** This represents pre-eval nodes matching media.less.s-expr.txt */
-      const serialized = node.toString();
+      /** This represents already eval'd nodes */
+      const evald = await node.eval(context);
+      const serialized = evald.toString();
 
       // The serialized output should match the structure
       expect(serialized).toBeString(`
@@ -1523,7 +1577,7 @@ describe('AtRule', () => {
           .class {
             color: blue;
           }
-          .class .class .sub {
+          .class .sub {
             width: 42;
           }
         }
@@ -1554,34 +1608,53 @@ describe('AtRule', () => {
           }
         }
         @media print {
-          .body .body {
+          .body {
             padding: 20px;
           }
-          .body .body .body header {
+          .body header {
             background-color: red;
           }
           @media (orientation: landscape) {
-            .body .body .body {
+            .body {
               margin-left: 20px;
             }
           }
         }
         @media screen {
-          body {
-            background: green;
+          .sidebar {
+            width: 300px;
+          }
+          @media (orientation: landscape) {
+            .sidebar {
+              width: 500px;
+            }
           }
         }
         @media a {
-          body {
-            background: green;
+          @media (b) {
+            .first .second .third {
+              width: 300px;
+            }
+            @media (c) {
+              .first .second .third {
+                width: 500px;
+              }
+            }
+          }
+        }
+        @media a {
+          @media (b) {
+            .first .second .fourth {
+              width: 3;
+            }
           }
         }
         @media a, (b) and (c) {
-          .body .body {
+          .body {
             width: 95%;
           }
           @media (x), (y) {
-            .body .body .body {
+            .body {
               width: 100%;
             }
           }
@@ -1590,11 +1663,11 @@ describe('AtRule', () => {
           background: black;
         }
         @media handheld {
-          .a .a {
+          .a {
             background: white;
           }
           @media (max-width: 100px) {
-            .a .a .a {
+            .a {
               background: red;
             }
           }
@@ -1603,11 +1676,11 @@ describe('AtRule', () => {
           background: black;
         }
         @media handheld {
-          .b .b {
+          .b {
             background: white;
           }
           @media (max-width: 100px) {
-            .b .b .b {
+            .b {
               background: red;
             }
           }
@@ -1675,7 +1748,7 @@ describe('AtRule', () => {
               margin: 1cm;
             }
             @right-middle {
-              margin: 1cm;
+              content: "Page " counter(page);
             }
             @right-bottom {
               margin: 1cm;
@@ -1691,7 +1764,7 @@ describe('AtRule', () => {
           background: red;
         }
         @media (max-width: 500px) {
-          .body .body {
+          .body {
             background: green;
           }
         }
@@ -1700,11 +1773,13 @@ describe('AtRule', () => {
             background: red;
           }
           @media (max-width: 500px) {
-            .body .body {
+            .body {
               background: green;
             }
           }
-          background: blue;
+          .body {
+            background: blue;
+          }
         }
         @media (max-width: 1200px) {
           /* a comment */
