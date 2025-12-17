@@ -272,6 +272,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     location?: LocationInfo,
     treeContext?: TreeContext
   ) {
+    let rulesVisibility = options?.rulesVisibility ?? {};
+    rulesVisibility.Declaration ??= 'public';
+    rulesVisibility.Ruleset ??= 'public';
+    /** @todo - deprecate and warn */
+    rulesVisibility.Mixin ??= 'public';
     super(value ?? [], options, location, treeContext);
   }
 
@@ -320,13 +325,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _emitRulesBody(options: PrintOptions) {
     const w = options.writer!;
-    // Use options.depth if provided, otherwise calculate from frameState
-    const depth = options.depth ?? options.frameState?.at(-1)?.depth ?? 0;
+    const depth = options.depth ?? 0;
     // #region agent log
     // eslint-disable-next-line
     fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:317', message: '_emitRulesBody entry', data: { depth, optionsDepth: options.depth, frameStateDepth: options.frameState?.at(-1)?.depth, frameStateLength: options.frameState?.length ?? 0, itemsCount: this.value.filter(n => n.visible && !(n.type === 'Any' && (n as any).options?.role === 'charset')).length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-fix-v2', hypothesisId: 'B' }) }).catch(() => {});
     // #endregion
-    const space = ''.padStart(depth * 2);
+    const space = options.indent!;
     const { value } = this;
 
     // Skip charset nodes - they are collected and prepended at root level
@@ -383,6 +387,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const mark = w.mark();
     this._emitRulesBody(options);
     return w.getSince(mark);
+  }
+
+  /** All rules, with nested rules flattened */
+  flatRules(visibleOnly: boolean = false) {
+    const finalRules: Node[] = [];
+    const iterateRules = (rules: Rules) => {
+      for (let n of rules.value) {
+        if (isNode(n, 'Rules')) {
+          iterateRules(n);
+        }
+        if (!visibleOnly || n.visible || n.fullRender) {
+          finalRules.push(n);
+        }
+      }
+    };
+    iterateRules(this);
+    return finalRules;
   }
 
   visibleRules() {
@@ -1181,9 +1202,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const isHoisted = isAtRuleOrRuleset && hasFramesProperty;
 
         if (isHoisted) {
+          // #region agent log
+          // eslint-disable-next-line
+          fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1183', message: 'hoisted child - checking frames', data: { nodeType: node.type, nodeName: (node as any).value?.name?.toString?.() || (node as any).value?.selector?.toString?.() || node.type, frameStateLength: frameState.length, initialFrameStateLength, currentFramesLength: currentFrames.length, shouldReopenFrames, frameStateFrames: frameState.map(s => ({ type: s.frame?.type, name: (s.frame as any)?.value?.name?.toString?.() || (s.frame as any)?.value?.selector?.toString?.() })), currentFramesNames: currentFrames.map(f => ({ type: f.type, name: (f as any)?.value?.name?.toString?.() || (f as any)?.value?.selector?.toString?.() })) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'media-close-reopen', hypothesisId: 'A' }) }).catch(() => {});
+          // #endregion
           // Close any open frames (except AtRules) before rendering this hoisted child
           // Track which frames we close so we can re-open them if the next child is non-hoisted
+          // BUT: Don't close frames that the next child also needs (check currentFrames)
           const closedFrames: Array<{ frame: Ruleset | AtRule; depth: number }> = [];
+          // Check which frames from frameState are also in currentFrames (needed by next child)
+          const framesNeededByNextChild = new Set(currentFrames);
           while (frameState.length > initialFrameStateLength) {
             let state = frameState[frameState.length - 1];
             if (!state?.frame) {
@@ -1192,6 +1220,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
             let frame = state.frame;
             if (isNode(frame, 'AtRule')) {
+              // Don't close AtRules - they can't be hoisted past
+              break;
+            }
+            // #region agent log
+            // eslint-disable-next-line
+            fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1200', message: 'hoisted child - checking if should close frame', data: { frameType: frame.type, frameName: (frame as any).value?.name?.toString?.() || (frame as any).value?.selector?.toString?.() || frame.type, isNeededByNextChild: framesNeededByNextChild.has(frame), shouldReopenFrames }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'media-close-reopen', hypothesisId: 'B' }) }).catch(() => {});
+            // #endregion
+            // If this frame is needed by the next child, don't close it
+            if (framesNeededByNextChild.has(frame)) {
               break;
             }
             frameState.pop();
@@ -1202,11 +1239,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             let space = ''.padStart(state.depth * 2);
             w.add(`${space}}\n`);
           }
+          // #region agent log
+          // eslint-disable-next-line
+          fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1215', message: 'hoisted child - closed frames', data: { closedFramesCount: closedFrames.length, closedFramesNames: closedFrames.map(cf => ({ type: cf.frame.type, name: (cf.frame as any)?.value?.name?.toString?.() || (cf.frame as any)?.value?.selector?.toString?.() })), frameStateLength: frameState.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'media-close-reopen', hypothesisId: 'C' }) }).catch(() => {});
+          // #endregion
           // Render the hoisted child (it will handle its own frame tracking)
           node.toTrimmedString(opts);
           // Re-open frames if the next child is non-hoisted (needs frames to be open)
           // Just add them back to frameState without re-rendering the headers
           if (shouldReopenFrames && closedFrames.length > 0) {
+            // #region agent log
+            // eslint-disable-next-line
+            fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1223', message: 'hoisted child - reopening frames', data: { closedFramesCount: closedFrames.length, shouldReopenFrames }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'media-close-reopen', hypothesisId: 'D' }) }).catch(() => {});
+            // #endregion
             for (const closedFrame of closedFrames) {
               frameState.push({ frame: closedFrame.frame, depth: closedFrame.depth });
               openedFrames.push(closedFrame.frame);

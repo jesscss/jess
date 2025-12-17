@@ -129,6 +129,9 @@ importers:
       '@jridgewell/gen-mapping':
         specifier: ~0.3.12
         version: 0.3.12
+      '@traversable/json-schema':
+        specifier: ~0.0.26
+        version: 0.0.26(@traversable/json@0.0.52(@traversable/registry@0.0.49))(prettier@2.8.8)
       '@ungap/set-methods':
         specifier: ~0.1.1
         version: 0.1.1
@@ -147,12 +150,6 @@ importers:
       lodash-es:
         specifier: ^4.17.21
         version: 4.17.21
-      set.prototype.intersection:
-        specifier: ~1.1.5
-        version: 1.1.7
-      set.prototype.issupersetof:
-        specifier: ~1.1.2
-        version: 1.1.3
     devDependencies:
       '@types/lodash-es':
         specifier: ^4.17.8
@@ -1935,6 +1932,11 @@ packages:
   '@polka/url@1.0.0-next.29':
     resolution: {integrity: sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==}
 
+  '@prettier/sync@0.5.5':
+    resolution: {integrity: sha512-6BMtNr7aQhyNcGzmumkL0tgr1YQGfm9d7ZdmRpWqWuqpc9vZBind4xMe5NMiRECOhjuSiWHfBWLBnXkpeE90bw==}
+    peerDependencies:
+      prettier: '*'
+
   '@puppeteer/browsers@0.5.0':
     resolution: {integrity: sha512-Uw6oB7VvmPRLE4iKsjuOh8zgDabhNX67dzo8U/BB0f9527qx+4eeUs+korU98OhG5C4ubg7ufBgVi63XYwS6TQ==}
     engines: {node: '>=14.1.0'}
@@ -2221,6 +2223,27 @@ packages:
   '@szmarczak/http-timer@5.0.1':
     resolution: {integrity: sha512-+PmQX0PiAYPMeVYe237LJAYvOMYW1j2rH5YROyS3b4CTVJum34HfRvKvAzozHAQG0TnHNdUfY9nCeUyRAs//cw==}
     engines: {node: '>=14.16'}
+
+  '@traversable/json-schema-types@0.0.24':
+    resolution: {integrity: sha512-frnXjhDC6GaFjc1qs3yY35XODRWgIxXxohN2ETagYLK4lzy769473m+bVXZbKPCZ/iZTZL1hY3+YVjgdoke+Xw==}
+    peerDependencies:
+      '@traversable/json': ^0.0.52
+      '@traversable/registry': ^0.0.49
+
+  '@traversable/json-schema@0.0.26':
+    resolution: {integrity: sha512-WimdJ92KJ+E2BDVL1BfmeQ79guNnRTAY0izCqugcIwgs7FeNbgbgFIP2/aPEshneuN2Oaw8IJJEIV5xoaT2piQ==}
+
+  '@traversable/json@0.0.52':
+    resolution: {integrity: sha512-QddhvjiJULZw6z/OhHE0YchZfKr1LRvRvs5dZqGpYb0UB3GpWSn/2fIJjYTOCT0pG95QhuxexPpKky6eihFBLA==}
+    peerDependencies:
+      '@traversable/registry': ^0.0.49
+      fast-check: 3 - 4
+    peerDependenciesMeta:
+      fast-check:
+        optional: true
+
+  '@traversable/registry@0.0.49':
+    resolution: {integrity: sha512-uof62gHhyf5MebDkjQMeJj1yIAQkCbCcJYl848b4A+jFnUXxo2NUuHi0NIZOeG3r+XgNSF4MapDED89tFM6iLA==}
 
   '@trysound/sax@0.2.0':
     resolution: {integrity: sha512-L7z9BgrNEcYyUYtF+HaEfiS5ebkh9jXqbszz7pC0hRBPaatV0XjSD3+eHrpqFemQfgwiFF0QPIarnIihIDn7OA==}
@@ -3733,13 +3756,6 @@ packages:
     resolution: {integrity: sha512-Zf5H2Kxt2xjTvbJvP2ZWLEICxA6j+hAmMzIlypy4xcBg1vKVnx89Wy0GbS+kf5cwCVFFzdCFh2XSCFNULS6csw==}
     engines: {node: '>= 0.4'}
 
-  es-get-iterator@1.1.3:
-    resolution: {integrity: sha512-sPZmqHBe6JIiTfN5q2pEi//TwxmAFHwj/XEuYjTuse78i8KxaqMTTzxPoFKuzRpDpTJ+0NAbpfenkmH2rePtuw==}
-
-  es-map@1.0.6:
-    resolution: {integrity: sha512-JWn54TeYJe93WHhduTh9MUqEkjhbCjU8vqq1q9FyCrOle/utr1i8PmzK2vXnP6BeLsBLvb1zV4fSkpVnT4LW1A==}
-    engines: {node: '>= 0.4'}
-
   es-module-lexer@1.7.0:
     resolution: {integrity: sha512-jEQoCwk8hyb2AZziIOLhDqpm5+2ww5uIE6lkO/6jcOCusfk6LhMHpXXfBLXTZ7Ydyt0j4VoUQv6uGNYbdW+kBA==}
 
@@ -3749,10 +3765,6 @@ packages:
 
   es-set-tostringtag@2.1.0:
     resolution: {integrity: sha512-j6vWzfrGVfyXxge+O0x5sh6cvxAog0a/4Rdd2K36zCMV5eJ+/+tOAngRO8cODMNWbVRdVlmGZQL2YS3yR8bIUA==}
-    engines: {node: '>= 0.4'}
-
-  es-set@1.1.2:
-    resolution: {integrity: sha512-tGLC1yArXhXwZTm3D6xbu1JL4S3cUtRRggbFWHhqTxpPc975fmcLL1VB0QOnAY8q5TBdul7YTjfEOT2VpUGcCg==}
     engines: {node: '>= 0.4'}
 
   es-shim-unscopables@1.1.0:
@@ -4810,12 +4822,6 @@ packages:
     resolution: {integrity: sha512-BewmUXImeuRk2YY0PVbxgKAysvhRPUQE0h5QRM++nVWyubKGV0l8qQ5op8+B2DOmwSe63Jivj0BjkPQVf8fP5g==}
     engines: {node: '>=8'}
 
-  iterate-iterator@1.0.2:
-    resolution: {integrity: sha512-t91HubM4ZDQ70M9wqp+pcNpu8OyJ9UAtXntT/Bcsvp5tZMnz9vRa+IunKXeI8AnfZMTv0jNuVEmGeLSMjVvfPw==}
-
-  iterate-value@1.0.2:
-    resolution: {integrity: sha512-A6fMAio4D2ot2r/TYzr4yUWrmwNdsN5xL7+HUiyACE4DXm+q8HtPcnFTp+NnW3k4N05tZ7FVYFFb2CR13NxyHQ==}
-
   jackspeak@3.4.3:
     resolution: {integrity: sha512-OGlZQpz2yfahA/Rd1Y8Cd9SIEsqvXkLVoSw/cgwhnhFMDbsQFeZYoJJ7bIZBS9BcamUW96asq/npPWugM+RQBw==}
 
@@ -5049,6 +5055,9 @@ packages:
 
   make-error@1.3.6:
     resolution: {integrity: sha512-s8UhlNe7vPKomQhC1qFelMokr/Sc3AgNbso3n74mVPA5LTZwkB9NlXf4XPamLxJE8h0gh73rM94xvwRT2CVInw==}
+
+  make-synchronized@0.4.2:
+    resolution: {integrity: sha512-EwEJSg8gSGLicKXp/VzNi1tvzhdmNBxOzslkkJSoNUCQFZKH/NIUIp7xlfN+noaHrz4BJDN73gne8IHnjl/F/A==}
 
   markdown-extensions@2.0.0:
     resolution: {integrity: sha512-o5vL7aDWatOTX8LzaS1WMoaoxIiLRQJuIKKe2wAw6IeULDHaqbiqiggmx+pKvZDb1Sj+pE46Sn1T7lCqfFtg1Q==}
@@ -5490,10 +5499,6 @@ packages:
 
   object.assign@4.1.7:
     resolution: {integrity: sha512-nK28WOo+QIjBkDduTINE4JkF/UJJKyf2EJxvJKfblDpyg0Q+pkOHNTL0Qwy6NP6FhE/EnzV73BxxqcJaXY9anw==}
-    engines: {node: '>= 0.4'}
-
-  object.entries@1.1.9:
-    resolution: {integrity: sha512-8u/hfXFRBD1O0hPUjioLhoWFHRmt6tKA4/vZPyckBr18l1KE9uHrFaFaUi8MDRTpi4uak2goyPTSNJLXX2k2Hw==}
     engines: {node: '>= 0.4'}
 
   object.fromentries@2.0.8:
@@ -6674,14 +6679,6 @@ packages:
 
   set-proto@1.0.0:
     resolution: {integrity: sha512-RJRdvCo6IAnPdsvP/7m6bsQqNnn1FCBX5ZNtFL98MmFF/4xAIJTIg1YbHW5DC2W5SKZanrC6i4HsJqlajw/dZw==}
-    engines: {node: '>= 0.4'}
-
-  set.prototype.intersection@1.1.7:
-    resolution: {integrity: sha512-M8XrE93h2YeBpAq9hAKl0YNZzMpSFN3/05JYihS+cA0QEJZEsU/PFAMjmF4unmGLJlweVpYHvRx1HrnDN1K7fQ==}
-    engines: {node: '>= 0.4'}
-
-  set.prototype.issupersetof@1.1.3:
-    resolution: {integrity: sha512-BAIJyClr9rkdackK2mX6A/A/AMdb0lU+hrBQ7c1W/gISRsiYaG1SE0UScscwFklNhUif+aFypzWSckTIkDDYKA==}
     engines: {node: '>= 0.4'}
 
   setimmediate@1.0.5:
@@ -10018,6 +10015,11 @@ snapshots:
 
   '@polka/url@1.0.0-next.29': {}
 
+  '@prettier/sync@0.5.5(prettier@2.8.8)':
+    dependencies:
+      make-synchronized: 0.4.2
+      prettier: 2.8.8
+
   '@puppeteer/browsers@0.5.0(typescript@5.8.3)':
     dependencies:
       debug: 4.3.4
@@ -10289,6 +10291,26 @@ snapshots:
   '@szmarczak/http-timer@5.0.1':
     dependencies:
       defer-to-connect: 2.0.1
+
+  '@traversable/json-schema-types@0.0.24(@traversable/json@0.0.52(@traversable/registry@0.0.49))(@traversable/registry@0.0.49)':
+    dependencies:
+      '@traversable/json': 0.0.52(@traversable/registry@0.0.49)
+      '@traversable/registry': 0.0.49
+
+  '@traversable/json-schema@0.0.26(@traversable/json@0.0.52(@traversable/registry@0.0.49))(prettier@2.8.8)':
+    dependencies:
+      '@prettier/sync': 0.5.5(prettier@2.8.8)
+      '@traversable/json-schema-types': 0.0.24(@traversable/json@0.0.52(@traversable/registry@0.0.49))(@traversable/registry@0.0.49)
+      '@traversable/registry': 0.0.49
+    transitivePeerDependencies:
+      - '@traversable/json'
+      - prettier
+
+  '@traversable/json@0.0.52(@traversable/registry@0.0.49)':
+    dependencies:
+      '@traversable/registry': 0.0.49
+
+  '@traversable/registry@0.0.49': {}
 
   '@trysound/sax@0.2.0': {}
 
@@ -12134,32 +12156,6 @@ snapshots:
 
   es-errors@1.3.0: {}
 
-  es-get-iterator@1.1.3:
-    dependencies:
-      call-bind: 1.0.8
-      get-intrinsic: 1.3.0
-      has-symbols: 1.1.0
-      is-arguments: 1.2.0
-      is-map: 2.0.3
-      is-set: 2.0.3
-      is-string: 1.1.1
-      isarray: 2.0.5
-      stop-iteration-iterator: 1.1.0
-
-  es-map@1.0.6:
-    dependencies:
-      call-bind: 1.0.8
-      define-properties: 1.2.1
-      es-abstract: 1.24.0
-      es-get-iterator: 1.1.3
-      es-set-tostringtag: 2.1.0
-      for-each: 0.3.5
-      get-intrinsic: 1.3.0
-      globalthis: 1.0.4
-      has-symbols: 1.1.0
-      internal-slot: 1.1.0
-      object.entries: 1.1.9
-
   es-module-lexer@1.7.0: {}
 
   es-object-atoms@1.1.1:
@@ -12172,25 +12168,6 @@ snapshots:
       get-intrinsic: 1.3.0
       has-tostringtag: 1.0.2
       hasown: 2.0.2
-
-  es-set@1.1.2:
-    dependencies:
-      call-bind: 1.0.8
-      define-properties: 1.2.1
-      es-abstract: 1.24.0
-      es-map: 1.0.6
-      es-set-tostringtag: 2.1.0
-      for-each: 0.3.5
-      functions-have-names: 1.2.3
-      get-intrinsic: 1.3.0
-      globalthis: 1.0.4
-      gopd: 1.2.0
-      has-property-descriptors: 1.0.2
-      has-symbols: 1.1.0
-      internal-slot: 1.1.0
-      iterate-value: 1.0.2
-      object.entries: 1.1.9
-      stop-iteration-iterator: 1.1.0
 
   es-shim-unscopables@1.1.0:
     dependencies:
@@ -13448,13 +13425,6 @@ snapshots:
       html-escaper: 2.0.2
       istanbul-lib-report: 3.0.1
 
-  iterate-iterator@1.0.2: {}
-
-  iterate-value@1.0.2:
-    dependencies:
-      es-get-iterator: 1.1.3
-      iterate-iterator: 1.0.2
-
   jackspeak@3.4.3:
     dependencies:
       '@isaacs/cliui': 8.0.2
@@ -13714,6 +13684,8 @@ snapshots:
       semver: 7.7.2
 
   make-error@1.3.6: {}
+
+  make-synchronized@0.4.2: {}
 
   markdown-extensions@2.0.0: {}
 
@@ -14430,13 +14402,6 @@ snapshots:
       es-object-atoms: 1.1.1
       has-symbols: 1.1.0
       object-keys: 1.1.1
-
-  object.entries@1.1.9:
-    dependencies:
-      call-bind: 1.0.8
-      call-bound: 1.0.4
-      define-properties: 1.2.1
-      es-object-atoms: 1.1.1
 
   object.fromentries@2.0.8:
     dependencies:
@@ -15846,26 +15811,6 @@ snapshots:
       dunder-proto: 1.0.1
       es-errors: 1.3.0
       es-object-atoms: 1.1.1
-
-  set.prototype.intersection@1.1.7:
-    dependencies:
-      call-bind: 1.0.8
-      define-properties: 1.2.1
-      es-abstract: 1.24.0
-      es-errors: 1.3.0
-      es-set: 1.1.2
-      is-set: 2.0.3
-      stop-iteration-iterator: 1.1.0
-
-  set.prototype.issupersetof@1.1.3:
-    dependencies:
-      call-bind: 1.0.8
-      define-properties: 1.2.1
-      es-abstract: 1.24.0
-      es-errors: 1.3.0
-      es-set: 1.1.2
-      is-set: 2.0.3
-      stop-iteration-iterator: 1.1.0
 
   setimmediate@1.0.5: {}
 

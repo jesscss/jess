@@ -3,11 +3,11 @@ import { Ruleset } from './ruleset';
 import type { Any } from './any';
 import { Rules } from './rules';
 import type { Context, TreeContext } from '../context';
-import { type PrintOptions, getPrintOptions } from './util/print';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { Ampersand } from './ampersand';
 import { isNode } from './util/is-node';
-import { Nil } from './nil';
+import { serializeRulesContainer } from './util/serialize-helper';
 
 export type AtRuleValue = {
   name: Any<'atkeyword'>;
@@ -16,10 +16,20 @@ export type AtRuleValue = {
   rules?: Rules;
 };
 
-export type AtRuleOptions = NodeOptions & {
-  /** Whether it will bubble outside selectors inside when collapsing nesting */
-  nestable?: boolean;
-};
+export const NESTABLE_AT_RULES = ['@media', '@supports', '@layer', '@container', '@scope'] as const;
+export const ROOT_ONLY_AT_RULES = [
+  '@charset',
+  '@import',
+  '@namespace',
+  '@font-face',
+  '@keyframes',
+  '@page',
+  '@property',
+  '@counter-style',
+  '@viewport'
+] as const;
+
+export type AtRuleOptions = NodeOptions;
 
 /**
  * A rule like @charset or @media
@@ -44,78 +54,66 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   frames: (Ruleset | AtRule)[] | undefined;
 
+  /**
+   * Means: can bubble ruleset parents to children.
+   */
+  isNestable() {
+    return NESTABLE_AT_RULES.includes(this.value.name.toString() as (typeof NESTABLE_AT_RULES)[number]);
+  }
+
+  /**
+   * For legacy collapseNesting, will push ruleset to root silently.
+   */
+  isRootOnly() {
+    return ROOT_ONLY_AT_RULES.includes(this.value.name.toString() as (typeof ROOT_ONLY_AT_RULES)[number]);
+  }
+
+  isHoisted(opts: { collapseNesting?: boolean }) {
+    return this.options.hoistToRoot ?? opts.collapseNesting ?? false;
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
-    const w = options.writer!;
-    let { name, prelude, rules } = this.value;
-    const mark = w.mark();
-
-    if (this.options.hoistToRoot) {
-      if (rules) {
-        rules.renderWithFrameFlattening(options, this);
-        return w.getSince(mark);
-      }
-      options = { ...options, frameState: options.frameState ?? [{ depth: 0 }] };
-    }
-
-    this.renderOpening(options);
-
-    if (rules) {
-      // For rules, we can call toBraced directly since it writes to the writer
-      // Use options.depth if provided, otherwise calculate from frameState
-      const depth = options.depth ?? options.frameState?.at(-1)?.depth ?? 0;
-      // #region agent log
-      // eslint-disable-next-line
-      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'at-rule.ts:63', message: 'AtRule toTrimmedString', data: { atRuleDepth: depth, optionsDepth: options.depth, frameStateDepth: options.frameState?.at(-1)?.depth, atRuleName: name.toString() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-fix-v2', hypothesisId: 'G' }) }).catch(() => {});
-      // #endregion
-      // Pass the at-rule's own depth to toBraced - it will increment for content
-      rules.toBraced({ ...options, depth });
-    } else {
-      w.add(';');
-    }
-
-    return w.getSince(mark);
+    return serializeRulesContainer(this, options as FinalPrintOptions);
   }
 
   /** Render the opening of this at-rule (name and prelude) */
-  renderOpening(options: PrintOptions): void {
-    const w = options.writer!;
+  getHeaderString(options: FinalPrintOptions): string {
+    const w = options.writer;
     const { name, prelude, rules } = this.value;
-    // Nodes indent themselves - use options.depth if provided, otherwise calculate from frameState
-    const depth = options.depth ?? options.frameState?.at(-1)?.depth ?? 0;
-    // #region agent log
-    // eslint-disable-next-line
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'at-rule.ts:81', message: 'AtRule renderOpening', data: { depth, optionsDepth: options.depth, frameStateDepth: options.frameState?.at(-1)?.depth, atRuleName: name.toString() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-fix-v2', hypothesisId: 'I' }) }).catch(() => {});
-    // #endregion
-    if (depth > 0) {
-      w.add(''.padStart(depth * 2));
-    }
-    const nameOut = name.toString(options);
-    // 3. See if name endsWith whitespace (any whitespace character)
-    const nameEndsWithSpace = /\s$/.test(nameOut);
+
+    let out = options.indent;
+
+    out += w.capture(() => name.toString(options));
+    const nameEndsWithSpace = /\s$/.test(out);
     if (prelude) {
       const preludeOut = w.capture(() => prelude.toString(options));
-
-      // 4. See if prelude startsWith whitespace (any whitespace character)
+      // See if prelude startsWith whitespace (any whitespace character)
       const preludeStartsWithSpace = /^\s/.test(preludeOut);
 
-      // IF NEITHER, OUTPUT WITH ONE SPACE
       if (!nameEndsWithSpace && !preludeStartsWithSpace) {
-        w.add(' ');
+        out += ' ';
       }
-      // Emit prelude (with leading space removed)
-      w.add(preludeOut);
+      out += preludeOut;
       if (rules) {
         const preludeEndsWithSpace = /\s$/.test(preludeOut);
         if (!preludeEndsWithSpace) {
-          w.add(' ');
+          out += ' {';
         }
+      } else {
+        out += ';';
       }
     } else {
-      if (!nameEndsWithSpace && rules) {
-        w.add(' ');
+      if (rules) {
+        if (!nameEndsWithSpace) {
+          out += ' ';
+        }
+        out += '{';
+      } else {
+        out += ';';
       }
     }
+    return out;
   }
 
   override evalNode(context: Context): MaybePromise<AtRule> {
@@ -149,7 +147,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         if (rules) {
           node.options.hoistToRoot ||= context.opts.collapseNesting;
           context.frames.push(node);
-          if (node.options.nestable && node.options.hoistToRoot) {
+          if (node.isNestable() && node.isHoisted(context.opts)) {
             let existingRules = rules;
             rules = Rules.create([
               Ruleset.create({

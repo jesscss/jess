@@ -10,9 +10,10 @@ import { Ampersand } from './ampersand';
 import { Combinator } from './combinator';
 import { ComplexSelector } from './selector-complex';
 import { SelectorList } from './selector-list';
-import { type PrintOptions, getPrintOptions } from './util/print';
+import { type PrintOptions, type FinalPrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule';
+import { serializeRulesContainer, normalizeIndent } from './util/serialize-helper';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -54,6 +55,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return this.value.selector;
   }
 
+  isHoisted(options: PrintOptions) {
+    return this.options.hoistToRoot ?? options.collapseNesting ?? false;
+  }
+
   /** @todo - remove? */
   override valueOf() {
     return this.selector instanceof Nil ? '' : this.selector.valueOf();
@@ -61,60 +66,22 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
-    const w = options.writer!;
-    let { selector, rules } = this.value;
-    if (selector instanceof Nil) {
-      return '';
-    }
-
-    const mark = w.mark();
-    if (this.options.hoistToRoot) {
-      rules.renderWithFrameFlattening(options, this);
-      return w.getSince(mark);
-    }
-
-    const selOut = w.capture(() => selector.toTrimmedString(options));
-    // Emit selector without trailing whitespace
-    w.add(selOut.replace(/\s+$/, ''));
-    // Ensure exactly one space before '{'
-    w.add(' ');
-
-    // Use options.depth if provided, otherwise calculate from frameState
-    const depth = options.depth ?? options.frameState?.at(-1)?.depth ?? 0;
-    // #region agent log
-    // eslint-disable-next-line
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ruleset.ts:82', message: 'Ruleset toTrimmedString', data: { rulesetDepth: depth, optionsDepth: options.depth, frameStateDepth: options.frameState?.at(-1)?.depth, selector: selector.toString() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-fix-v2', hypothesisId: 'F' }) }).catch(() => {});
-    // #endregion
-    // Pass the ruleset's own depth to toBraced - it will increment for content
-    rules.toBraced({ ...options, depth });
-
-    return w.getSince(mark);
+    return serializeRulesContainer(this, options as FinalPrintOptions);
   }
 
-  /** Render the opening of this ruleset (selector) */
-  renderOpening(options: PrintOptions): void {
-    const w = options.writer!;
+  /**
+   * Render the opening of this ruleset (selector)
+   * @todo - Efficiently serialize the selector with and without comments?
+  */
+  getHeaderString(options: FinalPrintOptions): string {
+    const w = options.writer;
     const { selector } = this.value;
-    // Nodes indent themselves - use options.depth if provided, otherwise calculate from frameState
-    const depth = options.depth ?? options.frameState?.at(-1)?.depth ?? 0;
-    // #region agent log
-    // eslint-disable-next-line
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ruleset.ts:95', message: 'Ruleset renderOpening', data: { depth, optionsDepth: options.depth, frameStateDepth: options.frameState?.at(-1)?.depth, selector: selector.toString() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-fix-v2', hypothesisId: 'J' }) }).catch(() => {});
-    // #endregion
-    const space = ''.padStart(depth * 2);
+    const idt = options.indent;
 
-    if (!(selector instanceof Nil)) {
-      const selOut = w.capture(() => selector.toTrimmedString(options));
-      w.add(space);
-      // For SelectorList, preserve newlines and indentation (only remove trailing whitespace)
-      // For other selectors, normalize spacing (collapse multiple spaces/tabs to single space)
-      if (isNode(selector, 'SelectorList')) {
-        w.add(selOut.replace(/\s+$/, ''));
-      } else {
-        w.add(selOut.replace(/\s+$/, '').replace(/[ \t]+/g, ' '));
-      }
-      w.add(' ');
-    }
+    let selOut = w.capture(() => selector.toTrimmedString(options));
+    selOut = idt + selOut.replace(/\s+$/, '') + ' {\n';
+
+    return normalizeIndent(idt, selOut);
   }
 
   override preEval(context: Context): MaybePromise<this> {

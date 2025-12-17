@@ -29,14 +29,13 @@
   "dependencies": {
     "@jesscss/awaitable-pipe": "workspace:*",
     "@jridgewell/gen-mapping": "~0.3.12",
+    "@traversable/json-schema": "~0.0.26",
     "@ungap/set-methods": "~0.1.1",
     "chalk": "^5.2.0",
     "combinate": "^1.1.11",
     "data-structure-typed": "~2.0.0",
     "enhanced-resolve": "~5.18.3",
-    "lodash-es": "^4.17.21",
-    "set.prototype.intersection": "~1.1.5",
-    "set.prototype.issupersetof": "~1.1.2"
+    "lodash-es": "^4.17.21"
   },
   "scripts": {
     "ci": "pnpm build && pnpm test:all",

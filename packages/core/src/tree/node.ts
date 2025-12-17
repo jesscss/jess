@@ -12,6 +12,7 @@ import type { Comment } from './comment';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules';
+import { deepClone } from '@traversable/json-schema';
 
 export type { TreeContext };
 
@@ -230,15 +231,7 @@ export abstract class Node<
    * shouldn't be set directly. Instead, a parent should use
    * parent.adopt(thisNode);
    */
-  _parent: Node | undefined;
-
-  get parent(): Node | undefined {
-    return this._parent;
-  }
-
-  set parent(parent: Node | undefined) {
-    this._parent = parent;
-  }
+  parent: Node | undefined;
 
   nil!: () => Nil;
 
@@ -562,7 +555,7 @@ export abstract class Node<
       }
       newValue = Object.fromEntries(map) as Data;
     }
-    let newNode = new Class(newValue, { ...this.options }, this.location, this.treeContext);
+    let newNode = new Class(newValue, deepClone(this.options), this.location, this.treeContext);
     newNode.inherit(this);
 
     cloneFn ??= n => n.clone(deep);

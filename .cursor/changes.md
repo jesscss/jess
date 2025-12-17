@@ -4,6 +4,10 @@ This file is updated daily with the most recent changes and improvements made to
 
 **Note**: Most recent changes are always at the top. Add new entries with the current date (e.g., `## 2025-Dec-9`) at the top of this file. Make sure we query a live date service to get current date.
 
+## 2025-Dec-16
+
+Okay, LLMs find it impossible to reason about recursive rendering of hoisted rules, I'll
+need to re-write it myself.
 
 ## 2025-Dec-11
 
