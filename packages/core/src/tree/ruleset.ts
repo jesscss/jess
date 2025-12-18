@@ -13,7 +13,7 @@ import { SelectorList } from './selector-list';
 import { type PrintOptions, type FinalPrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule';
-import { serializeRulesContainer, normalizeIndent } from './util/serialize-helper';
+import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -73,10 +73,14 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    * Render the opening of this ruleset (selector)
    * @todo - Efficiently serialize the selector with and without comments?
   */
-  getHeaderString(options: FinalPrintOptions): string {
+  getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const w = options.writer;
-    const { selector } = this.value;
-    const idt = options.indent;
+    let { selector } = this.value;
+    const idt = indent(options.depth);
+
+    if (withoutComments) {
+      selector = selector.copy(true) as Selector;
+    }
 
     let selOut = w.capture(() => selector.toTrimmedString(options));
     selOut = idt + selOut.replace(/\s+$/, '') + ' {\n';

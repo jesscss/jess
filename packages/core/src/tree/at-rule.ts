@@ -7,7 +7,7 @@ import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './ut
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { Ampersand } from './ampersand';
 import { isNode } from './util/is-node';
-import { serializeRulesContainer } from './util/serialize-helper';
+import { indent, serializeRulesContainer } from './util/serialize-helper';
 
 export type AtRuleValue = {
   name: Any<'atkeyword'>;
@@ -78,11 +78,18 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   /** Render the opening of this at-rule (name and prelude) */
-  getHeaderString(options: FinalPrintOptions): string {
+  getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const w = options.writer;
-    const { name, prelude, rules } = this.value;
+    let { name, prelude, rules } = this.value;
 
-    let out = options.indent;
+    let out = indent(options.depth);
+
+    if (withoutComments) {
+      name = name.copy(true) as Any<'atkeyword'>;
+      if (prelude) {
+        prelude = prelude.copy(true) as Node;
+      }
+    }
 
     out += w.capture(() => name.toString(options));
     const nameEndsWithSpace = /\s$/.test(out);
@@ -98,7 +105,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       if (rules) {
         const preludeEndsWithSpace = /\s$/.test(preludeOut);
         if (!preludeEndsWithSpace) {
-          out += ' {';
+          out += ' {\n';
         }
       } else {
         out += ';';
@@ -108,7 +115,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         if (!nameEndsWithSpace) {
           out += ' ';
         }
-        out += '{';
+        out += '{\n';
       } else {
         out += ';';
       }

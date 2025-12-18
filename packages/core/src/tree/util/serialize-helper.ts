@@ -10,26 +10,30 @@ import { Nil } from '../nil';
 export function normalizeIndent(indent: string, multiLineString: string): string {
   return multiLineString.replace(/^\s+/gm, indent);
 }
+
+export function indent(depth: number): string {
+  return ''.padStart(depth * 2);
+}
 /**
  * Handles flattening and serializing of at-rules and rulesets
  */
 export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPrintOptions): string {
   const w = options.writer;
   const depth = options.depth;
-  const idt = options.indent;
-  const inFrames = options.inFrames;
+  const idt = indent(depth);
+  let inFrames = options.inFrames;
   const frameHeaders = options.frameHeaders;
 
   if (node.type === 'Ruleset' && node.value.selector instanceof Nil) {
     return '';
   }
-  let header = node.getHeaderString(options);
+  // let header = node.getHeaderString(options);
 
   const mark = w.mark();
 
   const rules = node.value.rules;
   if (!rules) {
-    w.add(header);
+    w.add(node.getHeaderString(options, true));
     return w.getSince(mark);
   }
 
@@ -38,26 +42,58 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     return '';
   }
 
+  const hoisted = node.isHoisted(options);
+  const currentFrames = inFrames;
+
+  if (hoisted) {
+    options.exitedFrames = inFrames;
+    options.inFrames = inFrames = inFrames.filter(f => isNode(f, 'AtRule'));
+  } else {
+    if (options.exitedFrames) {
+      options.inFrames = inFrames = options.exitedFrames;
+      options.exitedFrames = undefined;
+    }
+  }
+  inFrames.push(node);
+  let numFrames = inFrames.length;
+
   /** Don't output selector yet. Let's see if any child rules need hoisting. */
   for (let i = 0; i < rulesToRender.length; i++) {
     let n = rulesToRender[i]!;
     let next = rulesToRender[i + 1];
-    if (isNode(n, ['Ruleset', 'AtRule']) && n.isHoisted(options)) {
+
+    if (!n.visible && !n.fullRender) {
+      continue;
+    }
+    // let next = rulesToRender[i + 1];
+
+    // if (!inFrames.includes(node)) {
+    //   normalizeIndent(idt, header);
+    //   inFrames.push(node);
+    //   frameHeaders.push([header]);
+    //   isInFrame = false;
+    // }
+    if (isNode(n, ['Ruleset', 'AtRule'])) {
+      if (n.isHoisted(options)) {
+      }
       /** @todo - close and open frames */
       n.toString({ ...options, depth: depth + 1 });
       /** @todo - Upon re-opening frames, clone the header without comments! */
       continue;
     }
-    if (!inFrames.includes(node)) {
-      /** Render all frame openings */
-      normalizeIndent(idt, header);
-      inFrames.push(node);
-      frameHeaders.push(header);
-      for (let i = 0; i < inFrames.length; i++) {
-        let s = frameHeaders[i]!;
-        w.add(s);
+
+    for (let i = frameHeaders.length; i < numFrames; i++) {
+      let s = frameHeaders[i];
+      if (s === undefined) {
+        s = inFrames[i]!.getHeaderString({ ...options, depth: i });
+        frameHeaders[i] = s;
+      } else if (s === '') {
+        s = inFrames[i]!.getHeaderString({ ...options, depth: i }, true);
+        frameHeaders[i] = s;
       }
+      w.add(s!);
     }
+
     if (isNode(n, 'Declaration')) {
       w.add(idt + '  ');
       n.processPrePost('pre');
@@ -73,11 +109,9 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       n.toString({ ...options, depth: depth + 1 });
     }
   }
-  if (inFrames.includes(node)) {
-    inFrames.pop();
-    frameHeaders.pop();
-  }
-  w.add(idt + '}');
+  inFrames.pop();
+  frameHeaders.pop();
+  w.add(idt + '}\n');
 
   return w.getSince(mark);
 }

@@ -5,10 +5,11 @@ import type { Ruleset } from '../ruleset';
 export type PrintOptions = {
   /** Tracks what ruleset or at-rule body we're in, at what depth */
   inFrames?: (Ruleset | AtRule)[] | undefined;
-  frameHeaders?: [withComments: string, withoutComments: string][];
+  /** Stored frames if we hoist a ruleset */
+  exitedFrames?: (Ruleset | AtRule)[] | undefined;
+  frameHeaders?: string[];
   /** Current indentation depth (set by parent, used by children) */
   depth?: number;
-  indent?: string;
   writer?: OutputWriter;
   compress?: boolean;
   collapseNesting?: boolean;
@@ -17,7 +18,6 @@ export type PrintOptions = {
 
 export type FinalPrintOptions = PrintOptions & {
   writer: OutputWriter;
-  indent: string;
   depth: number;
   inFrames: (Ruleset | AtRule)[];
   frameHeaders: string[];
@@ -42,11 +42,9 @@ export type SourceSegment = {
 
 export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
   options = options ?? {};
-  let depth = options.depth ??= 0;
-  options.indent ??= ''.padStart(depth * 2);
+  options.depth ??= 0;
   options.writer ??= new OutputWriter();
   // Always ensure frameState exists - nodes should not need to check for it
-  options.frameState ??= [];
   options.inFrames ??= [];
   options.frameHeaders ??= [];
   return options as FinalPrintOptions;

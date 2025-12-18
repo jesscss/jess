@@ -26,6 +26,8 @@ import { Nil } from './nil';
 import { VarDeclaration } from './declaration-var';
 import { Any } from './any';
 import { List } from './list';
+import { indent } from './util/serialize-helper';
+
 const { isArray } = Array;
 
 export const enum Priority {
@@ -225,10 +227,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     options = getPrintOptions(options);
     const w = options.writer!;
+    const depth = options.depth!;
     const mark = w.mark();
 
-    // At root level, prepend @charset if one was collected during evaluation (only once)
-    const depth = options.frameState?.at(-1)?.depth ?? 0;
     const ctx = options.context;
     if (depth === 0 && ctx?.currentCharset && !ctx.charsetEmitted) {
       const charset = ctx.currentCharset;
@@ -326,11 +327,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private _emitRulesBody(options: PrintOptions) {
     const w = options.writer!;
     const depth = options.depth ?? 0;
-    // #region agent log
-    // eslint-disable-next-line
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:317', message: '_emitRulesBody entry', data: { depth, optionsDepth: options.depth, frameStateDepth: options.frameState?.at(-1)?.depth, frameStateLength: options.frameState?.length ?? 0, itemsCount: this.value.filter(n => n.visible && !(n.type === 'Any' && (n as any).options?.role === 'charset')).length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-fix-v2', hypothesisId: 'B' }) }).catch(() => {});
-    // #endregion
-    const space = options.indent!;
+    const space = indent(depth);
     const { value } = this;
 
     // Skip charset nodes - they are collected and prepended at root level
@@ -364,12 +361,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // For child Rules nodes, pass the same depth (don't increment depth)
       // Rules nodes inside Rules nodes are at the same level
       const childOptions = isChildRules ? { ...options, depth } : { ...options, depth };
-      // #region agent log
-      if (n.type === 'AtRule' || n.type === 'Ruleset') {
-        // eslint-disable-next-line
-        fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:350', message: '_emitRulesBody calling child', data: { childType: n.type, depthProvided: depth, isChildRules, nodeName: (n as any).value?.name?.toString?.() || (n as any).value?.selector?.toString?.() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-fix-v2', hypothesisId: 'C' }) }).catch(() => {});
-      }
-      // #endregion
       let rule = w.capture(() => n.toTrimmedString(childOptions));
       // Check if the captured output ends with a newline
       previousEndsWithNewline = rule.endsWith('\n');
@@ -396,6 +387,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       for (let n of rules.value) {
         if (isNode(n, 'Rules')) {
           iterateRules(n);
+          continue;
         }
         if (!visibleOnly || n.visible || n.fullRender) {
           finalRules.push(n);
@@ -1202,10 +1194,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const isHoisted = isAtRuleOrRuleset && hasFramesProperty;
 
         if (isHoisted) {
-          // #region agent log
-          // eslint-disable-next-line
-          fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1183', message: 'hoisted child - checking frames', data: { nodeType: node.type, nodeName: (node as any).value?.name?.toString?.() || (node as any).value?.selector?.toString?.() || node.type, frameStateLength: frameState.length, initialFrameStateLength, currentFramesLength: currentFrames.length, shouldReopenFrames, frameStateFrames: frameState.map(s => ({ type: s.frame?.type, name: (s.frame as any)?.value?.name?.toString?.() || (s.frame as any)?.value?.selector?.toString?.() })), currentFramesNames: currentFrames.map(f => ({ type: f.type, name: (f as any)?.value?.name?.toString?.() || (f as any)?.value?.selector?.toString?.() })) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'media-close-reopen', hypothesisId: 'A' }) }).catch(() => {});
-          // #endregion
           // Close any open frames (except AtRules) before rendering this hoisted child
           // Track which frames we close so we can re-open them if the next child is non-hoisted
           // BUT: Don't close frames that the next child also needs (check currentFrames)
@@ -1223,10 +1211,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               // Don't close AtRules - they can't be hoisted past
               break;
             }
-            // #region agent log
-            // eslint-disable-next-line
-            fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1200', message: 'hoisted child - checking if should close frame', data: { frameType: frame.type, frameName: (frame as any).value?.name?.toString?.() || (frame as any).value?.selector?.toString?.() || frame.type, isNeededByNextChild: framesNeededByNextChild.has(frame), shouldReopenFrames }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'media-close-reopen', hypothesisId: 'B' }) }).catch(() => {});
-            // #endregion
+
             // If this frame is needed by the next child, don't close it
             if (framesNeededByNextChild.has(frame)) {
               break;

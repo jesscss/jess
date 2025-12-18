@@ -20,7 +20,7 @@ describe('AtRule', () => {
   });
 
   describe('nested @media rules', () => {
-    it.only('should handle nested @media rules inside rulesets', async () => {
+    it('should handle nested @media rules inside rulesets', async () => {
       // Represents: .body { @media print { padding: 20px; } }
       const node = rules([
         ruleset({
@@ -143,7 +143,7 @@ describe('AtRule', () => {
             padding: 20px;
             header {
               background-color: red;
-              @media (orientation:landscape) {
+              @media (orientation: landscape) {
                 margin-left: 20px;
               }
             }
@@ -257,7 +257,7 @@ describe('AtRule', () => {
         }
         @media screen {
           .body {
-            max-width: ( 8  * 60);
+            max-width: 480;
           }
         }
       `);
@@ -382,7 +382,19 @@ describe('AtRule', () => {
 
   describe('nested @media in mixin calls', () => {
     it('should handle mixin call with nested @media', async () => {
-      // Represents: .menu { @media (min-width: 768px) { .nav-justified(); } }
+      // Represents:
+      // .nav-justified() {
+      //   @media (min-width: 480px) {
+      //     > li {
+      //       display: table-cell;
+      //     }
+      //   }
+      // }
+      // .menu {
+      //   @media (min-width: 768px) {
+      //     .nav-justified();
+      //   }
+      // }
       const navJustifiedMixin = mixin({
         name: any('.nav-justified'),
         rules: rules([
@@ -404,26 +416,23 @@ describe('AtRule', () => {
         ])
       });
 
-      const callSite = rules([
-        navJustifiedMixin,
-        ruleset({
-          selector: sel([el('.menu')]),
-          rules: rules([
-            atrule({
-              name: any('@media', { role: 'atkeyword' }),
-              prelude: seq([paren(decl({
-                name: 'min-width',
-                value: dimension([768, 'px'])
-              }))]),
-              rules: rules([
-                call({
-                  name: ref({ key: '.nav-justified' }, { type: 'mixin-ruleset' })
-                })
-              ])
-            })
-          ])
-        })
-      ]);
+      const callSite = ruleset({
+        selector: sel([el('.menu')]),
+        rules: rules([
+          atrule({
+            name: any('@media', { role: 'atkeyword' }),
+            prelude: seq([paren(decl({
+              name: 'min-width',
+              value: dimension([768, 'px'])
+            }))]),
+            rules: rules([
+              call({
+                name: ref({ key: '.nav-justified' }, { type: 'mixin-ruleset' })
+              })
+            ])
+          })
+        ])
+      });
 
       const rootRules = rules([navJustifiedMixin, callSite]);
       context.root = rootRules;
@@ -445,7 +454,7 @@ describe('AtRule', () => {
   });
 
   describe('serialization test for media.less AST', () => {
-    it.only('should serialize the exact AST structure from media.less.s-expr.txt', async () => {
+    it('should serialize the exact AST structure from media.less.s-expr.txt', async () => {
       context.opts.collapseNesting = true;
       // Build the AST exactly as represented in media.less.s-expr.txt
       const node = rules([
