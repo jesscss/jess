@@ -3,10 +3,12 @@ import type { AtRule } from '../at-rule';
 import type { Ruleset } from '../ruleset';
 
 export type PrintOptions = {
-  /** Tracks what ruleset or at-rule body we're in, at what depth */
+  /** The actual tree frames we started from */
+  treeFrames?: (Ruleset | AtRule)[] | undefined;
+  /** Tracks what ruleset or at-rule body we're serializing to the root */
   inFrames?: (Ruleset | AtRule)[] | undefined;
   /** Stored frames if we hoist a ruleset */
-  exitedFrames?: (Ruleset | AtRule)[] | undefined;
+  lastRenderedFrames?: (Ruleset | AtRule)[] | undefined;
   frameHeaders?: string[];
   /** Current indentation depth (set by parent, used by children) */
   depth?: number;
@@ -20,7 +22,9 @@ export type FinalPrintOptions = PrintOptions & {
   writer: OutputWriter;
   depth: number;
   inFrames: (Ruleset | AtRule)[];
+  treeFrames: (Ruleset | AtRule)[];
   frameHeaders: string[];
+  lastRenderedFrames: (Ruleset | AtRule)[];
 };
 
 export interface OutputWriter {
@@ -47,6 +51,8 @@ export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
   // Always ensure frameState exists - nodes should not need to check for it
   options.inFrames ??= [];
   options.frameHeaders ??= [];
+  options.treeFrames ??= [];
+  options.lastRenderedFrames ??= [];
   return options as FinalPrintOptions;
 }
 

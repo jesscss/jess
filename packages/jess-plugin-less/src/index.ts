@@ -45,9 +45,6 @@ export class LessPlugin extends AbstractPlugin {
   }
 
   async parse(filePath: string, source: string) {
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'jess-plugin-less/index.ts:47',message:'LessPlugin.parse entry',data:{filePath,sourceLength:source.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     /**
      * @todo - handle / pretty print errors
      * @todo - add contents to Jess error handler
@@ -66,9 +63,6 @@ export class LessPlugin extends AbstractPlugin {
       plugin: this,
       collapseNesting: this.opts.collapseNesting
     });
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'jess-plugin-less/index.ts:66',message:'LessPlugin.parse calling parser.parse',data:{filePath,sourceLength:source.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     let tree: Rules;
     let errors: any[];
     let lexerResult: any;
@@ -77,13 +71,7 @@ export class LessPlugin extends AbstractPlugin {
       tree = parseResult.tree;
       errors = parseResult.errors;
       lexerResult = parseResult.lexerResult;
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'jess-plugin-less/index.ts:71',message:'LessPlugin.parse parser.parse completed',data:{filePath,errorsCount:errors.length,lexerErrorsCount:lexerResult.errors.length,treeType:tree?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
     } catch (error: any) {
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'jess-plugin-less/index.ts:75',message:'LessPlugin.parse parser.parse error',data:{filePath,error:error?.toString(),errorMessage:error?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       throw error;
     }
     if (errors.length || lexerResult.errors.length) {

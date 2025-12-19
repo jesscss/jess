@@ -101,6 +101,88 @@ describe('AtRule', () => {
       `);
     });
 
+    it('should collapse ampersands when we need to #2', async () => {
+      // Represents:
+      // .body {
+      //   @media print {
+      //     padding: 20px;
+      //     &-1 {
+      //       color: black;
+      //     }
+      //     background-color: white;
+      //     &-2 {
+      //       color: blue;
+      //     }
+      //   }
+      // }
+      const node = rules([
+        ruleset({
+          selector: sel([el('.body')]),
+          rules: rules([
+            atrule({
+              name: any('@media', { role: 'atkeyword' }),
+              prelude: seq([any('print', { role: 'keyword' })]),
+              rules: rules([
+                decl({ name: 'padding', value: dimension([20, 'px']) }),
+                ruleset({
+                  selector: sel([amp('-1')]),
+                  rules: rules([
+                    decl({ name: 'color', value: any('black') })
+                  ])
+                }),
+                decl({ name: 'background-color', value: any('white') }),
+                ruleset({
+                  selector: sel([amp('-2')]),
+                  rules: rules([
+                    decl({ name: 'color', value: any('blue') })
+                  ])
+                }),
+                ruleset({
+                  selector: sel([amp('-3')]),
+                  rules: rules([
+                    decl({ name: 'color', value: any('red') })
+                  ])
+                })
+              ])
+            }),
+            decl({ name: 'zoom', value: num(1) })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = evald.toString();
+
+      expect(css).toBeString(`
+        .body {
+          @media print {
+            padding: 20px;
+          }
+        }
+        @media print {
+          .body-1 {
+            color: black;
+          }
+        }
+        .body {
+          @media print {
+            background-color: white;
+          }
+        }
+        @media print {
+          .body-2 {
+            color: blue;
+          }
+          .body-3 {
+            color: red;
+          }
+        }
+        .body {
+          zoom: 1;
+        }
+      `);
+    });
+
     it('should handle deeply nested @media rules', async () => {
       // Represents: .body { @media print { header { background-color: red; @media (orientation:landscape) { margin-left: 20px; } } } }
       const node = rules([
@@ -268,8 +350,8 @@ describe('AtRule', () => {
     it('should handle @media with variable references in prelude', async () => {
       // Represents: @all: ~"all"; @tv: ~"(tv)"; @media @all and @tv { ... }
       const node = rules([
-        vardecl({ name: any('all', { role: 'ident' }), value: quoted(any('all', { role: 'any' })) }),
-        vardecl({ name: any('tv', { role: 'ident' }), value: quoted(any('(tv)', { role: 'any' })) }),
+        vardecl({ name: any('all', { role: 'ident' }), value: quoted(any('all', { role: 'any' }), { escaped: true }) }),
+        vardecl({ name: any('tv', { role: 'ident' }), value: quoted(any('(tv)', { role: 'any' }), { escaped: true }) }),
         atrule({
           name: any('@media', { role: 'atkeyword' }),
           prelude: seq([ref('all', { type: 'variable' }), any('and', { role: 'keyword' }), ref('tv', { type: 'variable' })]),
@@ -288,8 +370,6 @@ describe('AtRule', () => {
       const css = evald.toString();
 
       expect(css).toBeString(`
-        @all: "all";
-        @tv: "(tv)";
         @media all and (tv) {
           .all-and-tv-variables {
             var: all-and-tv;

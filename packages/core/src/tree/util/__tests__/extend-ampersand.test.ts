@@ -28,7 +28,7 @@ describe('Extend Ampersand Handling Tests', () => {
       const result = extendSelector(selector, target, extendWith, true);
 
       // Should be hoisted to root because we crossed the boundary
-      expect(result.options.hoistToRoot).toBe(true);
+      expect(result.hoistToRoot).toBe(true);
 
       // Should resolve the ampersand and create selector list
       const output = result.toTrimmedString();
@@ -51,7 +51,7 @@ describe('Extend Ampersand Handling Tests', () => {
       const result = extendSelector(selector, target, extendWith, true);
 
       // Should NOT be hoisted since we didn't cross the boundary
-      expect(result.options.hoistToRoot).toBeFalsy();
+      expect(result.hoistToRoot).toBeFalsy();
 
       // Should preserve ampersand structure with extension
       const output = result.toTrimmedString();
@@ -74,7 +74,7 @@ describe('Extend Ampersand Handling Tests', () => {
       const result = extendSelector(selector, target, extendWith, true);
 
       // Should handle properly and hoist
-      expect(result.options.hoistToRoot).toBe(true);
+      expect(result.hoistToRoot).toBe(true);
     });
 
     it('should handle nested ampersands in complex selectors', () => {
@@ -89,7 +89,7 @@ describe('Extend Ampersand Handling Tests', () => {
       const result = extendSelector(selector, target, extendWith, true);
 
       // Should resolve and hoist
-      expect(result.options.hoistToRoot).toBeFalsy(); // Changed: ampersand already resolved, no boundary detected
+      expect(result.hoistToRoot).toBeFalsy(); // Changed: ampersand already resolved, no boundary detected
     });
   });
 

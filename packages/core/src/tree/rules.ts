@@ -300,10 +300,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let opts = getPrintOptions(options);
     // Use options.depth if provided, otherwise calculate from frameState
     const depth = opts.depth ?? opts.frameState?.at(-1)?.depth ?? 0;
-    // #region agent log
-    // eslint-disable-next-line
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:293', message: 'toBraced entry', data: { depth, optionsDepth: opts.depth, frameStateDepth: opts.frameState?.at(-1)?.depth, frameStateLength: opts.frameState?.length ?? 0 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-fix-v2', hypothesisId: 'A' }) }).catch(() => {});
-    // #endregion
     const w = opts.writer!;
     const mark = w.mark();
     let space = ''.padStart(depth * 2);
@@ -939,7 +935,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 rules.adopt(result);
               }
             }
-            if (result.options.hoistToRoot) {
+            if (result.hoistToRoot) {
               rulesToHoist = true;
             }
           }
@@ -1107,10 +1103,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     currentNode: Ruleset | AtRule
   ) {
     let opts = getPrintOptions(options);
-    // #region agent log
-    // eslint-disable-next-line
-    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1089', message: 'renderWithFrameFlattening entry', data: { optionsDepth: options.depth, optsDepth: opts.depth, currentNodeType: currentNode.type, currentNodeName: (currentNode as any).value?.name?.toString?.() || (currentNode as any).value?.selector?.toString?.() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-fix-v2', hypothesisId: 'H' }) }).catch(() => {});
-    // #endregion
     let w = options.writer!;
     let mark = w.mark();
     // frameState is guaranteed to exist by getPrintOptions
@@ -1224,19 +1216,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             let space = ''.padStart(state.depth * 2);
             w.add(`${space}}\n`);
           }
-          // #region agent log
-          // eslint-disable-next-line
-          fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1215', message: 'hoisted child - closed frames', data: { closedFramesCount: closedFrames.length, closedFramesNames: closedFrames.map(cf => ({ type: cf.frame.type, name: (cf.frame as any)?.value?.name?.toString?.() || (cf.frame as any)?.value?.selector?.toString?.() })), frameStateLength: frameState.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'media-close-reopen', hypothesisId: 'C' }) }).catch(() => {});
-          // #endregion
           // Render the hoisted child (it will handle its own frame tracking)
           node.toTrimmedString(opts);
           // Re-open frames if the next child is non-hoisted (needs frames to be open)
           // Just add them back to frameState without re-rendering the headers
           if (shouldReopenFrames && closedFrames.length > 0) {
-            // #region agent log
-            // eslint-disable-next-line
-            fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1223', message: 'hoisted child - reopening frames', data: { closedFramesCount: closedFrames.length, shouldReopenFrames }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'media-close-reopen', hypothesisId: 'D' }) }).catch(() => {});
-            // #endregion
             for (const closedFrame of closedFrames) {
               frameState.push({ frame: closedFrame.frame, depth: closedFrame.depth });
               openedFrames.push(closedFrame.frame);
@@ -1293,10 +1277,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               }
               // Check if this frame is already in frameState
               const alreadyInFrameState = frameState.some(state => state.frame === frameToOpen);
-              // #region agent log
-              // eslint-disable-next-line
-              fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1220', message: 'renderWithFrameFlattening checking frame', data: { frameType: frameToOpen.type, frameName: (frameToOpen as any).value?.name?.toString?.() || (frameToOpen as any).value?.selector?.toString?.(), alreadyInFrameState, frameStateLength: frameState.length, initialFrameStateLength }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-fix-v2', hypothesisId: 'G' }) }).catch(() => {});
-              // #endregion
               if (!alreadyInFrameState) {
               // Calculate depth for this frame:
               // Depth is determined by the number of boundaried at-rules (at-rules that can't be hoisted past)
@@ -1323,7 +1303,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 }
 
                 // Check if this frame is hoisted (it's in currentNode.frames, meaning it was hoisted)
-                const isHoisted = isNode(frameToOpen, 'AtRule') && frameToOpen.options.hoistToRoot
+                const isHoisted = isNode(frameToOpen, 'AtRule') && frameToOpen.hoistToRoot
                   && framesFromParent.includes(frameToOpen as AtRule);
 
                 if (atRuleCount === 0 && isHoisted) {
@@ -1336,10 +1316,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 // No at-rules, but not hoisted - use opts.depth or frameIdx
                   d = opts.depth ?? frameIdx;
                 }
-                // #region agent log
-                // eslint-disable-next-line
-              fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1201', message: 'renderWithFrameFlattening opening frame', data: { calculatedDepth: d, optsDepth: opts.depth, frameStateLength: frameState.length, lastFrameDepth: frameState[frameState.length - 1]?.depth, frameIdx, frameType: frameToOpen.type, frameName: (frameToOpen as any).value?.name?.toString?.() || (frameToOpen as any).value?.selector?.toString?.() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-fix-v2', hypothesisId: 'D' }) }).catch(() => {});
-                // #endregion
                 frameState.push({ frame: frameToOpen, depth: d });
                 openedFrames.push(frameToOpen);
                 // Set depth for renderOpening - node will indent itself
@@ -1361,10 +1337,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           const isRulesNode = isNode(node, 'Rules');
           // Set depth for children - use calculated depth d
           const childOpts = { ...opts, depth: d };
-          // #region agent log
-          // eslint-disable-next-line
-          fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1220', message: 'renderWithFrameFlattening rendering child', data: { childType: node.type, depthProvided: d, frameStateLength: frameState.length, lastFrameDepth: frameState[frameState.length - 1]?.depth, isRulesNode, nodeName: (node as any).value?.name?.toString?.() || (node as any).value?.selector?.toString?.() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'indent-fix-v2', hypothesisId: 'E' }) }).catch(() => {});
-          // #endregion
           if (!isRulesNode) {
             let space = ''.padStart(d * 2);
             w.add(space);

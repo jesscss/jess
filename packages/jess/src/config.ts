@@ -34,16 +34,7 @@ const explorerSync = cosmiconfigSync('styles', {
  * @returns Configuration object, or empty object if no config found
  */
 export const getConfig = (searchFrom?: string): Record<string, any> => {
-  // #region agent log
-  fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'config.ts:36', message: 'getConfig entry', data: { searchFrom: searchFrom || 'none' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
-  // #endregion
-  // #region agent log
-  fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'config.ts:37', message: 'getConfig calling explorerSync.search', data: { searchFrom: searchFrom || 'none' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
-  // #endregion
   const result = explorerSync.search(searchFrom);
-  // #region agent log
-  fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'config.ts:38', message: 'getConfig search completed', data: { found: !!result, configPath: result?.filepath }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
-  // #endregion
 
   if (!result?.config) {
     return {};

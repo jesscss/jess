@@ -60,6 +60,7 @@ export type AmpersandValue = {
      }
 
    */
+  /** Set to an empty string to hoist to root */
   appendValue?: string;
   /** The evaluated selector */
   selector?: Selector | Nil;
@@ -132,7 +133,7 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
     const w = options.writer!;
     const mark = w.mark();
     const { appendValue } = this.value;
-    if (appendValue !== undefined) {
+    if (appendValue) {
       w.add('&(');
       if (appendValue) {
         w.add(appendValue, this);
@@ -147,7 +148,7 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
   /** Hmm this should never return Extend */
   override evalNode(context: Context): Selector | Nil {
     const { appendValue, selector: storedSelector } = this.value;
-    if ((appendValue ?? context.opts.collapseNesting) || this.options.hoistToRoot) {
+    if (appendValue ?? this.hoistToRoot ?? context.opts.collapseNesting) {
       // Use the stored selector if available, otherwise fall back to frame selector
       let frame = atIndex(context.rulesetFrames, -1);
       let selector = storedSelector ? storedSelector.copy(true) : frame?.selector.copy(true);
@@ -186,6 +187,7 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
       } else {
         result = selector;
       }
+      result.hoistToRoot = true;
       return result;
     }
 

@@ -123,7 +123,7 @@ describe('Ampersand', () => {
   });
 
   it('should collapse selectors when ampersand is set to hoist #1', async () => {
-    let node = wrapAmp([amp(undefined, { hoistToRoot: true })]);
+    let node = wrapAmp([amp('')]);
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
     const css = evald.toString({ collapseNesting: true });
@@ -138,7 +138,7 @@ describe('Ampersand', () => {
   });
 
   it('should collapse selectors when ampersand is set to hoist #2', async () => {
-    let node = wrapAmpList([sel([amp(undefined, { hoistToRoot: true })])]);
+    let node = wrapAmpList([sel([amp('')])]);
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
     const css = evald.toString({ collapseNesting: true });

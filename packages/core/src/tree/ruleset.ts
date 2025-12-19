@@ -56,7 +56,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   isHoisted(options: PrintOptions) {
-    return this.options.hoistToRoot ?? options.collapseNesting ?? false;
+    return this.hoistToRoot ?? options.collapseNesting ?? false;
   }
 
   /** @todo - remove? */
@@ -103,6 +103,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         () => selector.eval(context),
         (sel) => {
           node.value.selector = sel as Selector | Nil;
+          if (sel.hoistToRoot) {
+            node.hoistToRoot = true;
+          }
           return node;
         }
       );
@@ -157,7 +160,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       selector = this.addImplicitAmpersand(parentSelector, selector, collapseNesting);
     }
     if (collapseNesting) {
-      selector.options.hoistToRoot = true;
+      selector.hoistToRoot = true;
     }
     return selector;
   }
@@ -200,8 +203,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         return this.selector.eval(context);
       },
       (sels: Selector | Nil) => {
-        if (frame && (this.options.hoistToRoot ?? context.opts.collapseNesting)) {
-          this.options.hoistToRoot = true;
+        if (frame && (this.hoistToRoot ?? context.opts.collapseNesting)) {
+          this.hoistToRoot = true;
         }
         // Unwrap generated :is() pseudo-selectors if they're the ruleset's only selector
         // or if they're the first component of a ComplexSelector in the parent
@@ -281,7 +284,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         if (preservedSourceNode && this.value.selector) {
           this.value.selector.sourceNode = preservedSourceNode;
         }
-        this.options.hoistToRoot ||= context.opts.collapseNesting;
+        if (context.opts.collapseNesting) {
+          this.hoistToRoot = true;
+        }
         context.rulesetFrames.push(this as Ruleset);
         context.frames.push(this);
         return this.value.rules.eval(context);

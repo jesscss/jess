@@ -19,7 +19,6 @@ export type { TreeContext };
 const { isArray } = Array;
 
 type AllNodeOptions = {
-  hoistToRoot?: boolean;
   /**
    * This seems harder to implement. For now, for anything that needs
    * to be flattened, we hoist it to the root.
@@ -29,6 +28,9 @@ type AllNodeOptions = {
   /**
    * For statements with optional semis,
    * we flag this for accurate re-serialization.
+   *
+   * @todo - Not sure if we actually need this, but it's here
+   * if we wanted a concrete syntax tree.
    */
   semi?: boolean;
 };
@@ -190,6 +192,7 @@ export abstract class Node<
 
   allowRoot = false;
   allowRuleRoot = false;
+  hoistToRoot: boolean | undefined = undefined;
 
   /**
    * Code internally should call .create() when making new

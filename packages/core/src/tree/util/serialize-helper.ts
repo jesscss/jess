@@ -19,8 +19,6 @@ export function indent(depth: number): string {
  */
 export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPrintOptions): string {
   const w = options.writer;
-  const depth = options.depth;
-  const idt = indent(depth);
   let inFrames = options.inFrames;
   const frameHeaders = options.frameHeaders;
 
@@ -43,24 +41,21 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   }
 
   const hoisted = node.isHoisted(options);
-  const currentFrames = inFrames;
-
+  // const isRuleset = isNode(node, 'Ruleset');
+  const treeFrames = options.treeFrames!;
   if (hoisted) {
-    options.exitedFrames = inFrames;
-    options.inFrames = inFrames = inFrames.filter(f => isNode(f, 'AtRule'));
+    options.inFrames = inFrames = treeFrames?.filter(f => isNode(f, 'AtRule')) ?? [];
   } else {
-    if (options.exitedFrames) {
-      options.inFrames = inFrames = options.exitedFrames;
-      options.exitedFrames = undefined;
-    }
+    options.inFrames = inFrames = treeFrames!;
   }
   inFrames.push(node);
-  let numFrames = inFrames.length;
+
+  let lastRenderedFrames = options.lastRenderedFrames;
 
   /** Don't output selector yet. Let's see if any child rules need hoisting. */
-  for (let i = 0; i < rulesToRender.length; i++) {
-    let n = rulesToRender[i]!;
-    let next = rulesToRender[i + 1];
+  for (let idx = 0; idx < rulesToRender.length; idx++) {
+    let n = rulesToRender[idx]!;
+    let depth = options.depth;
 
     if (!n.visible && !n.fullRender) {
       continue;
@@ -74,16 +69,29 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     //   isInFrame = false;
     // }
     if (isNode(n, ['Ruleset', 'AtRule'])) {
-      if (n.isHoisted(options)) {
-      }
-      /** @todo - close and open frames */
-      n.toString({ ...options, depth: depth + 1 });
-      /** @todo - Upon re-opening frames, clone the header without comments! */
+      n.toString(options);
       continue;
     }
 
-    for (let i = frameHeaders.length; i < numFrames; i++) {
+    let matches = -1;
+    /** Close current frames if needed */
+    for (let i = 0; i < lastRenderedFrames.length; i++) {
+      if (inFrames[i] !== lastRenderedFrames[i]) {
+        break;
+      }
+      matches = i;
+    }
+    for (let i = lastRenderedFrames.length - 1; i > matches; i--) {
+      w.add(indent(i) + '}\n');
+      frameHeaders.pop();
+      lastRenderedFrames.pop();
+      depth = i;
+    }
+
+    for (let i = matches + 1; i < inFrames.length; i++) {
       let s = frameHeaders[i];
+      let f = inFrames[i]!;
+      lastRenderedFrames.push(f);
       if (s === undefined) {
         s = inFrames[i]!.getHeaderString({ ...options, depth: i });
         frameHeaders[i] = s;
@@ -91,11 +99,12 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
         s = inFrames[i]!.getHeaderString({ ...options, depth: i }, true);
         frameHeaders[i] = s;
       }
+      depth = i;
       w.add(s!);
     }
 
     if (isNode(n, 'Declaration')) {
-      w.add(idt + '  ');
+      w.add(indent(depth) + '  ');
       n.processPrePost('pre');
       let out = w.capture(() => n.toTrimmedString({ ...options, depth: depth + 1 }));
       w.add(out);
@@ -109,9 +118,14 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       n.toString({ ...options, depth: depth + 1 });
     }
   }
+
   inFrames.pop();
   frameHeaders.pop();
-  w.add(idt + '}\n');
+  let renderedLength = lastRenderedFrames.length;
+  if (treeFrames.length < renderedLength) {
+    w.add(indent(renderedLength - 1) + '}\n');
+    lastRenderedFrames.pop();
+  }
 
   return w.getSince(mark);
 }

@@ -69,7 +69,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   isHoisted(opts: { collapseNesting?: boolean }) {
-    return this.options.hoistToRoot ?? opts.collapseNesting ?? false;
+    return this.hoistToRoot ?? opts.collapseNesting ?? false;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -152,7 +152,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       () => {
         let { rules } = node.value;
         if (rules) {
-          node.options.hoistToRoot ||= context.opts.collapseNesting;
+          if (context.opts.collapseNesting) {
+            node.hoistToRoot = true;
+          }
           context.frames.push(node);
           if (node.isNestable() && node.isHoisted(context.opts)) {
             let existingRules = rules;
