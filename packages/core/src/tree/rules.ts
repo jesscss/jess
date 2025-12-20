@@ -299,7 +299,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   toBraced(options?: PrintOptions) {
     let opts = getPrintOptions(options);
     // Use options.depth if provided, otherwise calculate from frameState
-    const depth = opts.depth ?? opts.frameState?.at(-1)?.depth ?? 0;
+    const depth = opts.depth!;
     const w = opts.writer!;
     const mark = w.mark();
     let space = ''.padStart(depth * 2);
@@ -1082,298 +1082,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     ) as MaybePromise<this>;
   }
-
-  /**
-   * Renders with optional frame-based flattening for collapseNesting
-   *
-   * @note - This is a more efficient way to "hoist" rules to the root
-   * than Less's approach, where arrays are copied and flattened. Instead,
-   * the nested structure is preserved, and we just track the frames we're in.
-   * Once we need to hoist a child, we print closing braces for the current frame,
-   * render the opening of the new frame, and continue rendering the child.
-   *
-   * This also allows us to properly match CSS's nesting behavior, since we don't
-   * push "hoisted" rules to the end of the current frame.
-   *
-   * @param options PrintOptions for rendering
-   * @param currentNode The node to render
-   */
-  renderWithFrameFlattening(
-    options: PrintOptions,
-    currentNode: Ruleset | AtRule
-  ) {
-    let opts = getPrintOptions(options);
-    let w = options.writer!;
-    let mark = w.mark();
-    // frameState is guaranteed to exist by getPrintOptions
-    const frameState = opts.frameState!;
-
-    // Track the initial frameState length - we'll close back to this at the end
-    const initialFrameStateLength = frameState.length;
-    // Track which frames we actually open during this call
-    const openedFrames: (Ruleset | AtRule)[] = [];
-
-    // If we have frames, we need to flatten
-    let currentState = frameState.at(-1) ?? { depth: 0 };
-    let currentDepth = currentState.depth;
-
-    // Build newFrames from currentNode.frames, but filter out frames that are already open in frameState
-    // This prevents reopening frames that can't be hoisted past (e.g., @page inside @media)
-    let framesFromParent = (currentNode.frames ?? []).filter(frame => isNode(frame, 'AtRule')) as AtRule[];
-    let newFrames: (AtRule | Ruleset)[] = [];
-    for (const frame of framesFromParent) {
-      // Only include frames that aren't already in frameState
-      if (!frameState.some(state => state.frame === frame)) {
-        newFrames.push(frame);
-      }
-    }
-    // Always include currentNode itself (it's the frame we're rendering)
-    newFrames.push(currentNode);
-
-    /**
-     * If the current open frames equals the at-rule frames we need, then we don't need to
-     * close and re-render them.
-     */
-    let isAtRule = currentNode.type === 'AtRule';
-    let rules = currentNode.value.rules!;
-    let length = rules.value.length;
-    /**
-     * This may be hard to follow at first, but while rendering a hoisted
-     * node, we don't render its opening until we reach the first
-     * non-hoisted child. This is so we don't render a ruleset opening
-     * or at-rule opening just to immediately close it with empty braces.
-     */
-    // We don't need to pre-compute hasHoistedChildren - we can determine it dynamically
-    // when we're at the last non-hoisted child by checking if there are more children coming
-
-    for (let i = 0; i < length; i++) {
-      const child = rules.value[i]!;
-      if (!child.visible) {
-        continue;
-      }
-
-      // Check if the next child is non-hoisted (needs frames to be open)
-      let nextChildIsNonHoisted = false;
-      for (let j = i + 1; j < length; j++) {
-        const nextChild = rules.value[j];
-        if (!nextChild?.visible) {
-          continue;
-        }
-        const isNextHoisted = isNode(nextChild, ['AtRule', 'Ruleset'])
-          && Object.prototype.hasOwnProperty.call(nextChild, 'frames');
-        if (!isNextHoisted) {
-          nextChildIsNonHoisted = true;
-        }
-        break; // Only check the next visible child
-      }
-
-      /** Recalculate which frames are already open by comparing newFrames with current frameState */
-      let newFramesStartIndex = 0;
-      for (let j = 0; j < newFrames.length; j++) {
-        if (frameState.length > j && newFrames[j] === frameState[j]?.frame) {
-          newFramesStartIndex++;
-        } else {
-          break;
-        }
-      }
-
-      // Recursively traverse through Rules nodes and hoisted children until we find a non-hoisted child
-      // Track frames as we go, and render openings/closings when we hit actual content
-      const renderChildRecursive = (node: Node, currentFrames: (Ruleset | AtRule)[], frameStartIndex: number, shouldReopenFrames: boolean): void => {
-        // Check if this is a hoisted Ruleset/AtRule
-        const isAtRuleOrRuleset = isNode(node, ['AtRule', 'Ruleset']);
-        const hasFramesProperty = isAtRuleOrRuleset && Object.prototype.hasOwnProperty.call(node, 'frames');
-        const isHoisted = isAtRuleOrRuleset && hasFramesProperty;
-
-        if (isHoisted) {
-          // Close any open frames (except AtRules) before rendering this hoisted child
-          // Track which frames we close so we can re-open them if the next child is non-hoisted
-          // BUT: Don't close frames that the next child also needs (check currentFrames)
-          const closedFrames: Array<{ frame: Ruleset | AtRule; depth: number }> = [];
-          // Check which frames from frameState are also in currentFrames (needed by next child)
-          const framesNeededByNextChild = new Set(currentFrames);
-          while (frameState.length > initialFrameStateLength) {
-            let state = frameState[frameState.length - 1];
-            if (!state?.frame) {
-              frameState.pop();
-              continue;
-            }
-            let frame = state.frame;
-            if (isNode(frame, 'AtRule')) {
-              // Don't close AtRules - they can't be hoisted past
-              break;
-            }
-
-            // If this frame is needed by the next child, don't close it
-            if (framesNeededByNextChild.has(frame)) {
-              break;
-            }
-            frameState.pop();
-            closedFrames.unshift({ frame, depth: state.depth }); // unshift to maintain order for re-opening
-            if (openedFrames.length > 0 && openedFrames[openedFrames.length - 1] === frame) {
-              openedFrames.pop();
-            }
-            let space = ''.padStart(state.depth * 2);
-            w.add(`${space}}\n`);
-          }
-          // Render the hoisted child (it will handle its own frame tracking)
-          node.toTrimmedString(opts);
-          // Re-open frames if the next child is non-hoisted (needs frames to be open)
-          // Just add them back to frameState without re-rendering the headers
-          if (shouldReopenFrames && closedFrames.length > 0) {
-            for (const closedFrame of closedFrames) {
-              frameState.push({ frame: closedFrame.frame, depth: closedFrame.depth });
-              openedFrames.push(closedFrame.frame);
-              // Don't re-render the opening - it was already rendered, we just need to track it
-            }
-          }
-        } else if (isNode(node, 'Rules')) {
-          // Recursively traverse Rules nodes
-          const rulesNode = node as Rules;
-          const nestedLength = rulesNode.value.length;
-          for (let nestedIdx = 0; nestedIdx < nestedLength; nestedIdx++) {
-            const nestedChild = rulesNode.value[nestedIdx];
-            if (!nestedChild?.visible) {
-              continue;
-            }
-            // Check if the next nested child is non-hoisted
-            let nextNestedIsNonHoisted = false;
-            for (let j = nestedIdx + 1; j < nestedLength; j++) {
-              const nextNested = rulesNode.value[j];
-              if (!nextNested?.visible) {
-                continue;
-              }
-              const isNextHoisted = isNode(nextNested, ['AtRule', 'Ruleset'])
-                && Object.prototype.hasOwnProperty.call(nextNested, 'frames');
-              if (!isNextHoisted) {
-                nextNestedIsNonHoisted = true;
-              }
-              break;
-            }
-            renderChildRecursive(nestedChild, currentFrames, frameStartIndex, nextNestedIsNonHoisted);
-          }
-        } else {
-          // This is a non-hoisted child (Declaration, etc.)
-          // Per the comment: "we don't render its opening until we reach the first non-hoisted child"
-          // Use frameState as the source of truth - if frames aren't open yet, open them now
-          // Recalculate which frames are already open by comparing currentFrames with frameState
-          // This is important because frameState may have changed during recursive traversal
-          let alreadyOpenCount = 0;
-          for (let i = 0; i < currentFrames.length; i++) {
-            if (frameState.length > i && frameState[i]?.frame === currentFrames[i]) {
-              alreadyOpenCount++;
-            } else {
-              break;
-            }
-          }
-          let d = alreadyOpenCount;
-          // If frames aren't open yet (frameState is at initial length), open them now
-          if (frameState.length === initialFrameStateLength) {
-            // Open all frames in currentFrames that aren't already open, starting from alreadyOpenCount
-            for (let frameIdx = alreadyOpenCount; frameIdx < currentFrames.length; frameIdx++) {
-              const frameToOpen = currentFrames[frameIdx];
-              if (!frameToOpen) {
-                continue;
-              }
-              // Check if this frame is already in frameState
-              const alreadyInFrameState = frameState.some(state => state.frame === frameToOpen);
-              if (!alreadyInFrameState) {
-              // Calculate depth for this frame:
-              // Depth is determined by the number of boundaried at-rules (at-rules that can't be hoisted past)
-              // Rulesets don't affect depth - only at-rules do
-              // A "hoisted to root" node resets at zero unless there are at-rules it can't hoist past
-
-                // Find the last at-rule depth in frameState (ignore rulesets)
-                let lastAtRuleDepth = -1;
-                for (let i = frameState.length - 1; i >= 0; i--) {
-                  const state = frameState[i];
-                  if (state?.frame && isNode(state.frame, 'AtRule')) {
-                    lastAtRuleDepth = state.depth;
-                    break;
-                  }
-                }
-
-                // Count how many at-rules are in frameState (for determining if we're at root)
-                let atRuleCount = 0;
-                for (let i = 0; i < frameState.length; i++) {
-                  const state = frameState[i];
-                  if (state?.frame && isNode(state.frame, 'AtRule')) {
-                    atRuleCount++;
-                  }
-                }
-
-                // Check if this frame is hoisted (it's in currentNode.frames, meaning it was hoisted)
-                const isHoisted = isNode(frameToOpen, 'AtRule') && frameToOpen.hoistToRoot
-                  && framesFromParent.includes(frameToOpen as AtRule);
-
-                if (atRuleCount === 0 && isHoisted) {
-                // No at-rules in frameState and frame is hoisted - start at depth 0
-                  d = 0;
-                } else if (lastAtRuleDepth >= 0) {
-                // There are at-rules it can't hoist past - nest deeper
-                  d = lastAtRuleDepth + 1;
-                } else {
-                // No at-rules, but not hoisted - use opts.depth or frameIdx
-                  d = opts.depth ?? frameIdx;
-                }
-                frameState.push({ frame: frameToOpen, depth: d });
-                openedFrames.push(frameToOpen);
-                // Set depth for renderOpening - node will indent itself
-                const renderOpts = { ...opts, depth: d };
-                frameToOpen.renderOpening(renderOpts);
-                w.add('{\n');
-              }
-            }
-            // After opening all frames, declarations should be indented at the last frame's depth + 1
-            // For non-hoisted children, both at-rules AND rulesets affect depth
-            d = frameState.length > 0 ? frameState[frameState.length - 1]!.depth + 1 : alreadyOpenCount + 1;
-          } else {
-            // Frames are already open from a previous non-hoisted child
-            // Declarations should be indented at the last frame's depth + 1
-            // For non-hoisted children, both at-rules AND rulesets affect depth
-            d = frameState.length > 0 ? frameState[frameState.length - 1]!.depth + 1 : alreadyOpenCount + 1;
-          }
-
-          const isRulesNode = isNode(node, 'Rules');
-          // Set depth for children - use calculated depth d
-          const childOpts = { ...opts, depth: d };
-          if (!isRulesNode) {
-            let space = ''.padStart(d * 2);
-            w.add(space);
-          }
-          let out = w.capture(() => node.toTrimmedString(childOpts));
-          w.add(out);
-          if (node.requiredSemi && node.options.semi !== false) {
-            w.add(';');
-          }
-          w.add('\n');
-        }
-      };
-
-      renderChildRecursive(child, newFrames, newFramesStartIndex, nextChildIsNonHoisted);
-    }
-
-    // At the end, close any frames that were opened during this renderWithFrameFlattening call
-    // This only happens if there are no more children
-    // Close frames in reverse order - pop from frameState and verify it matches our opened frames
-    for (let i = openedFrames.length - 1; i >= 0; i--) {
-      const expectedFrame = openedFrames[i];
-      if (!expectedFrame) {
-        break;
-      }
-      if (frameState.length === 0) {
-        break;
-      }
-      let state = frameState[frameState.length - 1];
-      if (!state?.frame || state.frame !== expectedFrame) {
-        // Frame doesn't match - might have been closed already or frameState is corrupted
-        break;
-      }
-      frameState.pop();
-      let space = ''.padStart(state.depth * 2);
-      w.add(`${space}}\n`);
-    }
-  }
 }
 
 export const rules = defineType(Rules, 'Rules');
@@ -1702,6 +1410,12 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
               param.index = -(i + 1);
             }
             rules.registerNode(param);
+            // #region agent log
+            if (param.value.name?.toString() === 'fallback') {
+              // eslint-disable-next-line @typescript-eslint/naming-convention
+              fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1412', message: 'getFunctionFromMixins registered fallback param', data: { paramIndex: param.index, rulesType: rules.type, rulesIndex: rules.index, rulesParent: rules.parent?.type, foundAfterRegister: !!rules.find('declaration', 'fallback', 'VarDeclaration') }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'parent-chain', hypothesisId: 'H' }) }).catch(() => {});
+            }
+            // #endregion
           }
           // Note: Any with role: 'property' should have been converted to VarDeclaration during matching
           // If we see one here, it's an error - params should all be VarDeclaration by now
@@ -1759,7 +1473,19 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       // Mark this mixin as being evaluated (similar to how variables are tracked)
       thisContext.searchScope.add(candidate);
       try {
+        // #region agent log
+        if (params && params.value.some(p => isNode(p, 'VarDeclaration') && p.value.name?.toString() === 'fallback')) {
+          // eslint-disable-next-line @typescript-eslint/naming-convention
+          fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1470', message: 'getFunctionFromMixins before rules.eval with fallback param', data: { rulesType: rules.type, rulesIndex: rules.index, rulesParent: rules.parent?.type, hasFallbackInRegistry: !!rules.find('declaration', 'fallback', 'VarDeclaration') }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'parent-chain', hypothesisId: 'H' }) }).catch(() => {});
+        }
+        // #endregion
         let newRules = await rules.eval(thisContext);
+        // #region agent log
+        if (params && params.value.some(p => isNode(p, 'VarDeclaration') && p.value.name?.toString() === 'fallback')) {
+          // eslint-disable-next-line @typescript-eslint/naming-convention
+          fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1475', message: 'getFunctionFromMixins after rules.eval with fallback param', data: { newRulesIsSame: newRules === rules, newRulesType: newRules.type, newRulesIndex: newRules.index, newRulesParent: newRules.parent?.type, hasFallbackInNewRules: !!newRules.find('declaration', 'fallback', 'VarDeclaration') }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'parent-chain', hypothesisId: 'H' }) }).catch(() => {});
+        }
+        // #endregion
         /**
          * Make everything public, so that we can access these
          * variables in the parent scope, or when doing lookups.

@@ -129,9 +129,6 @@ importers:
       '@jridgewell/gen-mapping':
         specifier: ~0.3.12
         version: 0.3.12
-      '@traversable/json-schema':
-        specifier: ~0.0.26
-        version: 0.0.26(@traversable/json@0.0.52(@traversable/registry@0.0.49))(prettier@2.8.8)
       '@ungap/set-methods':
         specifier: ~0.1.1
         version: 0.1.1
@@ -1932,11 +1929,6 @@ packages:
   '@polka/url@1.0.0-next.29':
     resolution: {integrity: sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==}
 
-  '@prettier/sync@0.5.5':
-    resolution: {integrity: sha512-6BMtNr7aQhyNcGzmumkL0tgr1YQGfm9d7ZdmRpWqWuqpc9vZBind4xMe5NMiRECOhjuSiWHfBWLBnXkpeE90bw==}
-    peerDependencies:
-      prettier: '*'
-
   '@puppeteer/browsers@0.5.0':
     resolution: {integrity: sha512-Uw6oB7VvmPRLE4iKsjuOh8zgDabhNX67dzo8U/BB0f9527qx+4eeUs+korU98OhG5C4ubg7ufBgVi63XYwS6TQ==}
     engines: {node: '>=14.1.0'}
@@ -2223,27 +2215,6 @@ packages:
   '@szmarczak/http-timer@5.0.1':
     resolution: {integrity: sha512-+PmQX0PiAYPMeVYe237LJAYvOMYW1j2rH5YROyS3b4CTVJum34HfRvKvAzozHAQG0TnHNdUfY9nCeUyRAs//cw==}
     engines: {node: '>=14.16'}
-
-  '@traversable/json-schema-types@0.0.24':
-    resolution: {integrity: sha512-frnXjhDC6GaFjc1qs3yY35XODRWgIxXxohN2ETagYLK4lzy769473m+bVXZbKPCZ/iZTZL1hY3+YVjgdoke+Xw==}
-    peerDependencies:
-      '@traversable/json': ^0.0.52
-      '@traversable/registry': ^0.0.49
-
-  '@traversable/json-schema@0.0.26':
-    resolution: {integrity: sha512-WimdJ92KJ+E2BDVL1BfmeQ79guNnRTAY0izCqugcIwgs7FeNbgbgFIP2/aPEshneuN2Oaw8IJJEIV5xoaT2piQ==}
-
-  '@traversable/json@0.0.52':
-    resolution: {integrity: sha512-QddhvjiJULZw6z/OhHE0YchZfKr1LRvRvs5dZqGpYb0UB3GpWSn/2fIJjYTOCT0pG95QhuxexPpKky6eihFBLA==}
-    peerDependencies:
-      '@traversable/registry': ^0.0.49
-      fast-check: 3 - 4
-    peerDependenciesMeta:
-      fast-check:
-        optional: true
-
-  '@traversable/registry@0.0.49':
-    resolution: {integrity: sha512-uof62gHhyf5MebDkjQMeJj1yIAQkCbCcJYl848b4A+jFnUXxo2NUuHi0NIZOeG3r+XgNSF4MapDED89tFM6iLA==}
 
   '@trysound/sax@0.2.0':
     resolution: {integrity: sha512-L7z9BgrNEcYyUYtF+HaEfiS5ebkh9jXqbszz7pC0hRBPaatV0XjSD3+eHrpqFemQfgwiFF0QPIarnIihIDn7OA==}
@@ -5055,9 +5026,6 @@ packages:
 
   make-error@1.3.6:
     resolution: {integrity: sha512-s8UhlNe7vPKomQhC1qFelMokr/Sc3AgNbso3n74mVPA5LTZwkB9NlXf4XPamLxJE8h0gh73rM94xvwRT2CVInw==}
-
-  make-synchronized@0.4.2:
-    resolution: {integrity: sha512-EwEJSg8gSGLicKXp/VzNi1tvzhdmNBxOzslkkJSoNUCQFZKH/NIUIp7xlfN+noaHrz4BJDN73gne8IHnjl/F/A==}
 
   markdown-extensions@2.0.0:
     resolution: {integrity: sha512-o5vL7aDWatOTX8LzaS1WMoaoxIiLRQJuIKKe2wAw6IeULDHaqbiqiggmx+pKvZDb1Sj+pE46Sn1T7lCqfFtg1Q==}
@@ -10015,11 +9983,6 @@ snapshots:
 
   '@polka/url@1.0.0-next.29': {}
 
-  '@prettier/sync@0.5.5(prettier@2.8.8)':
-    dependencies:
-      make-synchronized: 0.4.2
-      prettier: 2.8.8
-
   '@puppeteer/browsers@0.5.0(typescript@5.8.3)':
     dependencies:
       debug: 4.3.4
@@ -10291,26 +10254,6 @@ snapshots:
   '@szmarczak/http-timer@5.0.1':
     dependencies:
       defer-to-connect: 2.0.1
-
-  '@traversable/json-schema-types@0.0.24(@traversable/json@0.0.52(@traversable/registry@0.0.49))(@traversable/registry@0.0.49)':
-    dependencies:
-      '@traversable/json': 0.0.52(@traversable/registry@0.0.49)
-      '@traversable/registry': 0.0.49
-
-  '@traversable/json-schema@0.0.26(@traversable/json@0.0.52(@traversable/registry@0.0.49))(prettier@2.8.8)':
-    dependencies:
-      '@prettier/sync': 0.5.5(prettier@2.8.8)
-      '@traversable/json-schema-types': 0.0.24(@traversable/json@0.0.52(@traversable/registry@0.0.49))(@traversable/registry@0.0.49)
-      '@traversable/registry': 0.0.49
-    transitivePeerDependencies:
-      - '@traversable/json'
-      - prettier
-
-  '@traversable/json@0.0.52(@traversable/registry@0.0.49)':
-    dependencies:
-      '@traversable/registry': 0.0.49
-
-  '@traversable/registry@0.0.49': {}
 
   '@trysound/sax@0.2.0': {}
 
@@ -13684,8 +13627,6 @@ snapshots:
       semver: 7.7.2
 
   make-error@1.3.6: {}
-
-  make-synchronized@0.4.2: {}
 
   markdown-extensions@2.0.0: {}
 

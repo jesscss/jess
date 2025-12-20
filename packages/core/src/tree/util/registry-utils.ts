@@ -88,7 +88,7 @@ export abstract class Registry<
     // Note: childFilterType can be undefined to mean "don't filter" (accept both Mixin and Ruleset)
     const actualChildFilterType = 'childFilterType' in options ? childFilterType : filterType;
     let firstValue = candidates.values().next().value;
-      if (rules._rulesSet) {
+    if (rules._rulesSet) {
       let { rulesSet } = rules;
       /**
        * Only consider rules after the last found declaration (if relevant)
@@ -795,7 +795,6 @@ export class MixinRegistry extends Registry<
         break;
       }
       do {
-        const prevRules = rules;
         rules = rules?.parent as Rules;
         /**
          * If we reach an import boundary, stop unless it's an `@import`
@@ -916,12 +915,20 @@ export class DeclarationRegistry extends Registry<Declaration> {
     let newReadonly: boolean | undefined = false;
     // Track visited Rules nodes in the parent chain to detect circular parent chains
     const visitedRules = new Set<Rules>();
+    // #region agent log
+    // eslint-disable-next-line
+    fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'registry-utils.ts:919', message: 'DeclarationRegistry.find starting parent chain traversal', data: { key, startingRulesType: rules?.type, startingRulesParent: rules?.parent?.type, startingRulesIndex: rules?.index }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'parent-chain', hypothesisId: 'C' }) }).catch(() => {});
+    // #endregion
     while (rules) {
       // CRITICAL: Check for circular parent chain
       if (visitedRules.has(rules)) {
         throw new Error(`Circular parent chain detected in DeclarationRegistry.find`);
       }
       visitedRules.add(rules);
+      // #region agent log
+      // eslint-disable-next-line
+      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'registry-utils.ts:925', message: 'DeclarationRegistry.find traversing parent chain', data: { key, currentRulesType: rules?.type, currentRulesParent: rules?.parent?.type, currentRulesIndex: rules?.index, visitedCount: visitedRules.size }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'parent-chain', hypothesisId: 'C' }) }).catch(() => {});
+      // #endregion
       let currentReadonly = options?.readonly || rules.options.readonly;
       newReadonly = currentReadonly;
       let registry = rules.getRegistry('declaration');
@@ -1016,9 +1023,6 @@ export class DeclarationRegistry extends Registry<Declaration> {
       do {
         rules = rules?.parent as Rules;
         /** If we're searching linearly, update the start position to the parent node index */
-        // if (start !== undefined && rules) {
-        //   start = rules.index;
-        // }
         /**
          * If we reach an import boundary, stop unless it's an `@import`
          * which means these rules can reach into the parent file that imports
@@ -1028,7 +1032,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
           rules = undefined;
           break;
         }
-      } while (rules && !isNode(rules, 'Rules'));
+      } while (rules && rules.type !== 'Rules');
     }
     if (options && newReadonly) {
       options.readonly = true;

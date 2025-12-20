@@ -12,7 +12,6 @@ import type { Comment } from './comment';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules';
-import { deepClone } from '@traversable/json-schema';
 
 export type { TreeContext };
 
@@ -279,6 +278,9 @@ export abstract class Node<
         set: (target, prop, newValue) => {
           if (isPlainObject(newValue) || isArray(newValue)) {
             newValue = this._processNodes(newValue);
+          }
+          if (newValue instanceof Node) {
+            this.adopt(newValue);
           }
           return Reflect.set(target, prop, newValue);
         }
@@ -558,7 +560,7 @@ export abstract class Node<
       }
       newValue = Object.fromEntries(map) as Data;
     }
-    let newNode = new Class(newValue, deepClone(this.options), this.location, this.treeContext);
+    let newNode = new Class(newValue, this._options ? { ...this._options } : undefined, this.location, this.treeContext);
     newNode.inherit(this);
 
     cloneFn ??= n => n.clone(deep);

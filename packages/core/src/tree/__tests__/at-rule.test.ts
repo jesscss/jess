@@ -237,7 +237,19 @@ describe('AtRule', () => {
 
   describe('@media with mixins and parameters', () => {
     it('should handle mixin with nested @media using parameter', async () => {
-      // Represents: .mediaMixin(@fallback: 200px) { @media handheld { @media (max-width: @fallback) { background: red; } } }
+      // Represents:
+      // .mediaMixin(@fallback: 200px) {
+      //   background: black;
+      //   @media handheld {
+      //     background: white;
+      //     @media (max-width: @fallback) {
+      //       background: red;
+      //     }
+      //   }
+      // }
+      // .a {
+      //   .mediaMixin(100px);
+      // }
       const mixinDef = mixin({
         name: any('.mediaMixin'),
         params: list([
@@ -265,17 +277,15 @@ describe('AtRule', () => {
         ])
       });
 
-      const callSite = rules([
-        ruleset({
-          selector: sel([el('.a')]),
-          rules: rules([
-            call({
-              name: ref({ key: '.mediaMixin' }, { type: 'mixin-ruleset' }),
-              args: list([dimension([100, 'px'])])
-            })
-          ])
-        })
-      ]);
+      const callSite = ruleset({
+        selector: sel([el('.a')]),
+        rules: rules([
+          call({
+            name: ref({ key: '.mediaMixin' }, { type: 'mixin-ruleset' }),
+            args: list([dimension([100, 'px'])])
+          })
+        ])
+      });
 
       const rootRules = rules([mixinDef, callSite]);
       context.root = rootRules;

@@ -34,15 +34,15 @@ describe('Basic At-Rule Serialization', () => {
     const css = evald.toString();
 
     expect(css).toBeString(`
-.parent {
-  color: red;
-  @media (max-width: 768px) {
-    .child {
-      background: blue;
-    }
-  }
-}
-`);
+      .parent {
+        color: red;
+        @media (max-width: 768px) {
+          .child {
+            background: blue;
+          }
+        }
+      }
+  `);
   });
 
   it('should serialize @supports rule correctly', async () => {
@@ -71,15 +71,15 @@ describe('Basic At-Rule Serialization', () => {
     const css = evald.toString();
 
     expect(css).toBeString(`
-.parent {
-  color: red;
-  @supports (display: grid) {
-    .child {
-      display: grid;
-    }
-  }
-}
-`);
+      .parent {
+        color: red;
+        @supports (display: grid) {
+          .child {
+            display: grid;
+          }
+        }
+      }
+  `);
   });
 
   it('should serialize standalone @media rule correctly', async () => {
@@ -100,6 +100,12 @@ describe('Basic At-Rule Serialization', () => {
     const css = atRule.toTrimmedString();
     console.log('Standalone AtRule output:', JSON.stringify(css));
 
-    expect(css).toBe('@media (max-width: 768px) {\n    .child {\n      background: blue;\n    }\n  }');
+    expect(css).toBeString(`
+      @media (max-width: 768px) {
+        .child {
+          background: blue;
+        }
+      }
+    `);
   });
 });
