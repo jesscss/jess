@@ -31,7 +31,7 @@ export class SelectorList extends Selector<Selector[]> {
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let depth = options.frameState?.at(-1)?.depth ?? 0;
+    let depth = options.depth!;
     let space = ''.padStart(depth * 2);
     let length = this.value.length;
     const mark = w.mark();

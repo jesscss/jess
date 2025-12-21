@@ -1679,8 +1679,6 @@ describe('AtRule', () => {
           .class .sub {
             width: 42;
           }
-        }
-        @media print {
           .top,
           header > h1 {
             color: #444444;
@@ -1739,10 +1737,6 @@ describe('AtRule', () => {
                 width: 500px;
               }
             }
-          }
-        }
-        @media a {
-          @media (b) {
             .first .second .fourth {
               width: 3;
             }
@@ -1793,8 +1787,6 @@ describe('AtRule', () => {
           @page :left {
             margin: 0.5cm;
           }
-        }
-        @media print {
           @page :right {
             margin: 0.5cm;
           }
