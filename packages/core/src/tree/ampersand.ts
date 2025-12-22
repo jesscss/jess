@@ -161,15 +161,20 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
 
       if (appendValue && !isNode(selector, 'Nil')) {
         let doAppendValue = (n: Selector) => {
+          let appended = false;
           for (let s of n.nodes(true)) {
             /** Find the last simple selector and attempt to append */
             if (isNode(s, 'SimpleSelector')) {
               if (typeof s.value === 'string') {
                 s.value += appendValue;
+                appended = true;
                 break;
               }
               throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
             }
+          }
+          if (!appended) {
+            throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
           }
         };
 

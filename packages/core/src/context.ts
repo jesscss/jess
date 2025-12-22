@@ -206,9 +206,9 @@ export class Context {
 
   /**
    * Registered extends with their extend root context
-   * Format: [target, selectorWithExtend, partial, extendRoot]
+   * Format: [target, selectorWithExtend, partial, extendRoot, extendNode]
    */
-  extends: Array<[target: Selector, selectorWithExtend: Selector, partial: boolean, extendRoot: Rules]> = [];
+  extends: Array<[target: Selector, selectorWithExtend: Selector, partial: boolean, extendRoot: Rules, extendNode: Node]> = [];
 
   /**
    * When doing any kind of lookup, the current node and resolved

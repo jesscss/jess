@@ -38,6 +38,13 @@ The Abstract Syntax Tree (AST) must maintain a valid tree structure at all times
 
 - **CRITICAL - USE VITEST TEST ARCHITECTURE**: When testing parser functionality, you must use the vitest test architecture. Do NOT use ts-node or other direct execution methods to test parsing. All tests should be written using vitest's test framework and run through the standard test command (`pnpm test`).
 
+## Node Properties
+
+- **NEVER** add properties to nodes using `(node as any).property = value` or similar patterns
+- **NEVER** use `as any` type assertions
+- Use context, extend roots registry, or other proper APIs to store temporary data between preEval and evalNode
+- If you need to pass data from preEval to evalNode, use WeakMaps in the appropriate registry (e.g., `ExtendRootRegistry`) keyed by the node itself
+
 ## Debugging
 
 - Debugging instrumentation should never stringify a node with .toString() or .toTrimmedString() because that could cause state errors with frameState tracking.

@@ -8,6 +8,7 @@ import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { Ampersand } from './ampersand';
 import { isNode } from './util/is-node';
 import { indent, serializeRulesContainer } from './util/serialize-helper';
+import { Interpolated } from './interpolated';
 
 export type AtRuleValue = {
   name: Any<'atkeyword'>;
@@ -39,19 +40,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   shortType = 'atrule' as const;
   override allowRoot = true;
 
-  constructor(value: AtRuleValue, options?: AtRuleOptions, location?: LocationInfo, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
-    /** Normally set by parser, but convenience for API */
-    if (
-      options?.nestable === undefined
-    ) {
-      let name = value.name.value;
-      if (['@media', '@supports', '@layer', '@container', '@scope'].includes(name)) {
-        this.options.nestable = true;
-      }
-    }
-  }
-
   frames: (Ruleset | AtRule)[] | undefined;
 
   /**
@@ -75,6 +63,74 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     return serializeRulesContainer(this, options as FinalPrintOptions);
+  }
+
+  /**
+   * Pre-evaluate name and prelude (similar to Ruleset.preEval)
+   * This allows us to extract layer names before rules are evaluated
+   */
+  override preEval(context: Context): MaybePromise<AtRule> {
+    if (!this.preEvaluated) {
+      const node = this.maybeClone(context);
+      node.preEvaluated = true;
+      node.sourceNode ??= this;
+
+      // Evaluate name if needed (for interpolated names)
+      let { name, prelude } = node.value;
+      if (name && name instanceof Interpolated) {
+        const maybeKey = name.eval(context);
+        if (isThenable(maybeKey)) {
+          return (maybeKey as Promise<Any<'atkeyword'>>).then((key) => {
+            node.value.name = key;
+            return this._preEvalPrelude(node, context);
+          });
+        }
+        node.value.name = maybeKey as Any<'atkeyword'>;
+      }
+
+      return this._preEvalPrelude(node, context);
+    }
+    return this;
+  }
+
+  private _preEvalPrelude(node: AtRule, context: Context): MaybePromise<AtRule> {
+    const { prelude } = node.value;
+    if (prelude) {
+      if (prelude.hasFlag(F_STATIC)) {
+        prelude.evaluated = true;
+      } else {
+        const out = prelude.eval(context);
+        if (isThenable(out)) {
+          return (out as Promise<Node>).then((n) => {
+            node.value.prelude = n;
+            return node;
+          });
+        }
+        node.value.prelude = out;
+      }
+    }
+    return node;
+  }
+
+  private _extractAndStoreLayerName(node: AtRule, context: Context): void {
+    const atRuleName = node.value.name?.toTrimmedString?.() ?? node.value.name?.toString?.() ?? '';
+    if (atRuleName === '@layer' && node.value.prelude) {
+      const preludeStr = String(node.value.prelude.valueOf?.() ?? node.value.prelude.toTrimmedString?.() ?? node.value.prelude.toString?.() ?? '');
+      if (preludeStr) {
+        let parentLayerName: string | undefined;
+        for (let i = context.frames.length - 2; i >= 0; i--) {
+          const frame = context.frames[i]!;
+          if (isNode(frame, 'AtRule') && frame.value.name?.toTrimmedString?.() === '@layer' && frame.value.rules?.value?.includes(node)) {
+            parentLayerName = context.extendRoots.getLayerName(frame);
+            if (parentLayerName) {
+              break;
+            }
+          }
+        }
+        const layerName = parentLayerName ? `${parentLayerName}.${preludeStr}` : preludeStr;
+        context.extendRoots.setLayerName(node, layerName);
+      }
+    }
   }
 
   /** Render the opening of this at-rule (name and prelude) */
@@ -133,20 +189,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
     return pipe(
       () => {
+        // Prelude is already evaluated in preEval, so we can skip evaluation here
+        // Just ensure it's marked as evaluated if it was static
         let { prelude } = node.value;
-        if (prelude) {
-          if (prelude.hasFlag(F_STATIC)) {
-            prelude.evaluated = true;
-          } else {
-            let out = prelude.eval(context);
-            if (isThenable(out)) {
-              return (out as Promise<Node>).then((n) => {
-                node.value.prelude = n;
-                return node;
-              });
-            }
-            node.value.prelude = out;
-          }
+        if (prelude && prelude.hasFlag(F_STATIC) && !prelude.evaluated) {
+          prelude.evaluated = true;
         }
       },
       () => {
@@ -155,7 +202,16 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           if (context.opts.collapseNesting) {
             node.hoistToRoot = true;
           }
+          // Push to frames before evaluating rules so we can use context.frames to find parent layers
+          // This allows nested layers to find their parent layer names
+          // NOTE: We do NOT pop here - the frame must remain accessible during rules evaluation
+          // The frame will be popped at the end of evalNode
           context.frames.push(node);
+
+          // Extract and store layer name AFTER pushing to frames but BEFORE evaluating rules
+          // This ensures parent layers are already on the stack when we look for them
+          this._extractAndStoreLayerName(node, context);
+
           if (node.isNestable() && node.isHoisted(context.opts)) {
             let existingRules = rules;
             rules = Rules.create([
@@ -168,21 +224,13 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           }
 
           // Register extend root for nestable at-rules (including @layer)
+          // We need to register AFTER evaluation because the Rules instance may be replaced
+          // Layer name was already extracted in preEval and stored in extend roots registry
           let pushedExtendRoot = false;
-          if (node.options.nestable) {
-            const parentExtendRoot = context.extendRoots.getCurrentExtendRoot();
-            // Extract layer name for @layer at-rules
-            let layerName: string | undefined;
-            const atRuleName = node.value.name?.toTrimmedString?.() ?? node.value.name?.toString?.() ?? '';
-            if (atRuleName === '@layer' && node.value.prelude) {
-              const preludeStr = node.value.prelude.toTrimmedString?.() ?? node.value.prelude.toString?.() ?? '';
-              if (preludeStr) {
-                // Check if parent has a layer name and concatenate
-                const parentLayerName = parentExtendRoot ? context.extendRoots.getLayerName(parentExtendRoot) : undefined;
-                layerName = parentLayerName ? `${parentLayerName}.${preludeStr}` : preludeStr;
-              }
-            }
-            context.extendRoots.registerRoot(rules, parentExtendRoot, { layerName });
+          let parentExtendRoot: Rules | undefined;
+          if (node.isNestable()) {
+            parentExtendRoot = context.extendRoots.getCurrentExtendRoot();
+            // Push a placeholder to maintain stack depth - we'll register the actual Rules after evaluation
             context.extendRoots.pushExtendRoot(rules);
             pushedExtendRoot = true;
           }
@@ -194,29 +242,38 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             return (out as Promise<Rules>).then((r) => {
               // If the only rule was a ruleset, and it evaluated to Rules,
               // discard the extra rules wrapper
-              if (onlyRuleSetChild && isNode(r.value[0], 'Rules')) {
-                node.value.rules = r.value[0];
-              } else {
-                node.value.rules = r;
+              const finalRules = onlyRuleSetChild && isNode(r.value[0], 'Rules') ? r.value[0] : r;
+              node.value.rules = finalRules;
+
+              // Register extend root AFTER evaluation using the final Rules instance
+              if (pushedExtendRoot && node.isNestable()) {
+                context.extendRoots.popExtendRoot(); // Pop the placeholder
+                // Retrieve layer name that was stored in evalNode (and delete it)
+                const layerName = context.extendRoots.takeLayerName(node);
+                context.extendRoots.registerRoot(finalRules, parentExtendRoot, { layerName });
+                context.extendRoots.pushExtendRoot(finalRules);
               }
-              if (pushedExtendRoot) {
-                context.extendRoots.popExtendRoot();
-              }
+
               return node;
             });
           }
-          if (onlyRuleSetChild && isNode(out.value[0], 'Rules')) {
-            node.value.rules = out.value[0];
-          } else {
-            node.value.rules = out;
-          }
-          if (pushedExtendRoot) {
-            context.extendRoots.popExtendRoot();
+          const finalRules = onlyRuleSetChild && isNode(out.value[0], 'Rules') ? out.value[0] : out;
+          node.value.rules = finalRules;
+
+          // Register extend root AFTER evaluation using the final Rules instance
+          if (pushedExtendRoot && node.isNestable()) {
+            context.extendRoots.popExtendRoot(); // Pop the placeholder
+            // Retrieve layer name that was stored in evalNode (and delete it)
+            const layerName = context.extendRoots.takeLayerName(node);
+            context.extendRoots.registerRoot(finalRules, parentExtendRoot, { layerName });
+            context.extendRoots.pushExtendRoot(finalRules);
           }
         }
         return node;
       },
       () => {
+        // Pop the frame that was pushed in preEval
+        // This frame was kept on the stack during rules evaluation so children could access it
         context.frames.pop();
         return node;
       }

@@ -111,6 +111,16 @@ const TEMPLATES = {
     reason: '"${target}" is defined behind a protected compose boundary.',
     fix: 'Move "${target}" to a shared file or create a local shim.'
   },
+  JESS3202: {
+    summary: 'Extend target not found',
+    reason: 'No ruleset found matching "${target}" in accessible extend roots.',
+    fix: 'Ensure "${target}" exists and is accessible from the current extend root.'
+  },
+  JESS3203: {
+    summary: 'Extend target not accessible',
+    reason: '"${target}" exists but is not accessible from the current extend root (blocked by at-rule or compose boundary).',
+    fix: 'Move the extend or the target to a shared extend root, or use a different approach.'
+  },
 
   // Plugin
   JESS5102: {
@@ -452,6 +462,14 @@ export const ERR = {
   // Extend
   extendBoundary(args: Common & { meta: { target: string } }) {
     return makeJessError({ code: 'JESS3201', phase: 'extend', ...args });
+  },
+
+  extendNotFound(args: Common & { meta: { target: string } }) {
+    return makeJessError({ code: 'JESS3202', phase: 'extend', ...args });
+  },
+
+  extendNotAccessible(args: Common & { meta: { target: string } }) {
+    return makeJessError({ code: 'JESS3203', phase: 'extend', ...args });
   },
 
   // Plugin

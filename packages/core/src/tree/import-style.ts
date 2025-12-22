@@ -305,7 +305,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         // For compose type, default is protected (not mutable)
         const isComposeProtected = !importOptions!.mutable;
         context.extendRoots.registerRoot(rules, parentExtendRoot, {
-          isProtected: isComposeProtected
+          isProtected: isComposeProtected,
+          isCompose: true
         });
         context.extendRoots.pushExtendRoot(rules);
         pushedExtendRoot = true;
@@ -345,7 +346,26 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         context.extendRoots.popExtendRoot();
       }
 
-      return node.getFinalRules(rules);
+      const finalRules = node.getFinalRules(rules);
+
+      // For import type, register the final Rules as a child root of the parent
+      // so extends from the parent can find rulesets in the imported Rules
+      // Do this AFTER getFinalRules because it returns a cloned Rules
+      if (type === 'import') {
+        const currentParentExtendRoot = context.extendRoots.getCurrentExtendRoot();
+        // Import type is mutable by default (unless explicitly mutable: false)
+        const isImportProtected = importOptions!.mutable === false;
+        context.extendRoots.registerRoot(finalRules, currentParentExtendRoot, {
+          isProtected: isImportProtected
+        });
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'import-style.ts:361', message: 'Registered import Rules as extend root', data: { type: 'import', hasParent: !!currentParentExtendRoot, isProtected: isImportProtected, finalRulesValueLength: finalRules.value.length, hasRulesets: finalRules.value.some(n => n.type === 'Ruleset') }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H' }) }).catch(() => {});
+        // #endregion
+        // Don't push to stack - import type uses parent's root for extends inside the import
+        // But we register it so extends from parent can find rulesets in the imported Rules
+      }
+
+      return finalRules;
     };
     if (isThenable(maybePath)) {
       return (maybePath as Promise<Quoted | Url>).then(async (p) => {

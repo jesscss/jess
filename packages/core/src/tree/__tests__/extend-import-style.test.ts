@@ -8,6 +8,8 @@ import {
   extend,
   quoted,
   any,
+  decl,
+  spaced,
   type Rules,
   Node
 } from '..';
@@ -34,6 +36,7 @@ describe('Style import extend behavior', () => {
         ruleset({
           selector: sellist([sel([el('.base')])]),
           rules: rules([
+            decl({ name: 'color', value: spaced([any('red')]) }),
             ruleset({
               selector: sellist([sel([el('.extended')])]),
               rules: rules([])
@@ -51,6 +54,7 @@ describe('Style import extend behavior', () => {
         ruleset({
           selector: sellist([sel([el('.child')])]),
           rules: rules([
+            decl({ name: 'color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
@@ -63,8 +67,10 @@ describe('Style import extend behavior', () => {
       expect(css).toBeString(`
         .base,
         .child {
+          color: red;
         }
         .child {
+          color: blue;
         }
       `);
     });
@@ -74,7 +80,9 @@ describe('Style import extend behavior', () => {
       context.sourceTrees.set(imported1Path, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([])
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('red')]) })
+          ])
         })
       ]));
 
@@ -88,6 +96,7 @@ describe('Style import extend behavior', () => {
         ruleset({
           selector: sellist([sel([el('.child')])]),
           rules: rules([
+            decl({ name: 'color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
@@ -108,6 +117,10 @@ describe('Style import extend behavior', () => {
       expect(css).toBeString(`
         .base,
         .child {
+          color: red;
+        }
+        .child {
+          color: blue;
         }
       `);
     });
@@ -119,7 +132,9 @@ describe('Style import extend behavior', () => {
       context.sourceTrees.set(composedPath, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([])
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('red')]) })
+          ])
         })
       ]));
 
@@ -133,6 +148,7 @@ describe('Style import extend behavior', () => {
         ruleset({
           selector: sellist([sel([el('.child')])]),
           rules: rules([
+            decl({ name: 'color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
@@ -145,8 +161,10 @@ describe('Style import extend behavior', () => {
       expect(css).toBeString(`
         .base,
         .child {
+          color: red;
         }
         .child {
+          color: blue;
         }
       `);
     });
@@ -156,7 +174,9 @@ describe('Style import extend behavior', () => {
       context.sourceTrees.set(composed1Path, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([])
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('red')]) })
+          ])
         })
       ]));
 
@@ -170,6 +190,7 @@ describe('Style import extend behavior', () => {
         ruleset({
           selector: sellist([sel([el('.child')])]),
           rules: rules([
+            decl({ name: 'color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
@@ -185,14 +206,9 @@ describe('Style import extend behavior', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
-      expect(css).toBeString(`
-        .base {
-        }
-        .child {
-        }
-      `);
+      await expect(async () => {
+        await node.eval(context);
+      }).rejects.toThrow('Extend target not accessible');
     });
   });
 
@@ -202,7 +218,9 @@ describe('Style import extend behavior', () => {
       context.sourceTrees.set(protectedPath, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([])
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('red')]) })
+          ])
         })
       ]));
 
@@ -216,6 +234,7 @@ describe('Style import extend behavior', () => {
         ruleset({
           selector: sellist([sel([el('.child')])]),
           rules: rules([
+            decl({ name: 'color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
@@ -223,14 +242,9 @@ describe('Style import extend behavior', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
-      expect(css).toBeString(`
-        .base {
-        }
-        .child {
-        }
-      `);
+      await expect(async () => {
+        await node.eval(context);
+      }).rejects.toThrow('Extend target not accessible');
     });
 
     it('compose without mutable cannot be extended (default)', async () => {
@@ -238,7 +252,9 @@ describe('Style import extend behavior', () => {
       context.sourceTrees.set(protectedPath, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([])
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('red')]) })
+          ])
         })
       ]));
 
@@ -252,6 +268,7 @@ describe('Style import extend behavior', () => {
         ruleset({
           selector: sellist([sel([el('.child')])]),
           rules: rules([
+            decl({ name: 'color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
@@ -259,14 +276,9 @@ describe('Style import extend behavior', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
-      expect(css).toBeString(`
-        .base {
-        }
-        .child {
-        }
-      `);
+      await expect(async () => {
+        await node.eval(context);
+      }).rejects.toThrow('Extend target not accessible');
     });
   });
 
@@ -276,7 +288,9 @@ describe('Style import extend behavior', () => {
       context.sourceTrees.set(referencedPath, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([])
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('red')]) })
+          ])
         })
       ]));
 
@@ -290,6 +304,7 @@ describe('Style import extend behavior', () => {
         ruleset({
           selector: sellist([sel([el('.child')])]),
           rules: rules([
+            decl({ name: 'color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
@@ -302,8 +317,10 @@ describe('Style import extend behavior', () => {
       expect(css).toBeString(`
         .base,
         .child {
+          color: red;
         }
         .child {
+          color: blue;
         }
       `);
     });

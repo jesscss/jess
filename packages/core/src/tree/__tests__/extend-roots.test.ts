@@ -11,7 +11,10 @@ import {
   any,
   atrule,
   type Rules,
-  Node
+  Node,
+  decl,
+  spaced,
+  comment
 } from '..';
 import { Context } from '../../context';
 import { resolve } from 'node:path';
@@ -20,10 +23,6 @@ import { createTestContext } from './import-style-test-helpers';
 let context: Context;
 
 describe('Extend Roots Registry', () => {
-  beforeAll(() => {
-    Node.prototype.fullRender = true;
-  });
-
   beforeEach(() => {
     context = createTestContext();
   });
@@ -37,11 +36,14 @@ describe('Extend Roots Registry', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([])
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('red')]) })
+          ])
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
           rules: rules([
+            decl({ name: 'background-color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
@@ -54,8 +56,10 @@ describe('Extend Roots Registry', () => {
       expect(css).toBeString(`
         .base,
         .child {
+          color: red;
         }
         .child {
+          background-color: blue;
         }
       `);
     });
@@ -71,7 +75,9 @@ describe('Extend Roots Registry', () => {
       context.sourceTrees.set(importedPath, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([])
+          rules: rules([
+            decl({ name: 'margin', value: spaced([any('5px')]) })
+          ])
         })
       ]));
 
@@ -84,6 +90,7 @@ describe('Extend Roots Registry', () => {
         ruleset({
           selector: sellist([sel([el('.child')])]),
           rules: rules([
+            decl({ name: 'background-color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
@@ -96,6 +103,10 @@ describe('Extend Roots Registry', () => {
       expect(css).toBeString(`
         .base,
         .child {
+          margin: 5px;
+        }
+        .child {
+          background-color: blue;
         }
       `);
     });
@@ -108,11 +119,14 @@ describe('Extend Roots Registry', () => {
       context.sourceTrees.set(importedPath, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([])
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('red')]) })
+          ])
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
           rules: rules([
+            decl({ name: 'background-color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
@@ -133,8 +147,10 @@ describe('Extend Roots Registry', () => {
       expect(css).toBeString(`
         .base,
         .child {
+          color: red;
         }
         .child {
+          background-color: blue;
         }
       `);
     });
@@ -143,9 +159,9 @@ describe('Extend Roots Registry', () => {
   describe('@compose type roots', () => {
     /**
      * Test: @compose type should create new extend root
-     * Sibling compose roots should be able to extend each other
+     * Sibling compose roots CANNOT extend each other (compose creates boundaries)
      */
-    it('sibling compose roots can extend each other (when mutable)', async () => {
+    it('sibling compose roots cannot extend each other (compose creates boundaries)', async () => {
       const imported1Path = resolve(process.cwd(), 'imported1.jess');
       context.sourceTrees.set(imported1Path, rules([
         ruleset({
@@ -158,7 +174,9 @@ describe('Extend Roots Registry', () => {
       context.sourceTrees.set(imported2Path, rules([
         ruleset({
           selector: sellist([sel([el('.base2')])]),
-          rules: rules([])
+          rules: rules([
+            decl({ name: 'padding', value: spaced([any('10px')]) })
+          ])
         })
       ]));
 
@@ -178,6 +196,7 @@ describe('Extend Roots Registry', () => {
         ruleset({
           selector: sellist([sel([el('.child')])]),
           rules: rules([
+            decl({ name: 'background-color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
@@ -187,13 +206,13 @@ describe('Extend Roots Registry', () => {
 
       const evald = await node.eval(context);
       const css = evald.toString();
+      // Sibling compose roots cannot extend each other - .base should NOT be extended
       expect(css).toBeString(`
-        .base,
-        .child {
-        }
         .base2 {
+          padding: 10px;
         }
         .child {
+          background-color: blue;
         }
       `);
     });
@@ -201,12 +220,13 @@ describe('Extend Roots Registry', () => {
     /**
      * Test: Child compose root can extend parent
      */
-    it('child compose root cannot extend parent (compose is a boundary)', async () => {
+    it('child compose root cannot extend parent (compose is a boundary) - extend throws error', async () => {
       const importedPath = resolve(process.cwd(), 'imported.jess');
       context.sourceTrees.set(importedPath, rules([
         ruleset({
           selector: sellist([sel([el('.child')])]),
           rules: rules([
+            decl({ name: 'background-color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
@@ -217,7 +237,9 @@ describe('Extend Roots Registry', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([])
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('red')]) })
+          ])
         }),
         style({
           path: quoted(any('imported.jess'))
@@ -226,14 +248,9 @@ describe('Extend Roots Registry', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
-      expect(css).toBeString(`
-        .base {
-        }
-        .child {
-        }
-      `);
+      await expect(async () => {
+        await node.eval(context);
+      }).rejects.toThrow();
     });
   });
 
@@ -241,12 +258,14 @@ describe('Extend Roots Registry', () => {
     /**
      * Test: Protected compose blocks all access, including to descendants
      */
-    it('compose is protected by default (not mutable)', async () => {
+    it('compose is protected by default (not mutable) - extend throws error', async () => {
       const importedPath = resolve(process.cwd(), 'imported.jess');
       context.sourceTrees.set(importedPath, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([])
+          rules: rules([
+            decl({ name: 'height', value: spaced([any('200px')]) })
+          ])
         })
       ]));
 
@@ -260,6 +279,7 @@ describe('Extend Roots Registry', () => {
         ruleset({
           selector: sellist([sel([el('.child')])]),
           rules: rules([
+            decl({ name: 'background-color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
@@ -267,25 +287,22 @@ describe('Extend Roots Registry', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
-      expect(css).toBeString(`
-        .base {
-        }
-        .child {
-        }
-      `);
+      await expect(async () => {
+        await node.eval(context);
+      }).rejects.toThrow();
     });
 
     /**
      * Test: Protected compose blocks access even if child is non-protected
      */
-    it('nested compose is also protected even if inner has mutable children', async () => {
+    it('nested compose is also protected even if inner has mutable children - extend throws error', async () => {
       const imported1Path = resolve(process.cwd(), 'imported1.jess');
       context.sourceTrees.set(imported1Path, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([])
+          rules: rules([
+            decl({ name: 'opacity', value: spaced([any('0.5')]) })
+          ])
         })
       ]));
 
@@ -309,6 +326,66 @@ describe('Extend Roots Registry', () => {
         ruleset({
           selector: sellist([sel([el('.child')])]),
           rules: rules([
+            decl({ name: 'background-color', value: spaced([any('blue')]) }),
+            extend({
+              target: el('.base')
+            })
+          ])
+        })
+      ]);
+
+      await expect(async () => {
+        await node.eval(context);
+      }).rejects.toThrow();
+    });
+
+    /**
+     * Test: Only accessible selectors are extended, inaccessible ones throw errors
+     */
+    it('only accessible selector is extended when same selector exists behind immutability boundary', async () => {
+      const imported1Path = resolve(process.cwd(), 'imported1.jess');
+      context.sourceTrees.set(imported1Path, rules([
+        ruleset({
+          selector: sellist([sel([el('.base')])]),
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('red')]) })
+          ])
+        })
+      ]));
+
+      const imported2Path = resolve(process.cwd(), 'imported2.jess');
+      context.sourceTrees.set(imported2Path, rules([
+        ruleset({
+          selector: sellist([sel([el('.base')])]),
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('blue')]) })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        ruleset({
+          selector: sellist([sel([el('.base')])]),
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('green')]) })
+          ])
+        }),
+        style({
+          path: quoted(any('imported1.jess'))
+        }, {
+          type: 'import'
+          // Import type is accessible
+        }),
+        style({
+          path: quoted(any('imported2.jess'))
+        }, {
+          type: 'compose'
+          // Compose type is protected (not accessible)
+        }),
+        ruleset({
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            decl({ name: 'background-color', value: spaced([any('yellow')]) }),
             extend({
               target: el('.base')
             })
@@ -318,24 +395,95 @@ describe('Extend Roots Registry', () => {
 
       const evald = await node.eval(context);
       const css = evald.toString();
+      // Should extend .base from main root and imported1.jess (import type), but NOT imported2.jess (compose type)
       expect(css).toBeString(`
+        .base,
+        .child {
+          color: green;
+        }
+        .base,
+        .child {
+          color: red;
+        }
         .base {
+          color: blue;
         }
         .child {
+          background-color: yellow;
         }
       `);
+    });
+
+    /**
+     * Test: Extend throws error when target not found (doesn't exist anywhere)
+     */
+    it('extend throws extendNotFound error when target does not exist', async () => {
+      const node = rules([
+        ruleset({
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('red')]) }),
+            extend({
+              target: el('.nonexistent')
+            })
+          ])
+        })
+      ]);
+
+      await expect(async () => {
+        await node.eval(context);
+      }).rejects.toThrow();
+    });
+
+    /**
+     * Test: Extend throws extendNotAccessible error when target exists but is blocked by compose boundary
+     */
+    it('extend throws extendNotAccessible error when target exists but is blocked by compose boundary', async () => {
+      const importedPath = resolve(process.cwd(), 'imported.jess');
+      context.sourceTrees.set(importedPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.base')])]),
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('red')]) })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('imported.jess'))
+        }, {
+          type: 'compose'
+          // Protected by default
+        }),
+        ruleset({
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            decl({ name: 'background-color', value: spaced([any('blue')]) }),
+            extend({
+              target: el('.base')
+            })
+          ])
+        })
+      ]);
+
+      await expect(async () => {
+        await node.eval(context);
+      }).rejects.toThrow(/Extend target not accessible/);
     });
   });
 
   describe('At-rule boundaries', () => {
     /**
-     * Test: Extends FROM inside at-rule can only extend within that at-rule and descendants
+     * Test: Extends FROM inside @media cannot extend outside
      */
-    it('extends from inside at-rule cannot extend outside', async () => {
+    it('extends from inside @media cannot extend outside - throws extendNotAccessible error', async () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([])
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('red')]) })
+          ])
         }),
         atrule({
           name: any('@media'),
@@ -344,27 +492,85 @@ describe('Extend Roots Registry', () => {
             ruleset({
               selector: sellist([sel([el('.child')])]),
               rules: rules([
+                decl({ name: 'background-color', value: spaced([any('blue')]) }),
                 extend({
                   target: el('.base')
                 })
               ])
             })
           ])
-        }, {
-          nestable: true
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
-      expect(css).toBeString(`
-        .base {
-        }
-        @media (min-width: 600px) {
-          .child {
-          }
-        }
-      `);
+      await expect(async () => {
+        await node.eval(context);
+      }).rejects.toThrow(/Extend target not accessible/);
+    });
+
+    /**
+     * Test: Extends FROM inside @container cannot extend outside
+     */
+    it('extends from inside @container cannot extend outside - throws extendNotAccessible error', async () => {
+      const node = rules([
+        ruleset({
+          selector: sellist([sel([el('.base')])]),
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('red')]) })
+          ])
+        }),
+        atrule({
+          name: any('@container'),
+          prelude: any('(min-width: 600px)'),
+          rules: rules([
+            ruleset({
+              selector: sellist([sel([el('.child')])]),
+              rules: rules([
+                decl({ name: 'background-color', value: spaced([any('blue')]) }),
+                extend({
+                  target: el('.base')
+                })
+              ])
+            })
+          ])
+        })
+      ]);
+
+      await expect(async () => {
+        await node.eval(context);
+      }).rejects.toThrow(/Extend target not accessible/);
+    });
+
+    /**
+     * Test: Extends FROM inside @supports cannot extend outside
+     */
+    it('extends from inside @supports cannot extend outside - throws extendNotAccessible error', async () => {
+      const node = rules([
+        ruleset({
+          selector: sellist([sel([el('.base')])]),
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('red')]) })
+          ])
+        }),
+        atrule({
+          name: any('@supports'),
+          prelude: any('(display: grid)'),
+          rules: rules([
+            ruleset({
+              selector: sellist([sel([el('.child')])]),
+              rules: rules([
+                decl({ name: 'background-color', value: spaced([any('blue')]) }),
+                extend({
+                  target: el('.base')
+                })
+              ])
+            })
+          ])
+        })
+      ]);
+
+      await expect(async () => {
+        await node.eval(context);
+      }).rejects.toThrow(/Extend target not accessible/);
     });
 
     /**
@@ -378,15 +584,16 @@ describe('Extend Roots Registry', () => {
           rules: rules([
             ruleset({
               selector: sellist([sel([el('.base')])]),
-              rules: rules([])
+              rules: rules([
+                decl({ name: 'font-size', value: spaced([any('16px')]) })
+              ])
             })
           ])
-        }, {
-          nestable: true
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
           rules: rules([
+            decl({ name: 'background-color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
@@ -400,9 +607,11 @@ describe('Extend Roots Registry', () => {
         @media (min-width: 600px) {
           .base,
           .child {
+            font-size: 16px;
           }
         }
         .child {
+          background-color: blue;
         }
       `);
     });
@@ -422,15 +631,18 @@ describe('Extend Roots Registry', () => {
               rules: rules([
                 ruleset({
                   selector: sellist([sel([el('.base')])]),
-                  rules: rules([])
+                  rules: rules([
+                    decl({ name: 'grid-template-columns', value: spaced([any('1fr 1fr')]) })
+                  ])
                 })
               ])
             }, {
-              nestable: true
+
             }),
             ruleset({
               selector: sellist([sel([el('.child')])]),
               rules: rules([
+                decl({ name: 'display', value: spaced([any('block')]) }),
                 extend({
                   selector: sel([el('.child')]),
                   target: el('.base')
@@ -438,8 +650,6 @@ describe('Extend Roots Registry', () => {
               ])
             })
           ])
-        }, {
-          nestable: true
         })
       ]);
 
@@ -450,9 +660,11 @@ describe('Extend Roots Registry', () => {
           @supports (display: grid) {
             .base,
             .child {
+              grid-template-columns: 1fr 1fr;
             }
           }
           .child {
+            display: block;
           }
         }
       `);
@@ -471,12 +683,13 @@ describe('Extend Roots Registry', () => {
           rules: rules([
             ruleset({
               selector: sellist([sel([el('.base')])]),
-              rules: rules([])
+              rules: rules([
+                decl({ name: 'font-size', value: spaced([any('16px')]) })
+              ])
             })
           ])
-        }, {
-          nestable: true
         }),
+        comment('/* second layer */'),
         atrule({
           name: any('@layer'),
           prelude: any('one'),
@@ -484,6 +697,7 @@ describe('Extend Roots Registry', () => {
             ruleset({
               selector: sellist([sel([el('.child')])]),
               rules: rules([
+                decl({ name: 'color', value: spaced([any('blue')]) }),
                 extend({
                   selector: sel([el('.child')]),
                   target: el('.base')
@@ -491,8 +705,6 @@ describe('Extend Roots Registry', () => {
               ])
             })
           ])
-        }, {
-          nestable: true
         })
       ]);
 
@@ -502,10 +714,13 @@ describe('Extend Roots Registry', () => {
         @layer one {
           .base,
           .child {
+            font-size: 16px;
           }
         }
+        /* second layer */
         @layer one {
           .child {
+            color: blue;
           }
         }
       `);
@@ -522,12 +737,13 @@ describe('Extend Roots Registry', () => {
           rules: rules([
             ruleset({
               selector: sellist([sel([el('.base')])]),
-              rules: rules([])
+              rules: rules([
+                decl({ name: 'font-size', value: spaced([any('16px')]) })
+              ])
             })
           ])
-        }, {
-          nestable: true
         }),
+        comment('/* second anonymous layer */'),
         atrule({
           name: any('@layer'),
           // No prelude = anonymous
@@ -535,6 +751,7 @@ describe('Extend Roots Registry', () => {
             ruleset({
               selector: sellist([sel([el('.child')])]),
               rules: rules([
+                decl({ name: 'color', value: spaced([any('green')]) }),
                 extend({
                   selector: sel([el('.child')]),
                   target: el('.base')
@@ -542,23 +759,13 @@ describe('Extend Roots Registry', () => {
               ])
             })
           ])
-        }, {
-          nestable: true
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
-      expect(css).toBeString(`
-        @layer {
-          .base {
-          }
-        }
-        @layer {
-          .child {
-          }
-        }
-      `);
+      // Anonymous layers do not share extend roots, so extend should fail
+      await expect(async () => {
+        await node.eval(context);
+      }).rejects.toThrow();
     });
 
     /**
@@ -576,16 +783,17 @@ describe('Extend Roots Registry', () => {
               rules: rules([
                 ruleset({
                   selector: sellist([sel([el('.base')])]),
-                  rules: rules([])
+                  rules: rules([
+                    decl({ name: 'z-index', value: spaced([any('10')]) })
+                  ])
                 })
               ])
             }, {
-              nestable: true
+
             })
           ])
-        }, {
-          nestable: true
         }),
+        comment('/* second layer with same name */'),
         atrule({
           name: any('@layer'),
           prelude: any('one.two'),
@@ -593,15 +801,13 @@ describe('Extend Roots Registry', () => {
             ruleset({
               selector: sellist([sel([el('.child')])]),
               rules: rules([
+                decl({ name: 'width', value: spaced([any('100px')]) }),
                 extend({
-                  selector: sel([el('.child')]),
                   target: el('.base')
                 })
               ])
             })
           ])
-        }, {
-          nestable: true
         })
       ]);
 
@@ -612,11 +818,14 @@ describe('Extend Roots Registry', () => {
           @layer two {
             .base,
             .child {
+              z-index: 10;
             }
           }
         }
+        /* second layer with same name */
         @layer one.two {
           .child {
+            width: 100px;
           }
         }
       `);
@@ -631,13 +840,22 @@ describe('Extend Roots Registry', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([])
+          rules: rules([
+            decl({
+              name: any('color'),
+              value: any('red')
+            })
+          ])
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
           rules: rules([
             extend({
               target: el('.base')
+            }),
+            decl({
+              name: any('background'),
+              value: any('blue')
             })
           ])
         })
@@ -648,8 +866,10 @@ describe('Extend Roots Registry', () => {
       expect(css).toBeString(`
         .base,
         .child {
+          color: red;
         }
         .child {
+          background: blue;
         }
       `);
     });
@@ -662,7 +882,12 @@ describe('Extend Roots Registry', () => {
       context.sourceTrees.set(importedPath, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([])
+          rules: rules([
+            decl({
+              name: any('color'),
+              value: any('red')
+            })
+          ])
         })
       ]));
 
@@ -678,6 +903,10 @@ describe('Extend Roots Registry', () => {
           rules: rules([
             extend({
               target: el('.base')
+            }),
+            decl({
+              name: any('background'),
+              value: any('blue')
             })
           ])
         })
@@ -688,8 +917,10 @@ describe('Extend Roots Registry', () => {
       expect(css).toBeString(`
         .base,
         .child {
+          color: red;
         }
         .child {
+          background: blue;
         }
       `);
     });

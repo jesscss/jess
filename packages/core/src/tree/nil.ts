@@ -1,5 +1,6 @@
 import {
   Node,
+  F_VISIBLE,
   defineType,
   type LocationInfo,
   type NodeOptions
@@ -33,6 +34,10 @@ export class Nil extends Node<''> {
     location?: LocationInfo,
     treeContext?: TreeContext) {
     super('', options, location, treeContext);
+    // Nil nodes should not be visible (they serialize to empty strings)
+    this.removeFlag(F_VISIBLE);
+    // Nil nodes should never render, even if fullRender is set on prototype (e.g., in tests)
+    this.fullRender = false;
   }
 
   override toTrimmedString() { return ''; }

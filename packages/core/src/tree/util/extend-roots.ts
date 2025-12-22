@@ -21,8 +21,15 @@ export class ExtendRootRegistry {
   // Map Rules -> protected flag
   private isProtected = new WeakMap<Rules, boolean>();
 
+  // Map Rules -> isCompose flag (compose roots create boundaries and are not accessible as children)
+  private isCompose = new WeakMap<Rules, boolean>();
+
   // Map layer name -> Set of Rules with that name
   private rootsByLayerName = new Map<string, Set<Rules>>();
+
+  // Map AtRule node -> layer name (temporary storage from preEval to evalNode)
+  // We use AtRule as the key since we have access to it in both preEval and evalNode
+  private layerNames = new WeakMap<import('../at-rule').AtRule, string>();
 
   // Root of the tree
   root?: Rules;
@@ -43,7 +50,7 @@ export class ExtendRootRegistry {
   registerRoot(
     rules: Rules,
     parent?: Rules,
-    options?: { layerName?: string; isProtected?: boolean }
+    options?: { layerName?: string; isProtected?: boolean; isCompose?: boolean }
   ): void {
     // Set as root if this is the first root
     if (!this.root) {
@@ -77,6 +84,11 @@ export class ExtendRootRegistry {
     // Set protected flag if provided
     if (options?.isProtected) {
       this.isProtected.set(rules, true);
+    }
+
+    // Set compose flag if provided (compose roots create boundaries)
+    if (options?.isCompose) {
+      this.isCompose.set(rules, true);
     }
   }
 
@@ -131,9 +143,21 @@ export class ExtendRootRegistry {
       }
 
       // Add children (recursively)
+      // Only add non-protected, non-compose children
+      // - Protected roots block access
+      // - Compose roots create boundaries and are not accessible as children (only import type shares parent's root)
       const children = this.childrenRoots.get(currentRoot);
       if (children) {
         for (const child of children) {
+          // Skip protected children - they should not be accessible
+          if (this.isProtected.get(child)) {
+            continue;
+          }
+          // Skip compose children - compose roots create boundaries and are not accessible as children
+          // Only import type roots are accessible as children (they share the parent's root)
+          if (this.isCompose.get(child)) {
+            continue;
+          }
           traverseChildren(child);
         }
       }
@@ -164,10 +188,66 @@ export class ExtendRootRegistry {
   }
 
   /**
-   * Get layer name for a root
+   * Get layer name for a Rules root
    */
-  getLayerName(root: Rules): string | undefined {
+  getRootLayerName(root: Rules): string | undefined {
     return this.layerName.get(root);
+  }
+
+  /**
+   * Store pending layer name for an AtRule node (from preEval)
+   * This will be used when the actual Rules is registered in evalNode
+   */
+  setLayerName(atRule: import('../at-rule').AtRule, layerName: string): void {
+    this.layerNames.set(atRule, layerName);
+  }
+
+  /**
+   * Get layer name for an AtRule (stored during preEval, retrieved in evalNode)
+   * Does NOT delete - use takeLayerName to get and delete
+   */
+  getLayerName(atRule: import('../at-rule').AtRule): string | undefined {
+    return this.layerNames.get(atRule);
+  }
+
+  /**
+   * Get and delete layer name for an AtRule (used when registering the root)
+   */
+  takeLayerName(atRule: import('../at-rule').AtRule): string | undefined {
+    const layerName = this.layerNames.get(atRule);
+    if (layerName) {
+      this.layerNames.delete(atRule);
+    }
+    return layerName;
+  }
+
+  /**
+   * Get all registered roots (for checking if a target exists anywhere)
+   * This includes all roots regardless of accessibility
+   */
+  getAllRoots(): Set<Rules> {
+    const allRoots = new Set<Rules>();
+    
+    // Start from the main root and traverse all children
+    if (this.root) {
+      const traverse = (currentRoot: Rules): void => {
+        if (allRoots.has(currentRoot)) {
+          return;
+        }
+        allRoots.add(currentRoot);
+        
+        const children = this.childrenRoots.get(currentRoot);
+        if (children) {
+          for (const child of children) {
+            traverse(child);
+          }
+        }
+      };
+      
+      traverse(this.root);
+    }
+    
+    return allRoots;
   }
 
   /**

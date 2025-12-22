@@ -11,17 +11,14 @@ import {
   co,
   compound,
   pseudo,
-  Node
+  Node,
+  ExtendFlag
 } from '..';
 import { Context } from '../../context';
 
 let context: Context;
 
 describe('Rules extend', () => {
-  beforeAll(() => {
-    Node.prototype.fullRender = true;
-  });
-
   beforeEach(() => {
     context = new Context();
   });
@@ -113,7 +110,7 @@ describe('Rules extend', () => {
           rules: rules([
             extend({
               target: el('.base'),
-              flag: 1 // ExtendFlag.All for partial matching
+              flag: ExtendFlag.All // ExtendFlag.All for partial matching
             }),
             decl({ name: 'background', value: any('blue') })
           ])
@@ -123,8 +120,7 @@ describe('Rules extend', () => {
       const evald = await node.eval(context);
       const css = evald.toString();
       expect(css).toBeString(`
-        .parent > .base,
-        .parent > .child {
+        .parent > :is(.base, .parent > .child) {
           color: red;
         }
         .parent > .child {
