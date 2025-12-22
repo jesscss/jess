@@ -529,8 +529,13 @@ export function compoundSelector(this: C, T: TokenMap) {
   };
 }
 
-export function complexSelector(this: C, T: TokenMap) {
+/**
+ * @param manyGate - Exposed for Less to exclude the keyword 'all' from the selector list
+ */
+export function complexSelector(this: C, T: TokenMap, manyGate?: (ctx: RuleContext) => () => boolean) {
   const $ = this;
+
+  manyGate ??= (ctx: RuleContext) => () => $.hasWS() || tokenMatcher($.LA(1), T.Combinator);
 
   /**
       A sequence of one or more simple and/or compound selectors
@@ -542,6 +547,7 @@ export function complexSelector(this: C, T: TokenMap) {
   //   ;
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
+    let GATE = manyGate(ctx);
     $.startRule();
     let selectors: ComplexSelectorValue = [$.SUBRULE($.compoundSelector, { ARGS: [ctx] })];
 
@@ -549,7 +555,7 @@ export function complexSelector(this: C, T: TokenMap) {
      * Only space combinators and specified combinators will enter the MANY
      */
     $.MANY({
-      GATE: () => $.hasWS() || tokenMatcher($.LA(1), T.Combinator),
+      GATE,
       DEF: () => {
         let co: IToken | undefined;
         let combinator: Combinator;

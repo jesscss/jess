@@ -36,22 +36,27 @@ describe('Rules extend', () => {
           ])
         }),
         ruleset({
-          selector: sellist([sel([el('.child')]), extend({
-            selector: sel([el('.child')]),
-            target: el('.base')
-          })]),
+          selector: sellist([sel([el('.child')])]),
           rules: rules([
+            extend({
+              target: el('.base')
+            }),
             decl({ name: 'background', value: any('blue') })
           ])
         })
       ]);
 
       const evald = await node.eval(context);
-      // For .child:-extend(.base), the .base ruleset should be extended with .child
-      const baseRuleset = evald.at(0);
-      expect(baseRuleset).toBeDefined();
-      expect(`${baseRuleset}`).toContainString('.base');
-      expect(`${baseRuleset}`).toContainString('.child');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base,
+        .child {
+          color: red;
+        }
+        .child {
+          background: blue;
+        }
+      `);
     });
   });
 
@@ -65,28 +70,32 @@ describe('Rules extend', () => {
           ])
         }),
         ruleset({
-          selector: sellist([sel([el('.child1')]), extend({
-            selector: sel([el('.child1')]),
-            target: el('.base')
-          })]),
-          rules: rules([])
+          selector: sellist([sel([el('.child1')])]),
+          rules: rules([
+            extend({
+              target: el('.base')
+            })
+          ])
         }),
         ruleset({
-          selector: sellist([sel([el('.child2')]), extend({
-            selector: sel([el('.child2')]),
-            target: el('.base')
-          })]),
-          rules: rules([])
+          selector: sellist([sel([el('.child2')])]),
+          rules: rules([
+            extend({
+              target: el('.base')
+            })
+          ])
         })
       ]);
 
       const evald = await node.eval(context);
-      // For .child1:-extend(.base) and .child2:-extend(.base),
-      // the .base ruleset should be extended with both .child1 and .child2
-      const baseRuleset = evald.at(0);
-      expect(`${baseRuleset}`).toContainString('.base');
-      expect(`${baseRuleset}`).toContainString('.child1');
-      expect(`${baseRuleset}`).toContainString('.child2');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base,
+        .child1,
+        .child2 {
+          color: red;
+        }
+      `);
     });
   });
 
@@ -100,24 +109,28 @@ describe('Rules extend', () => {
           ])
         }),
         ruleset({
-          selector: sellist([sel([el('.parent'), co('>'), el('.child')]), extend({
-            selector: sel([el('.parent'), co('>'), el('.child')]),
-            target: el('.base'),
-            flag: 1 // ExtendFlag.All for partial matching
-          })]),
+          selector: sellist([sel([el('.parent'), co('>'), el('.child')])]),
           rules: rules([
+            extend({
+              target: el('.base'),
+              flag: 1 // ExtendFlag.All for partial matching
+            }),
             decl({ name: 'background', value: any('blue') })
           ])
         })
       ]);
 
       const evald = await node.eval(context);
-      // For .parent > .child:-extend(.base all), the .parent > .base ruleset
-      // should be extended with .parent > .child
-      const baseRuleset = evald.at(0);
-      expect(baseRuleset).toBeDefined();
-      expect(`${baseRuleset}`).toContainString('.base');
-      expect(`${baseRuleset}`).toContainString('.child');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .parent > .base,
+        .parent > .child {
+          color: red;
+        }
+        .parent > .child {
+          background: blue;
+        }
+      `);
     });
   });
 
@@ -131,23 +144,27 @@ describe('Rules extend', () => {
           ])
         }),
         ruleset({
-          selector: sellist([sel([compound([el('.btn'), el('.secondary')])]), extend({
-            selector: sel([compound([el('.btn'), el('.secondary')])]),
-            target: compound([el('.btn'), el('.primary')])
-          })]),
+          selector: sellist([sel([compound([el('.btn'), el('.secondary')])])]),
           rules: rules([
+            extend({
+              target: compound([el('.btn'), el('.primary')])
+            }),
             decl({ name: 'background', value: any('blue') })
           ])
         })
       ]);
 
       const evald = await node.eval(context);
-      // For .btn.secondary:-extend(.btn.primary), the .btn.primary ruleset
-      // should be extended with .btn.secondary
-      const primaryRuleset = evald.at(0);
-      expect(primaryRuleset).toBeDefined();
-      expect(`${primaryRuleset}`).toContainString('.primary');
-      expect(`${primaryRuleset}`).toContainString('.secondary');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .btn.primary,
+        .btn.secondary {
+          color: red;
+        }
+        .btn.secondary {
+          background: blue;
+        }
+      `);
     });
 
     it('should extend selectors with pseudo-classes', async () => {
@@ -159,21 +176,26 @@ describe('Rules extend', () => {
           ])
         }),
         ruleset({
-          selector: sellist([sel([compound([el('.btn'), pseudo({ name: ':hover' })])]), extend({
-            selector: sel([compound([el('.btn'), pseudo({ name: ':hover' })])]),
-            target: compound([el('.btn'), pseudo({ name: ':hover' })])
-          })]),
+          selector: sellist([sel([compound([el('.btn'), pseudo({ name: ':hover' })])])]),
           rules: rules([
+            extend({
+              target: compound([el('.btn'), pseudo({ name: ':hover' })])
+            }),
             decl({ name: 'background', value: any('blue') })
           ])
         })
       ]);
 
       const evald = await node.eval(context);
-      const extendedRuleset = evald.at(1);
-      expect(extendedRuleset).toBeDefined();
-      // Should still contain the pseudo-class
-      expect(`${extendedRuleset}`).toContainString(':hover');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .btn:hover {
+          color: red;
+        }
+        .btn:hover {
+          background: blue;
+        }
+      `);
     });
   });
 });

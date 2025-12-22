@@ -86,7 +86,6 @@ export * from './dimension';
 export * from './number';
 export * from './expression';
 export * from './extend';
-export * from './extend-list';
 export * from './list';
 export * from './mixin';
 export * from './negative';

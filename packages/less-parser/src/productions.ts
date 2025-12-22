@@ -3,7 +3,8 @@ import {
   tokenMatcher,
   type IToken,
   EMPTY_ALT,
-  NoViableAltException
+  NoViableAltException,
+  type IOrAlt
 } from 'chevrotain';
 import {
   main as cssMain,
@@ -45,7 +46,7 @@ import {
   Dimension,
   Num,
   Extend,
-  ExtendList,
+  ExtendFlag,
   Negative,
   Mixin,
   Condition,
@@ -63,7 +64,8 @@ import {
   type ComplexSelectorComponent,
   type Selector,
   INTERPOLATION_PLACEHOLDER,
-  type ReferenceOptions
+  type ReferenceOptions,
+  type SimpleSelector
 } from '@jesscss/core';
 import { getInterpolatedOrString } from './utils';
 
@@ -153,7 +155,7 @@ export function main(this: P, T: TokenMap) {
     let isVariable = isVariableLike.call(this, T);
     return [
       { ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] }) },
-      { ALT: () => $.SUBRULE($.extendList, { ARGS: [ctx] }) },
+      { ALT: () => $.SUBRULE($.ampersandExtend, { ARGS: [ctx] }) },
       {
         GATE: () => {
           let next = $.LA(1).tokenType;
@@ -268,7 +270,7 @@ export function declarationList(this: P, T: TokenMap) {
     let isVariable = isVariableLike.call(this, T);
     return [
       { ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] }) },
-      { ALT: () => $.SUBRULE($.extendList, { ARGS: [ctx] }) },
+      { ALT: () => $.SUBRULE($.ampersandExtend, { ARGS: [ctx] }) },
       { ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] }) },
       {
         GATE: () => isVariable,
@@ -467,7 +469,7 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
     let RECORDING_PHASE = $.RECORDING_PHASE;
 
     let selector!: Selector;
-    let isSelectorList: boolean;
+    let isSelectorList: boolean | undefined;
     if (!RECORDING_PHASE) {
       selector = ctx.selector as Selector;
       isSelectorList = (ctx.isSelectorList as boolean | undefined) ?? selector instanceof SelectorList;
@@ -484,6 +486,35 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
     let rules = $.SUBRULE2($.declarationList, { ARGS: [ctx] });
     let end = $.CONSUME2(T.RCurly);
     if (!RECORDING_PHASE) {
+      let extend = ctx.extends;
+      if (extend?.length) {
+        /** If it's not a selector list, then our only extend does not need to be grouped */
+        if (!isSelectorList) {
+          /** Remove visible selector from inline extends */
+          for (let e of extend) {
+            e.value.selector = undefined;
+          }
+          rules.value = [...extend, ...rules.value];
+          ctx.extends = undefined;
+        } else {
+          let finalExtends = groupExtendsByTargetAndFlag(extend, $);
+          /**
+           * If we only have one returned, then all
+           * extends have the same target and flag
+           */
+          if (finalExtends.length === 1) {
+            let extendNodes = finalExtends[0]!;
+            /** We have to have as many extends as we have selectors in order for this to pass */
+            if (isArray(extendNodes) && extendNodes.length === (selector as SelectorList).value.length) {
+              let finalExtend = isArray(extendNodes) ? extendNodes[0]! : extendNodes;
+              finalExtend.value.selector = undefined;
+              rules.value = [finalExtend, ...rules.value];
+              ctx.extends = undefined;
+            }
+          }
+          /** Or else we let it bubble up to the declaration list */
+        }
+      }
       let location: LocationInfo;
       let node = new Ruleset({ selector, rules, guard }, undefined, undefined, this.context);
       let [startOffset, startLine, startColumn] = selector.location!;
@@ -502,13 +533,24 @@ export function qualifiedRule(this: P, T: TokenMap, altContext?: AltContext) {
     {
       GATE: () => !ctx.inner,
       ALT: () => {
-        return $.SUBRULE($.selectorList, { ARGS: [{ ...ctx, qualifiedRule: true }] });
+        let initialQualifiedRule = ctx.qualifiedRule;
+        ctx.qualifiedRule = true;
+        let rule = $.SUBRULE($.selectorList, { ARGS: [ctx] });
+        ctx.qualifiedRule = initialQualifiedRule;
+        return rule;
       }
     },
     {
       GATE: () => !!ctx.inner,
       ALT: () => {
-        return $.SUBRULE($.forgivingSelectorList, { ARGS: [{ ...ctx, firstSelector: true, qualifiedRule: true }] });
+        let initialQualifiedRule = ctx.qualifiedRule;
+        let initialFirstSelector = ctx.firstSelector;
+        ctx.firstSelector = true;
+        ctx.qualifiedRule = true;
+        let rule = $.SUBRULE($.forgivingSelectorList, { ARGS: [ctx] });
+        ctx.qualifiedRule = initialQualifiedRule;
+        ctx.firstSelector = initialFirstSelector;
+        return rule;
       }
     }
   ]);
@@ -517,7 +559,20 @@ export function qualifiedRule(this: P, T: TokenMap, altContext?: AltContext) {
   //   ;
   return (ctx: RuleContext = {}) => {
     let selector = $.OR(selectorAlt(ctx));
-    return $.SUBRULE($.qualifiedRuleBody, { ARGS: [{ ...ctx, selector }] });
+    // Use the same context object so modifications propagate back
+    ctx.selector = selector;
+    let rule = $.SUBRULE($.qualifiedRuleBody, { ARGS: [ctx] });
+    if (ctx.extends) {
+      let qRuleset = rule;
+      /** Prepend a rules block */
+      rule = new Rules([
+        ...ctx.extends,
+        qRuleset
+      ]);
+      rule._location = rule._location;
+      ctx.extends = undefined;
+    }
+    return rule;
   };
 }
 
@@ -582,13 +637,23 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
       {
         GATE: () => !ctx.inner,
         ALT: () => {
-          return $.SUBRULE($.selectorList, { ARGS: [{ ...ctx, qualifiedRule: true }] });
+          let initialQualifiedRule = ctx.qualifiedRule;
+          ctx.qualifiedRule = true;
+          let rule = $.SUBRULE($.selectorList, { ARGS: [ctx] });
+          ctx.qualifiedRule = initialQualifiedRule;
+          return rule;
         }
       },
       {
         GATE: () => !!ctx.inner,
         ALT: () => {
-          return $.SUBRULE($.forgivingSelectorList, { ARGS: [{ ...ctx, firstSelector: true, qualifiedRule: true }] });
+          let initialQualifiedRule = ctx.qualifiedRule;
+          let initialFirstSelector = ctx.firstSelector;
+          ctx.firstSelector = true;
+          let rule = $.SUBRULE($.forgivingSelectorList, { ARGS: [ctx] });
+          ctx.qualifiedRule = initialQualifiedRule;
+          ctx.firstSelector = initialFirstSelector;
+          return rule;
         }
       }
     ]);
@@ -651,13 +716,10 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
         break;
       }
     }
-    let isExtendList = isSelectorList
-      ? (selector as SelectorList).value.every(s => s instanceof Extend)
-      : selector instanceof Extend;
 
     return $.OR2([
       {
-        GATE: () => !isExtendList && (isPossibleMixinDefinition || isPossibleMixinCall),
+        GATE: () => isPossibleMixinDefinition || isPossibleMixinCall,
         ALT: () => {
           args = $.SUBRULE($.mixinArgs);
           let next = $.LA(1).tokenType;
@@ -711,7 +773,24 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
           if (!RECORDING_PHASE) {
             $.endRule();
           }
-          return $.SUBRULE($.qualifiedRuleBody, { ARGS: [{ ...ctx, selector, isSelectorList }] });
+          let initialSelector = ctx.selector;
+          let initialIsSelectorList = ctx.isSelectorList;
+          ctx.selector = selector;
+          ctx.isSelectorList = isSelectorList;
+          let rule = $.SUBRULE($.qualifiedRuleBody, { ARGS: [ctx] });
+          ctx.selector = initialSelector;
+          ctx.isSelectorList = initialIsSelectorList;
+          if (ctx.extends) {
+            /** Prepend a rules block */
+            let qRule = rule;
+            rule = new Rules([
+              ...ctx.extends,
+              qRule
+            ]);
+            rule._location = qRule._location;
+            ctx.extends = undefined;
+          }
+          return rule;
         }
       },
       {
@@ -774,22 +853,70 @@ export function relativeSelector(this: P, T: TokenMap) {
   };
 }
 
+export function compoundSelector(this: P, T: TokenMap) {
+  const $ = this;
+  /**
+      A sequence of simple selectors that are not separated by
+      a combinator.
+        .e.g. `a#selected`
+    */
+  // compoundSelector
+  //   : simpleSelector+
+  //   ;
+  return (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE;
+    let selectors:  SimpleSelector[];
+    if (!RECORDING_PHASE) {
+      selectors = [];
+    }
+    let sel = $.SUBRULE($.simpleSelector, { ARGS: [ctx] });
+    if (!RECORDING_PHASE) {
+      selectors!.push(sel);
+    }
+    $.MANY({
+      /** Make sure we don't ignore space combinators */
+      GATE: () => !$.hasWS() && !(ctx.inExtend && $.LA(1).tokenType === T.All),
+      DEF: () => {
+        let sel = $.SUBRULE2($.simpleSelector, { ARGS: [ctx] });
+        if (!RECORDING_PHASE) {
+          /** Make sure we don't add implicit whitespace */
+          sel.pre = 0;
+          selectors.push(sel);
+        }
+      }
+    });
+    if (!RECORDING_PHASE) {
+      if (selectors!.length === 1) {
+        return selectors![0]!;
+      }
+      return new CompoundSelector(selectors!, undefined, $.getLocationFromNodes(selectors!), this.context);
+    }
+  };
+}
+
 /**
  * Extended with :extend
  */
 export function complexSelector(this: P, T: TokenMap) {
   const $ = this;
-  let originalComplexRule = cssComplexSelector.call(this, T);
+  let originalComplexRule = cssComplexSelector.call(
+    this,
+    T,
+    (ctx: RuleContext) => () => !ctx.inExtend || $.LA(1).tokenType !== T.All
+  );
 
   return (ctx: RuleContext = {}) => {
-    let selector: Node = originalComplexRule(ctx)!;
+    let selector: Selector = originalComplexRule(ctx)!;
 
     let isQualifiedRule = !!ctx.qualifiedRule;
 
     $.OPTION2({
       GATE: () => isQualifiedRule,
       DEF: () => {
-        selector = $.SUBRULE($.extend, { ARGS: [{ ...ctx, selector: selector as ComplexSelector }] });
+        let originalSelector = ctx.selector;
+        ctx.selector = selector;
+        (ctx.extends ??= []).push($.SUBRULE($.extend, { ARGS: [ctx] }));
+        ctx.selector = originalSelector;
       }
     });
 
@@ -797,11 +924,44 @@ export function complexSelector(this: P, T: TokenMap) {
   };
 }
 
-/**
- * A list of selectors, all with extends, ending with
- * a semi-colon.
+const { isArray } = Array;
+
+/* Groups extends by target (using valueOf()) and flag.
+ * Returns an array of grouped Extend nodes where extends with the same target and flag
+ * are combined into a single Extend node with a SelectorList of all matching selectors.
  */
-export function extendList(this: P, T: TokenMap) {
+function groupExtendsByTargetAndFlag(
+  extendNodes: Extend[],
+  $: P
+): Array<Extend | Extend[]> {
+  // Group extends by target and flag
+  const groups = new Map<string, Extend | Extend[]>();
+
+  for (const ext of extendNodes) {
+    let target = ext.value.target;
+    let flag = ext.value.flag ?? 1; // ExtendFlag.Exact = 1
+    let selector = ext.value.selector as ComplexSelector | undefined;
+    // Create a key from target valueOf() and flag
+    const key = `${target.valueOf()}|${flag}`;
+
+    let group = groups.get(key);
+    if (!group) {
+      groups.set(key, ext);
+    } else if (isArray(group)) {
+      group.push(ext);
+    } else {
+      groups.set(key, [group, ext]);
+    }
+  }
+
+  return Array.from(groups.values());
+}
+
+/**
+ * &:extend(...) statement ending with a semicolon.
+ * This is the only valid standalone extend statement in Less.
+ */
+export function ampersandExtend(this: P, T: TokenMap) {
   const $ = this;
 
   return (ctx: RuleContext = {}) => {
@@ -809,43 +969,31 @@ export function extendList(this: P, T: TokenMap) {
 
     $.startRule();
 
-    let nodes: Array<ComplexSelector | Extend>;
-
-    if (!RECORDING_PHASE) {
-      nodes = [];
-    }
-
-    $.AT_LEAST_ONE_SEP({
-      SEP: T.Comma,
-      DEF: () => {
-        let sel: ComplexSelector | undefined;
-        let ext: Extend | undefined;
-        $.OPTION(() => {
-          sel = $.OR([
-            {
-              GATE: () => !!ctx.inner,
-              ALT: () => $.SUBRULE($.relativeSelector, { ARGS: [ctx] })
-            },
-            {
-              GATE: () => !ctx.inner,
-              ALT: () => $.SUBRULE($.complexSelector, { ARGS: [ctx] })
-            }
-          ]);
-        });
-        ext = $.SUBRULE($.extend, { ARGS: [{ ...ctx, selector: sel as ComplexSelector }] });
-        if (!RECORDING_PHASE) {
-          nodes.push(ext!);
-        }
-      }
-    });
-
+    $.CONSUME(T.AmpersandExtend);
+    let target = $.SUBRULE($.selectorList, { ARGS: [{ ...ctx, inExtend: true }] });
+    let flag = $.OR(
+      [
+        { ALT: () => $.CONSUME(T.All) },
+        { ALT: () => $.CONSUME(T.AllFlag) },
+        { ALT: EMPTY_ALT() }
+      ]
+    );
+    $.CONSUME(T.RParen);
     $.CONSUME(T.Semi);
 
     if (!RECORDING_PHASE) {
       let location = $.endRule();
-      const list = new ExtendList(nodes! as Extend[], undefined, location, this.context);
+      const extend = new Extend(
+        {
+          target,
+          flag: flag ? 0 : 1 // ExtendFlag.All = 0, ExtendFlag.Exact = 1
+        },
+        undefined,
+        location,
+        this.context
+      );
 
-      return list;
+      return extend;
     }
   };
 }
@@ -855,10 +1003,15 @@ export function extend(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     let start = $.CONSUME(T.Extend);
-    let target = $.SUBRULE($.selectorList, { ARGS: [ctx] });
-    let flag: IToken | undefined;
+    let target = $.SUBRULE($.selectorList, { ARGS: [{ ...ctx, inExtend: true }] });
     let selector = ctx.selector;
-    $.OPTION(() => flag = $.CONSUME(T.All));
+    let flag = $.OR(
+      [
+        { ALT: () => $.CONSUME(T.All) },
+        { ALT: () => $.CONSUME(T.AllFlag) },
+        { ALT: EMPTY_ALT() }
+      ]
+    );
     let end = $.CONSUME(T.RParen);
     if (!$.RECORDING_PHASE) {
       let startOffset: number;
@@ -879,7 +1032,7 @@ export function extend(this: P, T: TokenMap) {
       return new Extend({
         selector: selector!,
         target,
-        flag: flag ? 1 : undefined
+        flag: flag ? 0 : 1 // ExtendFlag.All = 0, ExtendFlag.Exact = 1
       }, undefined, [startOffset, startLine, startColumn, endOffset!, endLine!, endColumn!], this.context);
     }
   };
@@ -888,8 +1041,9 @@ export function extend(this: P, T: TokenMap) {
 export function simpleSelector(this: P, T: TokenMap) {
   const $ = this;
 
-  let selectorAlt = (ctx: RuleContext) => [
+  let selectorAlt = (ctx: RuleContext): IOrAlt<any>[] => [
     {
+      GATE: () => !!(ctx.inExtend && $.LA(1).tokenType !== T.All),
       /** In Less/Sass (and now CSS), the first inner selector can be an identifier */
       ALT: () => $.CONSUME(T.Ident)
     },

@@ -18,7 +18,8 @@ import {
   Any,
   type Node,
   type Extend,
-  type ComplexSelector
+  type ComplexSelector,
+  type Selector
 } from '@jesscss/core';
 import { getInterpolatedOrString } from './utils';
 
@@ -50,7 +51,7 @@ export type CombinedTokenMap = Record<CssTokenType, TokenType> & Record<LessExtr
 export type TokenMap = CombinedTokenMap;
 
 export type RuleContext = CssRuleContext & {
-  selector?: ComplexSelector;
+  selector?: Selector;
   hasDefault?: boolean;
   /** Selectors in a selector sequence are extended */
   allExtended?: boolean;
@@ -69,6 +70,10 @@ export type RuleContext = CssRuleContext & {
   ruleIsFinished?: boolean;
   sequences?: Array<ComplexSelector | Extend>;
   asReference?: boolean;
+  /** Root-level extends that should be placed before the ruleset in main */
+  extends?: Extend[];
+  /** Inside an extend production - prevents 'all' from being consumed as selector */
+  inExtend?: boolean;
 };
 /**
  * Unlike the historical Less parser, this parser
@@ -108,7 +113,7 @@ export class LessActionsParser extends CssActionsParser {
   callArgument!: Rule;
 
   extend!: Rule;
-  extendList!: Rule;
+  ampersandExtend!: Rule;
 
   // namespaces
   // accessors!: Rule;

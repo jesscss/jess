@@ -40,25 +40,24 @@ describe('Extend Roots Registry', () => {
           rules: rules([])
         }),
         ruleset({
-          selector: sellist([sel([el('.child')]), extend({
-            selector: sel([el('.child')]),
-            target: el('.base')
-          })]),
-          rules: rules([])
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            extend({
+              target: el('.base')
+            })
+          ])
         })
       ]);
 
       const evald = await node.eval(context);
-      // For .child:-extend(.base), the .base ruleset should be extended with .child
-      const baseRuleset = evald.at(0);
-      expect(baseRuleset).toBeDefined();
-      expect(`${baseRuleset}`).toContainString('.base');
-      expect(`${baseRuleset}`).toContainString('.child');
-      // The .child ruleset itself should just be .child (extend is removed after evaluation)
-      const childRuleset = evald.at(1);
-      expect(childRuleset).toBeDefined();
-      expect(`${childRuleset}`).toContainString('.child');
-      expect(`${childRuleset}`).not.toContainString('.base');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base,
+        .child {
+        }
+        .child {
+        }
+      `);
     });
   });
 
@@ -83,21 +82,22 @@ describe('Extend Roots Registry', () => {
           type: 'import'
         }),
         ruleset({
-          selector: sellist([sel([el('.child')]), extend({
-            selector: sel([el('.child')]),
-            target: el('.base')
-          })]),
-          rules: rules([])
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            extend({
+              target: el('.base')
+            })
+          ])
         })
       ]);
 
       const evald = await node.eval(context);
-      // For .child:-extend(.base), the .base ruleset should be extended with .child
-      const importedRules = evald.at(0) as Rules;
-      const baseRuleset = importedRules.at(0);
-      expect(baseRuleset).toBeDefined();
-      expect(`${baseRuleset}`).toContainString('.base');
-      expect(`${baseRuleset}`).toContainString('.child');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base,
+        .child {
+        }
+      `);
     });
 
     /**
@@ -111,11 +111,12 @@ describe('Extend Roots Registry', () => {
           rules: rules([])
         }),
         ruleset({
-          selector: sellist([sel([el('.child')]), extend({
-            selector: sel([el('.child')]),
-            target: el('.base')
-          })]),
-          rules: rules([])
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            extend({
+              target: el('.base')
+            })
+          ])
         })
       ]));
 
@@ -128,12 +129,14 @@ describe('Extend Roots Registry', () => {
       ]);
 
       const evald = await node.eval(context);
-      // For .child:-extend(.base), the .base ruleset should be extended with .child
-      const importedRules = evald.at(0) as Rules;
-      const baseRuleset = importedRules.at(0);
-      expect(baseRuleset).toBeDefined();
-      expect(`${baseRuleset}`).toContainString('.base');
-      expect(`${baseRuleset}`).toContainString('.child');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base,
+        .child {
+        }
+        .child {
+        }
+      `);
     });
   });
 
@@ -173,21 +176,26 @@ describe('Extend Roots Registry', () => {
           importOptions: { mutable: true }
         }),
         ruleset({
-          selector: sellist([sel([el('.child')]), extend({
-            selector: sel([el('.child')]),
-            target: el('.base')
-          })]),
-          rules: rules([])
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            extend({
+              target: el('.base')
+            })
+          ])
         })
       ]);
 
       const evald = await node.eval(context);
-      // For .child:-extend(.base), the .base ruleset (in imported1) should be extended with .child
-      const imported1Rules = evald.at(0) as Rules;
-      const baseRuleset = imported1Rules.at(0);
-      expect(baseRuleset).toBeDefined();
-      expect(`${baseRuleset}`).toContainString('.base');
-      expect(`${baseRuleset}`).toContainString('.child');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base,
+        .child {
+        }
+        .base2 {
+        }
+        .child {
+        }
+      `);
     });
 
     /**
@@ -197,11 +205,12 @@ describe('Extend Roots Registry', () => {
       const importedPath = resolve(process.cwd(), 'imported.jess');
       context.sourceTrees.set(importedPath, rules([
         ruleset({
-          selector: sellist([sel([el('.child')]), extend({
-            selector: sel([el('.child')]),
-            target: el('.base')
-          })]),
-          rules: rules([])
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            extend({
+              target: el('.base')
+            })
+          ])
         })
       ]));
 
@@ -218,11 +227,13 @@ describe('Extend Roots Registry', () => {
       ]);
 
       const evald = await node.eval(context);
-      // For .child:-extend(.base), the extend should NOT reach parent because compose is a boundary
-      const baseRuleset = evald.at(0);
-      expect(baseRuleset).toBeDefined();
-      expect(`${baseRuleset}`).toContainString('.base');
-      expect(`${baseRuleset}`).not.toContainString('.child');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base {
+        }
+        .child {
+        }
+      `);
     });
   });
 
@@ -247,19 +258,23 @@ describe('Extend Roots Registry', () => {
           // No mutable: true, so compose is protected by default
         }),
         ruleset({
-          selector: sellist([sel([el('.child')]), extend({
-            selector: sel([el('.child')]),
-            target: el('.base')
-          })]),
-          rules: rules([])
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            extend({
+              target: el('.base')
+            })
+          ])
         })
       ]);
 
       const evald = await node.eval(context);
-      const childRuleset = evald.at(1);
-      expect(childRuleset).toBeDefined();
-      // Should NOT extend .base because compose is protected by default
-      expect(`${childRuleset}`).not.toContainString('.base');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base {
+        }
+        .child {
+        }
+      `);
     });
 
     /**
@@ -292,19 +307,23 @@ describe('Extend Roots Registry', () => {
           // Outer compose is protected by default (no mutable: true)
         }),
         ruleset({
-          selector: sellist([sel([el('.child')]), extend({
-            selector: sel([el('.child')]),
-            target: el('.base')
-          })]),
-          rules: rules([])
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            extend({
+              target: el('.base')
+            })
+          ])
         })
       ]);
 
       const evald = await node.eval(context);
-      const childRuleset = evald.at(1);
-      expect(childRuleset).toBeDefined();
-      // Should NOT extend .base because outer compose is protected (blocks access to all descendants)
-      expect(`${childRuleset}`).not.toContainString('.base');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base {
+        }
+        .child {
+        }
+      `);
     });
   });
 
@@ -323,11 +342,12 @@ describe('Extend Roots Registry', () => {
           prelude: any('(min-width: 600px)'),
           rules: rules([
             ruleset({
-              selector: sellist([sel([el('.child')]), extend({
-                selector: sel([el('.child')]),
-                target: el('.base')
-              })]),
-              rules: rules([])
+              selector: sellist([sel([el('.child')])]),
+              rules: rules([
+                extend({
+                  target: el('.base')
+                })
+              ])
             })
           ])
         }, {
@@ -336,12 +356,15 @@ describe('Extend Roots Registry', () => {
       ]);
 
       const evald = await node.eval(context);
-      const mediaRule = evald.at(1);
-      const mediaRules = (mediaRule as any).value.rules as Rules;
-      const childRuleset = mediaRules.at(0);
-      expect(childRuleset).toBeDefined();
-      // Should NOT extend .base because it's outside the at-rule
-      expect(`${childRuleset}`).not.toContainString('.base');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base {
+        }
+        @media (min-width: 600px) {
+          .child {
+          }
+        }
+      `);
     });
 
     /**
@@ -362,22 +385,26 @@ describe('Extend Roots Registry', () => {
           nestable: true
         }),
         ruleset({
-          selector: sellist([sel([el('.child')]), extend({
-            selector: sel([el('.child')]),
-            target: el('.base')
-          })]),
-          rules: rules([])
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            extend({
+              target: el('.base')
+            })
+          ])
         })
       ]);
 
       const evald = await node.eval(context);
-      // For .child:-extend(.base), the .base ruleset inside @media should be extended with .child
-      const mediaRule = evald.at(0);
-      const mediaRules = (mediaRule as any).value.rules as Rules;
-      const baseRuleset = mediaRules.at(0);
-      expect(baseRuleset).toBeDefined();
-      expect(`${baseRuleset}`).toContainString('.base');
-      expect(`${baseRuleset}`).toContainString('.child');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        @media (min-width: 600px) {
+          .base,
+          .child {
+          }
+        }
+        .child {
+        }
+      `);
     });
 
     /**
@@ -402,11 +429,13 @@ describe('Extend Roots Registry', () => {
               nestable: true
             }),
             ruleset({
-              selector: sellist([sel([el('.child')]), extend({
-                selector: sel([el('.child')]),
-                target: el('.base')
-              })]),
-              rules: rules([])
+              selector: sellist([sel([el('.child')])]),
+              rules: rules([
+                extend({
+                  selector: sel([el('.child')]),
+                  target: el('.base')
+                })
+              ])
             })
           ])
         }, {
@@ -415,15 +444,18 @@ describe('Extend Roots Registry', () => {
       ]);
 
       const evald = await node.eval(context);
-      // For .child:-extend(.base), the .base ruleset in nested @supports should be extended
-      const mediaRule = evald.at(0);
-      const mediaRules = (mediaRule as any).value.rules as Rules;
-      const supportsRule = mediaRules.at(0);
-      const supportsRules = (supportsRule as any).value.rules as Rules;
-      const baseRuleset = supportsRules.at(0);
-      expect(baseRuleset).toBeDefined();
-      expect(`${baseRuleset}`).toContainString('.base');
-      expect(`${baseRuleset}`).toContainString('.child');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        @media (min-width: 600px) {
+          @supports (display: grid) {
+            .base,
+            .child {
+            }
+          }
+          .child {
+          }
+        }
+      `);
     });
   });
 
@@ -450,11 +482,13 @@ describe('Extend Roots Registry', () => {
           prelude: any('one'),
           rules: rules([
             ruleset({
-              selector: sellist([sel([el('.child')]), extend({
-                selector: sel([el('.child')]),
-                target: el('.base')
-              })]),
-              rules: rules([])
+              selector: sellist([sel([el('.child')])]),
+              rules: rules([
+                extend({
+                  selector: sel([el('.child')]),
+                  target: el('.base')
+                })
+              ])
             })
           ])
         }, {
@@ -463,13 +497,18 @@ describe('Extend Roots Registry', () => {
       ]);
 
       const evald = await node.eval(context);
-      // For .child:-extend(.base), the .base ruleset in first @layer one should be extended
-      const layer1 = evald.at(0);
-      const layer1Rules = (layer1 as any).value.rules as Rules;
-      const baseRuleset = layer1Rules.at(0);
-      expect(baseRuleset).toBeDefined();
-      expect(`${baseRuleset}`).toContainString('.base');
-      expect(`${baseRuleset}`).toContainString('.child');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        @layer one {
+          .base,
+          .child {
+          }
+        }
+        @layer one {
+          .child {
+          }
+        }
+      `);
     });
 
     /**
@@ -494,11 +533,13 @@ describe('Extend Roots Registry', () => {
           // No prelude = anonymous
           rules: rules([
             ruleset({
-              selector: sellist([sel([el('.child')]), extend({
-                selector: sel([el('.child')]),
-                target: el('.base')
-              })]),
-              rules: rules([])
+              selector: sellist([sel([el('.child')])]),
+              rules: rules([
+                extend({
+                  selector: sel([el('.child')]),
+                  target: el('.base')
+                })
+              ])
             })
           ])
         }, {
@@ -507,12 +548,17 @@ describe('Extend Roots Registry', () => {
       ]);
 
       const evald = await node.eval(context);
-      const layer2 = evald.at(1);
-      const layer2Rules = (layer2 as any).value.rules as Rules;
-      const childRuleset = layer2Rules.at(0);
-      expect(childRuleset).toBeDefined();
-      // Should NOT extend .base because anonymous layers don't share
-      expect(`${childRuleset}`).not.toContainString('.base');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        @layer {
+          .base {
+          }
+        }
+        @layer {
+          .child {
+          }
+        }
+      `);
     });
 
     /**
@@ -545,11 +591,13 @@ describe('Extend Roots Registry', () => {
           prelude: any('one.two'),
           rules: rules([
             ruleset({
-              selector: sellist([sel([el('.child')]), extend({
-                selector: sel([el('.child')]),
-                target: el('.base')
-              })]),
-              rules: rules([])
+              selector: sellist([sel([el('.child')])]),
+              rules: rules([
+                extend({
+                  selector: sel([el('.child')]),
+                  target: el('.base')
+                })
+              ])
             })
           ])
         }, {
@@ -558,16 +606,20 @@ describe('Extend Roots Registry', () => {
       ]);
 
       const evald = await node.eval(context);
-      // For .child:-extend(.base), the .base in @layer one { @layer two } should be extended
-      // because @layer one.two shares the same layer name as the nested @layer one { @layer two }
-      const layer1 = evald.at(0);
-      const layer1Rules = (layer1 as any).value.rules as Rules;
-      const nestedLayer = layer1Rules.at(0);
-      const nestedLayerRules = (nestedLayer as any).value.rules as Rules;
-      const baseRuleset = nestedLayerRules.at(0);
-      expect(baseRuleset).toBeDefined();
-      expect(`${baseRuleset}`).toContainString('.base');
-      expect(`${baseRuleset}`).toContainString('.child');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        @layer one {
+          @layer two {
+            .base,
+            .child {
+            }
+          }
+        }
+        @layer one.two {
+          .child {
+          }
+        }
+      `);
     });
   });
 
@@ -582,20 +634,24 @@ describe('Extend Roots Registry', () => {
           rules: rules([])
         }),
         ruleset({
-          selector: sellist([sel([el('.child')]), extend({
-            selector: sel([el('.child')]),
-            target: el('.base')
-          })]),
-          rules: rules([])
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            extend({
+              target: el('.base')
+            })
+          ])
         })
       ]);
 
       const evald = await node.eval(context);
-      // For .child:-extend(.base), the .base ruleset should be extended with .child
-      const baseRuleset = evald.at(0);
-      expect(baseRuleset).toBeDefined();
-      expect(`${baseRuleset}`).toContainString('.base');
-      expect(`${baseRuleset}`).toContainString('.child');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base,
+        .child {
+        }
+        .child {
+        }
+      `);
     });
 
     /**
@@ -618,22 +674,24 @@ describe('Extend Roots Registry', () => {
           importOptions: { mutable: true }
         }),
         ruleset({
-          selector: sellist([sel([el('.child')]), extend({
-            selector: sel([el('.child')]),
-            target: el('.base')
-          })]),
-          rules: rules([])
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            extend({
+              target: el('.base')
+            })
+          ])
         })
       ]);
 
       const evald = await node.eval(context);
-      // For .child:-extend(.base), the .base ruleset in imported should be extended with .child
-      const importedRules = evald.at(0) as Rules;
-      const baseRuleset = importedRules.at(0);
-      expect(baseRuleset).toBeDefined();
-      expect(`${baseRuleset}`).toContainString('.base');
-      expect(`${baseRuleset}`).toContainString('.child');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base,
+        .child {
+        }
+        .child {
+        }
+      `);
     });
   });
 });
-

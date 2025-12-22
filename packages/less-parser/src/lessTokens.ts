@@ -29,6 +29,8 @@ export type LessExtraTokenType =
   | 'GtEqAlias'
   | 'LtEqAlias'
   | 'Extend'
+  | 'AmpersandExtend'
+  | 'AllFlag'
   | 'When'
   | 'WhenFunctionStart'
   | 'VarOrProp'
@@ -148,6 +150,18 @@ function $preBuildTokens() {
       {
         name: 'DefaultGuardFunc',
         pattern: /default(?:\(\))/
+      }
+    ],
+    Ampersand: [
+      {
+        name: 'AmpersandExtend',
+        pattern: /&:extend\(/,
+        categories: ['BlockMarker']
+      },
+      {
+        name: 'AllFlag',
+        pattern: /!all/,
+        categories: ['BlockMarker']
       }
     ],
     UrlStart: [

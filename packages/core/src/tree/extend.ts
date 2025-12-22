@@ -1,61 +1,67 @@
-import { defineType, type Node } from './node';
+import { defineType, Node } from './node';
 import { type Context } from '../context';
 import { Selector } from './selector';
-import type { Rules } from './rules';
+import { Ampersand } from './ampersand';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 
 export const enum ExtendFlag {
-  All = 1
+  /** Sass and Jess default */
+  All = 0,
+  /** Less default - must not be a partial selector match */
+  Exact = 1
 }
 
 export type ExtendValue = {
-  /** The preceding selector */
-  selector: Selector;
-  /** The selector within () */
+  /** The current selector. By default is `&` */
+  selector?: Selector;
+  /** The target to extend */
   target: Selector;
   flag?: ExtendFlag;
 };
 /**
- * Extends selectors
+ * Extends selectors - parsed by Less as an independent statement
+ * at the beginning of rules.
  *
  * @todo - figure out eval -- use Rules lookups
  * @note - there is some pseudo-code somewhere that smartly
  * registers selectors by a string code.
  */
-export interface Extend extends Selector<ExtendValue> {
+export interface Extend extends Node<ExtendValue> {
   eval(context: Context): MaybePromise<Selector>;
 }
 
-export class Extend extends Selector<ExtendValue> {
+export class Extend extends Node<ExtendValue> {
   type = 'Extend' as const;
   shortType = 'extend' as const;
+  override state = 0b0000;
 
   override valueOf() {
-    return `:-extend(${this.value.valueOf()})`;
-  }
-
-  /** The preceding selector is the keyset */
-  override get keySet() {
-    return this.value.selector.keySet;
+    return `$extend ${this.value.target.valueOf()}`;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { target, selector } = this.value;
+    let { target, selector, flag } = this.value;
     const mark = w.mark();
     if (selector) {
       selector.toString(options);
     }
-    w.add(':extend(');
+    w.add('$extend ');
     target.toString(options);
-    w.add(')');
+    if (flag === ExtendFlag.Exact) {
+      w.add(' !exact');
+    }
+    w.add(';');
     return w.getSince(mark);
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
     let { selector, target, flag } = this.value;
+    if (!selector) {
+      selector = Ampersand.create(undefined);
+    }
     // Get current extend root from registry stack
     const extendRoot = context.extendRoots.getCurrentExtendRoot();
     if (!extendRoot) {

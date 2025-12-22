@@ -49,21 +49,24 @@ describe('Style import extend behavior', () => {
           type: 'import'
         }),
         ruleset({
-          selector: sellist([sel([el('.child')]), extend({
-            selector: sel([el('.child')]),
-            target: el('.base')
-          })]),
-          rules: rules([])
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            extend({
+              target: el('.base')
+            })
+          ])
         })
       ]);
 
       const evald = await node.eval(context);
-      // For .child:-extend(.base), the .base ruleset from the import should be extended
-      const importedRules = evald.at(0) as Rules;
-      const baseRuleset = importedRules.at(0);
-      expect(baseRuleset).toBeDefined();
-      expect(`${baseRuleset}`).toContainString('.base');
-      expect(`${baseRuleset}`).toContainString('.child');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base,
+        .child {
+        }
+        .child {
+        }
+      `);
     });
 
     it('import type can be extended from sibling import', async () => {
@@ -83,11 +86,12 @@ describe('Style import extend behavior', () => {
           type: 'import'
         }),
         ruleset({
-          selector: sellist([sel([el('.child')]), extend({
-            selector: sel([el('.child')]),
-            target: el('.base')
-          })]),
-          rules: rules([])
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            extend({
+              target: el('.base')
+            })
+          ])
         })
       ]));
 
@@ -100,13 +104,12 @@ describe('Style import extend behavior', () => {
       ]);
 
       const evald = await node.eval(context);
-      // For .child:-extend(.base), the .base ruleset from imported1 should be extended
-      const imported2Rules = evald.at(0) as Rules;
-      const imported1Rules = imported2Rules.at(0) as Rules;
-      const baseRuleset = imported1Rules.at(0);
-      expect(baseRuleset).toBeDefined();
-      expect(`${baseRuleset}`).toContainString('.base');
-      expect(`${baseRuleset}`).toContainString('.child');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base,
+        .child {
+        }
+      `);
     });
   });
 
@@ -128,22 +131,24 @@ describe('Style import extend behavior', () => {
           importOptions: { mutable: true }
         }),
         ruleset({
-          selector: sellist([sel([el('.child')]), extend({
-            selector: sel([el('.child')]),
-            target: el('.base')
-          })]),
-          rules: rules([])
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            extend({
+              target: el('.base')
+            })
+          ])
         })
       ]);
 
       const evald = await node.eval(context);
-      // For .child:-extend(.base), the .base ruleset from compose should be extended
-      // Parent can extend into child compose (downwards) when mutable
-      const composedRules = evald.at(0) as Rules;
-      const baseRuleset = composedRules.at(0);
-      expect(baseRuleset).toBeDefined();
-      expect(`${baseRuleset}`).toContainString('.base');
-      expect(`${baseRuleset}`).toContainString('.child');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base,
+        .child {
+        }
+        .child {
+        }
+      `);
     });
 
     it('compose type cannot be extended from sibling compose', async () => {
@@ -163,11 +168,12 @@ describe('Style import extend behavior', () => {
           type: 'compose'
         }),
         ruleset({
-          selector: sellist([sel([el('.child')]), extend({
-            selector: sel([el('.child')]),
-            target: el('.base')
-          })]),
-          rules: rules([])
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            extend({
+              target: el('.base')
+            })
+          ])
         })
       ]));
 
@@ -180,15 +186,13 @@ describe('Style import extend behavior', () => {
       ]);
 
       const evald = await node.eval(context);
-      // The extend should NOT find the .base ruleset from the sibling compose
-      const composed2Rules = evald.at(0) as Rules;
-      const childRuleset = composed2Rules.at(1);
-      expect(childRuleset).toBeDefined();
-      // The selector should NOT be extended (should only have .child)
-      const selectorStr = `${childRuleset}`;
-      expect(selectorStr).toContainString('.child');
-      // Should not contain .base (or if it does, it's not from the extend)
-      // Note: This test might need adjustment based on actual behavior
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base {
+        }
+        .child {
+        }
+      `);
     });
   });
 
@@ -210,22 +214,23 @@ describe('Style import extend behavior', () => {
           importOptions: { mutable: false }
         }),
         ruleset({
-          selector: sellist([sel([el('.child')]), extend({
-            selector: sel([el('.child')]),
-            target: el('.base')
-          })]),
-          rules: rules([])
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            extend({
+              target: el('.base')
+            })
+          ])
         })
       ]);
 
       const evald = await node.eval(context);
-      // The extend should NOT find the .base ruleset because it's not mutable
-      const childRuleset = evald.at(1);
-      expect(childRuleset).toBeDefined();
-      // The selector should NOT be extended (should only have .child)
-      const selectorStr = `${childRuleset}`;
-      expect(selectorStr).toContainString('.child');
-      // Should not contain .base from the non-mutable import
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base {
+        }
+        .child {
+        }
+      `);
     });
 
     it('compose without mutable cannot be extended (default)', async () => {
@@ -245,22 +250,23 @@ describe('Style import extend behavior', () => {
           // No mutable: true, so compose is not mutable by default
         }),
         ruleset({
-          selector: sellist([sel([el('.child')]), extend({
-            selector: sel([el('.child')]),
-            target: el('.base')
-          })]),
-          rules: rules([])
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            extend({
+              target: el('.base')
+            })
+          ])
         })
       ]);
 
       const evald = await node.eval(context);
-      // The extend should NOT find the .base ruleset because compose is not mutable by default
-      const childRuleset = evald.at(1);
-      expect(childRuleset).toBeDefined();
-      // The selector should NOT be extended (should only have .child)
-      const selectorStr = `${childRuleset}`;
-      expect(selectorStr).toContainString('.child');
-      // Should not contain .base from the non-mutable compose
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base {
+        }
+        .child {
+        }
+      `);
     });
   });
 
@@ -282,22 +288,24 @@ describe('Style import extend behavior', () => {
           importOptions: { reference: true }
         }),
         ruleset({
-          selector: sellist([sel([el('.child')]), extend({
-            selector: sel([el('.child')]),
-            target: el('.base')
-          })]),
-          rules: rules([])
+          selector: sellist([sel([el('.child')])]),
+          rules: rules([
+            extend({
+              target: el('.base')
+            })
+          ])
         })
       ]);
 
       const evald = await node.eval(context);
-      // For .child:-extend(.base), the .base ruleset from referenced import should be extended
-      // Reference imports are still visible for extend (just not rendered)
-      const importedRules = evald.at(0) as Rules;
-      const baseRuleset = importedRules.at(0);
-      expect(baseRuleset).toBeDefined();
-      expect(`${baseRuleset}`).toContainString('.base');
-      expect(`${baseRuleset}`).toContainString('.child');
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .base,
+        .child {
+        }
+        .child {
+        }
+      `);
     });
   });
 });

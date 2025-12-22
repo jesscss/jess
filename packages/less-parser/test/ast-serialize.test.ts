@@ -28,9 +28,10 @@ describe('serializeTypes coverage', () => {
         value: 
           (Color
             node: 'red'
-            format: 1
-            rgba:
-            [255, 0, 0, 1]
+            format: 0
+            rgb:
+            [255, 0, 0]
+            alpha: 1
           )
       )
     `);
@@ -75,7 +76,8 @@ describe('serializeTypes coverage', () => {
       (Call
         name: 
           (Reference [role=name]
-            key: '.mixin'
+            key: 
+              (BasicSelector '.mixin')
           )
       )
     `);
@@ -87,16 +89,18 @@ describe('serializeTypes coverage', () => {
       (Call
         name: 
           (Reference [role=name]
-            key: '.mixin'
+            key: 
+              (BasicSelector '.mixin')
           )
         args: 
           (List
             [
               (Color
                 node: 'red'
-                format: 1
-                rgba:
-                [255, 0, 0, 1]
+                format: 0
+                rgb:
+                [255, 0, 0]
+                alpha: 1
               )
             ]
           )
@@ -133,9 +137,10 @@ describe('serializeTypes coverage', () => {
                     value: 
                       (Color
                         node: 'red'
-                        format: 1
-                        rgba:
-                        [255, 0, 0, 1]
+                        format: 0
+                        rgb:
+                        [255, 0, 0]
+                        alpha: 1
                       )
                   )
                 ]
@@ -232,9 +237,10 @@ describe('serializeTypes coverage', () => {
                 value: 
                   (Color
                     node: 'red'
-                    format: 1
-                    rgba:
-                    [255, 0, 0, 1]
+                    format: 0
+                    rgb:
+                    [255, 0, 0]
+                    alpha: 1
                   )
               )
             ]
@@ -758,5 +764,564 @@ describe('serializeTypes coverage', () => {
           )
       )
     `);
+  });
+
+  describe('extend cases', () => {
+    test('single selector with extend - extend as first rule', () => {
+      const { tree } = parser.parse('.a:extend(.x) { color: blue; }');
+      expect(serializeTypes(tree)).toContainString(`
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector '.a')
+              rules: 
+                (Rules
+                  [
+                    (Extend
+                      target: 
+                        (BasicSelector '.x')
+                      flag: 1
+                    )
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'color')
+                      value: 
+                        (Color
+                          node: 'blue'
+                          format: 0
+                          rgb:
+                          [0, 0, 255]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+      `);
+    });
+
+    test('multiple selectors with same target - extend as first rule', () => {
+      const { tree } = parser.parse('.a:extend(.x), .b:extend(.x) { color: blue; }');
+      expect(serializeTypes(tree)).toContainString(`
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (SelectorList
+                  [
+                    (BasicSelector '.a')
+                    (BasicSelector '.b')
+                  ]
+                )
+              rules: 
+                (Rules
+                  [
+                    (Extend
+                      target: 
+                        (BasicSelector '.x')
+                      flag: 1
+                    )
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'color')
+                      value: 
+                        (Color
+                          node: 'blue'
+                          format: 0
+                          rgb:
+                          [0, 0, 255]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+      `);
+    });
+
+    test('multiple selectors with different targets - root-level extends', () => {
+      const { tree, errors, lexerResult } = parser.parse('.a:extend(.x), .b:extend(.y) { color: blue; }');
+      if (errors.length > 0) {
+        console.error('Parse errors:', errors.map(e => e.message));
+      }
+      if (lexerResult.errors.length > 0) {
+        console.error('Lexer errors:', lexerResult.errors.map(e => e.message || e));
+      }
+      expect(errors.length).toBe(0);
+      expect(lexerResult.errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString(`
+        (Rules
+          [
+            (Extend
+              selector: 
+                (BasicSelector '.a')
+              target: 
+                (BasicSelector '.x')
+              flag: 1
+            )
+            (Extend
+              selector: 
+                (BasicSelector '.b')
+              target: 
+                (BasicSelector '.y')
+              flag: 1
+            )
+            (Ruleset
+              selector: 
+                (SelectorList
+                  [
+                    (BasicSelector '.a')
+                    (BasicSelector '.b')
+                  ]
+                )
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'color')
+                      value: 
+                        (Color
+                          node: 'blue'
+                          format: 0
+                          rgb:
+                          [0, 0, 255]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+      `);
+    });
+
+    test('mixed selectors - some with extends, some without - root-level extends', () => {
+      const { tree } = parser.parse('.a:extend(.x), .b { color: blue; }');
+      expect(serializeTypes(tree)).toContainString(`
+        (Rules
+          [
+            (Extend
+              selector: 
+                (BasicSelector '.a')
+              target: 
+                (BasicSelector '.x')
+              flag: 1
+            )
+            (Ruleset
+              selector: 
+                (SelectorList
+                  [
+                    (BasicSelector '.a')
+                    (BasicSelector '.b')
+                  ]
+                )
+              rules: 
+                (Rules
+                  [
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'color')
+                      value: 
+                        (Color
+                          node: 'blue'
+                          format: 0
+                          rgb:
+                          [0, 0, 255]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+      `);
+    });
+
+    test('ampersand extend - single extend', () => {
+      const { tree } = parser.parse('&:extend(.x);');
+      expect(serializeTypes(tree)).toContainString(`
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.x')
+              flag: 1
+            )
+          ]
+        )
+      `);
+    });
+
+    test('ampersand extend with all flag', () => {
+      const { tree, errors, lexerResult } = parser.parse('&:extend(.x all);');
+      if (errors.length > 0) {
+        console.error('Parse errors:', errors.map(e => e.message));
+      }
+      if (lexerResult.errors.length > 0) {
+        console.error('Lexer errors:', lexerResult.errors.map(e => e.message || e));
+      }
+      expect(errors.length).toBe(0);
+      expect(lexerResult.errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString(`
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.x')
+              flag: 0
+            )
+          ]
+        )
+      `);
+    });
+
+    test('ampersand extend with !all flag', () => {
+      const { tree, errors, lexerResult } = parser.parse('&:extend(.x !all);');
+      if (errors.length > 0) {
+        console.error('Parse errors:', errors.map(e => e.message));
+      }
+      if (lexerResult.errors.length > 0) {
+        console.error('Lexer errors:', lexerResult.errors.map(e => e.message || e));
+      }
+      expect(errors.length).toBe(0);
+      expect(lexerResult.errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString(`
+        (Rules
+          [
+            (Extend
+              target: 
+                (BasicSelector '.x')
+              flag: 0
+            )
+          ]
+        )
+      `);
+    });
+
+    test('extend with all flag - ExtendFlag.All', () => {
+      const { tree, errors, lexerResult } = parser.parse('.a:extend(.x all) { color: blue; }');
+      if (errors.length > 0) {
+        console.error('Parse errors:', errors.map(e => e.message));
+      }
+      if (lexerResult.errors.length > 0) {
+        console.error('Lexer errors:', lexerResult.errors.map(e => e.message || e));
+      }
+      expect(errors.length).toBe(0);
+      expect(lexerResult.errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString(`
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector '.a')
+              rules: 
+                (Rules
+                  [
+                    (Extend
+                      target: 
+                        (BasicSelector '.x')
+                      flag: 0
+                    )
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'color')
+                      value: 
+                        (Color
+                          node: 'blue'
+                          format: 0
+                          rgb:
+                          [0, 0, 255]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+      `);
+    });
+
+    test('extend with !all flag - ExtendFlag.All', () => {
+      const { tree, errors, lexerResult } = parser.parse('.a:extend(.x !all) { color: blue; }');
+      if (errors.length > 0) {
+        console.error('Parse errors:', errors.map(e => e.message));
+      }
+      if (lexerResult.errors.length > 0) {
+        console.error('Lexer errors:', lexerResult.errors.map(e => e.message || e));
+      }
+      expect(errors.length).toBe(0);
+      expect(lexerResult.errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString(`
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector '.a')
+              rules: 
+                (Rules
+                  [
+                    (Extend
+                      target: 
+                        (BasicSelector '.x')
+                      flag: 0
+                    )
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'color')
+                      value: 
+                        (Color
+                          node: 'blue'
+                          format: 0
+                          rgb:
+                          [0, 0, 255]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+      `);
+    });
+
+    test('multiple selectors with same target and all flag - extend as first rule', () => {
+      const { tree } = parser.parse('.a:extend(.x all), .b:extend(.x all) { color: blue; }');
+      expect(serializeTypes(tree)).toContainString(`
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (SelectorList
+                  [
+                    (BasicSelector '.a')
+                    (BasicSelector '.b')
+                  ]
+                )
+              rules: 
+                (Rules
+                  [
+                    (Extend
+                      target: 
+                        (BasicSelector '.x')
+                      flag: 0
+                    )
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'color')
+                      value: 
+                        (Color
+                          node: 'blue'
+                          format: 0
+                          rgb:
+                          [0, 0, 255]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+      `);
+    });
+
+    test('three selectors with same target - extend as first rule', () => {
+      const { tree } = parser.parse('.a:extend(.x), .b:extend(.x), .c:extend(.x) { color: blue; }');
+      expect(serializeTypes(tree)).toContainString(`
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (SelectorList
+                  [
+                    (BasicSelector '.a')
+                    (BasicSelector '.b')
+                    (BasicSelector '.c')
+                  ]
+                )
+              rules: 
+                (Rules
+                  [
+                    (Extend
+                      target: 
+                        (BasicSelector '.x')
+                      flag: 1
+                    )
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'color')
+                      value: 
+                        (Color
+                          node: 'blue'
+                          format: 0
+                          rgb:
+                          [0, 0, 255]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+      `);
+    });
+
+    test('multiple selectors with same target and !all flag - extend as first rule', () => {
+      const { tree, errors, lexerResult } = parser.parse('.a:extend(.x !all), .b:extend(.x !all) { color: blue; }');
+      if (errors.length > 0) {
+        console.error('Parse errors:', errors.map(e => e.message));
+      }
+      if (lexerResult.errors.length > 0) {
+        console.error('Lexer errors:', lexerResult.errors.map(e => e.message || e));
+      }
+      expect(errors.length).toBe(0);
+      expect(lexerResult.errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString(`
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (SelectorList
+                  [
+                    (BasicSelector '.a')
+                    (BasicSelector '.b')
+                  ]
+                )
+              rules: 
+                (Rules
+                  [
+                    (Extend
+                      target: 
+                        (BasicSelector '.x')
+                      flag: 0
+                    )
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'color')
+                      value: 
+                        (Color
+                          node: 'blue'
+                          format: 0
+                          rgb:
+                          [0, 0, 255]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+      `);
+    });
+
+    test('extend with selector list target', () => {
+      const { tree, errors, lexerResult } = parser.parse('.a:extend(.x, .y) { color: blue; }');
+      if (errors.length > 0) {
+        console.error('Parse errors:', errors.map(e => e.message));
+      }
+      if (lexerResult.errors.length > 0) {
+        console.error('Lexer errors:', lexerResult.errors.map(e => e.message || e));
+      }
+      expect(errors.length).toBe(0);
+      expect(lexerResult.errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString(`
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector '.a')
+              rules: 
+                (Rules
+                  [
+                    (Extend
+                      target: 
+                        (SelectorList
+                          [
+                            (BasicSelector '.x')
+                            (BasicSelector '.y')
+                          ]
+                        )
+                      flag: 1
+                    )
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'color')
+                      value: 
+                        (Color
+                          node: 'blue'
+                          format: 0
+                          rgb:
+                          [0, 0, 255]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+      `);
+    });
+
+    test('extend with selector list target and all flag', () => {
+      const { tree, errors, lexerResult } = parser.parse('.a:extend(.x, .y all) { color: blue; }');
+      if (errors.length > 0) {
+        console.error('Parse errors:', errors.map(e => e.message));
+      }
+      if (lexerResult.errors.length > 0) {
+        console.error('Lexer errors:', lexerResult.errors.map(e => e.message || e));
+      }
+      expect(errors.length).toBe(0);
+      expect(lexerResult.errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString(`
+        (Rules
+          [
+            (Ruleset
+              selector: 
+                (BasicSelector '.a')
+              rules: 
+                (Rules
+                  [
+                    (Extend
+                      target: 
+                        (SelectorList
+                          [
+                            (BasicSelector '.x')
+                            (BasicSelector '.y')
+                          ]
+                        )
+                      flag: 0
+                    )
+                    (Declaration
+                      name: 
+                        (Any [role=property] 'color')
+                      value: 
+                        (Color
+                          node: 'blue'
+                          format: 0
+                          rgb:
+                          [0, 0, 255]
+                          alpha: 1
+                        )
+                    )
+                  ]
+                )
+            )
+          ]
+        )
+      `);
+    });
   });
 });

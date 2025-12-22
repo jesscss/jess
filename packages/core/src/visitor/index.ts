@@ -70,8 +70,6 @@ export interface Visitor {
   expressionExit?(n: tree.Expression, ctx?: VisitorContext): void;
   extend?(n: tree.Extend, ctx?: VisitorContext): VisitorReturn;
   extendExit?(n: tree.Extend, ctx?: VisitorContext): void;
-  extendList?(n: tree.ExtendList, ctx?: VisitorContext): VisitorReturn;
-  extendListExit?(n: tree.ExtendList, ctx?: VisitorContext): void;
   list?(n: tree.List<Node>, ctx?: VisitorContext): VisitorReturn;
   listExit?(n: tree.List<Node>, ctx?: VisitorContext): void;
   mixin?(n: tree.Mixin, ctx?: VisitorContext): VisitorReturn;

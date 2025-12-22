@@ -34,6 +34,10 @@ The Abstract Syntax Tree (AST) must maintain a valid tree structure at all times
 - **DO** find and fix the root cause where the invalid relationship is being created
 - The bug is in the code that creates the invalid structure, not in the code that traverses it
 
+## Testing
+
+- **CRITICAL - USE VITEST TEST ARCHITECTURE**: When testing parser functionality, you must use the vitest test architecture. Do NOT use ts-node or other direct execution methods to test parsing. All tests should be written using vitest's test framework and run through the standard test command (`pnpm test`).
+
 ## Debugging
 
 - Debugging instrumentation should never stringify a node with .toString() or .toTrimmedString() because that could cause state errors with frameState tracking.
