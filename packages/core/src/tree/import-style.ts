@@ -358,9 +358,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         context.extendRoots.registerRoot(finalRules, currentParentExtendRoot, {
           isProtected: isImportProtected
         });
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'import-style.ts:361', message: 'Registered import Rules as extend root', data: { type: 'import', hasParent: !!currentParentExtendRoot, isProtected: isImportProtected, finalRulesValueLength: finalRules.value.length, hasRulesets: finalRules.value.some(n => n.type === 'Ruleset') }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H' }) }).catch(() => {});
-        // #endregion
         // Don't push to stack - import type uses parent's root for extends inside the import
         // But we register it so extends from parent can find rulesets in the imported Rules
       }

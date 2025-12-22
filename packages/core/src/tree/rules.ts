@@ -330,11 +330,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Skip charset nodes - they are collected and prepended at root level
     // Nil nodes are now non-visible, so they're automatically filtered by n.visible
     const items = value.filter(n => n.visible && !(n.type === 'Any' && (n as any).options?.role === 'charset'));
-    // #region agent log
-    if (value.length > 0) {
-      fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:331', message: '_emitRulesBody items', data: { valueLength: value.length, itemsLength: items.length, valueTypes: value.map(n => ({ type: n.type, visible: n.visible, hasRulesets: n.type === 'Rules' ? (n as any).value.some((child: any) => child.type === 'Ruleset') : false })) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'K' }) }).catch(() => {});
-    }
-    // #endregion
 
     if (items.length === 0) {
       return;
@@ -364,19 +359,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // For child Rules nodes, pass the same depth (don't increment depth)
       // Rules nodes inside Rules nodes are at the same level
       const childOptions = isChildRules ? { ...options, depth } : { ...options, depth };
-      // #region agent log
-      if (isChildRules) {
-        const rulesValue = (n as any).value || [];
-        const rulesets = rulesValue.filter((child: any) => child.type === 'Ruleset');
-        fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:360', message: 'Serializing child Rules node', data: { rulesValueLength: rulesValue.length, hasRulesets: rulesets.length > 0, rulesetSelectors: rulesets.map((r: any) => r.selector?.valueOf()), rulesetVisible: rulesets.map((r: any) => ({ selector: r.selector?.valueOf(), visible: r.visible, fullRender: r.fullRender })), rulesVisibility: (n as any).options?.rulesVisibility }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'L' }) }).catch(() => {});
-      }
-      // #endregion
       let rule = w.capture(() => n.toTrimmedString(childOptions));
-      // #region agent log
-      if (isChildRules) {
-        fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:362', message: 'After serializing child Rules node', data: { ruleLength: rule.length, rulePreview: rule.substring(0, 100) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'L' }) }).catch(() => {});
-      }
-      // #endregion
       // Check if the captured output ends with a newline
       previousEndsWithNewline = rule.endsWith('\n');
       w.add(rule, n); // Pass node as origin to preserve location info
@@ -911,7 +894,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           tryStep(() => rule.eval(context), {
             onError(error) {
               // ReferenceErrors (e.g., from mixin lookups) should not be retried - they should fail immediately
-              if (error instanceof ReferenceError) {
+              // SyntaxErrors (e.g., from invalid selector syntax) should also fail immediately
+              if (error instanceof ReferenceError || error instanceof SyntaxError) {
                 throw error;
               }
               // If evaluation failed and we haven't retried this node yet,
@@ -1045,9 +1029,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           for (const [target, selectorWithExtend, partial, extendRoot, extendNode] of context.extends) {
             // Get accessible roots for this extend's root
             const accessibleRoots = context.extendRoots.getAccessibleRoots(extendRoot);
-            // #region agent log
-            fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1029', message: 'Processing extend', data: { target: target.valueOf(), selectorWithExtend: selectorWithExtend.valueOf(), partial, extendRootType: extendRoot?.type, accessibleRootsCount: accessibleRoots.size, accessibleRootsTypes: Array.from(accessibleRoots).map(r => r.type) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'I' }) }).catch(() => {});
-            // #endregion
 
             // For .child:-extend(.base):
             // - target = .base (what to find)
@@ -1057,13 +1038,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             let rulesetSet: Ruleset[] | undefined;
             for (const searchRoot of accessibleRoots) {
               const found = searchRoot.find('ruleset', target.keySet);
-              // #region agent log
-              if (found) {
-                fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1038', message: 'Found rulesets in searchRoot', data: { searchRootType: searchRoot.type, foundCount: found.length, foundSelectors: found.map(r => r.selector?.valueOf()) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'I' }) }).catch(() => {});
-              } else {
-                fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1038', message: 'No rulesets found in searchRoot', data: { searchRootType: searchRoot.type, targetKeys: Array.from(target.keySet || []) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'I' }) }).catch(() => {});
-              }
-              // #endregion
               if (found) {
                 if (rulesetSet) {
                   rulesetSet.push(...found);
@@ -1112,19 +1086,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
             if (rulesetSet) {
               rulesetSet.forEach((ruleset) => {
-                const beforeSelector = ruleset.selector?.valueOf();
-                // #region agent log
-                fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1053', message: 'Before tryExtendSelector', data: { rulesetSelector: beforeSelector, target: target.valueOf(), selectorWithExtend: selectorWithExtend.valueOf(), partial }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'J' }) }).catch(() => {});
-                // #endregion
                 let result = tryExtendSelector(ruleset.selector as Selector, target, selectorWithExtend, partial);
-                // #region agent log
-                fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1056', message: 'After tryExtendSelector', data: { result: result?.value?.valueOf(), hasResult: !!result, beforeSelector }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'J' }) }).catch(() => {});
-                // #endregion
                 if (result) {
                   ruleset.value.selector = result.value;
-                  // #region agent log
-                  fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1060', message: 'After assigning extended selector', data: { newSelector: ruleset.selector?.valueOf(), beforeSelector }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'J' }) }).catch(() => {});
-                  // #endregion
                 }
               });
             }
@@ -1480,12 +1444,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
               param.index = -(i + 1);
             }
             rules.registerNode(param);
-            // #region agent log
-            if (param.value.name?.toString() === 'fallback') {
-              // eslint-disable-next-line @typescript-eslint/naming-convention
-              fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1412', message: 'getFunctionFromMixins registered fallback param', data: { paramIndex: param.index, rulesType: rules.type, rulesIndex: rules.index, rulesParent: rules.parent?.type, foundAfterRegister: !!rules.find('declaration', 'fallback', 'VarDeclaration') }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'parent-chain', hypothesisId: 'H' }) }).catch(() => {});
-            }
-            // #endregion
           }
           // Note: Any with role: 'property' should have been converted to VarDeclaration during matching
           // If we see one here, it's an error - params should all be VarDeclaration by now
@@ -1543,19 +1501,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       // Mark this mixin as being evaluated (similar to how variables are tracked)
       thisContext.searchScope.add(candidate);
       try {
-        // #region agent log
-        if (params && params.value.some(p => isNode(p, 'VarDeclaration') && p.value.name?.toString() === 'fallback')) {
-          // eslint-disable-next-line @typescript-eslint/naming-convention
-          fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1470', message: 'getFunctionFromMixins before rules.eval with fallback param', data: { rulesType: rules.type, rulesIndex: rules.index, rulesParent: rules.parent?.type, hasFallbackInRegistry: !!rules.find('declaration', 'fallback', 'VarDeclaration') }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'parent-chain', hypothesisId: 'H' }) }).catch(() => {});
-        }
-        // #endregion
         let newRules = await rules.eval(thisContext);
-        // #region agent log
-        if (params && params.value.some(p => isNode(p, 'VarDeclaration') && p.value.name?.toString() === 'fallback')) {
-          // eslint-disable-next-line @typescript-eslint/naming-convention
-          fetch('http://127.0.0.1:7244/ingest/c37d62a7-1368-4631-9d3b-7a2281954bfc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:1475', message: 'getFunctionFromMixins after rules.eval with fallback param', data: { newRulesIsSame: newRules === rules, newRulesType: newRules.type, newRulesIndex: newRules.index, newRulesParent: newRules.parent?.type, hasFallbackInNewRules: !!newRules.find('declaration', 'fallback', 'VarDeclaration') }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'parent-chain', hypothesisId: 'H' }) }).catch(() => {});
-        }
-        // #endregion
         /**
          * Make everything public, so that we can access these
          * variables in the parent scope, or when doing lookups.

@@ -50,7 +50,8 @@ export default defineConfig({
         extends: true,
         test: {
           include: [
-            '**/__tests__/**/*.ts',
+            '**/__tests__/**/*.test.ts',
+            '**/__tests__/**/*.spec.ts',
             'test/**/*.test.ts',
             'test/**/*.spec.ts'
           ],

@@ -120,9 +120,9 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
    */
   override evalNode(context: Context): MaybePromise<Selector | Nil> {
     return pipe(
-      () => {
-        const selector = this;
-        let { value } = selector;
+        () => {
+          const selector = this;
+          let { value } = selector;
         const maybe = serialForEach(Array.from(getEntries(value)), ([sel, i]) => {
           const out = sel.eval(context);
           if (isThenable(out)) {
