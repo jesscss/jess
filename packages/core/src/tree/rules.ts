@@ -1071,15 +1071,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               if (targetExistsElsewhere) {
                 // Target exists but is not accessible (blocked by boundary)
                 throw ERR.extendNotAccessible({
-                  ctx: context.treeContext,
-                  node: extendNode,
+                  ctx: context.treeContext.file ? { file: context.treeContext.file } : undefined,
+                  node: extendNode.location && extendNode.location.length === 6 ? { location: extendNode.location } : undefined,
                   meta: { target: target.valueOf() }
                 });
               } else {
                 // Target doesn't exist at all
                 throw ERR.extendNotFound({
-                  ctx: context.treeContext,
-                  node: extendNode,
+                  ctx: context.treeContext.file ? { file: context.treeContext.file } : undefined,
+                  node: extendNode.location && extendNode.location.length === 6 ? { location: extendNode.location } : undefined,
                   meta: { target: target.valueOf() }
                 });
               }

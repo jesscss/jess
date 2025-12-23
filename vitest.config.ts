@@ -69,7 +69,8 @@ export default defineConfig({
     setupFiles: [resolve(__dirname, './test/setup.ts')],
     // Disable coverage by default to save memory
     coverage: {
-      enabled: false
+      enabled: false,
+      provider: 'v8'
     }
   }
 });

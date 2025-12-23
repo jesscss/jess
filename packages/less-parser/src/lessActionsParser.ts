@@ -50,6 +50,12 @@ export type LessParserConfig = CssParserConfig & {
 export type CombinedTokenMap = Record<CssTokenType, TokenType> & Record<LessExtraTokenType, TokenType>;
 export type TokenMap = CombinedTokenMap;
 
+export interface ExtendTarget {
+  selector?: Selector;
+  target: Selector;
+  flag: IToken | undefined;
+}
+
 export type RuleContext = CssRuleContext & {
   selector?: Selector;
   hasDefault?: boolean;
@@ -70,8 +76,10 @@ export type RuleContext = CssRuleContext & {
   ruleIsFinished?: boolean;
   sequences?: Array<ComplexSelector | Extend>;
   asReference?: boolean;
-  /** Root-level extends that should be placed before the ruleset in main */
-  extends?: Extend[];
+
+  /** For :extend(...) */
+  extendTargets?: ExtendTarget[];
+  extendNodes?: Extend[];
   /** Inside an extend production - prevents 'all' from being consumed as selector */
   inExtend?: boolean;
 };

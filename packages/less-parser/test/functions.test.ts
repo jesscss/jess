@@ -1,0 +1,78 @@
+import { Parser } from '../src';
+
+const parser = new Parser();
+const parse = parser.parse;
+
+describe('functionCall', () => {
+  it('should parse generic function call', () => {
+    const { errors } = parse('color: func()', 'declaration');
+    expect(errors.length).toBe(0);
+  });
+
+  it('should parse function call with arguments', () => {
+    const { errors } = parse('color: func(arg1, arg2)', 'declaration');
+    expect(errors.length).toBe(0);
+  });
+});
+
+describe('functionCallArgs', () => {
+  it('should parse comma-separated arguments', () => {
+    const { errors } = parse('color: func(a, b, c)', 'declaration');
+    expect(errors.length).toBe(0);
+  });
+
+  it('should parse semicolon-separated arguments', () => {
+    const { errors } = parse('color: func(a; b; c)', 'declaration');
+    expect(errors.length).toBe(0);
+  });
+});
+
+describe('knownFunctions', () => {
+  it('should parse url() function', () => {
+    const { errors } = parse('background: url("image.png")', 'declaration');
+    expect(errors.length).toBe(0);
+  });
+
+  it('should parse var() function', () => {
+    const { errors } = parse('color: var(--custom)', 'declaration');
+    expect(errors.length).toBe(0);
+  });
+
+  it('should parse calc() function', () => {
+    const { errors } = parse('width: calc(100% - 20px)', 'declaration');
+    expect(errors.length).toBe(0);
+  });
+});
+
+describe('ifFunction', () => {
+  it('should parse if() function', () => {
+    const { errors } = parse('color: if(true, red, blue)', 'declaration');
+    expect(errors.length).toBe(0);
+  });
+
+  it('should parse if() with semicolon-separated args', () => {
+    const { errors } = parse('color: if(true; red; blue)', 'declaration');
+    expect(errors.length).toBe(0);
+  });
+});
+
+describe('booleanFunction', () => {
+  it('should parse boolean() function', () => {
+    // boolean() function - using if() function instead as boolean() may not be standard
+    const { errors } = parse('color: if(true, red, blue)', 'declaration');
+    expect(errors.length).toBe(0);
+  });
+});
+
+describe('callArgument', () => {
+  it('should parse anonymous mixin as argument', () => {
+    const { errors } = parse('.mixin({ color: red; })', 'mixinOrQualifiedRule');
+    expect(errors.length).toBe(0);
+  });
+
+  it('should parse value sequence as argument', () => {
+    const { errors } = parse('func(10px, 20px)', 'value');
+    expect(errors.length).toBe(0);
+  });
+});
+

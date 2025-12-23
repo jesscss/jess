@@ -73,10 +73,13 @@ export class Extend extends Node<ExtendValue> {
 
     const maybeSel = selector.eval(context);
     if (isThenable(maybeSel)) {
-      return (maybeSel as Promise<Selector>).then((sel) => {
+      return (maybeSel as Promise<Selector | Nil>).then((sel) => {
+        if (sel instanceof Nil) {
+          return new Nil();
+        }
         // Resolve ampersand to its stored selector if needed
-        let resolvedSel = sel;
-        if (isNode(sel, 'Ampersand') && sel.value.selector) {
+        let resolvedSel: Selector = sel;
+        if (isNode(sel, 'Ampersand') && sel.value.selector && !(sel.value.selector instanceof Nil)) {
           resolvedSel = sel.value.selector;
         }
         // Register extend to context with extend root reference and Extend node for error reporting
@@ -84,10 +87,13 @@ export class Extend extends Node<ExtendValue> {
         return new Nil();
       });
     }
-    const sel = maybeSel as Selector;
+    const sel = maybeSel as Selector | Nil;
+    if (sel instanceof Nil) {
+      return new Nil();
+    }
     // Resolve ampersand to its stored selector if needed
-    let resolvedSel = sel;
-    if (isNode(sel, 'Ampersand') && sel.value.selector) {
+    let resolvedSel: Selector = sel;
+    if (isNode(sel, 'Ampersand') && sel.value.selector && !(sel.value.selector instanceof Nil)) {
       resolvedSel = sel.value.selector;
     }
     // Register extend to context with extend root reference and Extend node for error reporting

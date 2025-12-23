@@ -68,6 +68,7 @@ import {
   type SimpleSelector
 } from '@jesscss/core';
 import { getInterpolatedOrString } from './utils';
+import type { ExtendTarget } from './lessActionsParser';
 
 const isEscapedString = function(this: P, T: TokenMap) {
   const next = this.LA(1);
@@ -486,7 +487,7 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
     let rules = $.SUBRULE2($.declarationList, { ARGS: [ctx] });
     let end = $.CONSUME2(T.RCurly);
     if (!RECORDING_PHASE) {
-      let extend = ctx.extends;
+      let extend = ctx.extendNodes;
       if (extend?.length) {
         /** If it's not a selector list, then our only extend does not need to be grouped */
         if (!isSelectorList) {
@@ -495,9 +496,9 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
             e.value.selector = undefined;
           }
           rules.value = [...extend, ...rules.value];
-          ctx.extends = undefined;
-        } else {
-          let finalExtends = groupExtendsByTargetAndFlag(extend, $);
+          ctx.extendNodes = undefined;
+        } else if (extend.length === (selector as SelectorList).value.length) {
+          let finalExtends = groupExtendsByTargetAndFlag(extend);
           /**
            * If we only have one returned, then all
            * extends have the same target and flag
@@ -505,17 +506,15 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
           if (finalExtends.length === 1) {
             let extendNodes = finalExtends[0]!;
             /** We have to have as many extends as we have selectors in order for this to pass */
-            if (isArray(extendNodes) && extendNodes.length === (selector as SelectorList).value.length) {
-              let finalExtend = isArray(extendNodes) ? extendNodes[0]! : extendNodes;
-              finalExtend.value.selector = undefined;
-              rules.value = [finalExtend, ...rules.value];
-              ctx.extends = undefined;
-            }
+
+            let finalExtend = isArray(extendNodes) ? extendNodes[0]! : extendNodes;
+            finalExtend.value.selector = undefined;
+            rules.value = [finalExtend, ...rules.value];
+            ctx.extendNodes = undefined;
           }
           /** Or else we let it bubble up to the declaration list */
         }
       }
-      let location: LocationInfo;
       let node = new Ruleset({ selector, rules, guard }, undefined, undefined, this.context);
       let [startOffset, startLine, startColumn] = selector.location!;
       let { endOffset, endLine, endColumn } = end;
@@ -562,15 +561,15 @@ export function qualifiedRule(this: P, T: TokenMap, altContext?: AltContext) {
     // Use the same context object so modifications propagate back
     ctx.selector = selector;
     let rule = $.SUBRULE($.qualifiedRuleBody, { ARGS: [ctx] });
-    if (ctx.extends) {
+    if (ctx.extendNodes) {
       let qRuleset = rule;
       /** Prepend a rules block */
       rule = new Rules([
-        ...ctx.extends,
+        ...ctx.extendNodes,
         qRuleset
       ]);
       rule._location = rule._location;
-      ctx.extends = undefined;
+      ctx.extendNodes = undefined;
     }
     return rule;
   };
@@ -780,15 +779,15 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
           let rule = $.SUBRULE($.qualifiedRuleBody, { ARGS: [ctx] });
           ctx.selector = initialSelector;
           ctx.isSelectorList = initialIsSelectorList;
-          if (ctx.extends) {
+          if (ctx.extendNodes) {
             /** Prepend a rules block */
             let qRule = rule;
             rule = new Rules([
-              ...ctx.extends,
+              ...ctx.extendNodes,
               qRule
             ]);
             rule._location = qRule._location;
-            ctx.extends = undefined;
+            ctx.extendNodes = undefined;
           }
           return rule;
         }
@@ -907,18 +906,31 @@ export function complexSelector(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     let selector: Selector = originalComplexRule(ctx)!;
-
     let isQualifiedRule = !!ctx.qualifiedRule;
+    let flag: IToken | undefined;
 
-    $.OPTION2({
-      GATE: () => isQualifiedRule,
-      DEF: () => {
-        let originalSelector = ctx.selector;
-        ctx.selector = selector;
-        (ctx.extends ??= []).push($.SUBRULE($.extend, { ARGS: [ctx] }));
-        ctx.selector = originalSelector;
+    $.OR([
+      {
+        /** When we're inside the :extend(...), we can capture the "all" keyword */
+        GATE: () => !!ctx.inExtend,
+        ALT: () => flag = $.CONSUME(T.All)
+      },
+      {
+        GATE: () => isQualifiedRule && !ctx.inExtend,
+        ALT: () => {
+          ctx.selector = selector;
+          $.SUBRULE($.extend, { ARGS: [ctx] });
+          ctx.selector = undefined;
+        }
+      },
+      {
+        ALT: EMPTY_ALT()
       }
-    });
+    ]);
+
+    if (!$.RECORDING_PHASE && ctx.inExtend) {
+      (ctx.extendTargets ??= []).push({ selector: ctx.selector, target: selector, flag });
+    }
 
     return selector;
   };
@@ -926,13 +938,15 @@ export function complexSelector(this: P, T: TokenMap) {
 
 const { isArray } = Array;
 
-/* Groups extends by target (using valueOf()) and flag.
+/**
+ * Groups extends by target (using valueOf()) and flag.
  * Returns an array of grouped Extend nodes where extends with the same target and flag
  * are combined into a single Extend node with a SelectorList of all matching selectors.
+ *
+ * @todo Group complex selectors into selector lists
  */
 function groupExtendsByTargetAndFlag(
-  extendNodes: Extend[],
-  $: P
+  extendNodes: Extend[]
 ): Array<Extend | Extend[]> {
   // Group extends by target and flag
   const groups = new Map<string, Extend | Extend[]>();
@@ -957,6 +971,58 @@ function groupExtendsByTargetAndFlag(
   return Array.from(groups.values());
 }
 
+function mergeExtends(
+  selector: Selector | undefined,
+  extendTargets: ExtendTarget[],
+  location: LocationInfo,
+  context: TreeContext,
+  flag: IToken | undefined
+): Extend | Extend[] {
+  let extendNodes: Extend[] | undefined;
+  let currentTarget = extendTargets[0]!.target;
+  let currentFlag = (extendTargets[0]!.flag ?? flag) ? 0 : 1; // ExtendFlag.All = 0, ExtendFlag.Exact = 1
+  let currentNode = new Extend({
+    selector,
+    target: currentTarget,
+    flag: currentFlag
+  }, undefined, location, context);
+  for (let i = 1; i < extendTargets.length; i++) {
+    let ext = extendTargets[i]!;
+    let thisFlag = (ext.flag ?? flag) ? 0 : 1;
+    /**
+     * Merge extends. We do this instead of merging earlier so that
+     * selector lists with different flags are not merged.
+     */
+    if (thisFlag === currentFlag) {
+      let target = currentNode.value.target;
+      if (!(target instanceof SelectorList)) {
+        currentNode.value.target = new SelectorList([target, ext.target], undefined, location, context);
+      } else {
+        target.value.push(ext.target);
+      }
+    } else {
+      if (!extendNodes || !extendNodes.includes(currentNode)) {
+        (extendNodes ??= []).push(currentNode);
+      }
+      currentFlag = thisFlag;
+      currentTarget = ext.target;
+      currentNode = new Extend({
+        selector,
+        target: currentTarget,
+        flag: currentFlag
+      }, undefined, location, context);
+      extendNodes.push(currentNode);
+    }
+  };
+  if (!extendNodes) {
+    return currentNode;
+  }
+  if (extendNodes.length === 1) {
+    return extendNodes[0]!;
+  }
+  return extendNodes;
+}
+
 /**
  * &:extend(...) statement ending with a semicolon.
  * This is the only valid standalone extend statement in Less.
@@ -970,30 +1036,33 @@ export function ampersandExtend(this: P, T: TokenMap) {
     $.startRule();
 
     $.CONSUME(T.AmpersandExtend);
-    let target = $.SUBRULE($.selectorList, { ARGS: [{ ...ctx, inExtend: true }] });
-    let flag = $.OR(
-      [
-        { ALT: () => $.CONSUME(T.All) },
-        { ALT: () => $.CONSUME(T.AllFlag) },
-        { ALT: EMPTY_ALT() }
-      ]
-    );
+    ctx.inExtend = true;
+    $.SUBRULE($.selectorList, { ARGS: [ctx] });
+    ctx.inExtend = false;
+    let extendTargets = ctx.extendTargets!;
+    let flag = $.OPTION(() => $.CONSUME(T.AllFlag));
     $.CONSUME(T.RParen);
     $.CONSUME(T.Semi);
 
     if (!RECORDING_PHASE) {
       let location = $.endRule();
-      const extend = new Extend(
-        {
-          target,
-          flag: flag ? 0 : 1 // ExtendFlag.All = 0, ExtendFlag.Exact = 1
-        },
-        undefined,
-        location,
-        this.context
-      );
-
-      return extend;
+      let result = mergeExtends(undefined, extendTargets, location, this.context, flag);
+      /** We've converted these extend targets to nodes, so we can reset extend targets */
+      ctx.extendTargets = undefined;
+      if (ctx.extendNodes) {
+        if (isArray(result)) {
+          ctx.extendNodes = [...ctx.extendNodes, ...result];
+        } else {
+          ctx.extendNodes.push(result);
+        }
+      } else {
+        if (isArray(result)) {
+          ctx.extendNodes = result;
+        } else {
+          ctx.extendNodes = [result];
+        }
+      }
+      return result;
     }
   };
 }
@@ -1002,38 +1071,39 @@ export function extend(this: P, T: TokenMap) {
   const $ = this;
 
   return (ctx: RuleContext = {}) => {
-    let start = $.CONSUME(T.Extend);
-    let target = $.SUBRULE($.selectorList, { ARGS: [{ ...ctx, inExtend: true }] });
+    $.startRule();
+    $.CONSUME(T.Extend);
+
+    ctx.inExtend = true;
+    let target = $.SUBRULE($.selectorList, { ARGS: [ctx] });
+    let extendTargets = ctx.extendTargets;
+    ctx.inExtend = false;
+
     let selector = ctx.selector;
-    let flag = $.OR(
-      [
-        { ALT: () => $.CONSUME(T.All) },
-        { ALT: () => $.CONSUME(T.AllFlag) },
-        { ALT: EMPTY_ALT() }
-      ]
-    );
-    let end = $.CONSUME(T.RParen);
+    let flag = $.OPTION(() => $.CONSUME(T.AllFlag));
+    $.CONSUME(T.RParen);
     if (!$.RECORDING_PHASE) {
-      let startOffset: number;
-      let startLine: number;
-      let startColumn: number;
-      if (selector) {
-        let location = selector.location;
-        startOffset = location[0]!;
-        startLine = location[1]!;
-        startColumn = location[2]!;
+      let location = $.endRule();
+      let merged = mergeExtends(selector, extendTargets!, location, this.context, flag);
+      /**
+       * If we don't have as many extends as we have selectors, we need a way to signal
+       * that these should be bumped above the ruleset.
+       */
+      /** We've converted these extend targets to nodes, so we can reset extend targets */
+      ctx.extendTargets = undefined;
+      if (ctx.extendNodes) {
+        if (isArray(merged)) {
+          ctx.extendNodes = [...ctx.extendNodes, ...merged];
+        } else {
+          ctx.extendNodes.push(merged);
+        }
       } else {
-        let loc = start;
-        startOffset = loc.startOffset;
-        startLine = loc.startLine!;
-        startColumn = loc.startColumn!;
+        if (isArray(merged)) {
+          ctx.extendNodes = merged;
+        } else {
+          ctx.extendNodes = [merged];
+        }
       }
-      let { endOffset, endLine, endColumn } = end;
-      return new Extend({
-        selector: selector!,
-        target,
-        flag: flag ? 0 : 1 // ExtendFlag.All = 0, ExtendFlag.Exact = 1
-      }, undefined, [startOffset, startLine, startColumn, endOffset!, endLine!, endColumn!], this.context);
     }
   };
 }
@@ -1043,8 +1113,10 @@ export function simpleSelector(this: P, T: TokenMap) {
 
   let selectorAlt = (ctx: RuleContext): IOrAlt<any>[] => [
     {
-      GATE: () => !!(ctx.inExtend && $.LA(1).tokenType !== T.All),
-      /** In Less/Sass (and now CSS), the first inner selector can be an identifier */
+      GATE: () => !ctx.inExtend || $.LA(1).tokenType !== T.All,
+      /**
+       * In Less/Sass (and now CSS), the first inner selector can be an identifier
+       */
       ALT: () => $.CONSUME(T.Ident)
     },
     {
@@ -1066,7 +1138,14 @@ export function simpleSelector(this: P, T: TokenMap) {
     { ALT: () => $.SUBRULE($.classSelector) },
     { ALT: () => $.SUBRULE($.idSelector) },
     { ALT: () => $.CONSUME(T.Star) },
-    { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [ctx] }) },
+    { ALT: () => {
+      let initialIsQualifiedRule = ctx.qualifiedRule;
+      ctx.qualifiedRule = false;
+      /** Make sure we prevent things like :extend() inside pseudo-selectors */
+      let pseudo = $.SUBRULE($.pseudoSelector, { ARGS: [ctx] });
+      ctx.qualifiedRule = initialIsQualifiedRule;
+      return pseudo;
+    } },
     { ALT: () => $.SUBRULE($.attributeSelector) },
     /** Supports keyframes selectors */
     { ALT: () => $.CONSUME(T.DimensionInt) },

@@ -1,5 +1,0 @@
-@let config {
-  colors {
-    primary: red;
-  }
-}

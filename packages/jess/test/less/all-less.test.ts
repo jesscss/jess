@@ -69,18 +69,22 @@ describe('Can render Less files to CSS', () => {
             });
 
             const context = testCompiler.createContext(lessPath);
-            const { node } = await context.getTree(lessPath);
+            try {
+              const { node } = await context.getTree(lessPath);
 
-            const sExpr = serializeTypes(node);
-            if (file === 'tests-unit/media/media.less') {
+              const sExpr = serializeTypes(node);
+              if (file === 'tests-unit/media/media.less') {
               // Write S-expression to file for at-rule.test.ts
-              const fs = require('fs');
-              const outputPath = path.join(__dirname, 'media.less.s-expr.txt');
-              fs.writeFileSync(outputPath, sExpr, 'utf8');
+                const fs = require('fs');
+                const outputPath = path.join(__dirname, 'media.less.s-expr.txt');
+                fs.writeFileSync(outputPath, sExpr, 'utf8');
+              }
+              const evald = await node.eval(context);
+              expect(evald.toString({ context })).toBeString(expectedCss.trim());
+            } catch (error: any) {
+              console.error(error);
+              throw error;
             }
-            const evald = await node.eval(context);
-
-            expect(evald.toString({ context })).toBeString(expectedCss.trim());
           }, 5000); // 5 second timeout to catch infinite loops
         });
       } catch (error: any) {
