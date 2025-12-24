@@ -161,6 +161,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     };
     // Set sourceNode so variable lookups know they can cross import boundaries
     out.sourceNode = this;
+    // Reset rulesIndexed so that registries will be re-populated when accessed
+    // This is necessary because clone() creates new empty registries
+    out.rulesIndexed = 0;
     this.adopt(out);
     return out;
   }
@@ -195,6 +198,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
     const finalize = async (finalPath: string) => {
       let { node: rules, resolvedPath } = await context.getTree(finalPath, importOptions);
+      // Set sourceNode immediately after getting the Rules, before any evaluation
+      // This ensures that when preEval clones the Rules, the cloned Rules will have sourceNode set
+      // and registerNode can detect this is an imported Rules
+      rules.sourceNode = node;
       let evaldRules = context.evaldTrees.get(resolvedPath);
       if (withValues) {
         if (withValues.type === 'set' && evaldRules) {
@@ -320,9 +327,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       if (withValues || !evaldRules || type === 'import') {
         let preserveOriginalNodes = context.preserveOriginalNodes;
         context.preserveOriginalNodes = true;
+        // Call preEval first to get the cloned Rules (if cloning occurs)
+        // sourceNode is already set above, so the cloned Rules will have it
+        rules = await rules.preEval(context);
         if (type === 'import') {
           /** Needed at evaluation time for older import type */
           rules.parent = node;
+        } else {
         }
         rules = await rules.eval(context);
         context.preserveOriginalNodes = preserveOriginalNodes;
@@ -332,6 +343,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       } else {
         // Clone the unevaluated rules BEFORE evaluation so registries are populated on the clone
         // This ensures registration happens post-clone, not on the cached evaldRules
+        // sourceNode is already set above, so the cloned Rules will have it
         rules = rules.clone(true) as Rules;
         let preserveOriginalNodes = context.preserveOriginalNodes;
         context.preserveOriginalNodes = true;

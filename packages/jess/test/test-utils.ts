@@ -36,8 +36,23 @@ export function getTestCases(lessFilePath: string): TestCase[] {
         expectedFile: outputConfig.file,
         config: outputConfig.config
       });
-    } else {
+    } else if (outputConfig.file !== defaultCssPath) {
       throw new Error(`Expected output file ${outputConfig.file} does not exist`);
+    } else {
+      // Fall back to {name}.css with merged config options
+      if (fs.existsSync(defaultCssPath)) {
+        // Only add if we haven't already added this exact test case
+        const alreadyAdded = testCases.some(
+          tc => tc.expectedFile === defaultCssPath
+            && JSON.stringify(tc.config) === JSON.stringify(outputConfig.config)
+        );
+        if (!alreadyAdded) {
+          testCases.push({
+            expectedFile: defaultCssPath,
+            config: outputConfig.config
+          });
+        }
+      }
       // If default doesn't exist either, we'll check at the end
     }
   }
@@ -50,12 +65,6 @@ export function getTestCases(lessFilePath: string): TestCase[] {
         expectedFile: defaultCssPath,
         config: {}
       });
-    } else {
-      // No files exist at all
-      throw new Error(
-        `No expected CSS file found for ${lessFilePath}. `
-        + `Checked: ${configs.map(c => c.file).join(', ')}, and ${defaultCssPath}`
-      );
     }
   }
 

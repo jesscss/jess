@@ -9,8 +9,7 @@ import {
 import { Context } from '../context';
 import { isNode } from './util/is-node';
 import { cast } from './util/cast';
-import { type Ruleset, type RulesetValue } from './ruleset';
-import { type AtRule } from './at-rule';
+import { type Ruleset } from './ruleset';
 import { type Mixin } from './mixin';
 import type { Selector } from './selector';
 import { spaced, Sequence } from './sequence';
@@ -134,6 +133,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       let length = value.length;
       for (let i = this.rulesIndexed; i < length; i++) {
         const node = value[i]!;
+        if (isNode(node, 'Mixin')) {
+          // Check if this Mixin is actually in this.value or in a child Rules' value
+          const isInThisValue = this.value.includes(node);
+          let foundInChildRules = false;
+          for (const child of this.value) {
+            if (isNode(child, 'Rules') && child.value.includes(node)) {
+              foundInChildRules = true;
+              break;
+            }
+          }
+          // If the Mixin is NOT in this.value but is in a child Rules' value, skip it
+          // (it will be registered when that child Rules indexes itself)
+          if (!isInThisValue && foundInChildRules) {
+            continue;
+          }
+        }
         this.registerNode(node);
       }
       this.rulesIndexed = length;
@@ -454,59 +469,143 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       // Note: Rulesets from imported Rules are registered in treeRoot's registry
       // after evaluation completes (in evalNode), when treeRoot is guaranteed to be set
-    } else if (isNode(node, 'Declaration')) {
-      /**
-       * setDefined works like Sass's !default flag - it finds the original variable
-       * declaration and inserts a new declaration at the same rules level as the
-       * found variable, but before the current nested node.
-       */
-      if (node.options?.setDefined) {
-        // Skip setDefined logic if we're currently indexing to avoid recursive calls
-        if (this._indexing) {
-          // We'll handle setDefined after indexing is complete
+    } else {
+      // For non-Rules nodes, check if the node belongs to an imported Rules
+      // If the node's parent is this Rules, but this Rules is NOT imported,
+      // check if the node is actually in an imported Rules' value array by
+      // checking if any Rules in this.value has the node in its value array
+      const nodeParent = node.parent;
+
+      // Check if node's parent is an imported Rules (different from this)
+      if (nodeParent && isNode(nodeParent, 'Rules')) {
+        const isImportedRules = (nodeParent.sourceNode && isNode(nodeParent.sourceNode, 'StyleImport')) || (nodeParent.parent && isNode(nodeParent.parent, 'StyleImport'));
+        if (isImportedRules && nodeParent !== this) {
+          // The node belongs to an imported Rules, register it there instead
+          nodeParent.registerNode(node, options, context);
           return;
-        }
-
-        let key = node.value.name?.toString();
-        /** Don't set within sibling rules */
-        let opts: Registries.FindOptions = {};
-        opts.searchParents = true;
-        opts.start = node.index;
-        let result = this.find('declaration', key, node.type as 'Declaration', opts);
-        if (result) {
-          if (result.options?.readonly || opts.readonly) {
-            throw new ReferenceError(`"${key}" is readonly`);
-          }
-
-          // Find the Rules node that contains the found declaration
-          let foundRules: Rules | undefined = result.parent as Rules;
-
-          if (!foundRules) {
-            throw new Error(`Could not find parent Rules for declaration '${key}'`);
-          }
-
-          // Create a new declaration with the same name but our value
-          const newDeclaration = node.copy();
-          newDeclaration.options = { ...newDeclaration.options };
-          newDeclaration.options.setDefined = undefined; // Remove setDefined flag
-
-          // Instead of inserting into the array, just register it in the registry
-          // Because all nodes are indexed linearly, we can keep the same index I think?
-
-          foundRules.register('declaration', newDeclaration);
-        } else {
-          throw new ReferenceError(`"${key}" is not defined`);
         }
       }
 
-      this.register('declaration', node);
-    } else if (isNode(node, 'Ruleset')) {
-      // Register to 'mixin' for mixin calls and 'ruleset' for extends
-      // Register to 'mixin' for mixin calls and 'ruleset' for extends
-      this.register('mixin', node);
-      this.register('ruleset', node);
-    } else if (isNode(node, 'Mixin')) {
-      this.register('mixin', node);
+      // If node's parent is this Rules, but this Rules is NOT imported,
+      // check if the node is actually in an imported Rules' value array
+      // (i.e., the node is NOT actually in this.value, but in a child Rules' value)
+      // Check if this Rules is imported by checking:
+      // 1. If sourceNode is a StyleImport
+      // 2. If parent is a StyleImport
+      const thisIsImportedRules = (this.sourceNode && isNode(this.sourceNode, 'StyleImport'))
+        || (this.parent && isNode(this.parent, 'StyleImport'));
+      // Check if this Rules is in its own value array (or a clone of it)
+      const thisIsInOwnValue = this.value.includes(this as any);
+      const rulesChildIsThis = this.value.some(n => isNode(n, 'Rules') && n === this);
+      // Check if any child Rules has the same sourceNode as this Rules (clone detection)
+      let childRulesHasSameSourceNode = false;
+      let sameSourceNodeChildIndex = -1;
+      let sameSourceNodeChild: Rules | undefined;
+      for (let i = 0; i < this.value.length; i++) {
+        const child = this.value[i];
+        if (isNode(child, 'Rules') && child !== this && child.sourceNode === this.sourceNode && this.sourceNode !== null) {
+          childRulesHasSameSourceNode = true;
+          sameSourceNodeChildIndex = i;
+          sameSourceNodeChild = child as Rules;
+          break;
+        }
+      }
+      if (nodeParent === this && !thisIsImportedRules) {
+        // Check if this node is actually in this.value or in a child Rules' value
+        const isInThisValue = this.value.includes(node);
+
+        if (!isInThisValue) {
+          // The node is NOT in this.value, so it must be in a child Rules' value
+          // Find which child Rules contains this node
+          for (const child of this.value) {
+            if (isNode(child, 'Rules')) {
+              const childIsImportedRules = (child.sourceNode && isNode(child.sourceNode, 'StyleImport')) || (child.parent && isNode(child.parent, 'StyleImport'));
+              if (childIsImportedRules && child.value.includes(node)) {
+                // The node is in an imported Rules' value array, register it there instead
+                child.registerNode(node, options, context);
+                return;
+              }
+            }
+          }
+        } else {
+          // The node IS in this.value, but this Rules is NOT imported (yet)
+          // If this is a Mixin and this Rules has no parent and no sourceNode,
+          // it might be an imported Rules that hasn't had sourceNode set yet.
+          // In that case, we should still register it to this Rules (the imported Rules),
+          // not skip it. The issue is that Mixin nodes are being registered during parsing,
+          // before sourceNode is set. We should allow registration to proceed normally.
+          if (isNode(node, 'Mixin')) {
+            // Check if this Rules is in its own value array (or a clone of it)
+            for (const child of this.value) {
+              if (isNode(child, 'Rules')) {
+                // Check if this child Rules is actually this Rules or a clone
+                const childIsThis = child === this;
+                const childHasSameValue = child.value.length === this.value.length && child.value.every((n, i) => n === this.value[i]);
+                if (childIsThis || (childHasSameValue && child.value.includes(node))) {
+                  // This Rules (or a clone) is in its own value array - this is the bug!
+                }
+              }
+            }
+          }
+          // The node is incorrectly in the parent Rules' value array
+          // when it should only be in the imported Rules' value array
+        }
+      }
+
+      if (isNode(node, 'Declaration')) {
+        /**
+         * setDefined works like Sass's !default flag - it finds the original variable
+         * declaration and inserts a new declaration at the same rules level as the
+         * found variable, but before the current nested node.
+         */
+        if (node.options?.setDefined) {
+          // Skip setDefined logic if we're currently indexing to avoid recursive calls
+          if (this._indexing) {
+            // We'll handle setDefined after indexing is complete
+            return;
+          }
+
+          let key = node.value.name?.toString();
+          /** Don't set within sibling rules */
+          let opts: Registries.FindOptions = {};
+          opts.searchParents = true;
+          opts.start = node.index;
+          let result = this.find('declaration', key, node.type as 'Declaration', opts);
+          if (result) {
+            if (result.options?.readonly || opts.readonly) {
+              throw new ReferenceError(`"${key}" is readonly`);
+            }
+
+            // Find the Rules node that contains the found declaration
+            let foundRules: Rules | undefined = result.parent as Rules;
+
+            if (!foundRules) {
+              throw new Error(`Could not find parent Rules for declaration '${key}'`);
+            }
+
+            // Create a new declaration with the same name but our value
+            const newDeclaration = node.copy();
+            newDeclaration.options = { ...newDeclaration.options };
+            newDeclaration.options.setDefined = undefined; // Remove setDefined flag
+
+            // Instead of inserting into the array, just register it in the registry
+            // Because all nodes are indexed linearly, we can keep the same index I think?
+
+            foundRules.register('declaration', newDeclaration);
+          } else {
+            throw new ReferenceError(`"${key}" is not defined`);
+          }
+        }
+
+        this.register('declaration', node);
+      } else if (isNode(node, 'Ruleset')) {
+        // Register to 'mixin' for mixin calls and 'ruleset' for extends
+        // Register to 'mixin' for mixin calls and 'ruleset' for extends
+        this.register('mixin', node);
+        this.register('ruleset', node);
+      } else if (isNode(node, 'Mixin')) {
+        this.register('mixin', node);
+      }
     }
   }
 
@@ -527,6 +626,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (!this.preEvaluated) {
       let rules = this.maybeClone(context);
       rules.preEvaluated = true;
+      // Preserve parent when cloning - if this Rules is inside a ruleset, maintain the parent relationship
+      if (this.parent && !rules.parent) {
+        rules.parent = this.parent;
+      }
 
       // Save current context and set up new context for variable lookups during preEval
       const saved = this._snapshotContext(context);
@@ -599,10 +702,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const finish = () => {
       // If no dynamic nodes, we're done
       if (dynamicNodes.length === 0) {
-        // Restore context after preEval is complete
-        context.rulesContext = saved.rulesContext;
-        context.treeRoot = saved.treeRoot;
-        context.root = saved.root;
+        // Don't restore context here - let evalNode restore it after all children are evaluated
         return rules as this;
       }
       // Multi-pass resolution of dynamic nodes
@@ -763,10 +863,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         throw firstError;
       }
 
-      // Restore context after preEval is complete
-      context.rulesContext = saved.rulesContext;
-      context.treeRoot = saved.treeRoot;
-      context.root = saved.root;
+      // Don't restore context here - let evalNode restore it after all children are evaluated
 
       return rules as this;
     };
@@ -814,12 +911,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     }
 
-    // Restore context after preEval is complete (for async case)
-    if (saved) {
-      context.rulesContext = saved.rulesContext;
-      context.treeRoot = saved.treeRoot;
-      context.root = saved.root;
-    }
+    // Don't restore context here - let evalNode restore it after all children are evaluated
     return rules as this;
   }
 
@@ -1311,6 +1403,10 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           continue;
         }
         if (match) {
+          /** Make a shallow copy to attach our resolved params (w/ args) */
+          let originalMixin = mixin;
+          mixin = mixin.copy();
+          mixin.parent = originalMixin.parent;
           (mixin as Mixin).value.params = params;
           mixinCandidates.push(mixin);
         }

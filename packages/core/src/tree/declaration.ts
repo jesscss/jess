@@ -207,10 +207,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override evalNode(context: Context): MaybePromise<this | Nil> {
-    if (this.preEvaluated && this.value.value.hasFlag(F_STATIC)) {
-      this.evaluated = true;
-      return this;
-    }
+    /**
+     * @todo - Re-instate when bubbling of flags is reliable.
+     */
+    // if (this.preEvaluated && this.value.value.hasFlag(F_STATIC)) {
+    //   this.evaluated = true;
+    //   return this;
+    // }
     return pipe(
       () => {
         let node = this;

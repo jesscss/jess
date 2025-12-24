@@ -83,9 +83,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
 
     let selOut = w.capture(() => selector.toTrimmedString(options));
-    selOut = idt + selOut.replace(/\s+$/, '') + ' {\n';
-
-    return normalizeIndent(idt, selOut);
+    /** Normalize single spacing */
+    selOut = selOut.replace(/[ \t]+/g, ' ');
+    return normalizeIndent(idt, selOut.replace(/\s+$/, '') + ' {') + '\n';
   }
 
   override preEval(context: Context): MaybePromise<this> {

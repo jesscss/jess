@@ -98,7 +98,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     }
 
     // if (isNode(n, 'Declaration')) {
-    let idt = indent(options.depth);
+    let idt = indent(options.depth + 1);
     let pre = w.capture(() => n.processPrePost('pre'));
     /** normalize pre spacing */
     let out = w.capture(() => n.toTrimmedString({ ...options, depth: options.depth + 1 }));
@@ -126,6 +126,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   let renderedLength = lastRenderedFrames.length;
   if (treeFrames.length < renderedLength) {
     w.add(indent(renderedLength - 1) + '}\n');
+    options.depth--;
     lastRenderedFrames.pop();
   }
 

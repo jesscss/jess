@@ -76,7 +76,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       node.sourceNode ??= this;
 
       // Evaluate name if needed (for interpolated names)
-      let { name, prelude } = node.value;
+      let { name } = node.value;
       if (name && name instanceof Interpolated) {
         const maybeKey = name.eval(context);
         if (isThenable(maybeKey)) {
@@ -96,18 +96,14 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   private _preEvalPrelude(node: AtRule, context: Context): MaybePromise<AtRule> {
     const { prelude } = node.value;
     if (prelude) {
-      if (prelude.hasFlag(F_STATIC)) {
-        prelude.evaluated = true;
-      } else {
-        const out = prelude.eval(context);
-        if (isThenable(out)) {
-          return (out as Promise<Node>).then((n) => {
-            node.value.prelude = n;
-            return node;
-          });
-        }
-        node.value.prelude = out;
+      const out = prelude.eval(context);
+      if (isThenable(out)) {
+        return (out as Promise<Node>).then((n) => {
+          node.value.prelude = n;
+          return node;
+        });
       }
+      node.value.prelude = out;
     }
     return node;
   }
@@ -149,7 +145,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     }
 
     out += w.capture(() => name.toString(options));
-    out = normalizeIndent(idt, out);
     const nameEndsWithSpace = /\s$/.test(out);
     if (prelude) {
       const preludeOut = w.capture(() => prelude.toString(options));
@@ -165,18 +160,18 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         if (!preludeEndsWithSpace) {
           out += ' ';
         }
-        out += '{\n';
+        out = normalizeIndent(idt, out + '{') + '\n';
       } else {
-        out += ';';
+        out = normalizeIndent(idt, out + ';');
       }
     } else {
       if (rules) {
         if (!nameEndsWithSpace) {
           out += ' ';
         }
-        out += '{\n';
+        out = normalizeIndent(idt, out + '{') + '\n';
       } else {
-        out += ';';
+        out = normalizeIndent(idt, out + ';');
       }
     }
     return out;

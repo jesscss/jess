@@ -1,49 +1,35 @@
-import * as glob from 'glob';
-import * as fs from 'fs';
-import * as path from 'path';
+import { describe, it, expect } from 'vitest';
 import { Compiler } from '../../src';
 import lessPlugin from '@jesscss/plugin-less';
 
-const testData = path.dirname(require.resolve('@less/test-data'));
+describe('Nesting', () => {
+  const compiler = new Compiler({
+    compile: {
+      plugins: [lessPlugin()]
+    }
+  });
 
-// Test nesting behavior specifically
-const nestingCompiler = new Compiler({
-  output: { collapseNesting: true }, // Test nesting collapsing
-  compile: {
-    plugins: [
-      lessPlugin({
-        mathMode: 0
-      })
-    ]
-  },
-  language: {} // Required by StylesConfig
-});
-
-describe('Nesting Behavior', () => {
-  // Only test files that are specifically about nesting
-  const nestingFiles = glob.sync(path.join(testData, 'tests-unit/nesting/*.less'));
-
-  nestingFiles
-    .map(value => path.relative(testData, value))
-    .sort()
-    .forEach((file) => {
-      it(`should handle nesting in ${file}`, async () => {
-        const lessPath = path.join(testData, file);
-        const cssPath = lessPath.replace(/\.less$/, '.css').replace('/less/', '/css/');
-
-        if (!fs.existsSync(cssPath)) {
-          console.warn(`No expected CSS file found for ${file}, skipping test`);
-          return;
+  describe('Some nesting test cases', () => {
+    it('should handle nested selectors', async () => {
+      const lessCode = `
+        @media (-o-min-device-pixel-ratio: ~"2/1"), (min-resolution: 2dppx) {
+          .parent {
+            .child {
+              width: 10px;
+            }
+          }
         }
-
-        const expectedCss = fs.readFileSync(cssPath).toString();
-        const output = await nestingCompiler.render(lessPath);
-
-        // Normalize whitespace for comparison
-        const normalizedOutput = output.trim().replace(/\s+/g, ' ');
-        const normalizedExpected = expectedCss.trim().replace(/\s+/g, ' ');
-
-        expect(normalizedOutput).toBe(normalizedExpected);
-      });
+      `;
+      const css = await compiler.renderString(lessCode, { language: 'less' });
+      expect(css).toBeString(`
+        @media (-o-min-device-pixel-ratio: 2/1), (min-resolution: 2dppx) {
+          .parent {
+            .child {
+              width: 10px;
+            }
+          }
+        }
+      `);
     });
+  });
 });

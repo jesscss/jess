@@ -111,6 +111,12 @@ export type NoOverride<T> = Tagged<T, 'NoOverride'>;
 // Node state flags as bitmask
 export const F_VISIBLE = 0b1;
 export const F_MAY_ASYNC = 0b10;
+/**
+ * @todo - The plan is to use these as signals for evaluation. If we
+ * bubble these correctly, then we can exit early from evaluation for
+ * a speed boost. However, bubbling is not yet water-tight and needs
+ * test coverage.
+ */
 export const F_STATIC = 0b100;
 export const F_NON_STATIC = 0b1000;
 /** Whether or not a physical ampersand is in this selector */
