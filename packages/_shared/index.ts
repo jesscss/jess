@@ -70,6 +70,7 @@ export const invalidLess = [
   // 'tests-config/math/parens-division/new-division.less',
   'tests-config/math-strict/css.less',
   'tests-unit/import/invalid-css.less',
+  'tests-unit/import/import/invalid-css.less',
 
   /** Contains invalid `[prop=10%]` */
   'tests-unit/selectors/selectors.less',

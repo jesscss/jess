@@ -8,7 +8,7 @@ import { Nil } from '../nil';
  * Normalizes the indent of a multi-line string by replacing initial whitespace.
  */
 export function normalizeIndent(indent: string, multiLineString: string): string {
-  return multiLineString.replace(/^\s+/gm, indent);
+  return multiLineString.replace(/^\s*/gm, indent);
 }
 
 export function indent(depth: number): string {
@@ -63,7 +63,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     }
 
     if (isNode(n, ['Ruleset', 'AtRule'])) {
-      n.toString(options);
+      n.toTrimmedString(options);
       continue;
     }
 
@@ -98,10 +98,11 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     }
 
     // if (isNode(n, 'Declaration')) {
-    w.add(indent(options.depth) + '  ');
-    n.processPrePost('pre');
+    let idt = indent(options.depth);
+    let pre = w.capture(() => n.processPrePost('pre'));
+    /** normalize pre spacing */
     let out = w.capture(() => n.toTrimmedString({ ...options, depth: options.depth + 1 }));
-    w.add(out);
+    w.add(normalizeIndent(idt, pre + out), n);
     /** @todo - optionally add semi-colon for compression */
     // if (n.requiredSemi && next) {
     //   w.add(';');

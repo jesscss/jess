@@ -649,6 +649,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
           let initialQualifiedRule = ctx.qualifiedRule;
           let initialFirstSelector = ctx.firstSelector;
           ctx.firstSelector = true;
+          ctx.qualifiedRule = true;
           let rule = $.SUBRULE($.forgivingSelectorList, { ARGS: [ctx] });
           ctx.qualifiedRule = initialQualifiedRule;
           ctx.firstSelector = initialFirstSelector;

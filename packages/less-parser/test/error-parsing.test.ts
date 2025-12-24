@@ -12,26 +12,26 @@ const skippedErrors = [
    * Not a parse error, but an eval + parse error,
    * which this test can't cover.
    */
-  'errors/parse/import-subfolder2.less',
-  'errors/parse/imports/import-subfolder2.less',
-  'errors/parse/imports/subfolder/parse-error-curly-bracket.less',
+  'tests-error/parse/import-subfolder2.less',
+  'tests-error/parse/imports/import-subfolder2.less',
+  'tests-error/parse/imports/subfolder/parse-error-curly-bracket.less',
 
   /**
    * Not sure why this color + comment should have been an error.
    * Looks like valid CSS to me, and this parser passes it.
    */
-  'errors/parse/invalid-color-with-comment.less',
+  'tests-error/parse/invalid-color-with-comment.less',
 
   /** This parser tolerates (12 (1 + 2)) because it's not necessarily invalid CSS */
-  'errors/parse/parens-error-1.less',
-  'errors/parse/parens-error-2.less',
-  'errors/parse/parens-error-3.less'
+  'tests-error/parse/parens-error-1.less',
+  'tests-error/parse/parens-error-2.less',
+  'tests-error/parse/parens-error-3.less'
 ];
 
 // Skipped until we fix these flows
 describe('should throw parsing errors', () => {
   const files = glob.sync(
-    path.relative(process.cwd(), path.join(testData, 'errors/parse/**/*.less'))
+    path.relative(process.cwd(), path.join(testData, 'tests-error/parse/**/*.less'))
   );
   files
     .sort()

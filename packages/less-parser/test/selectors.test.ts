@@ -186,6 +186,26 @@ describe('Selector Productions', () => {
       expect(errors.length).toBe(0);
       expect(serializeTypes(tree)).toContainString('(Extend');
     });
+
+    it('should parse nested extend', () => {
+      const { errors, tree } = parser.parse(`
+        .amp-test-a,
+        .amp-test-b {
+          .amp-test-c &.amp-test-d&.amp-test-e {
+            .amp-test-f&+&.amp-test-g:extend(.amp-test-h) {}
+          }
+        }
+      `);
+      expect(errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString('(Extend');
+    });
+
+    it('should not parse extend within a psuedo selector', () => {
+      const { errors } = parser.parse(`
+        .test:is(.a:extend(.b)) {}
+      `);
+      expect(errors.length).toBe(1);
+    });
   });
 
   describe('ampersandExtend', () => {
