@@ -93,6 +93,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (!this.preEvaluated) {
       const node = this.maybeClone(context);
       node.preEvaluated = true;
+      node.setIndex(context);
       node.sourceNode ??= this;
       let { selector } = node.value;
       let parentSelector = context.rulesetFrames.at(-1)?.selector;

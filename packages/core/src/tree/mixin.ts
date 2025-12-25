@@ -149,6 +149,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     // but do NOT call super.preEval() which would pre-evaluate children.
     let node = this.maybeClone(context);
     node.preEvaluated = true;
+    node.setIndex(context);
     node.sourceNode ??= this;
     let { name } = node.value;
     if (name && name instanceof Interpolated) {

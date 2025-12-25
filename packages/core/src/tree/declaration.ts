@@ -127,6 +127,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     /** We need to clone declarations, because we alter their options */
     let node = this.maybeClone(context);
     node.preEvaluated = true;
+    node.setIndex(context);
     let { name, value } = node.value;
 
     const applyAssignmentNormalization = (key: Any<'property'>) => {

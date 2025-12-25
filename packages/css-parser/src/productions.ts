@@ -1645,7 +1645,7 @@ export function mediaQuery(this: C, T: TokenMap, alt?: AltContext) {
         });
 
         if (token && !RECORDING_PHASE) {
-          nodes!.push($.wrap(new Any(token.image, { role: 'keyword' }, $.getLocationInfo(token), this.context)));
+          nodes!.push($.wrap(new Any(token.image, { role: 'keyword' }, $.getLocationInfo(token), this.context), 'both'));
           token = undefined;
         }
         let type = $.SUBRULE($.mediaType, { ARGS: [ctx] });
@@ -1660,7 +1660,7 @@ export function mediaQuery(this: C, T: TokenMap, alt?: AltContext) {
         });
         if (!RECORDING_PHASE) {
           if (token) {
-            nodes!.push($.wrap(new Any(token.image, { role: 'keyword' }, $.getLocationInfo(token), this.context)));
+            nodes!.push($.wrap(new Any(token.image, { role: 'keyword' }, $.getLocationInfo(token), this.context), 'both'));
           }
           if (node) {
             nodes!.push(node);
@@ -1697,7 +1697,7 @@ export function mediaType(this: C, T: TokenMap, alt?: AltContext) {
   return (ctx: RuleContext = {}) => {
     let token = $.OR(alt(ctx));
     if (!$.RECORDING_PHASE) {
-      return $.wrap(new Any(token.image, { role: 'keyword' }, $.getLocationInfo(token), this.context));
+      return $.wrap(new Any(token.image, { role: 'keyword' }, $.getLocationInfo(token), this.context), 'both');
     }
   };
 }
@@ -1793,7 +1793,7 @@ export function mediaNot(this: C, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       return new QueryCondition([
-        $.wrap(new Any(token.image, { role: 'keyword' }, $.getLocationInfo(token), this.context)),
+        $.wrap(new Any(token.image, { role: 'keyword' }, $.getLocationInfo(token), this.context), 'both'),
         node
       ], undefined, $.endRule(), this.context);
     }
@@ -1813,7 +1813,7 @@ export function mediaAnd(this: C, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       return [
-        $.wrap(new Any(token.image, { role: 'keyword' }, $.getLocationInfo(token), this.context)),
+        $.wrap(new Any(token.image, { role: 'keyword' }, $.getLocationInfo(token), this.context), 'both'),
         node
       ];
     }
@@ -1833,7 +1833,7 @@ export function mediaOr(this: C, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       return [
-        $.wrap(new Any(token.image, { role: 'keyword' }, $.getLocationInfo(token), this.context)),
+        $.wrap(new Any(token.image, { role: 'keyword' }, $.getLocationInfo(token), this.context), 'both'),
         node
       ];
     }
@@ -1945,7 +1945,7 @@ export function mediaFeature(this: C, T: TokenMap, alt?: AltContext) {
                   let location = $.endRule();
                   return new Sequence([
                     $.wrap(new Any(ident.image, { role: 'ident' }, $.getLocationInfo(ident), this.context)),
-                    $.wrap(new Any(op.image, { role: 'keyword' }, $.getLocationInfo(op), this.context)),
+                    $.wrap(new Any(op.image, { role: 'keyword' }, $.getLocationInfo(op), this.context), 'both'),
                     value
                   ], undefined, location, this.context);
                 }
@@ -1955,7 +1955,7 @@ export function mediaFeature(this: C, T: TokenMap, alt?: AltContext) {
         });
         if (!RECORDING_PHASE && !rule) {
           let location = $.endRule();
-          return $.wrap(new Any(ident.image, { role: 'keyword' }, location, this.context));
+          return $.wrap(new Any(ident.image, { role: 'keyword' }, location, this.context), 'both');
         }
         return rule;
       }
@@ -1975,7 +1975,7 @@ export function mediaFeature(this: C, T: TokenMap, alt?: AltContext) {
                 return new Sequence([
                   rule1,
                   $.wrap(new Any(op.image, { role: 'keyword' }, $.getLocationInfo(op), this.context)),
-                  $.wrap(new Any(value.image, { role: 'ident' }, $.getLocationInfo(value), this.context))
+                  $.wrap(new Any(value.image, { role: 'ident' }, $.getLocationInfo(value), this.context), 'both')
                 ], undefined, location, this.context);
               }
             }
@@ -2060,7 +2060,7 @@ export function mediaRange(this: C, T: TokenMap, alt?: AltContext) {
       let location = $.endRule();
       let nodes: Node[] = [
         $.wrap(new Any(op1!.image, { role: 'keyword' }, $.getLocationInfo(op1!), this.context)),
-        $.wrap(new Any(val1!.image, { role: 'ident' }, $.getLocationInfo(val1!), this.context))
+        $.wrap(new Any(val1!.image, { role: 'ident' }, $.getLocationInfo(val1!), this.context), 'both')
       ];
       if (op2) {
         nodes.push($.wrap(new Any(op2.image, { role: 'keyword' }, $.getLocationInfo(op2), this.context)));
@@ -2124,7 +2124,7 @@ export function mfValue(this: C, T: TokenMap, alt?: AltContext) {
       ALT: () => {
         let token = $.CONSUME(T.Ident);
         if (!$.RECORDING_PHASE) {
-          return $.wrap(new Any(token.image, { role: 'ident' }, $.getLocationInfo(token), this.context));
+          return $.wrap(new Any(token.image, { role: 'ident' }, $.getLocationInfo(token), this.context), 'both');
         }
       }
     }

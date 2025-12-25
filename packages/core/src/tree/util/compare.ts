@@ -1,5 +1,6 @@
 import { isNode } from './is-node';
 import isObject from 'lodash-es/isObject';
+import { type Node } from '../node';
 
 export function compare(a: any, b: any) {
   if (a === b) {
@@ -16,6 +17,37 @@ export function compare(a: any, b: any) {
     return 0;
   }
   return undefined;
+}
+
+/**
+ * Find the actual source order of two nodes, by comparing
+ * their position in their lowest common ancestor in the tree.
+ */
+export function comparePosition(a: Node, b: Node) {
+  let a0 = a;
+  let b0 = b;
+
+  // align depths
+  while (a.depth > b.depth) {
+    a = a.parent!;
+  }
+  while (b.depth > a.depth) {
+    b = b.parent!;
+  }
+
+  // ancestor case
+  if (a === b) {
+    return a0.depth - b0.depth;
+  }
+
+  // climb until they become siblings (share a parent)
+  while (a.parent !== b.parent) {
+    a = a.parent!;
+    b = b.parent!;
+  }
+
+  // siblings: lower index first
+  return a.index - b.index;
 }
 
 export function compareNodeArray(a: any[], b: any[]): 0 | 1 | -1 | undefined {

@@ -233,6 +233,9 @@ export class Context {
   id = generateId();
   ruleCounter = 0;
 
+  /** Rules depth, used to figure out source order */
+  depth = -1;
+
   private _classMap: Map<string, string> | undefined;
   get classMap() {
     return (this._classMap ??= new Map());
@@ -293,12 +296,6 @@ export class Context {
   get exports(): Set<string> {
     return (this._exports ??= new Set());
   }
-
-  /**
-   * @todo - is this still used? Or do all toString()
-   * and toTrimmedString() methods pass in depth?
-   */
-  depth = 0;
 
   /**
    * currently generating a runtime module or not

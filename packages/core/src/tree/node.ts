@@ -206,14 +206,6 @@ export abstract class Node<
   generated = false;
 
   /**
-   * When evaluating, nodes are assigned an index by the Rules node.
-   * This is used for lookup order. Note, this _will_ be undefined
-   * initially, but we assign it in the Rules node, which is also
-   * where we read it, so this makes the type easier.
-   */
-  index!: number;
-
-  /**
    * If the node must have a semi separator before
    * the next node when in a declaration list or main
    * rules list.
@@ -233,6 +225,22 @@ export abstract class Node<
    * Note: This property is defined in constructor as non-enumerable
    */
   declare sourceNode: Node;
+
+  /**
+   * When evaluating, nodes are assigned an index and depth by the Rules node.
+   * This is used for lookup order. Note, this _will_ be undefined
+   * initially, but we assign it in the Rules node, which is also
+   * where we read it, so this makes the type easier.
+   */
+  index!: number;
+  depth = 0;
+
+  setIndex(context: Context) {
+    if (this.index === undefined) {
+      this.index = context.ruleCounter++;
+      this.depth = context.depth;
+    }
+  }
 
   /**
    * The parent node of this node. Usually, this
@@ -652,12 +660,17 @@ export abstract class Node<
    * @todo - Update preEval / eval to use static evaluation based on flags.
    */
   preEval(context: Context): MaybePromise<Node> {
-    let node = this.maybeClone(context);
-    let out = node.forEachNode(n => n.preEval(context));
-    if (isThenable(out)) {
-      return (out as Promise<void>).then(() => node);
+    if (!this.preEvaluated) {
+      let node = this.maybeClone(context);
+      node.preEvaluated = true;
+      node.setIndex(context);
+      let out = node.forEachNode(n => n.preEval(context));
+      if (isThenable(out)) {
+        return (out as Promise<void>).then(() => node);
+      }
+      return node;
     }
-    return node;
+    return this;
   }
 
   /**

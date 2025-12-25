@@ -8,6 +8,7 @@ import {
 } from './node';
 import { Context } from '../context';
 import { isNode } from './util/is-node';
+import { comparePosition } from './util/compare';
 import { cast } from './util/cast';
 import { type Ruleset } from './ruleset';
 import { type Mixin } from './mixin';
@@ -203,23 +204,24 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   /** Efficiently filter rules when copying */
-  override copy(deep?: boolean, trim?: boolean): this {
-    const newRules: Node[] = [];
-    for (const node of this.value) {
-      if (node.visible) {
-        newRules.push(deep ? node.copy(deep, trim) : node);
-      }
-    }
-    const rules = new Rules(newRules).inherit(this);
-    if (trim) {
-      rules.pre = undefined;
-      rules.post = undefined;
-    } else {
-      rules.stripPrePost(rules, 'pre');
-      rules.stripPrePost(rules, 'post');
-    }
-    return rules as this;
-  }
+  /** Copied rules need to retain invisible nodes for things like mixin bodies */
+  // override copy(deep?: boolean, trim?: boolean): this {
+  //   const newRules: Node[] = [];
+  //   for (const node of this.value) {
+  //     if (node.visible) {
+  //       newRules.push(deep ? node.copy(deep, trim) : node);
+  //     }
+  //   }
+  //   const rules = new Rules(newRules).inherit(this);
+  //   if (trim) {
+  //     rules.pre = undefined;
+  //     rules.post = undefined;
+  //   } else {
+  //     rules.stripPrePost(rules, 'pre');
+  //     rules.stripPrePost(rules, 'post');
+  //   }
+  //   return rules as this;
+  // }
 
   override toString(options?: PrintOptions): string {
     if (!this.visible && !this.fullRender) {
@@ -533,8 +535,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   override preEval(context: Context) {
     if (!this.preEvaluated) {
+      context.depth++;
       let rules = this.maybeClone(context);
       rules.preEvaluated = true;
+      rules.setIndex(context);
       // Preserve parent when cloning - if this Rules is inside a ruleset, maintain the parent relationship
       if (this.parent && !rules.parent) {
         rules.parent = this.parent;
@@ -548,16 +552,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isMainRoot) {
         context.extendRoots.registerRoot(rules);
         context.extendRoots.pushExtendRoot(rules);
-      }
-
-      // Assign index to all the nodes if not already set,
-      // in linear source order.
-      if (rules.index === undefined) {
-        for (const node of rules.nodes(false, true)) {
-          if (node.index === undefined) {
-            node.index = context.ruleCounter++;
-          }
-        }
       }
 
       // Multi-pass registration system for handling interpolated names
@@ -1123,6 +1117,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           context.extendRoots.popExtendRoot();
         }
         context.rulesEvalStack.pop();
+        context.depth--;
         return rules;
       }
     ) as MaybePromise<this>;
@@ -1388,13 +1383,13 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      * and create variable declarations for each parameter.
      */
     let hasMatch = false;
-    let outputRules: Array<[Rules, number]> = [];
+    let outputRules: Rules[] = [];
     for (let [candidate, i] of evalCandidates) {
       if (isNode(candidate, 'Ruleset')) {
         const rules = await (candidate as Ruleset).value.rules.copy(true).eval(thisContext);
         hasMatch = true;
         // Skip empty Rules (e.g., containing only invisible nodes like comments)
-        outputRules.push([rules, i]);
+        outputRules.push(rules);
         continue;
       }
       let rules = candidate.value.rules;
@@ -1527,7 +1522,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           VarDeclaration: 'public',
           Mixin: 'public'
         };
-        outputRules.push([newRules, i]);
+        outputRules.push(newRules);
       } catch (error) {
         // If recursion was detected (ReferenceError), skip this candidate
         // This allows other candidates to still match
@@ -1556,9 +1551,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      * Now that we have output rules, we sort them by
      * their original order
      */
-    let rulesArr = outputRules
-      .sort((a, b) => a[1] - b[1])
-      .map(r => r[0]);
+    let rulesArr = outputRules.sort(comparePosition);
     /** Create a rules wrapper - but optimize to avoid unnecessary nesting */
     let output: Rules;
     if (rulesArr.length === 1) {
@@ -1566,8 +1559,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     } else {
       // Multiple items - spread their values into a new Rules
       const flattened: Node[] = [];
+      /** @todo - Do we need to deal with rules visibility here? */
       for (const item of rulesArr) {
-        flattened.push(...item.value.filter(r => r.visible));
+        flattened.push(...item.value);
       }
       output = new Rules(flattened);
     }
@@ -1577,6 +1571,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     output.evaluated = true;
     /** Now push all rules into the rules value */
     if (this instanceof Context) {
+      output.setIndex(this);
       // If the output Rules is empty, return Nil instead
       if (output.value.length === 0) {
         return new Nil();
