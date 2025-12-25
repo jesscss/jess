@@ -161,9 +161,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     };
     // Set sourceNode so variable lookups know they can cross import boundaries
     out.sourceNode = this;
-    // Reset rulesIndexed so that registries will be re-populated when accessed
-    // This is necessary because clone() creates new empty registries
-    out.rulesIndexed = 0;
     this.adopt(out);
     return out;
   }

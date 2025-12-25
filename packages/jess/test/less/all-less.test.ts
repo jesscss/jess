@@ -27,11 +27,7 @@ const specializedTests = [
 
 // Temporarily filter to specific tests for debugging - set to empty array to run all
 const targetTests: string[] = [
-  // 'tests-unit/mixins/mixins.less'
-  // 'tests-unit/media/media.less'
-  // 'tests-config/sourcemaps-disable-annotation/basic.less'
-  // 'tests-config/modifyVars/extended.less'
-  'tests-config/static-urls/urls.less'
+  'tests-unit/at-rules-keyword-comments/at-rules-keyword-comments.less'
 ];
 
 describe('Can render Less files to CSS', () => {

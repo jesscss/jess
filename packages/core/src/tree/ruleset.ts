@@ -82,9 +82,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       selector = selector.copy(true) as Selector;
     }
 
-    let selOut = w.capture(() => selector.toTrimmedString(options));
+    let out = withoutComments ? '' : w.capture(() => this.processPrePost('pre'));
+    let selOut = w.capture(() => selector.toString(options));
     /** Normalize single spacing */
-    selOut = selOut.replace(/[ \t]+/g, ' ');
+    out += selOut.replace(/[ \t]+/g, ' ');
     return normalizeIndent(idt, selOut.replace(/\s+$/, '') + ' {') + '\n';
   }
 

@@ -14,16 +14,7 @@ export default {
   favicon: 'img/favicon.ico',
   organizationName: 'jesscss', // Usually your GitHub org/user name.
   projectName: 'jesscss.github.io', // Usually your repo name.
-  plugins: [
-    [
-      '@docusaurus/plugin-content-docs',
-      {
-        mdx: {
-          mdxComponents: './src/theme/MDXComponents.tsx',
-        },
-      }
-    ]
-  ],
+  plugins: [],
   themeConfig: {
     colorMode: {
       disableSwitch: false,

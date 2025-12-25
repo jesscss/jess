@@ -69,7 +69,7 @@ Unlike rulesets and at-rules, conditionals and iteration blocks do not create a 
 ```less
 .box {
   $my-color: red;
-  $if (true) {
+  $if true {
     $my-color: blue;
   }
   color: $my-color; // blue
@@ -84,7 +84,7 @@ The `$for` syntax in Jess should also be familiar to developers.
 ```less
 $sections: header, sidebar, footer;
 
-$for ($section, $i of $sections) {
+$for ($section, $i) of $sections {
   .box-$(section) {
     padding-left: $(i * 20px);
   }
@@ -95,7 +95,7 @@ $for ($section, $i of $sections) {
 
 In the above example, `i` is the key of `sections`. Because `sections` is assigned a list, the key is it's offset from the start.
 
-The syntax is `$for ({$item} [, {$key} [, {$counter}]?]? of $var) {...}`. In this case, both `key` and `counter` would have the same value. However, with something like a Jess collection, the `key` would be assigned the declaration name. We'll explore collections in the "Values" section.
+The syntax is `$for ({$item} [, {$key} [, {$counter}]?]?) of $var {...}`. In this case, both `key` and `counter` would have the same value. However, with something like a Jess collection, the `key` would be assigned the declaration name. We'll explore collections in the "Values" section.
 
 :::
 

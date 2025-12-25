@@ -185,6 +185,8 @@ export class Context {
   /** Track whether charset has been emitted during toString to avoid duplicates */
   charsetEmitted?: boolean;
 
+  topRules?: Node[];
+
   /**
    * This is set when entering rulesets so that child nodes
    * can use this to lookup values.

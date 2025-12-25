@@ -9,6 +9,7 @@ import { Ampersand } from './ampersand';
 import { isNode } from './util/is-node';
 import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper';
 import { Interpolated } from './interpolated';
+import { Nil } from './nil';
 
 export type AtRuleValue = {
   name: Any<'atkeyword'>;
@@ -69,7 +70,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
    * Pre-evaluate name and prelude (similar to Ruleset.preEval)
    * This allows us to extract layer names before rules are evaluated
    */
-  override preEval(context: Context): MaybePromise<AtRule> {
+  override preEval(context: Context): MaybePromise<AtRule | Nil> {
     if (!this.preEvaluated) {
       const node = this.maybeClone(context);
       node.preEvaluated = true;
@@ -93,17 +94,25 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return this;
   }
 
-  private _preEvalPrelude(node: AtRule, context: Context): MaybePromise<AtRule> {
+  private _preEvalPrelude(node: AtRule, context: Context): MaybePromise<AtRule | Nil> {
     const { prelude } = node.value;
     if (prelude) {
       const out = prelude.eval(context);
       if (isThenable(out)) {
         return (out as Promise<Node>).then((n) => {
           node.value.prelude = n;
+          if (node.value.name.value === '@import') {
+            (context.topRules ??= []).push(node);
+            return new Nil();
+          }
           return node;
         });
       }
       node.value.prelude = out;
+    }
+    if (node.value.name.value === '@import') {
+      (context.topRules ??= []).push(node);
+      return new Nil();
     }
     return node;
   }
