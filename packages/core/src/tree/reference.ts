@@ -213,7 +213,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             let targetKey = isNode(resolvedTarget, 'Color') ? String(resolvedTarget.value.node) : resolvedTarget.valueOf();
             if (typeof targetKey === 'string') {
               let ref = new Reference(targetKey, { type: 'mixin-ruleset' });
-              ref.parent = this;
+              this.adopt(ref);
               return Promise.all([
                 ref.eval(context),
                 valueKey

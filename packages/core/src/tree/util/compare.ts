@@ -1,6 +1,7 @@
 import { isNode } from './is-node';
 import isObject from 'lodash-es/isObject';
 import { type Node } from '../node';
+import { type Rules } from '../rules';
 
 export function compare(a: any, b: any) {
   if (a === b) {
@@ -24,36 +25,43 @@ export function compare(a: any, b: any) {
  * their position in their lowest common ancestor in the tree.
  */
 export function comparePosition(a: Node, b: Node) {
+  /** Find the lowest common ancestor rules */
   let a0 = a;
   let b0 = b;
+  let min = Math.min(a.depth, b.depth);
+  let commonAncestor: Rules | undefined;
 
-  // align depths
-  while (a.depth > b.depth) {
-    let p = a.parent;
-    if (p) {
-      a = p;
+  if (a.depth !== min) {
+    while (a.depth >= min) {
+      a = a.rulesParent!;
     }
-  }
-  while (b.depth > a.depth) {
-    let p = b.parent;
-    if (p) {
-      b = p;
+    commonAncestor = a as Rules;
+  } else {
+    while (b.depth >= min) {
+      b = b.rulesParent!;
     }
+    commonAncestor = b as Rules;
   }
-
-  // ancestor case
-  if (a === b) {
-    return a0.depth - b0.depth;
+  /** Now find the relative position of each */
+  let aParent = a0;
+  while (true) {
+    aParent = aParent.parent!;
+    if (!aParent || aParent === commonAncestor) {
+      break;
+    }
+    a0 = aParent;
   }
-
-  // climb until they become siblings (share a parent)
-  while (a.parent !== b.parent) {
-    a = a.parent!;
-    b = b.parent!;
+  let bParent = b0;
+  while (true) {
+    bParent = bParent.parent!;
+    if (!bParent || bParent === commonAncestor) {
+      break;
+    }
+    b0 = bParent;
   }
 
   // siblings: lower index first
-  return a.index - b.index;
+  return a0.index - b0.index;
 }
 
 export function compareNodeArray(a: any[], b: any[]): 0 | 1 | -1 | undefined {

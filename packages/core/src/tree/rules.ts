@@ -203,26 +203,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return (registry as any).find(keys, filterType, options);
   }
 
-  /** Efficiently filter rules when copying */
-  /** Copied rules need to retain invisible nodes for things like mixin bodies */
-  // override copy(deep?: boolean, trim?: boolean): this {
-  //   const newRules: Node[] = [];
-  //   for (const node of this.value) {
-  //     if (node.visible) {
-  //       newRules.push(deep ? node.copy(deep, trim) : node);
-  //     }
-  //   }
-  //   const rules = new Rules(newRules).inherit(this);
-  //   if (trim) {
-  //     rules.pre = undefined;
-  //     rules.post = undefined;
-  //   } else {
-  //     rules.stripPrePost(rules, 'pre');
-  //     rules.stripPrePost(rules, 'post');
-  //   }
-  //   return rules as this;
-  // }
-
   override toString(options?: PrintOptions): string {
     if (!this.visible && !this.fullRender) {
       return '';
@@ -541,7 +521,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       rules.setIndex(context);
       // Preserve parent when cloning - if this Rules is inside a ruleset, maintain the parent relationship
       if (this.parent && !rules.parent) {
-        rules.parent = this.parent;
+        this.parent.adopt(rules);
       }
       // Save current context and set up new context for variable lookups during preEval
       const saved = this._snapshotContext(context);
@@ -845,7 +825,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       context.allRoots.push(rules);
       context.treeContext = rules.treeContext;
       context.treeRoot = rules;
-      const wasRootSet = context.root !== undefined;
       context.root ??= rules;
     }
     context.rulesContext = rules;
@@ -1320,7 +1299,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           /** Make a shallow copy to attach our resolved params (w/ args) */
           let originalMixin = mixin;
           mixin = mixin.copy();
-          mixin.parent = originalMixin.parent;
+          originalMixin.parent!.adopt(mixin);
           (mixin as Mixin).value.params = params;
           mixinCandidates.push(mixin);
         }
@@ -1386,8 +1365,11 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     let outputRules: Rules[] = [];
     for (let [candidate, i] of evalCandidates) {
       if (isNode(candidate, 'Ruleset')) {
-        const rules = (candidate as Ruleset).value.rules.copy(true);
-        rules.parent = candidate;
+        let rules = (candidate as Ruleset).value.rules.copy(true);
+        /** Adopt for lookup, then adopt for sorting */
+        candidate.adopt(rules);
+        rules = await rules.eval(thisContext);
+        candidate.adopt(rules);
         hasMatch = true;
         // Skip empty Rules (e.g., containing only invisible nodes like comments)
         outputRules.push(rules);
@@ -1396,7 +1378,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       let rules = candidate.value.rules;
       /** Create new rules, and add the candidate rules, to add to scope */
       rules = rules.copy(true);
-      rules.parent = candidate;
+      candidate.adopt(rules);
 
       /** Now we need to add our parameters, if any */
       let params = candidate.value.params;
@@ -1479,7 +1461,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         thisContext.callSiteIndex = callSiteIndex;
       }
       if (guard) {
-        guard.parent = rules;
+        rules.adopt(guard);
         /** Allow lookup on the inherited rules */
         passes = false;
         /** All nodes need context to be evaluated */
@@ -1506,6 +1488,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       thisContext.searchScope.add(candidate);
       try {
         let newRules = await rules.eval(thisContext);
+        candidate.adopt(newRules);
         /**
          * Make everything public, so that we can access these
          * variables in the parent scope, or when doing lookups.
@@ -1557,7 +1540,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       for (const item of rulesArr) {
         flattened.push(...item.value);
       }
-      output = new Rules(flattened);
+      output = Rules.create(flattened);
+      output.setIndex(thisContext);
     }
 
     /** Since this is a wrapper, and rules are all evaluated, consider it evaluated */

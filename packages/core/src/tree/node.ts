@@ -233,12 +233,20 @@ export abstract class Node<
    * where we read it, so this makes the type easier.
    */
   index!: number;
-  depth = 0;
+
+  get depth() {
+    let node = this.rulesParent;
+    let depth = 0;
+    while (node) {
+      depth++;
+      node = node.rulesParent;
+    }
+    return depth;
+  }
 
   setIndex(context: Context) {
     if (this.index === undefined) {
       this.index = context.ruleCounter++;
-      this.depth = context.depth;
     }
   }
 
@@ -247,7 +255,7 @@ export abstract class Node<
    * shouldn't be set directly. Instead, a parent should use
    * parent.adopt(thisNode);
    */
-  parent: Node | undefined;
+  readonly parent: Node | undefined;
 
   nil!: () => Nil;
 
@@ -344,9 +352,11 @@ export abstract class Node<
   }
 
   adopt(node: Node) {
-    node.parent = this;
+    /** The only place we should do this */
+    (node as any).parent = this;
     if (node.hasFlag(F_NON_STATIC)) {
       this.addFlag(F_NON_STATIC);
+      this.removeFlag(F_STATIC);
     } else if (node.hasFlag(F_STATIC)) {
       this.addFlag(F_STATIC);
     }
@@ -422,12 +432,9 @@ export abstract class Node<
   }
 
   get rulesParent(): Rules | undefined {
-    let possibleRules: Node | undefined = this;
-    while (possibleRules?.type !== 'Rules') {
+    let possibleRules: Node | undefined = this.parent;
+    while (possibleRules && possibleRules.type !== 'Rules') {
       possibleRules = possibleRules.parent;
-      if (!possibleRules) {
-        return undefined;
-      }
     }
     return possibleRules as Rules;
   }
@@ -738,7 +745,7 @@ export abstract class Node<
    */
   inherit(node: Node) {
     this._location = node.location;
-    this._treeContext = node.treeContext;
+    this._treeContext ??= node.treeContext;
     /** Copy state exactly (not OR, to preserve removed flags) */
     // Only sync F_VISIBLE flag, preserve all other flags
     if (!node.hasFlag(F_VISIBLE)) {
@@ -748,8 +755,11 @@ export abstract class Node<
     this.pre ||= node.pre;
     this.post ||= node.post;
     this.sourceNode = node.sourceNode;
+    /**
+     * If it's replacing a node that's evaluated, it should inherit the same index.
+     * Otherwise, it should be settable after cloning / copying.
+     */
     this.index ??= node.index;
-    this.depth ??= node.depth;
     return this;
   }
 

@@ -228,7 +228,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                 rules: existingRules
               })
             ]).inherit(existingRules);
-            rules.parent = node;
+            node.adopt(rules);
           }
 
           // Register extend root for nestable at-rules (including @layer)

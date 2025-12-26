@@ -181,6 +181,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     options.importOptions ??= {};
     const { type, importOptions } = options;
     const maybePath = path.eval(context);
+    let originalDepth = context.depth;
+    context.depth = this.depth;
 
     /**
      * @todo - Add options
@@ -286,7 +288,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         // Injected variables that aren't found should be at the TOP so they're found first
         // for linear lookup ($^var)
         // We flatten the structure so all variables are in the same Rules scope
-        const finalRules = new Rules([]);
+        const finalRules = Rules.create([]);
+        finalRules.setIndex(context);
         // First, add new injected variables that weren't found in imported rules (at the top)
         for (const newNode of newVariables) {
           finalRules.adopt(newNode);
@@ -329,8 +332,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         rules = await rules.preEval(context);
         if (type === 'import') {
           /** Needed at evaluation time for older import type */
-          rules.parent = node;
-        } else {
+          node.adopt(rules);
         }
         rules = await rules.eval(context);
         context.preserveOriginalNodes = preserveOriginalNodes;
@@ -376,10 +378,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (isThenable(maybePath)) {
       return (maybePath as Promise<Quoted | Url>).then(async (p) => {
         const finalPath = p.valueOf();
+        context.depth = originalDepth;
         return finalize(finalPath);
       });
     }
     const finalPath = maybePath.valueOf();
+    context.depth = originalDepth;
     return finalize(finalPath as string);
   }
 }
