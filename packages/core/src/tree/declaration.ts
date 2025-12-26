@@ -229,6 +229,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               }
               node.value.value = newValue;
               return node;
+            }).catch((err) => {
+              console.error(err);
+              return node;
             });
           }
           if (maybeNewValue instanceof Nil) {

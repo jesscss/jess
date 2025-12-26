@@ -29,10 +29,16 @@ export function comparePosition(a: Node, b: Node) {
 
   // align depths
   while (a.depth > b.depth) {
-    a = a.parent!;
+    let p = a.parent;
+    if (p) {
+      a = p;
+    }
   }
   while (b.depth > a.depth) {
-    b = b.parent!;
+    let p = b.parent;
+    if (p) {
+      b = p;
+    }
   }
 
   // ancestor case

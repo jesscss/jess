@@ -1386,7 +1386,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     let outputRules: Rules[] = [];
     for (let [candidate, i] of evalCandidates) {
       if (isNode(candidate, 'Ruleset')) {
-        const rules = await (candidate as Ruleset).value.rules.copy(true).eval(thisContext);
+        const rules = (candidate as Ruleset).value.rules.copy(true);
+        rules.parent = candidate;
         hasMatch = true;
         // Skip empty Rules (e.g., containing only invisible nodes like comments)
         outputRules.push(rules);
@@ -1395,14 +1396,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       let rules = candidate.value.rules;
       /** Create new rules, and add the candidate rules, to add to scope */
       rules = rules.copy(true);
-      // Preserve the parent from the original mixin's Rules so lookups can traverse up
-      // The parent should be where the mixin was defined (source position)
-      // CRITICAL: We need the parent for variable lookup, but we must avoid cycles.
-      // If the original parent equals the current rulesContext, setting it would create a cycle
-      // because we're about to set thisContext.rulesContext = rules (line 1615)
-      if (candidate.value.rules.parent && candidate.value.rules.parent !== thisContext.rulesContext) {
-        rules.parent = candidate.value.rules.parent;
-      }
+      rules.parent = candidate;
 
       /** Now we need to add our parameters, if any */
       let params = candidate.value.params;

@@ -749,6 +749,7 @@ export abstract class Node<
     this.post ||= node.post;
     this.sourceNode = node.sourceNode;
     this.index ??= node.index;
+    this.depth ??= node.depth;
     return this;
   }
 
