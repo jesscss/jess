@@ -234,6 +234,7 @@ export abstract class Node<
    */
   index!: number;
 
+  /** @todo - Is there a reliable way to cache this? */
   get depth() {
     let node = this.rulesParent;
     let depth = 0;
