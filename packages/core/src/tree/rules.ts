@@ -877,11 +877,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return pipe(
           tryStep(() => rule.eval(context), {
             onError(error) {
+              /** @todo - Figure out what errors should be thrown and what should be retried */
               // ReferenceErrors (e.g., from mixin lookups) should not be retried - they should fail immediately
               // SyntaxErrors (e.g., from invalid selector syntax) should also fail immediately
-              if (error instanceof ReferenceError || error instanceof SyntaxError) {
-                throw error;
-              }
+              // if (error instanceof ReferenceError || error instanceof SyntaxError) {
+              //   throw error;
+              // }
               // If evaluation failed and we haven't retried this node yet,
               // and we're not already at the none priority, retry at none priority
               if (p > Priority.None && !retriedNodes.has(rule)) {
@@ -1513,7 +1514,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           outerRules.push(rules);
           newRules = await outerRules.eval(thisContext);
           /**
-           * We only used the outerRules for evaluation, but we
+           * We only used the outerRules for evaluation, so we
            * return the inner rules for downstream lookups.
            */
           newRules = outerRules.value[rulesIndex] as Rules;

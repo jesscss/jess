@@ -547,6 +547,62 @@ describe('Mixin', () => {
         }
       `);
     });
+
+    it.only('should call a mixin or ruleset with different nesting patterns', async () => {
+      Node.prototype.fullRender = false;
+      // #theme() {
+      //   .dark() {
+      //     .navbar() {
+      //       @color: cyan;
+      //     }
+      //   }
+      // }
+      // #theme.dark.navbar() {
+      //   @color: blue;
+      // }
+      // .rule {
+      //   #theme.dark.navbar();
+      //   color: @color;
+      // }
+      const node = rules([
+        mixin({
+          name: any('#theme'),
+          rules: rules([
+            mixin({
+              name: any('.dark'),
+              rules: rules([
+                mixin({
+                  name: any('.navbar'),
+                  rules: rules([
+                    vardecl({ name: 'color', value: any('cyan') })
+                  ])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
+          rules: rules([
+            vardecl({ name: 'color', value: any('blue') })
+          ])
+        }),
+        ruleset({
+          selector: el('.rule'),
+          rules: rules([
+            call({ name: ref({ key: ['#theme', '.dark', '.navbar'] }, { type: 'mixin-ruleset' }) }),
+            decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
+          ])
+        })
+      ]);
+      let evald = await node.eval(context);
+      const css = evald.toString();
+      expect(css).toBeString(`
+        .rule {
+          color: blue;
+        }
+      `);
+    });
   });
 
   describe('rest parameter matching and assignment', () => {
