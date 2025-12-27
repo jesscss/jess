@@ -132,6 +132,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         w.add(']');
         break;
       case 'variable':
+        w.add('.$');
         emitKey(key);
         break;
       case 'declaration':

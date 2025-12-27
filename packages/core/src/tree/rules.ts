@@ -1379,10 +1379,25 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       /** Create new rules, and add the candidate rules, to add to scope */
       rules = rules.copy(true);
       candidate.adopt(rules);
+      /**
+       * If we have params or a guard, we need to create a wrapper rules object,
+       * so that the lookups of params and guard do not look at the cloned rules,
+       * but instead look upwards / outwards.
+       */
+      let outerRules: Rules | undefined;
 
       /** Now we need to add our parameters, if any */
       let params = candidate.value.params;
       if (params) {
+        outerRules = Rules.create([], {
+          rulesVisibility: {
+            Ruleset: 'public',
+            Declaration: 'public',
+            VarDeclaration: 'public',
+            Mixin: 'public'
+          }
+        });
+        candidate.adopt(outerRules);
         for (let i = 0; i < params.value.length; i++) {
           let param = params.value[i]!;
           if (isNode(param, 'Rest')) {
@@ -1421,15 +1436,12 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           }
 
           if (isNode(param, 'VarDeclaration')) {
-            // Adopt the param to set parent relationship, then register
-            rules.adopt(param);
-            // Parameters aren't in rules.value, so they don't get an index automatically
             // Assign negative indices so they're conceptually "before" the rules and found first
             if (param.index === undefined) {
               // Use negative indices starting from -1, -2, etc. so they sort before regular rules
               param.index = -(i + 1);
             }
-            rules.registerNode(param);
+            outerRules.push(param);
           }
           // Note: Any with role: 'property' should have been converted to VarDeclaration during matching
           // If we see one here, it's an error - params should all be VarDeclaration by now
@@ -1447,7 +1459,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             // Rest should have been converted to VarDeclaration by now
             return p;
           }))
-        }));
+        }, { readonly: true }));
       }
       /** Now we can evaluate our guards, if any */
       let guard: Condition | Bool | undefined = candidate.value.guard?.copy(true);
@@ -1456,12 +1468,20 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       // Store the call site position for call-time resolution
       // The call site is where rulesContext is (the parent rules containing the mixin call)
       let callSiteIndex = rulesContext?.index;
-      thisContext.rulesContext = rules;
+      thisContext.rulesContext = outerRules ?? rules;
       if (callSiteIndex !== undefined) {
         thisContext.callSiteIndex = callSiteIndex;
       }
       if (guard) {
-        rules.adopt(guard);
+        outerRules ??= Rules.create([], {
+          rulesVisibility: {
+            Ruleset: 'public',
+            Declaration: 'public',
+            VarDeclaration: 'public',
+            Mixin: 'public'
+          }
+        });
+        outerRules.adopt(guard);
         /** Allow lookup on the inherited rules */
         passes = false;
         /** All nodes need context to be evaluated */
@@ -1487,8 +1507,19 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       // Mark this mixin as being evaluated (similar to how variables are tracked)
       thisContext.searchScope.add(candidate);
       try {
-        let newRules = await rules.eval(thisContext);
-        candidate.adopt(newRules);
+        let newRules: Rules;
+        if (outerRules) {
+          let rulesIndex = outerRules.value.length;
+          outerRules.push(rules);
+          newRules = await outerRules.eval(thisContext);
+          /**
+           * We only used the outerRules for evaluation, but we
+           * return the inner rules for downstream lookups.
+           */
+          newRules = outerRules.value[rulesIndex] as Rules;
+        } else {
+          newRules = await rules.eval(thisContext);
+        }
         /**
          * Make everything public, so that we can access these
          * variables in the parent scope, or when doing lookups.

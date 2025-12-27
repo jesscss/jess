@@ -8,6 +8,7 @@ import { type PrintOptions, getPrintOptions } from './util/print';
 import { Paren } from './paren';
 import { isThenable } from '@jesscss/awaitable-pipe';
 import { type Rules } from './rules';
+import { Any } from './any';
 
 export type CallValue = {
   /**
@@ -84,10 +85,18 @@ export class Call extends Node<CallValue, CallOptions> {
     return w.getSince(mark);
   }
 
-  makeImportant(rules: Rules) {
+  /** Recursively makes declarations important */
+  makeImportant(rules: Rules): Rules {
+    let important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
     for (const rule of rules.value) {
-      if (rule.makeImportant) {
-        rule.makeImportant();
+      if (isNode(rule, 'Declaration')) {
+        rule.value.important = important;
+      } else if (isNode(rule, 'Rules')) {
+        this.makeImportant(rule);
+      } else if (isNode(rule, ['AtRule', 'Ruleset'])) {
+        if (rule.value.rules) {
+          this.makeImportant(rule.value.rules);
+        }
       }
     }
     return rules;
@@ -118,7 +127,13 @@ export class Call extends Node<CallValue, CallOptions> {
           let evald = result.eval(context);
           if (isThenable(evald)) {
             evald = await evald;
+            if (markImportant) {
+              this.makeImportant(evald as Rules);
+            }
             return evald;
+          }
+          if (markImportant) {
+            this.makeImportant(evald as Rules);
           }
           return evald;
         }
