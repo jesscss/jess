@@ -7,6 +7,7 @@ import { callWithContext } from '../define-function';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { Paren } from './paren';
 import { isThenable } from '@jesscss/awaitable-pipe';
+import { type Rules } from './rules';
 
 export type CallValue = {
   /**
@@ -83,6 +84,15 @@ export class Call extends Node<CallValue, CallOptions> {
     return w.getSince(mark);
   }
 
+  makeImportant(rules: Rules) {
+    for (const rule of rules.value) {
+      if (rule.makeImportant) {
+        rule.makeImportant();
+      }
+    }
+    return rules;
+  }
+
   /** Come back and redo -- too hard to reason about as a MaybePromise */
   override async evalNode(context: Context): Promise<Node> {
     // if (context.callStack.includes(this.sourceNode)) {
@@ -91,6 +101,7 @@ export class Call extends Node<CallValue, CallOptions> {
     context.callStack.push(this.sourceNode);
     context.parenFrames.push(false);
     let { name, args } = this.value;
+    let { markImportant } = this.options;
     let n = typeof name === 'string' ? name : await name.eval(context);
 
     let fn = isNode(n, 'JsFunction') ? n.value : n;

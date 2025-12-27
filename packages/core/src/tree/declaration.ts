@@ -95,7 +95,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const { assign = ':' } = this.options;
     const mark = w.mark();
     let a = assign === ':' ? ':' : ` ${assign}`;
-    w.add(`${name}${a}`, this);
+    w.add(`${name}${a}`, name);
     // Custom properties must preserve value text exactly as provided.
     const isCustomProperty = `${name}`.startsWith('--');
     if (isCustomProperty) {
@@ -105,14 +105,17 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     } else {
       // Capture value output to normalize spacing after ':'
       const valOut = w.capture(() => value.toString(options));
-      // Normalize spacing: collapse multiple spaces/tabs to single space, remove leading/trailing whitespace
-      const normalizedValue = valOut.replace(/^\s+/, '').replace(/\s+$/, '').replace(/[ \t]+/g, ' ');
+      // Remove leading / trailing whitespace
+      const normalizedValue = valOut.replace(/^\s+|\s+$/g, '');
       // Ensure exactly one space after ':' by adding one space
       w.add(' ');
-      w.add(normalizedValue, this); // Pass declaration as origin to preserve location info
+      w.add(normalizedValue, value);
       if (!isNode(value, 'Collection')) {
         if (important) {
-          w.add(`${important}`, this);
+          let imp = w.capture(() => important.toString(options));
+          imp = imp.replace(/^\s+|\s+$/g, '');
+
+          w.add(` ${imp}`, important);
         }
       }
     }

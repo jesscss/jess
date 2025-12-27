@@ -37,7 +37,7 @@ import * as productions from './productions';
 
 export type LessParserConfig = CssParserConfig & {
   /**
-   * Is less strict with certain CSS rules
+   * Is less strict with certain CSS rules and Less syntax
    * that the old Less parser allowed.
    *
    * @note This will also enable CSS legacyMode unless

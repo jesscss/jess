@@ -100,6 +100,10 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     // if (isNode(n, 'Declaration')) {
     let idt = indent(options.depth + 1);
     let pre = w.capture(() => n.processPrePost('pre'));
+    /** Ignore if all whitespace */
+    if (/^\s*$/.test(pre)) {
+      pre = '';
+    }
     /** normalize pre spacing */
     let out = w.capture(() => n.toTrimmedString({ ...options, depth: options.depth + 1 }));
     w.add(normalizeIndent(idt, pre + out), n);
@@ -111,7 +115,13 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       w.add(';');
     }
     w.add('\n');
-    n.processPrePost('post');
+    let post = w.capture(() => n.processPrePost('post'));
+    if (/^\s*$/.test(post)) {
+      post = '';
+    } else {
+      w.add(normalizeIndent(idt, post));
+    }
+
     // }
     // else {
     //   n.toString({ ...options, depth: options.depth + 1 });

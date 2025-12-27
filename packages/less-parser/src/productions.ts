@@ -64,7 +64,6 @@ import {
   type ComplexSelectorComponent,
   type Selector,
   INTERPOLATION_PLACEHOLDER,
-  type ReferenceOptions,
   type SimpleSelector
 } from '@jesscss/core';
 import { getInterpolatedOrString } from './utils';
@@ -760,7 +759,15 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                   // Convert Any nodes to Reference nodes for mixin call arguments
                   convertArgsForCall(args);
                 }
-                let result = $.OPTION3(() => $.SUBRULE($.lookupOrCall, { ARGS: [{ ...ctx, node: createMixinCall(location) }] }));
+                let result = $.OPTION3({
+                  /** in Less legacy mode, mixin calls can happen without a space. */
+                  GATE: () => {
+                    let noSpace = $.noSep();
+                    let next = $.LA(1).tokenType;
+                    return (noSpace && next === T.LSquare) || ((noSpace || $.looseMode) && next === T.LParen);
+                  },
+                  DEF: () => $.SUBRULE($.lookupOrCall, { ARGS: [{ ...ctx, node: createMixinCall(location) }] })
+                });
                 return result ?? createMixinCall(location!);
               }
             }
@@ -1875,13 +1882,37 @@ export function varReference(this: P, T: TokenMap) {
       },
       {
         /** Only variables can have accessors */
-        GATE: () => node?.options?.type === 'variable',
+        GATE: () => {
+          if (node?.options?.type !== 'variable') {
+            return false;
+          }
+          let next = $.LA(1).tokenType;
+          if (next !== T.LSquare && next !== T.LParen) {
+            return false;
+          }
+          if (!$.noSep()) {
+            return false;
+          }
+          return true;
+        },
         ALT: () => {
-          $.AT_LEAST_ONE(() => {
-            node = $.SUBRULE(
-              $.lookupOrCall,
-              { ARGS: [{ ...ctx, node: node! }] }
-            );
+          $.AT_LEAST_ONE({
+            GATE: () => {
+              let next = $.LA(1).tokenType;
+              if (next !== T.LSquare && next !== T.LParen) {
+                return false;
+              }
+              if (!$.noSep()) {
+                return false;
+              }
+              return true;
+            },
+            DEF: () => {
+              node = $.SUBRULE(
+                $.lookupOrCall,
+                { ARGS: [{ ...ctx, node: node! }] }
+              );
+            }
           });
           $.OPTION(() => {
             $.OPTION2(() => $.CONSUME(T.Gt));
