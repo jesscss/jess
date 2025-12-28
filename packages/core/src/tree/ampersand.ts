@@ -148,10 +148,11 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
   /** Hmm this should never return Extend */
   override evalNode(context: Context): Selector | Nil {
     const { appendValue, selector: storedSelector } = this.value;
-    if (appendValue ?? this.hoistToRoot ?? context.opts.collapseNesting) {
+    // Check if appendValue is defined (including empty string), or if hoistToRoot/collapseNesting is set
+    if (appendValue !== undefined || this.hoistToRoot || context.opts.collapseNesting) {
       // Use the stored selector if available, otherwise fall back to frame selector
       let frame = atIndex(context.rulesetFrames, -1);
-      let selector = storedSelector ? storedSelector.copy(true) : frame?.selector.copy(true);
+      let selector = storedSelector ? storedSelector.copy(true) : frame?.selector?.copy(true);
       if (!selector) {
         return new Nil();
       }

@@ -111,7 +111,7 @@ describe('Extend Ampersand Handling Tests', () => {
 
       // Should produce the resolved selector with extension
       // Verify hoisting flag
-      expect(result.options.hoistToRoot).toBe(true);
+      expect(result.hoistToRoot).toBe(true);
 
       // Should contain both the original resolved selector and the extension
       const output = result.toTrimmedString();
@@ -133,7 +133,7 @@ describe('Extend Ampersand Handling Tests', () => {
       const result = extendSelector(selector, target, extendWith, true);
       const output = result.toTrimmedString();
 
-      expect(result.options.hoistToRoot).toBeFalsy(); // Changed: ampersand already resolved, no boundary detected
+      expect(result.hoistToRoot).toBeFalsy(); // Changed: ampersand already resolved, no boundary detected
       expect(output).toBe(' > :is(.container.item, .new-item)'); // Updated: modern :is() syntax instead of separate selectors
     });
   });
@@ -156,7 +156,7 @@ describe('Extend Ampersand Handling Tests', () => {
       const output = result.toTrimmedString();
 
       // Should not be hoisted
-      expect(result.options.hoistToRoot).toBeFalsy();
+      expect(result.hoistToRoot).toBeFalsy();
 
       // Should preserve ampersand structure
       expect(output).toBe('&:is(.bar, .extended)');
@@ -176,7 +176,7 @@ describe('Extend Ampersand Handling Tests', () => {
       const output = result.toTrimmedString();
 
       // Should not hoist since no boundary was crossed
-      expect(result.options.hoistToRoot).toBeFalsy();
+      expect(result.hoistToRoot).toBeFalsy();
       expect(output).toBe('&&:is(.suffix, .extended)');
     });
   });
