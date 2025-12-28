@@ -188,6 +188,38 @@ describe('guard', () => {
     expect(innerCalls).toEqual([10, 20, 20]);
   });
 
+  it('serialForEach propagates errors when step returns rejected promise', async () => {
+    const items = [1, 2, 3];
+    const out = serialForEach(items, (n, i) => {
+      if (i === 1) {
+        return Promise.reject(new Error(`rejected at ${n}`));
+      }
+      return;
+    });
+    expect(isThenable(out)).toBe(true);
+    await expect(out).rejects.toThrow('rejected at 2');
+  });
+
+  it('serialForEach propagates errors from nested serialForEach that returns rejected promise', async () => {
+    const items = [1, 2, 3];
+    const out = serialForEach(items, (n, i) => {
+      if (i === 1) {
+        const innerItems = [10, 20];
+        const innerResult = serialForEach(innerItems, (m, j) => {
+          if (j === 0) {
+            return Promise.reject(new Error(`inner rejected at ${m}`));
+          }
+          return;
+        });
+        // Return the rejected Promise from inner serialForEach
+        return innerResult;
+      }
+      return;
+    });
+    expect(isThenable(out)).toBe(true);
+    await expect(out).rejects.toThrow('inner rejected at 10');
+  });
+
   it('throws when predicate is false', () => {
     const step = guard((n: number) => n > 0, (n) => new Error(`bad:${n}`));
     expect(() => pipe(-1, step)).toThrowError('bad:-1');

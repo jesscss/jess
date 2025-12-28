@@ -968,7 +968,8 @@ export class DeclarationRegistry extends Registry<Declaration> {
         searchedRules: searchedRules
       };
 
-      rules.getRegistry('declaration')._searchRulesChildren(key, filterType, searchChildrenOptions);
+      const searchRules = this.rules;
+      searchRules.getRegistry('declaration')._searchRulesChildren(key, filterType, searchChildrenOptions);
 
       // If we found declarations, compare by Rules node sibling index (where the Rules appears in parent)
       // Variable indices are only used for linear lookups within the same Rules

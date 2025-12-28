@@ -132,7 +132,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         w.add(']');
         break;
       case 'variable':
-        w.add('.$');
+        if (target) {
+          w.add('.$');
+        }
         emitKey(key);
         break;
       case 'declaration':
@@ -189,6 +191,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               const keyArray = Array.from(k.keySet);
               return [resolvedTarget, keyArray] as [any, string[]];
             }
+            // If k is already an array, preserve it
+            if (Array.isArray(k)) {
+              return [resolvedTarget, k] as [any, string[]];
+            }
             return [resolvedTarget, k.valueOf()] as [any, string];
           });
         }
@@ -196,6 +202,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         if (isNode(out, 'Selector')) {
           const keyArray = Array.from(out.keySet);
           return [resolvedTarget, keyArray] as [any, string[]];
+        }
+        // If key is already an array, preserve it
+        if (Array.isArray(out)) {
+          return [resolvedTarget, out] as [any, string[]];
         }
         return [resolvedTarget, out] as [any, string];
       },
@@ -233,11 +243,11 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           const jsResult = resolvedTarget.value.call(context);
           if (isThenable(jsResult)) {
             return (jsResult as Promise<any>).then((result) => {
-              return [result, valueKey] as [any, string];
+              return [result, valueKey] as [any, string | string[]];
             });
           } else {
             resolvedTarget = jsResult;
-            return [resolvedTarget, valueKey] as [any, string];
+            return [resolvedTarget, valueKey] as [any, string | string[]];
           }
         }
         // if (typeof resolvedTarget === 'function') {
@@ -260,12 +270,12 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           if (isThenable(mixinResult)) {
             return (mixinResult as Promise<Rules>).then((rules) => {
               rules.inherit(resolvedTarget.value.rules);
-              return [rules, valueKey] as [Node, string];
+              return [rules, valueKey] as [Node, string | string[]];
             });
           } else {
             mixinResult.inherit(resolvedTarget.value.rules);
             resolvedTarget = mixinResult as Rules;
-            return [resolvedTarget, valueKey] as [Node, string];
+            return [resolvedTarget, valueKey] as [Node, string | string[]];
           }
         }
 

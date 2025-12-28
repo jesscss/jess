@@ -146,7 +146,7 @@ describe('Rules', () => {
             throw new Error('Expected synchronous evaluation');
           }
           return result;
-        }).toThrow('"first" is not defined');
+        }).toThrow('\'first\' is not defined');
       });
 
       it('doesn\'t throw error if there\'s a fallback', async () => {
@@ -347,7 +347,7 @@ describe('Rules', () => {
             name: any('my-mixin'),
             rules: rules([
               decl({ name: 'color', value: ref('color', { type: 'variable', resolution: 'call-time' }) })
-            ])
+            ], { rulesVisibility: { VarDeclaration: 'optional' } })
           }),
 
           // .box uses the variable directly and includes the mixin (both should be red)
@@ -413,7 +413,7 @@ describe('Rules', () => {
         let boxMixinRules = boxMixinResult;
         expect(boxMixinRules.value.length).toBeGreaterThan(0);
         let boxMixinDecl = await boxMixinRules.at(0)!.eval(context);
-        expect(`${boxMixinDecl}`).toBe('color: red;');
+        expect(`${boxMixinDecl}`).toBe('color: red');
 
         // Find the .box3 ruleset (index 4)
         let box3Ruleset = node.at(4);
@@ -447,7 +447,7 @@ describe('Rules', () => {
         let box3MixinDecl = await box3MixinRules.at(0)!.eval(context);
         // With call-time resolution ($~color), the mixin should resolve the variable
         // at the call site, so it should be 'blue' (the value after !global assignment)
-        expect(`${box3MixinDecl}`).toBe('color: blue;');
+        expect(`${box3MixinDecl}`).toBe('color: blue');
 
         // The root should have the updated value
         let rootColor = getVar(node, 'color');
@@ -631,6 +631,6 @@ describe('Rules', () => {
       })
     ]);
     let evald = await node.eval(context);
-    expect(`${evald}`).toBe('.collapse {\n  chungus: foo bar;\n  bird: in hand;\n}');
+    expect(`${evald}`).toBe('.collapse {\n  chungus: foo bar;\n  bird: in hand;\n}\n');
   });
 });

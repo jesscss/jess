@@ -60,13 +60,11 @@ async function expectRejects<T>(
 }
 
 describe('Mixin', () => {
-  beforeAll(() => {
-    Node.prototype.fullRender = true;
-  });
   afterAll(() => {
     Node.prototype.fullRender = false;
   });
   beforeEach(() => {
+    Node.prototype.fullRender = true;
     context = new Context();
     context.depth = 2;
   });
@@ -321,10 +319,11 @@ describe('Mixin', () => {
       const evald = await root.eval(context);
       const css = evald.toString();
 
-      expect(css).toContain('.test1');
-      expect(css).toContain('color: red'); // Should match and output
-      // .test2 should not have color since the guard doesn't match
-      expect(css).toContain('.test2');
+      expect(css).toBeString(`
+        .test1 {
+          color: red;
+        }
+      `);
     });
 
     it('should call a mixin that calls another mixin', async () => {
@@ -548,7 +547,7 @@ describe('Mixin', () => {
       `);
     });
 
-    it.only('should call a mixin or ruleset with different nesting patterns', async () => {
+    it('should call a mixin or ruleset with different nesting patterns', async () => {
       Node.prototype.fullRender = false;
       // #theme() {
       //   .dark() {
@@ -557,12 +556,12 @@ describe('Mixin', () => {
       //     }
       //   }
       // }
-      // #theme.dark.navbar() {
+      // #theme.dark.navbar {
       //   @color: blue;
       // }
       // .rule {
       //   #theme.dark.navbar();
-      //   color: @color;
+      //   background-color: @color;
       // }
       const node = rules([
         mixin({
@@ -575,11 +574,11 @@ describe('Mixin', () => {
                   name: any('.navbar'),
                   rules: rules([
                     vardecl({ name: 'color', value: any('cyan') })
-                  ])
+                  ], { rulesVisibility: { VarDeclaration: 'optional' } })
                 })
-              ])
+              ], { rulesVisibility: { VarDeclaration: 'optional' } })
             })
-          ])
+          ], { rulesVisibility: { VarDeclaration: 'optional' } })
         }),
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
@@ -591,7 +590,7 @@ describe('Mixin', () => {
           selector: el('.rule'),
           rules: rules([
             call({ name: ref({ key: ['#theme', '.dark', '.navbar'] }, { type: 'mixin-ruleset' }) }),
-            decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
+            decl({ name: 'background-color', value: ref({ key: 'color' }, { type: 'variable' }) })
           ])
         })
       ]);
@@ -599,7 +598,7 @@ describe('Mixin', () => {
       const css = evald.toString();
       expect(css).toBeString(`
         .rule {
-          color: blue;
+          background-color: blue;
         }
       `);
     });

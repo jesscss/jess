@@ -26,6 +26,7 @@ import { Nil } from './nil';
 import { VarDeclaration } from './declaration-var';
 import { Any } from './any';
 import { List } from './list';
+import { Interpolated } from './interpolated';
 import { indent, normalizeIndent } from './util/serialize-helper';
 import { ERR } from '../jess-error';
 
@@ -265,11 +266,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     treeContext?: TreeContext
   ) {
     let rulesVisibility = options?.rulesVisibility ?? {};
+    // Only set defaults for Declaration and Ruleset if nothing is set
+    // VarDeclaration and Mixin visibility should be set by the parser
     rulesVisibility.Declaration ??= 'public';
     rulesVisibility.Ruleset ??= 'public';
-    /** @todo - deprecate and warn */
-    rulesVisibility.Mixin ??= 'public';
-    super(value ?? [], options, location, treeContext);
+    // Merge with existing options to preserve rulesVisibility
+    const mergedOptions = { ...options, rulesVisibility };
+    super(value ?? [], mergedOptions, location, treeContext);
   }
 
   * [Symbol.iterator]() {
@@ -427,12 +430,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   registerNode(node: Node, options?: Record<string, any>, context?: Context) {
     if (isNode(node, 'Rules')) {
-      let rulesVisibility = options?.rulesVisibility ?? node.options.rulesVisibility ?? {};
+      // Use options if provided, otherwise use node's settings, otherwise empty
+      // Then merge with node's settings to preserve any values not in options
+      let optionsVisibility = options?.rulesVisibility;
+      let nodeVisibility = node.options.rulesVisibility ?? {};
+      let rulesVisibility = optionsVisibility
+        ? { ...nodeVisibility, ...optionsVisibility }
+        : nodeVisibility;
 
-      /** These are public by default */
+      /** Only Declaration and Ruleset are public by default.
+       * VarDeclaration visibility should be set by the parser (optional for Less, private for Jess/Sass).
+       * Mixin visibility should be set by the parser.
+       */
       rulesVisibility.Declaration ??= 'public';
       rulesVisibility.Ruleset ??= 'public';
-      rulesVisibility.Mixin ??= 'public';
 
       /** Either one set as readonly will win */
       let readonly = Boolean(options?.readonly || node.options.readonly);
@@ -856,7 +867,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return;
       }
       const entries: Array<[number, [number, Node]]> = Array.from(queue.entries()) as any;
-      const innerResult = serialForEach(entries, ([q, item]: [number, [number, Node]]) => {
+      const innerResultPromise = serialForEach(entries, ([q, item]: [number, [number, Node]]): MaybePromise<void | undefined> => {
         const [idx, rule] = item;
 
         /**
@@ -874,29 +885,31 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           return;
         }
 
-        return pipe(
+        const stepResult = pipe(
           tryStep(() => rule.eval(context), {
             onError(error) {
-              /** @todo - Figure out what errors should be thrown and what should be retried */
-              // ReferenceErrors (e.g., from mixin lookups) should not be retried - they should fail immediately
-              // SyntaxErrors (e.g., from invalid selector syntax) should also fail immediately
-              // if (error instanceof ReferenceError || error instanceof SyntaxError) {
-              //   throw error;
-              // }
+              // At Priority.None, all errors should be thrown - no more retries
+              if (p === Priority.None) {
+                throw error;
+              }
               // If evaluation failed and we haven't retried this node yet,
-              // and we're not already at the none priority, retry at none priority
-              if (p > Priority.None && !retriedNodes.has(rule)) {
+              // retry at Priority.None
+              if (!retriedNodes.has(rule)) {
                 retriedNodes.add(rule);
                 // Move to lowest priority queue for retry
                 const lowQueue = evalQueue.get(Priority.None) || [];
                 lowQueue.push([idx, rule]);
                 evalQueue.set(Priority.None, lowQueue);
-                // Skip processing for now, will be retried at Priority.None
+                // Don't throw - let tryStep return the fallback so processing continues
                 return;
               }
-              // If we're already at the lowest priority, rethrow
+              // Already retried and still failing - rethrow
               throw error;
-            }
+            },
+            // Always rethrow errors from onError
+            rethrow: true,
+            // Return the original rule node as fallback when we skip processing (for retry)
+            fallback: rule
           }),
           (result: Node | undefined) => {
             // If result is undefined (onError returned without throwing), skip processing
@@ -909,6 +922,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               queue[q] = [idx, result];
               // If a StyleImport evaluated to Rules, register them in the parent's _rulesSet
               // so variables from the import can be found by the parent
+              // Also register Rules from Call results (mixin calls) in the same way
               if (isNode(result, 'Rules')) {
                 // Set the index of the imported Rules to the StyleImport's index
                 // so we can compare Rules indices when determining which variable was declared later
@@ -926,14 +940,25 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             if (result.hoistToRoot) {
               rulesToHoist = true;
             }
+            return;
           }
         );
+        // If stepResult is a thenable, propagate any errors
+        if (isThenable(stepResult)) {
+          return stepResult;
+        }
+        return;
       });
-      return innerResult;
+      // Return innerResultPromise - if it's a rejected promise, serialForEach should propagate it
+      return innerResultPromise;
     });
 
     if (isThenable(phaseRun)) {
-      return (phaseRun as Promise<void>).then(() => rulesToHoist);
+      return (phaseRun as Promise<void>).then(() => {
+        return rulesToHoist;
+      }).catch((error) => {
+        throw error;
+      });
     }
     return rulesToHoist;
   }
@@ -941,7 +966,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override evalNode(context: Context): MaybePromise<this> {
     const saved = this._snapshotContext(context);
     context.rulesEvalStack.push(this.sourceNode as Rules);
-    return pipe(
+    const pipeResult = pipe(
       () => {
         this._setupContextForRules(context, this);
         // Extend root should already be registered in preEval, but ensure it's on the stack
@@ -958,7 +983,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const evalQueue = this._buildEvalQueue(rules);
         const maybeHoist = this._evaluateQueue(rules, evalQueue, context);
         if (isThenable(maybeHoist)) {
-          return (maybeHoist as Promise<boolean>).then(rulesToHoist => ({ rules, rulesToHoist }));
+          return (maybeHoist as Promise<boolean>).then((rulesToHoist) => {
+            return { rules, rulesToHoist };
+          }).catch((error) => {
+            throw error;
+          });
         }
         return { rules, rulesToHoist: maybeHoist as boolean };
       },
@@ -1100,7 +1129,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         context.depth--;
         return rules;
       }
-    ) as MaybePromise<this>;
+    );
+    return pipeResult as MaybePromise<this>;
   }
 }
 
@@ -1112,18 +1142,21 @@ type EvalQueueMap = Map<Priority, Array<[number, Node]>>;
  * @todo - Will need lots of massaging, to resolve things like
  * mixins which rely on variables which have interpolated names,
  * and variables with interpolated names that rely on mixins.
+ *
+ * @note - Registration of declaration names and mixins / selectors
+ * should have already happened in pre-eval.
  */
 const NodeTypeToPriority = new Map([
-  /** First, register vars and props */
-  ['VarDeclaration', Priority.Highest],
-  ['Declaration', Priority.Highest],
-  /** Then, resolve imports */
-  ['StyleImport', Priority.High],
-  /** Then, register other items that can be "looked up" */
-  ['Mixin', Priority.Medium],
-  ['Ruleset', Priority.Medium],
-  /** Then, resolve any calls */
-  ['Call', Priority.Low]
+  /** First, resolve imports */
+  ['StyleImport', Priority.Highest],
+  /** Then, resolve calls */
+  ['Call', Priority.High],
+  /** Then, resolve declarations */
+  ['VarDeclaration', Priority.Medium],
+  ['Declaration', Priority.Medium],
+  /** Then... */
+  ['Mixin', Priority.Low],
+  ['Ruleset', Priority.Low]
   /** Then, everything else? */
 ]);
 
@@ -1521,16 +1554,11 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         } else {
           newRules = await rules.eval(thisContext);
         }
-        /**
-         * Make everything public, so that we can access these
-         * variables in the parent scope, or when doing lookups.
-         */
-        newRules.options.rulesVisibility = {
-          Ruleset: 'public',
-          Declaration: 'public',
-          VarDeclaration: 'public',
-          Mixin: 'public'
-        };
+        // Visibility should be preserved by Rules.eval - no need to set it explicitly here
+        // The eval'd rules should already have their nodes registered
+        // Ensure the registry is indexed before checking
+        const declRegistry = newRules.getRegistry('declaration');
+        declRegistry.indexPendingItems();
         outputRules.push(newRules);
       } catch (error) {
         // If recursion was detected (ReferenceError), skip this candidate
@@ -1568,12 +1596,26 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     } else {
       // Multiple items - spread their values into a new Rules
       const flattened: Node[] = [];
-      /** @todo - Do we need to deal with rules visibility here? */
       for (const item of rulesArr) {
         flattened.push(...item.value);
       }
-      output = Rules.create(flattened);
+      // Re-assign indices to flattened nodes to reflect their order after sorting
+      // This ensures that items from later-defined sources have higher indices
+      let baseIndex = thisContext.ruleCounter;
+      for (const node of flattened) {
+        node.index = baseIndex++;
+      }
+      thisContext.ruleCounter = baseIndex;
+      output = Rules.create(flattened, {
+        rulesVisibility: {
+          Ruleset: 'public',
+          Declaration: 'public',
+          VarDeclaration: 'public',
+          Mixin: 'public'
+        }
+      });
       output.setIndex(thisContext);
+      output._indexRules();
     }
 
     /** Since this is a wrapper, and rules are all evaluated, consider it evaluated */
