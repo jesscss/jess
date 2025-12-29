@@ -28,6 +28,19 @@ export type FindOptions = DeclarationFindOptions & {
   childFilterType?: 'Mixin' | 'Ruleset' | undefined;
   context?: Context;
   searchedRules?: Set<Rules>;
+  /**
+   * The accumulated path from nested Reference evaluation.
+   * Used to find compound rulesets that match the full path.
+   * e.g., when searching for ".navbar" after resolving "#theme.dark",
+   * accumulatedPath would be ["#theme", ".dark"]
+   */
+  accumulatedPath?: string[];
+  /**
+   * The root Rules node to search for compound rulesets.
+   * When provided with accumulatedPath, the registry will also
+   * search rootRules for compound rulesets matching the full path.
+   */
+  rootRules?: Rules;
 };
 
 export abstract class Registry<
@@ -807,6 +820,27 @@ export class MixinRegistry extends Registry<
         }
       } while (rules && rules.type !== 'Rules');
     }
+
+    // If accumulatedPath and rootRules are provided, also search rootRules for compound rulesets
+    // that match the full accumulated path + current search key
+    const { accumulatedPath, rootRules } = options ?? {};
+    if (accumulatedPath && accumulatedPath.length > 0 && rootRules && rootRules !== this.rules) {
+      // Construct the full compound path
+      const fullPath = [...accumulatedPath, ...keyList];
+      // Search rootRules for compound rulesets matching this path
+      const rootRegistry = rootRules.getRegistry('mixin');
+      rootRegistry.indexPendingItems();
+      // Search for the full compound path - this will find compound rulesets
+      const rootResult = rootRegistry.find(fullPath, filterType, {
+        ...options,
+        accumulatedPath: undefined, // Don't recurse infinitely
+        rootRules: undefined,
+        searchParents: true,
+        candidates: candidates as Set<Node>
+      });
+      // Results are already added to candidates set
+    }
+
     const result = candidates.size ? [...candidates] as (Mixin | Ruleset)[] : undefined;
     return result;
   }

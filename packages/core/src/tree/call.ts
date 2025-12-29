@@ -127,13 +127,13 @@ export class Call extends Node<CallValue, CallOptions> {
           let evald = result.eval(context);
           if (isThenable(evald)) {
             evald = await evald;
-            if (markImportant) {
-              this.makeImportant(evald as Rules);
+            if (markImportant && isNode(evald, 'Rules')) {
+              this.makeImportant(evald);
             }
             return evald;
           }
-          if (markImportant) {
-            this.makeImportant(evald as Rules);
+          if (markImportant && isNode(evald, 'Rules')) {
+            this.makeImportant(evald);
           }
           return evald;
         }

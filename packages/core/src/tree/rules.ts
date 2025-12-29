@@ -885,32 +885,33 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           return;
         }
 
-        const stepResult = pipe(
-          tryStep(() => rule.eval(context), {
-            onError(error) {
-              // At Priority.None, all errors should be thrown - no more retries
-              if (p === Priority.None) {
-                throw error;
-              }
-              // If evaluation failed and we haven't retried this node yet,
-              // retry at Priority.None
-              if (!retriedNodes.has(rule)) {
-                retriedNodes.add(rule);
-                // Move to lowest priority queue for retry
-                const lowQueue = evalQueue.get(Priority.None) || [];
-                lowQueue.push([idx, rule]);
-                evalQueue.set(Priority.None, lowQueue);
-                // Don't throw - let tryStep return the fallback so processing continues
-                return;
-              }
-              // Already retried and still failing - rethrow
+        const tryStepResult: () => MaybePromise<Node> = tryStep(() => rule.eval(context), {
+          onError(error) {
+            // At Priority.None, all errors should be thrown - no more retries
+            if (p === Priority.None) {
               throw error;
-            },
-            // Always rethrow errors from onError
-            rethrow: true,
-            // Return the original rule node as fallback when we skip processing (for retry)
-            fallback: rule
-          }),
+            }
+            // If evaluation failed and we haven't retried this node yet,
+            // retry at Priority.None
+            if (!retriedNodes.has(rule)) {
+              retriedNodes.add(rule);
+              // Move to lowest priority queue for retry
+              const lowQueue = evalQueue.get(Priority.None) || [];
+              lowQueue.push([idx, rule]);
+              evalQueue.set(Priority.None, lowQueue);
+              // Don't throw - let tryStep return the fallback so processing continues
+              return;
+            }
+            // Already retried and still failing - rethrow
+            throw error;
+          },
+          // Always rethrow errors from onError
+          rethrow: true,
+          // Return the original rule node as fallback when we skip processing (for retry)
+          fallback: rule
+        }) as () => MaybePromise<Node>;
+        const stepResult = pipe(
+          tryStepResult,
           (result: Node | undefined) => {
             // If result is undefined (onError returned without throwing), skip processing
             if (result === undefined) {

@@ -1,4 +1,4 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr } from '..';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el } from '..';
 import { Context } from '../../context';
 import * as Registries from '../util/registry-utils';
 import { isNode } from '../util/is-node';
@@ -175,6 +175,279 @@ describe('reference', () => {
         })
       ]);
       await expect(async () => await node.eval(context)).rejects.toThrow();
+    });
+  });
+
+  describe('nested references for mixin-ruleset lookups', () => {
+    it('should resolve nested References: #theme → .dark → .navbar → .colors', async () => {
+      // #theme {
+      //   .dark {
+      //     .navbar {
+      //       .colors() {
+      //         primary: red;
+      //       }
+      //     }
+      //   }
+      // }
+      // .output {
+      //   @colors: #theme.dark.navbar.colors();
+      //   background: @colors[primary];
+      // }
+      const node = rules([
+        ruleset({
+          selector: el('#theme'),
+          rules: rules([
+            ruleset({
+              selector: el('.dark'),
+              rules: rules([
+                ruleset({
+                  selector: el('.navbar'),
+                  rules: rules([
+                    mixin({
+                      name: any('.colors'),
+                      rules: rules([
+                        decl({ name: 'primary', value: any('red') })
+                      ])
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.output'),
+          rules: rules([
+            vardecl({
+              name: 'colors',
+              value: call({
+                name: ref({
+                  target: ref({
+                    target: ref({
+                      target: ref({ key: '#theme' }, { type: 'mixin-ruleset' }),
+                      key: '.dark'
+                    }, { type: 'mixin-ruleset' }),
+                    key: '.navbar'
+                  }, { type: 'mixin-ruleset' }),
+                  key: '.colors'
+                }, { type: 'mixin-ruleset' })
+              })
+            }),
+            decl({
+              name: 'background',
+              value: ref({
+                target: ref({ key: 'colors' }, { type: 'variable' }),
+                key: 'primary'
+              }, { type: 'property' })
+            })
+          ])
+        })
+      ]);
+      const evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        #theme .dark .navbar {
+        }
+        .output {
+          background: red;
+        }
+      `);
+    });
+
+    it('should resolve compound selector as single Reference: #theme.dark.navbar.colors', async () => {
+      // #theme.dark.navbar {
+      //   .colors() {
+      //     primary: red;
+      //   }
+      // }
+      // .output {
+      //   @colors: #theme.dark.navbar.colors();
+      //   background: @colors[primary];
+      // }
+      const node = rules([
+        ruleset({
+          selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
+          rules: rules([
+            mixin({
+              name: any('.colors'),
+              rules: rules([
+                decl({ name: 'primary', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.output'),
+          rules: rules([
+            vardecl({
+              name: 'colors',
+              value: call({
+                name: ref({
+                  key: compound([el('#theme'), el('.dark'), el('.navbar'), el('.colors')])
+                }, { type: 'mixin-ruleset' })
+              })
+            }),
+            decl({
+              name: 'background',
+              value: ref({
+                target: ref({ key: 'colors' }, { type: 'variable' }),
+                key: 'primary'
+              }, { type: 'property' })
+            })
+          ])
+        })
+      ]);
+      const evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        #theme.dark.navbar {
+        }
+        .output {
+          background: red;
+        }
+      `);
+    });
+
+    it('should resolve string array as key: [\'#theme\', \'.dark\', \'.navbar\', \'.colors\']', async () => {
+      // #theme.dark.navbar {
+      //   .colors() {
+      //     primary: red;
+      //   }
+      // }
+      // .output {
+      //   @colors: #theme.dark.navbar.colors();
+      //   background: @colors[primary];
+      // }
+      const node = rules([
+        ruleset({
+          selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
+          rules: rules([
+            mixin({
+              name: any('.colors'),
+              rules: rules([
+                decl({ name: 'primary', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.output'),
+          rules: rules([
+            vardecl({
+              name: 'colors',
+              value: call({
+                name: ref({
+                  key: ['#theme', '.dark', '.navbar', '.colors']
+                }, { type: 'mixin-ruleset' })
+              })
+            }),
+            decl({
+              name: 'background',
+              value: ref({
+                target: ref({ key: 'colors' }, { type: 'variable' }),
+                key: 'primary'
+              }, { type: 'property' })
+            })
+          ])
+        })
+      ]);
+      const evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        #theme.dark.navbar {
+        }
+        .output {
+          background: red;
+        }
+      `);
+    });
+
+    it('should prefer compound ruleset over nested mixin lookup', async () => {
+      // #theme {
+      //   .dark {
+      //     .navbar() {
+      //       .colors() {
+      //         primary: cyan;
+      //       }
+      //     }
+      //   }
+      // }
+      // #theme.dark.navbar {
+      //   .colors() {
+      //     primary: red;
+      //   }
+      // }
+      // .output {
+      //   @colors: #theme.dark.navbar.colors();
+      //   background: @colors[primary];
+      // }
+      // Should use the compound ruleset (#theme.dark.navbar) which has .colors() with primary: red
+      const node = rules([
+        mixin({
+          name: any('#theme'),
+          rules: rules([
+            mixin({
+              name: any('.dark'),
+              rules: rules([
+                mixin({
+                  name: any('.navbar'),
+                  rules: rules([
+                    mixin({
+                      name: any('.colors'),
+                      rules: rules([
+                        decl({ name: 'primary', value: any('cyan') })
+                      ])
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
+          rules: rules([
+            mixin({
+              name: any('.colors'),
+              rules: rules([
+                decl({ name: 'primary', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.output'),
+          rules: rules([
+            vardecl({
+              name: 'colors',
+              value: call({
+                name: ref({
+                  target: ref({
+                    target: ref({
+                      target: ref({ key: '#theme' }, { type: 'mixin-ruleset' }),
+                      key: '.dark'
+                    }, { type: 'mixin-ruleset' }),
+                    key: '.navbar'
+                  }, { type: 'mixin-ruleset' }),
+                  key: '.colors'
+                }, { type: 'mixin-ruleset' })
+              })
+            }),
+            decl({
+              name: 'background',
+              value: ref({
+                target: ref({ key: 'colors' }, { type: 'variable' }),
+                key: 'primary'
+              }, { type: 'property' })
+            })
+          ])
+        })
+      ]);
+      const evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        #theme.dark.navbar {
+        }
+        .output {
+          background: red;
+        }
+      `);
     });
   });
 });

@@ -8,17 +8,26 @@ export type StepErrorOptions<TIn, R> = {
   rethrow?: boolean;
 };
 
+// Type guard to help TypeScript narrow no-arg functions
+function isNoArgFunction<TIn, R>(
+  fn: ((input: TIn) => MaybePromise<R>) | (() => MaybePromise<R>)
+): fn is () => MaybePromise<R> {
+  return fn.length === 0;
+}
+
 // Overload: when rethrow is true, output excludes undefined
 export function tryStep<TIn, R>(
   fn: (input: TIn) => MaybePromise<R>,
   options: StepErrorOptions<TIn, R> & { rethrow: true }
 ): (input: TIn) => MaybePromise<R>;
-// Overload: function with no input (for first step in pipe)
+// Overload: function with no input (for first step in pipe) with rethrow: true
+// Return type is () => MaybePromise<R> to match pipe's first overload
 export function tryStep<R>(
   fn: () => MaybePromise<R>,
   options: StepErrorOptions<undefined, R> & { rethrow: true }
 ): () => MaybePromise<R>;
-// Overload: function with no input, may return undefined
+// Overload: function with no input (for first step in pipe), may return undefined
+// Return type is () => MaybePromise<R | undefined> to match pipe's first overload
 export function tryStep<R>(
   fn: () => MaybePromise<R>,
   options?: StepErrorOptions<undefined, R | undefined>
@@ -31,41 +40,52 @@ export function tryStep<TIn, R>(
 export function tryStep<TIn, R>(
   fn: ((input: TIn) => MaybePromise<R>) | (() => MaybePromise<R>),
   options: StepErrorOptions<TIn | undefined, R | undefined> = {}
-): ((input: TIn) => MaybePromise<R | undefined>) | (() => MaybePromise<R | undefined>) {
+): ((input: TIn) => MaybePromise<R | undefined>) | ((input?: unknown) => MaybePromise<R | undefined>) {
   // Check if fn takes no arguments (for first step)
-  if (fn.length === 0) {
-    const noInputFn = fn as () => MaybePromise<R>;
-    return () => {
+  if (isNoArgFunction(fn)) {
+    const noInputFn = fn; // Type guard narrows this to () => MaybePromise<R>
+    // Even though the function takes no args, the wrapper should accept input for pipe chaining
+    // and pass it to fallback/onError
+    const resultFn = (input?: TIn) => {
       try {
         const out = noInputFn();
         if (isThenable(out)) {
           return out.catch((e: unknown) => {
             try {
-              options.onError?.(e, undefined);
+              options.onError?.(e, input as TIn | undefined);
             } catch (onErrorThrown) {
-              return Promise.reject(onErrorThrown);
+              // Swallow onError errors and continue to fallback
             }
             if (options.rethrow === true) {
               return Promise.reject(e);
             }
             const fb = options.fallback;
-            return typeof fb === 'function' ? (fb as (e: unknown, i: undefined) => R)(e, undefined) : fb;
-          });
+            return typeof fb === 'function' ? (fb as (e: unknown, i: TIn | undefined) => R)(e, input as TIn | undefined) : fb;
+          }) as MaybePromise<R | undefined>;
         }
         return out;
       } catch (e) {
         try {
-          options.onError?.(e, undefined);
+          options.onError?.(e, input as TIn | undefined);
         } catch (onErrorThrown) {
-          throw onErrorThrown;
+          // Swallow onError errors and continue to fallback
         }
         if (options.rethrow === true) {
           throw e;
         }
         const fb = options.fallback;
-        return typeof fb === 'function' ? (fb as (e: unknown, i: undefined) => R)(e, undefined) : fb;
+        return typeof fb === 'function' ? (fb as (e: unknown, i: TIn | undefined) => R)(e, input as TIn | undefined) : fb;
       }
     };
+    // Cast to match overload return types
+    // Overloads say () => MaybePromise<R>, but implementation accepts optional input for fallback/onError
+    // At runtime, JavaScript allows calling () => A with an argument, so this works
+    // TypeScript sees () => MaybePromise<R> to match pipe's first overload
+    if (options.rethrow === true) {
+      // Type assertion: TypeScript sees () => MaybePromise<R>, runtime accepts optional input
+      return resultFn as unknown as () => MaybePromise<R>;
+    }
+    return resultFn as unknown as () => MaybePromise<R | undefined>;
   }
   // Original implementation for functions that take input
   const inputFn = fn as (input: TIn) => MaybePromise<R>;
@@ -77,8 +97,7 @@ export function tryStep<TIn, R>(
           try {
             options.onError?.(e, input);
           } catch (onErrorThrown) {
-            // If onError throws, rethrow the error that onError threw
-            return Promise.reject(onErrorThrown);
+            // Swallow onError errors and continue to fallback
           }
           if (options.rethrow === true) {
             return Promise.reject(e);
@@ -92,8 +111,7 @@ export function tryStep<TIn, R>(
       try {
         options.onError?.(e, input);
       } catch (onErrorThrown) {
-        // If onError throws, rethrow the error that onError threw
-        throw onErrorThrown;
+        // Swallow onError errors and continue to fallback
       }
       if (options.rethrow === true) {
         throw e;

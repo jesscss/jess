@@ -1,6 +1,6 @@
 import type { Rules } from './tree/rules';
-import { join, isAbsolute, extname, resolve } from 'node:path';
-import { existsSync, writeFileSync } from 'node:fs';
+import { join, isAbsolute, resolve } from 'node:path';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import type { Visitor } from './visitor';
 

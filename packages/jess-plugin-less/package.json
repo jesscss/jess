@@ -35,7 +35,8 @@
   "dependencies": {
     "@jesscss/core": "workspace:*",
     "@jesscss/fns": "workspace:*",
-    "@jesscss/less-parser": "workspace:*"
+    "@jesscss/less-parser": "workspace:*",
+    "styles-config": "workspace:*"
   },
   "devDependencies": {},
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",

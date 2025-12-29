@@ -1,52 +1,16 @@
-import { cosmiconfigSync, defaultLoadersSync } from 'cosmiconfig';
 import * as path from 'path';
 import type { StylesConfig } from '@jesscss/core';
-
-const explorerSync = cosmiconfigSync('styles', {
-  searchPlaces: [
-    'styles.config.ts',
-    'styles.config.js',
-    'styles.config.mts',
-    'styles.config.mjs',
-    'styles.config.cjs',
-    'styles.config.cts'
-  ],
-  // cosmiconfig has built-in loaders for .js, .ts, .mjs, .cjs
-  // Add loaders for .mts and .cts to use the same TypeScript loader
-  loaders: {
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    '.mts': defaultLoadersSync['.ts'],
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    '.cts': defaultLoadersSync['.ts'],
-    // .mjs uses .js loader, .cjs has its own loader
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    '.mjs': defaultLoadersSync['.js'],
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    '.cjs': defaultLoadersSync['.cjs']
-  }
-});
+import { loadConfigSync } from 'styles-config';
 
 /**
- * Get configuration from styles.config.* file, searching from the given directory
+ * Get configuration from styles.config.* or jess.config.* file, searching from the given directory
  * up through parent directories.
  *
  * @param searchFrom - File or directory path to start searching from (searches up to root)
  * @returns Configuration object, or empty object if no config found
  */
-export const getConfig = (searchFrom?: string): Record<string, any> => {
-  const result = explorerSync.search(searchFrom);
-
-  if (!result?.config) {
-    return {};
-  }
-
-  // Handle default export (common in ES modules)
-  const config = result.config;
-  if (typeof config === 'object' && config !== null && 'default' in config) {
-    return config.default as Record<string, any>;
-  }
-
-  return config ?? {};
+export const getConfig = (searchFrom?: string): StylesConfig => {
+  return loadConfigSync(searchFrom);
 };
 
 export interface OutputTestConfig {

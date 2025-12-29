@@ -166,6 +166,30 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   }
 
   /**
+   * Collect the accumulated path from nested References (excluding the current key).
+   * For Reference(target: Reference(target: Reference(key: "#theme"), key: ".dark"), key: ".navbar")
+   * Returns ["#theme", ".dark"] (the path leading to this Reference)
+   */
+  private getAccumulatedPath(): string[] {
+    const path: string[] = [];
+    let current: Reference | undefined = isNode(this.value.target, 'Reference') ? this.value.target : undefined;
+    while (current) {
+      const keyVal = current.value.key;
+      let keyStr: string;
+      if (isNode(keyVal, 'Selector')) {
+        keyStr = Array.from(keyVal.keySet).join('');
+      } else if (Array.isArray(keyVal)) {
+        keyStr = keyVal.join('');
+      } else {
+        keyStr = String(keyVal);
+      }
+      path.unshift(keyStr);
+      current = isNode(current.value.target, 'Reference') ? current.value.target : undefined;
+    }
+    return path;
+  }
+
+  /**
    * We don't need to mark evaluated, because a reference
    * should never resolve to itself
    */
@@ -399,8 +423,14 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             break;
           case 'mixin-ruleset':
             if (isNode(resolvedTarget, 'Rules')) {
+              // Get accumulated path for compound ruleset lookup
+              const accumulatedPath = this.getAccumulatedPath();
+              const rootRules = this.rulesParent ?? context.rulesContext;
+              const findOpts = accumulatedPath.length > 0 && isNode(rootRules, 'Rules')
+                ? { ...opts, accumulatedPath, rootRules }
+                : opts;
               // valueKey can be string or string[] - find() accepts both
-              returnVal = resolvedTarget.find('mixin', valueKey, undefined, opts);
+              returnVal = resolvedTarget.find('mixin', valueKey, undefined, findOpts);
             }
             break;
         }
@@ -435,11 +465,17 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         if (isNode(returnVal, ['Declaration', 'VarDeclaration'])) {
           context.searchScope.add(returnVal);
           const inCalc = context.calcFrames.at(-1);
+          const hasImportant = isNode(returnVal, 'Declaration') && !!returnVal.value.important;
           if (inCalc) {
             context.calcFrames.pop();
           }
           return pipe(
             () => {
+              // Track that this value came from an important declaration
+              // We push here but DON'T pop - let the consuming Declaration pop it
+              if (hasImportant) {
+                context.pushImportantSource();
+              }
               return returnVal.value.value.eval(context);
             },
             (evald) => {
@@ -447,6 +483,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 context.calcFrames.push(true);
               }
               context.searchScope.delete(returnVal);
+              // DON'T pop important source here - let the consuming Declaration pop it
+              // after it has checked and merged the important flag
               return evald.copy(true, true);
             }
           );

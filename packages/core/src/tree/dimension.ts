@@ -1,5 +1,5 @@
 import { type Context } from '../context';
-import { UnitMode } from '../types';
+import { UnitMode } from '../types/modes';
 import { Color, ColorFormat } from './color';
 import {
   Node,
@@ -75,7 +75,7 @@ export class Dimension extends Node<DimensionValue> {
     }
     let { number: aVal, unit: aUnit } = this.value;
     let { number: bVal, unit: bUnit } = b.value;
-    let isStrictMode = context?.opts.unitMode === UnitMode.STRICT;
+    let isStrictMode = context?.opts.unitMode === 'strict';
 
     if (bVal === 0 && op === '/') {
       throw new TypeError('Cannot divide by zero');
@@ -132,7 +132,7 @@ export class Dimension extends Node<DimensionValue> {
       return super.compare(b, context);
     }
     let unitToGroup = this.unitToGroup;
-    let isStrictMode = context?.opts.unitMode === UnitMode.STRICT;
+    let isStrictMode = context?.opts.unitMode === 'strict';
     let { number: aVal, unit: aUnit } = this.value;
     if (b instanceof Color) {
       if (aUnit) {

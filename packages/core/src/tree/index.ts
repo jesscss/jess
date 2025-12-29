@@ -7,42 +7,13 @@
  * @todo - rewrite the above, this is no longer true
  */
 
-/** Base classes - keep these on top */
+/**
+ * Import from node.ts which applies all the prototype patches
+ * (nil, operate, treeContext) and re-exports from node-base.ts
+ */
 import { Node, type LocationInfo, F_VISIBLE, F_MAY_ASYNC, F_STATIC, F_NON_STATIC } from './node';
-import { type Operator } from './util/calculate';
-import { Any } from './any';
 import { TreeContext } from '../context';
-import { Nil } from './nil';
 import { compare } from './util/compare';
-import { Rules } from './rules';
-/**
- * We bind these here to avoid circular dependencies
- * between Context and Node
- */
-Node.prototype.operate = function(b: Node, op: Operator) {
-  let aVal = this.toString();
-  let bVal = b.toString();
-  if (op === '+') {
-    return new Any(aVal + bVal).inherit(this);
-  }
-  throw new Error(`Cannot operate on ${this.type}`);
-};
-Node.prototype.nil = function() {
-  return new Nil();
-};
-
-/**
- * Define a fallback treeContext for testing.
- */
-Object.defineProperty(Node.prototype, 'treeContext', {
-  get() {
-    let context = this._treeContext;
-    if (!context) {
-      context = this._treeContext = new TreeContext();
-    }
-    return context;
-  }
-});
 
 export { Node, TreeContext, type LocationInfo, F_VISIBLE, F_MAY_ASYNC, F_STATIC, F_NON_STATIC };
 

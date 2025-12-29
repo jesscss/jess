@@ -1,4 +1,8 @@
-import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC, F_VISIBLE } from './node';
+/**
+ * Import from node-base to avoid circular dependency.
+ * The patching happens in node.ts
+ */
+import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC, F_VISIBLE } from './node-base';
 import type { Context, TreeContext } from '../context';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil';

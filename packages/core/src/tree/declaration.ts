@@ -231,6 +231,26 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                 return newValue.inherit(node);
               }
               node.value.value = newValue;
+              // Reset pre/post on the new value so consuming contexts can set spacing
+              if (isNode(newValue, 'Sequence')) {
+                for (const item of newValue.value) {
+                  if (item instanceof Node) {
+                    item.pre = undefined;
+                    item.post = undefined;
+                  }
+                }
+              } else if (newValue instanceof Node) {
+                newValue.pre = undefined;
+                newValue.post = undefined;
+              }
+              // Merge !important from referenced declarations
+              if (context.hasImportantSource && !node.value.important) {
+                node.value.important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
+              }
+              // Pop important source after merging (if it was set)
+              if (context.hasImportantSource) {
+                context.popImportantSource();
+              }
               return node;
             }).catch((err) => {
               console.error(err);
@@ -241,6 +261,26 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             return (value as Nil).inherit(node);
           }
           node.value.value = maybeNewValue as Node;
+          // Reset pre/post on the new value so consuming contexts can set spacing
+          if (isNode(maybeNewValue, 'Sequence')) {
+            for (const item of maybeNewValue.value) {
+              if (item instanceof Node) {
+                item.pre = undefined;
+                item.post = undefined;
+              }
+            }
+          } else if (maybeNewValue instanceof Node) {
+            maybeNewValue.pre = undefined;
+            maybeNewValue.post = undefined;
+          }
+          // Merge !important from referenced declarations
+          if (context.hasImportantSource && !node.value.important) {
+            node.value.important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
+          }
+          // Pop important source after merging (if it was set)
+          if (context.hasImportantSource) {
+            context.popImportantSource();
+          }
         }
         return node;
       }

@@ -3,12 +3,12 @@ import mergeWith from 'lodash-es/mergeWith';
 import { getConfig } from './config';
 import {
   Context,
-  type StylesConfig,
-  type PluginInterface,
   type PrintOptions,
   // type JessError,
   logger
 } from '@jesscss/core';
+import type { StylesConfig } from 'styles-config';
+import type { PluginInterface } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 
 export type ConfigOptions = StylesConfig;
@@ -67,7 +67,14 @@ export class Compiler {
     }
     if (plugins) {
       for (const plugin of plugins) {
-        pluginMap.set(plugin.name, plugin);
+        if (typeof plugin === 'string') {
+          // String key - could be resolved from a plugin registry in the future
+          // For now, we'll skip string keys as they need to be resolved elsewhere
+          continue;
+        } else {
+          // PluginInterfaceBase instance - cast to PluginInterface (they're compatible)
+          pluginMap.set(plugin.name, plugin as PluginInterface);
+        }
       }
     }
     // Pass output options and compile options to Context

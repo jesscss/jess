@@ -740,6 +740,22 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                 if (!RECORDING_PHASE) {
                   // Convert Any nodes to VarDeclaration nodes for mixin definition parameters
                   convertArgsForDefinition(args);
+                  // Set rulesVisibility for mixins based on leakyRules
+                  // If leakyRules: Mixin='public', VarDeclaration='optional'
+                  // If not leakyRules: Mixin='private', VarDeclaration='private'
+                  if (!rules.options) {
+                    rules.options = {};
+                  }
+                  if (!rules.options.rulesVisibility) {
+                    rules.options.rulesVisibility = {};
+                  }
+                  if (this.leakyRules) {
+                    rules.options.rulesVisibility.Mixin = 'public';
+                    rules.options.rulesVisibility.VarDeclaration = 'optional';
+                  } else {
+                    rules.options.rulesVisibility.Mixin = 'private';
+                    rules.options.rulesVisibility.VarDeclaration = 'private';
+                  }
                   const node = new Mixin({ name: selector.valueOf(), params: args, rules, guard }, undefined, $.endRule(), this.context);
 
                   return node;
@@ -1198,6 +1214,22 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
     let rules = $.SUBRULE($.wrappedDeclarationList, { ARGS: [ctx] });
 
     if (!$.RECORDING_PHASE) {
+      // Set rulesVisibility for detached rulesets based on leakyRules
+      // If leakyRules: Mixin='public', VarDeclaration='private'
+      // If not leakyRules: Mixin='private', VarDeclaration='private'
+      if (!rules.options) {
+        rules.options = {};
+      }
+      if (!rules.options.rulesVisibility) {
+        rules.options.rulesVisibility = {};
+      }
+      if (this.leakyRules) {
+        rules.options.rulesVisibility.Mixin = 'public';
+        rules.options.rulesVisibility.VarDeclaration = 'private';
+      } else {
+        rules.options.rulesVisibility.Mixin = 'private';
+        rules.options.rulesVisibility.VarDeclaration = 'private';
+      }
       return new Mixin({ params, rules }, undefined, $.endRule(), this.context);
     }
   };
@@ -1397,7 +1429,22 @@ export function varDeclarationOrCall(this: P, T: TokenMap) {
         const nameRef = nameNode instanceof Interpolated
           ? new Reference({ key: nameNode }, { type: 'mixin-ruleset', role: 'name' })
           : new Reference({ key: nameNode as any }, { type: 'mixin-ruleset', role: 'name' });
-        return new Call({ name: new Expression(nameRef), args: args! }, undefined, location, this.context);
+        // Pass markImportant in options if !important is present
+        const callOptions = important ? { markImportant: true } : undefined;
+        const callNode = new Call({ name: new Expression(nameRef), args: args! }, callOptions, location, this.context);
+        // Clear important since it's now on the Call
+        if (important) {
+          important = undefined;
+        }
+        return callNode;
+      }
+
+      // If the value is a Call node and we have !important, set markImportant on the Call
+      // instead of on the VarDeclaration (mixin call semantics)
+      if (important && value instanceof Call) {
+        value.options = value.options || {};
+        value.options.markImportant = true;
+        important = undefined;
       }
 
       return new VarDeclaration({

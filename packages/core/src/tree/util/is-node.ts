@@ -67,7 +67,7 @@ export function isNode(
     return true;
   }
   if (isArray(type)) {
-    return type.some(t => value.types.has(t));
+    return type.some(t => value.types?.has(t));
   }
   return value.type === type || value.types?.has(type as keyof Nodes);
 }

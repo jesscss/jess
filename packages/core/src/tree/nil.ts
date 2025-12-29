@@ -1,10 +1,14 @@
+/**
+ * Import from node-base to avoid circular dependency.
+ * The patching of Node.prototype.nil happens in node.ts
+ */
 import {
   Node,
   F_VISIBLE,
   defineType,
   type LocationInfo,
   type NodeOptions
-} from './node';
+} from './node-base';
 import type { Context, TreeContext } from '../context';
 
 export interface Nil extends Node<''> {

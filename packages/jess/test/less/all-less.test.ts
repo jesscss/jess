@@ -1,3 +1,4 @@
+import { describe, it, expect } from 'vitest';
 import * as glob from 'glob';
 import * as path from 'path';
 import { invalidLess } from '@jesscss/shared';

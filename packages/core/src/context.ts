@@ -11,7 +11,7 @@ import type {
 import { ExtendRootRegistry } from './tree/util/extend-roots';
 import { type Operator } from './tree/util/calculate';
 import type { PluginInterface } from './plugin';
-import { MathMode, UnitMode } from './types';
+import { MathMode, UnitMode } from './types/modes';
 import * as path from 'node:path';
 import { isNode } from './tree/util/is-node';
 import { isThenable } from '@jesscss/awaitable-pipe';
@@ -142,8 +142,8 @@ export class TreeContext implements TreeContextOptions {
       ...rest
     } = opts;
     // this.leakVariablesIntoScope = leakVariablesIntoScope ?? false
-    this.mathMode = mathMode ?? MathMode.PARENS_DIVISION;
-    this.unitMode = unitMode ?? UnitMode.STRICT;
+    this.mathMode = mathMode ?? 'parens-division';
+    this.unitMode = unitMode ?? 'strict';
     this.isModule = isModule ?? false;
     this.file = file;
     this.plugin = plugin;
@@ -270,6 +270,25 @@ export class Context {
 
   pushReference() {
     this._referenceStack++;
+  }
+
+  /**
+   * Stack to track when a value comes from an important declaration
+   * Used to propagate !important flag to containing declarations
+   */
+  private _importantSourceStack: number = 0;
+  get hasImportantSource() {
+    return this._importantSourceStack > 0;
+  }
+
+  pushImportantSource() {
+    this._importantSourceStack++;
+  }
+
+  popImportantSource() {
+    if (this._importantSourceStack > 0) {
+      this._importantSourceStack--;
+    }
   }
 
   popReference() {
@@ -619,13 +638,13 @@ export class Context {
       return false;
     }
     /** Parens for Less/SCSS will set `canOperate` to true */
-    if (mathMode === MathMode.ALWAYS || inParens) {
+    if (mathMode === 'always' || inParens) {
       return true;
     }
-    if (mathMode === MathMode.PARENS_DIVISION) {
+    if (mathMode === 'parens-division') {
       return op !== '/';
     }
-    if (mathMode === MathMode.PARENS) {
+    if (mathMode === 'parens' || mathMode === 'strict') {
       return false;
     }
     return true;

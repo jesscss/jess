@@ -44,6 +44,16 @@ export type LessParserConfig = CssParserConfig & {
    * legacyMode is explicitly false.
    */
   looseMode?: boolean;
+
+  /**
+   * Controls whether mixins and detached rulesets "leak" their inner rules.
+   * When true (default):
+   * - Mixins: Mixin and VarDeclaration nodes are 'public' and 'optional' respectively
+   * - Detached rulesets: Mixin and VarDeclaration nodes are 'public' and 'private' respectively
+   * When false:
+   * - Both mixins and detached rulesets: Mixin and VarDeclaration nodes are 'private'
+   */
+  leakyRules?: boolean;
 };
 
 // Concrete TokenMap: union of CSS and Less token names
@@ -90,6 +100,7 @@ export type RuleContext = CssRuleContext & {
 export class LessActionsParser extends CssActionsParser {
   declare T: CssTokenMap;
   looseMode: boolean;
+  leakyRules: boolean;
 
   expressionSum!: Rule;
   expressionProduct!: Rule;
@@ -142,11 +153,12 @@ export class LessActionsParser extends CssActionsParser {
     T: any,
     config: LessParserConfig = {}
   ) {
-    let { legacyMode, looseMode = true, ...rest } = config;
+    let { legacyMode, looseMode = true, leakyRules = true, ...rest } = config;
     legacyMode = legacyMode ?? looseMode;
     super(tokenVocabulary, T, { legacyMode, ...rest });
 
     this.looseMode = looseMode;
+    this.leakyRules = leakyRules;
 
     const $ = this;
 

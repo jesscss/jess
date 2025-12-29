@@ -3,31 +3,63 @@ import {
   type PluginInterface,
   AbstractPlugin,
   TreeContext,
-  MathMode,
-  UnitMode,
   JessError,
   logger,
   JsFunction,
   type Rules,
   getErrorFromParser
 } from '@jesscss/core';
+import type { MathMode, UnitMode, LessOptions } from 'styles-config';
 import * as lessFunctions from '@jesscss/fns';
 import { Parser } from '@jesscss/less-parser';
 import path from 'node:path';
 
-const { isArray } = Array;
-
 export class LessPlugin extends AbstractPlugin {
   name = 'less';
   supportedExtensions = ['.less'];
-  parser = new Parser();
+  parser: Parser;
+  mathMode: MathMode;
+  unitMode: UnitMode;
 
-  constructor(
-    public opts: Record<string, any> = {},
-    public mathMode: MathMode = opts.mathMode ?? MathMode.PARENS_DIVISION,
-    public unitMode: UnitMode = opts.unitMode ?? UnitMode.LOOSE
-  ) {
+  constructor(public opts: LessOptions = {}) {
     super();
+
+    // Handle deprecated math option -> mathMode conversion
+    let mathMode: MathMode;
+    if (opts.mathMode !== undefined) {
+      mathMode = opts.mathMode;
+    } else if (opts.math !== undefined) {
+      // Convert deprecated math option to mathMode
+      if (opts.math === 0 || opts.math === 'always') {
+        mathMode = 'always';
+      } else if (opts.math === 1 || opts.math === 'parens-division') {
+        mathMode = 'parens-division';
+      } else if (opts.math === 2 || opts.math === 'parens' || opts.math === 'strict') {
+        mathMode = 'parens';
+      } else {
+        // 3 or 'strict-legacy' -> 'parens' (deprecated, use 'strict' instead)
+        mathMode = 'parens';
+      }
+    } else {
+      mathMode = 'parens-division';
+    }
+    this.mathMode = mathMode;
+
+    // Handle deprecated strictUnits option -> unitMode conversion
+    let unitMode: UnitMode;
+    if (opts.unitMode !== undefined) {
+      unitMode = opts.unitMode;
+    } else if (opts.strictUnits === true) {
+      unitMode = 'strict';
+    } else {
+      unitMode = 'loose';
+    }
+    this.unitMode = unitMode;
+
+    // Pass options to parser (including leakyRules, defaulting to true)
+    this.parser = new Parser({
+      leakyRules: opts.leakyRules ?? true
+    });
   }
 
   private _registerFunctions(tree: Rules) {
@@ -84,9 +116,8 @@ export class LessPlugin extends AbstractPlugin {
   }
 }
 
-type LessOptions = Record<string, any>;
+export type { LessOptions } from 'styles-config';
 
-/** @todo - do something with less options */
 const lessPlugin: Plugin = (opts?: LessOptions) => {
   return new LessPlugin(opts);
 };

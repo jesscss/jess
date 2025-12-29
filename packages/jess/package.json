@@ -25,11 +25,11 @@
     "node": ">=16"
   },
   "dependencies": {
+    "styles-config": "workspace:*",
     "@jesscss/core": "workspace:2.0.0-alpha.1",
     "@jesscss/plugin-less": "workspace:2.0.0-alpha.1",
     "@jesscss/patch-css": "workspace:2.0.0-alpha.1",
     "chalk": "^5.2.0",
-    "cosmiconfig": "^8.3.6",
     "lodash-es": "^4.17.21",
     "yargs": "^17.7.1"
   },
@@ -53,7 +53,6 @@
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
     "@jesscss/shared": "workspace:*",
-    "@types/cosmiconfig": "^6.0.0",
     "@types/lodash-es": "^4.17.8"
   },
   "keywords": [
