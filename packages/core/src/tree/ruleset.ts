@@ -23,7 +23,7 @@ export type RulesetValue = {
    * generalize nodes for the `frames` property in Context
    */
   rules: Rules;
-  guard?: Condition;
+  guard?: Condition | Nil;
 };
 
 type RulesetOptions = NodeOptions & {
@@ -179,6 +179,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (this.evaluated) {
       return this;
     }
+    let pushedFrames = false;
     /** Should have been maybe cloned in preEval */
     this.evaluated = true;
     let frame = atIndex(context.rulesetFrames, -1);
@@ -199,12 +200,17 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       },
       (guard) => {
         if (guard && !guard.value) {
-          return new Nil();
+          const n = new Nil();
+          this.value.guard = n;
+          return n;
         }
         this.value.guard = undefined;
         return this.selector.eval(context);
       },
       (sels: Selector | Nil) => {
+        if (this.value.guard instanceof Nil) {
+          return this.value.guard;
+        }
         if (frame && (this.hoistToRoot ?? context.opts.collapseNesting)) {
           this.hoistToRoot = true;
         }
@@ -215,21 +221,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           && sels.value.name === ':is'
           && sels.generated
         ) {
-          // Check if this :is() is the first component of a ComplexSelector in the parent
-          const parent = context.rulesetFrames[context.rulesetFrames.length - 1];
-          if (parent && parent.value && parent.value.selector) {
-            const parentSelector = parent.value.selector;
-            if (isNode(parentSelector, 'ComplexSelector') && parentSelector.value[0] === sels) {
-              // This :is() is the first component of the parent's ComplexSelector, so unwrap it
-              sels = sels.value.arg as Selector;
-            } else {
-              // This :is() is the ruleset's only selector (not part of a SelectorList), so unwrap it
-              sels = sels.value.arg as Selector;
-            }
-          } else {
-            // No parent, so this :is() is the ruleset's only selector, unwrap it
-            sels = sels.value.arg as Selector;
-          }
+          sels = sels.value.arg as Selector;
         }
 
         // Also check if the selector is a ComplexSelector that contains a :is() as its first component
@@ -291,9 +283,18 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         }
         context.rulesetFrames.push(this as Ruleset);
         context.frames.push(this);
+        pushedFrames = true;
         return this.value.rules.eval(context);
       },
       (evaluatedRules: Rules | Nil) => {
+        if (pushedFrames) {
+          context.rulesetFrames.pop();
+          context.frames.pop();
+        }
+        if (evaluatedRules instanceof Nil) {
+          return evaluatedRules;
+        }
+
         // If selector was Nil, evaluatedRules is already Rules (not wrapped in Ruleset)
         // In that case, return it directly without wrapping back in Ruleset
         if (this.value.selector instanceof Nil) {
@@ -301,13 +302,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           return evaluatedRules as any;
         }
 
-        // Normal case: selector was not Nil, so we pushed frames and need to pop them
-        context.rulesetFrames.pop();
-        context.frames.pop();
-
-        if (evaluatedRules instanceof Nil) {
-          return evaluatedRules;
-        }
         this.value.rules = evaluatedRules;
         const rules = this.value.rules;
 
@@ -318,7 +312,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         if (rules.visibleRules().length === 0 && collapseNesting) {
           this.removeFlag(F_VISIBLE);
         }
-
         return this;
       }
     );

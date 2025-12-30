@@ -464,11 +464,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         }
         if (isNode(returnVal, ['Declaration', 'VarDeclaration'])) {
           context.searchScope.add(returnVal);
-          const inCalc = context.calcFrames.at(-1);
+          const inCalc = context.calcFrames !== 0;
           const hasImportant = isNode(returnVal, 'Declaration') && !!returnVal.value.important;
-          if (inCalc) {
-            context.calcFrames.pop();
-          }
           return pipe(
             () => {
               // Track that this value came from an important declaration
@@ -476,12 +473,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               if (hasImportant) {
                 context.pushImportantSource();
               }
-              return returnVal.value.value.eval(context);
+              const declValue = returnVal.value.value;
+              return declValue.eval(context);
             },
             (evald) => {
-              if (inCalc) {
-                context.calcFrames.push(true);
-              }
               context.searchScope.delete(returnVal);
               // DON'T pop important source here - let the consuming Declaration pop it
               // after it has checked and merged the important flag

@@ -381,11 +381,46 @@ div-2 {
 }
 ```
 
-### Calling a mixin and a selector together
+## Selectors as Mixins
+
+Jess lets you "apply" or call rulesets as mixins using a namespace separator.
+
+This is great when you want to define a class you can use on its own, but also “pull in” those same styles somewhere else.
+
+#### Example
+
+```less
+.rounded {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.card {
+  box-shadow: 0 2px 8px #0002;
+  padding: 1.5em;
+  background: #fff;
+  $|.rounded; // or $|.rounded();
+}
+```
+
+:::info[Applying multiple selectors]
+
+For convenience, Jess allows you to apply multiple selectors at once by separating them with a comma and using the `apply` keyword.
+
+```less
+.card {
+  padding: 1.5em;
+  background: #fff;
+  $apply .rounded, .shadow;
+}
+```
+:::
+
+### Applying a mixin and a selector together
 
 Jess supports mixing in both a selector AND a mixin when both have the same name and consist of simple selectors. (This is Less's default behavior, but optional in Jess syntax.)
 
-To do so, use `*` instead of `|` to match selectors and mixins.
+To do so, use `*` before the mixin / selector name.
 
 ```less
 // Define a selector
@@ -399,9 +434,9 @@ To do so, use `*` instead of `|` to match selectors and mixins.
   outline: 1px solid $color;
 }
 
-// Call both together:
+// Apply/call both together:
 .panel {
-  $*.shadow();
+  $ > *.shadow();
 }
 ```
 The CSS output is:

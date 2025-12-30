@@ -253,7 +253,7 @@ export class Context {
    *
    * @todo - can't this just be a number?
    */
-  calcFrames: boolean[] = [];
+  calcFrames = 0;
 
   private _callStack: Node[] | undefined;
   get callStack() {
@@ -302,7 +302,7 @@ export class Context {
    * and pop it when leaving. This helps us determine if operations
    * should be performed or not.
    */
-  parenFrames: boolean[] = [];
+  parenFrames = 0;
 
   /**
    * Keys of @let variables --
@@ -609,8 +609,8 @@ export class Context {
 
   shouldOperate(op: Operator, left: Node, right: Node) {
     const mathMode = this.opts.mathMode;
-    const inParens = this.parenFrames.at(-1);
-    const inCalc = this.calcFrames.at(-1);
+    const inParens = this.parenFrames !== 0;
+    const inCalc = this.calcFrames !== 0;
     if (inCalc) {
       /** Only collapse safe units */
       if (

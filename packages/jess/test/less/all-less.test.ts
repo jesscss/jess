@@ -5,7 +5,7 @@ import { invalidLess } from '@jesscss/shared';
 import { Compiler } from '../../src';
 import { getTestCases } from '../test-utils';
 import lessPlugin from '@jesscss/plugin-less';
-import { serializeTypes } from '@jesscss/core';
+// import { serializeTypes } from '@jesscss/core';
 
 const testData = path.dirname(require.resolve('@less/test-data'));
 
@@ -29,7 +29,7 @@ const specializedTests = [
 // Temporarily filter to specific tests for debugging - set to empty array to run all
 const targetTests: string[] = [
   // 'tests-unit/at-rules-keyword-comments/at-rules-keyword-comments.less'
-  'tests-config/namespacing/namespacing-5.less'
+  'tests-config/namespacing/namespacing-7.less'
 ];
 
 describe('Can render Less files to CSS', () => {
@@ -70,14 +70,10 @@ describe('Can render Less files to CSS', () => {
             });
 
             const context = testCompiler.createContext(lessPath);
-            try {
-              const { node } = await context.getTree(lessPath);
+            const { node } = await context.getTree(lessPath);
 
-              const evald = await node.eval(context);
-              expect(evald.toString({ context })).toBeString(expectedCss.trim());
-            } catch (error: any) {
-              throw error;
-            }
+            const evald = await node.eval(context);
+            expect(evald.toString({ context })).toBeString(expectedCss.trim());
           }, 5000); // 5 second timeout to catch infinite loops
         });
       } catch (error: any) {

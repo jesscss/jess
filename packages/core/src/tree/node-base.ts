@@ -36,7 +36,10 @@ type AllNodeOptions = {
 /**
  * @todo - Clean up and delete these types and symbols, if not used.
  */
-export type Primitive = undefined | boolean | string | number | ((...args: any[]) => any);
+export type Primitive = undefined | boolean | string | number;
+export type PrimitiveOrFunc = Primitive | ((...args: any[]) => any);
+
+const primitives = ['undefined', 'boolean', 'string', 'number'];
 
 export const ABORT: unique symbol = Symbol('ABORT');
 export const REMOVE: unique symbol = Symbol('REMOVE');
@@ -45,8 +48,8 @@ export type NodeVisitReturn = void | Node | symbol;
 export type NodeOptions = Record<string, any> & AllNodeOptions;
 export const DEFAULT_DATA = 'value';
 
-type BasicNodeTypes = Primitive | Node;
-type NodeRecordValue = BasicNodeTypes | Array<BasicNodeTypes | Primitive[]> | Record<string, any>;
+type BasicNodeTypes = PrimitiveOrFunc | Node;
+type NodeRecordValue = BasicNodeTypes | Array<BasicNodeTypes | PrimitiveOrFunc[]> | Record<string, any>;
 export type NodeValueObject = Record<string, NodeRecordValue>;
 export type NodeValue = BasicNodeTypes | BasicNodeTypes[] | NodeValueObject;
 
@@ -796,13 +799,11 @@ export abstract class Node<
    * Derived nodes will override this with different
    * normalization algorithms.
    */
-  valueOf(): string | number {
+  valueOf(): Primitive {
     let value = this.value;
     let type = typeof value;
-    if (type === 'string') {
-      return value as string;
-    } else if (type === 'number') {
-      return value as number;
+    if (primitives.includes(type)) {
+      return value as Primitive;
     }
     let values = [...getValues(value)];
     if (values.length === 1) {
@@ -920,6 +921,9 @@ export abstract class Node<
     let bVal = b.valueOf();
     if (aVal === bVal) {
       return 0;
+    }
+    if (aVal === undefined || bVal === undefined) {
+      return undefined;
     }
     return aVal > bVal ? 1 : -1;
   }

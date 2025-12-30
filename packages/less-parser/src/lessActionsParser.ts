@@ -16,6 +16,7 @@ import {
   JsExpression,
   Interpolated,
   Any,
+  Bool,
   type Node,
   type Extend,
   type ComplexSelector,
@@ -193,6 +194,12 @@ export class LessActionsParser extends CssActionsParser {
         return result;
       } else {
         return new Any(result, { role: 'ident' }, this.getLocationInfo(token), this.context);
+      }
+    } else if (tokenType === TT['PlainIdent']) {
+      // Parse true/false as Bool nodes in Less
+      const image = token.image;
+      if (image === 'true' || image === 'false') {
+        return new Bool(image === 'true', undefined, this.getLocationInfo(token), this.context);
       }
     }
     return super.processValueToken(token);

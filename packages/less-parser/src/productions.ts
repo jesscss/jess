@@ -1426,9 +1426,11 @@ export function varDeclarationOrCall(this: P, T: TokenMap) {
 
       /** An anonymous mixin call */
       if (!value) {
+        // When @variable() is called, look up the variable first
+        // The variable's value (which may be a Call node) will be executed
         const nameRef = nameNode instanceof Interpolated
-          ? new Reference({ key: nameNode }, { type: 'mixin-ruleset', role: 'name' })
-          : new Reference({ key: nameNode as any }, { type: 'mixin-ruleset', role: 'name' });
+          ? new Reference({ key: nameNode }, { type: 'variable', role: 'name' })
+          : new Reference({ key: nameNode as any }, { type: 'variable', role: 'name' });
         // Pass markImportant in options if !important is present
         const callOptions = important ? { markImportant: true } : undefined;
         const callNode = new Call({ name: new Expression(nameRef), args: args! }, callOptions, location, this.context);

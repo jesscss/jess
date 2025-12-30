@@ -396,11 +396,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /**
    * Return an object representation of a ruleset
    */
-  toObject(convertToPrimitives: true): Record<string, string | number>;
+  toObject(convertToPrimitives: true): Record<string, string | number | boolean>;
   toObject(convertToPrimitives: false): Record<string, Node>;
-  toObject(convertToPrimitives?: boolean): Record<string, string | number | Node>;
-  toObject(convertToPrimitives: boolean = true): Record<string, string | number | Node> {
-    let output = new Map<string, string | number | Node>();
+  toObject(convertToPrimitives?: boolean): Record<string, string | number  | boolean | Node>;
+  toObject(convertToPrimitives: boolean = true): Record<string, string | number | boolean | Node> {
+    let output = new Map<string, boolean | string | number | Node>();
     const iterateRules = (rules: Rules) => {
       for (let n of rules.value) {
         if (isNode(n, 'Declaration')) {
@@ -408,6 +408,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (convertToPrimitives) {
             let primitive = value.valueOf();
             let outputValue = important ? `${primitive} ${important}` : primitive;
+            if (outputValue === undefined) {
+              continue;
+            }
             output.set(name.toString(), outputValue);
           } else {
             let outputValue = important ? new Sequence([n, important]) : n;

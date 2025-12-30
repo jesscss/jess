@@ -108,10 +108,47 @@ export class Call extends Node<CallValue, CallOptions> {
     //   throw new ReferenceError('Recursive call detected');
     // }
     context.callStack.push(this.sourceNode);
-    context.parenFrames.push(false);
+    context.parenFrames++;
     let { name, args } = this.value;
     let { markImportant } = this.options;
     let n = typeof name === 'string' ? name : await name.eval(context);
+
+    // If the evaluated name is a Call node, execute it directly
+    // This handles cases like @alias: .something(foo); @alias();
+    if (isNode(n, 'Call')) {
+      try {
+        // Execute the inner Call node (it will handle its own callStack push/pop)
+        const result = await n.eval(context);
+        // Apply markImportant if needed
+        if (markImportant && isNode(result, 'Rules')) {
+          this.makeImportant(result);
+        }
+        // Always pop the outer call's stack entries
+        context.callStack.pop();
+        context.parenFrames--;
+        return result;
+      } finally {}
+    }
+
+    // If the evaluated name is Rules (from evaluating a variable that contained a Call),
+    // return those Rules directly, but only if args are empty
+    // This handles cases like @alias: .something(foo); @alias();
+    // where the Reference already evaluated the Call and returned Rules
+    if (isNode(n, 'Rules')) {
+      // If args are provided, throw an error - you can't call Rules with arguments
+      if (args && args.value.length > 0) {
+        context.callStack.pop();
+        context.parenFrames--;
+        throw new ReferenceError('Cannot call Rules with arguments');
+      }
+      context.callStack.pop();
+      context.parenFrames--;
+      // Apply markImportant if needed
+      if (markImportant) {
+        this.makeImportant(n);
+      }
+      return n;
+    }
 
     let fn = isNode(n, 'JsFunction') ? n.value : n;
 
@@ -158,18 +195,19 @@ export class Call extends Node<CallValue, CallOptions> {
           : String(n.valueOf());
         newCall.value.args = await args?.eval(context);
         context.callStack.pop();
+        context.parenFrames--;
         return newCall;
       }
     } else {
       if (n === 'calc') {
-        context.calcFrames.push(true);
+        context.calcFrames++;
       }
       args = await args?.eval(context);
 
       if (n === 'calc') {
-        context.calcFrames.pop();
+        context.calcFrames--;
       }
-      context.parenFrames.pop();
+      context.parenFrames--;
       context.callStack.pop();
       const node = this;
       if (
@@ -177,7 +215,7 @@ export class Call extends Node<CallValue, CallOptions> {
       ) {
         if (isNode((args as List).value[0], 'Dimension')) {
           return args.value[0]!;
-        } else if (context.calcFrames.at(-1)) {
+        } else if (context.calcFrames !== 0) {
           return new Paren(args.value[0]);
         }
       }
