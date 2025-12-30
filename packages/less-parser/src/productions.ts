@@ -2839,6 +2839,8 @@ export function lookupOrCall(this: P, T: TokenMap) {
           $.OPTION(() => keyToken = $.OR2(keyAlt));
           $.CONSUME(T.RSquare);
           if (!RECORDING_PHASE) {
+            let ref: Reference;
+            let target = ctx.node as Call | Reference;
             if (keyToken) {
               let tokenStr = keyToken.image;
               let type: 'variable' | 'property' = tokenStr.startsWith('@') ? 'variable' : 'property';
@@ -2851,10 +2853,19 @@ export function lookupOrCall(this: P, T: TokenMap) {
                 }
               }
               let result = getInterpolatedOrString(tokenStr, $.getLocationInfo(keyToken), this.context);
-              return new Reference({ target: ctx.node as Call | Reference, key: result }, { type }, $.endRule(), this.context);
+
+              ref = new Reference({ target, key: result }, { type }, $.endRule(), this.context);
             } else {
-              return new Reference({ target: ctx.node as Call | Reference, key: -1 }, { type: 'index' }, $.endRule(), this.context);
+              ref = new Reference({ target, key: -1 }, { type: 'index' }, $.endRule(), this.context);
             }
+            /** Reference targets will technically precede the reference, so we need to update the location to the target start location */
+            if (target) {
+              let [targetStartOffset, targetStartLine, targetStartColumn] = target.location!;
+              ref.location[0] = targetStartOffset;
+              ref.location[1] = targetStartLine;
+              ref.location[2] = targetStartColumn;
+            }
+            return ref;
           }
         }
       },

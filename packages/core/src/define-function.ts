@@ -369,6 +369,7 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
    * The args property is always a function that returns the arguments.
    */
   const originalArgsList = new List(args);
+  context.callStack.at(-1)?.adopt(originalArgsList);
   const functionThis: FunctionThis = {
     context,
     args: () => originalArgsList.eval(context)

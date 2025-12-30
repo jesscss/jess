@@ -772,6 +772,16 @@ export abstract class Node<
    * This is used when a Node will replace another node.
    */
   inherit(node: Node) {
+    /**
+     * There are some cases where we shouldn't inherit the parent, but
+     * we should exclude those individual cases.
+     *
+     * Rules don't inherit the parent because we may need to
+     * look up declarations from the original parent chain.
+     */
+    if (this.type !== 'Rules') {
+      (this as any).parent = node.parent;
+    }
     this._location = node.location;
     this._treeContext ??= node.treeContext;
     /** Copy state exactly (not OR, to preserve removed flags) */

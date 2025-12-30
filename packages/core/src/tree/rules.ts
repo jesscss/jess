@@ -1391,9 +1391,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     }
 
     if (evalCandidates.length === 0) {
-      // #region agent log
-      fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'rules.ts:getFunctionFromMixins', message: 'No matching mixins found', data: { mixinLength: mixinLength, mixinCandidatesLength: mixinCandidates.length, argsLength: args.length, mixinArrTypes: mixinArr.map(m => m.type) }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'L' }) }).catch(() => {});
-      // #endregion
       throw new ReferenceError('No matching mixins found.');
     }
 
