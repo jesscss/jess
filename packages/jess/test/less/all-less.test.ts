@@ -29,7 +29,7 @@ const specializedTests = [
 // Temporarily filter to specific tests for debugging - set to empty array to run all
 const targetTests: string[] = [
   // 'tests-unit/at-rules-keyword-comments/at-rulåes-keyword-comments.less'
-  'tests-config/namespacing/namespacing-5.less'
+  // 'tests-config/namespacing/namespacing-5.less'
 ];
 
 describe('Can render Less files to CSS', () => {
