@@ -3,6 +3,8 @@ import { Node } from '../node';
 export type SerializeTypesOptions = {
   // Include primitive main values next to the type when useful
   showValues?: boolean;
+  // Include options next to the type when useful
+  showOptions?: boolean;
   // Max length for printed strings; longer strings are truncated with …
   maxStringLength?: number;
   // Use shortType instead of type
@@ -13,6 +15,7 @@ export type SerializeTypesOptions = {
 
 const defaultOptions: Required<SerializeTypesOptions> = {
   showValues: true,
+  showOptions: false,
   maxStringLength: 40,
   useShortType: false,
   indentSize: 2
@@ -116,6 +119,22 @@ function serializePlainObject(obj: Record<string, unknown>, depth: number, opts:
   return lines.join('\n');
 }
 
+function serializeNodeOptions(n: Node, depth: number, opts: Required<SerializeTypesOptions>, visiting: Set<Node>): string | null {
+  if (!opts.showOptions) {
+    return null;
+  }
+  const nodeOptions = (n as any).options;
+  if (!nodeOptions || typeof nodeOptions !== 'object') {
+    return null;
+  }
+  // Check if there are any non-undefined properties
+  const keys = Object.keys(nodeOptions).filter(k => nodeOptions[k] !== undefined);
+  if (keys.length === 0) {
+    return null;
+  }
+  return serializePlainObject(nodeOptions, depth + 1, opts, visiting);
+}
+
 function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOptions>, visiting: Set<Node>): string {
   const typeName = opts.useShortType ? (n as any).shortType : (n as any).type;
   const pad = indent(depth, opts.indentSize);
@@ -130,6 +149,7 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
   visiting.add(n);
 
   const value = (n as any).value as unknown;
+  const optionsStr = serializeNodeOptions(n, depth, opts, visiting);
 
   // If the main value is a primitive, include it inline
   if (
@@ -139,12 +159,18 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
     || typeof value === 'number'
     || typeof value === 'boolean'
   ) {
+    visiting.delete(n);
+    if (optionsStr) {
+      if (opts.showValues && value !== undefined) {
+        const rendered = formatPrimitive(value, opts);
+        return `${open}\n${optionsStr}\n${indent(depth + 1, opts.indentSize)}${rendered}\n${pad})`;
+      }
+      return `${open}\n${optionsStr}\n${pad})`;
+    }
     if (opts.showValues && value !== undefined) {
       const rendered = formatPrimitive(value, opts);
-      visiting.delete(n);
       return `${open} ${rendered})`;
     }
-    visiting.delete(n);
     return `${open})`;
   }
 
@@ -152,18 +178,10 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
   if (isJessNode(value)) {
     const inner = '\n' + serializeNode(value, depth + 1, opts, visiting);
     visiting.delete(n);
-    let result = `${open}${inner}\n${pad})`;
-
-    // Special case for StyleImport: add options to the serialization
-    if (typeName === 'StyleImport' && (n as any).options) {
-      const options = (n as any).options;
-      const optionsStr = serializePlainObject(options, depth, opts, visiting);
-      if (optionsStr) {
-        result = `${open}\n${optionsStr}${inner}\n${pad})`;
-      }
+    if (optionsStr) {
+      return `${open}\n${optionsStr}${inner}\n${pad})`;
     }
-
-    return result;
+    return `${open}${inner}\n${pad})`;
   }
 
   // Special-case Number plain object: print compact form
@@ -172,6 +190,9 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
     const keys = Object.keys(value as Record<string, unknown>).filter(k => (value as any)[k] !== undefined);
     if (typeof num === 'number' && (keys.length === 1 || (keys.length === 0))) {
       visiting.delete(n);
+      if (optionsStr) {
+        return `${open}\n${optionsStr}\n${indent(depth + 1, opts.indentSize)}${num}\n${pad})`;
+      }
       return `${open} ${num})`;
     }
   }
@@ -180,6 +201,9 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
   if (Array.isArray(value)) {
     const arrStr = serializeArray(value, depth + 1, opts, visiting);
     visiting.delete(n);
+    if (optionsStr) {
+      return `${open}\n${optionsStr}\n${arrStr}\n${pad})`;
+    }
     return `${open}\n${arrStr}\n${pad})`;
   }
 
@@ -187,21 +211,16 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
   if (isPlainObject(value)) {
     const inner = serializePlainObject(value as Record<string, unknown>, depth, opts, visiting);
     visiting.delete(n);
-    let result = inner ? `${open}\n${inner}\n${pad})` : `${open})`;
-
-    // Special case for StyleImport: add options to the serialization
-    if (typeName === 'StyleImport' && (n as any).options) {
-      const options = (n as any).options;
-      const optionsStr = serializePlainObject(options, depth, opts, visiting);
-      if (optionsStr) {
-        result = `${open}\n${optionsStr}${inner ? '\n' + inner : ''}\n${pad})`;
-      }
+    if (optionsStr) {
+      return `${open}\n${optionsStr}${inner ? '\n' + inner : ''}\n${pad})`;
     }
-
-    return result;
+    return inner ? `${open}\n${inner}\n${pad})` : `${open})`;
   }
 
   visiting.delete(n);
+  if (optionsStr) {
+    return `${open}\n${optionsStr}\n${pad})`;
+  }
   return `${open})`;
 }
 

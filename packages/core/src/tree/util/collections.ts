@@ -20,7 +20,11 @@
  */
 import type { ConditionalExcept } from 'type-fest';
 import isPlainObject from 'lodash-es/isPlainObject';
-// import type { Node } from '../node'
+import { isNode } from './is-node';
+import type { Mixin } from '../mixin';
+import type { Rules } from '../rules';
+import type { Ruleset } from '../ruleset';
+import type { Node } from '../node';
 
 const { isArray } = Array;
 
@@ -45,11 +49,13 @@ export function atIndex<T>(array: readonly T[], index: number = -1): T | undefin
  */
 type GetEntriesOf<T> = T extends readonly any[]
   ? [T[number], number, T]
-  : T extends Record<string, infer RecordValue>
-    ? RecordValue extends readonly any[]
-      ? [RecordValue[number], number, RecordValue]
-      : [RecordValue, keyof ConditionalExcept<T, readonly any[]>, T]
-    : [T, 'value', T];
+  : T extends Node
+    ? [Node, Node, Rules]
+    : T extends Record<string, infer RecordValue>
+      ? RecordValue extends readonly any[]
+        ? [RecordValue[number], number, RecordValue]
+        : [RecordValue, keyof ConditionalExcept<T, readonly any[]>, T]
+      : [T, 'value', T];
 
 // type Test = GetEntriesOf<Node<string>>
 // type Test2 = GetEntriesOf<Node<string[]>>
@@ -102,6 +108,27 @@ export function* getEntries<T>(collection: T, reverse = false): Generator<GetEnt
         yield [value, key, collection] as GetEntriesOf<T>;
       }
     }
+  } else if (isNode(collection, ['Mixin', 'Ruleset', 'Rules'])) {
+    let rules: Node[];
+    if (collection.type === 'Mixin') {
+      if ((collection as Mixin).value.params?.length) {
+        throw new Error('We can\'t iterate over a mixin with parameters');
+      }
+      rules = (collection as Mixin).value.rules.value;
+    } else if (collection.type === 'Ruleset') {
+      rules = (collection as Ruleset).value.rules.value;
+    } else if (collection.type === 'Rules') {
+      rules = (collection as Rules).value;
+    }
+    for (let [key, value] of rules!.entries()) {
+      if (value.type === 'Comment') {
+        continue;
+      }
+      if (!isNode(value, 'Declaration')) {
+        throw new Error('We can\'t iterate over rules with non-declarations');
+      }
+      yield [value.value.value, value.value.name, rules!] as unknown as GetEntriesOf<T>;
+    }
   } else {
     yield [collection, 'value', collection] as GetEntriesOf<T>;
   }
@@ -134,9 +161,13 @@ export function* getEntriesFromNode<T extends { value: unknown }>(node: T, rever
 }
 
 export function arraysEqual(a: string[], b: string[]) {
-  if (a.length !== b.length) return false;
+  if (a.length !== b.length) {
+    return false;
+  }
   for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
+    if (a[i] !== b[i]) {
+      return false;
+    }
   }
   return true;
 }

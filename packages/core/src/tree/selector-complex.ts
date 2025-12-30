@@ -11,8 +11,6 @@ import { isNode } from './util/is-node';
 import { Selector } from './selector';
 import type { SimpleSelector } from './selector-simple';
 import type { CompoundSelector } from './selector-compound';
-import { BasicSelector } from './selector-basic';
-import { PseudoSelector } from './selector-pseudo';
 import { getEntries } from './util/collections';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
@@ -120,9 +118,9 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
    */
   override evalNode(context: Context): MaybePromise<Selector | Nil> {
     return pipe(
-        () => {
-          const selector = this;
-          let { value } = selector;
+      () => {
+        const selector = this;
+        let { value } = selector;
         const maybe = serialForEach(Array.from(getEntries(value)), ([sel, i]) => {
           const out = sel.eval(context);
           if (isThenable(out)) {

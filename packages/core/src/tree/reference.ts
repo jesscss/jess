@@ -397,7 +397,13 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           case 'function':
             if (isNode(resolvedTarget, 'Rules')) {
               const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
+              // #region agent log
+              fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'reference.ts:evalNode', message: 'Looking up function', data: { keyStr, type: 'function' }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'J' }) }).catch(() => {});
+              // #endregion
               returnVal = resolvedTarget.find('function', `${keyStr}`, undefined, opts);
+              // #region agent log
+              fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'reference.ts:evalNode', message: 'Function lookup result', data: { keyStr, found: returnVal !== undefined, returnValType: returnVal?.type }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'J' }) }).catch(() => {});
+              // #endregion
             }
             break;
           case 'property':
@@ -438,6 +444,12 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       },
       ({ returnVal, valueKey }) => {
         if (returnVal === undefined) {
+          // #region agent log
+          if (type === 'function') {
+            const valueKeyStr = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
+            fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'reference.ts:evalNode', message: 'Function lookup failed', data: { valueKeyStr, type, fallbackValue: !!fallbackValue }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'J' }) }).catch(() => {});
+          }
+          // #endregion
           if (!fallbackValue) {
             const valueKeyStr = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
             switch (type) {
@@ -451,6 +463,12 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             throw new ReferenceError(`'${key}' is not defined`);
           }
           if (fallbackValue === true) {
+            // #region agent log
+            if (type === 'function') {
+              const valueKeyStr = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
+              fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'reference.ts:evalNode', message: 'Function lookup failed, returning Any fallback', data: { valueKeyStr }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'J' }) }).catch(() => {});
+            }
+            // #endregion
             const any = new Any(`${valueKey}`);
             any.options.role = this.options.role;
             return any;

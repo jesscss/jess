@@ -1,3 +1,4 @@
+import { serializeTypes } from '@jesscss/core';
 import { Parser } from '../src';
 
 const parser = new Parser();
@@ -12,6 +13,19 @@ describe('functionCall', () => {
   it('should parse function call with arguments', () => {
     const { errors } = parse('color: func(arg1, arg2)', 'declaration');
     expect(errors.length).toBe(0);
+  });
+
+  it('should parse functions at the root', () => {
+    const { errors, tree } = parser.parse('func(1, 2, 3)');
+    expect(errors.length).toBe(0);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      (Call
+        name: 
+          (Reference [role=name]
+            key: 'func'
+          )
+      )
+    `);
   });
 });
 
@@ -75,4 +89,3 @@ describe('callArgument', () => {
     expect(errors.length).toBe(0);
   });
 });
-

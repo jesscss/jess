@@ -112,6 +112,11 @@ export class Call extends Node<CallValue, CallOptions> {
     let { name, args } = this.value;
     let { markImportant } = this.options;
     let n = typeof name === 'string' ? name : await name.eval(context);
+    // #region agent log
+    if (isNode(name, 'Reference') && name.options.type === 'function') {
+      fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'call.ts:evalNode', message: 'Name evaluated for function call', data: { nType: typeof n, nIsNode: n instanceof Node, nNodeType: n instanceof Node ? n.type : 'N/A', nameKey: name.value.key.valueOf() }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'K' }) }).catch(() => {});
+    }
+    // #endregion
 
     // If the evaluated name is a Call node, execute it directly
     // This handles cases like @alias: .something(foo); @alias();
@@ -151,14 +156,29 @@ export class Call extends Node<CallValue, CallOptions> {
     }
 
     let fn = isNode(n, 'JsFunction') ? n.value : n;
+    // #region agent log
+    if (isNode(name, 'Reference') && name.options.type === 'function') {
+      fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'call.ts:evalNode', message: 'Checking if fn is function', data: { fnType: typeof fn, fnIsFunction: typeof fn === 'function', fnIsNode: fn instanceof Node, fnNodeType: fn instanceof Node ? fn.type : 'N/A' }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'K' }) }).catch(() => {});
+    }
+    // #endregion
 
     if (typeof fn === 'function') {
       try {
+        // #region agent log
+        if (isNode(name, 'Reference') && name.options.type === 'function') {
+          fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'call.ts:evalNode', message: 'Calling function via callWithContext', data: { fnName: name.value.key.valueOf(), argsLength: args?.value.length ?? 0 }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'K' }) }).catch(() => {});
+        }
+        // #endregion
         const result = await (
           args
             ? callWithContext(context, fn, ...args.value)
             : callWithContext(context, fn)
         );
+        // #region agent log
+        if (isNode(name, 'Reference') && name.options.type === 'function') {
+          fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'call.ts:evalNode', message: 'Function call succeeded', data: { resultType: typeof result, resultIsNode: result instanceof Node }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'K' }) }).catch(() => {});
+        }
+        // #endregion
         context.callStack.pop();
         if (isNode(result)) {
           let evald = result.eval(context);
@@ -180,6 +200,11 @@ export class Call extends Node<CallValue, CallOptions> {
         }
         return castResult;
       } catch (e) {
+        // #region agent log
+        if (isNode(name, 'Reference') && name.options.type === 'function') {
+          fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'call.ts:evalNode', message: 'Function call error caught', data: { errorType: e?.constructor?.name, errorMessage: e instanceof Error ? e.message : String(e), isReferenceError: e instanceof ReferenceError, includesMatchingMixins: e instanceof Error && e.message.includes('No matching mixins') }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'K' }) }).catch(() => {});
+        }
+        // #endregion
         if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
           if (isNode(name, 'Reference')) {
             throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);

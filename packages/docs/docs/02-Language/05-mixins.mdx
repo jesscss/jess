@@ -515,17 +515,10 @@ $ > media(screen, print): @($type) {
 
 ## Calling mixins from other languages
 
-If you have the Jess, Less, and Sass+ language plugins installed, you can use your language of choice, and import and call mixins from other languages.
+If you have the Less, and Sass+ language plugins installed (which are installed by default), you can call mixins and import variables from those languages into your Jess stylesheet.
 
-Let's say we had these set of files:
+Let's say we had these two files:
 
-### Jess
-```less
-// mixins.jess
-jess-mixin() {
-  color: red;
-}
-```
 ### Less
 ```less
 // mixins.less
@@ -541,41 +534,24 @@ jess-mixin() {
 }
 ```
 
-You could call them from each other like this:
+You could call them from your Jess stylesheet like this:
 
-<Tabs>
-  <TabItem value="Jess">
-  ```less
-  @-compose './mixins.scss' as *;
-  @-compose './mixins.less' as *;
 
-  .box {
-    $ > sass-mixin();
-    $ > .less-mixin();
-  }
-  ```
-  </TabItem>
-  <TabItem value="Less 5+">
-  ```less
-  @compose './mixins.scss' as *;
-  @compose './mixins.jess' as *;
+```less
+@-compose './mixins.scss' as *;
+@-compose './mixins.less' as *;
 
-  .box {
-    sass-mixin();
-    jess-mixin();
-  }
-  ```
-  </TabItem>
-  <TabItem value="Sass+">
-  ```less
-  @use './mixins.jess' as *;
-  @use './mixins.less' as *;
+.box {
+  $ > sass-mixin();
+  $ > .less-mixin();
+}
+```
 
-  .box {
-    @include jess-mixin();
-    // Backslashes are required to call a mixin with a selector name
-    @include \.less-mixin();
-  }
-  ```
-  </TabItem>
-</Tabs>
+This would output:
+
+```scss
+.box {
+  color: green;
+  color: blue;
+}
+```
