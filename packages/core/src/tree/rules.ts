@@ -85,6 +85,12 @@ export type RulesOptions = {
    *    }
    */
   rulesVisibility?: Record<string, RulesVisibility>;
+  /**
+   * If true, this Rules node is output from a mixin call.
+   * References with a target (e.g., #ns[@foo]) have public access to all nodes in these Rules.
+   * References without a target (e.g., @foo) cannot access these Rules.
+   */
+  isMixinOutput?: boolean;
   readonly?: boolean;
   /**
    * all imports other than classic `@import` set returned rules to local.
@@ -1405,18 +1411,22 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       if (isNode(candidate, 'Ruleset')) {
         let rules = (candidate as Ruleset).value.rules.copy(true);
         /** Adopt for lookup, then adopt for sorting */
-        candidate.adopt(rules);
+        candidate.parent!.adopt(rules);
+        rules.index = candidate.index;
         rules = await rules.eval(thisContext);
-        candidate.adopt(rules);
+        candidate.parent!.adopt(rules);
         hasMatch = true;
         // Skip empty Rules (e.g., containing only invisible nodes like comments)
+        // Mark output Rules as mixin output - accessible only when lookup has a target
+        rules.options.isMixinOutput = true;
         outputRules.push(rules);
         continue;
       }
       let rules = candidate.value.rules;
       /** Create new rules, and add the candidate rules, to add to scope */
       rules = rules.copy(true);
-      candidate.adopt(rules);
+      candidate.parent!.adopt(rules);
+      rules.index = candidate.index;
       /**
        * If we have params or a guard, we need to create a wrapper rules object,
        * so that the lookups of params and guard do not look at the cloned rules,
@@ -1435,7 +1445,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             Mixin: 'public'
           }
         });
-        candidate.adopt(outerRules);
+        candidate.parent!.adopt(outerRules);
+        outerRules.index = candidate.index;
         for (let i = 0; i < params.value.length; i++) {
           let param = params.value[i]!;
           if (isNode(param, 'Rest')) {
@@ -1550,6 +1561,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           let rulesIndex = outerRules.value.length;
           outerRules.push(rules);
           newRules = await outerRules.eval(thisContext);
+          candidate.parent!.adopt(newRules);
+          newRules.index = candidate.index;
           /**
            * We only used the outerRules for evaluation, so we
            * return the inner rules for downstream lookups.
@@ -1557,12 +1570,16 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           newRules = outerRules.value[rulesIndex] as Rules;
         } else {
           newRules = await rules.eval(thisContext);
+          candidate.parent!.adopt(newRules);
+          newRules.index = candidate.index;
         }
         // Visibility should be preserved by Rules.eval - no need to set it explicitly here
         // The eval'd rules should already have their nodes registered
         // Ensure the registry is indexed before checking
         const declRegistry = newRules.getRegistry('declaration');
         declRegistry.indexPendingItems();
+        // Mark output Rules as mixin output - accessible only when lookup has a target
+        newRules.options.isMixinOutput = true;
         outputRules.push(newRules);
       } catch (error) {
         // If recursion was detected (ReferenceError), skip this candidate
@@ -1597,29 +1614,30 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     let output: Rules;
     if (rulesArr.length === 1) {
       output = rulesArr[0]!;
+      // Ensure single output rule is marked as mixin output
+      output.options.isMixinOutput = true;
     } else {
-      // Multiple items - spread their values into a new Rules
-      const flattened: Node[] = [];
-      for (const item of rulesArr) {
-        flattened.push(...item.value);
-      }
-      // Re-assign indices to flattened nodes to reflect their order after sorting
-      // This ensures that items from later-defined sources have higher indices
-      let baseIndex = thisContext.ruleCounter;
-      for (const node of flattened) {
-        node.index = baseIndex++;
-      }
-      thisContext.ruleCounter = baseIndex;
-      output = Rules.create(flattened, {
+      /**
+       * Wrap these in rules marked as mixin output - accessible only when lookup has a target.
+       * This prevents mixin output from being searched by untargeted lookups.
+       */
+      output = Rules.create([], {
         rulesVisibility: {
           Ruleset: 'public',
           Declaration: 'public',
           VarDeclaration: 'public',
           Mixin: 'public'
-        }
+        },
+        isMixinOutput: true
       });
-      output.setIndex(thisContext);
-      output._indexRules();
+      /**
+       * Add rules but keep their original parents for further lazy lookups.
+       */
+      for (const rule of rulesArr) {
+        let parent = rule.parent;
+        output.push(rule);
+        (rule as any).parent = parent;
+      }
     }
 
     /** Since this is a wrapper, and rules are all evaluated, consider it evaluated */

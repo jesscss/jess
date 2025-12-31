@@ -195,7 +195,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
    */
   override evalNode(context: Context): MaybePromise<Node> {
     let { target, key } = this.value;
-    let node = this;
     let { type, fallbackValue, filter: originalFilter } = this.options;
     // Track reference chain for clearing remainders at outermost level
     context.pushReference();
@@ -208,9 +207,14 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         return resolvedTarget;
       },
       (resolvedTarget) => {
-        let out = isNode(key) ? key.eval(context) : key;
+        let out: any;
+        try {
+          out = isNode(key) ? key.eval(context) : key;
+        } catch (err: any) {
+          throw err;
+        }
         if (isThenable(out)) {
-          return out.then((k) => {
+          return out.then((k: any) => {
             // If key is a Selector (CompoundSelector, ComplexSelector, etc.), extract keySet as array
             if (isNode(k, 'Selector')) {
               const keyArray = Array.from(k.keySet);
@@ -309,7 +313,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       ([resolvedTarget, valueKey]) => {
         originalFilter ??= () => true;
         const filter = (n: Node) => originalFilter!(n) && !context.searchScope.has(n);
-        const opts: FindOptions = { filter, context };
+        // If this Reference has a target, mark hasTarget=true so 'targeted' Rules are searchable
+        const hasTarget = !!target;
+        const opts: FindOptions = { filter, context, hasTarget };
 
         if (this.options.resolution === 'linear') {
           // For linear resolution, climb up the parent chain until we find a node with a Rules parent
@@ -440,16 +446,17 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       ({ returnVal, valueKey }) => {
         if (returnVal === undefined) {
           if (!fallbackValue) {
-            const valueKeyStr = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
+            const valueKeyStr2 = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
+            const keyStr = isNode(key) ? key.valueOf() : String(key);
             switch (type) {
               case 'mixin':
-                throw new ReferenceError(`No matching mixins found for '${valueKeyStr}'`);
+                throw new ReferenceError(`No matching mixins found for '${valueKeyStr2}'`);
               case 'ruleset':
-                throw new ReferenceError(`No matching rulesets found for '${valueKeyStr}'`);
+                throw new ReferenceError(`No matching rulesets found for '${valueKeyStr2}'`);
               case 'mixin-ruleset':
-                throw new ReferenceError(`No matching mixins found for '${valueKeyStr}'`);
+                throw new ReferenceError(`No matching mixins found for '${valueKeyStr2}'`);
             }
-            throw new ReferenceError(`'${key}' is not defined`);
+            throw new ReferenceError(`'${keyStr}' is not defined`);
           }
           if (fallbackValue === true) {
             const any = new Any(`${valueKey}`);

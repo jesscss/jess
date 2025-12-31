@@ -192,6 +192,9 @@ export abstract class Node<
   /** Runtime tracking: has eval been run on this node? */
   evaluated = false;
 
+  /** If true, trim leading/trailing whitespace from the serialized output */
+  trimOutput = false;
+
   get visible() {
     return this.hasFlag(F_VISIBLE);
   }
@@ -662,24 +665,12 @@ export abstract class Node<
     if (this.hasFlag(F_IMPLICIT_AMPERSAND)) {
       newNode.addFlag(F_IMPLICIT_AMPERSAND);
     }
-    // copy() should not copy pre/post - always set to undefined
-    // The consuming context (e.g., Sequence) will set appropriate spacing
-    newNode.pre = undefined;
-    newNode.post = undefined;
-    // Also reset pre/post on all child nodes (for deep copies)
-    if (deep) {
-      for (const [value] of getEntriesFromNode(newNode as { value: unknown[] })) {
-        if (value instanceof Node) {
-          value.pre = undefined;
-          value.post = undefined;
-        }
-      }
+    if (trim) {
+      newNode.trimOutput = true;
     }
-    if (!trim) {
-      // Only strip comments from children if not trimming
-      newNode.stripPrePost(newNode, 'pre');
-      newNode.stripPrePost(newNode, 'post');
-    }
+    // Strip comments from pre/post, preserving whitespace
+    newNode.stripPrePost(newNode, 'pre');
+    newNode.stripPrePost(newNode, 'post');
     return newNode;
   }
 
@@ -798,6 +789,7 @@ export abstract class Node<
      * Otherwise, it should be settable after cloning / copying.
      */
     this.index ??= node.index;
+    this.trimOutput = node.trimOutput;
     return this;
   }
 
@@ -889,7 +881,12 @@ export abstract class Node<
       w.add(bodyStr, this);
     }
     this.processPrePost('post', '', options);
-    return w.getSince(mark);
+    let result = w.getSince(mark);
+    // Trim output if flag is set
+    if (this.trimOutput) {
+      result = result.trim();
+    }
+    return result;
   }
 
   /**

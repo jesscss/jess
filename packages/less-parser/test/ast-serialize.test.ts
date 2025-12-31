@@ -20,6 +20,47 @@ describe('serializeTypes coverage', () => {
       (Any [role=charset] '@charset "UTF-8";')
     `);
   });
+  test('nested reference', () => {
+    const { errors, tree } = parser.parse('@ref: #ns.breakpoint(.valToGet[])[@max];');
+    expect(errors.length).toBe(0);
+    expect(serializeTypes(tree)).toBeString(`
+      (Rules
+        [
+          (VarDeclaration
+            name: 
+              (Any [role=ident] 'ref')
+            value: 
+              (Reference
+                target: 
+                  (Call
+                    name: 
+                      (Reference [role=name]
+                        target: 
+                          (Reference [role=name]
+                            key: '#ns'
+                          )
+                        key: '.breakpoint'
+                      )
+                    args: 
+                      (List
+                        [
+                          (Reference
+                            target: 
+                              (Reference [role=name]
+                                key: '.valToGet'
+                              )
+                            key: -1
+                          )
+                        ]
+                      )
+                  )
+                key: 'max'
+              )
+          )
+        ]
+      )
+    `);
+  });
   test('variable declaration', () => {
     const { errors, tree } = parser.parse('@color: red;');
     expect(errors.length).toBe(0);
@@ -312,7 +353,7 @@ test('function call', () => {
 test('@import "file.less" parsed as StyleImport', () => {
   const { errors, tree } = parser.parse('@import "file.less";');
   expect(errors.length).toBe(0);
-  expect(serializeTypes(tree)).toContainString(`
+  expect(serializeTypes(tree, { showOptions: true })).toContainString(`
       (StyleImport
         type: 'import'
         importOptions: {
@@ -321,8 +362,13 @@ test('@import "file.less" parsed as StyleImport', () => {
         }
         path: 
           (Quoted
-            (Any [role=any] 'file.less')
+            quote: '"'
+            escaped: false
+          (Any [role=any]
+            role: 'any'
+            'file.less'
           )
+        )
       )
     `);
 });
@@ -349,7 +395,7 @@ test('@import "file.css" parsed as import AtRule', () => {
 test('@import (less, reference) "file" with options', () => {
   const { errors, tree } = parser.parse('@import (less, reference) "file";');
   expect(errors.length).toBe(0);
-  expect(serializeTypes(tree)).toContainString(`
+  expect(serializeTypes(tree, { showOptions: true })).toContainString(`
       (StyleImport
         type: 'import'
         importOptions: {
@@ -358,8 +404,13 @@ test('@import (less, reference) "file" with options', () => {
         }
         path: 
           (Quoted
-            (Any [role=any] 'file')
+            quote: '"'
+            escaped: false
+          (Any [role=any]
+            role: 'any'
+            'file'
           )
+        )
       )
     `);
 });
@@ -386,7 +437,7 @@ test('@import (css) "file.css" with css option', () => {
 test('@import (multiple) "file.less" with multiple option', () => {
   const { errors, tree } = parser.parse('@import (multiple) "file.less";');
   expect(errors.length).toBe(0);
-  expect(serializeTypes(tree)).toContainString(`
+  expect(serializeTypes(tree, { showOptions: true })).toContainString(`
       (StyleImport
         type: 'import'
         importOptions: {
@@ -395,8 +446,13 @@ test('@import (multiple) "file.less" with multiple option', () => {
         }
         path: 
           (Quoted
-            (Any [role=any] 'file.less')
+            quote: '"'
+            escaped: false
+          (Any [role=any]
+            role: 'any'
+            'file.less'
           )
+        )
       )
     `);
 });

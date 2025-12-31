@@ -41,6 +41,12 @@ export type FindOptions = DeclarationFindOptions & {
    * search rootRules for compound rulesets matching the full path.
    */
   rootRules?: Rules;
+  /**
+   * Whether this lookup has an explicit target (e.g., #ns[@foo]).
+   * When true, Rules with isMixinOutput=true will be searchable.
+   * When false or undefined, mixin output Rules will be excluded.
+   */
+  hasTarget?: boolean;
 };
 
 export abstract class Registry<
@@ -109,6 +115,12 @@ export abstract class Registry<
        */
       rulesSet = rulesSet.filter((n) => {
         const visibility = n.rulesVisibility?.[filterType] ?? '';
+        const isMixinOutput = n.node.options?.isMixinOutput === true;
+        // If lookup has a target and Rules is mixin output, grant public access to all nodes
+        if (isMixinOutput && options?.hasTarget === true) {
+          return true;
+        }
+        // Otherwise, follow normal visibility rules
         const isVisible = ['optional', 'public'].includes(visibility);
         // Local nodes can only be searched once - if we've already passed through
         // a local boundary (local === true), we cannot search another local node
@@ -677,7 +689,13 @@ export class MixinRegistry extends Registry<
     }
 
     let rules: Rules | undefined = this.rules;
-    let { searchParents = true, local = false, candidates = new Set(), context } = options ?? {};
+    let {
+      searchParents = true,
+      local = false,
+      candidates = new Set(),
+      context,
+      hasTarget = false
+    } = options ?? {};
 
     // Track which Rules nodes we've already searched to prevent infinite recursion
     // Use the searchedRules from options if it exists, otherwise create a new Set
@@ -742,6 +760,7 @@ export class MixinRegistry extends Registry<
                 candidates: candidates as Set<Node>,
                 context,
                 filter: options?.filter,
+                hasTarget,
                 searchedRules: undefined // Not needed when searchParents is false
               } as FindOptions);
             }
@@ -778,6 +797,7 @@ export class MixinRegistry extends Registry<
                 candidates: candidates as Set<Node>,
                 context,
                 filter: options?.filter,
+                hasTarget,
                 searchedRules: searchedRules
               } as FindOptions);
             }
@@ -797,6 +817,7 @@ export class MixinRegistry extends Registry<
           childFilterType: filterType,
           context,
           filter: options?.filter,
+          hasTarget,
           searchedRules: searchedRules
         }
       );

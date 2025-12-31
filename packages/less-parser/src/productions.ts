@@ -2811,7 +2811,8 @@ export function mixinArgs(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     let args: List | undefined;
     $.CONSUME(T.LParen);
-    $.OPTION(() => args = $.SUBRULE($.mixinArgList, { ARGS: [ctx] }));
+    // Clear ctx.node when parsing arguments - arguments should start fresh, not inherit the parent node
+    $.OPTION(() => args = $.SUBRULE($.mixinArgList, { ARGS: [{ ...ctx, node: undefined }] }));
     $.CONSUME(T.RParen);
     return args;
   };

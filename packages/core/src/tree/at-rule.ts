@@ -154,17 +154,22 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
     }
 
-    out += w.capture(() => name.toString(options));
-    const nameEndsWithSpace = /\s$/.test(out);
+    const nameOut = w.capture(() => name.toString(options));
+    const nameEndsWithSpace = /\s$/.test(nameOut);
     if (prelude) {
       const preludeOut = w.capture(() => prelude.toString(options));
-      // See if prelude startsWith whitespace (any whitespace character)
       const preludeStartsWithSpace = /^\s/.test(preludeOut);
 
-      if (!nameEndsWithSpace && !preludeStartsWithSpace) {
+      out += nameOut;
+      // If name ends with space AND prelude starts with space, trim the prelude's leading space
+      // Otherwise, add a space only if neither has spacing
+      let finalPreludeOut = preludeOut;
+      if (nameEndsWithSpace && preludeStartsWithSpace) {
+        finalPreludeOut = preludeOut.replace(/^\s+/, '');
+      } else if (!nameEndsWithSpace && !preludeStartsWithSpace) {
         out += ' ';
       }
-      out += preludeOut;
+      out += finalPreludeOut;
       if (rules) {
         const preludeEndsWithSpace = /\s$/.test(preludeOut);
         if (!preludeEndsWithSpace) {
@@ -175,6 +180,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         out = normalizeIndent(idt, out + ';');
       }
     } else {
+      out += nameOut;
       if (rules) {
         if (!nameEndsWithSpace) {
           out += ' ';
