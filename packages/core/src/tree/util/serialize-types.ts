@@ -103,7 +103,7 @@ function serializePlainObject(obj: Record<string, unknown>, depth: number, opts:
       const inner = '\n' + serializeNode(v, depth + 2, opts, visiting);
       lines.push(`${indent(depth + 1, opts.indentSize)}${key}: ${inner}`);
     } else if (Array.isArray(v)) {
-      const inner = serializeArray(v, depth + 1, opts, visiting);
+      const inner = serializeArray(v, depth + 2, opts, visiting);
       lines.push(`${indent(depth + 1, opts.indentSize)}${key}:\n${inner}`);
     } else if (isPlainObject(v)) {
       const inner = serializePlainObject(v as Record<string, unknown>, depth + 1, opts, visiting);

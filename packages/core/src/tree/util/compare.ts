@@ -61,7 +61,10 @@ export function comparePosition(a: Node, b: Node) {
   }
 
   // siblings: lower index first
-  return a0.index - b0.index;
+  const aIndex = a0.index ?? -Infinity;
+  const bIndex = b0.index ?? -Infinity;
+
+  return aIndex - bIndex;
 }
 
 export function compareNodeArray(a: any[], b: any[]): 0 | 1 | -1 | undefined {

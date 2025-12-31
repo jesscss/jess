@@ -64,7 +64,8 @@ import {
   type ComplexSelectorComponent,
   type Selector,
   INTERPOLATION_PLACEHOLDER,
-  type SimpleSelector
+  type SimpleSelector,
+  isNode
 } from '@jesscss/core';
 import { getInterpolatedOrString } from './utils';
 import type { ExtendTarget } from './lessActionsParser';
@@ -740,22 +741,6 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                 if (!RECORDING_PHASE) {
                   // Convert Any nodes to VarDeclaration nodes for mixin definition parameters
                   convertArgsForDefinition(args);
-                  // Set rulesVisibility for mixins based on leakyRules
-                  // If leakyRules: Mixin='public', VarDeclaration='optional'
-                  // If not leakyRules: Mixin='private', VarDeclaration='private'
-                  if (!rules.options) {
-                    rules.options = {};
-                  }
-                  if (!rules.options.rulesVisibility) {
-                    rules.options.rulesVisibility = {};
-                  }
-                  if (this.leakyRules) {
-                    rules.options.rulesVisibility.Mixin = 'public';
-                    rules.options.rulesVisibility.VarDeclaration = 'optional';
-                  } else {
-                    rules.options.rulesVisibility.Mixin = 'private';
-                    rules.options.rulesVisibility.VarDeclaration = 'private';
-                  }
                   const node = new Mixin({ name: selector.valueOf(), params: args, rules, guard }, undefined, $.endRule(), this.context);
 
                   return node;
@@ -1206,8 +1191,9 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     $.startRule();
     let params: List | undefined;
+    let anonToken: IToken | undefined;
     $.OPTION(() => {
-      $.CONSUME(T.AnonMixinStart);
+      anonToken = $.CONSUME(T.AnonMixinStart);
       params = $.SUBRULE($.mixinArgList, { ARGS: [{ ...ctx, isDefinition: true }] });
       $.CONSUME(T.RParen);
     });
@@ -1215,20 +1201,21 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       // Set rulesVisibility for detached rulesets based on leakyRules
-      // If leakyRules: Mixin='public', VarDeclaration='private'
-      // If not leakyRules: Mixin='private', VarDeclaration='private'
-      if (!rules.options) {
-        rules.options = {};
-      }
-      if (!rules.options.rulesVisibility) {
-        rules.options.rulesVisibility = {};
-      }
-      if (this.leakyRules) {
-        rules.options.rulesVisibility.Mixin = 'public';
-        rules.options.rulesVisibility.VarDeclaration = 'private';
-      } else {
-        rules.options.rulesVisibility.Mixin = 'private';
-        rules.options.rulesVisibility.VarDeclaration = 'private';
+      // Less, for whatever reason, has slightly different lookup rules for
+      // "detached rulesets".
+
+      if (!anonToken) {
+        /** To Less, this is a "detached ruleset", even though in our tree it's just a mixin */
+        if (!rules.options.rulesVisibility) {
+          rules.options.rulesVisibility = {};
+        }
+        if (this.leakyRules) {
+          rules.options.rulesVisibility.Mixin = 'public';
+          rules.options.rulesVisibility.VarDeclaration = 'private';
+        } else {
+          rules.options.rulesVisibility.Mixin = 'private';
+          rules.options.rulesVisibility.VarDeclaration = 'private';
+        }
       }
       return new Mixin({ params, rules }, undefined, $.endRule(), this.context);
     }
@@ -2750,11 +2737,38 @@ export function mixinName(this: P, T: TokenMap) {
       if (nameValue.includes('@') || nameValue.includes('$')) {
         nameNode = getInterpolated(nameValue, location, this.context);
         if (asReference) {
-          nameNode = new Reference({ target: ctx.node as Call | Reference, key: nameNode as Interpolated }, { type: 'mixin-ruleset', role: 'name' }, location, this.context);
+          // For interpolated keys, we can't merge into array easily, so keep nested structure
+          // But we still check type to ensure consistency
+          if (isNode(ctx.node, 'Reference') && ctx.node.options.type === 'mixin-ruleset') {
+            // Keep nested structure for interpolated keys
+            nameNode = new Reference({ target: ctx.node, key: nameNode as Interpolated }, { type: 'mixin-ruleset', role: 'name' }, location, this.context);
+          } else {
+            nameNode = new Reference({ target: ctx.node as Call | Reference, key: nameNode as Interpolated }, { type: 'mixin-ruleset', role: 'name' }, location, this.context);
+          }
         }
       } else {
         if (asReference) {
-          nameNode = new Reference({ target: ctx.node as Call | Reference, key: nameValue }, { type: 'mixin-ruleset', role: 'name' }, location, this.context);
+          // If target is a Reference with matching type, merge keys instead of nesting
+          if (isNode(ctx.node, 'Reference') && ctx.node.options.type === 'mixin-ruleset') {
+            const existingKey = ctx.node.value.key;
+            let mergedKeys: string[];
+            if (Array.isArray(existingKey)) {
+              mergedKeys = [...existingKey];
+            } else {
+              mergedKeys = [existingKey as string];
+            }
+            mergedKeys.push(nameValue);
+            // Create a single Reference with merged keys (no target)
+            nameNode = new Reference(
+              { key: mergedKeys.length === 1 ? mergedKeys[0]! : mergedKeys },
+              { type: 'mixin-ruleset', role: 'name' },
+              location,
+              this.context
+            );
+          } else {
+            // Target is Call, Reference with different type, or undefined - create Reference with target
+            nameNode = new Reference({ target: ctx.node as Call | Reference, key: nameValue }, { type: 'mixin-ruleset', role: 'name' }, location, this.context);
+          }
         } else {
           nameNode = $.wrap(new Any(nameValue, { role: 'name' }, $.getLocationInfo(name), this.context), true);
         }
@@ -2855,7 +2869,25 @@ export function lookupOrCall(this: P, T: TokenMap) {
               }
               let result = getInterpolatedOrString(tokenStr, $.getLocationInfo(keyToken), this.context);
 
-              ref = new Reference({ target, key: result }, { type }, $.endRule(), this.context);
+              // If target is a Reference with matching type and result is a string, merge keys instead of nesting
+              if (isNode(target, 'Reference') && target.options.type === type && typeof result === 'string') {
+                const existingKey = target.value.key;
+                let mergedKeys: string[];
+                if (Array.isArray(existingKey)) {
+                  mergedKeys = [...existingKey];
+                } else {
+                  mergedKeys = [existingKey as string];
+                }
+                mergedKeys.push(result);
+                ref = new Reference(
+                  { key: mergedKeys.length === 1 ? mergedKeys[0]! : mergedKeys },
+                  { type },
+                  $.endRule(),
+                  this.context
+                );
+              } else {
+                ref = new Reference({ target, key: result }, { type }, $.endRule(), this.context);
+              }
             } else {
               ref = new Reference({ target, key: -1 }, { type: 'index' }, $.endRule(), this.context);
             }

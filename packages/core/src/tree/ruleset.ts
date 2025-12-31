@@ -93,9 +93,16 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (!this.preEvaluated) {
       const node = this.maybeClone(context);
       node.preEvaluated = true;
-      node.setIndex(context);
+      // Index should already be assigned by parent Rules
       node.sourceNode ??= this;
-      let { selector } = node.value;
+      let { selector, rules } = node.value;
+      if (context.leakyRules) {
+        rules.options.rulesVisibility.Mixin = 'public';
+        rules.options.rulesVisibility.VarDeclaration = 'optional';
+      } else {
+        rules.options.rulesVisibility.Mixin = 'private';
+        rules.options.rulesVisibility.VarDeclaration = 'private';
+      }
       let parentSelector = context.rulesetFrames.at(-1)?.selector;
       if (parentSelector && !(parentSelector instanceof Nil)) {
         selector = node.getImplicitSelector(parentSelector, context.opts.collapseNesting);

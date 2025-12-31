@@ -101,6 +101,12 @@ export type RulesOptions = {
 };
 
 export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
+  get options(): RulesOptions & NodeOptions & {
+    rulesVisibility: Record<string, RulesVisibility>;
+  };
+  set options(options: RulesOptions & NodeOptions & {
+    rulesVisibility: Record<string, RulesVisibility>;
+  });
   eval(context: Context): MaybePromise<this>;
 }
 /**
@@ -538,14 +544,30 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       context.depth++;
       let rules = this.maybeClone(context);
       rules.preEvaluated = true;
-      rules.setIndex(context);
+      // Save current context and set up new context for variable lookups during preEval
+      const saved = this._snapshotContext(context);
+      this._setupContextForRules(context, rules);
+
+      /**
+       * I tried to do this a more efficient way,
+       * like during preEval or parsing, but not all
+       * nodes visit children during preEval, and indexing
+       * during parsing can work but... we also need to do
+       * this for API-created nodes?
+       */
+      if (context.root === rules) {
+        for (let n of rules.nodes()) {
+          if (n.index !== undefined) {
+            break;
+          }
+          n.index = context.ruleCounter++;
+        }
+      }
       // Preserve parent when cloning - if this Rules is inside a ruleset, maintain the parent relationship
       if (this.parent && !rules.parent) {
         this.parent.adopt(rules);
       }
-      // Save current context and set up new context for variable lookups during preEval
-      const saved = this._snapshotContext(context);
-      this._setupContextForRules(context, rules);
+
       // Register main root as extend root if this is the root (needed for extends in preEval)
       // We need to check if this rules is the context.root AND the extendRoots.root is not set yet
       const isMainRoot = rules === context.root && !context.extendRoots.root;
@@ -1412,9 +1434,10 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         let rules = (candidate as Ruleset).value.rules.copy(true);
         /** Adopt for lookup, then adopt for sorting */
         candidate.parent!.adopt(rules);
-        rules.index = candidate.index;
         rules = await rules.eval(thisContext);
         candidate.parent!.adopt(rules);
+        // Rules should have index from eval, but ensure it matches candidate for sorting
+        rules.index = candidate.index;
         hasMatch = true;
         // Skip empty Rules (e.g., containing only invisible nodes like comments)
         // Mark output Rules as mixin output - accessible only when lookup has a target
@@ -1426,7 +1449,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       /** Create new rules, and add the candidate rules, to add to scope */
       rules = rules.copy(true);
       candidate.parent!.adopt(rules);
-      rules.index = candidate.index;
+      // Don't set index before evaluation - let evaluation assign the correct index
       /**
        * If we have params or a guard, we need to create a wrapper rules object,
        * so that the lookups of params and guard do not look at the cloned rules,
@@ -1571,6 +1594,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         } else {
           newRules = await rules.eval(thisContext);
           candidate.parent!.adopt(newRules);
+          // Rules should have index from eval, but ensure it matches candidate for sorting
           newRules.index = candidate.index;
         }
         // Visibility should be preserved by Rules.eval - no need to set it explicitly here
@@ -1632,6 +1656,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       });
       /**
        * Add rules but keep their original parents for further lazy lookups.
+       * Ensure each rule has VarDeclaration: 'optional' before pushing (registerNode uses node's own rulesVisibility)
        */
       for (const rule of rulesArr) {
         let parent = rule.parent;
@@ -1645,7 +1670,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     output.evaluated = true;
     /** Now push all rules into the rules value */
     if (this instanceof Context) {
-      output.setIndex(this);
+      output.index ??= this.ruleCounter++;
       // If the output Rules is empty, return Nil instead
       if (output.value.length === 0) {
         return new Nil();

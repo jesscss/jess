@@ -74,7 +74,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     if (!this.preEvaluated) {
       const node = this.maybeClone(context);
       node.preEvaluated = true;
-      node.setIndex(context);
+      // Index should already be assigned by parent Rules
       node.sourceNode ??= this;
 
       // Evaluate name if needed (for interpolated names)

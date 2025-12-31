@@ -166,30 +166,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   }
 
   /**
-   * Collect the accumulated path from nested References (excluding the current key).
-   * For Reference(target: Reference(target: Reference(key: "#theme"), key: ".dark"), key: ".navbar")
-   * Returns ["#theme", ".dark"] (the path leading to this Reference)
-   */
-  private getAccumulatedPath(): string[] {
-    const path: string[] = [];
-    let current: Reference | undefined = isNode(this.value.target, 'Reference') ? this.value.target : undefined;
-    while (current) {
-      const keyVal = current.value.key;
-      let keyStr: string;
-      if (isNode(keyVal, 'Selector')) {
-        keyStr = Array.from(keyVal.keySet).join('');
-      } else if (Array.isArray(keyVal)) {
-        keyStr = keyVal.join('');
-      } else {
-        keyStr = String(keyVal);
-      }
-      path.unshift(keyStr);
-      current = isNode(current.value.target, 'Reference') ? current.value.target : undefined;
-    }
-    return path;
-  }
-
-  /**
    * We don't need to mark evaluated, because a reference
    * should never resolve to itself
    */
@@ -430,14 +406,15 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             break;
           case 'mixin-ruleset':
             if (isNode(resolvedTarget, 'Rules')) {
-              // Get accumulated path for compound ruleset lookup
-              const accumulatedPath = this.getAccumulatedPath();
-              const rootRules = this.rulesParent ?? context.rulesContext;
-              const findOpts = accumulatedPath.length > 0 && isNode(rootRules, 'Rules')
-                ? { ...opts, accumulatedPath, rootRules }
-                : opts;
+              // When we have nested References (e.g., #theme.dark.navbar.colors()),
+              // each Reference resolves to a Rules, and we search in that Rules.
+              // We don't need accumulated path search because nested References
+              // already handle the search correctly by resolving each step.
+              // The accumulated path search was meant for compound selectors parsed
+              // as a single Reference (like in mixinOrQualifiedRule), but mixinReference
+              // always parses as nested References, so we can skip it here.
               // valueKey can be string or string[] - find() accepts both
-              returnVal = resolvedTarget.find('mixin', valueKey, undefined, findOpts);
+              returnVal = resolvedTarget.find('mixin', valueKey, undefined, opts);
             }
             break;
         }

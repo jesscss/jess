@@ -38,18 +38,17 @@ export interface ContextOptions {
 
   /** Directories to search to resolve files */
   searchPaths?: string[];
+
+  /**
+   * Whether to leak variables and mixins into the caller scope,
+   * such that they can be referenced / called by subsequent rules.
+   *
+   * @deprecated - a Less feature
+   */
+  leakyRules?: boolean;
 }
 
 export interface TreeContextOptions extends ContextOptions {
-  /**
-   * Hoists variable declarations, so they can be
-   * evaluated per scope. Less sets this to true.
-   */
-  // hoistDeclarations?: boolean
-
-  /** In Less 1.x-4.x, Less sets this to true */
-  // leakVariablesIntoScope?: boolean
-
   inlineJavaScript?: boolean;
 
   /**
@@ -114,7 +113,7 @@ export const generateId = (length = 8) => {
 export class TreeContext implements TreeContextOptions {
   opts: Record<string, any>;
   // changed to `rulesVisiblity` set during parsing
-  // leakVariablesIntoScope: boolean
+  leakyRules: boolean;
   mathMode: MathMode;
   unitMode: UnitMode;
 
@@ -139,6 +138,7 @@ export class TreeContext implements TreeContextOptions {
       isModule,
       file,
       plugin,
+      leakyRules,
       ...rest
     } = opts;
     // this.leakVariablesIntoScope = leakVariablesIntoScope ?? false
@@ -147,6 +147,7 @@ export class TreeContext implements TreeContextOptions {
     this.isModule = isModule ?? false;
     this.file = file;
     this.plugin = plugin;
+    this.leakyRules = leakyRules ?? false;
     // this.scope = scope ?? new Scope(parentScope)
     this.opts = rest;
   }
@@ -335,10 +336,15 @@ export class Context {
   /** A flag to clone nodes before mutating */
   preserveOriginalNodes: boolean | undefined;
 
+  get leakyRules() {
+    return this.treeContext.leakyRules ?? false;
+  }
+
   constructor(opts: ContextOptions = {}, plugins?: PluginInterface[]) {
     this.opts = opts;
     this.plugins = plugins ?? [];
     this.extendRoots = new ExtendRootRegistry();
+    this.treeContext = new TreeContext(opts);
   }
 
   /** Full resolved path -> tree */

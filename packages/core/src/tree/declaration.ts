@@ -130,7 +130,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     /** We need to clone declarations, because we alter their options */
     let node = this.maybeClone(context);
     node.preEvaluated = true;
-    node.setIndex(context);
+    // Index should already be assigned by parent Rules
+    return this._applyAssignmentNormalization(node, context);
+  }
+
+  private _applyAssignmentNormalization(node: this, context: Context): MaybePromise<this> {
     let { name, value } = node.value;
 
     const applyAssignmentNormalization = (key: Any<'property'>) => {

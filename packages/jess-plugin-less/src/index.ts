@@ -20,6 +20,8 @@ export class LessPlugin extends AbstractPlugin {
   parser: Parser;
   mathMode: MathMode;
   unitMode: UnitMode;
+  leakyRules: boolean;
+  collapseNesting: boolean;
 
   constructor(public opts: LessOptions = {}) {
     super();
@@ -55,11 +57,11 @@ export class LessPlugin extends AbstractPlugin {
       unitMode = 'loose';
     }
     this.unitMode = unitMode;
+    this.leakyRules = opts.leakyRules ?? true;
+    this.collapseNesting = opts.collapseNesting ?? false;
 
     // Pass options to parser (including leakyRules, defaulting to true)
-    this.parser = new Parser({
-      leakyRules: opts.leakyRules ?? true
-    });
+    this.parser = new Parser();
   }
 
   private _registerFunctions(tree: Rules) {
@@ -87,13 +89,11 @@ export class LessPlugin extends AbstractPlugin {
         path: path.dirname(filePath),
         fullPath: filePath
       },
-      hoistDeclarations: true,
-      /** @todo - write a test to make sure `@use` doesn't leak */
-      leakVariablesIntoScope: true,
       mathMode: this.mathMode,
       unitMode: this.unitMode,
       plugin: this,
-      collapseNesting: this.opts.collapseNesting
+      collapseNesting: this.collapseNesting,
+      leakyRules: this.leakyRules
     });
     let tree: Rules;
     let errors: any[];

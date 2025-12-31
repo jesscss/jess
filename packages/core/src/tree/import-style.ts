@@ -289,7 +289,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         // for linear lookup ($^var)
         // We flatten the structure so all variables are in the same Rules scope
         const finalRules = Rules.create([]);
-        finalRules.setIndex(context);
         // First, add new injected variables that weren't found in imported rules (at the top)
         for (const newNode of newVariables) {
           finalRules.adopt(newNode);

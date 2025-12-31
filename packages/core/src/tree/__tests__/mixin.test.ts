@@ -65,7 +65,10 @@ describe('Mixin', () => {
   });
   beforeEach(() => {
     Node.prototype.fullRender = true;
-    context = new Context();
+    context = new Context({
+      /** This is the default Less behavior */
+      leakyRules: true
+    });
     context.depth = 2;
   });
 
@@ -574,11 +577,11 @@ describe('Mixin', () => {
                   name: any('.navbar'),
                   rules: rules([
                     vardecl({ name: 'color', value: any('cyan') })
-                  ], { rulesVisibility: { VarDeclaration: 'optional' } })
+                  ])
                 })
-              ], { rulesVisibility: { VarDeclaration: 'optional' } })
+              ])
             })
-          ], { rulesVisibility: { VarDeclaration: 'optional' } })
+          ])
         }),
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),

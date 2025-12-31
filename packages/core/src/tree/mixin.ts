@@ -149,9 +149,16 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     // but do NOT call super.preEval() which would pre-evaluate children.
     let node = this.maybeClone(context);
     node.preEvaluated = true;
-    node.setIndex(context);
     node.sourceNode ??= this;
-    let { name } = node.value;
+
+    let { name, rules } = node.value;
+    if (context.leakyRules) {
+      rules.options.rulesVisibility.Mixin = 'public';
+      rules.options.rulesVisibility.VarDeclaration = 'optional';
+    } else {
+      rules.options.rulesVisibility.Mixin = 'private';
+      rules.options.rulesVisibility.VarDeclaration = 'private';
+    }
     if (name && name instanceof Interpolated) {
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {

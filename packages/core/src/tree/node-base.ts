@@ -251,12 +251,6 @@ export abstract class Node<
     return depth;
   }
 
-  setIndex(context: Context) {
-    if (this.index === undefined) {
-      this.index = context.ruleCounter++;
-    }
-  }
-
   /**
    * The parent node of this node. Usually, this
    * shouldn't be set directly. Instead, a parent should use
@@ -689,7 +683,8 @@ export abstract class Node<
     if (!this.preEvaluated) {
       let node = this.maybeClone(context);
       node.preEvaluated = true;
-      node.setIndex(context);
+      // Note: Rules nodes handle index assignment for themselves and their children
+      // Other nodes will get indices assigned by their parent Rules
       let out = node.forEachNode(n => n.preEval(context));
       if (isThenable(out)) {
         return (out as Promise<void>).then(() => node);

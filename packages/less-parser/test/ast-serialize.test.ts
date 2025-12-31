@@ -35,11 +35,8 @@ describe('serializeTypes coverage', () => {
                   (Call
                     name: 
                       (Reference [role=name]
-                        target: 
-                          (Reference [role=name]
-                            key: '#ns'
-                          )
-                        key: '.breakpoint'
+                        key:
+                          pnp['#ns', '.breakpoint']
                       )
                     args: 
                       (List
@@ -545,12 +542,8 @@ test('namespace reference - complex selector', () => {
           (Any [role=ident] 'ref')
         value: 
           (Reference [role=name]
-            target: 
-              (Reference [role=name]
-                key: '#namespace'
-              )
-            key: 
-              '.scoped-mixin'
+            key:
+              ['#namespace', '.scoped-mixin']
           )
       )
     `);
@@ -587,12 +580,8 @@ test('namespace call - complex selector with parentheses', () => {
           (Call
             name: 
               (Reference [role=name]
-                target: 
-                  (Reference [role=name]
-                    key: '#namespace'
-                  )
-                key: 
-                  '.scoped-mixin'
+                key:
+                  ['#namespace', '.scoped-mixin']
               )
           )
       )
@@ -660,11 +649,8 @@ test('namespace reference with complex selector and accessor', () => {
           (Reference
             target: 
               (Reference [role=name]
-                target: 
-                  (Reference [role=name]
-                    key: '#namespace'
-                  )
-                key: '.scoped-mixin'
+                key:
+                  ['#namespace', '.scoped-mixin']
               )
             key: 'property'
           )
@@ -686,11 +672,8 @@ test('namespace call with accessor and parentheses', () => {
               (Reference
                 target: 
                   (Reference [role=name]
-                    target: 
-                      (Reference [role=name]
-                        key: '#namespace'
-                      )
-                    key: '.scoped-mixin'
+                    key:
+                      ['#namespace', '.scoped-mixin']
                   )
                 key: 'ref'
               )

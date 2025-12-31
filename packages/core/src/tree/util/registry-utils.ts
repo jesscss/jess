@@ -29,19 +29,6 @@ export type FindOptions = DeclarationFindOptions & {
   context?: Context;
   searchedRules?: Set<Rules>;
   /**
-   * The accumulated path from nested Reference evaluation.
-   * Used to find compound rulesets that match the full path.
-   * e.g., when searching for ".navbar" after resolving "#theme.dark",
-   * accumulatedPath would be ["#theme", ".dark"]
-   */
-  accumulatedPath?: string[];
-  /**
-   * The root Rules node to search for compound rulesets.
-   * When provided with accumulatedPath, the registry will also
-   * search rootRules for compound rulesets matching the full path.
-   */
-  rootRules?: Rules;
-  /**
    * Whether this lookup has an explicit target (e.g., #ns[@foo]).
    * When true, Rules with isMixinOutput=true will be searchable.
    * When false or undefined, mixin output Rules will be excluded.
@@ -842,28 +829,11 @@ export class MixinRegistry extends Registry<
       } while (rules && rules.type !== 'Rules');
     }
 
-    // If accumulatedPath and rootRules are provided, also search rootRules for compound rulesets
-    // that match the full accumulated path + current search key
-    const { accumulatedPath, rootRules } = options ?? {};
-    if (accumulatedPath && accumulatedPath.length > 0 && rootRules && rootRules !== this.rules) {
-      // Construct the full compound path
-      const fullPath = [...accumulatedPath, ...keyList];
-      // Search rootRules for compound rulesets matching this path
-      const rootRegistry = rootRules.getRegistry('mixin');
-      rootRegistry.indexPendingItems();
-      // Search for the full compound path - this will find compound rulesets
-      const rootResult = rootRegistry.find(fullPath, filterType, {
-        ...options,
-        accumulatedPath: undefined, // Don't recurse infinitely
-        rootRules: undefined,
-        searchParents: true,
-        candidates: candidates as Set<Node>
-      });
-      // Results are already added to candidates set
-    }
+    // With compound keys parsed as arrays (e.g., ['#theme', '.dark', '.navbar', '.colors']),
+    // we can find all matches in one pass. The find() method handles compound keys by
+    // recursively searching inside nested rulesets for the remaining keys.
 
-    const result = candidates.size ? [...candidates] as (Mixin | Ruleset)[] : undefined;
-    return result;
+    return candidates.size ? [...candidates] as (Mixin | Ruleset)[] : undefined;
   }
 }
 
@@ -1024,7 +994,9 @@ export class DeclarationRegistry extends Registry<Declaration> {
       };
 
       const searchRules = this.rules;
+      const beforeSearchCount = declCandidate.size;
       searchRules.getRegistry('declaration')._searchRulesChildren(key, filterType, searchChildrenOptions);
+      const afterSearchCount = declCandidate.size;
 
       // If we found declarations, compare by Rules node sibling index (where the Rules appears in parent)
       // Variable indices are only used for linear lookups within the same Rules
