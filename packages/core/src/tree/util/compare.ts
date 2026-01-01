@@ -26,45 +26,50 @@ export function compare(a: any, b: any) {
  */
 export function comparePosition(a: Node, b: Node) {
   /** Find the lowest common ancestor rules */
+  let min = Math.min(a.depth, b.depth);
+
   let a0 = a;
   let b0 = b;
-  let min = Math.min(a.depth, b.depth);
-  let commonAncestor: Rules | undefined;
 
+  /** Get to the same rules depth */
   if (a.depth !== min) {
-    while (a.depth >= min) {
+    while (a.depth > min) {
       a = a.rulesParent!;
     }
-    commonAncestor = a as Rules;
-  } else {
-    while (b.depth >= min) {
+  } else if (b.depth !== min) {
+    while (b.depth > min) {
       b = b.rulesParent!;
     }
-    commonAncestor = b as Rules;
   }
-  /** Now find the relative position of each */
+  /** Now, get to the same rules ancestor */
+  while (a !== b) {
+    a = a.rulesParent!;
+    b = b.rulesParent!;
+  }
+  let commonAncestor = a;
+
+  /** Now, go up the tree to the same ancestor */
   let aParent = a0;
+  let bParent = b0;
+
   while (true) {
     aParent = aParent.parent!;
-    if (!aParent || aParent === commonAncestor) {
+    if (aParent === commonAncestor) {
       break;
     }
     a0 = aParent;
   }
-  let bParent = b0;
+
   while (true) {
     bParent = bParent.parent!;
-    if (!bParent || bParent === commonAncestor) {
+    if (bParent === commonAncestor) {
       break;
     }
     b0 = bParent;
   }
 
-  // siblings: lower index first
-  const aIndex = a0.index ?? -Infinity;
-  const bIndex = b0.index ?? -Infinity;
-
-  return aIndex - bIndex;
+  /** Now we should have siblings in the nearest common ancestor */
+  return a0.index! - b0.index!;
 }
 
 export function compareNodeArray(a: any[], b: any[]): 0 | 1 | -1 | undefined {

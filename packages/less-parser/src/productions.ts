@@ -2869,8 +2869,11 @@ export function lookupOrCall(this: P, T: TokenMap) {
               }
               let result = getInterpolatedOrString(tokenStr, $.getLocationInfo(keyToken), this.context);
 
-              // If target is a Reference with matching type and result is a string, merge keys instead of nesting
-              if (isNode(target, 'Reference') && target.options.type === type && typeof result === 'string') {
+              // Only merge keys for mixin, mixin-ruleset, or ruleset types
+              // For variable and property types, keep them nested (target.key structure)
+              const targetType = isNode(target, 'Reference') ? target.options.type : undefined;
+              const shouldMergeKeys = targetType === 'mixin' || targetType === 'mixin-ruleset' || targetType === 'ruleset';
+              if (isNode(target, 'Reference') && target.options.type === type && typeof result === 'string' && shouldMergeKeys) {
                 const existingKey = target.value.key;
                 let mergedKeys: string[];
                 if (Array.isArray(existingKey)) {

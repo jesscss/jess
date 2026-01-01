@@ -732,12 +732,6 @@ export class MixinRegistry extends Registry<
           }
           // Only add startKey mixin as candidate if we're doing a simple lookup (not a compound path)
           if (search.length === 0 && match.length === 0 && keyList.length === 1) {
-            // #region agent log - Adding startKey as candidate (simple lookup)
-            // eslint-disable-next-line @typescript-eslint/naming-convention
-            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-            const valueName = isNode(value, 'Mixin') ? value.value.name?.valueOf?.() : (isNode(value, 'Ruleset') ? (value as any).selector?.valueOf?.() : 'unknown');
-            fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers, body: JSON.stringify({ location: 'registry-utils.ts:734', message: 'Adding startKey as candidate (simple lookup)', data: { valueName, valueType: value.type, startKey, keyListLength: keyList.length, searchLength: search.length, matchLength: match.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'R' }) }).catch(() => {});
-            // #endregion
             (candidates ??= new Set()).add(value);
             continue;
           }
@@ -748,16 +742,6 @@ export class MixinRegistry extends Registry<
           // we need to search inside it for the remaining search keys
           // NOTE: We should search inside #theme even if we're not adding it as a candidate (for compound paths)
           if (search.length > 0 && (arraysEqual(match, [startKey!]) || match.length === 0)) {
-            // #region agent log - Checking if we should search inside startKey
-            // eslint-disable-next-line @typescript-eslint/naming-convention
-            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-            const valueName = isNode(value, 'Mixin') ? value.value.name?.valueOf?.() : (isNode(value, 'Ruleset') ? (value as any).selector?.valueOf?.() : 'unknown');
-            const isRuleset = isNode(value, 'Ruleset');
-            const isMixin = isNode(value, 'Mixin');
-            const hasNoParams = isMixin && (!value.value.params || (value.value.params?.length ?? 0) === 0);
-            const shouldSearchInside = isRuleset || hasNoParams;
-            fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers, body: JSON.stringify({ location: 'registry-utils.ts:755', message: 'Checking if we should search inside startKey', data: { valueName, valueType: value.type, startKey, search, keyListLength: keyList.length, matchLength: match.length, isRuleset, isMixin, hasNoParams, shouldSearchInside }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'S' }) }).catch(() => {});
-            // #endregion
             if (
               (isNode(value, 'Ruleset'))
               || (isNode(value, 'Mixin') && (!value.value.params || (value.value.params?.length ?? 0) === 0))
@@ -765,9 +749,6 @@ export class MixinRegistry extends Registry<
               let subRules = value.value.rules;
               const subMixinRegistry = subRules.getRegistry('mixin');
               subMixinRegistry.indexPendingItems();
-              // #region agent log - Recursive search inside startKey
-              fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers, body: JSON.stringify({ location: 'registry-utils.ts:770', message: 'Recursive search inside startKey', data: { valueName, valueType: value.type, startKey, search, subRulesLength: subRules.value.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'S' }) }).catch(() => {});
-              // #endregion
               // With the new indexing, nested rulesets are indexed by their local visible keys
               // So we can just do a normal recursive search - no need to check for matches ending with search
               // When searching inside a nested ruleset with searchParents: false, we don't need searchedRules
@@ -857,34 +838,19 @@ export class MixinRegistry extends Registry<
             // Check if this candidate matches the startKey (for mixins, check name; for rulesets, check selector)
             const candidateKey = isMixin ? candidateNode.value.name?.valueOf?.() : (isRuleset ? (candidateNode as any).selector?.valueOf?.() : '');
             const matchesStartKey = candidateKey === startKey;
-            
+
             // For compound paths (keyList.length > 1), remove startKey from candidates if it was added by _searchRulesChildren
             // because we only want to search inside it, not include it as a final candidate
             if (matchesStartKey && keyList.length > 1) {
               candidatesToRemove.push(candidateNode);
-              // #region agent log - Removing startKey from candidates (compound path)
-              // eslint-disable-next-line @typescript-eslint/naming-convention
-              const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-              const valueName = isMixin ? candidateNode.value.name?.valueOf?.() : (isRuleset ? (candidateNode as any).selector?.valueOf?.() : 'unknown');
-              fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers, body: JSON.stringify({ location: 'registry-utils.ts:850', message: 'Removing startKey from candidates (compound path)', data: { valueName, valueType: candidateNode.type, startKey, keyListLength: keyList.length, searchLength: search.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'U' }) }).catch(() => {});
-              // #endregion
             }
-            
+
             // Search inside the candidate if it matches startKey and we have remaining search keys
             if (matchesStartKey && search.length > 0 && (isRuleset || hasNoParams)) {
-              // #region agent log - Searching inside candidate found by _searchRulesChildren
-              // eslint-disable-next-line @typescript-eslint/naming-convention
-              const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-              const valueName = isMixin ? candidateNode.value.name?.valueOf?.() : (isRuleset ? (candidateNode as any).selector?.valueOf?.() : 'unknown');
-              fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers, body: JSON.stringify({ location: 'registry-utils.ts:872', message: 'Searching inside candidate found by _searchRulesChildren', data: { valueName, valueType: candidateNode.type, startKey, search, keyListLength: keyList.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'T' }) }).catch(() => {});
-              // #endregion
               let subRules = candidateNode.value.rules;
               const subMixinRegistry = subRules.getRegistry('mixin');
               subMixinRegistry.indexPendingItems();
-              // #region agent log - Before recursive find inside candidate
               const candidatesBeforeRecursive = candidates ? new Set(candidates) : new Set();
-              fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers, body: JSON.stringify({ location: 'registry-utils.ts:882', message: 'Before recursive find inside candidate', data: { valueName, valueType: candidateNode.type, startKey, search, candidatesBeforeCount: candidatesBeforeRecursive.size }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'T' }) }).catch(() => {});
-              // #endregion
               subMixinRegistry.find(search, filterType, {
                 searchParents: false,
                 local,
@@ -894,12 +860,9 @@ export class MixinRegistry extends Registry<
                 hasTarget,
                 searchedRules: undefined // Not needed when searchParents is false
               } as FindOptions);
-              // #region agent log - After recursive find inside candidate
               const candidatesAfterRecursive = candidates ? new Set(candidates) : new Set();
               const newCandidates = Array.from(candidatesAfterRecursive).filter(c => !candidatesBeforeRecursive.has(c));
               const newCandidateNames = newCandidates.map(c => isNode(c, 'Mixin') ? c.value.name?.valueOf?.() : (isNode(c, 'Ruleset') ? (c as any).selector?.valueOf?.() : 'unknown'));
-              fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers, body: JSON.stringify({ location: 'registry-utils.ts:895', message: 'After recursive find inside candidate', data: { valueName, valueType: candidateNode.type, startKey, search, candidatesAfterCount: candidatesAfterRecursive.size, newCandidatesCount: newCandidates.length, newCandidateNames }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'T' }) }).catch(() => {});
-              // #endregion
             }
           }
         }
@@ -1094,9 +1057,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
       };
 
       const searchRules = this.rules;
-      const beforeSearchCount = declCandidate.size;
       searchRules.getRegistry('declaration')._searchRulesChildren(key, filterType, searchChildrenOptions);
-      const afterSearchCount = declCandidate.size;
 
       // If we found declarations, compare by Rules node sibling index (where the Rules appears in parent)
       // Variable indices are only used for linear lookups within the same Rules
