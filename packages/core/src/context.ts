@@ -336,15 +336,18 @@ export class Context {
   /** A flag to clone nodes before mutating */
   preserveOriginalNodes: boolean | undefined;
 
+  _leakyRules: boolean | undefined;
   get leakyRules() {
-    return this.treeContext.leakyRules ?? false;
+    return this._leakyRules ?? this.treeContext?.leakyRules ?? false;
   }
 
   constructor(opts: ContextOptions = {}, plugins?: PluginInterface[]) {
     this.opts = opts;
     this.plugins = plugins ?? [];
     this.extendRoots = new ExtendRootRegistry();
-    this.treeContext = new TreeContext(opts);
+    if (opts.leakyRules !== undefined) {
+      this._leakyRules = opts.leakyRules;
+    }
   }
 
   /** Full resolved path -> tree */

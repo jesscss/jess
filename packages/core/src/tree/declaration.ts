@@ -244,9 +244,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                 context.popImportantSource();
               }
               return node;
-            }).catch((err) => {
-              console.error(err);
-              return node;
             });
           }
           if (maybeNewValue instanceof Nil) {

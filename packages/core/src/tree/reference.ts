@@ -415,6 +415,17 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               // always parses as nested References, so we can skip it here.
               // valueKey can be string or string[] - find() accepts both
               returnVal = resolvedTarget.find('mixin', valueKey, undefined, opts);
+              // #region agent log - Step 1: mixin-ruleset lookup result
+              if (returnVal && Array.isArray(returnVal)) {
+                const keyStr = Array.isArray(valueKey) ? valueKey.join('..') : String(valueKey);
+                const mixinCount = returnVal.length;
+                const mixinTypes = returnVal.map(m => m.type);
+                const mixinNames = returnVal.map(m => isNode(m, 'Mixin') ? m.value.name?.valueOf?.() : (isNode(m, 'Ruleset') ? (m as any).selector?.valueOf?.() : 'unknown'));
+                // eslint-disable-next-line @typescript-eslint/naming-convention
+                const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers, body: JSON.stringify({ location: 'reference.ts:417', message: 'Step 1: mixin-ruleset lookup result', data: { keyStr, mixinCount, mixinTypes, mixinNames, expectedCount: 3 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'M' }) }).catch(() => {});
+              }
+              // #endregion
             }
             break;
         }

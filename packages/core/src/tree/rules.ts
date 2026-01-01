@@ -1433,11 +1433,19 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       if (isNode(candidate, 'Ruleset')) {
         let rules = (candidate as Ruleset).value.rules.copy(true);
         /** Adopt for lookup, then adopt for sorting */
+        // #region agent log - Before adopting Ruleset rules
+        // eslint-disable-next-line @typescript-eslint/naming-convention
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers, body: JSON.stringify({ location: 'rules.ts:1436', message: 'Before adopting Ruleset rules', data: { candidateIndex: candidate.index, candidateParentType: candidate.parent?.type, candidateParentIndex: candidate.parent?.index, candidateRulesParentType: candidate.rulesParent?.type, candidateRulesParentIndex: candidate.rulesParent?.index }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'W' }) }).catch(() => {});
+        // #endregion
         candidate.parent!.adopt(rules);
         rules = await rules.eval(thisContext);
         candidate.parent!.adopt(rules);
         // Rules should have index from eval, but ensure it matches candidate for sorting
         rules.index = candidate.index;
+        // #region agent log - After adopting Ruleset rules
+        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers, body: JSON.stringify({ location: 'rules.ts:1442', message: 'After adopting Ruleset rules', data: { rulesIndex: rules.index, rulesParentType: rules.rulesParent?.type, rulesParentIndex: rules.rulesParent?.index, parentType: rules.parent?.type, parentIndex: rules.parent?.index }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'W' }) }).catch(() => {});
+        // #endregion
         hasMatch = true;
         // Skip empty Rules (e.g., containing only invisible nodes like comments)
         // Mark output Rules as mixin output - accessible only when lookup has a target
@@ -1589,13 +1597,26 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           /**
            * We only used the outerRules for evaluation, so we
            * return the inner rules for downstream lookups.
+           * The inner rules stay as children of outerRules (for parameter lookups).
+           * Set their index to match the candidate for sorting.
+           * comparePosition will traverse the parent chain (inner rules -> outerRules -> candidate.parent)
+           * and compare indexes correctly.
            */
           newRules = outerRules.value[rulesIndex] as Rules;
+          newRules.index = candidate.index;
         } else {
           newRules = await rules.eval(thisContext);
+          // #region agent log - Before adopting Mixin rules
+          // eslint-disable-next-line @typescript-eslint/naming-convention
+          const headers2: Record<string, string> = { 'Content-Type': 'application/json' };
+          fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: headers2, body: JSON.stringify({ location: 'rules.ts:1597', message: 'Before adopting Mixin rules', data: { candidateIndex: candidate.index, candidateParentType: candidate.parent?.type, candidateParentIndex: candidate.parent?.index, candidateRulesParentType: candidate.rulesParent?.type, candidateRulesParentIndex: candidate.rulesParent?.index, newRulesIndex: newRules.index }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'W' }) }).catch(() => {});
+          // #endregion
           candidate.parent!.adopt(newRules);
           // Rules should have index from eval, but ensure it matches candidate for sorting
           newRules.index = candidate.index;
+          // #region agent log - After adopting Mixin rules
+          fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: headers2, body: JSON.stringify({ location: 'rules.ts:1605', message: 'After adopting Mixin rules', data: { newRulesIndex: newRules.index, newRulesParentType: newRules.rulesParent?.type, newRulesParentIndex: newRules.rulesParent?.index, parentType: newRules.parent?.type, parentIndex: newRules.parent?.index }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'W' }) }).catch(() => {});
+          // #endregion
         }
         // Visibility should be preserved by Rules.eval - no need to set it explicitly here
         // The eval'd rules should already have their nodes registered
@@ -1630,10 +1651,40 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     }
 
     /**
-     * Now that we have output rules, we sort them by
+     * Now that we have output rules, sort them by
      * their original order
      */
+    // #region agent log - Before sorting Rules by position
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const beforeSortDetails = outputRules.map((r, i) => ({
+      index: i,
+      rulesIndex: r.index,
+      rulesParentType: r.rulesParent?.type,
+      rulesParentIndex: r.rulesParent?.index,
+      parentType: r.parent?.type,
+      parentIndex: r.parent?.index,
+      depth: r.depth,
+      hasRulesParent: !!r.rulesParent,
+      hasParent: !!r.parent
+    }));
+    fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers, body: JSON.stringify({ location: 'rules.ts:1636', message: 'Before sorting Rules by position', data: { outputRulesCount: outputRules.length, beforeSortDetails }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'V' }) }).catch(() => {});
+    // #endregion
     let rulesArr = outputRules.sort(comparePosition);
+    // #region agent log - After sorting Rules by position
+    const afterSortDetails = rulesArr.map((r, i) => ({
+      index: i,
+      rulesIndex: r.index,
+      rulesParentType: r.rulesParent?.type,
+      rulesParentIndex: r.rulesParent?.index,
+      parentType: r.parent?.type,
+      parentIndex: r.parent?.index,
+      depth: r.depth,
+      hasRulesParent: !!r.rulesParent,
+      hasParent: !!r.parent
+    }));
+    fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers, body: JSON.stringify({ location: 'rules.ts:1650', message: 'After sorting Rules by position', data: { rulesArrCount: rulesArr.length, afterSortDetails }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'V' }) }).catch(() => {});
+    // #endregion
     /** Create a rules wrapper - but optimize to avoid unnecessary nesting */
     let output: Rules;
     if (rulesArr.length === 1) {
@@ -1655,13 +1706,23 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         isMixinOutput: true
       });
       /**
-       * Add rules but keep their original parents for further lazy lookups.
-       * Ensure each rule has VarDeclaration: 'optional' before pushing (registerNode uses node's own rulesVisibility)
+       * Add rules to the output wrapper. We adopt them to the output wrapper
+       * so that the parent chain is correct for sorting via comparePosition.
+       * The rulesParent getter will return the output wrapper, which is correct
+       * for lookups since the output wrapper contains all the rules.
        */
       for (const rule of rulesArr) {
-        let parent = rule.parent;
+        // #region agent log - Before pushing rule into output wrapper
+        // eslint-disable-next-line @typescript-eslint/naming-convention
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers, body: JSON.stringify({ location: 'rules.ts:1707', message: 'Before pushing rule into output wrapper', data: { ruleIndex: rule.index, parentType: rule.parent?.type, parentIndex: rule.parent?.index, rulesParentType: rule.rulesParent?.type, rulesParentIndex: rule.rulesParent?.index, ruleDepth: rule.depth, hasParent: !!rule.parent }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'W' }) }).catch(() => {});
+        // #endregion
+        // push() already calls adopt(), so the parent will be set correctly
         output.push(rule);
-        (rule as any).parent = parent;
+        // #region agent log - After pushing rule into output wrapper
+        const newRulesParent = rule.rulesParent;
+        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers, body: JSON.stringify({ location: 'rules.ts:1715', message: 'After pushing rule into output wrapper', data: { ruleIndex: rule.index, parentType: rule.parent?.type, parentIndex: rule.parent?.index, rulesParentType: newRulesParent?.type, rulesParentIndex: newRulesParent?.index, ruleDepth: rule.depth, parentIsOutput: rule.parent === output, hasParent: !!rule.parent }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'W' }) }).catch(() => {});
+        // #endregion
       }
     }
 
