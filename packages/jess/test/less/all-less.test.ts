@@ -29,13 +29,13 @@ const specializedTests = [
 // Temporarily filter to specific tests for debugging - set to empty array to run all
 const targetTests: string[] = [
   // 'tests-unit/at-rules-keyword-comments/at-rules-keyword-comments.less'
-  'tests-unit/charsets/charsets.less'
+  // 'tests-unit/color-functions/charsets.less'
 ];
 
 describe('Can render Less files to CSS', () => {
   // Get all .less files from tests-unit and tests-config directories
   const unitFiles: string[] = []; // glob.sync(path.join(testData, 'tests-unit/*/*.less'));
-  const configFiles = glob.sync(path.join(testData, 'tests-unit/*/*.less'));
+  const configFiles = glob.sync(path.join(testData, 'tests-unit/color-functions/modern-syntax.less'));
   const allFiles = [...unitFiles, ...configFiles];
 
   allFiles

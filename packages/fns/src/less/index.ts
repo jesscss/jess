@@ -38,6 +38,7 @@ export { default as negation } from './negation';
 
 /** Color functions */
 export { default as alpha } from './alpha';
+export { default as argb } from './argb';
 export { default as blue } from './blue';
 export { default as color } from './color';
 export { default as contrast } from './contrast';

@@ -616,8 +616,8 @@ export class Context {
   }
 
   shouldOperate(op: Operator, left: Node, right: Node) {
-    const mathMode = this.treeContext.mathMode
-      ?? this.opts.mathMode
+    const mathMode = this.treeContext?.mathMode
+      ?? this.opts?.mathMode
       ?? 'parens-division';
     const inParens = this.parenFrames !== 0;
     const inCalc = this.calcFrames !== 0;
