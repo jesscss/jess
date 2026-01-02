@@ -352,11 +352,22 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
   const params = (fn as any)?.options?.params as DefineFunctionOptions['params'] | undefined;
   const options = (fn as any)?.options as DefineFunctionOptions | undefined;
 
-  // Handle splitSequence: if enabled and we have a single List with a Sequence, split it
-  if (options?.splitSequence && args.length === 1 && isNode(args[0], 'List')) {
-    const list = args[0] as List;
-    if (list.value.length === 1 && isNode(list.value[0], 'Sequence')) {
-      const sequence = list.value[0] as Sequence;
+  // Handle splitSequence: if enabled and we have a single Sequence (directly or wrapped in a List), split it
+  if (options?.splitSequence && args.length === 1) {
+    let sequence: Sequence | undefined;
+
+    // Check if args[0] is a Sequence directly
+    if (isNode(args[0], 'Sequence')) {
+      sequence = args[0] as Sequence;
+    } else if (isNode(args[0], 'List')) {
+      // Check if args[0] is a List containing a single Sequence
+      const list = args[0] as List;
+      if (list.value.length === 1 && isNode(list.value[0], 'Sequence')) {
+        sequence = list.value[0] as Sequence;
+      }
+    }
+
+    if (sequence) {
       args = splitSequenceIntoArgs(sequence, context);
     }
   }
