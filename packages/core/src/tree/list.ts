@@ -49,20 +49,19 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
       return '';
     }
     // Print first item as-is
-    value[0]!.toString(options);
+    let item = value[0]!;
+    let out = w.capture(() => item.toString(options));
+    w.add(out.trim(), item);
     // Subsequent items: emit sep; capture next item to decide spacing precisely
     for (let i = 1; i <= length; i++) {
-      const item = value[i]!;
-      w.add(sep);
-      const captured = w.capture(() => item.toString(options));
-      if (sep !== '/' && !/^\s/.test(captured)) {
-        /**
-         * For other separators, insert a single space only if the next chunk
-         * doesn't start with whitespace and we're not at the end
-         */
-        w.add(' ');
+      item = value[i]!;
+      if (sep === '/') {
+        w.add(' / ');
+      } else {
+        w.add(`${sep} `);
       }
-      w.add(captured);
+      out = (w.capture(() => item.toString(options))).trim();
+      w.add(out);
     }
     return w.getSince(mark);
   }

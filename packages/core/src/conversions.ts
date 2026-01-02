@@ -100,6 +100,12 @@ export const toNumber = (): ConversionPlugin => (value: unknown) => {
   return value; // Don't know how to handle this, pass through
 };
 
+export const clamp = (min: number, max: number): ConversionPlugin => (value: unknown) => {
+  if (typeof value !== 'number') {
+    return Math.max(min, Math.min(max, value as number));
+  }
+};
+
 /**
  * Converts length units to pixels
  * Supports: px, em, rem, in, cm, mm, pt, pc

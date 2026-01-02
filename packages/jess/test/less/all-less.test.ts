@@ -35,7 +35,7 @@ const targetTests: string[] = [
 describe('Can render Less files to CSS', () => {
   // Get all .less files from tests-unit and tests-config directories
   const unitFiles: string[] = []; // glob.sync(path.join(testData, 'tests-unit/*/*.less'));
-  const configFiles = glob.sync(path.join(testData, 'tests-unit/color-functions/modern-syntax.less'));
+  const configFiles = glob.sync(path.join(testData, 'tests-unit/color-functions/rgba.less'));
   const allFiles = [...unitFiles, ...configFiles];
 
   allFiles

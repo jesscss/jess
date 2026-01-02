@@ -16,7 +16,7 @@ export default defineFunction(
       return c;
     }
     let value = c instanceof Quoted ? c.valueOf() : c.value as string;
-    if (typeof c.value !== 'string') {
+    if (typeof value !== 'string') {
       throw new Error('argument must be a color keyword or 3|4|6|8 digit hex e.g. #FFF');
     }
     let colorValue = colors[value];

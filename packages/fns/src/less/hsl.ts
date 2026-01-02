@@ -1,4 +1,4 @@
-import { Color, ColorFormat, Dimension, defineFunction, type FunctionThis, Call } from '@jesscss/core';
+import { Color, ColorFormat, Dimension, defineFunction, type FunctionThis, Call, TreeContext } from '@jesscss/core';
 import { normalizeHue, percentOf, toNumber } from '@jesscss/core';
 
 const hsl = defineFunction(
@@ -12,11 +12,19 @@ const hsl = defineFunction(
     });
 
     // Store the original function call
-    if (this?.args) {
+    if (this.context) {
+      let context = this.context;
+      let treeContext = context.treeContext;
+      /** Make sure we preserve a slash in the argument */
+      context.treeContext = new TreeContext({
+        mathMode: 'parens-division'
+      });
+
       color.value.node = new Call({
         name: 'hsl',
-        args: await this.args()
+        args: await this.rawArgs.eval(context)
       });
+      context.treeContext = treeContext;
     }
 
     return color;

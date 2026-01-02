@@ -38,6 +38,8 @@ export type FunctionThis = {
    * This provides a consistent API regardless of lazy parameter configuration.
    */
   args: () => MaybePromise<List>;
+  /** The original arguments, not evaluated */
+  rawArgs: List;
 };
 
 export type DefineFunctionOptions = {
@@ -344,6 +346,16 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
     throw new Error('Record-based call without params is not supported');
   }
 
+  /** Normalize into a List node */
+  let firstArg = args[0];
+  let originalArgsList: List;
+  if (isNode(firstArg, 'List')) {
+    originalArgsList = firstArg.clone();
+    args = firstArg.value;
+  } else {
+    originalArgsList = new List(args.map(arg => arg.clone()));
+  }
+
   if (!(fn as any)?.options?.params) {
     // No metadata; treat as normal positional function call (sync or async)
     return (fn as any).call(context, ...args);
@@ -359,12 +371,6 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
     // Check if args[0] is a Sequence directly
     if (isNode(args[0], 'Sequence')) {
       sequence = args[0] as Sequence;
-    } else if (isNode(args[0], 'List')) {
-      // Check if args[0] is a List containing a single Sequence
-      const list = args[0] as List;
-      if (list.value.length === 1 && isNode(list.value[0], 'Sequence')) {
-        sequence = list.value[0] as Sequence;
-      }
     }
 
     if (sequence) {
@@ -379,11 +385,11 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
    * Create FunctionThis proxy for function execution context.
    * The args property is always a function that returns the arguments.
    */
-  const originalArgsList = new List(args);
   context.callStack.at(-1)?.adopt(originalArgsList);
   const functionThis: FunctionThis = {
     context,
-    args: () => originalArgsList.eval(context)
+    args: () => originalArgsList.eval(context),
+    rawArgs: originalArgsList
   };
 
   // Build positional arguments with evaluation, validation, and conversion

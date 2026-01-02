@@ -48,11 +48,11 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     let { value } = this;
     if (value) {
       let isOp = isOpOrExpression(value);
-      context.parenFrames++;
+      context.parenFrames.push(true);
       const maybeEvald = value.eval(context);
       const after = (v: Node): Node => {
         value = v;
-        context.parenFrames--;
+        context.parenFrames.pop();
         /**
          * Removing nested parens or parens around a single
          * dimension is a bit presumptuous, but I think Less's

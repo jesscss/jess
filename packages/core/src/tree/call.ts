@@ -108,7 +108,7 @@ export class Call extends Node<CallValue, CallOptions> {
     //   throw new ReferenceError('Recursive call detected');
     // }
     context.callStack.push(this);
-    context.parenFrames++;
+    context.parenFrames.push(false);
     let { name, args } = this.value;
     let { markImportant } = this.options;
     let n = typeof name === 'string' ? name : await name.eval(context);
@@ -125,7 +125,7 @@ export class Call extends Node<CallValue, CallOptions> {
         }
         // Always pop the outer call's stack entries
         context.callStack.pop();
-        context.parenFrames--;
+        context.parenFrames.pop();
         return result;
       } finally {}
     }
@@ -138,11 +138,11 @@ export class Call extends Node<CallValue, CallOptions> {
       // If args are provided, throw an error - you can't call Rules with arguments
       if (args && args.value.length > 0) {
         context.callStack.pop();
-        context.parenFrames--;
+        context.parenFrames.pop();
         throw new ReferenceError('Cannot call Rules with arguments');
       }
       context.callStack.pop();
-      context.parenFrames--;
+      context.parenFrames.pop();
       // Apply markImportant if needed
       if (markImportant) {
         this.makeImportant(n);
@@ -156,7 +156,7 @@ export class Call extends Node<CallValue, CallOptions> {
       try {
         const result = await (
           args
-            ? callWithContext(context, fn, ...args.value)
+            ? callWithContext(context, fn, args)
             : callWithContext(context, fn)
         );
         context.callStack.pop();
@@ -190,12 +190,14 @@ export class Call extends Node<CallValue, CallOptions> {
           throw e;
         }
         let newCall = this.clone().inherit(this);
+        /** Remove this flag for serialization */
+        newCall.options.silentFail = false;
         newCall.value.name = isNode(name, 'Reference') && name.options.fallbackValue === true
           ? String(name.value.key)
           : String(n.valueOf());
         newCall.value.args = await args?.eval(context);
         context.callStack.pop();
-        context.parenFrames--;
+        context.parenFrames.pop();
         return newCall;
       }
     } else {
@@ -207,9 +209,10 @@ export class Call extends Node<CallValue, CallOptions> {
       if (n === 'calc') {
         context.calcFrames--;
       }
-      context.parenFrames--;
+      context.parenFrames.pop();
       context.callStack.pop();
-      const node = this;
+      const node = this.clone();
+      node.options.silentFail = false;
       if (
         n === 'calc' && args
       ) {

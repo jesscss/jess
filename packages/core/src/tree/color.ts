@@ -314,11 +314,15 @@ export class Color extends Node<ColorData> {
   }
 
   toHex(): string {
-    const [r, g, b] = this.rgb;
-    let hex = '#' + [r, g, b].map(function(c) {
+    const values = this.rgb;
+    let alpha = this.alpha;
+    if (alpha < 1) {
+      values.push(Math.round(alpha * 255));
+    }
+    let hex = '#' + values.map(function(c) {
       let hex = c.toString(16);
       return hex.length === 1 ? '0' + hex : hex;
-    }).join('');
+    }).join('').toUpperCase();
     return hex;
   }
 

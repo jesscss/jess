@@ -301,8 +301,11 @@ export class Context {
    * We push a boolean to this array when entering parens call
    * and pop it when leaving. This helps us determine if operations
    * should be performed or not.
+   *
+   * Sometimes we "reset" the "in parentheses" state by pushing false,
+   * such as within a function call.
    */
-  parenFrames = 0;
+  parenFrames: boolean[] = [];
 
   /**
    * Keys of @let variables --
@@ -619,7 +622,7 @@ export class Context {
     const mathMode = this.treeContext?.mathMode
       ?? this.opts?.mathMode
       ?? 'parens-division';
-    const inParens = this.parenFrames !== 0;
+    const inParens = this.parenFrames.at(-1) ?? false;
     const inCalc = this.calcFrames !== 0;
     if (inCalc) {
       /** Only collapse safe units */

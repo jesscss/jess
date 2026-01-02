@@ -4,7 +4,8 @@ import {
   Color,
   ColorFormat,
   defineFunction,
-  Call
+  Call,
+  TreeContext
 } from '@jesscss/core';
 import { percentOf, toNumber } from '@jesscss/core';
 
@@ -19,11 +20,18 @@ const rgb = defineFunction(
     });
 
     // Store the original function call
-    if (this?.args) {
+    if (this.context) {
+      let context = this.context;
+      let treeContext = context.treeContext;
+      context.treeContext = new TreeContext({
+        mathMode: 'parens-division'
+      });
+
       color.value.node = new Call({
         name: 'rgb',
-        args: await this.args()
+        args: await this.rawArgs.eval(context)
       });
+      context.treeContext = treeContext;
     }
 
     return color;

@@ -170,11 +170,11 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     }
     return pipe(
       () => {
-        context.parenFrames++;
+        context.parenFrames.push(false);
         return currentArg.eval(context);
       },
       (evaluatedArg) => {
-        context.parenFrames--;
+        context.parenFrames.pop();
         node.value.arg = evaluatedArg;
         return node;
       }

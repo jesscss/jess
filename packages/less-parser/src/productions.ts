@@ -2012,7 +2012,8 @@ export function functionCall(this: P, T: TokenMap) {
           const location = $.endRule();
           const nameValue = fnStart.image.slice(0, -1);
           const nameNode = new Reference(nameValue, { type: 'function', fallbackValue: true }, $.getLocationInfo(fnStart), this.context);
-          return new Call({ name: nameNode, args }, undefined, location, this.context);
+          /** Less / Sass functions we try to call that throw just get turned into calls. */
+          return new Call({ name: nameNode, args }, { silentFail: true }, location, this.context);
         }
       }
     }
