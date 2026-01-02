@@ -784,7 +784,7 @@ export abstract class Node<
      * Otherwise, it should be settable after cloning / copying.
      */
     this.index ??= node.index;
-    this.trimOutput = node.trimOutput;
+    this.trimOutput ||= node.trimOutput;
     return this;
   }
 
@@ -868,20 +868,17 @@ export abstract class Node<
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    this.processPrePost('pre', '', options);
-    const bodyMark = w.mark();
-    const bodyStr = this.toTrimmedString(options);
-    const bodyEmitted = w.getSince(bodyMark);
-    if (bodyEmitted.length === 0 && bodyStr) {
-      w.add(bodyStr, this);
-    }
-    this.processPrePost('post', '', options);
-    let result = w.getSince(mark);
+    let pre = w.capture(() => this.processPrePost('pre', '', options));
+    const bodyStr = w.capture(() => this.toTrimmedString(options));
+    let post = w.capture(() => this.processPrePost('post', '', options));
+
+    let result = pre + bodyStr + post;
     // Trim output if flag is set
     if (this.trimOutput) {
       result = result.trim();
     }
-    return result;
+    w.add(result, this);
+    return w.getSince(mark);
   }
 
   /**

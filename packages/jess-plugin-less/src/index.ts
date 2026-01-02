@@ -118,8 +118,8 @@ export class LessPlugin extends AbstractPlugin {
 
 export type { LessOptions } from 'styles-config';
 
-const lessPlugin: Plugin = (opts?: LessOptions) => {
+const lessPlugin = ((opts?: LessOptions) => {
   return new LessPlugin(opts);
-};
+}) satisfies Plugin;
 
 export default lessPlugin;

@@ -2,6 +2,7 @@ import { Node, defineType, F_VISIBLE, F_NON_STATIC  } from './node';
 import type { Context } from '../context';
 import type { Operator } from './util/calculate';
 import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
+import { getPrintOptions, type PrintOptions } from './util/print';
 
 export type { Operator };
 /** Operation is always a tuple */
@@ -24,6 +25,19 @@ export class Operation extends Node<OperationValue> {
     super(value, options, location, treeContext);
     // Operations are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    let [left, op, right] = this.value;
+    let leftStr = w.capture(() => left.toString(options));
+    let rightStr = w.capture(() => right.toString(options));
+    w.add(leftStr.trimEnd(), left);
+    w.add(` ${op} `, this);
+    w.add(rightStr.trimStart(), right);
+    return w.getSince(mark);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {

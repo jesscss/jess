@@ -113,12 +113,12 @@ export const generateId = (length = 8) => {
 export class TreeContext implements TreeContextOptions {
   opts: Record<string, any>;
   // changed to `rulesVisiblity` set during parsing
-  leakyRules: boolean;
-  mathMode: MathMode;
-  unitMode: UnitMode;
+  leakyRules: boolean | undefined;
+  mathMode: MathMode | undefined;
+  unitMode: UnitMode | undefined;
 
   /** @todo - Change how extend works based on this value */
-  isModule: boolean;
+  isModule: boolean | undefined;
 
   file?: TreeContextOptions['file'];
   /**
@@ -141,13 +141,12 @@ export class TreeContext implements TreeContextOptions {
       leakyRules,
       ...rest
     } = opts;
-    // this.leakVariablesIntoScope = leakVariablesIntoScope ?? false
-    this.mathMode = mathMode ?? 'parens-division';
-    this.unitMode = unitMode ?? 'strict';
-    this.isModule = isModule ?? false;
+    this.mathMode = mathMode;
+    this.unitMode = unitMode;
+    this.isModule = isModule;
     this.file = file;
     this.plugin = plugin;
-    this.leakyRules = leakyRules ?? false;
+    this.leakyRules = leakyRules;
     // this.scope = scope ?? new Scope(parentScope)
     this.opts = rest;
   }
@@ -617,7 +616,9 @@ export class Context {
   }
 
   shouldOperate(op: Operator, left: Node, right: Node) {
-    const mathMode = this.opts.mathMode;
+    const mathMode = this.treeContext.mathMode
+      ?? this.opts.mathMode
+      ?? 'parens-division';
     const inParens = this.parenFrames !== 0;
     const inCalc = this.calcFrames !== 0;
     if (inCalc) {
@@ -639,7 +640,7 @@ export class Context {
           return true;
         }
         /** Can't divide by a unit */
-        if (op === '/' && !lUnit) {
+        if (op === '/' && !rUnit) {
           return true;
         }
       }

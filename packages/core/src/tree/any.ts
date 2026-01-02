@@ -52,11 +52,11 @@ export class Any<
     this.preEvaluated = true;
     // Index should already be assigned by parent Rules
     if (this.options.role === 'charset') {
-      if (context.currentCharset) {
+      if (!context.currentCharset) {
         /** @todo - Throw error in the future? */
-        return new Nil();
+        context.currentCharset = this;
       }
-      context.currentCharset = this;
+      return new Nil();
     }
     return this;
   }

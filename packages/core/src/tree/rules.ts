@@ -527,10 +527,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
-  push(node: Node) {
-    this.adopt(node);
-    this.value.push(node);
-    this.registerNode(node);
+  push(...nodes: Node[]) {
+    for (let node of nodes) {
+      this.adopt(node);
+      this.value.push(node);
+      this.registerNode(node);
+    }
   }
 
   at(index: number) {
@@ -550,19 +552,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this._setupContextForRules(context, rules);
 
       /**
-       * I tried to do this a more efficient way,
-       * like during preEval or parsing, but not all
-       * nodes visit children during preEval, and indexing
-       * during parsing can work but... we also need to do
-       * this for API-created nodes?
+       * I think maybe we can just set the index to the actual order?
        */
-      if (context.root === rules) {
-        for (let n of rules.nodes()) {
-          if (n.index !== undefined) {
-            break;
-          }
-          n.index = context.ruleCounter++;
-        }
+      for (let i = 0; i < rules.value.length; i++) {
+        let n = rules.value[i]!;
+        n.index = i;
       }
       // Preserve parent when cloning - if this Rules is inside a ruleset, maintain the parent relationship
       if (this.parent && !rules.parent) {
@@ -1470,7 +1464,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         });
         candidate.parent!.adopt(outerRules);
         outerRules.index = candidate.index;
-        let paramRules: Rules;
+
         for (let i = 0; i < params.value.length; i++) {
           let param = params.value[i]!;
           if (isNode(param, 'Rest')) {
@@ -1509,25 +1503,13 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           }
 
           if (isNode(param, 'VarDeclaration')) {
-            if (!paramRules!) {
-              paramRules = Rules.create([], {
-                rulesVisibility: {
-                  Ruleset: 'public',
-                  Declaration: 'public',
-                  VarDeclaration: 'public',
-                  Mixin: 'public'
-                },
-                local: true
-              });
-              outerRules.push(paramRules);
-            }
             // Assign negative indices so they're conceptually "before" the rules and found first
             if (param.index === undefined) {
               // Use negative indices starting from -1, -2, etc. so they sort before regular rules
               param.index = -(i + 1);
             }
             param.removeFlag(F_VISIBLE);
-            paramRules.push(param);
+            outerRules.push(param);
           }
           // Note: Any with role: 'property' should have been converted to VarDeclaration during matching
           // If we see one here, it's an error - params should all be VarDeclaration by now
@@ -1559,14 +1541,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         thisContext.callSiteIndex = callSiteIndex;
       }
       if (guard) {
-        outerRules ??= Rules.create([], {
-          rulesVisibility: {
-            Ruleset: 'public',
-            Declaration: 'public',
-            VarDeclaration: 'public',
-            Mixin: 'public'
-          }
-        });
+        outerRules ??= Rules.create([]);
         outerRules.adopt(guard);
         candidate.parent!.adopt(outerRules);
         /** Allow lookup on the inherited rules */
@@ -1599,7 +1574,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           candidate.parent!.adopt(rules);
           newRules = await rules.eval(thisContext);
         } else {
-          outerRules.push(rules);
+          outerRules.push(...rules.value);
+          outerRules.options.rulesVisibility = rules.options.rulesVisibility;
           newRules = await outerRules.eval(thisContext);
         }
         candidate.parent!.adopt(newRules);
