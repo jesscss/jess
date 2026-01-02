@@ -29,7 +29,7 @@ const specializedTests = [
 // Temporarily filter to specific tests for debugging - set to empty array to run all
 const targetTests: string[] = [
   // 'tests-unit/at-rules-keyword-comments/at-rules-keyword-comments.less'
-  'tests-unit/calc/calc.less'
+  'tests-unit/charsets/charsets.less'
 ];
 
 describe('Can render Less files to CSS', () => {
