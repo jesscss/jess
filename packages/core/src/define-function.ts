@@ -5,7 +5,7 @@ import type { Context } from './context';
 import { isThenable } from '@jesscss/awaitable-pipe';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { List, Sequence, Operation, Num, Dimension } from './tree';
-import type { ConversionPlugin } from './conversions';
+import type { ConversionPlugin, PreprocessParams } from './conversions';
 
 export type PrimitiveType = 'string' | 'number' | 'boolean' | 'null' | 'undefined';
 export type ArgType = PrimitiveType | Class<any> | AbstractClass<any>;
@@ -42,46 +42,36 @@ export type FunctionThis = {
   rawArgs: List;
 };
 
+export type ParamDefinition = {
+  name: string;
+  type: ArgType | readonly ArgType[];
+  optional?: boolean;
+  default?: any;
+  /** Marks this parameter as a variadic rest parameter. Must be the last param. */
+  rest?: boolean;
+  /** If true, provide a thunk (() => Promise<T>) to the internal positional function */
+  lazy?: boolean;
+  /** Conversion plugins to apply to the argument before passing to the function */
+  convert?: ConversionPlugin[];
+};
+
 export type DefineFunctionOptions = {
-  params: readonly {
-    name: string;
-    type: ArgType | readonly ArgType[];
-    optional?: boolean;
-    default?: any;
-    /** Marks this parameter as a variadic rest parameter. Must be the last param. */
-    rest?: boolean;
-    /** If true, provide a thunk (() => Promise<T>) to the internal positional function */
-    lazy?: boolean;
-    /** Conversion plugins to apply to the argument before passing to the function */
-    convert?: ConversionPlugin[];
-  }[];
   /**
-   * Enables sequence splitting for CSS function calls like `rgb(255 255 255 / 50%)`.
-   *
-   * When enabled, a single Sequence argument will be split into individual positional
-   * parameters. If a slash (/) is present, the last member of the sequence will be
-   * an Operation that gets distributed as separate arguments.
-   *
-   * @example
-   * ```typescript
-   * const rgb = defineFunction('rgb', function(r: Number, g: Number, b: Number, a: Dimension) {
-   *   return `rgb(${r} ${g} ${b} / ${a})`;
-   * }, {
-   *   params: [
-   *     { name: 'r', type: Number },
-   *     { name: 'g', type: Number },
-   *     { name: 'b', type: Number },
-   *     { name: 'a', type: Dimension }
-   *   ],
-   *   splitSequence: true
-   * });
-   *
-   * // This call: rgb(255 255 255 / 50%)
-   * // Will be parsed as: rgb([255, 255, 255, [50%, '/', undefined]])
-   * // And split into: r=255, g=255, b=255, a=50%
-   * ```
+   * Parameter definitions. Can be a single array for one signature,
+   * or an array of arrays for function overloading (multiple signatures).
+   * The system will try each signature until one matches.
    */
-  splitSequence?: boolean;
+  params: readonly ParamDefinition[] | readonly ParamDefinition[][];
+  /**
+   * Preprocesses the raw arguments array before parsing into a record.
+   * This allows transformations like splitting sequences, normalizing arguments, etc.
+   * Applied in order, with each preprocessor receiving the output of the previous one.
+   *
+   * @param args - The raw arguments array
+   * @param context - The evaluation context
+   * @returns The processed arguments array (can be async)
+   */
+  preprocessParams?: PreprocessParams[];
   // Future options can be added here
   // example?: boolean;
   // validate?: boolean;
@@ -269,7 +259,18 @@ export function defineFunction<
    * All calls are converted to positional format before calling the internal function.
    */
   const result = function(...args: any[]): ReturnType<F> {
-    const params = options?.params ?? [] as DefineFunctionOptions['params'];
+    const rawParams = options?.params;
+    if (!rawParams) {
+      return (fn as any)(...args);
+    }
+
+    // Normalize params - handle overloaded signatures
+    const paramSignatures: ParamDefinition[][] = Array.isArray(rawParams) && rawParams.length > 0 && Array.isArray(rawParams[0])
+      ? rawParams.map(sig => [...sig]) as ParamDefinition[][]
+      : [[...(rawParams as readonly ParamDefinition[])]];
+
+    // For direct calls, use the first signature (overloading handled in callWithContext)
+    const params = paramSignatures[0]!;
 
     // Validate rest parameter position
     validateRestParameterPosition(params);
@@ -306,37 +307,6 @@ export function defineFunction<
   });
 }
 
-/**
- * Splits a sequence into individual arguments for CSS function calls.
- * Handles operations with slashes (/) by distributing the left and right operands.
- *
- * @param sequence - The sequence to split
- * @param context - The evaluation context
- * @returns Array of individual arguments
- */
-function splitSequenceIntoArgs(sequence: Sequence, context: Context): any[] {
-  const args: any[] = [];
-
-  for (let i = 0; i < sequence.value.length; i++) {
-    const item = sequence.value[i]!;
-
-    // Check if this is the last item and it's an Operation (likely a slash)
-    if (i === sequence.value.length - 1 && item.type === 'Operation') {
-      const [left, op, right] = (item as Operation).value;
-      // Add the left operand
-      args.push(left);
-      // Add the right operand if it exists
-      if (right) {
-        args.push(right);
-      }
-    } else {
-      args.push(item);
-    }
-  }
-
-  return args;
-}
-
 /** This will be called internally by Jess to functions created with defineFunction */
 export async function callWithContext(context: Context, fn: (...args: any[]) => any, ...args: any[]): Promise<any> {
   if (!(fn as any)?.options?.params && args.some(arg =>
@@ -346,15 +316,8 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
     throw new Error('Record-based call without params is not supported');
   }
 
-  /** Normalize into a List node */
-  let firstArg = args[0];
-  let originalArgsList: List;
-  if (isNode(firstArg, 'List')) {
-    originalArgsList = firstArg.clone();
-    args = firstArg.value;
-  } else {
-    originalArgsList = new List(args.map(arg => arg.clone()));
-  }
+  /** Normalize into a List node for tracking original arguments */
+  const originalArgsList = new List(args.map(arg => isNode(arg) ? arg.clone() : arg));
 
   if (!(fn as any)?.options?.params) {
     // No metadata; treat as normal positional function call (sync or async)
@@ -364,22 +327,93 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
   const params = (fn as any)?.options?.params as DefineFunctionOptions['params'] | undefined;
   const options = (fn as any)?.options as DefineFunctionOptions | undefined;
 
-  // Handle splitSequence: if enabled and we have a single Sequence (directly or wrapped in a List), split it
-  if (options?.splitSequence && args.length === 1) {
-    let sequence: Sequence | undefined;
-
-    // Check if args[0] is a Sequence directly
-    if (isNode(args[0], 'Sequence')) {
-      sequence = args[0] as Sequence;
-    }
-
-    if (sequence) {
-      args = splitSequenceIntoArgs(sequence, context);
+  // Apply preprocessParams if provided (e.g., for splitting sequences)
+  if (options?.preprocessParams && options.preprocessParams.length > 0) {
+    for (const preprocessor of options.preprocessParams) {
+      const processed = preprocessor(args, context);
+      if (isThenable(processed)) {
+        args = await processed;
+      } else {
+        args = processed;
+      }
     }
   }
 
-  // Parse arguments into a record
-  const record = parseCallWithContextArgs(args, params);
+  // Handle function overloading: params can be an array of param arrays
+  // Normalize to always be an array of signatures
+  const paramSignatures: ParamDefinition[][] = (() => {
+    if (!params) {
+      return [];
+    }
+    // Check if params is an array of arrays (overloaded signatures)
+    if (Array.isArray(params) && params.length > 0 && Array.isArray(params[0])) {
+      return params.map(sig => [...sig]) as ParamDefinition[][];
+    }
+    // Single signature - wrap in array
+    return [[...(params as readonly ParamDefinition[])]];
+  })();
+
+  let matchedParams: readonly ParamDefinition[] | undefined;
+  let record: any;
+  let lastError: Error | undefined;
+
+  // Try each signature until one matches
+  for (const signature of paramSignatures) {
+    try {
+      record = parseCallWithContextArgs(args, signature);
+      // Try to build positional args to validate the signature matches
+      // We'll do a dry-run validation
+      const tempRecord = { ...record };
+      let isValid = true;
+
+      // Check if we have a record object (plain object or Collection) in args
+      const hasRecordArg = args.some(arg =>
+        (isNode(arg) && arg.type === 'Collection') || isPlainObject(arg)
+      );
+
+      for (let i = 0; i < signature.length; i++) {
+        const def = signature[i]!;
+        const value = tempRecord[def.name];
+
+        // Check required parameters
+        if (!def.optional && !def.rest && value === undefined) {
+          isValid = false;
+          break;
+        }
+
+        // Check if we have enough arguments (skip this check if we have a record arg)
+        if (!hasRecordArg && !def.rest && i >= args.length && !def.optional) {
+          isValid = false;
+          break;
+        }
+      }
+
+      // Check if we have too many arguments (not counting rest params or record args)
+      const hasRest = signature.some(p => p.rest);
+      if (!hasRest && !hasRecordArg && args.length > signature.length) {
+        isValid = false;
+      }
+
+      if (isValid) {
+        matchedParams = signature;
+        break;
+      }
+    } catch (error) {
+      lastError = error as Error;
+      continue;
+    }
+  }
+
+  // If no signature matched, throw an error
+  if (!matchedParams) {
+    if (lastError) {
+      throw lastError;
+    }
+    throw new Error(`No matching function signature for ${args.length} argument(s)`);
+  }
+
+  // Re-parse with the matched signature to ensure correct record structure
+  record = parseCallWithContextArgs(args, matchedParams);
 
   /**
    * Create FunctionThis proxy for function execution context.
@@ -393,7 +427,7 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
   };
 
   // Build positional arguments with evaluation, validation, and conversion
-  const positionalArgs = await buildCallWithContextPositionalArgs(record, params, context);
+  const positionalArgs = await buildCallWithContextPositionalArgs(record, matchedParams, context);
 
   // Call the function with the evaluated arguments
   // Mixin functions expect Context as 'this', not FunctionThis
@@ -412,8 +446,8 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
 /**
  * Validates that rest parameters are in the correct position (last)
  */
-function validateRestParameterPosition(params: DefineFunctionOptions['params']): void {
-  const restIndex = params.findIndex(p => (p as any).rest);
+function validateRestParameterPosition(params: readonly ParamDefinition[]): void {
+  const restIndex = params.findIndex(p => p.rest);
   if (restIndex >= 0 && restIndex !== params.length - 1) {
     throw new Error('Rest parameter must be the last parameter');
   }
@@ -436,7 +470,7 @@ function applyConversionPlugins(value: unknown, plugins: ConversionPlugin[]): un
 /**
  * Parses function arguments into a record object
  */
-function parseArgumentsToRecord(args: any[], params: DefineFunctionOptions['params']): any {
+function parseArgumentsToRecord(args: any[], params: readonly ParamDefinition[]): any {
   const record: any = {};
   const restIndex = params.findIndex(p => (p as any).rest);
   const hasRest = restIndex >= 0;
@@ -525,7 +559,7 @@ function parseArgumentsToRecord(args: any[], params: DefineFunctionOptions['para
 /**
  * Applies defaults and validates arguments
  */
-function applyDefaultsAndValidate(record: any, params: DefineFunctionOptions['params']): void {
+function applyDefaultsAndValidate(record: any, params: readonly ParamDefinition[]): void {
   // Apply defaults for missing parameters
   for (const paramDef of params ?? []) {
     const paramName = paramDef.name;
@@ -549,7 +583,7 @@ function applyDefaultsAndValidate(record: any, params: DefineFunctionOptions['pa
 /**
  * Builds positional arguments from record
  */
-function buildPositionalArgs(record: any, params: DefineFunctionOptions['params']): any[] {
+function buildPositionalArgs(record: any, params: readonly ParamDefinition[]): any[] {
   const positionalArgs: any[] = [];
 
   for (let i = 0; i < (params?.length ?? 0); i++) {
@@ -573,7 +607,13 @@ function buildPositionalArgs(record: any, params: DefineFunctionOptions['params'
     } else {
       const v = record[name];
       if ((def as any).lazy) {
-        positionalArgs.push(createThunk(v, def));
+        // For optional lazy parameters, if value is undefined, pass undefined directly
+        // instead of creating a thunk (which would try to call undefined())
+        if (v === undefined && (def.optional || def.default !== undefined)) {
+          positionalArgs.push(undefined);
+        } else {
+          positionalArgs.push(createThunk(v, def));
+        }
       } else {
         // Apply conversion plugins if defined
         if (def.convert && v instanceof Dimension) {
@@ -591,7 +631,7 @@ function buildPositionalArgs(record: any, params: DefineFunctionOptions['params'
 /**
  * Parses callWithContext arguments into a record
  */
-function parseCallWithContextArgs(args: any[], params: DefineFunctionOptions['params'] | undefined): any {
+function parseCallWithContextArgs(args: any[], params: readonly ParamDefinition[] | undefined): any {
   const record: any = {};
   const restIndex = params ? params.findIndex(p => (p as any).rest) : -1;
   const hasRest = (restIndex ?? -1) >= 0;
@@ -643,7 +683,7 @@ function parseCallWithContextArgs(args: any[], params: DefineFunctionOptions['pa
  */
 async function buildCallWithContextPositionalArgs(
   record: any,
-  params: DefineFunctionOptions['params'] | undefined,
+  params: readonly ParamDefinition[] | undefined,
   context: Context
 ): Promise<any[]> {
   const positionalArgs: any[] = [];
@@ -674,7 +714,13 @@ async function buildCallWithContextPositionalArgs(
     } else {
       const v = record[name];
       if ((def as any).lazy) {
-        positionalArgs.push(createThunk(v, def, context));
+        // For optional lazy parameters, if value is undefined, pass undefined directly
+        // instead of creating a thunk (which would try to call undefined())
+        if (v === undefined && (def.optional || def.default !== undefined)) {
+          positionalArgs.push(undefined);
+        } else {
+          positionalArgs.push(createThunk(v, def, context));
+        }
       } else {
         let processedValue: any = (isNode(v) && !v.evaluated) ? (v as any).eval(context) : v;
 
@@ -711,7 +757,7 @@ async function buildCallWithContextPositionalArgs(
 /**
  * Validates callWithContext arguments from record (before conversion)
  */
-function validateCallWithContextArgs(record: any, params: DefineFunctionOptions['params'] | undefined): void {
+function validateCallWithContextArgs(record: any, params: readonly ParamDefinition[] | undefined): void {
   if (!params) {
     return;
   }
@@ -743,16 +789,53 @@ function validateCallWithContextArgs(record: any, params: DefineFunctionOptions[
  * Creates a thunk function that evaluates a value and validates the result
  */
 function createThunk(val: any, paramDef: any, context?: Context): () => MaybePromise<any> {
+  // For direct calls without context, val should be the user's lazy function (e.g., () => new Dimension(...))
+  // NOT a thunk. We create a thunk that calls val() and validates the resolved result.
+  if (typeof val === 'function' && !context) {
+    // Create a thunk that calls val() and validates the resolved result
+    // Note: We validate the RESOLVED result when the thunk is called, not the function itself
+    return async (): Promise<any> => {
+      const result = await val();
+      // A thunk should never return a function - if it does, that's an error
+      // Check both typeof and instanceof Function to catch all function types
+      if (typeof result === 'function' || result instanceof Function) {
+        throw new Error(`Thunk for parameter '${paramDef?.name}' returned a function. This indicates val was already a thunk, which should never happen. Original val type: ${typeof val}, result type: ${typeof result}, result constructor: ${result?.constructor?.name}`);
+      }
+      // Validate the RESOLVED result (not the function itself)
+      // This is where lazy parameter validation happens - when the thunk is called and the value is resolved
+      // Skip validation for optional parameters that are undefined
+      if (paramDef && !(paramDef as any).rest && !(result === undefined && (paramDef.optional || paramDef.default !== undefined))) {
+        const validation = validateValue(result, paramDef.type, paramDef.name);
+        if (!validation.isValid) {
+          throw new TypeError(validation.errorMessage);
+        }
+      }
+      return result;
+    };
+  }
+
+  // For callWithContext path or non-function values
+  // If val is undefined and parameter is optional, return a thunk that returns undefined
+  if (val === undefined && (paramDef?.optional || paramDef?.default !== undefined)) {
+    return async (): Promise<any> => {
+      return undefined;
+    };
+  }
   return async (): Promise<any> => {
     let result;
     if (context && isNode(val) && !val.evaluated) {
       result = await (val as any).eval(context);
+    } else if (typeof val === 'function') {
+      // If val is a function (lazy parameter), call it
+      result = await val();
     } else {
       result = val;
     }
 
     // Validate the evaluated result if we have param definition
-    if (paramDef && !(paramDef as any).rest) {
+    // Note: For lazy parameters, we validate the result of calling the function, not the function itself
+    // Skip validation for optional parameters that are undefined
+    if (paramDef && !(paramDef as any).rest && !(result === undefined && (paramDef.optional || paramDef.default !== undefined))) {
       const validation = validateValue(result, paramDef.type, paramDef.name);
       if (!validation.isValid) {
         throw new TypeError(validation.errorMessage);
@@ -766,7 +849,7 @@ function createThunk(val: any, paramDef: any, context?: Context): () => MaybePro
 /**
  * Runtime validation function to check argument types and required parameters for record-based calls
  */
-function validateArguments(record: any, params?: DefineFunctionOptions['params']) {
+function validateArguments(record: any, params?: readonly ParamDefinition[]) {
   if (!params) {
     return;
   }
@@ -788,8 +871,11 @@ function validateArguments(record: any, params?: DefineFunctionOptions['params']
       continue;
     }
 
-    // Skip validation for lazy parameters since they're passed as thunks
+    // For lazy parameters, validate that it's a function (validation of result happens in thunk)
     if ((paramDef as any).lazy) {
+      if (typeof value !== 'function') {
+        throw new TypeError(`Argument '${paramName}' must be a function (lazy parameter). Got: ${typeof value}`);
+      }
       continue;
     }
 
@@ -801,9 +887,12 @@ function validateArguments(record: any, params?: DefineFunctionOptions['params']
       const elementTypes = Array.isArray(expectedType) ? expectedType : [expectedType];
       for (let idx = 0; idx < (value as any[]).length; idx++) {
         const el = (value as any[])[idx];
-        const validation = validateArrayElements([el], elementTypes, paramName);
-        if (!validation.isValid) {
-          throw new TypeError(validation.errorMessage);
+        const isValid = (Array.isArray(elementTypes) ? elementTypes : [elementTypes]).some(type => isValidType(el, type));
+        if (!isValid) {
+          const types = Array.isArray(elementTypes) ? elementTypes : [elementTypes];
+          const typeList = types.map((t: any) => typeof t === 'function' ? t.name : t).join(', ');
+          const actualType = typeof el === 'object' && el !== null ? el.constructor?.name || typeof el : typeof el;
+          throw new TypeError(`Element ${idx} of '${paramName}' must be of type '${typeList}'. Got: ${actualType}`);
         }
       }
     } else {

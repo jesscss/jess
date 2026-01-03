@@ -156,7 +156,7 @@ export class Call extends Node<CallValue, CallOptions> {
       try {
         const result = await (
           args
-            ? callWithContext(context, fn, args)
+            ? callWithContext(context, fn, ...args.value)
             : callWithContext(context, fn)
         );
         context.callStack.pop();

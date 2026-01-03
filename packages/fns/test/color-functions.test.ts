@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { defineFunction, Color, ColorFormat, Dimension } from '@jesscss/core';
+import { defineFunction, Color, ColorFormat, Dimension, Context, callWithContext } from '@jesscss/core';
 import {
   percentOf,
   angleToDegrees,
   normalizeHue,
   alphaToNumber,
-  toNumber
+  toNumber,
+  splitSequence
 } from '@jesscss/core';
 import rgb from '../src/less/rgb';
 import rgba from '../src/less/rgba';
@@ -46,13 +47,55 @@ describe('Color Functions', () => {
 
     it('should handle sequence syntax (comma-less)', async () => {
       // This would be parsed as a sequence: rgb(255 0 0)
-      // The splitSequence option should handle this
+      // The preprocessParams with splitSequence() should handle this
       const r = new Dimension({ number: 255, unit: '' });
       const g = new Dimension({ number: 0, unit: '' });
       const b = new Dimension({ number: 0, unit: '' });
 
       const result = await rgb(r, g, b);
       expect(result.rgb).toEqual([255, 0, 0]);
+    });
+
+    it('should clone a Color and set format to RGB when passed just a Color', async () => {
+      const inputColor = new Color({
+        format: ColorFormat.HSL,
+        hsl: [180, 0.5, 0.5],
+        alpha: 0.8
+      });
+      const context = new Context();
+
+      const result = await callWithContext(context, rgb, inputColor);
+
+      // Should be a different instance (cloned)
+      expect(result).not.toBe(inputColor);
+      // Should have RGB format
+      expect(result.value.format).toBe(ColorFormat.RGB);
+      // Should preserve the color values (converted from HSL)
+      // HSL [180, 0.5, 0.5] converts to approximately [64, 191, 191] in RGB
+      expect(result.rgb).toEqual([64, 191, 191]);
+      // Should preserve alpha
+      expect(result.alpha).toBe(0.8);
+    });
+
+    it('should clone a Color, set format to RGB, and update alpha when passed Color and opacity', async () => {
+      const inputColor = new Color({
+        format: ColorFormat.HEX,
+        rgb: [255, 0, 0],
+        alpha: 1
+      });
+      const opacity = new Dimension({ number: 50, unit: '%' });
+      const context = new Context();
+
+      const result = await callWithContext(context, rgb, inputColor, opacity);
+
+      // Should be a different instance (cloned)
+      expect(result).not.toBe(inputColor);
+      // Should have RGB format
+      expect(result.value.format).toBe(ColorFormat.RGB);
+      // Should preserve RGB values
+      expect(result.rgb).toEqual([255, 0, 0]);
+      // Should update alpha to 0.5 (50%)
+      expect(result.alpha).toBe(0.5);
     });
   });
 
@@ -191,6 +234,49 @@ describe('Color Functions', () => {
       expect(result.hsl[1]).toBe(0.5);
       expect(result.hsl[2]).toBe(0.5);
     });
+
+    it('should clone a Color and set format to HSL when passed just a Color', async () => {
+      const inputColor = new Color({
+        format: ColorFormat.RGB,
+        rgb: [255, 0, 0],
+        alpha: 0.8
+      });
+      const context = new Context();
+
+      const result = await callWithContext(context, hsl, inputColor);
+
+      // Should be a different instance (cloned)
+      expect(result).not.toBe(inputColor);
+      // Should have HSL format
+      expect(result.value.format).toBe(ColorFormat.HSL);
+      // Should preserve the color values (converted from RGB)
+      expect(result.hsl[0]).toBeCloseTo(0, 1); // Red hue
+      expect(result.hsl[1]).toBeCloseTo(1, 1); // Full saturation
+      expect(result.hsl[2]).toBeCloseTo(0.5, 1); // 50% lightness
+      // Should preserve alpha
+      expect(result.alpha).toBe(0.8);
+    });
+
+    it('should clone a Color, set format to HSL, and update alpha when passed Color and opacity', async () => {
+      const inputColor = new Color({
+        format: ColorFormat.HEX,
+        rgb: [0, 255, 0],
+        alpha: 1
+      });
+      const opacity = new Dimension({ number: 75, unit: '%' });
+      const context = new Context();
+
+      const result = await callWithContext(context, hsl, inputColor, opacity);
+
+      // Should be a different instance (cloned)
+      expect(result).not.toBe(inputColor);
+      // Should have HSL format
+      expect(result.value.format).toBe(ColorFormat.HSL);
+      // Should preserve HSL values (converted from RGB)
+      expect(result.hsl[0]).toBeCloseTo(120, 1); // Green hue
+      // Should update alpha to 0.75 (75%)
+      expect(result.alpha).toBe(0.75);
+    });
   });
 
   describe('HSLA Function', () => {
@@ -210,7 +296,7 @@ describe('Color Functions', () => {
           { name: 'l', type: Dimension, convert: [percentOf(100), toNumber()] },
           { name: 'a', type: Dimension, convert: [alphaToNumber(), toNumber()] }
         ],
-        splitSequence: true
+        preprocessParams: splitSequence()
       }
     );
 
@@ -272,7 +358,7 @@ describe('Color Functions', () => {
           { name: 'g', type: Dimension, convert: [percentOf(255), toNumber()] },
           { name: 'b', type: Dimension, convert: [percentOf(255), toNumber()] }
         ],
-        splitSequence: true
+        preprocessParams: splitSequence()
       }
     );
 

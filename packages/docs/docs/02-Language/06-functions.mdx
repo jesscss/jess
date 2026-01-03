@@ -27,3 +27,20 @@ $my-function: @() > $(1 + 2);
 
 value: $my-function(); // 3
 ```
+
+:::info[No early returns]
+
+Functions do not have "early" returns. For example:
+
+```less
+$my-function: @() > {
+  $if(true) {
+    return: one;
+  }
+  return: two;
+}
+```
+
+Think of functions like "mixins that are looking up the final assignment to a property named `return`"
+
+:::

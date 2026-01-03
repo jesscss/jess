@@ -512,6 +512,28 @@ describe('defineFunction', () => {
       expect(result).toBe(a);
       expect(calls).toEqual(['#000']);
     });
+
+    it('should validate lazy parameters when thunk is called, not when function is defined', async () => {
+      // This test ensures lazy parameters are validated when the thunk is called,
+      // not when the function is initially called. This prevents "Got: function" errors.
+      const directFunc = defineFunction(
+        'direct',
+        async (valueThunk: any) => {
+          // When this thunk is called, it should validate the resolved value, not the function
+          const value = await valueThunk();
+          return value;
+        },
+        { params: [
+          { name: 'value', type: Dimension, lazy: true }
+        ] }
+      );
+
+      // Should throw when function returns wrong type - validation happens when thunk is called
+      // This would previously fail with "Got: function" but now correctly validates the resolved value
+      await expect(
+        directFunc(() => new Color('#000') as any)
+      ).rejects.toThrow('Argument \'value\' must be of type \'Dimension\'');
+    });
   });
 
   describe('type checking', () => {

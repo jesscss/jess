@@ -19,6 +19,34 @@ function clamp(v: number, max: number) {
   return Math.min(Math.max(v, 0), max);
 }
 
+function parseHexString(hex: string): { rgb: [number, number, number]; alpha: number } {
+  let rgba: number[] = [];
+  let hexValue = hex.slice(1);
+
+  if (hexValue.length >= 6) {
+    (hexValue.match(/.{2}/g) as RegExpMatchArray).forEach((c, i) => {
+      if (i < 3) {
+        rgba.push(parseInt(c, 16));
+      } else {
+        rgba.push(parseInt(c, 16) / 255);
+      }
+    });
+  } else {
+    hexValue.split('').forEach((c, i) => {
+      if (i < 3) {
+        rgba.push(parseInt(c + c, 16));
+      } else {
+        rgba.push(parseInt(c + c, 16) / 255);
+      }
+    });
+  }
+
+  return {
+    rgb: [rgba[0]!, rgba[1]!, rgba[2]!] as [number, number, number],
+    alpha: rgba.length === 3 ? 1 : rgba[3]!
+  };
+}
+
 const { isArray } = Array;
 
 export interface ColorData {
@@ -67,10 +95,13 @@ export class Color extends Node<ColorData> {
         throw new TypeError('Color constructor requires rgb, hsl, or node property');
       }
     } else if (typeof value === 'string') {
-      // Handle hex string
+      // Handle hex string - parse it immediately to set RGB values
+      const { rgb, alpha } = parseHexString(value);
       colorData = {
         node: value,
-        format: ColorFormat.HEX
+        format: ColorFormat.HEX,
+        rgb,
+        alpha
       };
     } else {
       throw new TypeError('Color constructor requires ColorData object, hex string, or color array');
@@ -149,34 +180,9 @@ export class Color extends Node<ColorData> {
 
     // If value has a node that's a string, parse it as hex
     if (this.value.node && typeof this.value.node === 'string') {
-      let rgba: number[] = [];
-      let hex = this.value.node.slice(1);
-
-      if (hex.length >= 6) {
-        (hex.match(/.{2}/g) as RegExpMatchArray).forEach((c, i) => {
-          if (i < 3) {
-            rgba.push(parseInt(c, 16));
-          } else {
-            rgba.push(parseInt(c, 16) / 255);
-          }
-        });
-      } else {
-        hex.split('').forEach((c, i) => {
-          if (i < 3) {
-            rgba.push(parseInt(c + c, 16));
-          } else {
-            rgba.push(parseInt(c + c, 16) / 255);
-          }
-        });
-      }
-
-      const rgb = [rgba[0]!, rgba[1]!, rgba[2]!] as [number, number, number];
+      const { rgb, alpha } = parseHexString(this.value.node);
       this.value.rgb = rgb;
-      if (rgba.length === 3) {
-        this.value.alpha = 1;
-      } else {
-        this.value.alpha = rgba[3]!;
-      }
+      this.value.alpha = alpha;
       return rgb;
     }
 

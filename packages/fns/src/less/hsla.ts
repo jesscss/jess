@@ -1,46 +1,53 @@
-import { Color, ColorFormat, Dimension, defineFunction, type FunctionThis, Call } from '@jesscss/core';
-import { normalizeHue, percentOf, alphaToNumber } from '@jesscss/core';
+// hsla is an alias of hsl - it uses the same implementation but with a different name
+import hsl from './hsl';
+import { defineFunction, type FunctionThis, Call, TreeContext, Color, ColorFormat, Dimension, callWithContext } from '@jesscss/core';
+import { splitSequence } from '@jesscss/core';
 
 const hsla = defineFunction(
   'hsla',
-  async function(this: FunctionThis, h: number, s: number, l: number, a: number) {
-    // Create a color with HSL format and store the original function call
-    const color = new Color({
-      format: ColorFormat.HSL,
-      hsl: [h, s, l],
-      alpha: a
-    });
+  async function(this: FunctionThis, ...args: any[]) {
+    // Get hsl's internal function to call it directly with the same args
+    // This avoids double-wrapping through defineFunction which would try to convert again
+    const hslInternal = (hsl as any)._internal;
+    let result: Color;
 
-    // Store the original function call
-    if (this?.args) {
-      color.value.node = new Call({
-        name: 'hsla',
-        args: await this.args()
-      });
+    if (this?.context && hslInternal) {
+      // Called through callWithContext - use FunctionThis to call hsl's internal function
+      result = await hslInternal.call(this, ...args);
+    } else if (hslInternal) {
+      // Called directly - call hsl's internal function directly with converted args
+      // Note: args are already converted (Dimensions -> numbers) by hsla's wrapper
+      // hslInternal expects FunctionThis, but in direct calls we don't have it
+      // Since context is undefined, args and rawArgs won't be used (hsl only uses them when context exists)
+      result = await hslInternal.call({
+        context: this?.context,
+        args: async () => [],
+        rawArgs: []
+      } as any, ...args);
+    } else {
+      // Fallback: call hsl directly (shouldn't happen)
+      result = await (hsl as any)(...args);
     }
 
-    return color;
+    // Override the Call node name to 'hsla' if result has a node (from Dimension branch)
+    // Color inputs return early from hsl, so they won't have a node
+    if (result instanceof Color && result.value.node && this?.context) {
+      let context = this.context;
+      let treeContext = context.treeContext;
+      context.treeContext = new TreeContext({
+        mathMode: 'parens-division'
+      });
+
+      result.value.node = new Call({
+        name: 'hsla',
+        args: await this.rawArgs.eval(context)
+      });
+      context.treeContext = treeContext;
+    }
+
+    return result;
   },
-  {
-    params: [{
-      name: 'h',
-      type: Dimension,
-      convert: [normalizeHue()]
-    }, {
-      name: 's',
-      type: Dimension,
-      convert: [percentOf(1)]
-    }, {
-      name: 'l',
-      type: Dimension,
-      convert: [percentOf(1)]
-    }, {
-      name: 'a',
-      type: Dimension,
-      convert: [alphaToNumber()]
-    }],
-    splitSequence: true
-  }
+  (hsl as any).options
 );
 
 export default hsla;

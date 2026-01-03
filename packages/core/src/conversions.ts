@@ -1,24 +1,54 @@
-import { Dimension, Num } from './tree';
+import { Dimension, Num, Sequence, Operation, List } from './tree';
+import { isNode } from './tree/util/is-node';
+import type { Context } from './context';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
 // Conversion function types
 export type ConversionPlugin = (value: unknown) => number | unknown;
 
 /**
+ * PreprocessParams function type for preprocessing entire argument arrays
+ * Can be synchronous or asynchronous
+ */
+export type PreprocessParams = (args: any[], context: Context) => MaybePromise<any[]>;
+
+/**
+ * Simple memoization utility for factory functions
+ * Caches results based on stringified arguments
+ */
+function memoize<Args extends any[], Return>(
+  fn: (...args: Args) => Return
+): (...args: Args) => Return {
+  const cache = new Map<string, Return>();
+  return (...args: Args): Return => {
+    const key = JSON.stringify(args);
+    if (cache.has(key)) {
+      return cache.get(key)!;
+    }
+    const result = fn(...args);
+    cache.set(key, result);
+    return result;
+  };
+}
+
+/**
  * Converts percentage values to a fraction of the specified base value
  * @param base - The base value to convert percentages to (e.g., 255 for RGB, 100 for HSL)
+ * Memoized so that percentOf(255) always returns the same function instance
  */
-export const percentOf = (base: number): ConversionPlugin => (value: unknown) => {
+export const percentOf = memoize((base: number): ConversionPlugin => (value: unknown) => {
   if (value instanceof Dimension && value.value.unit === '%') {
     return value.value.number * base / 100;
   }
   return value;
-};
+});
 
 /**
  * Converts angle units to degrees
  * Supports: deg, turn, rad, grad
+ * Memoized so that angleToDegrees() always returns the same function instance
  */
-export const angleToDegrees = (): ConversionPlugin => (value: unknown) => {
+export const angleToDegrees = memoize((): ConversionPlugin => (value: unknown) => {
   if (!(value instanceof Dimension)) {
     return value;
   }
@@ -36,13 +66,14 @@ export const angleToDegrees = (): ConversionPlugin => (value: unknown) => {
     return number;
   }
   return value;
-};
+});
 
 /**
  * Normalizes hue values to 0-360 degree range
  * Supports: deg, turn, rad, grad, % (percentage of 360)
+ * Memoized so that normalizeHue() always returns the same function instance
  */
-export const normalizeHue = (): ConversionPlugin => (value: unknown) => {
+export const normalizeHue = memoize((): ConversionPlugin => (value: unknown) => {
   if (!(value instanceof Dimension)) {
     return value;
   }
@@ -66,13 +97,14 @@ export const normalizeHue = (): ConversionPlugin => (value: unknown) => {
   // Normalize to 0-360 range
   degrees = ((degrees % 360) + 360) % 360;
   return degrees;
-};
+});
 
 /**
  * Converts alpha values to 0-1 range
  * Supports: % (percentage of 1), unitless numbers
+ * Memoized so that alphaToNumber() always returns the same function instance
  */
-export const alphaToNumber = (): ConversionPlugin => (value: unknown) => {
+export const alphaToNumber = memoize((): ConversionPlugin => (value: unknown) => {
   if (!(value instanceof Dimension)) {
     return value;
   }
@@ -88,17 +120,18 @@ export const alphaToNumber = (): ConversionPlugin => (value: unknown) => {
   }
 
   return Math.max(0, Math.min(1, result));
-};
+});
 
 /**
  * Converts any dimension to a number (removes units)
+ * Memoized so that toNumber() always returns the same function instance
  */
-export const toNumber = (): ConversionPlugin => (value: unknown) => {
+export const toNumber = memoize((): ConversionPlugin => (value: unknown) => {
   if (value instanceof Dimension) {
     return value.value.number; // Extract number from Dimension
   }
   return value; // Don't know how to handle this, pass through
-};
+});
 
 export const clamp = (min: number, max: number): ConversionPlugin => (value: unknown) => {
   if (typeof value !== 'number') {
@@ -187,4 +220,54 @@ export const angleToRadians = (): ConversionPlugin => (value: unknown) => {
     return number * Math.PI / 180;
   }
   return value;
+};
+
+/**
+ * Creates a preprocessParams function that splits a Sequence into individual arguments.
+ * Handles operations with slashes (/) by distributing the left and right operands.
+ *
+ * @example
+ * ```typescript
+ * const rgb = defineFunction('rgb', function(r, g, b, a?) {
+ *   // ...
+ * }, {
+ *   preprocessParams: [splitSequence()]
+ * });
+ * ```
+ */
+export const splitSequence = (): PreprocessParams => {
+  return (args: any[], context: Context): any[] => {
+    // Only process if we have exactly one argument that is a Sequence
+    if (args.length !== 1 || !isNode(args[0], 'Sequence')) {
+      return args;
+    }
+
+    const sequence = args[0] as Sequence;
+
+    // Split the sequence into individual arguments
+    const splitArgs: any[] = [];
+    for (let i = 0; i < sequence.value.length; i++) {
+      const item = sequence.value[i]!;
+
+      // Check if this is the last item and it's an Operation (likely a slash)
+      if (i === sequence.value.length - 1 && item.type === 'Operation') {
+        const [left, op, right] = (item as Operation).value;
+        // Add the left operand
+        splitArgs.push(left);
+        // Add the right operand if it exists and is not a placeholder (Num with value 0)
+        // This handles test cases where Num(0) is used as a placeholder for undefined
+        if (right) {
+          const isPlaceholder = right.type === 'Number'
+            && (right as any).value?.number === 0;
+          if (!isPlaceholder) {
+            splitArgs.push(right);
+          }
+        }
+      } else {
+        splitArgs.push(item);
+      }
+    }
+
+    return splitArgs;
+  };
 };

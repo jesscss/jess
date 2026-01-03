@@ -156,7 +156,8 @@ describe('color adjustments', () => {
     });
 
     it('rejects wrong amount type', () => {
-      expect(() => desaturate(testColor, new Dimension({ number: 20, unit: 'deg' }))).toThrow('Amount must be a percentage');
+      // @ts-expect-error - wrong argument type
+      expect(() => desaturate(testColor, 'not a dimension')).toThrow('Argument \'amount\' must be of type \'Dimension\'');
     });
 
     it('rejects missing color argument', () => {

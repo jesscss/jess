@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { defineFunction, callWithContext, type FunctionThis } from '../define-function';
 import { Context } from '../context';
 import { List, Sequence, Operation, Num, Dimension, Color } from '../tree';
+import { splitSequence } from '../conversions';
 
 describe('defineFunction - splitSequence', () => {
   describe('splitSequence functionality', () => {
@@ -17,7 +18,7 @@ describe('defineFunction - splitSequence', () => {
             { name: 'g', type: Num },
             { name: 'b', type: Num }
           ],
-          splitSequence: true
+          preprocessParams: [splitSequence()]
         }
       );
 
@@ -28,11 +29,8 @@ describe('defineFunction - splitSequence', () => {
         new Num(64)
       ]);
 
-      // Create a list containing the sequence
-      const list = new List([sequence]);
-
       const context = new Context();
-      const result = await callWithContext(context, rgb, list);
+      const result = await callWithContext(context, rgb, sequence);
 
       expect(result).toBe('rgb(255 128 64)');
     });
@@ -50,7 +48,7 @@ describe('defineFunction - splitSequence', () => {
             { name: 'b', type: Num },
             { name: 'a', type: Dimension }
           ],
-          splitSequence: true
+          preprocessParams: [splitSequence()]
         }
       );
 
@@ -68,15 +66,14 @@ describe('defineFunction - splitSequence', () => {
         operation
       ]);
 
-      const list = new List([sequence]);
       const context = new Context();
-      const result = await callWithContext(context, rgba, list);
+      const result = await callWithContext(context, rgba, sequence);
 
       // The operation evaluation works correctly
       expect(result).toBe('rgba(255 255 255 / 50%)');
     });
 
-    it('should not split sequence when splitSequence is false', async () => {
+    it('should not split sequence when preprocessParams is not provided', async () => {
       const func = defineFunction(
         'test',
         function(args: Sequence) {
@@ -84,9 +81,8 @@ describe('defineFunction - splitSequence', () => {
         },
         {
           params: [
-            { name: 'args', type: List }
-          ],
-          splitSequence: false
+            { name: 'args', type: Sequence }
+          ]
         }
       );
 
@@ -96,13 +92,12 @@ describe('defineFunction - splitSequence', () => {
         new Num(3)
       ]);
 
-      const list = new List([sequence]);
       const context = new Context();
-      const result = await callWithContext(context, func, list);
+      const result = await callWithContext(context, func, sequence);
 
       expect(result).toContain('received:');
-      // The function receives the evaluated values, not the Sequence object
-      expect(result).toContain('1');
+      // The function receives the Sequence directly
+      expect(result).toContain('1 2 3');
     });
 
     it('should handle empty sequence', async () => {
@@ -113,14 +108,13 @@ describe('defineFunction - splitSequence', () => {
         },
         {
           params: [],
-          splitSequence: true
+          preprocessParams: [splitSequence()]
         }
       );
 
       const sequence = new Sequence([]);
-      const list = new List([sequence]);
       const context = new Context();
-      const result = await callWithContext(context, func, list);
+      const result = await callWithContext(context, func, sequence);
 
       expect(result).toBe('empty');
     });
@@ -135,14 +129,13 @@ describe('defineFunction - splitSequence', () => {
           params: [
             { name: 'value', type: Num }
           ],
-          splitSequence: true
+          preprocessParams: [splitSequence()]
         }
       );
 
       const sequence = new Sequence([new Num(42)]);
-      const list = new List([sequence]);
       const context = new Context();
-      const result = await callWithContext(context, func, list);
+      const result = await callWithContext(context, func, sequence);
 
       expect(result).toBe('value: 42');
     });
@@ -246,7 +239,7 @@ describe('defineFunction - splitSequence', () => {
             { name: 'l', type: Dimension },
             { name: 'a', type: Dimension, optional: true }
           ],
-          splitSequence: true
+          preprocessParams: [splitSequence()]
         }
       );
 
@@ -264,9 +257,8 @@ describe('defineFunction - splitSequence', () => {
         operation
       ]);
 
-      const list = new List([sequence]);
       const context = new Context();
-      const result = await callWithContext(context, hsl, list);
+      const result = await callWithContext(context, hsl, sequence);
 
       // The operation evaluation works correctly
       expect(result).toBe('hsl(180 50% 50% / 0.5)');
@@ -286,7 +278,7 @@ describe('defineFunction - splitSequence', () => {
             { name: 'd', type: Num },
             { name: 'e', type: Num }
           ],
-          splitSequence: true
+          preprocessParams: [splitSequence()]
         }
       );
 
@@ -302,9 +294,8 @@ describe('defineFunction - splitSequence', () => {
         new Num(5)
       ]);
 
-      const list = new List([sequence]);
       const context = new Context();
-      const result = await callWithContext(context, func, list);
+      const result = await callWithContext(context, func, sequence);
 
       // The operations should be evaluated
       expect(result).toBe('1 2 4 4 5');

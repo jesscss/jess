@@ -19,16 +19,20 @@ describe('color components', () => {
 
   describe('red', () => {
     it('extracts red component from color', () => {
-      expect(red(testColor)).toMatchObject(new Num(255));
+      const result = red(testColor);
+      expect(result).toBeInstanceOf(Num);
+      expect((result as Num).compare(new Num(255), undefined)).toBe(0);
     });
 
     it('works with object parameters', () => {
-      expect(red({ color: testColor })).toMatchObject(new Num(255));
+      const result = red({ color: testColor });
+      expect(result).toBeInstanceOf(Num);
+      expect((result as Num).compare(new Num(255), undefined)).toBe(0);
     });
 
     it('rejects wrong argument type', () => {
       // @ts-expect-error - wrong argument type
-      expect(() => red(new Dimension({ number: 100, unit: 'px' }))).toThrow('Required argument \'color\' is missing');
+      expect(() => red(new Dimension({ number: 100, unit: 'px' }))).toThrow('Argument \'color\' must be of type \'Color\'');
     });
 
     it('rejects missing argument', () => {
@@ -39,31 +43,38 @@ describe('color components', () => {
 
   describe('blue', () => {
     it('extracts blue component from color', () => {
-      expect(blue(testColor)).toMatchObject(new Num(0));
+      const result = blue(testColor);
+      expect(result).toBeInstanceOf(Num);
+      expect((result as Num).compare(new Num(0), undefined)).toBe(0);
     });
 
     it('works with object parameters', () => {
-      expect(blue({ color: testColor })).toMatchObject(new Num(0));
+      const result = blue({ color: testColor });
+      expect(result).toBeInstanceOf(Num);
+      expect((result as Num).compare(new Num(0), undefined)).toBe(0);
     });
 
     it('rejects wrong argument type', () => {
       // @ts-expect-error - wrong argument type
-      expect(() => blue(new Num(100))).toThrow('Required argument \'color\' is missing');
+      expect(() => blue(new Num(100))).toThrow('Argument \'color\' must be of type \'Color\'');
     });
 
     it('rejects missing argument', () => {
-      // @ts-expect-error - missing argument
       expect(() => blue.call(context)).toThrow('Required argument \'color\' is missing');
     });
   });
 
   describe('green', () => {
     it('extracts green component from color', () => {
-      expect(green(testColor)).toMatchObject(new Dimension({ number: 0, unit: '' }));
+      const result = green(testColor);
+      expect(result).toBeInstanceOf(Dimension);
+      expect((result as Dimension).compare(new Dimension({ number: 0, unit: '' }), undefined)).toBe(0);
     });
 
     it('works with object parameters', () => {
-      expect(green({ color: testColor })).toMatchObject(new Dimension({ number: 0, unit: '' }));
+      const result = green({ color: testColor });
+      expect(result).toBeInstanceOf(Dimension);
+      expect((result as Dimension).compare(new Dimension({ number: 0, unit: '' }), undefined)).toBe(0);
     });
 
     it('rejects wrong argument type', () => {
@@ -72,27 +83,29 @@ describe('color components', () => {
     });
 
     it('rejects missing argument', () => {
-      // @ts-expect-error - missing argument
       expect(() => green.call(context)).toThrow('Required argument \'color\' is missing');
     });
   });
 
   describe('alpha', () => {
     it('extracts alpha component from color', () => {
-      expect(alpha(testColor)).toMatchObject(new Num(1));
+      const result = alpha(testColor);
+      expect(result).toBeInstanceOf(Num);
+      expect((result as Num).compare(new Num(1))).toBe(0);
     });
 
     it('works with object parameters', () => {
-      expect(alpha({ color: testColor })).toMatchObject(new Num(1));
+      const result = alpha({ color: testColor });
+      expect(result).toBeInstanceOf(Num);
+      expect((result as Num).compare(new Num(1))).toBe(0);
     });
 
     it('rejects wrong argument type', () => {
       // @ts-expect-error - wrong argument type
-      expect(() => alpha(new Dimension({ number: 100, unit: '%' }))).toThrow('Required argument \'color\' is missing');
+      expect(() => alpha(new Dimension({ number: 100, unit: '%' }))).toThrow('Argument \'color\' must be of type \'Color\'');
     });
 
     it('rejects missing argument', () => {
-      // @ts-expect-error - missing argument
       expect(() => alpha.call(context)).toThrow('Required argument \'color\' is missing');
     });
   });

@@ -7,7 +7,6 @@ export function clamp(val: number) {
 }
 
 export function getNumber(n: Node | number, ignoreUnit = false) {
-  console.log('getNumber', n, ignoreUnit);
   if (n instanceof Dimension) {
     let unit = n.value.unit;
     if (unit === '%') {

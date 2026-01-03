@@ -1,5 +1,5 @@
 import { defineFunction, Dimension, Color, ColorFormat } from '@jesscss/core';
-import { normalizeHue, percentOf, alphaToNumber, toNumber } from '@jesscss/core';
+import { normalizeHue, percentOf, alphaToNumber, toNumber, splitSequence } from '@jesscss/core';
 
 const hsva = defineFunction(
   'hsva',
@@ -54,7 +54,7 @@ const hsva = defineFunction(
       type: Dimension,
       convert: [alphaToNumber(), toNumber()]
     }],
-    splitSequence: true
+    preprocessParams: [splitSequence()]
   }
 );
 

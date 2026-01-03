@@ -27,11 +27,19 @@ describe('iif', () => {
   });
 
   test('iif (true)', async () => {
-    await expect(iif(true, () => new Dimension({ number: 2, unit: 'px' }))).resolves.toMatchObject(new Dimension({ number: 2, unit: 'px' }));
+    const result = await iif(true, () => new Dimension({ number: 2, unit: 'px' }));
+    expect(result).toBeInstanceOf(Dimension);
+    if (result) {
+      expect(result.compare(new Dimension({ number: 2, unit: 'px' }))).toBe(0);
+    }
   });
 
   test('iif (false)', async () => {
-    await expect(iif(new Bool(false), () => new Dimension({ number: 2, unit: 'px' }), () => new Dimension({ number: 3, unit: 'px' }))).resolves.toMatchObject(new Dimension({ number: 3, unit: 'px' }));
+    const result = await iif(new Bool(false), () => new Dimension({ number: 2, unit: 'px' }), () => new Dimension({ number: 3, unit: 'px' }));
+    expect(result).toBeInstanceOf(Dimension);
+    if (result) {
+      expect(result.compare(new Dimension({ number: 3, unit: 'px' }))).toBe(0);
+    }
   });
 
   test('iif (false) without elseValue', async () => {

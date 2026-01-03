@@ -20,19 +20,19 @@ describe('color', () => {
   it('creates color from hex string', () => {
     const result = color(new Quoted('#ff0000'));
     expect(result).toBeInstanceOf(Color);
-    expect(result.value).toBe('#ff0000');
+    expect(result.value.node).toBe('#ff0000');
   });
 
   it('creates color from color keyword', () => {
     const result = color(new Quoted('red'));
     expect(result).toBeInstanceOf(Color);
-    expect(result.value).toBe('red');
+    expect(result.value.node).toBe('red');
   });
 
   it('works with object parameters', () => {
     const result = color({ c: new Quoted('#00ff00') });
     expect(result).toBeInstanceOf(Color);
-    expect(result.value).toBe('#00ff00');
+    expect(result.value.node).toBe('#00ff00');
   });
 
   it('rejects invalid hex color', () => {
@@ -40,7 +40,7 @@ describe('color', () => {
   });
 
   it('rejects non-string value', () => {
-    expect(() => color(new Dimension({ number: 100, unit: 'px' }))).toThrow('argument must be a color keyword or 3|4|6|8 digit hex e.g. #FFF');
+    expect(() => color(new Dimension({ number: 100, unit: 'px' }))).toThrow('Argument \'c\' must be one of: Color, Quoted');
   });
 
   it('rejects missing argument', () => {
@@ -48,6 +48,6 @@ describe('color', () => {
   });
 
   it('rejects wrong argument type', () => {
-    expect(() => color('not a node')).toThrow('Argument \'c\' must be of type \'Node\'');
+    expect(() => color('not a node' as any)).toThrow('Argument \'c\' must be one of: Color, Quoted');
   });
 });

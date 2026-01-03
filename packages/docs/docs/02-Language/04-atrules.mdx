@@ -94,6 +94,8 @@ Composing without a namespace is discouraged, as it can be harder to reason abou
 
 ### `with` and `set`
 
+// TODO - rewrite -- we'll just use `with` like Sass (but call it `set`?). `set` is not necessary and is potentially confusing. If someone needs "re-use", they can use mixins.
+
 Using `set` on a stylesheet import will alter that import within the compilation scope. (In Sass, this is how `with` works, but the `with` keyword works slightly differently in Jess, which we'll explain in a bit.)
 
 Note that `set` may not be used more than once with the same module (resolved to the same file path), and if you first import the module without using `set` and then try to use it after, this also throws an error. `set` must be used the first time a file is imported or not at all.
@@ -159,7 +161,6 @@ $border-color: green;
 }
 ```
 ```less
-// main.jess
 @-compose (reference) './rules';
 
 .container {

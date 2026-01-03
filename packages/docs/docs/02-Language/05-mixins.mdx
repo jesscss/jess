@@ -87,7 +87,7 @@ You can chain mixin calls together. If the mixin within the chain doesn't requir
   }
 }
 .box {
-  $ > .#ns > .mixin > .inner-mixin();
+  $ > #ns > .mixin > .inner-mixin();
 }
 ```
 
@@ -131,7 +131,7 @@ Mixins do not need to be defined within the same scope, nor do mixin overloads n
 Mixins can make repeated rules and configurability trivial, especially when you begin using parameters.
 
 ```less
-button-base($bg: #1a73e8; $color: #fff; $pad: 0.5em 1.25em) {
+button-base($bg: #1a73e8, $color: #fff, $pad: 0.5em 1.25em) {
   display: inline-block;
   background: $bg;
   color: $color;
@@ -141,8 +141,8 @@ button-base($bg: #1a73e8; $color: #fff; $pad: 0.5em 1.25em) {
   font-size: 1rem;
   cursor: pointer;
   transition: background 0.15s;
-  &:hover { background: $less.color.darken(bg, 7%); }
-  &:active { background: $less.color.darken(bg, 14%); }
+  &:hover { background: $less.color.darken($bg, 7%); }
+  &:active { background: $less.color.darken($bg, 14%); }
 }
 
 .button-primary   { $ > button-base(); }
@@ -155,7 +155,7 @@ Let's break this down.
 ### The mixin definition
 
 ```less
-button-base($bg: #1a73e8; $color: #fff; $pad: 0.5em 1.25em) {
+button-base($bg: #1a73e8, $color: #fff, $pad: 0.5em 1.25em) {
   ...
 }
 ```
@@ -166,10 +166,19 @@ button-base($bg: #1a73e8; $color: #fff; $pad: 0.5em 1.25em) {
   - `pad`: padding (default: `0.5em 1.25em`)
 - **Default values:**  
   If you don’t pass a value for a parameter, Jess uses the default you set in the definition.
-- **Semicolon separators:**  
-  Jess uses **semicolons** (`;`) between parameters in both the definition and calls. This reduces confusion with CSS value lists.
 
----
+:::info[Comma separators]
+Like CSS, Jess uses **commas** (`,`) between mixin and function arguments (and parameters).
+If you need to use a CSS value list that has a comma, you can assign it to a variable to pass it in, or
+you can wrap it in escaped parentheses like Less does e.g. `~(one, two, three)`
+
+```less
+$values: one, two, three;
+$ > button-base($values);
+
+// or
+$ > button-base(~(one, two, three));
+```
 
 ### Using the mixin
 
@@ -186,7 +195,7 @@ button-base($bg: #1a73e8; $color: #fff; $pad: 0.5em 1.25em) {
 - **Overriding values:**  
   Pass any or all values, in order, separated by semicolons, to override the defaults.
   - For example:  
-    `$ > button-base(#fff; #1a73e8; 0.5em 1.25em);`  
+    `$ > button-base(#fff, #1a73e8, 0.5em 1.25em);`  
     sets a white background, blue text, and custom padding for `.button-secondary`.
 - **Named arguments:**  
   You can specify which parameter you’re overriding by name, and skip the rest:
@@ -202,15 +211,15 @@ You don’t have to give parameters default values. If you leave them out, Jess 
 #### Example
 
 ```less
-highlight($bg; $color) {
+highlight($bg, $color) {
   background: $bg;
   color: $color;
 }
 ```
 
 ```less
-.alert-success { $ > highlight( #e5fbee; #26734d ); }
-.alert-error   { $ > highlight( #ffeaea; #b71c1c); }
+.alert-success { $ > highlight( #e5fbee, #26734d ); }
+.alert-error   { $ > highlight( #ffeaea, #b71c1c); }
 ```
 
 ## Mixin guards
@@ -294,8 +303,8 @@ Note that in Jess, any new "parentheses context" exits "expression mode". So par
 These are equivalent:
 
 ```less
-max($a; $b) when ($a > $b) { width: $a }
-max($a; $b) when $(a > b) { width: $a }
+max($a, $b) when ($a > $b) { width: $a }
+max($a, $b) when $(a > b) { width: $a }
 
 // and 
 truth($a) when ($a = true)  { ... }

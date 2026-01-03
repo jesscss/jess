@@ -126,13 +126,13 @@ export class Dimension extends Node<DimensionValue> {
     return new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }).inherit(this);
   }
 
-  override compare(b: Node, context: Context): 0 | 1 | -1 | undefined {
+  override compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
     if (!(b instanceof Dimension || b instanceof Color)) {
       /** Do a string comparison */
       return super.compare(b, context);
     }
     let unitToGroup = this.unitToGroup;
-    let isStrictMode = context?.opts.unitMode === 'strict';
+    let isStrictMode = context?.opts?.unitMode === 'strict';
     let { number: aVal, unit: aUnit } = this.value;
     if (b instanceof Color) {
       if (aUnit) {
