@@ -4,6 +4,7 @@ import { type PrintOptions, getPrintOptions } from './util/print';
 import { getValues } from './util/collections';
 import { compareNodeArray } from './util/compare';
 import { type Operator } from './util/calculate';
+import { LIST_ITEM_TRIM } from './util/regex';
 
 export type ListOptions = {
   /**
@@ -43,7 +44,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     const w = options.writer!;
     let { sep = ',' } = this.options ?? {};
     let { value } = this;
-    let length = value.length - 1;
+    let length = value.length;
     const mark = w.mark();
     if (value.length === 0) {
       return '';
@@ -51,16 +52,16 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     // Print first item as-is
     let item = value[0]!;
     let out = w.capture(() => item.toString(options));
-    w.add(out.trim(), item);
+    w.add(out.replace(LIST_ITEM_TRIM, ''), item);
     // Subsequent items: emit sep; capture next item to decide spacing precisely
-    for (let i = 1; i <= length; i++) {
+    for (let i = 1; i < length; i++) {
       item = value[i]!;
       if (sep === '/') {
         w.add(' / ');
       } else {
         w.add(`${sep} `);
       }
-      out = (w.capture(() => item.toString(options))).trim();
+      out = (w.capture(() => item.toString(options))).replace(LIST_ITEM_TRIM, '');
       w.add(out);
     }
     return w.getSince(mark);

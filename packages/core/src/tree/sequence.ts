@@ -14,6 +14,8 @@ export type SequenceOptions = {
    * because of how they're parsed.
    */
   // spaced: boolean
+  /** Used with custom properties */
+  preserveWhitespace?: boolean;
 };
 
 /**
@@ -35,6 +37,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
+    if (options?.inCustom) {
+      return super.toTrimmedString(options);
+    }
     const w = options.writer!;
     const mark = w.mark();
     const { value } = this;
@@ -134,39 +139,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       },
       (node) => {
         node.value = node.value.filter(n => n && !(n instanceof Nil));
-        // let lists: Record<number, Node[]> | undefined;
-        // for (let [i, n] of node.value.entries()) {
-        //   if (n instanceof List) {
-        //     if (!lists) {
-        //       lists = { [i]: n.value };
-        //     } else {
-        //       lists[i] = n.value;
-        //     }
-        //   }
-        // }
-        /**
-         * List bubbling
-         * @todo - Is this behavior we still want?
-         */
-        // if (lists) {
-        //   let Class = Object.getPrototypeOf(this).constructor;
-        //   let combinations = combinate(lists);
-        //   let returnList = new List([] as Node[]).inherit(this);
-        //   combinations.forEach((combo) => {
-        //     let expr = [...node.value];
-        //     for (let pos in combo) {
-        //       if (Object.prototype.hasOwnProperty.call(combo, pos)) {
-        //         expr[pos] = combo[pos] as Node;
-        //       }
-        //     }
-        //     returnList.value.push(new Class(expr));
-        //   });
-        //   if (returnList.value.length === 1) {
-        //     return returnList.value[0] as typeof Class;
-        //   }
-        //   return returnList;
-        // }
-        if (node.value.length === 1) {
+        if (node.value.length === 1 && !node.options.preserveWhitespace) {
           return node.value[0]!;
         }
         return node;

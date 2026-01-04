@@ -82,11 +82,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       selector = selector.copy(true) as Selector;
     }
 
-    let out = withoutComments ? '' : w.capture(() => this.processPrePost('pre'));
+    let out = withoutComments ? '' : w.capture(() => this.processPrePost('pre', undefined, options));
     let selOut = w.capture(() => selector.toString(options));
     /** Normalize single spacing */
     out += selOut.replace(/[ \t]+/g, ' ');
-    return normalizeIndent(idt, selOut.replace(/\s+$/, '') + ' {') + '\n';
+    return normalizeIndent(selOut.replace(/\s+$/, '') + ' {', idt) + '\n';
   }
 
   override preEval(context: Context): MaybePromise<this> {

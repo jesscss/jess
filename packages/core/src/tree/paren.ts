@@ -33,11 +33,13 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       w.add(escapeChar, this);
     }
     w.add('(');
-    if (this.value) {
-      if (this.value instanceof Node) {
-        this.value.toString(options);
+    let value = this.value;
+    if (value) {
+      if (value instanceof Node) {
+        let out = w.capture(() => value.toString(options));
+        w.add(out.replace(/^[ \t\r\f]*|[ \t\r\f]*$/g, ''), value);
       } else {
-        w.add(String(this.value), this);
+        w.add(String(value), this);
       }
     }
     w.add(')');
@@ -48,11 +50,15 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     let { value } = this;
     if (value) {
       let isOp = isOpOrExpression(value);
-      context.parenFrames.push(true);
+      if (isOp) {
+        context.parenFrames.push(true);
+      }
       const maybeEvald = value.eval(context);
       const after = (v: Node): Node => {
         value = v;
-        context.parenFrames.pop();
+        if (isOp) {
+          context.parenFrames.pop();
+        }
         /**
          * Removing nested parens or parens around a single
          * dimension is a bit presumptuous, but I think Less's

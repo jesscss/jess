@@ -256,7 +256,7 @@ export abstract class Node<
    * shouldn't be set directly. Instead, a parent should use
    * parent.adopt(thisNode);
    */
-  readonly parent: Node | undefined;
+  declare readonly parent: Node | undefined;
 
   /** Patched at runtime in node.ts to return Nil instance */
   nil!: () => Node;
@@ -389,20 +389,25 @@ export abstract class Node<
     location?: LocationInfo,
     treeContext?: TreeContext
   ) {
-    this._value = this._tryProxyWrap(value);
-    this._treeContext = treeContext;
-    this._location = location;
-    this._options = options;
-
-    // Make sourceNode non-enumerable to avoid JSON serialization issues
+    // Make some props non-enumerable to avoid JSON serialization issues
     Object.defineProperties(this, {
       sourceNode: {
         value: this,
         writable: true,
         enumerable: false,
         configurable: false
+      },
+      parent: {
+        value: undefined,
+        writable: true,
+        enumerable: false,
+        configurable: false
       }
     });
+    this._value = this._tryProxyWrap(value);
+    this._treeContext = treeContext;
+    this._location = location;
+    this._options = options;
   }
 
   /**
@@ -809,7 +814,7 @@ export abstract class Node<
     return values.join('');
   }
 
-  processPrePost(key: 'pre' | 'post', defaultVal: string = '', options?: PrintOptions) {
+  processPrePost(key: 'pre' | 'post', defaultVal: string = '', options: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
@@ -874,9 +879,6 @@ export abstract class Node<
 
     let result = pre + bodyStr + post;
     // Trim output if flag is set
-    if (this.trimOutput) {
-      result = result.trim();
-    }
     w.add(result, this);
     return w.getSince(mark);
   }

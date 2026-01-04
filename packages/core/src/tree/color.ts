@@ -328,7 +328,7 @@ export class Color extends Node<ColorData> {
     let hex = '#' + values.map(function(c) {
       let hex = c.toString(16);
       return hex.length === 1 ? '0' + hex : hex;
-    }).join('').toUpperCase();
+    }).join('');
     return hex;
   }
 

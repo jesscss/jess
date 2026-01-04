@@ -97,16 +97,17 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     let a = assign === ':' ? ':' : ` ${assign}`;
     w.add(`${name}${a}`, name);
     // Custom properties must preserve value text exactly as provided.
-    const isCustomProperty = `${name}`.startsWith('--');
+    const isCustomProperty = name.valueOf().startsWith('--');
     if (isCustomProperty) {
+      options.inCustom = true;
       // Emit value exactly as captured (no trimming, no added spaces)
-      // For custom properties, we can't easily pass origin, so segments may be lost
       value.toString(options);
+      options.inCustom = false;
     } else {
       // Capture value output to normalize spacing after ':'
       const valOut = w.capture(() => value.toString(options));
       // Remove leading / trailing whitespace
-      const normalizedValue = valOut.replace(/^\s+|\s+$/g, '');
+      const normalizedValue = valOut.replace(/^[ \t]+|\s+$/g, '');
       // Ensure exactly one space after ':' by adding one space
       w.add(' ');
       w.add(normalizedValue, value);
@@ -226,11 +227,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       () => {
         let node = this;
         /** Pre-eval already evaluated the name, just need to do value */
-        const { value } = node.value;
+        const { name, value } = node.value;
         if (value instanceof Node) {
+          if (name.valueOf().startsWith('--')) {
+            context.inCustom = true;
+          }
           const maybeNewValue = value.eval(context);
           if (isThenable(maybeNewValue)) {
             return (maybeNewValue as Promise<Node>).then((newValue) => {
+              context.inCustom = false;
               if (newValue instanceof Nil) {
                 return newValue.inherit(node);
               }
@@ -246,6 +251,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               return node;
             });
           }
+          context.inCustom = false;
           if (maybeNewValue instanceof Nil) {
             return (value as Nil).inherit(node);
           }

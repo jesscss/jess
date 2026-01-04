@@ -175,9 +175,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         if (!preludeEndsWithSpace) {
           out += ' ';
         }
-        out = normalizeIndent(idt, out + '{') + '\n';
+        out = normalizeIndent(out + '{', idt) + '\n';
       } else {
-        out = normalizeIndent(idt, out + ';');
+        out = normalizeIndent(out + ';', idt);
       }
     } else {
       out += nameOut;
@@ -185,9 +185,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         if (!nameEndsWithSpace) {
           out += ' ';
         }
-        out = normalizeIndent(idt, out + '{') + '\n';
+        out = normalizeIndent(out + '{', idt) + '\n';
       } else {
-        out = normalizeIndent(idt, out + ';');
+        out = normalizeIndent(out + ';', idt);
       }
     }
     return out;

@@ -14,7 +14,6 @@ import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { getFunctionFromMixins } from './rules';
 import type { MixinEntry, Rules } from './rules';
 import type { Interpolated } from './interpolated';
-import { Nil } from './nil';
 
 /**
  * The type is determined by syntax
@@ -466,7 +465,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               context.searchScope.delete(returnVal);
               // DON'T pop important source here - let the consuming Declaration pop it
               // after it has checked and merged the important flag
-              return evald.copy(true, true);
+              let out = evald.copy(true, true);
+              out.pre = this.pre;
+              out.post = this.post;
+              return out;
             }
           );
         } else if (isArray(returnVal)) {

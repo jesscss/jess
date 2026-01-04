@@ -131,6 +131,14 @@ export class CssActionsParser extends AdvancedActionsParser {
   mediaAtRule!: Rule;
   supportsAtRule!: Rule;
   containerAtRule!: Rule;
+  containerName!: Rule;
+  containerQueryList!: Rule;
+  containerQuery!: Rule;
+  containerCondition!: Rule;
+  containerInParens!: Rule;
+  containerFeature!: Rule;
+  containerAnd!: Rule;
+  containerOr!: Rule;
   atRuleBody!: Rule;
   pageAtRule!: Rule;
   keyframesAtRule!: Rule;
@@ -161,6 +169,8 @@ export class CssActionsParser extends AdvancedActionsParser {
   mediaRange!: Rule;
   mfComparison!: Rule;
   mfNonIdentifierValue!: Rule;
+
+  /** `@container` syntax - declarations are above */
 
   /**
    * `@supports` syntax - the parsing is defined differently

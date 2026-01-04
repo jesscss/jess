@@ -440,6 +440,12 @@ export function mediaInParens(this: P, T: TokenMap) {
     ]);
 }
 
+export function containerInParens(this: P, T: TokenMap, alt?: AltContext) {
+  const $ = this;
+  // Reuse mediaInParens which already handles variables
+  return (ctx: RuleContext = {}) => $.SUBRULE($.mediaInParens, { ARGS: [ctx] });
+}
+
 export function mfValue(this: P, T: TokenMap) {
   const $ = this;
 
@@ -451,6 +457,49 @@ export function mfValue(this: P, T: TokenMap) {
      * if it's valid.
      */
     $.SUBRULE($.expressionSum, { ARGS: [ctx] });
+}
+
+export function mfNonIdentifierValue(this: P, T: TokenMap, alt?: AltContext) {
+  const $ = this;
+
+  return (ctx: RuleContext = {}) =>
+    $.OR([
+      {
+        GATE: () => {
+          const next = $.LA(1);
+          return next.tokenType === T.AtKeyword || next.tokenType === T.PropertyReference || next.tokenType === T.NestedReference;
+        },
+        ALT: () => $.SUBRULE($.valueReference, { ARGS: [{ ...ctx, requireAccessorsAfterMixinCall: true }] })
+      },
+      {
+        ALT: () => {
+          $.startRule();
+          let num1 = $.CONSUME(T.Number);
+          let num2: IToken | undefined;
+          $.OPTION(() => {
+            $.CONSUME(T.Slash);
+            num2 = $.CONSUME2(T.Number);
+          });
+          if (!$.RECORDING_PHASE) {
+            let location = $.endRule();
+            let num1Node = $.wrap($.processValueToken(num1), 'both');
+            if (!num2) {
+              return num1Node;
+            }
+            let num2Node = $.wrap($.processValueToken(num2), 'both');
+            return new List([num1Node, num2Node], { sep: '/' }, location, this.context);
+          }
+        }
+      },
+      {
+        ALT: () => {
+          let dim = $.CONSUME(T.Dimension);
+          if (!$.RECORDING_PHASE) {
+            return $.wrap($.processValueToken(dim), 'both');
+          }
+        }
+      }
+    ]);
 }
 
 export function wrappedDeclarationList(this: P, T: TokenMap) {

@@ -1,5 +1,5 @@
 import { type Context } from '../context';
-import { Node, F_VISIBLE, defineType } from './node';
+import { Node, F_VISIBLE, defineType, type LocationInfo, type TreeContext } from './node';
 
 export type CommentOptions = {
   lineComment?: boolean;
@@ -18,13 +18,11 @@ export class Comment extends Node<string, CommentOptions> {
   override allowRoot = true;
   override allowRuleRoot = true;
 
-  override evalNode(context: Context): Comment {
-    if (!this.options.lineComment) {
-      this.addFlag(F_VISIBLE);
-    } else {
+  constructor(value: string, options?: CommentOptions, location?: LocationInfo, treeContext?: TreeContext) {
+    super(value, options, location, treeContext);
+    if (this.options.lineComment || value.startsWith('//')) {
       this.removeFlag(F_VISIBLE);
     }
-    return this as Comment;
   }
 }
 export const comment = defineType(Comment, 'Comment');

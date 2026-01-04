@@ -16,6 +16,7 @@ export type PrintOptions = {
   compress?: boolean;
   collapseNesting?: boolean;
   context?: Context;
+  inCustom?: boolean;
 };
 
 export type FinalPrintOptions = PrintOptions & {

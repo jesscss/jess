@@ -80,13 +80,9 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     if (arg) {
       w.add('(');
       if (isNode(arg, 'SelectorList')) {
-        const last = arg.value.length - 1;
-        for (let i = 0; i <= last; i++) {
-          arg.value[i]!.toString(options);
-          if (i < last) {
-            w.add(', ');
-          }
-        }
+        let out = w.capture(() => arg.toString(options));
+        out = out.replace(/\n\s*/g, ' ');
+        w.add(out, arg);
       } else {
         arg.toString(options);
       }

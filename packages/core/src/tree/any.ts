@@ -18,6 +18,7 @@ export type AnyRole =
   | 'flag'
   | 'customprop'
   | 'semi'
+  | 'operator'
   | 'any';
 
 /** Doesn't get assigned but can be used for inference? */

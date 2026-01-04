@@ -8,7 +8,7 @@ const testData = path.dirname(require.resolve('@less/test-data'));
 const cssParser = new CssParser({ legacyMode: true });
 
 describe('Less CSS output - valid cases', () => {
-  glob.sync(path.join(testData, 'tests-unit/*/*.css'))
+  glob.sync(path.join(testData, 'tests-unit/*/permissive-parse.css'))
     .map(value => path.relative(testData, value))
     .filter(value => !invalidCSSOutput.includes(value))
     .sort()

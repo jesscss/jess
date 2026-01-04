@@ -965,7 +965,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
 
   override indexPendingItems() {
     for (const item of this.pendingItems) {
-      let key = String(item.value.name);
+      let key = item.value.name.valueOf();
       let set = this.index.get(key);
       if (set && set instanceof Set) {
         set.add(item);

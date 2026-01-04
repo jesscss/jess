@@ -239,7 +239,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (ctx?.topRules?.length) {
         for (const topRule of ctx.topRules) {
           const topRuleStr = w.capture(() => topRule.toString(options));
-          w.add(normalizeIndent('', topRuleStr), topRule);
+          w.add(normalizeIndent(topRuleStr, ''), topRule);
           w.add('\n');
         }
       }
@@ -266,7 +266,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         lastVisible.processPrePost('post', '', options);
       }
     }
-    this.processPrePost('post', '', options);
+    /** This should be managed by the parent? */
+    // this.processPrePost('post', '', options);
     return w.getSince(mark);
   }
 

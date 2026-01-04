@@ -7,8 +7,30 @@ import { Nil } from '../nil';
 /**
  * Normalizes the indent of a multi-line string by replacing initial whitespace.
  */
-export function normalizeIndent(indent: string, multiLineString: string): string {
-  return multiLineString.replace(/^\s*/gm, indent);
+export function normalizeIndent(multiLineString: string, indent: string, maintainRelative?: boolean): string {
+  if (!maintainRelative) {
+    return multiLineString.replace(/^\s*/, indent).replace(/[ \t\r\f]*\n\s*/g, '\n' + indent);
+  }
+
+  // Find the first line's original indent length
+  const firstLineMatch = multiLineString.match(/^(?:\n*|[ \t\r\f]*\n+)(\s*)/);
+  const firstLineOriginalIndentLength = firstLineMatch ? firstLineMatch[1]!.length : 0;
+
+  // Use replace with callback to process each line in one pass
+  let isFirstLine = true;
+  return multiLineString.replace(/(?:^|\n)(\s*)([^\n]*)/g, (match, lineIndent, lineContent) => {
+    if (isFirstLine) {
+      isFirstLine = false;
+      return indent + lineContent.trimEnd();
+    }
+
+    const lineOriginalIndentLength = lineIndent.length;
+    // Calculate the difference from the first line's indent
+    const indentDifference = lineOriginalIndentLength - firstLineOriginalIndentLength;
+    // Apply the difference to the new indent to maintain relative spacing
+    const newLineIndent = indent + ' '.repeat(Math.max(0, indentDifference));
+    return '\n' + newLineIndent + lineContent.trimEnd();
+  });
 }
 
 export function indent(depth: number): string {
@@ -99,14 +121,22 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
 
     // if (isNode(n, 'Declaration')) {
     let idt = indent(options.depth + 1);
-    let pre = w.capture(() => n.processPrePost('pre'));
-    /** Ignore if all whitespace */
-    if (/^\s*$/.test(pre)) {
-      pre = '';
-    }
+
+    let pre = w.capture(() => n.processPrePost('pre', undefined, options));
     /** normalize pre spacing */
     let out = w.capture(() => n.toTrimmedString({ ...options, depth: options.depth + 1 }));
-    w.add(normalizeIndent(idt, pre + out), n);
+    if (isNode(n, 'Declaration')) {
+      pre = pre.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
+      if (n.value.name.valueOf().startsWith('--')) {
+        w.add(idt);
+        w.add(out, n);
+      } else {
+        w.add(normalizeIndent(pre + out, idt, true), n);
+      }
+    } else {
+      w.add(idt);
+      w.add(out, n);
+    }
     /** @todo - optionally add semi-colon for compression */
     // if (n.requiredSemi && next) {
     //   w.add(';');
@@ -115,13 +145,11 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       w.add(';');
     }
     w.add('\n');
-    let post = w.capture(() => n.processPrePost('post'));
-    if (/^\s*$/.test(post)) {
-      post = '';
-    } else {
-      w.add(normalizeIndent(idt, post));
-    }
+    let post = w.capture(() => n.processPrePost('post', undefined, options));
 
+    if (!/^\s*$/.test(post)) {
+      w.add(normalizeIndent(post, idt));
+    }
     // }
     // else {
     //   n.toString({ ...options, depth: options.depth + 1 });

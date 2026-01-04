@@ -14,9 +14,6 @@ export type ExpressionOptions = {
  *
  * When parsing Less/Sass, everything containing an operation is
  * considered an expression.
- *
- * @note This extends Selector just because it can be
- * in the selector position (initially).
  */
 export interface Expression extends Node<Node, ExpressionOptions> {
   eval(context: Context): MaybePromise<Node>;
@@ -42,9 +39,13 @@ export class Expression extends Node<Node, ExpressionOptions> {
     let { parens } = this.options;
     const mark = w.mark();
     w.add('$', this);
-    if (parens) w.add('(');
+    if (parens) {
+      w.add('(');
+    }
     this.value.toString(options);
-    if (parens) w.add(')');
+    if (parens) {
+      w.add(')');
+    }
     return w.getSince(mark);
   }
 }

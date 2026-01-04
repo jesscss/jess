@@ -89,25 +89,19 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         if (isNode(value[i - 1], 'Nil')) {
           continue;
         }
-        if (component.value !== ' ') {
+        let co = component.value;
+        if (co !== ' ') {
           // For non-space combinators (>, +, ~, etc.), handle spacing explicitly
           // pre spacing (default to single space when no explicit pre)
-          if (!component.pre) {
-            w.add(' ');
-          } else {
-            component.processPrePost('pre', '', options);
-          }
-          component.toTrimmedString(options);
-          if (!component.post) {
-            w.add(' ');
-          } else {
-            component.processPrePost('post', '', options);
-          }
+          let out = w.capture(() => component.toString(options));
+          w.add(` ${out.trim()} `, component);
         } else {
-          component.toString(options);
+          let out = w.capture(() => component.toString(options));
+          w.add(` ${out.trim()}`, component);
         }
       } else {
-        component.toString(options);
+        let out = w.capture(() => component.toString(options));
+        w.add(out.trim(), component);
       }
     }
     return w.getSince(mark);

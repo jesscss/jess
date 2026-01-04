@@ -33,18 +33,20 @@ export class SelectorList extends Selector<Selector[]> {
     const w = options.writer!;
     let depth = options.depth!;
     let space = ''.padStart(depth * 2);
-    let length = this.value.length;
+    let value = this.value;
+    let length = value.length;
     const mark = w.mark();
-    for (let i = 0; i < length; i++) {
-      if (i > 0) {
-        w.add('\n');
-        w.add(space);
-      }
-      // Emit trimmed selector (no outer pre/post) to avoid duplicating newlines
-      this.value[i]!.toTrimmedString(options);
-      if (i < length - 1) {
-        w.add(',');
-      }
+    let item = value[0]!;
+
+    let out = w.capture(() => item.toString(options));
+    w.add(out.trim(), item);
+
+    // Subsequent items: emit sep; capture next item to decide spacing precisely
+    for (let i = 1; i < length; i++) {
+      item = value[i]!;
+      w.add(`,\n${space}`);
+      out = (w.capture(() => item.toString(options))).trim();
+      w.add(out);
     }
     return w.getSince(mark);
   }

@@ -25,7 +25,11 @@ export const invalidCSSOutput = [
    */
   'tests-unit/extract-and-length/extract-and-length.css',
   'tests-unit/functions/functions.css',
-  'tests-unit/javascript/javascript.css'
+  'tests-unit/javascript/javascript.css',
+
+  /** Contains invalid container query syntax: @container (width > 760px) not (height > 670px) */
+  /** The 'not' keyword must be at the start of a query, not between conditions */
+  'tests-unit/container/container.css'
 ];
 
 export const notSameSerialized = [
