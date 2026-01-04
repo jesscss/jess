@@ -81,4 +81,3 @@ describe('@container and @media query roles and QueryCondition parsing', () => {
     expect(out).toContain('QueryCondition');
   });
 });
-

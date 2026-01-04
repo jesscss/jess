@@ -6,8 +6,9 @@ import {
   JessError,
   logger,
   JsFunction,
-  type Rules,
-  getErrorFromParser
+  Rules,
+  getErrorFromParser,
+  type ISafeParseResult
 } from '@jesscss/core';
 import type { MathMode, UnitMode, LessOptions } from 'styles-config';
 import * as lessFunctions from '@jesscss/fns';
@@ -78,7 +79,7 @@ export class LessPlugin extends AbstractPlugin {
     return [importPath];
   }
 
-  async parse(filePath: string, source: string) {
+  safeParse(filePath: string, source: string): ISafeParseResult {
     /**
      * @todo - handle / pretty print errors
      * @todo - add contents to Jess error handler
@@ -104,15 +105,13 @@ export class LessPlugin extends AbstractPlugin {
       errors = parseResult.errors;
       lexerResult = parseResult.lexerResult;
     } catch (error: any) {
-      throw error;
+      return { errors: [error] };
     }
-    if (errors.length || lexerResult.errors.length) {
-      const error = (lexerResult.errors[0] ?? errors[0])!;
-      throw getErrorFromParser(error, filePath, source);
-    } else {
+
+    if (!errors.length && !lexerResult.errors.length) {
       this._registerFunctions(tree);
-      return tree;
     }
+    return { tree, errors, lexerResult };
   }
 }
 

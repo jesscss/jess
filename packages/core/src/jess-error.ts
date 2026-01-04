@@ -1,7 +1,7 @@
 // errors.ts
 import path from 'node:path';
 import chalk from 'chalk';
-import { type IRecognitionException, type ILexingError } from 'chevrotain';
+import { type IRecognitionException, type ILexingError, type ILexingResult } from 'chevrotain';
 import type { TreeContext } from './context';
 import type { LocationInfo } from './tree/node';
 
@@ -46,6 +46,10 @@ export type JessErrorInit = {
 
   /** Optional one-liner for extra context */
   note?: string;
+
+  /** Optional overrides for the template’s strings */
+  errors?: IRecognitionException[];
+  lexerErrors?: ILexingResult['errors'];
 };
 
 /* =========================
@@ -286,6 +290,9 @@ export class JessError extends Error {
   fix = '';
   note?: string;
 
+  errors?: IRecognitionException[];
+  lexerErrors?: ILexingResult['errors'];
+
   constructor(init: JessErrorInit) {
     // Resolve context from ctx/node first, else from explicit fields.
     const fileObj = init.ctx?.file;
@@ -317,6 +324,9 @@ export class JessError extends Error {
     this.reason = reason;
     this.fix = fix;
     this.note = init.note;
+
+    this.errors = init.errors;
+    this.lexerErrors = init.lexerErrors;
   }
 
   /** Pretty, clickable string for terminal/Problems panel. */
@@ -505,17 +515,24 @@ export const WARN = {
  * Converts a Chevrotain parser/lexer error into a friendly diagnostic.
  * If you pass `ctx`, the error will be clickable and include a code-frame.
  *
- * @param error Chevrotain recognition or lexing error
+ * @param errors Chevrotain recognition errors
+ * @param lexerResult Chevrotain lexing result
  * @param filePath Absolute path to the file (legacy fallback)
  * @param source File contents (legacy fallback)
  * @param ctx Optional TreeContext to auto-fill file/line/col/source
  */
 export function getErrorFromParser(
-  error: IRecognitionException | ILexingError,
+  errors: IRecognitionException[],
+  lexerErrors: ILexingResult['errors'] | undefined,
   filePath: string,
   source: string,
   ctx?: TreeContextLike
 ): JessError {
+  const error = lexerErrors?.[0] ?? errors[0];
+  if (!error) {
+    return new JessError({ code: 'JESS1000', phase: 'parse', filePath, source, ctx });
+  }
+
   const isLex =
     (error as any).name === 'LexerError'
     || ('token' in error && (error as any).lexer);
@@ -554,6 +571,8 @@ export function getErrorFromParser(
     filePath,
     source,
     line: line ?? 1,
-    column: column ?? 1
+    column: column ?? 1,
+    errors,
+    lexerErrors
   });
 }

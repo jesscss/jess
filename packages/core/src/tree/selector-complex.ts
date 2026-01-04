@@ -94,7 +94,12 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
           // For non-space combinators (>, +, ~, etc.), handle spacing explicitly
           // pre spacing (default to single space when no explicit pre)
           let out = w.capture(() => component.toString(options));
-          w.add(` ${out.trim()} `, component);
+          /** Namespace combinator traditionally written without spacing */
+          if (out !== '|') {
+            w.add(` ${out.trim()} `, component);
+          } else {
+            w.add(out.trim(), component);
+          }
         } else {
           let out = w.capture(() => component.toString(options));
           w.add(` ${out.trim()}`, component);
@@ -133,13 +138,14 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       },
       (selector) => {
         const { value } = selector;
-        // Unwrap :is() PseudoSelectors that contain a single BasicSelector
+        // Unwrap generated :is() PseudoSelectors that contain a single BasicSelector
         // This handles cases where ampersands are replaced with :is(selector) during mixin evaluation
         for (let i = 0; i < value.length; i++) {
           const component = value[i];
           if (
             isNode(component, 'PseudoSelector')
             && component.value.name === ':is'
+            && component.generated
             && component.value.arg
             && isNode(component.value.arg, 'BasicSelector')
           ) {

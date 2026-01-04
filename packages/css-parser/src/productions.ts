@@ -328,36 +328,44 @@ export function pseudoSelector(this: C, T: TokenMap, selectorAlt?: AltContext) {
          */
         let values = $.OR4([
           {
+            /** ::unknown(values) */
             GATE: $.noSep,
             ALT: () => {
+              name += $.CONSUME(T.GenericFunctionStart).image;
               let RECORDING_PHASE = $.RECORDING_PHASE;
-              name += $.CONSUME(T.Ident).image;
               let values: Node[];
               if (!RECORDING_PHASE) {
                 values = [];
+                name = name.slice(0, -1);
               }
               let valuesLocation: LocationInfo;
-              $.OPTION2(() => {
-                $.CONSUME(T.LParen);
-                $.startRule();
-                $.MANY(() => {
-                  let val = $.SUBRULE($.anyInnerValue);
-                  if (!RECORDING_PHASE) {
-                    values!.push(val);
-                  }
-                });
+
+              $.startRule();
+              $.MANY(() => {
+                let val = $.SUBRULE($.anyInnerValue);
                 if (!RECORDING_PHASE) {
-                  valuesLocation = $.endRule();
+                  values!.push(val);
                 }
-                $.CONSUME3(T.RParen);
               });
+              if (!RECORDING_PHASE) {
+                valuesLocation = $.endRule();
+              }
+              $.CONSUME3(T.RParen);
+
               if (!RECORDING_PHASE && values!.length) {
                 return new Sequence(values!, undefined, valuesLocation!, this.context);
               }
             }
+          },
+          {
+            /** ::unknown  */
+            GATE: $.noSep,
+            ALT: () => {
+              name += $.CONSUME(T.Ident).image;
+            }
           }
         ]);
-        return createPseudo(name, values);
+        return createPseudo(name, values!);
       }
     }
   ];
@@ -376,34 +384,38 @@ export function pseudoSelector(this: C, T: TokenMap, selectorAlt?: AltContext) {
 export function nthValue(this: C, T: TokenMap, valueAlt?: AltContext) {
   const $ = this;
 
-  valueAlt ??= (ctx: RuleContext = {}) => [
-    { ALT: () => $.CONSUME(T.NthOdd) },
-    { ALT: () => $.CONSUME(T.NthEven) },
-    { ALT: () => $.CONSUME(T.Integer) },
-    {
-      ALT: () => {
-        $.OR2([
-          { ALT: () => $.CONSUME(T.NthDimension) },
-          { ALT: () => $.CONSUME(T.NthDimensionSigned) }
-        ]);
-        $.OPTION(() => {
-          $.OR3([
-            { ALT: () => $.CONSUME(T.SignedInt) },
-            {
-              ALT: () => {
-                $.CONSUME(T.Minus);
-                $.CONSUME(T.UnsignedInt);
-              }
-            }
+  valueAlt ??= (ctx: RuleContext = {}) => {
+    return [
+      { ALT: () => $.CONSUME(T.NthOdd) },
+      { ALT: () => $.CONSUME(T.NthEven) },
+      { ALT: () => $.CONSUME(T.Integer) },
+      {
+        ALT: () => {
+          $.OR2([
+            { ALT: () => $.CONSUME(T.NthSignedDimension) },
+            { ALT: () => $.CONSUME(T.NthUnsignedDimension) },
+            { ALT: () => $.CONSUME(T.NthSignedPlus) },
+            { ALT: () => $.CONSUME(T.NthIdent) }
           ]);
-        });
-        $.OPTION2(() => {
-          $.CONSUME(T.Of);
-          $.SUBRULE($.complexSelector, { ARGS: [ctx] });
-        });
+          $.OPTION(() => {
+            $.OR3([
+              { ALT: () => $.CONSUME(T.SignedInt) },
+              {
+                ALT: () => {
+                  $.CONSUME(T.Minus);
+                  $.CONSUME(T.UnsignedInt);
+                }
+              }
+            ]);
+          });
+          $.OPTION2(() => {
+            $.CONSUME(T.Of);
+            $.SUBRULE($.complexSelector, { ARGS: [ctx] });
+          });
+        }
       }
-    }
-  ];
+    ];
+  };
 
   /**
    * @see https://developer.mozilla.org/en-US/docs/Web/CSS/:nth-child
@@ -1164,6 +1176,7 @@ export function value(this: C, T: TokenMap, valueAlt?: AltContext) {
     { ALT: () => $.CONSUME(T.Dimension) },
     { ALT: () => $.CONSUME(T.Number) },
     { ALT: () => $.CONSUME(T.Color) },
+    { ALT: () => $.CONSUME(T.UnicodeRange) },
     { ALT: () => $.SUBRULE($.string, { ARGS: [ctx] }) },
     { ALT: () => $.SUBRULE($.squareValue, { ARGS: [ctx] }) },
     {

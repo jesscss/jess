@@ -1,8 +1,8 @@
-import { Node, defineType, F_STATIC, type NodeOptions, type LocationInfo } from './node';
+import { Node, defineType, F_STATIC, F_VISIBLE, type NodeOptions } from './node';
 import { Ruleset } from './ruleset';
 import type { Any } from './any';
 import { Rules } from './rules';
-import type { Context, TreeContext } from '../context';
+import type { Context } from '../context';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { Ampersand } from './ampersand';
@@ -42,6 +42,13 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   override allowRoot = true;
 
   frames: (Ruleset | AtRule)[] | undefined;
+
+  protected _valueOf: string | undefined;
+
+  /** Used for equality comparison with other at-rules */
+  override valueOf() {
+    return (this._valueOf ??= (this.value.name.toString() + (this.value.prelude ? ' ' + this.value.prelude.valueOf() : '')));
+  }
 
   /**
    * Means: can bubble ruleset parents to children.
@@ -289,6 +296,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         // Pop the frame that was pushed in preEval
         // This frame was kept on the stack during rules evaluation so children could access it
         context.frames.pop();
+        let rules = node.value.rules;
+        if (rules && rules.visibleRules().length === 0) {
+          this.removeFlag(F_VISIBLE);
+        }
         return node;
       }
     ) as MaybePromise<AtRule>;

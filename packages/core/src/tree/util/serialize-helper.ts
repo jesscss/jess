@@ -92,7 +92,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     let matches = -1;
     /** Close current frames if needed */
     for (let i = 0; i < lastRenderedFrames.length; i++) {
-      if (inFrames[i] !== lastRenderedFrames[i]) {
+      if (inFrames[i]?.valueOf() !== lastRenderedFrames[i]?.valueOf()) {
         break;
       }
       matches = i;

@@ -193,7 +193,6 @@ export const rawCssTokens = () => ({
        */
       { name: 'And', pattern: /and/, longer_alt: 'PlainIdent', categories: ['Ident'] },
       { name: 'Or', pattern: /or/, longer_alt: 'PlainIdent', categories: ['Ident'] },
-      { name: 'Not', pattern: /not/, longer_alt: 'PlainIdent', categories: ['Ident'] },
 
       /**
        * Special function names in CSS
@@ -441,14 +440,40 @@ export const rawCssTokens = () => ({
         longer_alt: 'DimensionNum',
         categories: ['Number']
       },
+      /**
+       * This has to be parsed carefully because the plus / minus can
+       * continue into different token types.
+       */
       {
-        name: 'NthDimensionSigned',
-        pattern: /[+-]\d+n/
+        name: 'NthSignedDimension',
+        pattern: /[+-]\dn/,
+        longer_alt: 'SignedDimensionInt',
+        line_breaks: false,
+        categories: ['Dimension', 'Signed']
       },
       {
-        name: 'NthDimension',
-        pattern: /\d+n/
+        name: 'NthUnsignedDimension',
+        pattern: /\dn/,
+        longer_alt: 'DimensionNum',
+        line_breaks: false,
+        categories: ['Dimension']
       },
+      {
+        name: 'NthSignedPlus',
+        pattern: /[+]n/,
+        line_breaks: false
+      },
+      {
+        name: 'NthIdent',
+        pattern: /-?n/,
+        longer_alt: 'PlainIdent',
+        line_breaks: false,
+        categories: ['Ident']
+      },
+
+      /** Moved under 'n' parsing */
+      { name: 'Not', pattern: /not/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+
       {
         name: 'WS',
         pattern: '{{ws}}',

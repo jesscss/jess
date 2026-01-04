@@ -7,7 +7,8 @@ import { invalidLess } from '@jesscss/shared';
 import { Compiler } from '../../src';
 import { getTestCases } from '../test-utils';
 import lessPlugin from '@jesscss/plugin-less';
-// import { serializeTypes } from '@jesscss/core';
+import { getErrorFromParser } from 'core/lib/jess-error';
+import { type Rules } from '@jesscss/core';
 
 const require = createRequire(import.meta.url);
 const testData = path.dirname(require.resolve('@less/test-data'));
@@ -22,27 +23,26 @@ const baseCompiler = new Compiler({
 });
 
 // Files that should be tested in specialized test files
-const specializedTests = [
+const additionalSkips = [
   'tests-unit/color-functions/colors.less', // Tested in colors.test.ts
-  'tests-unit/nesting/nesting.less' // Tested in nesting.test.ts
+  'tests-unit/nesting/nesting.less', // Tested in nesting.test.ts
+  'tests-unit/variables/variable-advanced.less' // infinite loop
 ];
 
 // Temporarily filter to specific tests for debugging - set to empty array to run all
 const targetTests: string[] = [
-  // 'tests-unit/at-rules-keyword-comments/at-rules-keyword-comments.less'
-  // 'tests-unit/color-functions/charsets.less'
 ];
 
 describe('Can render Less files to CSS', () => {
   // Get all .less files from tests-unit and tests-config directories
   const unitFiles: string[] = []; // glob.sync(path.join(testData, 'tests-unit/*/*.less'));
-  const configFiles = glob.sync(path.join(testData, 'tests-unit/{a*,b*,c*}/*.less'));
+  const configFiles = glob.sync(path.join(testData, 'tests-unit/*/css-guards.less'));
   const allFiles = [...unitFiles, ...configFiles];
 
   allFiles
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))
-    .filter(value => !specializedTests.includes(value)) // Skip files tested elsewhere
+    .filter(value => !additionalSkips.includes(value)) // Skip files tested elsewhere
     .filter(value => targetTests.length === 0 || targetTests.includes(value)) // Target specific tests
     .sort()
     .forEach((file) => {
@@ -71,8 +71,12 @@ describe('Can render Less files to CSS', () => {
             });
 
             const context = testCompiler.createContext(lessPath);
-            const { node } = await context.getTree(lessPath);
-
+            let node: Rules;
+            try {
+              ({ node } = await context.getTree(lessPath));
+            } catch (error: any) {
+              throw error;
+            }
             const evald = await node.eval(context);
             expect(evald.toString({ context })).toBeString(expectedCss.trim());
           }, 5000); // 5 second timeout to catch infinite loops

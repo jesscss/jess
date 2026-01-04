@@ -134,6 +134,12 @@ export class Dimension extends Node<DimensionValue> {
     let unitToGroup = this.unitToGroup;
     let isStrictMode = context?.opts?.unitMode === 'strict';
     let { number: aVal, unit: aUnit } = this.value;
+
+    /** Normalize percentages to a number for numerical comparison */
+    if (aUnit === '%') {
+      aVal = aVal / 100;
+      aUnit = undefined;
+    }
     if (b instanceof Color) {
       if (aUnit) {
         let msg = `Cannot convert "${this}" to a color`;
@@ -149,6 +155,10 @@ export class Dimension extends Node<DimensionValue> {
       return thisColor.compare(b);
     }
     let { number: bVal, unit: bUnit } = b.value;
+    if (bUnit === '%') {
+      bVal = bVal / 100;
+      bUnit = undefined;
+    }
 
     if (
       (!aUnit && !bUnit)

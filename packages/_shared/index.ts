@@ -51,7 +51,7 @@ export const notSameSerialized = [
  * catch. However, this parser extends a CSS
  * parser and therefore catches more errors.
  */
-export const invalidLess = [
+export const invalidLess: string[] = [
   /**
    * Jess simplifies calc expressions
    * in ways that Less doesn't, so output won't
@@ -59,32 +59,32 @@ export const invalidLess = [
    */
   // 'tests-unit/calc/calc.less',
   /** This file is full of errors. */
-  'tests-unit/css-3/css-3.less',
+  // 'tests-unit/css-3/css-3.less',
 
-  'tests-unit/css-guards/css-guards.less',
-  'tests-unit/extract-and-length/extract-and-length.less',
-  'tests-unit/functions/functions.less',
-  'tests-unit/mixins-interpolated/mixins-interpolated.less',
+  // 'tests-unit/css-guards/css-guards.less',
+  // 'tests-unit/extract-and-length/extract-and-length.less',
+  // 'tests-unit/functions/functions.less',
+  // 'tests-unit/mixins-interpolated/mixins-interpolated.less',
 
-  /** @todo */
-  'tests-unit/permissive-parse/permissive-parse.less',
-  'tests-unit/property-name-interp/property-name-interp.less',
-  'tests-config/compression/compression.less',
+  // /** @todo */
+  // 'tests-unit/permissive-parse/permissive-parse.less',
+  // 'tests-unit/property-name-interp/property-name-interp.less',
+  // 'tests-config/compression/compression.less',
 
-  // 'tests-config/math/parens-division/new-division.less',
-  'tests-config/math-strict/css.less',
-  'tests-unit/import/invalid-css.less',
-  'tests-unit/import/import/invalid-css.less',
+  // // 'tests-config/math/parens-division/new-division.less',
+  // 'tests-config/math-strict/css.less',
+  // 'tests-unit/import/invalid-css.less',
+  // 'tests-unit/import/import/invalid-css.less',
 
-  /** Contains invalid `[prop=10%]` */
-  'tests-unit/selectors/selectors.less',
+  // /** Contains invalid `[prop=10%]` */
+  // 'tests-unit/selectors/selectors.less',
 
-  /**
-   * This has a variable in a `@charset`, which definitely
-   * should not be allowed.
-   */
-  'tests-unit/variables-in-at-rules/variables-in-at-rules.less',
+  // /**
+  //  * This has a variable in a `@charset`, which definitely
+  //  * should not be allowed.
+  //  */
+  // 'tests-unit/variables-in-at-rules/variables-in-at-rules.less',
 
-  /** Has an unsupported token - `alpha(opacity=@var)` */
-  'tests-unit/variables/variables.less'
+  // /** Has an unsupported token - `alpha(opacity=@var)` */
+  // 'tests-unit/variables/variables.less'
 ];

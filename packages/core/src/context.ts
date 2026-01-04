@@ -15,6 +15,7 @@ import { MathMode, UnitMode } from './types/modes';
 import * as path from 'node:path';
 import { isNode } from './tree/util/is-node';
 import { isThenable } from '@jesscss/awaitable-pipe';
+import { getErrorFromParser } from './jess-error';
 
 export interface ContextOptions {
   /** Hash classes for module output */
@@ -485,10 +486,10 @@ export class Context {
     } catch (error: any) {
       throw error;
     }
-    const parseResult = plugin.parse!(resolvedPath, source);
-    const tree = isThenable(parseResult)
-      ? await parseResult
-      : parseResult;
+    const { tree, errors, lexerResult } = plugin.safeParse!(resolvedPath, source);
+    if (errors.length || lexerResult?.errors.length) {
+      throw getErrorFromParser(errors, lexerResult?.errors, resolvedPath, source);
+    }
     if (tree) {
       this.sourceTrees.set(resolvedPath, tree);
       return {

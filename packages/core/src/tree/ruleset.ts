@@ -8,7 +8,8 @@ import { atIndex } from './util/collections';
 import { isNode } from './util/is-node';
 import { Ampersand } from './ampersand';
 import { Combinator } from './combinator';
-import { ComplexSelector } from './selector-complex';
+import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex';
+import type { CompoundSelector } from './selector-compound';
 import { SelectorList } from './selector-list';
 import { type PrintOptions, type FinalPrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
@@ -59,9 +60,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return this.hoistToRoot ?? options.collapseNesting ?? false;
   }
 
-  /** @todo - remove? */
+  protected _valueOf: string | undefined;
+
+  /** Used for equality comparison with other rulesets */
   override valueOf() {
-    return this.selector instanceof Nil ? '' : this.selector.valueOf();
+    return (this._valueOf ??= this.selector instanceof Nil ? '' : this.selector.valueOf());
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -233,31 +236,37 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
         // Also check if the selector is a ComplexSelector that contains a :is() as its first component
         if (isNode(sels, 'ComplexSelector')) {
+          let first = sels.value[0];
+          let outer: ComplexSelector | CompoundSelector = sels;
+          if (isNode(first, 'CompoundSelector')) {
+            outer = first;
+            first = first.value[0];
+          }
           if (
-            isNode(sels.value[0], 'PseudoSelector')
-            && sels.value[0].value.name === ':is'
-            && sels.value[0].generated
+            isNode(first, 'PseudoSelector')
+            && first.value.name === ':is'
+            && first.generated
+            && first.value.arg!.type !== 'SelectorList'
           ) {
-            // Only unwrap if the :is() contains a ComplexSelector, not a SelectorList
-            const unwrappedSelector = sels.value[0].value.arg as Selector;
-            if (isNode(unwrappedSelector, 'ComplexSelector')) {
-              // Replace the first component with the unwrapped selector
-              const newComponents = [unwrappedSelector, ...sels.value.slice(1)];
-              sels = ComplexSelector.create(newComponents);
-            }
+            outer.value[0] = first.value.arg! as ComplexSelectorComponent;
           }
         }
 
-        // Unwrap generated :is() if it's the only component of a CompoundSelector
-        if (isNode(sels, 'CompoundSelector') && sels.value.length === 1) {
-          const onlyComponent = sels.value[0];
+        // Unwrap generated :is() if it's the first or only component of a CompoundSelector
+        if (isNode(sels, 'CompoundSelector')) {
+          const first = sels.value[0];
           if (
-            isNode(onlyComponent, 'PseudoSelector')
-            && onlyComponent.value.name === ':is'
-            && onlyComponent.generated
+            isNode(first, 'PseudoSelector')
+            && first.value.name === ':is'
+            && first.generated
+            && first.value.arg!.type !== 'SelectorList'
           ) {
             // Unwrap the :is() - use its argument as the selector
-            sels = onlyComponent.value.arg as Selector;
+            if (sels.value.length === 1) {
+              sels = sels.value[0]!;
+            } else {
+              sels.value[0] = first.value.arg! as ComplexSelectorComponent;
+            }
           }
         }
         if (sels instanceof Nil) {
@@ -312,11 +321,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         this.value.rules = evaluatedRules;
         const rules = this.value.rules;
 
-        // Don't remove visibility flag when collapseNesting is enabled
-        // because the ruleset will be flattened to root level
-        // Also don't remove it if the ruleset has a selector - empty rulesets should still be output
-        // (e.g., when a mixin guard doesn't match, the ruleset should still appear, just empty)
-        if (rules.visibleRules().length === 0 && collapseNesting) {
+        if (rules.visibleRules().length === 0) {
           this.removeFlag(F_VISIBLE);
         }
         return this;

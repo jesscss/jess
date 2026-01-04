@@ -3,6 +3,15 @@ import { join, isAbsolute, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import type { Visitor } from './visitor';
+import type { IParseResult } from './types';
+import type { ILexingResult } from 'chevrotain';
+import { getErrorFromParser } from './jess-error';
+
+export type ISafeParseResult = IParseResult<Rules> | {
+  tree?: undefined;
+  errors: any[];
+  lexerResult?: undefined;
+};
 
 export interface PluginInterface {
   /**
@@ -55,7 +64,10 @@ export interface PluginInterface {
    * If we have the extension in `supportedExtensions`, and this method exists,
    * then this plugin is assumed to be able to parse the file.
    */
-  parse?(filePath: string, source: string): Promise<Rules>;
+  parse?(filePath: string, source: string): Rules;
+
+  /** No errors thrown; instead will return errors in the result */
+  safeParse?(filePath: string, source: string): ISafeParseResult;
 
   /** If this method exists, then the plugin can return a JS module / object */
   import?(absoluteFilePath: string): Promise<Record<string, any>>;
@@ -109,6 +121,18 @@ export abstract class AbstractPlugin implements PluginInterface {
       }
     }
     return null;
+  }
+
+  parse(filePath: string, source: string): Rules {
+    let safeParse: PluginInterface['safeParse'] = (this as any).safeParse;
+    if (!safeParse) {
+      throw new Error(`Plugin "${this.name}" does not support parsing`);
+    }
+    const { tree, errors, lexerResult } = safeParse.call(this, filePath, source);
+    if (errors.length || lexerResult?.errors.length) {
+      throw getErrorFromParser(errors, lexerResult?.errors, filePath, source);
+    }
+    return tree!;
   }
 
   /** Implement using the JS plugin w/ Deno */

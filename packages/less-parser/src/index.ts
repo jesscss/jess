@@ -1,11 +1,10 @@
 import { type IToken, type CstNode, Lexer } from 'chevrotain';
 import { lessTokens, lessFragments } from './lessTokens';
-import type { IParseResult } from '@jesscss/css-parser';
 import { createLexerDefinition } from '@jesscss/css-parser';
 import { LessActionsParser, type LessParserConfig, type TokenMap } from './lessActionsParser';
 import { LessErrorMessageProvider } from './lessErrorMessageProvider';
 import type { ConditionalPick } from 'type-fest';
-import type { Rules } from '@jesscss/core';
+import type { Rules, IParseResult } from '@jesscss/core';
 
 export * from './lessActionsParser';
 export * from './lessTokens';

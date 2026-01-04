@@ -934,9 +934,11 @@ export abstract class Node<
     return this;
   }
 
-  /** @todo - Still needed? */
   static numericCompare(a: number, b: number) {
     if (a === b) {
+      return 0;
+    } else if (Math.abs(a - b) < Number.EPSILON) {
+      /** Close enough! Prevents floating point precision issues */
       return 0;
     } else if (a > b) {
       return 1;

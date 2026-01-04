@@ -1782,8 +1782,10 @@ export function nthValue(this: P, T: TokenMap) {
     {
       ALT: () => {
         $.OR2([
-          { ALT: () => $.CONSUME(T.NthDimension) },
-          { ALT: () => $.CONSUME(T.NthDimensionSigned) }
+          { ALT: () => $.CONSUME(T.NthSignedDimension) },
+          { ALT: () => $.CONSUME(T.NthUnsignedDimension) },
+          { ALT: () => $.CONSUME(T.NthSignedPlus) },
+          { ALT: () => $.CONSUME(T.NthIdent) }
         ]);
         $.OPTION(() => {
           $.OR3([
@@ -2199,6 +2201,7 @@ export function value(this: P, T: TokenMap) {
       { ALT: () => $.CONSUME(T.DefaultGuardFunc) },
       { ALT: () => $.CONSUME(T.Dimension) },
       { ALT: () => $.CONSUME(T.Number) },
+      { ALT: () => $.CONSUME(T.UnicodeRange) },
       { ALT: () => $.SUBRULE($.string, { ARGS: [ctx] }) },
       { ALT: () => $.CONSUME(T.JavaScript) },
       /** Explicitly not marked as an ident */

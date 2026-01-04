@@ -1,15 +1,9 @@
-import { type ILexingResult, Lexer, type IRecognitionException } from 'chevrotain';
+import { Lexer } from 'chevrotain';
 import { cssLexer } from './cssTokens';
 import { type TokenMap, type CssParserConfig, CssActionsParser } from './cssActionsParser';
 import { CssErrorMessageProvider } from './cssErrorMessageProvider';
 import type { ConditionalPick } from 'type-fest';
-import { type Node, type Rules } from '@jesscss/core';
-
-export interface IParseResult<T extends Node = Node> {
-  lexerResult: ILexingResult;
-  errors: IRecognitionException[];
-  tree: T;
-}
+import { type Node, type Rules, type IParseResult } from '@jesscss/core';
 
 const errorMessageProvider = new CssErrorMessageProvider();
 

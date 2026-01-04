@@ -118,9 +118,9 @@ export class Color extends Node<ColorData> {
   get rgb(): [number, number, number] {
     const [r, g, b] = this._rgb;
     return [
-      Math.max(0, Math.min(255, Math.round(r))),
-      Math.max(0, Math.min(255, Math.round(g))),
-      Math.max(0, Math.min(255, Math.round(b)))
+      Math.max(0, Math.min(255, round(r))),
+      Math.max(0, Math.min(255, round(g))),
+      Math.max(0, Math.min(255, round(b)))
     ];
   }
 
@@ -323,7 +323,7 @@ export class Color extends Node<ColorData> {
     const values = this.rgb;
     let alpha = this.alpha;
     if (alpha < 1) {
-      values.push(Math.round(alpha * 255));
+      values.push(round(alpha * 255));
     }
     let hex = '#' + values.map(function(c) {
       let hex = c.toString(16);
