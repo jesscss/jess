@@ -33,6 +33,7 @@ import type { Url } from './url';
 import type { Quoted } from './quoted';
 import type { Color } from './color';
 import type { Reference } from './reference';
+import type { Comment } from './comment';
 
 export type Nodes = {
   Ampersand: typeof Ampersand;
@@ -40,6 +41,7 @@ export type Nodes = {
   Anonymous: typeof Anonymous;
   AtRule: typeof AtRule;
   Call: typeof Call;
+  Comment: typeof Comment;
   Declaration: typeof Declaration;
   Expression: typeof Expression;
   VarDeclaration: typeof VarDeclaration;

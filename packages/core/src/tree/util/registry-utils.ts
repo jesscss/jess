@@ -158,7 +158,18 @@ export abstract class Registry<
           }
           // Use actualChildFilterType which may be undefined for mixin-ruleset lookups
           // filterType parameter is used to SELECT registry, actualChildFilterType is used to FILTER results
+          // #region agent log
+          const isMixinSearch = findType === 'mixin' && (key === '.mixin' || (typeof key === 'string' && key.includes('.mixin')));
+          if (isMixinSearch) {
+            fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { contentType: 'application/json' }, body: JSON.stringify({ location: 'registry-utils.ts:161', message: '_searchRulesChildren: searching in rulesSet Rules', data: { key, findType, rulesVisibility: r.rulesVisibility, hasMixinRegistry: !!r.node.mixinRegistry }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run8', hypothesisId: 'I' }) }).catch(() => {});
+          }
+          // #endregion
           let result = r.node.find(findType, key, actualChildFilterType as any, newOpts);
+          // #region agent log
+          if (isMixinSearch) {
+            fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { contentType: 'application/json' }, body: JSON.stringify({ location: 'registry-utils.ts:170', message: '_searchRulesChildren: search result', data: { key, found: !!result, resultCount: result ? (Array.isArray(result) ? result.length : 1) : 0 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run8', hypothesisId: 'I' }) }).catch(() => {});
+          }
+          // #endregion
           if (result) {
             /**
              * If it's a public declaration, and it's the lower-most declaration,
@@ -695,6 +706,40 @@ export class MixinRegistry extends Registry<
       let [startKey, ...search] = keyList;
       let registry = rules.getRegistry('mixin');
       registry.indexPendingItems();
+      // #region agent log
+      if (startKey === 'mixin' || startKey === '.mixin') {
+        const parentRules = rules.parent as Rules | undefined;
+        const rulesSetEntries = (rules as any).rulesSet?.map((entry: any) => {
+          const node = entry.node;
+          const mixinNodes = node?.value?.filter((n: any) => n?.type === 'Mixin' || n?.type === 'Ruleset') ?? [];
+          const mixinNames = mixinNodes.map((n: any) => {
+            if (n?.type === 'Mixin') {
+              return String(n?.value?.name?.valueOf?.() ?? '');
+            }
+            if (n?.type === 'Ruleset') {
+              return String(n?.value?.selector?.toString?.() ?? '');
+            }
+            return '';
+          });
+          const hasMixinName = mixinNames.some((name: string) => name.includes('.mixin') || name === '.mixin');
+          const nodeRegistry = node?.getRegistry?.('mixin');
+          const sourceNode = node?.sourceNode;
+          return {
+            rulesIndex: node?.index,
+            rulesVisibility: entry.rulesVisibility,
+            hasMixins: mixinNodes.length > 0,
+            mixinCount: mixinNodes.length,
+            mixinNames,
+            hasMixinName,
+            nodeRegistryIndexSize: nodeRegistry?.index?.size ?? 0,
+            nodeRegistryKeys: nodeRegistry ? Array.from(nodeRegistry.index.keys()) : [],
+            sourceNodeType: sourceNode?.type,
+            sourceNodeIndex: sourceNode?.index
+          };
+        }) ?? [];
+        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { contentType: 'application/json' }, body: JSON.stringify({ location: 'registry-utils.ts:704', message: 'MixinRegistry.find: searching for mixin', data: { startKey, searchKeys: keyList, rulesIndex: rules.index, rulesType: rules.type, parentRulesIndex: parentRules?.index, parentRulesType: parentRules?.type, registryIndexSize: registry.index.size, rulesSetSize: (rules as any).rulesSet?.length ?? 0, rulesSetEntries }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run13', hypothesisId: 'G' }) }).catch(() => {});
+      }
+      // #endregion
       const existing = registry.index.get(startKey!);
 
       // With the new indexing (by local visible keys), nested rulesets are indexed under their own keys

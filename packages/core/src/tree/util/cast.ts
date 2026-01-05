@@ -25,7 +25,9 @@ function getNodeType(value: any): Node {
     return new Bool(value);
   }
   if (typeof value === 'function') {
-    return new JsFunction(value);
+    // Preserve function options (e.g., params metadata from getFunctionFromMixins)
+    const options = (value as any)?.options;
+    return new JsFunction(value, options);
   }
   if (isPlainObject(value)) {
     return new JsObject(value);

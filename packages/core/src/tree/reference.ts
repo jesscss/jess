@@ -291,46 +291,22 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         const filter = (n: Node) => originalFilter!(n) && !context.searchScope.has(n);
         // If this Reference has a target, mark hasTarget=true so 'targeted' Rules are searchable
         const hasTarget = !!target;
-        const opts: FindOptions = { filter, context, hasTarget };
 
-        if (this.options.resolution === 'linear') {
-          // For linear resolution, climb up the parent chain until we find a node with a Rules parent
-          // and use that node's index for linear lookup
-          let startIndex = this.index;
-          let currentNode: Node | undefined = this;
-
-          // If this node doesn't have an index, climb up until we find one
-          if (startIndex === undefined) {
-            while (currentNode && startIndex === undefined) {
-              currentNode = currentNode.parent;
-              if (currentNode) {
-                startIndex = currentNode.index;
-              }
-            }
+        // Helper function to perform lookup with a given target Rules
+        const performLookup = (targetRules: Rules | Node | undefined): any => {
+          if (!targetRules) {
+            return undefined;
           }
 
-          // Now climb up until we find a node that has a Rules parent
-          while (currentNode && currentNode.parent && !isNode(currentNode.parent, 'Rules')) {
-            currentNode = currentNode.parent;
-            if (currentNode && currentNode.index !== undefined) {
-              startIndex = currentNode.index;
-            }
-          }
+          const opts: FindOptions = { filter, context, hasTarget };
 
-          if (startIndex !== undefined) {
-            opts.start = startIndex;
-          }
-        } else if (this.options.resolution === 'call-time') {
-          // For call-time resolution, use the call site's position (context.callSiteIndex)
-          // instead of the definition position. This allows mixins to resolve variables
-          // at the time they're called, not when they're defined.
-          if (context.callSiteIndex !== undefined) {
-            opts.start = context.callSiteIndex;
-          } else {
-            // Fall back to linear resolution if we can't find a call site
+          if (this.options.resolution === 'linear') {
+            // For linear resolution, climb up the parent chain until we find a node with a Rules parent
+            // and use that node's index for linear lookup
             let startIndex = this.index;
             let currentNode: Node | undefined = this;
 
+            // If this node doesn't have an index, climb up until we find one
             if (startIndex === undefined) {
               while (currentNode && startIndex === undefined) {
                 currentNode = currentNode.parent;
@@ -340,6 +316,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               }
             }
 
+            // Now climb up until we find a node that has a Rules parent
             while (currentNode && currentNode.parent && !isNode(currentNode.parent, 'Rules')) {
               currentNode = currentNode.parent;
               if (currentNode && currentNode.index !== undefined) {
@@ -350,80 +327,136 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             if (startIndex !== undefined) {
               opts.start = startIndex;
             }
-          }
-        }
-        let returnVal: any;
-
-        switch (type) {
-          case 'index':
-            if (typeof valueKey === 'number') {
-              if (isNode(resolvedTarget, 'Rules')) {
-                returnVal = resolvedTarget.at(valueKey);
-              } else if (isNode(resolvedTarget, 'JsArray')) {
-                returnVal = atIndex(resolvedTarget.value, valueKey);
-              }
+          } else if (this.options.resolution === 'call-time') {
+            // For call-time resolution, use the call site's position (context.callSiteIndex)
+            // instead of the definition position. This allows mixins to resolve variables
+            // at the time they're called, not when they're defined.
+            if (context.callSiteIndex !== undefined) {
+              opts.start = context.callSiteIndex;
             } else {
-              const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
-              if (isNode(resolvedTarget, 'Rules')) {
-                returnVal = resolvedTarget.find('declaration', `${keyStr}`, undefined, opts);
-              } else if (isNode(resolvedTarget, 'JsObject')) {
-                returnVal = resolvedTarget.value[keyStr];
+              // Fall back to linear resolution if we can't find a call site
+              let startIndex = this.index;
+              let currentNode: Node | undefined = this;
+
+              if (startIndex === undefined) {
+                while (currentNode && startIndex === undefined) {
+                  currentNode = currentNode.parent;
+                  if (currentNode) {
+                    startIndex = currentNode.index;
+                  }
+                }
+              }
+
+              while (currentNode && currentNode.parent && !isNode(currentNode.parent, 'Rules')) {
+                currentNode = currentNode.parent;
+                if (currentNode && currentNode.index !== undefined) {
+                  startIndex = currentNode.index;
+                }
+              }
+
+              if (startIndex !== undefined) {
+                opts.start = startIndex;
               }
             }
-            break;
-          case 'variable':
-            if (isNode(resolvedTarget, 'Rules')) {
-              const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
-              returnVal = resolvedTarget.find('declaration', `${keyStr}`, 'VarDeclaration', opts);
-            }
-            break;
-          case 'function':
-            if (isNode(resolvedTarget, 'Rules')) {
-              const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
-              returnVal = resolvedTarget.find('function', `${keyStr}`, undefined, opts);
-            }
-            break;
-          case 'property':
-            if (isNode(resolvedTarget, 'Rules')) {
-              const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
-              returnVal = resolvedTarget.find('declaration', `${keyStr}`, 'Declaration', opts);
-            } else if (isNode(resolvedTarget, 'JsObject')) {
-              const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
-              returnVal = resolvedTarget.value[keyStr];
-            }
-            break;
-          case 'mixin':
-            if (isNode(resolvedTarget, 'Rules')) {
-              // valueKey can be string or string[] - find() accepts both
-              returnVal = resolvedTarget.find('mixin', valueKey, 'Mixin', opts);
-            }
-            break;
-          case 'ruleset':
-            if (isNode(resolvedTarget, 'Rules')) {
-              const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
-              returnVal = resolvedTarget.find('mixin', `${keyStr}`, 'Ruleset', opts);
-            }
-            break;
-          case 'mixin-ruleset':
-            if (isNode(resolvedTarget, 'Rules')) {
-              // When we have nested References (e.g., #theme.dark.navbar.colors()),
-              // each Reference resolves to a Rules, and we search in that Rules.
-              // We don't need accumulated path search because nested References
-              // already handle the search correctly by resolving each step.
-              // The accumulated path search was meant for compound selectors parsed
-              // as a single Reference (like in mixinOrQualifiedRule), but mixinReference
-              // always parses as nested References, so we can skip it here.
-              // valueKey can be string or string[] - find() accepts both
-              returnVal = resolvedTarget.find('mixin', valueKey, undefined, opts);
-            }
-            break;
+          }
+
+          switch (type) {
+            case 'index':
+              if (typeof valueKey === 'number') {
+                if (isNode(targetRules, 'Rules')) {
+                  return targetRules.at(valueKey);
+                } else if (isNode(targetRules, 'JsArray')) {
+                  return atIndex((targetRules as any).value, valueKey);
+                }
+              } else {
+                const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
+                if (isNode(targetRules, 'Rules')) {
+                  return targetRules.find('declaration', `${keyStr}`, undefined, opts);
+                } else if (isNode(targetRules, 'JsObject')) {
+                  return (targetRules as any).value[keyStr];
+                }
+              }
+              break;
+            case 'variable':
+              if (isNode(targetRules, 'Rules')) {
+                const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
+                if (`${keyStr}` === 'a') {
+                  console.log('stop');
+                }
+                return targetRules.find('declaration', `${keyStr}`, 'VarDeclaration', opts);
+              }
+              break;
+            case 'function':
+              if (isNode(targetRules, 'Rules')) {
+                const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
+                return targetRules.find('function', `${keyStr}`, undefined, opts);
+              }
+              break;
+            case 'property':
+              if (isNode(targetRules, 'Rules')) {
+                const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
+                return targetRules.find('declaration', `${keyStr}`, 'Declaration', opts);
+              } else if (isNode(targetRules, 'JsObject')) {
+                const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
+                return (targetRules as any).value[keyStr];
+              }
+              break;
+            case 'mixin':
+              if (isNode(targetRules, 'Rules')) {
+                // valueKey can be string or string[] - find() accepts both
+                return targetRules.find('mixin', valueKey, 'Mixin', opts);
+              }
+              break;
+            case 'ruleset':
+              if (isNode(targetRules, 'Rules')) {
+                const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
+                return targetRules.find('mixin', `${keyStr}`, 'Ruleset', opts);
+              }
+              break;
+            case 'mixin-ruleset':
+              if (isNode(targetRules, 'Rules')) {
+                // When we have nested References (e.g., #theme.dark.navbar.colors()),
+                // each Reference resolves to a Rules, and we search in that Rules.
+                // We don't need accumulated path search because nested References
+                // already handle the search correctly by resolving each step.
+                // The accumulated path search was meant for compound selectors parsed
+                // as a single Reference (like in mixinOrQualifiedRule), but mixinReference
+                // always parses as nested References, so we can skip it here.
+                // valueKey can be string or string[] - find() accepts both
+                return targetRules.find('mixin', valueKey, undefined, opts);
+              }
+              break;
+          }
+          return undefined;
+        };
+
+        // If leakyRules is true and resolvedTarget !== context.rulesContext, try two-pass resolution
+        let returnVal: any;
+        if (context.leakyRules && resolvedTarget !== context.rulesContext && isNode(resolvedTarget, 'Rules')) {
+          // First pass: try with rulesParent
+          returnVal = performLookup(this.rulesParent);
+          // Second pass: if first pass failed, try with context.rulesContext
+          if (returnVal === undefined) {
+            returnVal = performLookup(context.rulesContext);
+          }
+        } else {
+          // Normal single-pass resolution
+          returnVal = performLookup(resolvedTarget);
         }
+
         return { returnVal, valueKey };
       },
       ({ returnVal, valueKey }) => {
+        // #region agent log
+        const keyStr = isNode(key) ? key.valueOf() : String(key);
+        const isMyMixinsRef = keyStr === 'my-mixins' || (typeof key === 'string' && key === 'my-mixins');
+        if (isMyMixinsRef) {
+          const returnValType = returnVal ? (isNode(returnVal) ? returnVal.type : typeof returnVal) : 'undefined';
+          fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { contentType: 'application/json' }, body: JSON.stringify({ location: 'reference.ts:447', message: 'Reference.evalNode: resolved', data: { key: keyStr, type: this.options.type ?? 'variable', returnValType, resolvedTargetType: isNode(resolvedTarget, 'Rules') ? 'Rules' : typeof resolvedTarget, valueKey: Array.isArray(valueKey) ? valueKey.join('.') : String(valueKey) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run23', hypothesisId: 'Q' }) }).catch(() => {});
+        }
+        // #endregion
         if (returnVal === undefined) {
           const valueKeyStr2 = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
-          const keyStr = isNode(key) ? key.valueOf() : String(key);
           if (!fallbackValue) {
             switch (type) {
               case 'mixin':
@@ -449,7 +482,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         }
         if (isNode(returnVal, ['Declaration', 'VarDeclaration'])) {
           context.searchScope.add(returnVal);
-          const inCalc = context.calcFrames !== 0;
           const hasImportant = isNode(returnVal, 'Declaration') && !!returnVal.value.important;
           return pipe(
             () => {
@@ -479,6 +511,17 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             return cast(func);
           }
         }
+        // #region agent log
+        const keyStrForLog2 = isNode(key) ? key.valueOf() : String(key);
+        const isMyMixinsRef2 = keyStrForLog2 === 'my-mixins' || (typeof key === 'string' && key === 'my-mixins');
+        if (isMyMixinsRef2) {
+          const returnValType = returnVal ? (isNode(returnVal) ? returnVal.type : typeof returnVal) : 'undefined';
+          const isRules = isNode(returnVal, 'Rules');
+          const isCollection = isNode(returnVal, 'Collection');
+          const isFunction = typeof returnVal === 'function';
+          fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { contentType: 'application/json' }, body: JSON.stringify({ location: 'reference.ts:512', message: 'Reference.evalNode: returning value', data: { key: keyStrForLog2, type: this.options.type ?? 'variable', returnValType, isRules, isCollection, isFunction }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run24', hypothesisId: 'R' }) }).catch(() => {});
+        }
+        // #endregion
         const result = cast(returnVal);
         // Pop reference and clear remainders if we're at the outermost level
         context.popReference();

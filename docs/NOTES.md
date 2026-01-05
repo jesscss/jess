@@ -1,3 +1,6 @@
+# Jan 4, 2026
+- Think about going back to `@-from` instead of `@-use` so we can define tree-shaken imports.
+
 # Aug 28, 2025
 
 ## What We Accomplished Today

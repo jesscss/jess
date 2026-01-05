@@ -111,7 +111,37 @@ export class Call extends Node<CallValue, CallOptions> {
     context.parenFrames.push(false);
     let { name, args } = this.value;
     let { markImportant } = this.options;
+    // #region agent log
+    const callNameStr = typeof name === 'string' ? name : (isNode(name, 'Reference') ? String(name.value.key?.valueOf() ?? '') : 'unknown');
+    const shouldLog = callNameStr === 'my-mixins' || callNameStr.includes('my-mixins') || callNameStr === 'mixin' || callNameStr === '.mixin';
+    if (shouldLog) {
+      fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { contentType: 'application/json' }, body: JSON.stringify({ location: 'call.ts:114', message: 'Call.evalNode: evaluating call', data: { callName: callNameStr, nameType: typeof name === 'string' ? 'string' : (isNode(name, 'Reference') ? 'Reference' : 'unknown'), hasArgs: !!(args && args.value.length > 0), callIndex: this.index, parentRulesIndex: this.rulesParent?.index, parentRulesType: this.rulesParent?.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run15', hypothesisId: 'H' }) }).catch(() => {});
+    }
+    // #endregion
     let n = typeof name === 'string' ? name : await name.eval(context);
+    // #region agent log
+    const isMyMixinsCall = this.index === 19 || (typeof name === 'string' && name === 'my-mixins') || (isNode(name, 'Reference') && String(name.value.key?.valueOf() ?? '') === 'my-mixins') || (isNode(name, 'Expression') && isNode(name.value, 'Reference') && String(name.value.value.key?.valueOf() ?? '') === 'my-mixins');
+    if (isMyMixinsCall || shouldLog) {
+      const nType = isNode(n) ? n.type : typeof n;
+      const isRules = isNode(n, 'Rules');
+      const isCollection = isNode(n, 'Collection');
+      const isFunction = typeof n === 'function';
+      const hasMixin = isRules && n.value.some((node: any) => node?.type === 'Mixin' || node?.type === 'Ruleset');
+      const mixinNames = isRules && hasMixin
+        ? n.value.filter((node: any) => node?.type === 'Mixin' || node?.type === 'Ruleset').map((node: any) => {
+            if (node?.type === 'Mixin') {
+              return String(node?.value?.name?.valueOf?.() ?? '');
+            }
+            if (node?.type === 'Ruleset') {
+              return String(node?.value?.selector?.toString?.() ?? '');
+            }
+            return '';
+          })
+        : [];
+      const hasMixinName = mixinNames.some((name: string) => name.includes('.mixin') || name === '.mixin');
+      fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { contentType: 'application/json' }, body: JSON.stringify({ location: 'call.ts:121', message: 'Call.evalNode: name evaluated', data: { callName: callNameStr, callIndex: this.index, nType, isRules, isCollection, isFunction, hasMixin, mixinNames, hasMixinName, nIndex: isNode(n, 'Rules') ? n.index : undefined }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run24', hypothesisId: 'R' }) }).catch(() => {});
+    }
+    // #endregion
 
     // If the evaluated name is a Call node, execute it directly
     // This handles cases like @alias: .something(foo); @alias();
@@ -130,17 +160,38 @@ export class Call extends Node<CallValue, CallOptions> {
       } finally {}
     }
 
-    // If the evaluated name is Rules (from evaluating a variable that contained a Call),
-    // return those Rules directly, but only if args are empty
-    // This handles cases like @alias: .something(foo); @alias();
-    // where the Reference already evaluated the Call and returned Rules
-    if (isNode(n, 'Rules')) {
-      // If args are provided, throw an error - you can't call Rules with arguments
+    // If the evaluated name is Rules or Collection (detached rulesets),
+    // return that node directly, but only if args are empty
+    // This handles cases like @my-mixins: { .mixin() {} }; @my-mixins();
+    if (isNode(n, ['Rules', 'Collection'])) {
+      // If args are provided, throw an error - you can't call Rules/Collection with arguments
       if (args && args.value.length > 0) {
         context.callStack.pop();
         context.parenFrames.pop();
-        throw new ReferenceError('Cannot call Rules with arguments');
+        throw new ReferenceError(`Cannot call ${n.type} with arguments`);
       }
+      // #region agent log
+      const callName = typeof name === 'string' ? name : (isNode(name, 'Reference') ? String(name.value.key?.valueOf() ?? '') : 'unknown');
+      const isRules = isNode(n, 'Rules');
+      const hasMixin = isRules && n.value.some(node => isNode(node, ['Mixin', 'Ruleset']));
+      if (hasMixin || callName.includes('mixins')) {
+        const mixinCount = isRules ? n.value.filter(node => isNode(node, ['Mixin', 'Ruleset'])).length : 0;
+        const mixinNames = isRules && hasMixin
+          ? n.value.filter(node => isNode(node, ['Mixin', 'Ruleset'])).map((node) => {
+              if (isNode(node, 'Mixin')) {
+                return String(node.value.name?.valueOf() ?? '');
+              }
+              if (isNode(node, 'Ruleset')) {
+                return String(node.value.selector?.toString() ?? '');
+              }
+              return '';
+            })
+          : [];
+        const hasMixinName = mixinNames.some(name => name.includes('.mixin') || name === '.mixin');
+        const parentRules = this.rulesParent;
+        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { contentType: 'application/json' }, body: JSON.stringify({ location: 'call.ts:183', message: 'Call.evalNode: returning Rules/Collection from variable', data: { callName, nodeType: n.type, mixinCount, mixinNames, hasMixinName, rulesVisibility: n.options.rulesVisibility, rulesIndex: n.index, parentRulesIndex: parentRules?.index, parentRulesType: parentRules?.type, callIndex: this.index }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run25', hypothesisId: 'S' }) }).catch(() => {});
+      }
+      // #endregion
       context.callStack.pop();
       context.parenFrames.pop();
       // Apply markImportant if needed
@@ -153,10 +204,22 @@ export class Call extends Node<CallValue, CallOptions> {
     let fn = isNode(n, 'JsFunction') ? n.value : n;
 
     if (typeof fn === 'function') {
+      // #region agent log
+      const callNameForLog = typeof name === 'string' ? name : (isNode(name, 'Reference') ? String(name.value.key?.valueOf() ?? '') : 'unknown');
+      const hasCollectionArg = args && args.value.some((arg: any) => isNode(arg, 'Collection'));
+      if (hasCollectionArg || callNameForLog.includes('mixins') || callNameForLog === 'my-mixins' || callNameForLog.includes('desktop-and-old-ie')) {
+        const nType = isNode(n) ? n.type : typeof n;
+        const fnType = typeof fn;
+        const hasOptions = !!(fn as any)?.options;
+        const hasParams = !!(fn as any)?.options?.params;
+        const paramsValue = (fn as any)?.options?.params;
+        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { contentType: 'application/json' }, body: JSON.stringify({ location: 'call.ts:206', message: 'Call.evalNode: calling function', data: { callName: callNameForLog, nType, fnType, hasOptions, hasParams, paramsValue: Array.isArray(paramsValue) ? paramsValue.length : paramsValue, argsLength: args?.value.length ?? 0, hasCollectionArg }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run27', hypothesisId: 'U' }) }).catch(() => {});
+      }
+      // #endregion
       try {
         const result = await (
           args
-            ? callWithContext(context, fn, ...args.value)
+            ? callWithContext(context, fn, args)
             : callWithContext(context, fn)
         );
         context.callStack.pop();

@@ -1,9 +1,9 @@
 import * as glob from 'glob';
 import * as fs from 'fs';
 import * as path from 'path';
-import { JessCompiler } from '../src';
+import { Compiler } from '../src';
 
-const compiler = new JessCompiler();
+const compiler = new Compiler();
 
 describe.skip('Output files', () => {
   const testData = path.join(__dirname, 'files');

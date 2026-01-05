@@ -226,7 +226,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return pipe(
       () => {
         let node = this;
-        /** Pre-eval already evaluated the name, just need to do value */
+        /** Pre-eval already evaluated the name, just need to do value (if not a var declaration) */
+        if (node.type === 'VarDeclaration') {
+          return node;
+        }
         const { name, value } = node.value;
         if (value instanceof Node) {
           if (name.valueOf().startsWith('--')) {

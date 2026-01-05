@@ -38,11 +38,12 @@
     "@jesscss/core": "workspace:*",
     "@jesscss/css-parser": "workspace:*",
     "chevrotain": "^11.0.3",
-    "chevrotain-allstar": "~0.3.0"
+    "chevrotain-allstar": "~0.3.0",
+    "known-css-properties": "~0.37.0"
   },
   "devDependencies": {
-    "@types/node": "^18.19.31",
-    "@jesscss/shared": "workspace:*"
+    "@jesscss/shared": "workspace:*",
+    "@types/node": "^18.19.31"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",

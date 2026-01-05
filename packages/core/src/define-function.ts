@@ -309,17 +309,34 @@ export function defineFunction<
 
 /** This will be called internally by Jess to functions created with defineFunction */
 export async function callWithContext(context: Context, fn: (...args: any[]) => any, ...args: any[]): Promise<any> {
-  if (!(fn as any)?.options?.params && args.some(arg =>
-    (isNode(arg) && arg.type === 'Collection')
-    || isPlainObject(arg))
-  ) {
+  // Only reject record-based calls (plain objects) when there's no params metadata
+  // Collections are allowed as positional arguments even without params metadata
+  // (e.g., detached rulesets passed to mixins)
+  if (!(fn as any)?.options?.params && args.some(arg => isPlainObject(arg) && !isNode(arg))) {
     throw new Error('Record-based call without params is not supported');
   }
 
-  /** Normalize into a List node for tracking original arguments */
-  const originalArgsList = new List(args.map(arg => isNode(arg) ? arg.clone() : arg));
+  let originalArgsList: List;
 
-  if (!(fn as any)?.options?.params) {
+  /** Use List arguments */
+  if (args[0] && isNode(args[0], 'List')) {
+    originalArgsList = args[0];
+    args = args[0].value;
+  } else {
+    /** Normalize into a List node for tracking original arguments */
+    originalArgsList = new List(args.map(arg => isNode(arg) ? arg.clone() : arg));
+  }
+
+  const hasParams = !!(fn as any)?.options?.params;
+  // #region agent log
+  const hasCollectionArg = args.some(arg => isNode(arg, 'Collection'));
+  if (hasCollectionArg) {
+    const paramsValue = (fn as any)?.options?.params;
+    fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { contentType: 'application/json' }, body: JSON.stringify({ location: 'define-function.ts:322', message: 'callWithContext: checking params', data: { hasParams, paramsValue: Array.isArray(paramsValue) ? paramsValue.length : paramsValue, argsLength: args.length, hasCollectionArg }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run28', hypothesisId: 'V' }) }).catch(() => {});
+  }
+  // #endregion
+
+  if (!hasParams) {
     // No metadata; treat as normal positional function call (sync or async)
     return (fn as any).call(context, ...args);
   }
@@ -366,10 +383,9 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
       const tempRecord = { ...record };
       let isValid = true;
 
-      // Check if we have a record object (plain object or Collection) in args
-      const hasRecordArg = args.some(arg =>
-        (isNode(arg) && arg.type === 'Collection') || isPlainObject(arg)
-      );
+      // Check if we have a record object (plain object) in args
+      // Collections are treated as positional arguments, not record-based calls
+      const hasRecordArg = args.some(arg => isPlainObject(arg));
 
       for (let i = 0; i < signature.length; i++) {
         const def = signature[i]!;
@@ -639,11 +655,8 @@ function parseCallWithContextArgs(args: any[], params: readonly ParamDefinition[
   if (!hasRest) {
     for (let i = 0; i < Math.min(args.length, params?.length ?? 0); i++) {
       let arg = args[i];
-      if (isNode(arg, 'Collection')) {
-        arg = arg.toObject(false);
-        Object.assign(record, arg);
-        continue;
-      } else if (isPlainObject(arg)) {
+      // Collections are treated as positional arguments, not record-based calls
+      if (isPlainObject(arg) && !isNode(arg)) {
         Object.assign(record, arg);
         continue;
       }
@@ -658,11 +671,8 @@ function parseCallWithContextArgs(args: any[], params: readonly ParamDefinition[
       const def = params![i]!;
       const paramName = def.name;
       const arg = args[i];
-      if (isNode(arg, 'Collection')) {
-        const obj = arg.toObject(false);
-        Object.assign(record, obj);
-        continue;
-      } else if (isPlainObject(arg)) {
+      // Collections are treated as positional arguments, not record-based calls
+      if (isPlainObject(arg) && !isNode(arg)) {
         Object.assign(record, arg);
         continue;
       }

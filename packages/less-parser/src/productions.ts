@@ -51,6 +51,7 @@ import {
   Mixin,
   Condition,
   VarDeclaration,
+  Declaration,
   DefaultGuard,
   Rest,
   StyleImport,
@@ -61,6 +62,8 @@ import {
   Rules,
   Url,
   Nil,
+  Collection,
+  Comment,
   type ComplexSelectorComponent,
   type Selector,
   INTERPOLATION_PLACEHOLDER,
@@ -69,6 +72,7 @@ import {
 } from '@jesscss/core';
 import { getInterpolatedOrString } from './utils';
 import type { ExtendTarget } from './lessActionsParser';
+import { all } from 'known-css-properties';
 
 const isEscapedString = function(this: P, T: TokenMap) {
   const next = this.LA(1);
@@ -1254,18 +1258,65 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
       // "detached rulesets".
 
       if (!anonToken) {
-        /** To Less, this is a "detached ruleset", even though in our tree it's just a mixin */
-        if (!rules.options.rulesVisibility) {
-          rules.options.rulesVisibility = {};
-        }
-        if (this.leakyRules) {
-          rules.options.rulesVisibility.Mixin = 'public';
-          rules.options.rulesVisibility.VarDeclaration = 'private';
+        /** To Less, this is a "detached ruleset" */
+        // Check if this should be parsed as Collection or Rules
+        const shouldBeCollection = (() => {
+          // 1) Check if it only contains declarations/var-declarations (and comments)
+          const onlyDeclarationsAndComments = rules.value.every((node: Node) => {
+            return isNode(node, 'Declaration') || isNode(node, 'VarDeclaration') || isNode(node, 'Comment');
+          });
+
+          if (!onlyDeclarationsAndComments) {
+            return false;
+          }
+
+          // 2) Check if the majority of property names are valid CSS properties
+          const declarations = rules.value.filter((node: Node) => {
+            return isNode(node, ['Declaration', 'VarDeclaration']);
+          }) as Array<Declaration | VarDeclaration>;
+
+          if (declarations.length === 0) {
+            // No declarations, can't determine - default to Rules
+            return false;
+          }
+
+          const validPropertyCount = declarations.filter((decl) => {
+            const name = decl.value.name;
+            const propName = typeof name === 'string' ? name : name.valueOf();
+            // Skip custom properties (--*)
+            if (propName.startsWith('--')) {
+              return true; // Custom properties are always valid
+            }
+            return all.includes(propName);
+          }).length;
+
+          // Majority means more than 50%
+          const majorityValid = validPropertyCount > declarations.length / 2;
+          return majorityValid;
+        })();
+
+        if (shouldBeCollection) {
+          // Parse as Collection
+          if (!rules.options.rulesVisibility) {
+            rules.options.rulesVisibility = {};
+          }
+          return new Collection(rules.value, rules.options, $.endRule(), this.context);
         } else {
-          rules.options.rulesVisibility.Mixin = 'private';
-          rules.options.rulesVisibility.VarDeclaration = 'private';
+          // Parse as Rules (not Mixin)
+          if (!rules.options.rulesVisibility) {
+            rules.options.rulesVisibility = {};
+          }
+          if (this.leakyRules) {
+            rules.options.rulesVisibility.Mixin = 'public';
+            rules.options.rulesVisibility.VarDeclaration = 'private';
+          } else {
+            rules.options.rulesVisibility.Mixin = 'private';
+            rules.options.rulesVisibility.VarDeclaration = 'private';
+          }
+          return new Rules(rules.value, rules.options, $.endRule(), this.context);
         }
       }
+      // If anonToken exists, it's an anonymous mixin with parameters, return as Mixin
       return new Mixin({ params, rules }, undefined, $.endRule(), this.context);
     }
   };

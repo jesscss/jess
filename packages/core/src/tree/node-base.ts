@@ -558,6 +558,20 @@ export abstract class Node<
     return this;
   }
 
+  clonedEval(context: Context): MaybePromise<Node> {
+    let preserveNodes = context.preserveOriginalNodes;
+    context.preserveOriginalNodes = true;
+    let out = this.eval(context);
+    if (isThenable(out)) {
+      return (out as Promise<Node>).then((result) => {
+        context.preserveOriginalNodes = preserveNodes;
+        return result;
+      });
+    }
+    context.preserveOriginalNodes = preserveNodes;
+    return out;
+  }
+
   /**
    * Creates a copy of the current node.
    *

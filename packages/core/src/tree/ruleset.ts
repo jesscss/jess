@@ -98,7 +98,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       node.preEvaluated = true;
       // Index should already be assigned by parent Rules
       node.sourceNode ??= this;
-      let { selector, rules } = node.value;
+      let { selector, rules, guard } = node.value;
       if (context.leakyRules) {
         rules.options.rulesVisibility.Mixin = 'public';
         rules.options.rulesVisibility.VarDeclaration = 'optional';
@@ -112,13 +112,44 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         selector.sourceNode = node === this ? selector.clone(true) : selector;
       }
       return pipe(
-        () => selector.eval(context),
-        (sel) => {
-          node.value.selector = sel as Selector | Nil;
-          if (sel.hoistToRoot) {
-            node.hoistToRoot = true;
+        () => {
+          // Evaluate guard first - if it fails, the ruleset should not be registered as a mixin
+          if (guard) {
+            return guard.eval(context);
           }
-          return node;
+          return undefined;
+        },
+        (guardResult) => {
+          if (guardResult && !guardResult.value) {
+            // Guard failed - mark as Nil so it won't be registered as a mixin
+            node.value.guard = new Nil();
+            // Still need to evaluate selector for CSS output, but mark as not visible for mixin registry
+            return pipe(
+              () => selector.eval(context),
+              (sel) => {
+                node.value.selector = sel as Selector | Nil;
+                if (sel.hoistToRoot) {
+                  node.hoistToRoot = true;
+                }
+                // Guard failed - ruleset should not be registered as a mixin
+                // but should still output as CSS, so we don't remove F_VISIBLE
+                // Instead, we'll check in registerNode to skip mixin registration
+                return node;
+              }
+            );
+          }
+          // Guard passed or no guard - evaluate selector normally
+          node.value.guard = undefined;
+          return pipe(
+            () => selector.eval(context),
+            (sel) => {
+              node.value.selector = sel as Selector | Nil;
+              if (sel.hoistToRoot) {
+                node.hoistToRoot = true;
+              }
+              return node;
+            }
+          );
         }
       );
     }
@@ -193,10 +224,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     /** Should have been maybe cloned in preEval */
     this.evaluated = true;
     let frame = atIndex(context.rulesetFrames, -1);
-    // if (frame && isNode(frame.selector, 'Selector')) {
-    //   rule.parentSelector = frame.selector;
-    // }
-    let guard = this.value.guard;
     const collapseNesting = context.opts.collapseNesting;
 
     // Store frames snapshot for collapseNesting serialization
@@ -206,20 +233,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
     return pipe(
       () => {
-        return guard?.eval(context);
-      },
-      (guard) => {
-        if (guard && !guard.value) {
-          const n = new Nil();
-          this.value.guard = n;
-          return n;
-        }
-        this.value.guard = undefined;
-        return this.selector.eval(context);
-      },
-      (sels: Selector | Nil) => {
-        if (this.value.guard instanceof Nil) {
-          return this.value.guard;
+        let { selector, guard } = this.value;
+        if (guard instanceof Nil) {
+          return guard;
         }
         if (frame && (this.hoistToRoot ?? context.opts.collapseNesting)) {
           this.hoistToRoot = true;
@@ -227,17 +243,17 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         // Unwrap generated :is() pseudo-selectors if they're the ruleset's only selector
         // or if they're the first component of a ComplexSelector in the parent
         if (
-          isNode(sels, 'PseudoSelector')
-          && sels.value.name === ':is'
-          && sels.generated
+          isNode(selector, 'PseudoSelector')
+          && selector.value.name === ':is'
+          && selector.generated
         ) {
-          sels = sels.value.arg as Selector;
+          selector = selector.value.arg as Selector;
         }
 
         // Also check if the selector is a ComplexSelector that contains a :is() as its first component
-        if (isNode(sels, 'ComplexSelector')) {
-          let first = sels.value[0];
-          let outer: ComplexSelector | CompoundSelector = sels;
+        if (isNode(selector, 'ComplexSelector')) {
+          let first = selector.value[0];
+          let outer: ComplexSelector | CompoundSelector = selector;
           if (isNode(first, 'CompoundSelector')) {
             outer = first;
             first = first.value[0];
@@ -253,8 +269,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         }
 
         // Unwrap generated :is() if it's the first or only component of a CompoundSelector
-        if (isNode(sels, 'CompoundSelector')) {
-          const first = sels.value[0];
+        if (isNode(selector, 'CompoundSelector')) {
+          const first = selector.value[0];
           if (
             isNode(first, 'PseudoSelector')
             && first.value.name === ':is'
@@ -262,19 +278,19 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
             && first.value.arg!.type !== 'SelectorList'
           ) {
             // Unwrap the :is() - use its argument as the selector
-            if (sels.value.length === 1) {
-              sels = sels.value[0]!;
+            if (selector.value.length === 1) {
+              selector = selector.value[0]!;
             } else {
-              sels.value[0] = first.value.arg! as ComplexSelectorComponent;
+              selector.value[0] = first.value.arg! as ComplexSelectorComponent;
             }
           }
         }
-        if (sels instanceof Nil) {
+        if (selector instanceof Nil) {
           // If selector evaluates to Nil, return the rules body directly instead of the ruleset
           // This allows rules to be output even when there's no selector context
           // We don't push frames because there's no selector context
           // Store Nil in selector so next step can detect this case
-          this.value.selector = sels;
+          this.value.selector = selector;
           const evaluatedRules = this.value.rules.eval(context);
           // Update this.value.rules to point to evaluated Rules to prevent circular reference
           // when debug code traverses the AST
@@ -289,7 +305,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         }
         // Preserve the sourceNode from the current selector before replacing it
         const preservedSourceNode = this.value.selector?.sourceNode;
-        this.value.selector = sels;
+        this.value.selector = selector;
         // Restore the sourceNode on the new selector so it's available when copying
         if (preservedSourceNode && this.value.selector) {
           this.value.selector.sourceNode = preservedSourceNode;
