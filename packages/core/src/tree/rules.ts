@@ -27,9 +27,9 @@ import { Nil } from './nil';
 import { VarDeclaration } from './declaration-var';
 import { Any } from './any';
 import { List } from './list';
-import { Interpolated } from './interpolated';
 import { indent, normalizeIndent } from './util/serialize-helper';
 import { ERR } from '../jess-error';
+import { freezeChildren } from './util/cloning';
 
 const { isArray } = Array;
 
@@ -1450,27 +1450,22 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           }
           if (isNode(param, 'VarDeclaration')) {
             // Capture the argument's parent before assignment (adoption changes parent)
-            const argParent = argValue?.parent;
+            let argClone = argValue.clone();
+            argClone.frozen = true;
             param.value.value = argValue;
-            // Restore the original parent immediately after assignment
-            if (isNode(argValue) && argParent !== undefined) {
-              (argValue as any).parent = argParent;
-            }
           } else if (isNode(param, 'Any') && param.options.role === 'property') {
             // Convert Any with role: 'property' to VarDeclaration for registration
             // Assign unevaluated value for lazy evaluation
             // Capture the argument's parent before assignment (adoption changes parent)
-            const argParent = isNode(argValue) ? argValue.parent : undefined;
+            let argClone = argValue.clone();
+            argClone.frozen = true;
             const varDecl = new VarDeclaration({
               name: param as Any<'property'>,
-              value: argValue
+              value: argClone
             });
             params.value[i] = varDecl;
-            // Restore the original parent immediately after assignment
-            if (isNode(argValue) && argParent !== undefined) {
-              (argValue as any).parent = argParent;
-            }
           } else if (isNode(param, 'Rest')) {
+            /** We assume that the rest args are values */
             let rest = args.slice(argPos);
             let seqValues: Node[] = [];
             /** Create a new variable with the rest name */
@@ -1479,9 +1474,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
               value: new Sequence(seqValues)
             });
             for (let arg of rest) {
-              let originalParent = arg.parent;
-              seqValues.push(arg);
-              (arg as any).parent = originalParent;
+              let argClone = arg.clone(true, freezeChildren);
+              argClone.frozen = true;
+              seqValues.push(argClone);
             }
             /** Check a pattern-matching node */
           } else {
@@ -1568,12 +1563,16 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      */
     let hasMatch = false;
     let outputRules: Rules[] = [];
-    for (let candidate  of evalCandidates) {
+
+    for (let candidate of evalCandidates) {
       if (isNode(candidate, 'Ruleset')) {
         let rules = (candidate as Ruleset).value.rules.copy(true);
         /** Adopt for lookup, then adopt for sorting */
         candidate.parent!.adopt(rules);
+        let originalContext = thisContext.rulesContext;
+        thisContext.rulesContext = rules;
         rules = await rules.eval(thisContext);
+        thisContext.rulesContext = originalContext;
         candidate.parent!.adopt(rules);
         // Rules should have index from eval, but ensure it matches candidate for sorting
         rules.index = candidate.index;
@@ -1669,9 +1668,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         for (let p of params.value) {
           if (isNode(p, 'VarDeclaration')) {
             let innerValue = p.value.value;
-            let originalParent = innerValue.parent;
-            argumentsArgs.push(innerValue);
-            (innerValue as any).parent = originalParent;
+            let innerValueClone = innerValue.clone(true, freezeChildren);
+            innerValueClone.frozen = true;
+            argumentsArgs.push(innerValueClone);
           } else if (isNode(p, 'Any') && p.options.role === 'property') {
             // Should have been converted, but handle just in case
             argumentsArgs.push(new Nil());
@@ -1685,13 +1684,8 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       let guard: Condition | Bool | undefined = candidate.value.guard?.copy(true);
       let passes = true;
       let rulesContext = thisContext.rulesContext;
-      // Store the call site position for call-time resolution
-      // The call site is where rulesContext is (the parent rules containing the mixin call)
-      let callSiteIndex = rulesContext?.index;
+      // Call-time resolution is handled by the current context.rulesContext
       thisContext.rulesContext = outerRules ?? rules;
-      if (callSiteIndex !== undefined) {
-        thisContext.callSiteIndex = callSiteIndex;
-      }
       if (guard) {
         outerRules ??= Rules.create([]);
         outerRules.adopt(guard);
@@ -1709,17 +1703,14 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       if (!passes) {
         continue;
       }
-      // Check for recursion: if this mixin is already in searchScope, skip it
+      let currentCall = thisContext.callStack.at(-1);
       // to prevent infinite loops (e.g., .recursion { .recursion(); })
-      // Uses the same mechanism as variable recursion detection
-      if (thisContext.searchScope.has(candidate.sourceNode)) {
+      if (currentCall && thisContext.callMap.add(currentCall, params)) {
         // Recursive call detected - skip this candidate (don't add to outputRules)
         // This allows other candidates to still match
         continue;
       }
 
-      // Mark this mixin as being evaluated (similar to how variables are tracked)
-      thisContext.searchScope.add(candidate.sourceNode);
       try {
         let newRules: Rules;
         if (!outerRules) {
@@ -1752,18 +1743,13 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         // Re-throw other errors
         throw error;
       } finally {
-        // Remove from searchScope when done (allows re-evaluation in different contexts)
-        thisContext.searchScope.delete(candidate.sourceNode);
-        thisContext.searchScope.delete(rules.sourceNode);
+        if (currentCall) {
+          thisContext.callMap.delete(currentCall);
+        }
       }
 
-      // thisContext.rulesContext = rulesContext;
-      // Restore call site index (or clear it if we're exiting the mixin)
-      if (rulesContext) {
-        thisContext.callSiteIndex = rulesContext.index;
-      } else {
-        thisContext.callSiteIndex = undefined;
-      }
+      /** Restore incoming rules context */
+      thisContext.rulesContext = rulesContext;
     }
 
     /**
@@ -1797,11 +1783,10 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
        */
       for (let i = 0; i < outputRules.length; i++) {
         let rule = outputRules[i]!;
-        let parent = rule.parent;
+        rule.frozen = true;
         /** Set a sequential index for lookup sorting */
         rule.index = i;
         output.push(rule);
-        (rule as any).parent = parent;
       }
     }
 

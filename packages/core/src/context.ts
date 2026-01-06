@@ -14,8 +14,10 @@ import type { PluginInterface } from './plugin';
 import { MathMode, UnitMode } from './types/modes';
 import * as path from 'node:path';
 import { isNode } from './tree/util/is-node';
-import { isThenable } from '@jesscss/awaitable-pipe';
 import { getErrorFromParser } from './jess-error';
+import type { Call } from './tree/call';
+import type { List } from './tree/list';
+import { CallMap } from './tree/util/recursion-helper';
 
 export interface ContextOptions {
   /** Hash classes for module output */
@@ -190,14 +192,10 @@ export class Context {
 
   /**
    * This is set when entering rulesets so that child nodes
-   * can use this to lookup values.
+   * can use this to lookup values. When evaluating inside a mixin/function,
+   * this also enables call-time variable resolution ($~variable).
    */
   rulesContext!: Rules;
-  /**
-   * When evaluating inside a mixin/function, this tracks the call site position
-   * for call-time variable resolution ($~variable).
-   */
-  callSiteIndex?: number;
   /** Entire context root (ultimate root) */
   root!: Rules;
   /** Set so that we can do ruleset selector lookup for extend */
@@ -256,7 +254,12 @@ export class Context {
    */
   calcFrames = 0;
 
-  private _callStack: Node[] | undefined;
+  private _callMap: CallMap | undefined;
+  get callMap() {
+    return (this._callMap ??= new CallMap());
+  }
+
+  private _callStack: Call[] | undefined;
   get callStack() {
     return (this._callStack ??= []);
   }

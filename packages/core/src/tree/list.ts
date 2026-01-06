@@ -39,6 +39,12 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     yield* this.value.entries();
   }
 
+  private _valueOf: string | undefined;
+
+  override valueOf() {
+    return (this._valueOf ??= this.value.map(v => v.valueOf()).join(';'));
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;

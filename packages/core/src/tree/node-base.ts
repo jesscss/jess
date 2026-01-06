@@ -11,6 +11,7 @@ import type { Comment } from './comment';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules';
+import type { Nil } from './nil';
 
 export type { TreeContext };
 
@@ -192,9 +193,6 @@ export abstract class Node<
   /** Runtime tracking: has eval been run on this node? */
   evaluated = false;
 
-  /** If true, trim leading/trailing whitespace from the serialized output */
-  trimOutput = false;
-
   get visible() {
     return this.hasFlag(F_VISIBLE);
   }
@@ -252,6 +250,12 @@ export abstract class Node<
   }
 
   /**
+   * If true, prevents re-parenting of this node.
+   * This is used to maintain source lookup chains.
+   */
+  frozen = false;
+
+  /**
    * The parent node of this node. Usually, this
    * shouldn't be set directly. Instead, a parent should use
    * parent.adopt(thisNode);
@@ -259,7 +263,7 @@ export abstract class Node<
   declare readonly parent: Node | undefined;
 
   /** Patched at runtime in node.ts to return Nil instance */
-  nil!: () => Node;
+  declare nil: () => Nil;
 
   protected _value: Data;
 
@@ -355,7 +359,9 @@ export abstract class Node<
 
   adopt(node: Node) {
     /** The only place we should do this */
-    (node as any).parent = this;
+    if (!node.frozen) {
+      (node as any).parent = this;
+    }
     if (node.hasFlag(F_NON_STATIC)) {
       this.addFlag(F_NON_STATIC);
       this.removeFlag(F_STATIC);
@@ -587,12 +593,12 @@ export abstract class Node<
   clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     let Class = this.constructor as Class<this>;
     let originalValue = this.value;
-    let newValue = this.value;
+    let newValue = { value: originalValue };
     /**
      * Create new array objects and plain objects
      */
     if (isArray(originalValue)) {
-      newValue = [...originalValue] as Data;
+      newValue.value = [...originalValue] as Data;
     } else if (isPlainObject(originalValue)) {
       let map = new Map(Object.entries(originalValue as Record<string, unknown>));
       for (let [key, value] of map.entries()) {
@@ -600,20 +606,22 @@ export abstract class Node<
           map.set(key, [...value]);
         }
       }
-      newValue = Object.fromEntries(map) as Data;
+      newValue.value = Object.fromEntries(map) as Data;
     }
-    let newNode = new Class(newValue, this._options ? { ...this._options } : undefined, this.location, this.treeContext);
-    newNode.inherit(this);
 
     cloneFn ??= n => n.clone(deep);
 
     if (deep) {
-      for (let [value, key, collection] of getEntriesFromNode(newNode as { value: unknown[] })) {
+      /** I think GetEntriesOf is not typed correctly, thus neither is getEntriesFromNode */
+      for (let [value, key, collection] of getEntriesFromNode(newValue as { value: unknown[] })) {
         if (value instanceof Node) {
           collection[key] = cloneFn(value);
         }
       }
     }
+
+    let newNode = new Class(newValue.value, this._options ? { ...this._options } : undefined, this.location, this.treeContext);
+    newNode.inherit(this);
 
     return newNode;
   }
@@ -660,12 +668,12 @@ export abstract class Node<
    * This is used for variable referencing and
    * selector extending.
    */
-  copy(deep?: boolean, trim?: boolean): this {
+  copy(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     const newNode = this.clone(
       deep,
       (n) => {
         if (n.type !== 'Comment') {
-          const copy = n.copy(deep);
+          const copy = n.copy(deep, cloneFn);
           return copy;
         }
         const nilNode = this.nil?.() || this._createMinimalNil();
@@ -677,9 +685,6 @@ export abstract class Node<
     }
     if (this.hasFlag(F_IMPLICIT_AMPERSAND)) {
       newNode.addFlag(F_IMPLICIT_AMPERSAND);
-    }
-    if (trim) {
-      newNode.trimOutput = true;
     }
     // Strip comments from pre/post, preserving whitespace
     newNode.stripPrePost(newNode, 'pre');
@@ -778,14 +783,12 @@ export abstract class Node<
    */
   inherit(node: Node) {
     /**
-     * There are some cases where we shouldn't inherit the parent, but
-     * we should exclude those individual cases.
-     *
-     * Rules don't inherit the parent because we may need to
-     * look up declarations from the original parent chain.
+     * Frozen nodes inherit the parent only if they don't have a parent yet.
      */
-    if (this.type !== 'Rules') {
+    if (!node.frozen) {
       (this as any).parent = node.parent;
+    } else {
+      (this as any).parent ??= node.parent;
     }
     this._location = node.location;
     this._treeContext ??= node.treeContext;
@@ -803,7 +806,6 @@ export abstract class Node<
      * Otherwise, it should be settable after cloning / copying.
      */
     this.index ??= node.index;
-    this.trimOutput ||= node.trimOutput;
     return this;
   }
 

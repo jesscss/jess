@@ -14,6 +14,7 @@ import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { getFunctionFromMixins } from './rules';
 import type { MixinEntry, Rules } from './rules';
 import type { Interpolated } from './interpolated';
+import { freezeChildren } from './util/cloning';
 
 /**
  * The type is determined by syntax
@@ -331,8 +332,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             // For call-time resolution, use the call site's position (context.callSiteIndex)
             // instead of the definition position. This allows mixins to resolve variables
             // at the time they're called, not when they're defined.
-            if (context.callSiteIndex !== undefined) {
-              opts.start = context.callSiteIndex;
+            if (context.rulesContext !== undefined) {
+              opts.start = context.rulesContext.index;
             } else {
               // Fall back to linear resolution if we can't find a call site
               let startIndex = this.index;
@@ -380,9 +381,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             case 'variable':
               if (isNode(targetRules, 'Rules')) {
                 const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
-                if (`${keyStr}` === 'a') {
-                  console.log('stop');
-                }
                 return targetRules.find('declaration', `${keyStr}`, 'VarDeclaration', opts);
               }
               break;
@@ -491,13 +489,14 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 context.pushImportantSource();
               }
               const declValue = returnVal.value.value;
+              declValue.frozen = true;
               return declValue.eval(context);
             },
             (evald) => {
               context.searchScope.delete(returnVal);
               // DON'T pop important source here - let the consuming Declaration pop it
               // after it has checked and merged the important flag
-              let out = evald.copy(true, true);
+              let out = evald.copy(true, freezeChildren);
               out.pre = this.pre;
               out.post = this.post;
               return out;

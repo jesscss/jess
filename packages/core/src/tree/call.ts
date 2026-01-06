@@ -9,6 +9,7 @@ import { Paren } from './paren';
 import { isThenable } from '@jesscss/awaitable-pipe';
 import { type Rules } from './rules';
 import { Any } from './any';
+import { freezeChildren } from './util/cloning';
 
 export type CallValue = {
   /**
@@ -104,13 +105,12 @@ export class Call extends Node<CallValue, CallOptions> {
 
   /** Come back and redo -- too hard to reason about as a MaybePromise */
   override async evalNode(context: Context): Promise<Node> {
-    // if (context.callStack.includes(this.sourceNode)) {
-    //   throw new ReferenceError('Recursive call detected');
-    // }
-    context.callStack.push(this);
-    context.parenFrames.push(false);
     let { name, args } = this.value;
     let { markImportant } = this.options;
+
+    context.callStack.push(this);
+    context.parenFrames.push(false);
+
     // #region agent log
     const callNameStr = typeof name === 'string' ? name : (isNode(name, 'Reference') ? String(name.value.key?.valueOf() ?? '') : 'unknown');
     const shouldLog = callNameStr === 'my-mixins' || callNameStr.includes('my-mixins') || callNameStr === 'mixin' || callNameStr === '.mixin';
@@ -217,6 +217,11 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       // #endregion
       try {
+        /** Freeze args */
+        if (args) {
+          args = args.copy(true, freezeChildren);
+          args.frozen = true;
+        }
         const result = await (
           args
             ? callWithContext(context, fn, args)

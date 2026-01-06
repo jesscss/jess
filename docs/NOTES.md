@@ -1,5 +1,9 @@
+# Jan 5, 2026
+
+Add a `frozen` prop to nodes that prevents re-parenting, so that source lookup chains are maintained.
+
 # Jan 4, 2026
-- Think about going back to `@-from` instead of `@-use` so we can define tree-shaken imports.
+- Think about going back to `@-from` instead of `@-use` so we can define tree-shaken imports?
 
 # Aug 28, 2025
 

@@ -9,8 +9,6 @@ import { JsFunction } from '../js-function';
 import { JsObject } from '../js-object';
 import { Bool } from '../bool';
 import isPlainObject from 'lodash-es/isPlainObject';
-import { Selector } from '../selector';
-import { BasicSelector } from '../selector-basic';
 
 const { isArray } = Array;
 
@@ -25,6 +23,7 @@ function getNodeType(value: any): Node {
     return new Bool(value);
   }
   if (typeof value === 'function') {
+    // Hmm, the LLM added this, is it needed?
     // Preserve function options (e.g., params metadata from getFunctionFromMixins)
     const options = (value as any)?.options;
     return new JsFunction(value, options);
