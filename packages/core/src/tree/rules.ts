@@ -1566,6 +1566,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         let rules = (candidate as Ruleset).value.rules.copy(true);
         /** Adopt for lookup, then adopt for sorting */
         candidate.parent!.adopt(rules);
+        rules.sourceParent = candidate.sourceParent;
         let originalContext = thisContext.rulesContext;
         thisContext.rulesContext = rules;
         rules = await rules.eval(thisContext);
@@ -1584,6 +1585,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       /** Create new rules, and add the candidate rules, to add to scope */
       rules = rules.copy(true);
       candidate.parent!.adopt(rules);
+      rules.sourceParent = candidate.sourceParent;
       // Don't set index before evaluation - let evaluation assign the correct index
       /**
        * If we have params or a guard, we need to create a wrapper rules object,

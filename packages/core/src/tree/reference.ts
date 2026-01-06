@@ -422,16 +422,15 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
 
         // If leakyRules is true and resolvedTarget !== context.rulesContext, try two-pass resolution
         let returnVal: any;
-        if (context.leakyRules && resolvedTarget !== context.rulesContext && isNode(resolvedTarget, 'Rules')) {
-          // First pass: try with rulesParent
-          returnVal = performLookup(this.rulesParent);
-          // Second pass: if first pass failed, try with context.rulesContext
-          if (returnVal === undefined) {
-            returnVal = performLookup(context.rulesContext);
+        if (isNode(resolvedTarget, 'Rules')) {
+          if (context.leakyRules) {
+            returnVal = performLookup(this.rulesParent);
+            if (returnVal === undefined) {
+              returnVal = performLookup(this.sourceRulesParent);
+            }
+          } else {
+            returnVal = performLookup(this.rulesParent);
           }
-        } else {
-          // Normal single-pass resolution
-          returnVal = performLookup(resolvedTarget);
         }
 
         return { returnVal, valueKey };
@@ -472,6 +471,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         }
         if (isNode(returnVal, ['Declaration', 'VarDeclaration'])) {
           context.searchScope.add(returnVal);
+          let evalExitMarker = context.evalExitMarker;
+          let unsetEvalExitMarker = !evalExitMarker;
           const hasImportant = isNode(returnVal, 'Declaration') && !!returnVal.value.important;
           return pipe(
             () => {
@@ -492,16 +493,20 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               out.frozen = true;
               out.pre = this.pre;
               out.post = this.post;
+              out.sourceParent = this;
               return out;
             }
           );
         } else if (isArray(returnVal)) {
           // Only pass Mixins and Rulesets to getFunctionFromMixins
-          const allMixins = returnVal.every(item => isNode(item, ['Mixin', 'Ruleset']));
-          if (allMixins) {
-            const func = getFunctionFromMixins(returnVal as MixinEntry[]);
-            return cast(func);
+          for (let item of returnVal) {
+            item.sourceParent = this;
+            if (!isNode(item, ['Mixin', 'Ruleset'])) {
+              return cast(undefined);
+            }
           }
+          const func = getFunctionFromMixins(returnVal as MixinEntry[]);
+          return cast(func);
         }
         // #region agent log
         const keyStrForLog2 = isNode(key) ? key.valueOf() : String(key);
@@ -517,6 +522,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         const result = cast(returnVal);
         // Pop reference and clear remainders if we're at the outermost level
         context.popReference();
+        result.sourceParent = this;
         return result;
       }
     );

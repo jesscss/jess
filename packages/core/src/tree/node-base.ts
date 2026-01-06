@@ -261,7 +261,7 @@ export abstract class Node<
    * parent.adopt(thisNode);
    */
   declare readonly parent: Node | undefined;
-  declare readonly sourceParent: Node | undefined;
+  declare sourceParent: Node | undefined;
 
   /** Patched at runtime in node.ts to return Nil instance */
   declare nil: () => Nil;
@@ -409,6 +409,12 @@ export abstract class Node<
         writable: true,
         enumerable: false,
         configurable: false
+      },
+      sourceParent: {
+        value: undefined,
+        writable: true,
+        enumerable: false,
+        configurable: false
       }
     });
     this._value = this._tryProxyWrap(value);
@@ -451,6 +457,16 @@ export abstract class Node<
       possibleRules = possibleRules.parent;
     }
     return possibleRules as Rules;
+  }
+
+  get sourceRulesParent(): Rules | undefined {
+    let node = this.parent;
+    let sourceParent = this.sourceParent;
+    while (node && !sourceParent) {
+      node = node.parent;
+      sourceParent = node?.sourceParent;
+    }
+    return sourceParent?.rulesParent;
   }
 
   /**
@@ -742,11 +758,7 @@ export abstract class Node<
 
     let evalMarker = context.evalMarker;
     if (!context.evalExitMarker) {
-      if (node.frozen) {
-        context.evalExitMarker = evalMarker;
-      } else {
-        context.evalMarker = node;
-      }
+      context.evalMarker = node;
     }
     return pipe(
       () => {
@@ -771,10 +783,7 @@ export abstract class Node<
         if (preEvaluatedNode !== evald) {
           evald.inherit(preEvaluatedNode);
         }
-        if (!context.evalExitMarker || context.evalExitMarker === node) {
-          context.evalExitMarker = undefined;
-          context.evalMarker = evalMarker;
-        }
+        context.evalMarker = evalMarker;
         return evald;
       }
     );
@@ -814,6 +823,7 @@ export abstract class Node<
     this.pre ||= node.pre;
     this.post ||= node.post;
     this.sourceNode = node.sourceNode;
+    this.sourceParent ??= node.sourceParent;
     /**
      * If it's replacing a node that's evaluated, it should inherit the same index.
      * Otherwise, it should be settable after cloning / copying.
