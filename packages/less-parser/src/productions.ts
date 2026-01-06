@@ -1257,30 +1257,40 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
       // Less, for whatever reason, has slightly different lookup rules for
       // "detached rulesets".
 
+      // Parse as Anonymous mixin
+      if (!rules.options.rulesVisibility) {
+        rules.options.rulesVisibility = {};
+      }
+      if (this.leakyRules) {
+        rules.options.rulesVisibility.Mixin = 'public';
+        rules.options.rulesVisibility.VarDeclaration = 'private';
+      } else {
+        rules.options.rulesVisibility.Mixin = 'private';
+        rules.options.rulesVisibility.VarDeclaration = 'private';
+      }
+
       if (!anonToken) {
         /** To Less, this is a "detached ruleset" */
         // Check if this should be parsed as Collection or Rules
         const shouldBeCollection = (() => {
-          // 1) Check if it only contains declarations/var-declarations (and comments)
-          const onlyDeclarationsAndComments = rules.value.every((node: Node) => {
-            return isNode(node, 'Declaration') || isNode(node, 'VarDeclaration') || isNode(node, 'Comment');
-          });
-
-          if (!onlyDeclarationsAndComments) {
-            return false;
+          let properties: Declaration[] = [];
+          for (const node of rules.value) {
+            if (node.type === 'Declaration') {
+              properties.push(node);
+            } else if (node.type === 'Comment' || node.type === 'VarDeclaration') {
+              continue;
+            } else {
+              /** Not a valid collection, parse as anonymous mixin */
+              return false;
+            }
           }
 
-          // 2) Check if the majority of property names are valid CSS properties
-          const declarations = rules.value.filter((node: Node) => {
-            return isNode(node, ['Declaration', 'VarDeclaration']);
-          }) as Array<Declaration | VarDeclaration>;
-
-          if (declarations.length === 0) {
-            // No declarations, can't determine - default to Rules
-            return false;
+          if (properties.length === 0) {
+            /** If just var declarations and/or comments, parse as collection */
+            return true;
           }
 
-          const validPropertyCount = declarations.filter((decl) => {
+          const validPropertyCount = properties.filter((decl) => {
             const name = decl.value.name;
             const propName = typeof name === 'string' ? name : name.valueOf();
             // Skip custom properties (--*)
@@ -1291,32 +1301,17 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
           }).length;
 
           // Majority means more than 50%
-          const majorityValid = validPropertyCount > declarations.length / 2;
-          return majorityValid;
+          const majorityValid = validPropertyCount > properties.length / 2;
+          /** If this looks like mostly CSS properties, parse as mixin instead */
+          return !majorityValid;
         })();
 
         if (shouldBeCollection) {
-          // Parse as Collection
-          if (!rules.options.rulesVisibility) {
-            rules.options.rulesVisibility = {};
-          }
           return new Collection(rules.value, rules.options, $.endRule(), this.context);
-        } else {
-          // Parse as Rules (not Mixin)
-          if (!rules.options.rulesVisibility) {
-            rules.options.rulesVisibility = {};
-          }
-          if (this.leakyRules) {
-            rules.options.rulesVisibility.Mixin = 'public';
-            rules.options.rulesVisibility.VarDeclaration = 'private';
-          } else {
-            rules.options.rulesVisibility.Mixin = 'private';
-            rules.options.rulesVisibility.VarDeclaration = 'private';
-          }
-          return new Rules(rules.value, rules.options, $.endRule(), this.context);
         }
       }
-      // If anonToken exists, it's an anonymous mixin with parameters, return as Mixin
+
+      // If anonToken exists, it's an anonymous mixin with (optional) parameters, return as Mixin
       return new Mixin({ params, rules }, undefined, $.endRule(), this.context);
     }
   };

@@ -190,6 +190,14 @@ export class Context {
 
   topRules?: Node[];
 
+  evalMarker: Node | undefined;
+  /**
+   * When we're evaluating frozen nodes and their children,
+   * we need to capture the last node evaluated, so we can
+   * maintain our "eval point" in the source.
+   */
+  evalExitMarker: Node | undefined;
+
   /**
    * This is set when entering rulesets so that child nodes
    * can use this to lookup values. When evaluating inside a mixin/function,

@@ -1372,6 +1372,20 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       thisContext = new Context();
     }
 
+    let nodeArgs: Node[] = [];
+    for (let arg of args) {
+      /**
+       * I think they should always be nodes?
+       * But leaving this for future expansion.
+       */
+      if (isNode(arg)) {
+        let evald = await arg.clonedEval(thisContext);
+        evald.frozen = true;
+        nodeArgs.push(evald);
+      } else {
+        nodeArgs.push(cast(arg));
+      }
+    }
     /**
      * Check named and positional arguments
      * against mixins, to see which ones match.
@@ -1408,7 +1422,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         let argPos = 0;
         let match = true;
         for (let i = 0; i < positions; i++) {
-          let arg = args[argPos];
+          let arg = nodeArgs[argPos];
           if (!arg) {
             continue;
           }
@@ -1427,8 +1441,6 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
               }
             );
             if (param) {
-              // Don't evaluate the argument value - assign it unevaluated for lazy evaluation
-              // The value will be evaluated when the variable is referenced
               argValue = arg.value.value;
             } else {
               match = false;
@@ -1441,46 +1453,31 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
               break;
             }
 
-            // Evaluate for pattern matching comparison
-            argValue = cast(arg);
+            argValue = arg;
           }
           if (!param) {
             match = false;
             break;
           }
           if (isNode(param, 'VarDeclaration')) {
-            // Capture the argument's parent before assignment (adoption changes parent)
-            let argClone = argValue.clone();
-            argClone.frozen = true;
             param.value.value = argValue;
           } else if (isNode(param, 'Any') && param.options.role === 'property') {
             // Convert Any with role: 'property' to VarDeclaration for registration
-            // Assign unevaluated value for lazy evaluation
-            // Capture the argument's parent before assignment (adoption changes parent)
-            let argClone = argValue.clone();
-            argClone.frozen = true;
             const varDecl = new VarDeclaration({
               name: param as Any<'property'>,
-              value: argClone
+              value: argValue
             });
             params.value[i] = varDecl;
           } else if (isNode(param, 'Rest')) {
             /** We assume that the rest args are values */
-            let rest = args.slice(argPos);
-            let seqValues: Node[] = [];
+            let rest = nodeArgs.slice(argPos);
             /** Create a new variable with the rest name */
             params.value[i] = new VarDeclaration({
               name: new Any(param.value ? `${param.value}` : `rest${i}`, { role: 'property' }) as Any<'property'>,
-              value: new Sequence(seqValues)
+              value: new Sequence(rest)
             });
-            for (let arg of rest) {
-              let argClone = arg.clone(true, freezeChildren);
-              argClone.frozen = true;
-              seqValues.push(argClone);
-            }
             /** Check a pattern-matching node */
           } else {
-            argValue = await argValue.eval(thisContext);
             if (param.compare(argValue) !== 0) {
               /** This mixin is not a match */
               match = false;

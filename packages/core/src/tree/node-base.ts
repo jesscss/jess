@@ -261,6 +261,7 @@ export abstract class Node<
    * parent.adopt(thisNode);
    */
   declare readonly parent: Node | undefined;
+  declare readonly sourceParent: Node | undefined;
 
   /** Patched at runtime in node.ts to return Nil instance */
   declare nil: () => Nil;
@@ -739,6 +740,14 @@ export abstract class Node<
   static evalStatic(node: Node, context: Context): MaybePromise<Node> {
     let preEvaluatedNode: Node;
 
+    let evalMarker = context.evalMarker;
+    if (!context.evalExitMarker) {
+      if (node.frozen) {
+        context.evalExitMarker = evalMarker;
+      } else {
+        context.evalMarker = node;
+      }
+    }
     return pipe(
       () => {
         if (!node.preEvaluated) {
@@ -761,6 +770,10 @@ export abstract class Node<
         evald.evaluated = true;
         if (preEvaluatedNode !== evald) {
           evald.inherit(preEvaluatedNode);
+        }
+        if (!context.evalExitMarker || context.evalExitMarker === node) {
+          context.evalExitMarker = undefined;
+          context.evalMarker = evalMarker;
         }
         return evald;
       }
@@ -785,7 +798,7 @@ export abstract class Node<
     /**
      * Frozen nodes inherit the parent only if they don't have a parent yet.
      */
-    if (!node.frozen) {
+    if (!this.frozen) {
       (this as any).parent = node.parent;
     } else {
       (this as any).parent ??= node.parent;

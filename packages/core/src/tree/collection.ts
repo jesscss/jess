@@ -1,6 +1,8 @@
-import { defineType } from './node';
+import type { MaybePromise } from 'awaitable-pipe/lib/utils';
+import { defineType, type Node } from './node';
 import { Rules } from './rules';
 import { getPrintOptions, type PrintOptions } from './util/print';
+import type { Context } from '../context';
 
 /**
  * A collection is essentially like an anonymous mixin,
@@ -19,6 +21,14 @@ export class Collection extends Rules {
 
   override toTrimmedString(options?: PrintOptions) {
     return this.toBraced(options);
+  }
+
+  /**
+   * Collection rules aren't evaluated by default. They're evaluated
+   * at access time OR if assigned to a property.
+   */
+  override evalNode(context: Context): MaybePromise<this> {
+    return this;
   }
 }
 

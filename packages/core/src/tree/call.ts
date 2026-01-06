@@ -7,7 +7,7 @@ import { callWithContext } from '../define-function';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { Paren } from './paren';
 import { isThenable } from '@jesscss/awaitable-pipe';
-import { type Rules } from './rules';
+import { getFunctionFromMixins, Rules } from './rules';
 import { Any } from './any';
 import { freezeChildren } from './util/cloning';
 
@@ -111,38 +111,7 @@ export class Call extends Node<CallValue, CallOptions> {
     context.callStack.push(this);
     context.parenFrames.push(false);
 
-    // #region agent log
-    const callNameStr = typeof name === 'string' ? name : (isNode(name, 'Reference') ? String(name.value.key?.valueOf() ?? '') : 'unknown');
-    const shouldLog = callNameStr === 'my-mixins' || callNameStr.includes('my-mixins') || callNameStr === 'mixin' || callNameStr === '.mixin';
-    if (shouldLog) {
-      fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { contentType: 'application/json' }, body: JSON.stringify({ location: 'call.ts:114', message: 'Call.evalNode: evaluating call', data: { callName: callNameStr, nameType: typeof name === 'string' ? 'string' : (isNode(name, 'Reference') ? 'Reference' : 'unknown'), hasArgs: !!(args && args.value.length > 0), callIndex: this.index, parentRulesIndex: this.rulesParent?.index, parentRulesType: this.rulesParent?.type }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run15', hypothesisId: 'H' }) }).catch(() => {});
-    }
-    // #endregion
     let n = typeof name === 'string' ? name : await name.eval(context);
-    // #region agent log
-    const isMyMixinsCall = this.index === 19 || (typeof name === 'string' && name === 'my-mixins') || (isNode(name, 'Reference') && String(name.value.key?.valueOf() ?? '') === 'my-mixins') || (isNode(name, 'Expression') && isNode(name.value, 'Reference') && String(name.value.value.key?.valueOf() ?? '') === 'my-mixins');
-    if (isMyMixinsCall || shouldLog) {
-      const nType = isNode(n) ? n.type : typeof n;
-      const isRules = isNode(n, 'Rules');
-      const isCollection = isNode(n, 'Collection');
-      const isFunction = typeof n === 'function';
-      const hasMixin = isRules && n.value.some((node: any) => node?.type === 'Mixin' || node?.type === 'Ruleset');
-      const mixinNames = isRules && hasMixin
-        ? n.value.filter((node: any) => node?.type === 'Mixin' || node?.type === 'Ruleset').map((node: any) => {
-            if (node?.type === 'Mixin') {
-              return String(node?.value?.name?.valueOf?.() ?? '');
-            }
-            if (node?.type === 'Ruleset') {
-              return String(node?.value?.selector?.toString?.() ?? '');
-            }
-            return '';
-          })
-        : [];
-      const hasMixinName = mixinNames.some((name: string) => name.includes('.mixin') || name === '.mixin');
-      fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { contentType: 'application/json' }, body: JSON.stringify({ location: 'call.ts:121', message: 'Call.evalNode: name evaluated', data: { callName: callNameStr, callIndex: this.index, nType, isRules, isCollection, isFunction, hasMixin, mixinNames, hasMixinName, nIndex: isNode(n, 'Rules') ? n.index : undefined }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run24', hypothesisId: 'R' }) }).catch(() => {});
-    }
-    // #endregion
-
     // If the evaluated name is a Call node, execute it directly
     // This handles cases like @alias: .something(foo); @alias();
     if (isNode(n, 'Call')) {
@@ -158,18 +127,20 @@ export class Call extends Node<CallValue, CallOptions> {
         context.parenFrames.pop();
         return result;
       } finally {}
-    }
-
-    // If the evaluated name is Rules or Collection (detached rulesets),
-    // return that node directly, but only if args are empty
-    // This handles cases like @my-mixins: { .mixin() {} }; @my-mixins();
-    if (isNode(n, ['Rules', 'Collection'])) {
+    } else if (isNode(n, 'Mixin')) {
+      n = cast(getFunctionFromMixins(n));
+    } else if (isNode(n, 'Collection')) {
+      // If the evaluated name is Rules or Collection (detached rulesets),
+      // return those rules directly, but only if args are empty
       // If args are provided, throw an error - you can't call Rules/Collection with arguments
       if (args && args.value.length > 0) {
         context.callStack.pop();
         context.parenFrames.pop();
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
       }
+      let rules = Rules.create(n.value, n.options);
+      rules.inherit(n);
+      rules = await rules.eval(context);
       // #region agent log
       const callName = typeof name === 'string' ? name : (isNode(name, 'Reference') ? String(name.value.key?.valueOf() ?? '') : 'unknown');
       const isRules = isNode(n, 'Rules');
@@ -198,7 +169,7 @@ export class Call extends Node<CallValue, CallOptions> {
       if (markImportant) {
         this.makeImportant(n);
       }
-      return n;
+      return rules;
     }
 
     let fn = isNode(n, 'JsFunction') ? n.value : n;

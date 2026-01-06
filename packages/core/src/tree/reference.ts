@@ -413,14 +413,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               break;
             case 'mixin-ruleset':
               if (isNode(targetRules, 'Rules')) {
-                // When we have nested References (e.g., #theme.dark.navbar.colors()),
-                // each Reference resolves to a Rules, and we search in that Rules.
-                // We don't need accumulated path search because nested References
-                // already handle the search correctly by resolving each step.
-                // The accumulated path search was meant for compound selectors parsed
-                // as a single Reference (like in mixinOrQualifiedRule), but mixinReference
-                // always parses as nested References, so we can skip it here.
-                // valueKey can be string or string[] - find() accepts both
                 return targetRules.find('mixin', valueKey, undefined, opts);
               }
               break;
@@ -496,7 +488,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               context.searchScope.delete(returnVal);
               // DON'T pop important source here - let the consuming Declaration pop it
               // after it has checked and merged the important flag
-              let out = evald.copy(true, freezeChildren);
+              let out = evald.copy(true, freezeChildren).inherit(evald);
+              out.frozen = true;
               out.pre = this.pre;
               out.post = this.post;
               return out;
