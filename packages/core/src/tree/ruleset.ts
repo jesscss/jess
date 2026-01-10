@@ -112,16 +112,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       let shouldInheritSelector = true;
       const parentRuleset = context.rulesetFrames.at(-1);
       const parentRulesetIndex = parentRuleset ? context.frames.lastIndexOf(parentRuleset) : -1;
-      // #region agent log
-      const selectorStr = selector?.valueOf?.() ?? '';
-      if (selectorStr.includes('%')) {
-        const atRuleFrames = context.frames.filter(f => isNode(f, 'AtRule')).map(f => {
-          const ar = f as AtRule;
-          return { name: ar.value.name?.toString?.(), isRootOnly: ar.isRootOnly() };
-        });
-        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ruleset.ts:115', message: 'Checking selector inheritance', data: { selectorStr, parentRulesetIndex, framesLength: context.frames.length, atRuleFrames }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
-      }
-      // #endregion
       if (parentRulesetIndex >= 0) {
         // Check frames after the parent ruleset for any root-only at-rules
         for (let i = parentRulesetIndex + 1; i < context.frames.length; i++) {
@@ -138,45 +128,16 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         selector = node.getImplicitSelector(parentSelector, context.opts.collapseNesting);
         selector.sourceNode = node === this ? selector.clone(true) : selector;
       }
+      // DO NOT evaluate guard here - guards are evaluated at call time in getFunctionFromMixins
+      // Just evaluate the selector
       return pipe(
-        () => {
-          // Evaluate guard first - if it fails, the ruleset should not be registered as a mixin
-          if (guard) {
-            return guard.eval(context);
+        () => selector.eval(context),
+        (sel) => {
+          node.value.selector = sel as Selector | Nil;
+          if (sel.hoistToRoot) {
+            node.hoistToRoot = true;
           }
-          return undefined;
-        },
-        (guardResult) => {
-          if (guardResult && !guardResult.value) {
-            // Guard failed - mark as Nil so it won't be registered as a mixin
-            node.value.guard = new Nil();
-            // Still need to evaluate selector for CSS output, but mark as not visible for mixin registry
-            return pipe(
-              () => selector.eval(context),
-              (sel) => {
-                node.value.selector = sel as Selector | Nil;
-                if (sel.hoistToRoot) {
-                  node.hoistToRoot = true;
-                }
-                // Guard failed - ruleset should not be registered as a mixin
-                // but should still output as CSS, so we don't remove F_VISIBLE
-                // Instead, we'll check in registerNode to skip mixin registration
-                return node;
-              }
-            );
-          }
-          // Guard passed or no guard - evaluate selector normally
-          node.value.guard = undefined;
-          return pipe(
-            () => selector.eval(context),
-            (sel) => {
-              node.value.selector = sel as Selector | Nil;
-              if (sel.hoistToRoot) {
-                node.hoistToRoot = true;
-              }
-              return node;
-            }
-          );
+          return node;
         }
       );
     }
@@ -250,7 +211,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     let pushedFrames = false;
     /** Should have been maybe cloned in preEval */
     this.evaluated = true;
-    let frame = atIndex(context.rulesetFrames, -1);
     const collapseNesting = context.opts.collapseNesting;
 
     // Store frames snapshot for collapseNesting serialization
@@ -261,9 +221,36 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return pipe(
       () => {
         let { selector, guard } = this.value;
+        // Guard was already set to Nil (failed in a previous eval)
         if (guard instanceof Nil) {
           return guard;
         }
+        // Evaluate guard at definition time (not call time like mixins)
+        // This is different from mixins because rulesets can't use caller scope for guards
+        if (guard) {
+          return pipe(
+            () => guard.eval(context),
+            (guardResult) => {
+              if (!guardResult.value) {
+                // Guard failed - mark as Nil and return it
+                this.value.guard = new Nil();
+                return new Nil();
+              }
+              // Guard passed - clear it and continue with selector evaluation
+              this.value.guard = undefined;
+              return undefined;
+            }
+          );
+        }
+        return undefined;
+      },
+      (guardResult) => {
+        // If guard failed, return Nil (ruleset produces no output)
+        if (guardResult instanceof Nil) {
+          return guardResult;
+        }
+        let { selector } = this.value;
+        const frame = atIndex(context.rulesetFrames, -1);
         if (frame && (this.hoistToRoot ?? context.opts.collapseNesting)) {
           this.hoistToRoot = true;
         }

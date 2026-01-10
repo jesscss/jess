@@ -54,14 +54,14 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
    * Means: can bubble ruleset parents to children.
    */
   isNestable() {
-    return NESTABLE_AT_RULES.includes(this.value.name.toString() as (typeof NESTABLE_AT_RULES)[number]);
+    return NESTABLE_AT_RULES.includes(this.value.name.valueOf() as (typeof NESTABLE_AT_RULES)[number]);
   }
 
   /**
    * For legacy collapseNesting, will push ruleset to root silently.
    */
   isRootOnly() {
-    return ROOT_ONLY_AT_RULES.includes(this.value.name.toString() as (typeof ROOT_ONLY_AT_RULES)[number]);
+    return ROOT_ONLY_AT_RULES.includes(this.value.name.valueOf() as (typeof ROOT_ONLY_AT_RULES)[number]);
   }
 
   isHoisted(opts: { collapseNesting?: boolean }) {
@@ -109,8 +109,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       if (isThenable(out)) {
         return (out as Promise<Node>).then((n) => {
           node.value.prelude = n;
+          // @import must be at the top of CSS output
           if (node.value.name.value === '@import') {
-            (context.topRules ??= []).push(node);
+            (context.topImports ??= []).push(node);
             return new Nil();
           }
           return node;
@@ -118,8 +119,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
       node.value.prelude = out;
     }
+    // @import must be at the top of CSS output
     if (node.value.name.value === '@import') {
-      (context.topRules ??= []).push(node);
+      (context.topImports ??= []).push(node);
       return new Nil();
     }
     return node;
@@ -204,19 +206,21 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     let node = this as AtRule;
 
     // Check if this is a root-only at-rule that should bubble to root
-    // when nested inside a Ruleset
+    // when nested inside a Ruleset. Use hoistToRoot for in-place rendering.
+    let shouldClearRulesetFrames = false;
     if (context.bubbleRootAtRules && node.isRootOnly()) {
-      // Check if we're nested inside a Ruleset
       const hasRulesetParent = context.frames.some(f => isNode(f, 'Ruleset'));
       if (hasRulesetParent) {
-        // Bubble this at-rule to top level and remove from current location
-        (context.topRules ??= []).push(node);
-        return new Nil();
+        // Mark for hoisting - this will render at root level but in-place
+        node.hoistToRoot = true;
+        // We'll clear rulesetFrames when evaluating internal rules
+        // to prevent selector inheritance from piercing through
+        shouldClearRulesetFrames = true;
       }
     }
 
-    // Store frames snapshot for collapseNesting serialization
-    if (context.opts.collapseNesting || node.options.hoistToRoot) {
+    // Store frames snapshot for hoisting serialization
+    if (context.opts.collapseNesting || node.hoistToRoot) {
       node.frames = [...context.frames];
     }
 
@@ -270,9 +274,20 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
           let onlyRuleSetChild = isNode(rules.value[0], 'Ruleset');
 
+          // For root-only at-rules that are hoisted, clear rulesetFrames
+          // so internal rulesets don't inherit parent selectors
+          const savedRulesetFrames = shouldClearRulesetFrames ? context.rulesetFrames : undefined;
+          if (shouldClearRulesetFrames) {
+            context.rulesetFrames = [];
+          }
+
           let out = rules.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Rules>).then((r) => {
+              // Restore rulesetFrames
+              if (savedRulesetFrames !== undefined) {
+                context.rulesetFrames = savedRulesetFrames;
+              }
               // If the only rule was a ruleset, and it evaluated to Rules,
               // discard the extra rules wrapper
               const finalRules = onlyRuleSetChild && isNode(r.value[0], 'Rules') ? r.value[0] : r;
@@ -290,6 +305,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
               return node;
             });
           }
+          // Restore rulesetFrames (sync path)
+          if (savedRulesetFrames !== undefined) {
+            context.rulesetFrames = savedRulesetFrames;
+          }
+
           const finalRules = onlyRuleSetChild && isNode(out.value[0], 'Rules') ? out.value[0] : out;
           node.value.rules = finalRules;
 

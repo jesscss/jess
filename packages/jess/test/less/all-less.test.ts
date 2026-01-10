@@ -35,8 +35,12 @@ const targetTests: string[] = [
 
 describe('Can render Less files to CSS', () => {
   // Get all .less files from tests-unit and tests-config directories
-  const unitFiles: string[] = []; // glob.sync(path.join(testData, 'tests-unit/*/*.less'));
-  const configFiles = glob.sync(path.join(testData, 'tests-unit/*/directives-bubbling.less'));
+  // Filter to alphabetical tests up to directives-bubbling for now
+  const unitFiles: string[] = glob.sync(path.join(testData, 'tests-unit/*/*.less')).filter(f => {
+    const dir = path.basename(path.dirname(f));
+    return dir <= 'directives-bubbling';
+  });
+  const configFiles: string[] = [];
   const allFiles = [...unitFiles, ...configFiles];
 
   allFiles

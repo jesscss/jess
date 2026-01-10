@@ -229,6 +229,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     const ctx = options.context;
     if (depth === 0) {
+      // @charset must be first
       if (ctx?.currentCharset && !ctx.charsetEmitted) {
         const charset = ctx.currentCharset;
         // Use capture to avoid double-writing (toTrimmedString writes to writer AND returns the string)
@@ -237,12 +238,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         w.add('\n');
         ctx.charsetEmitted = true;
       }
-      if (ctx?.topRules?.length) {
-        for (const topRule of ctx.topRules) {
-          const topRuleStr = w.capture(() => topRule.toString(options));
-          w.add(normalizeIndent(topRuleStr, ''), topRule);
+      // @import must come after @charset but before other rules
+      if (ctx?.topImports?.length) {
+        for (const importRule of ctx.topImports) {
+          const importStr = w.capture(() => importRule.toString(options));
+          w.add(normalizeIndent(importStr, ''), importRule);
           w.add('\n');
         }
+        // Clear after rendering to prevent duplicates
+        ctx.topImports = [];
       }
     }
 
@@ -256,9 +260,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // At root level, ensure output ends with a single newline (standard for CSS files)
     // Don't propagate all the last child's post content (which may have extra whitespace)
     if (depth === 0) {
-      const result = w.getSince(mark);
-      // Ensure exactly one trailing newline
-      return result.trimEnd() + '\n';
+      const result = w.getSince(mark).trimEnd();
+      // Ensure exactly one trailing newline (only if there's content)
+      return result ? result + '\n' : '';
     }
     return w.getSince(mark);
   }
@@ -532,11 +536,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this.register('declaration', node);
     } else if (isNode(node, 'Ruleset')) {
       // Register to 'mixin' for mixin calls and 'ruleset' for extends
-      // Only register to mixin registry if guard passed (or no guard)
-      // Rulesets with failed guards (guard === Nil) should still be registered to ruleset registry for CSS output
-      if (!(node.value.guard instanceof Nil)) {
-        this.register('mixin', node);
-      }
+      // Always register - guard filtering happens at call time in getFunctionFromMixins
+      this.register('mixin', node);
       this.register('ruleset', node);
     } else if (isNode(node, 'Mixin')) {
       this.register('mixin', node);
@@ -1481,6 +1482,13 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
 
     for (let candidate of evalCandidates) {
       if (isNode(candidate, 'Ruleset')) {
+        // For Rulesets, guard was already evaluated at definition time in Ruleset.evalNode
+        // guard === undefined means passed, guard instanceof Nil means failed
+        const rulesetGuard = (candidate as Ruleset).value.guard;
+        if (rulesetGuard instanceof Nil) {
+          // Guard failed at definition time - skip this ruleset
+          continue;
+        }
         let rules = (candidate as Ruleset).value.rules.copy(true);
         /** Adopt for lookup, then adopt for sorting */
         candidate.parent!.adopt(rules);

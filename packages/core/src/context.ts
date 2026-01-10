@@ -199,7 +199,8 @@ export class Context {
   /** Track whether charset has been emitted during toString to avoid duplicates */
   charsetEmitted?: boolean;
 
-  topRules?: Node[];
+  /** @import rules must be at the top of CSS output */
+  topImports?: Node[];
 
   /**
    * This is set when entering rulesets so that child nodes

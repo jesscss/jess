@@ -420,7 +420,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           return undefined;
         };
 
-        // If leakyRules is true and resolvedTarget !== context.rulesContext, try two-pass resolution
+        // If leakyRules is true, try two-pass resolution: definition scope first, then caller scope
         let returnVal: any;
         if (isNode(resolvedTarget, 'Rules')) {
           if (context.leakyRules) {

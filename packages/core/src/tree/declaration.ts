@@ -95,7 +95,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const { assign = ':' } = this.options;
     const mark = w.mark();
     let a = assign === ':' ? ':' : ` ${assign}`;
-    w.add(`${name}${a}`, name);
+    // Normalize property name by trimming trailing whitespace
+    const normalizedName = String(name).replace(/\s+$/, '');
+    w.add(`${normalizedName}${a}`, name);
     // Custom properties must preserve value text exactly as provided.
     const isCustomProperty = name.valueOf().startsWith('--');
     if (isCustomProperty) {

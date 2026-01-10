@@ -214,6 +214,15 @@ export interface LessOptions {
    * @default false
    */
   collapseNesting?: boolean;
+
+  /**
+   * @deprecated This is legacy Less behavior.
+   *
+   * Whether to bubble root-only at-rules (@font-face, @keyframes, etc.) to the root
+   * when they are nested inside rulesets. Modern CSS supports nesting these at-rules.
+   * @default true
+   */
+  bubbleRootAtRules?: boolean;
 }
 
 export interface StylesConfig {
