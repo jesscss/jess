@@ -22,6 +22,7 @@ export class LessPlugin extends AbstractPlugin {
   mathMode: MathMode;
   unitMode: UnitMode;
   leakyRules: boolean;
+  bubbleRootAtRules: boolean;
   collapseNesting: boolean;
 
   constructor(public opts: LessOptions = {}) {
@@ -59,6 +60,7 @@ export class LessPlugin extends AbstractPlugin {
     }
     this.unitMode = unitMode;
     this.leakyRules = opts.leakyRules ?? true;
+    this.bubbleRootAtRules = opts.bubbleRootAtRules ?? true;
     this.collapseNesting = opts.collapseNesting ?? false;
 
     // Pass options to parser (including leakyRules, defaulting to true)
@@ -94,7 +96,8 @@ export class LessPlugin extends AbstractPlugin {
       unitMode: this.unitMode,
       plugin: this,
       collapseNesting: this.collapseNesting,
-      leakyRules: this.leakyRules
+      leakyRules: this.leakyRules,
+      bubbleRootAtRules: this.bubbleRootAtRules
     });
     let tree: Rules;
     let errors: any[];

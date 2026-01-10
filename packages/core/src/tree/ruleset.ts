@@ -106,7 +106,34 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         rules.options.rulesVisibility.Mixin = 'private';
         rules.options.rulesVisibility.VarDeclaration = 'private';
       }
-      let parentSelector = context.rulesetFrames.at(-1)?.selector;
+      // Check if there's a root-only at-rule between us and the parent ruleset
+      // If so, don't inherit the parent selector (root-only at-rules like @keyframes
+      // don't propagate parent selectors to their children)
+      let shouldInheritSelector = true;
+      const parentRuleset = context.rulesetFrames.at(-1);
+      const parentRulesetIndex = parentRuleset ? context.frames.lastIndexOf(parentRuleset) : -1;
+      // #region agent log
+      const selectorStr = selector?.valueOf?.() ?? '';
+      if (selectorStr.includes('%')) {
+        const atRuleFrames = context.frames.filter(f => isNode(f, 'AtRule')).map(f => {
+          const ar = f as AtRule;
+          return { name: ar.value.name?.toString?.(), isRootOnly: ar.isRootOnly() };
+        });
+        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ruleset.ts:115', message: 'Checking selector inheritance', data: { selectorStr, parentRulesetIndex, framesLength: context.frames.length, atRuleFrames }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => {});
+      }
+      // #endregion
+      if (parentRulesetIndex >= 0) {
+        // Check frames after the parent ruleset for any root-only at-rules
+        for (let i = parentRulesetIndex + 1; i < context.frames.length; i++) {
+          const frame = context.frames[i];
+          if (isNode(frame, 'AtRule') && (frame as AtRule).isRootOnly()) {
+            shouldInheritSelector = false;
+            break;
+          }
+        }
+      }
+
+      let parentSelector = shouldInheritSelector ? context.rulesetFrames.at(-1)?.selector : undefined;
       if (parentSelector && !(parentSelector instanceof Nil)) {
         selector = node.getImplicitSelector(parentSelector, context.opts.collapseNesting);
         selector.sourceNode = node === this ? selector.clone(true) : selector;

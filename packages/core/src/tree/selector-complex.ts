@@ -54,13 +54,19 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
 
       // Get keys from selector components
       const selector = component as Selector;
-      combinedKeySet = combinedKeySet.union(selector.keySet);
+      const selectorKeySet = selector.keySet;
+      if (selectorKeySet instanceof Set) {
+        combinedKeySet = combinedKeySet.union(selectorKeySet);
+      }
 
       // Only add to visibleKeySet if the component is visible AND not an implicit ampersand
       // Implicit ampersands should be excluded from visibleKeySet for indexing purposes,
       // regardless of visibility (they're added by getImplicitSelector, not written by user)
       if (component.hasFlag(F_VISIBLE) && !component.hasFlag(F_IMPLICIT_AMPERSAND)) {
-        combinedVisibleKeySet = combinedVisibleKeySet.union(selector.visibleKeySet);
+        const selectorVisibleKeySet = selector.visibleKeySet;
+        if (selectorVisibleKeySet instanceof Set) {
+          combinedVisibleKeySet = combinedVisibleKeySet.union(selectorVisibleKeySet);
+        }
       }
       // If component is invisible (like an implicit ampersand), its visibleKeySet should be empty anyway
 

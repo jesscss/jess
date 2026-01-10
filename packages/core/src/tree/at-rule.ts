@@ -200,8 +200,20 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return out;
   }
 
-  override evalNode(context: Context): MaybePromise<AtRule> {
+  override evalNode(context: Context): MaybePromise<AtRule | Nil> {
     let node = this as AtRule;
+
+    // Check if this is a root-only at-rule that should bubble to root
+    // when nested inside a Ruleset
+    if (context.bubbleRootAtRules && node.isRootOnly()) {
+      // Check if we're nested inside a Ruleset
+      const hasRulesetParent = context.frames.some(f => isNode(f, 'Ruleset'));
+      if (hasRulesetParent) {
+        // Bubble this at-rule to top level and remove from current location
+        (context.topRules ??= []).push(node);
+        return new Nil();
+      }
+    }
 
     // Store frames snapshot for collapseNesting serialization
     if (context.opts.collapseNesting || node.options.hoistToRoot) {

@@ -49,6 +49,14 @@ export interface ContextOptions {
    * @deprecated - a Less feature
    */
   leakyRules?: boolean;
+
+  /**
+   * Whether to bubble root-only at-rules (like @font-face, @keyframes)
+   * to the root level when they're nested inside rulesets.
+   *
+   * @deprecated - a legacy Less feature; modern CSS allows nesting
+   */
+  bubbleRootAtRules?: boolean;
 }
 
 export interface TreeContextOptions extends ContextOptions {
@@ -117,6 +125,7 @@ export class TreeContext implements TreeContextOptions {
   opts: Record<string, any>;
   // changed to `rulesVisiblity` set during parsing
   leakyRules: boolean | undefined;
+  bubbleRootAtRules: boolean | undefined;
   mathMode: MathMode | undefined;
   unitMode: UnitMode | undefined;
 
@@ -142,6 +151,7 @@ export class TreeContext implements TreeContextOptions {
       file,
       plugin,
       leakyRules,
+      bubbleRootAtRules,
       ...rest
     } = opts;
     this.mathMode = mathMode;
@@ -150,6 +160,7 @@ export class TreeContext implements TreeContextOptions {
     this.file = file;
     this.plugin = plugin;
     this.leakyRules = leakyRules;
+    this.bubbleRootAtRules = bubbleRootAtRules;
     // this.scope = scope ?? new Scope(parentScope)
     this.opts = rest;
   }
@@ -350,12 +361,20 @@ export class Context {
     return this._leakyRules ?? this.treeContext?.leakyRules ?? false;
   }
 
+  _bubbleRootAtRules: boolean | undefined;
+  get bubbleRootAtRules() {
+    return this._bubbleRootAtRules ?? this.treeContext?.bubbleRootAtRules ?? false;
+  }
+
   constructor(opts: ContextOptions = {}, plugins?: PluginInterface[]) {
     this.opts = opts;
     this.plugins = plugins ?? [];
     this.extendRoots = new ExtendRootRegistry();
     if (opts.leakyRules !== undefined) {
       this._leakyRules = opts.leakyRules;
+    }
+    if (opts.bubbleRootAtRules !== undefined) {
+      this._bubbleRootAtRules = opts.bubbleRootAtRules;
     }
   }
 
