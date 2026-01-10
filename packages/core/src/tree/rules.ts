@@ -1082,9 +1082,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
 
         // Check if we're at the outermost level BEFORE restoring context
-        // Use the first root in allRoots as the outermost root
-        const outermostRoot = context.allRoots.length > 0 ? context.allRoots[0] : context.root;
-        const isOutermost = rules === outermostRoot;
+        // Only process extends at the TRUE outermost root (context.root)
+        // This ensures extends are processed AFTER all evaluation completes,
+        // including imports and nested Rules
+        const isOutermost = rules === context.root;
 
         if (isOutermost) {
           /**
@@ -1136,14 +1137,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               if (targetExistsElsewhere) {
                 // Target exists but is not accessible (blocked by boundary)
                 throw ERR.extendNotAccessible({
-                  ctx: context.treeContext.file ? { file: context.treeContext.file } : undefined,
+                  ctx: context.treeContext?.file ? { file: context.treeContext.file } : undefined,
                   node: extendNode.location && extendNode.location.length === 6 ? { location: extendNode.location } : undefined,
                   meta: { target: target.valueOf() }
                 });
               } else {
                 // Target doesn't exist at all
                 throw ERR.extendNotFound({
-                  ctx: context.treeContext.file ? { file: context.treeContext.file } : undefined,
+                  ctx: context.treeContext?.file ? { file: context.treeContext.file } : undefined,
                   node: extendNode.location && extendNode.location.length === 6 ? { location: extendNode.location } : undefined,
                   meta: { target: target.valueOf() }
                 });

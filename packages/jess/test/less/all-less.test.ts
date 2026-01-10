@@ -7,7 +7,6 @@ import { invalidLess } from '@jesscss/shared';
 import { Compiler } from '../../src';
 import { getTestCases } from '../test-utils';
 import lessPlugin from '@jesscss/plugin-less';
-import { getErrorFromParser } from 'core/lib/jess-error';
 import { type Rules } from '@jesscss/core';
 
 const require = createRequire(import.meta.url);
@@ -36,7 +35,7 @@ const targetTests: string[] = [
 describe('Can render Less files to CSS', () => {
   // Get all .less files from tests-unit and tests-config directories
   // Filter to alphabetical tests up to directives-bubbling for now
-  const unitFiles: string[] = glob.sync(path.join(testData, 'tests-unit/*/*.less')).filter(f => {
+  const unitFiles: string[] = glob.sync(path.join(testData, 'tests-unit/*/*.less')).filter((f) => {
     const dir = path.basename(path.dirname(f));
     // Skip extend tests - output uses :is() which differs from Less.js expected CSS
     if (dir.startsWith('extend')) {

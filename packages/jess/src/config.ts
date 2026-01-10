@@ -1,6 +1,5 @@
 import * as path from 'path';
-import type { StylesConfig } from '@jesscss/core';
-import { loadConfigSync } from 'styles-config';
+import { loadConfigSync, type StylesConfig } from 'styles-config';
 
 /**
  * Get configuration from styles.config.* or jess.config.* file, searching from the given directory

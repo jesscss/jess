@@ -129,10 +129,16 @@ importers:
       cosmiconfig:
         specifier: ^9.0.0
         version: 9.0.0(typescript@5.8.3)
+      picomatch:
+        specifier: ^4.0.2
+        version: 4.0.3
     devDependencies:
       '@types/node':
         specifier: ^22.10.2
         version: 22.19.3
+      '@types/picomatch':
+        specifier: ^3.0.1
+        version: 3.0.2
       typescript:
         specifier: ^5.7.2
         version: 5.8.3
@@ -4798,6 +4804,10 @@ packages:
     resolution: {integrity: sha512-1N9SBnWYOJTrNZCdh/yJE+t910Y128BoyY+zBLWhL3r0TYzlTmFdXrPwHL9DyFZmlEXNQQolTZh3KHV31QDhyA==}
     dependencies:
       undici-types: 6.21.0
+    dev: true
+
+  /@types/picomatch@3.0.2:
+    resolution: {integrity: sha512-n0i8TD3UDB7paoMMxA3Y65vUncFJXjcUf7lQY7YyKGl6031FNjfsLs6pdLFCy2GNFxItPJG8GvvpbZc2skH7WA==}
     dev: true
 
   /@types/prismjs@1.26.5:
@@ -11161,7 +11171,6 @@ packages:
   /picomatch@4.0.3:
     resolution: {integrity: sha512-5gTmgEY/sqK6gFXLIsQNH19lWb4ebPDLA4SdLP7dsWkIXHWlG66oPuVvXSGFPppYZz8ZDZq0dYYrbHfBCVUb1Q==}
     engines: {node: '>=12'}
-    dev: true
 
   /pidtree@0.6.0:
     resolution: {integrity: sha512-eG2dWTVw5bzqGRztnHExczNxt5VGsE6OwTeCG3fdUf9KBsZzO3R5OIIIzWR+iZA0NtZ+RDVdaoE2dK1cn6jH4g==}

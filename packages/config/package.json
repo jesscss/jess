@@ -21,10 +21,12 @@
   },
   "dependencies": {
     "@jesscss/core": "workspace:*",
-    "cosmiconfig": "^9.0.0"
+    "cosmiconfig": "^9.0.0",
+    "picomatch": "^4.0.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "@types/picomatch": "^3.0.1",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   },

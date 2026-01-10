@@ -10,8 +10,9 @@ A general-purpose configuration system for styling frameworks including Jess, Le
 
 - **Universal Configuration Format**: Single configuration structure that works with multiple styling frameworks
 - **Framework-Specific Options**: Support for Less, Sass, Jess, and other framework-specific settings
+- **Per-File Configuration**: Override settings for specific input or output files using paths or glob patterns
 - **Flexible Loading**: Supports multiple config file formats (JSON, YAML, JavaScript, TypeScript)
-- **Smart Merging**: Combines compile, output, and language-specific settings intelligently
+- **Smart Merging**: Combines compile, language, input, and output settings intelligently
 
 ## Installation
 
@@ -40,11 +41,8 @@ interface StylesConfig {
     mathMode?: 'always' | 'parens-division' | 'parens' | 'strict';
     unitMode?: 'loose' | 'strict';
   };
-  output?: {
-    collapseNesting?: boolean;
-    compress?: boolean;
-    sourceMap?: boolean;
-  };
+  input?: InputOptions | InputOptions[];
+  output?: OutputOptions | OutputOptions[];
   language?: {
     less?: LessOptions;
     scss?: Record<string, any>;
@@ -53,34 +51,52 @@ interface StylesConfig {
     [key: string]: any;
   };
 }
+
+interface InputOptions {
+  file?: string;  // Path or glob pattern to match input files
+  mathMode?: MathMode;
+  unitMode?: UnitMode;
+  // ... any compile or language options to override
+}
+
+interface OutputOptions {
+  file?: string;  // Path or glob pattern to match output files
+  collapseNesting?: boolean;
+  compress?: boolean;
+  sourceMap?: boolean;
+  // ... any output options to override
+}
 ```
 
 ### Example Configuration
 
 ```javascript
-// jess.config.js
-module.exports = {
+// styles.config.js
+export default {
   compile: {
     mathMode: 'parens-division',
     unitMode: 'loose',
     searchPaths: ['./src/styles', './node_modules']
   },
-  output: {
-    collapseNesting: false,
-    compress: false,
-    sourceMap: true
-  },
+  input: [
+    // Default input options (no file pattern)
+    { leakyRules: false },
+    // Override for legacy files
+    { file: 'legacy/**/*.less', mathMode: 'always', leakyRules: true }
+  ],
+  output: [
+    // Default output options
+    { sourceMap: true, compress: false },
+    // Override for minified builds
+    { file: '**/*.min.css', compress: true, sourceMap: false }
+  ],
   language: {
     less: {
-      leakyRules: true,
       strictImports: false
     },
     scss: {
       precision: 10,
       outputStyle: 'expanded'
-    },
-    jess: {
-      // Jess-specific options
     }
   }
 };
@@ -100,58 +116,83 @@ const config = await loadConfig('/path/to/project');
 const config = loadConfigSync('/path/to/project');
 ```
 
-### Getting Framework-Specific Options
+### Getting Merged Options
 
-The package provides helper functions that intelligently merge compile, output, and language-specific settings:
+Use the `getOptions` function to get merged options for a specific file:
 
 ```typescript
-import { getLessOptions, getScssOptions, getJessOptions } from 'styles-config';
+import { loadConfigSync, getOptions } from 'styles-config';
 
 const config = loadConfigSync();
 
-// Get Less plugin options (combines compile + output + language.less)
-const lessOptions = getLessOptions(config);
+// Language is inferred from the input file extension
+const options = getOptions(config, {
+  input: 'src/styles/main.less',
+  output: 'dist/main.css'
+});
 
-// Get Sass/SCSS plugin options (combines compile + output + language.scss)
-const scssOptions = getScssOptions(config);
+// Or explicitly specify the language
+const options = getOptions(config, {
+  language: 'less',
+  input: 'src/styles/main.less',
+  output: 'dist/main.css'
+});
 
-// Get Jess plugin options (combines compile + output + language.jess)
-const jessOptions = getJessOptions(config);
+// Get default options for a language (no file matching)
+const defaults = getOptions(config, { language: 'scss' });
 ```
 
 ### How Options Are Merged
 
-The helper functions merge options in this priority order (highest to lowest):
+Options are merged in this priority order (later wins):
 
-1. **Language-specific options** (`language.less`, `language.scss`, etc.)
-2. **Output options** (`output.*`)
-3. **Compile options** (`compile.*`)
+1. **Compile options** (`compile.*`) - base settings
+2. **Language-specific options** (`language.less`, etc.) - language defaults
+3. **Matched input options** (`input[]` entries matching the input file)
+4. **Matched output options** (`output[]` entries matching the output file)
 
-For example, if you have:
+For example, with this config:
 
 ```javascript
 {
   compile: { mathMode: 'parens-division' },
-  output: { compress: true },
+  input: [
+    { leakyRules: false },
+    { file: 'legacy/**/*.less', mathMode: 'always', leakyRules: true }
+  ],
+  output: [
+    { compress: false },
+    { file: '**/*.min.css', compress: true }
+  ],
   language: {
-    less: { mathMode: 'strict', compress: false }
+    less: { collapseNesting: true }
   }
 }
 ```
 
-The resulting Less options would be:
-- `mathMode: 'strict'` (from `language.less`, overrides `compile.mathMode`)
-- `compress: false` (from `language.less`, overrides `output.compress`)
+Calling `getOptions(config, { input: 'legacy/old.less', output: 'dist/old.min.css' })`:
+- `mathMode: 'always'` - from matched input (overrides compile)
+- `leakyRules: true` - from matched input (overrides default input)
+- `collapseNesting: true` - from language.less
+- `compress: true` - from matched output (overrides default output)
+
+### File Matching
+
+Both `input` and `output` options support file matching via the `file` property:
+
+- **Exact paths**: `src/styles/main.less`
+- **Relative paths**: `main.less` (matches any file with that basename)
+- **Glob patterns**: `legacy/**/*.less`, `**/*.min.css`
+
+Entries without a `file` property serve as defaults and always apply.
 
 ## Use Cases
 
 ### Single Framework Projects
 
-For projects using a single styling framework:
-
 ```javascript
-// jess.config.js
-module.exports = {
+// styles.config.js
+export default {
   output: {
     sourceMap: true,
     compress: process.env.NODE_ENV === 'production'
@@ -166,51 +207,67 @@ module.exports = {
 
 ### Multi-Framework Projects
 
-For projects using multiple styling frameworks:
-
 ```javascript
-// jess.config.js
-module.exports = {
+// styles.config.js
+export default {
   compile: {
-    mathMode: 'parens-division', // Shared across all frameworks
+    mathMode: 'parens-division',
     unitMode: 'loose'
   },
   output: {
-    sourceMap: true, // Shared output settings
+    sourceMap: true,
     compress: false
   },
   language: {
     less: {
-      strictImports: 'error' // Less-specific
+      strictImports: 'error'
     },
     scss: {
-      precision: 10, // Sass-specific
+      precision: 10,
       outputStyle: 'expanded'
-    },
-    jess: {
-      // Jess-specific options
     }
   }
 };
 ```
 
+### Per-File Overrides
+
+```javascript
+// styles.config.js
+export default {
+  compile: {
+    mathMode: 'parens-division'
+  },
+  input: [
+    // Modern files use strict math
+    { file: 'src/modern/**/*.less', mathMode: 'strict' },
+    // Legacy files need legacy behavior
+    { file: 'src/legacy/**/*.less', mathMode: 'always', leakyRules: true }
+  ],
+  output: [
+    // Development builds
+    { sourceMap: true, compress: false },
+    // Production minified builds
+    { file: 'dist/**/*.min.css', compress: true, sourceMap: false }
+  ]
+};
+```
+
 ### Framework-Agnostic Tools
 
-Build tools and bundlers can use this configuration format to support multiple styling frameworks:
+Build tools can use the configuration format to support multiple styling frameworks:
 
 ```typescript
-import { loadConfig, getLessOptions, getScssOptions } from 'styles-config';
+import { loadConfig, getOptions } from 'styles-config';
 
 const config = await loadConfig(projectRoot);
 
-// Use appropriate options based on file extension
-if (file.endsWith('.less')) {
-  const options = getLessOptions(config);
-  // Pass to Less compiler
-} else if (file.endsWith('.scss')) {
-  const options = getScssOptions(config);
-  // Pass to Sass compiler
-}
+// Options are automatically merged based on input/output files
+// Language is inferred from the input extension
+const options = getOptions(config, {
+  input: file,
+  output: outputPath
+});
 ```
 
 ## API Reference
@@ -219,19 +276,9 @@ if (file.endsWith('.less')) {
 
 Asynchronously loads configuration from the file system, searching from the given directory up to the root.
 
-**Parameters:**
-- `searchFrom` (optional): Directory path to start searching from. Defaults to `process.cwd()`.
-
-**Returns:** Configuration object or `null` if not found.
-
 ### `loadConfigSync(searchFrom?: string): StylesConfig`
 
 Synchronously loads configuration from the file system.
-
-**Parameters:**
-- `searchFrom` (optional): Directory path to start searching from. Defaults to `process.cwd()`.
-
-**Returns:** Configuration object or empty object `{}` if not found.
 
 ### `loadConfigFromPath(filePath: string): Promise<StylesConfig | null>`
 
@@ -241,17 +288,17 @@ Loads configuration from a specific file path (async).
 
 Loads configuration from a specific file path (sync).
 
-### `getLessOptions(config: StylesConfig): LessOptions`
+### `getOptions(config: StylesConfig, params?: GetOptionsParams): Record<string, any>`
 
-Merges compile, output, and `language.less` settings into Less plugin options.
+Merges configuration based on language, input file, and output file.
 
-### `getScssOptions(config: StylesConfig): Record<string, any>`
+**Parameters:**
+- `config`: The styles configuration object
+- `params.language`: Language key (e.g., 'less', 'scss'). Inferred from input extension if not provided.
+- `params.input`: Input file path for matching input options
+- `params.output`: Output file path for matching output options
 
-Merges compile, output, and `language.scss` settings into Sass/SCSS plugin options.
-
-### `getJessOptions(config: StylesConfig): Record<string, any>`
-
-Merges compile, output, and `language.jess` settings into Jess plugin options.
+**Returns:** Merged options object
 
 ## Supported Frameworks
 
@@ -267,10 +314,9 @@ Merges compile, output, and `language.jess` settings into Jess plugin options.
 This package is designed to be extensible. To add support for a new framework:
 
 1. Add the framework's options type to `src/types.ts`
-2. Create a helper function in `src/options.ts` that merges settings appropriately
+2. Add the extension mapping in `src/options.ts` if needed
 3. Update the documentation
 
 ## License
 
 MIT
-

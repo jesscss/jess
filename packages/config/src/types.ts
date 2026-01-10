@@ -225,6 +225,65 @@ export interface LessOptions {
   bubbleRootAtRules?: boolean;
 }
 
+/**
+ * Base interface for file-matching options
+ */
+export interface FileMatchOptions {
+  /**
+   * File path, relative path, or glob pattern for matching.
+   * If omitted, the options serve as defaults.
+   */
+  file?: string;
+}
+
+/**
+ * Input file options - can override compile and language settings per input file
+ */
+export interface InputOptions extends FileMatchOptions {
+  // Compile-level options that can be overridden per-input
+  mathMode?: MathMode;
+  unitMode?: UnitMode;
+  searchPaths?: string[];
+  enableJavaScript?: boolean;
+
+  // Less-specific options that can be overridden per-input
+  javascriptEnabled?: boolean;
+  paths?: string[];
+  globalVars?: Record<string, string> | null;
+  modifyVars?: Record<string, string> | null;
+  strictImports?: boolean | 'error';
+  rewriteUrls?: boolean | 'all' | 'local' | 'off';
+  rootpath?: string;
+  leakyRules?: boolean;
+  collapseNesting?: boolean;
+  bubbleRootAtRules?: boolean;
+
+  /** Allow additional language-specific options */
+  [key: string]: any;
+}
+
+/**
+ * Output file options - can override output settings per output file
+ */
+export interface OutputOptions extends FileMatchOptions {
+  collapseNesting?: boolean;
+  compress?: boolean;
+  sourceMap?: boolean | {
+    sourceMapFullFilename?: string;
+    sourceMapRootpath?: string;
+    sourceMapBasepath?: string;
+    sourceMapURL?: string;
+    sourceMapFileInline?: boolean;
+    outputSourceFiles?: boolean;
+    disableSourcemapAnnotation?: boolean;
+    sourceMapOutputFilename?: string;
+    sourceMapFilename?: string;
+  };
+
+  /** Allow additional options */
+  [key: string]: any;
+}
+
 export interface StylesConfig {
   compile?: {
     /**
@@ -241,11 +300,18 @@ export interface StylesConfig {
     mathMode?: MathMode;
     unitMode?: UnitMode;
   };
-  output?: {
-    collapseNesting?: boolean;
-    compress?: boolean;
-    sourceMap?: boolean;
-  };
+  /**
+   * Input file options. Can be a single object for defaults, or an array
+   * where entries can have a `file` property (path or glob) to match specific inputs.
+   * Entries without a `file` property serve as defaults.
+   */
+  input?: InputOptions | InputOptions[];
+  /**
+   * Output file options. Can be a single object for defaults, or an array
+   * where entries can have a `file` property (path or glob) to match specific outputs.
+   * Entries without a `file` property serve as defaults.
+   */
+  output?: OutputOptions | OutputOptions[];
   language?: {
     less?: LessOptions;
     scss?: Record<string, any>;

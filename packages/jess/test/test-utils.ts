@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getExpectedOutputFiles, type OutputTestConfig } from '../src/config';
-import type { StylesConfig } from '@jesscss/core';
+import type { StylesConfig } from 'styles-config';
 
 export interface TestCase {
   expectedFile: string;

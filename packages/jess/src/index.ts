@@ -7,7 +7,7 @@ import {
   // type JessError,
   logger
 } from '@jesscss/core';
-import type { StylesConfig } from 'styles-config';
+import { getOptions, type StylesConfig } from 'styles-config';
 import type { PluginInterface } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 
@@ -57,8 +57,10 @@ export class Compiler {
     // Extract plugins from compile.plugins
     const plugins = config.compile?.plugins;
     /** @todo Add CSS and Jess plugins */
+    // Get merged options for each language using file-based matching
+    const lessOptions = getOptions(config, { language: 'less', input: filePath });
     let corePlugins = [
-      lessPlugin(config.language?.less || {})
+      lessPlugin(lessOptions)
     ];
     const pluginMap = new Map<string, PluginInterface>();
     /** This can be used to override the core plugin settings */
