@@ -139,30 +139,11 @@ export class Call extends Node<CallValue, CallOptions> {
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
       }
       let rules = Rules.create(n.value, n.options);
+      // Inherit from Collection (n) to preserve definition-scope parent chain
+      // This ensures variables like @a resolve from where the detached ruleset was defined
+      // Also copies sourceParent from the Collection (which was set by Reference when it resolved)
       rules.inherit(n);
       rules = await rules.eval(context);
-      // #region agent log
-      const callName = typeof name === 'string' ? name : (isNode(name, 'Reference') ? String(name.value.key?.valueOf() ?? '') : 'unknown');
-      const isRules = isNode(n, 'Rules');
-      const hasMixin = isRules && n.value.some(node => isNode(node, ['Mixin', 'Ruleset']));
-      if (hasMixin || callName.includes('mixins')) {
-        const mixinCount = isRules ? n.value.filter(node => isNode(node, ['Mixin', 'Ruleset'])).length : 0;
-        const mixinNames = isRules && hasMixin
-          ? n.value.filter(node => isNode(node, ['Mixin', 'Ruleset'])).map((node) => {
-              if (isNode(node, 'Mixin')) {
-                return String(node.value.name?.valueOf() ?? '');
-              }
-              if (isNode(node, 'Ruleset')) {
-                return String(node.value.selector?.toString() ?? '');
-              }
-              return '';
-            })
-          : [];
-        const hasMixinName = mixinNames.some(name => name.includes('.mixin') || name === '.mixin');
-        const parentRules = this.rulesParent;
-        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { contentType: 'application/json' }, body: JSON.stringify({ location: 'call.ts:183', message: 'Call.evalNode: returning Rules/Collection from variable', data: { callName, nodeType: n.type, mixinCount, mixinNames, hasMixinName, rulesVisibility: n.options.rulesVisibility, rulesIndex: n.index, parentRulesIndex: parentRules?.index, parentRulesType: parentRules?.type, callIndex: this.index }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run25', hypothesisId: 'S' }) }).catch(() => {});
-      }
-      // #endregion
       context.callStack.pop();
       context.parenFrames.pop();
       // Apply markImportant if needed
@@ -175,29 +156,20 @@ export class Call extends Node<CallValue, CallOptions> {
     let fn = isNode(n, 'JsFunction') ? n.value : n;
 
     if (typeof fn === 'function') {
-      // #region agent log
-      const callNameForLog = typeof name === 'string' ? name : (isNode(name, 'Reference') ? String(name.value.key?.valueOf() ?? '') : 'unknown');
-      const hasCollectionArg = args && args.value.some((arg: any) => isNode(arg, 'Collection'));
-      if (hasCollectionArg || callNameForLog.includes('mixins') || callNameForLog === 'my-mixins' || callNameForLog.includes('desktop-and-old-ie')) {
-        const nType = isNode(n) ? n.type : typeof n;
-        const fnType = typeof fn;
-        const hasOptions = !!(fn as any)?.options;
-        const hasParams = !!(fn as any)?.options?.params;
-        const paramsValue = (fn as any)?.options?.params;
-        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { contentType: 'application/json' }, body: JSON.stringify({ location: 'call.ts:206', message: 'Call.evalNode: calling function', data: { callName: callNameForLog, nType, fnType, hasOptions, hasParams, paramsValue: Array.isArray(paramsValue) ? paramsValue.length : paramsValue, argsLength: args?.value.length ?? 0, hasCollectionArg }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run27', hypothesisId: 'U' }) }).catch(() => {});
-      }
-      // #endregion
       try {
         /** Freeze args */
         if (args) {
           args = args.copy(true, freezeChildren);
           args.frozen = true;
         }
+        let originalCaller = context.caller;
+        context.caller = this;
         const result = await (
           args
             ? callWithContext(context, fn, args)
             : callWithContext(context, fn)
         );
+        context.caller = originalCaller;
         context.callStack.pop();
         if (isNode(result)) {
           let evald = result.eval(context);

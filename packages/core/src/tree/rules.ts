@@ -30,6 +30,7 @@ import { List } from './list';
 import { indent, normalizeIndent } from './util/serialize-helper';
 import { ERR } from '../jess-error';
 import { freezeChildren } from './util/cloning';
+import { Reference } from './reference';
 
 const { isArray } = Array;
 
@@ -280,10 +281,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     treeContext?: TreeContext
   ) {
     let rulesVisibility = options?.rulesVisibility ?? {};
-    // Only set defaults for Declaration and Ruleset if nothing is set
-    // VarDeclaration and Mixin visibility should be set by the parser
+    // Set defaults for API-created Rules. Parsers will override these as needed:
+    // - Less mixins/rulesets: VarDeclaration = 'optional', Mixin = 'public'
+    // - Sass mixins/rulesets: VarDeclaration = 'private', Mixin = 'private'
+    // - Imports: VarDeclaration = 'public', Mixin = 'public'
+    // Default to 'public' for API-created Rules (better DX - variables are accessible).
+    // If you want nested Rules to be private, set it explicitly.
     rulesVisibility.Declaration ??= 'public';
     rulesVisibility.Ruleset ??= 'public';
+    rulesVisibility.VarDeclaration ??= 'public';
+    rulesVisibility.Mixin ??= 'public';
     // Merge with existing options to preserve rulesVisibility
     const mergedOptions = { ...options, rulesVisibility };
     super(value ?? [], mergedOptions, location, treeContext);
@@ -464,25 +471,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       /** Either one set as readonly will win */
       let readonly = Boolean(options?.readonly || node.options.readonly);
-      // #region agent log
-      const hasMixin = node.value.some(n => isNode(n, ['Mixin', 'Ruleset']));
-      if (hasMixin) {
-        const mixinCount = node.value.filter(n => isNode(n, ['Mixin', 'Ruleset'])).length;
-        const mixinNames = node.value.filter(n => isNode(n, ['Mixin', 'Ruleset'])).map((n) => {
-          if (isNode(n, 'Mixin')) {
-            return String(n.value.name?.valueOf() ?? '');
-          }
-          if (isNode(n, 'Ruleset')) {
-            return String(n.value.selector?.toString() ?? '');
-          }
-          return '';
-        });
-        const hasMixinName = mixinNames.some(name => name.includes('.mixin') || name === '.mixin');
-        const parentRules = this.parent as Rules | undefined;
-        const sourceNode = node.sourceNode;
-        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { contentType: 'application/json' }, body: JSON.stringify({ location: 'rules.ts:480', message: 'Rules.registerNode: registering Rules with mixins', data: { mixinCount, mixinNames, hasMixinName, rulesVisibility, nodeRulesVisibility: node.options.rulesVisibility, parentRulesIndex: this.index, parentRulesType: this.type, nodeRulesIndex: node.index, sourceNodeType: sourceNode?.type, sourceNodeIndex: sourceNode?.index, rulesSetSize: this.rulesSet.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run13', hypothesisId: 'G' }) }).catch(() => {});
-      }
-      // #endregion
       this.rulesSet.push({
         node,
         rulesVisibility,
@@ -508,8 +496,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         /** Don't set within sibling rules */
         let opts: Registries.FindOptions = {};
         opts.searchParents = true;
-        opts.start = node.index;
-        let result = this.find('declaration', key, node.type as 'Declaration', opts);
+        // Don't use start when searching parents - we want to find variables in parent regardless of position
+        // start is only relevant for finding variables before the current node in the same Rules
+        opts.start = undefined;
+        // node.type is 'VarDeclaration' or 'Declaration', use it directly as filterType
+        let result = this.find('declaration', key, node.type as 'VarDeclaration' | 'Declaration', opts);
         if (result) {
           if (result.options?.readonly || opts.readonly) {
             throw new ReferenceError(`"${key}" is readonly`);
@@ -527,10 +518,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           newDeclaration.options = { ...newDeclaration.options };
           newDeclaration.options.setDefined = undefined; // Remove setDefined flag
 
-          // Instead of inserting into the array, just register it in the registry
-          // Because all nodes are indexed linearly, we can keep the same index I think?
+          // Adopt the new declaration to the found Rules
+          foundRules.adopt(newDeclaration);
 
-          foundRules.register('declaration', newDeclaration);
+          // Add to the value array AFTER the found declaration
+          // This ensures it shadows the original and is evaluated after it
+          const foundIndex = foundRules.value.indexOf(result);
+          if (foundIndex !== -1) {
+            foundRules.value.splice(foundIndex + 1, 0, newDeclaration);
+          } else {
+            // If not found in array, add at the beginning
+            foundRules.value.unshift(newDeclaration);
+          }
+
+          // Register it via registerNode to ensure it's properly indexed
+          // Note: registerNode will call register('declaration', ...) which adds to registry
+          // We skip setDefined processing since we already removed the flag
+          foundRules.registerNode(newDeclaration);
         } else {
           throw new ReferenceError(`"${key}" is not defined`);
         }
@@ -881,9 +885,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /** Setup context for evaluating these rules */
   private _setupContextForRules(context: Context, rules: Rules) {
     const treeContext = context.treeContext;
-    if (!treeContext || treeContext !== rules.treeContext) {
+    // Only switch treeContext if the rules have one AND it's different
+    // Dynamically created Rules (e.g., mixin parameter wrappers) may not have treeContext
+    // and we don't want to lose leakyRules and other settings
+    // IMPORTANT: Check _treeContext (private field) not treeContext (getter that lazily creates)
+    const rulesTreeContext = (rules as any)._treeContext as TreeContext | undefined;
+    if (rulesTreeContext && (!treeContext || treeContext !== rulesTreeContext)) {
       context.allRoots.push(rules);
-      context.treeContext = rules.treeContext;
+      context.treeContext = rulesTreeContext;
       context.treeRoot = rules;
       context.root ??= rules;
     }
@@ -893,73 +902,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /** Build the evaluation queue partitioned by priority */
   private _buildEvalQueue(rules: Rules): EvalQueueMap {
     let evalQueue: EvalQueueMap = new Map();
-    // #region agent log
-    const hasMyMixinsVar = rules.value.some((node) => {
-      if (isNode(node, 'VarDeclaration')) {
-        const varName = String(node.value.name?.valueOf() ?? '');
-        return varName === 'my-mixins';
-      }
-      return false;
-    });
-    if (hasMyMixinsVar) {
-      const nodeTypes = rules.value.map((node, idx) => {
-        const type = node.type;
-        let name = '';
-        if (isNode(node, 'VarDeclaration')) {
-          name = String(node.value.name?.valueOf() ?? '');
-        } else if (isNode(node, 'Call')) {
-          name = typeof node.value.name === 'string' ? node.value.name : (isNode(node.value.name, 'Reference') ? String(node.value.name.value.key?.valueOf() ?? '') : 'unknown');
-        }
-        return { idx, type, name, index: node.index };
-      });
-      fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { contentType: 'application/json' }, body: JSON.stringify({ location: 'rules.ts:893', message: '_buildEvalQueue: root Rules contents', data: { rulesIndex: rules.index, rulesType: rules.type, nodeCount: rules.value.length, nodeTypes }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run17', hypothesisId: 'K' }) }).catch(() => {});
-    }
-    // #endregion
     for (let item of rules) {
       let [, rule] = item;
-      // #region agent log
-      if (isNode(rule, 'Call')) {
-        let callName = 'unknown';
-        let nameType = typeof rule.value.name === 'string' ? 'string' : (isNode(rule.value.name) ? rule.value.name.type : 'unknown');
-        if (typeof rule.value.name === 'string') {
-          callName = rule.value.name;
-        } else if (isNode(rule.value.name, 'Reference')) {
-          const key = rule.value.name.value.key;
-          if (typeof key === 'string') {
-            callName = key;
-          } else if (key && typeof key.valueOf === 'function') {
-            callName = String(key.valueOf());
-          } else {
-            callName = String(key ?? 'unknown-key');
-          }
-        }
-        if (rule.index === 19 || callName === 'my-mixins' || callName === 'mixin' || callName === '.mixin' || callName.includes('mixins')) {
-          const keyType = isNode(rule.value.name, 'Reference') ? typeof rule.value.name.value.key : 'N/A';
-          const keyValueStr = isNode(rule.value.name, 'Reference')
-            ? (typeof rule.value.name.value.key === 'string'
-                ? rule.value.name.value.key
-                : String(rule.value.name.value.key?.valueOf?.() ?? 'unknown'))
-            : 'N/A';
-          let expressionValue: any = 'N/A';
-          if (isNode(rule.value.name, 'Expression')) {
-            const exprNode = rule.value.name.value;
-            if (isNode(exprNode, 'Reference')) {
-              const key = exprNode.value.key;
-              expressionValue = {
-                type: 'Reference',
-                key: typeof key === 'string' ? key : String(key?.valueOf?.() ?? 'unknown'),
-                keyType: typeof key
-              };
-            } else {
-              expressionValue = {
-                type: exprNode?.type ?? 'unknown'
-              };
-            }
-          }
-          fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { contentType: 'application/json' }, body: JSON.stringify({ location: 'rules.ts:920', message: '_buildEvalQueue: Call node queued', data: { callName, nameType, ruleIndex: rule.index, rulesIndex: rules.index, rulesType: rules.type, keyType, keyValue: keyValueStr, expressionValue, priority: NodeTypeToPriority.get(rule.type) ?? Priority.None }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run21', hypothesisId: 'O' }) }).catch(() => {});
-        }
-      }
-      // #endregion
       let priority = NodeTypeToPriority.get(rule.type) ?? Priority.None;
       let queue = evalQueue.get(priority) ?? [];
       queue.push(item as [number, Node]);
@@ -1044,26 +988,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 // so we can compare Rules indices when determining which variable was declared later
                 result.index = idx;
                 rules.adopt(result);
-                // #region agent log
-                const hasMixin = result.value.some(n => isNode(n, ['Mixin', 'Ruleset']));
-                if (hasMixin) {
-                  const mixinCount = result.value.filter(n => isNode(n, ['Mixin', 'Ruleset'])).length;
-                  const mixinRegistry = result.getRegistry('mixin');
-                  const mixinNames = result.value.filter(n => isNode(n, ['Mixin', 'Ruleset'])).map((n) => {
-                    if (isNode(n, 'Mixin')) {
-                      return String(n.value.name?.valueOf() ?? '');
-                    }
-                    if (isNode(n, 'Ruleset')) {
-                      return String(n.value.selector?.toString() ?? '');
-                    }
-                    return '';
-                  });
-                  const hasMixinName = mixinNames.some(name => name.includes('.mixin') || name === '.mixin');
-                  const parentRules = rules.parent as Rules | undefined;
-                  const sourceNode = result.sourceNode;
-                  fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { contentType: 'application/json' }, body: JSON.stringify({ location: 'rules.ts:994', message: '_evaluateQueue: registering Rules with mixins', data: { mixinCount, mixinNames, hasMixinName, rulesVisibility: result.options.rulesVisibility, mixinRegistryIndexSize: mixinRegistry.index.size, resultEvaluated: result.evaluated, ruleType: rule.type, ruleIndex: rule.index, resultRulesIndex: result.index, parentRulesIndex: rules.index, parentRulesType: rules.type, sourceNodeType: sourceNode?.type, sourceNodeIndex: sourceNode?.index }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run13', hypothesisId: 'G' }) }).catch(() => {});
-                }
-                // #endregion
                 rules.registerNode(result, {
                   rulesVisibility: result.options.rulesVisibility,
                   readonly: result.options.readonly
@@ -1363,6 +1287,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     // When called via callWithContext, 'this' is functionThis, not Context
     // We need to extract the context from functionThis or use a fallback
     let thisContext: Context;
+
     if (this instanceof Context) {
       thisContext = this;
     } else if (this && typeof this === 'object' && 'context' in this) {
@@ -1371,6 +1296,10 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     } else {
       thisContext = new Context();
     }
+    let caller = thisContext.caller;
+    let sourceParent = caller?.value.name instanceof Node
+      ? caller.value.name.sourceParent
+      : caller?.sourceParent;
 
     let nodeArgs: Node[] = [];
     for (let arg of args) {
@@ -1566,7 +1495,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         let rules = (candidate as Ruleset).value.rules.copy(true);
         /** Adopt for lookup, then adopt for sorting */
         candidate.parent!.adopt(rules);
-        rules.sourceParent = candidate.sourceParent;
+        rules.sourceParent = candidate.sourceParent ?? sourceParent;
         let originalContext = thisContext.rulesContext;
         thisContext.rulesContext = rules;
         rules = await rules.eval(thisContext);
@@ -1585,7 +1514,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       /** Create new rules, and add the candidate rules, to add to scope */
       rules = rules.copy(true);
       candidate.parent!.adopt(rules);
-      rules.sourceParent = candidate.sourceParent;
+      rules.sourceParent = candidate.sourceParent ?? sourceParent;
       // Don't set index before evaluation - let evaluation assign the correct index
       /**
        * If we have params or a guard, we need to create a wrapper rules object,

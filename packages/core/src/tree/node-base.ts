@@ -756,10 +756,6 @@ export abstract class Node<
   static evalStatic(node: Node, context: Context): MaybePromise<Node> {
     let preEvaluatedNode: Node;
 
-    let evalMarker = context.evalMarker;
-    if (!context.evalExitMarker) {
-      context.evalMarker = node;
-    }
     return pipe(
       () => {
         if (!node.preEvaluated) {
@@ -783,7 +779,6 @@ export abstract class Node<
         if (preEvaluatedNode !== evald) {
           evald.inherit(preEvaluatedNode);
         }
-        context.evalMarker = evalMarker;
         return evald;
       }
     );

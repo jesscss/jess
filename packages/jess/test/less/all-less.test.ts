@@ -78,7 +78,7 @@ describe('Can render Less files to CSS', () => {
               throw error;
             }
             const evald = await node.eval(context);
-            expect(evald.toString({ context })).toBeString(expectedCss.trim());
+            expect(evald.toString({ context })).toBe(expectedCss.trim());
           }, 5000); // 5 second timeout to catch infinite loops
         });
       } catch (error: any) {

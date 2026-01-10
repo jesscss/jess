@@ -436,14 +436,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         return { returnVal, valueKey };
       },
       ({ returnVal, valueKey }) => {
-        // #region agent log
-        const keyStr = isNode(key) ? key.valueOf() : String(key);
-        const isMyMixinsRef = keyStr === 'my-mixins' || (typeof key === 'string' && key === 'my-mixins');
-        if (isMyMixinsRef) {
-          const returnValType = returnVal ? (isNode(returnVal) ? returnVal.type : typeof returnVal) : 'undefined';
-          fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { contentType: 'application/json' }, body: JSON.stringify({ location: 'reference.ts:447', message: 'Reference.evalNode: resolved', data: { key: keyStr, type: this.options.type ?? 'variable', returnValType, resolvedTargetType: isNode(resolvedTarget, 'Rules') ? 'Rules' : typeof resolvedTarget, valueKey: Array.isArray(valueKey) ? valueKey.join('.') : String(valueKey) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run23', hypothesisId: 'Q' }) }).catch(() => {});
-        }
-        // #endregion
         if (returnVal === undefined) {
           const valueKeyStr2 = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
           if (!fallbackValue) {
@@ -455,7 +447,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               case 'mixin-ruleset':
                 throw new ReferenceError(`No matching mixins found for '${valueKeyStr2}'`);
             }
-            throw new ReferenceError(`'${keyStr}' is not defined`);
+            throw new ReferenceError(`'${valueKeyStr2}' is not defined`);
           }
           if (fallbackValue === true) {
             const any = new Any(`${valueKey}`);
@@ -471,8 +463,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         }
         if (isNode(returnVal, ['Declaration', 'VarDeclaration'])) {
           context.searchScope.add(returnVal);
-          let evalExitMarker = context.evalExitMarker;
-          let unsetEvalExitMarker = !evalExitMarker;
           const hasImportant = isNode(returnVal, 'Declaration') && !!returnVal.value.important;
           return pipe(
             () => {
@@ -508,17 +498,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           const func = getFunctionFromMixins(returnVal as MixinEntry[]);
           return cast(func);
         }
-        // #region agent log
-        const keyStrForLog2 = isNode(key) ? key.valueOf() : String(key);
-        const isMyMixinsRef2 = keyStrForLog2 === 'my-mixins' || (typeof key === 'string' && key === 'my-mixins');
-        if (isMyMixinsRef2) {
-          const returnValType = returnVal ? (isNode(returnVal) ? returnVal.type : typeof returnVal) : 'undefined';
-          const isRules = isNode(returnVal, 'Rules');
-          const isCollection = isNode(returnVal, 'Collection');
-          const isFunction = typeof returnVal === 'function';
-          fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { contentType: 'application/json' }, body: JSON.stringify({ location: 'reference.ts:512', message: 'Reference.evalNode: returning value', data: { key: keyStrForLog2, type: this.options.type ?? 'variable', returnValType, isRules, isCollection, isFunction }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run24', hypothesisId: 'R' }) }).catch(() => {});
-        }
-        // #endregion
         const result = cast(returnVal);
         // Pop reference and clear remainders if we're at the outermost level
         context.popReference();

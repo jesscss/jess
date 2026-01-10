@@ -328,13 +328,6 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
   }
 
   const hasParams = !!(fn as any)?.options?.params;
-  // #region agent log
-  const hasCollectionArg = args.some(arg => isNode(arg, 'Collection'));
-  if (hasCollectionArg) {
-    const paramsValue = (fn as any)?.options?.params;
-    fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', { method: 'POST', headers: { contentType: 'application/json' }, body: JSON.stringify({ location: 'define-function.ts:322', message: 'callWithContext: checking params', data: { hasParams, paramsValue: Array.isArray(paramsValue) ? paramsValue.length : paramsValue, argsLength: args.length, hasCollectionArg }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run28', hypothesisId: 'V' }) }).catch(() => {});
-  }
-  // #endregion
 
   if (!hasParams) {
     // No metadata; treat as normal positional function call (sync or async)
