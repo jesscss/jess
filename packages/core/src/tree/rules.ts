@@ -884,8 +884,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       context.allRoots.push(rules);
       context.treeContext = rulesTreeContext;
       context.treeRoot = rules;
-      context.root ??= rules;
     }
+    // Always set root if not set - needed for extends to work with API-created Rules
+    context.root ??= rules;
     context.rulesContext = rules;
   }
 
