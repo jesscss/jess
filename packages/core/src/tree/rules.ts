@@ -253,22 +253,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (bodyEmitted.length === 0 && bodyStr) {
       w.add(bodyStr);
     }
-    // If no explicit Rules.post at root, propagate last child's post
-    if (depth === 0 && (this.post === 0 || this.post === undefined)) {
-      let lastVisible: Node | undefined;
-      for (let i = this.value.length - 1; i >= 0; i--) {
-        const n = this.value[i]!;
-        if (n.visible) {
-          lastVisible = n;
-          break;
-        }
-      }
-      if (lastVisible) {
-        lastVisible.processPrePost('post', '', options);
-      }
+    // At root level, ensure output ends with a single newline (standard for CSS files)
+    // Don't propagate all the last child's post content (which may have extra whitespace)
+    if (depth === 0) {
+      const result = w.getSince(mark);
+      // Ensure exactly one trailing newline
+      return result.trimEnd() + '\n';
     }
-    /** This should be managed by the parent? */
-    // this.processPrePost('post', '', options);
     return w.getSince(mark);
   }
 
@@ -351,13 +342,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     // No spacing flags; writer.capture is used where needed
 
-    let previousEndsWithNewline = false;
     for (let idx = 0; idx < items.length; idx++) {
       const n = items[idx]!;
       if (idx > 0) {
-        // Only add newline if previous item didn't end with one
-        // This prevents double newlines when renderWithFrameFlattening already added one
-        if (!previousEndsWithNewline) {
+        // Check actual buffer state - not just previous captured output
+        // Frame closing in serializeRulesContainer adds newlines that aren't in the capture
+        const currentBuffer = w.getSince(0);
+        const bufferEndsWithNewline = currentBuffer.endsWith('\n');
+        if (!bufferEndsWithNewline) {
           w.add('\n');
         }
       }
@@ -374,12 +366,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Rules nodes inside Rules nodes are at the same level
       const childOptions = isChildRules ? { ...options, depth } : { ...options, depth };
       let rule = w.capture(() => n.toTrimmedString(childOptions));
-      // Check if the captured output ends with a newline
-      previousEndsWithNewline = rule.endsWith('\n');
       w.add(rule, n); // Pass node as origin to preserve location info
       if (n.requiredSemi && n.options.semi !== false) {
         w.add(';', n);
-        previousEndsWithNewline = false; // Semicolon means it doesn't end with newline
       }
     }
   }

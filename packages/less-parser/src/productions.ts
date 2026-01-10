@@ -1667,7 +1667,7 @@ export function expressionSum(this: P, T: TokenMap) {
         return (
           nextType === T.Plus
           || nextType === T.Minus
-          || ($.noSep() && nextType === T.Signed)
+          || ($.noSep() && tokenMatcher(next, T.Signed))
         );
       },
       DEF: () => {

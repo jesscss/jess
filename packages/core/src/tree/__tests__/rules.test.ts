@@ -411,11 +411,11 @@ describe('Rules', () => {
         // Should find parent-2 (last public), not child-optional
         expect(`${getVar(node, 'var')}`).toBe('$var: parent-2');
 
-        // Test lookup from within child Rules - should find parent values
+        // Test lookup from within child Rules - should find its own value
+        // (optionality only applies when looking IN from outside, not when searching your own scope)
         const childVar = getVar(childRules, 'var');
         expect(childVar).toBeDefined();
-        // Should find parent-2 since it's public and comes after optional
-        expect(`${childVar}`).toBe('$var: parent-2');
+        expect(`${childVar}`).toBe('$var: child-optional');
       });
 
       it('handles multiple optional Rules with declarations at different positions', async () => {

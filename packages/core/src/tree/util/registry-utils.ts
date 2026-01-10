@@ -1061,7 +1061,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
         let result = rules.getRegistry('declaration')._findClosestByStart(list, start);
         if (result) {
           newReadonly ||= result.options.readonly;
-          // Check if the current Rules has optional or private visibility
+          // Check if the current Rules has private visibility
           const currentRulesVisibility = rules.options.rulesVisibility?.[filterType] ?? '';
           // Private variables: when searching FROM WITHIN a Rules with private visibility,
           // variables declared in that Rules should be SKIPPED entirely (not found at all),
@@ -1069,12 +1069,10 @@ export class DeclarationRegistry extends Registry<Declaration> {
           if (currentRulesVisibility === 'private') {
             // Skip this variable entirely - don't add to candidates, just continue searching
             // This allows lookups to continue up to find public variables
-          } else if (currentRulesVisibility === 'optional') {
-            // Optional variables: add to optionalCandidates and continue searching
-            // They'll only be returned if no public candidates are found
-            optionalCandidates.add(result);
           } else {
-            // This Rules has public visibility (or default), so its declarations are public
+            // When climbing UP the parent chain, we're looking at our own ancestor scopes.
+            // Optionality only applies when "looking in" from outside (handled in _searchRulesChildren).
+            // So here we just add to candidates and mark as public.
             declCandidate.add(result);
             isPublic = true;
           }
