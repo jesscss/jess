@@ -564,6 +564,7 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
             finalExtend.value.selector = undefined;
             rules.value = [finalExtend, ...rules.value];
             ctx.extendNodes = undefined;
+          } else {
           }
           /** Or else we let it bubble up to the declaration list */
         }
@@ -616,6 +617,13 @@ export function qualifiedRule(this: P, T: TokenMap, altContext?: AltContext) {
     let rule = $.SUBRULE($.qualifiedRuleBody, { ARGS: [ctx] });
     if (ctx.extendNodes) {
       let qRuleset = rule;
+      // Set the Extend nodes' selector to the ruleset's selector (not &)
+      // This allows the extends to work correctly when evaluated in the wrapper Rules context
+      for (const extendNode of ctx.extendNodes) {
+        if (extendNode.value.selector === undefined || (extendNode.value.selector as any).type === 'Ampersand') {
+          extendNode.value.selector = selector;
+        }
+      }
       /** Prepend a rules block */
       rule = new Rules([
         ...ctx.extendNodes,
@@ -844,6 +852,13 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
           if (ctx.extendNodes) {
             /** Prepend a rules block */
             let qRule = rule;
+            // Set the Extend nodes' selector to the ruleset's selector (not &)
+            // This allows the extends to work correctly when evaluated in the wrapper Rules context
+            for (const extendNode of ctx.extendNodes) {
+              if (extendNode.value.selector === undefined || (extendNode.value.selector as any).type === 'Ampersand') {
+                extendNode.value.selector = selector;
+              }
+            }
             rule = new Rules([
               ...ctx.extendNodes,
               qRule
@@ -1124,7 +1139,10 @@ export function ampersandExtend(this: P, T: TokenMap) {
           ctx.extendNodes = [result];
         }
       }
-      return result;
+      // Return Nil instead of the extend node - extends are handled via ctx.extendNodes
+      // pathway to avoid duplicates (cssMain collects returned nodes into rules.value).
+      // Nil is needed because undefined confuses cssMain (treats it as semicolon).
+      return new Nil(undefined, undefined, location, this.context);
     }
   };
 }

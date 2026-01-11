@@ -24,7 +24,8 @@ export type ExtendErrorType =
   'NOT_FOUND'
   | 'ELEMENT_CONFLICT'
   | 'ID_CONFLICT'
-  | 'AMPERSAND_BOUNDARY';
+  | 'AMPERSAND_BOUNDARY'
+  | 'PARTIAL_MATCH';
 
 /**
  * Error type constants for extend operations
@@ -33,7 +34,8 @@ export const ExtendErrorType = {
   NOT_FOUND: 'NOT_FOUND' as const,
   ELEMENT_CONFLICT: 'ELEMENT_CONFLICT' as const,
   ID_CONFLICT: 'ID_CONFLICT' as const,
-  AMPERSAND_BOUNDARY: 'AMPERSAND_BOUNDARY' as const
+  AMPERSAND_BOUNDARY: 'AMPERSAND_BOUNDARY' as const,
+  PARTIAL_MATCH: 'PARTIAL_MATCH' as const
 } as const;
 
 export class ExtendError extends Error {
@@ -92,6 +94,161 @@ function deduplicateSelectors(selectors: Selector[]): Selector[] {
   }
 
   return result;
+}
+
+/**
+ * Recursively flatten nested :is() wrappers that were generated during extend.
+ * If a SelectorList contains items that are single :is() pseudo-selectors
+ * with generated: true, unwrap them and splice their contents into the parent.
+ *
+ * This is applied recursively to all children, so deeply nested generated :is()
+ * wrappers are flattened at every level.
+ *
+ * Example: :is(.foo, :is(.ext3, .ext4)) → :is(.foo, .ext3, .ext4)
+ *
+ * Performance: Early bailout if no flattening needed - returns original array.
+ */
+function flattenGeneratedIs(selectors: Selector[]): Selector[] {
+  // First, recursively process each selector's children
+  const processedSelectors = selectors.map(sel => flattenGeneratedIsInSelector(sel));
+
+  // Then check if any top-level flattening is needed
+  let needsFlattening = false;
+  for (let i = 0; i < processedSelectors.length; i++) {
+    const sel = processedSelectors[i]!;
+    if (isNode(sel, 'PseudoSelector')) {
+      const pseudo = sel as PseudoSelector;
+      const { name, arg } = pseudo.value;
+      if (name === ':is' && pseudo.generated === true && arg) {
+        needsFlattening = true;
+        break;
+      }
+    }
+  }
+
+  // Early bailout - return processed array if no top-level flattening needed
+  if (!needsFlattening) {
+    return processedSelectors;
+  }
+
+  // Flatten top-level generated :is() wrappers
+  const result: Selector[] = [];
+  for (let i = 0; i < processedSelectors.length; i++) {
+    const selector = processedSelectors[i]!;
+    if (isNode(selector, 'PseudoSelector')) {
+      const pseudo = selector as PseudoSelector;
+      const { name, arg } = pseudo.value;
+      if (name === ':is' && pseudo.generated === true && arg) {
+        // Unwrap - splice contents into parent
+        if (isNode(arg, 'SelectorList')) {
+          for (let j = 0; j < arg.value.length; j++) {
+            result.push(arg.value[j]!);
+          }
+        } else {
+          result.push(arg as Selector);
+        }
+        continue;
+      }
+    }
+    result.push(selector);
+  }
+
+  return result;
+}
+
+/**
+ * Recursively flatten generated :is() wrappers within a single selector.
+ * Handles PseudoSelector, SelectorList, CompoundSelector, ComplexSelector.
+ */
+function flattenGeneratedIsInSelector(selector: Selector): Selector {
+  // Handle ALL pseudo-selectors with selector arguments (not just :is)
+  // This includes :not(), :where(), :has(), etc.
+  if (isNode(selector, 'PseudoSelector')) {
+    const pseudo = selector as PseudoSelector;
+    const { name, arg } = pseudo.value;
+
+    // Process any pseudo-selector that has an argument (could be a selector)
+    if (arg && isSelector(arg)) {
+      // Recursively flatten the argument
+      let flattenedArg: Selector;
+      if (isNode(arg, 'SelectorList')) {
+        const flattenedItems = flattenGeneratedIs(arg.value);
+        // Only create new SelectorList if items changed
+        if (flattenedItems !== arg.value) {
+          flattenedArg = SelectorList.create(flattenedItems).inherit(arg);
+        } else {
+          flattenedArg = arg;
+        }
+      } else {
+        flattenedArg = flattenGeneratedIsInSelector(arg as Selector);
+      }
+
+      // If arg changed, create new PseudoSelector
+      if (flattenedArg !== arg) {
+        // Use new (not .create()) to preserve the original's generated status
+        // .create() always sets generated=true which would incorrectly mark
+        // authored :is() as generated
+        const newPseudo = new PseudoSelector({
+          name: name,
+          arg: flattenedArg
+        }).inherit(pseudo);
+        // Explicitly copy generated flag from original
+        newPseudo.generated = pseudo.generated;
+        return newPseudo;
+      }
+    }
+    return selector;
+  }
+
+  // Handle SelectorList - recursively process each item
+  if (isNode(selector, 'SelectorList')) {
+    const flattenedItems = flattenGeneratedIs(selector.value);
+    if (flattenedItems !== selector.value) {
+      return SelectorList.create(flattenedItems).inherit(selector);
+    }
+    return selector;
+  }
+
+  // Handle CompoundSelector - recursively process each component
+  if (isNode(selector, 'CompoundSelector')) {
+    let changed = false;
+    const newComponents: SimpleSelector[] = [];
+    for (const comp of selector.value) {
+      const processed = flattenGeneratedIsInSelector(comp as Selector);
+      if (processed !== comp) {
+        changed = true;
+      }
+      newComponents.push(processed as SimpleSelector);
+    }
+    if (changed) {
+      return CompoundSelector.create(newComponents).inherit(selector);
+    }
+    return selector;
+  }
+
+  // Handle ComplexSelector - recursively process each component
+  if (isNode(selector, 'ComplexSelector')) {
+    let changed = false;
+    const newComponents: ComplexSelectorValue = [];
+    for (const comp of selector.value) {
+      if (isNode(comp, 'Combinator')) {
+        newComponents.push(comp);
+      } else {
+        const processed = flattenGeneratedIsInSelector(comp as Selector);
+        if (processed !== comp) {
+          changed = true;
+        }
+        newComponents.push(processed as any);
+      }
+    }
+    if (changed) {
+      return ComplexSelector.create(newComponents).inherit(selector);
+    }
+    return selector;
+  }
+
+  // For other selector types, return as-is
+  return selector;
 }
 
 /**
@@ -179,8 +336,88 @@ export function extendSelector(
     }
   }
 
-  // Use the first location found
-  const location = searchResult.locations[0]!;
+  // Special handling for SelectorList targets - extend each matching selector in the list
+  if (isNode(target, 'SelectorList')) {
+    // For SelectorLists, we need to extend each selector that contains the find target
+    // Keep original selectors in place, collect new selectors to append at the end
+    const originalSelectors: Selector[] = [];
+    const newSelectors: Selector[] = [];
+
+    for (const selector of target.value) {
+      const selectorSearchResult = findExtendableLocations(selector, find);
+      if (selectorSearchResult.hasMatches) {
+        // This selector contains the find target - extend it
+        const extended = extendSelector(selector, find, extendWith, partial, skipAmpersandCheck);
+        // If the result is a SelectorList, keep original in place and collect new ones
+        if (isNode(extended, 'SelectorList')) {
+          // First item is the original (possibly modified), rest are new
+          originalSelectors.push(extended.value[0]!);
+          newSelectors.push(...extended.value.slice(1));
+        } else {
+          originalSelectors.push(extended);
+        }
+      } else {
+        // This selector doesn't contain the find target - keep it as-is
+        originalSelectors.push(selector);
+      }
+    }
+
+    // Append new selectors at the end, preserving order extends were applied
+    // Flatten any nested :is() that were generated during extend
+    const allSelectors = [...originalSelectors, ...newSelectors];
+    return SelectorList.create(deduplicateSelectors(flattenGeneratedIs(allSelectors))).inherit(target);
+  }
+
+  // For partial extends, prefer actual matches over "append to :is() list" extension points
+  // The "append to list" locations have paths ending in 'arg', while actual matches have
+  // more specific paths like [index, 'arg', altIndex]
+  // For full extends (partial: false), prefer valid full matches
+  let location = searchResult.locations[0]!;
+  // When partial: false, reject partial matches for ComplexSelector cases (compound selectors handled later)
+  // This catches cases like .aa .dd matching .aa where the location is at the first component
+  if (!partial && location.isPartialMatch && isNode(target, 'ComplexSelector') && location.path.length === 1 && location.path[0] === 0) {
+    throw new ExtendError(
+      ExtendErrorType.PARTIAL_MATCH,
+      'Partial match found but exact match required',
+      { target, find, extendWith }
+    );
+  }
+  if (!partial && searchResult.locations.length > 1) {
+    // When partial: false, prefer valid full matches (root-level or first component of complex selector)
+    // IMPORTANT: Must check !loc.isPartialMatch to avoid selecting partial matches
+    const validFullMatch = searchResult.locations.find((loc) => {
+      if (loc.path.length === 0 && !loc.isPartialMatch) {
+        return true;
+      }
+      if (loc.path.length === 1 && isNode(target, 'ComplexSelector') && loc.path[0] === 0 && !loc.isPartialMatch) {
+        return true;
+      }
+      if (loc.path.includes('arg') && !loc.isPartialMatch) {
+        return true;
+      }
+      return false;
+    });
+    if (validFullMatch) {
+      location = validFullMatch;
+    }
+  } else if (partial && searchResult.locations.length > 1) {
+    // Find a location that's not just an "append to :is() list" opportunity
+    // These have paths ending in 'arg' without a following index
+    const actualMatch = searchResult.locations.find((loc) => {
+      // If it's not an append type, it's definitely an actual match
+      if (loc.extensionType !== 'append') {
+        return true;
+      }
+      // For append types, check if this is an actual match inside :is() vs just an append opportunity
+      // Actual matches have paths like [0, 'arg', 0] (ending in a number after 'arg')
+      // Append opportunities have paths like [0, 'arg'] (ending in 'arg')
+      const lastPathElement = loc.path[loc.path.length - 1];
+      return typeof lastPathElement === 'number';
+    });
+    if (actualMatch) {
+      location = actualMatch;
+    }
+  }
 
   // Handle partial vs full matching modes
   if (partial) {
@@ -209,7 +446,7 @@ export function extendSelector(
           }
         }
 
-        return new SelectorList(deduplicateSelectors([target, combinedExtension])).inherit(target);
+        return SelectorList.create(deduplicateSelectors(flattenGeneratedIs([target, combinedExtension]))).inherit(target);
       }
 
       // Special case: Check if this is a complex selector partial match case
@@ -250,17 +487,42 @@ export function extendSelector(
           if (foundCompoundRemainder && compoundRemainder) {
             // Create combined extension with remainder
             const combinedExtension = createValidatedCompoundSelectorWithErrors([compoundRemainder as any, extendWith as any], compoundRemainder, { target, find, extendWith });
-            return new SelectorList(deduplicateSelectors([target, combinedExtension])).inherit(target);
+            return SelectorList.create(deduplicateSelectors(flattenGeneratedIs([target, combinedExtension]))).inherit(target);
           }
         }
       }
 
-      return new SelectorList(deduplicateSelectors([target, extendWith])).inherit(target);
+      return SelectorList.create(deduplicateSelectors(flattenGeneratedIs([target, extendWith]))).inherit(target);
     }
 
     // For deeper matches in partial mode, we need to analyze the context
     // If we're matching within a compound selector, create :is() wrapper
     if (location.path.length > 0) {
+      // When partial: true, we may have multiple matching locations (e.g., .bb .bb has two .bb matches)
+      // Process all matching locations, not just the first one
+      if (isNode(target, 'ComplexSelector') && searchResult.locations.length > 1) {
+        // Filter to only component-level matches (path length 1, not combinators)
+        const componentMatches = searchResult.locations.filter(loc =>
+          loc.path.length === 1
+          && typeof loc.path[0] === 'number'
+          && !isNode(target.value[loc.path[0] as number], 'Combinator')
+        );
+
+        if (componentMatches.length > 1) {
+          // Process all component matches - wrap each matching component in :is()
+          const newComponents = [...target.value];
+          for (const matchLoc of componentMatches) {
+            const componentIndex = matchLoc.path[0] as number;
+            const matchedComponent = newComponents[componentIndex];
+            if (matchedComponent && !isNode(matchedComponent, 'Combinator')) {
+              // Wrap this component in :is(original, extension)
+              newComponents[componentIndex] = createIsWrapper([matchedComponent, extendWith], matchedComponent);
+            }
+          }
+          return ComplexSelector.create(newComponents).inherit(target);
+        }
+      }
+
       return handlePartialModeExtension(target, location, extendWith);
     }
 
@@ -271,18 +533,44 @@ export function extendSelector(
     // Check if this is a root-level full match (should create selector list)
     if (location.path.length === 0 && location.extensionType === 'replace' && !location.isPartialMatch) {
       // This is a full match at the root - create selector list with both original and extension
-      return new SelectorList(deduplicateSelectors([target, extendWith])).inherit(target);
+      return SelectorList.create(deduplicateSelectors(flattenGeneratedIs([target, extendWith]))).inherit(target);
     }
 
     // Special handling for pseudo-selector matches in full mode
     // All pseudo-selectors with selector arguments allow extending inside
     // This includes :is(), :where(), :not(), :has(), and any other pseudo-selector with selector args
-    if (location.path.includes('arg') && !location.isPartialMatch) {
+    if (location.path.includes('arg')) {
+      // When partial: false, reject if there are components BEFORE the pseudo-selector that contains the match
+      // (e.g., .aa :is(.dd,.ee) matching .dd is partial because .aa is before the :is())
+      // Note: We're allowed to match inside :is() boundaries - the issue is only when there are other components before it
+      if (!partial && isNode(target, 'ComplexSelector') && target.value.length > 1) {
+        // Find the index of the pseudo-selector component that contains the match
+        // The path format for pseudo-selector matches is like [pseudoIndex, 'arg', argIndex, ...]
+        const pathFirstNum = location.path.find((p): p is number => typeof p === 'number');
+        if (pathFirstNum !== undefined && pathFirstNum > 0) {
+          // The pseudo-selector is not the first component, so there are components before it
+          // This means the entire selector doesn't match exactly - it's a partial match
+          throw new ExtendError(
+            ExtendErrorType.PARTIAL_MATCH,
+            'Partial match found but exact match required',
+            { target, find, extendWith }
+          );
+        }
+      }
+      // Also reject if findExtendableLocations marked it as a partial match
+      if (!partial && location.isPartialMatch) {
+        throw new ExtendError(
+          ExtendErrorType.PARTIAL_MATCH,
+          'Partial match found but exact match required',
+          { target, find, extendWith }
+        );
+      }
+
       // Check if this is a compound target that fully matches a compound selector
       // In this case, create a selector list instead of extending inside the pseudo-selector
       if (isNode(find, 'CompoundSelector') && isNode(target, 'CompoundSelector')) {
         // This is a full compound match - create selector list
-        return new SelectorList(deduplicateSelectors([target, extendWith])).inherit(target);
+        return SelectorList.create(deduplicateSelectors(flattenGeneratedIs([target, extendWith]))).inherit(target);
       }
 
       // This is a full match inside a pseudo-selector argument
@@ -291,6 +579,8 @@ export function extendSelector(
     }
 
     // For full matches within compound selectors, create :is() wrapper
+    // Note: Compound selectors allow component-level matches even when partial: false
+    // because matching a component is a full match of that component, not a partial match
     if (location.path.length === 1 && isNode(target, 'CompoundSelector')) {
       // This is a component match within a compound selector
       const componentIndex = location.path[0] as number;
@@ -306,8 +596,35 @@ export function extendSelector(
       }
     }
 
+    // For full matches at the first component of complex selectors, create selector list
+    // Example: .aa .dd extended with .cc (where .cc:extend(.aa)) should produce .aa .dd, .cc .dd
+    if (location.path.length === 1 && isNode(target, 'ComplexSelector') && location.path[0] === 0) {
+      // When partial: false, reject if there are elements after the match
+      // (the entire selector must match exactly, not just a prefix)
+      if (!partial && location.isPartialMatch) {
+        throw new ExtendError(
+          ExtendErrorType.PARTIAL_MATCH,
+          'Partial match found but exact match required',
+          { target, find, extendWith }
+        );
+      }
+      // This is a full match at the first component of a complex selector
+      // Create selector list with both original and extended version
+      const extendedSelector = applyExtensionAtLocation(target, location, extendWith);
+      // If the result is already a SelectorList (e.g., if the whole complex selector was matched),
+      // we need to merge it with the original, not wrap it again
+      if (isNode(extendedSelector, 'SelectorList')) {
+        // The extended result is already a list - merge original with the list
+        return SelectorList.create(deduplicateSelectors(flattenGeneratedIs([target, ...extendedSelector.value]))).inherit(target);
+      } else {
+        // The extended result is a single selector - create list with original and extended
+        return SelectorList.create(deduplicateSelectors(flattenGeneratedIs([target, extendedSelector]))).inherit(target);
+      }
+    }
+
     // For full matches at deeper levels, still apply the extension
-    return applyExtensionAtLocation(target, location, extendWith);
+    const result = applyExtensionAtLocation(target, location, extendWith);
+    return result;
   }
 }
 
@@ -413,13 +730,14 @@ function handleFullExtend(
       if (isNode(arg, 'SelectorList')) {
         // Add to existing selector list
         const newSelectors = deduplicateSelectors([...arg.value, extendWith]);
-        const newArg = SelectorList.create(newSelectors).inherit(arg);        // If the original selector was generated, we can mutate it in place for performance
+        const newArg = SelectorList.create(newSelectors).inherit(arg);
+        // If the original selector was generated, we can mutate it in place for performance
         if (target.generated) {
           target.value.arg = newArg;
           return target;
         } else {
           // For authored selectors, create a new one to preserve the original
-          return new PseudoSelector({
+          return PseudoSelector.create({
             name: target.value.name,
             arg: newArg
           }).inherit(target);
@@ -435,7 +753,7 @@ function handleFullExtend(
           return target;
         } else {
           // For authored selectors, create a new one to preserve the original
-          return new PseudoSelector({
+          return PseudoSelector.create({
             name: target.value.name,
             arg: newArg
           }).inherit(target);
@@ -492,7 +810,7 @@ function handleCompoundFullExtend(
           } else {
             // For authored selectors, create new compound with updated :is()
             const newComponents = [...target.value];
-            newComponents[i] = new PseudoSelector({
+            newComponents[i] = PseudoSelector.create({
               name: ':is',
               arg: extendedArg
             }).inherit(comp);
@@ -1185,13 +1503,14 @@ function optimizeTopLevelUnnecessaryIsWrapper(selector: Selector): Selector {
 function handlePartialExtendAtRoot(selector: Selector, target: Selector, extendWith: Selector): Selector {
   // For partial matches at root, we typically want to wrap with :is() if it's compound
   if (isNode(selector, 'CompoundSelector') && selector.value.length > 1) {
-    const isArg = SelectorList.create(deduplicateSelectors([target, extendWith])).inherit(target);
-    const pseudoSelector = new PseudoSelector({ name: ':is', arg: isArg });
-    return new SelectorList(deduplicateSelectors([pseudoSelector, ...selector.value.slice(1)])).inherit(selector);
+    const isArg = SelectorList.create(deduplicateSelectors(flattenGeneratedIs([target, extendWith]))).inherit(target);
+    // Use .create() to mark as generated so it can be flattened later
+    const pseudoSelector = PseudoSelector.create({ name: ':is', arg: isArg });
+    return SelectorList.create(deduplicateSelectors(flattenGeneratedIs([pseudoSelector, ...selector.value.slice(1)]))).inherit(selector);
   }
 
   // Default to selector list for root-level partial matches
-  return new SelectorList(deduplicateSelectors([selector, extendWith])).inherit(selector);
+  return SelectorList.create(deduplicateSelectors(flattenGeneratedIs([selector, extendWith]))).inherit(selector);
 }
 
 /**

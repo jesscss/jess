@@ -74,7 +74,7 @@ export function getExpectedOutputFiles(
   let defaultOptions: Record<string, any> = {};
   let startIndex = 0;
 
-  if (!('file' in outputConfig[0])) {
+  if (outputConfig[0] && !('file' in outputConfig[0])) {
     defaultOptions = { ...outputConfig[0] };
     startIndex = 1;
   }
@@ -103,7 +103,7 @@ export function getExpectedOutputFiles(
 
   // If only one output, return it directly (not as array)
   if (outputs.length === 1) {
-    return outputs[0];
+    return outputs[0]!;
   }
 
   // Return array if multiple outputs

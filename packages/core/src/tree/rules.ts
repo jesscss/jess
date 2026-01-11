@@ -535,10 +535,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       this.register('declaration', node);
     } else if (isNode(node, 'Ruleset')) {
-      // Register to 'mixin' for mixin calls and 'ruleset' for extends
+      // Register to 'mixin' for mixin calls
       // Always register - guard filtering happens at call time in getFunctionFromMixins
+      // Note: 'ruleset' registration for extends now happens in Ruleset.preEval to the extend root's registry
       this.register('mixin', node);
-      this.register('ruleset', node);
     } else if (isNode(node, 'Mixin')) {
       this.register('mixin', node);
     }
@@ -641,7 +641,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         // Restore context after preEval is complete
         context.rulesContext = saved.rulesContext;
         context.treeRoot = saved.treeRoot;
-        context.root = saved.root;
+        // Only restore context.root if saved.root is defined (not the outermost root)
+        // If saved.root is undefined, it means we're at the outermost level, so keep context.root as is
+        if (saved.root !== undefined) {
+          context.root = saved.root;
+        }
         return rules as this;
       }
       // Multi-pass resolution of dynamic nodes
@@ -805,7 +809,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Restore context after preEval is complete
       context.rulesContext = saved.rulesContext;
       context.treeRoot = saved.treeRoot;
-      context.root = saved.root;
+      // Only restore context.root if saved.root is defined (not the outermost root)
+      // If saved.root is undefined, it means we're at the outermost level, so keep context.root as is
+      if (saved.root !== undefined) {
+        context.root = saved.root;
+      }
 
       return rules as this;
     };
@@ -857,7 +865,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (saved) {
       context.rulesContext = saved.rulesContext;
       context.treeRoot = saved.treeRoot;
-      context.root = saved.root;
+      // Only restore context.root if saved.root is defined (not the outermost root)
+      // If saved.root is undefined, it means we're at the outermost level, so keep context.root as is
+      if (saved.root !== undefined) {
+        context.root = saved.root;
+      }
     }
     return rules as this;
   }
@@ -894,7 +906,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private _buildEvalQueue(rules: Rules): EvalQueueMap {
     let evalQueue: EvalQueueMap = new Map();
     for (let item of rules) {
-      let [, rule] = item;
+      let [idx, rule] = item;
       let priority = NodeTypeToPriority.get(rule.type) ?? Priority.None;
       let queue = evalQueue.get(priority) ?? [];
       queue.push(item as [number, Node]);
@@ -1100,63 +1112,74 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             // - target = .base (what to find)
             // - selectorWithExtend = .child (the selector that had the extend)
             // - We want to find rulesets matching .base and extend them with .child
-            // Find rulesets matching target (the selector we're extending) in accessible roots
-            let rulesetSet: Ruleset[] | undefined;
-            for (const searchRoot of accessibleRoots) {
-              const found = searchRoot.find('ruleset', target.keySet);
-              if (found) {
-                if (rulesetSet) {
-                  rulesetSet.push(...found);
-                } else {
-                  rulesetSet = found;
-                }
-              }
-            }
 
-            // Apply extends to found rulesets
-            // tryExtendSelector(target, find, extendWith, partial)
-            // - target: the selector to extend (ruleset.selector, which matches target from extend)
-            // - find: what to find within target (target - we're looking for target in itself)
-            // - extendWith: what to extend with (selectorWithExtend - the selector that had the extend)
-            if (!rulesetSet || rulesetSet.length === 0) {
-              // Check if target exists anywhere (not just in accessible roots)
-              // This allows us to provide a better error message
-              const allRoots = context.extendRoots.getAllRoots();
-              let targetExistsElsewhere = false;
-              for (const searchRoot of allRoots) {
-                if (!accessibleRoots.has(searchRoot)) {
-                  const found = searchRoot.find('ruleset', target.keySet);
-                  if (found && found.length > 0) {
-                    targetExistsElsewhere = true;
-                    break;
+            // If target is a SelectorList (e.g., .aa, .bb), process each selector separately
+            // Each selector in the list is a separate extend target
+            const targetSelectors: Selector[] = isNode(target, 'SelectorList')
+              ? target.value
+              : [target];
+
+            for (const singleTarget of targetSelectors) {
+              // Find rulesets matching this single target in accessible roots
+              let rulesetSet: Ruleset[] | undefined;
+
+              for (const searchRoot of accessibleRoots) {
+                const found = searchRoot.find('ruleset', singleTarget.keySet);
+                if (found) {
+                  if (rulesetSet) {
+                    rulesetSet.push(...found);
+                  } else {
+                    rulesetSet = found;
                   }
                 }
               }
 
-              // Throw appropriate error based on whether target exists
-              if (targetExistsElsewhere) {
-                // Target exists but is not accessible (blocked by boundary)
-                throw ERR.extendNotAccessible({
-                  ctx: context.treeContext?.file ? { file: context.treeContext.file } : undefined,
-                  node: extendNode.location && extendNode.location.length === 6 ? { location: extendNode.location } : undefined,
-                  meta: { target: target.valueOf() }
-                });
-              } else {
-                // Target doesn't exist at all
-                throw ERR.extendNotFound({
-                  ctx: context.treeContext?.file ? { file: context.treeContext.file } : undefined,
-                  node: extendNode.location && extendNode.location.length === 6 ? { location: extendNode.location } : undefined,
-                  meta: { target: target.valueOf() }
+              // Apply extends to found rulesets
+              // tryExtendSelector(target, find, extendWith, partial)
+              // - target: the selector to extend (ruleset.selector, which matches target from extend)
+              // - find: what to find within target (singleTarget - we're looking for singleTarget in itself)
+              // - extendWith: what to extend with (selectorWithExtend - the selector that had the extend)
+              if (!rulesetSet || rulesetSet.length === 0) {
+                // Check if target exists anywhere (not just in accessible roots)
+                // This allows us to provide a better error message
+                const allRoots = context.extendRoots.getAllRoots();
+                let targetExistsElsewhere = false;
+                for (const searchRoot of allRoots) {
+                  if (!accessibleRoots.has(searchRoot)) {
+                    const found = searchRoot.find('ruleset', singleTarget.keySet);
+                    if (found && found.length > 0) {
+                      targetExistsElsewhere = true;
+                      break;
+                    }
+                  }
+                }
+
+                // Throw appropriate error based on whether target exists
+                if (targetExistsElsewhere) {
+                  // Target exists but is not accessible (blocked by boundary)
+                  throw ERR.extendNotAccessible({
+                    ctx: context.treeContext?.file ? { file: context.treeContext.file } : undefined,
+                    node: extendNode.location && extendNode.location.length === 6 ? { location: extendNode.location } : undefined,
+                    meta: { target: singleTarget.valueOf() }
+                  });
+                } else {
+                  // Target doesn't exist at all
+                  throw ERR.extendNotFound({
+                    ctx: context.treeContext?.file ? { file: context.treeContext.file } : undefined,
+                    node: extendNode.location && extendNode.location.length === 6 ? { location: extendNode.location } : undefined,
+                    meta: { target: singleTarget.valueOf() }
+                  });
+                }
+              }
+              if (rulesetSet) {
+                rulesetSet.forEach((ruleset) => {
+                  let result = tryExtendSelector(ruleset.selector as Selector, singleTarget, selectorWithExtend, partial);
+                  // Only apply if there's no error - tryExtendSelector uses complex logic to determine valid matches
+                  if (result && !result.error) {
+                    ruleset.value.selector = result.value;
+                  }
                 });
               }
-            }
-            if (rulesetSet) {
-              rulesetSet.forEach((ruleset) => {
-                let result = tryExtendSelector(ruleset.selector as Selector, target, selectorWithExtend, partial);
-                if (result) {
-                  ruleset.value.selector = result.value;
-                }
-              });
             }
           }
         }

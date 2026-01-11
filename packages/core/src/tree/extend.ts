@@ -69,7 +69,8 @@ export class Extend extends Node<ExtendValue> {
     if (!extendRoot) {
       /** Throw error? */
       return new Nil();
-    }
+    } 
+
 
     const maybeSel = selector.eval(context);
     if (isThenable(maybeSel)) {

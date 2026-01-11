@@ -137,6 +137,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           if (sel.hoistToRoot) {
             node.hoistToRoot = true;
           }
+          // Register to extend root's registry for extend lookups
+          const extendRoot = context.extendRoots.getCurrentExtendRoot();
+          if (extendRoot) {
+            extendRoot.getRegistry('ruleset').add(node as Ruleset);
+          }
           return node;
         }
       );

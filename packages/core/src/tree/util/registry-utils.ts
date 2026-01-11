@@ -341,131 +341,38 @@ export class RulesetRegistry extends Registry<Ruleset> {
   }
 
   /**
-   * Find candidate rulesets that might match the target selector
+   * Find candidate rulesets that might match the target selector.
+   * Searches only the local index - all rulesets should be registered
+   * to the extend root's registry during evaluation.
    */
   override find(keys: string[] | Set<string>): Ruleset[] | undefined {
     // Index any pending rulesets first
     this.indexPendingRulesets();
 
-    const keyArray = Array.isArray(keys) ? keys : Array.from(keys);
 
     let candidates: Set<Ruleset> | undefined = undefined;
 
     // Use intersection to whittle down candidates with each subsequent key
     for (const key of keys) {
-      // const key = targetKeys[i]!;
       const keyRulesets = this.index.get(key);
       if (!keyRulesets || keyRulesets.size === 0) {
-        // If no matches in current registry, search imported Rules in rulesSet
-        if (candidates === undefined) {
-          // First key, search imported Rules
-          const importedCandidates = this._searchRulesChildrenForRulesets(keys);
-          if (importedCandidates && importedCandidates.size > 0) {
-            candidates = importedCandidates;
-            continue; // Found candidates in imported Rules, continue with next key
-          }
-        }
-        return; // No matches for this key, so no candidates
+        return undefined; // No matches for this key
       }
 
       if (candidates) {
-        /**
-         * The ruleset registry is keyed by each selector in each ruleset,
-         * so in this registry, we want the intersection i.e. only rulesets
-         * with selectors that have every key, as opposed to getting a
-         * set of items that have any of the keys.
-         */
+        // Intersection: only rulesets with selectors that have ALL keys
         candidates = candidates.intersection(keyRulesets);
       } else {
-        candidates = keyRulesets;
+        // First key - start with a copy of this set
+        candidates = new Set(keyRulesets);
       }
-      /** If the key doesn't exist, we can take an early exit. */
+
       if (candidates.size === 0) {
         return undefined;
       }
     }
 
-    // Also search imported Rules in rulesSet for additional candidates
-    // This allows extends to find rulesets from imported stylesheets
-    const importedCandidates = this._searchRulesChildrenForRulesets(keys);
-    if (importedCandidates && importedCandidates.size > 0) {
-      if (candidates) {
-        // Merge with existing candidates
-        for (const ruleset of importedCandidates) {
-          candidates.add(ruleset);
-        }
-      } else {
-        candidates = importedCandidates;
-      }
-    }
-
     return candidates?.size ? [...candidates] : undefined;
-  }
-
-  /**
-   * Search through imported Rules in rulesSet for rulesets matching the keys
-   */
-  private _searchRulesChildrenForRulesets(keys: string[] | Set<string>): Set<Ruleset> | undefined {
-    let rules = this.rules;
-    let candidates: Set<Ruleset> | undefined = undefined;
-    const keyArray = Array.isArray(keys) ? keys : Array.from(keys);
-    if (rules._rulesSet) {
-      let { rulesSet } = rules;
-      // Filter to only public/optional rulesets (similar to _searchRulesChildren)
-      rulesSet = rulesSet.filter((n) => {
-        const visibility = n.rulesVisibility?.Ruleset ?? '';
-        const isVisible = ['optional', 'public'].includes(visibility);
-        return isVisible;
-      });
-
-      let length = rulesSet.length;
-      if (length) {
-        for (let i = length - 1; i >= 0; i--) {
-          let r = rulesSet.at(i)!;
-          // Check if the imported Rules has a ruleset registry
-          const importedRulesetRegistry = r.node.getRegistry('ruleset');
-          importedRulesetRegistry.indexPendingRulesets();
-          // Search for rulesets in the imported Rules
-          let result = r.node.find('ruleset', keys);
-          if (result && result.length > 0) {
-            if (candidates) {
-              // Merge with existing candidates
-              for (const ruleset of result) {
-                candidates.add(ruleset);
-              }
-            } else {
-              // First match, create candidates set
-              candidates = new Set(result);
-            }
-          } else {
-            // Try searching directly in the imported Rules' value for rulesets
-            for (const childNode of r.node.value) {
-              if (isNode(childNode, 'Ruleset')) {
-                const selector = childNode.selector;
-                if (selector && !isNode(selector, 'Nil')) {
-                  const selectorKeySet = selector.keySet;
-                  if (selectorKeySet) {
-                    const keyArray = Array.isArray(keys) ? keys : Array.from(keys);
-                    const selectorKeys = Array.from(selectorKeySet);
-                    // Check if any search key matches any selector key
-                    const hasMatch = keyArray.some(key => selectorKeys.includes(key));
-                    if (hasMatch) {
-                      const ruleset = childNode as Ruleset;
-                      if (candidates) {
-                        candidates.add(ruleset);
-                      } else {
-                        candidates = new Set([ruleset]);
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-    return candidates;
   }
 }
 

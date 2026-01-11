@@ -11,7 +11,10 @@ import { getOptions, type StylesConfig } from 'styles-config';
 import type { PluginInterface } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 
-export type ConfigOptions = StylesConfig;
+export type ConfigOptions = StylesConfig & {
+  /** Output file path for matching against output config options */
+  outputFile?: string;
+};
 
 const { isArray } = Array;
 
@@ -58,7 +61,23 @@ export class Compiler {
     const plugins = config.compile?.plugins;
     /** @todo Add CSS and Jess plugins */
     // Get merged options for each language using file-based matching
-    const lessOptions = getOptions(config, { language: 'less', input: filePath });
+    // Use outputFile from renderOptions, or try to extract from config
+    let resolvedOutputFilePath: string | undefined = renderOptions?.outputFile;
+    if (!resolvedOutputFilePath) {
+      if (Array.isArray(config.output)) {
+        // If output is an array, we need the expected output file path to match
+        // This should be provided via renderOptions.outputFile
+      } else if (config.output && 'file' in config.output && (config.output as any).file) {
+        const dir = filePath ? path.dirname(filePath) : '.';
+        const name = filePath ? path.basename(filePath, path.extname(filePath)) : 'output';
+        resolvedOutputFilePath = path.join(dir, (config.output as any).file.replace('{name}', name));
+      } else if (renderOptions?.output && !Array.isArray(renderOptions.output) && 'file' in renderOptions.output && (renderOptions.output as any).file) {
+        const dir = filePath ? path.dirname(filePath) : '.';
+        const name = filePath ? path.basename(filePath, path.extname(filePath)) : 'output';
+        resolvedOutputFilePath = path.join(dir, (renderOptions.output as any).file.replace('{name}', name));
+      }
+    }
+    const lessOptions = getOptions(config, { language: 'less', input: filePath, output: resolvedOutputFilePath });
     let corePlugins = [
       lessPlugin(lessOptions)
     ];
@@ -80,15 +99,15 @@ export class Compiler {
       }
     }
     // Pass output options and compile options to Context
+    // Use getOptions result which includes properly merged output options
     const contextOptions = {
-      ...config.output,
-      ...config.compile,
-      collapseNesting: config.output?.collapseNesting
+      ...lessOptions,
+      ...config.compile
     };
 
     // Create print options for CSS output
     const printOptions = {
-      collapseNesting: config.output?.collapseNesting
+      collapseNesting: lessOptions.collapseNesting ?? (Array.isArray(config.output) ? undefined : (config.output as any)?.collapseNesting)
     };
 
     return new Context(contextOptions, [...pluginMap.values()]);
