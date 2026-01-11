@@ -302,6 +302,9 @@ importers:
       chalk:
         specifier: ^5.2.0
         version: 5.6.2
+      linecraft:
+        specifier: 0.2.3
+        version: 0.2.3
       lodash-es:
         specifier: ^4.17.21
         version: 4.17.22
@@ -9654,6 +9657,11 @@ packages:
   /limiter@1.1.5:
     resolution: {integrity: sha512-FWWMIEOxz3GwUI4Ts/IvgVy6LPvoMPgjMdQ185nN6psJyBJ4yOpzqm695/h5umdLJg2vW3GR5iG11MAkR2AzJA==}
     dev: true
+
+  /linecraft@0.2.3:
+    resolution: {integrity: sha512-wDsecQ/mvdlcgbeuajmd+4AOBOAAJPrSeybHlzeqrGWgi8OnjsFx3Itwr16RXI0CSvmc+h8vLANMlkL8FYk6jw==}
+    engines: {node: '>=18.0.0'}
+    dev: false
 
   /lines-and-columns@1.2.4:
     resolution: {integrity: sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==}

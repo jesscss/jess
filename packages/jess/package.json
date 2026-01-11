@@ -30,6 +30,7 @@
     "@jesscss/plugin-less": "workspace:2.0.0-alpha.1",
     "@jesscss/patch-css": "workspace:2.0.0-alpha.1",
     "chalk": "^5.2.0",
+    "linecraft": "0.2.3",
     "lodash-es": "^4.17.21",
     "yargs": "^17.7.1"
   },

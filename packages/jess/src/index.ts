@@ -4,16 +4,24 @@ import { getConfig } from './config';
 import {
   Context,
   type PrintOptions,
-  // type JessError,
+  type ErrorDiagnostic,
+  type WarningDiagnostic,
+  type JessError,
+  toDiagnostic,
   logger
 } from '@jesscss/core';
 import { getOptions, type StylesConfig } from 'styles-config';
 import type { PluginInterface } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
+import { outputDiagnostics } from './diagnostics';
 
 export type ConfigOptions = StylesConfig & {
   /** Output file path for matching against output config options */
   outputFile?: string;
+  /** Suppress warnings (similar to Less's suppressWarnings option) */
+  suppressWarnings?: boolean;
+  /** Break on first error (stop processing after first error). Default: true */
+  breakOnError?: boolean;
 };
 
 const { isArray } = Array;
@@ -120,9 +128,27 @@ export class Compiler {
       const { node } = await context.getTree(filePath);
 
       const evald = await node.eval(context);
+
+      // Output any collected diagnostics
+      if (context.errors.length > 0 || context.warnings.length > 0) {
+        outputDiagnostics(context.errors, context.warnings, {
+          suppressWarnings: options?.suppressWarnings ?? false,
+          breakOnError: options?.breakOnError ?? true
+        });
+      }
+
       return { tree: evald, context };
     } catch (err: any) {
-      logger.error(err.toString());
+      // If we have diagnostics, output them
+      if (context.errors.length > 0 || context.warnings.length > 0) {
+        outputDiagnostics(context.errors, context.warnings, {
+          suppressWarnings: options?.suppressWarnings ?? false,
+          breakOnError: options?.breakOnError ?? true
+        });
+      } else {
+        // Fallback to logger for non-diagnostic errors
+        logger.error(err.toString());
+      }
       throw err;
     }
   }
@@ -142,7 +168,11 @@ export class Compiler {
       const css = tree.toString(printOptions);
       return css;
     } catch (err: any) {
-      logger.error(err.toString());
+      // Diagnostics are already output by compile()
+      // If it's not a diagnostic error, log it
+      if (!(err && typeof err === 'object' && 'code' in err)) {
+        logger.error(err.toString());
+      }
       throw err;
     }
   }
@@ -179,6 +209,101 @@ export class Compiler {
     } catch (err: any) {
       logger.error(err.toString());
       throw err;
+    }
+  }
+
+  /**
+   * Safe version of compile that collects errors and warnings instead of throwing.
+   * Returns the tree (or null if compilation failed) along with collected errors and warnings.
+   */
+  async safeCompile(filePath: string, options?: Partial<ConfigOptions>): Promise<{
+    tree: any | null;
+    context: Context;
+    errors: ErrorDiagnostic[];
+    warnings: WarningDiagnostic[];
+  }> {
+    const context = this.createContext(filePath, {
+      ...options,
+      breakOnError: false,
+      suppressWarnings: options?.suppressWarnings ?? false
+    });
+
+    try {
+      const { node } = await context.getTree(filePath);
+      const evald = await node.eval(context);
+
+      // Collect any errors and warnings from context
+      return {
+        tree: evald,
+        context,
+        errors: [...context.errors],
+        warnings: [...context.warnings]
+      };
+    } catch (err: any) {
+      // Convert error to diagnostic
+      const errors: ErrorDiagnostic[] = [...context.errors];
+      const warnings: WarningDiagnostic[] = [...context.warnings];
+
+      if (err && typeof err === 'object' && 'severity' in err) {
+        const diagnostic = toDiagnostic(err as JessError);
+        if ('errors' in diagnostic) {
+          errors.push(diagnostic);
+        } else {
+          warnings.push(diagnostic);
+        }
+      } else {
+        errors.push({
+          code: 'JESS0000',
+          phase: 'eval',
+          message: err?.message || 'Unknown error',
+          reason: err?.message || 'An unexpected error occurred during compilation.',
+          fix: 'Check the file and ensure it is valid.',
+          filePath: filePath,
+          line: 1,
+          column: 1
+        });
+      }
+
+      return { tree: null, context, errors, warnings };
+    }
+  }
+
+  /**
+   * Safe version of render that collects errors and warnings instead of throwing.
+   * Returns the CSS (or null if rendering failed) along with collected errors and warnings.
+   */
+  async safeRender(filePath: string, options?: Partial<ConfigOptions>): Promise<{
+    css: string | null;
+    errors: ErrorDiagnostic[];
+    warnings: WarningDiagnostic[];
+  }> {
+    try {
+      const { tree, errors, warnings } = await this.safeCompile(filePath, options);
+
+      if (!tree) {
+        return { css: null, errors, warnings };
+      }
+
+      const printOptions: PrintOptions = {
+        collapseNesting: tree.context?.opts.collapseNesting,
+        context: tree.context
+      };
+
+      const css = tree.toString(printOptions);
+      return { css, errors, warnings };
+    } catch (err: any) {
+      // This shouldn't happen in safe mode, but handle it just in case
+      const errors: ErrorDiagnostic[] = [{
+        code: 'JESS0000',
+        phase: 'eval',
+        message: err?.message || 'Unknown error',
+        reason: err?.message || 'An unexpected error occurred during rendering.',
+        fix: 'Check the file and ensure it is valid.',
+        filePath: filePath,
+        line: 1,
+        column: 1
+      }];
+      return { css: null, errors, warnings: [] };
     }
   }
 }

@@ -77,7 +77,7 @@ export default tseslint.config([
 
     rules: {
       ...jsRules,
-      'curly': ['error', 'all'],
+      curly: ['error', 'all'],
       'prefer-const': 0
     }
   }, {
@@ -102,7 +102,7 @@ export default tseslint.config([
       ...jsRules,
       'eol-last': 0,
       'prefer-const': 0,
-      'curly': ['error', 'all'],
+      curly: ['error', 'all'],
       '@typescript-eslint/no-confusing-void-expression': 'off',
       'no-void': 0,
       '@typescript-eslint/consistent-type-assertions': 0,
@@ -149,6 +149,13 @@ export default tseslint.config([
         modifiers: ['unused'],
         format: ['camelCase', 'PascalCase', 'UPPER_CASE', 'snake_case'],
         leadingUnderscore: 'allow'
+      }, {
+        selector: 'objectLiteralProperty',
+        filter: {
+          regex: '^\\d+$',
+          match: true
+        },
+        format: [] // Allow numeric property names
       }]
     }
   }, {
@@ -167,7 +174,7 @@ export default tseslint.config([
 
     rules: {
       '@typescript-eslint/no-unused-vars': 0,
-      'curly': ['error', 'all']
+      curly: ['error', 'all']
     }
   }, globalIgnores(['**/node_modules', '**/lib', '**/dist', 'packages/**'])
 ]);

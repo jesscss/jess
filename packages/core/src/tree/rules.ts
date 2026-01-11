@@ -28,7 +28,7 @@ import { VarDeclaration } from './declaration-var';
 import { Any } from './any';
 import { List } from './list';
 import { indent, normalizeIndent } from './util/serialize-helper';
-import { ERR } from '../jess-error';
+import { ERR, WARN, toDiagnostic } from '../jess-error';
 import { freezeChildren } from './util/cloning';
 import { Reference } from './reference';
 
@@ -1163,12 +1163,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                     meta: { target: singleTarget.valueOf() }
                   });
                 } else {
-                  // Target doesn't exist at all
-                  throw ERR.extendNotFound({
+                  // Target doesn't exist at all - collect warning for Less compatibility
+                  const warning = WARN.extendNotFound({
                     ctx: context.treeContext?.file ? { file: context.treeContext.file } : undefined,
                     node: extendNode.location && extendNode.location.length === 6 ? { location: extendNode.location } : undefined,
                     meta: { target: singleTarget.valueOf() }
                   });
+                  // Convert to warning diagnostic and add to context
+                  const warningDiag = toDiagnostic(warning);
+                  if (!('errors' in warningDiag)) {
+                    context.warnings.push(warningDiag);
+                  }
                 }
               }
               if (rulesetSet) {

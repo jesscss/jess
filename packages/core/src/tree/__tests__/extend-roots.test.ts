@@ -415,9 +415,10 @@ describe('Extend Roots Registry', () => {
     });
 
     /**
-     * Test: Extend throws error when target not found (doesn't exist anywhere)
+     * Test: Extend collects warning when target not found (doesn't exist anywhere)
+     * Changed from error to warning for Less compatibility
      */
-    it('extend throws extendNotFound error when target does not exist', async () => {
+    it('extend collects extendNotFound warning when target does not exist', async () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.child')])]),
@@ -430,9 +431,16 @@ describe('Extend Roots Registry', () => {
         })
       ]);
 
-      await expect(async () => {
-        await node.eval(context);
-      }).rejects.toThrow();
+      // Should not throw - extendNotFound is now a warning
+      const evald = await node.eval(context);
+      expect(evald).toBeDefined();
+      
+      // Should have collected a warning
+      expect(context.warnings.length).toBeGreaterThan(0);
+      const warning = context.warnings.find(w => w.code === 'JESS3202');
+      expect(warning).toBeDefined();
+      expect(warning?.message).toContain('Extend target');
+      expect(warning?.message).toContain('not found');
     });
 
     /**

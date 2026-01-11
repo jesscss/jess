@@ -10,7 +10,7 @@ export function createTestContext(): Context {
   const ctx = new Context();
   const plugin: PluginInterface = {
     name: 'test-plugin',
-    supportedExtensions: ['jess'],
+    supportedExtensions: ['.jess'],
     resolve(filePath: string | string[], currentDir: string) {
       const paths = Array.isArray(filePath) ? filePath : [filePath];
       // Resolve all paths to absolute paths

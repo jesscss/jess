@@ -14,7 +14,7 @@ import type { PluginInterface } from './plugin';
 import { MathMode, UnitMode } from './types/modes';
 import * as path from 'node:path';
 import { isNode } from './tree/util/is-node';
-import { getErrorFromParser } from './jess-error';
+import { getErrorFromParser, type ErrorDiagnostic, type WarningDiagnostic, toDiagnostic, JessError } from './jess-error';
 import type { Call } from './tree/call';
 import type { List } from './tree/list';
 import { CallMap } from './tree/util/recursion-helper';
@@ -57,6 +57,18 @@ export interface ContextOptions {
    * @deprecated - a legacy Less feature; modern CSS allows nesting
    */
   bubbleRootAtRules?: boolean;
+
+  /**
+   * Suppress warnings (similar to Less's suppressWarnings option).
+   * When true, warnings are collected but not emitted.
+   */
+  suppressWarnings?: boolean;
+
+  /**
+   * Break on first error (stop processing after first error).
+   * When false, errors are collected and processing continues.
+   */
+  breakOnError?: boolean;
 }
 
 export interface TreeContextOptions extends ContextOptions {
@@ -190,6 +202,18 @@ export class Context {
   readonly opts: ContextOptions;
 
   treeContext!: TreeContext;
+
+  /**
+   * Collected errors during safeParse/safeRender.
+   * Only populated when using safe methods.
+   */
+  errors: ErrorDiagnostic[] = [];
+
+  /**
+   * Collected warnings during safeParse/safeRender.
+   * Only populated when using safe methods.
+   */
+  warnings: WarningDiagnostic[] = [];
 
   /**
    * A feature ported from Less - we suppress any `@charset`
@@ -472,7 +496,7 @@ export class Context {
     }
 
     if (extension) {
-      const plugin = plugins.find(plugin => plugin.supportedExtensions?.includes(extension) && plugin.parse);
+      const plugin = plugins.find(plugin => plugin.supportedExtensions?.includes(extension) && (plugin.parse || plugin.safeParse));
       if (!plugin) {
         throw new Error(`No plugin found for extension "${extension}"`);
       }
@@ -512,20 +536,63 @@ export class Context {
     } catch (error: any) {
       throw error;
     }
-    const { tree, errors, lexerResult } = plugin.safeParse!(resolvedPath, source);
-    if (errors.length || lexerResult?.errors.length) {
-      throw getErrorFromParser(errors, lexerResult?.errors, resolvedPath, source);
+    const parseResult = plugin.safeParse!(resolvedPath, source);
+
+    // Collect normalized errors and warnings from plugin
+    this.errors.push(...parseResult.errors);
+    this.warnings.push(...parseResult.warnings);
+
+    // Check if we have errors and should break
+    if (parseResult.errors.length > 0 && this.opts.breakOnError !== false) {
+      // Throw the first error as a JessError
+      const firstError = parseResult.errors[0]!;
+      throw new JessError({
+        code: firstError.code as any,
+        phase: firstError.phase,
+        severity: 'error',
+        ctx: firstError.file ? { file: firstError.file } : undefined,
+        filePath: firstError.filePath,
+        source: firstError.file?.source,
+        line: firstError.line,
+        column: firstError.column,
+        reason: firstError.reason,
+        fix: firstError.fix,
+        note: firstError.note,
+        errors: firstError.errors,
+        lexerErrors: firstError.lexerErrors
+      });
     }
-    if (tree) {
-      this.sourceTrees.set(resolvedPath, tree);
+
+    if (parseResult.tree) {
+      this.sourceTrees.set(resolvedPath, parseResult.tree);
       return {
-        node: tree,
+        node: parseResult.tree,
         triedPaths,
         resolvedPath
       };
     }
 
-    throw new Error(`File "${friendlyPath}" not supported`);
+    // No tree and no errors means unsupported file
+    const notSupportedError = new Error(`File "${friendlyPath}" not supported`);
+    if (this.opts.breakOnError !== false) {
+      throw notSupportedError;
+    }
+    // Add error for unsupported file
+    this.errors.push({
+      code: 'JESS0000',
+      phase: 'parse',
+      message: notSupportedError.message,
+      reason: `The file "${friendlyPath}" is not supported by any available plugin.`,
+      fix: 'Ensure the file has a supported extension or specify a plugin type.',
+      filePath: resolvedPath,
+      line: 1,
+      column: 1
+    });
+    return {
+      node: null as any,
+      triedPaths,
+      resolvedPath
+    };
   }
 
   /**

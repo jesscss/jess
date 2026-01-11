@@ -5,12 +5,27 @@ import { readFile } from 'node:fs/promises';
 import type { Visitor } from './visitor';
 import type { IParseResult } from './types';
 import type { ILexingResult } from 'chevrotain';
-import { getErrorFromParser } from './jess-error';
+import { getErrorFromParser, type ErrorDiagnostic, type WarningDiagnostic, toDiagnostic, JessError } from './jess-error';
 
-export type ISafeParseResult = IParseResult<Rules> | {
-  tree?: undefined;
-  errors: any[];
-  lexerResult?: undefined;
+export type ISafeParseResult = {
+  /**
+   * The parsed tree, if parsing succeeded
+   */
+  tree?: Rules;
+  /**
+   * Normalized errors from parsing.
+   * This should include ALL errors from lexing, parsing, and any plugin-level issues.
+   * Plugins should convert all errors to normalized ErrorDiagnostic format.
+   * Always an array (empty if no errors).
+   */
+  errors: ErrorDiagnostic[];
+  /**
+   * Normalized warnings from parsing.
+   * This should include ALL warnings from lexing, parsing, and any plugin-level issues.
+   * Plugins should convert all warnings to normalized WarningDiagnostic format.
+   * Always an array (empty if no warnings).
+   */
+  warnings: WarningDiagnostic[];
 };
 
 export interface PluginInterface {
@@ -124,15 +139,33 @@ export abstract class AbstractPlugin implements PluginInterface {
   }
 
   parse(filePath: string, source: string): Rules {
-    let safeParse: PluginInterface['safeParse'] = (this as any).safeParse;
+    const safeParse: PluginInterface['safeParse'] = (this as any).safeParse;
     if (!safeParse) {
       throw new Error(`Plugin "${this.name}" does not support parsing`);
     }
-    const { tree, errors, lexerResult } = safeParse.call(this, filePath, source);
-    if (errors.length || lexerResult?.errors.length) {
-      throw getErrorFromParser(errors, lexerResult?.errors, filePath, source);
+    const { tree, errors } = safeParse.call(this, filePath, source);
+    if (errors.length > 0) {
+      const firstError = errors[0]!;
+      throw new JessError({
+        code: firstError.code as any,
+        phase: firstError.phase,
+        severity: 'error',
+        ctx: firstError.file ? { file: firstError.file } : undefined,
+        filePath: firstError.filePath,
+        source: firstError.file?.source,
+        line: firstError.line,
+        column: firstError.column,
+        reason: firstError.reason,
+        fix: firstError.fix,
+        note: firstError.note,
+        errors: firstError.errors,
+        lexerErrors: firstError.lexerErrors
+      });
     }
-    return tree!;
+    if (!tree) {
+      throw new Error(`Plugin "${this.name}" failed to parse "${filePath}"`);
+    }
+    return tree;
   }
 
   /** Implement using the JS plugin w/ Deno */

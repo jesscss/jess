@@ -17,6 +17,72 @@ type Phase = 'parse' | 'resolve' | 'import' | 'eval' | 'extend' | 'plugin';
 type Severity = 'error' | 'warn';
 
 /**
+ * Normalized error format for all phases (lexing, parsing, evaluation).
+ * This is the format returned by safeParse/safeRender methods.
+ */
+export interface ErrorDiagnostic {
+  code: string;
+  phase: Phase;
+  message: string;
+  reason: string;
+  fix: string;
+  note?: string;
+
+  // File location information
+  file?: {
+    name: string;
+    path: string;
+    fullPath: string;
+    source?: string;
+  };
+  filePath?: string;
+  line: number;
+  column: number;
+  /**
+   * Relevant source lines for code frame display.
+   * Keys are line numbers (1-indexed), values are the line content.
+   * Includes the error line and context lines (before/after).
+   * Example: { 55: 'before line', 56: 'error line', 57: 'after line' }
+   */
+  lines?: Record<number, string>;
+
+  // Raw error data (for parser/lexer errors)
+  errors?: IRecognitionException[];
+  lexerErrors?: ILexingResult['errors'];
+}
+
+/**
+ * Normalized warning format for all phases (lexing, parsing, evaluation).
+ * This is the format returned by safeParse/safeRender methods.
+ */
+export interface WarningDiagnostic {
+  code: string;
+  phase: Phase;
+  message: string;
+  reason: string;
+  fix: string;
+  note?: string;
+
+  // File location information
+  file?: {
+    name: string;
+    path: string;
+    fullPath: string;
+    source?: string;
+  };
+  filePath?: string;
+  line: number;
+  column: number;
+  /**
+   * Relevant source lines for code frame display.
+   * Keys are line numbers (1-indexed), values are the line content.
+   * Includes the warning line and context lines (before/after).
+   * Example: { 55: 'before line', 56: 'warning line', 57: 'after line' }
+   */
+  lines?: Record<number, string>;
+}
+
+/**
  * Initialization bag for a diagnostic.
  * Prefer passing `ctx` + `node` so file/line/column/source are auto-wired.
  * If those aren’t available, provide `filePath`/`source`/`line`/`column` directly.
@@ -116,7 +182,7 @@ const TEMPLATES = {
     fix: 'Move "${target}" to a shared file or create a local shim.'
   },
   JESS3202: {
-    summary: 'Extend target not found',
+    summary: 'Extend target "${target}" not found',
     reason: 'No ruleset found matching "${target}" in accessible extend roots.',
     fix: 'Ensure "${target}" exists and is accessible from the current extend root.'
   },
@@ -216,6 +282,42 @@ function buildLineStarts(src: string): Uint32Array {
     }
   }
   return Uint32Array.from(starts);
+}
+
+/**
+ * Extracts relevant source lines for code frame display.
+ * Returns an object with line numbers as keys (1-indexed) and line content as values.
+ * Includes the target line and context lines (before/after).
+ * @param source - Full source code
+ * @param line - Target line number (1-indexed)
+ * @param contextLines - Number of context lines before/after (default: 1)
+ * @returns Object with line numbers as keys, e.g. { 55: 'before', 56: 'error', 57: 'after' }
+ */
+export function extractRelevantLines(
+  source: string | undefined,
+  line: number,
+  contextLines: number = 1
+): Record<number, string> | undefined {
+  if (!source) {
+    return undefined;
+  }
+
+  // Split source into lines once
+  const lines = source.split(/\r?\n/);
+  const totalLines = lines.length;
+  const targetLine = Math.max(1, Math.min(line, totalLines));
+
+  // Calculate line range (1-indexed)
+  const startLine = Math.max(1, targetLine - contextLines);
+  const endLine = Math.min(totalLines, targetLine + contextLines);
+
+  // Extract relevant lines
+  const result: Record<number, string> = {};
+  for (let i = startLine; i <= endLine; i++) {
+    result[i] = lines[i - 1]!; // Convert to 0-indexed for array access
+  }
+
+  return result;
 }
 
 function ensureLineStarts(file: JessFile): Uint32Array | undefined {
@@ -504,6 +606,10 @@ export const WARN = {
 
   duplicateSelector(args: Common & { meta: { selector: string } }) {
     return makeJessError({ severity: 'warn', code: 'JESS4202', phase: 'extend', ...args });
+  },
+
+  extendNotFound(args: Common & { meta: { target: string } }) {
+    return makeJessError({ severity: 'warn', code: 'JESS3202', phase: 'extend', ...args });
   }
 };
 
@@ -575,4 +681,37 @@ export function getErrorFromParser(
     errors,
     lexerErrors
   });
+}
+
+/**
+ * Converts a JessError to a normalized ErrorDiagnostic or WarningDiagnostic.
+ * Extracts relevant source lines for code frame display.
+ */
+export function toDiagnostic(error: JessError): ErrorDiagnostic | WarningDiagnostic {
+  // Extract relevant lines from source (error line + context)
+  const lines = extractRelevantLines(error.source ?? error.fileObj?.source, error.line);
+
+  const base = {
+    code: error.code,
+    phase: error.phase,
+    message: error.message,
+    reason: error.reason,
+    fix: error.fix,
+    note: error.note,
+    file: error.fileObj,
+    filePath: error.filePath,
+    line: error.line,
+    column: error.column,
+    lines
+  };
+
+  if (error.severity === 'error') {
+    return {
+      ...base,
+      errors: error.errors,
+      lexerErrors: error.lexerErrors
+    } as ErrorDiagnostic;
+  } else {
+    return base as WarningDiagnostic;
+  }
 }

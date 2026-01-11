@@ -8,7 +8,11 @@ import {
   JsFunction,
   Rules,
   getErrorFromParser,
-  type ISafeParseResult
+  toDiagnostic,
+  extractRelevantLines,
+  type ISafeParseResult,
+  type ErrorDiagnostic,
+  type WarningDiagnostic
 } from '@jesscss/core';
 import type { MathMode, UnitMode, LessOptions } from 'styles-config';
 import * as lessFunctions from '@jesscss/fns';
@@ -82,15 +86,12 @@ export class LessPlugin extends AbstractPlugin {
   }
 
   safeParse(filePath: string, source: string): ISafeParseResult {
-    /**
-     * @todo - handle / pretty print errors
-     * @todo - add contents to Jess error handler
-     */
     const context = new TreeContext({
       file: {
         name: path.basename(filePath),
         path: path.dirname(filePath),
-        fullPath: filePath
+        fullPath: filePath,
+        source: source
       },
       mathMode: this.mathMode,
       unitMode: this.unitMode,
@@ -99,22 +100,87 @@ export class LessPlugin extends AbstractPlugin {
       leakyRules: this.leakyRules,
       bubbleRootAtRules: this.bubbleRootAtRules
     });
-    let tree: Rules;
-    let errors: any[];
-    let lexerResult: any;
+
+    const errors: ErrorDiagnostic[] = [];
+    const warnings: WarningDiagnostic[] = [];
+    let tree: Rules | undefined;
+
     try {
       const parseResult = this.parser.parse(source, 'stylesheet', { context });
       tree = parseResult.tree;
-      errors = parseResult.errors;
-      lexerResult = parseResult.lexerResult;
+
+      // Convert all parser/lexer errors to normalized diagnostics
+      if (parseResult.errors.length || parseResult.lexerResult?.errors?.length) {
+        // Convert each parser error to a diagnostic
+        for (const error of parseResult.errors) {
+          const line = error.token?.startLine ?? (error as any).line ?? 1;
+          const jessError = getErrorFromParser([error], undefined, filePath, source, { file: context.file });
+          const diagnostic = toDiagnostic(jessError);
+          // Ensure lines are extracted
+          if (!diagnostic.lines) {
+            diagnostic.lines = extractRelevantLines(source, line);
+          }
+          if ('errors' in diagnostic) {
+            errors.push(diagnostic);
+          } else {
+            warnings.push(diagnostic);
+          }
+        }
+        // Convert lexer errors
+        if (parseResult.lexerResult?.errors) {
+          for (const lexError of parseResult.lexerResult.errors) {
+            const line = (lexError as any).line ?? 1;
+            const jessError = getErrorFromParser([], [lexError], filePath, source, { file: context.file });
+            const diagnostic = toDiagnostic(jessError);
+            // Ensure lines are extracted
+            if (!diagnostic.lines) {
+              diagnostic.lines = extractRelevantLines(source, line);
+            }
+            if ('errors' in diagnostic) {
+              errors.push(diagnostic);
+            } else {
+              warnings.push(diagnostic);
+            }
+          }
+        }
+      }
     } catch (error: any) {
-      return { errors: [error] };
+      // Convert caught error to diagnostic
+      if (error && typeof error === 'object' && 'severity' in error) {
+        const diagnostic = toDiagnostic(error as JessError);
+        if ('errors' in diagnostic) {
+          errors.push(diagnostic);
+        } else {
+          warnings.push(diagnostic);
+        }
+      } else {
+        errors.push({
+          code: 'JESS0000',
+          phase: 'parse',
+          message: error?.message || 'Unknown parsing error',
+          reason: error?.message || 'An unexpected error occurred during parsing.',
+          fix: 'Check the file syntax and ensure it is valid.',
+          file: context.file,
+          filePath: filePath,
+          line: 1,
+          column: 1,
+          lines: extractRelevantLines(source, 1)
+        });
+      }
+      // Return with errors/warnings only (no tree)
+      return { errors, warnings };
     }
 
-    if (!errors.length && !lexerResult.errors.length) {
+    // Only register functions if parsing succeeded without errors
+    if (tree && errors.length === 0) {
       this._registerFunctions(tree);
     }
-    return { tree, errors, lexerResult };
+
+    return {
+      tree,
+      errors,
+      warnings
+    };
   }
 }
 
