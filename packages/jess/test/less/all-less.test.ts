@@ -5,6 +5,7 @@ import { readFileSync } from 'fs';
 import { createRequire } from 'module';
 import { invalidLess } from '@jesscss/shared';
 import { Compiler } from '../../src';
+import { outputDiagnostics } from '../../src/diagnostics';
 import { getTestCases } from '../test-utils';
 import lessPlugin from '@jesscss/plugin-less';
 import { type Rules } from '@jesscss/core';
@@ -78,10 +79,28 @@ describe('Can render Less files to CSS', () => {
             try {
               ({ node } = await context.getTree(lessPath));
             } catch (error: any) {
+              // Output diagnostics if available
+              if (context.errors.length > 0 || context.warnings.length > 0) {
+                outputDiagnostics(context.errors, context.warnings, {
+                  suppressWarnings: false,
+                  breakOnError: false
+                });
+              }
               throw error;
             }
-            const evald = await node.eval(context);
-            expect(evald.toString({ context })).toBe(expectedCss);
+            try {
+              const evald = await node.eval(context);
+              expect(evald.toString({ context })).toBe(expectedCss);
+            } catch (error: any) {
+              // Output diagnostics if available
+              if (context.errors.length > 0 || context.warnings.length > 0) {
+                outputDiagnostics(context.errors, context.warnings, {
+                  suppressWarnings: false,
+                  breakOnError: false
+                });
+              }
+              throw error;
+            }
           }, 5000); // 5 second timeout to catch infinite loops
         });
       } catch (error: any) {

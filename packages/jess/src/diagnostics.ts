@@ -37,6 +37,7 @@ export function outputDiagnostics(
 
 /**
  * Outputs a single diagnostic using linecraft's CodeDebug component.
+ * The output will persist in the terminal after the region is destroyed.
  */
 function outputDiagnostic(
   diagnostic: ErrorDiagnostic | WarningDiagnostic,
@@ -44,6 +45,8 @@ function outputDiagnostic(
   stream: NodeJS.WriteStream = process.stdout
 ): void {
   const { code, phase, message, reason, fix, filePath, line, column, lines, note } = diagnostic;
+  const endLine = 'endLine' in diagnostic ? diagnostic.endLine : undefined;
+  const endColumn = 'endColumn' in diagnostic ? diagnostic.endColumn : undefined;
 
   // Get file paths
   const fullPath = filePath ? resolve(filePath) : '';
@@ -60,8 +63,9 @@ function outputDiagnostic(
     ? lines?.[errorLineNum + 1] ?? null
     : null;
 
-  // Build message with code, phase, reason, fix, and note
-  const messageParts = [
+  // Build message - use single line format to avoid wrapping issues in CodeDebug
+  // CodeDebug handles message display, so we format it as a single block
+  const messageLines = [
     `${code} [${phase}]`,
     message,
     '',
@@ -69,15 +73,17 @@ function outputDiagnostic(
     `Fix: ${fix}`
   ];
   if (note) {
-    messageParts.push(`Note: ${note}`);
+    messageLines.push(`Note: ${note}`);
   }
-  const fullMessage = messageParts.join('\n');
+  const fullMessage = messageLines.join('\n');
 
   // Create CodeDebug component and output it to the specified stream
   const region = Region({ stdout: stream });
   region.set(CodeDebug({
     startLine: errorLineNum,
     startColumn: column,
+    endLine: endLine,
+    endColumn: endColumn,
     errorLine: errorLineContent,
     lineBefore: lineBefore,
     lineAfter: lineAfter,
@@ -86,4 +92,9 @@ function outputDiagnostic(
     fullPath: fullPath,
     type: type
   }));
+  
+  // Flush to ensure rendering, then destroy without clearing to persist output
+  // This will write the content to the terminal permanently
+  region.flush();
+  region.destroy(false); // false = don't clear, persist the output
 }

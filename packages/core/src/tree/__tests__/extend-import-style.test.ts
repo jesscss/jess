@@ -206,14 +206,21 @@ describe('Style import extend behavior', () => {
         })
       ]);
 
-      await expect(async () => {
-        await node.eval(context);
-      }).rejects.toThrow('Extend target not accessible');
+      // Should not throw - extendNotAccessible is now a warning
+      const evald = await node.eval(context);
+      expect(evald).toBeDefined();
+      
+      // Should have collected a warning
+      expect(context.warnings.length).toBeGreaterThan(0);
+      const warning = context.warnings.find(w => w.code === 'JESS3203');
+      expect(warning).toBeDefined();
+      expect(warning?.message).toContain('Extend target');
+      expect(warning?.message).toContain('not accessible');
     });
   });
 
   describe('non-mutable import extend behavior', () => {
-    it('import with mutable: false cannot be extended', async () => {
+    it('import with mutable: false cannot be extended - collects extendNotAccessible warning', async () => {
       const protectedPath = resolve(process.cwd(), 'protected.jess');
       context.sourceTrees.set(protectedPath, rules([
         ruleset({
@@ -242,12 +249,19 @@ describe('Style import extend behavior', () => {
         })
       ]);
 
-      await expect(async () => {
-        await node.eval(context);
-      }).rejects.toThrow('Extend target not accessible');
+      // Should not throw - extendNotAccessible is now a warning
+      const evald = await node.eval(context);
+      expect(evald).toBeDefined();
+      
+      // Should have collected a warning
+      expect(context.warnings.length).toBeGreaterThan(0);
+      const warning = context.warnings.find(w => w.code === 'JESS3203');
+      expect(warning).toBeDefined();
+      expect(warning?.message).toContain('Extend target');
+      expect(warning?.message).toContain('not accessible');
     });
 
-    it('compose without mutable cannot be extended (default)', async () => {
+    it('compose without mutable cannot be extended (default) - collects extendNotAccessible warning', async () => {
       const protectedPath = resolve(process.cwd(), 'protected.jess');
       context.sourceTrees.set(protectedPath, rules([
         ruleset({
@@ -276,9 +290,16 @@ describe('Style import extend behavior', () => {
         })
       ]);
 
-      await expect(async () => {
-        await node.eval(context);
-      }).rejects.toThrow('Extend target not accessible');
+      // Should not throw - extendNotAccessible is now a warning
+      const evald = await node.eval(context);
+      expect(evald).toBeDefined();
+      
+      // Should have collected a warning
+      expect(context.warnings.length).toBeGreaterThan(0);
+      const warning = context.warnings.find(w => w.code === 'JESS3203');
+      expect(warning).toBeDefined();
+      expect(warning?.message).toContain('Extend target');
+      expect(warning?.message).toContain('not accessible');
     });
   });
 

@@ -384,7 +384,8 @@ export class CssActionsParser extends AdvancedActionsParser {
   }
 
   protected processValueToken(
-    token: IToken
+    token: IToken,
+    ctx?: RuleContext
   ): Node {
     let tokValue = token.image;
     let tokType = token.tokenType;

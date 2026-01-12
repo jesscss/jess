@@ -274,7 +274,11 @@ export function declarationList(this: P, T: TokenMap) {
   let ruleAlt = (ctx: RuleContext = {}) => {
     let isVariable = isVariableLike.call(this, T);
     return [
-      { ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] }) },
+      {
+        ALT: () => {
+          return $.SUBRULE($.declaration, { ARGS: [ctx] });
+        }
+      },
       { ALT: () => $.SUBRULE($.ampersandExtend, { ARGS: [ctx] }) },
       { ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] }) },
       {
@@ -349,7 +353,9 @@ export function declaration(this: P, T: TokenMap) {
         let name: IToken;
         $.OR2([
           {
-            ALT: () => name = $.CONSUME(T.Ident)
+            ALT: () => {
+              name = $.CONSUME(T.Ident);
+            }
           },
           {
             GATE: () => $.legacyMode,
@@ -389,7 +395,7 @@ export function declaration(this: P, T: TokenMap) {
         let assign = $.CONSUME2(T.Assign);
         $.startRule();
         $.MANY(() => {
-          let val = $.SUBRULE($.customValue, { ARGS: [ctx] });
+          let val = $.SUBRULE($.customValue, { ARGS: [{ ...ctx, inCustomPropertyValue: true }] });
           if (!RECORDING_PHASE) {
             nodes!.push(val);
           }
@@ -410,7 +416,9 @@ export function declaration(this: P, T: TokenMap) {
     }
   ];
 
-  return (ctx: RuleContext = {}) => cssDeclaration.call(this, T, ruleAlt)(ctx);
+  return (ctx: RuleContext = {}) => {
+    return cssDeclaration.call(this, T, ruleAlt)(ctx);
+  };
 }
 
 export function mediaInParens(this: P, T: TokenMap) {
@@ -782,7 +790,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
       {
         GATE: () => isPossibleMixinDefinition || isPossibleMixinCall,
         ALT: () => {
-          args = $.SUBRULE($.mixinArgs);
+          args = $.SUBRULE($.mixinArgs, { ARGS: [ctx] });
           let next = $.LA(1).tokenType;
           if (next === T.LCurly || next === T.When) {
             isPossibleMixinCall = false;
@@ -821,6 +829,8 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                   // Convert Any nodes to Reference nodes for mixin call arguments
                   convertArgsForCall(args);
                 }
+                let hasParens = false;
+                let parensToken: IToken | undefined;
                 let result = $.OPTION3({
                   /** in Less legacy mode, mixin calls can happen without a space. */
                   GATE: () => {
@@ -828,8 +838,12 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                     let next = $.LA(1).tokenType;
                     return (noSpace && next === T.LSquare) || ((noSpace || $.looseMode) && next === T.LParen);
                   },
-                  DEF: () => $.SUBRULE($.lookupOrCall, { ARGS: [{ ...ctx, node: createMixinCall(location) }] })
+                  DEF: () => {
+                    hasParens = true;
+                    return $.SUBRULE($.lookupOrCall, { ARGS: [{ ...ctx, node: createMixinCall(location) }] });
+                  }
                 });
+                // Note: Mixin calls without parentheses are handled in the semicolon-terminated ALT below
                 return result ?? createMixinCall(location!);
               }
             }
@@ -876,6 +890,12 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
           $.CONSUME(T.Semi);
           if (!RECORDING_PHASE) {
             $.endRule();
+            // Mixin call without parentheses - deprecated
+            $.warnDeprecation(
+              'Calling a mixin without parentheses is deprecated',
+              undefined,
+              'mixin-call-no-parens'
+            );
           }
         }
       }
@@ -1771,6 +1791,14 @@ export function expressionProduct(this: P, T: TokenMap) {
 
     $.MANY(() => {
       let op = $.OR(opAlt);
+      // Check for deprecated ./ operator
+      if (!RECORDING_PHASE && op.image === './') {
+        $.warnDeprecation(
+          './ operator is deprecated',
+          op,
+          'dot-slash-operator'
+        );
+      }
       let right: Node = $.SUBRULE2($.expressionValue, { ARGS: [ctx] });
 
       if (!RECORDING_PHASE) {
@@ -1994,6 +2022,14 @@ export function varReference(this: P, T: TokenMap) {
         ALT: () => {
           let token = $.CONSUME(T.PropertyReference);
           if (!RECORDING_PHASE) {
+            // Warn about $ident in custom property values - it's treated as literal text, not a property reference
+            if (ctx.inCustomPropertyValue) {
+              $.warnDeprecation(
+                '$[ident] in custom property values is treated as literal text, not a property reference. Use ${[ident]} if you want it to be evaluated.',
+                token,
+                'property-in-unknown-value'
+              );
+            }
             return new Reference(token.image.slice(1), { type: 'property' }, $.getLocationInfo(token), this.context);
           }
         }
@@ -2016,6 +2052,14 @@ export function varReference(this: P, T: TokenMap) {
         ALT: () => {
           let token = $.SUBRULE($.varName, { ARGS: [ctx] });
           if (!RECORDING_PHASE) {
+            // Warn about @ident in custom property values - it's treated as literal text, not a variable reference
+            if (ctx.inCustomPropertyValue) {
+              $.warnDeprecation(
+                '@[ident] in custom property values is treated as literal text, not a variable reference. Use @{[ident]} if you want it to be evaluated.',
+                token,
+                'variable-in-unknown-value'
+              );
+            }
             return new Reference(token.image.slice(1), { type: 'variable' }, $.getLocationInfo(token), this.context);
           }
         }
@@ -2941,10 +2985,30 @@ export function mixinArgs(this: P, T: TokenMap) {
 
   return (ctx: RuleContext = {}) => {
     let args: List | undefined;
+    // Check for whitespace before the opening paren (before consuming)
+    const hasWhitespace = !$.RECORDING_PHASE && !$.noSep();
+    const openingParenToken = hasWhitespace ? $.LA(1) : undefined;
+
     $.CONSUME(T.LParen);
     // Clear ctx.node when parsing arguments - arguments should start fresh, not inherit the parent node
     $.OPTION(() => args = $.SUBRULE($.mixinArgList, { ARGS: [{ ...ctx, node: undefined }] }));
     $.CONSUME(T.RParen);
+
+    // Check for whitespace warning AFTER consuming closing paren
+    // Now we can check what comes next to determine if it's actually a definition
+    if (!$.RECORDING_PHASE && hasWhitespace && openingParenToken) {
+      const nextAfterParens = $.LA(1).tokenType;
+      const isActuallyDefinition = nextAfterParens === T.LCurly || nextAfterParens === T.When;
+      // Only warn if it's NOT a definition (i.e., it's a mixin call)
+      if (!isActuallyDefinition) {
+        $.warnDeprecation(
+          'Whitespace between a mixin name and parentheses for a mixin call is deprecated',
+          openingParenToken,
+          'mixin-call-whitespace'
+        );
+      }
+    }
+
     return args;
   };
 }
@@ -3072,7 +3136,6 @@ export function lookupOrCall(this: P, T: TokenMap) {
 //           }
 //         }
 //         let result = getInterpolatedOrString(tokenStr, $.getLocationInfo(keyToken), this.context);
-//         console.log('DEBUG accessors - tokenStr:', tokenStr, 'result:', result, 'type:', type, 'nodeContext:', nodeContext);
 //         returnNode = new Reference({ target: nodeContext, key: result }, { type }, location, this.context);
 //       } else {
 //         key = -1;

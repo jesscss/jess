@@ -1,5 +1,7 @@
 import type { CssActionsParser, TokenMap, RuleContext } from './cssActionsParser';
 import { EMPTY_ALT, type IToken, type IOrAlt, type OrMethodOpts, tokenMatcher } from 'chevrotain';
+// @ts-expect-error - debug-log is in __tests__
+import { syncLog } from '../../../core/src/tree/util/__tests__/debug-log';
 import {
   type TreeContext,
   Node,
@@ -828,7 +830,7 @@ export function declaration(this: C, T: TokenMap, alt?: AltContext) {
         }
         $.startRule();
         $.MANY(() => {
-          let val = $.SUBRULE($.customValue, { ARGS: [ctx] });
+          let val = $.SUBRULE($.customValue, { ARGS: [{ ...ctx, inCustomPropertyValue: true }] });
           if (!RECORDING_PHASE) {
             nodes!.push(val);
           }
@@ -883,8 +885,16 @@ export function customValue(this: C, T: TokenMap, alt?: AltContext) {
   // Order matters: prefer nested blocks first, then strings, then raw tokens.
   // Avoid knownFunctions here to remove ambiguity with custom blocks.
   alt ??= (ctx: RuleContext = {}) => [
-    { ALT: () => $.SUBRULE($.customBlock, { ARGS: [ctx] }) },
-    { ALT: () => $.SUBRULE($.string, { ARGS: [ctx] }) },
+    {
+      ALT: () => {
+        return $.SUBRULE($.customBlock, { ARGS: [ctx] });
+      }
+    },
+    {
+      ALT: () => {
+        return $.SUBRULE($.string, { ARGS: [ctx] });
+      }
+    },
     {
       ALT: () => {
         const token = $.OR3([
@@ -897,13 +907,15 @@ export function customValue(this: C, T: TokenMap, alt?: AltContext) {
           { ALT: () => $.CONSUME(T.Unknown) }
         ]);
         if (!$.RECORDING_PHASE) {
-          return $.wrap($.processValueToken(token));
+          return $.wrap($.processValueToken(token, ctx));
         }
       }
     }
   ];
 
-  return (ctx: RuleContext = {}) => $.OR(alt(ctx));
+  return (ctx: RuleContext = {}) => {
+    return $.OR(alt(ctx));
+  };
 }
 
 export function innerCustomValue(this: C, T: TokenMap, alt?: AltContext) {

@@ -4,6 +4,7 @@ import chalk from 'chalk';
 import { type IRecognitionException, type ILexingError, type ILexingResult } from 'chevrotain';
 import type { TreeContext } from './context';
 import type { LocationInfo } from './tree/node';
+import type { Deprecation } from './deprecation';
 
 type JessFile = TreeContext['file'];
 
@@ -68,11 +69,13 @@ export interface WarningDiagnostic {
     name: string;
     path: string;
     fullPath: string;
-    source?: string;
+    // Note: source is NOT included - use 'lines' property for code frame display
   };
   filePath?: string;
   line: number;
   column: number;
+  endLine?: number;
+  endColumn?: number;
   /**
    * Relevant source lines for code frame display.
    * Keys are line numbers (1-indexed), values are the line content.
@@ -187,7 +190,7 @@ const TEMPLATES = {
     fix: 'Ensure "${target}" exists and is accessible from the current extend root.'
   },
   JESS3203: {
-    summary: 'Extend target not accessible',
+    summary: 'Extend target "${target}" not accessible',
     reason: '"${target}" exists but is not accessible from the current extend root (blocked by at-rule or compose boundary).',
     fix: 'Move the extend or the target to a shared extend root, or use a different approach.'
   },
@@ -387,6 +390,7 @@ export class JessError extends Error {
   line = 1;
   column = 1;
   source?: string;
+  node?: LocNode; // Store node to extract endLine/endColumn
 
   reason = '';
   fix = '';
@@ -422,6 +426,7 @@ export class JessError extends Error {
     this.line = line;
     this.column = column;
     this.source = source;
+    this.node = init.node; // Store node for endLine/endColumn extraction
 
     this.reason = reason;
     this.fix = fix;
@@ -596,7 +601,7 @@ export const ERR = {
  * Call `emit(WARN.*(...))` to log without throwing.
  */
 export const WARN = {
-  deprecated(args: Common & { meta: { what: string; use: string } }) {
+  deprecated(args: Common & { meta: { what: string; use: string; deprecation?: Deprecation } }) {
     return makeJessError({ severity: 'warn', code: 'JESS4101', phase: 'eval', ...args });
   },
 
@@ -610,6 +615,10 @@ export const WARN = {
 
   extendNotFound(args: Common & { meta: { target: string } }) {
     return makeJessError({ severity: 'warn', code: 'JESS3202', phase: 'extend', ...args });
+  },
+
+  extendNotAccessible(args: Common & { meta: { target: string } }) {
+    return makeJessError({ severity: 'warn', code: 'JESS3203', phase: 'extend', ...args });
   }
 };
 
@@ -691,6 +700,26 @@ export function toDiagnostic(error: JessError): ErrorDiagnostic | WarningDiagnos
   // Extract relevant lines from source (error line + context)
   const lines = extractRelevantLines(error.source ?? error.fileObj?.source, error.line);
 
+  // Extract endLine/endColumn from node location if available
+  // Location format: [startOffset, startLine, startColumn, endOffset, endLine, endColumn]
+  const nodeLocation = error.node?.location;
+  const endLine = nodeLocation && nodeLocation.length >= 6
+    ? nodeLocation[4]
+    : undefined;
+  const endColumn = nodeLocation && nodeLocation.length >= 6
+    ? nodeLocation[5]
+    : undefined;
+
+  // Create file object without source (we only use 'lines' for code frames)
+  const file = error.fileObj
+    ? {
+        name: error.fileObj.name,
+        path: error.fileObj.path,
+        fullPath: error.fileObj.fullPath
+        // Explicitly exclude source - we use 'lines' property instead
+      }
+    : undefined;
+
   const base = {
     code: error.code,
     phase: error.phase,
@@ -698,10 +727,12 @@ export function toDiagnostic(error: JessError): ErrorDiagnostic | WarningDiagnos
     reason: error.reason,
     fix: error.fix,
     note: error.note,
-    file: error.fileObj,
+    file,
     filePath: error.filePath,
     line: error.line,
     column: error.column,
+    endLine,
+    endColumn,
     lines
   };
 

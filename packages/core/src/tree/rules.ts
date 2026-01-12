@@ -1154,14 +1154,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                   }
                 }
 
-                // Throw appropriate error based on whether target exists
+                // Collect warnings for Less compatibility (both cases)
                 if (targetExistsElsewhere) {
-                  // Target exists but is not accessible (blocked by boundary)
-                  throw ERR.extendNotAccessible({
+                  // Target exists but is not accessible (blocked by boundary) - warning for Less compatibility
+                  const warning = WARN.extendNotAccessible({
                     ctx: context.treeContext?.file ? { file: context.treeContext.file } : undefined,
                     node: extendNode.location && extendNode.location.length === 6 ? { location: extendNode.location } : undefined,
                     meta: { target: singleTarget.valueOf() }
                   });
+                  // Convert to warning diagnostic and add to context
+                  const warningDiag = toDiagnostic(warning);
+                  if (!('errors' in warningDiag)) {
+                    context.warnings.push(warningDiag);
+                  }
                 } else {
                   // Target doesn't exist at all - collect warning for Less compatibility
                   const warning = WARN.extendNotFound({

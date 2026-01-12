@@ -1,4 +1,5 @@
 import type { TokenVocabulary, TokenType, IToken } from 'chevrotain';
+import { tokenMatcher } from 'chevrotain';
 // import { LLStarLookaheadStrategy } from 'chevrotain-allstar'
 import {
   type Rule,
@@ -93,6 +94,8 @@ export type RuleContext = CssRuleContext & {
   extendNodes?: Extend[];
   /** Inside an extend production - prevents 'all' from being consumed as selector */
   inExtend?: boolean;
+  /** Inside a custom property value - used for deprecation warnings */
+  inCustomPropertyValue?: boolean;
 };
 /**
  * Unlike the historical Less parser, this parser
@@ -102,6 +105,8 @@ export class LessActionsParser extends CssActionsParser {
   declare T: CssTokenMap;
   looseMode: boolean;
   leakyRules: boolean;
+  /** Warnings collected during parsing */
+  warnings: Array<{ message: string; token?: IToken; deprecation?: string }> = [];
 
   expressionSum!: Rule;
   expressionProduct!: Rule;
@@ -160,6 +165,7 @@ export class LessActionsParser extends CssActionsParser {
 
     this.looseMode = looseMode;
     this.leakyRules = leakyRules;
+    this.warnings = [];
 
     const $ = this;
 
@@ -179,11 +185,34 @@ export class LessActionsParser extends CssActionsParser {
     }
   }
 
-  protected processValueToken(token: IToken) {
+  protected processValueToken(token: IToken, ctx?: RuleContext) {
     let tokenType = token.tokenType;
     const TT = this.T as unknown as Record<string, TokenType>;
-    if (tokenType === TT['AtKeyword']) {
+    const tokenName = tokenType.name;
+
+    // Check if this is an AtKeyword token (can be consumed via T.AtName category or T.Value category)
+    // Also check tokenMatcher in case the token type name check doesn't work
+    if (tokenType.name === 'AtKeyword' || tokenMatcher(token, this.T.AtKeyword)) {
+      if (!this.RECORDING_PHASE && ctx?.inCustomPropertyValue) {
+        // Warn about @ident in custom property values - it's treated as literal text, not a variable reference
+        this.warnDeprecation(
+          '@[ident] in custom property values is treated as literal text, not a variable reference. Use @{[ident]} if you want it to be evaluated.',
+          token,
+          'variable-in-unknown-value'
+        );
+      }
       return new Reference(token.image.slice(1), { type: 'variable' }, this.getLocationInfo(token), this.context);
+    } else if (tokenType.name === 'PropertyReference') {
+      if (!this.RECORDING_PHASE) {
+        if (ctx?.inCustomPropertyValue) {
+          this.warnDeprecation(
+            '$[ident] in custom property values is treated as literal text, not a property reference. Use ${[ident]} if you want it to be evaluated.',
+            token,
+            'property-in-unknown-value'
+          );
+        }
+      }
+      return super.processValueToken(token, ctx);
     } else if (tokenType === TT['DefaultGuardFunc']) {
       return new DefaultGuard(token.image, undefined, this.getLocationInfo(token), this.context);
     } else if (tokenType === TT['JavaScript']) {
@@ -202,6 +231,16 @@ export class LessActionsParser extends CssActionsParser {
         return new Bool(image === 'true', undefined, this.getLocationInfo(token), this.context);
       }
     }
-    return super.processValueToken(token);
+    return super.processValueToken(token, ctx);
+  }
+
+  /**
+   * Emits a deprecation warning during parsing.
+   * Only collects warnings during the non-recording phase.
+   */
+  protected warnDeprecation(message: string, token?: IToken, deprecationId?: string): void {
+    if (!this.RECORDING_PHASE) {
+      this.warnings.push({ message, token, deprecation: deprecationId });
+    }
   }
 }

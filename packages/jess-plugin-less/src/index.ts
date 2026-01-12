@@ -109,6 +109,26 @@ export class LessPlugin extends AbstractPlugin {
       const parseResult = this.parser.parse(source, 'stylesheet', { context });
       tree = parseResult.tree;
 
+      // Convert parser deprecation warnings to diagnostics
+      if ('warnings' in parseResult && parseResult.warnings) {
+        for (const warning of parseResult.warnings) {
+          const line = warning.token?.startLine ?? 1;
+          const column = warning.token?.startColumn ?? 1;
+          warnings.push({
+            code: 'JESS4101',
+            phase: 'parse',
+            message: warning.message,
+            reason: warning.message,
+            fix: 'Update your code to use the recommended syntax.',
+            file: context.file,
+            filePath: filePath,
+            line,
+            column,
+            lines: extractRelevantLines(source, line)
+          });
+        }
+      }
+
       // Convert all parser/lexer errors to normalized diagnostics
       if (parseResult.errors.length || parseResult.lexerResult?.errors?.length) {
         // Convert each parser error to a diagnostic

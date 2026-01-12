@@ -60,7 +60,8 @@ export class CssParser {
     return {
       tree,
       lexerResult,
-      errors: parser.errors
+      errors: parser.errors,
+      warnings: [] // CSS parser doesn't produce deprecation warnings
     };
   }
 }

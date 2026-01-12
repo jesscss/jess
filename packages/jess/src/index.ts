@@ -8,7 +8,8 @@ import {
   type WarningDiagnostic,
   type JessError,
   toDiagnostic,
-  logger
+  logger,
+  type Deprecation
 } from '@jesscss/core';
 import { getOptions, type StylesConfig } from 'styles-config';
 import type { PluginInterface } from '@jesscss/core';
@@ -22,6 +23,10 @@ export type ConfigOptions = StylesConfig & {
   suppressWarnings?: boolean;
   /** Break on first error (stop processing after first error). Default: true */
   breakOnError?: boolean;
+  /** Deprecation warnings of these types will cause an error to be thrown */
+  fatalDeprecations?: Iterable<Deprecation>;
+  /** Whether to limit repetition of deprecation warnings (max 5). Default: true */
+  limitDeprecationRepetition?: boolean;
 };
 
 const { isArray } = Array;
@@ -209,6 +214,112 @@ export class Compiler {
     } catch (err: any) {
       logger.error(err.toString());
       throw err;
+    }
+  }
+
+  /**
+   * Renders to CSS and returns a structured result object containing CSS and metadata.
+   * Can accept either a file path or string content.
+   * Similar to dart-sass's compileToResult() pattern, but uses "render" naming to match less.js.
+   *
+   * @param input - File path (string) or source content (object with source string)
+   * @param options - Render options
+   * @returns RenderResult with css, errors, warnings, and loadedUrls
+   */
+  async renderToResult(
+    input: string | { source: string; filePath?: string; language?: string; extension?: string },
+    options?: Partial<ConfigOptions> & {
+      filePath?: string;
+      language?: string;
+      extension?: string;
+    }
+  ): Promise<{
+    css: string;
+    errors: ErrorDiagnostic[];
+    warnings: WarningDiagnostic[];
+    loadedUrls: string[];
+  }> {
+    // Determine if input is a file path or source content
+    const isSourceContent = typeof input === 'object' && 'source' in input;
+    const source = isSourceContent ? input.source : undefined;
+    const filePath = isSourceContent ? input.filePath : input;
+    const language = isSourceContent ? input.language : options?.language;
+    const extension = isSourceContent ? input.extension : options?.extension;
+    const renderOptions = isSourceContent ? options : options;
+
+    const context = this.createContext(filePath, renderOptions);
+
+    try {
+      let evald;
+      if (isSourceContent && source) {
+        const { node } = await context.parseString(source, {
+          filePath,
+          type: language,
+          extension
+        });
+        evald = await node.eval(context);
+      } else {
+        const { node } = await context.getTree(filePath!);
+        evald = await node.eval(context);
+      }
+
+      const printOptions: PrintOptions = {
+        collapseNesting: context.opts.collapseNesting,
+        context
+      };
+
+      const css = evald.toString(printOptions);
+
+      // Collect loaded URLs from context (if available)
+      const loadedUrls: string[] = [];
+      // TODO: Extract loaded URLs from context when that information is available
+
+      return {
+        css,
+        errors: [...context.errors],
+        warnings: [...context.warnings],
+        loadedUrls
+      };
+    } catch (err: any) {
+      // Convert error to diagnostic
+      const errors: ErrorDiagnostic[] = [...context.errors];
+      const warnings: WarningDiagnostic[] = [...context.warnings];
+
+      if (err && typeof err === 'object' && 'severity' in err) {
+        const diagnostic = toDiagnostic(err as JessError);
+        if ('errors' in diagnostic) {
+          errors.push(diagnostic);
+        } else {
+          warnings.push(diagnostic);
+        }
+      } else {
+        errors.push({
+          code: 'JESS0000',
+          phase: 'eval',
+          message: err?.message || 'Unknown error',
+          reason: err?.message || 'An unexpected error occurred during compilation.',
+          fix: 'Check the file and ensure it is valid.',
+          filePath: filePath ?? undefined,
+          line: 1,
+          column: 1
+        });
+      }
+
+      // Output diagnostics if configured
+      if (renderOptions?.suppressWarnings !== true) {
+        outputDiagnostics(errors, warnings, {
+          suppressWarnings: renderOptions?.suppressWarnings ?? false,
+          breakOnError: renderOptions?.breakOnError ?? true
+        });
+      }
+
+      const loadedUrls: string[] = [];
+      return {
+        css: '',
+        errors,
+        warnings,
+        loadedUrls
+      };
     }
   }
 

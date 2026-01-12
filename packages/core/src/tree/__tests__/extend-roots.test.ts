@@ -258,7 +258,7 @@ describe('Extend Roots Registry', () => {
     /**
      * Test: Protected compose blocks all access, including to descendants
      */
-    it('compose is protected by default (not mutable) - extend throws error', async () => {
+    it('compose is protected by default (not mutable) - collects extendNotAccessible warning', async () => {
       const importedPath = resolve(process.cwd(), 'imported.jess');
       context.sourceTrees.set(importedPath, rules([
         ruleset({
@@ -287,15 +287,22 @@ describe('Extend Roots Registry', () => {
         })
       ]);
 
-      await expect(async () => {
-        await node.eval(context);
-      }).rejects.toThrow();
+      // Should not throw - extendNotAccessible is now a warning
+      const evald = await node.eval(context);
+      expect(evald).toBeDefined();
+      
+      // Should have collected a warning
+      expect(context.warnings.length).toBeGreaterThan(0);
+      const warning = context.warnings.find(w => w.code === 'JESS3203');
+      expect(warning).toBeDefined();
+      expect(warning?.message).toContain('Extend target');
+      expect(warning?.message).toContain('not accessible');
     });
 
     /**
      * Test: Protected compose blocks access even if child is non-protected
      */
-    it('nested compose is also protected even if inner has mutable children - extend throws error', async () => {
+    it('nested compose is also protected even if inner has mutable children - collects extendNotAccessible warning', async () => {
       const imported1Path = resolve(process.cwd(), 'imported1.jess');
       context.sourceTrees.set(imported1Path, rules([
         ruleset({
@@ -334,9 +341,16 @@ describe('Extend Roots Registry', () => {
         })
       ]);
 
-      await expect(async () => {
-        await node.eval(context);
-      }).rejects.toThrow();
+      // Should not throw - extendNotAccessible is now a warning
+      const evald = await node.eval(context);
+      expect(evald).toBeDefined();
+      
+      // Should have collected a warning
+      expect(context.warnings.length).toBeGreaterThan(0);
+      const warning = context.warnings.find(w => w.code === 'JESS3203');
+      expect(warning).toBeDefined();
+      expect(warning?.message).toContain('Extend target');
+      expect(warning?.message).toContain('not accessible');
     });
 
     /**
@@ -444,9 +458,10 @@ describe('Extend Roots Registry', () => {
     });
 
     /**
-     * Test: Extend throws extendNotAccessible error when target exists but is blocked by compose boundary
+     * Test: Extend collects extendNotAccessible warning when target exists but is blocked by compose boundary
+     * Changed from error to warning for Less compatibility
      */
-    it('extend throws extendNotAccessible error when target exists but is blocked by compose boundary', async () => {
+    it('extend collects extendNotAccessible warning when target exists but is blocked by compose boundary', async () => {
       const importedPath = resolve(process.cwd(), 'imported.jess');
       context.sourceTrees.set(importedPath, rules([
         ruleset({
@@ -475,9 +490,16 @@ describe('Extend Roots Registry', () => {
         })
       ]);
 
-      await expect(async () => {
-        await node.eval(context);
-      }).rejects.toThrow(/Extend target not accessible/);
+      // Should not throw - extendNotAccessible is now a warning
+      const evald = await node.eval(context);
+      expect(evald).toBeDefined();
+      
+      // Should have collected a warning
+      expect(context.warnings.length).toBeGreaterThan(0);
+      const warning = context.warnings.find(w => w.code === 'JESS3203');
+      expect(warning).toBeDefined();
+      expect(warning?.message).toContain('Extend target');
+      expect(warning?.message).toContain('not accessible');
     });
   });
 
@@ -485,7 +507,7 @@ describe('Extend Roots Registry', () => {
     /**
      * Test: Extends FROM inside @media cannot extend outside
      */
-    it('extends from inside @media cannot extend outside - throws extendNotAccessible error', async () => {
+    it('extends from inside @media cannot extend outside - collects extendNotAccessible warning', async () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
@@ -510,15 +532,22 @@ describe('Extend Roots Registry', () => {
         })
       ]);
 
-      await expect(async () => {
-        await node.eval(context);
-      }).rejects.toThrow(/Extend target not accessible/);
+      // Should not throw - extendNotAccessible is now a warning
+      const evald = await node.eval(context);
+      expect(evald).toBeDefined();
+      
+      // Should have collected a warning
+      expect(context.warnings.length).toBeGreaterThan(0);
+      const warning = context.warnings.find(w => w.code === 'JESS3203');
+      expect(warning).toBeDefined();
+      expect(warning?.message).toContain('Extend target');
+      expect(warning?.message).toContain('not accessible');
     });
 
     /**
      * Test: Extends FROM inside @container cannot extend outside
      */
-    it('extends from inside @container cannot extend outside - throws extendNotAccessible error', async () => {
+    it('extends from inside @container cannot extend outside - collects extendNotAccessible warning', async () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
@@ -543,15 +572,22 @@ describe('Extend Roots Registry', () => {
         })
       ]);
 
-      await expect(async () => {
-        await node.eval(context);
-      }).rejects.toThrow(/Extend target not accessible/);
+      // Should not throw - extendNotAccessible is now a warning
+      const evald = await node.eval(context);
+      expect(evald).toBeDefined();
+      
+      // Should have collected a warning
+      expect(context.warnings.length).toBeGreaterThan(0);
+      const warning = context.warnings.find(w => w.code === 'JESS3203');
+      expect(warning).toBeDefined();
+      expect(warning?.message).toContain('Extend target');
+      expect(warning?.message).toContain('not accessible');
     });
 
     /**
      * Test: Extends FROM inside @supports cannot extend outside
      */
-    it('extends from inside @supports cannot extend outside - throws extendNotAccessible error', async () => {
+    it('extends from inside @supports cannot extend outside - collects extendNotAccessible warning', async () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
@@ -576,9 +612,16 @@ describe('Extend Roots Registry', () => {
         })
       ]);
 
-      await expect(async () => {
-        await node.eval(context);
-      }).rejects.toThrow(/Extend target not accessible/);
+      // Should not throw - extendNotAccessible is now a warning
+      const evald = await node.eval(context);
+      expect(evald).toBeDefined();
+      
+      // Should have collected a warning
+      expect(context.warnings.length).toBeGreaterThan(0);
+      const warning = context.warnings.find(w => w.code === 'JESS3203');
+      expect(warning).toBeDefined();
+      expect(warning?.message).toContain('Extend target');
+      expect(warning?.message).toContain('not accessible');
     });
 
     /**
@@ -770,10 +813,14 @@ describe('Extend Roots Registry', () => {
         })
       ]);
 
-      // Anonymous layers do not share extend roots, so extend should fail
-      await expect(async () => {
-        await node.eval(context);
-      }).rejects.toThrow();
+      // Anonymous layers do not share extend roots, so extend should collect warning
+      const evald = await node.eval(context);
+      expect(evald).toBeDefined();
+      
+      // Should have collected a warning (either extendNotFound or extendNotAccessible)
+      expect(context.warnings.length).toBeGreaterThan(0);
+      const warning = context.warnings.find(w => w.code === 'JESS3202' || w.code === 'JESS3203');
+      expect(warning).toBeDefined();
     });
 
     /**

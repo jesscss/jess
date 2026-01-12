@@ -49,9 +49,14 @@ export class Parser {
     const parser = this.parser;
     const lexerResult = this.lexer.tokenize(text);
     const lexedTokens: IToken[] = lexerResult.tokens;
+    // Reset warnings BEFORE setting input, in case input setter does something that affects warnings
+    parser.warnings = [];
     parser.input = lexedTokens;
     const tree = parser[rule](...args);
+    
+    // Capture warnings immediately after parsing to ensure they're not lost
+    const warnings = [...parser.warnings];
 
-    return { tree, lexerResult, errors: parser.errors };
+    return { tree, lexerResult, errors: parser.errors, warnings };
   }
 }
