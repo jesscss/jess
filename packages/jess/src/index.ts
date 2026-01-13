@@ -23,6 +23,8 @@ export type ConfigOptions = StylesConfig & {
   suppressWarnings?: boolean;
   /** Break on first error (stop processing after first error). Default: true */
   breakOnError?: boolean;
+  /** Show detailed reason and fix in diagnostics. Default: false */
+  verbose?: boolean;
   /** Deprecation warnings of these types will cause an error to be thrown */
   fatalDeprecations?: Iterable<Deprecation>;
   /** Whether to limit repetition of deprecation warnings (max 5). Default: true */
@@ -138,7 +140,8 @@ export class Compiler {
       if (context.errors.length > 0 || context.warnings.length > 0) {
         outputDiagnostics(context.errors, context.warnings, {
           suppressWarnings: options?.suppressWarnings ?? false,
-          breakOnError: options?.breakOnError ?? true
+          breakOnError: options?.breakOnError ?? true,
+          verbose: options?.verbose ?? false
         });
       }
 
@@ -148,7 +151,8 @@ export class Compiler {
       if (context.errors.length > 0 || context.warnings.length > 0) {
         outputDiagnostics(context.errors, context.warnings, {
           suppressWarnings: options?.suppressWarnings ?? false,
-          breakOnError: options?.breakOnError ?? true
+          breakOnError: options?.breakOnError ?? true,
+          verbose: options?.verbose ?? false
         });
       } else {
         // Fallback to logger for non-diagnostic errors
@@ -309,7 +313,8 @@ export class Compiler {
       if (renderOptions?.suppressWarnings !== true) {
         outputDiagnostics(errors, warnings, {
           suppressWarnings: renderOptions?.suppressWarnings ?? false,
-          breakOnError: renderOptions?.breakOnError ?? true
+          breakOnError: renderOptions?.breakOnError ?? true,
+          verbose: renderOptions?.verbose ?? false
         });
       }
 

@@ -1,6 +1,6 @@
 {
   "name": "jess",
-  "version": "2.0.0-alpha.1",
+  "version": "0.2.5",
   "description": "JavaScript Enhanced Style Sheets",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -30,7 +30,7 @@
     "@jesscss/plugin-less": "workspace:2.0.0-alpha.1",
     "@jesscss/patch-css": "workspace:2.0.0-alpha.1",
     "chalk": "^5.2.0",
-    "linecraft": "0.2.4",
+    "linecraft": "0.2.5",
     "lodash-es": "^4.17.21",
     "yargs": "^17.7.1"
   },

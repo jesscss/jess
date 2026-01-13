@@ -303,8 +303,8 @@ importers:
         specifier: ^5.2.0
         version: 5.6.2
       linecraft:
-        specifier: 0.2.4
-        version: 0.2.4
+        specifier: 0.2.5
+        version: 0.2.5
       lodash-es:
         specifier: ^4.17.21
         version: 4.17.22
@@ -9658,8 +9658,8 @@ packages:
     resolution: {integrity: sha512-FWWMIEOxz3GwUI4Ts/IvgVy6LPvoMPgjMdQ185nN6psJyBJ4yOpzqm695/h5umdLJg2vW3GR5iG11MAkR2AzJA==}
     dev: true
 
-  /linecraft@0.2.4:
-    resolution: {integrity: sha512-2nO7wZPBqIpqKi1HseRvwL17qAOCp0GUseMoqwayEUpl7w/4zsmc/B1OABuK3aiUS0HkSDH9DwvJZ4hQ7efDaQ==}
+  /linecraft@0.2.5:
+    resolution: {integrity: sha512-6fcOjSjNiYnCJWYFsneVKWYYu/Cav0l1meaYwBqugQ7W8vrjrbw2dit5dB6sKx8/XQ/iqGB77SwnsZCMcLcfXQ==}
     engines: {node: '>=18.0.0'}
     dev: false
 
