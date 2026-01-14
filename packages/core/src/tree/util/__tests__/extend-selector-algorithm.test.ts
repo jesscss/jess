@@ -517,22 +517,17 @@ describe('Extend Selector Tests', () => {
 
     it('should flatten :is() when extend crosses :is() boundary', () => {
       // :is(.a, .b).c extended with .d where we match .b.c
-      // Match crosses from inside :is() (.b) to outside (.c)
-      // Result MUST be flattened: :is(.a.c, .b.c, .d.c)
+      // Since .b.c matches the entire target (consumes all "and" parts), we should NOT flatten
+      // Result: :is(.a, .b).c, .d (selector list, preserving :is() structure)
       const selector = compound([is(sellist([el('.a'), el('.b')])), el('.c')]); // :is(.a, .b).c
       const find = compound([el('.b'), el('.c')]); // .b.c
       const extendWith = el('.d');
 
       const result = extendSelector(selector, find, extendWith, false);
-      // Must flatten because match crosses :is() boundary
-      // Should be :is(.a.c,.b.c,.d.c) or similar flattened form
+      // Since we've consumed the entire target, we should NOT flatten
       const resultStr = result.valueOf();
-      // The result should have all combinations flattened
-      expect(resultStr).toContain('.a.c');
-      expect(resultStr).toContain('.b.c');
-      expect(resultStr).toContain('.d.c');
-      // Should NOT have nested :is(.b, .d).c structure
-      expect(resultStr).not.toContain(':is(.b,.d).c');
+      // Should create selector list without flattening
+      expect(resultStr).toBe(':is(.a,.b).c,.d');
     });
 
     it('should preserve nested :is() when extending within same :is() group', () => {
@@ -617,26 +612,21 @@ describe('Extend Selector Tests', () => {
         // that would trigger flattening: extending :is(.g, .i.j).h with .k:extend(.i all)
         // where the match crosses the :is() boundary
 
-        // Actually, let's test the scenario where flattening IS necessary:
-        // :is(.g, .i.j).h extended with .k:extend(.i.j all) - this crosses boundary
+        // :is(.g, .i.j).h extended with .k:extend(.i.j all)
+        // Since .i.j matches the entire compound inside :is() and .h matches after, we've consumed the entire target
+        // Result: :is(.g, .i.j).h, .k (selector list, preserving :is() structure)
         const selector = compound([
           is(sellist([el('.g'), compound([el('.i'), el('.j')])])), // :is(.g, .i.j)
           el('.h')
         ]); // :is(.g, .i.j).h
-        const find = compound([el('.i'), el('.j')]); // .i.j (full match)
+        const find = compound([el('.i'), el('.j')]); // .i.j
         const extendWith = el('.k');
 
-        const result = extendSelector(selector, find, extendWith, false); // partial: false (exact match)
-        const resultStr = result.valueOf();
-
-        // When flattening occurs, should have all combinations:
-        // .g.h, .i.j.h, .k.h
-        // The exact format depends on implementation, but should NOT be :is(.g,.i,.k.j).h
-        expect(resultStr).toContain('.g.h');
-        expect(resultStr).toContain('.i.j.h');
-        expect(resultStr).toContain('.k.h');
-        // Should NOT have broken .i.j apart
-        expect(resultStr).not.toContain(':is(.g,.i,.k.j)');
+        // With partial: false, .i.j matches inside :is() but there's .h after,
+        // so this is a partial match of the entire selector and should throw
+        expect(() => {
+          extendSelector(selector, find, extendWith, false); // partial: false
+        }).toThrow();
       });
 
       it('should correctly flatten :is(.g, .i.j, .k.j) structure when compound selectors are involved', () => {
@@ -688,9 +678,8 @@ describe('Extend Selector Tests', () => {
 
       it('should extend flattened result correctly after boundary crossing', () => {
         // Test case: :is(.a, .x).c with .a.c extended by .e
-        // Step 1: Flatten boundary crossing → :is(.a.c, .x.c)
-        // Step 2: Extend .a.c with .e (full match in SelectorList) → :is(.a.c, .x.c, .e.c)
-        // Note: When extending a compound selector, the extendWith gets the same suffix
+        // Since .a.c matches the entire target (consumes all "and" parts), we should NOT flatten
+        // Result: :is(.a, .x).c, .e (selector list, preserving :is() structure)
         const simpleSelector = compound([
           is(sellist([el('.a'), el('.x')])), // :is(.a, .x)
           el('.c')
@@ -698,14 +687,12 @@ describe('Extend Selector Tests', () => {
         const find = compound([el('.a'), el('.c')]); // .a.c
         const extendWith = el('.e');
 
-        // This should flatten because .a.c crosses the :is() boundary, then extend
+        // Since we've consumed the entire target, we should NOT flatten
         const result = extendSelector(simpleSelector, find, extendWith, false);
         const resultStr = result.valueOf();
 
-        // Should have flattened and extended
-        expect(resultStr).toContain('.a.c');
-        expect(resultStr).toContain('.x.c');
-        expect(resultStr).toContain('.e.c');
+        // Should create selector list without flattening
+        expect(resultStr).toBe(':is(.a,.x).c,.e');
       });
     });
   });
