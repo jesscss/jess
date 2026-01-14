@@ -82,3 +82,41 @@ export class Anonymous<
   Role extends AnyRole = AnyRole
 > extends Any<Role> {}
 defineType(Anonymous, 'Anonymous');
+
+/**
+ * Keyword represents a CSS keyword value (e.g., 'auto', 'none', 'inherit', 'and', 'or').
+ *
+ * This is a convenience class that extends Any with role: 'keyword' fixed.
+ * It provides better type safety and aligns with Less.js's Keyword node type
+ * for compatibility purposes.
+ *
+ * Note: In Jess, boolean values ('true', 'false') are represented as Bool nodes,
+ * not Keyword nodes, unlike Less.js where they are Keyword instances.
+ */
+export class Keyword extends Any<'keyword'> {
+  override type = 'Keyword' as const;
+  override shortType = 'keyword';
+
+  constructor(
+    value: string,
+    options?: Omit<NodeOptions, 'role'>,
+    location?: LocationInfo,
+    context?: TreeContext
+  ) {
+    // Force role to 'keyword'
+    super(value, { ...options, role: 'keyword' }, location, context);
+  }
+}
+defineType(Keyword, 'Keyword');
+
+/**
+ * Helper function to create a Keyword node
+ */
+export function keyword(
+  value: string,
+  options?: Omit<NodeOptions, 'role'>,
+  location?: LocationInfo,
+  context?: TreeContext
+): Keyword {
+  return new Keyword(value, options, location, context);
+}

@@ -445,13 +445,10 @@ describe('Rules extend', () => {
       const evald = await node.eval(context);
       const css = evald.toString();
       expect(css).toBeString(`
-        .g.h,
-        .i.j.h,
-        .k.j.h {
+        :is(.g, :is(.i, .k).j).h {
           color: black;
         }
-        .i.j,
-        .k.j {
+        :is(.i, .k).j {
           color: inherit;
         }
       `);

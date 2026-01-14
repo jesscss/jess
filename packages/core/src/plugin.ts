@@ -37,7 +37,7 @@ export interface PluginInterface {
   /**
    * Queryable filter if we have resolved the extension
    * no dots e.g. `['less', 'scss']`
-  */
+   */
   supportedExtensions?: string[];
 
   /**

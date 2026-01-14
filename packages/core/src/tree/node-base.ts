@@ -559,13 +559,36 @@ export abstract class Node<
   // }
 
   /**
-   * @todo - Is this right? Visitors only get callbacks for children?
-   *         I should check the original Less visitor pattern.
+   * Accept a visitor (classic visitor pattern).
+   * 
+   * Visits the node itself first, then recursively visits children.
+   * This matches the Less.js visitor pattern and allows nodes to control
+   * their own traversal if needed by overriding this method.
+   * 
+   * @param visitor - The visitor to accept
+   * @returns The result from visiting this node (may be a replacement node)
    */
-  accept(visitor: Visitor) {
-    for (let node of this.children()) {
-      visitor.visit(node);
+  accept(visitor: Visitor): Node {
+    // Visit self first (like Less.js pattern)
+    // Note: visitor.visit() handles enter() hook and ABORT checking internally.
+    // It normalizes symbols (ABORT, REMOVE, SKIP) to a Node, so we always get a Node back.
+    // Individual visitor methods can return symbols, but visit() normalizes them.
+    const result = visitor.visit(this);
+    
+    // Visit children recursively (Less.js pattern)
+    // Note: If TreeVisitor is using accept(), it will skip auto-visiting children
+    // to avoid double-visiting. See TreeVisitor._visit() implementation.
+    for (const child of this.children()) {
+      if (child.accept) {
+        child.accept(visitor);
+      } else {
+        // Fallback: if child doesn't have accept, visit directly
+        visitor.visit(child);
+      }
     }
+    
+    // Return the result (may be a replacement node)
+    return result;
   }
 
   /**

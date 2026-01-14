@@ -1,0 +1,53 @@
+import { Expression, Node } from '@jesscss/core';
+import { createLessProxy } from '../transform/proxy';
+import { toLessNode } from '../transform/to-less';
+import { mapJessTypeToLessType } from '../transform/type-map';
+import type { LessNode } from '../types';
+
+/**
+ * Transform a Jess Expression to a Less-compatible Expression
+ */
+export function transformExpressionToLess(
+  jessExpression: Expression,
+  cache?: WeakMap<any, any>
+): LessNode {
+  return createLessProxy(jessExpression, cache, (prop, target) => {
+    const expr = target as Expression;
+
+    // Map 'type' property
+    if (prop === 'type') {
+      return mapJessTypeToLessType(expr.type);
+    }
+
+    // Map 'typeIndex'
+    if (prop === 'typeIndex') {
+      return undefined;
+    }
+
+    // Map 'value' property (Less expects array)
+    if (prop === 'value') {
+      const value = expr.value;
+      if (value instanceof Node) {
+        // Single node - wrap in array
+        return [toLessNode(value, { cache })];
+      }
+      // Expression.value is always a Node, so this shouldn't happen
+      return [value];
+    }
+
+    // Map 'accept' method for visitor traversal
+    if (prop === 'accept') {
+      return function(visitor: any) {
+        const lessExpr = transformExpressionToLess(expr, cache);
+        const result = visitor.visit(lessExpr);
+        if (result !== lessExpr) {
+          const { fromLessNode } = require('../transform/from-less');
+          return fromLessNode(result, { cache });
+        }
+        return expr;
+      };
+    }
+
+    return undefined;
+  });
+}

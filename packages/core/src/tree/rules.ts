@@ -23,6 +23,7 @@ import type { Bool } from './bool';
 import * as Registries from './util/registry-utils';
 import { tryExtendSelector } from './util/extend';
 import { findExtendableLocations } from './util/find-extendable-locations';
+import { syncLog } from './util/__tests__/debug-log';
 import { type MaybePromise, pipe, isThenable, serialForEach, tryStep } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil';
 import { VarDeclaration } from './declaration-var';
@@ -1121,6 +1122,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           const allExtends = [...context.extends]; // All original extends
           const processedExtends = new Set<string>(); // Track processed extends to avoid duplicates
           const extendedRulesets = new Set<Ruleset>(); // Track rulesets that were extended
+          // Track which extends have already transformed which rulesets: Map<rulesetId, Set<extendKey>>
+          // Each extend can only transform a particular ruleset's selector once
+          const transformedByExtend = new Map<Ruleset, Set<string>>();
           const allRoots = context.extendRoots.getAllRoots();
 
           /**
@@ -1199,30 +1203,45 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               return false;
             }
 
-            const rulesetSelectorValue = rulesetSelector.valueOf();
-            const extendSelectorValue = selectorWithExtend.valueOf();
-
-            // First check: do selectors match?
-            // Check if ruleset selector matches extend selector, or if either is a SelectorList containing the other
-            let selectorsMatch = rulesetSelectorValue === extendSelectorValue;
-            if (!selectorsMatch) {
-              if (isNode(rulesetSelector, 'SelectorList')) {
-                selectorsMatch = rulesetSelector.value.some(sel => sel.valueOf() === extendSelectorValue);
+            // Check if the selector being extended is the SAME selector object (by identity) from the source
+            // This prevents extending a ruleset's selector when it's the same selector object that originated the extend
+            // We check both object identity and sourceNode to handle cloned/copied selectors
+            const isSameSelector = (a: Selector, b: Selector): boolean => {
+              // Same object reference
+              if (a === b) {
+                return true;
               }
-              if (!selectorsMatch && isNode(selectorWithExtend, 'SelectorList')) {
-                selectorsMatch = selectorWithExtend.value.some((sel) => {
-                  const selValue = sel.valueOf();
-                  return selValue === rulesetSelectorValue
-                    || (isNode(rulesetSelector, 'SelectorList') && rulesetSelector.value.some(r => r.valueOf() === selValue));
-                });
+              // Same sourceNode (tracks original source when cloned/copied)
+              if (a.sourceNode && b.sourceNode && a.sourceNode === b.sourceNode) {
+                return true;
               }
-            }
+              // If either is a SelectorList, check if any selector in one matches (by identity/sourceNode) any in the other
+              if (isNode(a, 'SelectorList')) {
+                return a.value.some(sel => isSameSelector(sel, b));
+              }
+              if (isNode(b, 'SelectorList')) {
+                return b.value.some(sel => isSameSelector(a, sel));
+              }
+              return false;
+            };
 
-            if (!selectorsMatch) {
+            // #region agent log
+            syncLog({ location: 'rules.ts:1209', message: 'shouldSkipRuleset: checking if same selector object', data: { rulesetSelectorValue: rulesetSelector.valueOf(), extendSelectorValue: selectorWithExtend.valueOf(), isSame: isSameSelector(rulesetSelector, selectorWithExtend), rulesetSelectorSourceNode: rulesetSelector.sourceNode?.constructor?.name, extendSelectorSourceNode: selectorWithExtend.sourceNode?.constructor?.name }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' });
+            // #endregion
+            
+            const selectorsAreSame = isSameSelector(rulesetSelector, selectorWithExtend);
+            
+            if (!selectorsAreSame) {
+              // #region agent log
+              syncLog({ location: 'rules.ts:1224', message: 'shouldSkipRuleset: not the same selector object, returning false', data: { rulesetSelectorValue: rulesetSelector.valueOf(), extendSelectorValue: selectorWithExtend.valueOf() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' });
+              // #endregion
               return false;
             }
 
-            // Selectors match - now check if extend is associated with this ruleset
+            // #region agent log
+            syncLog({ location: 'rules.ts:1228', message: 'shouldSkipRuleset: same selector object, checking if extend is associated', data: { rulesetSelectorValue: rulesetSelector.valueOf(), extendSelectorValue: selectorWithExtend.valueOf() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' });
+            // #endregion
+            // Same selector object - now check if extend is associated with this ruleset
 
             // Check 1: Is extend a child of the ruleset?
             if (ruleset.value.rules && 'value' in ruleset.value.rules) {
@@ -1320,7 +1339,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
 
             // Skip self-referencing extends (e.g., .w:extend(.w))
+            // Check if find equals extendWith (the actual self-referencing condition)
             if (target.valueOf() === selectorWithExtend.valueOf()) {
+              // Also check if this is a self-referencing extend where find === extendWith
+              // This prevents .w:extend(.w) from creating :is(.w) wrappers
+              // Note: The actual check happens in extendSelector, but we skip processing here too
               return;
             }
 
@@ -1340,6 +1363,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               : [target];
 
             for (const singleTarget of targetSelectors) {
+              // Skip self-referencing extends for individual selectors too
+              // Check if singleTarget and selectorWithExtend are the same selector object (by identity/sourceNode)
+              const isSameSelector = (a: Selector, b: Selector): boolean => {
+                if (a === b) return true;
+                if (a.sourceNode && b.sourceNode && a.sourceNode === b.sourceNode) return true;
+                if (isNode(a, 'SelectorList')) return a.value.some(sel => isSameSelector(sel, b));
+                if (isNode(b, 'SelectorList')) return b.value.some(sel => isSameSelector(a, sel));
+                return false;
+              };
+              if (isSameSelector(singleTarget, selectorWithExtend)) {
+                continue;
+              }
               // Find rulesets matching this single target in accessible roots
               let rulesetSet: Ruleset[] | undefined;
 
@@ -1409,6 +1444,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
                   const originalSelector = ruleset.selector as Selector;
 
+                  // Check if this extend has already transformed this ruleset's selector
+                  // Key format: "target:extendWith:partial"
+                  const extendKey = `${singleTarget.valueOf()}:${selectorWithExtend.valueOf()}:${partial}`;
+                  if (!transformedByExtend.has(ruleset)) {
+                    transformedByExtend.set(ruleset, new Set());
+                  }
+                  const transformsForRuleset = transformedByExtend.get(ruleset)!;
+                  
+                  // Skip if this extend has already transformed this ruleset
+                  if (transformsForRuleset.has(extendKey)) {
+                    return; // This extend already transformed this ruleset - skip
+                  }
+
                   // Get old keySet before extending (for re-indexing)
                   const oldSelector = ruleset.selector instanceof Nil ? ruleset.selector : ruleset.getImplicitSelector(ruleset.selector);
                   const oldKeySet = oldSelector && 'keySet' in oldSelector ? oldSelector.keySet : new Set<string>();
@@ -1420,6 +1468,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
                     // Only update if selector actually changed
                     if (extendedSelector.valueOf() !== originalSelector.valueOf()) {
+                      // Mark that this extend has transformed this ruleset
+                      transformsForRuleset.add(extendKey);
+                      
                       // Update the ruleset's selector directly
                       ruleset.value.selector = extendedSelector;
                       extendedRulesets.add(ruleset); // Track that this ruleset was extended
@@ -1462,17 +1513,29 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                                   // Verify this extend would match something (check registry)
                                   const targetAccessibleRoots = context.extendRoots.getAccessibleRoots(otherExtendRoot);
                                   let wouldMatch = false;
+                                  let matchingRulesets: Ruleset[] = [];
                                   for (const searchRoot of targetAccessibleRoots) {
                                     const found = searchRoot.find('ruleset', selectorInList.keySet);
                                     if (found && found.length > 0) {
                                       wouldMatch = true;
+                                      matchingRulesets.push(...found);
                                       break;
                                     }
                                   }
 
                                   if (wouldMatch) {
-                                    // Process the chained extend immediately (depth-first)
-                                    processExtend(selectorInList, otherSelectorWithExtend, otherPartial, otherExtendRoot, otherExtendNode, depth + 1);
+                                    // Check if this extend has already transformed any of the matching rulesets
+                                    // If so, skip to prevent duplicate transforms
+                                    const otherExtendKey = `${otherSingleTarget.valueOf()}:${otherSelectorWithExtend.valueOf()}:${otherPartial}`;
+                                    const alreadyTransformed = matchingRulesets.some(rs => {
+                                      const transforms = transformedByExtend.get(rs);
+                                      return transforms && transforms.has(otherExtendKey);
+                                    });
+                                    
+                                    if (!alreadyTransformed) {
+                                      // Process the chained extend immediately (depth-first)
+                                      processExtend(selectorInList, otherSelectorWithExtend, otherPartial, otherExtendRoot, otherExtendNode, depth + 1);
+                                    }
                                   }
                                 }
                               }
@@ -1534,7 +1597,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 const currentSelValue = currentSel.valueOf();
 
                 // Check against all original extends
-                for (const [target, selectorWithExtend, partial, extendRoot] of allExtends) {
+                for (const [target, selectorWithExtend, partial, extendRoot, extendNode] of allExtends) {
+                  // Skip if this ruleset's selector matches the extend's source selector
+                  // This prevents self-modification (e.g., .v.w.v:extend(.w all) should not modify .v.w.v itself)
+                  // #region agent log
+                  syncLog({ location: 'rules.ts:1575', message: 'Phase2: checking shouldSkipRuleset', data: { rulesetSelector: ruleset.selector?.valueOf(), extendSelector: selectorWithExtend?.valueOf(), targetValue: target?.valueOf() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A,B' });
+                  // #endregion
+                  const skipResult = shouldSkipRuleset(ruleset, extendNode, selectorWithExtend);
+                  // #region agent log
+                  syncLog({ location: 'rules.ts:1577', message: 'Phase2: shouldSkipRuleset result', data: { skipResult, rulesetSelector: ruleset.selector?.valueOf(), extendSelector: selectorWithExtend?.valueOf() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A,B' });
+                  // #endregion
+                  if (skipResult) {
+                    continue; // Skip this extend for this ruleset
+                  }
                   const targetSelectors: Selector[] = isNode(target, 'SelectorList')
                     ? target.value
                     : [target];
@@ -1562,6 +1637,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                       }
 
                       if (foundRuleset) {
+                        // Check if this extend has already transformed this ruleset's selector
+                        const extendKey = `${singleTarget.valueOf()}:${selectorWithExtend.valueOf()}:${partial}`;
+                        if (!transformedByExtend.has(ruleset)) {
+                          transformedByExtend.set(ruleset, new Set());
+                        }
+                        const transformsForRuleset = transformedByExtend.get(ruleset)!;
+                        
+                        // Skip if this extend has already transformed this ruleset
+                        if (transformsForRuleset.has(extendKey)) {
+                          continue; // This extend already transformed this ruleset - skip
+                        }
+
                         // Get old keySet before extending
                         const oldSelector = ruleset.selector instanceof Nil ? ruleset.selector : ruleset.getImplicitSelector(ruleset.selector);
                         const oldKeySet = oldSelector && 'keySet' in oldSelector ? oldSelector.keySet : new Set<string>();
@@ -1573,6 +1660,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
                           // Only update if selector actually changed
                           if (extendedSelector.valueOf() !== currentSelectorValue) {
+                            // Mark that this extend has transformed this ruleset
+                            transformsForRuleset.add(extendKey);
+                            
                             ruleset.value.selector = extendedSelector;
                             reindexRuleset(ruleset, oldKeySet);
                             nextIteration.add(ruleset); // Keep in next iteration

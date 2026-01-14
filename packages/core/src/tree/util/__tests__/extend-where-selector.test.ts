@@ -51,9 +51,11 @@ describe('Extend :where() Selector Tests', () => {
   });
 
   describe('Complex extension scenarios with :where()', () => {
+    /** @unverified - LLM-generated, needs review */
     it('should extend within :where() when target matches inner content', () => {
       // Selector: .foo:where(.a), Target: .a (finding inner content), Extend with: .b
       // Result: .foo:where(.a, .b) - extend within the :where() arguments
+      // Use partial: true because .a is inside :where() and there's .foo before it
       const selector = compound([
         el('.foo'),
         pseudo({ name: ':where', arg: el('.a') })
@@ -61,7 +63,7 @@ describe('Extend :where() Selector Tests', () => {
       const target = el('.a');
       const extendWith = el('.b');
 
-      const result = extendSelector(selector, target, extendWith, false);
+      const result = extendSelector(selector, target, extendWith, true);
       expect(result.valueOf()).toBe('.foo:where(.a,.b)');
     });
   });

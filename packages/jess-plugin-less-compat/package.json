@@ -1,0 +1,51 @@
+{
+  "name": "@jesscss/plugin-less-compat",
+  "publishConfig": {
+    "access": "public"
+  },
+  "description": "Less.js compatibility layer for Jess - enables Less plugins and visitors to work with Jess AST",
+  "version": "0.1.0-alpha.1",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./lib/index.js",
+      "types": "./lib/index.d.ts",
+      "source": "./src/index.ts"
+    },
+    "./transform": {
+      "import": "./lib/transform/index.js",
+      "types": "./lib/transform/index.d.ts",
+      "source": "./src/transform/index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "ci": "pnpm build && pnpm test",
+    "prepublishOnly": "npm run build",
+    "build": "pnpm compile",
+    "compile": "tsc -b tsconfig.build.json",
+    "test": "cross-env TEST=true vitest",
+    "lint:fix": "eslint --fix '**/*.{js,ts}'",
+    "lint": "eslint '**/*.{js,ts}'"
+  },
+  "dependencies": {
+    "@jesscss/core": "workspace:*",
+    "@jesscss/less-parser": "workspace:*",
+    "less": "^4.2.0"
+  },
+  "devDependencies": {
+    "less-plugin-dls": "^1.0.0",
+    "less-plugin-clean-css": "^1.5.1",
+    "less-plugin-autoprefix": "^2.0.0"
+  },
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jesscss/jess/issues"
+  },
+  "homepage": "https://github.com/jesscss/jess#readme"
+}

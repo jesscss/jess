@@ -212,6 +212,24 @@ export abstract class TreeVisitor extends Visitor {
     }
     this.visitedNodes.add(n);
     const { reverse } = this;
+
+    // If node has accept() method, let it control traversal
+    // This allows nodes to customize traversal (e.g., Less.js compatibility)
+    // accept() will visit self and children, so we don't auto-visit here
+    if (n.accept && typeof n.accept === 'function') {
+      const returnVal = n.accept(this);
+      if (!returnVal || typeof returnVal === 'symbol') {
+        return returnVal;
+      }
+      // accept() already visited self and children, so we just handle exit
+      this.visitExit(n, ctx);
+      if (returnVal instanceof Node) {
+        this.visitedNodes.add(returnVal);
+      }
+      return returnVal;
+    }
+
+    // Default: auto-visit children (node doesn't have accept() or doesn't override it)
     if (this.visitChildren === 'before') {
       for (const node of n.children(true, reverse, true)) {
         this._visit(node, ctx);

@@ -18,3 +18,4 @@ export * from './tree/util/print';
 export * from './tree/util/serialize-types';
 export * from './conversions';
 export * from './types';
+export * from './visitor';

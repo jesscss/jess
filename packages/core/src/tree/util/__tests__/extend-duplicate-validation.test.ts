@@ -3,37 +3,43 @@ import { extendSelector, tryExtendSelector, ExtendErrorType } from '../extend';
 
 describe('Extend Duplicate Element/ID Validation', () => {
   describe('Should prevent invalid extensions', () => {
+    /** @unverified - LLM-generated, needs review */
     it('should return original selector when extending a.info with div.foo (element conflict)', () => {
       // This is the original bug case: a.info with div.foo -> would create "adiv.foo"
+      // Use partial: true to allow the match, then conflict detection should catch it
       const selector = compound([el('a'), el('.info')]);
       const target = el('.info');
       const extendWith = compound([el('div'), el('.foo')]);
 
-      const result = tryExtendSelector(selector, target, extendWith, false);
+      const result = tryExtendSelector(selector, target, extendWith, true);
       expect(result.value.valueOf()).toBe('a.info'); // Should return original selector unchanged
       expect(result.error).toBeDefined();
       expect(result.error!.type).toBe(ExtendErrorType.ELEMENT_CONFLICT);
       expect(result.error!.message).toContain('Cannot combine different element types');
     });
 
+    /** @unverified - LLM-generated, needs review */
     it('should return original selector when extending compound with conflicting element', () => {
+      // Use partial: true to allow the match, then conflict detection should catch it
       const selector = compound([el('div'), el('.class')]);
       const target = el('.class');
       const extendWith = compound([el('span'), el('.other')]);
 
-      const result = tryExtendSelector(selector, target, extendWith, false);
+      const result = tryExtendSelector(selector, target, extendWith, true);
       expect(result.value.valueOf()).toBe('div.class'); // Should return original selector unchanged
       expect(result.error).toBeDefined();
       expect(result.error!.type).toBe(ExtendErrorType.ELEMENT_CONFLICT);
       expect(result.error!.message).toContain('Cannot combine different element types');
     });
 
+    /** @unverified - LLM-generated, needs review */
     it('should return original selector when extending compound with conflicting ID', () => {
+      // Use partial: true to allow the match, then conflict detection should catch it
       const selector = compound([el('#first'), el('.class')]);
       const target = el('.class');
       const extendWith = compound([el('#second'), el('.other')]);
 
-      const result = tryExtendSelector(selector, target, extendWith, false);
+      const result = tryExtendSelector(selector, target, extendWith, true);
       expect(result.value.valueOf()).toBe('#first.class'); // Should return original selector unchanged
       expect(result.error).toBeDefined();
       expect(result.error!.type).toBe(ExtendErrorType.ID_CONFLICT);
@@ -61,11 +67,12 @@ describe('Extend Duplicate Element/ID Validation', () => {
     });
 
     it('should allow extending div.a with .b (no conflict)', () => {
+      // Use partial: true because .a is only part of the compound selector
       const selector = compound([el('div'), el('.a')]);
       const target = el('.a');
       const extendWith = el('.b');
 
-      const result = extendSelector(selector, target, extendWith, false);
+      const result = extendSelector(selector, target, extendWith, true);
       // Note: This creates div:is(.a,.b) which is equivalent to div.a,.b but more compact
       expect(result.valueOf()).toBe('div:is(.a,.b)');
     });
@@ -155,30 +162,32 @@ describe('Extend Duplicate Element/ID Validation', () => {
 
     it('should allow compound with same element types (div.a with div.b)', () => {
       // div.a extending with div.b should be allowed - same element type
+      // Use partial: true because .a is only part of the compound selector
       const selector = compound([el('div'), el('.a')]);
       const target = el('.a');
       const extendWith = compound([el('div'), el('.b')]);
 
       expect(() => {
-        extendSelector(selector, target, extendWith, false);
+        extendSelector(selector, target, extendWith, true);
       }).not.toThrow();
 
-      const result = extendSelector(selector, target, extendWith, false);
+      const result = extendSelector(selector, target, extendWith, true);
       // Should create div:is(.a,div.b) which normalizes to div:is(.a,.b) since div is redundant
       expect(result.valueOf()).toContain(':is');
     });
 
     it('should allow compound selector with duplicate IDs for specificity (#foo#foo.class)', () => {
       // #foo#foo.class is valid CSS used to increase specificity
+      // Use partial: true because .class is only part of the compound selector
       const selector = compound([el('#foo'), el('#foo'), el('.class')]);
       const target = el('.class');
       const extendWith = el('.bar');
 
       expect(() => {
-        extendSelector(selector, target, extendWith, false);
+        extendSelector(selector, target, extendWith, true);
       }).not.toThrow();
 
-      const result = extendSelector(selector, target, extendWith, false);
+      const result = extendSelector(selector, target, extendWith, true);
       expect(result.valueOf()).toBe('#foo#foo:is(.class,.bar)');
     });
   });

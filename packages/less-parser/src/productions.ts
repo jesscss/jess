@@ -26,6 +26,7 @@ import {
   Ampersand,
   Block,
   Any,
+  Keyword,
   type LocationInfo,
   type Operator,
   type ConditionOperator,

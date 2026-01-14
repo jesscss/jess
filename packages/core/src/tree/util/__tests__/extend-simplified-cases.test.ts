@@ -67,18 +67,22 @@ describe('Simplified Extend Test Cases', () => {
       expect(result.valueOf()).toBe(':is(.a,.b,.c)');
     });
 
+    /** @unverified - LLM-generated, needs review */
     it('should extend simple pseudo-class', () => {
       // .btn:hover -> .btn extend with .primary -> :is(.btn,.primary):hover
+      // Use partial: true because .btn is only part of the compound selector
       const selector = compound([el('.btn'), pseudo({ name: ':hover' })]);
       const target = el('.btn');
       const extendWith = el('.primary');
 
-      const result = extendSelector(selector, target, extendWith, false);
+      const result = extendSelector(selector, target, extendWith, true);
       expect(result.valueOf()).toBe(':is(.btn,.primary):hover');
     });
 
+    /** @unverified - LLM-generated, needs review */
     it('should extend with multiple pseudo-classes', () => {
       // .btn:hover:focus -> .btn extend with .primary -> :is(.btn,.primary):hover:focus
+      // Use partial: true because .btn is only part of the compound selector
       const selector = compound([
         el('.btn'),
         pseudo({ name: ':hover' }),
@@ -87,13 +91,15 @@ describe('Simplified Extend Test Cases', () => {
       const target = el('.btn');
       const extendWith = el('.primary');
 
-      const result = extendSelector(selector, target, extendWith, false);
+      const result = extendSelector(selector, target, extendWith, true);
       expect(result.valueOf()).toBe(':is(.btn,.primary):hover:focus');
     });
 
+    /** @unverified - LLM-generated, needs review */
     it('should extend compound selector with attributes', () => {
       // input[type="text"].required -> input extend with .text-field
       // This should succeed: input and .text-field are not conflicting
+      // Use partial: true because input is only part of the compound selector
       const selector = compound([
         el('input'),
         attr({ name: 'type', op: '=', value: quoted('text') }),
@@ -102,7 +108,7 @@ describe('Simplified Extend Test Cases', () => {
       const target = el('input');
       const extendWith = el('.text-field');
 
-      const result = extendSelector(selector, target, extendWith, false);
+      const result = extendSelector(selector, target, extendWith, true);
       // Should create :is(input,.text-field)[type="text"].required
       expect(result.valueOf()).toBe(':is(input,.text-field)[type="text"].required');
     });

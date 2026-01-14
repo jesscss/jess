@@ -1,0 +1,123 @@
+# @jesscss/plugin-less-compat
+
+Less.js compatibility layer for Jess. This plugin enables Less.js plugins and visitors to work seamlessly with Jess-compiled stylesheets by providing bidirectional transformation between Jess AST nodes and Less.js AST nodes.
+
+## Features
+
+- 🔄 **Bidirectional Transformation**: Convert between Jess and Less AST nodes
+- 🎯 **Lazy Conversion**: Proxy-based lazy conversion for optimal performance
+- 🔌 **Plugin Compatibility**: Use existing Less.js plugins with Jess
+- 🧩 **Visitor Support**: Run Less.js visitors on Jess AST trees
+- 📦 **Type Safe**: Full TypeScript support
+
+## Installation
+
+```bash
+pnpm add @jesscss/plugin-less-compat
+```
+
+## Usage
+
+### Basic Usage with Less Plugins
+
+```typescript
+import { Compiler } from '@jesscss/jess';
+import lessPlugin from '@jesscss/plugin-less';
+import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
+import autoprefix from 'less-plugin-autoprefix';
+
+const compiler = new Compiler({
+  plugins: [
+    lessPlugin(),
+    lessCompatPlugin({
+      visitors: [autoprefix]
+    })
+  ]
+});
+
+const result = await compiler.compile('styles.less');
+```
+
+### Advanced: Direct Transformation
+
+```typescript
+import { toLessTree, fromLessTree } from '@jesscss/plugin-less-compat/transform';
+import customLessVisitor from './custom-visitor';
+
+const jessTree = parseJess(source);
+const lessTree = toLessTree(jessTree);
+
+// Apply custom Less visitor
+lessTree.accept(customLessVisitor);
+
+// Convert back to Jess
+const modifiedJessTree = fromLessTree(lessTree);
+```
+
+### Using with Multiple Less Plugins
+
+```typescript
+import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
+import autoprefix from 'less-plugin-autoprefix';
+import cleanCSS from 'less-plugin-clean-css';
+
+const compiler = new Compiler({
+  plugins: [
+    lessPlugin(),
+    lessCompatPlugin({
+      visitors: [
+        autoprefix,
+        cleanCSS
+      ]
+    })
+  ]
+});
+```
+
+## Supported Less Plugins
+
+This package has been tested with:
+
+- ✅ `less-plugin-autoprefix` - Automatic vendor prefixing
+- ✅ `less-plugin-clean-css` - CSS minification
+- ✅ `less-plugin-dls` - Design Language System support
+
+Other Less.js plugins should work, but may require additional testing.
+
+## API
+
+### `lessCompatPlugin(options?)`
+
+Creates a Jess plugin that enables Less.js compatibility.
+
+**Options:**
+- `visitors?: LessVisitor[]` - Array of Less.js visitors to apply
+- `cache?: boolean` - Enable conversion caching (default: `true`)
+
+### `toLessTree(jessRules: Rules)`
+
+Converts a Jess `Rules` tree to a Less.js-compatible tree.
+
+### `fromLessTree(lessTree: LessNode)`
+
+Converts a Less.js tree back to a Jess `Rules` tree.
+
+### `toLessNode(jessNode: Node, options?)`
+
+Converts a single Jess node to a Less.js-compatible node.
+
+### `fromLessNode(lessNode: LessNode, options?)`
+
+Converts a single Less.js node back to a Jess node.
+
+## Implementation Status
+
+This package is currently in **alpha**. See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) for detailed implementation status and roadmap.
+
+## Contributing
+
+Contributions welcome! Please see the main Jess repository for contribution guidelines.
+
+## License
+
+MIT

@@ -25,6 +25,13 @@
  * - Creates selector lists for root-level matches
  * - Creates :is() wrappers for component matches in compound selectors (to preserve other components)
  * - Example: `.btn:hover:extend(.btn !all)` → `:is(.btn,.primary):hover` (if .btn extended with .primary)
+ * - **CRITICAL**: Rejects ALL partial matches - if a match is only PARTIAL (e.g., `.i` matching within `.i.j`),
+ *   the selector is returned unchanged, regardless of context (SelectorList, :is(), compound, complex, etc.)
+ *   - The partial match is determined at the level of the matched selector itself (e.g., `.i` is partial within `.i.j`)
+ *   - Outer context (SelectorList, :is(), components after) is irrelevant for determining if a match is partial
+ * - **Exception**: Even if a match is a FULL match of an item within `:is()`, if there are components AFTER the `:is()`,
+ *   it becomes a partial match of the entire selector and is rejected
+ *   - Example: `:is(.i).j` matching `.i` (full match of item in :is()) is partial because `.j` comes after the `:is()`
  *
  * ## When to Create :is() Wrappers vs Selector Lists
  *
@@ -282,10 +289,10 @@ function detectAndHandleBoundaryCrossing(
       // 2. We matched one simple part inside :is() (one "or" option, not a compound)
       // 3. We matched all parts after :is() (all "and" parts)
       // 4. The total length matches (we've matched the entire structure)
-      // 
+      //
       // Note: Other options in :is() are "or" options and don't need to match.
       // Only "and" parts (components after :is()) need to match.
-      // 
+      //
       // However, if the firstPart is a compound selector (not a simple selector), we should flatten
       // because we can't preserve the :is() structure when matching compounds inside it.
       const componentsBeforeIs = i; // Number of components before :is()
@@ -299,11 +306,11 @@ function detectAndHandleBoundaryCrossing(
       // If we've matched exactly the structure of the target (one SIMPLE part in :is(), rest after),
       // and the total length matches, we've consumed the entire target
       // This means we matched all "and" parts (one SIMPLE option from :is() + all parts after)
-      if (componentsBeforeIs === 0 && // No components before :is() (we start at the beginning)
-          findPartsBeforeIs === 1 && // One part matched inside :is() (one "or" option)
-          firstPartIsSimple && // The matched part is a simple selector (not a compound)
-          findPartsAfterIs === componentsAfterIs && // Rest parts match components after :is() (all "and" parts)
-          find.value.length === target.value.length) { // Total length matches (entire structure)
+      if (componentsBeforeIs === 0 // No components before :is() (we start at the beginning)
+        && findPartsBeforeIs === 1 // One part matched inside :is() (one "or" option)
+        && firstPartIsSimple // The matched part is a simple selector (not a compound)
+        && findPartsAfterIs === componentsAfterIs // Rest parts match components after :is() (all "and" parts)
+        && find.value.length === target.value.length) { // Total length matches (entire structure)
         // This is a full match of the entire target with a simple selector - don't flatten, let it be handled as root-level
         // The result will be :is(.a, .b).c, .d (selector list) instead of .a.c, .b.c, .d.c (flattened)
         return null;
@@ -682,9 +689,12 @@ export function extendSelector(
       const selectorSearchResult = findExtendableLocations(selector, find);
       if (selectorSearchResult.hasMatches) {
         // This selector contains the find target - extend it
+        // If partial: false and it's only a partial match, extendSelector will return unchanged
         const extended = extendSelector(selector, find, extendWith, partial, skipAmpersandCheck);
-        // If the result is a SelectorList, keep original in place and collect new ones
-        if (isNode(extended, 'SelectorList')) {
+        // If the result is unchanged (same object reference), keep it as-is
+        if (extended === selector) {
+          originalSelectors.push(selector);
+        } else if (isNode(extended, 'SelectorList')) {
           // First item is the original (possibly modified), rest are new
           originalSelectors.push(extended.value[0]!);
           newSelectors.push(...extended.value.slice(1));
@@ -708,27 +718,28 @@ export function extendSelector(
   // more specific paths like [index, 'arg', altIndex]
   // For full extends (partial: false), prefer valid full matches
   let location = searchResult.locations[0]!;
-  
-  // When partial: false and we're inside an :is() with more components after it,
-  // if we've matched the entire find but there are more components after, we must throw
-  // Example: :is(.g, .i.j).h with find .i.j and partial: false
-  // We matched .i.j inside :is(), but there's .h after, so this is a partial match of the entire selector
+
+  // Exception: When partial: false and we're inside an :is() with more components after it,
+  // even if we've matched the entire find (full match of item in :is()), it's still a partial match
+  // of the entire selector because there are components after the :is()
+  // Example: :is(.i).j with find .i and partial: false
+  // We matched .i (full match of item in :is()), but there's .j after, so this is a partial match
   if (!partial && hasMoreAfterIs) {
     // If target is a SelectorList (we're inside an :is() argument), check if we matched an entire item
     const isInsideSelectorList = isNode(target, 'SelectorList');
-    
+
     if (isInsideSelectorList) {
       // The location path will be like [index] or ['arg', index] when matching an item in the list
       // Check if we matched an entire item (not a partial match within that item)
-      const pathHasIndex = location.path.some((p, i) => 
+      const pathHasIndex = location.path.some((p, i) =>
         typeof p === 'number' && (i === 0 || location.path[i - 1] === 'arg')
       );
       const matchedEntireItem = pathHasIndex && !location.isPartialMatch;
-      
+
       // Also check if the matched node equals the find
       const matchedNode = location.matchedNode;
       const matchedNodeEqualsFind = matchedNode && matchedNode.valueOf() === find.valueOf();
-      
+
       // If we matched an entire item and there are more components after, this is a partial match
       if (matchedEntireItem || matchedNodeEqualsFind) {
         throw new ExtendError(
@@ -739,16 +750,8 @@ export function extendSelector(
       }
     }
   }
-  
-  // When partial: false, reject partial matches for ComplexSelector cases (compound selectors handled later)
-  // This catches cases like .aa .dd matching .aa where the location is at the first component
-  if (!partial && location.isPartialMatch && isNode(target, 'ComplexSelector') && location.path.length === 1 && location.path[0] === 0) {
-    throw new ExtendError(
-      ExtendErrorType.PARTIAL_MATCH,
-      'Partial match found but exact match required',
-      { target, find, extendWith }
-    );
-  }
+
+  // (Partial matches are now handled by the unified check in the full matching mode section)
   if (!partial && searchResult.locations.length > 1) {
     // When partial: false, prefer valid full matches (root-level or first component of complex selector)
     // IMPORTANT: Must check !loc.isPartialMatch to avoid selecting partial matches
@@ -897,6 +900,12 @@ export function extendSelector(
   } else {
     // FULL MATCHING MODE: Create selector lists for complete matches
 
+    // When partial: false, reject ALL partial matches - unified check before any special-casing
+    // This applies regardless of context (root, SelectorList, :is(), compound, complex, etc.)
+    if (!partial && location.isPartialMatch) {
+      return target;
+    }
+
     // Check for boundary-crossing matches in compound selectors FIRST
     // This handles cases like :is(.a, .b).c matching .b.c where the match crosses the :is() boundary
     // This must be checked before handleFullExtend because it requires special flattening logic
@@ -911,30 +920,28 @@ export function extendSelector(
     // All pseudo-selectors with selector arguments allow extending inside
     // This includes :is(), :where(), :not(), :has(), and any other pseudo-selector with selector args
     if (location.path.includes('arg')) {
-      // When partial: false, reject if there are components BEFORE the pseudo-selector that contains the match
-      // (e.g., .aa :is(.dd,.ee) matching .dd is partial because .aa is before the :is())
-      // Note: We're allowed to match inside :is() boundaries - the issue is only when there are other components before it
-      if (!partial && isNode(target, 'ComplexSelector') && target.value.length > 1) {
-        // Find the index of the pseudo-selector component that contains the match
-        // The path format for pseudo-selector matches is like [pseudoIndex, 'arg', argIndex, ...]
-        const pathFirstNum = location.path.find((p): p is number => typeof p === 'number');
-        if (pathFirstNum !== undefined && pathFirstNum > 0) {
-          // The pseudo-selector is not the first component, so there are components before it
-          // This means the entire selector doesn't match exactly - it's a partial match
-          throw new ExtendError(
-            ExtendErrorType.PARTIAL_MATCH,
-            'Partial match found but exact match required',
-            { target, find, extendWith }
-          );
+      // (Partial matches are already handled by the unified check above - no need to check again)
+      // But double-check: if the path indicates a match deep inside (e.g., ['arg', index, subIndex]),
+      // and that match is partial, we should have already returned above. If we reach here,
+      // it means either it's a full match OR the isPartialMatch flag wasn't set correctly.
+      // For safety, if the path has more than just 'arg' (meaning we're matching inside a selector
+      // within the :is() argument), check if it's a partial match by examining the matched node.
+      // Double-check for partial matches: if path indicates component match within compound
+      // (e.g., ['arg', index, subIndex] where both index and subIndex are numbers)
+      if (location.path.length >= 3) {
+        const pathLastNum = location.path[location.path.length - 1];
+        const pathSecondLast = location.path[location.path.length - 2];
+        // Path like ['arg', index, subIndex] indicates component match within compound selector
+        if (typeof pathLastNum === 'number' && typeof pathSecondLast === 'number') {
+          const matchedNode = location.matchedNode;
+          // If matching a SimpleSelector within a compound, it's a partial match
+          if (matchedNode && isNode(matchedNode, 'SimpleSelector') && isNode(find, 'SimpleSelector')) {
+            if (matchedNode.valueOf() === find.valueOf()) {
+              // Component match within compound - treat as partial
+              return target;
+            }
+          }
         }
-      }
-      // Also reject if findExtendableLocations marked it as a partial match
-      if (!partial && location.isPartialMatch) {
-        throw new ExtendError(
-          ExtendErrorType.PARTIAL_MATCH,
-          'Partial match found but exact match required',
-          { target, find, extendWith }
-        );
       }
 
       // Check if this is a compound target that fully matches a compound selector
@@ -942,6 +949,39 @@ export function extendSelector(
       if (isNode(find, 'CompoundSelector') && isNode(target, 'CompoundSelector')) {
         // This is a full compound match - create selector list
         return createExtendedSelectorList([target, extendWith], target);
+      }
+
+      // When partial: false and we're matching inside a pseudo-selector (path includes 'arg'),
+      // check if there are ANY components outside the :is() (before or after).
+      // If so, this is a partial match of the entire selector and should be rejected.
+      // Examples:
+      // - d :is(.b .c) matching .b .c with partial: false → rejected (d is before)
+      // - :is(.i).j matching .i with partial: false → rejected (.j is after)
+      // - :is(.i) matching .i with partial: false → allowed (no components outside)
+      if (!partial) {
+        const argIndex = location.path.indexOf('arg');
+        if (argIndex > 0) {
+          // We're matching inside a pseudo-selector - find the component index
+          const componentIndex = location.path[argIndex - 1];
+
+          if (typeof componentIndex === 'number') {
+            // Check for components before the :is() in ComplexSelector
+            if (isNode(target, 'ComplexSelector') && componentIndex > 0) {
+              // There are components before the :is() - this is a partial match
+              return target;
+            }
+
+            // Check for components before or after the :is() in CompoundSelector
+            if (isNode(target, 'CompoundSelector')) {
+              const hasComponentsBefore = componentIndex > 0;
+              const hasComponentsAfter = componentIndex < target.value.length - 1;
+              if (hasComponentsBefore || hasComponentsAfter) {
+                // There are components outside the :is() - this is a partial match
+                return target;
+              }
+            }
+          }
+        }
       }
 
       // This is a full match inside a pseudo-selector argument
@@ -952,16 +992,8 @@ export function extendSelector(
     // Special handling for full matches at the first component of complex selectors
     // Component matches in complex selectors create :is() wrappers (not selector lists)
     // Example: .aa .dd extended with .cc (where .cc:extend(.aa !all)) should produce :is(.aa, .cc) .dd
+    // (Partial matches are already handled by the unified check above)
     if (location.path.length === 1 && isNode(target, 'ComplexSelector') && location.path[0] === 0) {
-      // When partial: false, reject if there are elements after the match
-      // (the entire selector must match exactly, not just a prefix)
-      if (!partial && location.isPartialMatch) {
-        throw new ExtendError(
-          ExtendErrorType.PARTIAL_MATCH,
-          'Partial match found but exact match required',
-          { target, find, extendWith }
-        );
-      }
       // This is a component match in a complex selector - create :is() wrapper
       // REASON: Anything that's "part of" a selector gets wrapped in :is()
       const componentIndex = location.path[0] as number;
@@ -978,9 +1010,7 @@ export function extendSelector(
     }
 
     // For full matches within compound selectors, create :is() wrapper
-    // Note: Compound selectors allow component-level matches even when partial: false
-    // because matching a component is a full match of that component, not a partial match
-    // This is different from root-level matches which create selector lists
+    // (Partial matches are already handled by the unified check above)
     if (location.path.length === 1 && isNode(target, 'CompoundSelector')) {
       // This is a component match within a compound selector
       const componentIndex = location.path[0] as number;
@@ -1086,22 +1116,6 @@ function handleFullExtend(
   extendWith: Selector,
   matchResult: any
 ): Selector {
-  // Debug logging (only in test environment)
-  if (typeof process !== 'undefined' && process.env.TEST) {
-    try {
-      const { syncLog } = require('./__tests__/debug-log');
-      syncLog({
-        fn: 'handleFullExtend',
-        target: target.valueOf(),
-        find: find.valueOf(),
-        extendWith: extendWith.valueOf(),
-        targetType: target.type
-      });
-    } catch {
-      // Ignore if debug-log not available
-    }
-  }
-
   // For full matches, we add the extension as a new selector in a list
 
   // If target is already a selector list, add to it
@@ -1183,21 +1197,6 @@ function handleCompoundFullExtend(
   extendWith: Selector,
   matchResult: any
 ): Selector {
-  // Debug logging (only in test environment)
-  if (typeof process !== 'undefined' && process.env.TEST) {
-    try {
-      const { syncLog } = require('./__tests__/debug-log');
-      syncLog({
-        fn: 'handleCompoundFullExtend',
-        target: target.valueOf(),
-        find: find.valueOf(),
-        extendWith: extendWith.valueOf()
-      });
-    } catch {
-      // Ignore if debug-log not available
-    }
-  }
-
   // Check for boundary-crossing matches: when find is a compound selector that matches
   // across an :is() boundary (e.g., :is(.a, .b).c matching .b.c should flatten)
   if (isNode(find, 'CompoundSelector')) {
@@ -1295,21 +1294,6 @@ function createValidatedIsWrapper(
   fallbackSelector: Selector,
   contextSelector?: Selector
 ): PseudoSelector | Selector {
-  // Debug logging (only in test environment)
-  if (typeof process !== 'undefined' && process.env.TEST) {
-    try {
-      const { syncLog } = require('./__tests__/debug-log');
-      syncLog({
-        fn: 'createValidatedIsWrapper',
-        selectors: selectors.map(s => s.valueOf()),
-        inheritFrom: inheritFrom.valueOf(),
-        hasContext: !!contextSelector
-      });
-    } catch {
-      // Ignore if debug-log not available
-    }
-  }
-
   try {
     return createValidatedIsWrapperWithErrors(selectors, inheritFrom, contextSelector);
   } catch (error) {
