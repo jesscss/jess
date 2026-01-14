@@ -1259,9 +1259,16 @@ function applyExtension(
       }
 
     case 'wrap':
-      // For now, treat wrap the same as append
-      // This could be enhanced for specific wrapping scenarios
-      return new SelectorList([current, extendWith]);
+      // For wrap, create an :is() wrapper to preserve compound selector structure
+      // This is used when extending a component within a compound selector
+      // Example: .i.j with .i extended by .k should become :is(.i, .k).j
+      // Create selectorList with original and extension
+      const selectorList = SelectorList.create([current, extendWith]);
+      // Create PseudoSelector using the create factory method - marks as generated
+      return PseudoSelector.create({
+        name: ':is',
+        arg: selectorList
+      }).inherit(current);
 
     default:
       throw new Error(`Unknown extension type: ${extensionType}`);

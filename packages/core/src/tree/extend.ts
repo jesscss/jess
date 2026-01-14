@@ -47,11 +47,16 @@ export class Extend extends Node<ExtendValue> {
     const w = options.writer!;
     let { target, selector, flag } = this.value;
     const mark = w.mark();
+    w.add('$extend');
     if (selector) {
-      selector.toString(options);
+      let out = w.capture(() => selector.toString(options)).trim();
+      w.add(' ');
+      w.add(out, selector);
+      w.add(' ->');
     }
-    w.add('$extend ');
-    target.toString(options);
+    let out = w.capture(() => target.toString(options)).trim();
+    w.add(' ');
+    w.add(out, target);
     if (flag === ExtendFlag.Exact) {
       w.add(' !exact');
     }
@@ -69,8 +74,7 @@ export class Extend extends Node<ExtendValue> {
     if (!extendRoot) {
       /** Throw error? */
       return new Nil();
-    } 
-
+    }
 
     const maybeSel = selector.eval(context);
     if (isThenable(maybeSel)) {

@@ -57,6 +57,21 @@ When investigating bugs or failures, always use scientific principles to underst
 - Make targeted fixes that address the root cause
 - Verify your understanding before making changes, but don't overthink - test and iterate
 
+## Package Script Execution
+
+**ALWAYS** run scripts (npm/pnpm scripts, ESLint, tests, builds, etc.) from the package's directory, not from the root.
+
+**Correct approaches:**
+- Use `cd` to change directory first: `cd packages/core && pnpm lint`
+- Use pnpm `--filter` flag from root: `pnpm --filter @jesscss/core lint`
+- Use relative paths from package directory: `cd packages/core && pnpm exec eslint src/tree/util/extend.ts`
+
+**DO NOT:**
+- Run from root with package paths: `pnpm exec eslint packages/core/src/tree/util/extend.ts` (may not work due to ignore patterns)
+- Assume scripts work from root without proper context
+
+**Why:** Each package has its own `package.json` with scripts configured for that package's context. ESLint configs, build outputs, test configurations, and module resolution all expect execution from the package directory.
+
 ## Type Safety and Code Quality
 
 **NEVER**:

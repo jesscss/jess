@@ -1,0 +1,58 @@
+# Package Script Execution Rules
+
+## Running Scripts in Monorepo Packages
+
+When running scripts (npm/pnpm scripts, ESLint, tests, builds, etc.) for a specific package in this monorepo, you MUST run them from the package's directory, not from the root.
+
+### Correct Approaches:
+
+1. **Using `cd` to change directory first:**
+   ```bash
+   cd packages/core
+   pnpm lint
+   pnpm test
+   pnpm build
+   ```
+
+2. **Using pnpm `--filter` flag from root:**
+   ```bash
+   pnpm --filter @jesscss/core lint
+   pnpm --filter @jesscss/core test
+   pnpm --filter @jesscss/core build
+   ```
+
+3. **Using relative paths from package directory:**
+   ```bash
+   cd packages/core
+   pnpm exec eslint src/tree/util/extend.ts
+   ```
+
+### Incorrect Approaches:
+
+❌ **DO NOT run from root with package paths:**
+   ```bash
+   # WRONG - This may not work correctly due to ignore patterns
+   pnpm exec eslint packages/core/src/tree/util/extend.ts
+   ```
+
+❌ **DO NOT assume scripts work from root:**
+   ```bash
+   # WRONG - Scripts are configured per-package
+   cd /Users/matthew/git/oss/jess
+   pnpm lint packages/core
+   ```
+
+### Why This Matters:
+
+- Each package has its own `package.json` with scripts configured for that package's context
+- ESLint configs may have ignore patterns that assume execution from package root
+- Build outputs and paths are relative to the package directory
+- Test configurations expect to run from the package directory
+- Module resolution and TypeScript project references work correctly from package root
+
+### Always:
+
+- Check which package you're working in
+- Use `cd` to that package directory OR use `pnpm --filter <package-name>`
+- Run scripts from the package directory context
+- Verify paths are relative to the package, not the monorepo root

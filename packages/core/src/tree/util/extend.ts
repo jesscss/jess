@@ -1,3 +1,91 @@
+/**
+ * EXTEND UTILITY - REQUIREMENTS AND FEATURE SET
+ * ==============================================
+ *
+ * This module implements the core extend functionality for Jess, allowing selectors to
+ * "extend" other selectors, adding them to selector lists or wrapping them in :is() pseudo-classes.
+ *
+ * ## Core Concept
+ *
+ * Extend allows a selector to "inherit" styles from another selector by adding the extending
+ * selector to the target selector's selector list, or by creating :is() wrappers when appropriate.
+ *
+ * Example: `.child:extend(.parent)` means "add .child to .parent's selector list"
+ * Result: `.parent, .child { ... }`
+ *
+ * ## Two Modes: Partial vs Full
+ *
+ * ### Partial Mode (partial: true)
+ * - Used when the `!all` flag is NOT specified
+ * - Creates :is() wrappers for component-level matches
+ * - Example: `.a>.b:extend(.b !all)` → `.a>:is(.b,.c)` (if .b extended with .c)
+ *
+ * ### Full Mode (partial: false)
+ * - Used when the `!all` flag IS specified
+ * - Creates selector lists for root-level matches
+ * - Creates :is() wrappers for component matches in compound selectors (to preserve other components)
+ * - Example: `.btn:hover:extend(.btn !all)` → `:is(.btn,.primary):hover` (if .btn extended with .primary)
+ *
+ * ## When to Create :is() Wrappers vs Selector Lists
+ *
+ * ### Create Selector List (.a, .b) when:
+ * 1. Root-level full match (entire selector matches): `.a:extend(.a !all)` → `.a, .b`
+ *    - This applies regardless of selector type (simple, compound, complex, etc.)
+ *    - Example: `.a.b:extend(.a.b !all)` → `.a.b, .c` (not because it's compound, but because entire selector matches)
+ * 2. Partial match where extendWith is a complex selector and matches a segment:
+ *    - Example: `.a.b > .c.d {}` with `.g:extend(.b > .c !all)` → `.a.b > .c.d, .g {}`
+ *    - Reasoning: In compounds, order doesn't matter. The matched segment is replaced entirely.
+ *    - Example: `.a > .b.c > .d {}` with `.e:extend(.a > .c !all)` → `:is(.a > .b.c, .e) > .d {}`
+ *
+ * ### Create :is() Wrapper (:is(.a, .b)) when:
+ * 1. Component match in compound selector (FULL mode): `.btn:hover:extend(.btn !all)` → `:is(.btn,.primary):hover`
+ *    - REASON: Must preserve other components (like :hover) that aren't being extended
+ * 2. Component match in compound selector (PARTIAL mode): `.a.b:extend(.b)` → `.a:is(.b,.c)`
+ * 3. Component match in complex selector (FULL mode): `.aa .dd:extend(.aa !all)` → `:is(.aa,.cc) .dd`
+ *    - REASON: Anything that's "part of" a selector gets wrapped in :is()
+ * 4. Component match in complex selector (PARTIAL mode): `.a>.b:extend(.b)` → `.a>:is(.b,.c)`
+ * 5. Full match of entire selector within :is() argument: `:is(.a,.b):extend(.a !all)` → `:is(.a,.b,.c)`
+ *    - REASON: When matching an entire selector within a SelectorList (the :is() argument),
+ *      we just add to that list, same as root-level matches. No special handling needed.
+ *    - The recursive extend applies the same logic: full match = add to list, component match = wrap in :is()
+ *
+ * ## Critical Distinction: Component Matches in Compound Selectors
+ *
+ * **IMPORTANT**: Even in FULL mode, component matches within compound selectors create :is() wrappers,
+ * NOT selector lists. This is because:
+ * - `.btn:hover` extending with `.primary` should become `:is(.btn,.primary):hover`
+ * - NOT `.btn:hover,.primary:hover` (which would be wrong - `.primary:hover` doesn't exist in original)
+ *
+ * The other components of the compound selector (like `:hover`) must be preserved, which requires
+ * wrapping in :is() rather than creating a selector list.
+ *
+ * ## Special Cases
+ *
+ * ### Boundary Crossing
+ * - When a match crosses an :is() boundary (e.g., `:is(.a, .b).c` matching `.b.c`), the selector
+ *   must be flattened first: `:is(.a, .b).c` → `:is(.a.c, .b.c)`
+ * - Then, if extending the flattened result, apply normal extend rules:
+ *   - Example: `:is(.a, .x).c > :is(.b > .y).d {}` with `.e:extend(.a.c) {}`
+ *   - Step 1: Flatten boundary crossing → `:is(.a.c, .x.c) > :is(.b > .y).d {}`
+ *   - Step 2: Extend `.a.c` with `.e` (full match in SelectorList) → `:is(.a.c, .x.c, .e) > :is(.b > .y).d {}`
+ *   - REASON: `.a.c` is a full match in the SelectorList, so we add `.e` to the list (same as root-level)
+ *
+ * ### Self-Referencing Extends
+ * - `.a:extend(.a)` should be ignored (handled by shouldSkipRuleset in rules.ts)
+ *
+ * ### Pseudo-Selector Arguments
+ * - Matches inside :is(), :where(), :not(), :has() arguments are extended recursively
+ * - Only :is() allows boundary crossing
+ *
+ * ## Multiple Component Matches
+ *
+ * When multiple components in a compound selector match, each component is wrapped separately
+ * in its own :is() wrapper:
+ * - Example: `.a.b.c` with `.a` extended by `.x` and `.b` extended by `.y`
+ * - Result: `:is(.a, .x):is(.b, .y).c`
+ * - Each match is independent and gets its own :is() wrapper
+ */
+
 import { type Selector } from '../selector';
 import { SimpleSelector } from '../selector-simple';
 import { SelectorList } from '../selector-list';
@@ -97,6 +185,160 @@ function deduplicateSelectors(selectors: Selector[]): Selector[] {
 }
 
 /**
+ * Helper function to create a SelectorList from an array of selectors,
+ * with deduplication and flattening of generated :is() wrappers applied.
+ * This is the standard pattern used throughout extend operations.
+ *
+ * @param selectors - Array of selectors to process
+ * @param inheritFrom - Optional selector to inherit from
+ * @returns A new SelectorList with deduplicated and flattened selectors
+ */
+function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selector): SelectorList {
+  const flattened = flattenGeneratedIs(selectors);
+  const deduplicated = deduplicateSelectors(flattened);
+  const result = SelectorList.create(deduplicated);
+  return inheritFrom ? result.inherit(inheritFrom) : result;
+}
+
+/**
+ * Detects and handles boundary-crossing matches where a compound selector find
+ * matches across an :is() boundary in a compound selector target.
+ *
+ * Example: :is(.a, .b).c matching .b.c should flatten to .a.c, .b.c, .d.c
+ *
+ * @param target - The compound selector to extend
+ * @param find - The compound selector being matched (must have length > 1)
+ * @param extendWith - The selector to extend with
+ * @returns The flattened selector list if boundary-crossing detected, null otherwise
+ */
+function detectAndHandleBoundaryCrossing(
+  target: CompoundSelector,
+  find: CompoundSelector,
+  extendWith: Selector
+): Selector | null {
+  if (find.value.length <= 1) {
+    return null;
+  }
+
+  // Look for :is() components in the target
+  for (let i = 0; i < target.value.length; i++) {
+    const comp = target.value[i];
+    if (!isNode(comp, 'PseudoSelector') || comp.value.name !== ':is') {
+      continue;
+    }
+
+    const arg = comp.value.arg;
+    if (!arg || !(arg as any).isSelector || !isNode(arg, 'SelectorList')) {
+      continue;
+    }
+
+    // Check if the first part of find matches inside the :is() and the rest matches after
+    const firstPart = find.value[0];
+    const restParts = find.value.slice(1);
+
+    if (!firstPart || restParts.length === 0 || i + 1 >= target.value.length) {
+      continue;
+    }
+
+    // Check if firstPart matches inside the :is()
+    const firstPartSearch = findExtendableLocations(arg, firstPart);
+    if (!firstPartSearch.hasMatches) {
+      continue;
+    }
+
+    // Check if the rest matches the components after the :is()
+    const restCompound = restParts.length === 1
+      ? restParts[0]!
+      : CompoundSelector.create(restParts);
+    const afterIs = target.value.slice(i + 1);
+    const afterIsCompound = afterIs.length === 1
+      ? afterIs[0]!
+      : CompoundSelector.create(afterIs);
+
+    // Handle compound selector after :is()
+    if (isNode(afterIsCompound, 'CompoundSelector')) {
+      const restSearch = findExtendableLocations(afterIsCompound, restCompound);
+      if (restSearch.hasMatches) {
+        return createFlattenedBoundaryCrossingResult(arg, afterIs, extendWith, target);
+      }
+    } else if (afterIs.length === 1) {
+      // Single component after :is()
+      const afterIsComponent = afterIs[0]!;
+      const restSearch = findExtendableLocations(afterIsComponent, restCompound);
+      if (restSearch.hasMatches) {
+        return createFlattenedBoundaryCrossingResult(arg, [afterIsComponent], extendWith, target);
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Creates flattened selectors for a boundary-crossing match.
+ * Each alternative in the :is() is combined with components after it, plus the extension.
+ *
+ * @param isArg - The SelectorList argument of the :is() pseudo-selector
+ * @param afterIs - The components after the :is() in the compound selector
+ * @param extendWith - The selector to extend with
+ * @param inheritFrom - The selector to inherit from
+ * @returns A SelectorList with all flattened combinations
+ */
+function createFlattenedBoundaryCrossingResult(
+  isArg: SelectorList,
+  afterIs: SimpleSelector[],
+  extendWith: Selector,
+  inheritFrom: Selector
+): SelectorList {
+  const flattenedSelectors: Selector[] = [];
+
+  // For each alternative in :is(), create alt + components after :is()
+  for (const alt of isArg.value) {
+    const altWithRest = CompoundSelector.create([alt as SimpleSelector, ...afterIs]).inherit(inheritFrom);
+    flattenedSelectors.push(altWithRest);
+  }
+
+  // Also add extendWith + components after :is()
+  const extendWithRest = CompoundSelector.create([extendWith as SimpleSelector, ...afterIs]).inherit(inheritFrom);
+  flattenedSelectors.push(extendWithRest);
+
+  return createExtendedSelectorList(flattenedSelectors, inheritFrom);
+}
+
+/**
+ * Checks if a component is an :is() pseudo-selector with a selector argument.
+ *
+ * @param comp - The component to check
+ * @returns The SelectorList argument if it's an :is() with selector arg, null otherwise
+ */
+function getIsSelectorArg(comp: SimpleSelector): SelectorList | null {
+  if (!isNode(comp, 'PseudoSelector') || comp.value.name !== ':is') {
+    return null;
+  }
+  const arg = comp.value.arg;
+  if (!arg || !(arg as any).isSelector || !isNode(arg, 'SelectorList')) {
+    return null;
+  }
+  return arg;
+}
+
+/**
+ * Extends within an :is() pseudo-selector argument recursively.
+ *
+ * @param isArg - The SelectorList argument of the :is() pseudo-selector
+ * @param find - The selector to find
+ * @param extendWith - The selector to extend with
+ * @returns The extended argument
+ */
+function extendWithinIsArg(
+  isArg: SelectorList,
+  find: Selector,
+  extendWith: Selector
+): Selector {
+  return extendSelector(isArg, find, extendWith, false, true);
+}
+
+/**
  * Recursively flatten nested :is() wrappers that were generated during extend.
  * If a SelectorList contains items that are single :is() pseudo-selectors
  * with generated: true, unwrap them and splice their contents into the parent.
@@ -161,6 +403,13 @@ function flattenGeneratedIs(selectors: Selector[]): Selector[] {
  * Handles PseudoSelector, SelectorList, CompoundSelector, ComplexSelector.
  */
 function flattenGeneratedIsInSelector(selector: Selector): Selector {
+  // First optimize unnecessary standalone :is() wrappers
+  const optimized = optimizeUnnecessaryIsWrapper(selector);
+  if (optimized !== selector) {
+    // If optimization occurred, recursively process the unwrapped selector
+    return flattenGeneratedIsInSelector(optimized);
+  }
+
   // Handle ALL pseudo-selectors with selector arguments (not just :is)
   // This includes :not(), :where(), :has(), etc.
   if (isNode(selector, 'PseudoSelector')) {
@@ -210,15 +459,54 @@ function flattenGeneratedIsInSelector(selector: Selector): Selector {
   }
 
   // Handle CompoundSelector - recursively process each component
+  // IMPORTANT: We do NOT unwrap :is() pseudo-selectors that are components of compound selectors.
+  // Only process their arguments recursively, but preserve the :is() wrapper itself.
+  // This is because :is(.i, .k).j is a valid compound selector structure that should be preserved.
   if (isNode(selector, 'CompoundSelector')) {
     let changed = false;
     const newComponents: SimpleSelector[] = [];
     for (const comp of selector.value) {
-      const processed = flattenGeneratedIsInSelector(comp as Selector);
-      if (processed !== comp) {
-        changed = true;
+      // For :is() pseudo-selectors that are components of compound selectors,
+      // we only recursively process their arguments, but we do NOT unwrap them.
+      // This preserves structures like :is(.i, .k).j
+      if (isNode(comp, 'PseudoSelector') && comp.value.name === ':is' && comp.generated === true) {
+        // Process the argument recursively, but keep the :is() wrapper
+        const arg = comp.value.arg;
+        if (arg && isSelector(arg)) {
+          let flattenedArg: Selector;
+          if (isNode(arg, 'SelectorList')) {
+            const flattenedItems = flattenGeneratedIs(arg.value);
+            if (flattenedItems !== arg.value) {
+              flattenedArg = SelectorList.create(flattenedItems).inherit(arg);
+            } else {
+              flattenedArg = arg;
+            }
+          } else {
+            flattenedArg = flattenGeneratedIsInSelector(arg as Selector);
+          }
+
+          if (flattenedArg !== arg) {
+            const newPseudo = new PseudoSelector({
+              name: ':is',
+              arg: flattenedArg
+            }).inherit(comp);
+            newPseudo.generated = comp.generated;
+            newComponents.push(newPseudo);
+            changed = true;
+          } else {
+            newComponents.push(comp);
+          }
+        } else {
+          newComponents.push(comp);
+        }
+      } else {
+        // For non-:is() components, process recursively
+        const processed = flattenGeneratedIsInSelector(comp as Selector);
+        if (processed !== comp) {
+          changed = true;
+        }
+        newComponents.push(processed as SimpleSelector);
       }
-      newComponents.push(processed as SimpleSelector);
     }
     if (changed) {
       return CompoundSelector.create(newComponents).inherit(selector);
@@ -365,7 +653,7 @@ export function extendSelector(
     // Append new selectors at the end, preserving order extends were applied
     // Flatten any nested :is() that were generated during extend
     const allSelectors = [...originalSelectors, ...newSelectors];
-    return SelectorList.create(deduplicateSelectors(flattenGeneratedIs(allSelectors))).inherit(target);
+    return createExtendedSelectorList(allSelectors, target);
   }
 
   // For partial extends, prefer actual matches over "append to :is() list" extension points
@@ -446,7 +734,7 @@ export function extendSelector(
           }
         }
 
-        return SelectorList.create(deduplicateSelectors(flattenGeneratedIs([target, combinedExtension]))).inherit(target);
+        return createExtendedSelectorList([target, combinedExtension], target);
       }
 
       // Special case: Check if this is a complex selector partial match case
@@ -487,12 +775,12 @@ export function extendSelector(
           if (foundCompoundRemainder && compoundRemainder) {
             // Create combined extension with remainder
             const combinedExtension = createValidatedCompoundSelectorWithErrors([compoundRemainder as any, extendWith as any], compoundRemainder, { target, find, extendWith });
-            return SelectorList.create(deduplicateSelectors(flattenGeneratedIs([target, combinedExtension]))).inherit(target);
+            return createExtendedSelectorList([target, combinedExtension], target);
           }
         }
       }
 
-      return SelectorList.create(deduplicateSelectors(flattenGeneratedIs([target, extendWith]))).inherit(target);
+      return createExtendedSelectorList([target, extendWith], target);
     }
 
     // For deeper matches in partial mode, we need to analyze the context
@@ -530,10 +818,14 @@ export function extendSelector(
   } else {
     // FULL MATCHING MODE: Create selector lists for complete matches
 
-    // Check if this is a root-level full match (should create selector list)
-    if (location.path.length === 0 && location.extensionType === 'replace' && !location.isPartialMatch) {
-      // This is a full match at the root - create selector list with both original and extension
-      return SelectorList.create(deduplicateSelectors(flattenGeneratedIs([target, extendWith]))).inherit(target);
+    // Check for boundary-crossing matches in compound selectors FIRST
+    // This handles cases like :is(.a, .b).c matching .b.c where the match crosses the :is() boundary
+    // This must be checked before handleFullExtend because it requires special flattening logic
+    if (isNode(target, 'CompoundSelector') && isNode(find, 'CompoundSelector')) {
+      const boundaryResult = detectAndHandleBoundaryCrossing(target, find, extendWith);
+      if (boundaryResult) {
+        return boundaryResult;
+      }
     }
 
     // Special handling for pseudo-selector matches in full mode
@@ -570,7 +862,7 @@ export function extendSelector(
       // In this case, create a selector list instead of extending inside the pseudo-selector
       if (isNode(find, 'CompoundSelector') && isNode(target, 'CompoundSelector')) {
         // This is a full compound match - create selector list
-        return SelectorList.create(deduplicateSelectors(flattenGeneratedIs([target, extendWith]))).inherit(target);
+        return createExtendedSelectorList([target, extendWith], target);
       }
 
       // This is a full match inside a pseudo-selector argument
@@ -578,9 +870,38 @@ export function extendSelector(
       return applyExtensionAtLocation(target, location, extendWith);
     }
 
+    // Special handling for full matches at the first component of complex selectors
+    // Component matches in complex selectors create :is() wrappers (not selector lists)
+    // Example: .aa .dd extended with .cc (where .cc:extend(.aa !all)) should produce :is(.aa, .cc) .dd
+    if (location.path.length === 1 && isNode(target, 'ComplexSelector') && location.path[0] === 0) {
+      // When partial: false, reject if there are elements after the match
+      // (the entire selector must match exactly, not just a prefix)
+      if (!partial && location.isPartialMatch) {
+        throw new ExtendError(
+          ExtendErrorType.PARTIAL_MATCH,
+          'Partial match found but exact match required',
+          { target, find, extendWith }
+        );
+      }
+      // This is a component match in a complex selector - create :is() wrapper
+      // REASON: Anything that's "part of" a selector gets wrapped in :is()
+      const componentIndex = location.path[0] as number;
+      const matchedComponent = target.value[componentIndex];
+
+      if (matchedComponent && !isNode(matchedComponent, 'Combinator')) {
+        // Replace the matched component with :is(original, extension)
+        const newComponents = [...target.value];
+        const isWrapper = createValidatedIsWrapperWithErrors([matchedComponent, extendWith], matchedComponent, target, { target, find, extendWith });
+
+        newComponents[componentIndex] = isWrapper as any;
+        return ComplexSelector.create(newComponents).inherit(target);
+      }
+    }
+
     // For full matches within compound selectors, create :is() wrapper
     // Note: Compound selectors allow component-level matches even when partial: false
     // because matching a component is a full match of that component, not a partial match
+    // This is different from root-level matches which create selector lists
     if (location.path.length === 1 && isNode(target, 'CompoundSelector')) {
       // This is a component match within a compound selector
       const componentIndex = location.path[0] as number;
@@ -596,35 +917,10 @@ export function extendSelector(
       }
     }
 
-    // For full matches at the first component of complex selectors, create selector list
-    // Example: .aa .dd extended with .cc (where .cc:extend(.aa)) should produce .aa .dd, .cc .dd
-    if (location.path.length === 1 && isNode(target, 'ComplexSelector') && location.path[0] === 0) {
-      // When partial: false, reject if there are elements after the match
-      // (the entire selector must match exactly, not just a prefix)
-      if (!partial && location.isPartialMatch) {
-        throw new ExtendError(
-          ExtendErrorType.PARTIAL_MATCH,
-          'Partial match found but exact match required',
-          { target, find, extendWith }
-        );
-      }
-      // This is a full match at the first component of a complex selector
-      // Create selector list with both original and extended version
-      const extendedSelector = applyExtensionAtLocation(target, location, extendWith);
-      // If the result is already a SelectorList (e.g., if the whole complex selector was matched),
-      // we need to merge it with the original, not wrap it again
-      if (isNode(extendedSelector, 'SelectorList')) {
-        // The extended result is already a list - merge original with the list
-        return SelectorList.create(deduplicateSelectors(flattenGeneratedIs([target, ...extendedSelector.value]))).inherit(target);
-      } else {
-        // The extended result is a single selector - create list with original and extended
-        return SelectorList.create(deduplicateSelectors(flattenGeneratedIs([target, extendedSelector]))).inherit(target);
-      }
-    }
-
-    // For full matches at deeper levels, still apply the extension
-    const result = applyExtensionAtLocation(target, location, extendWith);
-    return result;
+    // Use handleFullExtend for root-level matches and default cases
+    // This consolidates logic for SelectorList, PseudoSelector, and CompoundSelector handling
+    // and includes performance optimizations for generated selectors
+    return handleFullExtend(target, find, extendWith, location);
   }
 }
 
@@ -711,6 +1007,22 @@ function handleFullExtend(
   extendWith: Selector,
   matchResult: any
 ): Selector {
+  // Debug logging (only in test environment)
+  if (typeof process !== 'undefined' && process.env.TEST) {
+    try {
+      const { syncLog } = require('./__tests__/debug-log');
+      syncLog({
+        fn: 'handleFullExtend',
+        target: target.valueOf(),
+        find: find.valueOf(),
+        extendWith: extendWith.valueOf(),
+        targetType: target.type
+      });
+    } catch {
+      // Ignore if debug-log not available
+    }
+  }
+
   // For full matches, we add the extension as a new selector in a list
 
   // If target is already a selector list, add to it
@@ -764,9 +1076,13 @@ function handleFullExtend(
     // fall through to create a selector list
   }
 
-  // For compound selectors, check if we need special handling for pseudo-classes
+  // For compound selectors in full extend mode, just create a selector list
+  // (Component-level matches are handled earlier in extendSelector, not here)
+  // handleCompoundFullExtend is only for special cases like extending within :is() pseudo-selectors
   if (isNode(target, 'CompoundSelector')) {
-    return handleCompoundFullExtend(target, find, extendWith, matchResult);
+    // Default case: create a new selector list
+    const copyForInheritance = target.clone();
+    return SelectorList.create(deduplicateSelectors([target, extendWith])).inherit(copyForInheritance);
   }
 
   // Default case: create a new selector list
@@ -788,35 +1104,59 @@ function handleCompoundFullExtend(
   extendWith: Selector,
   matchResult: any
 ): Selector {
+  // Debug logging (only in test environment)
+  if (typeof process !== 'undefined' && process.env.TEST) {
+    try {
+      const { syncLog } = require('./__tests__/debug-log');
+      syncLog({
+        fn: 'handleCompoundFullExtend',
+        target: target.valueOf(),
+        find: find.valueOf(),
+        extendWith: extendWith.valueOf()
+      });
+    } catch {
+      // Ignore if debug-log not available
+    }
+  }
+
+  // Check for boundary-crossing matches: when find is a compound selector that matches
+  // across an :is() boundary (e.g., :is(.a, .b).c matching .b.c should flatten)
+  if (isNode(find, 'CompoundSelector')) {
+    const boundaryResult = detectAndHandleBoundaryCrossing(target, find, extendWith);
+    if (boundaryResult) {
+      return boundaryResult;
+    }
+  }
+
   // Single loop to handle both :is() extension and regular component matching
   for (let i = 0; i < target.value.length; i++) {
     const comp = target.value[i];
-    if (!comp) { continue; }
+    if (!comp) {
+      continue;
+    }
 
     // Check if this is an existing :is() pseudo-selector that might contain the find
     // ONLY :is() allows boundary crossing - all other pseudo-selectors are atomic units
-    if (isNode(comp, 'PseudoSelector') && comp.value.name === ':is') {
-      const arg = comp.value.arg;
-      if (arg && (arg as any).isSelector) {
-        const isSearchResult = findExtendableLocations(arg as Selector, find);
-        if (isSearchResult.hasMatches) {
-          // Extend the :is() argument using the standard API
-          const extendedArg = extendSelector(arg as Selector, find, extendWith, false, true);
+    const isArg = getIsSelectorArg(comp);
+    if (isArg) {
+      const isSearchResult = findExtendableLocations(isArg, find);
+      if (isSearchResult.hasMatches) {
+        // Extend the :is() argument using the standard API (recursive call)
+        const extendedArg = extendWithinIsArg(isArg, find, extendWith);
 
-          // If the original selector was generated, we can mutate the :is() component in place
-          if (target.generated) {
-            comp.value.arg = extendedArg;
-            return target;
-          } else {
-            // For authored selectors, create new compound with updated :is()
-            const newComponents = [...target.value];
-            newComponents[i] = PseudoSelector.create({
-              name: ':is',
-              arg: extendedArg
-            }).inherit(comp);
+        // If the original selector was generated, we can mutate the :is() component in place
+        if (target.generated && isNode(comp, 'PseudoSelector')) {
+          comp.value.arg = extendedArg;
+          return target;
+        } else {
+          // For authored selectors, create new compound with updated :is()
+          const newComponents = [...target.value];
+          newComponents[i] = PseudoSelector.create({
+            name: ':is',
+            arg: extendedArg
+          }).inherit(comp);
 
-            return createValidatedCompoundSelectorWithErrors(newComponents, target);
-          }
+          return createValidatedCompoundSelectorWithErrors(newComponents, target);
         }
       }
     } else {
@@ -836,168 +1176,7 @@ function handleCompoundFullExtend(
   }
 
   // If no special handling needed, create a selector list
-  return SelectorList.create(deduplicateSelectors([target, extendWith])).inherit(target);
-}
-
-/**
- * Handles partial match extension - modifies the selector structure to include the extension
- * @param target - The selector to extend (what we're searching within)
- * @param find - The selector that was partially matched (what we were searching for)
- * @param extendWith - The selector to add as an alternative
- * @param matchResult - The result from the partial selector matching operation
- * @returns Extended selector with remainders properly handled
- */
-function handlePartialExtend(
-  target: Selector,
-  find: Selector,
-  extendWith: Selector,
-  matchResult: any
-): Selector {
-  if (!matchResult.hasPartialMatch) {
-    // Full match in partial mode - treat like full extend
-    return handleFullExtend(target, find, extendWith, matchResult);
-  }
-
-  // We have a partial match with remainders
-  // Strategy: Replace the matched part with :is(matched, extendWith) and keep remainders
-
-  if (isNode(target, 'ComplexSelector')) {
-    return handleComplexPartialExtend(target as ComplexSelector, find, extendWith, matchResult);
-  }
-
-  if (isNode(target, 'CompoundSelector')) {
-    return handleCompoundPartialExtend(target as CompoundSelector, find, extendWith, matchResult);
-  }
-
-  // For simple cases, wrap in :is()
-  return createIsWrapper([find, extendWith], target);
-}
-
-/**
- * Handles partial extension for complex selectors
- * @param target - The complex selector to extend (what we're searching within)
- * @param find - The selector that was partially matched (what we were searching for)
- * @param extendWith - The selector to add as an alternative
- * @param matchResult - The result from the partial selector matching operation
- * @returns Extended complex selector with proper remainder handling
- */
-function handleComplexPartialExtend(
-  target: ComplexSelector,
-  find: Selector,
-  extendWith: Selector,
-  matchResult: any
-): Selector {  // If the top-level match result has remainders from cross-selector matching,
-  // handle them by creating remainder+extension combinations
-  if (matchResult.hasPartialMatch && matchResult.remainders && matchResult.remainders.length > 0
-    && matchResult.matched && matchResult.matched.length > 0 && !isNode(find, 'SimpleSelector')) {
-    // Only apply remainder logic for complex finds that match across selector structure
-    const remainderSelector = matchResult.remainders[0]; // Take the first remainder
-    let combinedExtension: Selector;
-
-    if (isNode(remainderSelector, 'ComplexSelector') || isNode(remainderSelector, 'CompoundSelector')) {
-      // For complex remainders, combine with extension
-      if (isNode(extendWith, 'ComplexSelector')) {
-        // Both are complex - need to combine structures
-        combinedExtension = ComplexSelector.create([...remainderSelector.value, ...extendWith.value]).inherit(remainderSelector);
-      } else {
-        // Remainder is complex, extension is simple - append extension
-        const newComponents = [...(remainderSelector.value || [remainderSelector])];
-        newComponents.push(extendWith as any); // Type assertion for complex selector components
-        combinedExtension = ComplexSelector.create(newComponents).inherit(remainderSelector);
-      }
-    } else {
-      // Simple remainder - create compound with extension
-      if (isNode(extendWith, 'ComplexSelector')) {
-        // Extension is complex, remainder is simple - prepend remainder
-        combinedExtension = ComplexSelector.create([remainderSelector as any, ...extendWith.value]).inherit(remainderSelector);
-      } else {
-        // Both simple - create compound
-        combinedExtension = createValidatedCompoundSelectorWithErrors([remainderSelector as any, extendWith as any], remainderSelector);
-      }
-    }
-
-    // Return selector list: original + combined remainder+extension
-    return SelectorList.create(deduplicateSelectors([target, combinedExtension])).inherit(target);
-  }
-
-  // Original logic for component-level matching
-  const components = target.value;
-
-  // Find the component that matches the find
-  for (let i = 0; i < components.length; i++) {
-    const component = components[i];
-
-    // Skip combinators
-    if (isNode(component, 'Combinator')) {
-      continue;
-    }
-
-    if (component) {
-      const compSearchResult = findExtendableLocations(component, find);
-
-      if (compSearchResult.hasMatches) {
-        // Found matching component - replace with :is() wrapper
-        const newComponents = [...components];
-        const location = compSearchResult.locations[0]!;
-
-        if (location.isPartialMatch && location.remainders && location.remainders.length > 0) {
-          // Partial match within this component - need to handle remainders
-          if (isNode(component, 'CompoundSelector')) {
-            // Component is compound - apply the extension using the new API
-            const extendedComponent = applyExtensionAtLocation(component, location, extendWith);
-            newComponents[i] = extendedComponent as any; // Type assertion needed for ComplexSelectorComponent
-          } else {
-            // Simple component - replace with :is() wrapper
-            newComponents[i] = createIsWrapper([component, extendWith], component);
-          }
-        } else {
-          // Full match of this component within a complex selector
-          // Since there are other components (remainders), we need :is() wrapper
-          newComponents[i] = createIsWrapper([component, extendWith], component);
-        }
-
-        return ComplexSelector.create(newComponents).inherit(target);
-      }
-    }
-  }
-
-  // No component matched - fallback to creating selector list
-  return SelectorList.create(deduplicateSelectors([target, extendWith])).inherit(target);
-}
-
-/**
- * Handles partial extension for compound selectors
- * @param target - The compound selector to extend (what we're searching within)
- * @param find - The selector that was partially matched (what we were searching for)
- * @param extendWith - The selector to add as an alternative
- * @param matchResult - The result from the partial selector matching operation
- * @returns Extended compound selector with :is() wrapper
- */
-function handleCompoundPartialExtend(
-  target: CompoundSelector,
-  find: Selector,
-  extendWith: Selector,
-  matchResult: any
-): Selector {
-  // Find the component that matched and replace it with :is()
-  for (let i = 0; i < target.value.length; i++) {
-    const comp = target.value[i];
-    if (comp) {
-      const compSearchResult = findExtendableLocations(comp, find);
-
-      if (compSearchResult.hasMatches) {
-        // Replace this component with :is(original, extension)
-        // IMPORTANT: Use comp instead of find to preserve comments!
-        const newComponents = [...target.value];
-        newComponents[i] = createIsWrapper([comp, extendWith], comp);
-
-        return createValidatedCompoundSelectorWithErrors(newComponents, target);
-      }
-    }
-  }
-
-  // If no direct component match, use the whole compound approach
-  return createIsWrapper([target, extendWith], target);
+  return createExtendedSelectorList([target, extendWith], target);
 }
 
 /**
@@ -1021,8 +1200,13 @@ function createIsWrapper(selectors: Selector[], inheritFrom: Selector): PseudoSe
 }
 
 /**
- * Creates an :is() wrapper with validation to prevent invalid combinations
- * Returns the original selector if the combination would be invalid
+ * Creates an :is() wrapper with validation that returns fallback on conflicts.
+ * High-level wrapper around createValidatedIsWrapperWithErrors that catches errors and returns fallback.
+ * @param selectors - Array of selectors to wrap in :is()
+ * @param inheritFrom - Selector to inherit properties from
+ * @param fallbackSelector - Selector to return if validation fails
+ * @param contextSelector - Optional context selector to check for conflicts
+ * @returns Valid :is() pseudo-selector or fallback selector
  */
 function createValidatedIsWrapper(
   selectors: Selector[],
@@ -1030,84 +1214,31 @@ function createValidatedIsWrapper(
   fallbackSelector: Selector,
   contextSelector?: Selector
 ): PseudoSelector | Selector {
-  // If we have a context selector (the compound this :is() will be placed in),
-  // check if the :is() contents would conflict with the context
-  if (contextSelector && isNode(contextSelector, 'CompoundSelector')) {
-    // Count elements/IDs in the context (excluding what we're replacing)
-    let contextElements = 0;
-    let contextIds = 0;
-
-    for (const child of contextSelector.value) {
-      if (isNode(child, 'BasicSelector')) {
-        if (child.isTag) { contextElements++; }
-        if (child.isId) { contextIds++; }
-      }
-    }
-
-    // Now check if any selector in the :is() would conflict with the context
-    for (const selector of selectors) {
-      let selectorElements = 0;
-      let selectorIds = 0;
-
-      if (isNode(selector, 'BasicSelector')) {
-        if (selector.isTag) { selectorElements++; }
-        if (selector.isId) { selectorIds++; }
-      } else if (isNode(selector, 'CompoundSelector')) {
-        for (const child of selector.value) {
-          if (isNode(child, 'BasicSelector')) {
-            if (child.isTag) { selectorElements++; }
-            if (child.isId) { selectorIds++; }
-          }
-        }
-      }
-
-      // Debug: log what we're checking
-      // console.log('Context validation:', {
-      //   context: contextSelector.valueOf(),
-      //   contextElements,
-      //   contextIds,
-      //   selector: selector.valueOf(),
-      //   selectorElements,
-      //   selectorIds,
-      //   wouldConflict: (contextElements > 0 && selectorElements > 0) || (contextIds > 0 && selectorIds > 0)
-      // });
-
-      // If this selector would conflict with the context, fail validation
-      if ((contextElements > 0 && selectorElements > 0) || (contextIds > 0 && selectorIds > 0)) {
-        // console.log('Context validation failed - returning fallback');
-        return fallbackSelector;
-      }
-    }
-  } else {
-    // Original validation for standalone :is() without context
-    let elementCount = 0;
-    let idCount = 0;
-
-    for (const selector of selectors) {
-      if (isNode(selector, 'BasicSelector')) {
-        if (selector.isTag) { elementCount++; }
-        if (selector.isId) { idCount++; }
-      } else if (isNode(selector, 'CompoundSelector')) {
-        for (const child of selector.value) {
-          if (isNode(child, 'BasicSelector')) {
-            if (child.isTag) { elementCount++; }
-            if (child.isId) { idCount++; }
-          }
-        }
-      }
-    }
-
-    // Debug: log what we're checking
-    // console.log('Standalone validation check:', selectors.map(s => s.valueOf()), 'elements:', elementCount, 'ids:', idCount);
-
-    // If we'd have duplicate elements or IDs, return the fallback
-    if (elementCount > 1 || idCount > 1) {
-      // console.log('Standalone validation failed - returning fallback');
-      return fallbackSelector;
+  // Debug logging (only in test environment)
+  if (typeof process !== 'undefined' && process.env.TEST) {
+    try {
+      const { syncLog } = require('./__tests__/debug-log');
+      syncLog({
+        fn: 'createValidatedIsWrapper',
+        selectors: selectors.map(s => s.valueOf()),
+        inheritFrom: inheritFrom.valueOf(),
+        hasContext: !!contextSelector
+      });
+    } catch {
+      // Ignore if debug-log not available
     }
   }
 
-  return createIsWrapper(selectors, inheritFrom);
+  try {
+    return createValidatedIsWrapperWithErrors(selectors, inheritFrom, contextSelector);
+  } catch (error) {
+    if (error instanceof ExtendError) {
+      // Validation failed - return fallback instead of throwing
+      return fallbackSelector;
+    }
+    // Re-throw unexpected errors
+    throw error;
+  }
 }
 
 /**
@@ -1469,22 +1600,30 @@ function markSelectorForHoisting(selector: Selector): Selector {
 }
 
 /**
- * Optimizes unnecessary :is() wrapper only at the top level
- * Only removes :is() when the entire result would be just a standalone :is() wrapper
- * that was generated during compilation (has generated: true on the node)
+ * Optimizes unnecessary standalone :is() wrappers that contain a single selector.
+ * Removes :is() when it wraps only one selector and was generated during compilation.
+ * Example: :is(.a) → .a (when generated)
+ * Does NOT optimize :is(.a, .b) (multiple selectors) or :is() in compound selectors.
  * @param selector - The selector to check for optimization
  * @returns Optimized selector or original if no optimization needed
  */
-function optimizeTopLevelUnnecessaryIsWrapper(selector: Selector): Selector {
+function optimizeUnnecessaryIsWrapper(selector: Selector): Selector {
   // Only optimize standalone :is() pseudo-selectors (not part of a compound)
-  // that were generated during compilation
+  // that were generated during compilation and contain a single selector
   if (isNode(selector, 'PseudoSelector')
     && selector.value.name === ':is'
     && selector.generated === true) { // Explicit check for true to avoid falsy values
     const arg = selector.value.arg;
-    if (arg && (arg as any).isSelector) {
-      // This is a standalone :is() generated by extend - unwrap it since :is() is only needed when combined with other components
-      return (arg as Selector).inherit(selector);
+    if (arg && isSelector(arg)) {
+      // Only unwrap if it's a single selector, not a SelectorList with multiple items
+      // :is(.a) → .a (unnecessary wrapper)
+      // :is(.a, .b) → keep as :is(.a, .b) (necessary for multiple selectors)
+      if (!isNode(arg, 'SelectorList') || arg.value.length === 1) {
+        // This is a standalone :is() with a single selector - unwrap it
+        // since :is() is only needed when combined with other components or multiple selectors
+        const unwrapped = isNode(arg, 'SelectorList') ? arg.value[0]! : (arg as Selector);
+        return unwrapped.inherit(selector);
+      }
     }
   }
 
@@ -1493,107 +1632,9 @@ function optimizeTopLevelUnnecessaryIsWrapper(selector: Selector): Selector {
   // - Compound selectors like &:is(.bar, .a) - the :is() is necessary there
   // - Selector lists - they have their own structure
   // - Complex selectors - they have their own structure
+  // - :is() with multiple selectors - necessary for grouping
 
   return selector;
-}
-
-/**
- * Handles partial extension at root level
- */
-function handlePartialExtendAtRoot(selector: Selector, target: Selector, extendWith: Selector): Selector {
-  // For partial matches at root, we typically want to wrap with :is() if it's compound
-  if (isNode(selector, 'CompoundSelector') && selector.value.length > 1) {
-    const isArg = SelectorList.create(deduplicateSelectors(flattenGeneratedIs([target, extendWith]))).inherit(target);
-    // Use .create() to mark as generated so it can be flattened later
-    const pseudoSelector = PseudoSelector.create({ name: ':is', arg: isArg });
-    return SelectorList.create(deduplicateSelectors(flattenGeneratedIs([pseudoSelector, ...selector.value.slice(1)]))).inherit(selector);
-  }
-
-  // Default to selector list for root-level partial matches
-  return SelectorList.create(deduplicateSelectors(flattenGeneratedIs([selector, extendWith]))).inherit(selector);
-}
-
-/**
- * Checks if partial match processing is needed
- */
-function needsPartialMatchProcessing(result: Selector, location: any): boolean {
-  // Only need processing for complex selector results
-  return isNode(result, 'ComplexSelector') || isNode(result, 'CompoundSelector');
-}
-
-/**
- * Processes partial match results to handle remainders properly
- */
-function processPartialMatchResult(
-  result: Selector,
-  selector: Selector,
-  target: Selector,
-  extendWith: Selector,
-  location: any
-): Selector {
-  // For now, return the result as-is
-  // This is where we would handle complex partial match scenarios
-  return result;
-}
-
-/**
- * Handles extension location in partial mode - creates :is() wrappers
- */
-function handleExtendLocationPartial(
-  selector: Selector,
-  location: any,
-  extendWith: Selector
-): Selector {
-  // Apply extension - this will create selector lists within pseudo-selectors
-  const extended = applyExtensionAtLocation(selector, location, extendWith);
-
-  // If we're in a complex selector context and need to create :is() wrappers
-  // For now, just return the extended result
-  return extended;
-}
-
-/**
- * Handles extension location in full mode - creates appropriate structures based on context
- */
-function handleExtendLocationFull(
-  selector: Selector,
-  location: any,
-  extendWith: Selector
-): Selector {
-  // For compound selectors, we may need to create :is() wrappers
-  if (location.path.length > 0) {
-    // We're extending within a compound or complex selector
-    const extended = applyExtensionAtLocation(selector, location, extendWith);
-
-    // Check if we need to convert the result to use :is() wrappers
-    // This happens when extending part of a compound selector
-    return convertToIsWrapperIfNeeded(extended, selector, location, extendWith);
-  }
-
-  // Default case: apply extension directly
-  return applyExtensionAtLocation(selector, location, extendWith);
-}
-
-/**
- * Converts extended results to use :is() wrappers when needed for compound selectors
- */
-function convertToIsWrapperIfNeeded(
-  extended: Selector,
-  original: Selector,
-  location: any,
-  extendWith: Selector
-): Selector {
-  // If this is a compound selector extension, we might need :is() wrapper
-  if (isNode(original, 'CompoundSelector') && original.value.length > 1) {
-    // Check if the extension created a selector list at the component level
-    // If so, we should wrap it in :is()
-
-    // For now, just return the extended result
-    // The proper logic would analyze the location path and determine
-    // if we need to create :is() wrappers for compound boundary cases
-  }
-
-  return extended;
 }
 
 /**
@@ -1607,8 +1648,12 @@ function isValidCompoundSelector(components: any[]): boolean {
 
   for (const component of components) {
     if (isNode(component, 'BasicSelector')) {
-      if (component.isTag) { elementCount++; }
-      if (component.isId) { idCount++; }
+      if (component.isTag) {
+        elementCount++;
+      }
+      if (component.isId) {
+        idCount++;
+      }
 
       // Invalid if we have more than one element or ID
       if (elementCount > 1 || idCount > 1) {
@@ -1626,22 +1671,28 @@ function isValidCompoundSelector(components: any[]): boolean {
 }
 
 /**
- * Creates a compound selector with validation to prevent invalid combinations
+ * Creates a compound selector with validation that returns fallback on conflicts.
+ * High-level wrapper around createValidatedCompoundSelectorWithErrors that catches errors and returns fallback.
  * @param components - Array of selectors to combine
  * @param inheritFrom - Selector to inherit properties from
- * @returns Valid compound selector or original selector if invalid
+ * @param fallbackSelector - Selector to return if validation fails (defaults to inheritFrom)
+ * @returns Valid compound selector or fallback selector
  */
 function createValidatedCompoundSelector(
   components: any[],
   inheritFrom: Selector,
   fallbackSelector?: Selector
 ): CompoundSelector | Selector {
-  if (!isValidCompoundSelector(components)) {
-    return fallbackSelector || inheritFrom; // Return fallback if invalid
+  try {
+    return createValidatedCompoundSelectorWithErrors(components, inheritFrom);
+  } catch (error) {
+    if (error instanceof ExtendError) {
+      // Validation failed - return fallback instead of throwing
+      return fallbackSelector || inheritFrom;
+    }
+    // Re-throw unexpected errors
+    throw error;
   }
-
-  const compound = CompoundSelector.create(components as any);
-  return compound.inherit(inheritFrom);
 }
 
 /**

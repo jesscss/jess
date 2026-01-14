@@ -111,6 +111,12 @@ export default tseslint.config([
         ignoreVoid: true
       }],
 
+      '@typescript-eslint/no-unused-vars': ['warn', {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_'
+      }],
+
       '@typescript-eslint/strict-boolean-expressions': 0,
       '@typescript-eslint/restrict-template-expressions': 0,
       '@typescript-eslint/method-signature-style': 0,
@@ -176,5 +182,5 @@ export default tseslint.config([
       '@typescript-eslint/no-unused-vars': 0,
       curly: ['error', 'all']
     }
-  }, globalIgnores(['**/node_modules', '**/lib', '**/dist', 'packages/**'])
+  }, globalIgnores(['**/node_modules', '**/lib', '**/dist', 'packages/**/lib', 'packages/**/dist'])
 ]);

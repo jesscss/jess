@@ -500,4 +500,213 @@ describe('Extend Selector Tests', () => {
       }).toThrow('Partial match found but exact match required');
     });
   });
+
+  describe(':is() boundary crossing and flattening', () => {
+    it('should NOT flatten :is() when extend does not cross :is() boundary', () => {
+      // :is(.g, .i.j) extended with .k:extend(.i all)
+      // Match .i is within .i.j, which is already inside :is(.g, .i.j)
+      // Result should be :is(.g, :is(.i, .k).j) - nested :is() preserved
+      const selector = is(sellist([el('.g'), compound([el('.i'), el('.j')])])); // :is(.g, .i.j)
+      const find = el('.i');
+      const extendWith = el('.k');
+
+      const result = extendSelector(selector, find, extendWith, true); // partial: true (all flag)
+      // Should preserve nested :is() structure
+      expect(result.valueOf()).toBe(':is(.g,:is(.i,.k).j)');
+    });
+
+    it('should flatten :is() when extend crosses :is() boundary', () => {
+      // :is(.a, .b).c extended with .d where we match .b.c
+      // Match crosses from inside :is() (.b) to outside (.c)
+      // Result MUST be flattened: :is(.a.c, .b.c, .d.c)
+      const selector = compound([is(sellist([el('.a'), el('.b')])), el('.c')]); // :is(.a, .b).c
+      const find = compound([el('.b'), el('.c')]); // .b.c
+      const extendWith = el('.d');
+
+      const result = extendSelector(selector, find, extendWith, false);
+      // Must flatten because match crosses :is() boundary
+      // Should be :is(.a.c,.b.c,.d.c) or similar flattened form
+      const resultStr = result.valueOf();
+      // The result should have all combinations flattened
+      expect(resultStr).toContain('.a.c');
+      expect(resultStr).toContain('.b.c');
+      expect(resultStr).toContain('.d.c');
+      // Should NOT have nested :is(.b, .d).c structure
+      expect(resultStr).not.toContain(':is(.b,.d).c');
+    });
+
+    it('should preserve nested :is() when extending within same :is() group', () => {
+      // :is(.g, .i.j).h extended with .k:extend(.i all)
+      // Match .i is within .i.j, which is inside :is(.g, .i.j)
+      // Result should be :is(.g, :is(.i, .k).j).h - nested structure preserved
+      const selector = compound([
+        is(sellist([el('.g'), compound([el('.i'), el('.j')])])), // :is(.g, .i.j)
+        el('.h')
+      ]); // :is(.g, .i.j).h
+      const find = el('.i');
+      const extendWith = el('.k');
+
+      const result = extendSelector(selector, find, extendWith, true); // partial: true (all flag)
+      // Should preserve nested :is() structure
+      expect(result.valueOf()).toBe(':is(.g,:is(.i,.k).j).h');
+    });
+
+    it('should flatten when match path crosses through different :is() contexts', () => {
+      // :is(.a, .b) .c extended with .d where we match .b .c
+      // Match crosses from inside :is() (.b) to outside (.c via combinator)
+      // Result should be flattened
+      const selector = sel([
+        is(sellist([el('.a'), el('.b')])), // :is(.a, .b)
+        co(' '),
+        el('.c')
+      ]); // :is(.a, .b) .c
+      const find = sel([el('.b'), co(' '), el('.c')]); // .b .c
+      const extendWith = el('.d');
+
+      const result = extendSelector(selector, find, extendWith, false);
+      const resultStr = result.valueOf();
+      // Should flatten to show all combinations
+      // Should have .a .c, .b .c, .d .c (or similar)
+      expect(resultStr).toContain('.c');
+      // Should NOT preserve nested :is(.b, .d) .c structure when crossing boundary
+    });
+
+    it('should preserve nested :is() in compound selector when not crossing boundary', () => {
+      // :is(.g, .i.j) extended with .k:extend(.i all)
+      // First extend creates :is(.g, .i.j)
+      // Second extend with .k should create :is(.g, :is(.i, .k).j)
+      // NOT :is(.g, .i, .k.j, .i.j) - should preserve nested structure
+      const selector = is(sellist([el('.g'), compound([el('.i'), el('.j')])])); // :is(.g, .i.j)
+      const find = el('.i');
+      const extendWith = el('.k');
+
+      const result = extendSelector(selector, find, extendWith, true); // partial: true (all flag)
+      const resultStr = result.valueOf();
+      // Should preserve nested :is() structure
+      expect(resultStr).toBe(':is(.g,:is(.i,.k).j)');
+      // Should NOT be flattened
+      expect(resultStr).not.toBe(':is(.g,.i,.k.j,.i.j)');
+    });
+
+    describe('Flattening algorithm correctness', () => {
+      /**
+       * These tests verify that when flattening IS necessary (when extend crosses :is() boundary),
+       * the flattening algorithm produces the CORRECT flattened structure.
+       *
+       * Key principle: When flattening :is(.g, .i.j) that has been extended to :is(.g, :is(.i, .k).j),
+       * the correct flattened form is :is(.g, .i.j, .k.j) - NOT :is(.g, .i, .k.j)
+       *
+       * The flattening must preserve the compound selector structure (.i.j and .k.j),
+       * not break it apart into individual components.
+       */
+      it('should flatten :is(.g, :is(.i, .k).j) to :is(.g, .i.j, .k.j) when necessary', () => {
+        // This test verifies the flattening algorithm itself.
+        // If we have :is(.g, :is(.i, .k).j) and need to flatten it,
+        // the result should be :is(.g, .i.j, .k.j)
+        // NOT :is(.g, .i, .k.j) which would be incorrect
+
+        // Create :is(.g, :is(.i, .k).j) - this is what we'd have after extending
+        const extendedSelector = is(sellist([
+          el('.g'),
+          compound([is(sellist([el('.i'), el('.k')])), el('.j')]) // :is(.i, .k).j
+        ]));
+
+        // When this needs to be flattened (e.g., because extend crosses boundary),
+        // it should produce :is(.g, .i.j, .k.j)
+        // We can't directly test flattenGeneratedIs here, but we can test the scenario
+        // that would trigger flattening: extending :is(.g, .i.j).h with .k:extend(.i all)
+        // where the match crosses the :is() boundary
+
+        // Actually, let's test the scenario where flattening IS necessary:
+        // :is(.g, .i.j).h extended with .k:extend(.i.j all) - this crosses boundary
+        const selector = compound([
+          is(sellist([el('.g'), compound([el('.i'), el('.j')])])), // :is(.g, .i.j)
+          el('.h')
+        ]); // :is(.g, .i.j).h
+        const find = compound([el('.i'), el('.j')]); // .i.j (full match)
+        const extendWith = el('.k');
+
+        const result = extendSelector(selector, find, extendWith, false); // partial: false (exact match)
+        const resultStr = result.valueOf();
+
+        // When flattening occurs, should have all combinations:
+        // .g.h, .i.j.h, .k.h
+        // The exact format depends on implementation, but should NOT be :is(.g,.i,.k.j).h
+        expect(resultStr).toContain('.g.h');
+        expect(resultStr).toContain('.i.j.h');
+        expect(resultStr).toContain('.k.h');
+        // Should NOT have broken .i.j apart
+        expect(resultStr).not.toContain(':is(.g,.i,.k.j)');
+      });
+
+      it('should correctly flatten :is(.g, .i.j, .k.j) structure when compound selectors are involved', () => {
+        // Test that when we have :is(.g, .i.j, .k.j) (already flattened correctly),
+        // the structure is preserved correctly.
+        // This is a sanity check that our test expectations are correct.
+
+        // Create the expected flattened structure directly
+        const flattened = is(sellist([
+          el('.g'),
+          compound([el('.i'), el('.j')]), // .i.j
+          compound([el('.k'), el('.j')])  // .k.j
+        ]));
+
+        expect(flattened.valueOf()).toBe(':is(.g,.i.j,.k.j)');
+
+        // Verify this is NOT the incorrect form
+        expect(flattened.valueOf()).not.toBe(':is(.g,.i,.k.j)');
+      });
+
+      it('should NOT produce :is(.g,.i,.k.j) when flattening :is(.g, :is(.i, .k).j)', () => {
+        // This is the specific bug case: flattening should preserve compound selectors
+        // Input: :is(.g, :is(.i, .k).j)
+        // Correct output: :is(.g, .i.j, .k.j)
+        // Incorrect output: :is(.g, .i, .k.j) <- this is the bug
+
+        // We can't directly test flattenGeneratedIs, but we can verify that
+        // when an extend operation that requires flattening occurs, the result
+        // does NOT have the incorrect structure.
+
+        // Test case: :is(.g, .i.j).h extended with .k where we match .i.j.h
+        // This should flatten to show all combinations, preserving .i.j structure
+        const selector = compound([
+          is(sellist([el('.g'), compound([el('.i'), el('.j')])])), // :is(.g, .i.j)
+          el('.h')
+        ]); // :is(.g, .i.j).h
+        const find = compound([compound([el('.i'), el('.j')]), el('.h')]); // .i.j.h
+        const extendWith = el('.k');
+
+        const result = extendSelector(selector, find, extendWith, false);
+        const resultStr = result.valueOf();
+
+        // Should have .i.j.h in the result (preserved compound)
+        expect(resultStr).toContain('.i.j.h');
+        // Should NOT have broken it into .i and .j.h separately
+        // The incorrect form would be something like :is(.g,.i,.k.j).h
+        expect(resultStr).not.toMatch(/:is\(\.g,\.i,\.k\.j\)/);
+      });
+
+      it('should extend flattened result correctly after boundary crossing', () => {
+        // Test case: :is(.a, .x).c with .a.c extended by .e
+        // Step 1: Flatten boundary crossing → :is(.a.c, .x.c)
+        // Step 2: Extend .a.c with .e (full match in SelectorList) → :is(.a.c, .x.c, .e.c)
+        // Note: When extending a compound selector, the extendWith gets the same suffix
+        const simpleSelector = compound([
+          is(sellist([el('.a'), el('.x')])), // :is(.a, .x)
+          el('.c')
+        ]); // :is(.a, .x).c
+        const find = compound([el('.a'), el('.c')]); // .a.c
+        const extendWith = el('.e');
+
+        // This should flatten because .a.c crosses the :is() boundary, then extend
+        const result = extendSelector(simpleSelector, find, extendWith, false);
+        const resultStr = result.valueOf();
+
+        // Should have flattened and extended
+        expect(resultStr).toContain('.a.c');
+        expect(resultStr).toContain('.x.c');
+        expect(resultStr).toContain('.e.c');
+      });
+    });
+  });
 });

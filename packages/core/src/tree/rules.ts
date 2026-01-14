@@ -22,6 +22,7 @@ import type { Condition } from './condition';
 import type { Bool } from './bool';
 import * as Registries from './util/registry-utils';
 import { tryExtendSelector } from './util/extend';
+import { findExtendableLocations } from './util/find-extendable-locations';
 import { type MaybePromise, pipe, isThenable, serialForEach, tryStep } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil';
 import { VarDeclaration } from './declaration-var';
@@ -1103,18 +1104,237 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           /**
            * Process all registered extends using the extend roots registry system.
            * Only process at the outermost level after all evaluation is complete.
+           *
+           * Two-Phase Approach:
+           * 1. Depth-First Phase: Process all original extends recursively
+           *    - Process extends recursively, updating rulesets directly
+           *    - After each extend, re-index the registry so subsequent extends can find updated selectors
+           *    - Track which rulesets were extended
+           *
+           * 2. Iterative Multi-Pass Phase: Process extended rulesets iteratively
+           *    - Check if extended rulesets' selectors match any extend targets
+           *    - If they match, apply the extend and keep them in the next iteration
+           *    - If they don't match, remove them from the next iteration
+           *    - Track selector states to detect infinite loops
+           *    - Continue until no more extends can be applied
            */
-          for (const [target, selectorWithExtend, partial, extendRoot, extendNode] of context.extends) {
+          const allExtends = [...context.extends]; // All original extends
+          const processedExtends = new Set<string>(); // Track processed extends to avoid duplicates
+          const extendedRulesets = new Set<Ruleset>(); // Track rulesets that were extended
+          const allRoots = context.extendRoots.getAllRoots();
+
+          /**
+           * Helper to re-index a ruleset's registry after selector update
+           * Only adds new keys - extending never removes selector components
+           */
+          const reindexRuleset = (ruleset: Ruleset, oldKeySet: Set<string>): void => {
+            const newSelector = ruleset.selector instanceof Nil ? ruleset.selector : ruleset.getImplicitSelector(ruleset.selector);
+            if (!newSelector || !('keySet' in newSelector)) {
+              return;
+            }
+            const newKeySet = newSelector.keySet;
+
+            // Compute only the new keys (keys in newKeySet but not in oldKeySet)
+            const keysToAdd = new Set<string>();
+            for (const key of newKeySet) {
+              if (!oldKeySet.has(key)) {
+                keysToAdd.add(key);
+              }
+            }
+
+            // If no new keys, nothing to do
+            if (keysToAdd.size === 0) {
+              return;
+            }
+
+            // Find which extend root this ruleset is registered to and add new keys
+            // (Each ruleset is registered to one extend root when evaluated)
+            for (const root of allRoots) {
+              const registry = root.getRegistry('ruleset');
+              registry.indexPendingItems();
+
+              // Check if ruleset is already indexed in this registry
+              let foundInRoot = false;
+              for (const rulesetSet of registry.index.values()) {
+                if (rulesetSet.has(ruleset)) {
+                  foundInRoot = true;
+                  break;
+                }
+              }
+
+              if (foundInRoot) {
+                // Add ruleset to index under new keys only
+                for (const key of keysToAdd) {
+                  const existing = registry.index.get(key);
+                  if (existing) {
+                    existing.add(ruleset);
+                  } else {
+                    registry.index.set(key, new Set([ruleset]));
+                  }
+                }
+                break;
+              }
+            }
+          };
+
+          /**
+           * Phase 1: Depth-first processing of all original extends
+           */
+          /**
+           * Logical exclusion rule: A ruleset should not be extended if:
+           * 1. Its selector matches the extend's resolved selector (the "source" selector doing the extending), AND
+           * 2. The extend is associated with that ruleset (either as a child or as a prepended sibling)
+           *
+           * This prevents self-modification: when `.v.w.v:extend(.w all)` is processed,
+           * we should add `.v.w.v` to `.w`'s selector list, not modify `.v.w.v` itself.
+           *
+           * Note: Authored sibling extends (with explicit selectors) should still apply,
+           * but parser-prepended extends (where selector was set by parser) should skip their ruleset.
+           *
+           * We use valueOf() comparison to handle clones and different object instances.
+           */
+          const shouldSkipRuleset = (ruleset: Ruleset, extendNode: Node, selectorWithExtend: Selector): boolean => {
+            const rulesetSelector = ruleset.selector as Selector;
+            if (rulesetSelector instanceof Nil) {
+              return false;
+            }
+
+            const rulesetSelectorValue = rulesetSelector.valueOf();
+            const extendSelectorValue = selectorWithExtend.valueOf();
+
+            // First check: do selectors match?
+            // Check if ruleset selector matches extend selector, or if either is a SelectorList containing the other
+            let selectorsMatch = rulesetSelectorValue === extendSelectorValue;
+            if (!selectorsMatch) {
+              if (isNode(rulesetSelector, 'SelectorList')) {
+                selectorsMatch = rulesetSelector.value.some(sel => sel.valueOf() === extendSelectorValue);
+              }
+              if (!selectorsMatch && isNode(selectorWithExtend, 'SelectorList')) {
+                selectorsMatch = selectorWithExtend.value.some((sel) => {
+                  const selValue = sel.valueOf();
+                  return selValue === rulesetSelectorValue
+                    || (isNode(rulesetSelector, 'SelectorList') && rulesetSelector.value.some(r => r.valueOf() === selValue));
+                });
+              }
+            }
+
+            if (!selectorsMatch) {
+              return false;
+            }
+
+            // Selectors match - now check if extend is associated with this ruleset
+
+            // Check 1: Is extend a child of the ruleset?
+            if (ruleset.value.rules && 'value' in ruleset.value.rules) {
+              const rules = ruleset.value.rules.value;
+              if (Array.isArray(rules)) {
+                const findNode = (nodes: Node[]): boolean => {
+                  for (const node of nodes) {
+                    if (node === extendNode) {
+                      return true;
+                    }
+                    if ('value' in node && Array.isArray(node.value)) {
+                      if (findNode(node.value)) {
+                        return true;
+                      }
+                    }
+                  }
+                  return false;
+                };
+                if (findNode(rules)) {
+                  return true; // Extend is a child - skip this ruleset
+                }
+              }
+            }
+
+            // Check 2: Is extend a sibling that precedes this ruleset in a Rules parent?
+            // For generated extends: only skip if prepended directly (only extends/comments between).
+            // If there's an at-rule or another ruleset between, the extend can apply.
+            const parent = ruleset.parent;
+            if (parent && isNode(parent, 'Rules')) {
+              const siblings = parent.value;
+              const rulesetIndex = siblings.indexOf(ruleset);
+              if (rulesetIndex > 0) {
+                // Search backwards from the ruleset
+                for (let i = rulesetIndex - 1; i >= 0; i--) {
+                  const sibling = siblings[i];
+                  if (!sibling) {
+                    continue;
+                  }
+
+                  // If we encounter an at-rule or another ruleset, the extend is NOT prepended
+                  // to this ruleset, so it can apply (don't skip)
+                  if (isNode(sibling, 'AtRule') || isNode(sibling, 'Ruleset')) {
+                    break; // Stop searching - extend can apply
+                  }
+
+                  // If we find the extend node, check if it's prepended (only extends/comments between)
+                  if (sibling === extendNode) {
+                    // Found the extend - it's prepended, so skip this ruleset
+                    return true;
+                  }
+
+                  // Also check if sibling is a Rules containing the extend
+                  if (isNode(sibling, 'Rules')) {
+                    const findInRules = (rules: Rules): boolean => {
+                      for (const node of rules.value) {
+                        if (node === extendNode) {
+                          return true;
+                        }
+                        if (isNode(node, 'Rules')) {
+                          if (findInRules(node)) {
+                            return true;
+                          }
+                        }
+                      }
+                      return false;
+                    };
+                    if (findInRules(sibling)) {
+                      // Found extend in a Rules sibling - check if there's an at-rule/ruleset between
+                      // by checking if we've already encountered one (we haven't, since we'd break above)
+                      return true; // Extend is prepended - skip this ruleset
+                    }
+                  }
+
+                  // Continue searching through extends/comments (they don't block association for generated extends)
+                }
+              }
+            }
+
+            // Selectors match but extend is not associated with this ruleset
+            // This could be an authored sibling extend - allow it to apply
+            return false;
+          };
+
+          const processExtend = (
+            target: Selector,
+            selectorWithExtend: Selector,
+            partial: boolean,
+            extendRoot: Rules,
+            extendNode: Node,
+            depth: number = 0
+          ): void => {
+            const maxDepth = 100; // Prevent infinite loops
+            if (depth >= maxDepth) {
+              throw new Error(`Extend chaining exceeded maximum depth (${maxDepth}). Possible circular reference.`);
+            }
+
+            // Skip self-referencing extends (e.g., .w:extend(.w))
+            if (target.valueOf() === selectorWithExtend.valueOf()) {
+              return;
+            }
+
+            // Create a unique key for this extend to avoid processing duplicates
+            const extendKey = `${target.valueOf()}:${selectorWithExtend.valueOf()}:${partial}:${extendRoot === context.root ? 'root' : 'nested'}`;
+            if (processedExtends.has(extendKey)) {
+              return; // Already processed
+            }
+            processedExtends.add(extendKey);
+
             // Get accessible roots for this extend's root
             const accessibleRoots = context.extendRoots.getAccessibleRoots(extendRoot);
 
-            // For .child:-extend(.base):
-            // - target = .base (what to find)
-            // - selectorWithExtend = .child (the selector that had the extend)
-            // - We want to find rulesets matching .base and extend them with .child
-
             // If target is a SelectorList (e.g., .aa, .bb), process each selector separately
-            // Each selector in the list is a separate extend target
             const targetSelectors: Selector[] = isNode(target, 'SelectorList')
               ? target.value
               : [target];
@@ -1134,17 +1354,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 }
               }
 
-              // Apply extends to found rulesets
-              // tryExtendSelector(target, find, extendWith, partial)
-              // - target: the selector to extend (ruleset.selector, which matches target from extend)
-              // - find: what to find within target (singleTarget - we're looking for singleTarget in itself)
-              // - extendWith: what to extend with (selectorWithExtend - the selector that had the extend)
+              // Handle warnings for Less compatibility (only on first processing)
               if (!rulesetSet || rulesetSet.length === 0) {
                 // Check if target exists anywhere (not just in accessible roots)
-                // This allows us to provide a better error message
-                const allRoots = context.extendRoots.getAllRoots();
+                const allRootsForWarning = context.extendRoots.getAllRoots();
                 let targetExistsElsewhere = false;
-                for (const searchRoot of allRoots) {
+                for (const searchRoot of allRootsForWarning) {
                   if (!accessibleRoots.has(searchRoot)) {
                     const found = searchRoot.find('ruleset', singleTarget.keySet);
                     if (found && found.length > 0) {
@@ -1154,43 +1369,236 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                   }
                 }
 
-                // Collect warnings for Less compatibility (both cases)
-                if (targetExistsElsewhere) {
-                  // Target exists but is not accessible (blocked by boundary) - warning for Less compatibility
-                  const warning = WARN.extendNotAccessible({
-                    ctx: context.treeContext?.file ? { file: context.treeContext.file } : undefined,
-                    node: extendNode.location && extendNode.location.length === 6 ? { location: extendNode.location } : undefined,
-                    meta: { target: singleTarget.valueOf() }
-                  });
-                  // Convert to warning diagnostic and add to context
-                  const warningDiag = toDiagnostic(warning);
-                  if (!('errors' in warningDiag)) {
-                    context.warnings.push(warningDiag);
-                  }
-                } else {
-                  // Target doesn't exist at all - collect warning for Less compatibility
-                  const warning = WARN.extendNotFound({
-                    ctx: context.treeContext?.file ? { file: context.treeContext.file } : undefined,
-                    node: extendNode.location && extendNode.location.length === 6 ? { location: extendNode.location } : undefined,
-                    meta: { target: singleTarget.valueOf() }
-                  });
-                  // Convert to warning diagnostic and add to context
-                  const warningDiag = toDiagnostic(warning);
-                  if (!('errors' in warningDiag)) {
-                    context.warnings.push(warningDiag);
+                // Collect warnings (only on first processing)
+                if (depth === 0) {
+                  if (targetExistsElsewhere) {
+                    const warning = WARN.extendNotAccessible({
+                      ctx: context.treeContext?.file ? { file: context.treeContext.file } : undefined,
+                      node: extendNode.location && extendNode.location.length === 6 ? { location: extendNode.location } : undefined,
+                      meta: { target: singleTarget.valueOf() }
+                    });
+                    const warningDiag = toDiagnostic(warning);
+                    if (!('errors' in warningDiag)) {
+                      context.warnings.push(warningDiag);
+                    }
+                  } else {
+                    const warning = WARN.extendNotFound({
+                      ctx: context.treeContext?.file ? { file: context.treeContext.file } : undefined,
+                      node: extendNode.location && extendNode.location.length === 6 ? { location: extendNode.location } : undefined,
+                      meta: { target: singleTarget.valueOf() }
+                    });
+                    const warningDiag = toDiagnostic(warning);
+                    if (!('errors' in warningDiag)) {
+                      context.warnings.push(warningDiag);
+                    }
                   }
                 }
               }
+
+              // Apply extends to rulesets directly
               if (rulesetSet) {
                 rulesetSet.forEach((ruleset) => {
-                  let result = tryExtendSelector(ruleset.selector as Selector, singleTarget, selectorWithExtend, partial);
-                  // Only apply if there's no error - tryExtendSelector uses complex logic to determine valid matches
+                  // Logical exclusion: Don't extend a ruleset if its selector matches the extend's source selector
+                  // AND the extend is associated with that ruleset (child or prepended sibling).
+                  // This prevents self-modification (e.g., .v.w.v:extend(.w all) should add .v.w.v to .w's list,
+                  // not modify .v.w.v itself).
+                  // Note: Authored sibling extends (with explicit selectors) are allowed to apply.
+                  if (shouldSkipRuleset(ruleset, extendNode, selectorWithExtend)) {
+                    return; // Skip this ruleset - it's the source of the extend
+                  }
+
+                  const originalSelector = ruleset.selector as Selector;
+
+                  // Get old keySet before extending (for re-indexing)
+                  const oldSelector = ruleset.selector instanceof Nil ? ruleset.selector : ruleset.getImplicitSelector(ruleset.selector);
+                  const oldKeySet = oldSelector && 'keySet' in oldSelector ? oldSelector.keySet : new Set<string>();
+
+                  let result = tryExtendSelector(originalSelector, singleTarget, selectorWithExtend, partial);
+
                   if (result && !result.error) {
-                    ruleset.value.selector = result.value;
+                    const extendedSelector = result.value;
+
+                    // Only update if selector actually changed
+                    if (extendedSelector.valueOf() !== originalSelector.valueOf()) {
+                      // Update the ruleset's selector directly
+                      ruleset.value.selector = extendedSelector;
+                      extendedRulesets.add(ruleset); // Track that this ruleset was extended
+                      reindexRuleset(ruleset, oldKeySet);
+
+                      // EXTEND CHAINING: Check if the extended selector matches any other extend targets
+                      // and process those extends immediately (depth-first)
+                      if (isNode(extendedSelector, 'SelectorList')) {
+                        // Check each selector in the list against all other extends
+                        for (const selectorInList of extendedSelector.value) {
+                          const selectorValue = selectorInList.valueOf();
+
+                          // Check all original extends to see if any target this selector
+                          for (const [otherTarget, otherSelectorWithExtend, otherPartial, otherExtendRoot, otherExtendNode] of allExtends) {
+                            // Skip if this is the same extend we just processed
+                            if (otherTarget.valueOf() === singleTarget.valueOf()
+                              && otherSelectorWithExtend.valueOf() === selectorWithExtend.valueOf()) {
+                              continue;
+                            }
+
+                            // Check if otherTarget matches selectorInList
+                            const otherTargetSelectors: Selector[] = isNode(otherTarget, 'SelectorList')
+                              ? otherTarget.value
+                              : [otherTarget];
+
+                            for (const otherSingleTarget of otherTargetSelectors) {
+                              // Check if selectorInList matches otherSingleTarget
+                              // For partial extends (all flag), check for partial matches
+                              // For exact extends, check for exact matches
+                              const searchResult = findExtendableLocations(selectorInList, otherSingleTarget);
+                              const matches = otherPartial
+                                ? searchResult.hasMatches // Partial: any match is valid
+                                : searchResult.hasMatches && searchResult.locations.some(loc => !loc.isPartialMatch); // Exact: must have full match
+
+                              if (matches) {
+                                const newExtendKey = `${selectorInList.valueOf()}:${otherSelectorWithExtend.valueOf()}:${otherPartial}:${otherExtendRoot === context.root ? 'root' : 'nested'}`;
+
+                                // Only process if not already processed
+                                if (!processedExtends.has(newExtendKey)) {
+                                  // Verify this extend would match something (check registry)
+                                  const targetAccessibleRoots = context.extendRoots.getAccessibleRoots(otherExtendRoot);
+                                  let wouldMatch = false;
+                                  for (const searchRoot of targetAccessibleRoots) {
+                                    const found = searchRoot.find('ruleset', selectorInList.keySet);
+                                    if (found && found.length > 0) {
+                                      wouldMatch = true;
+                                      break;
+                                    }
+                                  }
+
+                                  if (wouldMatch) {
+                                    // Process the chained extend immediately (depth-first)
+                                    processExtend(selectorInList, otherSelectorWithExtend, otherPartial, otherExtendRoot, otherExtendNode, depth + 1);
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
                   }
                 });
               }
             }
+          };
+
+          // Phase 1: Process all original extends depth-first
+          for (const [target, selectorWithExtend, partial, extendRoot, extendNode] of allExtends) {
+            processExtend(target, selectorWithExtend, partial, extendRoot, extendNode);
+          }
+
+          // Phase 2: Iterative multi-pass on extended rulesets
+          let rulesetsToCheck = new Set<Ruleset>(extendedRulesets);
+          const seenSelectorStates = new Map<Ruleset, Set<string>>(); // Track selector states per ruleset to detect loops
+          const maxIterations = 100; // Prevent infinite loops
+          let iteration = 0;
+
+          while (rulesetsToCheck.size > 0 && iteration < maxIterations) {
+            iteration++;
+            const nextIteration = new Set<Ruleset>();
+            const currentSelectorStates = new Map<Ruleset, string>(); // Track current selector state for this iteration
+
+            // Initialize seen states for new rulesets
+            for (const ruleset of rulesetsToCheck) {
+              if (!seenSelectorStates.has(ruleset)) {
+                seenSelectorStates.set(ruleset, new Set<string>());
+              }
+            }
+
+            for (const ruleset of rulesetsToCheck) {
+              const currentSelector = ruleset.selector as Selector;
+              const currentSelectorValue = currentSelector.valueOf();
+              const seenStates = seenSelectorStates.get(ruleset)!;
+
+              // Check if we've seen this selector state before (infinite loop detection)
+              if (seenStates.has(currentSelectorValue)) {
+                // Infinite loop detected - skip this ruleset
+                continue;
+              }
+              seenStates.add(currentSelectorValue);
+              currentSelectorStates.set(ruleset, currentSelectorValue);
+
+              // Check if this ruleset's selector matches any extend targets
+              // Extract all individual selectors from the current selector (handle SelectorList)
+              const currentSelectors: Selector[] = isNode(currentSelector, 'SelectorList')
+                ? currentSelector.value
+                : [currentSelector];
+
+              // Check each selector in the current ruleset against all extend targets
+              for (const currentSel of currentSelectors) {
+                const currentSelValue = currentSel.valueOf();
+
+                // Check against all original extends
+                for (const [target, selectorWithExtend, partial, extendRoot] of allExtends) {
+                  const targetSelectors: Selector[] = isNode(target, 'SelectorList')
+                    ? target.value
+                    : [target];
+
+                  for (const singleTarget of targetSelectors) {
+                    // Check if current selector matches the target
+                    // For partial extends (all flag), check for partial matches
+                    // For exact extends, check for exact matches
+                    const searchResult = findExtendableLocations(currentSel, singleTarget);
+                    const matches = partial
+                      ? searchResult.hasMatches // Partial: any match is valid
+                      : searchResult.hasMatches && searchResult.locations.some(loc => !loc.isPartialMatch); // Exact: must have full match
+
+                    if (matches) {
+                      // Found a match - try to extend
+                      const accessibleRoots = context.extendRoots.getAccessibleRoots(extendRoot);
+                      let foundRuleset = false;
+
+                      for (const searchRoot of accessibleRoots) {
+                        const found = searchRoot.find('ruleset', singleTarget.keySet);
+                        if (found && found.includes(ruleset)) {
+                          foundRuleset = true;
+                          break;
+                        }
+                      }
+
+                      if (foundRuleset) {
+                        // Get old keySet before extending
+                        const oldSelector = ruleset.selector instanceof Nil ? ruleset.selector : ruleset.getImplicitSelector(ruleset.selector);
+                        const oldKeySet = oldSelector && 'keySet' in oldSelector ? oldSelector.keySet : new Set<string>();
+
+                        const result = tryExtendSelector(currentSelector, singleTarget, selectorWithExtend, partial);
+
+                        if (result && !result.error) {
+                          const extendedSelector = result.value;
+
+                          // Only update if selector actually changed
+                          if (extendedSelector.valueOf() !== currentSelectorValue) {
+                            ruleset.value.selector = extendedSelector;
+                            reindexRuleset(ruleset, oldKeySet);
+                            nextIteration.add(ruleset); // Keep in next iteration
+                            break; // Found a match, no need to check other targets
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+
+                // If we added to nextIteration, break out of outer loop
+                if (nextIteration.has(ruleset)) {
+                  break;
+                }
+              }
+
+              // If this ruleset couldn't be extended, it won't be in nextIteration
+              // (so it's removed from the next iteration)
+            }
+
+            rulesetsToCheck = nextIteration;
+          }
+
+          if (iteration >= maxIterations) {
+            throw new Error(`Extend chaining exceeded maximum iterations (${maxIterations}). Possible infinite loop.`);
           }
         }
         /** Restore contexts */

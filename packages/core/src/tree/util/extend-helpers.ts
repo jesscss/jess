@@ -22,7 +22,25 @@ export function determineExtensionType(
 ): 'replace' | 'append' | 'wrap' {
   // If we're inside a pseudo-selector argument (like :where() or :is())
   if (basePath.some(segment => segment === 'arg')) {
+    // Check if we're matching a component within a compound selector inside the argument
+    // Path format: ['arg', selectorListIndex, compoundIndex, ...]
+    // If we have at least 3 segments and the last numeric segment is a compound index,
+    // we should wrap to preserve compound selector structure
+    const numericSegments = basePath.filter((s): s is number => typeof s === 'number');
+    if (numericSegments.length >= 2) {
+      // We're inside a compound selector - use 'wrap' to create :is() wrapper
+      return 'wrap';
+    }
     return 'append'; // Can append to pseudo-selector argument lists
+  }
+
+  // Check if we're matching a component within a compound selector
+  // Path format: [compoundIndex, ...] where compoundIndex is a number
+  // If the path starts with a number and we're in a compound selector context, use 'wrap'
+  if (basePath.length > 0 && typeof basePath[0] === 'number') {
+    // This could be a compound selector component match - check if selector is CompoundSelector
+    // Actually, we can't check the selector type here, so we'll rely on the caller to set 'wrap'
+    // For now, default to 'replace' for numeric paths
   }
 
   // If we're in a SelectorList context (not just any numeric path)
