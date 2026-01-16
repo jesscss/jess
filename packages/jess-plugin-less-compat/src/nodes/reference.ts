@@ -6,7 +6,7 @@ import type { LessNode } from '../types';
 
 /**
  * Transform a Jess Reference to a Less-compatible Variable, Property, or VariableCall
- * 
+ *
  * Jess has unified Reference with options.type
  * Less has separate Variable, Property, and VariableCall nodes
  */
@@ -15,7 +15,7 @@ export function transformReferenceToLess(
   cache?: WeakMap<any, any>
 ): LessNode {
   const refType = jessReference.options?.type || 'variable';
-  
+
   // Determine Less node type based on Jess reference type
   let lessType: string;
   if (refType === 'property') {

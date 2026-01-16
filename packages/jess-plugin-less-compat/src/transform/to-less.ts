@@ -2,6 +2,7 @@ import { Node, Rules } from '@jesscss/core';
 import { createLessProxy } from './proxy';
 import { getTransformer } from '../nodes';
 import { mapJessTypeToLessType } from './type-map';
+import { fromLessNode } from './from-less';
 
 // Less.js types - we'll need to import these from the less package
 // For now, using any to avoid dependency issues during development
@@ -102,15 +103,33 @@ export function toLessNode(
     }
 
     // Map 'accept' method for visitor traversal
+    // This is called by Less visitors when they want to traverse the tree
+    // Note: Less visitors should NOT call node.accept() in their visit() methods
+    // as this causes infinite recursion. The less-compat plugin handles traversal.
     if (prop === 'accept') {
       return function(visitor: any) {
-        const lessNode = toLessNode(target, options);
-        const result = visitor.visit(lessNode);
-        // If visitor returned a new node, convert back to Jess
-        if (result !== lessNode) {
-          const { fromLessNode } = require('./from-less');
-          return fromLessNode(result, options);
+        // Check if the visitor is a Less visitor (has visitRuleset, visitDeclaration, etc.)
+        // vs the less-compat visitor (has a visit method that converts to Less)
+        const isLessVisitor = visitor && (
+          typeof visitor.visitRuleset === 'function' ||
+          typeof visitor.visitDeclaration === 'function' ||
+          typeof visitor.visitVariable === 'function' ||
+          typeof visitor.visitAtRule === 'function' ||
+          (typeof visitor.visit === 'function' && !visitor.atRule && !visitor.ruleset && !visitor.visit)
+        );
+
+        if (!isLessVisitor) {
+          // This is likely the less-compat visitor or a Jess visitor
+          // Just return the node without processing to avoid recursion
+          return target;
         }
+
+        // This is a Less visitor - but we should NOT call visitor.visit here
+        // because the Less visitor's visit() method might call node.accept() again,
+        // causing infinite recursion. Instead, we just return the node.
+        // The less-compat plugin's visit() method handles calling Less visitors.
+        // If a Less visitor needs to traverse children, it should do so through
+        // the less-compat plugin's traversal, not by calling node.accept().
         return target;
       };
     }

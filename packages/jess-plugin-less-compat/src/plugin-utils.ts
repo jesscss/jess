@@ -11,12 +11,12 @@ export function isLessPlugin(plugin: any): boolean {
   if (!plugin) {
     return false;
   }
-  
+
   // Less plugins typically have an install method
   if (typeof plugin.install === 'function') {
     return true;
   }
-  
+
   // Some Less plugins are constructor functions that create instances with install
   // Check if the constructor's prototype has install (like autoprefix)
   if (typeof plugin === 'function') {
@@ -50,7 +50,7 @@ export function isLessPlugin(plugin: any): boolean {
       }
     }
   }
-  
+
   return false;
 }
 
@@ -61,14 +61,14 @@ export function isJessPlugin(plugin: any): plugin is PluginInterface {
   if (!plugin) {
     return false;
   }
-  
+
   // Jess plugins implement PluginInterface
   // They have a name property and implement AbstractPlugin or match PluginInterface
   if (typeof plugin === 'object' && 'name' in plugin && typeof plugin.name === 'string') {
     // Could be a Jess plugin
     return true;
   }
-  
+
   // Plugin factory functions that return PluginInterface
   if (typeof plugin === 'function') {
     try {
@@ -80,7 +80,7 @@ export function isJessPlugin(plugin: any): plugin is PluginInterface {
       // Not a Jess plugin factory
     }
   }
-  
+
   return false;
 }
 
@@ -91,7 +91,7 @@ export function isJessPlugin(plugin: any): plugin is PluginInterface {
 export function filterPlugins(plugins: any[]): { lessPlugins: any[]; jessPlugins: PluginInterface[] } {
   const lessPlugins: any[] = [];
   const jessPlugins: PluginInterface[] = [];
-  
+
   for (const plugin of plugins) {
     if (isLessPlugin(plugin)) {
       lessPlugins.push(plugin);
@@ -102,6 +102,6 @@ export function filterPlugins(plugins: any[]): { lessPlugins: any[]; jessPlugins
       lessPlugins.push(plugin);
     }
   }
-  
+
   return { lessPlugins, jessPlugins };
 }

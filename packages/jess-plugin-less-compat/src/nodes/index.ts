@@ -129,8 +129,8 @@ export function isCall(node: Node): node is Call {
 }
 
 export function isSelector(node: Node): node is Selector | SelectorList {
-  return node.type === 'SelectorList' || node.type === 'ComplexSelector' || 
-         node.type === 'CompoundSelector' || node.type === 'BasicSelector';
+  return node.type === 'SelectorList' || node.type === 'ComplexSelector'
+    || node.type === 'CompoundSelector' || node.type === 'BasicSelector';
 }
 
 export function isReference(node: Node): node is Reference {

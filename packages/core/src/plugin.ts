@@ -89,6 +89,10 @@ export interface PluginInterface {
 
   /** Post-parse or post-eval visitor(s) */
   visitor?: Visitor | Visitor[];
+  /** Pre-eval visitor(s) - called before node.eval() during the preEval phase */
+  preEvalVisitor?: Visitor | Visitor[];
+  /** Post-eval visitor(s) - called after node.eval() (alternative to visitor for clarity) */
+  postEvalVisitor?: Visitor | Visitor[];
 }
 
 const { isArray } = Array;

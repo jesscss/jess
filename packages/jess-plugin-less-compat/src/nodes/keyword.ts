@@ -1,6 +1,7 @@
 import { Keyword } from '@jesscss/core';
 import { createLessProxy } from '../transform/proxy';
 import { mapJessTypeToLessType } from '../transform/type-map';
+import { fromLessNode } from '../transform/from-less';
 import type { LessNode } from '../types';
 
 /**
@@ -34,7 +35,6 @@ export function transformKeywordToLess(
         const lessKeyword = transformKeywordToLess(keyword, cache);
         const result = visitor.visit(lessKeyword);
         if (result !== lessKeyword) {
-          const { fromLessNode } = require('../transform/from-less');
           return fromLessNode(result, { cache });
         }
         return keyword;

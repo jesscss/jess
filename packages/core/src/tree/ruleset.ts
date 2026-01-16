@@ -15,6 +15,7 @@ import { type PrintOptions, type FinalPrintOptions, getPrintOptions } from './ut
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper';
+import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -124,8 +125,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
 
       let parentSelector = shouldInheritSelector ? context.rulesetFrames.at(-1)?.selector : undefined;
-      if (parentSelector && !(parentSelector instanceof Nil)) {
-        selector = node.getImplicitSelector(parentSelector, context.opts.collapseNesting);
+      if (parentSelector && !(parentSelector instanceof Nil) && !(selector instanceof Nil)) {
+        selector = getImplicitSelectorUtil(selector, parentSelector, context.opts.collapseNesting);
         selector.sourceNode = node === this ? selector.clone(true) : selector;
       }
       // DO NOT evaluate guard here - guards are evaluated at call time in getFunctionFromMixins
@@ -149,56 +150,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return this;
   }
 
-  addImplicitAmpersand(parentSelector: Selector, selector: Selector, collapseNesting = false): Selector {
-    if (selector.hasFlag(F_AMPERSAND)) {
-      return selector;
-    }
-    let amp = Ampersand.create({});
-    // Mark as implicit so it can be excluded from visibleKeySet for indexing
-    amp.addFlag(F_IMPLICIT_AMPERSAND);
-    if (!collapseNesting) {
-      amp.removeFlag(F_VISIBLE);
-    }
-    let comb = Combinator.create(' ');
-    if (!collapseNesting) {
-      comb.removeFlag(F_VISIBLE);
-    }
-    if (selector instanceof ComplexSelector) {
-      if (selector.value[0] instanceof Combinator) {
-        return ComplexSelector.create([amp, ...selector.value]).inherit(selector);
-      }
-      return ComplexSelector.create([amp, comb, ...selector.value]).inherit(selector);
-    }
-    const returnVal = ComplexSelector.create([amp, comb, selector]).inherit(selector);
-    return returnVal;
-  }
-
   /** Attach an (invisible) ampersand to the selector(s) if it's not already there */
   getImplicitSelector(parentSelector: Selector, collapseNesting = false) {
-    let selector = this.selector;
-    if (selector instanceof Nil) {
-      return selector;
+    if (this.selector instanceof Nil) {
+      return this.selector;
     }
-    if (selector instanceof SelectorList) {
-      let mutated = false;
-      for (let i = 0; i < (selector as SelectorList).value.length; i++) {
-        let sel = (selector as SelectorList).value[i]!;
-        let result = this.addImplicitAmpersand(parentSelector, sel, collapseNesting);
-        if (result !== sel) {
-          if (!mutated) {
-            selector = selector.clone(true);
-          }
-          (selector as SelectorList).value[i] = result;
-          mutated = true;
-        }
-      }
-    } else {
-      selector = this.addImplicitAmpersand(parentSelector, selector, collapseNesting);
-    }
-    if (collapseNesting) {
-      selector.hoistToRoot = true;
-    }
-    return selector;
+    return getImplicitSelectorUtil(this.selector, parentSelector, collapseNesting);
   }
 
   override copy(deep?: boolean): this {

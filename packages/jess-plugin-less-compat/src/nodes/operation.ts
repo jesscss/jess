@@ -2,6 +2,7 @@ import { Operation, Node } from '@jesscss/core';
 import { createLessProxy } from '../transform/proxy';
 import { toLessNode } from '../transform/to-less';
 import { mapJessTypeToLessType } from '../transform/type-map';
+import { fromLessNode } from '../transform/from-less';
 import type { LessNode } from '../types';
 
 /**
@@ -60,7 +61,6 @@ export function transformOperationToLess(
         const lessOp = transformOperationToLess(op, cache);
         const result = visitor.visit(lessOp);
         if (result !== lessOp) {
-          const { fromLessNode } = require('../transform/from-less');
           return fromLessNode(result, { cache });
         }
         return op;

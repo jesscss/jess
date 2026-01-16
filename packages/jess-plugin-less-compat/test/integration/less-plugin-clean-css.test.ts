@@ -1,6 +1,6 @@
 /**
  * Integration test for less-plugin-clean-css
- * 
+ *
  * Tests that the Less.js clean-css plugin works correctly
  * with Jess AST nodes through the compatibility layer.
  */
@@ -8,6 +8,16 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Parser } from '@jesscss/less-parser';
 import { lessCompatPlugin } from '../../src';
+import type { Visitor } from '@jesscss/core';
+
+// Helper to normalize visitor (PluginInterface allows Visitor | Visitor[])
+function normalizeVisitor(visitor: Visitor | Visitor[] | undefined): Visitor | undefined {
+  if (!visitor) return undefined;
+  if (Array.isArray(visitor)) {
+    return visitor[0];
+  }
+  return visitor;
+}
 
 // Try to import clean-css plugin
 let CleanCSS: any;
@@ -49,7 +59,7 @@ describe('less-plugin-clean-css integration', () => {
       plugins: [new CleanCSS({})]
     });
 
-    const visitor = plugin.visitor;
+    const visitor = normalizeVisitor(plugin.visitor);
     if (!visitor) {
       throw new Error('Plugin should return a visitor');
     }
@@ -87,7 +97,7 @@ describe('less-plugin-clean-css integration', () => {
       visitors: [cleanCssVisitor]
     });
 
-    const visitor = plugin.visitor;
+    const visitor = normalizeVisitor(plugin.visitor);
     if (!visitor) {
       throw new Error('Plugin should return a visitor');
     }
@@ -124,7 +134,7 @@ describe('less-plugin-clean-css integration', () => {
       plugins: [new CleanCSS({})]
     });
 
-    const visitor = plugin.visitor;
+    const visitor = normalizeVisitor(plugin.visitor);
     if (!visitor) {
       throw new Error('Plugin should return a visitor');
     }

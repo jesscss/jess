@@ -1,6 +1,6 @@
 /**
  * @jesscss/plugin-less-compat
- * 
+ *
  * Less.js compatibility layer for Jess.
  * Enables Less.js plugins and visitors to work with Jess AST.
  */

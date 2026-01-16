@@ -1129,6 +1129,37 @@ describe('extend cases', () => {
       `);
   });
 
+  test('nested ruleset with extend - nested ruleset should not inherit extend', () => {
+    const { tree, errors } = parser.parse(`
+.ext {
+  test: 1;
+}
+.a, .b {
+  .c:extend(.ext all) {
+    test: 3;
+    .d {
+      test: 4;
+    }
+  }
+}
+`);
+    expect(errors.length).toBe(0);
+    const sExpr = serializeTypes(tree);
+    // Count Extend nodes - should only be 1 (in .c), not 2 (not in .d)
+    const extendMatches = sExpr.match(/\(Extend/g);
+    const extendCount = extendMatches?.length || 0;
+    expect(extendCount).toBe(1);
+    // Verify the Extend is in .c, not in .d
+    expect(sExpr).toContainString('(BasicSelector \'.c\')');
+    expect(sExpr).toContainString('(BasicSelector \'.d\')');
+    // The Extend should be in the .c ruleset, not in the .d ruleset
+    const cExtendIndex = sExpr.indexOf('(BasicSelector \'.c\')');
+    const dExtendIndex = sExpr.indexOf('(BasicSelector \'.d\')');
+    const extendIndex = sExpr.indexOf('(Extend');
+    expect(extendIndex).toBeGreaterThan(-1);
+    expect(extendIndex).toBeLessThan(dExtendIndex); // Extend should come before .d
+  });
+
   test('extend with !all flag - ExtendFlag.All', () => {
     const { tree, errors, lexerResult } = parser.parse('.a:extend(.x !all) { color: blue; }');
     if (errors.length > 0) {
@@ -1343,6 +1374,48 @@ describe('extend cases', () => {
           ]
         )
       `);
+  });
+
+  test('extend attached to selector - check selector value', () => {
+    const { tree, errors, lexerResult } = parser.parse(`
+.a, .b {
+  .c:extend(.ext all) {
+    test: 3;
+    .d {
+      test: 4;
+    }
+  }
+}
+`);
+    expect(errors).toHaveLength(0);
+    
+    // Find the extend node and check its selector
+    const ruleset = tree.value[0];
+    expect(ruleset?.type).toBe('Ruleset');
+    if (ruleset && ruleset.type === 'Ruleset') {
+      const rules = ruleset.value.rules;
+      if (rules && rules.value) {
+        for (const rule of rules.value) {
+          if (rule.type === 'Extend') {
+            // Check what selector the parser set
+            const selectorType = rule.value.selector?.type;
+            const selectorValueOf = rule.value.selector?.valueOf();
+            
+            // The parser should set the extend selector to the ruleset's selector (.c)
+            // NOT undefined, and NOT an ampersand
+            expect(selectorType).toBe('BasicSelector');
+            expect(selectorValueOf).toBe('.c');
+          }
+        }
+      }
+    }
+    
+    // Check the full S-expression structure
+    // The parser sets extend.selector to the ruleset's selector (.c), not undefined
+    const fullSExpr = serializeTypes(tree);
+    expect(fullSExpr).toContain('Extend');
+    expect(fullSExpr).toContain('selector:');
+    expect(fullSExpr).toContain("(BasicSelector '.c')");
   });
 
   test('extend with selector list target and all flag', () => {

@@ -28,14 +28,13 @@
     "prepublishOnly": "npm run build",
     "build": "pnpm compile",
     "compile": "tsc -b tsconfig.build.json",
-    "test": "cross-env TEST=true vitest",
+    "test": "cross-env TEST=true vitest --run",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
     "@jesscss/core": "workspace:*",
-    "@jesscss/less-parser": "workspace:*",
-    "less": "^4.2.0"
+    "@jesscss/less-parser": "workspace:*"
   },
   "devDependencies": {
     "less-plugin-autoprefix": "^2.0.0",

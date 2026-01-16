@@ -35,10 +35,12 @@ const targetTests: string[] = [
 
 describe('Can render Less files to CSS', () => {
   // Get all .less files from tests-unit and tests-config directories
-  // Filter to alphabetical tests up to directives-bubbling for now
-  const unitFiles: string[] = glob.sync(path.join(testData, 'tests-unit/*/extend.less')).filter((f) => {
+  // Filter to alphabetical tests up to and including all extend*.less files
+  const unitFiles: string[] = glob.sync(path.join(testData, 'tests-unit/**/*.less')).filter((f) => {
     const dir = path.basename(path.dirname(f));
-    return dir <= 'extend-chaining';
+    // Include all files alphabetically up to and including the last extend directory
+    // The last extend directory is 'extend-selector'
+    return dir <= 'extend-selector';
   });
   const configFiles: string[] = [];
   const allFiles = [...unitFiles, ...configFiles];

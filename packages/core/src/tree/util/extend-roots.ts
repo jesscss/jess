@@ -75,6 +75,23 @@ export class ExtendRootRegistry {
         this.childrenRoots.set(parent, children);
       }
       children.add(rules);
+
+      // DEBUG: Log root registration
+      syncLog({
+        location: 'registerRoot',
+        action: 'Registered root with parent',
+        hasParent: !!parent,
+        parentIsMainRoot: parent === this.root,
+        rulesIsMainRoot: rules === this.root,
+        childrenCount: children.size
+      });
+    } else {
+      // DEBUG: Log root registration without parent
+      syncLog({
+        location: 'registerRoot',
+        action: 'Registered root without parent',
+        rulesIsMainRoot: rules === this.root
+      });
     }
 
     // Set layer name if provided
@@ -130,6 +147,11 @@ export class ExtendRootRegistry {
    * Note: @import type uses parent's root, so extends inside @import
    * can reach the parent. But @compose type creates its own root,
    * so extends inside @compose cannot reach the parent.
+   *
+   * IMPORTANT: Extends registered OUTSIDE media queries (in parent roots)
+   * should be able to extend selectors INSIDE media queries (in child roots).
+   * But extends registered INSIDE media queries should NOT extend selectors
+   * OUTSIDE (in parent roots).
    */
   getAccessibleRoots(root: Rules): Set<Rules> {
     const accessible = new Set<Rules>();
@@ -155,6 +177,16 @@ export class ExtendRootRegistry {
       // - Protected roots block access
       // - Compose roots create boundaries and are not accessible as children (only import type shares parent's root)
       const children = this.childrenRoots.get(currentRoot);
+      // DEBUG: Log children lookup
+      syncLog({
+        location: 'getAccessibleRoots.traverseChildren',
+        action: 'Checking children',
+        currentRootIsMainRoot: currentRoot === this.root,
+        hasChildren: !!children,
+        childrenCount: children?.size ?? 0,
+        childrenAreProtected: children ? Array.from(children).map(c => this.isProtected.get(c) ?? false) : [],
+        childrenAreCompose: children ? Array.from(children).map(c => this.isCompose.get(c) ?? false) : []
+      });
       if (children) {
         for (const child of children) {
           // Skip protected children - they should not be accessible
@@ -191,6 +223,23 @@ export class ExtendRootRegistry {
 
     // Traverse down from self to add children (compose boundary prevents going up)
     traverseChildren(root);
+
+    // DEBUG: Log what roots are accessible
+    syncLog({
+      location: 'getAccessibleRoots',
+      action: 'Computed accessible roots',
+      rootIsMainRoot: root === this.root,
+      accessibleRootsCount: accessible.size,
+      accessibleRoots: Array.from(accessible).map((r, i) => ({
+        index: i,
+        isMainRoot: r === this.root,
+        hasChildren: this.childrenRoots.has(r),
+        childrenCount: this.childrenRoots.get(r)?.size ?? 0,
+        isProtected: this.isProtected.get(r) ?? false,
+        isCompose: this.isCompose.get(r) ?? false,
+        layerName: this.layerName.get(r)
+      }))
+    });
 
     return accessible;
   }
@@ -331,7 +380,15 @@ export function processExtends(context: Context): void {
         syncLog({ location: 'processExtends', action: 'Initial ruleset state', root: root === context.root ? 'root' : 'nested', key, selector: selectorStr, selectorType: ruleset.selector?.type, isSelectorList: ruleset.selector?.type === 'SelectorList', selectorListItems: ruleset.selector?.type === 'SelectorList' ? (ruleset.selector as any).value?.map((s: any) => s.valueOf()) : undefined });
       }
     }
-    syncLog({ location: 'processExtends', action: 'Total rulesets in registry', root: root === context.root ? 'root' : 'nested', count: allRulesets.length, sample: allRulesets.slice(0, 10) });
+    syncLog({
+      location: 'processExtends',
+      action: 'Total rulesets in registry',
+      root: root === context.root ? 'root' : 'nested',
+      count: allRulesets.length,
+      sample: allRulesets.slice(0, 10),
+      allRulesets: allRulesets,
+      hasMa: allRulesets.includes('.ma')
+    });
   }
 
   /**
@@ -505,6 +562,26 @@ export function processExtends(context: Context): void {
       });
 
       for (const searchRoot of accessibleRoots) {
+        // Ensure registry is indexed for this root before searching
+        const registry = searchRoot.getRegistry('ruleset');
+        registry.indexPendingItems();
+
+        // DEBUG: Log what's in this root's registry before searching
+        const allRulesetsInRoot: string[] = [];
+        for (const [key, rulesetSet] of registry.index.entries()) {
+          for (const ruleset of rulesetSet) {
+            allRulesetsInRoot.push(ruleset.selector?.valueOf() || 'nil');
+          }
+        }
+        syncLog({
+          location: 'processExtend',
+          action: 'Searching in root registry',
+          target: targetStr,
+          searchRootIsMainRoot: searchRoot === context.root,
+          rulesetsInRegistry: allRulesetsInRoot,
+          rulesetCount: allRulesetsInRoot.length
+        });
+
         const searchKeySet = singleTarget.keySet;
         const searchKeysArray = Array.from(searchKeySet);
         // DEBUG: Log ALL registry lookups with detailed keySet info
@@ -641,6 +718,10 @@ export function processExtends(context: Context): void {
               extendedSelectorSExpr: serializeTypes(extendedSelector),
               originalSelector: originalSelector?.valueOf(),
               originalSelectorSExpr: serializeTypes(originalSelector),
+              find: singleTarget?.valueOf(),
+              findType: singleTarget?.type,
+              extendWith: selectorWithExtend?.valueOf(),
+              extendWithType: selectorWithExtend?.type,
               changed: extendedSelector.valueOf() !== originalSelector.valueOf(),
               sameObject: extendedSelector === originalSelector
             });
@@ -843,6 +924,10 @@ export function processExtends(context: Context): void {
                 extendedSelectorSExpr: serializeTypes(extendedSelector),
                 originalSelector: currentSelector?.valueOf(),
                 originalSelectorSExpr: serializeTypes(currentSelector),
+                find: singleTarget?.valueOf(),
+                findType: singleTarget?.type,
+                extendWith: selectorWithExtend?.valueOf(),
+                extendWithType: selectorWithExtend?.type,
                 changed: extendedSelector.valueOf() !== currentSelectorValue,
                 sameObject: extendedSelector === currentSelector
               });
@@ -854,6 +939,18 @@ export function processExtends(context: Context): void {
 
                 // CRITICAL: Clone the selector to avoid object reference issues
                 const clonedSelector = extendedSelector.clone(true);
+
+                // TEMP: Debug .zap bug - log when selector is assigned in Phase 2
+                if (clonedSelector?.valueOf()?.includes('.zap') && (currentSelectorValue?.includes('.ext8 .ext9') && currentSelectorValue?.includes('.buu'))) {
+                  console.log('=== PHASE 2 ASSIGNING SELECTOR WITH .zap ===');
+                  console.log('  BEFORE:', currentSelectorValue);
+                  console.log('  AFTER:', clonedSelector?.valueOf());
+                  console.log('  find:', singleTarget?.valueOf());
+                  console.log('  extendWith:', selectorWithExtend?.valueOf());
+                  console.log('  STACK TRACE:');
+                  console.log(new Error().stack);
+                }
+
                 ruleset.value.selector = clonedSelector;
 
                 // DEBUG: Log after assignment - LOG EVERYTHING

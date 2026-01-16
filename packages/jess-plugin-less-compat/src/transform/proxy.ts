@@ -17,53 +17,14 @@ const JESS_NODE_SYMBOL = Symbol('jess-node');
  */
 export const IS_PROXYING_SYMBOL = Symbol('is-proxying');
 
-// Cache for Less tree module and typeIndex lookups
-let lessTreeModule: any = null;
-let hasIndexedTypes = false;
-
-/**
- * Get the Less tree module and ensure typeIndex is indexed
- * Less.js Visitor constructor indexes node types on first instantiation
- */
-function getLessTreeModule(): any {
-  if (!lessTreeModule) {
-    try {
-      const lessModule = require('less');
-      lessTreeModule = lessModule.tree || require('less/lib/less/tree');
-      
-      // Ensure Visitor is instantiated at least once to trigger typeIndex assignment
-      if (!hasIndexedTypes) {
-        const LessVisitor = lessModule.visitors?.Visitor || require('less/lib/less/visitors/visitor').default;
-        if (LessVisitor) {
-          // Create a dummy visitor to trigger typeIndex indexing
-          new LessVisitor({});
-          hasIndexedTypes = true;
-        }
-      }
-    } catch (e) {
-      // Less.js not available
-    }
-  }
-  return lessTreeModule;
-}
-
 /**
  * Get typeIndex for a Less node type
- * This reads from Less's tree module where typeIndex is set on prototypes
- * Only used internally by Less's Visitor for dispatch - plugins don't need this
+ * Since we're not using the actual Less.js library, we return undefined
+ * Plugins typically don't need typeIndex - it's only used internally by Less's Visitor
+ * for dispatch optimization. Our proxy-based approach doesn't require it.
  */
-function getLessTypeIndex(lessType: string): number | undefined {
-  const tree = getLessTreeModule();
-  if (!tree) {
-    return undefined;
-  }
-
-  // Look up the node constructor
-  const NodeConstructor = tree[lessType];
-  if (NodeConstructor && NodeConstructor.prototype && NodeConstructor.prototype.typeIndex !== undefined) {
-    return NodeConstructor.prototype.typeIndex;
-  }
-
+function getLessTypeIndex(_lessType: string): number | undefined {
+  // Return undefined - plugins don't need typeIndex for our compatibility layer
   return undefined;
 }
 
@@ -132,7 +93,7 @@ export function createLessProxy(
 
       // Default: pass through to target
       const value = Reflect.get(target, prop);
-      
+
       // If it's a method, bind it to the target
       if (typeof value === 'function') {
         return value.bind(target);
@@ -163,12 +124,12 @@ export function createLessProxy(
   };
 
   const proxy = new Proxy(jessNode, handler);
-  
+
   // Mark as proxy
   (proxy as any)[LESS_PROXY_SYMBOL] = true;
   // Store reference to underlying Jess node for reverse lookup
   (proxy as any)[JESS_NODE_SYMBOL] = jessNode;
-  
+
   // Cache if provided
   if (cache) {
     cache.set(jessNode, proxy);

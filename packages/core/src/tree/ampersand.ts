@@ -8,6 +8,8 @@ import { type Selector } from './selector';
 import { atIndex } from './util/collections';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { F_VISIBLE } from './node';
+import { syncLog } from './util/__tests__/debug-log';
+import { serializeTypes } from './util/serialize-types';
 
 export type AmpersandValue = {
   /**
@@ -148,11 +150,33 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
   /** Hmm this should never return Extend */
   override evalNode(context: Context): Selector | Nil {
     const { appendValue, selector: storedSelector } = this.value;
+    // DEBUG: Log which path we're taking
+    syncLog({
+      location: 'Ampersand.evalNode',
+      action: 'Starting evalNode',
+      hasAppendValue: appendValue !== undefined,
+      hasHoistToRoot: this.hoistToRoot,
+      collapseNesting: context.opts.collapseNesting,
+      hasStoredSelector: !!storedSelector,
+      frameCount: context.rulesetFrames.length
+    });
     // Check if appendValue is defined (including empty string), or if hoistToRoot/collapseNesting is set
     if (appendValue !== undefined || this.hoistToRoot || context.opts.collapseNesting) {
       // Use the stored selector if available, otherwise fall back to frame selector
       let frame = atIndex(context.rulesetFrames, -1);
       let selector = storedSelector ? storedSelector.copy(true) : frame?.selector?.copy(true);
+      // DEBUG: Log what selector we're using in the collapseNesting path
+      syncLog({
+        location: 'Ampersand.evalNode',
+        action: 'Using collapseNesting path',
+        hasStoredSelector: !!storedSelector,
+        storedSelectorValue: storedSelector?.valueOf(),
+        storedSelectorSExpr: storedSelector ? serializeTypes(storedSelector) : undefined,
+        frameSelector: frame?.selector?.valueOf(),
+        frameSelectorSExpr: frame?.selector ? serializeTypes(frame?.selector) : undefined,
+        usingSelector: selector?.valueOf(),
+        usingSelectorSExpr: selector ? serializeTypes(selector) : undefined
+      });
       if (!selector) {
         return new Nil();
       }
@@ -208,11 +232,28 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
     const amp: Ampersand = this.maybeClone(context);
     let frame = atIndex(context.rulesetFrames, -1);
     /**
-     * Attach a pointer to the current context selector,
+     * Attach a copy of the current context selector,
      * if we need it later, for extends and such.
+     * IMPORTANT: Must copy to avoid the selector being modified later.
      */
-    if (frame) {
-      amp.value.selector = frame.selector;
+    if (frame && frame.selector) {
+      // DEBUG: Log what selector is in the frame with full S-expression
+      syncLog({
+        location: 'Ampersand.evalNode',
+        action: 'Storing frame selector',
+        frameSelector: frame.selector.valueOf(),
+        frameSelectorType: frame.selector.type,
+        frameSelectorSExpr: serializeTypes(frame.selector),
+        frameCount: context.rulesetFrames.length,
+        frameIndex: context.rulesetFrames.length - 1,
+        allFrames: context.rulesetFrames.map((f, i) => ({
+          index: i,
+          selector: f.selector?.valueOf(),
+          selectorType: f.selector?.type,
+          selectorSExpr: f.selector ? serializeTypes(f.selector) : undefined
+        }))
+      });
+      amp.value.selector = frame.selector.copy(true);
     }
     return amp;
   }

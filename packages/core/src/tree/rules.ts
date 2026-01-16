@@ -566,6 +566,38 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const saved = this._snapshotContext(context);
       this._setupContextForRules(context, rules);
 
+      // Set context.root early so preEval visitors can check if this is the root
+      // This is needed for plugins like less-compat that need to process @plugin directives
+      const isMainRoot = !context.root;
+      if (isMainRoot) {
+        context.root = rules;
+      }
+
+      // Call preEval visitors from plugins before processing nodes
+      // This allows plugins (like less-compat) to process @plugin directives early
+      // Only call for the main root to avoid duplicate processing
+      if (isMainRoot && context.plugins) {
+        for (const plugin of context.plugins) {
+          if (plugin.preEvalVisitor) {
+            const visitors = Array.isArray(plugin.preEvalVisitor) 
+              ? plugin.preEvalVisitor 
+              : [plugin.preEvalVisitor];
+            for (const visitor of visitors) {
+              if (visitor && typeof visitor.visit === 'function') {
+                // Visit the rules node with the preEval visitor
+                // This will traverse the tree and process @plugin directives
+                const result = rules.accept(visitor);
+                if (result !== rules) {
+                  rules = result as this;
+                  // Update context.root if the node was replaced
+                  context.root = rules;
+                }
+              }
+            }
+          }
+        }
+      }
+
       /**
        * I think maybe we can just set the index to the actual order?
        */
@@ -578,12 +610,38 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         this.parent.adopt(rules);
       }
 
+      // Set context.root if not already set (needed for preEval visitors)
+      if (!context.root) {
+        context.root = rules;
+      }
+
       // Register main root as extend root if this is the root (needed for extends in preEval)
-      // We need to check if this rules is the context.root AND the extendRoots.root is not set yet
-      const isMainRoot = rules === context.root && !context.extendRoots.root;
-      if (isMainRoot) {
+      // Check rules === context.root at registration time (not using stale isMainRoot)
+      if (rules === context.root && !context.extendRoots.root) {
         context.extendRoots.registerRoot(rules);
         context.extendRoots.pushExtendRoot(rules);
+      }
+
+      // Call preEval visitors from plugins before processing nodes
+      // This allows plugins (like less-compat) to process @plugin directives early
+      if (isMainRoot && context.plugins) {
+        for (const plugin of context.plugins) {
+          if (plugin.preEvalVisitor) {
+            const visitors = Array.isArray(plugin.preEvalVisitor) 
+              ? plugin.preEvalVisitor 
+              : [plugin.preEvalVisitor];
+            for (const visitor of visitors) {
+              if (visitor && typeof visitor.visit === 'function') {
+                // Visit the rules node with the preEval visitor
+                // This will traverse the tree and process @plugin directives
+                const result = rules.accept(visitor);
+                if (result !== rules) {
+                  rules = result as this;
+                }
+              }
+            }
+          }
+        }
       }
 
       // Multi-pass registration system for handling interpolated names
@@ -878,7 +936,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       rulesContext: context.rulesContext,
       treeContext: context.treeContext,
       treeRoot: context.treeRoot,
-      root: context.root
+      root: context.root,
+      extendRootStackLength: context.extendRoots.extendRootStack.length
     } as const;
   }
 
@@ -1114,6 +1173,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (saved.root !== undefined && !isOutermost) {
           context.root = saved.root;
         }
+        // Restore extend root stack to its original length (if we're not the main root)
+        // The main root manages its own push/pop, but nested Rules should restore the stack
+        if (!isOutermost && saved.extendRootStackLength !== undefined) {
+          const currentLength = context.extendRoots.extendRootStack.length;
+          if (currentLength > saved.extendRootStackLength) {
+            // Pop any extend roots that were pushed during this Rules evaluation
+            while (context.extendRoots.extendRootStack.length > saved.extendRootStackLength) {
+              context.extendRoots.popExtendRoot();
+            }
+          }
+        }
         // Pop extend root if we pushed it (check if this is still the root)
         if (rules === context.root) {
           context.extendRoots.popExtendRoot();
@@ -1149,7 +1219,9 @@ const NodeTypeToPriority = new Map([
   ['Declaration', Priority.Medium],
   /** Then... */
   ['Mixin', Priority.Low],
-  ['Ruleset', Priority.Low]
+  ['Ruleset', Priority.Low],
+  /** Extend should evaluate at the same priority as Ruleset to ensure it evaluates before nested rulesets */
+  ['Extend', Priority.Low]
   /** Then, everything else? */
 ]);
 

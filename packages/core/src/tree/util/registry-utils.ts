@@ -5,7 +5,7 @@ import { isNode } from './is-node';
 import type { Mixin } from '../mixin';
 import { Nil } from '../nil';
 import { Node } from '../node';
-import type { JsFunction } from '../js-function';
+import { JsFunction } from '../js-function';
 import type { Func } from '../function';
 import type { Declaration } from '../declaration';
 import type { Context } from '../../context';
@@ -900,6 +900,138 @@ export class FunctionRegistry extends Registry<JsFunction, JsFunction> {
     }
 
     return fn;
+  }
+
+  /**
+   * Override add() to support both Jess API (add(item)) and Less.js API (add(name, func))
+   */
+  override add(item: JsFunction): void;
+  override add(name: string, func: JsFunction | ((...args: any[]) => any)): void;
+  override add(nameOrItem: string | JsFunction, func?: JsFunction | ((...args: any[]) => any)): void {
+    // If first argument is a JsFunction, use base class behavior
+    if (nameOrItem instanceof JsFunction) {
+      super.add(nameOrItem);
+      return;
+    }
+
+    // Otherwise, it's Less.js-compatible API: add(name, func)
+    if (typeof nameOrItem !== 'string' || func === undefined) {
+      throw new Error('FunctionRegistry.add() requires either a JsFunction or (name: string, func: JsFunction | Function)');
+    }
+
+    // Convert name to lowercase for Less.js compatibility
+    const lowerName = nameOrItem.toLowerCase();
+
+    // If func is already a JsFunction, use it directly
+    // Otherwise, create a new JsFunction from the raw function
+    const jsFunc = func instanceof JsFunction
+      ? func
+      : new JsFunction({ name: lowerName, fn: func });
+
+    // Ensure the name is set
+    if (!jsFunc.name) {
+      jsFunc.name = lowerName;
+    }
+
+    // Add to pendingItems directly
+    this.pendingItems.add(jsFunc);
+  }
+
+  /**
+   * Less.js-compatible API: Add multiple functions at once
+   * @param functions Object mapping function names to functions
+   */
+  addMultiple(functions: Record<string, JsFunction | ((...args: any[]) => any)>): void {
+    for (const [name, func] of Object.entries(functions)) {
+      this.add(name, func);
+    }
+  }
+
+  /**
+   * Less.js-compatible API: Get a function by name
+   * Uses case-insensitive lookup and searches parent chain
+   * @param name Function name (case-insensitive)
+   * @returns The function if found, undefined otherwise
+   */
+  get(name: string): JsFunction | undefined {
+    // Convert to lowercase for case-insensitive lookup
+    const lowerName = name.toLowerCase();
+
+    // First check local registry
+    this.indexPendingItems();
+    let fn = this.index.get(lowerName);
+
+    if (fn) {
+      return fn;
+    }
+
+    // If not found locally, use find() to search parent chain
+    // find() already handles parent traversal
+    return this.find(lowerName);
+  }
+
+  /**
+   * Less.js-compatible API: Get all local functions (without parent chain)
+   * @returns Object mapping function names to functions
+   */
+  getLocalFunctions(): Record<string, JsFunction> {
+    this.indexPendingItems();
+    const result: Record<string, JsFunction> = {};
+    for (const [name, func] of this.index.entries()) {
+      result[name] = func;
+    }
+    return result;
+  }
+
+  /**
+   * Less.js-compatible API: Create a child registry that inherits from this one
+   * In Less.js, this creates a new registry with prototype inheritance.
+   * In Jess, we create a new registry that searches this one as a parent.
+   *
+   * @returns A new FunctionRegistry that will search this registry when functions aren't found locally
+   */
+  inherit(): FunctionRegistry {
+    // Create a new registry for the same Rules
+    // The new registry will use find() which searches parent chain
+    // We need to create a registry that references this one as parent
+    // Since FunctionRegistry.find() already searches parent Rules chain,
+    // we can create a new registry on the same Rules and it will naturally
+    // find functions in parent Rules. However, for true "inherit" behavior
+    // where we want to search THIS registry specifically, we need a different approach.
+
+    // For now, create a new registry on the same Rules
+    // The find() method will search up the Rules parent chain, which includes
+    // this registry's Rules, so it should work correctly.
+    const childRegistry = new FunctionRegistry(this.rules);
+
+    // Store reference to parent registry for direct lookup
+    // This allows the child to search the parent registry even if it's on the same Rules
+    (childRegistry as any)._parentRegistry = this;
+
+    // Override get() to check parent registry first
+    const originalGet = childRegistry.get.bind(childRegistry);
+    childRegistry.get = function(this: FunctionRegistry, name: string): JsFunction | undefined {
+      // First check local registry
+      this.indexPendingItems();
+      const localFn = this.index.get(name.toLowerCase());
+      if (localFn) {
+        return localFn;
+      }
+
+      // Then check parent registry
+      const parentRegistry = (this as unknown as { _parentRegistry?: FunctionRegistry })._parentRegistry;
+      if (parentRegistry) {
+        const parentFn = parentRegistry.get(name);
+        if (parentFn) {
+          return parentFn;
+        }
+      }
+
+      // Finally, use find() to search Rules parent chain
+      return originalGet(name);
+    }.bind(childRegistry);
+
+    return childRegistry;
   }
 }
 

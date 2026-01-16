@@ -2,6 +2,20 @@
 
 Less.js compatibility layer for Jess. This plugin enables Less.js plugins and visitors to work seamlessly with Jess-compiled stylesheets by providing bidirectional transformation between Jess AST nodes and Less.js AST nodes.
 
+## ⚠️ Experimental Status
+
+**This package is experimental and largely LLM-generated.** It was created to explore compatibility between Jess and Less.js plugins, but:
+
+- **No long-term maintenance commitment**: This package is unlikely to be actively maintained in the future
+- **Use at your own risk**: While it may work for some use cases, it has not been thoroughly tested across all Less.js plugins
+- **Breaking changes likely**: The API and implementation may change or be removed without notice
+- **Not production-ready**: This is an experimental exploration, not a production-grade compatibility layer
+
+If you need Less.js plugin compatibility, consider:
+- Using Less.js directly for projects that require extensive Less.js plugin support
+- Contributing improvements if you find this package useful
+- Creating your own compatibility layer tailored to your specific needs
+
 ## Features
 
 - 🔄 **Bidirectional Transformation**: Convert between Jess and Less AST nodes

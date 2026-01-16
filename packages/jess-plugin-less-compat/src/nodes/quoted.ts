@@ -2,6 +2,7 @@ import { Quoted, Any, Interpolated } from '@jesscss/core';
 import { createLessProxy } from '../transform/proxy';
 import { toLessNode } from '../transform/to-less';
 import { mapJessTypeToLessType } from '../transform/type-map';
+import { fromLessNode } from '../transform/from-less';
 import type { LessNode } from '../types';
 
 /**
@@ -57,7 +58,6 @@ export function transformQuotedToLess(
         const lessQuoted = transformQuotedToLess(quoted, cache);
         const result = visitor.visit(lessQuoted);
         if (result !== lessQuoted) {
-          const { fromLessNode } = require('../transform/from-less');
           return fromLessNode(result, { cache });
         }
         return quoted;

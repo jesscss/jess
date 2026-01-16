@@ -2,6 +2,7 @@ import { Url, Quoted } from '@jesscss/core';
 import { createLessProxy } from '../transform/proxy';
 import { toLessNode } from '../transform/to-less';
 import { mapJessTypeToLessType } from '../transform/type-map';
+import { fromLessNode } from '../transform/from-less';
 import type { LessNode } from '../types';
 
 /**
@@ -39,7 +40,6 @@ export function transformUrlToLess(
         const lessUrl = transformUrlToLess(url, cache);
         const result = visitor.visit(lessUrl);
         if (result !== lessUrl) {
-          const { fromLessNode } = require('../transform/from-less');
           return fromLessNode(result, { cache });
         }
         return url;

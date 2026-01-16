@@ -44,7 +44,7 @@ export function transformColorToLess(
       }
       if (rgb) {
         // Convert to hex
-        const hex = rgb.map(v => {
+        const hex = rgb.map((v) => {
           const h = Math.round(v).toString(16).padStart(2, '0');
           return h;
         }).join('');

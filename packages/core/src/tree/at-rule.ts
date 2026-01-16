@@ -10,6 +10,7 @@ import { isNode } from './util/is-node';
 import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper';
 import { Interpolated } from './interpolated';
 import { Nil } from './nil';
+import { syncLog } from './util/__tests__/debug-log';
 
 export type AtRuleValue = {
   name: Any<'atkeyword'>;
@@ -267,6 +268,15 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           let parentExtendRoot: Rules | undefined;
           if (node.isNestable()) {
             parentExtendRoot = context.extendRoots.getCurrentExtendRoot();
+            // DEBUG: Log parent extend root
+            syncLog({
+              location: 'AtRule.evalNode',
+              action: 'Getting parent extend root for nestable at-rule',
+              atRuleName: node.value.name.valueOf(),
+              hasParentExtendRoot: !!parentExtendRoot,
+              parentIsMainRoot: parentExtendRoot === context.root,
+              stackLength: context.extendRoots.extendRootStack.length
+            });
             // Push a placeholder to maintain stack depth - we'll register the actual Rules after evaluation
             context.extendRoots.pushExtendRoot(rules);
             pushedExtendRoot = true;
@@ -294,12 +304,17 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
               node.value.rules = finalRules;
 
               // Register extend root AFTER evaluation using the final Rules instance
+              // Rulesets registered to 'rules' (the placeholder) during evaluation, so use that as the extend root
               if (pushedExtendRoot && node.isNestable()) {
                 context.extendRoots.popExtendRoot(); // Pop the placeholder
                 // Retrieve layer name that was stored in evalNode (and delete it)
                 const layerName = context.extendRoots.takeLayerName(node);
-                context.extendRoots.registerRoot(finalRules, parentExtendRoot, { layerName });
-                context.extendRoots.pushExtendRoot(finalRules);
+                // Use 'rules' as the extend root since that's where rulesets registered during evaluation
+                // 'finalRules' is stored in node.value.rules for the actual Rules node, but extend root uses 'rules'
+                if (rules) {
+                  context.extendRoots.registerRoot(rules, parentExtendRoot, { layerName });
+                  context.extendRoots.pushExtendRoot(rules);
+                }
               }
 
               return node;
@@ -314,12 +329,17 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           node.value.rules = finalRules;
 
           // Register extend root AFTER evaluation using the final Rules instance
+          // Rulesets registered to 'rules' (the placeholder) during evaluation, so use that as the extend root
           if (pushedExtendRoot && node.isNestable()) {
             context.extendRoots.popExtendRoot(); // Pop the placeholder
             // Retrieve layer name that was stored in evalNode (and delete it)
             const layerName = context.extendRoots.takeLayerName(node);
-            context.extendRoots.registerRoot(finalRules, parentExtendRoot, { layerName });
-            context.extendRoots.pushExtendRoot(finalRules);
+            // Use 'rules' as the extend root since that's where rulesets registered during evaluation
+            // 'finalRules' is stored in node.value.rules for the actual Rules node, but extend root uses 'rules'
+            if (rules) {
+              context.extendRoots.registerRoot(rules, parentExtendRoot, { layerName });
+              context.extendRoots.pushExtendRoot(rules);
+            }
           }
         }
         return node;

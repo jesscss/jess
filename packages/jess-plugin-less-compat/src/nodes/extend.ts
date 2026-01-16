@@ -2,6 +2,7 @@ import { Extend, Selector } from '@jesscss/core';
 import { createLessProxy } from '../transform/proxy';
 import { toLessNode } from '../transform/to-less';
 import { mapJessTypeToLessType } from '../transform/type-map';
+import { fromLessNode } from '../transform/from-less';
 import type { LessNode } from '../types';
 
 /**
@@ -56,7 +57,6 @@ export function transformExtendToLess(
         const lessExtend = transformExtendToLess(extend, cache);
         const result = visitor.visit(lessExtend);
         if (result !== lessExtend) {
-          const { fromLessNode } = require('../transform/from-less');
           return fromLessNode(result, { cache });
         }
         return extend;

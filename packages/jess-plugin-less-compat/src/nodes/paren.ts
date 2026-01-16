@@ -2,6 +2,7 @@ import { Paren, Node } from '@jesscss/core';
 import { createLessProxy } from '../transform/proxy';
 import { toLessNode } from '../transform/to-less';
 import { mapJessTypeToLessType } from '../transform/type-map';
+import { fromLessNode } from '../transform/from-less';
 import type { LessNode } from '../types';
 
 /**
@@ -39,7 +40,6 @@ export function transformParenToLess(
         const lessParen = transformParenToLess(paren, cache);
         const result = visitor.visit(lessParen);
         if (result !== lessParen) {
-          const { fromLessNode } = require('../transform/from-less');
           return fromLessNode(result, { cache });
         }
         return paren;

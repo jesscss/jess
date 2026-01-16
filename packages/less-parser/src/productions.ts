@@ -10,9 +10,7 @@ import {
   main as cssMain,
   declaration as cssDeclaration,
   mediaInParens as cssMediaInParens,
-  simpleSelector as cssSimpleSelector,
   complexSelector as cssComplexSelector,
-  unknownAtRule as cssUnknownAtRule,
   nthValue as cssNthValue,
   knownFunctions as cssKnownFunctions,
   mathValue as cssMathValue,
@@ -26,7 +24,6 @@ import {
   Ampersand,
   Block,
   Any,
-  Keyword,
   type LocationInfo,
   type Operator,
   type ConditionOperator,
@@ -47,6 +44,7 @@ import {
   Dimension,
   Num,
   Extend,
+  type Extend as ExtendType,
   ExtendFlag,
   Negative,
   Mixin,
@@ -64,7 +62,6 @@ import {
   Url,
   Nil,
   Collection,
-  Comment,
   type ComplexSelectorComponent,
   type Selector,
   INTERPOLATION_PLACEHOLDER,
@@ -260,6 +257,13 @@ export function main(this: P, T: TokenMap) {
     });
 
     if (!RECORDING_PHASE) {
+      // Process any extendNodes that were set (e.g., by ampersandExtend at root level)
+      if (ctx.extendNodes && ctx.extendNodes.length > 0) {
+        // Filter out Nil nodes (returned by ampersandExtend to avoid duplication)
+        const filteredRules = rules!.filter(r => !(r instanceof Nil));
+        rules = [...ctx.extendNodes, ...filteredRules];
+        ctx.extendNodes = undefined;
+      }
       let returnNode = $.getRulesWithComments(rules!, $.getLocationInfo($.LA(1)));
       // Attaches remaining whitespace at the end of rules
       const wrapped = $.wrap(returnNode!, true);
@@ -546,8 +550,28 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
       }
     });
     $.CONSUME2(T.LCurly);
+    // Save extendNodes before parsing declarationList, so nested rulesets don't inherit them
+    // Make a copy of the array (not just a reference) so mutations during nested parsing don't affect it
+    let savedExtendNodes: Extend[] | undefined = ctx.extendNodes ? [...ctx.extendNodes] : undefined;
+    ctx.extendNodes = undefined;
     let rules = $.SUBRULE2($.declarationList, { ARGS: [ctx] });
     let end = $.CONSUME2(T.RCurly);
+    // After declarationList, check if new extends were added (e.g., by ampersandExtend)
+    // If so, merge them with the saved extends; otherwise restore the saved extends
+    const newExtends = ctx.extendNodes as Extend[] | undefined;
+    if (newExtends && newExtends.length) {
+      // New extends were added during declarationList (e.g., &:extend())
+      if (savedExtendNodes && savedExtendNodes.length > 0) {
+        // Merge with saved extends
+        ctx.extendNodes = [...savedExtendNodes, ...newExtends];
+      } else {
+        // Keep the new extends
+        ctx.extendNodes = newExtends;
+      }
+    } else {
+      // No new extends, restore saved extends
+      ctx.extendNodes = savedExtendNodes;
+    }
     if (!RECORDING_PHASE) {
       let extend = ctx.extendNodes;
       if (extend?.length) {
@@ -620,10 +644,27 @@ export function qualifiedRule(this: P, T: TokenMap, altContext?: AltContext) {
   //   : selectorList WS* LCURLY declarationList RCURLY
   //   ;
   return (ctx: RuleContext = {}) => {
+    // Save parent's extendNodes before parsing selector (which may set extendNodes)
+    let savedExtendNodes = ctx.extendNodes ? [...ctx.extendNodes] : undefined;
+    // Set extendNodes to a fresh empty array upon entry to this qualifiedRule
+    // so nested rulesets don't inherit extends from parent rulesets
+    ctx.extendNodes = undefined;
     let selector = $.OR(selectorAlt(ctx));
     // Use the same context object so modifications propagate back
     ctx.selector = selector;
+    // Now extendNodes may have been set by extend() during selector parsing
+    // Save it for this ruleset, then clear it so nested rulesets don't see it
+    let thisExtendNodes = ctx.extendNodes ? [...ctx.extendNodes] : undefined;
+    ctx.extendNodes = undefined;
     let rule = $.SUBRULE($.qualifiedRuleBody, { ARGS: [ctx] });
+    // After qualifiedRuleBody returns, ctx.extendNodes may contain:
+    // 1. Extends that should bubble up (from nested rulesets or this ruleset that didn't match)
+    // 2. Nothing (if all extends were processed)
+    // Restore this ruleset's extendNodes (from selector parsing) to process them
+    const bubblingExtends = ctx.extendNodes; // Extends that should bubble up
+    ctx.extendNodes = thisExtendNodes;
+    // Restore parent's extendNodes after processing this ruleset's extends
+    let parentExtendNodes = savedExtendNodes;
     if (ctx.extendNodes) {
       let qRuleset = rule;
       // Set the Extend nodes' selector to the ruleset's selector (not &)
@@ -638,8 +679,22 @@ export function qualifiedRule(this: P, T: TokenMap, altContext?: AltContext) {
         ...ctx.extendNodes,
         qRuleset
       ]);
-      rule._location = rule._location;
+      // Set location from the ruleset (which has proper location info)
+      if (qRuleset._location) {
+        rule._location = qRuleset._location;
+      }
       ctx.extendNodes = undefined;
+    }
+    // Restore parent's extendNodes and merge with any bubbling extends
+    const hasBubblingExtends = bubblingExtends && (bubblingExtends as ExtendType[]).length > 0;
+    if (hasBubblingExtends) {
+      if (parentExtendNodes && parentExtendNodes.length > 0) {
+        ctx.extendNodes = [...parentExtendNodes, ...(bubblingExtends as ExtendType[])];
+      } else {
+        ctx.extendNodes = bubblingExtends as ExtendType[];
+      }
+    } else {
+      ctx.extendNodes = parentExtendNodes;
     }
     return rule;
   };

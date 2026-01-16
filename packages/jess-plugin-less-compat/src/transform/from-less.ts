@@ -1,6 +1,5 @@
 import { Node, Rules } from '@jesscss/core';
 import { getJessNodeFromProxy, isLessProxy } from './proxy';
-import { mapLessTypeToJessType } from './type-map';
 
 // Less.js types
 export type LessNode = any;
@@ -47,7 +46,7 @@ export function fromLessNode(
   // If it's a Less node that was created by a visitor, we need to reconstruct
   // For now, if we can't convert it back, return the original proxy target
   // TODO: Implement full reverse conversion for all node types
-  
+
   // Check if it has a __jessNode property (we might store this during conversion)
   if (lessNode && typeof lessNode === 'object' && '__jessNode' in lessNode) {
     return lessNode.__jessNode;
@@ -57,8 +56,8 @@ export function fromLessNode(
   // This is a fallback - in practice, visitors shouldn't create new nodes
   // that we can't track back to their originals
   throw new Error(
-    `Cannot convert Less node back to Jess: ${lessNode?.type || 'unknown type'}. ` +
-    `Less visitors should not create new nodes, only modify existing ones.`
+    `Cannot convert Less node back to Jess: ${lessNode?.type || 'unknown type'}. `
+    + `Less visitors should not create new nodes, only modify existing ones.`
   );
 }
 
@@ -71,7 +70,7 @@ export function fromLessNode(
  */
 export function fromLessTree(
   lessTree: LessNode,
-  options?: FromLessOptions
+  _options?: FromLessOptions
 ): Rules {
   // TODO: Implement tree conversion
   // This will recursively convert all nodes back to Jess format

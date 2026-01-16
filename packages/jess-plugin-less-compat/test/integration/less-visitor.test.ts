@@ -1,15 +1,24 @@
 /**
  * Integration tests for Less.js visitor compatibility
- * 
+ *
  * Tests that Less.js visitors can correctly visit and transform
  * Jess AST nodes through the compatibility layer.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Parser } from '@jesscss/less-parser';
-import { Context } from '@jesscss/core';
+import { Context, type Visitor } from '@jesscss/core';
 import { lessCompatPlugin } from '../../src';
 import type { LessVisitor } from '../../src/types';
+
+// Helper to normalize visitor (PluginInterface allows Visitor | Visitor[])
+function normalizeVisitor(visitor: Visitor | Visitor[] | undefined): Visitor | undefined {
+  if (!visitor) return undefined;
+  if (Array.isArray(visitor)) {
+    return visitor[0];
+  }
+  return visitor;
+}
 
 describe('Less.js Visitor Integration', () => {
   let parser: Parser;
@@ -47,10 +56,8 @@ describe('Less.js Visitor Integration', () => {
           return node;
         },
         visit(node: any) {
-          // Default visit method
-          if (node.accept) {
-            node.accept(this);
-          }
+          // Default visit method - don't call node.accept to avoid recursion
+          // The less-compat plugin handles tree traversal
           return node;
         }
       };
@@ -61,7 +68,7 @@ describe('Less.js Visitor Integration', () => {
       });
 
       // Get the visitor from the plugin
-      const visitor = plugin.visitor;
+      const visitor = normalizeVisitor(plugin.visitor);
       if (!visitor) {
         throw new Error('Plugin should return a visitor');
       }
@@ -109,9 +116,8 @@ describe('Less.js Visitor Integration', () => {
           return node;
         },
         visit(node: any) {
-          if (node.accept) {
-            node.accept(this);
-          }
+          // Don't call node.accept to avoid recursion with less-compat plugin
+          // The less-compat plugin handles tree traversal
           return node;
         }
       };
@@ -120,7 +126,7 @@ describe('Less.js Visitor Integration', () => {
         visitors: [lessVisitor]
       });
 
-      const visitor = plugin.visitor;
+      const visitor = normalizeVisitor(plugin.visitor);
       if (!visitor) {
         throw new Error('Plugin should return a visitor');
       }
@@ -155,9 +161,8 @@ describe('Less.js Visitor Integration', () => {
           return node;
         },
         visit(node: any) {
-          if (node.accept) {
-            node.accept(this);
-          }
+          // Don't call node.accept to avoid recursion with less-compat plugin
+          // The less-compat plugin handles tree traversal
           return node;
         }
       };
@@ -166,7 +171,7 @@ describe('Less.js Visitor Integration', () => {
         visitors: [lessVisitor]
       });
 
-      const visitor = plugin.visitor;
+      const visitor = normalizeVisitor(plugin.visitor);
       if (!visitor) {
         throw new Error('Plugin should return a visitor');
       }
@@ -212,9 +217,8 @@ describe('Less.js Visitor Integration', () => {
           return node;
         },
         visit(node: any) {
-          if (node.accept) {
-            node.accept(this);
-          }
+          // Don't call node.accept to avoid recursion with less-compat plugin
+          // The less-compat plugin handles tree traversal
           return node;
         }
       };
@@ -223,7 +227,7 @@ describe('Less.js Visitor Integration', () => {
         visitors: [customVisitor]
       });
 
-      const visitor = plugin.visitor;
+      const visitor = normalizeVisitor(plugin.visitor);
       if (!visitor) {
         throw new Error('Plugin should return a visitor');
       }
@@ -256,9 +260,8 @@ describe('Less.js Visitor Integration', () => {
           return node;
         },
         visit(node: any) {
-          if (node.accept) {
-            node.accept(this);
-          }
+          // Don't call node.accept to avoid recursion with less-compat plugin
+          // The less-compat plugin handles tree traversal
           return node;
         }
       };
@@ -267,7 +270,7 @@ describe('Less.js Visitor Integration', () => {
         visitors: [lessVisitor]
       });
 
-      const visitor = plugin.visitor;
+      const visitor = normalizeVisitor(plugin.visitor);
       if (!visitor) {
         throw new Error('Plugin should return a visitor');
       }
@@ -302,9 +305,8 @@ describe('Less.js Visitor Integration', () => {
           return node;
         },
         visit(node: any) {
-          if (node.accept) {
-            node.accept(this);
-          }
+          // Don't call node.accept to avoid recursion with less-compat plugin
+          // The less-compat plugin handles tree traversal
           return node;
         }
       };
@@ -313,7 +315,7 @@ describe('Less.js Visitor Integration', () => {
         visitors: [lessVisitor]
       });
 
-      const visitor = plugin.visitor;
+      const visitor = normalizeVisitor(plugin.visitor);
       if (!visitor) {
         throw new Error('Plugin should return a visitor');
       }

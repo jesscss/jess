@@ -685,11 +685,11 @@ export function extendSelector(
     const targetStr = target.valueOf();
     const findStr = find.valueOf();
     // Log if target contains .ext8 .ext9 and find is .ext8+.ext9 or .ext8>.ext9
-    if (targetStr?.includes('.ext8') && targetStr?.includes('.ext9') && 
-        (findStr === '.ext8+.ext9' || findStr === '.ext8>.ext9')) {
+    if (targetStr?.includes('.ext8') && targetStr?.includes('.ext9')
+      && (findStr === '.ext8+.ext9' || findStr === '.ext8>.ext9')) {
       syncLog({ location: 'extendSelector', action: 'Processing SelectorList', target: targetStr, find: findStr, extendWith: extendWith.valueOf(), partial, selectorListItems: target.value.map(s => s.valueOf()) });
     }
-    
+
     // For SelectorLists, we need to extend each selector that contains the find target
     // Keep original selectors in place, collect new selectors to append at the end
     const originalSelectors: Selector[] = [];
@@ -699,21 +699,21 @@ export function extendSelector(
       const selectorSearchResult = findExtendableLocations(selector, find);
       if (selectorSearchResult.hasMatches) {
         // DEBUG: Log match found
-        if (targetStr?.includes('.ext8') && targetStr?.includes('.ext9') && 
-            (findStr === '.ext8+.ext9' || findStr === '.ext8>.ext9')) {
+        if (targetStr?.includes('.ext8') && targetStr?.includes('.ext9')
+          && (findStr === '.ext8+.ext9' || findStr === '.ext8>.ext9')) {
           syncLog({ location: 'extendSelector', action: 'Match found in SelectorList item', selector: selector.valueOf(), find: findStr, willExtend: true });
         }
-        
+
         // This selector contains the find target - extend it
         // If partial: false and it's only a partial match, extendSelector will return unchanged
         const extended = extendSelector(selector, find, extendWith, partial, skipAmpersandCheck);
-        
+
         // DEBUG: Log extend result
-        if (targetStr?.includes('.ext8') && targetStr?.includes('.ext9') && 
-            (findStr === '.ext8+.ext9' || findStr === '.ext8>.ext9')) {
+        if (targetStr?.includes('.ext8') && targetStr?.includes('.ext9')
+          && (findStr === '.ext8+.ext9' || findStr === '.ext8>.ext9')) {
           syncLog({ location: 'extendSelector', action: 'Extended SelectorList item', original: selector.valueOf(), extended: extended.valueOf(), sameObject: extended === selector, extendedType: extended.type });
         }
-        
+
         // If the result is unchanged (same object reference), keep it as-is
         if (extended === selector) {
           originalSelectors.push(selector);
@@ -737,13 +737,13 @@ export function extendSelector(
     // Flatten any nested :is() that were generated during extend
     const allSelectors = [...originalSelectors, ...newSelectors];
     const result = createExtendedSelectorList(allSelectors, target);
-    
+
     // DEBUG: Log final result
-    if (targetStr?.includes('.ext8 .ext9') && !targetStr.includes('+') && !targetStr.includes('>') && 
-        (findStr === '.ext8+.ext9' || findStr === '.ext8>.ext9')) {
+    if (targetStr?.includes('.ext8 .ext9') && !targetStr.includes('+') && !targetStr.includes('>')
+      && (findStr === '.ext8+.ext9' || findStr === '.ext8>.ext9')) {
       syncLog({ location: 'extendSelector', action: 'SelectorList result', original: targetStr, result: result.valueOf(), resultType: result.type });
     }
-    
+
     return result;
   }
 
@@ -1158,10 +1158,9 @@ function handleFullExtend(
 
   // If target is already a selector list, add to it
   if (isNode(target, 'SelectorList')) {
-    const newSelectors = deduplicateSelectors([...target.value, extendWith]);
     // Use clone to preserve comments
     const copyForInheritance = target.clone();
-    return SelectorList.create(newSelectors).inherit(copyForInheritance);
+    return createExtendedSelectorList([...target.value, extendWith], copyForInheritance);
   }
 
   // If target is a pseudo-selector with selector arguments, check if we should extend arguments or create selector list
@@ -1172,8 +1171,7 @@ function handleFullExtend(
     if (arg && (arg as any).isSelector && target.value.name === ':is') {
       if (isNode(arg, 'SelectorList')) {
         // Add to existing selector list
-        const newSelectors = deduplicateSelectors([...arg.value, extendWith]);
-        const newArg = SelectorList.create(newSelectors).inherit(arg);
+        const newArg = createExtendedSelectorList([...arg.value, extendWith], arg);
         // If the original selector was generated, we can mutate it in place for performance
         if (target.generated) {
           target.value.arg = newArg;
@@ -1187,8 +1185,7 @@ function handleFullExtend(
         }
       } else {
         // Convert single selector to list and add extension
-        const newSelectors = deduplicateSelectors([arg as Selector, extendWith]);
-        const newArg = SelectorList.create(newSelectors).inherit(arg);
+        const newArg = createExtendedSelectorList([arg as Selector, extendWith], arg as Selector);
 
         // If the original selector was generated, we can mutate it in place for performance
         if (target.generated) {
@@ -1213,12 +1210,12 @@ function handleFullExtend(
   if (isNode(target, 'CompoundSelector')) {
     // Default case: create a new selector list
     const copyForInheritance = target.clone();
-    return SelectorList.create(deduplicateSelectors([target, extendWith])).inherit(copyForInheritance);
+    return createExtendedSelectorList([target, extendWith], copyForInheritance);
   }
 
   // Default case: create a new selector list
   const copyForInheritance = target.clone();
-  return SelectorList.create(deduplicateSelectors([target, extendWith])).inherit(copyForInheritance);
+  return createExtendedSelectorList([target, extendWith], copyForInheritance);
 }
 
 /**
@@ -1306,7 +1303,11 @@ function createIsWrapper(selectors: Selector[], inheritFrom: Selector): PseudoSe
   const copyForInheritance = inheritFrom.copy();
 
   // Create selectorList with original selectors (preserving their comments)
-  const selectorList = SelectorList.create(deduplicateSelectors(selectors));
+  // Flatten any generated :is() items before creating the selector list
+  const deduplicated = deduplicateSelectors(selectors);
+  const flattened = flattenGeneratedIs(deduplicated);
+  const finalDeduplicated = deduplicateSelectors(flattened);
+  const selectorList = SelectorList.create(finalDeduplicated);
 
   // Create PseudoSelector using the create factory method - same signature as constructor but marks as generated
   const pseudoSelector = PseudoSelector.create({
@@ -1942,7 +1943,9 @@ export function findChainedExtends(
         // Check if selectorInList equals otherSingleTarget (the target of another extend)
         // Combinators must match exactly (space vs + vs > etc.)
         if (selectorInList.valueOf() === otherSingleTarget.valueOf()) {
-          chained.push([extendedSelector, otherSelectorWithExtend, otherPartial, otherExtendRoot, otherExtendNode]);
+          // CRITICAL: Pass the individual selector that matched, not the entire extendedSelector
+          // This ensures processExtend extracts the correct target (the one that matched)
+          chained.push([selectorInList, otherSelectorWithExtend, otherPartial, otherExtendRoot, otherExtendNode]);
           break; // Only add once per otherTarget
         }
       }

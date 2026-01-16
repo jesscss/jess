@@ -1,6 +1,7 @@
 import { Comment } from '@jesscss/core';
 import { createLessProxy } from '../transform/proxy';
 import { mapJessTypeToLessType } from '../transform/type-map';
+import { fromLessNode } from '../transform/from-less';
 import type { LessNode } from '../types';
 
 /**
@@ -40,7 +41,6 @@ export function transformCommentToLess(
         const lessComment = transformCommentToLess(comment, cache);
         const result = visitor.visit(lessComment);
         if (result !== lessComment) {
-          const { fromLessNode } = require('../transform/from-less');
           return fromLessNode(result, { cache });
         }
         return comment;

@@ -24,11 +24,11 @@ export function transformListToLess(
       return undefined;
     }
 
-    // Map 'value' property (Less Value expects array)
-    if (prop === 'value') {
+    // Get filtered, converted value array (used by multiple properties)
+    const getFilteredValue = () => {
       const value = list.value;
       if (Array.isArray(value)) {
-        const converted = value
+        return value
           .map((item: any) => {
             if (!item) {
               return null; // Mark null/undefined for filtering
@@ -41,17 +41,36 @@ export function transformListToLess(
             return item;
           })
           .filter((item: any) => item !== undefined && item !== null); // Filter out undefined/null
-        return converted;
       }
       // Single value - wrap in array (if not undefined/null)
       if (value !== undefined && value !== null) {
-        if (value instanceof Node) {
-          const lessValue = toLessNode(value, { cache });
+        if (value && typeof value === 'object' && 'type' in value) {
+          // Check if it's a Node-like object
+          const lessValue = toLessNode(value as Node, { cache });
           return lessValue ? [lessValue] : [];
         }
         return [value];
       }
       return [];
+    };
+
+    // Map 'value' property (Less Value expects array)
+    if (prop === 'value') {
+      return getFilteredValue();
+    }
+
+    // Intercept 'length' property to return filtered array length
+    // Less visitor checks node.length to determine if it's array-like
+    if (prop === 'length') {
+      return getFilteredValue().length;
+    }
+
+    // Intercept numeric indices (array access like node[0], node[1])
+    // Less visitor may access node[i] directly when node.length exists
+    if (typeof prop === 'string' && /^\d+$/.test(prop)) {
+      const filtered = getFilteredValue();
+      const index = parseInt(prop, 10);
+      return filtered[index];
     }
 
     // Map 'children' method to return filtered, converted items
@@ -60,7 +79,7 @@ export function transformListToLess(
     // CRITICAL: When Jess core's accept() calls children(), it uses getValues(this.value)
     // We need to ensure the value property returns clean items, and children() filters them
     if (prop === 'children') {
-      return function*(deep?: boolean, reverse?: boolean, includePrePost?: boolean) {
+      return function* (deep?: boolean, reverse?: boolean, includePrePost?: boolean) {
         // Use the filtered value from our value property getter
         // This ensures we get the same filtered array that the value property returns
         const filteredValue = list.value
@@ -73,10 +92,10 @@ export function transformListToLess(
             return item;
           })
           .filter((item: any) => item !== undefined && item !== null);
-        
+
         // Handle reverse order if needed
         const itemsToIterate = reverse ? [...filteredValue].reverse() : filteredValue;
-        
+
         for (const item of itemsToIterate) {
           if (item === undefined || item === null) {
             continue; // Skip undefined/null items (shouldn't happen after filtering, but be safe)

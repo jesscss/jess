@@ -1,6 +1,6 @@
 /**
  * Integration test for less-plugin-autoprefix
- * 
+ *
  * Tests that the Less.js autoprefix plugin works correctly
  * with Jess AST nodes through the compatibility layer.
  */
@@ -8,6 +8,16 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Parser } from '@jesscss/less-parser';
 import { lessCompatPlugin } from '../../src';
+import type { Visitor } from '@jesscss/core';
+
+// Helper to normalize visitor (PluginInterface allows Visitor | Visitor[])
+function normalizeVisitor(visitor: Visitor | Visitor[] | undefined): Visitor | undefined {
+  if (!visitor) return undefined;
+  if (Array.isArray(visitor)) {
+    return visitor[0];
+  }
+  return visitor;
+}
 
 // Try to import autoprefix plugin
 let autoprefix: any;
@@ -51,7 +61,7 @@ describe('less-plugin-autoprefix integration', () => {
       plugins: [autoprefixPlugin]
     });
 
-    const visitor = plugin.visitor;
+    const visitor = normalizeVisitor(plugin.visitor);
     if (!visitor) {
       throw new Error('Plugin should return a visitor');
     }
@@ -93,7 +103,7 @@ describe('less-plugin-autoprefix integration', () => {
       visitors: [autoprefixVisitor]
     });
 
-    const visitor = plugin.visitor;
+    const visitor = normalizeVisitor(plugin.visitor);
     if (!visitor) {
       throw new Error('Plugin should return a visitor');
     }
@@ -130,7 +140,7 @@ describe('less-plugin-autoprefix integration', () => {
       visitors: [autoprefixVisitor]
     });
 
-    const visitor = plugin.visitor;
+    const visitor = normalizeVisitor(plugin.visitor);
     if (!visitor) {
       throw new Error('Plugin should return a visitor');
     }

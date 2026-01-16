@@ -4,10 +4,12 @@ import { Selector } from './selector';
 import { Ampersand } from './ampersand';
 import { Nil } from './nil';
 import { type PrintOptions, getPrintOptions } from './util/print';
-import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node';
 import { syncLog } from './util/__tests__/debug-log';
 import { serializeTypes } from './util/serialize-types';
+import { getImplicitSelector } from './util/selector-utils';
+import { Ruleset } from './ruleset';
 
 export const enum ExtendFlag {
   /** Sass and Jess default */
@@ -44,6 +46,7 @@ export class Extend extends Node<ExtendValue> {
     return `$extend ${this.value.target.valueOf()}`;
   }
 
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
@@ -66,9 +69,30 @@ export class Extend extends Node<ExtendValue> {
     return w.getSince(mark);
   }
 
+  // Don't preEval Extend - let it be evaluated in evalNode when the ruleset is in the frame
+  // This ensures the ampersand resolves to the correct ruleset selector, not the parent frame
+
   override evalNode(context: Context): MaybePromise<Nil> {
     let { selector, target, flag } = this.value;
-    if (!selector) {
+    
+    // DEBUG: Log when Extend.evalNode is called
+    const currentFrame = context.rulesetFrames.at(-1);
+    syncLog({
+      location: 'Extend.evalNode',
+      action: 'Starting evalNode',
+      frameCount: context.rulesetFrames.length,
+      currentFrameSelector: currentFrame?.selector?.valueOf(),
+      target: target?.valueOf(),
+      originalSelector: selector?.valueOf(),
+      originalSelectorType: selector?.type
+    });
+    
+    // If selector is undefined or set to a non-ampersand (parser set it to ruleset selector),
+    // convert it to ampersand so it resolves to the ruleset's selector when evaluated
+    // (the ruleset should be in the frame at this point)
+    if (!selector || (selector && !isNode(selector, 'Ampersand'))) {
+      // Set selector to ampersand - it will resolve to the current ruleset's selector when evaluated
+      // This matches the conceptual model: .c:extend(.ext all) is like { &:extend(.ext all); } inside .c
       selector = Ampersand.create(undefined);
     }
     // Get current extend root from registry stack
@@ -85,9 +109,10 @@ export class Extend extends Node<ExtendValue> {
           return new Nil();
         }
         // Resolve ampersand to its stored selector if needed
+        // IMPORTANT: Copy the selector to avoid it being modified later if it's a reference
         let resolvedSel: Selector = sel;
         if (isNode(sel, 'Ampersand') && sel.value.selector && !(sel.value.selector instanceof Nil)) {
-          resolvedSel = sel.value.selector;
+          resolvedSel = sel.value.selector.copy(true);
         }
         // DEBUG: Log target structure when registering extend
         syncLog({
@@ -110,21 +135,21 @@ export class Extend extends Node<ExtendValue> {
       return new Nil();
     }
     // Resolve ampersand to its stored selector if needed
+    // IMPORTANT: Copy the selector to avoid it being modified later if it's a reference
     let resolvedSel: Selector = sel;
     if (isNode(sel, 'Ampersand') && sel.value.selector && !(sel.value.selector instanceof Nil)) {
-      resolvedSel = sel.value.selector;
+      // DEBUG: Log what selector is being resolved from ampersand
+      syncLog({
+        location: 'Extend.evalNode',
+        action: 'Resolving ampersand selector',
+        ampersandStoredSelector: sel.value.selector.valueOf(),
+        ampersandStoredSelectorType: sel.value.selector.type,
+        ampersandStoredSelectorSExpr: serializeTypes(sel.value.selector),
+        currentFrame: context.rulesetFrames.at(-1)?.selector?.valueOf(),
+        currentFrameSExpr: context.rulesetFrames.at(-1)?.selector ? serializeTypes(context.rulesetFrames.at(-1)!.selector) : undefined
+      });
+      resolvedSel = sel.value.selector.copy(true);
     }
-    // DEBUG: Log target structure when registering extend
-    syncLog({
-      location: 'Extend.evalNode',
-      action: 'Registering extend (sync)',
-      target: target?.valueOf(),
-      targetType: target?.type,
-      targetSExpr: serializeTypes(target),
-      extendWith: resolvedSel?.valueOf(),
-      extendWithType: resolvedSel?.type,
-      partial: flag === ExtendFlag.All
-    });
     // Register extend to context with extend root reference and Extend node for error reporting
     context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this]);
     return new Nil();

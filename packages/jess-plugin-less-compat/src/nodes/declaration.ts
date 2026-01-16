@@ -53,10 +53,12 @@ export function transformDeclarationToLess(
 
     // Map 'accept' method for visitor traversal
     // Less's Visitor.visit() calls node.accept(this) to traverse children
-    // Declaration's accept should traverse its value
+    // Declaration's accept should ONLY traverse its value, NOT call visitor methods on itself
+    // The visitor's visit() method already called visitDeclaration() or visitRule() before calling accept()
     if (prop === 'accept') {
       return function(visitor: any) {
-        // Declaration's accept traverses its value
+        // Declaration's accept only traverses its value (children)
+        // Base Node.accept() pattern: visitor.visit(this.value)
         const value = decl.value.value;
         if (value instanceof Node) {
           const lessValue = toLessNode(value, { cache });
@@ -64,8 +66,23 @@ export function transformDeclarationToLess(
             lessValue.accept(visitor);
           } else if (lessValue && visitor.visitArray) {
             visitor.visitArray([lessValue]);
+          } else if (lessValue && visitor.visit) {
+            visitor.visit(lessValue);
+          }
+        } else if (value && Array.isArray(value)) {
+          // If value is an array, use visitArray
+          const lessValues = value.map((v: any) => {
+            if (v instanceof Node) {
+              return toLessNode(v, { cache });
+            }
+            return v;
+          });
+          if (visitor.visitArray) {
+            visitor.visitArray(lessValues);
           }
         }
+        // Return the declaration (accept doesn't return a replacement node)
+        return decl;
       };
     }
 

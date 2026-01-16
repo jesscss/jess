@@ -24,7 +24,7 @@ export function transformRulesetToLess(
     // Map 'selectors' property (Less expects array, Jess has single Selector | Nil)
     if (prop === 'selectors') {
       const selector = ruleset.value.selector;
-      
+
       // Handle Nil selector
       if (selector instanceof Nil) {
         return [];
@@ -51,12 +51,15 @@ export function transformRulesetToLess(
     // The accept method should traverse children, NOT call visitor.visit again
     if (prop === 'accept') {
       return function(visitor: any) {
+        // #region agent log
+        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ruleset.ts:53',message:'Ruleset accept() called',data:{visitorType:visitor?.constructor?.name,hasVisitArray:!!visitor?.visitArray},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         // CRITICAL: The visitor passed here is the Less visitor, not the plugin visitor
         // Less's Ruleset.accept() traverses selectors and rules
         // Use visitArray which handles the traversal correctly
         const selector = ruleset.value.selector;
         const rules = ruleset.value.rules;
-        
+
         // Traverse selectors using visitArray (Less's pattern)
         if (selector && !(selector instanceof Nil)) {
           if (selector instanceof SelectorList) {
@@ -68,6 +71,9 @@ export function transformRulesetToLess(
               return lessSel;
             });
             if (visitor.visitArray) {
+              // #region agent log
+              fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ruleset.ts:71',message:'Calling visitor.visitArray(selectors)',data:{selectorCount:lessSelectors.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+              // #endregion
               visitor.visitArray(lessSelectors);
             } else {
               // Fallback: call accept on each selector if visitArray not available
@@ -89,7 +95,7 @@ export function transformRulesetToLess(
             }
           }
         }
-        
+
         // Traverse rules using visitArray (Less's pattern)
         if (rules && rules.value && rules.value.length > 0) {
           // Convert all rules to Less format BEFORE calling visitArray
@@ -100,6 +106,9 @@ export function transformRulesetToLess(
             return lessRule;
           });
           if (visitor.visitArray) {
+            // #region agent log
+            fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ruleset.ts:103',message:'Calling visitor.visitArray(rules)',data:{ruleCount:lessRules.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
             visitor.visitArray(lessRules);
           } else {
             // Fallback: call accept on each rule if visitArray not available

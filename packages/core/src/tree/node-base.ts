@@ -747,6 +747,36 @@ export abstract class Node<
     if (!this.preEvaluated) {
       let node = this.maybeClone(context);
       node.preEvaluated = true;
+      
+      // Call preEval visitors from plugins before processing child nodes
+      // This allows plugins (like less-compat) to process @plugin directives early
+      // Only call for root Rules nodes to avoid duplicate processing
+      // We need to set context.root first if it's not set yet
+      if (context.plugins && node.type === 'Rules') {
+        if (!context.root) {
+          context.root = node as any;
+        }
+        if (node === (context.root as any)) {
+          for (const plugin of context.plugins) {
+            if (plugin.preEvalVisitor) {
+              const visitors = Array.isArray(plugin.preEvalVisitor) 
+                ? plugin.preEvalVisitor 
+                : [plugin.preEvalVisitor];
+              for (const visitor of visitors) {
+                if (visitor && typeof visitor.visit === 'function') {
+                  // Visit the node with the preEval visitor
+                  // This will traverse the tree and process @plugin directives
+                  const result = node.accept(visitor);
+                  if (result !== node) {
+                    node = result as this;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      
       // Note: Rules nodes handle index assignment for themselves and their children
       // Other nodes will get indices assigned by their parent Rules
       let out = node.forEachNode(n => n.preEval(context));

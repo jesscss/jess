@@ -25,13 +25,13 @@
     "node": ">=16"
   },
   "dependencies": {
-    "styles-config": "workspace:*",
     "@jesscss/core": "workspace:2.0.0-alpha.1",
-    "@jesscss/plugin-less": "workspace:2.0.0-alpha.1",
     "@jesscss/patch-css": "workspace:2.0.0-alpha.1",
+    "@jesscss/plugin-less": "workspace:2.0.0-alpha.1",
     "chalk": "^5.2.0",
     "linecraft": "0.2.5",
     "lodash-es": "^4.17.21",
+    "styles-config": "workspace:*",
     "yargs": "^17.7.1"
   },
   "scripts": {
@@ -53,8 +53,10 @@
   },
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
+    "@jesscss/plugin-less-compat": "workspace:*",
     "@jesscss/shared": "workspace:*",
-    "@types/lodash-es": "^4.17.8"
+    "@types/lodash-es": "^4.17.8",
+    "less": "^4.0.0"
   },
   "keywords": [
     "css",
