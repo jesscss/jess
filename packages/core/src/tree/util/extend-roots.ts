@@ -7,8 +7,6 @@ import type { Selector } from '../selector';
 import type { Node } from '../node';
 import { tryExtendSelector, findChainedExtends } from './extend';
 import { WARN, toDiagnostic } from '../../jess-error';
-import { syncLog } from './__tests__/debug-log';
-import { serializeTypes } from './serialize-types';
 
 /**
  * Extend Roots Registry
@@ -76,22 +74,7 @@ export class ExtendRootRegistry {
       }
       children.add(rules);
 
-      // DEBUG: Log root registration
-      syncLog({
-        location: 'registerRoot',
-        action: 'Registered root with parent',
-        hasParent: !!parent,
-        parentIsMainRoot: parent === this.root,
-        rulesIsMainRoot: rules === this.root,
-        childrenCount: children.size
-      });
     } else {
-      // DEBUG: Log root registration without parent
-      syncLog({
-        location: 'registerRoot',
-        action: 'Registered root without parent',
-        rulesIsMainRoot: rules === this.root
-      });
     }
 
     // Set layer name if provided
@@ -177,16 +160,6 @@ export class ExtendRootRegistry {
       // - Protected roots block access
       // - Compose roots create boundaries and are not accessible as children (only import type shares parent's root)
       const children = this.childrenRoots.get(currentRoot);
-      // DEBUG: Log children lookup
-      syncLog({
-        location: 'getAccessibleRoots.traverseChildren',
-        action: 'Checking children',
-        currentRootIsMainRoot: currentRoot === this.root,
-        hasChildren: !!children,
-        childrenCount: children?.size ?? 0,
-        childrenAreProtected: children ? Array.from(children).map(c => this.isProtected.get(c) ?? false) : [],
-        childrenAreCompose: children ? Array.from(children).map(c => this.isCompose.get(c) ?? false) : []
-      });
       if (children) {
         for (const child of children) {
           // Skip protected children - they should not be accessible
@@ -224,22 +197,6 @@ export class ExtendRootRegistry {
     // Traverse down from self to add children (compose boundary prevents going up)
     traverseChildren(root);
 
-    // DEBUG: Log what roots are accessible
-    syncLog({
-      location: 'getAccessibleRoots',
-      action: 'Computed accessible roots',
-      rootIsMainRoot: root === this.root,
-      accessibleRootsCount: accessible.size,
-      accessibleRoots: Array.from(accessible).map((r, i) => ({
-        index: i,
-        isMainRoot: r === this.root,
-        hasChildren: this.childrenRoots.has(r),
-        childrenCount: this.childrenRoots.get(r)?.size ?? 0,
-        isProtected: this.isProtected.get(r) ?? false,
-        isCompose: this.isCompose.get(r) ?? false,
-        layerName: this.layerName.get(r)
-      }))
-    });
 
     return accessible;
   }
@@ -348,26 +305,8 @@ export function processExtends(context: Context): void {
   const transformedByExtend = new Map<Ruleset, Set<string>>();
   const allRoots = context.extendRoots.getAlts();
 
-  // DEBUG: Log initial state of all extends and rulesets - LOG EVERYTHING
   // Check if combinator is present in extend targets
-  syncLog({
-    location: 'processExtends',
-    action: 'START',
-    totalExtends: allExtends.length,
-    allExtends: allExtends.map(([target, selectorWithExtend, partial]) => ({
-      target: target.valueOf(),
-      targetType: target.type,
-      extendWith: selectorWithExtend.valueOf(),
-      extendWithType: selectorWithExtend.type,
-      partial,
-      // Check if target contains combinators
-      hasPlus: target.valueOf().includes('+'),
-      hasGreater: target.valueOf().includes('>'),
-      hasSpace: target.valueOf().includes(' ') && !target.valueOf().includes('+') && !target.valueOf().includes('>')
-    }))
-  });
 
-  // DEBUG: Log initial state of all rulesets in all roots
   for (const root of allRoots) {
     const registry = root.getRegistry('ruleset');
     registry.indexPendingItems();
@@ -377,18 +316,8 @@ export function processExtends(context: Context): void {
         const selectorStr = ruleset.selector?.valueOf();
         allRulesets.push(selectorStr || 'nil');
         // Log all rulesets
-        syncLog({ location: 'processExtends', action: 'Initial ruleset state', root: root === context.root ? 'root' : 'nested', key, selector: selectorStr, selectorType: ruleset.selector?.type, isSelectorList: ruleset.selector?.type === 'SelectorList', selectorListItems: ruleset.selector?.type === 'SelectorList' ? (ruleset.selector as any).value?.map((s: any) => s.valueOf()) : undefined });
       }
     }
-    syncLog({
-      location: 'processExtends',
-      action: 'Total rulesets in registry',
-      root: root === context.root ? 'root' : 'nested',
-      count: allRulesets.length,
-      sample: allRulesets.slice(0, 10),
-      allRulesets: allRulesets,
-      hasMa: allRulesets.includes('.ma')
-    });
   }
 
   /**
@@ -527,17 +456,6 @@ export function processExtends(context: Context): void {
       ? target.value
       : [target];
 
-    // DEBUG: Log target extraction to track combinator preservation
-    syncLog({
-      location: 'processExtend',
-      action: 'Extracting singleTarget from target',
-      originalTarget: target?.valueOf(),
-      originalTargetType: target?.type,
-      originalTargetSExpr: serializeTypes(target),
-      isSelectorList: isNode(target, 'SelectorList'),
-      targetSelectorsCount: targetSelectors.length,
-      targetSelectors: targetSelectors.map(t => ({ valueOf: t.valueOf(), type: t.type, sExpr: serializeTypes(t) }))
-    });
 
     for (const singleTarget of targetSelectors) {
       // Skip self-referencing extends for individual selectors too
@@ -548,51 +466,27 @@ export function processExtends(context: Context): void {
       // Find rulesets matching this single target in accessible roots
       let rulesetSet: Ruleset[] | undefined;
 
-      // DEBUG: Log what we're searching for
       const targetStr = singleTarget?.valueOf();
       const extendWithStr = selectorWithExtend?.valueOf();
-      syncLog({
-        location: 'processExtend',
-        action: 'Searching for rulesets',
-        target: targetStr,
-        targetSExpr: serializeTypes(singleTarget),
-        extendWith: extendWithStr,
-        partial,
-        accessibleRootsCount: accessibleRoots.size
-      });
 
       for (const searchRoot of accessibleRoots) {
         // Ensure registry is indexed for this root before searching
         const registry = searchRoot.getRegistry('ruleset');
         registry.indexPendingItems();
 
-        // DEBUG: Log what's in this root's registry before searching
         const allRulesetsInRoot: string[] = [];
         for (const [key, rulesetSet] of registry.index.entries()) {
           for (const ruleset of rulesetSet) {
             allRulesetsInRoot.push(ruleset.selector?.valueOf() || 'nil');
           }
         }
-        syncLog({
-          location: 'processExtend',
-          action: 'Searching in root registry',
-          target: targetStr,
-          searchRootIsMainRoot: searchRoot === context.root,
-          rulesetsInRegistry: allRulesetsInRoot,
-          rulesetCount: allRulesetsInRoot.length
-        });
 
         const searchKeySet = singleTarget.keySet;
         const searchKeysArray = Array.from(searchKeySet);
-        // DEBUG: Log ALL registry lookups with detailed keySet info
-        syncLog({ location: 'processExtend', action: 'Registry lookup', target: targetStr, targetType: singleTarget.type, keySet: searchKeysArray, keySetSize: searchKeySet.size, foundCount: 0 }); // Log before search
         const found = searchRoot.find('ruleset', searchKeySet);
-        syncLog({ location: 'processExtend', action: 'Registry lookup result', target: targetStr, keySet: searchKeysArray, foundCount: found?.length ?? 0, foundSelectors: found?.map(rs => rs.selector?.valueOf()).filter(Boolean).slice(0, 3) });
         if (found) {
-          // DEBUG: Log found rulesets
           for (const rs of found) {
             const rsSelector = rs.selector?.valueOf();
-            syncLog({ location: 'processExtend', action: 'Found ruleset via registry', target: targetStr, rulesetSelector: rsSelector, rulesetSelectorType: rs.selector?.type });
           }
           if (rulesetSet) {
             rulesetSet.push(...found);
@@ -600,7 +494,6 @@ export function processExtends(context: Context): void {
             rulesetSet = found;
           }
         } else {
-          syncLog({ location: 'processExtend', action: 'No rulesets found in registry', target: targetStr, keySet: Array.from(singleTarget.keySet) });
         }
       }
 
@@ -654,24 +547,10 @@ export function processExtends(context: Context): void {
 
           const originalSelector = ruleset.selector as Selector;
 
-          // DEBUG: Log selector state before extend - LOG EVERYTHING
           const selectorStr = originalSelector?.valueOf();
           const targetStr = singleTarget?.valueOf();
           const extendWithStr = selectorWithExtend?.valueOf();
 
-          syncLog({
-            phase: 'Phase 1',
-            action: 'Processing extend - BEFORE',
-            target: targetStr,
-            targetType: singleTarget?.type,
-            extendWith: extendWithStr,
-            extendWithType: selectorWithExtend?.type,
-            partial,
-            rulesetSelector: selectorStr,
-            rulesetSelectorType: originalSelector?.type,
-            isSelectorList: originalSelector?.type === 'SelectorList',
-            selectorListItems: originalSelector?.type === 'SelectorList' ? (originalSelector as any).value?.map((s: any) => s.valueOf()) : undefined
-          });
 
           // Check if this extend has already transformed this ruleset's selector
           const extendKey = `${singleTarget.valueOf()}:${selectorWithExtend.valueOf()}:${partial}`;
@@ -685,54 +564,19 @@ export function processExtends(context: Context): void {
             return; // This extend already transformed this ruleset - skip
           }
 
-          // DEBUG: Log what we're passing to tryExtendSelector - LOG EVERYTHING
           // Track object identity and structure to detect transformations
-          syncLog({
-            phase: 'Phase 1',
-            action: 'Calling tryExtendSelector',
-            originalSelector: originalSelector?.valueOf(),
-            originalSelectorType: originalSelector?.type,
-            originalSelectorSExpr: serializeTypes(originalSelector),
-            originalSelectorObjectId: originalSelector ? Object.prototype.toString.call(originalSelector) : null,
-            find: singleTarget?.valueOf(),
-            findType: singleTarget?.type,
-            findSExpr: serializeTypes(singleTarget),
-            findObjectId: singleTarget ? Object.prototype.toString.call(singleTarget) : null,
-            extendWith: selectorWithExtend?.valueOf(),
-            extendWithType: selectorWithExtend?.type,
-            extendWithSExpr: serializeTypes(selectorWithExtend),
-            partial
-          });
 
           let result = tryExtendSelector(originalSelector, singleTarget, selectorWithExtend, partial);
 
-          // DEBUG: Log result from tryExtendSelector - LOG EVERYTHING
           if (result && !result.error) {
             const extendedSelector = result.value;
 
-            syncLog({
-              phase: 'Phase 1',
-              action: 'tryExtendSelector SUCCESS',
-              extendedSelector: extendedSelector?.valueOf(),
-              extendedType: extendedSelector?.type,
-              extendedSelectorSExpr: serializeTypes(extendedSelector),
-              originalSelector: originalSelector?.valueOf(),
-              originalSelectorSExpr: serializeTypes(originalSelector),
-              find: singleTarget?.valueOf(),
-              findType: singleTarget?.type,
-              extendWith: selectorWithExtend?.valueOf(),
-              extendWithType: selectorWithExtend?.type,
-              changed: extendedSelector.valueOf() !== originalSelector.valueOf(),
-              sameObject: extendedSelector === originalSelector
-            });
 
             // Only update if selector actually changed
             if (extendedSelector.valueOf() !== originalSelector.valueOf()) {
               // Mark that this extend has transformed this ruleset
               transformsForRuleset.add(extendKey);
 
-              // DEBUG: Log before updating
-              syncLog({ phase: 'Phase 1', action: 'Updating ruleset selector', before: ruleset.value.selector?.valueOf(), after: extendedSelector?.valueOf(), cloning: true });
 
               // CRITICAL: Clone the selector to avoid object reference issues
               const clonedSelector = extendedSelector.clone(true);
@@ -740,15 +584,6 @@ export function processExtends(context: Context): void {
               // Update the ruleset's selector directly
               ruleset.value.selector = clonedSelector;
 
-              // DEBUG: Log after assignment - LOG EVERYTHING
-              syncLog({
-                phase: 'Phase 1',
-                action: 'After assignment - ruleset selector updated',
-                rulesetSelector: ruleset.value.selector?.valueOf(),
-                rulesetSelectorType: ruleset.value.selector?.type,
-                sameAsExtended: ruleset.value.selector === extendedSelector,
-                sameAsCloned: ruleset.value.selector === clonedSelector
-              });
 
               extendedRulesets.add(ruleset); // Track that this ruleset was extended
               reindexRuleset(ruleset);
@@ -764,10 +599,8 @@ export function processExtends(context: Context): void {
                 }
               }
             } else {
-              syncLog({ phase: 'Phase 1', action: 'Selector did not change, skipping update', originalSelector: originalSelector?.valueOf(), extendedSelector: extendedSelector?.valueOf() });
             }
           } else {
-            syncLog({ phase: 'Phase 1', action: 'tryExtendSelector ERROR', errorType: result?.error?.type, errorMessage: result?.error?.message, originalSelector: originalSelector?.valueOf(), find: singleTarget?.valueOf(), extendWith: selectorWithExtend?.valueOf() });
           }
         });
       }
@@ -868,69 +701,20 @@ export function processExtends(context: Context): void {
               continue; // This extend already transformed this ruleset - skip
             }
 
-            // DEBUG: Log Phase 2 processing - LOG EVERYTHING
             const currentSelectorStr = currentSelector?.valueOf();
             const targetStr = singleTarget?.valueOf();
             const extendWithStr = selectorWithExtend?.valueOf();
 
-            syncLog({
-              phase: 'Phase 2',
-              action: 'Iterative processing - BEFORE',
-              iteration,
-              target: targetStr,
-              targetType: singleTarget?.type,
-              extendWith: extendWithStr,
-              extendWithType: selectorWithExtend?.type,
-              partial,
-              currentSelector: currentSelectorStr,
-              currentType: currentSelector?.type,
-              rulesetSelector: ruleset.value.selector?.valueOf(),
-              rulesetType: ruleset.value.selector?.type,
-              sameObject: currentSelector === ruleset.value.selector
-            });
 
             // Try to extend - tryExtendSelector will check for actual matches (including combinators)
             // and return an error if there's no match
-            // DEBUG: Log what we're passing to tryExtendSelector - LOG EVERYTHING
             // Track object identity and structure to detect transformations
-            syncLog({
-              phase: 'Phase 2',
-              action: 'Calling tryExtendSelector',
-              currentSelector: currentSelector?.valueOf(),
-              currentSelectorType: currentSelector?.type,
-              currentSelectorSExpr: serializeTypes(currentSelector),
-              currentSelectorObjectId: currentSelector ? Object.prototype.toString.call(currentSelector) : null,
-              find: singleTarget?.valueOf(),
-              findType: singleTarget?.type,
-              findSExpr: serializeTypes(singleTarget),
-              findObjectId: singleTarget ? Object.prototype.toString.call(singleTarget) : null,
-              extendWith: selectorWithExtend?.valueOf(),
-              extendWithType: selectorWithExtend?.type,
-              extendWithSExpr: serializeTypes(selectorWithExtend),
-              partial
-            });
 
             const result = tryExtendSelector(currentSelector, singleTarget, selectorWithExtend, partial);
 
-            // DEBUG: Log result from tryExtendSelector - LOG EVERYTHING
             if (result && !result.error) {
               const extendedSelector = result.value;
 
-              syncLog({
-                phase: 'Phase 2',
-                action: 'tryExtendSelector SUCCESS',
-                extendedSelector: extendedSelector?.valueOf(),
-                extendedType: extendedSelector?.type,
-                extendedSelectorSExpr: serializeTypes(extendedSelector),
-                originalSelector: currentSelector?.valueOf(),
-                originalSelectorSExpr: serializeTypes(currentSelector),
-                find: singleTarget?.valueOf(),
-                findType: singleTarget?.type,
-                extendWith: selectorWithExtend?.valueOf(),
-                extendWithType: selectorWithExtend?.type,
-                changed: extendedSelector.valueOf() !== currentSelectorValue,
-                sameObject: extendedSelector === currentSelector
-              });
 
               // Only update if selector actually changed
               if (extendedSelector.valueOf() !== currentSelectorValue) {
@@ -953,40 +737,13 @@ export function processExtends(context: Context): void {
 
                 ruleset.value.selector = clonedSelector;
 
-                // DEBUG: Log after assignment - LOG EVERYTHING
-                syncLog({
-                  phase: 'Phase 2',
-                  action: 'After assignment - ruleset selector updated',
-                  rulesetSelector: ruleset.value.selector?.valueOf(),
-                  rulesetSelectorType: ruleset.value.selector?.type,
-                  sameAsExtended: ruleset.value.selector === extendedSelector,
-                  sameAsCloned: ruleset.value.selector === clonedSelector
-                });
 
                 reindexRuleset(ruleset);
                 nextIteration.add(ruleset); // Keep in next iteration
                 break; // Found a match, no need to check other targets
               } else {
-                // DEBUG: Log when selector didn't change - LOG EVERYTHING
-                syncLog({
-                  phase: 'Phase 2',
-                  action: 'Selector did not change, skipping update',
-                  originalSelector: currentSelector?.valueOf(),
-                  extendedSelector: extendedSelector?.valueOf(),
-                  same: extendedSelector.valueOf() === currentSelectorValue
-                });
               }
             } else {
-              // DEBUG: Log error - LOG EVERYTHING
-              syncLog({
-                phase: 'Phase 2',
-                action: 'tryExtendSelector ERROR',
-                errorType: result?.error?.type,
-                errorMessage: result?.error?.message,
-                originalSelector: currentSelector?.valueOf(),
-                find: singleTarget?.valueOf(),
-                extendWith: selectorWithExtend?.valueOf()
-              });
             }
           }
         }

@@ -453,43 +453,92 @@ export class LessCompatPlugin extends AbstractPlugin {
             nameValue = atRuleName.value;
           }
 
-          if (nameValue === 'plugin') {
+          // Check if this is a @plugin directive
+          // The name will be '@plugin' (with @ prefix) or 'plugin' (without)
+          // Less.js uses '@plugin' but we should handle both
+          const isPlugin = nameValue === 'plugin' || nameValue === '@plugin';
+
+          if (isPlugin) {
             // Extract plugin path/name from prelude
             // Handle both AtRule (value.prelude) and Directive (value.value) structures
             const prelude = node.value?.prelude || node.value?.value;
             let pluginPath: string | undefined;
 
+
             if (prelude) {
-              // Prelude might be a Quoted string, Expression, or already evaluated
+              // Helper to extract string value from a node (Quoted, Url, or string)
+              const extractStringValue = (node: any): string | undefined => {
+                if (!node) return undefined;
+                if (typeof node === 'string') return node;
+                if (node.type === 'Quoted' && node.value) {
+                  // Quoted.value can be string | Any | Interpolated
+                  if (typeof node.value === 'string') return node.value;
+                  if (node.value?.value && typeof node.value.value === 'string') return node.value.value;
+                  // Try valueOf() for Any nodes
+                  if (typeof node.valueOf === 'function') {
+                    const val = node.valueOf();
+                    if (typeof val === 'string') return val;
+                  }
+                }
+                if (node.type === 'Url' && node.value) {
+                  // Url.value can be Quoted, string, or other
+                  if (typeof node.value === 'string') return node.value;
+                  if (node.value.type === 'Quoted' && node.value.value) {
+                    if (typeof node.value.value === 'string') return node.value.value;
+                    if (node.value.value?.value && typeof node.value.value.value === 'string') {
+                      return node.value.value.value;
+                    }
+                  }
+                  // Try valueOf() for Url nodes
+                  if (typeof node.valueOf === 'function') {
+                    const val = node.valueOf();
+                    if (typeof val === 'string') return val;
+                  }
+                }
+                return undefined;
+              };
+
+              // Prelude might be a Quoted string, Url, Expression, Sequence, List, or already evaluated
               if (typeof prelude === 'string') {
                 pluginPath = prelude;
-              } else if (prelude.value && typeof prelude.value === 'string') {
-                pluginPath = prelude.value;
-              } else if (prelude.type === 'Quoted' && prelude.value) {
-                pluginPath = prelude.value;
-              } else if (prelude.type === 'Expression' && prelude.value) {
-                // Expression might contain a Quoted string
-                const firstValue = Array.isArray(prelude.value) ? prelude.value[0] : prelude.value;
-                if (firstValue && firstValue.type === 'Quoted' && firstValue.value) {
-                  pluginPath = firstValue.value;
+              } else if (prelude.type === 'Quoted' || prelude.type === 'Url') {
+                pluginPath = extractStringValue(prelude);
+              } else if (prelude.type === 'Sequence' && Array.isArray(prelude.value)) {
+                // Sequence contains an array of nodes - look for Quoted or Url
+                for (const item of prelude.value) {
+                  if (item && (item.type === 'Quoted' || item.type === 'Url')) {
+                    pluginPath = extractStringValue(item);
+                    if (pluginPath) break;
+                  }
                 }
+              } else if (prelude.type === 'Expression' && prelude.value) {
+                // Expression might contain a Quoted or Url node
+                const firstValue = Array.isArray(prelude.value) ? prelude.value[0] : prelude.value;
+                if (firstValue && (firstValue.type === 'Quoted' || firstValue.type === 'Url')) {
+                  pluginPath = extractStringValue(firstValue);
+                }
+              } else if (prelude.type === 'List' && prelude.value) {
+                // Prelude might be a List containing a Quoted or Url node
+                const firstItem = Array.isArray(prelude.value) ? prelude.value[0] : prelude.value;
+                if (firstItem && (firstItem.type === 'Quoted' || firstItem.type === 'Url')) {
+                  pluginPath = extractStringValue(firstItem);
+                }
+              } else if (prelude.value && typeof prelude.value === 'string') {
+                // Fallback: direct string value
+                pluginPath = prelude.value;
               }
             }
 
-            if (pluginPath) {
-              // Remove quotes if present
-              pluginPath = pluginPath.replace(/^["']|["']$/g, '');
 
-              syncLog({
-                location: 'LessCompatPlugin.visitor.atRule',
-                action: 'Processing @plugin',
-                pluginPath,
-                alreadyLoaded: loadedPlugins.has(pluginPath),
-                hasPluginManagerRef: !!pluginManagerRef,
-                hasMockLessRef: !!mockLessRef,
-                hasPluginRegistry: !!this.opts.pluginRegistry,
-                inRegistry: this.opts.pluginRegistry ? pluginPath in this.opts.pluginRegistry : false
-              });
+            if (pluginPath) {
+              // Ensure pluginPath is a string and remove quotes if present
+              if (typeof pluginPath === 'string') {
+                pluginPath = pluginPath.replace(/^["']|["']$/g, '');
+              } else {
+                // If it's not a string, try to convert it
+                pluginPath = String(pluginPath).replace(/^["']|["']$/g, '');
+              }
+
 
               // Check if plugin is already loaded
               if (!loadedPlugins.has(pluginPath) && pluginManagerRef && mockLessRef) {
@@ -588,6 +637,9 @@ export class LessCompatPlugin extends AbstractPlugin {
         // After processing @plugin, we still need to run Less visitors on this node
         // But we'll let visit() handle that - atRule() just processes @plugin directives
         // The visit() method will be called separately and will run the Less visitors
+        // NOTE: atRule() is called by Jess's visitor system as part of visit() via _visit(),
+        // so visit() will be called after atRule() completes. This ensures @plugin processing
+        // happens before Less visitors run on subsequent nodes.
         return node;
       },
 
@@ -602,6 +654,26 @@ export class LessCompatPlugin extends AbstractPlugin {
         // Get underlying Jess node if this is a Less proxy
         // This allows us to check the processing WeakSet correctly
         const jessNode = getJessNodeFromProxy(node) || node;
+
+        // CRITICAL: For AtRule nodes, we need to call atRule() FIRST to process @plugin directives
+        // before running Less visitors. Since our visitor is a plain object (not a class extending Visitor),
+        // visit() doesn't automatically call atRule() via _visit(). We need to call it manually.
+        if (node.type === 'AtRule' || node.type === 'Directive') {
+          // Call atRule() to process @plugin directives and add visitors
+          // This must happen before we run Less visitors, so that newly added visitors
+          // are available for subsequent nodes
+          const atRuleResult = visitor.atRule(node);
+          // Use the result if atRule() returned a different node
+          if (atRuleResult && atRuleResult !== node) {
+            node = atRuleResult;
+            // Update jessNode if node was replaced
+            const newJessNode = getJessNodeFromProxy(node) || node;
+            if (newJessNode !== jessNode) {
+              // If node was replaced, we need to update our reference
+              // But we'll continue with the original jessNode for processing tracking
+            }
+          }
+        }
 
         // If we're already inside a Less visitor traversal, don't process again
         // This prevents infinite loops when visitArray calls visit() on child nodes
@@ -625,6 +697,15 @@ export class LessCompatPlugin extends AbstractPlugin {
         processing.add(jessNode);
 
         try {
+          // CRITICAL: For AtRule nodes, ensure @plugin is processed BEFORE running Less visitors
+          // In Jess's visitor system, atRule() is called as part of visit() via _visit(),
+          // but we need to ensure @plugin processing happens before Less visitors run.
+          // Since atRule() is a separate method that's called by the visitor system,
+          // we need to check if this is a @plugin directive and process it here too
+          // (as a fallback, in case atRule() hasn't been called yet).
+          // However, the normal flow should be: atRule() is called first, then visit().
+          // So we'll rely on atRule() to process @plugin, and visit() will run Less visitors.
+          
           // Convert Jess node to Less format (use underlying node if proxy)
           const lessNode = toLessNode(jessNode, { cache: cacheMap });
 

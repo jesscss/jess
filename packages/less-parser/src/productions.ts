@@ -598,6 +598,14 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
             rules.value = [finalExtend, ...rules.value];
             ctx.extendNodes = undefined;
           } else {
+            // Multiple extend groups (different targets/flags) - attach them to the ruleset
+            // They should be inside the ruleset, attached to each selector
+            // Prepend extends to rules so they're inside the ruleset
+            for (const ext of extend) {
+              ext.value.selector = undefined; // Remove selector so they attach to the ruleset
+            }
+            rules.value = [...extend, ...rules.value];
+            ctx.extendNodes = undefined;
           }
           /** Or else we let it bubble up to the declaration list */
         }
@@ -688,6 +696,7 @@ export function qualifiedRule(this: P, T: TokenMap, altContext?: AltContext) {
     // Restore parent's extendNodes and merge with any bubbling extends
     const hasBubblingExtends = bubblingExtends && (bubblingExtends as ExtendType[]).length > 0;
     if (hasBubblingExtends) {
+      // Bubble them up to parent
       if (parentExtendNodes && parentExtendNodes.length > 0) {
         ctx.extendNodes = [...parentExtendNodes, ...(bubblingExtends as ExtendType[])];
       } else {

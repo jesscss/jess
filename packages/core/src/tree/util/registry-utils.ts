@@ -11,7 +11,6 @@ import type { Declaration } from '../declaration';
 import type { Context } from '../../context';
 import { atIndex } from './collections';
 import { comparePosition } from './compare';
-import { syncLog } from './__tests__/debug-log';
 
 const { isArray } = Array;
 
@@ -325,23 +324,18 @@ export class RulesetRegistry extends Registry<Ruleset> {
    */
   override indexPendingItems() {
     const index = this.index;
-    syncLog({ location: 'RulesetRegistry.indexPendingItems', action: 'Starting indexing', pendingCount: this.pendingItems.size });
     for (const ruleset of this.pendingItems) {
       /** Index using the ruleset's actual selector keySet - no need for getImplicitSelector here
        * since we're indexing the selector as-is, not transforming it for parent context */
       const selector = ruleset.selector;
       if (selector instanceof Nil) {
-        syncLog({ location: 'RulesetRegistry.indexPendingItems', action: 'Skipping Nil selector', ruleset: ruleset.type });
         continue;
       }
       if (!('keySet' in selector)) {
-        syncLog({ location: 'RulesetRegistry.indexPendingItems', action: 'Skipping - no keySet', selectorType: (selector as any).type });
         continue;
       }
       const selectorStr = selector.valueOf();
       const keySet = selector.keySet;
-      // DEBUG: Log ALL indexing to see what's happening
-      syncLog({ location: 'RulesetRegistry.indexPendingItems', action: 'Indexing ruleset', selector: selectorStr, keySet: Array.from(keySet), selectorType: selector.type, keySetSize: keySet.size });
       for (const key of keySet) {
         const existing = index.get(key);
         if (existing) {
@@ -351,7 +345,6 @@ export class RulesetRegistry extends Registry<Ruleset> {
         }
       }
     }
-    syncLog({ location: 'RulesetRegistry.indexPendingItems', action: 'Finished indexing', indexSize: index.size });
     this.pendingItems.clear();
   }
 
@@ -364,8 +357,6 @@ export class RulesetRegistry extends Registry<Ruleset> {
     // Index any pending rulesets first
     this.indexPendingItems();
 
-    // DEBUG: Log ALL searches to see what's happening
-    syncLog({ location: 'RulesetRegistry.find', action: 'Searching registry', keys, indexSize: this.index.size });
     let candidates: Set<Ruleset> | undefined;
     let rulesets: Ruleset[] | undefined;
 

@@ -10,7 +10,6 @@ import { isNode } from './util/is-node';
 import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper';
 import { Interpolated } from './interpolated';
 import { Nil } from './nil';
-import { syncLog } from './util/__tests__/debug-log';
 
 export type AtRuleValue = {
   name: Any<'atkeyword'>;
@@ -268,15 +267,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           let parentExtendRoot: Rules | undefined;
           if (node.isNestable()) {
             parentExtendRoot = context.extendRoots.getCurrentExtendRoot();
-            // DEBUG: Log parent extend root
-            syncLog({
-              location: 'AtRule.evalNode',
-              action: 'Getting parent extend root for nestable at-rule',
-              atRuleName: node.value.name.valueOf(),
-              hasParentExtendRoot: !!parentExtendRoot,
-              parentIsMainRoot: parentExtendRoot === context.root,
-              stackLength: context.extendRoots.extendRootStack.length
-            });
             // Push a placeholder to maintain stack depth - we'll register the actual Rules after evaluation
             context.extendRoots.pushExtendRoot(rules);
             pushedExtendRoot = true;

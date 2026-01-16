@@ -1,7 +1,5 @@
 import type { CssActionsParser, TokenMap, RuleContext } from './cssActionsParser';
 import { EMPTY_ALT, type IToken, type IOrAlt, type OrMethodOpts, tokenMatcher } from 'chevrotain';
-// @ts-expect-error - debug-log is in __tests__
-import { syncLog } from '../../../core/src/tree/util/__tests__/debug-log';
 import {
   type TreeContext,
   Node,

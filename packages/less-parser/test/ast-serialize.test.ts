@@ -1418,6 +1418,33 @@ describe('extend cases', () => {
     expect(fullSExpr).toContain("(BasicSelector '.c')");
   });
 
+  test('selector list with multiple ampersand extends - different targets', () => {
+    const { tree, errors, lexerResult } = parser.parse(`
+.ext3,
+.ext4 {
+  &:extend(.foo all);
+  &:extend(.bar all);
+  color: blue;
+}
+`);
+    expect(errors.length).toBe(0);
+    expect(lexerResult.errors.length).toBe(0);
+    const sExpr = serializeTypes(tree);
+    // Should have 2 Extend nodes (one for .foo, one for .bar)
+    const extendMatches = sExpr.match(/\(Extend/g);
+    const extendCount = extendMatches?.length || 0;
+    expect(extendCount).toBe(2);
+    // Extends should be inside the ruleset with selector: undefined
+    expect(sExpr).toContainString('(SelectorList');
+    expect(sExpr).toContainString("(BasicSelector '.ext3')");
+    expect(sExpr).toContainString("(BasicSelector '.ext4')");
+    // Both extends should have undefined selector (so they can be duplicated per selector during evaluation)
+    expect(sExpr).toContainString('(Extend');
+    expect(sExpr).toContainString('target:');
+    expect(sExpr).toContainString("(BasicSelector '.foo')");
+    expect(sExpr).toContainString("(BasicSelector '.bar')");
+  });
+
   test('extend with selector list target and all flag', () => {
     const { tree, errors, lexerResult } = parser.parse('.a:extend(.x, .y all) { color: blue; }');
     expect(errors.length).toBe(0);

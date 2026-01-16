@@ -6,8 +6,6 @@ import { Nil } from './nil';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node';
-import { syncLog } from './util/__tests__/debug-log';
-import { serializeTypes } from './util/serialize-types';
 import { getImplicitSelector } from './util/selector-utils';
 import { Ruleset } from './ruleset';
 
@@ -75,17 +73,7 @@ export class Extend extends Node<ExtendValue> {
   override evalNode(context: Context): MaybePromise<Nil> {
     let { selector, target, flag } = this.value;
     
-    // DEBUG: Log when Extend.evalNode is called
     const currentFrame = context.rulesetFrames.at(-1);
-    syncLog({
-      location: 'Extend.evalNode',
-      action: 'Starting evalNode',
-      frameCount: context.rulesetFrames.length,
-      currentFrameSelector: currentFrame?.selector?.valueOf(),
-      target: target?.valueOf(),
-      originalSelector: selector?.valueOf(),
-      originalSelectorType: selector?.type
-    });
     
     // If selector is undefined or set to a non-ampersand (parser set it to ruleset selector),
     // convert it to ampersand so it resolves to the ruleset's selector when evaluated
@@ -109,22 +97,10 @@ export class Extend extends Node<ExtendValue> {
           return new Nil();
         }
         // Resolve ampersand to its stored selector if needed
-        // IMPORTANT: Copy the selector to avoid it being modified later if it's a reference
         let resolvedSel: Selector = sel;
         if (isNode(sel, 'Ampersand') && sel.value.selector && !(sel.value.selector instanceof Nil)) {
-          resolvedSel = sel.value.selector.copy(true);
+          resolvedSel = sel.value.selector;
         }
-        // DEBUG: Log target structure when registering extend
-        syncLog({
-          location: 'Extend.evalNode',
-          action: 'Registering extend (async)',
-          target: target?.valueOf(),
-          targetType: target?.type,
-          targetSExpr: serializeTypes(target),
-          extendWith: resolvedSel?.valueOf(),
-          extendWithType: resolvedSel?.type,
-          partial: flag === ExtendFlag.All
-        });
         // Register extend to context with extend root reference and Extend node for error reporting
         context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this]);
         return new Nil();
@@ -135,20 +111,9 @@ export class Extend extends Node<ExtendValue> {
       return new Nil();
     }
     // Resolve ampersand to its stored selector if needed
-    // IMPORTANT: Copy the selector to avoid it being modified later if it's a reference
     let resolvedSel: Selector = sel;
     if (isNode(sel, 'Ampersand') && sel.value.selector && !(sel.value.selector instanceof Nil)) {
-      // DEBUG: Log what selector is being resolved from ampersand
-      syncLog({
-        location: 'Extend.evalNode',
-        action: 'Resolving ampersand selector',
-        ampersandStoredSelector: sel.value.selector.valueOf(),
-        ampersandStoredSelectorType: sel.value.selector.type,
-        ampersandStoredSelectorSExpr: serializeTypes(sel.value.selector),
-        currentFrame: context.rulesetFrames.at(-1)?.selector?.valueOf(),
-        currentFrameSExpr: context.rulesetFrames.at(-1)?.selector ? serializeTypes(context.rulesetFrames.at(-1)!.selector) : undefined
-      });
-      resolvedSel = sel.value.selector.copy(true);
+      resolvedSel = sel.value.selector;
     }
     // Register extend to context with extend root reference and Extend node for error reporting
     context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this]);

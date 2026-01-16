@@ -872,6 +872,8 @@ export abstract class Node<
     this.post ||= node.post;
     this.sourceNode = node.sourceNode;
     this.sourceParent ??= node.sourceParent;
+    // Preserve the generated flag when inheriting
+    this.generated = node.generated;
     /**
      * If it's replacing a node that's evaluated, it should inherit the same index.
      * Otherwise, it should be settable after cloning / copying.

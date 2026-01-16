@@ -94,7 +94,6 @@
  */
 
 import { type Selector } from '../selector';
-import { syncLog } from './__tests__/debug-log';
 import { SimpleSelector } from '../selector-simple';
 import { SelectorList } from '../selector-list';
 import { ComplexSelector, type ComplexSelectorValue } from '../selector-complex';
@@ -681,13 +680,11 @@ export function extendSelector(
 
   // Special handling for SelectorList targets - extend each matching selector in the list
   if (isNode(target, 'SelectorList')) {
-    // DEBUG: Log SelectorList processing
     const targetStr = target.valueOf();
     const findStr = find.valueOf();
     // Log if target contains .ext8 .ext9 and find is .ext8+.ext9 or .ext8>.ext9
     if (targetStr?.includes('.ext8') && targetStr?.includes('.ext9')
       && (findStr === '.ext8+.ext9' || findStr === '.ext8>.ext9')) {
-      syncLog({ location: 'extendSelector', action: 'Processing SelectorList', target: targetStr, find: findStr, extendWith: extendWith.valueOf(), partial, selectorListItems: target.value.map(s => s.valueOf()) });
     }
 
     // For SelectorLists, we need to extend each selector that contains the find target
@@ -698,20 +695,16 @@ export function extendSelector(
     for (const selector of target.value) {
       const selectorSearchResult = findExtendableLocations(selector, find);
       if (selectorSearchResult.hasMatches) {
-        // DEBUG: Log match found
         if (targetStr?.includes('.ext8') && targetStr?.includes('.ext9')
           && (findStr === '.ext8+.ext9' || findStr === '.ext8>.ext9')) {
-          syncLog({ location: 'extendSelector', action: 'Match found in SelectorList item', selector: selector.valueOf(), find: findStr, willExtend: true });
         }
 
         // This selector contains the find target - extend it
         // If partial: false and it's only a partial match, extendSelector will return unchanged
         const extended = extendSelector(selector, find, extendWith, partial, skipAmpersandCheck);
 
-        // DEBUG: Log extend result
         if (targetStr?.includes('.ext8') && targetStr?.includes('.ext9')
           && (findStr === '.ext8+.ext9' || findStr === '.ext8>.ext9')) {
-          syncLog({ location: 'extendSelector', action: 'Extended SelectorList item', original: selector.valueOf(), extended: extended.valueOf(), sameObject: extended === selector, extendedType: extended.type });
         }
 
         // If the result is unchanged (same object reference), keep it as-is
@@ -738,10 +731,8 @@ export function extendSelector(
     const allSelectors = [...originalSelectors, ...newSelectors];
     const result = createExtendedSelectorList(allSelectors, target);
 
-    // DEBUG: Log final result
     if (targetStr?.includes('.ext8 .ext9') && !targetStr.includes('+') && !targetStr.includes('>')
       && (findStr === '.ext8+.ext9' || findStr === '.ext8>.ext9')) {
-      syncLog({ location: 'extendSelector', action: 'SelectorList result', original: targetStr, result: result.valueOf(), resultType: result.type });
     }
 
     return result;

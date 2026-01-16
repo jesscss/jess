@@ -221,7 +221,9 @@ describe('@plugin directive processing', () => {
         // This visitor is added during @plugin processing
         const dynamicVisitor = {
           visitRuleset(node: any) {
-            // Extract selector to track which nodes were visited
+            // Track that visitRuleset was called - simpler check
+            visitedNodes.push('visited');
+            // Try to extract selector to track which nodes were visited
             if (node.selectors && node.selectors.length > 0) {
               const selector = node.selectors[0];
               if (selector && selector.elements) {

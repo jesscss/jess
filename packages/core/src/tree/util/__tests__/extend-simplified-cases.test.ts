@@ -122,6 +122,26 @@ describe('Simplified Extend Test Cases', () => {
       const result = extendSelector(selector, target, extendWith, true);
       expect(result.valueOf()).toBe(':is(.parent,.container)>.child');
     });
+
+    it('should extend with :is() selector - extract selectors from :is()', () => {
+      // .foo -> .foo, extend with :is(.ext3, .ext4) -> .foo, .ext3, .ext4
+      const selector = el('.foo');
+      const target = el('.foo');
+      const extendWith = is(sellist([el('.ext3'), el('.ext4')]));
+
+      const result = extendSelector(selector, target, extendWith, false);
+      expect(result.valueOf()).toBe('.foo,.ext3,.ext4');
+    });
+
+    it('should extend with :is() selector in partial mode', () => {
+      // .foo .bar -> .bar, extend with :is(.ext3, .ext4) -> .foo :is(.bar, .ext3, .ext4)
+      const selector = sel([el('.foo'), co(' '), el('.bar')]);
+      const target = el('.bar');
+      const extendWith = is(sellist([el('.ext3'), el('.ext4')]));
+
+      const result = extendSelector(selector, target, extendWith, true);
+      expect(result.valueOf()).toBe('.foo :is(.bar,.ext3,.ext4)');
+    });
   });
 
   describe('Error conditions', () => {
