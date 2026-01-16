@@ -1,4 +1,4 @@
-import { Node } from '../node';
+import { Node } from '../node.js';
 
 export type SerializeTypesOptions = {
   // Include primitive main values next to the type when useful

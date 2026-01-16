@@ -1,7 +1,12 @@
-import { extendSelector } from '../extend';
-import { el, sel, compound, co } from '../../..';
+import { extendSelector, tryExtendSelector } from '../extend';
+import { el, sel, compound, co, sellist } from '../../..';
 import { isNode } from '../is-node';
 import { type Combinator, type Combinators } from '../../combinator';
+import { Context } from '../../../context';
+import { Rules } from '../../rules';
+import { Ruleset } from '../../ruleset';
+import { Extend } from '../../extend';
+import { processExtends } from '../extend-roots';
 
 /**
  * Test suite to verify that all combinators (>, +, ~, space) are properly preserved
@@ -100,6 +105,236 @@ describe('Combinator Preservation in Extensions', () => {
       expect(() => {
         extendSelector(selector1, selector2, el('.extended'), false);
       }).toThrow('No match found for target selector');
+    });
+
+    it('should NOT match with tryExtendSelector when combinators differ (space vs +)', () => {
+      // .ext8 .ext9 (descendant) should NOT match .ext8 + .ext9 (adjacent sibling)
+      const target = sel([el('.ext8'), co(' '), el('.ext9')]);
+      const find = sel([el('.ext8'), co('+'), el('.ext9')]);
+      const extendWith = el('.zap');
+
+      const result = tryExtendSelector(target, find, extendWith, true);
+
+      expect(result.error).toBeDefined();
+      expect(result.error?.type).toBe('NOT_FOUND');
+      expect(result.value.valueOf()).toBe(target.valueOf());
+    });
+
+    it('should NOT match with tryExtendSelector when combinators differ (space vs >)', () => {
+      // .ext8 .ext9 (descendant) should NOT match .ext8 > .ext9 (child)
+      const target = sel([el('.ext8'), co(' '), el('.ext9')]);
+      const find = sel([el('.ext8'), co('>'), el('.ext9')]);
+      const extendWith = el('.zoo');
+
+      const result = tryExtendSelector(target, find, extendWith, true);
+
+      expect(result.error).toBeDefined();
+      expect(result.error?.type).toBe('NOT_FOUND');
+      expect(result.value.valueOf()).toBe(target.valueOf());
+    });
+
+    it('should NOT match .ext8 .ext9 with .ext8 + .ext9 (reproducing the actual bug)', () => {
+      // This is the exact case from extend.less that's failing
+      // .ext8 .ext9 (descendant) should NOT match .ext8 + .ext9 (adjacent sibling)
+      const target = sel([el('.ext8'), co(' '), el('.ext9')]);
+      const find = sel([el('.ext8'), co('+'), el('.ext9')]);
+      const extendWith = el('.zap');
+
+      const result = tryExtendSelector(target, find, extendWith, true);
+
+      expect(result.error).toBeDefined();
+      expect(result.error?.type).toBe('NOT_FOUND');
+      expect(result.value.valueOf()).toBe(target.valueOf());
+    });
+  });
+
+  describe.only('Bug reproduction: extend.less combinator mismatch - EXACT REPLICATION', () => {
+    it('should NOT match SelectorList containing .ext8 .ext9 when extending with .ext8 + .ext9', () => {
+      // EXACT replication of what the logs show:
+      // originalSelector: ".ext8 .ext9,.buu" (SelectorList)
+      // find: ".ext8+.ext9" (ComplexSelector with + combinator)
+      // extendWith: ".zap" (BasicSelector)
+      // partial: true
+      //
+      // The SelectorList contains:
+      //   - ComplexSelector(.ext8 ' ' .ext9) - descendant combinator
+      //   - BasicSelector(.buu)
+      //
+      // We're trying to match against:
+      //   - ComplexSelector(.ext8 '+' .ext9) - adjacent sibling combinator
+      //
+      // This should NOT match because the combinators differ (' ' vs '+')
+
+      const selectorList = sellist([
+        sel([el('.ext8'), co(' '), el('.ext9')]),  // .ext8 .ext9 (descendant)
+        el('.buu')                                   // .buu
+      ]);
+
+      const find = sel([el('.ext8'), co('+'), el('.ext9')]);  // .ext8 + .ext9 (adjacent sibling)
+      const extendWith = el('.zap');
+
+      const result = tryExtendSelector(selectorList, find, extendWith, true);
+
+      // Should NOT match - combinators differ
+      expect(result.error).toBeDefined();
+      expect(result.error?.type).toBe('NOT_FOUND');
+      // Selector should be unchanged
+      expect(result.value.valueOf()).toBe('.ext8 .ext9,.buu');
+    });
+
+    it('should NOT match SelectorList containing .ext8 .ext9 when extending with .ext8 > .ext9', () => {
+      // Similar test for child combinator
+
+      const selectorList = sellist([
+        sel([el('.ext8'), co(' '), el('.ext9')]),  // .ext8 .ext9 (descendant)
+        el('.buu')                                   // .buu
+      ]);
+
+      const find = sel([el('.ext8'), co('>'), el('.ext9')]);  // .ext8 > .ext9 (child)
+      const extendWith = el('.zoo');
+
+      const result = tryExtendSelector(selectorList, find, extendWith, true);
+
+      // Should NOT match - combinators differ
+      expect(result.error).toBeDefined();
+      expect(result.error?.type).toBe('NOT_FOUND');
+      // Selector should be unchanged
+      expect(result.value.valueOf()).toBe('.ext8 .ext9,.buu');
+    });
+
+    it('should NOT add .zap to nested .ext8 .ext9 when .zap extends .ext8 + .ext9', () => {
+      // Reproducing the exact bug from extend.less:
+      // 
+      // Less code:
+      //   .ext8 {
+      //     .ext9 {
+      //       result: match-nested-bar;
+      //     }
+      //   }
+      //   .zap:extend(.ext8 + .ext9 all) {}
+      //
+      // The nested ruleset should only have selector: .ext8 .ext9 (descendant combinator)
+      // When .zap:extend(.ext8 + .ext9 all) is processed, it should NOT match because
+      // .ext8 + .ext9 (adjacent sibling) doesn't match .ext8 .ext9 (descendant)
+      //
+      // Expected: .ext8 .ext9 should NOT be extended with .zap
+      // Actual bug: .zap is incorrectly added to .ext8 .ext9
+      //
+      // QUESTION: Is something transforming the selector before tryExtendSelector?
+
+      const context = new Context();
+      const rootRules = new Rules();
+      context.root = rootRules;
+      context.extendRoots.root = rootRules;
+      context.extendRoots.registerRoot(rootRules);
+
+      // Create .ext8 ruleset (parent) - this will contain the nested .ext9
+      const ext8Ruleset = new Ruleset();
+      ext8Ruleset.value = { 
+        selector: el('.ext8'),
+        rules: new Rules()
+      };
+      rootRules.register('ruleset', ext8Ruleset);
+      rootRules.value.push(ext8Ruleset);
+
+      // Create nested .ext8 .ext9 ruleset (descendant combinator only)
+      // This represents the nested .ext9 inside .ext8
+      // IMPORTANT: This should be a ComplexSelector with descendant combinator, NOT a SelectorList
+      const ext8Ext9Ruleset = new Ruleset();
+      const nestedSelector = sel([el('.ext8'), co(' '), el('.ext9')]);  // Only descendant, NOT a SelectorList
+      ext8Ext9Ruleset.value = { 
+        selector: nestedSelector,
+        rules: new Rules()
+      };
+      // Register it in the parent .ext8 ruleset's registry
+      ext8Ruleset.value.rules.register('ruleset', ext8Ext9Ruleset);
+      ext8Ruleset.value.rules.value.push(ext8Ext9Ruleset);
+      
+      // Also register it in root for extend lookup (Less parser does this)
+      rootRules.register('ruleset', ext8Ext9Ruleset);
+      
+      // Verify the selector before processing
+      const selectorBefore = ext8Ext9Ruleset.value.selector.valueOf();
+      expect(selectorBefore).toBe('.ext8 .ext9');  // Should be descendant only
+
+      // Create .zap:extend(.ext8 + .ext9 all) {}
+      const zapRuleset = new Ruleset();
+      zapRuleset.value = { selector: el('.zap') };
+      rootRules.register('ruleset', zapRuleset);
+      rootRules.value.push(zapRuleset);
+
+      const extendNode = new Extend();
+      extendNode.value = {
+        target: sel([el('.ext8'), co('+'), el('.ext9')]), // Adjacent sibling
+        selector: el('.zap'),
+        flag: 0 // All (partial: true)
+      };
+
+      context.extends.push([
+        sel([el('.ext8'), co('+'), el('.ext9')]), // target: .ext8 + .ext9
+        el('.zap'),                                 // selectorWithExtend: .zap
+        true,                                        // partial: true (all flag)
+        rootRules,                                   // extendRoot
+        extendNode                                   // extendNode
+      ]);
+
+      // Verify selector is still correct before processExtends
+      const selectorBeforeProcess = ext8Ext9Ruleset.value.selector.valueOf();
+      expect(selectorBeforeProcess).toBe('.ext8 .ext9');
+      
+      processExtends(context);
+
+      // After processing, .ext8 .ext9 should NOT have .zap added
+      // because .ext8 + .ext9 (adjacent sibling) doesn't match .ext8 .ext9 (descendant)
+      const ext8Ext9Selector = ext8Ext9Ruleset.value.selector.valueOf();
+      console.log('Selector after processExtends:', ext8Ext9Selector);
+      console.log('Selector type:', ext8Ext9Ruleset.value.selector.type);
+      expect(ext8Ext9Selector).toBe('.ext8 .ext9');
+      expect(ext8Ext9Selector).not.toContain('.zap');
+    });
+
+    it('should NOT add .zoo to .ext8 .ext9 when .zoo extends .ext8 > .ext9', () => {
+      // Similar test for child combinator
+
+      const context = new Context();
+      const rootRules = new Rules();
+      context.root = rootRules;
+      context.extendRoots.root = rootRules;
+      context.extendRoots.registerRoot(rootRules);
+
+      // Create .ext8 .ext9 ruleset (descendant combinator)
+      const ext8Ext9Ruleset = new Ruleset();
+      ext8Ext9Ruleset.value = { selector: sel([el('.ext8'), co(' '), el('.ext9')]) };
+      rootRules.register('ruleset', ext8Ext9Ruleset);
+      rootRules.value.push(ext8Ext9Ruleset);
+
+      // Create .zoo:extend(.ext8 > .ext9 all) {}
+      const zooRuleset = new Ruleset();
+      zooRuleset.value = { selector: el('.zoo') };
+      rootRules.register('ruleset', zooRuleset);
+      rootRules.value.push(zooRuleset);
+
+      const extendNode = new Extend();
+      extendNode.value = {
+        target: sel([el('.ext8'), co('>'), el('.ext9')]), // Child combinator
+        selector: el('.zoo'),
+        flag: 0 // All (partial: true)
+      };
+
+      context.extends.push([
+        sel([el('.ext8'), co('>'), el('.ext9')]), // target: .ext8 > .ext9
+        el('.zoo'),                                 // selectorWithExtend: .zoo
+        true,                                        // partial: true (all flag)
+        rootRules,                                   // extendRoot
+        extendNode                                   // extendNode
+      ]);
+
+      processExtends(context);
+
+      // After processing, .ext8 .ext9 should NOT have .zoo added because combinators don't match
+      const ext8Ext9Selector = ext8Ext9Ruleset.value.selector.valueOf();
+      expect(ext8Ext9Selector).toBe('.ext8 .ext9');
+      expect(ext8Ext9Selector).not.toContain('.zoo');
     });
   });
 });

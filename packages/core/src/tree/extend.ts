@@ -6,6 +6,8 @@ import { Nil } from './nil';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node';
+import { syncLog } from './util/__tests__/debug-log';
+import { serializeTypes } from './util/serialize-types';
 
 export const enum ExtendFlag {
   /** Sass and Jess default */
@@ -87,6 +89,17 @@ export class Extend extends Node<ExtendValue> {
         if (isNode(sel, 'Ampersand') && sel.value.selector && !(sel.value.selector instanceof Nil)) {
           resolvedSel = sel.value.selector;
         }
+        // DEBUG: Log target structure when registering extend
+        syncLog({
+          location: 'Extend.evalNode',
+          action: 'Registering extend (async)',
+          target: target?.valueOf(),
+          targetType: target?.type,
+          targetSExpr: serializeTypes(target),
+          extendWith: resolvedSel?.valueOf(),
+          extendWithType: resolvedSel?.type,
+          partial: flag === ExtendFlag.All
+        });
         // Register extend to context with extend root reference and Extend node for error reporting
         context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this]);
         return new Nil();
@@ -101,6 +114,17 @@ export class Extend extends Node<ExtendValue> {
     if (isNode(sel, 'Ampersand') && sel.value.selector && !(sel.value.selector instanceof Nil)) {
       resolvedSel = sel.value.selector;
     }
+    // DEBUG: Log target structure when registering extend
+    syncLog({
+      location: 'Extend.evalNode',
+      action: 'Registering extend (sync)',
+      target: target?.valueOf(),
+      targetType: target?.type,
+      targetSExpr: serializeTypes(target),
+      extendWith: resolvedSel?.valueOf(),
+      extendWithType: resolvedSel?.type,
+      partial: flag === ExtendFlag.All
+    });
     // Register extend to context with extend root reference and Extend node for error reporting
     context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this]);
     return new Nil();

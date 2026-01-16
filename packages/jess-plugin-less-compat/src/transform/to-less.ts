@@ -23,6 +23,8 @@ export interface ToLessOptions {
  * @param options - Conversion options
  * @returns A Less-compatible proxy node
  */
+import { IS_PROXYING_SYMBOL } from './proxy';
+
 export function toLessNode(
   jessNode: Node,
   options?: ToLessOptions
@@ -33,9 +35,17 @@ export function toLessNode(
 
   const cache = options?.cache || new WeakMap();
 
-  // Check cache first
+  // Check cache first - if we have a cached proxy, return it even if IS_PROXYING_SYMBOL is set
   if (cache.has(jessNode)) {
     return cache.get(jessNode);
+  }
+
+  // Check if already being proxied (prevent recursion)
+  // Only return node as-is if there's no cached proxy
+  if ((jessNode as any)[IS_PROXYING_SYMBOL]) {
+    // Return the node as-is to prevent recursion
+    // This should only happen if cache doesn't have it (checked above)
+    return jessNode as any;
   }
 
   // Get transformer for this node type

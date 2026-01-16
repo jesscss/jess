@@ -77,15 +77,12 @@ export function transformReferenceToLess(
     }
 
     // Map 'accept' method for visitor traversal
+    // Less's Visitor.visit() calls node.accept(this) to traverse children
+    // Reference nodes typically don't have children to traverse
     if (prop === 'accept') {
       return function(visitor: any) {
-        const lessRef = transformReferenceToLess(ref, cache);
-        const result = visitor.visit(lessRef);
-        if (result !== lessRef) {
-          const { fromLessNode } = require('../transform/from-less');
-          return fromLessNode(result, { cache });
-        }
-        return ref;
+        // Reference nodes don't have children to traverse
+        // The visitor.visit() was already called by our plugin wrapper
       };
     }
 

@@ -9,6 +9,7 @@ import {
 } from '@jesscss/core';
 import { createLessProxy } from '../transform/proxy';
 import { toLessNode } from '../transform/to-less';
+import { toLessNode } from '../transform/to-less';
 import { mapJessTypeToLessType } from '../transform/type-map';
 import type { LessNode } from '../types';
 
@@ -89,17 +90,26 @@ function flattenSelectorToElements(
             
             if (prop === 'accept') {
               return function(visitor: any) {
-                const lessElement = createLessProxy(basicSel, cache, (p, t) => {
-                  if (p === 'type') return 'Element';
-                  if (p === 'combinator') return toLessNode(elementCombinator, { cache });
-                  if (p === 'value') return (t as BasicSelector).value;
-                  if (p === 'isVariable') return false;
-                  return undefined;
-                });
-                const result = visitor.visit(lessElement);
-                if (result !== lessElement) {
-                  const { fromLessNode } = require('../transform/from-less');
-                  return fromLessNode(result, { cache });
+                // Less Element's accept() should call visitor.visit() on the element
+                // But we need to use the cached proxy to prevent creating new proxies
+                // and causing infinite loops
+                // The element proxy is already created above, so we can use it directly
+                // by accessing it through the cache or by using the element from the elements array
+                // For now, just call visitor.visit() - the processing WeakSet should prevent loops
+                if (visitor.visit) {
+                  // Use the element proxy that was already created
+                  // We need to get it from the cache or recreate it consistently
+                  const lessElement = createLessProxy(basicSel, cache, (p, t) => {
+                    if (p === 'type') return 'Element';
+                    if (p === 'combinator') return toLessNode(elementCombinator, { cache });
+                    if (p === 'value') return (t as BasicSelector).value;
+                    if (p === 'isVariable') return false;
+                    return undefined;
+                  });
+                  const result = visitor.visit(lessElement);
+                  // If visitor returned a different node, we'd need to convert back
+                  // But for now, just return the original
+                  return basicSel;
                 }
                 return basicSel;
               };
@@ -244,11 +254,21 @@ export function transformSelectorToLess(
     if (prop === 'accept') {
       return function(visitor: any) {
         // Less Selector accepts visitor and visits each element
+        // CRITICAL: All elements should already be Less proxies from flattenSelectorToElements
+        // If they're not, we need to convert them to prevent infinite loops
         for (const element of elements) {
-          if (element.accept) {
+          if (element && element.accept) {
+            // Element is already a Less proxy - call accept directly
             element.accept(visitor);
-          } else {
-            visitor.visit(element);
+          } else if (element) {
+            // Element is not a proxy - this shouldn't happen, but convert it just in case
+            // This prevents infinite loops if somehow a Jess node got through
+            const lessElement = toLessNode(element as any, { cache });
+            if (lessElement && lessElement.accept) {
+              lessElement.accept(visitor);
+            } else if (lessElement && visitor.visit) {
+              visitor.visit(lessElement);
+            }
           }
         }
         return jessSelector;

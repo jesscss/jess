@@ -6,6 +6,17 @@ import { mapJessTypeToLessType } from './type-map';
  */
 const LESS_PROXY_SYMBOL = Symbol('less-proxy');
 
+/**
+ * Symbol to store reference to underlying Jess node in proxy
+ */
+const JESS_NODE_SYMBOL = Symbol('jess-node');
+
+/**
+ * Symbol to mark nodes that are already being proxied (to prevent recursion)
+ * Exported so toLessNode can check it
+ */
+export const IS_PROXYING_SYMBOL = Symbol('is-proxying');
+
 // Cache for Less tree module and typeIndex lookups
 let lessTreeModule: any = null;
 let hasIndexedTypes = false;
@@ -72,10 +83,23 @@ export function createLessProxy(
   cache?: WeakMap<Node, any>,
   propertyMap?: (prop: string | symbol, target: Node) => any
 ): any {
+  // Check if already proxied (prevent recursion)
+  if ((jessNode as any)[IS_PROXYING_SYMBOL]) {
+    // Return the cached proxy if available
+    if (cache && cache.has(jessNode)) {
+      return cache.get(jessNode);
+    }
+    // If no cache, return the node as-is to prevent recursion
+    return jessNode;
+  }
+
   // Check cache first
   if (cache && cache.has(jessNode)) {
     return cache.get(jessNode);
   }
+
+  // Mark as being proxied to prevent recursion
+  (jessNode as any)[IS_PROXYING_SYMBOL] = true;
 
   // Create proxy handler
   const handler: ProxyHandler<Node> = {
@@ -89,8 +113,9 @@ export function createLessProxy(
       // Set it automatically based on the node's type
       // Use direct property access to avoid proxy recursion
       if (prop === 'typeIndex') {
-        const nodeType = (target as any).type || Reflect.get(target, 'type');
-        if (nodeType) {
+        // Access type directly from the target (not through proxy)
+        const nodeType = (target as any).type;
+        if (nodeType && typeof nodeType === 'string') {
           const lessType = mapJessTypeToLessType(nodeType);
           return getLessTypeIndex(lessType);
         }
@@ -141,11 +166,16 @@ export function createLessProxy(
   
   // Mark as proxy
   (proxy as any)[LESS_PROXY_SYMBOL] = true;
+  // Store reference to underlying Jess node for reverse lookup
+  (proxy as any)[JESS_NODE_SYMBOL] = jessNode;
   
   // Cache if provided
   if (cache) {
     cache.set(jessNode, proxy);
   }
+
+  // Unmark proxying flag after proxy is created
+  delete (jessNode as any)[IS_PROXYING_SYMBOL];
 
   return proxy;
 }
@@ -168,8 +198,8 @@ export function isLessProxy(obj: any): boolean {
  */
 export function getJessNodeFromProxy(proxy: any): Node | undefined {
   if (isLessProxy(proxy)) {
-    // The proxy target is the original node
-    return proxy as Node;
+    // Get the stored reference to the underlying Jess node
+    return (proxy as any)[JESS_NODE_SYMBOL];
   }
   return undefined;
 }

@@ -28,27 +28,113 @@ export function transformListToLess(
     if (prop === 'value') {
       const value = list.value;
       if (Array.isArray(value)) {
-        return value.map((item: any) => {
-          if (item instanceof Node) {
-            return toLessNode(item, { cache });
-          }
-          return item;
-        });
+        const converted = value
+          .map((item: any) => {
+            if (!item) {
+              return null; // Mark null/undefined for filtering
+            }
+            if (item instanceof Node) {
+              const lessItem = toLessNode(item, { cache });
+              // If toLessNode returns undefined, skip it
+              return lessItem || null;
+            }
+            return item;
+          })
+          .filter((item: any) => item !== undefined && item !== null); // Filter out undefined/null
+        return converted;
       }
-      // Single value - wrap in array
-      return [value];
+      // Single value - wrap in array (if not undefined/null)
+      if (value !== undefined && value !== null) {
+        if (value instanceof Node) {
+          const lessValue = toLessNode(value, { cache });
+          return lessValue ? [lessValue] : [];
+        }
+        return [value];
+      }
+      return [];
+    }
+
+    // Map 'children' method to return filtered, converted items
+    // This prevents undefined items from being accessed when Jess core's accept() calls children()
+    // children() is a generator function that yields Node instances
+    // CRITICAL: When Jess core's accept() calls children(), it uses getValues(this.value)
+    // We need to ensure the value property returns clean items, and children() filters them
+    if (prop === 'children') {
+      return function*(deep?: boolean, reverse?: boolean, includePrePost?: boolean) {
+        // Use the filtered value from our value property getter
+        // This ensures we get the same filtered array that the value property returns
+        const filteredValue = list.value
+          .filter((item: any) => item !== undefined && item !== null)
+          .map((item: any) => {
+            if (item instanceof Node) {
+              const lessItem = toLessNode(item, { cache });
+              return lessItem || null;
+            }
+            return item;
+          })
+          .filter((item: any) => item !== undefined && item !== null);
+        
+        // Handle reverse order if needed
+        const itemsToIterate = reverse ? [...filteredValue].reverse() : filteredValue;
+        
+        for (const item of itemsToIterate) {
+          if (item === undefined || item === null) {
+            continue; // Skip undefined/null items (shouldn't happen after filtering, but be safe)
+          }
+          if (item instanceof Node || (item && typeof item === 'object' && 'type' in item)) {
+            // It's a node (either Jess node or Less proxy)
+            if (includePrePost) {
+              // For now, just yield the item (pre/post handling can be added later if needed)
+              yield item;
+            } else {
+              yield item;
+            }
+            if (deep && item instanceof Node) {
+              // Recursively yield children if deep is true
+              if (item.children) {
+                yield* item.children(deep, reverse, includePrePost);
+              }
+            }
+          } else {
+            yield item;
+          }
+        }
+      };
     }
 
     // Map 'accept' method for visitor traversal
     if (prop === 'accept') {
       return function(visitor: any) {
-        const lessList = transformListToLess(list, cache);
-        const result = visitor.visit(lessList);
-        if (result !== lessList) {
-          const { fromLessNode } = require('../transform/from-less');
-          return fromLessNode(result, { cache });
+        // Less List's accept() should traverse value items if they exist
+        // But we don't call visitor.visit() here to avoid infinite loops
+        // The visitor's visit() method will handle traversal
+        // If value exists, we should traverse items using visitArray
+        const value = list.value;
+        if (Array.isArray(value) && value.length > 0) {
+          const lessItems = value
+            .map((item: any) => {
+              if (item instanceof Node) {
+                return toLessNode(item, { cache });
+              }
+              return item;
+            })
+            .filter((item: any) => item !== undefined && item !== null); // Filter out undefined/null
+          if (lessItems.length > 0) {
+            if (visitor.visitArray) {
+              visitor.visitArray(lessItems);
+            } else {
+              // Fallback: call accept on each item if visitArray not available
+              for (const lessItem of lessItems) {
+                if (lessItem && lessItem.accept) {
+                  lessItem.accept(visitor);
+                }
+              }
+            }
+          }
         }
-        return list;
+        // Return the proxy, not the underlying node, to prevent Less visitor from accessing raw Jess node
+        // Get the proxy from cache or create it
+        return cache && cache.has(list) ? cache.get(list) : transformListToLess(list, cache);
       };
     }
 

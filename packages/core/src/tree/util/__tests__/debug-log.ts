@@ -4,6 +4,7 @@
  */
 import { appendFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
 // Find monorepo root by looking for pnpm-workspace.yaml
 function findMonorepoRoot(start: string): string {
@@ -17,6 +18,7 @@ function findMonorepoRoot(start: string): string {
   return process.cwd();
 }
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = findMonorepoRoot(__dirname);
 const LOG_DIR = join(ROOT, '.cursor');
 const LOG_PATH = process.env.DEBUG_LOG_PATH || join(LOG_DIR, 'debug.log');

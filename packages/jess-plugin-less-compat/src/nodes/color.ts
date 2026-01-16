@@ -54,15 +54,12 @@ export function transformColorToLess(
     }
 
     // Map 'accept' method for visitor traversal
+    // Less's Visitor.visit() calls node.accept(this) to traverse children
+    // Color nodes typically don't have children to traverse, so this is a no-op
     if (prop === 'accept') {
       return function(visitor: any) {
-        const lessColor = transformColorToLess(color, cache);
-        const result = visitor.visit(lessColor);
-        if (result !== lessColor) {
-          const { fromLessNode } = require('../transform/from-less');
-          return fromLessNode(result, { cache });
-        }
-        return color;
+        // Color nodes don't have children to traverse
+        // The visitor.visit() was already called by our plugin wrapper
       };
     }
 

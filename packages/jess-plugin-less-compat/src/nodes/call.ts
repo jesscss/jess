@@ -58,11 +58,32 @@ export function transformCallToLess(
     // Map 'accept' method for visitor traversal
     if (prop === 'accept') {
       return function(visitor: any) {
-        const lessCall = transformCallToLess(call, cache);
-        const result = visitor.visit(lessCall);
-        if (result !== lessCall) {
-          const { fromLessNode } = require('../transform/from-less');
-          return fromLessNode(result, { cache });
+        // Less Call's accept() should traverse args if they exist
+        // But we don't call visitor.visit() here to avoid infinite loops
+        // The visitor's visit() method will handle traversal
+        // If args exist, we should traverse them using visitArray
+        const args = call.value.args;
+        if (args && args.value && args.value.length > 0) {
+          const lessArgs = args.value
+            .map((arg: any) => {
+              if (arg instanceof Node) {
+                return toLessNode(arg, { cache });
+              }
+              return arg;
+            })
+            .filter((arg: any) => arg !== undefined && arg !== null); // Filter out undefined/null
+          if (lessArgs.length > 0) {
+            if (visitor.visitArray) {
+              visitor.visitArray(lessArgs);
+            } else {
+              // Fallback: call accept on each arg if visitArray not available
+              for (const lessArg of lessArgs) {
+                if (lessArg && lessArg.accept) {
+                  lessArg.accept(visitor);
+                }
+              }
+            }
+          }
         }
         return call;
       };

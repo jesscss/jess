@@ -31,12 +31,10 @@ export function transformCombinatorToLess(
     // Map 'accept' method for visitor traversal
     if (prop === 'accept') {
       return function(visitor: any) {
-        const lessCombinator = transformCombinatorToLess(combinator, cache);
-        const result = visitor.visit(lessCombinator);
-        if (result !== lessCombinator) {
-          const { fromLessNode } = require('../transform/from-less');
-          return fromLessNode(result, { cache });
-        }
+        // Less Combinator has no children, so accept() should just return the combinator
+        // The visitor's visit() method will be called by the visitor itself
+        // We don't need to call visitor.visit() here - that would create a loop
+        // if the visitor's visit() method calls accept() again
         return combinator;
       };
     }

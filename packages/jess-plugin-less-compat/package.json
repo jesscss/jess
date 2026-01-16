@@ -38,9 +38,9 @@
     "less": "^4.2.0"
   },
   "devDependencies": {
-    "less-plugin-dls": "^1.0.0",
-    "less-plugin-clean-css": "^1.5.1",
-    "less-plugin-autoprefix": "^2.0.0"
+    "less-plugin-autoprefix": "^2.0.0",
+    "less-plugin-clean-css": "^1.6.0",
+    "less-plugin-dls": "^1.5.0"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",

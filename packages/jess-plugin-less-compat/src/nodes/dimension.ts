@@ -46,12 +46,9 @@ export function transformDimensionToLess(
     // Map 'accept' method for visitor traversal
     if (prop === 'accept') {
       return function(visitor: any) {
-        const lessDim = transformDimensionToLess(dim, cache);
-        const result = visitor.visit(lessDim);
-        if (result !== lessDim) {
-          const { fromLessNode } = require('../transform/from-less');
-          return fromLessNode(result, { cache });
-        }
+        // Less Dimension has no children, so accept() should just return the dimension
+        // The visitor's visit() method will handle traversal
+        // We don't call visitor.visit() here to avoid infinite loops
         return dim;
       };
     }

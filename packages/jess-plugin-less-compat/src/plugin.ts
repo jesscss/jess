@@ -1,5 +1,6 @@
 import { AbstractPlugin, type Plugin, type Visitor, type Node } from '@jesscss/core';
 import { toLessNode, fromLessNode } from './transform';
+import { getJessNodeFromProxy } from './transform/proxy';
 import type { LessVisitor } from './types';
 import { filterPlugins } from './plugin-utils';
 
@@ -94,14 +95,84 @@ export class LessCompatPlugin extends AbstractPlugin {
         // Track visitors before installation
         const visitorsBefore = pluginManager.visitors ? [...pluginManager.visitors] : [];
         
+        // Process plugins - handle functions that need to be instantiated
+        // In JavaScript, you can call any function with 'new', so we always try that first
+        const processedPlugins: any[] = [];
         lessPlugins.forEach((plugin: any) => {
+          if (!plugin) {
+            // Skip undefined/null plugins
+            return;
+          }
+
+          // If plugin is a function, try calling it with 'new' first
+          // This handles both constructors and regular functions
+          if (typeof plugin === 'function') {
+            try {
+              const pluginInstance = new plugin({});
+              if (pluginInstance) {
+                processedPlugins.push(pluginInstance);
+              } else {
+                // If new returns undefined/null, try calling as function
+                try {
+                  const pluginInstance2 = plugin({});
+                  if (pluginInstance2) {
+                    processedPlugins.push(pluginInstance2);
+                  } else {
+                    // If both fail, use the function itself
+                    processedPlugins.push(plugin);
+                  }
+                } catch (e2) {
+                  // If function call fails, use the function itself
+                  processedPlugins.push(plugin);
+                }
+              }
+            } catch (e) {
+              // If 'new' fails, try calling as function
+              try {
+                const pluginInstance = plugin({});
+                if (pluginInstance) {
+                  processedPlugins.push(pluginInstance);
+                } else {
+                  // If function call returns undefined, use the function itself
+                  processedPlugins.push(plugin);
+                }
+              } catch (e2) {
+                // If both fail, use the function itself
+                processedPlugins.push(plugin);
+              }
+            }
+          } else {
+            // Not a function, use as-is
+            processedPlugins.push(plugin);
+          }
+        });
+        
+        processedPlugins.forEach((plugin: any) => {
           if (!plugin) {
             return;
           }
 
-          // Check if it's a plugin with install method
+          // CRITICAL: Many Less plugins (like autoprefix, clean-css) are BOTH plugins AND visitors
+          // We should ALWAYS try to wrap the plugin instance as a visitor FIRST
+          // because the plugin instance itself IS the visitor, regardless of install()
+          let wrappedAsVisitor = false;
+          try {
+            const wrappedVisitor = new LessVisitor(plugin);
+            lessVisitorInstances.push(wrappedVisitor);
+            wrappedAsVisitor = true;
+          } catch (e: any) {
+            // If wrapping fails, log for debugging but continue
+            // The error might be expected if the plugin doesn't have visit* methods
+            // We'll try other methods below
+            if (process.env.DEBUG) {
+              console.warn('Failed to wrap plugin as LessVisitor:', e?.message);
+            }
+          }
+
+          // Check if it's a plugin with install method (most common case)
           if (typeof plugin.install === 'function') {
             // Call the plugin's install method directly
+            // This might add additional visitors via pluginManager.addVisitor()
             plugin.install(mockLess, pluginManager, mockLess.functions.functionRegistry);
           } else if (typeof plugin === 'function') {
             // Some plugins are constructor functions (like autoprefix, CleanCSS)
@@ -149,6 +220,7 @@ export class LessCompatPlugin extends AbstractPlugin {
         });
 
         // Collect visitors added by plugins via addVisitor
+        // Some plugins add visitors during install() via pluginManager.addVisitor()
         if (pluginManager.visitors && pluginManager.visitors.length > visitorsBefore.length) {
           const newVisitors = pluginManager.visitors.slice(visitorsBefore.length);
           lessVisitorInstances.push(...newVisitors);
@@ -175,8 +247,12 @@ export class LessCompatPlugin extends AbstractPlugin {
       return undefined;
     }
 
-    // Track if we're currently in a conversion to prevent recursion
-    const converting = new WeakSet();
+    // Track nodes currently being processed to prevent infinite loops
+    // This set persists for the entire visitor lifetime to prevent re-processing
+    const processing = new WeakSet<Node>();
+    // Track if we're currently inside a Less visitor traversal
+    // This prevents the plugin visitor from being triggered when visitArray calls visit()
+    let insideLessTraversal = false;
 
     // Create a visitor object that implements the Visitor interface
     const visitor: Visitor = {
@@ -185,37 +261,58 @@ export class LessCompatPlugin extends AbstractPlugin {
           return node;
         }
 
-        // Prevent recursion - if we're already converting this node, skip
-        if (converting.has(node)) {
+        // Get underlying Jess node if this is a Less proxy
+        // This allows us to check the processing WeakSet correctly
+        const jessNode = getJessNodeFromProxy(node) || node;
+
+        // If we're already inside a Less visitor traversal, don't process again
+        // This prevents infinite loops when visitArray calls visit() on child nodes
+        if (insideLessTraversal) {
           return node;
         }
 
-        // Mark as converting
-        converting.add(node);
+        // Prevent recursion - if we're already processing this node, skip
+        // This prevents infinite loops when visitArray calls visit() on nodes that are already being processed
+        if (processing.has(jessNode)) {
+          return node;
+        }
+
+        // Mark as processing (keep in set for entire visitor lifetime)
+        processing.add(jessNode);
 
         try {
-          // Convert Jess node to Less format
-          const lessNode = toLessNode(node, { cache: cacheMap });
+          // Convert Jess node to Less format (use underlying node if proxy)
+          const lessNode = toLessNode(jessNode, { cache: cacheMap });
           
-          // Run all Less visitors
-          let result = lessNode;
-          for (const lessVisitor of lessVisitorInstances) {
-            // Less Visitor.visit() calls the appropriate visit* method
-            // @deprecated Less.js Visitor API - Using Less.js visitor pattern for compatibility
-            result = lessVisitor.visit(result);
+          // Mark that we're inside Less visitor traversal
+          // This prevents child nodes from triggering the plugin visitor again
+          insideLessTraversal = true;
+          
+          try {
+            // Run all Less visitors
+            let result = lessNode;
+            for (const lessVisitor of lessVisitorInstances) {
+              // Less Visitor.visit() calls the appropriate visit* method
+              // @deprecated Less.js Visitor API - Using Less.js visitor pattern for compatibility
+              result = lessVisitor.visit(result);
+            }
+            
+            // If visitor returned a different node, convert back to Jess
+            if (result !== lessNode) {
+              const converted = fromLessNode(result, { cache: cacheMap });
+              // Return converted node if it's different, otherwise return original
+              return converted !== jessNode ? converted : jessNode;
+            }
+            
+            return jessNode;
+          } finally {
+            // Unmark when Less visitor traversal is complete
+            insideLessTraversal = false;
           }
-          
-          // If visitor returned a different node, convert back to Jess
-          if (result !== lessNode) {
-            const converted = fromLessNode(result, { cache: cacheMap });
-            // Return converted node if it's different, otherwise return original
-            return converted !== node ? converted : node;
-          }
-          
-          return node;
         } finally {
-          // Unmark when done
-          converting.delete(node);
+          // Keep node in processing set - don't delete it
+          // This ensures we never process the same node twice during the entire visitor run
+          // The WeakSet will be garbage collected when the visitor is done
         }
       }
     } as Visitor;

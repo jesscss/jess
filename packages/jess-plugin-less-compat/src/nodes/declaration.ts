@@ -52,15 +52,20 @@ export function transformDeclarationToLess(
     }
 
     // Map 'accept' method for visitor traversal
+    // Less's Visitor.visit() calls node.accept(this) to traverse children
+    // Declaration's accept should traverse its value
     if (prop === 'accept') {
       return function(visitor: any) {
-        const lessDecl = transformDeclarationToLess(decl, cache);
-        const result = visitor.visit(lessDecl);
-        if (result !== lessDecl) {
-          const { fromLessNode } = require('../transform/from-less');
-          return fromLessNode(result, { cache });
+        // Declaration's accept traverses its value
+        const value = decl.value.value;
+        if (value instanceof Node) {
+          const lessValue = toLessNode(value, { cache });
+          if (lessValue && lessValue.accept) {
+            lessValue.accept(visitor);
+          } else if (lessValue && visitor.visitArray) {
+            visitor.visitArray([lessValue]);
+          }
         }
-        return decl;
       };
     }
 

@@ -11,6 +11,7 @@ import type { Declaration } from '../declaration';
 import type { Context } from '../../context';
 import { atIndex } from './collections';
 import { comparePosition } from './compare';
+import { syncLog } from './__tests__/debug-log';
 
 const { isArray } = Array;
 
@@ -320,23 +321,37 @@ export class RulesetRegistry extends Registry<Ruleset> {
 
   /**
    * Index any pending rulesets
+   * Override the base class method to use keySet-based indexing
    */
-  private indexPendingRulesets() {
+  override indexPendingItems() {
     const index = this.index;
+    syncLog({ location: 'RulesetRegistry.indexPendingItems', action: 'Starting indexing', pendingCount: this.pendingItems.size });
     for (const ruleset of this.pendingItems) {
-      /** Make sure we're indexing according to the ruleset's context */
-      const selector = ruleset.selector instanceof Nil ? ruleset.selector : ruleset.getImplicitSelector(ruleset.selector);
-      if (selector && 'keySet' in selector) {
-        for (const key of selector.keySet) {
-          const existing = index.get(key);
-          if (existing) {
-            existing.add(ruleset);
-          } else {
-            index.set(key, new Set([ruleset]));
-          }
+      /** Index using the ruleset's actual selector keySet - no need for getImplicitSelector here
+       * since we're indexing the selector as-is, not transforming it for parent context */
+      const selector = ruleset.selector;
+      if (selector instanceof Nil) {
+        syncLog({ location: 'RulesetRegistry.indexPendingItems', action: 'Skipping Nil selector', ruleset: ruleset.type });
+        continue;
+      }
+      if (!('keySet' in selector)) {
+        syncLog({ location: 'RulesetRegistry.indexPendingItems', action: 'Skipping - no keySet', selectorType: (selector as any).type });
+        continue;
+      }
+      const selectorStr = selector.valueOf();
+      const keySet = selector.keySet;
+      // DEBUG: Log ALL indexing to see what's happening
+      syncLog({ location: 'RulesetRegistry.indexPendingItems', action: 'Indexing ruleset', selector: selectorStr, keySet: Array.from(keySet), selectorType: selector.type, keySetSize: keySet.size });
+      for (const key of keySet) {
+        const existing = index.get(key);
+        if (existing) {
+          existing.add(ruleset);
+        } else {
+          index.set(key, new Set([ruleset]));
         }
       }
     }
+    syncLog({ location: 'RulesetRegistry.indexPendingItems', action: 'Finished indexing', indexSize: index.size });
     this.pendingItems.clear();
   }
 
@@ -347,32 +362,35 @@ export class RulesetRegistry extends Registry<Ruleset> {
    */
   override find(keys: string[] | Set<string>): Ruleset[] | undefined {
     // Index any pending rulesets first
-    this.indexPendingRulesets();
+    this.indexPendingItems();
 
+    // DEBUG: Log ALL searches to see what's happening
+    syncLog({ location: 'RulesetRegistry.find', action: 'Searching registry', keys, indexSize: this.index.size });
+    let candidates: Set<Ruleset> | undefined;
+    let rulesets: Ruleset[] | undefined;
 
-    let candidates: Set<Ruleset> | undefined = undefined;
-
-    // Use intersection to whittle down candidates with each subsequent key
+    /** Just get based on first key */
     for (const key of keys) {
-      const keyRulesets = this.index.get(key);
-      if (!keyRulesets || keyRulesets.size === 0) {
-        return undefined; // No matches for this key
-      }
+      candidates = this.index.get(key);
+      break;
+    }
+    if (!candidates) {
+      return undefined;
+    }
 
-      if (candidates) {
-        // Intersection: only rulesets with selectors that have ALL keys
-        candidates = candidates.intersection(keyRulesets);
-      } else {
-        // First key - start with a copy of this set
-        candidates = new Set(keyRulesets);
+    /** Now find selectors that have all keys */
+    let keySet = keys instanceof Set ? keys : new Set(keys);
+    for (const c of candidates) {
+      let sel = c.selector;
+      if (!sel || isNode(sel, 'Nil')) {
+        continue;
       }
-
-      if (candidates.size === 0) {
-        return undefined;
+      if (keySet.isSubsetOf(sel.keySet)) {
+        (rulesets ??= []).push(c);
       }
     }
 
-    return candidates?.size ? [...candidates] : undefined;
+    return rulesets;
   }
 }
 

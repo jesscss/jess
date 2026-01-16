@@ -94,6 +94,7 @@
  */
 
 import { type Selector } from '../selector';
+import { syncLog } from './__tests__/debug-log';
 import { SimpleSelector } from '../selector-simple';
 import { SelectorList } from '../selector-list';
 import { ComplexSelector, type ComplexSelectorValue } from '../selector-complex';
@@ -680,6 +681,15 @@ export function extendSelector(
 
   // Special handling for SelectorList targets - extend each matching selector in the list
   if (isNode(target, 'SelectorList')) {
+    // DEBUG: Log SelectorList processing
+    const targetStr = target.valueOf();
+    const findStr = find.valueOf();
+    // Log if target contains .ext8 .ext9 and find is .ext8+.ext9 or .ext8>.ext9
+    if (targetStr?.includes('.ext8') && targetStr?.includes('.ext9') && 
+        (findStr === '.ext8+.ext9' || findStr === '.ext8>.ext9')) {
+      syncLog({ location: 'extendSelector', action: 'Processing SelectorList', target: targetStr, find: findStr, extendWith: extendWith.valueOf(), partial, selectorListItems: target.value.map(s => s.valueOf()) });
+    }
+    
     // For SelectorLists, we need to extend each selector that contains the find target
     // Keep original selectors in place, collect new selectors to append at the end
     const originalSelectors: Selector[] = [];
@@ -688,29 +698,53 @@ export function extendSelector(
     for (const selector of target.value) {
       const selectorSearchResult = findExtendableLocations(selector, find);
       if (selectorSearchResult.hasMatches) {
+        // DEBUG: Log match found
+        if (targetStr?.includes('.ext8') && targetStr?.includes('.ext9') && 
+            (findStr === '.ext8+.ext9' || findStr === '.ext8>.ext9')) {
+          syncLog({ location: 'extendSelector', action: 'Match found in SelectorList item', selector: selector.valueOf(), find: findStr, willExtend: true });
+        }
+        
         // This selector contains the find target - extend it
         // If partial: false and it's only a partial match, extendSelector will return unchanged
         const extended = extendSelector(selector, find, extendWith, partial, skipAmpersandCheck);
+        
+        // DEBUG: Log extend result
+        if (targetStr?.includes('.ext8') && targetStr?.includes('.ext9') && 
+            (findStr === '.ext8+.ext9' || findStr === '.ext8>.ext9')) {
+          syncLog({ location: 'extendSelector', action: 'Extended SelectorList item', original: selector.valueOf(), extended: extended.valueOf(), sameObject: extended === selector, extendedType: extended.type });
+        }
+        
         // If the result is unchanged (same object reference), keep it as-is
         if (extended === selector) {
           originalSelectors.push(selector);
         } else if (isNode(extended, 'SelectorList')) {
           // First item is the original (possibly modified), rest are new
-          originalSelectors.push(extended.value[0]!);
-          newSelectors.push(...extended.value.slice(1));
+          // CRITICAL: Clone selectors to avoid object reference issues
+          originalSelectors.push(extended.value[0]!.clone(true));
+          newSelectors.push(...extended.value.slice(1).map(s => s.clone(true)));
         } else {
-          originalSelectors.push(extended);
+          // CRITICAL: Clone the extended selector
+          originalSelectors.push(extended.clone(true));
         }
       } else {
         // This selector doesn't contain the find target - keep it as-is
-        originalSelectors.push(selector);
+        // CRITICAL: Clone to avoid object reference issues
+        originalSelectors.push(selector.clone(true));
       }
     }
 
     // Append new selectors at the end, preserving order extends were applied
     // Flatten any nested :is() that were generated during extend
     const allSelectors = [...originalSelectors, ...newSelectors];
-    return createExtendedSelectorList(allSelectors, target);
+    const result = createExtendedSelectorList(allSelectors, target);
+    
+    // DEBUG: Log final result
+    if (targetStr?.includes('.ext8 .ext9') && !targetStr.includes('+') && !targetStr.includes('>') && 
+        (findStr === '.ext8+.ext9' || findStr === '.ext8>.ext9')) {
+      syncLog({ location: 'extendSelector', action: 'SelectorList result', original: targetStr, result: result.valueOf(), resultType: result.type });
+    }
+    
+    return result;
   }
 
   // For partial extends, prefer actual matches over "append to :is() list" extension points
@@ -958,6 +992,8 @@ export function extendSelector(
       // - d :is(.b .c) matching .b .c with partial: false → rejected (d is before)
       // - :is(.i).j matching .i with partial: false → rejected (.j is after)
       // - :is(.i) matching .i with partial: false → allowed (no components outside)
+      // Note: We return target unchanged (not throw) to match the behavior of other partial match rejections
+      // The chaining logic should check if the selector changed before processing chained extends
       if (!partial) {
         const argIndex = location.path.indexOf('arg');
         if (argIndex > 0) {
@@ -968,6 +1004,7 @@ export function extendSelector(
             // Check for components before the :is() in ComplexSelector
             if (isNode(target, 'ComplexSelector') && componentIndex > 0) {
               // There are components before the :is() - this is a partial match
+              // Return unchanged - chaining logic should skip if selector didn't change
               return target;
             }
 
@@ -977,6 +1014,7 @@ export function extendSelector(
               const hasComponentsAfter = componentIndex < target.value.length - 1;
               if (hasComponentsBefore || hasComponentsAfter) {
                 // There are components outside the :is() - this is a partial match
+                // Return unchanged - chaining logic should skip if selector didn't change
                 return target;
               }
             }
@@ -1840,4 +1878,76 @@ function validateCompoundSelector(components: any[]): {
   }
 
   return { isValid: true };
+}
+
+/**
+ * Finds extends that should be processed next on a newly transformed selector.
+ * This is part of the iterative extend process: when a selector is transformed
+ * (e.g., .foo -> .foo, .ext3), we check if any selector in the result matches
+ * other extend targets. If so, those extends should be processed on the new
+ * selector, and we continue iterating until no more transforms occur or all
+ * extends are exhausted.
+ *
+ * Example: .ext3 extends .foo -> .foo, .ext3. We then check if .foo (in the
+ * result) matches .ext4:extend(.foo), and if so, process that extend on
+ * .foo, .ext3 to get .foo, .ext3, .ext4. This continues until exhausted.
+ *
+ * @param extendedSelector - The selector after transformation (e.g., .foo, .ext3)
+ * @param allExtends - Array of all extends: [target, selectorWithExtend, partial, extendRoot, extendNode]
+ * @param currentTarget - The target of the extend that just completed
+ * @param currentSelectorWithExtend - The selector that just extended
+ * @returns Array of extends to process next: [target, selectorWithExtend, partial, extendRoot, extendNode]
+ *         where target is the extendedSelector (the newly transformed selector to continue extending)
+ */
+export function findChainedExtends(
+  extendedSelector: Selector,
+  allExtends: Array<[Selector, Selector, boolean, any, any]>,
+  currentTarget: Selector,
+  currentSelectorWithExtend: Selector,
+  originalSelector: Selector
+): Array<[Selector, Selector, boolean, any, any]> {
+  const chained: Array<[Selector, Selector, boolean, any, any]> = [];
+
+  // Only check SelectorList results (when we get .foo, .ext3 from extending .foo with .ext3)
+  if (!isNode(extendedSelector, 'SelectorList')) {
+    return chained;
+  }
+
+  // Check each selector in the list against all other extends
+  // Only chain extends that target selectors that were in the original ruleset selector
+  const originalSelectors = isNode(originalSelector, 'SelectorList')
+    ? originalSelector.value
+    : [originalSelector];
+  const originalSelectorValues = new Set(originalSelectors.map(s => s.valueOf()));
+
+  for (const selectorInList of extendedSelector.value) {
+    // Only check selectors that were in the original ruleset (not newly added ones)
+    if (!originalSelectorValues.has(selectorInList.valueOf())) {
+      continue;
+    }
+
+    for (const [otherTarget, otherSelectorWithExtend, otherPartial, otherExtendRoot, otherExtendNode] of allExtends) {
+      // Skip if this is the same extend we just processed
+      if (otherTarget.valueOf() === currentTarget.valueOf()
+        && otherSelectorWithExtend.valueOf() === currentSelectorWithExtend.valueOf()) {
+        continue;
+      }
+
+      // Check if otherTarget matches selectorInList
+      const otherTargetSelectors: Selector[] = isNode(otherTarget, 'SelectorList')
+        ? otherTarget.value
+        : [otherTarget];
+
+      for (const otherSingleTarget of otherTargetSelectors) {
+        // Check if selectorInList equals otherSingleTarget (the target of another extend)
+        // Combinators must match exactly (space vs + vs > etc.)
+        if (selectorInList.valueOf() === otherSingleTarget.valueOf()) {
+          chained.push([extendedSelector, otherSelectorWithExtend, otherPartial, otherExtendRoot, otherExtendNode]);
+          break; // Only add once per otherTarget
+        }
+      }
+    }
+  }
+
+  return chained;
 }

@@ -43,9 +43,12 @@ describe('less-plugin-autoprefix integration', () => {
       throw new Error('Failed to parse');
     }
 
-    // Pass the Less plugin directly - it will call install() and extract visitors
+    // Pass the Less plugin instance - autoprefix is a constructor, so use 'new'
+    // According to https://github.com/less/less-plugin-autoprefix, the correct usage is:
+    // new LessPluginAutoPrefix({browsers: [...]})
+    const autoprefixPlugin = new autoprefix({ browsers: ['> 1%', 'last 2 versions'] });
     const plugin = lessCompatPlugin({
-      plugins: [autoprefix({ browsers: ['> 1%', 'last 2 versions'] })]
+      plugins: [autoprefixPlugin]
     });
 
     const visitor = plugin.visitor;
