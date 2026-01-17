@@ -1,3 +1,8 @@
+---
+description: "Rules for debugging tests using isolation techniques"
+alwaysApply: true
+---
+
 # Test Debugging Rule
 
 When debugging failing tests, always isolate to a single test or single test case using `.only`:

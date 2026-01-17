@@ -577,37 +577,50 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
       if (extend?.length) {
         /** If it's not a selector list, then our only extend does not need to be grouped */
         if (!isSelectorList) {
-          /** Remove visible selector from inline extends */
+          /** For extends inside rulesets (not bubbled), selector should be undefined
+           * so it defaults to ampersand and resolves to the ruleset's selector */
           for (let e of extend) {
             e.value.selector = undefined;
           }
           rules.value = [...extend, ...rules.value];
           ctx.extendNodes = undefined;
-        } else if (extend.length === (selector as SelectorList).value.length) {
-          let finalExtends = groupExtendsByTargetAndFlag(extend);
-          /**
-           * If we only have one returned, then all
-           * extends have the same target and flag
-           */
-          if (finalExtends.length === 1) {
-            let extendNodes = finalExtends[0]!;
-            /** We have to have as many extends as we have selectors in order for this to pass */
-
-            let finalExtend = isArray(extendNodes) ? extendNodes[0]! : extendNodes;
-            finalExtend.value.selector = undefined;
-            rules.value = [finalExtend, ...rules.value];
-            ctx.extendNodes = undefined;
-          } else {
-            // Multiple extend groups (different targets/flags) - attach them to the ruleset
-            // They should be inside the ruleset, attached to each selector
-            // Prepend extends to rules so they're inside the ruleset
-            for (const ext of extend) {
-              ext.value.selector = undefined; // Remove selector so they attach to the ruleset
+        } else {
+          const selectorList = selector as SelectorList;
+          const selectorCount = selectorList.value.length;
+          const extendCount = extend.length;
+          
+          // Determine if extends should bubble up:
+          // 1. If any selectors in the list have extends (extendCount < selectorCount)
+          // 2. If all selectors have extends but their "all" flags don't match
+          let shouldBubble = false;
+          
+          if (extendCount < selectorCount) {
+            // Some selectors have extends, some don't - bubble up
+            shouldBubble = true;
+          } else if (extendCount === selectorCount) {
+            // All selectors have extends - check if flags match
+            let finalExtends = groupExtendsByTargetAndFlag(extend);
+            if (finalExtends.length === 1) {
+              // All extends have same target and flag - can be inside ruleset
+              let extendNodes = finalExtends[0]!;
+              let finalExtend = isArray(extendNodes) ? extendNodes[0]! : extendNodes;
+              finalExtend.value.selector = undefined;
+              rules.value = [finalExtend, ...rules.value];
+              ctx.extendNodes = undefined;
+            } else {
+              // Multiple extend groups (different targets/flags) - bubble up
+              shouldBubble = true;
             }
-            rules.value = [...extend, ...rules.value];
-            ctx.extendNodes = undefined;
+          } else {
+            // extendCount > selectorCount - shouldn't happen, but bubble to be safe
+            shouldBubble = true;
           }
-          /** Or else we let it bubble up to the declaration list */
+          
+          if (shouldBubble) {
+            // Keep extends in ctx.extendNodes so they bubble up to qualifiedRule
+            // Don't clear ctx.extendNodes - let them bubble
+            // The extends will be prepended above the ruleset in qualifiedRule
+          }
         }
       }
       let node = new Ruleset({ selector, rules, guard }, undefined, undefined, this.context);
@@ -1249,6 +1262,10 @@ export function extend(this: P, T: TokenMap) {
     $.CONSUME(T.RParen);
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
+      // When .c:extend(...) is parsed, selector is .c
+      // The extend will be processed in qualifiedRuleBody where selector: undefined is set
+      // for extends that stay inside the ruleset (not bubbled)
+      // Bubbled extends keep their selector and get it set correctly in qualifiedRule
       let merged = mergeExtends(selector, extendTargets!, location, this.context, flag);
       /**
        * If we don't have as many extends as we have selectors, we need a way to signal

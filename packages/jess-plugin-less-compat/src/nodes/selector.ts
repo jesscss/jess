@@ -12,6 +12,16 @@ import { toLessNode } from '../transform/to-less';
 import { mapJessTypeToLessType } from '../transform/type-map';
 import type { LessNode } from '../types';
 
+// Debug logging helper (only in debug mode)
+const syncLog = process.env.DEBUG ? (data: object) => {
+  try {
+    // eslint-disable-next-line no-console
+    console.log('[Selector]', JSON.stringify(data, null, 2));
+  } catch {
+    // Ignore errors
+  }
+} : () => {};
+
 /**
  * Flatten a hierarchical Jess selector into Less's flat Element array
  *
@@ -90,7 +100,7 @@ function flattenSelectorToElements(
             if (prop === 'accept') {
               return function(visitor: any) {
                 // #region agent log
-                fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'selector.ts:91',message:'Element accept() called',data:{nodeType:'Element'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                syncLog({location:'selector.ts:91',message:'Element accept() called',data:{nodeType:'Element'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
                 // #endregion
                 // Less Element's accept() ONLY traverses children (combinator and value)
                 // It does NOT call visitor.visit() on itself - that's already been done

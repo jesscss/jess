@@ -8,13 +8,13 @@ import { Compiler } from '../../src';
 import { outputDiagnostics } from '../../src/diagnostics';
 import { getTestCases } from '../test-utils';
 import lessPlugin from '@jesscss/plugin-less';
-import { type Rules } from '@jesscss/core';
+import { type Rules, serializeTypes } from '@jesscss/core';
 
 const require = createRequire(import.meta.url);
 const testData = path.dirname(require.resolve('@less/test-data'));
 
 const baseCompiler = new Compiler({
-  output: { collapseNesting: true },
+  output: { collapseNesting: true }, // Default for most files
   compile: {
     plugins: [
       lessPlugin()
@@ -31,6 +31,7 @@ const additionalSkips = [
 
 // Temporarily filter to specific tests for debugging - set to empty array to run all
 const targetTests: string[] = [
+  'tests-unit/extend-selector/extend-selector.less'
 ];
 
 describe('Can render Less files to CSS', () => {
@@ -65,21 +66,43 @@ describe('Can render Less files to CSS', () => {
             const expectedCss = readFileSync(testCase.expectedFile, 'utf8');
 
             // Merge test case config with base compiler config
-            // The test case config overrides base config options
+            // Default: collapseNesting: true (from baseCompiler)
+            // Override: testCase.config.output (from styles.config.ts) takes precedence
             const testCompiler = new Compiler({
               ...baseCompiler.opts,
               ...testCase.config,
-              // Merge output options
+              // Merge output options - testCase.config.output overrides baseCompiler defaults
               output: {
                 ...baseCompiler.opts.output,
-                ...testCase.config.output
+                ...(testCase.config.output || {})
               }
             });
 
             const context = testCompiler.createContext(lessPath, { outputFile: testCase.expectedFile });
+            // DEBUG: Check collapseNesting value
+            if (file.includes('extend-selector')) {
+              const { getConfig } = await import('../../src/config');
+              const rawConfig = getConfig(lessPath);
+              console.log('DEBUG collapseNesting:', {
+                baseCompiler: baseCompiler.opts.output?.collapseNesting,
+                rawConfigFromFile: rawConfig,
+                rawConfigOutput: rawConfig.output,
+                testCaseConfig: testCase.config,
+                testCaseConfigOutput: testCase.config.output,
+                merged: testCompiler.opts.output?.collapseNesting,
+                contextOpts: context.opts.collapseNesting
+              });
+            }
             let node: Rules;
             try {
               ({ node } = await context.getTree(lessPath));
+              // Debug: serialize AST for extend-selector test
+              if (lessPath.includes('extend-selector')) {
+                const sExpr = serializeTypes(node);
+                console.log('=== PARSED AST (s-expression) ===');
+                console.log(sExpr);
+                console.log('=== END AST ===');
+              }
             } catch (error: any) {
               // Output diagnostics if available
               if (context.errors.length > 0 || context.warnings.length > 0) {

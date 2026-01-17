@@ -34,7 +34,8 @@ export interface OutputTestConfig {
 export function getExpectedOutputFiles(
   lessFilePath: string
 ): OutputTestConfig | OutputTestConfig[] {
-  const config = getConfig(lessFilePath);
+  // getConfig expects a directory, so pass the directory of the less file
+  const config = getConfig(path.dirname(lessFilePath));
   const outputConfig = config.output;
 
   // Extract file name without extension for {name} replacement

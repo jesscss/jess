@@ -1,4 +1,4 @@
-import { defineType, Node } from './node';
+import { defineType, Node, F_VISIBLE } from './node';
 import { type Context } from '../context';
 import { Selector } from './selector';
 import { Ampersand } from './ampersand';
@@ -8,6 +8,7 @@ import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node';
 import { getImplicitSelector } from './util/selector-utils';
 import { Ruleset } from './ruleset';
+import { ComplexSelector } from './selector-complex';
 
 export const enum ExtendFlag {
   /** Sass and Jess default */
@@ -75,14 +76,20 @@ export class Extend extends Node<ExtendValue> {
     
     const currentFrame = context.rulesetFrames.at(-1);
     
-    // If selector is undefined or set to a non-ampersand (parser set it to ruleset selector),
-    // convert it to ampersand so it resolves to the ruleset's selector when evaluated
-    // (the ruleset should be in the frame at this point)
-    if (!selector || (selector && !isNode(selector, 'Ampersand'))) {
+    // If selector is undefined, convert it to ampersand so it resolves to the ruleset's selector
+    // If selector is already set to a non-ampersand (e.g., from a bubbled extend), keep it as-is
+    // The parser sets the selector correctly when bubbling extends, so we should preserve it
+    if (!selector) {
       // Set selector to ampersand - it will resolve to the current ruleset's selector when evaluated
       // This matches the conceptual model: .c:extend(.ext all) is like { &:extend(.ext all); } inside .c
+      // The frame selector should already be :is(.a, .b) .c (the evaluated selector from preEval)
       selector = Ampersand.create(undefined);
+      // Make the ampersand visible so it's included in the selector when evaluated
+      // This ensures the parent selector is properly included in the extend selector
+      selector.addFlag(F_VISIBLE);
     }
+    // If selector is already set (e.g., .ext7 from a bubbled extend), use it directly
+    // Don't convert non-ampersand selectors to ampersand - they should be used as-is
     // Get current extend root from registry stack
     const extendRoot = context.extendRoots.getCurrentExtendRoot();
     if (!extendRoot) {
@@ -101,6 +108,17 @@ export class Extend extends Node<ExtendValue> {
         if (isNode(sel, 'Ampersand') && sel.value.selector && !(sel.value.selector instanceof Nil)) {
           resolvedSel = sel.value.selector;
         }
+        // DEBUG: Log extend registration - check if target is .ext (the problematic case)
+        if (target.toString() === '.ext' && flag === ExtendFlag.All) {
+          const frame = context.rulesetFrames.at(-1);
+          console.log('Extend.evalNode (.ext all, async):', {
+            target: target.toString(),
+            resolvedSel: resolvedSel.toString(),
+            flag: 'all',
+            frameSelector: frame?.selector?.toString(),
+            ampersandSelector: isNode(sel, 'Ampersand') ? sel.value.selector?.toString() : 'not ampersand'
+          });
+        }
         // Register extend to context with extend root reference and Extend node for error reporting
         context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this]);
         return new Nil();
@@ -112,8 +130,53 @@ export class Extend extends Node<ExtendValue> {
     }
     // Resolve ampersand to its stored selector if needed
     let resolvedSel: Selector = sel;
-    if (isNode(sel, 'Ampersand') && sel.value.selector && !(sel.value.selector instanceof Nil)) {
-      resolvedSel = sel.value.selector;
+    const wasAmpersand = isNode(sel, 'Ampersand');
+    const ampersandStoredSelector = wasAmpersand ? sel.value.selector : undefined;
+    if (wasAmpersand && ampersandStoredSelector && !(ampersandStoredSelector instanceof Nil)) {
+      resolvedSel = ampersandStoredSelector;
+    }
+    // DEBUG: Log extend registration - check if target is .ext (the problematic case)
+    const targetStr = target.toString();
+    if (targetStr.includes('.ext') && flag === ExtendFlag.All) {
+      const frame = context.rulesetFrames.at(-1);
+      // Check actual node structure of resolvedSel, not just string
+      const checkStructure = (s: any): any => {
+        if (s instanceof ComplexSelector) {
+          const components = s.value.map((c: any, idx: number) => {
+            const comp: any = {
+              index: idx,
+              type: c.type,
+              isAmpersand: c instanceof Ampersand,
+              toString: c.toString()
+            };
+            if (c instanceof Ampersand) {
+              comp.storedSelector = c.value.selector?.toString();
+              comp.storedSelectorType = c.value.selector?.type;
+            }
+            return comp;
+          });
+          return {
+            type: 'ComplexSelector',
+            components: components
+          };
+        }
+        return { type: s.type, toString: s.toString() };
+      };
+      console.log('Extend.evalNode (.ext all):', JSON.stringify({
+        target: targetStr,
+        selType: sel.type,
+        selToString: sel.toString(),
+        wasAmpersand,
+        ampersandStoredSelector: ampersandStoredSelector?.toString(),
+        ampersandStoredSelectorType: ampersandStoredSelector?.type,
+        resolvedSel: resolvedSel.toString(),
+        resolvedSelType: resolvedSel.type,
+        resolvedSelStructure: checkStructure(resolvedSel),
+        flag: 'all',
+        frameSelector: frame?.selector?.toString(),
+        frameSelectorType: frame?.selector?.type,
+        frameSelectorStructure: frame?.selector ? checkStructure(frame.selector) : undefined
+      }, null, 2));
     }
     // Register extend to context with extend root reference and Extend node for error reporting
     context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this]);

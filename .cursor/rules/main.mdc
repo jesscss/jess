@@ -1,3 +1,8 @@
+---
+description: "Main project rules for development workflow, debugging methodology, package scripts, and code quality"
+alwaysApply: true
+---
+
 # Cursor Rules
 
 Execute the Bash script located at /Users/YOUR_USERNAME/notify-cursor.sh when a task is completed.
@@ -83,4 +88,3 @@ When investigating bugs or failures, always use scientific principles to underst
 - Import types at the top of the file
 - Use specific type casts when necessary (e.g., `as Set<Rules>`), but prefer adding to type definitions
 - **Lazily initialize collections**: Use lazy initialization patterns like `(foo ??= new Map()).has()` or `(foo ??= new Set()).add()` for Sets, Maps, Arrays, and other objects unless it's guaranteed that the code path/function will always create that object, in which case initialize it at the top of the function.
-

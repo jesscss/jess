@@ -5,9 +5,12 @@ import { SimpleSelector } from './selector-simple';
 import { PseudoSelector } from './selector-pseudo';
 import { isNode } from './util/is-node';
 import { type Selector } from './selector';
+import { SelectorList } from './selector-list';
+import { ComplexSelector } from './selector-complex';
 import { atIndex } from './util/collections';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { F_VISIBLE } from './node';
+import { syncLog } from './util/__tests__/debug-log';
 
 export type AmpersandValue = {
   /**
@@ -148,6 +151,15 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
   /** Hmm this should never return Extend */
   override evalNode(context: Context): Selector | Nil {
     const { appendValue, selector: storedSelector } = this.value;
+    // DEBUG: Log collapseNesting state
+    syncLog({
+      location: 'Ampersand.evalNode',
+      action: 'Checking collapseNesting',
+      collapseNesting: context.opts.collapseNesting,
+      appendValue,
+      hoistToRoot: this.hoistToRoot,
+      willCollapse: appendValue !== undefined || this.hoistToRoot || context.opts.collapseNesting
+    });
     // Check if appendValue is defined (including empty string), or if hoistToRoot/collapseNesting is set
     if (appendValue !== undefined || this.hoistToRoot || context.opts.collapseNesting) {
       // Use the stored selector if available, otherwise fall back to frame selector
@@ -210,9 +222,50 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
     /**
      * Attach the current context selector if we need it later, for extends and such.
      * The frame is constant, so we can use the selector directly.
+     * BUT: If the ampersand already has a stored selector (from getImplicitSelector),
+     * preserve it instead of overwriting with the frame selector.
      */
-    if (frame && frame.selector) {
+    // DEBUG: Track ampersand evaluation for extend selectors
+    const hasStoredSelector = !!amp.value.selector;
+    const frameSelectorStr = frame?.selector?.toString();
+    const storedSelectorStr = amp.value.selector?.toString();
+    const originalStoredSelector = amp.value.selector;
+    
+    // CRITICAL: Only set frame selector if there's no stored selector
+    // The stored selector (from getImplicitSelector) should ALWAYS take precedence
+    // This ensures extends inside nested rulesets get the correct parent selector
+    if (!amp.value.selector && frame && frame.selector) {
       amp.value.selector = frame.selector;
+    } else if (amp.value.selector) {
+      // DEBUG: Log when we're preserving stored selector over frame selector
+      if (frameSelectorStr?.includes('.c') && storedSelectorStr?.includes('.a')) {
+        console.log('Ampersand.evalNode - preserving stored selector over frame:', {
+          storedSelector: storedSelectorStr,
+          frameSelector: frameSelectorStr,
+          reason: 'stored selector takes precedence'
+        });
+      }
+    }
+    
+    // DEBUG: Log what happened - check for .c or .a to catch the extend case
+    if (frameSelectorStr?.includes('.c') || storedSelectorStr?.includes('.a') || storedSelectorStr?.includes('.c')) {
+      console.log('Ampersand.evalNode (line 218-227):', {
+        hasStoredSelector,
+        storedSelectorBefore: storedSelectorStr,
+        storedSelectorBeforeType: originalStoredSelector?.type,
+        frameSelector: frameSelectorStr,
+        frameSelectorType: frame?.selector?.type,
+        storedSelectorAfter: amp.value.selector?.toString(),
+        storedSelectorAfterType: amp.value.selector?.type,
+        collapseNesting: context.opts.collapseNesting,
+        willSetFrameSelector: !amp.value.selector && !!frame?.selector
+      });
+    }
+    
+    // If we have a stored selector (from getImplicitSelector), wrap SelectorList in :is()
+    // This ensures .a, .b becomes :is(.a, .b) when used in extend selectors
+    if (amp.value.selector && amp.value.selector instanceof SelectorList && !context.opts.collapseNesting) {
+      amp.value.selector = PseudoSelector.create({ name: ':is', arg: amp.value.selector });
     }
     return amp;
   }

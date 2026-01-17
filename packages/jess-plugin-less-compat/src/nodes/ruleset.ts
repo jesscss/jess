@@ -4,6 +4,16 @@ import { toLessNode } from '../transform/to-less';
 import { mapJessTypeToLessType } from '../transform/type-map';
 import type { LessNode } from '../types';
 
+// Debug logging helper (only in debug mode)
+const syncLog = process.env.DEBUG ? (data: object) => {
+  try {
+    // eslint-disable-next-line no-console
+    console.log('[Ruleset]', JSON.stringify(data, null, 2));
+  } catch {
+    // Ignore errors
+  }
+} : () => {};
+
 /**
  * Transform a Jess Ruleset to a Less-compatible Ruleset
  */
@@ -52,7 +62,7 @@ export function transformRulesetToLess(
     if (prop === 'accept') {
       return function(visitor: any) {
         // #region agent log
-        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ruleset.ts:53',message:'Ruleset accept() called',data:{visitorType:visitor?.constructor?.name,hasVisitArray:!!visitor?.visitArray},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        syncLog({location:'ruleset.ts:53',message:'Ruleset accept() called',data:{visitorType:visitor?.constructor?.name,hasVisitArray:!!visitor?.visitArray},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
         // #endregion
         // CRITICAL: The visitor passed here is the Less visitor, not the plugin visitor
         // Less's Ruleset.accept() traverses selectors and rules
@@ -72,7 +82,7 @@ export function transformRulesetToLess(
             });
             if (visitor.visitArray) {
               // #region agent log
-              fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ruleset.ts:71',message:'Calling visitor.visitArray(selectors)',data:{selectorCount:lessSelectors.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+              syncLog({location:'ruleset.ts:71',message:'Calling visitor.visitArray(selectors)',data:{selectorCount:lessSelectors.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
               // #endregion
               visitor.visitArray(lessSelectors);
             } else {
@@ -107,7 +117,7 @@ export function transformRulesetToLess(
           });
           if (visitor.visitArray) {
             // #region agent log
-            fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ruleset.ts:103',message:'Calling visitor.visitArray(rules)',data:{ruleCount:lessRules.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            syncLog({location:'ruleset.ts:103',message:'Calling visitor.visitArray(rules)',data:{ruleCount:lessRules.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
             // #endregion
             visitor.visitArray(lessRules);
           } else {

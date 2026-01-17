@@ -9,6 +9,16 @@
  */
 import { isLessProxy } from './transform/proxy';
 
+// Debug logging helper (only in debug mode)
+const syncLog = process.env.DEBUG ? (data: object) => {
+  try {
+    // eslint-disable-next-line no-console
+    console.log('[LessVisitor]', JSON.stringify(data, null, 2));
+  } catch {
+    // Ignore errors
+  }
+} : () => {};
+
 export class LessVisitor {
   // Track nodes being processed to prevent infinite recursion
   private processingNodes = new WeakSet<any>();
@@ -27,7 +37,7 @@ export class LessVisitor {
    */
   visit(node: any, visitArgs?: any): any {
     // #region agent log
-    fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'less-compat-structures.ts:25',message:'LessVisitor.visit() entry',data:{nodeType:node?.type,hasVisitor:!!this.visitor,visitDeeper:visitArgs?.visitDeeper,alreadyProcessing:this.processingNodes.has(node)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    syncLog({location:'less-compat-structures.ts:25',message:'LessVisitor.visit() entry',data:{nodeType:node?.type,hasVisitor:!!this.visitor,visitDeeper:visitArgs?.visitDeeper,alreadyProcessing:this.processingNodes.has(node)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
     // #endregion
     if (!node) {
       return node;
@@ -40,7 +50,7 @@ export class LessVisitor {
     // Prevent infinite recursion - if we're already processing this node, skip
     if (this.processingNodes.has(node)) {
       // #region agent log
-      fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'less-compat-structures.ts:35',message:'Skipping - already processing node',data:{nodeType:node?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      syncLog({location:'less-compat-structures.ts:35',message:'Skipping - already processing node',data:{nodeType:node?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
       // #endregion
       return node;
     }
@@ -124,17 +134,17 @@ export class LessVisitor {
     if (args.visitDeeper && node && node.accept) {
       // #region agent log
       const isProxy = isLessProxy(node);
-      fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'less-compat-structures.ts:105',message:'Before accept() call',data:{nodeType:node?.type,isLessProxy:isProxy,hasAccept:!!node.accept,visitDeeper:args.visitDeeper},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      syncLog({location:'less-compat-structures.ts:105',message:'Before accept() call',data:{nodeType:node?.type,isLessProxy:isProxy,hasAccept:!!node.accept,visitDeeper:args.visitDeeper},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
       // #endregion
       // Only call accept() if this is a Less proxy
       // Less proxies have accept() that traverses children without calling visit()
       if (isProxy) {
         // #region agent log
-        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'less-compat-structures.ts:109',message:'Calling node.accept(this)',data:{nodeType:node?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        syncLog({location:'less-compat-structures.ts:109',message:'Calling node.accept(this)',data:{nodeType:node?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
         // #endregion
         node.accept(this);
         // #region agent log
-        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'less-compat-structures.ts:112',message:'After accept() call',data:{nodeType:node?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        syncLog({location:'less-compat-structures.ts:112',message:'After accept() call',data:{nodeType:node?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
         // #endregion
       }
       // If it's not a Less proxy (it's a Jess node), we should NOT call accept()
@@ -145,7 +155,7 @@ export class LessVisitor {
     // Note: We keep the node in processingNodes for the entire visitor lifetime
     // to prevent re-processing. The WeakSet will be garbage collected when done.
     // #region agent log
-    fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'less-compat-structures.ts:120',message:'LessVisitor.visit() exit',data:{nodeType:node?.type,resultType:result?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    syncLog({location:'less-compat-structures.ts:120',message:'LessVisitor.visit() exit',data:{nodeType:node?.type,resultType:result?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
     // #endregion
     return result;
   }
@@ -155,7 +165,7 @@ export class LessVisitor {
    */
   visitArray(nodes: any[], visitArgs?: any): any[] {
     // #region agent log
-    fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'less-compat-structures.ts:110',message:'LessVisitor.visitArray() called',data:{nodeCount:nodes?.length,nodeTypes:nodes?.map((n:any)=>n?.type)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    syncLog({location:'less-compat-structures.ts:110',message:'LessVisitor.visitArray() called',data:{nodeCount:nodes?.length,nodeTypes:nodes?.map((n:any)=>n?.type)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
     // #endregion
     if (!nodes) { return nodes; }
     return nodes.map(node => this.visit(node, visitArgs));

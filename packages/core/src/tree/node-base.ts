@@ -758,20 +758,36 @@ export abstract class Node<
         }
         if (node === (context.root as any)) {
           for (const plugin of context.plugins) {
+            // eslint-disable-next-line no-console
+            if (process.env.DEBUG) console.log('[CORE] Checking plugin for preEvalVisitor:', plugin.constructor?.name || 'unknown');
             if (plugin.preEvalVisitor) {
+              // eslint-disable-next-line no-console
+              if (process.env.DEBUG) console.log('[CORE] Plugin has preEvalVisitor, processing...');
               const visitors = Array.isArray(plugin.preEvalVisitor) 
                 ? plugin.preEvalVisitor 
                 : [plugin.preEvalVisitor];
+              // eslint-disable-next-line no-console
+              if (process.env.DEBUG) console.log(`[CORE] Found ${visitors.length} preEval visitor(s)`);
               for (const visitor of visitors) {
                 if (visitor && typeof visitor.visit === 'function') {
+                  // eslint-disable-next-line no-console
+                  if (process.env.DEBUG) console.log('[CORE] Calling node.accept(visitor) with visitor that has visit method');
                   // Visit the node with the preEval visitor
                   // This will traverse the tree and process @plugin directives
                   const result = node.accept(visitor);
+                  // eslint-disable-next-line no-console
+                  if (process.env.DEBUG) console.log(`[CORE] node.accept(visitor) returned, result === node: ${result === node}`);
                   if (result !== node) {
                     node = result as this;
                   }
+                } else {
+                  // eslint-disable-next-line no-console
+                  if (process.env.DEBUG) console.log('[CORE] Visitor doesn\'t have visit method or is falsy');
                 }
               }
+            } else {
+              // eslint-disable-next-line no-console
+              if (process.env.DEBUG) console.log('[CORE] Plugin does not have preEvalVisitor');
             }
           }
         }

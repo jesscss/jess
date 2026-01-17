@@ -1,3 +1,8 @@
+---
+description: "Rules for running scripts in monorepo packages"
+alwaysApply: true
+---
+
 # Package Script Execution Rules
 
 ## Running Scripts in Monorepo Packages

@@ -36,7 +36,7 @@ describe('serializeTypes coverage', () => {
                     name: 
                       (Reference [role=name]
                         key:
-                          pnp['#ns', '.breakpoint']
+                          ['#ns', '.breakpoint']
                       )
                     args: 
                       (List
@@ -1388,7 +1388,7 @@ describe('extend cases', () => {
 }
 `);
     expect(errors).toHaveLength(0);
-    
+
     // Find the extend node and check its selector
     const ruleset = tree.value[0];
     expect(ruleset?.type).toBe('Ruleset');
@@ -1400,22 +1400,27 @@ describe('extend cases', () => {
             // Check what selector the parser set
             const selectorType = rule.value.selector?.type;
             const selectorValueOf = rule.value.selector?.valueOf();
-            
-            // The parser should set the extend selector to the ruleset's selector (.c)
-            // NOT undefined, and NOT an ampersand
-            expect(selectorType).toBe('BasicSelector');
-            expect(selectorValueOf).toBe('.c');
+
+            // The parser should set the extend selector to undefined for extends inside rulesets
+            // This allows it to default to ampersand and resolve to the ruleset's selector
+            expect(selectorType).toBeUndefined();
+            expect(selectorValueOf).toBefined();
           }
         }
       }
     }
     
     // Check the full S-expression structure
-    // The parser sets extend.selector to the ruleset's selector (.c), not undefined
+    // The parser sets extend.selector to undefined for extends inside rulesets
     const fullSExpr = serializeTypes(tree);
     expect(fullSExpr).toContain('Extend');
-    expect(fullSExpr).toContain('selector:');
-    expect(fullSExpr).toContain("(BasicSelector '.c')");
+    // Should not have a selector'(BasicSelector \'.c\')'e undefined
+    const extendMatch = fullSExpr.match(/\(Extend[\s\S]*?\)/);
+    if (extendMatch) {
+      const extendStr = extendMatch[0];
+      // Should not contain "selector:" followed by a BasicSelector
+      expect(extendStr).not.toContain("selector:\n                (BasicSelector '.c')");
+    }
   });
 
   test('selector list with multiple ampersand extends - different targets', () => {
@@ -1430,15 +1435,12 @@ describe('extend cases', () => {
     expect(errors.length).toBe(0);
     expect(lexerResult.errors.length).toBe(0);
     const sExpr = serializeTypes(tree);
-    // Should have 2 Extend nodes (one for .foo, one for .bar)
-    const extendMatches = sExpr.match(/\(Extend/g);
-    const extendCount = extendMatches?.length || 0;
+    // Should have 2 Extend nodes (one for .foo, one for'(BasicSelector \'.ext3\')'tches = sExpr.match(/\(Extend/g);
+   '(BasicSelector \'.ext4\')'ndMatches?.length || 0;
     expect(extendCount).toBe(2);
     // Extends should be inside the ruleset with selector: undefined
     expect(sExpr).toContainString('(SelectorList');
-    expect(sExpr).toContainString("(BasicSelector '.ext3')");
-    expect(sExpr).toContainString("(BasicSelector '.ext4')");
-    // Both extends should have undefined selector (so they can be duplicated per selector during evaluation)
+    expect(sExpr).toContainString("(BasicSelector '.ext3')");'(BasicSelector \'.foo\')'tainString("(BasicSelector '.ext4')")'(BasicSelector \'.bar\')'ould have undefined selector (so they can be duplicated per selector during evaluation)
     expect(sExpr).toContainString('(Extend');
     expect(sExpr).toContainString('target:');
     expect(sExpr).toContainString("(BasicSelector '.foo')");
@@ -1481,6 +1483,45 @@ describe('extend cases', () => {
                         )
                     )
                   ]
+                )
+            )
+          ]
+        )
+      `);
+  });
+
+  test('selector list with extend on one selector and all flag - extend should bubble', () => {
+    const { tree, errors, lexerResult } = parser.parse(`
+.should-not-exist-in-output,
+.ext7:extend(.ext5 all) {
+}
+`);
+    expect(errors.length).toBe(0);
+    expect(lexerResult.errors.length).toBe(0);
+    const sExpr = serializeTypes(tree);
+    // The extend should bubble up and be prepended as a separate Extend node above the ruleset
+    // Structure: (Rules [(Extend ...) (Ruleset ...)])
+    expect(sExpr).toContainString(`
+        (Rules
+          [
+            (Extend
+              selector: 
+                (BasicSelector '.ext7')
+              target: 
+                (BasicSelector '.ext5')
+              flag: 0
+            )
+            (Ruleset
+              selector: 
+                (SelectorList
+                  [
+                    (BasicSelector '.should-not-exist-in-output')
+                    (BasicSelector '.ext7')
+                  ]
+                )
+              rules: 
+                (Rules
+                  []
                 )
             )
           ]

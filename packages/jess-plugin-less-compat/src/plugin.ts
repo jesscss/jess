@@ -89,7 +89,15 @@ export class LessCompatPlugin extends AbstractPlugin {
         action: 'Using cached visitor'
       });
     }
-    return this._cachedVisitor;
+    const cached = this._cachedVisitor;
+    syncLog({
+      location: 'LessCompatPlugin.preEvalVisitor',
+      action: 'Returning visitor',
+      hasAtRule: !Array.isArray(cached) && !!cached?.atRule,
+      hasVisit: !Array.isArray(cached) && !!cached?.visit,
+      isArray: Array.isArray(cached)
+    });
+    return cached;
   }
 
   /**
@@ -451,19 +459,13 @@ export class LessCompatPlugin extends AbstractPlugin {
       // In Less.js, @plugin is processed in preEval phase before the tree is evaluated
       // This ensures plugins loaded via @plugin have their visitors available for subsequent nodes
       atRule: (node: any, _ctx?: any): any => {
-        syncLog({
-          location: 'LessCompatPlugin.visitor.atRule',
-          action: 'visitor.atRule() called',
-          nodeType: node?.type,
-          hasValue: !!node?.value,
-          valueName: node?.value?.name
-        });
+        process.stderr.write(`[VISITOR LIFECYCLE] atRule() called: type=${node?.type}, hasValue=${!!node?.value}, valueName=${(node?.value as any)?.name || 'none'}\n`);
         syncLog({
           location: 'LessCompatPlugin.visitor.atRule',
           action: 'atRule called',
           nodeType: node?.type,
           hasValue: !!node?.value,
-          valueName: node?.value?.name
+          valueName: (node?.value as any)?.name
         });
         // Check if this is a @plugin directive
         // In Less.js, @plugin syntax is: @plugin "plugin-name";
@@ -485,8 +487,21 @@ export class LessCompatPlugin extends AbstractPlugin {
           // The name will be '@plugin' (with @ prefix) or 'plugin' (without)
           // Less.js uses '@plugin' but we should handle both
           const isPlugin = nameValue === 'plugin' || nameValue === '@plugin';
+          
+          syncLog({
+            location: 'LessCompatPlugin.visitor.atRule',
+            action: 'Checking if @plugin',
+            nameValue,
+            isPlugin,
+            nodeType: node?.type
+          });
 
           if (isPlugin) {
+            syncLog({
+              location: 'LessCompatPlugin.visitor.atRule',
+              action: '@plugin directive detected!',
+              pluginPath: 'checking...'
+            });
             // Extract plugin path/name from prelude
             // Handle both AtRule (value.prelude) and Directive (value.value) structures
             const prelude = node.value?.prelude || node.value?.value;
@@ -580,32 +595,12 @@ export class LessCompatPlugin extends AbstractPlugin {
                     const pluginFactory = this.opts.pluginRegistry[pluginPath];
                     pluginInstance = typeof pluginFactory === 'function' ? pluginFactory() : pluginFactory;
                   } else if (this.opts.autoLoadPlugins !== false) {
-                    // Try to auto-load plugin by name (Less.js 4.x CLI behavior)
-                    // Attempt to require the plugin module (synchronous only - visitors are sync)
-                    // Try as npm package name (e.g., "less-plugin-autoprefix")
-                    // First try with "less-plugin-" prefix if not already present
-                    let moduleName = pluginPath;
-                    if (!pluginPath.startsWith('less-plugin-') && !pluginPath.startsWith('@')) {
-                      moduleName = `less-plugin-${pluginPath}`;
-                    }
-
-                    try {
-                      // Use require (CommonJS) - synchronous loading only
-                      // Note: Dynamic import() is async and cannot be used in sync visitor
-                      if (typeof require !== 'undefined') {
-                        const pluginModule = require(moduleName);
-                        pluginInstance = pluginModule.default || pluginModule;
-                        // If it's a function, call it
-                        if (typeof pluginInstance === 'function') {
-                          pluginInstance = pluginInstance();
-                        }
-                      }
-                    } catch (loadError: any) {
-                      // Plugin not found - log warning if debug mode
-                      if (process.env.DEBUG) {
-                        // eslint-disable-next-line no-console
-                        console.warn(`Plugin "${pluginPath}" not found. Tried: "${moduleName}". Add it to pluginRegistry option or install the package.`, loadError?.message);
-                      }
+                    // Auto-loading plugins via require() is not supported
+                    // Plugins must be provided via pluginRegistry option
+                    // This prevents issues with module resolution and circular dependencies
+                    if (process.env.DEBUG) {
+                      // eslint-disable-next-line no-console
+                      console.warn(`Plugin "${pluginPath}" not found in registry. Auto-loading is disabled. Add it to pluginRegistry option.`);
                     }
                   } else {
                     // Auto-loading disabled - skip
@@ -672,8 +667,16 @@ export class LessCompatPlugin extends AbstractPlugin {
       },
 
       visit: (node: Node): Node => {
+        syncLog({
+          location: 'LessCompatPlugin.visitor.visit',
+          action: 'visit() called',
+          nodeType: node?.type,
+          hasValue: !!node?.value,
+          valueName: (node?.value as any)?.name,
+          insideLessTraversal
+        });
         // #region agent log
-        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plugin.ts:603',message:'Plugin visitor.visit() entry',data:{nodeType:node?.type,insideLessTraversal},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        syncLog({location:'plugin.ts:603',message:'Plugin visitor.visit() entry',data:{nodeType:node?.type,insideLessTraversal},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'});
         // #endregion
         if (!node) {
           return node;
@@ -687,6 +690,11 @@ export class LessCompatPlugin extends AbstractPlugin {
         // before running Less visitors. Since our visitor is a plain object (not a class extending Visitor),
         // visit() doesn't automatically call atRule() via _visit(). We need to call it manually.
         if ((node.type === 'AtRule' || node.type === 'Directive') && visitor.atRule) {
+          syncLog({
+            location: 'LessCompatPlugin.visitor.visit',
+            action: 'AtRule/Directive detected, calling visitor.atRule()',
+            nodeType: node.type
+          });
           // Call atRule() to process @plugin directives and add visitors
           // This must happen before we run Less visitors, so that newly added visitors
           // are available for subsequent nodes
@@ -707,7 +715,7 @@ export class LessCompatPlugin extends AbstractPlugin {
         // This prevents infinite loops when visitArray calls visit() on child nodes
         if (insideLessTraversal) {
           // #region agent log
-          fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plugin.ts:614',message:'Skipping - insideLessTraversal=true',data:{nodeType:node?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+          syncLog({location:'plugin.ts:614',message:'Skipping - insideLessTraversal=true',data:{nodeType:node?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'});
           // #endregion
           return node;
         }
@@ -716,7 +724,7 @@ export class LessCompatPlugin extends AbstractPlugin {
         // This prevents infinite loops when visitArray calls visit() on nodes that are already being processed
         if (processing.has(jessNode)) {
           // #region agent log
-          fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plugin.ts:620',message:'Skipping - already processing',data:{nodeType:node?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          syncLog({location:'plugin.ts:620',message:'Skipping - already processing',data:{nodeType:node?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'});
           // #endregion
           return node;
         }
@@ -753,7 +761,7 @@ export class LessCompatPlugin extends AbstractPlugin {
             // Only run visitors if we have any (including those added via @plugin)
             if (lessVisitorInstances.length > 0) {
               // #region agent log
-              fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plugin.ts:645',message:'Starting Less visitor iteration',data:{visitorCount:lessVisitorInstances.length,nodeType:lessNode?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+              syncLog({location:'plugin.ts:645',message:'Starting Less visitor iteration',data:{visitorCount:lessVisitorInstances.length,nodeType:lessNode?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'});
               // #endregion
               const visitorIterator = createVisitorIterator();
               let iteratorResult = visitorIterator.next();
@@ -763,7 +771,7 @@ export class LessCompatPlugin extends AbstractPlugin {
                 iterationCount++;
                 // #region agent log
                 if (iterationCount > 100) {
-                  fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plugin.ts:649',message:'POSSIBLE INFINITE LOOP - iteration count > 100',data:{iterationCount,nodeType:lessNode?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+                  syncLog({location:'plugin.ts:649',message:'POSSIBLE INFINITE LOOP - iteration count > 100',data:{iterationCount,nodeType:lessNode?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'});
                   break;
                 }
                 // #endregion
@@ -778,11 +786,11 @@ export class LessCompatPlugin extends AbstractPlugin {
                 // Handle Less.js v2 "Directive" nodes - if node is Directive type,
                 // LessVisitor.visit() will route to visitDirective() which maps to visitAtRule()
                 // #region agent log
-                fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plugin.ts:660',message:'Calling lessVisitor.visit()',data:{iterationCount,nodeType:result?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+                syncLog({location:'plugin.ts:660',message:'Calling lessVisitor.visit()',data:{iterationCount,nodeType:result?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'});
                 // #endregion
                 result = lessVisitor.visit(result);
                 // #region agent log
-                fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plugin.ts:661',message:'After lessVisitor.visit()',data:{iterationCount,nodeType:result?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+                syncLog({location:'plugin.ts:661',message:'After lessVisitor.visit()',data:{iterationCount,nodeType:result?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'});
                 // #endregion
 
                 // If result is undefined, a replacing visitor wants to remove this node
