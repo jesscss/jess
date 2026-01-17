@@ -614,6 +614,55 @@ export function processExtends(context: Context): void {
 
           if (result && !result.error) {
             const extendedSelector = result.value;
+            
+            // DEBUG: Check actual node structure after extend for .ext
+            if (debugTargetStr && debugTargetStr.includes('.ext')) {
+              const checkStructure = (s: any): any => {
+                if (!s) return null;
+                if (s.value && Array.isArray(s.value)) {
+                  // ComplexSelector or SelectorList
+                  const components = s.value.map((c: any, idx: number) => {
+                    const comp: any = {
+                      index: idx,
+                      type: c.type,
+                      isAmpersand: c.constructor.name === 'Ampersand',
+                      toString: c.toString()
+                    };
+                    if (comp.isAmpersand) {
+                      comp.storedSelector = c.value?.selector?.toString();
+                      comp.storedSelectorType = c.value?.selector?.type;
+                    }
+                    // If it's a ComplexSelector, check its components too
+                    if (c.value && Array.isArray(c.value)) {
+                      comp.components = c.value.map((subC: any, subIdx: number) => {
+                        const subComp: any = {
+                          index: subIdx,
+                          type: subC.type,
+                          isAmpersand: subC.constructor.name === 'Ampersand',
+                          toString: subC.toString()
+                        };
+                        if (subComp.isAmpersand) {
+                          subComp.storedSelector = subC.value?.selector?.toString();
+                          subComp.storedSelectorType = subC.value?.selector?.type;
+                        }
+                        return subComp;
+                      });
+                    }
+                    return comp;
+                  });
+                  return {
+                    type: s.type,
+                    components: components
+                  };
+                }
+                return { type: s.type, toString: s.toString() };
+              };
+              console.log('processExtend - after tryExtendSelector (first path):', JSON.stringify({
+                target: debugTargetStr,
+                extendedSelectorStructure: checkStructure(extendedSelector),
+                extendedSelectorToString: extendedSelector?.toString()
+              }, null, 2));
+            }
 
 
             // Only update if selector actually changed

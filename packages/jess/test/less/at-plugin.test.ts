@@ -54,6 +54,18 @@ describe('@plugin directive support', () => {
 
     try {
       const context = compiler.createContext(tmpFile);
+      // Debug: Check if plugin has preEvalVisitor
+      const plugin = context.opts.plugins?.find((p: any) => p.name === 'less-compat');
+      // eslint-disable-next-line no-console
+      console.log('[TEST DEBUG] Plugin found:', !!plugin);
+      // eslint-disable-next-line no-console
+      console.log('[TEST DEBUG] Plugin has preEvalVisitor:', !!plugin?.preEvalVisitor);
+      if (plugin?.preEvalVisitor) {
+        // eslint-disable-next-line no-console
+        console.log('[TEST DEBUG] preEvalVisitor type:', typeof plugin.preEvalVisitor);
+        // eslint-disable-next-line no-console
+        console.log('[TEST DEBUG] preEvalVisitor has visit:', !Array.isArray(plugin.preEvalVisitor) && !!plugin.preEvalVisitor?.visit);
+      }
       const { node } = await context.getTree(tmpFile);
 
       // The visitor should have processed @plugin and installed the plugin

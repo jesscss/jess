@@ -25,3 +25,20 @@ describe('MyFeature', () => {
   });
 });
 ```
+
+## Debugging Output in Tests
+
+**CRITICAL**: When debugging tests, you MUST use `syncLog()` instead of `console.log()`:
+
+- **ALWAYS use `syncLog()`** for debugging output in tests
+- **NEVER use `console.log()`** - Vitest will absorb/suppress console output, making your debug messages invisible
+- **NEVER use async `fetch()`** for debugging - use synchronous `syncLog()` instead
+
+Example:
+```typescript
+it('should parse correctly', () => {
+  const result = parseSomething();
+  syncLog('Result:', result); // ✅ Correct - will be visible
+  // console.log('Result:', result); // ❌ Wrong - will be suppressed by Vitest
+});
+```

@@ -753,41 +753,51 @@ export abstract class Node<
       // Only call for root Rules nodes to avoid duplicate processing
       // We need to set context.root first if it's not set yet
       if (context.plugins && node.type === 'Rules') {
+        // eslint-disable-next-line no-console
+        console.log('[CORE] preEval: node.type is Rules, checking plugins');
         if (!context.root) {
           context.root = node as any;
+          // eslint-disable-next-line no-console
+          console.log('[CORE] preEval: Set context.root');
         }
+        // eslint-disable-next-line no-console
+        console.log('[CORE] preEval: node === context.root?', node === (context.root as any));
         if (node === (context.root as any)) {
+          // eslint-disable-next-line no-console
+          console.log('[CORE] preEval: Checking plugins, node type:', node.type);
           for (const plugin of context.plugins) {
             // eslint-disable-next-line no-console
-            if (process.env.DEBUG) console.log('[CORE] Checking plugin for preEvalVisitor:', plugin.constructor?.name || 'unknown');
+            console.log('[CORE] Checking plugin:', plugin.constructor?.name || 'unknown');
             if (plugin.preEvalVisitor) {
               // eslint-disable-next-line no-console
-              if (process.env.DEBUG) console.log('[CORE] Plugin has preEvalVisitor, processing...');
+              console.log('[CORE] Plugin has preEvalVisitor, processing...');
               const visitors = Array.isArray(plugin.preEvalVisitor) 
                 ? plugin.preEvalVisitor 
                 : [plugin.preEvalVisitor];
               // eslint-disable-next-line no-console
-              if (process.env.DEBUG) console.log(`[CORE] Found ${visitors.length} preEval visitor(s)`);
+              console.log(`[CORE] Found ${visitors.length} preEval visitor(s)`);
               for (const visitor of visitors) {
+                // eslint-disable-next-line no-console
+                console.log('[CORE] Visitor check:', { hasVisitor: !!visitor, hasVisit: !!visitor?.visit, visitorType: typeof visitor });
                 if (visitor && typeof visitor.visit === 'function') {
                   // eslint-disable-next-line no-console
-                  if (process.env.DEBUG) console.log('[CORE] Calling node.accept(visitor) with visitor that has visit method');
+                  console.log('[CORE] Calling node.accept(visitor)');
                   // Visit the node with the preEval visitor
                   // This will traverse the tree and process @plugin directives
                   const result = node.accept(visitor);
                   // eslint-disable-next-line no-console
-                  if (process.env.DEBUG) console.log(`[CORE] node.accept(visitor) returned, result === node: ${result === node}`);
+                  console.log(`[CORE] node.accept(visitor) returned, result === node: ${result === node}`);
                   if (result !== node) {
                     node = result as this;
                   }
                 } else {
                   // eslint-disable-next-line no-console
-                  if (process.env.DEBUG) console.log('[CORE] Visitor doesn\'t have visit method or is falsy');
+                  console.log('[CORE] Visitor doesn\'t have visit method or is falsy');
                 }
               }
             } else {
               // eslint-disable-next-line no-console
-              if (process.env.DEBUG) console.log('[CORE] Plugin does not have preEvalVisitor');
+              console.log('[CORE] Plugin does not have preEvalVisitor');
             }
           }
         }

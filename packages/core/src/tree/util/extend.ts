@@ -111,6 +111,9 @@ import {
   buildSelectorPath,
   areCompoundSelectorsEquivalent
 } from './extend-helpers';
+import { F_VISIBLE } from '../node';
+
+const { isArray } = Array;
 
 /**
  * Error types for extend operations
@@ -192,6 +195,93 @@ function deduplicateSelectors(selectors: Selector[]): Selector[] {
 }
 
 /**
+ * Processes selectors in a single pass by:
+ * 1. Flattening generated :is() wrappers
+ * 2. Deduplicating selectors
+ * 3. Discarding or flattening ampersands.
+ */
+function createProcessedSelector(selectors: Selector | Selector[], root?: boolean): Selector | Selector[] {
+  let out: Selector[] = [];
+  let selectorValues = new Set<string>();
+  const push = (selector: Selector) => {
+    let value = selector.valueOf();
+    if (!selectorValues.has(value)) {
+      selectorValues.add(value);
+      out.push(selector);
+    }
+  };
+  if (!isArray(selectors)) {
+    selectors = [selectors];
+  } else {
+    selectors = [...selectors];
+  }
+  for (let el of selectors) {
+    el = el.copy() as Selector;
+    if (isNode(el, 'PseudoSelector')) {
+      if (root && el.value.name === ':is' && el.generated) {
+        let result = createProcessedSelector(el.value.arg as Selector) as Selector;
+        /**
+         * Result will be a single selector, which we want to bubble
+         * into the parent selector array if we're at the root.
+         */
+        if (isNode(result, 'SelectorList')) {
+          for (let el of result.value) {
+            push(el);
+          }
+        } else {
+          push(result);
+        }
+      } else {
+        if (el.value.arg) {
+          let result = createProcessedSelector(el.value.arg as Selector, root);
+          if (isArray(result)) {
+            el.value.arg = SelectorList.create(result);
+          } else {
+            el.value.arg = result;
+          }
+        }
+        push(el);
+      }
+    } else if (isNode(el, 'SelectorList')) {
+      el.value = createProcessedSelector(el.value as Selector[], true) as Selector[];
+      push(el);
+    } else if (isNode(el, 'CompoundSelector')) {
+      el.value = createProcessedSelector(el.value as Selector[]) as Selector[];
+      push(el);
+    } else if (isNode(el, 'ComplexSelector')) {
+      let components = el.value;
+      let result = createProcessedSelector(components) as Selector[];
+      el.value = result;
+      let [first] = components;
+      /** Remove invisibility on combinator if it's a generated */
+      if (first?.type === 'Ampersand') {
+        /** This would have been auto-inserted, so it can be removed if Nil */
+        if (isNode(result[0], 'Selector')) {
+          if (first.generated) {
+            result[1]!.removeFlag(F_VISIBLE);
+          }
+        } else if (first.generated) {
+          /** Silent removal if generated and no selector was resolved */
+          el.value = result.slice(2);
+        } else {
+          throw new ExtendError(ExtendErrorType.AMPERSAND_BOUNDARY, 'Ampersand does not resolve to a selector');
+        }
+      }
+
+      push(el);
+    } else if (isNode(el, 'Ampersand')) {
+      let sel = el.value.selector!;
+      push(createProcessedSelector(sel as Selector) as Selector);
+    } else {
+      push(el);
+    }
+  }
+  if (out.length === 1) {
+    return out[0]!;
+  }
+  return out;
+}
+/**
  * Helper function to create a SelectorList from an array of selectors,
  * with deduplication and flattening of generated :is() wrappers applied.
  * This is the standard pattern used throughout extend operations.
@@ -201,9 +291,7 @@ function deduplicateSelectors(selectors: Selector[]): Selector[] {
  * @returns A new SelectorList with deduplicated and flattened selectors
  */
 function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selector): SelectorList {
-  const flattened = flattenGeneratedIs(selectors);
-  const deduplicated = deduplicateSelectors(flattened);
-  const result = SelectorList.create(deduplicated);
+  const result = SelectorList.create(createProcessedSelector(selectors, true) as Selector[]);
   return inheritFrom ? result.inherit(inheritFrom) : result;
 }
 

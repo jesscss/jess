@@ -6,14 +6,17 @@ import { filterPlugins } from './plugin-utils';
 import { LessVisitor as LessVisitorClass, LessPluginManager, LessTreeConstructors, createLessMock } from './less-compat-structures';
 
 // Debug logging helper (only in debug mode)
-const syncLog = process.env.DEBUG ? (data: object) => {
-  try {
-    // eslint-disable-next-line no-console
-    console.log('[LessCompatPlugin]', JSON.stringify(data, null, 2));
-  } catch {
-    // Ignore errors
+// Check DEBUG each time, not just at module load
+const syncLog = (data: object) => {
+  if (process.env.DEBUG) {
+    try {
+      // eslint-disable-next-line no-console
+      console.log('[LessCompatPlugin]', JSON.stringify(data, null, 2));
+    } catch {
+      // Ignore errors
+    }
   }
-} : () => {};
+};
 
 export interface LessCompatPluginOptions {
   /**
@@ -70,6 +73,9 @@ export class LessCompatPlugin extends AbstractPlugin {
    * - addPostProcessor() - these will run during postEval (after evaluation)
    */
   get preEvalVisitor() {
+    // Always log to verify getter is called (even without DEBUG)
+    // eslint-disable-next-line no-console
+    console.log('[LessCompatPlugin] preEvalVisitor getter called, DEBUG=', process.env.DEBUG);
     syncLog({
       location: 'LessCompatPlugin.preEvalVisitor',
       action: 'preEvalVisitor getter called',
@@ -667,6 +673,9 @@ export class LessCompatPlugin extends AbstractPlugin {
       },
 
       visit: (node: Node): Node => {
+        // Always log to verify visit is called
+        // eslint-disable-next-line no-console
+        console.log('[LessCompatPlugin] visit() called for node type:', node?.type);
         syncLog({
           location: 'LessCompatPlugin.visitor.visit',
           action: 'visit() called',

@@ -558,10 +558,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * This traverses deeply to visit all nodes, but indexes locally.
    */
   override preEval(context: Context) {
+    // eslint-disable-next-line no-console
+    console.log('[CORE Rules.preEval] ENTRY - preEvaluated:', this.preEvaluated);
     if (!this.preEvaluated) {
       context.depth++;
       let rules = this.maybeClone(context);
       rules.preEvaluated = true;
+      // eslint-disable-next-line no-console
+      console.log('[CORE Rules.preEval] Inside preEvaluated check');
       // Save current context and set up new context for variable lookups during preEval
       const saved = this._snapshotContext(context);
       this._setupContextForRules(context, rules);
@@ -577,25 +581,48 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // This allows plugins (like less-compat) to process @plugin directives early
       // Only call for the main root to avoid duplicate processing
       if (isMainRoot && context.plugins) {
+        // eslint-disable-next-line no-console
+        console.log('[CORE Rules.preEval] isMainRoot=true, checking plugins, count:', context.plugins.length);
         for (const plugin of context.plugins) {
+          // eslint-disable-next-line no-console
+          console.log('[CORE Rules.preEval] Checking plugin:', plugin.constructor?.name || 'unknown');
           if (plugin.preEvalVisitor) {
+            // eslint-disable-next-line no-console
+            console.log('[CORE Rules.preEval] Plugin has preEvalVisitor');
             const visitors = Array.isArray(plugin.preEvalVisitor) 
               ? plugin.preEvalVisitor 
               : [plugin.preEvalVisitor];
+            // eslint-disable-next-line no-console
+            console.log(`[CORE Rules.preEval] Found ${visitors.length} visitor(s)`);
             for (const visitor of visitors) {
+              // eslint-disable-next-line no-console
+              console.log('[CORE Rules.preEval] Visitor check:', { hasVisitor: !!visitor, hasVisit: !!visitor?.visit });
               if (visitor && typeof visitor.visit === 'function') {
+                // eslint-disable-next-line no-console
+                console.log('[CORE Rules.preEval] Calling rules.accept(visitor)');
                 // Visit the rules node with the preEval visitor
                 // This will traverse the tree and process @plugin directives
                 const result = rules.accept(visitor);
+                // eslint-disable-next-line no-console
+                console.log('[CORE Rules.preEval] rules.accept(visitor) returned, result === rules:', result === rules);
                 if (result !== rules) {
                   rules = result as this;
                   // Update context.root if the node was replaced
                   context.root = rules;
                 }
+              } else {
+                // eslint-disable-next-line no-console
+                console.log('[CORE Rules.preEval] Visitor doesn\'t have visit method');
               }
             }
+          } else {
+            // eslint-disable-next-line no-console
+            console.log('[CORE Rules.preEval] Plugin does not have preEvalVisitor');
           }
         }
+      } else {
+        // eslint-disable-next-line no-console
+        console.log('[CORE Rules.preEval] Skipping - isMainRoot:', isMainRoot, 'hasPlugins:', !!context.plugins);
       }
 
       /**

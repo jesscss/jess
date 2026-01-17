@@ -62,6 +62,17 @@ When investigating bugs or failures, always use scientific principles to underst
 - Make targeted fixes that address the root cause
 - Verify your understanding before making changes, but don't overthink - test and iterate
 
+### Debugging Output
+
+**CRITICAL - Use `syncLog` for debugging output**:
+
+- **ALWAYS use `syncLog()` function** for debugging output instead of `console.log()`
+- **NEVER use `console.log()`** for debugging - Vitest will absorb/suppress console output, making it invisible
+- **NEVER use async `fetch()`** for debugging - use synchronous logging with `syncLog()` instead
+- `syncLog()` ensures output is visible in test runs and doesn't get suppressed by test frameworks
+
+**Why**: Test frameworks like Vitest capture and suppress console output. `syncLog()` bypasses this and ensures debugging output is always visible.
+
 ## Package Script Execution
 
 **ALWAYS** run scripts (npm/pnpm scripts, ESLint, tests, builds, etc.) from the package's directory, not from the root.
