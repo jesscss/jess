@@ -134,7 +134,9 @@ describe('@plugin directive support', () => {
       install(less: any, manager: any, registry: any) {
         manager.addVisitor({
           visitRuleset(node: any) {
-            // Extract selector name to track which nodes were visited
+            // Track that visitRuleset was called
+            visitedNodes.push('visited');
+            // Try to extract selector name to track which nodes were visited
             if (node.selectors && node.selectors.length > 0) {
               const selector = node.selectors[0];
               if (selector && selector.elements) {

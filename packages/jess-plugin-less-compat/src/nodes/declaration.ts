@@ -71,7 +71,7 @@ export function transformDeclarationToLess(
           }
         } else if (value && Array.isArray(value)) {
           // If value is an array, use visitArray
-          const lessValues = value.map((v: any) => {
+          const lessValues = (value as any[]).map((v: any) => {
             if (v instanceof Node) {
               return toLessNode(v, { cache });
             }

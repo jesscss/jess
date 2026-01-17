@@ -50,6 +50,10 @@ export interface LessCompatPluginOptions {
  */
 export class LessCompatPlugin extends AbstractPlugin {
   name = 'less-compat';
+  
+  // Cache the visitor instance so it's reused across multiple calls
+  // This ensures that visitors added via @plugin are available for subsequent nodes
+  private _cachedVisitor: Visitor | Visitor[] | undefined;
 
   constructor(public opts: LessCompatPluginOptions = {}) {
     super();
@@ -66,9 +70,26 @@ export class LessCompatPlugin extends AbstractPlugin {
    * - addPostProcessor() - these will run during postEval (after evaluation)
    */
   get preEvalVisitor() {
-    // The main visitor processes @plugin directives and runs Less visitors
-    // We mark it as preEval so it runs before node.eval()
-    return this.visitor;
+    syncLog({
+      location: 'LessCompatPlugin.preEvalVisitor',
+      action: 'preEvalVisitor getter called',
+      hasCachedVisitor: !!this._cachedVisitor
+    });
+    // Cache the visitor instance so it's reused across multiple calls
+    // This ensures that visitors added via @plugin are available for subsequent nodes
+    if (!this._cachedVisitor) {
+      syncLog({
+        location: 'LessCompatPlugin.preEvalVisitor',
+        action: 'Creating new cached visitor'
+      });
+      this._cachedVisitor = this.visitor;
+    } else {
+      syncLog({
+        location: 'LessCompatPlugin.preEvalVisitor',
+        action: 'Using cached visitor'
+      });
+    }
+    return this._cachedVisitor;
   }
 
   /**
@@ -432,6 +453,13 @@ export class LessCompatPlugin extends AbstractPlugin {
       atRule: (node: any, _ctx?: any): any => {
         syncLog({
           location: 'LessCompatPlugin.visitor.atRule',
+          action: 'visitor.atRule() called',
+          nodeType: node?.type,
+          hasValue: !!node?.value,
+          valueName: node?.value?.name
+        });
+        syncLog({
+          location: 'LessCompatPlugin.visitor.atRule',
           action: 'atRule called',
           nodeType: node?.type,
           hasValue: !!node?.value,
@@ -645,7 +673,7 @@ export class LessCompatPlugin extends AbstractPlugin {
 
       visit: (node: Node): Node => {
         // #region agent log
-        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plugin.ts:603',message:'Plugin visitor.visit() entry',data:{nodeType:node?.type,insideLessTraversal,processingSize:processing.size},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plugin.ts:603',message:'Plugin visitor.visit() entry',data:{nodeType:node?.type,insideLessTraversal},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
         // #endregion
         if (!node) {
           return node;
@@ -658,13 +686,13 @@ export class LessCompatPlugin extends AbstractPlugin {
         // CRITICAL: For AtRule nodes, we need to call atRule() FIRST to process @plugin directives
         // before running Less visitors. Since our visitor is a plain object (not a class extending Visitor),
         // visit() doesn't automatically call atRule() via _visit(). We need to call it manually.
-        if (node.type === 'AtRule' || node.type === 'Directive') {
+        if ((node.type === 'AtRule' || node.type === 'Directive') && visitor.atRule) {
           // Call atRule() to process @plugin directives and add visitors
           // This must happen before we run Less visitors, so that newly added visitors
           // are available for subsequent nodes
-          const atRuleResult = visitor.atRule(node);
-          // Use the result if atRule() returned a different node
-          if (atRuleResult && atRuleResult !== node) {
+          const atRuleResult = visitor.atRule(node as any, undefined);
+          // Use the result if atRule() returned a different node (and it's not a symbol)
+          if (atRuleResult && typeof atRuleResult !== 'symbol' && atRuleResult !== node) {
             node = atRuleResult;
             // Update jessNode if node was replaced
             const newJessNode = getJessNodeFromProxy(node) || node;
