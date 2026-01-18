@@ -159,7 +159,7 @@ export class ExtendRootRegistry {
       // Only add non-protected children
       // - Protected roots block access (including protected compose roots)
       // - Non-protected compose roots (mutable: true) ARE accessible as children
-      // - Import type roots share parent's root and are always accessible
+      // - Import type roots: protected imports (mutable: false) are NOT accessible, non-protected imports are accessible
       const children = this.childrenRoots.get(currentRoot);
       if (children) {
         for (const child of children) {
@@ -305,21 +305,6 @@ export function processExtends(context: Context): void {
   const transformedByExtend = new Map<Ruleset, Set<string>>();
   const allRoots = context.extendRoots.getAlts();
 
-  // Check if combinator is present in extend targets
-
-  for (const root of allRoots) {
-    const registry = root.getRegistry('ruleset');
-    registry.indexPendingItems();
-    const allRulesets: string[] = [];
-    for (const [key, rulesetSet] of registry.index.entries()) {
-      for (const ruleset of rulesetSet) {
-        const selectorStr = ruleset.selector?.valueOf();
-        allRulesets.push(selectorStr || 'nil');
-        // Log all rulesets
-      }
-    }
-  }
-
   /**
    * Helper to re-index a ruleset's registry after selector update
    * Simply adds the ruleset back to the registry - it will be indexed automatically
@@ -450,6 +435,17 @@ export function processExtends(context: Context): void {
 
     // Get accessible roots for this extend's root
     const accessibleRoots = context.extendRoots.getAccessibleRoots(extendRoot);
+    
+    // Debug: Log extend root and accessible roots info
+    const extendRootIsMain = extendRoot === context.root;
+    const accessibleRootsInfo = Array.from(accessibleRoots).map(root => {
+      const isProtected = context.extendRoots['isProtected'].get(root);
+      const isCompose = context.extendRoots['isCompose'].get(root);
+      return { isProtected, isCompose, isMain: root === context.root };
+    });
+    console.log(`[DEBUG extend-roots] Extending target "${target.valueOf()}" with "${selectorWithExtend.valueOf()}"`);
+    console.log(`[DEBUG extend-roots] ExtendRoot is main: ${extendRootIsMain}, Accessible roots count: ${accessibleRoots.size}`);
+    console.log(`[DEBUG extend-roots] Accessible roots info:`, JSON.stringify(accessibleRootsInfo));
 
     // If target is a SelectorList (e.g., .aa, .bb), process each selector separately
     const targetSelectors: Selector[] = isNode(target, 'SelectorList')
@@ -467,22 +463,16 @@ export function processExtends(context: Context): void {
       let rulesetSet: Ruleset[] | undefined;
 
       const targetStr = singleTarget?.valueOf();
-      const extendWithStr = selectorWithExtend?.valueOf();
 
       for (const searchRoot of accessibleRoots) {
-
         const searchKeySet = singleTarget.keySet;
         const found = searchRoot.find('ruleset', searchKeySet);
         if (found) {
-          for (const rs of found) {
-            const rsSelector = rs.selector?.valueOf();
-          }
           if (rulesetSet) {
             rulesetSet.push(...found);
           } else {
             rulesetSet = found;
           }
-        } else {
         }
       }
 
@@ -491,11 +481,20 @@ export function processExtends(context: Context): void {
         // Check if target exists anywhere (not just in accessible roots)
         const allRootsForWarning = context.extendRoots.getAlts();
         let targetExistsElsewhere = false;
+        const targetStrForDebug = singleTarget.valueOf();
+        const accessibleRootsCount = accessibleRoots.size;
+        const allRootsCount = allRootsForWarning.size;
+        
         for (const searchRoot of allRootsForWarning) {
-          if (!accessibleRoots.has(searchRoot)) {
+          const isAccessible = accessibleRoots.has(searchRoot);
+          const isProtected = context.extendRoots['isProtected'].get(searchRoot);
+          if (!isAccessible) {
             const found = searchRoot.find('ruleset', singleTarget.keySet);
             if (found && found.length > 0) {
               targetExistsElsewhere = true;
+              // Debug: Found target in inaccessible root
+              const foundSelector = found[0]?.selector?.valueOf() || 'unknown';
+              console.log(`[DEBUG extend-roots] Found target "${targetStrForDebug}" in inaccessible root (protected: ${isProtected}, selector: ${foundSelector})`);
               break;
             }
           }
@@ -504,6 +503,7 @@ export function processExtends(context: Context): void {
         // Collect warnings (only on first processing)
         if (depth === 0) {
           if (targetExistsElsewhere) {
+            console.log(`[DEBUG extend-roots] Collecting extendNotAccessible warning for target: ${targetStrForDebug}`);
             const warning = WARN.extendNotAccessible({
               ctx: context.treeContext?.file ? { file: context.treeContext.file } : undefined,
               node: extendNode.location && extendNode.location.length === 6 ? { location: extendNode.location } : undefined,
