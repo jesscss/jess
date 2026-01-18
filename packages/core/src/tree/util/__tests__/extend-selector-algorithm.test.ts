@@ -147,6 +147,30 @@ describe('Extend Selector Tests', () => {
       expect(result.valueOf()).toBe('.a>.b.c>.d.e,.a>.f');
     });
 
+    it('should extend all duplicate components in compound selector (.foo.foo)', () => {
+      // Selector: .foo.foo, Target: .foo (partial), Extend with: .ext
+      // Result: :is(.foo, .ext):is(.foo, .ext) - both .foo components should be extended
+      const selector = compound([el('.foo'), el('.foo')]);
+      const target = el('.foo');
+      const extendWith = el('.ext');
+
+      const result = extendSelector(selector, target, extendWith, true);
+      expect(result.valueOf()).toBe(':is(.foo,.ext):is(.foo,.ext)');
+    });
+
+    it('should extend all duplicate components in compound selector with full match (.foo.foo)', () => {
+      // Selector: .foo.foo, Target: .foo (full), Extend with: .ext
+      // In full mode, .foo is a partial match within .foo.foo, so it should be rejected
+      // Result: .foo.foo (unchanged) - full mode rejects partial matches
+      const selector = compound([el('.foo'), el('.foo')]);
+      const target = el('.foo');
+      const extendWith = el('.ext');
+
+      const result = extendSelector(selector, target, extendWith, false);
+      // Full mode rejects partial matches, so selector remains unchanged
+      expect(result.valueOf()).toBe('.foo.foo');
+    });
+
     it('should extend simple selector with complex extension - example 7', () => {
       // Selector: .a > .b, Target: .b (partial), Extend with: .d > .e
       // Result: .a > :is(.b, .d > .e)

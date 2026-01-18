@@ -99,3 +99,14 @@ When investigating bugs or failures, always use scientific principles to underst
 - Import types at the top of the file
 - Use specific type casts when necessary (e.g., `as Set<Rules>`), but prefer adding to type definitions
 - **Lazily initialize collections**: Use lazy initialization patterns like `(foo ??= new Map()).has()` or `(foo ??= new Set()).add()` for Sets, Maps, Arrays, and other objects unless it's guaranteed that the code path/function will always create that object, in which case initialize it at the top of the function.
+
+## Registry Indexing
+
+**NEVER** explicitly call `registry.indexPendingItems()` or similar indexing methods:
+
+- **Registries are automatically indexed on-the-fly** when `.find()` is called
+- Calling `.find()` on a registry will automatically index any pending items before searching
+- Explicit indexing calls are unnecessary and should be removed if present
+- If you see code that calls `registry.indexPendingItems()` before `.find()`, remove the explicit indexing call
+
+**Why**: The registry system handles indexing lazily and automatically. Explicit indexing is redundant and adds unnecessary overhead.

@@ -564,6 +564,42 @@ export class Context {
     }
 
     if (parseResult.tree) {
+      // Set context.root so preEval visitors can check if this is the root
+      // parseResult.tree should be a Rules node (the root of the parsed tree)
+      if (!this.root && isNode(parseResult.tree, 'Rules')) {
+        this.root = parseResult.tree;
+      }
+      
+      // Call preEval visitors from plugins on the parsed tree
+      // These run BEFORE preEval() and eval(), allowing plugins to process
+      // directives like @plugin that need to run early
+      if (this.plugins && isNode(parseResult.tree, 'Rules') && parseResult.tree === this.root) {
+        let tree = parseResult.tree;
+        for (const plugin of this.plugins) {
+          if (plugin.preEvalVisitor) {
+            const visitors = Array.isArray(plugin.preEvalVisitor) 
+              ? plugin.preEvalVisitor 
+              : [plugin.preEvalVisitor];
+            for (const visitor of visitors) {
+              if (visitor && typeof visitor.visit === 'function') {
+                // Visit the tree with the preEval visitor
+                // This will traverse the tree and process directives like @plugin
+                const result = tree.accept(visitor);
+                if (result !== tree && isNode(result, 'Rules')) {
+                  tree = result;
+                  // Update context.root if the node was replaced
+                  this.root = tree;
+                }
+              }
+            }
+          }
+        }
+        // Update parseResult.tree if it was modified by visitors
+        if (tree !== parseResult.tree) {
+          parseResult.tree = tree;
+        }
+      }
+      
       this.sourceTrees.set(resolvedPath, parseResult.tree);
       return {
         node: parseResult.tree,

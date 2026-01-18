@@ -18,26 +18,6 @@ import { compare } from './util/compare';
 export { Node, TreeContext, type LocationInfo, F_VISIBLE, F_MAY_ASYNC, F_STATIC, F_NON_STATIC };
 
 import { Selector } from './selector';
-import { matchSelectors } from './util/find-extendable-locations';
-
-/** Patch Selector to avoid circularity */
-Selector.prototype.compare = function(other: Node) {
-  if (other instanceof Selector) {
-    let result = matchSelectors(this, other);
-    if (result.hasMatch) {
-      return 0;
-    } else if (result.hasPartialMatch) {
-      return -1;
-    } else {
-      /** Try for a reverse match to see if this is a partial of other */
-      result = matchSelectors(other, this);
-      if (result.hasPartialMatch) {
-        return 1;
-      }
-    }
-  }
-  return compare(this.valueOf(), other?.valueOf?.());
-};
 
 export * from './at-rule';
 export * from './block';
@@ -45,7 +25,6 @@ export * from './bool';
 export * from './ampersand';
 export * from './any';
 export * from './call';
-export * from './collection';
 export * from './color';
 export * from './comment';
 export * from './combinator';
@@ -73,6 +52,7 @@ export * from './quoted';
 export * from './ruleset';
 export * from './rules';
 export * from './rules-raw';
+export * from './collection';
 export * from './selector';
 export * from './selector-attr';
 export * from './selector-basic';
@@ -91,3 +71,25 @@ export * from './selector-interpolated';
 export * from './default-guard';
 export * from './rest';
 export * from './url';
+
+// Patch Selector.compare after all exports to avoid circular dependency
+import { matchSelectors } from './util/find-extendable-locations';
+
+/** Patch Selector to avoid circularity */
+Selector.prototype.compare = function(other: Node) {
+  if (other instanceof Selector) {
+    let result = matchSelectors(this, other);
+    if (result.hasMatch) {
+      return 0;
+    } else if (result.hasPartialMatch) {
+      return -1;
+    } else {
+      /** Try for a reverse match to see if this is a partial of other */
+      result = matchSelectors(other, this);
+      if (result.hasPartialMatch) {
+        return 1;
+      }
+    }
+  }
+  return compare(this.valueOf(), other?.valueOf?.());
+};

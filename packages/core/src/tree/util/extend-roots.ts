@@ -156,21 +156,21 @@ export class ExtendRootRegistry {
       }
 
       // Add children (recursively)
-      // Only add non-protected, non-compose children
-      // - Protected roots block access
-      // - Compose roots create boundaries and are not accessible as children (only import type shares parent's root)
+      // Only add non-protected children
+      // - Protected roots block access (including protected compose roots)
+      // - Non-protected compose roots (mutable: true) ARE accessible as children
+      // - Import type roots share parent's root and are always accessible
       const children = this.childrenRoots.get(currentRoot);
       if (children) {
         for (const child of children) {
           // Skip protected children - they should not be accessible
+          // This includes protected compose roots (mutable: false or default)
           if (this.isProtected.get(child)) {
             continue;
           }
-          // Skip compose children - compose roots create boundaries and are not accessible as children
-          // Only import type roots are accessible as children (they share the parent's root)
-          if (this.isCompose.get(child)) {
-            continue;
-          }
+          // Non-protected compose roots (mutable: true) ARE accessible
+          // Only protected compose roots create boundaries
+          // So we don't skip compose children here - we only skip if they're protected
           traverseChildren(child);
         }
       }
@@ -431,17 +431,6 @@ export function processExtends(context: Context): void {
     extendNode: Node,
     depth: number = 0
   ): void => {
-    // DEBUG: Log extend processing for .ext target
-    const targetStr = target.valueOf();
-    if (targetStr && targetStr.includes('.ext')) {
-      console.log('processExtend (.ext):', {
-        target: targetStr,
-        selectorWithExtend: selectorWithExtend.valueOf(),
-        selectorWithExtendType: selectorWithExtend.type,
-        partial,
-        depth
-      });
-    }
     const maxDepth = 100; // Prevent infinite loops
     if (depth >= maxDepth) {
       throw new Error(`Extend chaining exceeded maximum depth (${maxDepth}). Possible circular reference.`);
@@ -481,19 +470,8 @@ export function processExtends(context: Context): void {
       const extendWithStr = selectorWithExtend?.valueOf();
 
       for (const searchRoot of accessibleRoots) {
-        // Ensure registry is indexed for this root before searching
-        const registry = searchRoot.getRegistry('ruleset');
-        registry.indexPendingItems();
-
-        const allRulesetsInRoot: string[] = [];
-        for (const [key, rulesetSet] of registry.index.entries()) {
-          for (const ruleset of rulesetSet) {
-            allRulesetsInRoot.push(ruleset.selector?.valueOf() || 'nil');
-          }
-        }
 
         const searchKeySet = singleTarget.keySet;
-        const searchKeysArray = Array.from(searchKeySet);
         const found = searchRoot.find('ruleset', searchKeySet);
         if (found) {
           for (const rs of found) {
@@ -557,40 +535,6 @@ export function processExtends(context: Context): void {
           }
 
           const originalSelector = ruleset.selector as Selector;
-          
-          // DEBUG: Check for .ext extends
-          const debugTargetStr = singleTarget?.valueOf();
-          if (debugTargetStr && debugTargetStr.includes('.ext')) {
-            const checkStructure = (s: any): any => {
-              if (!s) return null;
-              if (s.value && Array.isArray(s.value)) {
-                return {
-                  type: s.type,
-                  components: s.value.map((c: any, idx: number) => {
-                    const comp: any = {
-                      index: idx,
-                      type: c.type,
-                      isAmpersand: c.constructor.name === 'Ampersand',
-                      toString: c.toString()
-                    };
-                    if (comp.isAmpersand) {
-                      comp.storedSelector = c.value?.selector?.toString();
-                      comp.storedSelectorType = c.value?.selector?.type;
-                    }
-                    return comp;
-                  })
-                };
-              }
-              return { type: s.type, toString: s.toString() };
-            };
-            console.log('processExtend - applying to ruleset:', JSON.stringify({
-              target: debugTargetStr,
-              originalSelectorStructure: checkStructure(originalSelector),
-              extendWithStructure: checkStructure(selectorWithExtend),
-              partial
-            }, null, 2));
-          }
-
           const selectorStr = originalSelector?.valueOf();
           const targetStr = singleTarget?.valueOf();
           const extendWithStr = selectorWithExtend?.valueOf();
@@ -614,57 +558,6 @@ export function processExtends(context: Context): void {
 
           if (result && !result.error) {
             const extendedSelector = result.value;
-            
-            // DEBUG: Check actual node structure after extend for .ext
-            if (debugTargetStr && debugTargetStr.includes('.ext')) {
-              const checkStructure = (s: any): any => {
-                if (!s) return null;
-                if (s.value && Array.isArray(s.value)) {
-                  // ComplexSelector or SelectorList
-                  const components = s.value.map((c: any, idx: number) => {
-                    const comp: any = {
-                      index: idx,
-                      type: c.type,
-                      isAmpersand: c.constructor.name === 'Ampersand',
-                      toString: c.toString()
-                    };
-                    if (comp.isAmpersand) {
-                      comp.storedSelector = c.value?.selector?.toString();
-                      comp.storedSelectorType = c.value?.selector?.type;
-                    }
-                    // If it's a ComplexSelector, check its components too
-                    if (c.value && Array.isArray(c.value)) {
-                      comp.components = c.value.map((subC: any, subIdx: number) => {
-                        const subComp: any = {
-                          index: subIdx,
-                          type: subC.type,
-                          isAmpersand: subC.constructor.name === 'Ampersand',
-                          toString: subC.toString()
-                        };
-                        if (subComp.isAmpersand) {
-                          subComp.storedSelector = subC.value?.selector?.toString();
-                          subComp.storedSelectorType = subC.value?.selector?.type;
-                        }
-                        return subComp;
-                      });
-                    }
-                    return comp;
-                  });
-                  return {
-                    type: s.type,
-                    components: components
-                  };
-                }
-                return { type: s.type, toString: s.toString() };
-              };
-              console.log('processExtend - after tryExtendSelector (first path):', JSON.stringify({
-                target: debugTargetStr,
-                extendedSelectorStructure: checkStructure(extendedSelector),
-                extendedSelectorToString: extendedSelector?.toString()
-              }, null, 2));
-            }
-
-
             // Only update if selector actually changed
             if (extendedSelector.valueOf() !== originalSelector.valueOf()) {
               // Mark that this extend has transformed this ruleset
@@ -702,16 +595,6 @@ export function processExtends(context: Context): void {
 
   // Phase 1: Process all original extends depth-first
   for (const [target, selectorWithExtend, partial, extendRoot, extendNode] of allExtends) {
-    // DEBUG: Log all extends with .ext in target
-    const targetStr = target.valueOf();
-    if (targetStr && targetStr.includes('.ext')) {
-      console.log('processExtends calling processExtend:', {
-        target: targetStr,
-        selectorWithExtend: selectorWithExtend.valueOf(),
-        selectorWithExtendType: selectorWithExtend.type,
-        partial
-      });
-    }
     processExtend(target, selectorWithExtend, partial, extendRoot, extendNode);
   }
 
@@ -807,40 +690,6 @@ export function processExtends(context: Context): void {
             const currentSelectorStr = currentSelector?.valueOf();
             const extendTargetStr = singleTarget?.valueOf();
             const extendWithStr = selectorWithExtend?.valueOf();
-            
-            // DEBUG: Check actual node structure for .ext extends
-            if (extendTargetStr && extendTargetStr.includes('.ext')) {
-              const checkStructure = (s: any): any => {
-                if (!s) return null;
-                if (s.value && Array.isArray(s.value)) {
-                  // ComplexSelector
-                  return {
-                    type: s.type,
-                    components: s.value.map((c: any, idx: number) => {
-                      const comp: any = {
-                        index: idx,
-                        type: c.type,
-                        isAmpersand: c.constructor.name === 'Ampersand',
-                        toString: c.toString()
-                      };
-                      if (comp.isAmpersand) {
-                        comp.storedSelector = c.value?.selector?.toString();
-                        comp.storedSelectorType = c.value?.selector?.type;
-                      }
-                      return comp;
-                    })
-                  };
-                }
-                return { type: s.type, toString: s.toString() };
-              };
-              console.log('processExtend - before tryExtendSelector:', {
-                target: extendTargetStr,
-                currentSelectorStructure: checkStructure(currentSelector),
-                extendWithStructure: checkStructure(selectorWithExtend)
-              });
-            }
-
-
             // Try to extend - tryExtendSelector will check for actual matches (including combinators)
             // and return an error if there's no match
             // Track object identity and structure to detect transformations
@@ -850,39 +699,6 @@ export function processExtends(context: Context): void {
             if (result && !result.error) {
               const extendedSelector = result.value;
               
-              // DEBUG: Check actual node structure after extend for .ext
-              if (extendTargetStr && extendTargetStr.includes('.ext')) {
-                const checkStructure = (s: any): any => {
-                  if (!s) return null;
-                  if (s.value && Array.isArray(s.value)) {
-                    // ComplexSelector
-                    return {
-                      type: s.type,
-                      components: s.value.map((c: any, idx: number) => {
-                        const comp: any = {
-                          index: idx,
-                          type: c.type,
-                          isAmpersand: c.constructor.name === 'Ampersand',
-                          toString: c.toString()
-                        };
-                        if (comp.isAmpersand) {
-                          comp.storedSelector = c.value?.selector?.toString();
-                          comp.storedSelectorType = c.value?.selector?.type;
-                        }
-                        return comp;
-                      })
-                    };
-                  }
-                  return { type: s.type, toString: s.toString() };
-                };
-                console.log('processExtend - after tryExtendSelector:', {
-                  target: extendTargetStr,
-                  extendedSelectorStructure: checkStructure(extendedSelector),
-                  extendedSelectorToString: extendedSelector?.toString()
-                });
-              }
-
-
               // Only update if selector actually changed
               if (extendedSelector.valueOf() !== currentSelectorValue) {
                 // Mark that this extend has transformed this ruleset
@@ -890,51 +706,7 @@ export function processExtends(context: Context): void {
 
                 // CRITICAL: Clone the selector to avoid object reference issues
                 const clonedSelector = extendedSelector.clone(true);
-
-                // TEMP: Debug .zap bug - log when selector is assigned in Phase 2
-                if (clonedSelector?.valueOf()?.includes('.zap') && (currentSelectorValue?.includes('.ext8 .ext9') && currentSelectorValue?.includes('.buu'))) {
-                  console.log('=== PHASE 2 ASSIGNING SELECTOR WITH .zap ===');
-                  console.log('  BEFORE:', currentSelectorValue);
-                  console.log('  AFTER:', clonedSelector?.valueOf());
-                  console.log('  find:', singleTarget?.valueOf());
-                  console.log('  extendWith:', selectorWithExtend?.valueOf());
-                  console.log('  STACK TRACE:');
-                  console.log(new Error().stack);
-                }
-
                 ruleset.value.selector = clonedSelector;
-                
-                // DEBUG: Check actual node structure after assignment for .ext
-                if (extendTargetStr && extendTargetStr.includes('.ext')) {
-                  const checkStructure = (s: any): any => {
-                    if (!s) return null;
-                    if (s.value && Array.isArray(s.value)) {
-                      // ComplexSelector
-                      return {
-                        type: s.type,
-                        components: s.value.map((c: any, idx: number) => {
-                          const comp: any = {
-                            index: idx,
-                            type: c.type,
-                            isAmpersand: c.constructor.name === 'Ampersand',
-                            toString: c.toString()
-                          };
-                          if (comp.isAmpersand) {
-                            comp.storedSelector = c.value?.selector?.toString();
-                            comp.storedSelectorType = c.value?.selector?.type;
-                          }
-                          return comp;
-                        })
-                      };
-                    }
-                    return { type: s.type, toString: s.toString() };
-                  };
-                  console.log('processExtend - after assignment to ruleset:', JSON.stringify({
-                    target: extendTargetStr,
-                    rulesetSelectorStructure: checkStructure(ruleset.value.selector),
-                    rulesetSelectorToString: ruleset.value.selector?.toString()
-                  }, null, 2));
-                }
 
 
                 reindexRuleset(ruleset);

@@ -1,4 +1,4 @@
-import { AbstractPlugin, type Plugin, type Visitor, type Node } from '@jesscss/core';
+import { AbstractPlugin, type Plugin, type Visitor, type Node, F_VISIBLE } from '@jesscss/core';
 import { toLessNode, fromLessNode } from './transform';
 import { getJessNodeFromProxy } from './transform/proxy';
 import type { LessVisitor } from './types';
@@ -660,15 +660,32 @@ export class LessCompatPlugin extends AbstractPlugin {
                 }
               }
             }
+            
+            // After processing @plugin directive (whether pluginPath was found or not),
+            // mark it as invisible so it doesn't appear in output
+            // This must happen for ALL @plugin directives, not just ones that successfully load
+            const jessNode = getJessNodeFromProxy(node) || node;
+            if (jessNode && typeof (jessNode as any).removeFlag === 'function') {
+              (jessNode as any).removeFlag(F_VISIBLE);
+              syncLog({
+                location: 'LessCompatPlugin.visitor.atRule',
+                action: 'Marked @plugin as invisible',
+                pluginPath: pluginPath || 'unknown',
+                hasRemoveFlag: typeof (jessNode as any).removeFlag === 'function'
+              });
+            } else {
+              syncLog({
+                location: 'LessCompatPlugin.visitor.atRule',
+                action: 'Could not mark @plugin as invisible',
+                pluginPath: pluginPath || 'unknown',
+                hasRemoveFlag: jessNode && typeof (jessNode as any).removeFlag === 'function',
+                nodeType: jessNode?.type
+              });
+            }
           }
         }
 
-        // After processing @plugin, we still need to run Less visitors on this node
-        // But we'll let visit() handle that - atRule() just processes @plugin directives
-        // The visit() method will be called separately and will run the Less visitors
-        // NOTE: atRule() is called by Jess's visitor system as part of visit() via _visit(),
-        // so visit() will be called after atRule() completes. This ensures @plugin processing
-        // happens before Less visitors run on subsequent nodes.
+        // Continue normal processing for all AtRules
         return node;
       },
 

@@ -218,9 +218,10 @@ describe('Extend Roots Registry', () => {
     });
 
     /**
-     * Test: Child compose root can extend parent
+     * Test: Child compose root cannot extend parent (compose creates boundary)
+     * Should collect extendNotAccessible warning, not throw error
      */
-    it('child compose root cannot extend parent (compose is a boundary) - extend throws error', async () => {
+    it('child compose root cannot extend parent (compose is a boundary) - collects extendNotAccessible warning', async () => {
       const importedPath = resolve(process.cwd(), 'imported.jess');
       context.sourceTrees.set(importedPath, rules([
         ruleset({
@@ -245,12 +246,20 @@ describe('Extend Roots Registry', () => {
           path: quoted(any('imported.jess'))
         }, {
           type: 'compose'
+          // Protected by default (not mutable)
         })
       ]);
 
-      await expect(async () => {
-        await node.eval(context);
-      }).rejects.toThrow();
+      // Should not throw - extendNotAccessible is now a warning
+      const evald = await node.eval(context);
+      expect(evald).toBeDefined();
+      
+      // Should have collected a warning
+      expect(context.warnings.length).toBeGreaterThan(0);
+      const warning = context.warnings.find(w => w.code === 'JESS3203');
+      expect(warning).toBeDefined();
+      expect(warning?.message).toContain('Extend target');
+      expect(warning?.message).toContain('not accessible');
     });
   });
 
