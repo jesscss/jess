@@ -3,7 +3,7 @@
  * Maps Jess node types to their Less transformation functions
  */
 
-import { Node, Ruleset, Declaration, Mixin, Dimension, Num, Color, Operation, Expression, Quoted, Url, Comment, AtRule, StyleImport, Extend, Condition, Paren, Negative, List, VarDeclaration, Keyword, Combinator, AttributeSelector, Call, Selector, SelectorList, Reference } from '@jesscss/core';
+import { Node, Ruleset, Declaration, Mixin, Dimension, Num, Color, Operation, Expression, Quoted, Url, Comment, AtRule, StyleImport, Extend, Condition, Paren, Negative, List, VarDeclaration, Keyword, Combinator, AttributeSelector, Call, Selector, SelectorList, Reference, Sequence } from '@jesscss/core';
 import { transformRulesetToLess } from './ruleset.js';
 import { transformDeclarationToLess } from './declaration.js';
 import { transformMixinToLess } from './mixin.js';
@@ -11,6 +11,7 @@ import { transformDimensionToLess } from './dimension.js';
 import { transformColorToLess } from './color.js';
 import { transformOperationToLess } from './operation.js';
 import { transformExpressionToLess } from './expression.js';
+import { transformSequenceToLess } from './sequence.js';
 import { transformQuotedToLess } from './quoted.js';
 import { transformUrlToLess } from './url.js';
 import { transformCommentToLess } from './comment.js';
@@ -66,6 +67,10 @@ export function isOperation(node: Node): node is Operation {
 
 export function isExpression(node: Node): node is Expression {
   return node.type === 'Expression';
+}
+
+export function isSequence(node: Node): node is Sequence {
+  return node.type === 'Sequence';
 }
 
 export function isQuoted(node: Node): node is Quoted {
@@ -197,6 +202,13 @@ transformers.set('Expression', (node, cache) => {
     return transformExpressionToLess(node, cache);
   }
   throw new Error(`Expected Expression node, got ${node.type}`);
+});
+
+transformers.set('Sequence', (node, cache) => {
+  if (isSequence(node)) {
+    return transformSequenceToLess(node, cache);
+  }
+  throw new Error(`Expected Sequence node, got ${node.type}`);
 });
 
 transformers.set('Quoted', (node, cache) => {

@@ -1,6 +1,6 @@
 import { Node, defineType, F_STATIC, F_VISIBLE, type NodeOptions } from './node.js';
 import { Ruleset } from './ruleset.js';
-import type { Any } from './any.js';
+import { Any } from './any.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
@@ -10,6 +10,7 @@ import { isNode } from './util/is-node.js';
 import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper.js';
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
+import { Sequence } from './sequence.js';
 
 export type AtRuleValue = {
   name: Any<'atkeyword'>;
@@ -224,6 +225,46 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       node.frames = [...context.frames];
     }
 
+    const tryMergeNestedMedia = () => {
+      if (node.value.name?.valueOf?.() !== '@media') {
+        return;
+      }
+      const outerRules = node.value.rules;
+      if (!outerRules) {
+        return;
+      }
+      const visible = outerRules.value.filter(n => n.visible);
+      if (visible.length !== 1) {
+        return;
+      }
+      const only = visible[0]!;
+      if (!isNode(only, 'AtRule') || (only as AtRule).value.name?.valueOf?.() !== '@media') {
+        return;
+      }
+      const inner = only as AtRule;
+      const innerRules = inner.value.rules;
+      if (!innerRules) {
+        return;
+      }
+
+      // Combine media queries using "and" like Less does.
+      const outerPrelude = node.value.prelude;
+      const innerPrelude = inner.value.prelude;
+      if (outerPrelude && innerPrelude) {
+        // Build a normalized text prelude to avoid double-spacing from nested sequences.
+        const outerText = outerPrelude.toTrimmedString().trim();
+        const innerText = innerPrelude.toTrimmedString().trim();
+        const combined = `${outerText} and ${innerText}`.replace(/[ \t]+/g, ' ').trim();
+        node.value.prelude = new Any(combined);
+      } else {
+        node.value.prelude = outerPrelude ?? innerPrelude;
+      }
+
+      // Replace outer rules with the inner rules (flatten nested media).
+      node.value.rules = innerRules;
+      node.adopt(innerRules);
+    };
+
     return pipe(
       () => {
         // Prelude is already evaluated in preEval, so we can skip evaluation here
@@ -292,6 +333,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
               // discard the extra rules wrapper
               const finalRules = onlyRuleSetChild && isNode(r.value[0], 'Rules') ? r.value[0] : r;
               node.value.rules = finalRules;
+              tryMergeNestedMedia();
 
               // Register extend root AFTER evaluation using the final Rules instance
               // Rulesets registered to 'rules' (the placeholder) during evaluation, so use that as the extend root
@@ -317,6 +359,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
           const finalRules = onlyRuleSetChild && isNode(out.value[0], 'Rules') ? out.value[0] : out;
           node.value.rules = finalRules;
+          tryMergeNestedMedia();
 
           // Register extend root AFTER evaluation using the final Rules instance
           // Rulesets registered to 'rules' (the placeholder) during evaluation, so use that as the extend root

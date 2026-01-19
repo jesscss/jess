@@ -21,6 +21,9 @@ const syncLog = (data: object) => {
   }
 };
 
+const isThenable = (v: any): v is PromiseLike<any> =>
+  !!v && (typeof v === 'object' || typeof v === 'function') && typeof (v as any).then === 'function';
+
 export interface LessCompatPluginOptions {
   /**
    * Less.js plugins - these will have their install() method called to extract visitors.
@@ -231,80 +234,113 @@ export class LessCompatPlugin extends AbstractPlugin {
           // If we have a real Jess registry, also add to it
           if (currentRealRegistry) {
             try {
+              /**
+               * Less.js evaluates function args before calling plugin functions.
+               * Jess's raw-js-function calls (no defineFunction metadata) pass args through,
+               * so we wrap plugin functions to eagerly eval Node args for compatibility.
+               */
               // Wrap the Less plugin function so it can return Less nodes,
               // but Jess evaluation receives primitives / Jess nodes.
               const wrapped = function(this: any, ...args: any[]) {
-                const result = func.apply(this, args);
+                const maybeEvaldArgs = args.map((arg) => {
+                  if (arg instanceof Any || arg instanceof Declaration || arg instanceof Dimension) {
+                    // Fast path for common nodes that are safe to eval normally via .eval
+                  }
+                  if (arg instanceof Object && arg && typeof (arg as any).eval === 'function' && (arg as any).evaluated !== true) {
+                    try {
+                      return (arg as any).eval(this);
+                    } catch {
+                      return arg;
+                    }
+                  }
+                  return arg;
+                });
+
+                const call = (finalArgs: any[]) => func.apply(this, finalArgs);
+
+                const maybeNeedsAwait = maybeEvaldArgs.some(isThenable);
+                const result = maybeNeedsAwait
+                  ? Promise.all(maybeEvaldArgs.map((a) => isThenable(a) ? a : Promise.resolve(a))).then(call)
+                  : call(maybeEvaldArgs);
+
                 // Avoid core's cast() path (which uses createRequire) by returning Nodes directly
                 // for primitives produced by Less plugins.
-                if (typeof result === 'number') {
-                  // Less prints raw JS numbers without rounding here (e.g. Math.PI)
-                  return new Any(String(result));
-                }
-                // Less plugins often return booleans as "no output" sentinels when called as a statement.
-                // If called in a Rules list (i.e. `fn(...);`), drop the output.
-                if ((result === true || result === false) && this?.caller?.parent?.type === 'Rules') {
-                  return undefined;
-                }
-                if (result && typeof result === 'object' && typeof (result as any).type === 'string') {
-                  const t = (result as any).type;
-                  if (t === 'Anonymous') {
-                    return (result as any).value;
+                const convertResult = (r: any) => {
+                  if (typeof r === 'number') {
+                    // Less prints raw JS numbers without rounding here (e.g. Math.PI)
+                    return new Any(String(r));
                   }
-                  if (t === 'Quoted') {
-                    // Return a quoted string primitive; Jess will preserve quoting when needed
-                    return String((result as any).value);
+                  // Less plugins often return booleans as "no output" sentinels when called as a statement.
+                  // If called in a Rules list (i.e. `fn(...);`), drop the output.
+                  if ((r === true || r === false) && this?.caller?.parent?.type === 'Rules') {
+                    return undefined;
                   }
-                  if (t === 'Dimension' && typeof (result as any).value === 'number') {
-                    const n = (result as any).value as number;
-                    const u = typeof (result as any).unit === 'string' ? (result as any).unit : '';
-                    return new Dimension({ number: n, unit: u || undefined });
-                  }
-                  if (t === 'Declaration') {
-                    const prop = String((result as any).name ?? '');
-                    const val = (result as any).value;
-                    const valueStr = val && typeof val === 'object' && typeof val.value === 'string'
-                      ? val.value
-                      : String(val);
-                    return `${prop}: ${valueStr};`;
-                  }
-                  if (t === 'DetachedRuleset') {
-                    const ruleset = (result as any).ruleset;
-                    const rules = (ruleset && Array.isArray(ruleset.rules)) ? ruleset.rules : [];
-                    const nodes: Node[] = [];
-                    for (const r of rules) {
-                      if (r && typeof r === 'object' && r.type === 'Declaration') {
-                        const prop = String(r.name ?? '');
-                        const val = (r as any).value;
-                        const valueStr = val && typeof val === 'object' && typeof val.value === 'string'
-                          ? val.value
-                          : String(val);
-                        nodes.push(new Declaration({
-                          name: new Any(prop, { role: 'property' as any }),
-                          value: new Any(String(valueStr))
-                        }));
+                  if (r && typeof r === 'object' && typeof (r as any).type === 'string') {
+                    const t = (r as any).type;
+                    if (t === 'Anonymous') {
+                      return (r as any).value;
+                    }
+                    if (t === 'Quoted') {
+                      // Return a quoted string primitive; Jess will preserve quoting when needed
+                      return String((r as any).value);
+                    }
+                    if (t === 'Dimension' && typeof (r as any).value === 'number') {
+                      const n = (r as any).value as number;
+                      const u = typeof (r as any).unit === 'string' ? (r as any).unit : '';
+                      return new Dimension({ number: n, unit: u || undefined });
+                    }
+                    if (t === 'Declaration') {
+                      const prop = String((r as any).name ?? '');
+                      const val = (r as any).value;
+                      const valueStr = val && typeof val === 'object' && typeof val.value === 'string'
+                        ? val.value
+                        : String(val);
+                      return `${prop}: ${valueStr};`;
+                    }
+                    if (t === 'DetachedRuleset') {
+                      const ruleset = (r as any).ruleset;
+                      const rules = (ruleset && Array.isArray(ruleset.rules)) ? ruleset.rules : [];
+                      const nodes: Node[] = [];
+                      for (const rr of rules) {
+                        if (rr && typeof rr === 'object' && rr.type === 'Declaration') {
+                          const prop = String(rr.name ?? '');
+                          const val = (rr as any).value;
+                          const valueStr = val && typeof val === 'object' && typeof val.value === 'string'
+                            ? val.value
+                            : String(val);
+                        const decl = new Declaration({
+                            name: new Any(prop, { role: 'property' as any }),
+                            value: new Any(String(valueStr))
+                        });
+                        // Avoid carrying any incidental whitespace into serialization.
+                        decl.pre = 0;
+                        decl.post = 0;
+                        nodes.push(decl);
+                        }
                       }
+                      return new Collection(nodes);
                     }
-                    return new Collection(nodes);
-                  }
-                  if (t === 'AtRule') {
-                    const n = String((result as any).name);
-                    const v = String((result as any).value);
-                    const line = `${n} ${v};`;
-                    if (n === '@charset') {
-                      return new Any(line, { role: 'charset' as any });
+                    if (t === 'AtRule') {
+                      const n = String((r as any).name);
+                      const v = String((r as any).value);
+                      const line = `${n} ${v};`;
+                      if (n === '@charset') {
+                        return new Any(line, { role: 'charset' as any });
+                      }
+                      return new Any(line);
                     }
-                    return new Any(line);
                   }
-                }
-                if (result && typeof result === 'object' && typeof (result as any).toCSS === 'function') {
-                  try {
-                    return (result as any).toCSS();
-                  } catch {
-                    // ignore
+                  if (r && typeof r === 'object' && typeof (r as any).toCSS === 'function') {
+                    try {
+                      return (r as any).toCSS();
+                    } catch {
+                      // ignore
+                    }
                   }
-                }
-                return result;
+                  return r;
+                };
+
+                return isThenable(result) ? (result as Promise<any>).then(convertResult) : convertResult(result);
               };
               // Preserve Less.js function metadata flags if present
               Object.assign(wrapped, func);
@@ -626,8 +662,8 @@ export class LessCompatPlugin extends AbstractPlugin {
     // Track if we're currently inside a Less visitor traversal
     // This prevents the plugin visitor from being triggered when visitArray calls visit()
     let insideLessTraversal = false;
-    // Track plugins loaded via @plugin directives
-    const loadedPlugins = new Set<any>();
+    // Jess runs pre-eval visitors in two passes; ensure we only process each @plugin directive once.
+    const processedPluginDirectives = new WeakSet<object>();
 
     // Create a visitor object that implements the Visitor interface
     const visitor: Visitor = {
@@ -672,6 +708,11 @@ export class LessCompatPlugin extends AbstractPlugin {
           });
 
           if (isPlugin) {
+            const pluginDirectiveNode = (getJessNodeFromProxy(node) || node) as object;
+            if (processedPluginDirectives.has(pluginDirectiveNode)) {
+              return node;
+            }
+            processedPluginDirectives.add(pluginDirectiveNode);
             syncLog({
               location: 'LessCompatPlugin.visitor.atRule',
               action: '@plugin directive detected!',
@@ -865,10 +906,9 @@ export class LessCompatPlugin extends AbstractPlugin {
                 });
               }
 
-              // Check if plugin is already loaded
-              if (!loadedPlugins.has(pluginPath) && pluginManagerRef && mockLessRef) {
-                loadedPlugins.add(pluginPath);
-
+              // IMPORTANT: Less allows @plugin to be loaded multiple times in different scopes.
+              // Do NOT globally dedupe by pluginPath; this breaks Less's scoping rules.
+              if (pluginManagerRef && mockLessRef) {
                 try {
                   // Scope: register Less plugin functions into the nearest Rules scope,
                   // so nested @plugin shadowing matches Less.js behavior.

@@ -8,7 +8,7 @@ import { Compiler } from '../../src/index.js';
 import { outputDiagnostics } from '../../src/diagnostics.js';
 import { getTestCases } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
-import { type Rules, serializeTypes } from '@jesscss/core';
+import { type Rules } from '@jesscss/core';
 
 const require = createRequire(import.meta.url);
 const testData = path.dirname(require.resolve('@less/test-data'));
@@ -79,30 +79,9 @@ describe('Can render Less files to CSS', () => {
             });
 
             const context = testCompiler.createContext(lessPath, { outputFile: testCase.expectedFile });
-            // DEBUG: Check collapseNesting value
-            if (file.includes('extend-selector')) {
-              const { getConfig } = await import('../../src/config.js');
-              const rawConfig = getConfig(lessPath);
-              console.log('DEBUG collapseNesting:', {
-                baseCompiler: baseCompiler.opts.output?.collapseNesting,
-                rawConfigFromFile: rawConfig,
-                rawConfigOutput: rawConfig.output,
-                testCaseConfig: testCase.config,
-                testCaseConfigOutput: testCase.config.output,
-                merged: testCompiler.opts.output?.collapseNesting,
-                contextOpts: context.opts.collapseNesting
-              });
-            }
             let node: Rules;
             try {
               ({ node } = await context.getTree(lessPath));
-              // Debug: serialize AST for extend-selector test
-              if (lessPath.includes('extend-selector')) {
-                const sExpr = serializeTypes(node);
-                console.log('=== PARSED AST (s-expression) ===');
-                console.log(sExpr);
-                console.log('=== END AST ===');
-              }
             } catch (error: any) {
               // Output diagnostics if available
               if (context.errors.length > 0 || context.warnings.length > 0) {

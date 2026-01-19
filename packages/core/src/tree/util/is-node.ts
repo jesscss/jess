@@ -60,14 +60,44 @@ export function isNode(
   value: unknown,
   type?: keyof Nodes | ReadonlyArray<keyof Nodes>
 ): boolean {
-  if (!value || !(value instanceof Node)) {
+  if (!value) {
+    return false;
+  }
+  /**
+   * IMPORTANT:
+   * Some parts of the system (notably legacy/lazy `require()` boundaries used to break cycles)
+   * can end up with nodes that come from a different module instance, which makes
+   * `instanceof Node` unreliable.
+   *
+   * We therefore support a conservative "duck-typed" Node check:
+   * - has a string `type`
+   * - has `children()` and `clone()` methods (core Node API surface)
+   *
+   * This keeps traversal and registries working even across module-instance boundaries,
+   * while still rejecting plain objects that happen to have a `type` field.
+   */
+  const v = value as any;
+  const isInstance = v instanceof Node;
+  const isDuck =
+    !isInstance
+    && typeof v === 'object'
+    && typeof v.type === 'string'
+    && typeof v.children === 'function'
+    && typeof v.clone === 'function';
+
+  if (!isInstance && !isDuck) {
     return false;
   }
   if (!type) {
     return true;
   }
   if (isArray(type)) {
-    return type.some(t => value.types?.has(t));
+    return type.some((t) => {
+      if (v.type === t) {
+        return true;
+      }
+      return !!v.types && typeof v.types.has === 'function' && v.types.has(t);
+    });
   }
-  return value.type === type || value.types?.has(type as keyof Nodes);
+  return v.type === type || (!!v.types && typeof v.types.has === 'function' && v.types.has(type as keyof Nodes));
 }

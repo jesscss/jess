@@ -133,6 +133,13 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       } else {
         w.add(normalizeIndent(pre + out, idt, true), n);
       }
+    } else if (isNode(n, 'Rules')) {
+      /**
+       * `Rules` nodes can be produced by evaluations like detached ruleset calls.
+       * `Rules.toTrimmedString()` already emits correctly indented child declarations for the
+       * provided depth, so do not prefix another `idt` here (that would double-indent).
+       */
+      w.add(out, n);
     } else {
       w.add(idt);
       w.add(out, n);

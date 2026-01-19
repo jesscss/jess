@@ -25,6 +25,7 @@ export function mapJessTypeToLessType(jessType: string): string {
     Call: 'Call',
     Operation: 'Operation',
     Expression: 'Expression',
+    Sequence: 'Expression',
     Quoted: 'Quoted',
     Url: 'URL',
     Color: 'Color',
