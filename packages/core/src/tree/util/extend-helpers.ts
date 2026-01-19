@@ -58,7 +58,9 @@ export function determineExtensionType(
  * Extracted from multiple pseudo-selector checks
  */
 export function isSelector(value: any): value is Selector {
-  return value instanceof Selector;
+  // Avoid `instanceof` (module identity can diverge under Vite/Vitest).
+  // All selector nodes set `isSelector = true` on the base Selector class.
+  return !!value && typeof value === 'object' && (value as any).isSelector === true;
 }
 
 /**

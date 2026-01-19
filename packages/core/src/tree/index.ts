@@ -77,7 +77,9 @@ import { matchSelectors } from './util/find-extendable-locations.js';
 
 /** Patch Selector to avoid circularity */
 Selector.prototype.compare = function(other: Node) {
-  if (other instanceof Selector) {
+  // Avoid `instanceof Selector` here: module identity can diverge under Vite/Vitest
+  // if the same file is loaded via different specifiers.
+  if (!!other && typeof other === 'object' && (other as any).isSelector === true) {
     let result = matchSelectors(this, other);
     if (result.hasMatch) {
       return 0;

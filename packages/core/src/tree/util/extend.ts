@@ -798,18 +798,29 @@ export function extendSelector(
 
       // Handle multiple component matches in complex selectors
       if (isNode(target, 'ComplexSelector') && searchResult.locations.length > 1) {
-        // In ComplexSelectors, matches can occur:
-        // - On a top-level selector component (path: [i])
-        // - Within a CompoundSelector component (path: [i, j])
-        // We want to extend *all* instances (Less `all`) by wrapping each matched component in :is().
+        // Only treat *component* matches as "multiple matches".
+        // NOTE: locations inside pseudo-selector args (paths including 'arg') can include both:
+        // - a direct match path like [i, 'arg', altIndex]
+        // - an "append opportunity" path like [i, 'arg']
+        // Those should NOT trigger the "multiple component matches" logic here.
 
-        const complexMatches = searchResult.locations.filter((loc: ExtendLocation) => {
-          if (loc.path.length < 1 || typeof loc.path[0] !== 'number') {
+        const componentMatches = searchResult.locations.filter((loc: ExtendLocation) => {
+          if (loc.path.length !== 1 || typeof loc.path[0] !== 'number') {
             return false;
           }
-          const component = target.value[loc.path[0] as number];
+          const component = target.value[loc.path[0]];
           return !!component && !isNode(component, 'Combinator');
         });
+
+        const compoundInnerMatches = searchResult.locations.filter((loc: ExtendLocation) => {
+          if (loc.path.length !== 2 || typeof loc.path[0] !== 'number' || typeof loc.path[1] !== 'number') {
+            return false;
+          }
+          const component = target.value[loc.path[0]];
+          return !!component && isNode(component, 'CompoundSelector');
+        });
+
+        const complexMatches = [...componentMatches, ...compoundInnerMatches];
 
         if (complexMatches.length > 1) {
           const newComponents = [...target.value];
@@ -2004,13 +2015,21 @@ function applyExtensionAtPath(
         return SelectorList.create(newValue).inherit(current);
       } else {
         // For extend operations (both 'replace' and 'append'), add to the list
-        // Check if the extension already exists to avoid duplicates
-        const extensionExists = current.value.some(item => item.valueOf() === extendWith.valueOf());
-        if (!extensionExists) {
-          const newValue = [...current.value, extendWith];
-          return SelectorList.create(newValue).inherit(current);
+        // If extendWith is a :is(), append its argument selectors instead of nesting.
+        const additions = (isNode(extendWith, 'PseudoSelector') && extendWith.value.name === ':is')
+          ? extractSelectorsFromIs(extendWith)
+          : [extendWith];
+
+        const newValue = [...current.value];
+        let changed = false;
+        for (const add of additions) {
+          const extensionExists = newValue.some(item => item.valueOf() === add.valueOf());
+          if (!extensionExists) {
+            newValue.push(add);
+            changed = true;
+          }
         }
-        return current; // No change if extension already exists
+        return changed ? SelectorList.create(newValue).inherit(current) : current;
       }
     } else {
       // Navigate deeper into the list

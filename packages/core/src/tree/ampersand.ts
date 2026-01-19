@@ -232,7 +232,7 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
     
     // If we have a stored selector (from getImplicitSelector), wrap SelectorList in :is()
     // This ensures .a, .b becomes :is(.a, .b) when used in extend selectors
-    if (amp.value.selector && amp.value.selector instanceof SelectorList && !context.opts.collapseNesting) {
+    if (amp.value.selector && (amp.value.selector as any)?.type === 'SelectorList' && !context.opts.collapseNesting) {
       amp.value.selector = PseudoSelector.create({ name: ':is', arg: amp.value.selector });
     }
     return amp;

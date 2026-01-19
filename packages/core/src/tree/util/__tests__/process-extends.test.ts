@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Context } from '../../../context.js';
-import { rules, ruleset, extend, el, compound, sellist, sel, co, type Rules } from '../../index.js';
+import { rules, ruleset, extend, el, compound, sellist, sel, co, pseudo, type Rules } from '../../index.js';
 import { processExtends } from '../extend-roots.js';
 
 describe('processExtends function', () => {
@@ -240,6 +240,47 @@ describe('processExtends function', () => {
       // Expected nested:
       // :is(.replace, .rep_ace), .c { ... }
       expect(nestedRuleset.value.selector.valueOf()).toBe(':is(.replace,.rep_ace),.c');
+    });
+
+    it('should merge multiple partial extends into the same :is() wrapper', () => {
+      // Represents (from extend-selector.less):
+      // .foo .bar, .foo .baz { ... }
+      // .ext1 .ext2 { &:extend(.foo all) }
+      // .ext3, .ext4 { &:extend(.foo all) }
+      const fooRuleset = ruleset({
+        selector: sellist([
+          sel([el('.foo'), co(' '), el('.bar')]),
+          sel([el('.foo'), co(' '), el('.baz')])
+        ]),
+        rules: rules([])
+      });
+      rootRules.value.push(fooRuleset);
+      rootRules.register('ruleset', fooRuleset);
+
+      const extend1 = extend({ target: el('.foo') });
+      context.extends.push([
+        el('.foo'),
+        sel([el('.ext1'), co(' '), el('.ext2')]),
+        true,
+        rootRules,
+        extend1
+      ]);
+
+      const extend2 = extend({ target: el('.foo') });
+      context.extends.push([
+        el('.foo'),
+        // Less-style selector list should contribute each entry as an alternative.
+        pseudo({ name: ':is', arg: sellist([el('.ext3'), el('.ext4')]) }),
+        true,
+        rootRules,
+        extend2
+      ]);
+
+      processExtends(context);
+
+      expect(fooRuleset.value.selector.valueOf()).toBe(
+        ':is(.foo,.ext1 .ext2,.ext3,.ext4) .bar,:is(.foo,.ext1 .ext2,.ext3,.ext4) .baz'
+      );
     });
   });
 

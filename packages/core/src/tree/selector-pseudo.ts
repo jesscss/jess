@@ -39,7 +39,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     const { name, arg } = this.value;
 
     // Check if this is a pseudo-selector that contains selectors
-    const hasSelectorArg = arg instanceof Selector;
+    const hasSelectorArg = !!arg && typeof arg === 'object' && (arg as any).isSelector === true;
     const hasSelectorListArg = isNode(arg, 'SelectorList');
 
     if (hasSelectorArg || hasSelectorListArg) {

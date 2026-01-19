@@ -38,11 +38,12 @@ export function addImplicitAmpersand(
   if (!collapseNesting) {
     comb.removeFlag(F_VISIBLE);
   }
-  if (selector instanceof ComplexSelector) {
-    if (selector.value[0] instanceof Combinator) {
-      return ComplexSelector.create([amp, ...selector.value]).inherit(selector);
+  if ((selector as any)?.type === 'ComplexSelector') {
+    const complex = selector as unknown as ComplexSelector;
+    if ((complex.value[0] as any)?.type === 'Combinator') {
+      return ComplexSelector.create([amp, ...complex.value]).inherit(selector);
     }
-    return ComplexSelector.create([amp, comb, ...selector.value]).inherit(selector);
+    return ComplexSelector.create([amp, comb, ...complex.value]).inherit(selector);
   }
   const returnVal = ComplexSelector.create([amp, comb, selector]).inherit(selector);
   return returnVal;
@@ -62,12 +63,12 @@ export function getImplicitSelector(
   parentSelector: Selector,
   collapseNesting: boolean = false
 ): Selector {
-  if (selector instanceof Nil) {
+  if ((selector as any)?.type === 'Nil') {
     return selector;
   }
-  if (selector instanceof SelectorList) {
+  if ((selector as any)?.type === 'SelectorList') {
     let mutated = false;
-    const value = selector.value;
+    const value = (selector as any).value as Selector[];
     if (Array.isArray(value)) {
       for (let i = 0; i < value.length; i++) {
         let sel = value[i]!;
@@ -76,7 +77,7 @@ export function getImplicitSelector(
           if (!mutated) {
             selector = selector.clone(true);
           }
-          (selector as SelectorList).value[i] = result;
+          ((selector as any) as SelectorList).value[i] = result;
           mutated = true;
         }
       }
