@@ -132,9 +132,88 @@ export class Compiler {
     const context = this.createContext(filePath, options);
 
     try {
-      const { node } = await context.getTree(filePath);
+      // Jess orchestrates visitor phases (not core):
+      // - preEvalVisitor runs on the parsed tree (before any evaluation)
+      // - postEvalVisitor runs on the evaluated tree (after eval)
+      const applyPreEvalVisitors = (tree: any, currentFilePath: string) => {
+        if (!tree || !context.plugins?.length) return tree;
+        let current = tree;
+        const processed = new Set<any>();
+        // Two passes: match Less.js behavior where @plugin can add new visitors
+        for (let pass = 0; pass < 2; pass++) {
+          for (const plugin of context.plugins) {
+            // Allow plugins to access the current compilation context if needed
+            if (typeof (plugin as any).setContext === 'function') {
+              try {
+                (plugin as any).setContext(context);
+              } catch {
+                // ignore
+              }
+            }
+            // Allow plugins to know the current file path if they need it (e.g. less-compat @plugin relative paths)
+            if (typeof (plugin as any).setCurrentFilePath === 'function') {
+              try {
+                (plugin as any).setCurrentFilePath(currentFilePath);
+              } catch {
+                // ignore
+              }
+            }
+            const pre = (plugin as any).preEvalVisitor;
+            if (!pre) continue;
+            const visitors = Array.isArray(pre) ? pre : [pre];
+            for (const v of visitors) {
+              if (!v || typeof v.visit !== 'function') continue;
+              if (pass === 1 && processed.has(v)) continue;
+              const result = current.accept ? current.accept(v) : current;
+              if (result) current = result;
+              processed.add(v);
+            }
+          }
+        }
+        return current;
+      };
 
-      const evald = await node.eval(context);
+      const applyPostEvalVisitors = (tree: any) => {
+        if (!tree || !context.plugins?.length) return tree;
+        let current = tree;
+        for (const plugin of context.plugins) {
+          const post = (plugin as any).postEvalVisitor;
+          if (!post) continue;
+          const visitors = Array.isArray(post) ? post : [post];
+          for (const v of visitors) {
+            if (!v || typeof v.visit !== 'function') continue;
+            const result = current.accept ? current.accept(v) : current;
+            if (result) current = result;
+          }
+        }
+        return current;
+      };
+
+      // Helper: best-effort fallback for file path when Context doesn't provide one
+      const currentFilePathFromImport = (importPath: string, fallback: string) => {
+        return typeof importPath === 'string' && importPath.length ? importPath : fallback;
+      };
+
+      // Ensure pre-eval visitors also run on trees loaded during evaluation (imports).
+      // This keeps @plugin processing consistent for imported Less files.
+      const originalGetTree = context.getTree.bind(context);
+      (context as any).getTree = async (importPath: string, importOptions: any = {}) => {
+        const result = await originalGetTree(importPath, importOptions);
+        const resolvedPath = result?.resolvedPath ?? currentFilePathFromImport(importPath, filePath);
+        const processedTree = applyPreEvalVisitors(result.node, resolvedPath);
+        if (processedTree && processedTree !== result.node) {
+          result.node = processedTree;
+          if (result.resolvedPath) {
+            context.sourceTrees.set(result.resolvedPath, processedTree as any);
+          }
+        }
+        return result;
+      };
+
+      const { node } = await context.getTree(filePath);
+      const preEvaldTree = applyPreEvalVisitors(node, filePath);
+      const evald = await preEvaldTree.eval(context);
+      const postEvald = applyPostEvalVisitors(evald);
 
       // Output any collected diagnostics
       if (context.errors.length > 0 || context.warnings.length > 0) {
@@ -145,7 +224,7 @@ export class Compiler {
         });
       }
 
-      return { tree: evald, context };
+      return { tree: postEvald, context };
     } catch (err: any) {
       // If we have diagnostics, output them
       if (context.errors.length > 0 || context.warnings.length > 0) {
@@ -174,7 +253,17 @@ export class Compiler {
         context
       };
 
-      const css = tree.toString(printOptions);
+      let css = tree.toString(printOptions);
+
+      // Allow plugins to post-process final CSS (e.g. Less addPostProcessor via less-compat)
+      for (const plugin of context.plugins || []) {
+        if (typeof (plugin as any).runPostProcessors === 'function') {
+          css = (plugin as any).runPostProcessors(css, {});
+        } else if (typeof (plugin as any).postProcessCss === 'function') {
+          css = (plugin as any).postProcessCss(css, context);
+        }
+      }
+
       return css;
     } catch (err: any) {
       // Diagnostics are already output by compile()

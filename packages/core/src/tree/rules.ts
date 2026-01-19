@@ -156,6 +156,37 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   /**
+   * Rules are often cloned during `preEval()` when `context.preserveOriginalNodes`
+   * is enabled. If callers register functions/mixins/declarations on the parsed tree
+   * before evaluation (e.g. via visitors), those registries must survive cloning so
+   * lookups during evaluation work as expected.
+   */
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
+    const newRules = super.clone(deep, cloneFn);
+
+    // Preserve registries across clones by reusing the registry instances but
+    // rebinding them to the cloned Rules node.
+    if (this.declarationRegistry) {
+      (this.declarationRegistry as any).rules = newRules;
+      (newRules as any).declarationRegistry = this.declarationRegistry;
+    }
+    if (this.mixinRegistry) {
+      (this.mixinRegistry as any).rules = newRules;
+      (newRules as any).mixinRegistry = this.mixinRegistry;
+    }
+    if (this.functionRegistry) {
+      (this.functionRegistry as any).rules = newRules;
+      (newRules as any).functionRegistry = this.functionRegistry;
+    }
+    if (this.rulesetRegistry) {
+      (this.rulesetRegistry as any).rules = newRules;
+      (newRules as any).rulesetRegistry = this.rulesetRegistry;
+    }
+
+    return newRules;
+  }
+
+  /**
    * Lazily create registries for types as needed.
    */
   register(
@@ -558,71 +589,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * This traverses deeply to visit all nodes, but indexes locally.
    */
   override preEval(context: Context) {
-    // eslint-disable-next-line no-console
-    console.log('[CORE Rules.preEval] ENTRY - preEvaluated:', this.preEvaluated);
     if (!this.preEvaluated) {
       context.depth++;
       let rules = this.maybeClone(context);
       rules.preEvaluated = true;
-      // eslint-disable-next-line no-console
-      console.log('[CORE Rules.preEval] Inside preEvaluated check');
       // Save current context and set up new context for variable lookups during preEval
       const saved = this._snapshotContext(context);
       this._setupContextForRules(context, rules);
 
-      // Set context.root early so preEval visitors can check if this is the root
-      // This is needed for plugins like less-compat that need to process @plugin directives
+      // Set context.root early if this is the main root
       const isMainRoot = !context.root;
       if (isMainRoot) {
         context.root = rules;
-      }
-
-      // Call preEval visitors from plugins before processing nodes
-      // This allows plugins (like less-compat) to process @plugin directives early
-      // Only call for the main root to avoid duplicate processing
-      if (isMainRoot && context.plugins) {
-        // eslint-disable-next-line no-console
-        console.log('[CORE Rules.preEval] isMainRoot=true, checking plugins, count:', context.plugins.length);
-        for (const plugin of context.plugins) {
-          // eslint-disable-next-line no-console
-          console.log('[CORE Rules.preEval] Checking plugin:', plugin.constructor?.name || 'unknown');
-          if (plugin.preEvalVisitor) {
-            // eslint-disable-next-line no-console
-            console.log('[CORE Rules.preEval] Plugin has preEvalVisitor');
-            const visitors = Array.isArray(plugin.preEvalVisitor) 
-              ? plugin.preEvalVisitor 
-              : [plugin.preEvalVisitor];
-            // eslint-disable-next-line no-console
-            console.log(`[CORE Rules.preEval] Found ${visitors.length} visitor(s)`);
-            for (const visitor of visitors) {
-              // eslint-disable-next-line no-console
-              console.log('[CORE Rules.preEval] Visitor check:', { hasVisitor: !!visitor, hasVisit: !!visitor?.visit });
-              if (visitor && typeof visitor.visit === 'function') {
-                // eslint-disable-next-line no-console
-                console.log('[CORE Rules.preEval] Calling rules.accept(visitor)');
-                // Visit the rules node with the preEval visitor
-                // This will traverse the tree and process @plugin directives
-                const result = rules.accept(visitor);
-                // eslint-disable-next-line no-console
-                console.log('[CORE Rules.preEval] rules.accept(visitor) returned, result === rules:', result === rules);
-                if (result !== rules) {
-                  rules = result as this;
-                  // Update context.root if the node was replaced
-                  context.root = rules;
-                }
-              } else {
-                // eslint-disable-next-line no-console
-                console.log('[CORE Rules.preEval] Visitor doesn\'t have visit method');
-              }
-            }
-          } else {
-            // eslint-disable-next-line no-console
-            console.log('[CORE Rules.preEval] Plugin does not have preEvalVisitor');
-          }
-        }
-      } else {
-        // eslint-disable-next-line no-console
-        console.log('[CORE Rules.preEval] Skipping - isMainRoot:', isMainRoot, 'hasPlugins:', !!context.plugins);
       }
 
       /**
@@ -647,28 +625,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (rules === context.root && !context.extendRoots.root) {
         context.extendRoots.registerRoot(rules);
         context.extendRoots.pushExtendRoot(rules);
-      }
-
-      // Call preEval visitors from plugins before processing nodes
-      // This allows plugins (like less-compat) to process @plugin directives early
-      if (isMainRoot && context.plugins) {
-        for (const plugin of context.plugins) {
-          if (plugin.preEvalVisitor) {
-            const visitors = Array.isArray(plugin.preEvalVisitor) 
-              ? plugin.preEvalVisitor 
-              : [plugin.preEvalVisitor];
-            for (const visitor of visitors) {
-              if (visitor && typeof visitor.visit === 'function') {
-                // Visit the rules node with the preEval visitor
-                // This will traverse the tree and process @plugin directives
-                const result = rules.accept(visitor);
-                if (result !== rules) {
-                  rules = result as this;
-                }
-              }
-            }
-          }
-        }
       }
 
       // Multi-pass registration system for handling interpolated names

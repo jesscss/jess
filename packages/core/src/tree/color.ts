@@ -4,8 +4,17 @@ import { type Context } from '../context';
 import { isNode } from './util/is-node';
 import round from 'lodash-es/round';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { Call } from './call';
+import { type Call } from './call';
 import { List } from './list';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+
+// Lazy getter for Call to break circular dependency:
+// rules.ts → cast.ts → color.ts → call.ts → rules.ts
+function getCall() {
+  return require('./call').Call;
+}
 
 type ColorValues = [number, number, number, number] | number[];
 
@@ -416,6 +425,7 @@ export class Color extends Node<ColorData> {
   /** Create a new Color with a Call node for the original function */
   static fromFunctionCall(format: ColorFormat, args: any[], alpha: number = 1): Color {
     // Create a Call node with the original arguments
+    const Call = getCall();
     const callNode = new Call({
       name: format === ColorFormat.RGB ? 'rgb' : 'hsl',
       args: new List(args)

@@ -16,7 +16,6 @@ import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper';
 import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils';
-import { syncLog } from './util/__tests__/debug-log';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -133,63 +132,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       // DO NOT evaluate guard here - guards are evaluated at call time in getFunctionFromMixins
       // Just evaluate the selector
       return pipe(
-        () => {
-          // DEBUG: Log selector before evaluation for .c ruleset
-          if (selector.toString().includes('.c') && !selector.toString().includes('.a')) {
-            // Check if selector contains an ampersand and what its stored selector is
-            const checkAmpersand = (sel: any): any => {
-              if (sel instanceof Ampersand) {
-                return { type: 'Ampersand', storedSelector: sel.value.selector?.toString() };
-              }
-              if (sel.value && Array.isArray(sel.value)) {
-                return sel.value.map(checkAmpersand);
-              }
-              return null;
-            };
-            console.log('Ruleset.preEval - selector before eval:', {
-              selectorStr: selector.toString(),
-              selectorType: selector.type,
-              parentSelector: parentSelector?.toString(),
-              collapseNesting: context.opts.collapseNesting,
-              frameSelector: context.rulesetFrames.at(-1)?.selector?.toString(),
-              ampersandInSelector: checkAmpersand(selector)
-            });
-          }
-          return selector.eval(context);
-        },
+        () => selector.eval(context),
         (sel) => {
-          // DEBUG: Log selector after evaluation for .c ruleset - check actual node structure
-          if (sel.toString().includes('.c') && !sel.toString().includes('.a')) {
-            const checkStructure = (s: any): any => {
-              if (s instanceof ComplexSelector) {
-                const components = s.value.map((c: any, idx: number) => {
-                  const comp: any = {
-                    index: idx,
-                    type: c.type,
-                    isAmpersand: c instanceof Ampersand,
-                    toString: c.toString()
-                  };
-                  if (c instanceof Ampersand) {
-                    comp.storedSelector = c.value.selector?.toString();
-                    comp.storedSelectorType = c.value.selector?.type;
-                  }
-                  return comp;
-                });
-                return {
-                  type: 'ComplexSelector',
-                  components: components
-                };
-              }
-              return { type: s.type, toString: s.toString() };
-            };
-            const structure = checkStructure(sel);
-            console.log('Ruleset.preEval - selector after eval:', JSON.stringify({
-              selectorType: sel.type,
-              selectorStructure: structure,
-              hoistToRoot: sel.hoistToRoot,
-              willBeStoredInFrame: true
-            }, null, 2));
-          }
           // Store the evaluated selector - this is what will be in the frame
           node.value.selector = sel as Selector | Nil;
           if (sel.hoistToRoot) {
@@ -270,19 +214,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         }
         let { selector } = this.value;
         const frame = atIndex(context.rulesetFrames, -1);
-        // DEBUG: Log hoisting decision for nested rulesets
-        const selectorStr = selector?.valueOf();
-        if (selectorStr && (selectorStr.includes('.a') || selectorStr.includes('.b') || selectorStr.includes('.c'))) {
-          syncLog({
-            location: 'Ruleset.evalNode',
-            action: 'Checking hoisting',
-            selector: selectorStr,
-            hasFrame: !!frame,
-            hoistToRoot: this.hoistToRoot,
-            collapseNesting: context.opts.collapseNesting,
-            willHoist: frame && (this.hoistToRoot ?? context.opts.collapseNesting)
-          });
-        }
         if (frame && (this.hoistToRoot ?? context.opts.collapseNesting)) {
           this.hoistToRoot = true;
         }
@@ -358,36 +289,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         }
         if (context.opts.collapseNesting) {
           this.hoistToRoot = true;
-        }
-        // DEBUG: Log what's being stored in frame for .c ruleset
-        if (this.value.selector?.toString().includes('.c') && !this.value.selector?.toString().includes('.a')) {
-          const checkStructure = (s: any): any => {
-            if (s instanceof ComplexSelector) {
-              const components = s.value.map((c: any, idx: number) => {
-                const comp: any = {
-                  index: idx,
-                  type: c.type,
-                  isAmpersand: c instanceof Ampersand,
-                  toString: c.toString()
-                };
-                if (c instanceof Ampersand) {
-                  comp.storedSelector = c.value.selector?.toString();
-                  comp.storedSelectorType = c.value.selector?.type;
-                }
-                return comp;
-              });
-              return {
-                type: 'ComplexSelector',
-                components: components
-              };
-            }
-            return { type: s.type, toString: s.toString() };
-          };
-          const structure = checkStructure(this.value.selector);
-          console.log('Ruleset.evalNode - pushing to frame:', JSON.stringify({
-            frameSelectorStructure: structure,
-            frameSelectorType: this.value.selector?.type
-          }, null, 2));
         }
         context.rulesetFrames.push(this as Ruleset);
         context.frames.push(this);

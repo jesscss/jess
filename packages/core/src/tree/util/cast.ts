@@ -1,19 +1,38 @@
-import { Node } from '../node';
+import type { Node } from '../node';
 import { Nil } from '../nil';
 import { List } from '../list';
-import { Dimension } from '../dimension';
-import { Num } from '../number';
+// Dimension and Num are NOT imported here to break circular dependency:
+// dimension.ts → color.ts → call.ts → cast.ts → dimension.ts
+// Instead, we use createRequire to access them synchronously at runtime
 import { Any } from '../any';
 import { Color } from '../color';
 import { JsFunction } from '../js-function';
 import { JsObject } from '../js-object';
 import { Bool } from '../bool';
+import { isNode } from './is-node';
 import isPlainObject from 'lodash-es/isPlainObject';
+import { createRequire } from 'node:module';
 
 const { isArray } = Array;
 
+// Create a synchronous require function for ES modules
+const require = createRequire(import.meta.url);
+
+// Lazy getters for Dimension and Num to break circular dependency
+// These use require() to access modules at runtime, not at module load time
+// By the time cast() is called, dimension.ts and number.ts will be fully loaded
+function getDimension() {
+  // Use require() to access module at runtime - breaks circular dependency at module load time
+  return require('../dimension').Dimension;
+}
+
+function getNum() {
+  // Use require() to access module at runtime - breaks circular dependency at module load time
+  return require('../number').Num;
+}
+
 function getNodeType(value: any): Node {
-  if (value instanceof Node) {
+  if (isNode(value)) {
     return value;
   }
   if (value === undefined || value === null) {
@@ -35,6 +54,7 @@ function getNodeType(value: any): Node {
     return new List(value.map(val => cast(val)));
   }
   if (value.constructor === Number) {
+    const Num = getNum();
     return new Num(value as unknown as number);
   }
   if (typeof value === 'string') {
@@ -43,6 +63,7 @@ function getNodeType(value: any): Node {
     } else {
       let result = value.match(/^(\d*(?:\.\d+))([a-z]*)$/i);
       if (result) {
+        const Dimension = getDimension();
         return new Dimension({ number: parseFloat(result[1]!), unit: result[2] });
       }
     }
@@ -63,7 +84,7 @@ export function cast(value: any): Node {
    * If converting from a primitive, then
    * the value should be considered evaluated.
    */
-  if (!(value instanceof Node)) {
+  if (!isNode(value)) {
     node.evaluated = true;
     node.preEvaluated = true;
   }

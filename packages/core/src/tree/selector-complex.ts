@@ -126,48 +126,12 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       () => {
         const selector = this;
         let { value } = selector;
-        // DEBUG: Check if this selector contains .c and an ampersand - track the specific ampersand instance
-        const hasC = selector.toString().includes('.c');
-        const hasAmpersand = value.some(c => c instanceof AmpersandClass);
-        let trackedAmpersand: AmpersandClass | null = null;
-        if (hasC && hasAmpersand && !selector.toString().includes('.a')) {
-          trackedAmpersand = value.find(c => c instanceof AmpersandClass) as AmpersandClass | null;
-          console.log('ComplexSelector.evalNode - before eval (tracking & .c):', {
-            selectorStr: selector.toString(),
-            ampersandInstance: trackedAmpersand ? {
-              storedSelector: trackedAmpersand.value.selector?.toString(),
-              storedSelectorType: trackedAmpersand.value.selector?.type,
-              hasStoredSelector: !!trackedAmpersand.value.selector
-            } : 'not found',
-            components: value.map(c => ({ type: c.type, toString: c.toString(), isAmpersand: c instanceof AmpersandClass }))
-          });
-        }
         const maybe = serialForEach(Array.from(getEntries(value)), ([sel, i]) => {
           const out = sel.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Selector | Nil>).then((res) => {
-              // DEBUG: Log ampersand evaluation result
-              if (hasC && hasAmpersand && sel instanceof AmpersandClass) {
-                console.log('ComplexSelector.evalNode - ampersand eval result:', {
-                  before: sel.toString(),
-                  after: res.toString(),
-                  afterType: res.type,
-                  storedSelectorBefore: (sel as any).value.selector?.toString(),
-                  storedSelectorAfter: isNode(res, 'Ampersand') ? (res as any).value.selector?.toString() : 'not ampersand'
-                });
-              }
               value[i] = res as ComplexSelectorComponent;
               return undefined;
-            });
-          }
-          // DEBUG: Log ampersand evaluation result (sync)
-          if (hasC && hasAmpersand && sel instanceof AmpersandClass) {
-            console.log('ComplexSelector.evalNode - ampersand eval result (sync):', {
-              before: sel.toString(),
-              after: out.toString(),
-              afterType: out.type,
-              storedSelectorBefore: (sel as any).value.selector?.toString(),
-              storedSelectorAfter: isNode(out, 'Ampersand') ? (out as any).value.selector?.toString() : 'not ampersand'
             });
           }
           value[i] = out as ComplexSelectorComponent;
@@ -175,22 +139,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         });
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => {
-            if (hasC && hasAmpersand) {
-              console.log('ComplexSelector.evalNode - after eval:', {
-                selectorStr: selector.toString(),
-                components: value.map(c => ({ type: c.type, toString: c.toString() }))
-              });
-            }
             return selector;
-          });
-        }
-        if (hasC && hasAmpersand) {
-          const ampersandAfter = value.find(c => c instanceof AmpersandClass) as AmpersandClass | null;
-          console.log('ComplexSelector.evalNode - after eval (sync):', {
-            selectorStr: selector.toString(),
-            ampersandStillPresent: !!ampersandAfter,
-            ampersandStoredSelector: ampersandAfter?.value.selector?.toString(),
-            components: value.map(c => ({ type: c.type, toString: c.toString(), isAmpersand: c instanceof AmpersandClass }))
           });
         }
         return selector;

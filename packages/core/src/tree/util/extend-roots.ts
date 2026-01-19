@@ -35,7 +35,7 @@ export class ExtendRootRegistry {
 
   // Map AtRule node -> layer name (temporary storage from preEval to evalNode)
   // We use AtRule as the key since we have access to it in both preEval and evalNode
-  private layerNames = new WeakMap<import('../at-rule').AtRule, string>();
+  private layerNames = new WeakMap<AtRule, string>();
 
   // Root of the tree
   root?: Rules;
@@ -73,7 +73,6 @@ export class ExtendRootRegistry {
         this.childrenRoots.set(parent, children);
       }
       children.add(rules);
-
     } else {
     }
 
@@ -197,7 +196,6 @@ export class ExtendRootRegistry {
     // Traverse down from self to add children (compose boundary prevents going up)
     traverseChildren(root);
 
-
     return accessible;
   }
 
@@ -212,7 +210,7 @@ export class ExtendRootRegistry {
    * Store pending layer name for an AtRule node (from preEval)
    * This will be used when the actual Rules is registered in evalNode
    */
-  setLayerName(atRule: import('../at-rule').AtRule, layerName: string): void {
+  setLayerName(atRule: AtRule, layerName: string): void {
     this.layerNames.set(atRule, layerName);
   }
 
@@ -220,14 +218,14 @@ export class ExtendRootRegistry {
    * Get layer name for an AtRule (stored during preEval, retrieved in evalNode)
    * Does NOT delete - use takeLayerName to get and delete
    */
-  getLayerName(atRule: import('../at-rule').AtRule): string | undefined {
+  getLayerName(atRule: AtRule): string | undefined {
     return this.layerNames.get(atRule);
   }
 
   /**
    * Get and delete layer name for an AtRule (used when registering the root)
    */
-  takeLayerName(atRule: import('../at-rule').AtRule): string | undefined {
+  takeLayerName(atRule: AtRule): string | undefined {
     const layerName = this.layerNames.get(atRule);
     if (layerName) {
       this.layerNames.delete(atRule);
@@ -435,23 +433,11 @@ export function processExtends(context: Context): void {
 
     // Get accessible roots for this extend's root
     const accessibleRoots = context.extendRoots.getAccessibleRoots(extendRoot);
-    
-    // Debug: Log extend root and accessible roots info
-    const extendRootIsMain = extendRoot === context.root;
-    const accessibleRootsInfo = Array.from(accessibleRoots).map(root => {
-      const isProtected = context.extendRoots['isProtected'].get(root);
-      const isCompose = context.extendRoots['isCompose'].get(root);
-      return { isProtected, isCompose, isMain: root === context.root };
-    });
-    console.log(`[DEBUG extend-roots] Extending target "${target.valueOf()}" with "${selectorWithExtend.valueOf()}"`);
-    console.log(`[DEBUG extend-roots] ExtendRoot is main: ${extendRootIsMain}, Accessible roots count: ${accessibleRoots.size}`);
-    console.log(`[DEBUG extend-roots] Accessible roots info:`, JSON.stringify(accessibleRootsInfo));
 
     // If target is a SelectorList (e.g., .aa, .bb), process each selector separately
     const targetSelectors: Selector[] = isNode(target, 'SelectorList')
       ? target.value
       : [target];
-
 
     for (const singleTarget of targetSelectors) {
       // Skip self-referencing extends for individual selectors too
@@ -461,8 +447,6 @@ export function processExtends(context: Context): void {
 
       // Find rulesets matching this single target in accessible roots
       let rulesetSet: Ruleset[] | undefined;
-
-      const targetStr = singleTarget?.valueOf();
 
       for (const searchRoot of accessibleRoots) {
         const searchKeySet = singleTarget.keySet;
@@ -481,20 +465,12 @@ export function processExtends(context: Context): void {
         // Check if target exists anywhere (not just in accessible roots)
         const allRootsForWarning = context.extendRoots.getAlts();
         let targetExistsElsewhere = false;
-        const targetStrForDebug = singleTarget.valueOf();
-        const accessibleRootsCount = accessibleRoots.size;
-        const allRootsCount = allRootsForWarning.size;
-        
+
         for (const searchRoot of allRootsForWarning) {
-          const isAccessible = accessibleRoots.has(searchRoot);
-          const isProtected = context.extendRoots['isProtected'].get(searchRoot);
-          if (!isAccessible) {
+          if (!accessibleRoots.has(searchRoot)) {
             const found = searchRoot.find('ruleset', singleTarget.keySet);
             if (found && found.length > 0) {
               targetExistsElsewhere = true;
-              // Debug: Found target in inaccessible root
-              const foundSelector = found[0]?.selector?.valueOf() || 'unknown';
-              console.log(`[DEBUG extend-roots] Found target "${targetStrForDebug}" in inaccessible root (protected: ${isProtected}, selector: ${foundSelector})`);
               break;
             }
           }
@@ -503,7 +479,6 @@ export function processExtends(context: Context): void {
         // Collect warnings (only on first processing)
         if (depth === 0) {
           if (targetExistsElsewhere) {
-            console.log(`[DEBUG extend-roots] Collecting extendNotAccessible warning for target: ${targetStrForDebug}`);
             const warning = WARN.extendNotAccessible({
               ctx: context.treeContext?.file ? { file: context.treeContext.file } : undefined,
               node: extendNode.location && extendNode.location.length === 6 ? { location: extendNode.location } : undefined,
@@ -535,10 +510,6 @@ export function processExtends(context: Context): void {
           }
 
           const originalSelector = ruleset.selector as Selector;
-          const selectorStr = originalSelector?.valueOf();
-          const targetStr = singleTarget?.valueOf();
-          const extendWithStr = selectorWithExtend?.valueOf();
-
 
           // Check if this extend has already transformed this ruleset's selector
           const extendKey = `${singleTarget.valueOf()}:${selectorWithExtend.valueOf()}:${partial}`;
@@ -563,13 +534,19 @@ export function processExtends(context: Context): void {
               // Mark that this extend has transformed this ruleset
               transformsForRuleset.add(extendKey);
 
-
+              const shouldHoist = !!extendedSelector.hoistToRoot;
               // CRITICAL: Clone the selector to avoid object reference issues
               const clonedSelector = extendedSelector.clone(true);
+              if (shouldHoist) {
+                // NOTE: Node.clone()/inherit() does not currently copy hoistToRoot.
+                clonedSelector.hoistToRoot = true;
+              }
 
               // Update the ruleset's selector directly
               ruleset.value.selector = clonedSelector;
-
+              if (clonedSelector.hoistToRoot) {
+                ruleset.hoistToRoot = true;
+              }
 
               extendedRulesets.add(ruleset); // Track that this ruleset was extended
               reindexRuleset(ruleset);
@@ -687,9 +664,6 @@ export function processExtends(context: Context): void {
               continue; // This extend already transformed this ruleset - skip
             }
 
-            const currentSelectorStr = currentSelector?.valueOf();
-            const extendTargetStr = singleTarget?.valueOf();
-            const extendWithStr = selectorWithExtend?.valueOf();
             // Try to extend - tryExtendSelector will check for actual matches (including combinators)
             // and return an error if there's no match
             // Track object identity and structure to detect transformations
@@ -698,16 +672,23 @@ export function processExtends(context: Context): void {
 
             if (result && !result.error) {
               const extendedSelector = result.value;
-              
+
               // Only update if selector actually changed
               if (extendedSelector.valueOf() !== currentSelectorValue) {
                 // Mark that this extend has transformed this ruleset
                 transformsForRuleset.add(extendKey);
 
+                const shouldHoist = !!extendedSelector.hoistToRoot;
                 // CRITICAL: Clone the selector to avoid object reference issues
                 const clonedSelector = extendedSelector.clone(true);
+                if (shouldHoist) {
+                  // NOTE: Node.clone()/inherit() does not currently copy hoistToRoot.
+                  clonedSelector.hoistToRoot = true;
+                }
                 ruleset.value.selector = clonedSelector;
-
+                if (clonedSelector.hoistToRoot) {
+                  ruleset.hoistToRoot = true;
+                }
 
                 reindexRuleset(ruleset);
                 nextIteration.add(ruleset); // Keep in next iteration

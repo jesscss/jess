@@ -1,7 +1,11 @@
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'path';
+import circleDependency from 'vite-plugin-circular-dependency';
 
 export default defineConfig({
+  plugins: [
+    circleDependency()
+  ],
   resolve: {
     // Prefer "source" so imports from @acme/* pull TS from src/
     mainFields: ['source', 'module', 'exports', 'main']
@@ -10,7 +14,7 @@ export default defineConfig({
     watch: false,
     // Set TEST environment variable for packages that depend on it
     env: {
-      TEST: 'true',
+      TEST: 'true'
     },
     deps: {
       // Transpile workspace libs instead of treating them as prebuilt node_modules

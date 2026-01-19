@@ -1,5 +1,4 @@
 import {
-  F_STATIC,
   Node,
   defineType,
   type LocationInfo

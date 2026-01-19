@@ -309,6 +309,58 @@ export class LessPluginManager {
  */
 export const LessTreeConstructors: Record<string, any> = {
   /**
+   * Anonymous node constructor
+   */
+  Anonymous: function(value: any, index?: number, fileInfo?: any) {
+    return {
+      type: 'Anonymous',
+      value,
+      index: index || 0,
+      fileInfo: fileInfo || {},
+      accept: function(visitor: any) {
+        return visitor.visit(this);
+      },
+      toCSS: function() {
+        return String(value);
+      }
+    };
+  },
+
+  /**
+   * Quoted node constructor
+   */
+  Quoted: function(quote: string, value: any, escaped?: boolean, index?: number, fileInfo?: any) {
+    return {
+      type: 'Quoted',
+      quote,
+      value,
+      escaped: !!escaped,
+      index: index || 0,
+      fileInfo: fileInfo || {},
+      accept: function(visitor: any) {
+        return visitor.visit(this);
+      },
+      toCSS: function() {
+        return `${quote}${String(value)}${quote}`;
+      }
+    };
+  },
+
+  /**
+   * DetachedRuleset node constructor
+   * Used by some Less.js plugins (e.g. test-data/plugin-tree-nodes.js)
+   */
+  DetachedRuleset: function(ruleset: any) {
+    return {
+      type: 'DetachedRuleset',
+      ruleset,
+      accept: function(visitor: any) {
+        return visitor.visit(this);
+      }
+    };
+  },
+
+  /**
    * Call node constructor
    */
   Call: function(name: string, args: any[], index?: number, fileInfo?: any) {
@@ -498,6 +550,27 @@ export function createLessMock(functionRegistry: any) {
       functionRegistry
     },
     tree: LessTreeConstructors,
-    PluginLoader: class {}
+    PluginLoader: class {},
+
+    // Minimal Less.js function API used by Less.js test plugins
+    // These return "Less-like" nodes; Jess-side wrappers convert them as needed.
+    dimension(value: number, unit?: string) {
+      return LessTreeConstructors.Dimension(value, unit);
+    },
+    value(values: any[]) {
+      return values;
+    },
+    declaration(name: string, value: any) {
+      return LessTreeConstructors.Declaration(name, value);
+    },
+    ruleset(selector: any, rules: any[]) {
+      return LessTreeConstructors.Ruleset([selector], rules);
+    },
+    detachedruleset(rulesetLike: any) {
+      return LessTreeConstructors.DetachedRuleset(rulesetLike);
+    },
+    atrule(name: string, value: any) {
+      return { type: 'AtRule', name, value };
+    }
   };
 }

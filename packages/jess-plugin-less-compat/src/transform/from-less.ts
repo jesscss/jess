@@ -1,4 +1,4 @@
-import { Node, Rules } from '@jesscss/core';
+import { Any, Node, Quoted, Rules } from '@jesscss/core';
 import { getJessNodeFromProxy, isLessProxy } from './proxy';
 
 // Less.js types
@@ -50,6 +50,25 @@ export function fromLessNode(
   // Check if it has a __jessNode property (we might store this during conversion)
   if (lessNode && typeof lessNode === 'object' && '__jessNode' in lessNode) {
     return lessNode.__jessNode;
+  }
+
+  // Minimal reverse conversions for Less-created nodes used in Less.js plugins
+  if (lessNode && typeof lessNode === 'object' && typeof lessNode.type === 'string') {
+    if (lessNode.type === 'Quoted') {
+      const quote = (lessNode.quote === '\'' || lessNode.quote === '"') ? lessNode.quote : '"';
+      const value = typeof lessNode.value === 'string' ? lessNode.value : String(lessNode.value);
+      const escaped = !!lessNode.escaped;
+      const out = new Quoted(value, { quote, escaped });
+      cache.set(lessNode, out);
+      return out;
+    }
+
+    if (lessNode.type === 'Anonymous') {
+      const value = typeof lessNode.value === 'string' ? lessNode.value : String(lessNode.value);
+      const out = new Any(value);
+      cache.set(lessNode, out);
+      return out;
+    }
   }
 
   // If we can't convert it, try to return the original node

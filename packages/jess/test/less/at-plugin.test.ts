@@ -6,13 +6,14 @@ import { describe, it, expect } from 'vitest';
 import { Compiler } from '../../src';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
+import nodeModulesPlugin from '@jesscss/plugin-node-modules';
 import * as path from 'path';
 import * as fs from 'fs';
 import { tmpdir } from 'os';
 import { createRequire } from 'module';
 import { readFileSync } from 'fs';
 import { getTestCases } from '../test-utils';
-import { type Rules } from '@jesscss/core';
+
 
 describe('@plugin directive support', () => {
   it('should process @plugin directive and load plugin from registry', async () => {
@@ -57,22 +58,7 @@ describe('@plugin directive support', () => {
     fs.writeFileSync(tmpFile, source);
 
     try {
-      const context = compiler.createContext(tmpFile);
-      // Debug: Check if plugin has preEvalVisitor
-      const plugin = context.opts.plugins?.find((p: any) => p.name === 'less-compat');
-      // eslint-disable-next-line no-console
-      console.log('[TEST DEBUG] Plugin found:', !!plugin);
-      // eslint-disable-next-line no-console
-      console.log('[TEST DEBUG] Plugin has preEvalVisitor:', !!plugin?.preEvalVisitor);
-      if (plugin?.preEvalVisitor) {
-        // eslint-disable-next-line no-console
-        console.log('[TEST DEBUG] preEvalVisitor type:', typeof plugin.preEvalVisitor);
-        // eslint-disable-next-line no-console
-        console.log('[TEST DEBUG] preEvalVisitor has visit:', !Array.isArray(plugin.preEvalVisitor) && !!plugin.preEvalVisitor?.visit);
-      }
-      const { node } = await context.getTree(tmpFile);
-
-      // The visitor should have processed @plugin and installed the plugin
+      await compiler.compile(tmpFile);
       expect(pluginInstalled).toBe(true);
       expect(visitorRan).toBe(true);
     } finally {
@@ -122,9 +108,7 @@ describe('@plugin directive support', () => {
     fs.writeFileSync(tmpFile, source);
 
     try {
-      const context = compiler.createContext(tmpFile);
-      await context.getTree(tmpFile);
-
+      await compiler.compile(tmpFile);
       expect(installedPlugins).toContain('plugin1');
       expect(installedPlugins).toContain('plugin2');
       expect(installedPlugins.length).toBe(2);
@@ -186,9 +170,7 @@ describe('@plugin directive support', () => {
     fs.writeFileSync(tmpFile, source);
 
     try {
-      const context = compiler.createContext(tmpFile);
-      await context.getTree(tmpFile);
-
+      await compiler.compile(tmpFile);
       // The dynamically added visitor should have run on subsequent nodes
       expect(visitedNodes.length).toBeGreaterThan(0);
     } finally {
@@ -273,61 +255,19 @@ describe('@plugin directive support', () => {
   describe('Less.js @plugin test files', () => {
     const require = createRequire(import.meta.url);
     const testData = path.dirname(require.resolve('@less/test-data'));
-    const pluginDir = path.join(testData, 'plugin');
 
-    // Load Less.js plugins from the plugin directory
-    // These plugins use Less.js APIs and will work through the less-compat layer
-    function loadLessPlugins(): Record<string, any> {
-      const pluginRegistry: Record<string, any> = {};
-      const pluginFiles = [
-        'plugin-global',
-        'plugin-local',
-        'plugin-simple',
-        'plugin-preeval',
-        'plugin-scope1',
-        'plugin-scope2',
-        'plugin-collection',
-        'plugin-set-options',
-        'plugin-set-options-v2',
-        'plugin-set-options-v3',
-        'plugin-transitive',
-        'plugin-tree-nodes'
-      ];
-
-      pluginFiles.forEach((pluginName) => {
-        const pluginPath = path.join(pluginDir, `${pluginName}.js`);
-        if (fs.existsSync(pluginPath)) {
-          try {
-            // Load the Less.js plugin file
-            // These use Less.js APIs like functions.addMultiple, registerPlugin, etc.
-            // They'll work through the less-compat layer which provides a Less.js-compatible environment
-            const pluginModule = require(pluginPath);
-            pluginRegistry[pluginName] = pluginModule.default || pluginModule;
-          } catch (e) {
-            // If loading fails, create a stub
-            console.warn(`Failed to load plugin ${pluginName}:`, e);
-            pluginRegistry[pluginName] = () => ({
-              install() {
-                // Stub
-              }
-            });
-          }
-        }
-      });
-
-      return pluginRegistry;
-    }
-
-    const pluginRegistry = loadLessPlugins();
+    // Create node-modules plugin for npm package resolution
+    const nodeModulesPluginInstance = nodeModulesPlugin();
 
     const baseCompiler = new Compiler({
       output: { collapseNesting: true },
       compile: {
         plugins: [
           lessPlugin(),
+          nodeModulesPluginInstance,
           lessCompatPlugin({
-            pluginRegistry,
-            autoLoadPlugins: false
+            autoLoadPlugins: true, // Enable auto-loading to use node-modules plugin
+            nodeModulesPlugin: nodeModulesPluginInstance
           })
         ]
       }
@@ -352,12 +292,6 @@ describe('@plugin directive support', () => {
           it(`${testName}${configSuffix}`, async () => {
             const expectedCss = readFileSync(testCase.expectedFile, 'utf8');
 
-            // Try to get pluginRegistry from config if it exists
-            let testPluginRegistry = pluginRegistry;
-            if (testCase.config && (testCase.config as any).pluginRegistry) {
-              testPluginRegistry = { ...pluginRegistry, ...(testCase.config as any).pluginRegistry };
-            }
-
             // Merge test case config with base compiler config
             // Override plugins to include lessCompatPlugin with config's pluginRegistry if available
             const testCompiler = new Compiler({
@@ -368,13 +302,14 @@ describe('@plugin directive support', () => {
                 ...testCase.config.compile,
                 plugins: [
                   lessPlugin(),
+                  nodeModulesPluginInstance,
                   lessCompatPlugin({
-                    pluginRegistry: testPluginRegistry,
-                    autoLoadPlugins: false
+                    autoLoadPlugins: true, // Enable auto-loading to use node-modules plugin
+                    nodeModulesPlugin: nodeModulesPluginInstance
                   }),
                   // Include any other plugins from testCase.config.compile.plugins
-                  ...((testCase.config.compile?.plugins || []).filter((p: any) => 
-                    p && typeof p === 'object' && p.name !== 'less-compat'
+                  ...((testCase.config.compile?.plugins || []).filter((p: any) =>
+                    p && typeof p === 'object' && p.name !== 'less-compat' && p.name !== 'node-modules'
                   ))
                 ]
               },
@@ -386,33 +321,8 @@ describe('@plugin directive support', () => {
             });
 
             const context = testCompiler.createContext(lessPath, { outputFile: testCase.expectedFile });
-            let node: Rules;
-            try {
-              ({ node } = await context.getTree(lessPath));
-            } catch (error: any) {
-              // Output diagnostics if available
-              if (context.errors.length > 0 || context.warnings.length > 0) {
-                // eslint-disable-next-line no-console
-                console.error('Errors:', context.errors);
-                // eslint-disable-next-line no-console
-                console.error('Warnings:', context.warnings);
-              }
-              throw error;
-            }
-            try {
-              const evald = await node.eval(context);
-              const actualCss = evald.toString({ context });
-              expect(actualCss).toBe(expectedCss);
-            } catch (error: any) {
-              // Output diagnostics if available
-              if (context.errors.length > 0 || context.warnings.length > 0) {
-                // eslint-disable-next-line no-console
-                console.error('Errors:', context.errors);
-                // eslint-disable-next-line no-console
-                console.error('Warnings:', context.warnings);
-              }
-              throw error;
-            }
+            const actualCss = await testCompiler.render(lessPath, { outputFile: testCase.expectedFile });
+            expect(actualCss).toBe(expectedCss);
           }, 10000); // 10 second timeout for plugin tests
         });
       } catch (error: any) {

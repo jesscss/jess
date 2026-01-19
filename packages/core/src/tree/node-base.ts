@@ -560,11 +560,11 @@ export abstract class Node<
 
   /**
    * Accept a visitor (classic visitor pattern).
-   * 
+   *
    * Visits the node itself first, then recursively visits children.
    * This matches the Less.js visitor pattern and allows nodes to control
    * their own traversal if needed by overriding this method.
-   * 
+   *
    * @param visitor - The visitor to accept
    * @returns The result from visiting this node (may be a replacement node)
    */
@@ -574,7 +574,7 @@ export abstract class Node<
     // It normalizes symbols (ABORT, REMOVE, SKIP) to a Node, so we always get a Node back.
     // Individual visitor methods can return symbols, but visit() normalizes them.
     const result = visitor.visit(this);
-    
+
     // Visit children recursively (Less.js pattern)
     // Note: If TreeVisitor is using accept(), it will skip auto-visiting children
     // to avoid double-visiting. See TreeVisitor._visit() implementation.
@@ -586,7 +586,7 @@ export abstract class Node<
         visitor.visit(child);
       }
     }
-    
+
     // Return the result (may be a replacement node)
     return result;
   }
@@ -747,62 +747,7 @@ export abstract class Node<
     if (!this.preEvaluated) {
       let node = this.maybeClone(context);
       node.preEvaluated = true;
-      
-      // Call preEval visitors from plugins before processing child nodes
-      // This allows plugins (like less-compat) to process @plugin directives early
-      // Only call for root Rules nodes to avoid duplicate processing
-      // We need to set context.root first if it's not set yet
-      if (context.plugins && node.type === 'Rules') {
-        // eslint-disable-next-line no-console
-        console.log('[CORE] preEval: node.type is Rules, checking plugins');
-        if (!context.root) {
-          context.root = node as any;
-          // eslint-disable-next-line no-console
-          console.log('[CORE] preEval: Set context.root');
-        }
-        // eslint-disable-next-line no-console
-        console.log('[CORE] preEval: node === context.root?', node === (context.root as any));
-        if (node === (context.root as any)) {
-          // eslint-disable-next-line no-console
-          console.log('[CORE] preEval: Checking plugins, node type:', node.type);
-          for (const plugin of context.plugins) {
-            // eslint-disable-next-line no-console
-            console.log('[CORE] Checking plugin:', plugin.constructor?.name || 'unknown');
-            if (plugin.preEvalVisitor) {
-              // eslint-disable-next-line no-console
-              console.log('[CORE] Plugin has preEvalVisitor, processing...');
-              const visitors = Array.isArray(plugin.preEvalVisitor) 
-                ? plugin.preEvalVisitor 
-                : [plugin.preEvalVisitor];
-              // eslint-disable-next-line no-console
-              console.log(`[CORE] Found ${visitors.length} preEval visitor(s)`);
-              for (const visitor of visitors) {
-                // eslint-disable-next-line no-console
-                console.log('[CORE] Visitor check:', { hasVisitor: !!visitor, hasVisit: !!visitor?.visit, visitorType: typeof visitor });
-                if (visitor && typeof visitor.visit === 'function') {
-                  // eslint-disable-next-line no-console
-                  console.log('[CORE] Calling node.accept(visitor)');
-                  // Visit the node with the preEval visitor
-                  // This will traverse the tree and process @plugin directives
-                  const result = node.accept(visitor);
-                  // eslint-disable-next-line no-console
-                  console.log(`[CORE] node.accept(visitor) returned, result === node: ${result === node}`);
-                  if (result !== node) {
-                    node = result as this;
-                  }
-                } else {
-                  // eslint-disable-next-line no-console
-                  console.log('[CORE] Visitor doesn\'t have visit method or is falsy');
-                }
-              }
-            } else {
-              // eslint-disable-next-line no-console
-              console.log('[CORE] Plugin does not have preEvalVisitor');
-            }
-          }
-        }
-      }
-      
+
       // Note: Rules nodes handle index assignment for themselves and their children
       // Other nodes will get indices assigned by their parent Rules
       let out = node.forEachNode(n => n.preEval(context));

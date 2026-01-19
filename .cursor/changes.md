@@ -4,6 +4,18 @@ This file is updated daily with the most recent changes and improvements made to
 
 **Note**: Most recent changes are always at the top. Add new entries with the current date (e.g., `## 2025-Dec-9`) at the top of this file. Make sure we query a live date service to get current date.
 
+## 2026-Jan-18
+
+### Catch-up (Jan 10–17)
+
+- **Extend processing overhaul**: major refactors across `extend.ts`, `util/extend.ts`, `util/extend-roots.ts`, `find-extendable-locations.ts`, plus new/shared helpers (`extend-helpers.ts`) and selector/registry utilities.
+- **Extend test coverage**: added/expanded suites around selector algorithm correctness, combinator handling, simplified cases, duplicate validation, where-selector behavior, and process/integration coverage (including some debug-focused tests).
+- **Less compatibility plugin work**: large expansion of `jess-plugin-less-compat` (node wrappers, transforms `from-less`/`to-less`/`proxy`, plugin-manager + multiple integration tests, and supporting docs/analysis notes).
+- **Diagnostics & errors/warnings**: refactored error/warning structure, added safe-parse coverage, improved diagnostics output/logging, and added deprecation processing + tests.
+- **Detached rulesets + recursion**: substantial progress toward correct detached ruleset behavior and recursion handling, with new helpers/tests.
+- **Config / styles-config**: extended `packages/config` options/types/tests and updated `jess` config wiring.
+- **Serialization/parser fixes (ongoing)**: additional CSS/LESS parser + serialization adjustments alongside the earlier whitespace fix already noted on Jan 9.
+
 ## 2026-Jan-09
 
 - Use `:=` for "set existing"? (don't shadow)

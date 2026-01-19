@@ -7,9 +7,18 @@ import { callWithContext } from '../define-function';
 import { type PrintOptions, getPrintOptions } from './util/print';
 import { Paren } from './paren';
 import { isThenable } from '@jesscss/awaitable-pipe';
-import { getFunctionFromMixins, Rules } from './rules';
+import { getFunctionFromMixins, type Rules } from './rules';
 import { Any } from './any';
 import { freezeChildren } from './util/cloning';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+
+// Lazy getter for Rules to break circular dependency:
+// rules.ts → cast.ts → color.ts → call.ts → rules.ts
+function getRules() {
+  return require('./rules').Rules;
+}
 
 export type CallValue = {
   /**
@@ -138,6 +147,7 @@ export class Call extends Node<CallValue, CallOptions> {
         context.parenFrames.pop();
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
       }
+      const Rules = getRules();
       let rules = Rules.create(n.value, n.options);
       // Inherit from Collection (n) to preserve definition-scope parent chain
       // This ensures variables like @a resolve from where the detached ruleset was defined
@@ -157,6 +167,10 @@ export class Call extends Node<CallValue, CallOptions> {
 
     if (typeof fn === 'function') {
       try {
+        if (process.env.DEBUG && (typeof name === 'string' ? name : (isNode(name, 'Reference') ? name.value.key?.valueOf?.() : undefined)) === 'pi') {
+          // eslint-disable-next-line no-console
+          console.log('[Call.evalNode] pi() resolved to function', { silentFail: this.options?.silentFail });
+        }
         /** Freeze args */
         if (args) {
           args = args.copy(true, freezeChildren);
@@ -191,6 +205,10 @@ export class Call extends Node<CallValue, CallOptions> {
         }
         return castResult;
       } catch (e) {
+        if (process.env.DEBUG && (typeof name === 'string' ? name : (isNode(name, 'Reference') ? name.value.key?.valueOf?.() : undefined)) === 'pi') {
+          // eslint-disable-next-line no-console
+          console.log('[Call.evalNode] pi() threw', { silentFail: this.options?.silentFail, message: (e as any)?.message });
+        }
         if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
           if (isNode(name, 'Reference')) {
             throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);

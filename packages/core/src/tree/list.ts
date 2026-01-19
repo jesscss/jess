@@ -1,7 +1,6 @@
 import { type Context } from '../context';
 import { defineType, Node } from './node';
 import { type PrintOptions, getPrintOptions } from './util/print';
-import { getValues } from './util/collections';
 import { compareNodeArray } from './util/compare';
 import { type Operator } from './util/calculate';
 import { LIST_ITEM_TRIM } from './util/regex';

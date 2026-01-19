@@ -45,6 +45,10 @@ export function transformReferenceToLess(
       // Jess Reference has value.key which might be string, number, or Node
       const key = ref.value.key;
       if (typeof key === 'string') {
+        // Less variables include the leading "@"
+        if (lessType === 'Variable' && !key.startsWith('@')) {
+          return `@${key}`;
+        }
         return key;
       }
       if (typeof key === 'number') {

@@ -2,9 +2,8 @@ import { Node, defineType } from './node';
 import { Nil } from './nil';
 import { List } from './list';
 import type { Context } from '../context';
-import combinate from 'combinate';
 import { compareNodeArray } from './util/compare';
-import { isNode } from '..';
+import { isNode } from './util/is-node';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print';
 

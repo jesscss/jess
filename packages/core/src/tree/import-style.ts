@@ -7,6 +7,7 @@ import { type Context } from '../context';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node';
 import { normalizeFilenameToNamespace } from './util/format';
+import type { Ruleset } from './ruleset';
 
 /**
  * This class is for Jess / Sass+ / Less-style imports,
@@ -326,6 +327,14 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       if (withValues || !evaldRules || type === 'import') {
         let preserveOriginalNodes = context.preserveOriginalNodes;
         context.preserveOriginalNodes = true;
+
+        // For protected imports (mutable: false), push the rules to extend root stack
+        // so rulesets register in the import's registry, not the parent's
+        const isImportProtected = type === 'import' && importOptions!.mutable === false;
+        if (isImportProtected) {
+          context.extendRoots.pushExtendRoot(rules);
+        }
+
         // Call preEval first to get the cloned Rules (if cloning occurs)
         // sourceNode is already set above, so the cloned Rules will have it
         rules = await rules.preEval(context);
@@ -335,6 +344,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         }
         rules = await rules.eval(context);
         context.preserveOriginalNodes = preserveOriginalNodes;
+
+        if (isImportProtected) {
+          context.extendRoots.popExtendRoot();
+        }
+
         if (withValues?.type === 'set') {
           context.evaldTrees.set(resolvedPath, rules);
         }
@@ -368,6 +382,19 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         context.extendRoots.registerRoot(finalRules, currentParentExtendRoot, {
           isProtected: isImportProtected
         });
+
+        // For protected imports, rulesets were registered in the original rules' registry
+        // during preEval (when we pushed rules to the stack). Since getFinalRules clones,
+        // we need to re-register rulesets in finalRules' registry
+        if (isImportProtected) {
+          const finalRulesRegistry = finalRules.getRegistry('ruleset');
+          // Find all rulesets that are children of finalRules and register them
+          for (const child of finalRules.value) {
+            if (child.type === 'Ruleset') {
+              finalRulesRegistry.add(child as Ruleset);
+            }
+          }
+        }
         // Don't push to stack - import type uses parent's root for extends inside the import
         // But we register it so extends from parent can find rulesets in the imported Rules
       }

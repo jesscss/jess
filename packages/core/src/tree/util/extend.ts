@@ -96,15 +96,13 @@
 import { type Selector } from '../selector';
 import { SimpleSelector } from '../selector-simple';
 import { SelectorList } from '../selector-list';
-import { ComplexSelector, type ComplexSelectorValue } from '../selector-complex';
+import { ComplexSelector } from '../selector-complex';
 import { CompoundSelector } from '../selector-compound';
 import { PseudoSelector } from '../selector-pseudo';
-import { Combinator } from '../combinator';
 import { Ampersand } from '../ampersand';
-import { BasicSelector } from '../selector-basic';
 import { isNode } from './is-node';
 import { findExtendableLocations, type ExtendLocation } from './extend-helpers';
-import { F_VISIBLE } from '../node';
+import { F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node';
 
 const { isArray } = Array;
 
@@ -299,7 +297,7 @@ function createProcessedSelector(selectors: Selector | Selector[], root?: boolea
       let components = el.value;
       let result = createProcessedSelector(components) as Selector[];
       el.value = result;
-      let [first] = components;
+      let [first, second] = components;
       /** Remove invisibility on combinator if it's a generated */
       if (first?.type === 'Ampersand') {
         /** This would have been auto-inserted, so it can be removed if Nil */
@@ -309,7 +307,11 @@ function createProcessedSelector(selectors: Selector | Selector[], root?: boolea
           }
         } else if (first.generated) {
           /** Silent removal if generated and no selector was resolved */
-          el.value = result.slice(2);
+          if (second?.type === 'Combinator' && second.generated) {
+            el.value = result.slice(2);
+          } else {
+            el.value = result.slice(1);
+          }
         } else {
           throw new ExtendError(ExtendErrorType.AMPERSAND_BOUNDARY, 'Ampersand does not resolve to a selector');
         }
@@ -317,8 +319,14 @@ function createProcessedSelector(selectors: Selector | Selector[], root?: boolea
 
       push(el);
     } else if (isNode(el, 'Ampersand')) {
-      let sel = el.value.selector!;
-      push(createProcessedSelector(sel as Selector) as Selector);
+      // Only discard ampersands that were auto-inserted (implicit) during nesting resolution.
+      // Authored `&` must remain in the selector unless we've explicitly resolved/hoisted it.
+      if (el.hasFlag(F_IMPLICIT_AMPERSAND) || el.generated) {
+        const sel = el.value.selector!;
+        push(createProcessedSelector(sel as Selector) as Selector);
+      } else {
+        push(el);
+      }
     } else {
       push(el);
     }
@@ -627,6 +635,56 @@ export function extendSelector(
   // Select the best location from search results
   const location = selectBestLocation(searchResult, target, find, partial, hasMoreAfterIs, extendWith);
 
+  // If the match is entirely inside an ampersand node (e.g. `&:before` matching `.header .header-nav`),
+  // do NOT extend here. The parent selector/ruleset should carry the extension.
+  if (
+    isNode(location.matchedNode, 'Ampersand')
+    && location.parentNode
+    && isNode(location.parentNode, 'CompoundSelector')
+    && location.parentNode.value.length > 1
+  ) {
+    throw new ExtendError(
+      'NOT_FOUND',
+      'Match found only within ampersand; parent selector should carry the extend',
+      { target, find, extendWith }
+    );
+  }
+  // Also handle the case where the matcher reports a partial match at the compound level:
+  // `&:before` is a compound; matching `.header .header-nav` against it should be treated as
+  // "within ampersand" rather than rewriting into a descendant combinator form.
+  if (
+    location.isPartialMatch
+    && isNode(location.matchedNode, 'CompoundSelector')
+    && location.matchedNode.value.length > 1
+    && isNode(location.matchedNode.value[0], 'Ampersand')
+    && location.matchedNode.value[0].value.selector
+    && location.matchedNode.value[0].value.selector.valueOf() === find.valueOf()
+  ) {
+    throw new ExtendError(
+      'NOT_FOUND',
+      'Match found only within ampersand; parent selector should carry the extend',
+      { target, find, extendWith }
+    );
+  }
+  // If we matched an ampersand *component* within a larger compound selector (e.g. `&:before`),
+  // do NOT extend that ampersand. The parent selector should have already been extended/hoisted.
+  if (
+    isNode(target, 'CompoundSelector')
+    && target.value.length > 1
+    && location.path.length === 1
+    && typeof location.path[0] === 'number'
+  ) {
+    const idx = location.path[0];
+    const component = target.value[idx];
+    if (component && isNode(component, 'Ampersand') && component.value.selector) {
+      throw new ExtendError(
+        'NOT_FOUND',
+        'Match found only within ampersand; parent selector should carry the extend',
+        { target, find, extendWith }
+      );
+    }
+  }
+
   // Handle partial vs full matching modes
   if (partial) {
     // PARTIAL MATCHING MODE: Create :is() wrappers for component-level matches
@@ -740,26 +798,58 @@ export function extendSelector(
 
       // Handle multiple component matches in complex selectors
       if (isNode(target, 'ComplexSelector') && searchResult.locations.length > 1) {
-        // Filter to only component-level matches (path length 1, not combinators)
-        const componentMatches = searchResult.locations.filter(loc =>
-          loc.path.length === 1
-          && typeof loc.path[0] === 'number'
-          && !isNode(target.value[loc.path[0] as number], 'Combinator')
-        );
+        // In ComplexSelectors, matches can occur:
+        // - On a top-level selector component (path: [i])
+        // - Within a CompoundSelector component (path: [i, j])
+        // We want to extend *all* instances (Less `all`) by wrapping each matched component in :is().
 
-        if (componentMatches.length > 1) {
-          // Process all component matches - wrap each matching component in :is()
+        const complexMatches = searchResult.locations.filter((loc: ExtendLocation) => {
+          if (loc.path.length < 1 || typeof loc.path[0] !== 'number') {
+            return false;
+          }
+          const component = target.value[loc.path[0] as number];
+          return !!component && !isNode(component, 'Combinator');
+        });
+
+        if (complexMatches.length > 1) {
           const newComponents = [...target.value];
-          for (const matchLoc of componentMatches) {
+          const extendWithSelectors = extractSelectorsFromIs(extendWith);
+
+          for (const matchLoc of complexMatches) {
             const componentIndex = matchLoc.path[0] as number;
-            const matchedComponent = newComponents[componentIndex];
-            if (matchedComponent && !isNode(matchedComponent, 'Combinator')) {
-              // Wrap this component in :is(original, extension)
-              // If extendWith is a :is() selector, extract its selectors to avoid nesting
-              const extendWithSelectors = extractSelectorsFromIs(extendWith);
-              newComponents[componentIndex] = createIsWrapper([matchedComponent, ...extendWithSelectors], matchedComponent);
+            const component = newComponents[componentIndex];
+            if (!component || isNode(component, 'Combinator')) {
+              continue;
+            }
+
+            // Match is the entire complex component
+            if (matchLoc.path.length === 1) {
+              newComponents[componentIndex] = createValidatedIsWrapperWithErrors(
+                [component as any, ...extendWithSelectors],
+                component as any,
+                target
+              ) as any;
+              continue;
+            }
+
+            // Match is inside a compound component: [componentIndex, compoundChildIndex]
+            if (matchLoc.path.length === 2 && typeof matchLoc.path[1] === 'number' && isNode(component, 'CompoundSelector')) {
+              const childIndex = matchLoc.path[1];
+              const compoundComponents = [...component.value];
+              const matchedChild = compoundComponents[childIndex];
+              if (matchedChild) {
+                compoundComponents[childIndex] = createValidatedIsWrapperWithErrors(
+                  [matchedChild, ...extendWithSelectors],
+                  matchedChild,
+                  component,
+                  { target, find, extendWith }
+                ) as any;
+                newComponents[componentIndex] = createValidatedCompoundSelectorWithErrors(compoundComponents, component, { target, find, extendWith }) as any;
+              }
+              continue;
             }
           }
+
           return ComplexSelector.create(newComponents).inherit(target);
         }
       }
@@ -976,6 +1066,33 @@ function extendSelectorList(
       if (extended === selector) {
         originalSelectors.push(selector);
       } else if (isNode(extended, 'SelectorList')) {
+        // In partial mode, prefer wrapping a fully-matching selector in :is() rather than
+        // expanding the surrounding SelectorList with a new alternative.
+        //
+        // Example:
+        //   target list: `.replace, .c`
+        //   extend: `.rep_ace:extend(.replace all)`
+        // Desired:
+        //   `:is(.replace, .rep_ace), .c`
+        if (
+          partial
+          && extended.value.length === 2
+          && extended.value[0]!.valueOf() === selector.valueOf()
+          && extended.value[1]!.valueOf() === extendWith.valueOf()
+        ) {
+          const extendWithSelectors = extractSelectorsFromIs(extendWith);
+          const isWrapper = createValidatedIsWrapperWithErrors(
+            [selector, ...extendWithSelectors],
+            selector,
+            target,
+            { target: selector, find, extendWith }
+          );
+          // Keep this wrapper as a first-class selector list item (do not auto-flatten).
+          isWrapper.generated = false;
+          originalSelectors.push(isWrapper);
+          continue;
+        }
+
         // First item is the original (possibly modified), rest are new
         // CRITICAL: Clone selectors to avoid object reference issues
         // Defensive check: ensure SelectorList has at least one item
@@ -1001,6 +1118,13 @@ function extendSelectorList(
   // Append new selectors at the end, preserving order extends were applied
   // Flatten any nested :is() that were generated during extend
   const allSelectors = [...originalSelectors, ...newSelectors];
+  if (partial) {
+    // In partial mode we intentionally keep :is() wrappers as items (Less `all` behavior),
+    // rather than extracting them into comma-separated alternatives.
+    const processed = createProcessedSelector(allSelectors, true);
+    const processedArray = isArray(processed) ? processed : [processed];
+    return SelectorList.create(processedArray).inherit(target);
+  }
   return createExtendedSelectorList(allSelectors, target);
 }
 
@@ -1186,7 +1310,7 @@ function handleFullExtend(
   target: Selector,
   find: Selector,
   extendWith: Selector,
-  matchResult: any
+  _matchResult: any
 ): Selector {
   // For full matches, we add the extension as a new selector in a list
 
@@ -1462,6 +1586,16 @@ function checkAmpersandCrossingDuringExtension(selector: Selector, target: Selec
     if (!ampersand.value.selector || isNode(ampersand.value.selector, 'Nil')) {
       continue;
     }
+    // If the selector is something like `&:before` and the target matches entirely within the ampersand's
+    // resolved selector, we should NOT treat this as a boundary crossing for extend purposes.
+    // The parent selector/ruleset should carry the extension; this selector should remain `&:before`.
+    if (
+      isNode(selector, 'CompoundSelector')
+      && selector.value.length > 1
+      && ampersand.value.selector.valueOf() === target.valueOf()
+    ) {
+      continue;
+    }
 
     // Create resolved version by replacing ampersand with its resolved selector
     const resolvedSelector = replaceAmpersandWithItsValue(selector, ampersand);
@@ -1549,9 +1683,18 @@ function replaceAmpersandWithEmpty(selector: Selector, ampersand: Ampersand): Se
       && node.value.selector === ampersand.value.selector)) {
       // We need to find the parent container and remove the ampersand
       const parent = findParentOfNode(selectorCopy, node);
-      if (parent && isNode(parent, 'CompoundSelector')) {
-        // Remove from compound selector
-        parent.value = parent.value.filter((n: any) => n !== node);
+      if (parent && (isNode(parent, 'CompoundSelector') || isNode(parent, 'ComplexSelector'))) {
+        // Remove from compound/complex selector
+        const idx = parent.value.indexOf(node as any);
+        if (idx >= 0) {
+          parent.value.splice(idx, 1);
+          // If we removed a leading ampersand in a complex selector, also remove a following combinator
+          // (implicit nesting uses `&` + generated whitespace combinator).
+          const next = parent.value[idx];
+          if (isNode(next, 'Combinator') && next.value === ' ') {
+            parent.value.splice(idx, 1);
+          }
+        }
       }
       break;
     }
@@ -1574,7 +1717,7 @@ function handleAmpersandBoundaryCrossing(
   target: Selector,
   extendWith: Selector,
   ampersandNode: Ampersand,
-  matchResult: any
+  _matchResult: any
 ): Selector {
   if (!ampersandNode?.value.selector || isNode(ampersandNode.value.selector, 'Nil')) {
     throw new Error('Ampersand boundary crossing detected but ampersand has no resolved selector');

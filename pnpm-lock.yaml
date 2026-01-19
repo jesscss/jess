@@ -109,6 +109,9 @@ importers:
       vite:
         specifier: ^6.3.5
         version: 6.4.1(@types/node@18.19.130)
+      vite-plugin-circular-dependency:
+        specifier: ~0.5.0
+        version: 0.5.0(rollup@3.29.5)
       vitest:
         specifier: ^3.2.3
         version: 3.2.4(@types/node@18.19.130)
@@ -291,14 +294,17 @@ importers:
   packages/jess:
     dependencies:
       '@jesscss/core':
-        specifier: workspace:2.0.0-alpha.1
+        specifier: workspace:*
         version: link:../core
       '@jesscss/patch-css':
-        specifier: workspace:2.0.0-alpha.1
+        specifier: workspace:*
         version: link:../patch-css
       '@jesscss/plugin-less':
-        specifier: workspace:2.0.0-alpha.1
+        specifier: workspace:*
         version: link:../jess-plugin-less
+      '@jesscss/plugin-node-modules':
+        specifier: workspace:*
+        version: link:../jess-plugin-node-modules
       chalk:
         specifier: ^5.2.0
         version: 5.6.2
@@ -363,6 +369,9 @@ importers:
       '@jesscss/less-parser':
         specifier: workspace:*
         version: link:../less-parser
+      '@jesscss/plugin-node-modules':
+        specifier: workspace:*
+        version: link:../jess-plugin-node-modules
     devDependencies:
       less-plugin-autoprefix:
         specifier: ^2.0.0
@@ -373,6 +382,19 @@ importers:
       less-plugin-dls:
         specifier: ^1.5.0
         version: 1.5.0
+
+  packages/jess-plugin-node-modules:
+    dependencies:
+      '@jesscss/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      typescript:
+        specifier: ^5.0.0
+        version: 5.8.3
 
   packages/jess-plugin-scss:
     dependencies:
@@ -4827,6 +4849,12 @@ packages:
     resolution: {integrity: sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg==}
     dependencies:
       undici-types: 5.26.5
+
+  /@types/node@20.19.30:
+    resolution: {integrity: sha512-WJtwWJu7UdlvzEAUm484QNg5eAoq5QR08KDNx7g45Usrs2NtOPiX8ugDqmKdXkyL03rBqU5dYNYVQetEpBHq2g==}
+    dependencies:
+      undici-types: 6.21.0
+    dev: true
 
   /@types/node@22.19.3:
     resolution: {integrity: sha512-1N9SBnWYOJTrNZCdh/yJE+t910Y128BoyY+zBLWhL3r0TYzlTmFdXrPwHL9DyFZmlEXNQQolTZh3KHV31QDhyA==}

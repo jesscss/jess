@@ -18,6 +18,11 @@
       "types": "./lib/transform/index.d.ts",
       "source": "./src/transform/index.ts"
     },
+    "./less-compat-structures": {
+      "import": "./lib/less-compat-structures.js",
+      "types": "./lib/less-compat-structures.d.ts",
+      "source": "./src/less-compat-structures.ts"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -27,14 +32,15 @@
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "npm run build",
     "build": "pnpm compile",
-    "compile": "tsc -b tsconfig.build.json",
+    "compile": "tsc -b tsconfig.build.json && node ../../scripts/rewrite-relative-imports.cjs ./lib",
     "test": "cross-env TEST=true vitest --run",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
     "@jesscss/core": "workspace:*",
-    "@jesscss/less-parser": "workspace:*"
+    "@jesscss/less-parser": "workspace:*",
+    "@jesscss/plugin-node-modules": "workspace:*"
   },
   "devDependencies": {
     "less-plugin-autoprefix": "^2.0.0",

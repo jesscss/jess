@@ -25,9 +25,10 @@
     "node": ">=16"
   },
   "dependencies": {
-    "@jesscss/core": "workspace:2.0.0-alpha.1",
-    "@jesscss/patch-css": "workspace:2.0.0-alpha.1",
-    "@jesscss/plugin-less": "workspace:2.0.0-alpha.1",
+    "@jesscss/core": "workspace:*",
+    "@jesscss/patch-css": "workspace:*",
+    "@jesscss/plugin-less": "workspace:*",
+    "@jesscss/plugin-node-modules": "workspace:*",
     "chalk": "^5.2.0",
     "linecraft": "0.2.5",
     "lodash-es": "^4.17.21",
@@ -39,7 +40,7 @@
     "prepublishOnly": "pnpm build && pnpm test:all",
     "benchmark": "node bin/cli.js benchmark/benchmark.jess",
     "build": "pnpm compile",
-    "compile": "tsc -b tsconfig.build.json",
+    "compile": "tsc -b tsconfig.build.json && node ../../scripts/rewrite-relative-imports.cjs ./lib",
     "dev": "tsc -b tsconfig.json -w",
     "test": "cross-env TEST=true vitest --watch=false",
     "test:all": "pnpm benchmark && pnpm test",
