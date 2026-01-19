@@ -66,11 +66,107 @@ import {
   type Selector,
   INTERPOLATION_PLACEHOLDER,
   type SimpleSelector,
-  isNode
+  isNode,
+  shouldOperateWithMathFrames
 } from '@jesscss/core';
 import { getInterpolatedOrString } from './utils.js';
 import type { ExtendTarget } from './lessActionsParser.js';
 import { all } from 'known-css-properties';
+
+function getParenFrames(ctx: RuleContext | undefined): boolean[] {
+  return (ctx?.parenFrames as boolean[] | undefined) ?? [];
+}
+
+function getCalcFrames(ctx: RuleContext | undefined): number {
+  return (ctx?.calcFrames as number | undefined) ?? 0;
+}
+
+function withParenFrame(ctx: RuleContext | undefined, frame: boolean): RuleContext {
+  const parenFrames = [...getParenFrames(ctx), frame];
+  return { ...(ctx ?? {}), parenFrames };
+}
+
+function withCalcFrame(ctx: RuleContext | undefined, delta: number): RuleContext {
+  const calcFrames = getCalcFrames(ctx) + delta;
+  return { ...(ctx ?? {}), calcFrames };
+}
+
+function shouldWrapCallAsExpression(node: Call): boolean {
+  const { name } = node.value;
+  if (typeof name === 'string') {
+    return false;
+  }
+  if (isNode(name, 'Reference') && name.options?.type === 'function') {
+    return false;
+  }
+  return true;
+}
+
+function isVariableReferenceChain(node: Reference): boolean {
+  // The outermost reference may be a property/index lookup on top of a variable reference.
+  let current: Reference | undefined = node;
+  while (current) {
+    if (current.options?.type === 'variable') {
+      return true;
+    }
+    const target = current.value?.target;
+    if (isNode(target, 'Reference')) {
+      current = target;
+      continue;
+    }
+    // If this is a lookup on a call result (e.g. @ns()[@key]), treat it as non-variable.
+    return false;
+  }
+  return false;
+}
+
+function wrapOuterExpressionIfNeeded(this: P, node: Node, ctx: RuleContext | undefined): Node {
+  if (!this.wrapOuterExpressions) {
+    return node;
+  }
+  if (!ctx?.wrapInExpression) {
+    return node;
+  }
+  // Expressions should never contain Expressions; avoid nesting.
+  if (node instanceof Expression) {
+    return node;
+  }
+
+  // Variable references as standalone values should be treated as expressions.
+  if (isNode(node, 'Reference') && isVariableReferenceChain(node)) {
+    // Reference expressions should be outer-wrapped, but not parenthesized.
+    // e.g. `$obj.~prop`, NOT `$(obj.~prop)`
+    return new Expression(node, undefined, node.location, this.context);
+  }
+
+  // Outermost chained mixin/variable calls should be treated as expressions.
+  if (isNode(node, 'Call') && shouldWrapCallAsExpression(node)) {
+    // Call expressions should be outer-wrapped, but not parenthesized.
+    // e.g. `$media()`, NOT `$(media())`
+    return new Expression(node, undefined, node.location, this.context);
+  }
+
+  // Math expressions: only wrap if this operation would actually be performed.
+  if (isNode(node, 'Operation')) {
+    const [left, op, right] = node.value;
+    const mathMode = this.mathMode ?? 'parens-division';
+    const shouldOperate = shouldOperateWithMathFrames(
+      {
+        mathMode,
+        parenFrames: getParenFrames(ctx),
+        calcFrames: getCalcFrames(ctx)
+      },
+      op,
+      left,
+      right
+    );
+    if (shouldOperate) {
+      return new Expression(node, { parens: true }, node.location, this.context);
+    }
+  }
+
+  return node;
+}
 
 const isEscapedString = function(this: P, T: TokenMap) {
   const next = this.LA(1);
@@ -473,7 +569,14 @@ export function mfValue(this: P, T: TokenMap) {
      * and it's up to the Less author to know
      * if it's valid.
      */
-    $.SUBRULE($.expressionSum, { ARGS: [ctx] });
+    (() => {
+      const exprCtx: RuleContext = { ...ctx, wrapInExpression: true };
+      const node = $.SUBRULE($.expressionSum, { ARGS: [exprCtx] });
+      if (!$.RECORDING_PHASE) {
+        return wrapOuterExpressionIfNeeded.call($, node, exprCtx);
+      }
+      return node;
+    })();
 }
 
 export function mfNonIdentifierValue(this: P, T: TokenMap, alt?: AltContext) {
@@ -1635,12 +1738,14 @@ export function varDeclarationOrCall(this: P, T: TokenMap) {
           : new Reference({ key: nameNode as any }, { type: 'variable', role: 'name' });
         // Pass markImportant in options if !important is present
         const callOptions = important ? { markImportant: true } : undefined;
-        const callNode = new Call({ name: new Expression(nameRef), args: args! }, callOptions, location, this.context);
+        const callNode = new Call({ name: nameRef, args: args! }, callOptions, location, this.context);
         // Clear important since it's now on the Call
         if (important) {
           important = undefined;
         }
-        return callNode;
+        // Variable calls are expressions at the outermost level (but not parenthesized).
+        // e.g. `$media()`, NOT `$(media())`
+        return new Expression(callNode, undefined, location, this.context);
       }
 
       // If the value is a Call node and we have !important, set markImportant on the Call
@@ -1677,8 +1782,10 @@ export function valueSequence(this: P, T: TokenMap) {
         GATE: () => $.looseMode,
         ALT: () => {
           $.MANY(() => {
-            let value = $.SUBRULE($.expressionSum, { ARGS: [ctx] });
+            const exprCtx: RuleContext = { ...ctx, wrapInExpression: true };
+            let value = $.SUBRULE($.expressionSum, { ARGS: [exprCtx] });
             if (!RECORDING_PHASE) {
+              value = wrapOuterExpressionIfNeeded.call($, value, exprCtx);
               nodes.push(value);
             }
           });
@@ -1689,8 +1796,10 @@ export function valueSequence(this: P, T: TokenMap) {
         /** @todo - create warning if there isn't a value */
         ALT: () => {
           $.AT_LEAST_ONE(() => {
-            let value = $.SUBRULE2($.expressionSum, { ARGS: [ctx] });
+            const exprCtx: RuleContext = { ...ctx, wrapInExpression: true };
+            let value = $.SUBRULE2($.expressionSum, { ARGS: [exprCtx] });
             if (!RECORDING_PHASE) {
+              value = wrapOuterExpressionIfNeeded.call($, value, exprCtx);
               nodes.push(value);
             }
           });
@@ -1920,7 +2029,16 @@ export function expressionValue(this: P, T: TokenMap) {
           });
 
           $.CONSUME(T.LParen);
-          let node = $.SUBRULE($.valueList, { ARGS: [{ ...ctx, inner: true }] });
+          let node = $.SUBRULE($.valueList, {
+            ARGS: [
+              {
+                ...ctx,
+                inner: true,
+                // Parentheses in Less enable "math in parens" semantics
+                parenFrames: [...getParenFrames(ctx), true]
+              }
+            ]
+          });
           $.CONSUME(T.RParen);
 
           if (!RECORDING_PHASE) {
@@ -1995,6 +2113,31 @@ export function knownFunctions(this: P, T: TokenMap) {
   ];
 
   return cssKnownFunctions.call(this, T, functions);
+}
+
+/**
+ * Override CSS calc() parsing so we can maintain parse-time `calcFrames`.
+ * This is the parse-time analogue of `Call.evalNode`'s calcFrames++/--.
+ */
+export function calcFunction(this: P, T: TokenMap) {
+  const $ = this;
+
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+
+    $.CONSUME(T.Calc);
+    const innerCtx = withCalcFrame(ctx, 1);
+    const args = $.SUBRULE($.mathSum, { ARGS: [innerCtx] });
+    $.CONSUME2(T.RParen);
+
+    if (!$.RECORDING_PHASE) {
+      const location = $.endRule();
+      return new Call({
+        name: 'calc',
+        args: new List([args]).inherit(args)
+      }, undefined, location, this.context);
+    }
+  };
 }
 
 export function ifFunction(this: P, T: TokenMap) {
@@ -2273,7 +2416,9 @@ export function functionCallArgs(this: P, T: TokenMap) {
     // Inside function arguments, allow inner tokens like ':'
     const prevInner = ctx.inner;
     ctx.inner = true;
-    let node = $.SUBRULE($.callArgument, { ARGS: [ctx] });
+    // Calls intentionally push a `false` paren frame (matches `Call.evalNode`)
+    const argCtx: RuleContext = { ...ctx, parenFrames: [...getParenFrames(ctx), false] };
+    let node = $.SUBRULE($.callArgument, { ARGS: [argCtx] });
 
     let commaNodes: Node[];
     let semiNodes: Node[];
@@ -2286,7 +2431,7 @@ export function functionCallArgs(this: P, T: TokenMap) {
     // First, consume any comma-separated arguments
     $.MANY(() => {
       $.CONSUME(T.Comma);
-      node = $.SUBRULE2($.callArgument, { ARGS: [ctx] });
+      node = $.SUBRULE2($.callArgument, { ARGS: [argCtx] });
       if (!RECORDING_PHASE) {
         commaNodes!.push($.wrap(node, true));
       }
@@ -2307,14 +2452,14 @@ export function functionCallArgs(this: P, T: TokenMap) {
         }
       }
 
-      node = $.SUBRULE3($.callArgument, { ARGS: [{ ...ctx, allowComma: true }] });
+      node = $.SUBRULE3($.callArgument, { ARGS: [{ ...argCtx, allowComma: true }] });
       if (!RECORDING_PHASE) {
         semiNodes.push($.wrap(node, true));
       }
 
       $.MANY2(() => {
         $.CONSUME2(T.Semi);
-        node = $.SUBRULE4($.callArgument, { ARGS: [{ ...ctx, allowComma: true }] });
+        node = $.SUBRULE4($.callArgument, { ARGS: [{ ...argCtx, allowComma: true }] });
         if (!RECORDING_PHASE) {
           semiNodes.push($.wrap(node, true));
         }
@@ -3073,7 +3218,9 @@ export function mixinArgs(this: P, T: TokenMap) {
 
     $.CONSUME(T.LParen);
     // Clear ctx.node when parsing arguments - arguments should start fresh, not inherit the parent node
-    $.OPTION(() => args = $.SUBRULE($.mixinArgList, { ARGS: [{ ...ctx, node: undefined }] }));
+    // Calls intentionally push a `false` paren frame (matches `Call.evalNode`)
+    const argCtx: RuleContext = { ...ctx, node: undefined, parenFrames: [...getParenFrames(ctx), false] };
+    $.OPTION(() => args = $.SUBRULE($.mixinArgList, { ARGS: [argCtx] }));
     $.CONSUME(T.RParen);
 
     // Check for whitespace warning AFTER consuming closing paren

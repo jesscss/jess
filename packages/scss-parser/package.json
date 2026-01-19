@@ -35,7 +35,9 @@
     "@jesscss/css-parser": "workspace:*",
     "chevrotain": "^11.0.3"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "sass-spec": "github:sass/sass-spec"
+  },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",
   "bugs": {

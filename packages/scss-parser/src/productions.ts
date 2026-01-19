@@ -1,986 +1,921 @@
-import type { LessParser, TokenMap, RuleContext } from './scssParser.js';
-import { tokenMatcher } from 'chevrotain';
+import { productions as cssProductions } from '@jesscss/css-parser';
+import type { AltContext, RuleContext } from '@jesscss/css-parser';
+import type { IToken } from 'chevrotain';
+import type { ScssActionsParser, TokenMap as ScssTokenMap } from './scssActionsParser.js';
+import {
+  Any,
+  Call,
+  Collection,
+  Declaration,
+  Each,
+  Expression,
+  For,
+  If,
+  type IfBranch,
+  JsImport,
+  List,
+  Mixin,
+  Node as JessNode,
+  Quoted,
+  Reference,
+  Rest,
+  Rules,
+  Sequence,
+  StyleImport,
+  VarDeclaration,
+  While,
+  type Rules as RulesType,
+  type LocationInfo,
+  type Node,
+  isNode
+} from '@jesscss/core';
 
-/** Extensions of the CSS language */
-export function extendRoot(this: LessParser, T: TokenMap) {
+/**
+ * SCSS-specific production overrides.
+ *
+ * This milestone focuses on:
+ * - Sass map literals: `(\"k\": v, ...)` → `Collection`
+ * - `map-get()` and `map.get()` → `Reference` lookup chains
+ */
+
+function unwrapSingleSequence(n: Node): Node {
+  if (isNode(n, 'Sequence') && (n as Sequence).value.length === 1) {
+    return (n as Sequence).value[0]!;
+  }
+  return n;
+}
+
+function toDeclKey(node: Node): string {
+  // Quoted.valueOf() returns an unquoted string
+  const key = node.valueOf();
+  return String(key);
+}
+
+function isValidIdentifierKey(key: string): boolean {
+  return /^[a-zA-Z_-][a-zA-Z0-9_-]*$/.test(key);
+}
+
+function desugarMapLookup(
+  parser: ScssActionsParser,
+  call: Call
+): Node {
+  const name = call.value.name;
+  if (typeof name !== 'string') {
+    return call;
+  }
+  if (name !== 'map-get' && name !== 'map.get') {
+    return call;
+  }
+
+  const argsList = call.value.args;
+  const args = isNode(argsList, 'List') ? (argsList as List).value : [];
+  if (args.length < 2) {
+    return call;
+  }
+
+  const mapExpr = unwrapSingleSequence(args[0] as Node);
+  const keyArgs = args.slice(1).map(a => unwrapSingleSequence(a as Node));
+
+  // Reference.target only supports Reference or Call today; keep conservative.
+  const initialTarget: Reference | Call | undefined =
+    isNode(mapExpr, 'Reference') ? (mapExpr as Reference)
+      : isNode(mapExpr, 'Call') ? (mapExpr as Call)
+        : undefined;
+
+  if (!initialTarget) {
+    return call;
+  }
+
+  const callLoc: LocationInfo | undefined = Array.isArray(call.location) && call.location.length === 6
+    ? (call.location as LocationInfo)
+    : undefined;
+
+  let currentTarget: Reference | Call = initialTarget;
+  for (const keyNode of keyArgs) {
+    // Prefer turning quoted keys into plain identifier keys where possible.
+    const keyStr = toDeclKey(keyNode);
+    const useDeclaration = isValidIdentifierKey(keyStr);
+    const ref = new Reference(
+      { target: currentTarget, key: useDeclaration ? keyStr : keyNode },
+      { type: useDeclaration ? 'declaration' : 'index' },
+      callLoc,
+      parser.context
+    );
+    currentTarget = ref;
+  }
+
+  return currentTarget;
+}
+
+function looksLikeMapLiteral(la: (k: number) => IToken, T: ScssTokenMap): boolean {
+  // Heuristic: scan until matching RParen (no nesting awareness yet) and look for a Colon.
+  // This is conservative: it only claims "map" if there is an obvious "key: value".
+  let depth = 0;
+  for (let i = 1; i < 50; i++) {
+    const tok = la(i);
+    if (tok.tokenType === T.LParen) depth++;
+    if (tok.tokenType === T.RParen) {
+      if (depth === 0) return false;
+      depth--;
+      if (depth === 0) return false;
+    }
+    if (tok.tokenType === T.Colon && depth === 1) {
+      return true;
+    }
+    if (tok.tokenType.name === 'EOF') {
+      return false;
+    }
+  }
+  return false;
+}
+
+export function value(this: ScssActionsParser, T: ScssTokenMap, valueAlt?: AltContext) {
   const $ = this;
 
-  const isEscapedString = () => {
-    const next = $.LA(1);
-    return tokenMatcher(next, T.QuoteStart) && next.image.startsWith('~');
+  valueAlt ??= (ctx: RuleContext = {}) => [
+    {
+      GATE: () => $.LA(1).tokenType === T.LParen && looksLikeMapLiteral(i => $.LA(i), T),
+      ALT: () => $.SUBRULE($.scssMapLiteral, { ARGS: [ctx] })
+    },
+    { ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] }) },
+    { ALT: () => $.CONSUME(T.DollarVariable) },
+    { ALT: () => $.CONSUME(T.Ident) },
+    { ALT: () => $.CONSUME(T.Dimension) },
+    { ALT: () => $.CONSUME(T.Number) },
+    { ALT: () => $.CONSUME(T.Color) },
+    { ALT: () => $.CONSUME(T.UnicodeRange) },
+    { ALT: () => $.SUBRULE($.string, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.squareValue, { ARGS: [ctx] }) },
+    {
+      GATE: () => $.legacyMode,
+      ALT: () => $.CONSUME(T.LegacyMSFilter)
+    }
+  ];
+
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+    let node = $.OR(valueAlt!(ctx)) as unknown as Node | IToken;
+    let additionalValue: Node | undefined;
+    $.OPTION(() => {
+      $.CONSUME(T.Slash);
+      additionalValue = $.SUBRULE2($.value, { ARGS: [ctx] });
+    });
+    if (!$.RECORDING_PHASE) {
+      const location = $.endRule();
+      // Match CSS parser behavior: convert raw tokens into Nodes.
+      if (!(node instanceof JessNode)) {
+        node = $.processValueToken(node as IToken, ctx);
+      }
+      if (additionalValue) {
+        return $.wrap(new List([$.wrap(node, true), additionalValue], { sep: '/' }, location, $.context));
+      }
+      return $.wrap(node);
+    }
   };
-
-  $.OVERRIDE_RULE('main', () => {
-    let needsSemi = false;
-    $.MANY({
-      GATE: () => !needsSemi
-        || (needsSemi && (
-          $.LA(1).tokenType === T.Semi
-          || $.LA(0).tokenType === T.Semi
-        )),
-      DEF: () => {
-        $.OR([
-          {
-            ALT: () => {
-              $.OR2([
-                { ALT: () => $.SUBRULE($.mixinDefinition) },
-                {
-                  ALT: () => {
-                    $.SUBRULE($.function);
-                    $.CONSUME(T.Semi);
-                  }
-                },
-                { ALT: () => $.SUBRULE($.qualifiedRule) },
-                /** At-rules that don't have curly blocks must end in semi-colons according to CSS */
-                { ALT: () => $.SUBRULE($.atRule) },
-
-                /**
-                 * Historically, Less allows `@charset` anywhere,
-                 * to avoid outputting it in the wrong place.
-                 * Ideally, this would result in an error if, say,
-                 * the `@charset` was defined at the bottom of the file,
-                 * but that wasn't the solution made.
-                 * @see https://github.com/less/less.js/issues/2126
-                 */
-                {
-                  GATE: () => $.looseMode,
-                  ALT: () => $.CONSUME(T.Charset)
-                },
-                { ALT: () => $.CONSUME2(T.Semi) }
-              ]);
-              needsSemi = false;
-            }
-          },
-          {
-            ALT: () => {
-              $.SUBRULE($.mixinCall);
-              needsSemi = true;
-            }
-          }
-        ]);
-      }
-    });
-  });
-
-  $.OVERRIDE_RULE('declarationList', () => {
-    let needsSemi = false;
-    $.MANY({
-      GATE: () => !needsSemi
-        || (needsSemi && (
-          $.LA(1).tokenType === T.Semi
-          || $.LA(0).tokenType === T.Semi
-        )),
-      DEF: () => {
-        $.OR([
-          {
-            ALT: () => {
-              $.OR2([
-                { ALT: () => $.SUBRULE($.declaration) },
-                { ALT: () => $.SUBRULE($.mixinCall) },
-                { ALT: () => $.SUBRULE($.function) }
-              ]);
-              needsSemi = true;
-            }
-          },
-          {
-            ALT: () => {
-              $.OR3([
-                { ALT: () => $.SUBRULE($.mixinDefinition) },
-                { ALT: () => $.SUBRULE($.innerAtRule) },
-                { ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [{ inner: true }] }) },
-                { ALT: () => $.CONSUME2(T.Semi) }
-              ]);
-              needsSemi = false;
-            }
-          }
-        ]);
-      }
-    });
-  });
-
-  $.OVERRIDE_RULE('declaration', () => {
-    $.OR([
-      {
-        ALT: () => {
-          $.OR2([
-            {
-              ALT: () => $.CONSUME(T.Ident)
-            },
-            {
-              GATE: () => $.legacyMode,
-              ALT: () => $.CONSUME(T.LegacyPropIdent)
-            }
-          ]);
-          $.CONSUME(T.Assign);
-          $.SUBRULE($.valueList);
-          $.OPTION(() => {
-            $.CONSUME(T.Important);
-          });
-        }
-      },
-      {
-        ALT: () => {
-          $.OR3([
-            { ALT: () => $.CONSUME(T.InterpolatedCustomProperty) },
-            { ALT: () => $.CONSUME(T.CustomProperty) }
-          ]);
-          $.CONSUME2(T.Assign);
-          $.MANY(() => $.SUBRULE($.customValue));
-        }
-      }
-    ]);
-  });
-
-  // $.OVERRIDE_RULE('mediaQuery', () => {
-  //   $.OR([
-  //     {
-  //       /** Allow escaped strings */
-  //       GATE: isEscapedString,
-  //       ALT: () => $.SUBRULE($.string)
-  //     },
-  //     { ALT: () => $.CONSUME(T.AtKeyword) },
-  //     { ALT: () => $.SUBRULE($.mediaCondition) },
-  //     {
-  //       ALT: () => {
-  //         $.OPTION(() => {
-  //           $.OR2([
-  //             { ALT: () => $.CONSUME(T.Not) },
-  //             { ALT: () => $.CONSUME(T.Only) }
-  //           ])
-  //         })
-  //         $.SUBRULE($.mediaType)
-  //         $.OPTION2(() => {
-  //           $.CONSUME(T.And)
-  //           $.SUBRULE($.mediaConditionWithoutOr)
-  //         })
-  //       }
-  //     }
-  //   ])
-  // })
-
-  $.OVERRIDE_RULE('mediaInParens', () => {
-    $.OR([
-      /**
-       * It's up to the Less author to validate that this will produce
-       * valid media queries.
-       */
-      {
-        /** Allow escaped strings */
-        GATE: isEscapedString,
-        ALT: () => $.SUBRULE($.string)
-      },
-      /**
-       * After Less evaluation, should throw an error
-       * if the value of `@myvar` is a ruleset
-       */
-      { ALT: () => $.SUBRULE($.valueReference) },
-      {
-        ALT: () => {
-          $.CONSUME(T.LParen);
-          $.OR2([
-            { ALT: () => $.SUBRULE($.mediaCondition) },
-            { ALT: () => $.SUBRULE($.mediaFeature) }
-          ]);
-          $.CONSUME(T.RParen);
-        }
-      },
-      { ALT: () => $.SUBRULE($.generalEnclosed) }
-    ]);
-  });
-
-  $.OVERRIDE_RULE('mfValue', () => {
-    /**
-     * Like the original Less Parser, we're
-     * going to allow any value expression,
-     * and it's up to the Less author to know
-     * if it's valid.
-     */
-    $.SUBRULE($.expression);
-  });
 }
 
-// const getRuleContext = (ctx: RuleContext): RuleContext => ({
-//   mixinCandidate: {
-//     call: false,
-//     definition: false
-//   },
-//   ...ctx
-// })
-
-export function extendSelectors(this: LessParser, T: TokenMap) {
+/**
+ * Parses a Sass map literal: `(\"k\": v, ...)` into a Jess `Collection`.
+ * (Only the map form is supported in this milestone; list literals come later.)
+ */
+export function scssMapLiteral(this: ScssActionsParser, T: ScssTokenMap) {
   const $ = this;
 
-  $.OVERRIDE_RULE('qualifiedRule', (ctx: RuleContext = {}) => {
-    ctx.qualifiedRule = true;
-    $.OR([
-      {
-        GATE: () => !ctx.inner,
-        ALT: () => $.SUBRULE($.selectorList, { ARGS: [ctx] })
-      },
-      {
-        GATE: () => !!ctx.inner,
-        ALT: () => {
-          ctx.firstSelector = true;
-          $.SUBRULE($.forgivingSelectorList, { ARGS: [ctx] });
-        }
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+    $.CONSUME(T.LParen);
+
+    const decls: Declaration[] = [];
+
+    $.OPTION({
+      GATE: () => $.LA(1).tokenType !== T.RParen,
+      DEF: () => {
+        $.AT_LEAST_ONE_SEP({
+          SEP: T.Comma,
+          DEF: () => {
+            const keyNode = $.SUBRULE($.value, { ARGS: [ctx] });
+            $.CONSUME(T.Colon);
+            const valueNode = $.SUBRULE($.valueSequence, { ARGS: [ctx] });
+
+            if (!$.RECORDING_PHASE) {
+              const keyStr = toDeclKey(keyNode);
+              const declName = new Any(keyStr, { role: 'property' });
+              const decl = new Declaration(
+                { name: declName, value: valueNode },
+                undefined,
+                $.getLocationFromNodes([keyNode, valueNode]),
+                $.context
+              );
+              decls.push(decl);
+            }
+          }
+        });
       }
-    ]);
-
-    $.OR2([
-      {
-        /** :extend at the end of a qualified rule */
-        GATE: () => !!ctx.hasExtend,
-        ALT: () => $.CONSUME(T.Semi)
-      },
-      {
-        ALT: () => {
-          $.OPTION(() => $.SUBRULE($.guard));
-          $.CONSUME(T.LCurly);
-          $.SUBRULE($.declarationList);
-          $.CONSUME(T.RCurly);
-        }
-      }
-    ]);
-  });
-
-  $.OVERRIDE_RULE('complexSelector', (ctx: RuleContext = {}) => {
-    $.SUBRULE($.compoundSelector, { ARGS: [ctx] });
-    $.MANY(() => {
-      $.SUBRULE($.combinator);
-      $.SUBRULE2($.compoundSelector, { ARGS: [{ ...ctx, firstSelector: false }] });
     });
-    $.OPTION(() => {
-      $.OR([
-        { ALT: () => $.SUBRULE($.guard) },
-        {
-          GATE: () => !!ctx.qualifiedRule,
-          ALT: () => $.SUBRULE($.extend, { ARGS: [ctx] })
-        }
-      ]);
-    });
-  });
 
-  $.RULE('extend', (ctx: RuleContext = {}) => {
-    ctx.hasExtend = true;
-    $.CONSUME(T.Extend);
-    $.SUBRULE($.selectorList);
-    $.OPTION(() => $.CONSUME(T.All));
     $.CONSUME(T.RParen);
-  });
 
-  $.OVERRIDE_RULE('simpleSelector', (ctx: RuleContext = {}) => {
-    $.OR([
-      {
-        /** In Less/Sass, the first selector can be an identifier */
-        // GATE: () => !ctx.firstSelector,
-        ALT: () => $.CONSUME(T.Ident)
-      },
-      {
-        /**
-         * Unlike CSS Nesting, Less allows outer qualified rules
-         * to have `&`, and it is just silently absorbed if there
-         * is no parent selector.
-         */
-        ALT: () => $.CONSUME(T.Ampersand)
-      },
-      { ALT: () => $.CONSUME(T.InterpolatedSelector) },
-      { ALT: () => $.SUBRULE($.classSelector) },
-      { ALT: () => $.SUBRULE($.idSelector) },
-      { ALT: () => $.CONSUME(T.Star) },
-      { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [ctx] }) },
-      { ALT: () => $.SUBRULE($.attributeSelector) }
-    ]);
-  });
+    if (!$.RECORDING_PHASE) {
+      const location = $.endRule();
+      const coll = new Collection(decls, undefined, location, $.context);
+      return $.wrap(coll);
+    }
+  };
 }
 
-export function atVariableDeclarations(this: LessParser, T: TokenMap) {
+export function functionCall(this: ScssActionsParser, T: ScssTokenMap, alt?: AltContext) {
   const $ = this;
 
-  /** Starts with a colon, followed by white space */
-  const isVariableLike = () => $.LA(1).tokenType === T.Colon && $.skippedTokens.has($.currIdx + 1);
+  alt ??= (ctx: RuleContext = {}) => [
+    {
+      GATE: () => {
+        const tokenType = $.LA(1).tokenType;
+        return tokenType === T.UrlStart
+          || tokenType === T.Var
+          || tokenType === T.Calc;
+      },
+      ALT: () => $.SUBRULE($.knownFunctions, { ARGS: [ctx] })
+    },
+    {
+      GATE: () => {
+        const tokenType = $.LA(1).tokenType;
+        return tokenType !== T.UrlStart
+          && tokenType !== T.Var
+          && tokenType !== T.Calc;
+      },
+      ALT: () => {
+        $.startRule();
+        const nameTok = $.CONSUME(T.FunctionStart);
+        let args: List | undefined;
+        $.OPTION(() => (args = $.SUBRULE($.functionCallArgs, { ARGS: [ctx] })));
+        $.CONSUME(T.RParen);
 
-  /** Doesn't start with a colon or DOES, but it is NOT followed by a space */
-  const isNotVariableLike = () => $.LA(1).tokenType !== T.Colon || !$.skippedTokens.has($.currIdx + 1);
+        if (!$.RECORDING_PHASE) {
+          const location = $.endRule();
+          const call = new Call(
+            { name: nameTok.image.slice(0, -1), args },
+            undefined,
+            location,
+            $.context
+          );
+          return desugarMapLookup($, call);
+        }
+      }
+    }
+  ];
 
-  $.RULE('anonymousMixinDefinition', () => {
-    $.OPTION(() => {
-      $.CONSUME(T.AnonMixinStart);
-      $.SUBRULE($.mixinArgList, { ARGS: [{ isDefinition: true }] });
-      $.CONSUME(T.RParen);
+  return (ctx: RuleContext = {}) => $.OR(alt!(ctx));
+}
+
+function isScriptUsePath(path: string): boolean {
+  return path.endsWith('.js') || path.endsWith('.ts') || path.endsWith('.json');
+}
+
+function quotedLike(original: Quoted, nextValue: string, context: ScssActionsParser['context']): Quoted {
+  const quote = original.options?.quote ?? '"';
+  const escaped = original.options?.escaped;
+  const loc: LocationInfo | undefined = Array.isArray(original.location) && original.location.length === 6
+    ? (original.location as LocationInfo)
+    : undefined;
+  return new Quoted(new Any(nextValue, { role: 'any' }), { quote, escaped }, loc, context);
+}
+
+function defaultNamespaceFromPath(path: string): string | undefined {
+  // 'sass:map' -> 'map'
+  if (path.startsWith('sass:')) {
+    const name = path.slice('sass:'.length);
+    return name.split('/').filter(Boolean).pop();
+  }
+  const base = path.split('/').filter(Boolean).pop();
+  if (!base) return undefined;
+  const noExt = base.replace(/\.(scss|sass|css|jess|js|ts|json)$/i, '');
+  return noExt || undefined;
+}
+
+/**
+ * SCSS: `@use` → `StyleImport(type='compose')` for stylesheets,
+ * and `JsImport` for script paths. `sass:*` built-ins are rewritten
+ * to `#sass/*` and imported as `JsImport`.
+ */
+export function scssUseAtRule(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    $.CONSUME(T.AtKeyword); // '@use'
+
+    const pathNode = $.SUBRULE($.string, { ARGS: [ctx] }) as unknown as Quoted;
+    const rawPath = pathNode.valueOf();
+
+    let namespace: string | undefined;
+
+    // optional "as <ident|*>"
+    $.OPTION({
+      GATE: () => $.LA(1).image === 'as',
+      DEF: () => {
+        $.CONSUME(T.Ident);
+        $.OR([
+          { ALT: () => (namespace = $.CONSUME2(T.Ident).image) },
+          { ALT: () => { $.CONSUME(T.Star); namespace = '*'; } }
+        ]);
+      }
     });
-    $.CONSUME(T.LCurly);
-    $.SUBRULE($.declarationList);
-    $.CONSUME(T.RCurly);
-  });
 
-  $.OVERRIDE_RULE('importAtRule', () => {
-    $.CONSUME(T.AtImport);
-
-    $.OPTION(() => {
-      $.CONSUME(T.LParen);
-      $.AT_LEAST_ONE_SEP({
-        SEP: T.Comma,
-        DEF: () => $.CONSUME(T.PlainIdent)
-      });
-      $.CONSUME(T.RParen);
-    });
-
-    $.OR([
-      { ALT: () => $.SUBRULE($.urlFunction) },
-      { ALT: () => $.SUBRULE($.string) }
-    ]);
-
-    $.OPTION2(() => {
-      $.CONSUME(T.Supports);
-      $.OR2([
-        { ALT: () => $.SUBRULE($.supportsCondition) },
-        { ALT: () => $.SUBRULE($.declaration) }
-      ]);
-    });
-
-    $.OPTION3(() => {
-      $.SUBRULE($.mediaQuery);
+    // optional "with (...)"
+    let withRules: RulesType | undefined;
+    $.OPTION2({
+      GATE: () => $.LA(1).image === 'with',
+      DEF: () => {
+        $.CONSUME3(T.Ident);
+        withRules = $.SUBRULE($.scssWithConfig, { ARGS: [ctx] }) as unknown as RulesType;
+      }
     });
 
     $.CONSUME(T.Semi);
-  });
 
-  /** Less variables */
-  $.OVERRIDE_RULE('unknownAtRule', () => {
-    $.CONSUME(T.AtKeyword);
-    $.OR([
-      {
-        /**
-         * This is a variable declaration
-         * Disallows `@atrule :foo;` because it resembles a pseudo-selector
-         */
-        GATE: isVariableLike,
-        ALT: () => {
-          $.CONSUME(T.Colon);
-          $.OR2([
-            {
-              ALT: () => {
-                $.SUBRULE($.anonymousMixinDefinition);
-                $.OPTION2(() => $.CONSUME(T.Semi));
-              }
-            },
-            {
-              ALT: () => {
-                $.SUBRULE($.valueList);
-                $.CONSUME2(T.Semi);
-              }
-            }
-          ]);
-        }
-      },
-      /** This is a variable call */
-      {
-        GATE: () => $.noSep() && $.LA(1).tokenType === T.LParen,
-        /**
-         * This is a change from Less 1.x-4.x
-         * e.g.
-         * ```
-         * @dr: #(@var1, @var2) {
-         *   // ...
-         * }
-         * @dr(arg1, arg2);
-         */
-        ALT: () => $.SUBRULE($.mixinArgs)
-      },
-      /** Just a regular unknown at-rule */
-      {
-        GATE: isNotVariableLike,
-        ALT: () => {
-          $.MANY(() => $.SUBRULE2($.anyOuterValue));
-          $.OR3([
-            { ALT: () => $.CONSUME3(T.Semi) },
-            {
-              ALT: () => {
-                $.CONSUME2(T.LCurly);
-                $.MANY2(() => $.SUBRULE($.anyInnerValue));
-                $.CONSUME2(T.RCurly);
-              }
-            }
-          ]);
-        }
+    if (!RECORDING_PHASE) {
+      const loc = $.endRule();
+
+      // Built-in sass modules: @use "sass:map" -> @-use "#sass/map"
+      if (rawPath.startsWith('sass:')) {
+        const mod = rawPath.slice('sass:'.length);
+        const rewritten = `#sass/${mod}`;
+        const q = quotedLike(pathNode, rewritten, $.context);
+        return new JsImport({ path: q }, { namespace: namespace ?? defaultNamespaceFromPath(rawPath) }, loc, $.context);
       }
-    ]);
-  });
+
+      if (isScriptUsePath(rawPath)) {
+        return new JsImport({ path: pathNode }, { namespace: namespace ?? defaultNamespaceFromPath(rawPath) }, loc, $.context);
+      }
+
+      const imp = new StyleImport(
+        {
+          path: pathNode,
+          with: withRules ? { node: withRules, type: 'set' } : undefined
+        },
+        {
+          type: 'compose',
+          namespace,
+          importOptions: {}
+        },
+        loc,
+        $.context
+      );
+      return imp;
+    }
+  };
 }
 
-export function expressionsAndValues(this: LessParser, T: TokenMap) {
+/**
+ * SCSS: `@forward` → `StyleImport(type='compose')` with `(forward)` semantics:
+ * - reference: true
+ * - export: true
+ * - mutable: false (protected)
+ *
+ * Full show/hide/as parsing is deferred; we currently ignore extra prelude tokens.
+ */
+export function scssForwardAtRule(this: ScssActionsParser, T: ScssTokenMap) {
   const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    $.CONSUME(T.AtKeyword); // '@forward'
 
-  $.OVERRIDE_RULE('valueSequence', (ctx: RuleContext = {}) => {
-    $.OR([
-      {
-        GATE: () => $.looseMode,
-        ALT: () => { $.MANY(() => $.SUBRULE($.expression, { ARGS: [ctx] })); }
-      },
-      {
-        GATE: () => !$.looseMode,
-        /** @todo - create warning in the CST Visitor */
-        ALT: () => { $.AT_LEAST_ONE(() => $.SUBRULE2($.expression, { ARGS: [ctx] })); }
-      }
-    ]);
-  });
+    const pathNode = $.SUBRULE($.string, { ARGS: [ctx] }) as unknown as Quoted;
 
-  /**
-   * In CSS, would be a single value.
-   * In Less, these are math expressions which
-   * represent a single value. During AST construction,
-   * these will be grouped by order of operations.
-   */
-  $.RULE('expression', (ctx: RuleContext = {}) => {
-    $.SUBRULE($.expressionValue, { LABEL: 'L', ARGS: [ctx] });
+    // Ignore any extra selectors (show/hide/as) for now.
     $.MANY({
-      /**
-       * What this GATE does. We need to dis-ambiguate
-       * 1 -1 (a value sequence) from 1-1 (a Less expression),
-       * so Less is white-space sensitive here.
-       */
-      GATE: () => {
-        const next = $.LA(1);
-        const nextType = next.tokenType;
-        return (
-          nextType === T.Plus
-          || nextType === T.Minus
-          || nextType === T.Divide
-          || nextType === T.Star
-        ) || ($.noSep() && tokenMatcher(next, T.Signed));
-      },
+      GATE: () => $.LA(1).tokenType !== T.Semi,
       DEF: () => {
-        $.OR([
-          {
-            ALT: () => {
-              $.OR2([
-                { ALT: () => $.CONSUME(T.Plus) },
-                { ALT: () => $.CONSUME(T.Minus) },
-                { ALT: () => $.CONSUME(T.Star) },
-                { ALT: () => $.CONSUME(T.Divide) }
-              ]);
-              $.SUBRULE2($.expressionValue, { LABEL: 'R', ARGS: [ctx] });
-            }
-          },
-          /** This will be interpreted by Less as a complete expression */
-          { ALT: () => $.CONSUME(T.Signed) }
-        ]);
+        $.SUBRULE($.anyOuterValue, { ARGS: [ctx] });
       }
     });
-  });
 
-  $.RULE('expressionValue', (ctx: RuleContext = {}) => {
-    /** Can create a negative expression */
-    $.OPTION(() => $.CONSUME(T.Minus));
-    $.OR([
-      {
-        ALT: () => {
-          $.CONSUME(T.LParen);
-          $.SUBRULE($.expression, { ARGS: [ctx] });
-          $.CONSUME(T.RParen);
-        }
-      },
-      { ALT: () => $.SUBRULE($.value, { ARGS: [ctx] }) }
-    ]);
-  });
+    $.CONSUME(T.Semi);
 
-  /**
-   * Add interpolation
-   * @todo - Should OR arrays be exported from CSS parser so they
-   *         they can be easily extended?
-   */
-  $.OVERRIDE_RULE('nthValue', () => {
-    $.OR([
-      { ALT: () => $.CONSUME(T.InterpolatedIdent) },
-      { ALT: () => $.CONSUME(T.NthOdd) },
-      { ALT: () => $.CONSUME(T.NthEven) },
-      { ALT: () => $.CONSUME(T.Integer) },
-      {
-        ALT: () => {
-          $.OR2([
-            { ALT: () => $.CONSUME(T.NthDimension) },
-            { ALT: () => $.CONSUME(T.NthDimensionSigned) }
-          ]);
-          $.OPTION(() => {
-            $.OR3([
-              { ALT: () => $.CONSUME(T.SignedInt) },
-              {
-                ALT: () => {
-                  $.CONSUME(T.Minus);
-                  $.CONSUME(T.UnsignedInt);
-                }
-              }
-            ]);
-          });
-          $.OPTION2(() => {
-            $.CONSUME(T.Of);
-            $.SUBRULE($.complexSelector);
-          });
-        }
-      }
-    ]);
-  });
-
-  $.OVERRIDE_RULE('function', () => {
-    $.OR([
-      { ALT: () => $.SUBRULE($.knownFunctions) },
-      {
-        ALT: () => {
-          $.CONSUME(T.Ident);
-          $.OR2([{
-            GATE: $.noSep,
-            ALT: () => {
-              $.CONSUME(T.LParen);
-              $.SUBRULE($.functionValueList);
-              $.CONSUME(T.RParen);
-            }
-          }]);
-        }
-      }
-    ]);
-  });
-
-  $.OVERRIDE_RULE('knownFunctions', () => {
-    $.OR([
-      { ALT: () => $.SUBRULE($.urlFunction) },
-      { ALT: () => $.SUBRULE($.varFunction) },
-      { ALT: () => $.SUBRULE($.calcFunction) },
-      { ALT: () => $.SUBRULE($.ifFunction) },
-      { ALT: () => $.SUBRULE($.booleanFunction) }
-    ]);
-  });
-
-  $.RULE('ifFunction', () => {
-    $.CONSUME(T.IfFunction);
-    $.SUBRULE($.guardOr, { ARGS: [{ inValueList: true }] });
-    $.OR([
-      {
-        ALT: () => {
-          $.CONSUME(T.Semi);
-          $.SUBRULE($.valueList, { ARGS: [{ allowAnonymousMixins: true }] });
-          $.OPTION(() => {
-            $.CONSUME2(T.Semi);
-            $.SUBRULE2($.valueList, { ARGS: [{ allowAnonymousMixins: true }] });
-          });
-        }
-      },
-      {
-        ALT: () => {
-          $.CONSUME(T.Comma);
-          $.SUBRULE($.valueSequence, { ARGS: [{ allowAnonymousMixins: true }] });
-          $.OPTION2(() => {
-            $.CONSUME2(T.Comma);
-            $.SUBRULE2($.valueSequence, { ARGS: [{ allowAnonymousMixins: true }] });
-          });
-        }
-      }
-    ]);
-    $.CONSUME(T.RParen);
-  });
-
-  $.RULE('booleanFunction', () => {
-    $.CONSUME(T.BooleanFunction);
-    $.SUBRULE($.guardOr, { ARGS: [{ inValueList: true }] });
-    $.CONSUME(T.RParen);
-  });
-
-  /** At AST time, join comma-lists together if separated by semis */
-  $.RULE('functionValueList', (ctx: RuleContext = {}) => {
-    ctx.allowAnonymousMixins = true;
-    $.SUBRULE($.valueSequence, { ARGS: [ctx] });
-    $.MANY(() => {
-      $.OR([
-        { ALT: () => $.CONSUME(T.Comma) },
-        { ALT: () => $.CONSUME(T.Semi) }
-      ]);
-      $.SUBRULE2($.valueSequence, { ARGS: [ctx] });
-    });
-  });
-
-  $.RULE('valueReference', () => {
-    $.OR([
-      {
-        ALT: () => {
-          $.SUBRULE($.mixinReference);
-          $.OPTION(() => $.SUBRULE($.mixinArgs));
-          $.SUBRULE($.accessors);
-        }
-      },
-      {
-        ALT: () => {
-          $.CONSUME(T.AtKeyword);
-          $.OPTION2(() => $.SUBRULE2($.accessors));
-        }
-      }
-    ]);
-  });
-
-  $.OVERRIDE_RULE('value', (ctx: RuleContext = {}) => {
-    $.OR({
-      IGNORE_AMBIGUITIES: true,
-      DEF: [
-        /** Function should appear before Ident */
-        { ALT: () => $.SUBRULE($.function) },
-        { ALT: () => $.SUBRULE($.inlineMixinCall) },
-        /**
-         * Functions can pass anonymous mixin definitions
-         * as arguments. (Used with `each`)
-         */
+    if (!RECORDING_PHASE) {
+      const loc = $.endRule();
+      return new StyleImport(
+        { path: pathNode },
         {
-          GATE: () => !!ctx.allowAnonymousMixins,
-          ALT: () => $.SUBRULE($.anonymousMixinDefinition)
+          type: 'compose',
+          importOptions: { reference: true, export: true, mutable: false }
         },
-        {
-          ALT: () => {
-            $.CONSUME(T.AtKeyword);
-            $.OPTION(() => $.SUBRULE($.accessors));
-          }
-        },
-        { ALT: () => $.SUBRULE($.string) },
-        { ALT: () => $.CONSUME(T.Value) },
-        /** Explicitly not marked as an ident */
-        { ALT: () => $.CONSUME(T.When) },
-        {
-          ALT: () => {
-            $.CONSUME(T.LSquare);
-            $.CONSUME2(T.Ident);
-            $.CONSUME(T.RSquare);
-          }
-        },
-        {
-          /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
-          GATE: () => $.legacyMode,
-          ALT: () => $.CONSUME(T.LegacyMSFilter)
-        }
-      ]
-    });
-  });
-
-  $.OVERRIDE_RULE('mathValue', () => {
-    $.OR([
-      { ALT: () => $.CONSUME(T.AtKeyword) },
-      { ALT: () => $.CONSUME(T.Number) },
-      { ALT: () => $.CONSUME(T.Dimension) },
-      { ALT: () => $.SUBRULE($.function) },
-      {
-        /** Only allow escaped strings in calc */
-        GATE: () => $.LA(1).image.startsWith('~'),
-        ALT: () => $.SUBRULE($.string)
-      },
-      {
-        /** For some reason, e() goes here instead of $.function */
-        GATE: () => $.LA(2).tokenType !== T.LParen,
-        ALT: () => $.CONSUME(T.MathConstant)
-      },
-      {
-        ALT: () => {
-          $.CONSUME(T.LParen);
-          $.SUBRULE($.mathSum);
-          $.CONSUME(T.RParen);
-        }
-      }
-    ]);
-  });
-
-  /** @todo - add interpolation */
-  // $.OVERRIDE_RULE('string', () => {
-  //   $.OR([
-  //     {
-  //       ALT: () => {
-  //         $.CONSUME(T.SingleQuoteStart)
-  //         $.OPTION(() => $.CONSUME(T.SingleQuoteStringContents))
-  //         $.CONSUME(T.SingleQuoteEnd)
-  //       }
-  //     },
-  //     {
-  //       ALT: () => {
-  //         $.CONSUME(T.DoubleQuoteStart)
-  //         $.OPTION2(() => $.CONSUME(T.DoubleQuoteStringContents))
-  //         $.CONSUME(T.DoubleQuoteEnd)
-  //       }
-  //     }
-  //   ])
-  // })
+        loc,
+        $.context
+      );
+    }
+  };
 }
 
-export function guards(this: LessParser, T: TokenMap) {
+/**
+ * Parses Sass `with (...)` config into a Rules node of VarDeclarations.
+ */
+export function scssWithConfig(this: ScssActionsParser, T: ScssTokenMap) {
   const $ = this;
-
-  $.RULE('guard', (ctx: RuleContext = {}) => {
-    $.CONSUME(T.When);
-    $.OR([
-      {
-        GATE: () => !!ctx.inValueList,
-        ALT: () => $.SUBRULE($.comparison)
-      },
-      {
-        ALT: () => $.SUBRULE($.guardOr, { ARGS: [{ ...ctx, allowComma: true }] })
-      }
-    ]);
-  });
-
-  /**
-   * 'or' expression
-   * Allows an (outer) comma like historical media queries
-   */
-  $.RULE('guardOr', (ctx: RuleContext = {}) => {
-    $.SUBRULE($.guardAnd, { ARGS: [ctx] });
-    $.MANY({
-      GATE: () => !!ctx.allowComma || $.LA(1).tokenType !== T.Comma,
-      DEF: () => {
-        /**
-               * Nest expressions within expressions for correct
-               * order of operations.
-               */
-        $.OR2([
-          { ALT: () => $.CONSUME($.T.Comma) },
-          { ALT: () => $.CONSUME($.T.Or) }
-        ]);
-        $.SUBRULE2($.guardAnd, { ARGS: [ctx] });
-      }
-    });
-  });
-
-  /**
-   * 'and' and 'or' expressions
-   *
-   *  In Media queries level 4, you cannot have
-   *  `([expr]) or ([expr]) and ([expr])` because
-   *  of evaluation order ambiguity.
-   *  However, Less allows it.
-   */
-  $.RULE('guardAnd', (ctx: RuleContext = {}) => {
-    $.MANY_SEP({
-      SEP: T.And,
-      DEF: () => {
-        $.OPTION(() => $.CONSUME(T.Not));
-        $.SUBRULE($.guardInParens);
-      }
-    });
-  });
-
-  $.RULE('guardInParens', () => {
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
     $.CONSUME(T.LParen);
-    $.OR([
-      { ALT: () => $.SUBRULE($.guardOr) },
-      { ALT: () => $.SUBRULE($.comparison) }
-    ]);
-    $.CONSUME(T.RParen);
-  });
 
-  /** Currently, Less only allows a single comparison expression */
-  $.RULE('comparison', () => {
-    $.SUBRULE($.valueList, { LABEL: 'L' });
+    let decls: VarDeclaration[] | undefined;
+    if (!RECORDING_PHASE) decls = [];
+
     $.OPTION(() => {
-      $.OR([
-        { ALT: () => $.CONSUME(T.Eq) },
-        { ALT: () => $.CONSUME(T.Gt) },
-        { ALT: () => $.CONSUME(T.GtEq) },
-        { ALT: () => $.CONSUME(T.GtEqAlias) },
-        { ALT: () => $.CONSUME(T.Lt) },
-        { ALT: () => $.CONSUME(T.LtEq) },
-        { ALT: () => $.CONSUME(T.LtEqAlias) }
-      ]);
-      $.SUBRULE2($.valueList, { LABEL: 'R' });
-    });
-  });
-
-  $.RULE('comparison2', () => {
-    $.SUBRULE($.valueList, { LABEL: 'L' });
-    $.OPTION(() => {
-      $.OR([
-        { ALT: () => $.CONSUME(T.Eq) },
-        { ALT: () => $.CONSUME(T.Gt) },
-        { ALT: () => $.CONSUME(T.GtEq) },
-        { ALT: () => $.CONSUME(T.GtEqAlias) },
-        { ALT: () => $.CONSUME(T.Lt) },
-        { ALT: () => $.CONSUME(T.LtEq) },
-        { ALT: () => $.CONSUME(T.LtEqAlias) }
-      ]);
-      $.SUBRULE2($.valueList, { LABEL: 'R' });
-    });
-  });
-}
-
-export function atRuleBubbling(this: LessParser, T: TokenMap) {
-  const $ = this;
-
-  /**
-   * Less (perhaps unwisely) allows bubling of normally document-root
-   * at-rules, so we need to override CSS here.
-   */
-  $.OVERRIDE_RULE('innerAtRule', () => {
-    $.OR([
-      { ALT: () => $.SUBRULE($.mediaAtRule, { ARGS: [true] }) },
-      { ALT: () => $.SUBRULE($.supportsAtRule, { ARGS: [true] }) },
-      { ALT: () => $.SUBRULE($.importAtRule) },
-      { ALT: () => $.SUBRULE($.pageAtRule) },
-      { ALT: () => $.SUBRULE($.fontFaceAtRule) },
-      { ALT: () => $.SUBRULE($.nestedAtRule) },
-      { ALT: () => $.SUBRULE($.nonNestedAtRule) },
-      { ALT: () => $.SUBRULE($.unknownAtRule) }
-    ]);
-  });
-}
-
-export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
-  const $ = this;
-
-  /** e.g. .mixin, #mixin */
-  $.RULE('mixinName', () => {
-    $.OR([
-      { ALT: () => $.SUBRULE($.classSelector) },
-      { ALT: () => $.SUBRULE($.idSelector) }
-    ]);
-  });
-
-  $.RULE('mixinReference', () => {
-    $.SUBRULE($.mixinName);
-    $.MANY(() => {
-      $.OPTION(() => $.CONSUME(T.Gt));
-      $.SUBRULE2($.mixinName);
-    });
-  });
-
-  /** e.g. #ns > .mixin() */
-  $.RULE('mixinCall', () => {
-    $.SUBRULE($.mixinReference);
-
-    /** Either needs to end in parens or in a semi-colon (or both) */
-    $.OR([
-      {
-        ALT: () => {
-          $.SUBRULE($.mixinArgs);
-          $.OPTION2(() => $.CONSUME(T.Important));
-          $.OPTION3(() => $.CONSUME(T.Semi));
+      $.AT_LEAST_ONE_SEP({
+        SEP: T.Comma,
+        DEF: () => {
+          const dv = $.CONSUME(T.DollarVariable);
+          $.CONSUME(T.Assign);
+          const value = $.SUBRULE($.valueSequence, { ARGS: [ctx] });
+          if (!RECORDING_PHASE) {
+            const name = new Any(dv.image.slice(1), { role: 'property' });
+            decls!.push(new VarDeclaration({ name, value }, undefined, $.getLocationInfo(dv), $.context));
+          }
         }
-      },
-      { ALT: () => $.CONSUME2(T.Semi) }
-    ]);
-  });
+      });
+    });
 
-  /**
-   * Used within a value. These can be
-   * chained more recursively, unlike
-   * Less 1.x-4.x
-   *   e.g. .mixin1() > .mixin2[@val1].ns() > .sub-mixin[@val2]
-   */
-  $.RULE('inlineMixinCall', () => {
-    $.SUBRULE($.mixinReference);
-    $.OPTION(() => $.SUBRULE($.mixinArgs));
-    $.OPTION2(() => $.SUBRULE($.accessors));
-  });
+    $.CONSUME(T.RParen);
+    if (!RECORDING_PHASE) {
+      const loc = $.endRule();
+      return new Rules(decls ?? [], undefined, loc, $.context) as unknown as RulesType;
+    }
+  };
+}
 
-  $.RULE('mixinDefinition', () => {
-    $.SUBRULE($.mixinName);
-    $.SUBRULE($.mixinArgs, { ARGS: [{ isDefinition: true }] });
-    $.OPTION(() => $.SUBRULE($.guard));
+/**
+ * SCSS: `@content` → `$content()` (Expression(Call(Reference('content'))))
+ */
+export function scssContentAtRule(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    $.CONSUME(T.AtKeyword); // assumed '@content' (dispatched by unknownAtRule)
+    let args: List | undefined;
+    $.OPTION(() => {
+      $.CONSUME(T.LParen);
+      $.OPTION2(() => (args = $.SUBRULE($.functionCallArgs, { ARGS: [ctx] })));
+      $.CONSUME(T.RParen);
+    });
+    $.OPTION3(() => $.CONSUME(T.Semi));
+
+    if (!RECORDING_PHASE) {
+      const loc = $.endRule();
+      const ref = new Reference({ key: 'content' }, { type: 'variable' }, loc, $.context);
+      const call = new Call({ name: ref, args }, undefined, loc, $.context);
+      return new Expression(call, undefined, loc, $.context);
+    }
+  };
+}
+
+/**
+ * SCSS: `@include name(args...)` → mixin call (Call(Reference(type='mixin'))).
+ *
+ * Note: content blocks are parsed as a named argument `$content: <mixin>`
+ * (parse-only). The evaluation semantics for binding it to the call scope
+ * are implemented later.
+ */
+export function scssIncludeAtRule(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    $.CONSUME(T.AtKeyword); // assumed '@include' (dispatched by unknownAtRule)
+    const ident = $.CONSUME(T.Ident);
+
+    let args: List | undefined;
+    $.OPTION(() => {
+      $.CONSUME(T.LParen);
+      $.OPTION2(() => (args = $.SUBRULE($.functionCallArgs, { ARGS: [ctx] })));
+      $.CONSUME(T.RParen);
+    });
+
+    // Optional content block
+    let contentRules: RulesType | undefined;
+    $.OPTION3(() => {
+      $.CONSUME(T.LCurly);
+      contentRules = $.SUBRULE($.declarationList, { ARGS: [{ ...ctx, inner: true }] }) as unknown as RulesType;
+      $.CONSUME(T.RCurly);
+    });
+
+    // Require semicolon only when present (SCSS requires it if no block; we enforce later)
+    $.OPTION4({ GATE: () => $.LA(1).tokenType === T.Semi, DEF: () => $.CONSUME(T.Semi) });
+
+    if (!RECORDING_PHASE) {
+      const loc = $.endRule();
+      const mixinRef = new Reference({ key: ident.image }, { type: 'mixin', resolution: 'call-time', role: 'name' }, loc, $.context);
+
+      // If we have a content block, attach it as a named arg `$content: <mixin()>`
+      if (contentRules) {
+        const contentMixin = new Mixin(
+          { name: new Any('content', { role: 'name' }), rules: contentRules },
+          undefined,
+          loc,
+          $.context
+        );
+        const contentName = new Any('content', { role: 'property' });
+        const contentDecl = new VarDeclaration(
+          { name: contentName, value: contentMixin },
+          undefined,
+          loc,
+          $.context
+        );
+        const nextArgs = args ? args.copy(true) : new List([]);
+        nextArgs.value.unshift(contentDecl);
+        args = nextArgs;
+      }
+
+      return new Call({ name: mixinRef, args }, undefined, loc, $.context);
+    }
+  };
+}
+
+function makePublicDirectiveRules(rules: any) {
+  rules.options.rulesVisibility ??= {};
+  rules.options.rulesVisibility.Declaration = 'public';
+  rules.options.rulesVisibility.Ruleset = 'public';
+  rules.options.rulesVisibility.VarDeclaration = 'public';
+  rules.options.rulesVisibility.Mixin = 'public';
+}
+
+export function scssIfAtRule(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    $.CONSUME(T.AtKeyword); // assumed '@if' (dispatched by unknownAtRule)
+
+    let condNodes: Node[] | undefined;
+    if (!RECORDING_PHASE) condNodes = [];
+    $.MANY({
+      GATE: () => $.LA(1).tokenType !== T.LCurly && $.LA(1).tokenType.name !== 'EOF',
+      DEF: () => {
+        const n = $.SUBRULE($.anyOuterValue, { ARGS: [ctx] });
+        if (!RECORDING_PHASE) condNodes!.push($.wrap(n));
+      }
+    });
+    const cond = !RECORDING_PHASE && condNodes!.length
+      ? new Sequence(condNodes!, undefined, $.getLocationFromNodes(condNodes!), $.context)
+      : undefined;
+
     $.CONSUME(T.LCurly);
-    $.SUBRULE($.declarationList);
+    const rules = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
     $.CONSUME(T.RCurly);
-  });
 
-  $.RULE('mixinArgs', (ctx: RuleContext = {}) => {
-    $.CONSUME(T.LParen);
-    $.OPTION(() => $.SUBRULE($.mixinArgList, { ARGS: [ctx] }));
-    $.CONSUME(T.RParen);
-  });
+    if (!RECORDING_PHASE) {
+      makePublicDirectiveRules(rules);
+    }
 
-  $.RULE('accessors', () => {
-    $.CONSUME(T.LSquare);
-    $.OPTION(() => $.OR([
-      { ALT: () => $.CONSUME(T.NestedReference) },
-      { ALT: () => $.CONSUME(T.AtKeyword) },
-      { ALT: () => $.CONSUME(T.PropertyReference) },
-      { ALT: () => $.CONSUME(T.Ident) }
-    ]));
-    $.CONSUME(T.RSquare);
-    /** Allows chaining of lookups / calls */
-    $.OPTION2(() => {
-      $.OR2([
-        { ALT: () => $.SUBRULE($.inlineMixinCall) },
-        { ALT: () => $.SUBRULE($.accessors) }
-      ]);
-    });
-  });
+    const branches: IfBranch[] = !RECORDING_PHASE ? [{ condition: cond, rules }] : [];
 
-  /**
-   * @see https://lesscss.org/features/#mixins-feature-mixins-parametric-feature
-   *
-   * Less allows separating with commas or semi-colons, so we sort out
-   * the bounds of each argument in the CST Visitor.
-   */
-  $.RULE('mixinArgList', (ctx: RuleContext = {}) => {
-    $.SUBRULE($.mixinArg, { ARGS: [ctx] });
-    $.MANY(() => {
-      $.OR([
-        {
-          ALT: () => {
-            $.CONSUME(T.Comma);
-            $.SUBRULE2($.mixinArg, { ARGS: [ctx] });
+    // Consume chained @else / @else if
+    $.MANY2({
+      GATE: () => $.LA(1).image === '@else',
+      DEF: () => {
+        $.CONSUME2(T.AtKeyword); // @else
+
+        let elseCond: Sequence | undefined;
+
+        // @else if ...
+        $.OPTION4({
+          GATE: () => $.LA(1).image === 'if',
+          DEF: () => {
+            $.CONSUME3(T.Ident); // if (token category)
+
+            let elseCondNodes: Node[] | undefined;
+            if (!RECORDING_PHASE) elseCondNodes = [];
+
+            $.MANY3({
+              GATE: () => $.LA(1).tokenType !== T.LCurly && $.LA(1).tokenType.name !== 'EOF',
+              DEF: () => {
+                const n = $.SUBRULE2($.anyOuterValue, { ARGS: [ctx] });
+                if (!RECORDING_PHASE) elseCondNodes!.push($.wrap(n));
+              }
+            });
+
+            if (!RECORDING_PHASE && elseCondNodes!.length) {
+              elseCond = new Sequence(elseCondNodes!, undefined, $.getLocationFromNodes(elseCondNodes!), $.context);
+            }
           }
-        },
-        {
-          ALT: () => {
-            $.CONSUME(T.Semi);
-            $.OPTION(() => $.SUBRULE3($.mixinArg, { ARGS: [ctx] }));
-          }
+        });
+
+        $.CONSUME2(T.LCurly);
+        const elseRules = $.SUBRULE2($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
+        $.CONSUME2(T.RCurly);
+        if (!RECORDING_PHASE) {
+          makePublicDirectiveRules(elseRules);
+          branches.push({ condition: elseCond, rules: elseRules });
         }
-      ]);
+      }
     });
-  });
 
-  $.RULE('mixinArg', (ctx: RuleContext = {}) => {
-    const definition = !!ctx.isDefinition;
+    if (!RECORDING_PHASE) {
+      const loc = $.endRule();
+      return new If({ branches }, undefined, loc, $.context);
+    }
+  };
+}
+
+export function scssForAtRule(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    $.CONSUME(T.AtKeyword); // assumed '@for'
+
+    let headerNodes: Node[] | undefined;
+    if (!RECORDING_PHASE) headerNodes = [];
+    $.MANY({
+      GATE: () => $.LA(1).tokenType !== T.LCurly && $.LA(1).tokenType.name !== 'EOF',
+      DEF: () => {
+        const n = $.SUBRULE($.anyOuterValue, { ARGS: [ctx] });
+        if (!RECORDING_PHASE) headerNodes!.push($.wrap(n));
+      }
+    });
+    const header = !RECORDING_PHASE
+      ? new Sequence(headerNodes ?? [], undefined, $.getLocationFromNodes(headerNodes ?? []), $.context)
+      : undefined;
+
+    $.CONSUME(T.LCurly);
+    const rules = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
+    $.CONSUME(T.RCurly);
+    if (!RECORDING_PHASE) {
+      makePublicDirectiveRules(rules);
+      const loc = $.endRule();
+      return new For({ header: header!, rules }, undefined, loc, $.context);
+    }
+  };
+}
+
+export function scssEachAtRule(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    $.CONSUME(T.AtKeyword); // assumed '@each'
+
+    let headerNodes: Node[] | undefined;
+    if (!RECORDING_PHASE) headerNodes = [];
+    $.MANY({
+      GATE: () => $.LA(1).tokenType !== T.LCurly && $.LA(1).tokenType.name !== 'EOF',
+      DEF: () => {
+        const n = $.SUBRULE($.anyOuterValue, { ARGS: [ctx] });
+        if (!RECORDING_PHASE) headerNodes!.push($.wrap(n));
+      }
+    });
+    const header = !RECORDING_PHASE
+      ? new Sequence(headerNodes ?? [], undefined, $.getLocationFromNodes(headerNodes ?? []), $.context)
+      : undefined;
+
+    $.CONSUME(T.LCurly);
+    const rules = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
+    $.CONSUME(T.RCurly);
+    if (!RECORDING_PHASE) {
+      makePublicDirectiveRules(rules);
+      const loc = $.endRule();
+      return new Each({ header: header!, rules }, undefined, loc, $.context);
+    }
+  };
+}
+
+export function scssWhileAtRule(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    $.CONSUME(T.AtKeyword); // assumed '@while'
+
+    let condNodes: Node[] | undefined;
+    if (!RECORDING_PHASE) condNodes = [];
+    $.MANY({
+      GATE: () => $.LA(1).tokenType !== T.LCurly && $.LA(1).tokenType.name !== 'EOF',
+      DEF: () => {
+        const n = $.SUBRULE($.anyOuterValue, { ARGS: [ctx] });
+        if (!RECORDING_PHASE) condNodes!.push($.wrap(n));
+      }
+    });
+    const condition = !RECORDING_PHASE && condNodes!.length
+      ? new Sequence(condNodes!, undefined, $.getLocationFromNodes(condNodes!), $.context)
+      : undefined;
+
+    $.CONSUME(T.LCurly);
+    const rules = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
+    $.CONSUME(T.RCurly);
+    if (!RECORDING_PHASE) {
+      makePublicDirectiveRules(rules);
+      const loc = $.endRule();
+      return new While({ condition: condition!, rules }, undefined, loc, $.context);
+    }
+  };
+}
+
+export function scssMixinAtRule(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    $.CONSUME(T.AtKeyword); // assumed '@mixin' (dispatched by unknownAtRule)
+    let nameTok: any;
+    let hasParamsFromStart = false;
     $.OR([
       {
+        GATE: () => $.LA(1).tokenType === T.FunctionStart,
         ALT: () => {
-          $.CONSUME(T.AtKeyword);
-          $.OPTION(() => {
-            $.OR2([
-              {
-                ALT: () => {
-                  $.CONSUME(T.Colon);
-                  $.SUBRULE($.mixinValue);
-                }
-              },
-              /**
-               * Mixin definitions can spread variables, which
-               * means it will match a variable number of elements
-               * at the end.
-               *
-               * However, mixin calls can also spread variables,
-               * which means it will expand a variable representing
-               * a list, which, to my knowledge, is an undocumented
-               * feature of Less (and only exists in mixin calls?)
-               *
-               * @todo - Intuitively, shouldn't this be available
-               * elsewhere in the language? Or would there be no
-               * reason?
-               */
-              { ALT: () => $.CONSUME(T.Ellipsis) }
-            ]);
-          });
+          nameTok = $.CONSUME(T.FunctionStart);
+          hasParamsFromStart = true;
         }
       },
-      { ALT: () => $.SUBRULE2($.mixinValue) },
       {
-        GATE: () => definition,
-        ALT: () => $.CONSUME2(T.Ellipsis)
+        GATE: () => $.LA(1).tokenType === T.GenericFunctionStart,
+        ALT: () => {
+          nameTok = $.CONSUME(T.GenericFunctionStart);
+          hasParamsFromStart = true;
+        }
+      },
+      { ALT: () => nameTok = $.CONSUME(T.Ident) }
+    ]);
+
+    let params: List | undefined;
+    $.OR2([
+      {
+        GATE: () => hasParamsFromStart,
+        ALT: () => {
+          params = $.SUBRULE($.scssMixinParamsAfterFunctionStart, { ARGS: [ctx] });
+        }
+      },
+      {
+        GATE: () => $.LA(1).tokenType === T.LParen,
+        ALT: () => {
+          params = $.SUBRULE($.scssMixinParams, { ARGS: [ctx] });
+        }
+      },
+      { ALT: () => {} }
+    ]);
+
+    $.CONSUME(T.LCurly);
+    const rules = $.SUBRULE($.declarationList, { ARGS: [{ ...ctx, inner: true }] });
+    $.CONSUME(T.RCurly);
+
+    if (!RECORDING_PHASE) {
+      // Sass-style: inner vars/mixins should not be publicly visible by default.
+      rules.options.rulesVisibility ??= {};
+      rules.options.rulesVisibility.VarDeclaration ??= 'private';
+      rules.options.rulesVisibility.Mixin ??= 'private';
+
+      const loc = $.endRule();
+      const mixinName = (nameTok.tokenType === T.FunctionStart || nameTok.tokenType === T.GenericFunctionStart)
+        ? String(nameTok.image).slice(0, -1)
+        : String(nameTok.image);
+
+      return new Mixin(
+        {
+          name: new Any(mixinName, { role: 'name' }, $.getLocationInfo(nameTok), $.context),
+          params,
+          rules
+        },
+        undefined,
+        loc,
+        $.context
+      );
+    }
+  };
+}
+
+export function scssMixinParams(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    $.CONSUME(T.LParen);
+    let params: Node[] | undefined;
+    if (!RECORDING_PHASE) params = [];
+
+    $.OPTION(() => {
+      $.AT_LEAST_ONE_SEP({
+        SEP: T.Comma,
+        DEF: () => {
+          const p = $.SUBRULE($.scssMixinParam, { ARGS: [ctx] }) as unknown as Node;
+          if (!RECORDING_PHASE) {
+            params!.push(p);
+          }
+        }
+      });
+    });
+
+    $.CONSUME(T.RParen);
+    if (!RECORDING_PHASE) {
+      const loc = $.endRule();
+      return new List(params ?? [], undefined, loc, $.context);
+    }
+  };
+}
+
+export function scssMixinParamsAfterFunctionStart(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    let params: Node[] | undefined;
+    if (!RECORDING_PHASE) params = [];
+
+    $.OPTION(() => {
+      $.AT_LEAST_ONE_SEP({
+        SEP: T.Comma,
+        DEF: () => {
+          const p = $.SUBRULE($.scssMixinParam, { ARGS: [ctx] }) as unknown as Node;
+          if (!RECORDING_PHASE) {
+            params!.push(p);
+          }
+        }
+      });
+    });
+
+    $.CONSUME(T.RParen);
+    if (!RECORDING_PHASE) {
+      const loc = $.endRule();
+      return new List(params ?? [], undefined, loc, $.context);
+    }
+  };
+}
+
+export function scssMixinParam(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+
+    let node: Node | undefined;
+    $.OR([
+      // ...$rest
+      {
+        GATE: () => $.LA(1).tokenType?.name === 'Ellipsis' || $.LA(1).image === '...',
+        ALT: () => {
+          $.CONSUME(T.Ellipsis);
+          const dv = $.CONSUME(T.DollarVariable);
+          if (!RECORDING_PHASE) {
+            node = new Rest(dv.image.slice(1), undefined, $.getLocationInfo(dv), $.context);
+          }
+        }
+      },
+      {
+        ALT: () => {
+          const dv = $.CONSUME2(T.DollarVariable);
+          let defaultValue: Node | undefined;
+          $.OPTION(() => {
+            // In SCSS, default params use `:`, which is tokenized as `Assign` in this lexer setup.
+            $.CONSUME(T.Assign);
+            defaultValue = $.SUBRULE($.valueSequence, { ARGS: [ctx] });
+          });
+          if (!RECORDING_PHASE) {
+            if (defaultValue) {
+              const paramName = new Any(dv.image.slice(1), { role: 'property' });
+              node = new VarDeclaration(
+                { name: paramName, value: defaultValue },
+                { paramVar: true },
+                $.getLocationInfo(dv),
+                $.context
+              );
+            } else {
+              node = new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context);
+            }
+          }
+        }
       }
     ]);
-  });
 
-  $.RULE('mixinValue', () => {
-    $.OR([
-      {
-        ALT: () => {
-          $.CONSUME(T.LCurly);
-          $.SUBRULE($.declarationList);
-          $.CONSUME(T.RCurly);
-        }
-      },
-      { ALT: () => $.SUBRULE($.valueSequence) }
-    ]);
-  });
+    if (!RECORDING_PHASE) {
+      $.endRule();
+      return node!;
+    }
+  };
 }
+
+/**
+ * Override CSS `unknownAtRule` to special-case Sass directives.
+ *
+ * We do this (instead of extending `atRule`) because the CSS parser’s
+ * lookahead will otherwise choose `unknownAtRule` and skip our custom
+ * alternatives.
+ */
+export function unknownAtRule(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  const baseUnknown = cssProductions.unknownAtRule.call(this, T);
+
+  return (ctx: RuleContext = {}) => {
+    const img = $.LA(1).image;
+    if (img === '@use') return $.SUBRULE($.scssUseAtRule, { ARGS: [ctx] });
+    if (img === '@forward') return $.SUBRULE($.scssForwardAtRule, { ARGS: [ctx] });
+    if (img === '@content') return $.SUBRULE($.scssContentAtRule, { ARGS: [ctx] });
+    if (img === '@if') return $.SUBRULE($.scssIfAtRule, { ARGS: [ctx] });
+    if (img === '@for') return $.SUBRULE($.scssForAtRule, { ARGS: [ctx] });
+    if (img === '@each') return $.SUBRULE($.scssEachAtRule, { ARGS: [ctx] });
+    if (img === '@while') return $.SUBRULE($.scssWhileAtRule, { ARGS: [ctx] });
+    if (img === '@include') return $.SUBRULE($.scssIncludeAtRule, { ARGS: [ctx] });
+    if (img === '@mixin') return $.SUBRULE($.scssMixinAtRule, { ARGS: [ctx] });
+    return baseUnknown(ctx);
+  };
+}
+

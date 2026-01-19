@@ -18,14 +18,12 @@ describe('functionCall', () => {
   it('should parse functions at the root', () => {
     const { errors, tree } = parser.parse('func(1, 2, 3)');
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
-      (Call
-        name: 
-          (Reference [role=name]
-            key: 'func'
-          )
-      )
-    `);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('(Call');
+    expect(out).toContainString('silentFail: true');
+    expect(out).toContainString('type: \'function\'');
+    expect(out).toContainString('fallbackValue: true');
+    expect(out).toContainString('key: \'func\'');
   });
 });
 

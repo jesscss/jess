@@ -1,30 +1,27 @@
-/**
- * @todo - Right now copied from Less. No work has started.
- */
 import {
-  cssFragments,
-  cssTokens,
+  rawCssFragments,
+  rawCssTokens,
   LexerType,
-  groupCapture,
   type RawModeConfig,
   type RawTokenConfig,
   type RawToken,
   type TokenNames,
-  type CssTokenType
+  type CssTokenType,
+  SKIPPED_LABEL
 } from '@jesscss/css-parser';
 import type { WritableDeep } from 'type-fest';
 
 type IMerges = Partial<Record<CssTokenType, RawTokenConfig>>;
 
 function $preBuildFragments() {
-  const fragments = cssFragments();
+  const fragments = rawCssFragments() as unknown as string[][];
+  // SCSS line comment
   fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*']);
-  fragments.push(['interpolated', '[@$]\\{(?:{{ident}})\\}']);
 
   return fragments;
 }
 
-type CssTokenModes = ReturnType<typeof cssTokens>['modes'];
+type CssTokenModes = ReturnType<typeof rawCssTokens>['modes'];
 
 function $preBuildTokens() {
   /**
@@ -43,89 +40,36 @@ function $preBuildTokens() {
     defaultMode: 'Default';
   };
 
-  const tokens = cssTokens() as InferMergeTypes;
+  const tokens = rawCssTokens() as unknown as InferMergeTypes;
 
   /** Keyed by what to insert after */
   const merges = {
-    Assign: [
-      { name: 'Ellipsis', pattern: /\.\.\./ }
-    ],
     PlainIdent: [
-      { name: 'Interpolated', pattern: LexerType.NA },
       {
         name: 'LineComment',
         pattern: '{{lineComment}}',
-        group: 'Skipped'
+        label: SKIPPED_LABEL
       },
-      { name: 'PlusAssign', pattern: '\\+{{whitespace}}*:', categories: ['BlockMarker', 'Assign'] },
-      {
-        name: 'UnderscoreAssign',
-        pattern: '\\+{{whitespace}}*_{{whitespace}}*:',
-        categories: ['BlockMarker', 'Assign']
-      },
-      { name: 'AnonMixinStart', pattern: /[.#]\(/, categories: ['BlockMarker'] },
-      { name: 'GtEqAlias', pattern: /=>/, categories: ['CompareOperator'] },
-      { name: 'LtEqAlias', pattern: /=</, categories: ['CompareOperator'] },
-      {
-        name: 'Extend',
-        pattern: /:extend\(/,
-        categories: ['BlockMarker']
-      },
+      { name: 'Ellipsis', pattern: /\.\.\./ },
       /**
-       * Keywords that we don't identify as idents
-       * should be manually added to other places where an ident is valid.
+       * SCSS variable reference token in value position.
+       * This is intentionally not used for declarations; productions decide that.
        */
       {
-        name: 'When',
-        pattern: /when/i,
-        longer_alt: 'PlainIdent',
-        categories: ['BlockMarker']
-      },
-      {
-        name: 'VarOrProp',
-        pattern: LexerType.NA
-      },
-      {
-        name: 'NestedReference',
-        pattern: ['([@$]+{{ident}}?){2,}', groupCapture],
-        start_chars_hint: ['@', '$'],
-        categories: ['VarOrProp'],
-        line_breaks: true
-      },
-      {
-        name: 'PropertyReference',
-
+        name: 'DollarVariable',
         pattern: '\\${{ident}}',
-        categories: ['VarOrProp']
+        start_chars_hint: ['$']
       },
-      /** Can be used in unit function */
+      /**
+       * Sass placeholder selector.
+       *
+       * Parsed later as selector name `\\foo` to distinguish from normal selectors.
+       */
       {
-        name: 'Percent',
-        pattern: /%/
+        name: 'PlaceholderSelector',
+        pattern: '%{{ident}}',
+        categories: ['Selector']
       },
-      {
-        name: 'FormatFunction',
-        pattern: /%\(/,
-        categories: ['BlockMarker', 'Function']
-      },
-      {
-        name: 'IfFunction',
-        pattern: /if\(/,
-        categories: ['BlockMarker', 'Function']
-      },
-      {
-        name: 'BooleanFunction',
-        pattern: /boolean\(/,
-        categories: ['BlockMarker', 'Function']
-      }
-    ],
-    UrlStart: [
-      {
-        name: 'JavaScript',
-        pattern: /`[^`]*`/,
-        group: LexerType.SKIPPED,
-        line_breaks: true
-      }
     ],
     /**
      * These need to be after any keywords, so that
@@ -134,88 +78,45 @@ function $preBuildTokens() {
      */
     Signed: [
       {
-        name: 'InterpolatedIdent',
         /**
-         * Must contain one `@{}`
-         * It's too expensive for Chevrotain to capture groups here,
-         * so we'll extract the interpolated values later.
+         * Namespaced function call start: `map.get(`
+         * Used to desugar `map.get($map, ...)` while keeping lexing non-ambiguous.
          */
-        pattern: '(?:{{ident}}|-)?{{interpolated}}(?:{{interpolated}}|{{nmchar}})*',
-        categories: ['Interpolated', 'Selector', 'Ident']
-      },
-      {
-        name: 'InterpolatedCustomProperty',
+        name: 'NamespacedFunctionStart',
         /**
-         * Must contain one `@{}`
-         * It's too expensive for Chevrotain to capture groups here,
-         * so we'll extract the interpolated values later.
+         * IMPORTANT:
+         * We intentionally avoid XRegExp fragment substitution here because repeating
+         * the same fragment (e.g. {{ident}} twice) can create duplicate named capture
+         * groups and throw at lexer construction time.
+         *
+         * This is a conservative approximation of Sass identifiers, sufficient for
+         * `map.get(`-style built-in calls and most module-qualified calls.
          */
-        pattern: '--{{ident}}?{{interpolated}}(?:{{interpolated}}|{{nmchar}})*',
-        categories: ['Interpolated']
-      },
-      /**
-     * Unfortunately, there's grammatical ambiguity between
-     * interpolated props and a naked interpolated selector name,
-     * making this awkward token necessary.
-     */
-      {
-        name: 'InterpolatedSelector',
-        pattern: ['[.#]{{interpolated}}', groupCapture],
-        categories: ['Interpolated', 'Selector'],
-        start_chars_hint: ['.', '#'],
-        line_breaks: true
+        pattern: /[a-zA-Z_-][a-zA-Z0-9_-]*\.[a-zA-Z_-][a-zA-Z0-9_-]*\(/,
+        categories: ['BlockMarker', 'FunctionStart']
       }
     ]
   } as const satisfies IMerges;
 
-  let defaultTokens = tokens.modes.Default as WritableDeep<RawToken[]>;
+  const mutableTokens = tokens as unknown as {
+    modes: Record<string, WritableDeep<RawToken[]>>;
+  };
+
+  let defaultTokens = mutableTokens.modes.Default!;
 
   let tokenLength = defaultTokens.length;
   for (let i = 0; i < tokenLength; i++) {
-    let token: WritableDeep<RawToken> = defaultTokens[i];
+    const token: WritableDeep<RawToken> = defaultTokens[i]!;
 
     const { name } = token;
-    const copyToken = () => {
-      token = structuredClone(token);
-    };
 
-    let alterations = true;
-
-    switch (name) {
-      /**
-       * Less / Sass Ampersand is slightly different
-       * from CSS Nesting in that it concatenates, so we
-       * need to gobble up the rest of the identifier
-       * if present.
-       */
-      case 'Ampersand':
-        copyToken();
-        token.pattern = '&{{nmchar}}*';
-        break;
-      case 'Divide':
-        copyToken();
-        token.pattern = /\.?\//;
-        break;
-      case 'SingleQuoteStart':
-        copyToken();
-        token.pattern = /~?'/;
-        break;
-      case 'DoubleQuoteStart':
-        copyToken();
-        token.pattern = /~?"/;
-        break;
-      default:
-        alterations = false;
-    }
-    if (alterations) {
-      defaultTokens[i] = token;
-    }
-    // @ts-expect-error - Suppress index warning
-    const merge = merges[name];
+    // No token alterations yet; SCSS-specific concatenation behavior will be handled in productions.
+    const mergesByName = merges as unknown as Record<string, ReadonlyArray<WritableDeep<RawToken>>>;
+    const merge = mergesByName[name];
     if (merge) {
       /** Insert after current token */
       defaultTokens = defaultTokens.slice(0, i + 1).concat(merge, defaultTokens.slice(i + 1))
-      ;(tokens.modes.Default as WritableDeep<RawToken[]>) = defaultTokens;
+      mutableTokens.modes.Default = defaultTokens;
       const mergeLength = merge.length;
       tokenLength += mergeLength;
       i += mergeLength;
@@ -232,5 +133,17 @@ type TokenModes = ReturnTokens['modes'];
 
 export type LessTokenType = TokenNames<TokenModes[keyof TokenModes]>;
 
-export const lessFragments = () => Fragments;
-export const lessTokens = () => Tokens as WritableDeep<RawModeConfig>;
+/**
+ * Token names introduced by SCSS merges.
+ */
+export type ScssExtraTokenType =
+  | 'LineComment'
+  | 'Ellipsis'
+  | 'DollarVariable'
+  | 'PlaceholderSelector'
+  | 'NamespacedFunctionStart';
+
+export type ScssTokenType = TokenNames<TokenModes[keyof TokenModes]> | ScssExtraTokenType;
+
+export const scssFragments = () => Fragments as unknown as ReadonlyArray<Readonly<[string, string]>>;
+export const scssTokens = () => Tokens as unknown as RawModeConfig;

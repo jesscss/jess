@@ -18,6 +18,7 @@ import {
   Interpolated,
   Any,
   Bool,
+  type MathMode,
   type Node,
   type Extend,
   type ComplexSelector,
@@ -56,6 +57,27 @@ export type LessParserConfig = CssParserConfig & {
    * - Both mixins and detached rulesets: Mixin and VarDeclaration nodes are 'private'
    */
   leakyRules?: boolean;
+
+  /**
+   * Less math evaluation mode. Used during parsing to decide whether a given
+   * `Operation` should be represented as an `Expression` for Less→Jess conversion.
+   *
+   * Mirrors runtime behavior in `Context.shouldOperate()`.
+   *
+   * @default 'parens-division'
+   */
+  mathMode?: MathMode;
+
+  /**
+   * When enabled (default), the parser will wrap the *outermost* Less math/value
+   * expressions (math operations, variable references, and chained mixin/variable
+   * calls) in an `Expression({ parens: true })`.
+   *
+   * This is purely a parse-time AST shape choice to support Less→Jess conversion.
+   *
+   * @default true
+   */
+  wrapOuterExpressions?: boolean;
 };
 
 // Concrete TokenMap: union of CSS and Less token names
@@ -96,6 +118,27 @@ export type RuleContext = CssRuleContext & {
   inExtend?: boolean;
   /** Inside a custom property value - used for deprecation warnings */
   inCustomPropertyValue?: boolean;
+
+  /**
+   * When true, the current production should wrap the *outermost* parsed value
+   * (if it is a Less expression) in `Expression({ parens: true })`.
+   *
+   * This flag should only be set by value-entry productions (e.g. `valueSequence`)
+   * and must be cleared for nested parsing so Expressions never contain Expressions.
+   */
+  wrapInExpression?: boolean;
+
+  /**
+   * Parse-time equivalent of `Context.parenFrames`. This is a boolean stack
+   * (not a depth counter) because some productions (notably `Call`) intentionally
+   * push `false` to disable the ambient "in parens" math behavior.
+   */
+  parenFrames?: boolean[];
+
+  /**
+   * Parse-time equivalent of `Context.calcFrames`.
+   */
+  calcFrames?: number;
 };
 /**
  * Unlike the historical Less parser, this parser
@@ -154,17 +197,31 @@ export class LessActionsParser extends CssActionsParser {
   guardWithCondition!: Rule;
   guardWithConditionValue!: Rule;
 
+  /** See `LessParserConfig.mathMode` */
+  mathMode: MathMode;
+  /** See `LessParserConfig.wrapOuterExpressions` */
+  wrapOuterExpressions: boolean;
+
   constructor(
     tokenVocabulary: TokenVocabulary,
     T: any,
     config: LessParserConfig = {}
   ) {
-    let { legacyMode, looseMode = true, leakyRules = true, ...rest } = config;
+    let {
+      legacyMode,
+      looseMode = true,
+      leakyRules = true,
+      mathMode = 'parens-division',
+      wrapOuterExpressions = true,
+      ...rest
+    } = config;
     legacyMode = legacyMode ?? looseMode;
     super(tokenVocabulary, T, { legacyMode, ...rest });
 
     this.looseMode = looseMode;
     this.leakyRules = leakyRules;
+    this.mathMode = mathMode;
+    this.wrapOuterExpressions = wrapOuterExpressions;
     this.warnings = [];
 
     const $ = this;
