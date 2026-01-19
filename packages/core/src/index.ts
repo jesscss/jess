@@ -10,6 +10,7 @@ export * from './deprecation.js';
 export * from './define-function.js';
 export * from './tree/util/is-node.js';
 export * from './tree/util/calculate.js';
+export * from './tree/util/should-operate.js';
 export * from './tree/util/compare.js';
 export * from './tree/util/cast.js';
 export * from './tree/util/find-extendable-locations.js';

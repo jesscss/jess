@@ -15,6 +15,7 @@ import type { PluginInterface } from './plugin.js';
 import { MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
 import { isNode } from './tree/util/is-node.js';
+import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
 import { getErrorFromParser, type ErrorDiagnostic, type WarningDiagnostic, toDiagnostic, JessError } from './jess-error.js';
 import type { Call } from './tree/call.js';
 import type { List } from './tree/list.js';
@@ -723,44 +724,15 @@ export class Context {
     const mathMode = this.treeContext?.mathMode
       ?? this.opts?.mathMode
       ?? 'parens-division';
-    const inParens = this.parenFrames.at(-1) ?? false;
-    const inCalc = this.calcFrames !== 0;
-    if (inCalc) {
-      /** Only collapse safe units */
-      if (
-        isNode(left, 'Dimension')
-        && isNode(right, 'Dimension')
-      ) {
-        let lUnit = left.value.unit;
-        let rUnit = right.value.unit;
-        if (
-          (op === '+' || op === '-')
-          && lUnit === rUnit
-        ) {
-          return true;
-        }
-        /** Can't make square units */
-        if (op === '*' && (!lUnit || !rUnit)) {
-          return true;
-        }
-        /** Can't divide by a unit */
-        if (op === '/' && !rUnit) {
-          return true;
-        }
-      }
-
-      return false;
-    }
-    /** Parens for Less/SCSS will set `canOperate` to true */
-    if (mathMode === 'always' || inParens) {
-      return true;
-    }
-    if (mathMode === 'parens-division') {
-      return op !== '/';
-    }
-    if (mathMode === 'parens' || mathMode === 'strict') {
-      return false;
-    }
-    return true;
+    return shouldOperateWithMathFrames(
+      {
+        mathMode,
+        parenFrames: this.parenFrames,
+        calcFrames: this.calcFrames
+      },
+      op,
+      left,
+      right
+    );
   }
 }

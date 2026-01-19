@@ -9,6 +9,10 @@ import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 
+function isSelectorNode(value: Node | undefined): value is Selector {
+  return !!value && typeof value === 'object' && (value as any).isSelector === true;
+}
+
 export type PseudoSelectorValue = {
   /**
    * The name of the pseudo-selector
@@ -39,8 +43,8 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     const { name, arg } = this.value;
 
     // Check if this is a pseudo-selector that contains selectors
-    const hasSelectorArg = !!arg && typeof arg === 'object' && (arg as any).isSelector === true;
     const hasSelectorListArg = isNode(arg, 'SelectorList');
+    const hasSelectorArg = isSelectorNode(arg);
 
     if (hasSelectorArg || hasSelectorListArg) {
       if (hasSelectorListArg) {

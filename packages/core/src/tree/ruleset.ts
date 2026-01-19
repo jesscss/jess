@@ -68,6 +68,17 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return (this._valueOf ??= this.selector instanceof Nil ? '' : this.selector.valueOf());
   }
 
+  /**
+   * Invalidate cached selector-based string value.
+   *
+   * `Ruleset.valueOf()` is used by serialization frame tracking; when an extend
+   * mutates `value.selector`, we must clear this cache so frame/header caching
+   * reflects the updated selector.
+   */
+  invalidateSelectorValueCache(): void {
+    this._valueOf = undefined;
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     return serializeRulesContainer(this, options as FinalPrintOptions);

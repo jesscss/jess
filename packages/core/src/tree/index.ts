@@ -29,6 +29,7 @@ export * from './color.js';
 export * from './comment.js';
 export * from './combinator.js';
 export * from './condition.js';
+export * from './control.js';
 export * from './declaration-custom.js';
 export * from './declaration-var.js';
 export * from './declaration.js';
@@ -80,14 +81,15 @@ Selector.prototype.compare = function(other: Node) {
   // Avoid `instanceof Selector` here: module identity can diverge under Vite/Vitest
   // if the same file is loaded via different specifiers.
   if (!!other && typeof other === 'object' && (other as any).isSelector === true) {
-    let result = matchSelectors(this, other);
+    const otherSelector = other as unknown as Selector;
+    let result = matchSelectors(this, otherSelector);
     if (result.hasMatch) {
       return 0;
     } else if (result.hasPartialMatch) {
       return -1;
     } else {
       /** Try for a reverse match to see if this is a partial of other */
-      result = matchSelectors(other, this);
+      result = matchSelectors(otherSelector, this);
       if (result.hasPartialMatch) {
         return 1;
       }

@@ -303,11 +303,20 @@ export function processExtends(context: Context): void {
   // Each extend can only transform a particular ruleset's selector once
   const transformedByExtend = new Map<Ruleset, Set<string>>();
   const allRoots = context.extendRoots.getAlts();
-  const debugFilePath = context.treeContext?.file?.path || context.treeContext?.file?.fullPath || '';
-  const debugThisFile = typeof debugFilePath === 'string' && debugFilePath.includes('extend-selector/extend-selector.less');
+  const file = context.treeContext?.file;
+  const debugFilePath =
+    file?.fullPath
+    || (file?.path && file?.name ? `${file.path}/${file.name}` : '')
+    || file?.path
+    || '';
+  const debugThisFile = typeof debugFilePath === 'string'
+    && (
+      debugFilePath.includes('tests-unit/extend-selector/extend-selector.less')
+      || debugFilePath.includes('tests-unit/extend-selector')
+    );
   // Debug marker to confirm this code path is running in Jess tests.
   if (process.env.DEBUG) {
-    syncLog({ kind: 'processExtends', file: debugFilePath || null, count: allExtends.length });
+    syncLog({ kind: 'processExtends', file: debugFilePath || null, count: allExtends.length, debugThisFile });
   }
 
   /**
@@ -466,6 +475,15 @@ export function processExtends(context: Context): void {
           }
         }
       }
+      if (process.env.DEBUG && debugThisFile) {
+        syncLog({
+          kind: 'extend:lookup',
+          target: singleTarget.valueOf(),
+          extendWith: selectorWithExtend.valueOf(),
+          partial,
+          foundCount: rulesetSet?.length ?? 0
+        });
+      }
 
       // Handle warnings for Less compatibility (only on first processing)
       if (!rulesetSet || rulesetSet.length === 0) {
@@ -560,8 +578,22 @@ export function processExtends(context: Context): void {
                 clonedSelector.hoistToRoot = true;
               }
 
+              // If this ruleset selector has a `sourceNode` used for re-serialization,
+              // extend that too so nested selector output matches Less expectations.
+              const sourceSelector = (originalSelector as any).sourceNode as Selector | undefined;
+              if (sourceSelector && typeof sourceSelector === 'object' && (sourceSelector as any).isSelector === true) {
+                const sourceResult = tryExtendSelector(sourceSelector, singleTarget, selectorWithExtend, partial);
+                if (sourceResult && !sourceResult.error) {
+                  const nextSource = sourceResult.value;
+                  if (nextSource.valueOf() !== sourceSelector.valueOf()) {
+                    (clonedSelector as any).sourceNode = nextSource.clone(true);
+                  }
+                }
+              }
+
               // Update the ruleset's selector directly
               ruleset.value.selector = clonedSelector;
+              ruleset.invalidateSelectorValueCache();
               if (clonedSelector.hoistToRoot) {
                 ruleset.hoistToRoot = true;
               }
@@ -714,7 +746,19 @@ export function processExtends(context: Context): void {
                   // NOTE: Node.clone()/inherit() does not currently copy hoistToRoot.
                   clonedSelector.hoistToRoot = true;
                 }
+
+                const sourceSelector = (currentSelector as any).sourceNode as Selector | undefined;
+                if (sourceSelector && typeof sourceSelector === 'object' && (sourceSelector as any).isSelector === true) {
+                  const sourceResult = tryExtendSelector(sourceSelector, singleTarget, selectorWithExtend, partial);
+                  if (sourceResult && !sourceResult.error) {
+                    const nextSource = sourceResult.value;
+                    if (nextSource.valueOf() !== sourceSelector.valueOf()) {
+                      (clonedSelector as any).sourceNode = nextSource.clone(true);
+                    }
+                  }
+                }
                 ruleset.value.selector = clonedSelector;
+                ruleset.invalidateSelectorValueCache();
                 if (clonedSelector.hoistToRoot) {
                   ruleset.hoistToRoot = true;
                 }

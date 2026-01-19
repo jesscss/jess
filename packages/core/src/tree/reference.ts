@@ -39,6 +39,7 @@ export type ReferenceValue = {
   key:
     string
     | string[]
+    | Node
     | Any
     | number // $[0] or $.0
     | Num // $.key or $[key] or $*key
