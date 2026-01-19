@@ -1,7 +1,7 @@
-import { isNode } from './is-node';
-import isObject from 'lodash-es/isObject';
-import { type Node } from '../node';
-import { type Rules } from '../rules';
+import { isNode } from './is-node.js';
+import isObject from 'lodash-es/isObject.js';
+import { type Node } from '../node.js';
+import { type Rules } from '../rules.js';
 
 export function compare(a: any, b: any) {
   if (a === b) {

@@ -7,18 +7,18 @@ import type {
   Any,
   Selector,
   Mixin
-} from './tree';
-import type { Visitor } from './visitor';
-import { ExtendRootRegistry } from './tree/util/extend-roots';
-import { type Operator } from './tree/util/calculate';
-import type { PluginInterface } from './plugin';
-import { MathMode, UnitMode } from './types/modes';
+} from './tree/index.js';
+import type { Visitor } from './visitor/index.js';
+import { ExtendRootRegistry } from './tree/util/extend-roots.js';
+import { type Operator } from './tree/util/calculate.js';
+import type { PluginInterface } from './plugin.js';
+import { MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
-import { isNode } from './tree/util/is-node';
-import { getErrorFromParser, type ErrorDiagnostic, type WarningDiagnostic, toDiagnostic, JessError } from './jess-error';
-import type { Call } from './tree/call';
-import type { List } from './tree/list';
-import { CallMap } from './tree/util/recursion-helper';
+import { isNode } from './tree/util/is-node.js';
+import { getErrorFromParser, type ErrorDiagnostic, type WarningDiagnostic, toDiagnostic, JessError } from './jess-error.js';
+import type { Call } from './tree/call.js';
+import type { List } from './tree/list.js';
+import { CallMap } from './tree/util/recursion-helper.js';
 
 export interface ContextOptions {
   /** Hash classes for module output */

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Compiler } from '../src';
+import { Compiler } from '../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { serializeTypes } from '@jesscss/core';
 

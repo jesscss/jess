@@ -27,8 +27,8 @@
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "npm run build",
     "build": "pnpm compile",
-    "compile": "tsc -b tsconfig.build.json && node ../../scripts/rewrite-relative-imports.cjs ./lib",
-    "test": "cross-env TEST=true vitest",
+    "compile": "tsc -b tsconfig.build.json",
+    "test": "vitest --run --passWithNoTests",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
   },

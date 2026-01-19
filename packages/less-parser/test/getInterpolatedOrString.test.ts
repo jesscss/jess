@@ -1,4 +1,4 @@
-import { getInterpolatedOrString } from '../src/utils';
+import { getInterpolatedOrString } from '../src/utils.js';
 import { Reference, Interpolated } from '@jesscss/core';
 
 describe('getInterpolatedOrString', () => {

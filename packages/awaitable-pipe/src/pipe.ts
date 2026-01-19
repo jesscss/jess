@@ -29,7 +29,7 @@ type PipeResult<In, Fns extends any[], Acc = In> =
     ? PipeResult<Apply<Acc, F>, Rest>
     : Acc;
 
-import { isThenable } from './utils';
+import { isThenable } from './utils.js';
 
 function runAsync(v: any, fns: AnyFn[], startIndex: number): Promise<any> {
   let p = Promise.resolve(v);

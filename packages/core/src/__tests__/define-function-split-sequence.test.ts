@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { defineFunction, callWithContext, type FunctionThis } from '../define-function';
-import { Context } from '../context';
-import { List, Sequence, Operation, Num, Dimension, Color } from '../tree';
-import { splitSequence } from '../conversions';
+import { defineFunction, callWithContext, type FunctionThis } from '../define-function.js';
+import { Context } from '../context.js';
+import { List, Sequence, Operation, Num, Dimension, Color } from '../tree/index.js';
+import { splitSequence } from '../conversions.js';
 
 describe('defineFunction - splitSequence', () => {
   describe('splitSequence functionality', () => {

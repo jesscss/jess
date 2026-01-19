@@ -1,8 +1,8 @@
 import type { MaybePromise } from 'awaitable-pipe/lib/utils';
-import { defineType, type Node } from './node';
-import { Rules } from './rules';
-import { getPrintOptions, type PrintOptions } from './util/print';
-import type { Context } from '../context';
+import { defineType, type Node } from './node.js';
+import { Rules } from './rules.js';
+import { getPrintOptions, type PrintOptions } from './util/print.js';
+import type { Context } from '../context.js';
 
 /**
  * A collection is essentially like an anonymous mixin,

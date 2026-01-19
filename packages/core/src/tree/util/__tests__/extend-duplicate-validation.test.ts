@@ -1,5 +1,5 @@
-import { el, compound, sel, sellist, is } from '../../..';
-import { extendSelector, tryExtendSelector, ExtendErrorType } from '../extend';
+import { el, compound, sel, sellist, is } from '../../../index.js';
+import { extendSelector, tryExtendSelector, ExtendErrorType } from '../extend.js';
 
 describe('Extend Duplicate Element/ID Validation', () => {
   describe('Should prevent invalid extensions', () => {

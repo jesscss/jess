@@ -1,16 +1,16 @@
-import type { Node } from '../node';
-import { Nil } from '../nil';
-import { List } from '../list';
+import type { Node } from '../node.js';
+import { Nil } from '../nil.js';
+import { List } from '../list.js';
 // Dimension and Num are NOT imported here to break circular dependency:
 // dimension.ts → color.ts → call.ts → cast.ts → dimension.ts
 // Instead, we use createRequire to access them synchronously at runtime
-import { Any } from '../any';
-import { Color } from '../color';
-import { JsFunction } from '../js-function';
-import { JsObject } from '../js-object';
-import { Bool } from '../bool';
-import { isNode } from './is-node';
-import isPlainObject from 'lodash-es/isPlainObject';
+import { Any } from '../any.js';
+import { Color } from '../color.js';
+import { JsFunction } from '../js-function.js';
+import { JsObject } from '../js-object.js';
+import { Bool } from '../bool.js';
+import { isNode } from './is-node.js';
+import isPlainObject from 'lodash-es/isPlainObject.js';
 import { createRequire } from 'node:module';
 
 const { isArray } = Array;
@@ -23,12 +23,12 @@ const require = createRequire(import.meta.url);
 // By the time cast() is called, dimension.ts and number.ts will be fully loaded
 function getDimension() {
   // Use require() to access module at runtime - breaks circular dependency at module load time
-  return require('../dimension').Dimension;
+  return require('../dimension.js').Dimension;
 }
 
 function getNum() {
   // Use require() to access module at runtime - breaks circular dependency at module load time
-  return require('../number').Num;
+  return require('../number.js').Num;
 }
 
 function getNodeType(value: any): Node {

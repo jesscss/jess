@@ -1,7 +1,7 @@
 import type { PrintOptions } from '..';
-import { getPrintOptions } from './util/print';
-import { defineType } from './node';
-import { Sequence } from './sequence';
+import { getPrintOptions } from './util/print.js';
+import { defineType } from './node.js';
+import { Sequence } from './sequence.js';
 
 /**
  * Used by `@media`, `@supports`, and `@container`

@@ -10,7 +10,7 @@
     "dist": "rollup -c",
     "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./dist ./lib tsconfig.tsbuildinfo",
-    "compile": "tsc -b tsconfig.json && node ../../scripts/rewrite-relative-imports.cjs ./lib && pnpm dist",
+    "compile": "tsc -b tsconfig.json && pnpm dist",
     "dev": "tsc -b tsconfig.json -w",
     "serve": "lite-server --baseDir=\"test\"",
     "test:tofix": "pnpm dist && jest",

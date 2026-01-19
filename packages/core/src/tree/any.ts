@@ -2,10 +2,10 @@
  * Import from node-base to avoid circular dependency.
  * The patching happens in node.ts
  */
-import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC, F_VISIBLE } from './node-base';
-import type { Context, TreeContext } from '../context';
+import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC, F_VISIBLE } from './node-base.js';
+import type { Context, TreeContext } from '../context.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
-import { Nil } from './nil';
+import { Nil } from './nil.js';
 
 export type AnyRole =
   'ident'

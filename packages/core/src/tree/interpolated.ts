@@ -1,11 +1,11 @@
-import { Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, defineType } from './node';
-import { Any, type AnyRole, type AnyOptions } from './any';
-import type { Context } from '../context';
-import { isNode } from './util/is-node';
-import { BasicSelector } from './selector-basic';
-import { SelectorList } from './selector-list';
-import type { Selector } from './selector';
-import { type PrintOptions, getPrintOptions } from './util/print';
+import { Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, defineType } from './node.js';
+import { Any, type AnyRole, type AnyOptions } from './any.js';
+import type { Context } from '../context.js';
+import { isNode } from './util/is-node.js';
+import { BasicSelector } from './selector-basic.js';
+import { SelectorList } from './selector-list.js';
+import type { Selector } from './selector.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
 
 // Placeholder that's very unlikely to appear in user strings

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { OutputWriter, getPrintOptions } from '../print';
-import { buildSourceMap } from '../sourcemap';
-import { rules, decl, any, ruleset, sellist, sel, el } from '../../index';
+import { OutputWriter, getPrintOptions } from '../print.js';
+import { buildSourceMap } from '../sourcemap.js';
+import { rules, decl, any, ruleset, sellist, sel, el } from '../../index.js';
 
 describe('source map segments', () => {
   it('collects segments for simple declaration', () => {

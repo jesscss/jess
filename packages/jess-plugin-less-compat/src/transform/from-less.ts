@@ -1,5 +1,5 @@
 import { Any, Node, Quoted, Rules } from '@jesscss/core';
-import { getJessNodeFromProxy, isLessProxy } from './proxy';
+import { getJessNodeFromProxy, isLessProxy } from './proxy.js';
 
 // Less.js types
 export type LessNode = any;

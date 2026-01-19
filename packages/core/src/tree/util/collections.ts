@@ -19,12 +19,12 @@
  * arrays / objects / simple values and return the values or entries, in any order.
  */
 import type { ConditionalExcept } from 'type-fest';
-import isPlainObject from 'lodash-es/isPlainObject';
-import { isNode } from './is-node';
-import type { Mixin } from '../mixin';
-import type { Rules } from '../rules';
-import type { Ruleset } from '../ruleset';
-import type { Node } from '../node';
+import isPlainObject from 'lodash-es/isPlainObject.js';
+import { isNode } from './is-node.js';
+import type { Mixin } from '../mixin.js';
+import type { Rules } from '../rules.js';
+import type { Ruleset } from '../ruleset.js';
+import type { Node } from '../node.js';
 
 const { isArray } = Array;
 

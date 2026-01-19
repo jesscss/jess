@@ -1,16 +1,16 @@
-import { defineType, type NodeOptions, type LocationInfo, type TreeContext, F_AMPERSAND, F_IMPLICIT_AMPERSAND } from './node';
-import { Nil } from './nil';
-import type { Context } from '../context';
-import { SimpleSelector } from './selector-simple';
-import { PseudoSelector } from './selector-pseudo';
-import { isNode } from './util/is-node';
-import { type Selector } from './selector';
-import { SelectorList } from './selector-list';
-import { ComplexSelector } from './selector-complex';
-import { atIndex } from './util/collections';
-import { type PrintOptions, getPrintOptions } from './util/print';
-import { F_VISIBLE } from './node';
-import { syncLog } from './util/__tests__/debug-log';
+import { defineType, type NodeOptions, type LocationInfo, type TreeContext, F_AMPERSAND, F_IMPLICIT_AMPERSAND } from './node.js';
+import { Nil } from './nil.js';
+import type { Context } from '../context.js';
+import { SimpleSelector } from './selector-simple.js';
+import { PseudoSelector } from './selector-pseudo.js';
+import { isNode } from './util/is-node.js';
+import { type Selector } from './selector.js';
+import { SelectorList } from './selector-list.js';
+import { ComplexSelector } from './selector-complex.js';
+import { atIndex } from './util/collections.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { F_VISIBLE } from './node.js';
+import { syncLog } from './util/__tests__/debug-log.js';
 
 export type AmpersandValue = {
   /**

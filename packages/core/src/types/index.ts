@@ -1,8 +1,8 @@
 import { type ILexingResult, type IRecognitionException, type IToken } from 'chevrotain';
-import type { Node } from '../tree';
+import type { Node } from '../tree/index.js';
 
-export * from './modes';
-export * from './config';
+export * from './modes.js';
+export * from './config.js';
 
 export interface IParseResult<T extends Node = Node> {
   lexerResult: ILexingResult;

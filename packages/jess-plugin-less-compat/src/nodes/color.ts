@@ -1,7 +1,7 @@
 import { Color } from '@jesscss/core';
-import { createLessProxy } from '../transform/proxy';
-import { mapJessTypeToLessType } from '../transform/type-map';
-import type { LessNode } from '../types';
+import { createLessProxy } from '../transform/proxy.js';
+import { mapJessTypeToLessType } from '../transform/type-map.js';
+import type { LessNode } from '../types.js';
 
 /**
  * Transform a Jess Color to a Less-compatible Color

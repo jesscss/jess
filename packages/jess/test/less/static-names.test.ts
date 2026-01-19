@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Compiler } from '../../src';
+import { Compiler } from '../../src/index.js';
 
 describe('Static Names', () => {
   const compiler = new Compiler();

@@ -7,7 +7,7 @@
  * Less.js Visitor base class (minimal implementation)
  * Plugins expect this structure to exist
  */
-import { isLessProxy } from './transform/proxy';
+import { isLessProxy } from './transform/proxy.js';
 
 // Debug logging helper (only in debug mode)
 const syncLog = process.env.DEBUG ? (data: object) => {

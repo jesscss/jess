@@ -1,18 +1,18 @@
-import { type Combinator } from './combinator';
-import { type Ampersand, Ampersand as AmpersandClass } from './ampersand';
+import { type Combinator } from './combinator.js';
+import { type Ampersand, Ampersand as AmpersandClass } from './ampersand.js';
 import {
   defineType,
   F_VISIBLE,
   F_IMPLICIT_AMPERSAND
-} from './node';
-import type { Context } from '../context';
-import { type Nil } from './nil';
-import { isNode } from './util/is-node';
-import { Selector } from './selector';
-import type { SimpleSelector } from './selector-simple';
-import type { CompoundSelector } from './selector-compound';
-import { getEntries } from './util/collections';
-import { type PrintOptions, getPrintOptions } from './util/print';
+} from './node.js';
+import type { Context } from '../context.js';
+import { type Nil } from './nil.js';
+import { isNode } from './util/is-node.js';
+import { Selector } from './selector.js';
+import type { SimpleSelector } from './selector-simple.js';
+import type { CompoundSelector } from './selector-compound.js';
+import { getEntries } from './util/collections.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 
 // TODO - fix later

@@ -1,5 +1,5 @@
-import { rules, sel, el, decl, any, ruleset, atrule } from '../src';
-import { Context } from '../src/context';
+import { rules, sel, el, decl, any, ruleset, atrule } from '../src/index.js';
+import { Context } from '../src/context.js';
 
 describe('Basic At-Rule Serialization', () => {
   let context: Context;

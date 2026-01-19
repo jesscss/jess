@@ -4,7 +4,7 @@ import {
   setSourceContent,
   toEncodedMap
 } from '@jridgewell/gen-mapping';
-import type { OutputWriter, SourceSegment } from './print';
+import type { OutputWriter, SourceSegment } from './print.js';
 
 export type BuildSourceMapOptions = {
   file?: string;

@@ -1,4 +1,4 @@
-import { Visitor } from './index';
+import { Visitor } from './index.js';
 
 /**
  * A visitor adapter for legacy Less plugins

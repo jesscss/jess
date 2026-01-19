@@ -8,8 +8,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Parser } from '@jesscss/less-parser';
 import { Context, type Visitor } from '@jesscss/core';
-import { lessCompatPlugin } from '../../src';
-import type { LessVisitor } from '../../src/types';
+import { lessCompatPlugin } from '../../src/index.js';
+import type { LessVisitor } from '../../src/types.js';
 
 // Helper to normalize visitor (PluginInterface allows Visitor | Visitor[])
 function normalizeVisitor(visitor: Visitor | Visitor[] | undefined): Visitor | undefined {

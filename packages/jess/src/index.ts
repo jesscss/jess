@@ -1,6 +1,6 @@
 import * as path from 'path';
-import mergeWith from 'lodash-es/mergeWith';
-import { getConfig } from './config';
+import mergeWith from 'lodash-es/mergeWith.js';
+import { getConfig } from './config.js';
 import {
   Context,
   type PrintOptions,
@@ -14,7 +14,7 @@ import {
 import { getOptions, type StylesConfig } from 'styles-config';
 import type { PluginInterface } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
-import { outputDiagnostics } from './diagnostics';
+import { outputDiagnostics } from './diagnostics.js';
 
 export type ConfigOptions = StylesConfig & {
   /** Output file path for matching against output config options */

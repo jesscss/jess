@@ -1,5 +1,6 @@
 {
   "name": "@jesscss/core",
+  "type": "module",
   "publishConfig": {
     "access": "public"
   },
@@ -42,7 +43,7 @@
     "prepublishOnly": "pnpm build && pnpm test:all",
     "build": "pnpm compile",
     "visualize": "vite build",
-    "compile": "tsc -p tsconfig.build.json && node ../../scripts/rewrite-relative-imports.cjs ./lib",
+    "compile": "tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json -w",
     "test": "cross-env TEST=true vitest",
     "test:coverage": "cross-env TEST=true vitest --coverage",

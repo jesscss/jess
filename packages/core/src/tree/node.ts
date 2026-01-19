@@ -8,14 +8,14 @@
  */
 
 // First, import everything from node-base (the pure Node class)
-export * from './node-base';
-import { Node } from './node-base';
+export * from './node-base.js';
+import { Node } from './node-base.js';
 
 // Import dependencies needed for patching (these import from node-base, not node)
-import { Nil } from './nil';
-import { Any } from './any';
-import { TreeContext } from '../context';
-import { type Operator } from './util/calculate';
+import { Nil } from './nil.js';
+import { Any } from './any.js';
+import { TreeContext } from '../context.js';
+import { type Operator } from './util/calculate.js';
 
 /**
  * Patch Node.prototype.nil to return a Nil instance

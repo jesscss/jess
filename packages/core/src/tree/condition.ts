@@ -1,8 +1,8 @@
-import { type Context } from '../context';
-import { F_NON_STATIC, F_VISIBLE, Node, defineType } from './node';
-import { Bool } from './bool';
-import { Nil } from './nil';
-import { type PrintOptions, getPrintOptions } from './util/print';
+import { type Context } from '../context.js';
+import { F_NON_STATIC, F_VISIBLE, Node, defineType } from './node.js';
+import { Bool } from './bool.js';
+import { Nil } from './nil.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 
 /** @note Less will parse =< but it will be stored as <= */

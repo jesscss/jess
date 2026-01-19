@@ -1,5 +1,5 @@
-import { type Context } from '../context';
-import { Node, F_VISIBLE, defineType, type LocationInfo, type TreeContext } from './node';
+import { type Context } from '../context.js';
+import { Node, F_VISIBLE, defineType, type LocationInfo, type TreeContext } from './node.js';
 
 export type CommentOptions = {
   lineComment?: boolean;

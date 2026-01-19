@@ -1,5 +1,6 @@
 {
   "name": "@jesscss/fns",
+  "type": "module",
   "publishConfig": {
     "access": "public"
   },
@@ -27,7 +28,7 @@
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "npm run build",
     "build": "pnpm compile",
-    "compile": "tsc -b tsconfig.build.json && node ../../scripts/rewrite-relative-imports.cjs ./lib",
+    "compile": "tsc -b tsconfig.build.json",
     "test": "cross-env TEST=true vitest",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"

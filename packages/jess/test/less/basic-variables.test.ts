@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Compiler } from '../../src';
+import { Compiler } from '../../src/index.js';
 
 describe('Basic Variables', () => {
   const compiler = new Compiler();

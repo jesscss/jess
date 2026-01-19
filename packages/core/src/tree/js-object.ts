@@ -1,4 +1,4 @@
-import { Node, defineType } from './node';
+import { Node, defineType } from './node.js';
 
 /**
  * A plain JS object.

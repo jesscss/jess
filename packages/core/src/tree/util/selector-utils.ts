@@ -1,10 +1,10 @@
-import { Selector } from '../selector';
-import { Nil } from '../nil';
-import { Ampersand } from '../ampersand';
-import { Combinator } from '../combinator';
-import { ComplexSelector } from '../selector-complex';
-import { SelectorList } from '../selector-list';
-import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node';
+import { Selector } from '../selector.js';
+import { Nil } from '../nil.js';
+import { Ampersand } from '../ampersand.js';
+import { Combinator } from '../combinator.js';
+import { ComplexSelector } from '../selector-complex.js';
+import { SelectorList } from '../selector-list.js';
+import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 
 /**
  * Adds an implicit ampersand to a selector if it doesn't already have one.

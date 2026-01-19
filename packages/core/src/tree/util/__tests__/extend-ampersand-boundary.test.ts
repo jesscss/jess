@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Context } from '../../../context';
+import { Context } from '../../../context.js';
 import {
   rules,
   ruleset,
@@ -13,9 +13,9 @@ import {
   type Rules,
   F_IMPLICIT_AMPERSAND,
   F_VISIBLE
-} from '../../index';
-import { tryExtendSelector } from '../extend';
-import { processExtends } from '../extend-roots';
+} from '../../index.js';
+import { tryExtendSelector } from '../extend.js';
+import { processExtends } from '../extend-roots.js';
 
 describe('Extend ampersand boundary behavior', () => {
   let context: Context;

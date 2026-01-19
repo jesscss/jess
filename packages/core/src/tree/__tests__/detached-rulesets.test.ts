@@ -8,8 +8,8 @@ import {
   Rules,
   Node
 } from '..';
-import { Context } from '../../context';
-import type { FindOptions } from '../util/registry-utils';
+import { Context } from '../../context.js';
+import type { FindOptions } from '../util/registry-utils.js';
 
 function getVar(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
   context.rulesContext = n;

@@ -18,9 +18,9 @@ import {
   type Declaration,
   type Selector
 } from '..';
-import { Context, TreeContext } from '../../context';
-import type { FindOptions } from '../util/registry-utils';
-import { isNode } from '../util/is-node';
+import { Context, TreeContext } from '../../context.js';
+import type { FindOptions } from '../util/registry-utils.js';
+import { isNode } from '../util/is-node.js';
 
 let context: Context;
 

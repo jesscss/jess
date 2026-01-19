@@ -1,4 +1,4 @@
-import { Node, defineType, type LocationInfo, type TreeContext, type NodeOptions } from './node';
+import { Node, defineType, type LocationInfo, type TreeContext, type NodeOptions } from './node.js';
 
 type Fn = (...args: any[]) => any;
 /**

@@ -1,5 +1,5 @@
-import { Node } from '../node';
-import type { Nodes } from '../tree';
+import { Node } from '../node.js';
+import type { Nodes } from '../tree.js';
 
 const { isArray } = Array;
 /**

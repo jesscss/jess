@@ -1,8 +1,8 @@
-import { Node, defineType } from './node';
-import { type Quoted } from './quoted';
-import { type Any } from './any';
-import { getPrintOptions, type PrintOptions } from './util/print';
-import { isNode } from './util/is-node';
+import { Node, defineType } from './node.js';
+import { type Quoted } from './quoted.js';
+import { type Any } from './any.js';
+import { getPrintOptions, type PrintOptions } from './util/print.js';
+import { isNode } from './util/is-node.js';
 
 /**
  * e.g. url('foo.png')

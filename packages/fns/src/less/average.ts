@@ -1,5 +1,5 @@
 import { Color, defineFunction } from '@jesscss/core';
-import { colorBlend } from '../util/colorHelper';
+import { colorBlend } from '../util/colorHelper.js';
 
 export function averageBase(cb: number, cs: number) {
   return (cb + cs) / 2;

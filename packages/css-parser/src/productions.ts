@@ -1,4 +1,4 @@
-import type { CssActionsParser, TokenMap, RuleContext } from './cssActionsParser';
+import type { CssActionsParser, TokenMap, RuleContext } from './cssActionsParser.js';
 import { EMPTY_ALT, type IToken, type IOrAlt, type OrMethodOpts, tokenMatcher } from 'chevrotain';
 import {
   type TreeContext,

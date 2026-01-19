@@ -1,11 +1,11 @@
-import { Node, defineType } from './node';
-import { calculate, type Operator } from './util/calculate';
-import { type Context } from '../context';
-import { isNode } from './util/is-node';
-import round from 'lodash-es/round';
+import { Node, defineType } from './node.js';
+import { calculate, type Operator } from './util/calculate.js';
+import { type Context } from '../context.js';
+import { isNode } from './util/is-node.js';
+import round from 'lodash-es/round.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { type Call } from './call';
-import { List } from './list';
+import { type Call } from './call.js';
+import { List } from './list.js';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -13,7 +13,7 @@ const require = createRequire(import.meta.url);
 // Lazy getter for Call to break circular dependency:
 // rules.ts → cast.ts → color.ts → call.ts → rules.ts
 function getCall() {
-  return require('./call').Call;
+  return require('./call.js').Call;
 }
 
 type ColorValues = [number, number, number, number] | number[];

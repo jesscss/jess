@@ -1,7 +1,7 @@
 import { Lexer } from 'chevrotain';
-import { cssLexer } from './cssTokens';
-import { type TokenMap, type CssParserConfig, CssActionsParser } from './cssActionsParser';
-import { CssErrorMessageProvider } from './cssErrorMessageProvider';
+import { cssLexer } from './cssTokens.js';
+import { type TokenMap, type CssParserConfig, CssActionsParser } from './cssActionsParser.js';
+import { CssErrorMessageProvider } from './cssErrorMessageProvider.js';
 import type { ConditionalPick } from 'type-fest';
 import { type Node, type Rules, type IParseResult } from '@jesscss/core';
 

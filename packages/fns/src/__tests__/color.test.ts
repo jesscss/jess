@@ -1,6 +1,6 @@
 import {
   color
-} from '../less';
+} from '../less/index.js';
 
 import { Color, Context, Quoted, Dimension } from '@jesscss/core';
 import { beforeAll, describe, it, expect } from 'vitest';

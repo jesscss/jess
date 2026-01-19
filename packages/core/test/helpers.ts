@@ -5,7 +5,7 @@ import {
   decl, any, sel, el, sellist, rules, ruleset, spaced, ref, call, op, list, paren, negative, atrule, mixin, condition, QueryCondition, interpolated, interpolatedSelector, num,
   // Additional types for test helpers
   StyleImport, Quoted
-} from '../src';
+} from '../src/index.js';
 
 // Default node instances
 const DEFAULT_COLOR = any('red');

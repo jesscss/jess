@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { CallMap } from '../recursion-helper';
-import { call, list, num, ref } from '../../index';
+import { CallMap } from '../recursion-helper.js';
+import { call, list, num, ref } from '../../index.js';
 
 describe('CallMap', () => {
   describe('add', () => {

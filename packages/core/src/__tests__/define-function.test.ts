@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { defineFunction, callWithContext } from '../define-function';
-import { Context } from '../context';
+import { defineFunction, callWithContext } from '../define-function.js';
+import { Context } from '../context.js';
 import { expectTypeOf } from 'vitest';
-import { Color, Dimension } from '../tree';
+import { Color, Dimension } from '../tree/index.js';
 
 describe('defineFunction', () => {
   const args = [

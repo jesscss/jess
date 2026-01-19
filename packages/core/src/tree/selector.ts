@@ -1,8 +1,8 @@
 import type { MaybePromise } from 'awaitable-pipe';
-import { F_VISIBLE, Node, type NodeOptions, type NodeValue, defineType } from './node';
+import { F_VISIBLE, Node, type NodeOptions, type NodeValue, defineType } from './node.js';
 import type { IfAny } from 'type-fest';
-import type { Context } from '../context';
-import type { Nil } from './nil';
+import type { Context } from '../context.js';
+import type { Nil } from './nil.js';
 
 /**
  * This represents anything that is valid in a selector

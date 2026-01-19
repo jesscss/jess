@@ -1,6 +1,6 @@
-import { el, sel, sellist, compound, is, co, type Selector, PseudoSelector, type SelectorList } from '../../..';
-import { extendSelector, tryExtendSelector, ExtendErrorType } from '../extend';
-import { isNode } from '../is-node';
+import { el, sel, sellist, compound, is, co, type Selector, PseudoSelector, type SelectorList } from '../../../index.js';
+import { extendSelector, tryExtendSelector, ExtendErrorType } from '../extend.js';
+import { isNode } from '../is-node.js';
 
 describe('Extend Selector Tests', () => {
   describe('Extension validation', () => {

@@ -1,14 +1,14 @@
-import { defineType, Node, F_VISIBLE } from './node';
-import { type Context } from '../context';
-import { Selector } from './selector';
-import { Ampersand } from './ampersand';
-import { Nil } from './nil';
-import { type PrintOptions, getPrintOptions } from './util/print';
+import { defineType, Node, F_VISIBLE } from './node.js';
+import { type Context } from '../context.js';
+import { Selector } from './selector.js';
+import { Ampersand } from './ampersand.js';
+import { Nil } from './nil.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
-import { isNode } from './util/is-node';
-import { getImplicitSelector } from './util/selector-utils';
-import { Ruleset } from './ruleset';
-import { ComplexSelector } from './selector-complex';
+import { isNode } from './util/is-node.js';
+import { getImplicitSelector } from './util/selector-utils.js';
+import { Ruleset } from './ruleset.js';
+import { ComplexSelector } from './selector-complex.js';
 
 export const enum ExtendFlag {
   /** Sass and Jess default */

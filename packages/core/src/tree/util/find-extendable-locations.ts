@@ -1,11 +1,11 @@
-import { type Selector } from '../selector';
-import { SimpleSelector } from '../selector-simple';
-import { SelectorList } from '../selector-list';
-import { ComplexSelector } from '../selector-complex';
-import { CompoundSelector } from '../selector-compound';
-import { PseudoSelector } from '../selector-pseudo';
-import { Combinator } from '../combinator';
-import { isNode } from './is-node';
+import { type Selector } from '../selector.js';
+import { SimpleSelector } from '../selector-simple.js';
+import { SelectorList } from '../selector-list.js';
+import { ComplexSelector } from '../selector-complex.js';
+import { CompoundSelector } from '../selector-compound.js';
+import { PseudoSelector } from '../selector-pseudo.js';
+import { Combinator } from '../combinator.js';
+import { isNode } from './is-node.js';
 import {
   componentsMatch,
   isSelector,
@@ -19,12 +19,12 @@ import {
   isStructurallyEqual,
   getNonCombinatorComponents,
   expandComplexSelectorWithIs
-} from './extend-helpers';
+} from './extend-helpers.js';
 
 // Re-export findExtendableLocations and types from extend-helpers.ts to break circular dependency
-export { findExtendableLocations, type ExtendLocation, type ExtendSearchResult } from './extend-helpers';
-import { findExtendableLocations } from './extend-helpers';
-import type { ExtendLocation } from './extend-helpers';
+export { findExtendableLocations, type ExtendLocation, type ExtendSearchResult } from './extend-helpers.js';
+import { findExtendableLocations } from './extend-helpers.js';
+import type { ExtendLocation } from './extend-helpers.js';
 
 /**
  * Normalizes a selector to handle :is() equivalences

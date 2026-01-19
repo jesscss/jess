@@ -1,7 +1,7 @@
-import type { Context } from '../context';
-import { Node, defineType } from './node';
-import { Selector } from './selector';
-import { type PrintOptions, getPrintOptions } from './util/print';
+import type { Context } from '../context.js';
+import { Node, defineType } from './node.js';
+import { Selector } from './selector.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 
 export type ExpressionOptions = {

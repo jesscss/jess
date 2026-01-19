@@ -1,6 +1,6 @@
-import type { Deprecation } from '../deprecation';
-import type { Logger } from '../logger';
-import type { WarningDiagnostic } from '../jess-error';
+import type { Deprecation } from '../deprecation.js';
+import type { Logger } from '../logger.js';
+import type { WarningDiagnostic } from '../jess-error.js';
 
 /**
  * The maximum number of repetitions of the same deprecation warning

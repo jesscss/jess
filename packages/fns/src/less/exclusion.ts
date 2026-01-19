@@ -1,4 +1,4 @@
-import { colorBlend } from '../util/colorHelper';
+import { colorBlend } from '../util/colorHelper.js';
 import { Color, defineFunction } from '@jesscss/core';
 
 export function exclusionBase(cb: number, cs: number) {

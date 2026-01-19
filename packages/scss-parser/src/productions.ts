@@ -1,4 +1,4 @@
-import type { LessParser, TokenMap, RuleContext } from './scssParser';
+import type { LessParser, TokenMap, RuleContext } from './scssParser.js';
 import { tokenMatcher } from 'chevrotain';
 
 /** Extensions of the CSS language */

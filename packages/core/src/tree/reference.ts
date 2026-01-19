@@ -1,20 +1,20 @@
-import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, type LocationInfo } from './node';
-import type { Context, TreeContext } from '../context';
-import { cast } from './util/cast';
-import type { FindOptions } from './util/registry-utils';
-import { Any, type AnyRole } from './any';
-import { Selector } from './selector';
-import { isNode } from './util/is-node';
-import type { Call } from './call';
-import type { Quoted } from './quoted';
-import { atIndex } from './util/collections';
-import type { Num } from './number';
-import { type PrintOptions, getPrintOptions } from './util/print';
+import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, type LocationInfo } from './node.js';
+import type { Context, TreeContext } from '../context.js';
+import { cast } from './util/cast.js';
+import type { FindOptions } from './util/registry-utils.js';
+import { Any, type AnyRole } from './any.js';
+import { Selector } from './selector.js';
+import { isNode } from './util/is-node.js';
+import type { Call } from './call.js';
+import type { Quoted } from './quoted.js';
+import { atIndex } from './util/collections.js';
+import type { Num } from './number.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
-import { getFunctionFromMixins } from './rules';
-import type { MixinEntry, Rules } from './rules';
-import type { Interpolated } from './interpolated';
-import { freezeChildren } from './util/cloning';
+import { getFunctionFromMixins } from './rules.js';
+import type { MixinEntry, Rules } from './rules.js';
+import type { Interpolated } from './interpolated.js';
+import { freezeChildren } from './util/cloning.js';
 
 /**
  * The type is determined by syntax

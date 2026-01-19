@@ -1,5 +1,5 @@
-import { type ColorValue } from '../util/number';
-import hsva from './hsva';
+import { type ColorValue } from '../util/number.js';
+import hsva from './hsva.js';
 import { defineFunction, Dimension } from '@jesscss/core';
 
 const hsv = defineFunction(

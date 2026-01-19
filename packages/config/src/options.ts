@@ -1,4 +1,4 @@
-import type { StylesConfig, FileMatchOptions } from './types';
+import type { StylesConfig, FileMatchOptions } from './types.js';
 import picomatch from 'picomatch';
 import path from 'path';
 

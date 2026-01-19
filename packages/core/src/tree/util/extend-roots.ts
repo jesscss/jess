@@ -1,12 +1,13 @@
-import type { Rules } from '../rules';
-import type { AtRule } from '../at-rule';
-import { isNode } from './is-node';
-import type { Context } from '../../context';
-import type { Ruleset } from '../ruleset';
-import type { Selector } from '../selector';
-import type { Node } from '../node';
-import { tryExtendSelector, findChainedExtends } from './extend';
-import { WARN, toDiagnostic } from '../../jess-error';
+import type { Rules } from '../rules.js';
+import type { AtRule } from '../at-rule.js';
+import { isNode } from './is-node.js';
+import type { Context } from '../../context.js';
+import type { Ruleset } from '../ruleset.js';
+import type { Selector } from '../selector.js';
+import type { Node } from '../node.js';
+import { tryExtendSelector, findChainedExtends } from './extend.js';
+import { WARN, toDiagnostic } from '../../jess-error.js';
+import { syncLog } from './__tests__/debug-log.js';
 
 /**
  * Extend Roots Registry
@@ -302,6 +303,12 @@ export function processExtends(context: Context): void {
   // Each extend can only transform a particular ruleset's selector once
   const transformedByExtend = new Map<Ruleset, Set<string>>();
   const allRoots = context.extendRoots.getAlts();
+  const debugFilePath = context.treeContext?.file?.path || context.treeContext?.file?.fullPath || '';
+  const debugThisFile = typeof debugFilePath === 'string' && debugFilePath.includes('extend-selector/extend-selector.less');
+  // Debug marker to confirm this code path is running in Jess tests.
+  if (process.env.DEBUG) {
+    syncLog({ kind: 'processExtends', file: debugFilePath || null, count: allExtends.length });
+  }
 
   /**
    * Helper to re-index a ruleset's registry after selector update
@@ -531,6 +538,17 @@ export function processExtends(context: Context): void {
             const extendedSelector = result.value;
             // Only update if selector actually changed
             if (extendedSelector.valueOf() !== originalSelector.valueOf()) {
+              if (debugThisFile) {
+                syncLog({
+                  kind: 'extend:apply',
+                  phase: 1,
+                  target: singleTarget.valueOf(),
+                  extendWith: selectorWithExtend.valueOf(),
+                  partial,
+                  from: originalSelector.valueOf(),
+                  to: extendedSelector.valueOf()
+                });
+              }
               // Mark that this extend has transformed this ruleset
               transformsForRuleset.add(extendKey);
 
@@ -675,6 +693,17 @@ export function processExtends(context: Context): void {
 
               // Only update if selector actually changed
               if (extendedSelector.valueOf() !== currentSelectorValue) {
+                if (debugThisFile) {
+                  syncLog({
+                    kind: 'extend:apply',
+                    phase: 2,
+                    target: singleTarget.valueOf(),
+                    extendWith: selectorWithExtend.valueOf(),
+                    partial,
+                    from: currentSelectorValue,
+                    to: extendedSelector.valueOf()
+                  });
+                }
                 // Mark that this extend has transformed this ruleset
                 transformsForRuleset.add(extendKey);
 

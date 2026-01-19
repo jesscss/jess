@@ -1,21 +1,21 @@
-import { Node, F_VISIBLE, F_AMPERSAND, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions } from './node';
-import { Rules } from './rules';
-import type { Context } from '../context';
-import { Nil } from './nil';
-import type { Condition } from './condition';
-import type { Selector } from './selector';
-import { atIndex } from './util/collections';
-import { isNode } from './util/is-node';
-import { Ampersand } from './ampersand';
-import { Combinator } from './combinator';
-import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex';
-import type { CompoundSelector } from './selector-compound';
-import { SelectorList } from './selector-list';
-import { type PrintOptions, type FinalPrintOptions, getPrintOptions } from './util/print';
+import { Node, F_VISIBLE, F_AMPERSAND, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions } from './node.js';
+import { Rules } from './rules.js';
+import type { Context } from '../context.js';
+import { Nil } from './nil.js';
+import type { Condition } from './condition.js';
+import type { Selector } from './selector.js';
+import { atIndex } from './util/collections.js';
+import { isNode } from './util/is-node.js';
+import { Ampersand } from './ampersand.js';
+import { Combinator } from './combinator.js';
+import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
+import type { CompoundSelector } from './selector-compound.js';
+import { SelectorList } from './selector-list.js';
+import { type PrintOptions, type FinalPrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
-import type { AtRule } from './at-rule';
-import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper';
-import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils';
+import type { AtRule } from './at-rule.js';
+import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
+import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
 
 export type RulesetValue = {
   selector: Selector | Nil;

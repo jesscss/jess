@@ -1,6 +1,6 @@
 import { Dimension, defineFunction } from '@jesscss/core';
-import { mathHelper } from '../util/mathHelper';
-import lodashRound from 'lodash-es/round';
+import { mathHelper } from '../util/mathHelper.js';
+import lodashRound from 'lodash-es/round.js';
 
 export default defineFunction(
   'round',

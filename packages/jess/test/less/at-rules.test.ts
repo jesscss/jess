@@ -13,7 +13,7 @@
 // }
 
 import { describe, it, expect } from 'vitest';
-import { Compiler } from '../../src';
+import { Compiler } from '../../src/index.js';
 
 describe('At Rules', () => {
   const compiler = new Compiler();

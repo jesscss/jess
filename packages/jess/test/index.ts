@@ -1,7 +1,7 @@
 import * as glob from 'glob';
 import * as fs from 'fs';
 import * as path from 'path';
-import { Compiler } from '../src';
+import { Compiler } from '../src/index.js';
 
 const compiler = new Compiler();
 

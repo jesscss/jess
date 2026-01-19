@@ -1,5 +1,5 @@
-import { F_MAY_ASYNC, F_NON_STATIC, Node, defineType } from './node';
-import { type Quoted } from './quoted';
+import { F_MAY_ASYNC, F_NON_STATIC, Node, defineType } from './node.js';
+import { type Quoted } from './quoted.js';
 
 /**
  * Imports of TS/JS ESM modules.

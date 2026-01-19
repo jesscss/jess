@@ -4,12 +4,12 @@ import {
   type TreeContext,
   defineType,
   type Node
-} from './node';
-import { Dimension } from './dimension';
-import { Color } from './color';
-import { type Context } from '../context';
-import { type Operator } from './util/calculate';
-import isPlainObject from 'lodash-es/isPlainObject';
+} from './node.js';
+import { Dimension } from './dimension.js';
+import { Color } from './color.js';
+import { type Context } from '../context.js';
+import { type Operator } from './util/calculate.js';
+import isPlainObject from 'lodash-es/isPlainObject.js';
 
 /**
  * A number. Named `Num` to avoid conflict with the built-in `Number` class.

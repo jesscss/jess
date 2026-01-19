@@ -1,8 +1,8 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC  } from './node';
-import type { Context } from '../context';
-import type { Operator } from './util/calculate';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC  } from './node.js';
+import type { Context } from '../context.js';
+import type { Operator } from './util/calculate.js';
 import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
-import { getPrintOptions, type PrintOptions } from './util/print';
+import { getPrintOptions, type PrintOptions } from './util/print.js';
 
 export type { Operator };
 /** Operation is always a tuple */

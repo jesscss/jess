@@ -1,19 +1,19 @@
-import { type Context } from '../context';
-import { UnitMode } from '../types/modes';
-import { Color, ColorFormat } from './color';
+import { type Context } from '../context.js';
+import { UnitMode } from '../types/modes.js';
+import { Color, ColorFormat } from './color.js';
 import {
   Node,
   type LocationInfo,
   type NodeOptions,
   type TreeContext,
   defineType
-} from './node';
-import { type Operator, calculate } from './util/calculate';
-import { logger } from '../logger';
-import round from 'lodash-es/round';
-import { type PrintOptions, getPrintOptions } from './util/print';
+} from './node.js';
+import { type Operator, calculate } from './util/calculate.js';
+import { logger } from '../logger.js';
+import round from 'lodash-es/round.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 
-// import type { Context } from '../context'
+// import type { Context } from '../context.js'
 // import type { OutputCollector } from '../output'
 
 export type DimensionValue = {

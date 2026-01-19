@@ -1,5 +1,5 @@
-import { colorBlend } from '../util/colorHelper';
-import { overlayBase } from './overlay';
+import { colorBlend } from '../util/colorHelper.js';
+import { overlayBase } from './overlay.js';
 import { Color, defineFunction } from '@jesscss/core';
 
 export function hardLightBase(cb: number, cs: number) {

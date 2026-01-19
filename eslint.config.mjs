@@ -5,6 +5,7 @@ import globals from 'globals';
 import stylistic from '@stylistic/eslint-plugin';
 import tseslint from 'typescript-eslint';
 import js from '@eslint/js';
+import importPlugin from 'eslint-plugin-import';
 import {
   FlatCompat
 } from '@eslint/eslintrc';
@@ -70,7 +71,8 @@ export default tseslint.config([
     },
     plugins: {
       '@stylistic': stylistic,
-      '@typescript-eslint': tseslint.plugin
+      '@typescript-eslint': tseslint.plugin,
+      import: importPlugin
     }
   }, {
     files: ['**/*.js', '**/*.mjs'],
@@ -106,6 +108,14 @@ export default tseslint.config([
       '@typescript-eslint/no-confusing-void-expression': 'off',
       'no-void': 0,
       '@typescript-eslint/consistent-type-assertions': 0,
+      // Enforce runtime-correct ESM specifiers in TS source:
+      // - relative imports must include `.js`
+      // - directory imports like `./foo` are banned; use `./foo/index.js`
+      'import/extensions': ['error', 'ignorePackages', {
+        js: 'always',
+        mjs: 'always',
+        cjs: 'always'
+      }],
 
       '@typescript-eslint/no-floating-promises': ['warn', {
         ignoreVoid: true

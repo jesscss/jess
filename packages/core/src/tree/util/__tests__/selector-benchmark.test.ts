@@ -1,7 +1,7 @@
-import { el, sel, sellist, compound, is, co, pseudo, type Selector } from '../../..';
-import { matchSelectors, MatchResult, findExtendableLocations, ExtendSearchResult } from '../find-extendable-locations';
-import { extendSelector } from '../extend';
-import { isNode } from '../is-node';
+import { el, sel, sellist, compound, is, co, pseudo, type Selector } from '../../../index.js';
+import { matchSelectors, MatchResult, findExtendableLocations, ExtendSearchResult } from '../find-extendable-locations.js';
+import { extendSelector } from '../extend.js';
+import { isNode } from '../is-node.js';
 
 /**
  * Version that bypasses OPTIMIZATION 1: Exact match cache

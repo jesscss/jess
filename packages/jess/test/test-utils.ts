@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { getExpectedOutputFiles, type OutputTestConfig } from '../src/config';
+import { getExpectedOutputFiles, type OutputTestConfig } from '../src/config.js';
 import type { StylesConfig } from 'styles-config';
 
 export interface TestCase {

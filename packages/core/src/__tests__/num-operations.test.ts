@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { Num } from '../tree/number';
-import { Dimension } from '../tree/dimension';
+import { Num } from '../tree/number.js';
+import { Dimension } from '../tree/dimension.js';
 
 describe('Num operations', () => {
   it('should return Num instances when operating on Num with Num', () => {

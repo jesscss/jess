@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { Compiler } from '../src';
-import { outputDiagnostics } from '../src/diagnostics';
+import { Compiler } from '../src/index.js';
+import { outputDiagnostics } from '../src/diagnostics.js';
 import type { ErrorDiagnostic, WarningDiagnostic } from '@jesscss/core';
 
 describe('Diagnostic Output', () => {

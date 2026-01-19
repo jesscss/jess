@@ -1,4 +1,4 @@
-import { toHSL } from '../util/to-hsl';
+import { toHSL } from '../util/to-hsl.js';
 import { Color, defineFunction, Num } from '@jesscss/core';
 
 export default defineFunction(

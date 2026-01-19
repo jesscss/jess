@@ -1,6 +1,6 @@
-import type { MaybePromise } from './utils';
-import { isThenable } from './utils';
-export { serialForEach, serialReduce } from './utils';
+import type { MaybePromise } from './utils.js';
+import { isThenable } from './utils.js';
+export { serialForEach, serialReduce } from './utils.js';
 
 export type StepErrorOptions<TIn, R> = {
   onError?: (error: unknown, input: TIn) => void;

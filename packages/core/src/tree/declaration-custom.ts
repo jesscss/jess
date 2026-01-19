@@ -1,7 +1,7 @@
-import { Declaration } from './declaration';
-import { defineType } from './node';
-import type { Context } from '../context';
-import type { Nil } from './nil';
+import { Declaration } from './declaration.js';
+import { defineType } from './node.js';
+import type { Context } from '../context.js';
+import type { Nil } from './nil.js';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 // import type { OutputCollector } from '../output'
 

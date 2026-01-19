@@ -1,6 +1,6 @@
-import type { Context } from '../context';
-import { defineType } from './node';
-import { Selector } from './selector';
+import type { Context } from '../context.js';
+import { defineType } from './node.js';
+import { Selector } from './selector.js';
 
 export type Combinators = ' ' | '>' | '+' | '~' | '|' | '||';
 

@@ -1,8 +1,8 @@
 import { Dimension, Num } from '@jesscss/core';
-import { createLessProxy } from '../transform/proxy';
-import { toLessNode } from '../transform/to-less';
-import { mapJessTypeToLessType } from '../transform/type-map';
-import type { LessNode } from '../types';
+import { createLessProxy } from '../transform/proxy.js';
+import { toLessNode } from '../transform/to-less.js';
+import { mapJessTypeToLessType } from '../transform/type-map.js';
+import type { LessNode } from '../types.js';
 
 /**
  * Transform a Jess Dimension or Num to a Less-compatible Dimension

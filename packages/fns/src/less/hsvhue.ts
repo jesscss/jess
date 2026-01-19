@@ -1,4 +1,4 @@
-import { toHSV } from '../util/to-hsv';
+import { toHSV } from '../util/to-hsv.js';
 import { Color, defineFunction, Num } from '@jesscss/core';
 
 export default defineFunction(

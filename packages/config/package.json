@@ -16,7 +16,7 @@
   },
   "scripts": {
     "build": "pnpm compile",
-    "compile": "tsc -p tsconfig.build.json && node ../../scripts/rewrite-relative-imports.cjs ./lib",
+    "compile": "tsc -p tsconfig.build.json",
     "test": "vitest"
   },
   "dependencies": {

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { createLessProxy, isLessProxy, getJessNodeFromProxy } from '../../../src/transform/proxy';
+import { createLessProxy, isLessProxy, getJessNodeFromProxy } from '../../../src/transform/proxy.js';
 import { Ruleset, BasicSelector } from '@jesscss/core';
 
 describe('createLessProxy', () => {

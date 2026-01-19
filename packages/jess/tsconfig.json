@@ -1,9 +1,10 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "composite": true,
     "outDir": "./lib",
     "rootDir": "."
   },
-  "include": ["src/**/*", "test/**/*", "vitest.config.ts", "../../vitest.d.ts"],
+  "include": ["src/**/*", "vitest.config.ts", "../../vitest.d.ts"],
   "exclude": ["node_modules", "lib"]
 }

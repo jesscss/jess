@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { defineFunction } from '../src/define-function';
-import { Dimension, Num } from '../src/tree';
+import { defineFunction } from '../src/define-function.js';
+import { Dimension, Num } from '../src/tree/index.js';
 import {
   percentOf,
   angleToDegrees,
@@ -11,7 +11,7 @@ import {
   timeToMs,
   frequencyToHz,
   angleToRadians
-} from '../src/conversions';
+} from '../src/conversions.js';
 
 describe('Conversion Plugins', () => {
   describe('percentOf', () => {

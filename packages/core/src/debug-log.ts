@@ -1,4 +1,4 @@
-import type { Node } from './tree/node';
+import type { Node } from './tree/node.js';
 
 const SYNC_LOG_PATH = '/Users/matthew/git/oss/jess/.cursor/debug-sync.log';
 

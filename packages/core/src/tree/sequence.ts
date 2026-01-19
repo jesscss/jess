@@ -1,11 +1,11 @@
-import { Node, defineType } from './node';
-import { Nil } from './nil';
-import { List } from './list';
-import type { Context } from '../context';
-import { compareNodeArray } from './util/compare';
-import { isNode } from './util/is-node';
+import { Node, defineType } from './node.js';
+import { Nil } from './nil.js';
+import { List } from './list.js';
+import type { Context } from '../context.js';
+import { compareNodeArray } from './util/compare.js';
+import { isNode } from './util/is-node.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
-import { type PrintOptions, getPrintOptions } from './util/print';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export type SequenceOptions = {
   /**

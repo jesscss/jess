@@ -93,21 +93,21 @@ async function runScenario(
     vi.unmock('@jesscss/awaitable-pipe');
   }
 
-  const { Context } = await import('../src/context');
-  const Tree = await import('../src/tree');
-  const { rules } = await import('../src/tree/rules');
-  const { ruleset } = await import('../src/tree/ruleset');
-  const { decl } = await import('../src/tree/declaration');
-  const { el } = await import('../src/tree/selector-basic');
-  const { sel } = await import('../src/tree/selector-complex');
-  const { compound } = await import('../src/tree/selector-compound');
-  const { co } = await import('../src/tree/combinator');
-  const { sellist } = await import('../src/tree/selector-list');
-  const { seq, spaced } = await import('../src/tree/sequence');
-  const { list } = await import('../src/tree/list');
-  const { any } = await import('../src/tree/any');
-  const { quoted } = await import('../src/tree/quoted');
-  const { style } = await import('../src/tree/import-style');
+  const { Context } = await import('../src/context.js');
+  const Tree = await import('../src/tree/index.js');
+  const { rules } = await import('../src/tree/rules.js');
+  const { ruleset } = await import('../src/tree/ruleset.js');
+  const { decl } = await import('../src/tree/declaration.js');
+  const { el } = await import('../src/tree/selector-basic.js');
+  const { sel } = await import('../src/tree/selector-complex.js');
+  const { compound } = await import('../src/tree/selector-compound.js');
+  const { co } = await import('../src/tree/combinator.js');
+  const { sellist } = await import('../src/tree/selector-list.js');
+  const { seq, spaced } = await import('../src/tree/sequence.js');
+  const { list } = await import('../src/tree/list.js');
+  const { any } = await import('../src/tree/any.js');
+  const { quoted } = await import('../src/tree/quoted.js');
+  const { style } = await import('../src/tree/import-style.js');
   const { isThenable } = await import('@jesscss/awaitable-pipe');
 
   let restore: undefined | (() => void);

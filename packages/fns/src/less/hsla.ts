@@ -1,5 +1,5 @@
 // hsla is an alias of hsl - it uses the same implementation but with a different name
-import hsl from './hsl';
+import hsl from './hsl.js';
 import { defineFunction, type FunctionThis, Call, TreeContext, Color, ColorFormat, Dimension, callWithContext } from '@jesscss/core';
 import { splitSequence } from '@jesscss/core';
 

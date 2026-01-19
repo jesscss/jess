@@ -1,5 +1,5 @@
 import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound } from '..';
-import { Context } from '../../context';
+import { Context } from '../../context.js';
 
 let context: Context;
 

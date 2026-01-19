@@ -1,8 +1,8 @@
-import { type Interpolated } from './interpolated';
-import { Any } from './any';
-import { Node, defineType } from './node';
-import type { Context } from '../context';
-import { type PrintOptions, getPrintOptions } from './util/print';
+import { type Interpolated } from './interpolated.js';
+import { Any } from './any.js';
+import { Node, defineType } from './node.js';
+import type { Context } from '../context.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 
 export type QuotedOptions = {

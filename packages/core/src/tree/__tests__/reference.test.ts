@@ -1,7 +1,7 @@
 import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el } from '..';
-import { Context } from '../../context';
-import * as Registries from '../util/registry-utils';
-import { isNode } from '../util/is-node';
+import { Context } from '../../context.js';
+import * as Registries from '../util/registry-utils.js';
+import { isNode } from '../util/is-node.js';
 
 let context: Context;
 

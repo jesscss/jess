@@ -16,11 +16,11 @@ import {
   type Rules,
   Node
 } from '..';
-import { isNode } from '../util/is-node';
-import { Context } from '../../context';
-import type { FindOptions } from '../util/registry-utils';
+import { isNode } from '../util/is-node.js';
+import { Context } from '../../context.js';
+import type { FindOptions } from '../util/registry-utils.js';
 import { resolve } from 'node:path';
-import { createTestContext } from './import-style-test-helpers';
+import { createTestContext } from './import-style-test-helpers.js';
 
 let context: Context;
 

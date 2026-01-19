@@ -8,10 +8,10 @@ import {
   toNumber,
   splitSequence
 } from '@jesscss/core';
-import rgb from '../src/less/rgb';
-import rgba from '../src/less/rgba';
-import hsl from '../src/less/hsl';
-import hsla from '../src/less/hsla';
+import rgb from '../src/less/rgb.js';
+import rgba from '../src/less/rgba.js';
+import hsl from '../src/less/hsl.js';
+import hsla from '../src/less/hsla.js';
 
 describe('Color Functions', () => {
   describe('RGB Function', () => {

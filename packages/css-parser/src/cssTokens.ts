@@ -1,8 +1,8 @@
 /* eslint no-control-regex: "off" */
 import { type WritableDeep } from 'type-fest';
-import type { RawModeConfig } from './util';
-import { LexerType } from './util';
-import { SKIPPED_LABEL } from './advancedActionsParser';
+import type { RawModeConfig } from './util/index.js';
+import { LexerType } from './util/index.js';
+import { SKIPPED_LABEL } from './advancedActionsParser.js';
 import {
   Lexer,
   createToken,
@@ -11,7 +11,7 @@ import {
   type IMultiModeLexerDefinition,
   type CustomPatternMatcherFunc
 } from 'chevrotain';
-import { buildFragments, createLexerDefinition } from './util';
+import { buildFragments, createLexerDefinition } from './util/index.js';
 
 /**
  * references:

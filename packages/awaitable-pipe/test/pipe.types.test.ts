@@ -1,5 +1,5 @@
 import { describe, it, expectTypeOf } from 'vitest';
-import { pipe, tryStep, type MaybePromise } from '../src';
+import { pipe, tryStep, type MaybePromise } from '../src/index.js';
 
 describe('pipe type inference', () => {
   it('infers step-to-step types (sync)', () => {

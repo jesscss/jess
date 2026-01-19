@@ -1,5 +1,5 @@
-import { expectFlags, DEFAULT_VARIABLE } from './helpers';
-import { rules, ruleset, sellist, sel, el, decl, any, list, num, op, call, ref, paren, negative, atrule, interpolated, interpolatedSelector, type Ruleset, type Declaration } from '../src';
+import { expectFlags, DEFAULT_VARIABLE } from './helpers.js';
+import { rules, ruleset, sellist, sel, el, decl, any, list, num, op, call, ref, paren, negative, atrule, interpolated, interpolatedSelector, type Ruleset, type Declaration } from '../src/index.js';
 
 describe('Flag isolation', () => {
   describe('MayAsync isolation (siblings do not bleed)', () => {

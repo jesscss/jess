@@ -1,6 +1,6 @@
-import { type Context } from '../context';
-import { Node, defineType } from './node';
-import { Bool } from './bool';
+import { type Context } from '../context.js';
+import { Node, defineType } from './node.js';
+import { Bool } from './bool.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export interface DefaultGuard extends Node<string> {

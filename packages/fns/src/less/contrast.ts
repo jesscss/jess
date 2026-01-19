@@ -6,7 +6,7 @@ import {
   defineFunction
 } from '@jesscss/core';
 import { toNumber } from '@jesscss/core';
-import { getLuma } from '../util/get-luma';
+import { getLuma } from '../util/get-luma.js';
 
 const contrast = defineFunction(
   'contrast',

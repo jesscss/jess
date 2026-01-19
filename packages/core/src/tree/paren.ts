@@ -1,12 +1,12 @@
-import { type Context } from '../context';
-import { Bool } from './bool';
-import { Expression } from './expression';
-import { Operation } from './operation';
-import { Node, defineType } from './node';
-import { Dimension } from './dimension';
+import { type Context } from '../context.js';
+import { Bool } from './bool.js';
+import { Expression } from './expression.js';
+import { Operation } from './operation.js';
+import { Node, defineType } from './node.js';
+import { Dimension } from './dimension.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { type PrintOptions, getPrintOptions } from './util/print';
-// import type { Context } from '../context'
+import { type PrintOptions, getPrintOptions } from './util/print.js';
+// import type { Context } from '../context.js'
 // import type { OutputCollector } from '../output'
 
 export type ParenOptions = {

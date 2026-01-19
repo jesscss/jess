@@ -2,17 +2,17 @@ import {
   Node,
   defineType,
   type LocationInfo
-} from './node';
-import { isNode } from './util/is-node';
-import { Nil } from './nil';
-import type { Context, TreeContext } from '../context';
-import { Interpolated } from './interpolated';
-import { Any, type AnyRole } from './any';
-import { Reference } from './reference';
-import { List } from './list';
-import { spaced } from './sequence';
-import { Operation } from './operation';
-import { type PrintOptions, getPrintOptions } from './util/print';
+} from './node.js';
+import { isNode } from './util/is-node.js';
+import { Nil } from './nil.js';
+import type { Context, TreeContext } from '../context.js';
+import { Interpolated } from './interpolated.js';
+import { Any, type AnyRole } from './any.js';
+import { Reference } from './reference.js';
+import { List } from './list.js';
+import { spaced } from './sequence.js';
+import { Operation } from './operation.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 
 export const enum AssignmentType {

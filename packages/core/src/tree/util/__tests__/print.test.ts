@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { OutputWriter, getPrintOptions } from '../print';
-import { any } from '../../..';
+import { OutputWriter, getPrintOptions } from '../print.js';
+import { any } from '../../../index.js';
 
 describe('processPrePost with capture', () => {
   let w: OutputWriter;

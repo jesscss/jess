@@ -4,11 +4,11 @@ import {
   num, dimension, amp,
   paren, seq, comment, nil, quoted, color, co, interpolated
 } from '..';
-import { Context } from '../../context';
-import { AtRule } from '../at-rule';
-import { Rules } from '../rules';
-import { Node } from '../node';
-import { serializeTypes } from '../util/serialize-types';
+import { Context } from '../../context.js';
+import { AtRule } from '../at-rule.js';
+import { Rules } from '../rules.js';
+import { Node } from '../node.js';
+import { serializeTypes } from '../util/serialize-types.js';
 import * as path from 'path';
 import * as fs from 'fs';
 

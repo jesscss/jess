@@ -1,8 +1,8 @@
 import { Node, Rules } from '@jesscss/core';
-import { createLessProxy } from './proxy';
-import { getTransformer } from '../nodes';
-import { mapJessTypeToLessType } from './type-map';
-import { fromLessNode } from './from-less';
+import { createLessProxy } from './proxy.js';
+import { getTransformer } from '../nodes/index.js';
+import { mapJessTypeToLessType } from './type-map.js';
+import { fromLessNode } from './from-less.js';
 
 // Less.js types - we'll need to import these from the less package
 // For now, using any to avoid dependency issues during development
@@ -24,7 +24,7 @@ export interface ToLessOptions {
  * @param options - Conversion options
  * @returns A Less-compatible proxy node
  */
-import { IS_PROXYING_SYMBOL } from './proxy';
+import { IS_PROXYING_SYMBOL } from './proxy.js';
 
 export function toLessNode(
   jessNode: Node,

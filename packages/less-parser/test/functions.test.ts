@@ -1,5 +1,5 @@
 import { serializeTypes } from '@jesscss/core';
-import { Parser } from '../src';
+import { Parser } from '../src/index.js';
 
 const parser = new Parser();
 const parse = parser.parse;

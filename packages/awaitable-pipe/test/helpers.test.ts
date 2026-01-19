@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { pipe, safePipe, tryStep, guard, isThenable, isPromise, serialForEach, serialReduce } from '../src';
+import { pipe, safePipe, tryStep, guard, isThenable, isPromise, serialForEach, serialReduce } from '../src/index.js';
 
 describe('tryStep', () => {
   it('captures sync throw and returns fallback', () => {

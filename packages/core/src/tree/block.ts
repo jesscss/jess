@@ -1,6 +1,6 @@
-import type { Context } from '../context';
-import { Node, defineType } from './node';
-import { type PrintOptions, getPrintOptions } from './util/print';
+import type { Context } from '../context.js';
+import { Node, defineType } from './node.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export type BlockOptions = {
   type: 'curly' | 'square';

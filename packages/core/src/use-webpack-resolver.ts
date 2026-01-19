@@ -5,7 +5,7 @@ import {
   ResolverFactory,
   CachedInputFileSystem
 } from 'enhanced-resolve';
-import type { PluginInterface } from './plugin';
+import type { PluginInterface } from './plugin.js';
 
 const { isArray } = Array;
 

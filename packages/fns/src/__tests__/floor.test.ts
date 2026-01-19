@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import { Context, Dimension, Num } from '@jesscss/core';
-import floor from '../less/floor';
+import floor from '../less/floor.js';
 
 describe('floor function isolated test', () => {
   let context: Context;

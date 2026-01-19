@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { Color, ColorFormat, Dimension, Num } from '../index';
-import { Call, List } from '../index';
+import { Color, ColorFormat, Dimension, Num } from '../index.js';
+import { Call, List } from '../index.js';
 
 describe('Color Node', () => {
   describe('Constructor and Basic Properties', () => {

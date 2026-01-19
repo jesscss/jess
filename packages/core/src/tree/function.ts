@@ -1,9 +1,9 @@
-import { type Context } from '../context';
-import { AtRule } from './at-rule';
-import { defineType } from './node';
-import { Rules } from './rules';
-import type { Node } from './node';
-import { Mixin } from './mixin';
+import { type Context } from '../context.js';
+import { AtRule } from './at-rule.js';
+import { defineType } from './node.js';
+import { Rules } from './rules.js';
+import type { Node } from './node.js';
+import { Mixin } from './mixin.js';
 import { type MaybePromise, isThenable, pipe, tryStep } from '@jesscss/awaitable-pipe';
 
 /**

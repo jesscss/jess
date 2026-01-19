@@ -3,7 +3,7 @@ import {
   blue,
   green,
   alpha
-} from '../less';
+} from '../less/index.js';
 
 import { Color, Context, Dimension, Num } from '@jesscss/core';
 import { beforeAll, describe, it, expect } from 'vitest';

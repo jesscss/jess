@@ -1,15 +1,15 @@
-import { Node, defineType, F_STATIC, F_VISIBLE, type NodeOptions } from './node';
-import { Ruleset } from './ruleset';
-import type { Any } from './any';
-import { Rules } from './rules';
-import type { Context } from '../context';
-import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print';
+import { Node, defineType, F_STATIC, F_VISIBLE, type NodeOptions } from './node.js';
+import { Ruleset } from './ruleset.js';
+import type { Any } from './any.js';
+import { Rules } from './rules.js';
+import type { Context } from '../context.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
-import { Ampersand } from './ampersand';
-import { isNode } from './util/is-node';
-import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper';
-import { Interpolated } from './interpolated';
-import { Nil } from './nil';
+import { Ampersand } from './ampersand.js';
+import { isNode } from './util/is-node.js';
+import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper.js';
+import { Interpolated } from './interpolated.js';
+import { Nil } from './nil.js';
 
 export type AtRuleValue = {
   name: Any<'atkeyword'>;

@@ -1,4 +1,4 @@
-import { type LessActionsParser as P, type TokenMap, type RuleContext } from './lessActionsParser';
+import { type LessActionsParser as P, type TokenMap, type RuleContext } from './lessActionsParser.js';
 import {
   tokenMatcher,
   type IToken,
@@ -68,8 +68,8 @@ import {
   type SimpleSelector,
   isNode
 } from '@jesscss/core';
-import { getInterpolatedOrString } from './utils';
-import type { ExtendTarget } from './lessActionsParser';
+import { getInterpolatedOrString } from './utils.js';
+import type { ExtendTarget } from './lessActionsParser.js';
 import { all } from 'known-css-properties';
 
 const isEscapedString = function(this: P, T: TokenMap) {

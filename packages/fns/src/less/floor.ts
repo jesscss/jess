@@ -1,5 +1,5 @@
 import { Dimension, Num, defineFunction } from '@jesscss/core';
-import { mathHelper } from '../util/mathHelper';
+import { mathHelper } from '../util/mathHelper.js';
 
 export default defineFunction(
   'floor',

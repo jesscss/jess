@@ -1,6 +1,6 @@
-import { el, sel, sellist, compound, is, co, comment, amp } from '../../index';
-import { Ampersand } from '../../ampersand';
-import { extendSelector } from '../extend';
+import { el, sel, sellist, compound, is, co, comment, amp } from '../../index.js';
+import { Ampersand } from '../../ampersand.js';
+import { extendSelector } from '../extend.js';
 
 // Helper to create ampersand with resolved selector
 function ampWithSelector(selector: any): Ampersand {

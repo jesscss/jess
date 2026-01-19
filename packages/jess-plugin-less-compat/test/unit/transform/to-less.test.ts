@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { toLessNode, toLessTree } from '../../../src/transform';
+import { toLessNode, toLessTree } from '../../../src/transform/index.js';
 import { Ruleset, BasicSelector, Declaration, Dimension, Quoted } from '@jesscss/core';
 
 describe('toLessNode', () => {

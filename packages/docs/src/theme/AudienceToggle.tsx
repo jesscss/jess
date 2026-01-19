@@ -1,5 +1,5 @@
 import React from 'react';
-import {useAudience, type Audience} from './AudienceContext';
+import { useAudience, type Audience } from './AudienceContext';
 
 const audiences: {value: Audience; label: string}[] = [
   {value: 'jess', label: 'Jess'},

@@ -1,6 +1,6 @@
 import { mixin, rules, el, decl, any, ref, Node, call, ruleset, compound, Comment } from '..';
-import { Context } from '../../context';
-import { JessError } from '../../jess-error';
+import { Context } from '../../context.js';
+import { JessError } from '../../jess-error.js';
 
 let context: Context;
 

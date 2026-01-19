@@ -1,5 +1,5 @@
 import { cosmiconfig, cosmiconfigSync, defaultLoadersSync } from 'cosmiconfig';
-import type { StylesConfig } from './types';
+import type { StylesConfig } from './types.js';
 
 const explorer = cosmiconfig('styles', {
   searchPlaces: [

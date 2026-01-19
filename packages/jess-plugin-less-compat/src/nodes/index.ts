@@ -4,31 +4,31 @@
  */
 
 import { Node, Ruleset, Declaration, Mixin, Dimension, Num, Color, Operation, Expression, Quoted, Url, Comment, AtRule, StyleImport, Extend, Condition, Paren, Negative, List, VarDeclaration, Keyword, Combinator, AttributeSelector, Call, Selector, SelectorList, Reference } from '@jesscss/core';
-import { transformRulesetToLess } from './ruleset';
-import { transformDeclarationToLess } from './declaration';
-import { transformMixinToLess } from './mixin';
-import { transformDimensionToLess } from './dimension';
-import { transformColorToLess } from './color';
-import { transformOperationToLess } from './operation';
-import { transformExpressionToLess } from './expression';
-import { transformQuotedToLess } from './quoted';
-import { transformUrlToLess } from './url';
-import { transformCommentToLess } from './comment';
-import { transformAtRuleToLess } from './at-rule';
-import { transformImportToLess } from './import';
-import { transformExtendToLess } from './extend';
-import { transformConditionToLess } from './condition';
-import { transformParenToLess } from './paren';
-import { transformNegativeToLess } from './negative';
-import { transformListToLess } from './list';
-import { transformVarDeclarationToLess } from './var-declaration';
-import { transformKeywordToLess } from './keyword';
-import { transformCombinatorToLess } from './combinator';
-import { transformAttributeSelectorToLess } from './attribute-selector';
-import { transformCallToLess } from './call';
-import { transformSelectorToLess } from './selector';
-import { transformReferenceToLess } from './reference';
-import type { LessNode } from '../types';
+import { transformRulesetToLess } from './ruleset.js';
+import { transformDeclarationToLess } from './declaration.js';
+import { transformMixinToLess } from './mixin.js';
+import { transformDimensionToLess } from './dimension.js';
+import { transformColorToLess } from './color.js';
+import { transformOperationToLess } from './operation.js';
+import { transformExpressionToLess } from './expression.js';
+import { transformQuotedToLess } from './quoted.js';
+import { transformUrlToLess } from './url.js';
+import { transformCommentToLess } from './comment.js';
+import { transformAtRuleToLess } from './at-rule.js';
+import { transformImportToLess } from './import.js';
+import { transformExtendToLess } from './extend.js';
+import { transformConditionToLess } from './condition.js';
+import { transformParenToLess } from './paren.js';
+import { transformNegativeToLess } from './negative.js';
+import { transformListToLess } from './list.js';
+import { transformVarDeclarationToLess } from './var-declaration.js';
+import { transformKeywordToLess } from './keyword.js';
+import { transformCombinatorToLess } from './combinator.js';
+import { transformAttributeSelectorToLess } from './attribute-selector.js';
+import { transformCallToLess } from './call.js';
+import { transformSelectorToLess } from './selector.js';
+import { transformReferenceToLess } from './reference.js';
+import type { LessNode } from '../types.js';
 
 export type NodeTransformer = (
   jessNode: Node,

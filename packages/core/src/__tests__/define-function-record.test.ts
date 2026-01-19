@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { defineFunction } from '../define-function';
+import { defineFunction } from '../define-function.js';
 
 describe('defineFunction with positional functions', () => {
   // Test positional internal function signature

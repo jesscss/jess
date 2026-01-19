@@ -1,5 +1,5 @@
-import { el, sel, sellist, compound, is, co, attr, quoted, pseudo } from '../../..';
-import { matchSelectors } from '../find-extendable-locations';
+import { el, sel, sellist, compound, is, co, attr, quoted, pseudo } from '../../../index.js';
+import { matchSelectors } from '../find-extendable-locations.js';
 
 /**
  * Helper functions for creating :where() and :not() pseudo-selectors

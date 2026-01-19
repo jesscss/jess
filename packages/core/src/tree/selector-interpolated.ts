@@ -1,8 +1,8 @@
-import type { Context } from '../context';
-import { defineType } from './node';
-import { SimpleSelector } from './selector-simple';
-import { Selector } from './selector';
-import { Interpolated } from './interpolated';
+import type { Context } from '../context.js';
+import { defineType } from './node.js';
+import { SimpleSelector } from './selector-simple.js';
+import { Selector } from './selector.js';
+import { Interpolated } from './interpolated.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
 
 export interface InterpolatedSelector extends SimpleSelector<Interpolated> {

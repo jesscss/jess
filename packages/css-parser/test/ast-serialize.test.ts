@@ -1,4 +1,4 @@
-import { CssParser } from '../src';
+import { CssParser } from '../src/index.js';
 import { serializeTypes } from '@jesscss/core';
 
 const cssParser = new CssParser();

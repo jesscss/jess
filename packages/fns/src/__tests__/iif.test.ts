@@ -1,6 +1,6 @@
 import {
   iif
-} from '../less';
+} from '../less/index.js';
 
 import { Bool, Context, Dimension } from '@jesscss/core';
 import { beforeAll, describe, it, test, expect } from 'vitest';

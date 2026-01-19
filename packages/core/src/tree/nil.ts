@@ -8,8 +8,8 @@ import {
   defineType,
   type LocationInfo,
   type NodeOptions
-} from './node-base';
-import type { Context, TreeContext } from '../context';
+} from './node-base.js';
+import type { Context, TreeContext } from '../context.js';
 
 export interface Nil extends Node<''> {
   valueOf(): '';

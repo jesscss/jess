@@ -1,7 +1,7 @@
-import { type Context } from '../context';
-import { Node, defineType } from './node';
-import { cast } from './util/cast';
-import { type PrintOptions, getPrintOptions } from './util/print';
+import { type Context } from '../context.js';
+import { Node, defineType } from './node.js';
+import { cast } from './util/cast.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
 
 /**

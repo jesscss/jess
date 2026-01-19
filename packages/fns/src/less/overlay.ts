@@ -1,6 +1,6 @@
-import { colorBlend } from '../util/colorHelper';
-import { multiplyBase } from './multiply';
-import { screenBase } from './screen';
+import { colorBlend } from '../util/colorHelper.js';
+import { multiplyBase } from './multiply.js';
+import { screenBase } from './screen.js';
 import { Color, defineFunction } from '@jesscss/core';
 
 export function overlayBase(cb: number, cs: number) {

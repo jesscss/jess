@@ -1,6 +1,6 @@
-import type { Context } from '../../context';
-import type { AtRule } from '../at-rule';
-import type { Ruleset } from '../ruleset';
+import type { Context } from '../../context.js';
+import type { AtRule } from '../at-rule.js';
+import type { Ruleset } from '../ruleset.js';
 
 export type PrintOptions = {
   /** The actual tree frames we started from */

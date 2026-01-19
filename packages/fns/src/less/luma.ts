@@ -1,5 +1,5 @@
 import { Color, defineFunction, Num } from '@jesscss/core';
-import { getLuma } from '../util/get-luma';
+import { getLuma } from '../util/get-luma.js';
 
 export default defineFunction(
   'luma',

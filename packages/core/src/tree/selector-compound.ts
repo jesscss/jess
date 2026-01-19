@@ -1,13 +1,13 @@
 import {
   defineType
-} from './node';
-import type { Context } from '../context';
-import { Nil } from './nil';
-import { Selector } from './selector';
-import type { SimpleSelector } from './selector-simple';
-import { getEntries } from './util/collections';
+} from './node.js';
+import type { Context } from '../context.js';
+import { Nil } from './nil.js';
+import { Selector } from './selector.js';
+import type { SimpleSelector } from './selector-simple.js';
+import { getEntries } from './util/collections.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
-import type { PrintOptions } from './util/print';
+import type { PrintOptions } from './util/print.js';
 
 /**
  * @example

@@ -1,6 +1,6 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC } from './node';
-import type { Context } from '../context';
-import { Dimension } from './dimension';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC } from './node.js';
+import type { Context } from '../context.js';
+import { Dimension } from './dimension.js';
 import { type MaybePromise, pipe, tryStep } from '@jesscss/awaitable-pipe';
 
 /**

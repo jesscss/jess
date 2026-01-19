@@ -1,4 +1,4 @@
-import { Parser } from '../src';
+import { Parser } from '../src/index.js';
 
 const parser = new Parser();
 

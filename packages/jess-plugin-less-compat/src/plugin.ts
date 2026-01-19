@@ -1,13 +1,12 @@
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { AbstractPlugin, Any, Collection, Declaration, Dimension, type Plugin, type Visitor, type Node, F_VISIBLE } from '@jesscss/core';
-import { toLessNode, fromLessNode } from './transform';
-import { getJessNodeFromProxy } from './transform/proxy';
-import type { LessVisitor } from './types';
-import { filterPlugins } from './plugin-utils';
-import { LessVisitor as LessVisitorClass, LessPluginManager, LessTreeConstructors, createLessMock } from './less-compat-structures';
+import { toLessNode, fromLessNode } from './transform/index.js';
+import { getJessNodeFromProxy } from './transform/proxy.js';
+import type { LessVisitor } from './types.js';
+import { filterPlugins } from './plugin-utils.js';
+import { LessVisitor as LessVisitorClass, LessPluginManager, LessTreeConstructors, createLessMock } from './less-compat-structures.js';
 import { NodeModulesPlugin } from '@jesscss/plugin-node-modules';
 
 // Debug logging helper (only in debug mode)
@@ -15,7 +14,6 @@ import { NodeModulesPlugin } from '@jesscss/plugin-node-modules';
 const syncLog = (data: object) => {
   if (process.env.DEBUG) {
     try {
-       
       console.log('[LessCompatPlugin]', JSON.stringify(data, null, 2));
     } catch {
       // Ignore errors
@@ -164,7 +162,7 @@ export class LessCompatPlugin extends AbstractPlugin {
    * Filter and separate Less plugins from Jess plugins
    * This allows mixed plugin arrays to be handled correctly
    *
-   * @deprecated Use filterPlugins from './plugin-utils' instead
+   * @deprecated Use filterPlugins from './plugin-utils.js' instead
    */
   static filterLessPlugins(plugins: any[]) {
     return filterPlugins(plugins);
@@ -210,17 +208,25 @@ export class LessCompatPlugin extends AbstractPlugin {
 
     const createFunctionRegistry = () => {
       // Internal storage (matching Less.js _data structure)
-      const _data: Record<string, any> = {};
-      let _base: any = null;
+      const data: Record<string, any> = {};
+      let base: any = null;
 
       const registry = {
-        _data,
+        get _data() {
+          return data;
+        },
+        get _base() {
+          return base;
+        },
+        set _base(v: any) {
+          base = v;
+        },
 
         // Less.js API methods
         add(name: string, func: any): void {
           // Convert to lowercase for Less.js compatibility
           name = name.toLowerCase();
-          _data[name] = func;
+          data[name] = func;
 
           // If we have a real Jess registry, also add to it
           if (currentRealRegistry) {
@@ -305,7 +311,6 @@ export class LessCompatPlugin extends AbstractPlugin {
               currentRealRegistry.add(name, wrapped);
             } catch (e) {
               if (process.env.DEBUG) {
-                 
                 console.warn('[LessCompatPlugin] Failed to register function in Jess FunctionRegistry', name, e);
               }
             }
@@ -321,18 +326,18 @@ export class LessCompatPlugin extends AbstractPlugin {
         get(name: string): any {
           name = name.toLowerCase();
           // Check local first
-          if (_data[name]) {
-            return _data[name];
+          if (data[name]) {
+            return data[name];
           }
           // Then check base (for inheritance)
-          if (_base) {
-            return _base.get(name);
+          if (base) {
+            return base.get(name);
           }
           // If we have a real Jess registry, try that
           if (currentRealRegistry) {
             try {
               return currentRealRegistry.get(name);
-            } catch (e) {
+            } catch (_e) {
               // Ignore errors
             }
           }
@@ -340,7 +345,7 @@ export class LessCompatPlugin extends AbstractPlugin {
         },
 
         getLocalFunctions(): Record<string, any> {
-          return { ..._data };
+          return { ...data };
         },
 
         inherit(): any {
@@ -388,7 +393,9 @@ export class LessCompatPlugin extends AbstractPlugin {
           }
 
           // For any other property, return a no-op function
-          return function() { return { value: null }; };
+          return function() {
+            return { value: null };
+          };
         }
       });
     };
@@ -483,7 +490,7 @@ export class LessCompatPlugin extends AbstractPlugin {
                   processedPlugins.push(plugin);
                 }
               }
-            } catch (e) {
+            } catch (_e) {
               // If 'new' fails, try calling as function
               try {
                 const pluginInstance = plugin({});
@@ -512,11 +519,9 @@ export class LessCompatPlugin extends AbstractPlugin {
           // CRITICAL: Many Less plugins (like autoprefix, clean-css) are BOTH plugins AND visitors
           // We should ALWAYS try to wrap the plugin instance as a visitor FIRST
           // because the plugin instance itself IS the visitor, regardless of install()
-          let wrappedAsVisitor = false;
           try {
             const wrappedVisitor = new LessVisitor(plugin);
             lessVisitorInstances.push(wrappedVisitor);
-            wrappedAsVisitor = true;
           } catch (e: any) {
             // If wrapping fails, log for debugging but continue
             // The error might be expected if the plugin doesn't have visit* methods
@@ -541,7 +546,7 @@ export class LessCompatPlugin extends AbstractPlugin {
                 if (pluginInstance && typeof pluginInstance.install === 'function') {
                   pluginInstance.install(mockLess, pluginManager, mockLess.functions.functionRegistry);
                 }
-              } catch (e) {
+              } catch (_e) {
                 // If constructor fails, try calling as a function
                 try {
                   const pluginInstance = plugin({});
@@ -551,7 +556,7 @@ export class LessCompatPlugin extends AbstractPlugin {
                     // Might be a visitor implementation directly
                     lessVisitorInstances.push(new LessVisitor(pluginInstance));
                   }
-                } catch (e2) {
+                } catch (_e2) {
                   // If all else fails, try wrapping it as a visitor
                   lessVisitorInstances.push(new LessVisitor(plugin));
                 }
@@ -565,7 +570,7 @@ export class LessCompatPlugin extends AbstractPlugin {
                 } else if (pluginInstance) {
                   lessVisitorInstances.push(new LessVisitor(pluginInstance));
                 }
-              } catch (e2) {
+              } catch (_e2) {
                 // If all else fails, try wrapping it as a visitor
                 lessVisitorInstances.push(new LessVisitor(plugin));
               }
@@ -683,23 +688,37 @@ export class LessCompatPlugin extends AbstractPlugin {
             if (prelude) {
               // Helper to extract string value from a node (Quoted, Url, or string)
               const extractStringValue = (node: any): string | undefined => {
-                if (!node) {return undefined;}
-                if (typeof node === 'string') {return node;}
+                if (!node) {
+                  return undefined;
+                }
+                if (typeof node === 'string') {
+                  return node;
+                }
                 if (node.type === 'Quoted' && node.value) {
                   // Quoted.value can be string | Any | Interpolated
-                  if (typeof node.value === 'string') {return node.value;}
-                  if (node.value?.value && typeof node.value.value === 'string') {return node.value.value;}
+                  if (typeof node.value === 'string') {
+                    return node.value;
+                  }
+                  if (node.value?.value && typeof node.value.value === 'string') {
+                    return node.value.value;
+                  }
                   // Try valueOf() for Any nodes
                   if (typeof node.valueOf === 'function') {
                     const val = node.valueOf();
-                    if (typeof val === 'string') {return val;}
+                    if (typeof val === 'string') {
+                      return val;
+                    }
                   }
                 }
                 if (node.type === 'Url' && node.value) {
                   // Url.value can be Quoted, string, or other
-                  if (typeof node.value === 'string') {return node.value;}
+                  if (typeof node.value === 'string') {
+                    return node.value;
+                  }
                   if (node.value.type === 'Quoted' && node.value.value) {
-                    if (typeof node.value.value === 'string') {return node.value.value;}
+                    if (typeof node.value.value === 'string') {
+                      return node.value.value;
+                    }
                     if (node.value.value?.value && typeof node.value.value.value === 'string') {
                       return node.value.value.value;
                     }
@@ -707,7 +726,9 @@ export class LessCompatPlugin extends AbstractPlugin {
                   // Try valueOf() for Url nodes
                   if (typeof node.valueOf === 'function') {
                     const val = node.valueOf();
-                    if (typeof val === 'string') {return val;}
+                    if (typeof val === 'string') {
+                      return val;
+                    }
                   }
                 }
                 return undefined;
@@ -743,7 +764,9 @@ export class LessCompatPlugin extends AbstractPlugin {
                         }
                       }
                     }
-                    if (pluginPath) {break;}
+                    if (pluginPath) {
+                      break;
+                    }
                   }
                 }
               } else if (prelude.type === 'Expression' && prelude.value) {
@@ -763,7 +786,9 @@ export class LessCompatPlugin extends AbstractPlugin {
                         }
                       }
                     }
-                    if (pluginPath) {break;}
+                    if (pluginPath) {
+                      break;
+                    }
                   }
                 }
               } else if (prelude.type === 'List' && prelude.value) {
@@ -783,7 +808,9 @@ export class LessCompatPlugin extends AbstractPlugin {
                         }
                       }
                     }
-                    if (pluginPath) {break;}
+                    if (pluginPath) {
+                      break;
+                    }
                   }
                 }
               } else if (prelude.value && typeof prelude.value === 'string') {
@@ -801,32 +828,41 @@ export class LessCompatPlugin extends AbstractPlugin {
                 pluginPath = String(pluginPath).replace(/^["']|["']$/g, '');
               }
 
-              const isLocalPath = pluginPath.startsWith('.') || pluginPath.startsWith('/') || pluginPath.includes(path.sep);
-              let resolvedLocalPluginPath: string | undefined;
-              if (isLocalPath) {
-                if (baseDir && pluginPath.startsWith('.')) {
-                  resolvedLocalPluginPath = path.resolve(baseDir, pluginPath);
-                } else if (path.isAbsolute(pluginPath)) {
-                  resolvedLocalPluginPath = pluginPath;
-                }
-                if (process.env.DEBUG) {
-                  console.log('[LessCompatPlugin] Local plugin resolution', {
-                    pluginPath,
-                    baseDir,
-                    resolvedLocalPluginPath,
-                    exists: resolvedLocalPluginPath ? fs.existsSync(resolvedLocalPluginPath) : false
-                  });
-                }
-              }
+              const isExplicitLocalPath =
+                pluginPath.startsWith('.')
+                || pluginPath.startsWith('/')
+                || pluginPath.includes('/')
+                || pluginPath.includes(path.sep);
+
+              // Less.js will also resolve bare plugin names as local files relative to the current file,
+              // before falling back to npm package resolution. (Needed for test-data `plugin-transitive`.)
+              const localBasePath =
+                (baseDir && !path.isAbsolute(pluginPath))
+                  ? path.resolve(baseDir, pluginPath)
+                  : (path.isAbsolute(pluginPath) ? pluginPath : undefined);
+
               let resolvedLocalPluginFile: string | undefined;
-              if (isLocalPath && resolvedLocalPluginPath) {
+              if (localBasePath) {
                 const candidates = [
-                  resolvedLocalPluginPath,
-                  `${resolvedLocalPluginPath}.js`,
-                  `${resolvedLocalPluginPath}.cjs`,
-                  `${resolvedLocalPluginPath}.mjs`
+                  localBasePath,
+                  `${localBasePath}.js`,
+                  `${localBasePath}.cjs`,
+                  `${localBasePath}.mjs`
                 ];
                 resolvedLocalPluginFile = candidates.find(p => fs.existsSync(p));
+              }
+
+              const isLocalPath = isExplicitLocalPath || !!resolvedLocalPluginFile;
+
+              if (process.env.DEBUG) {
+                console.log('[LessCompatPlugin] Local plugin resolution', {
+                  pluginPath,
+                  baseDir,
+                  localBasePath,
+                  resolvedLocalPluginFile,
+                  isExplicitLocalPath,
+                  isLocalPath
+                });
               }
 
               // Check if plugin is already loaded

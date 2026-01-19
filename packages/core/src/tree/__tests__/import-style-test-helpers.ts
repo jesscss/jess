@@ -1,5 +1,5 @@
-import { Context } from '../../context';
-import type { PluginInterface } from '../../plugin';
+import { Context } from '../../context.js';
+import type { PluginInterface } from '../../plugin.js';
 import { resolve } from 'node:path';
 
 /**

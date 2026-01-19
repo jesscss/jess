@@ -16,9 +16,9 @@ import {
   spaced,
   comment
 } from '..';
-import { Context } from '../../context';
+import { Context } from '../../context.js';
 import { resolve } from 'node:path';
-import { createTestContext } from './import-style-test-helpers';
+import { createTestContext } from './import-style-test-helpers.js';
 
 let context: Context;
 

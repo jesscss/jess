@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Compiler } from '../src';
+import { Compiler } from '../src/index.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';

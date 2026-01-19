@@ -4,4 +4,4 @@ import AudienceGate from './AudienceGate';
 export default {
   // Add custom components here
   AudienceGate,
-}; 
+};

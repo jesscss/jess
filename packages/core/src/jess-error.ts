@@ -2,9 +2,9 @@
 import path from 'node:path';
 import chalk from 'chalk';
 import { type IRecognitionException, type ILexingError, type ILexingResult } from 'chevrotain';
-import type { TreeContext } from './context';
-import type { LocationInfo } from './tree/node';
-import type { Deprecation } from './deprecation';
+import type { TreeContext } from './context.js';
+import type { LocationInfo } from './tree/node.js';
+import type { Deprecation } from './deprecation.js';
 
 type JessFile = TreeContext['file'];
 

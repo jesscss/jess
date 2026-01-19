@@ -1,12 +1,12 @@
-import { extendSelector, tryExtendSelector } from '../extend';
-import { el, sel, compound, co, sellist } from '../../..';
-import { isNode } from '../is-node';
-import { type Combinator, type Combinators } from '../../combinator';
-import { Context } from '../../../context';
-import { Rules } from '../../rules';
-import { Ruleset } from '../../ruleset';
-import { Extend } from '../../extend';
-import { processExtends } from '../extend-roots';
+import { extendSelector, tryExtendSelector } from '../extend.js';
+import { el, sel, compound, co, sellist } from '../../../index.js';
+import { isNode } from '../is-node.js';
+import { type Combinator, type Combinators } from '../../combinator.js';
+import { Context } from '../../../context.js';
+import { Rules } from '../../rules.js';
+import { Ruleset } from '../../ruleset.js';
+import { Extend } from '../../extend.js';
+import { processExtends } from '../extend-roots.js';
 
 /**
  * Test suite to verify that all combinators (>, +, ~, space) are properly preserved

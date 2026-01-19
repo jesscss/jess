@@ -1,12 +1,12 @@
-import { F_VISIBLE, Node, defineType, type LocationInfo } from './node';
-import type { Condition } from './condition';
-import { type List } from './list';
-import type { Any, AnyRole } from './any';
-import type { Rules } from './rules';
-import { Interpolated } from './interpolated';
-import type { Context, TreeContext } from '../context';
-import type { Declaration } from './declaration';
-import { type PrintOptions, getPrintOptions } from './util/print';
+import { F_VISIBLE, Node, defineType, type LocationInfo } from './node.js';
+import type { Condition } from './condition.js';
+import { type List } from './list.js';
+import type { Any, AnyRole } from './any.js';
+import type { Rules } from './rules.js';
+import { Interpolated } from './interpolated.js';
+import type { Context, TreeContext } from '../context.js';
+import type { Declaration } from './declaration.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 
 export interface MixinValue<Name extends AnyRole = 'name'> {

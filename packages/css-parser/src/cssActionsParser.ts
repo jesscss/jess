@@ -11,10 +11,10 @@ import {
 // import { AdvancedCstParser } from './advancedCstParser'
 import { LLStarLookaheadStrategy } from 'chevrotain-allstar';
 
-import { AdvancedActionsParser } from './advancedActionsParser';
+import { AdvancedActionsParser } from './advancedActionsParser.js';
 
-import { type CssTokenType } from './cssTokens';
-import * as productions from './productions';
+import { type CssTokenType } from './cssTokens.js';
+import * as productions from './productions.js';
 import {
   type LocationInfo,
   Node,
@@ -27,7 +27,7 @@ import {
   Any,
   type Nil
 } from '@jesscss/core';
-import type { CssErrorMessageProvider } from './cssErrorMessageProvider';
+import type { CssErrorMessageProvider } from './cssErrorMessageProvider.js';
 import colors from 'color-name';
 
 const { isArray } = Array;

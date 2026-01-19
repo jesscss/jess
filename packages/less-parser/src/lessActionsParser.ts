@@ -23,10 +23,10 @@ import {
   type ComplexSelector,
   type Selector
 } from '@jesscss/core';
-import { getInterpolatedOrString } from './utils';
+import { getInterpolatedOrString } from './utils.js';
 
-import { type LessTokenType, type LessExtraTokenType } from './lessTokens';
-import * as productions from './productions';
+import { type LessTokenType, type LessExtraTokenType } from './lessTokens.js';
+import * as productions from './productions.js';
 
 // import root from './productions/root'
 // import atRules from './productions/atRules'

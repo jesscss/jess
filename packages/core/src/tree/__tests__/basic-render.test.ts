@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { rules, ruleset, decl, sel, el, spaced } from '../index';
-import { Context } from '../../context';
+import { rules, ruleset, decl, sel, el, spaced } from '../index.js';
+import { Context } from '../../context.js';
 
 describe('Basic Ruleset Rendering', () => {
   let context: Context;

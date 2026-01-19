@@ -1,11 +1,11 @@
 import {
   defineType
-} from './node';
-import { type Context } from '../context';
-import { Selector } from './selector';
-import { getEntries } from './util/collections';
+} from './node.js';
+import { type Context } from '../context.js';
+import { Selector } from './selector.js';
+import { getEntries } from './util/collections.js';
 import { type PrintOptions, getPrintOptions, OutputWriter } from './util/print.js';
-import { normalizeContinuationIndent } from './util/format';
+import { normalizeContinuationIndent } from './util/format.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 
 /** Constructs */

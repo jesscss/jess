@@ -4,8 +4,8 @@
 import type { TokenVocabulary, TokenType } from 'chevrotain';
 // import { LLStarLookaheadStrategy } from 'chevrotain-allstar'
 import type { Rule, RuleContext as CssRuleContext, CssParserConfig } from '@jesscss/css-parser';
-import { CssParser } from '@jesscss/css-parser';
-import { type LessTokenType } from './scssTokens';
+import { CssActionsParser } from '@jesscss/css-parser';
+import { type LessTokenType } from './scssTokens.js';
 import {
   atVariableDeclarations,
   expressionsAndValues,
@@ -14,7 +14,7 @@ import {
   extendRoot,
   guards,
   atRuleBubbling
-} from './productions';
+} from './productions.js';
 
 // import root from './productions/root'
 // import atRules from './productions/atRules'
@@ -54,7 +54,7 @@ export type RuleContext = CssRuleContext & {
  * Unlike the historical Less parser, this parser
  * avoids all backtracking
  */
-export class LessParser extends CssParser {
+export class LessParser extends CssActionsParser {
   T: TokenMap;
   looseMode: boolean;
 

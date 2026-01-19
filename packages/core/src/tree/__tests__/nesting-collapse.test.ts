@@ -2,7 +2,7 @@ import {
   rules, sel, el, spaced, any, sellist, ruleset, decl, atrule,
   compound, type SimpleSelector, type Selector, amp, co
 } from '..';
-import { Context } from '../../context';
+import { Context } from '../../context.js';
 
 describe('CSS Nesting Collapse', () => {
   let context: Context;

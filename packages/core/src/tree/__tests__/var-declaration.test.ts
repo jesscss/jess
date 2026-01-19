@@ -1,5 +1,5 @@
 import { vardecl, coll, decl, any, rules, Node } from '..';
-import { Context } from '../../context';
+import { Context } from '../../context.js';
 
 let context: Context;
 

@@ -1,9 +1,9 @@
-import { type Context } from '../context';
-import { defineType, Node } from './node';
-import { type PrintOptions, getPrintOptions } from './util/print';
-import { compareNodeArray } from './util/compare';
-import { type Operator } from './util/calculate';
-import { LIST_ITEM_TRIM } from './util/regex';
+import { type Context } from '../context.js';
+import { defineType, Node } from './node.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { compareNodeArray } from './util/compare.js';
+import { type Operator } from './util/calculate.js';
+import { LIST_ITEM_TRIM } from './util/regex.js';
 
 export type ListOptions = {
   /**

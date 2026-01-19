@@ -1,16 +1,16 @@
-import type { Ruleset } from '../ruleset';
-import type { Selector } from '../selector';
-import type { Rules } from '../rules';
-import { isNode } from './is-node';
-import type { Mixin } from '../mixin';
-import { Nil } from '../nil';
-import { Node } from '../node';
-import { JsFunction } from '../js-function';
-import type { Func } from '../function';
-import type { Declaration } from '../declaration';
-import type { Context } from '../../context';
-import { atIndex } from './collections';
-import { comparePosition } from './compare';
+import type { Ruleset } from '../ruleset.js';
+import type { Selector } from '../selector.js';
+import type { Rules } from '../rules.js';
+import { isNode } from './is-node.js';
+import type { Mixin } from '../mixin.js';
+import { Nil } from '../nil.js';
+import { Node } from '../node.js';
+import { JsFunction } from '../js-function.js';
+import type { Func } from '../function.js';
+import type { Declaration } from '../declaration.js';
+import type { Context } from '../../context.js';
+import { atIndex } from './collections.js';
+import { comparePosition } from './compare.js';
 
 const { isArray } = Array;
 

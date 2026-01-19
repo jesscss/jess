@@ -1,17 +1,17 @@
-import isPlainObject from 'lodash-es/isPlainObject';
+import isPlainObject from 'lodash-es/isPlainObject.js';
 import {
   type TreeContext,
   type Context
-} from '../context';
-import { type Visitor } from '../visitor';
-import { type Operator } from './util/calculate';
+} from '../context.js';
+import { type Visitor } from '../visitor/index.js';
+import { type Operator } from './util/calculate.js';
 import type { Class, AbstractClass, Tagged } from 'type-fest';
-import { getEntriesFromNode, getValues } from './util/collections';
-import type { Comment } from './comment';
-import { type PrintOptions, getPrintOptions } from './util/print';
+import { getEntriesFromNode, getValues } from './util/collections.js';
+import type { Comment } from './comment.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
-import type { Rules } from './rules';
-import type { Nil } from './nil';
+import type { Rules } from './rules.js';
+import type { Nil } from './nil.js';
 
 export type { TreeContext };
 

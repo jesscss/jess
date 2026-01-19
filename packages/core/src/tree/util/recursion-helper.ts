@@ -1,6 +1,6 @@
-import type { Call } from '../call';
-import type { List } from '../list';
-import { isNode } from './is-node';
+import type { Call } from '../call.js';
+import type { List } from '../list.js';
+import { isNode } from './is-node.js';
 
 type CallItem = List | string | undefined;
 /**

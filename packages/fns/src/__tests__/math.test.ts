@@ -9,7 +9,7 @@ import {
   sin,
   sqrt,
   tan
-} from '../less';
+} from '../less/index.js';
 
 import { Context, Dimension } from '@jesscss/core';
 import { beforeAll, describe, it, test, expect } from 'vitest';

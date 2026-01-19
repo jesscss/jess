@@ -1,11 +1,11 @@
-import { Selector } from '../selector';
-import { SimpleSelector } from '../selector-simple';
-import { SelectorList } from '../selector-list';
-import { ComplexSelector } from '../selector-complex';
-import { CompoundSelector } from '../selector-compound';
-import { PseudoSelector } from '../selector-pseudo';
-import { Combinator } from '../combinator';
-import { isNode } from './is-node';
+import { Selector } from '../selector.js';
+import { SimpleSelector } from '../selector-simple.js';
+import { SelectorList } from '../selector-list.js';
+import { ComplexSelector } from '../selector-complex.js';
+import { CompoundSelector } from '../selector-compound.js';
+import { PseudoSelector } from '../selector-pseudo.js';
+import { Combinator } from '../combinator.js';
+import { isNode } from './is-node.js';
 
 /**
  * Helper functions for extend operations that eliminate genuine code duplication

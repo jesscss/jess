@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { Compiler } from '../../src';
+import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 import nodeModulesPlugin from '@jesscss/plugin-node-modules';
@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import { tmpdir } from 'os';
 import { createRequire } from 'module';
 import { readFileSync } from 'fs';
-import { getTestCases } from '../test-utils';
+import { getTestCases } from '../test-utils.js';
 
 
 describe('@plugin directive support', () => {

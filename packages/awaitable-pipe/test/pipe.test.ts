@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { pipe, safePipe, type SafePipeOptions } from '../src';
+import { pipe, safePipe, type SafePipeOptions } from '../src/index.js';
 
 describe('pipe', () => {
   it('returns sync value when all steps are sync', () => {

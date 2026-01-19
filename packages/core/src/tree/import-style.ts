@@ -1,13 +1,13 @@
-import { Node, F_MAY_ASYNC, F_NON_STATIC, defineType } from './node';
-import { type Reference } from './reference';
-import { rules, Rules, type RulesOptions, type RulesVisibility } from './rules';
-import { type Quoted } from './quoted';
-import { Url } from './url';
-import { type Context } from '../context';
+import { Node, F_MAY_ASYNC, F_NON_STATIC, defineType } from './node.js';
+import { type Reference } from './reference.js';
+import { rules, Rules, type RulesOptions, type RulesVisibility } from './rules.js';
+import { type Quoted } from './quoted.js';
+import { Url } from './url.js';
+import { type Context } from '../context.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { isNode } from './util/is-node';
-import { normalizeFilenameToNamespace } from './util/format';
-import type { Ruleset } from './ruleset';
+import { isNode } from './util/is-node.js';
+import { normalizeFilenameToNamespace } from './util/format.js';
+import type { Ruleset } from './ruleset.js';
 
 /**
  * This class is for Jess / Sass+ / Less-style imports,

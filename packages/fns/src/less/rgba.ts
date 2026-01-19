@@ -1,5 +1,5 @@
 // rgba is an alias of rgb - it uses the same implementation but with a different name
-import rgb from './rgb';
+import rgb from './rgb.js';
 import { defineFunction, type FunctionThis, Call, TreeContext, Color, ColorFormat, Dimension, callWithContext } from '@jesscss/core';
 import { splitSequence } from '@jesscss/core';
 

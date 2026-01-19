@@ -1,11 +1,11 @@
-import type { Rules } from './tree/rules';
+import type { Rules } from './tree/rules.js';
 import { join, isAbsolute, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import type { Visitor } from './visitor';
-import type { IParseResult } from './types';
+import type { Visitor } from './visitor/index.js';
+import type { IParseResult } from './types/index.js';
 import type { ILexingResult } from 'chevrotain';
-import { getErrorFromParser, type ErrorDiagnostic, type WarningDiagnostic, toDiagnostic, JessError } from './jess-error';
+import { getErrorFromParser, type ErrorDiagnostic, type WarningDiagnostic, toDiagnostic, JessError } from './jess-error.js';
 
 export type ISafeParseResult = {
   /**

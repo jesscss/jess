@@ -11,69 +11,69 @@
  * Import from node.ts which applies all the prototype patches
  * (nil, operate, treeContext) and re-exports from node-base.ts
  */
-import { Node, type LocationInfo, F_VISIBLE, F_MAY_ASYNC, F_STATIC, F_NON_STATIC } from './node';
-import { TreeContext } from '../context';
-import { compare } from './util/compare';
+import { Node, type LocationInfo, F_VISIBLE, F_MAY_ASYNC, F_STATIC, F_NON_STATIC } from './node.js';
+import { TreeContext } from '../context.js';
+import { compare } from './util/compare.js';
 
 export { Node, TreeContext, type LocationInfo, F_VISIBLE, F_MAY_ASYNC, F_STATIC, F_NON_STATIC };
 
-import { Selector } from './selector';
+import { Selector } from './selector.js';
 
-export * from './at-rule';
-export * from './block';
-export * from './bool';
-export * from './ampersand';
-export * from './any';
-export * from './call';
-export * from './color';
-export * from './comment';
-export * from './combinator';
-export * from './condition';
-export * from './declaration-custom';
-export * from './declaration-var';
-export * from './declaration';
-export * from './dimension';
-export * from './number';
-export * from './expression';
-export * from './extend';
-export * from './list';
-export * from './mixin';
-export * from './negative';
-export * from './function';
-export * from './js-function';
-export * from './js-array';
-export * from './js-object';
-export * from './js-expr';
-export * from './nil';
-export * from './operation';
-export * from './paren';
-export * from './quoted';
-export * from './ruleset';
-export * from './rules';
-export * from './rules-raw';
-export * from './collection';
-export * from './selector';
-export * from './selector-attr';
-export * from './selector-basic';
-export * from './selector-list';
-export * from './selector-pseudo';
-export * from './selector-compound';
-export * from './selector-complex';
-export * from './selector-simple';
-export * from './sequence';
-export * from './query-condition';
-export * from './comment';
-export * from './reference';
-export * from './import-style';
-export * from './import-js';
-export * from './interpolated';
-export * from './selector-interpolated';
-export * from './default-guard';
-export * from './rest';
-export * from './url';
+export * from './at-rule.js';
+export * from './block.js';
+export * from './bool.js';
+export * from './ampersand.js';
+export * from './any.js';
+export * from './call.js';
+export * from './color.js';
+export * from './comment.js';
+export * from './combinator.js';
+export * from './condition.js';
+export * from './declaration-custom.js';
+export * from './declaration-var.js';
+export * from './declaration.js';
+export * from './dimension.js';
+export * from './number.js';
+export * from './expression.js';
+export * from './extend.js';
+export * from './list.js';
+export * from './mixin.js';
+export * from './negative.js';
+export * from './function.js';
+export * from './js-function.js';
+export * from './js-array.js';
+export * from './js-object.js';
+export * from './js-expr.js';
+export * from './nil.js';
+export * from './operation.js';
+export * from './paren.js';
+export * from './quoted.js';
+export * from './ruleset.js';
+export * from './rules.js';
+export * from './rules-raw.js';
+export * from './collection.js';
+export * from './selector.js';
+export * from './selector-attr.js';
+export * from './selector-basic.js';
+export * from './selector-list.js';
+export * from './selector-pseudo.js';
+export * from './selector-compound.js';
+export * from './selector-complex.js';
+export * from './selector-simple.js';
+export * from './sequence.js';
+export * from './query-condition.js';
+export * from './comment.js';
+export * from './reference.js';
+export * from './import-style.js';
+export * from './import-js.js';
+export * from './interpolated.js';
+export * from './selector-interpolated.js';
+export * from './default-guard.js';
+export * from './rest.js';
+export * from './url.js';
 
 // Patch Selector.compare after all exports to avoid circular dependency
-import { matchSelectors } from './util/find-extendable-locations';
+import { matchSelectors } from './util/find-extendable-locations.js';
 
 /** Patch Selector to avoid circularity */
 Selector.prototype.compare = function(other: Node) {

@@ -1,5 +1,5 @@
-import { el, sel, sellist, compound, is, co, pseudo, attr, quoted } from '../../..';
-import { extendSelector, tryExtendSelector, ExtendErrorType } from '../extend';
+import { el, sel, sellist, compound, is, co, pseudo, attr, quoted } from '../../../index.js';
+import { extendSelector, tryExtendSelector, ExtendErrorType } from '../extend.js';
 
 describe('Simplified Extend Test Cases', () => {
   describe('Basic full-match extensions', () => {

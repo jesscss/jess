@@ -1,7 +1,7 @@
 import * as glob from 'glob';
 import * as fs from 'fs';
 import * as path from 'path';
-import { CssParser } from '../src';
+import { CssParser } from '../src/index.js';
 import { invalidCSSOutput, notSameSerialized } from '@jesscss/shared';
 
 const testData = path.dirname(require.resolve('@less/test-data'));

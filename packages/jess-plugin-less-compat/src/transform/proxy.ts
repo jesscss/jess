@@ -1,5 +1,5 @@
 import { Node } from '@jesscss/core';
-import { mapJessTypeToLessType } from './type-map';
+import { mapJessTypeToLessType } from './type-map.js';
 
 /**
  * Symbol to mark Less proxy objects

@@ -3,8 +3,8 @@ import {
   compound,
   type SimpleSelector, type Combinator, type Selector
 } from '..';
-import { Context } from '../../context';
-import { F_AMPERSAND, F_VISIBLE } from '../node';
+import { Context } from '../../context.js';
+import { F_AMPERSAND, F_VISIBLE } from '../node.js';
 
 let context: Context;
 describe('Ampersand', () => {

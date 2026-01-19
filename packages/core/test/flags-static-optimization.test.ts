@@ -1,5 +1,5 @@
-import { expectFlags, DEFAULT_VARIABLE } from './helpers';
-import { rules, ruleset, sellist, sel, el, decl, any, list, num, op, call, ref, type Ruleset, type Declaration, type List, type Call, type Operation } from '../src';
+import { expectFlags, DEFAULT_VARIABLE } from './helpers.js';
+import { rules, ruleset, sellist, sel, el, decl, any, list, num, op, call, ref, type Ruleset, type Declaration, type List, type Call, type Operation } from '../src/index.js';
 
 // Helper function to find a node by type
 function findNodeByType(node: any, type: string): any {

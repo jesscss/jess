@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { OutputWriter } from '../print';
+import { OutputWriter } from '../print.js';
 
 describe('OutputWriter', () => {
   describe('position tracking', () => {

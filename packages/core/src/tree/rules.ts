@@ -6,29 +6,29 @@ import {
   type TreeContext,
   F_STATIC,
   F_VISIBLE
-} from './node';
-import { Context } from '../context';
-import { isNode } from './util/is-node';
-import { comparePosition } from './util/compare';
-import { cast } from './util/cast';
-import { type Ruleset } from './ruleset';
-import { type Mixin } from './mixin';
-import type { Selector } from './selector';
-import { spaced, Sequence } from './sequence';
-import { type PrintOptions, getPrintOptions } from './util/print';
+} from './node.js';
+import { Context } from '../context.js';
+import { isNode } from './util/is-node.js';
+import { comparePosition } from './util/compare.js';
+import { cast } from './util/cast.js';
+import { type Ruleset } from './ruleset.js';
+import { type Mixin } from './mixin.js';
+import type { Selector } from './selector.js';
+import { spaced, Sequence } from './sequence.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 
-import { atIndex } from './util/collections';
-import type { Condition } from './condition';
-import type { Bool } from './bool';
-import * as Registries from './util/registry-utils';
-import { processExtends } from './util/extend-roots';
+import { atIndex } from './util/collections.js';
+import type { Condition } from './condition.js';
+import type { Bool } from './bool.js';
+import * as Registries from './util/registry-utils.js';
+import { processExtends } from './util/extend-roots.js';
 import { type MaybePromise, pipe, isThenable, serialForEach, tryStep } from '@jesscss/awaitable-pipe';
-import { Nil } from './nil';
-import { VarDeclaration } from './declaration-var';
-import { Any } from './any';
-import { List } from './list';
-import { indent, normalizeIndent } from './util/serialize-helper';
-import { freezeChildren } from './util/cloning';
+import { Nil } from './nil.js';
+import { VarDeclaration } from './declaration-var.js';
+import { Any } from './any.js';
+import { List } from './list.js';
+import { indent, normalizeIndent } from './util/serialize-helper.js';
+import { freezeChildren } from './util/cloning.js';
 
 const { isArray } = Array;
 

@@ -1,8 +1,8 @@
-import type { AtRule } from '../at-rule';
-import type { Ruleset } from '../ruleset';
-import type { FinalPrintOptions } from './print';
-import { isNode } from './is-node';
-import { Nil } from '../nil';
+import type { AtRule } from '../at-rule.js';
+import type { Ruleset } from '../ruleset.js';
+import type { FinalPrintOptions } from './print.js';
+import { isNode } from './is-node.js';
+import { Nil } from '../nil.js';
 
 /**
  * Normalizes the indent of a multi-line string by replacing initial whitespace.

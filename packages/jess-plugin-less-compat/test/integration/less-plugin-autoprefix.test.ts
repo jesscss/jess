@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Parser } from '@jesscss/less-parser';
-import { lessCompatPlugin } from '../../src';
+import { lessCompatPlugin } from '../../src/index.js';
 import type { Visitor } from '@jesscss/core';
 
 // Helper to normalize visitor (PluginInterface allows Visitor | Visitor[])

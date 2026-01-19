@@ -4,7 +4,7 @@ import {
   Dimension,
   defineFunction
 } from '@jesscss/core';
-import desaturate from './desaturate';
+import desaturate from './desaturate.js';
 
 const greyscale = defineFunction(
   'greyscale',

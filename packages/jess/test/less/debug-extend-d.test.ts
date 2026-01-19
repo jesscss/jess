@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { createRequire } from 'module';
 import * as path from 'path';
-import { Compiler } from '../../src';
+import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 
 const require = createRequire(import.meta.url);

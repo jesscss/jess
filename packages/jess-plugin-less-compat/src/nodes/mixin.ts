@@ -1,9 +1,9 @@
 import { Mixin, Node } from '@jesscss/core';
-import { createLessProxy } from '../transform/proxy';
-import { toLessNode } from '../transform/to-less';
-import { mapJessTypeToLessType } from '../transform/type-map';
-import { fromLessNode } from '../transform/from-less';
-import type { LessNode } from '../types';
+import { createLessProxy } from '../transform/proxy.js';
+import { toLessNode } from '../transform/to-less.js';
+import { mapJessTypeToLessType } from '../transform/type-map.js';
+import { fromLessNode } from '../transform/from-less.js';
+import type { LessNode } from '../types.js';
 
 /**
  * Transform a Jess Mixin to a Less-compatible MixinDefinition

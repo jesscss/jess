@@ -1,8 +1,8 @@
-import { defineType, type LocationInfo, type Node } from './node';
-import { type TreeContext } from '../context';
-import { SimpleSelector } from './selector-simple';
-import { compare } from './util/compare';
-import { type PrintOptions, getPrintOptions } from './util/print';
+import { defineType, type LocationInfo, type Node } from './node.js';
+import { type TreeContext } from '../context.js';
+import { SimpleSelector } from './selector-simple.js';
+import { compare } from './util/compare.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */

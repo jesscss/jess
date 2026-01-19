@@ -4,9 +4,9 @@ import * as path from 'path';
 import { readFileSync } from 'fs';
 import { createRequire } from 'module';
 import { invalidLess } from '@jesscss/shared';
-import { Compiler } from '../../src';
-import { outputDiagnostics } from '../../src/diagnostics';
-import { getTestCases } from '../test-utils';
+import { Compiler } from '../../src/index.js';
+import { outputDiagnostics } from '../../src/diagnostics.js';
+import { getTestCases } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { type Rules, serializeTypes } from '@jesscss/core';
 
@@ -81,7 +81,7 @@ describe('Can render Less files to CSS', () => {
             const context = testCompiler.createContext(lessPath, { outputFile: testCase.expectedFile });
             // DEBUG: Check collapseNesting value
             if (file.includes('extend-selector')) {
-              const { getConfig } = await import('../../src/config');
+              const { getConfig } = await import('../../src/config.js');
               const rawConfig = getConfig(lessPath);
               console.log('DEBUG collapseNesting:', {
                 baseCompiler: baseCompiler.opts.output?.collapseNesting,

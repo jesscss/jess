@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Context } from '../context';
-import { createTestContext } from '../tree/__tests__/import-style-test-helpers';
-import { rules, ruleset, sellist, sel, el, decl, spaced, any as anyNode } from '../tree';
-import type { ErrorDiagnostic, WarningDiagnostic } from '../jess-error';
+import { Context } from '../context.js';
+import { createTestContext } from '../tree/__tests__/import-style-test-helpers.js';
+import { rules, ruleset, sellist, sel, el, decl, spaced, any as anyNode } from '../tree/index.js';
+import type { ErrorDiagnostic, WarningDiagnostic } from '../jess-error.js';
 import { resolve } from 'node:path';
 
 describe('Safe Parse - Error and Warning Collection', () => {

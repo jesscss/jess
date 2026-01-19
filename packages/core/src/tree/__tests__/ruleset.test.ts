@@ -1,5 +1,5 @@
 import { rules, sellist, sel, el, decl, ruleset, spaced, any } from '..';
-import { Context } from '../../context';
+import { Context } from '../../context.js';
 
 let context: Context;
 

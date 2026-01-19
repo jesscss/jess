@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Context } from '../../../context';
-import { rules, ruleset, extend, el, compound, sellist, sel, co, type Rules } from '../../index';
-import { processExtends } from '../extend-roots';
+import { Context } from '../../../context.js';
+import { rules, ruleset, extend, el, compound, sellist, sel, co, type Rules } from '../../index.js';
+import { processExtends } from '../extend-roots.js';
 
 describe('processExtends function', () => {
   let context: Context;

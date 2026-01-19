@@ -2,9 +2,9 @@ import {
   Declaration,
   type DeclarationValue,
   type DeclarationOptions
-} from './declaration';
-import { Any, type AnyRole } from './any';
-import { defineType, F_VISIBLE, type LocationInfo, type Node, type TreeContext } from './node';
+} from './declaration.js';
+import { Any, type AnyRole } from './any.js';
+import { defineType, F_VISIBLE, type LocationInfo, type Node, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export type VarDeclarationOptions = DeclarationOptions & {

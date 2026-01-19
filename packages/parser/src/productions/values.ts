@@ -1,4 +1,4 @@
-import type { JessParser } from '../jessParser';
+import type { JessParser } from '../jessParser.js';
 import { EMPTY_ALT } from 'chevrotain';
 import type { CstChild } from '@jesscss/css-parser';
 import { IToken, CstNode } from '@jesscss/css-parser';

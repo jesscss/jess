@@ -93,16 +93,16 @@
  * - Each match is independent and gets its own :is() wrapper
  */
 
-import { type Selector } from '../selector';
-import { SimpleSelector } from '../selector-simple';
-import { SelectorList } from '../selector-list';
-import { ComplexSelector } from '../selector-complex';
-import { CompoundSelector } from '../selector-compound';
-import { PseudoSelector } from '../selector-pseudo';
-import { Ampersand } from '../ampersand';
-import { isNode } from './is-node';
-import { findExtendableLocations, type ExtendLocation } from './extend-helpers';
-import { F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node';
+import { type Selector } from '../selector.js';
+import { SimpleSelector } from '../selector-simple.js';
+import { SelectorList } from '../selector-list.js';
+import { ComplexSelector } from '../selector-complex.js';
+import { CompoundSelector } from '../selector-compound.js';
+import { PseudoSelector } from '../selector-pseudo.js';
+import { Ampersand } from '../ampersand.js';
+import { isNode } from './is-node.js';
+import { findExtendableLocations, type ExtendLocation } from './extend-helpers.js';
+import { F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 
 const { isArray } = Array;
 

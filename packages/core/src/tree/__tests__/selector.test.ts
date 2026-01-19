@@ -1,8 +1,8 @@
 // import { Selector } from '../selector-sequence'
 import { sel, el, co, pseudo, attr, any, quoted, sellist, compound } from '..';
-import { isNode } from '../util/is-node';
+import { isNode } from '../util/is-node.js';
 // import type { Class } from 'type-fest'
-// import type { Node } from '../node'
+// import type { Node } from '../node.js'
 
 /** @todo - move to https://github.com/SamVerschueren/tsd */
 // test('Test types', () => {

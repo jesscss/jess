@@ -1,6 +1,6 @@
-import { Dimension, Num, Sequence, Operation, List } from './tree';
-import { isNode } from './tree/util/is-node';
-import type { Context } from './context';
+import { Dimension, Num, Sequence, Operation, List } from './tree/index.js';
+import { isNode } from './tree/util/is-node.js';
+import type { Context } from './context.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
 // Conversion function types

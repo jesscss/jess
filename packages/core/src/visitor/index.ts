@@ -3,9 +3,9 @@ import {
   type NodeVisitReturn,
   ABORT,
   REMOVE
-} from '../tree/node';
+} from '../tree/node.js';
 // import { type isNode } from '../tree/util'
-import type * as tree from '../tree';
+import type * as tree from '../tree/index.js';
 
 // const { isArray } = Array
 

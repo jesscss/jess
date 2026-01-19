@@ -3,7 +3,7 @@ import {
   lighten,
   saturate,
   desaturate
-} from '../less';
+} from '../less/index.js';
 
 import { Color, Context, Dimension, Quoted } from '@jesscss/core';
 import { beforeAll, describe, it, expect } from 'vitest';

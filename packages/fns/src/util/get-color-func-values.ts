@@ -5,7 +5,7 @@ import {
   type Color,
   Sequence
 } from '@jesscss/core';
-import { getNumber } from './number';
+import { getNumber } from './number.js';
 
 /**
  * Allows for comma-less syntax

@@ -1,5 +1,5 @@
-import { type NodeOptions, defineType } from './node';
-import { Selector } from './selector';
+import { type NodeOptions, defineType } from './node.js';
+import { Selector } from './selector.js';
 
 export abstract class SimpleSelector<
   T = any,

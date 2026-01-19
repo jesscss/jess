@@ -1,3 +1,3 @@
-export * from './types';
-export * from './loader';
-export * from './options';
+export * from './types.js';
+export * from './loader.js';
+export * from './options.js';

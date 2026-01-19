@@ -1,12 +1,12 @@
 import {
   defineType,
   type Node
-} from './node';
-import { SimpleSelector } from './selector-simple';
-import { type Context } from '../context';
-import { isNode } from './util/is-node';
-import { Selector } from './selector';
-import { type PrintOptions, getPrintOptions } from './util/print';
+} from './node.js';
+import { SimpleSelector } from './selector-simple.js';
+import { type Context } from '../context.js';
+import { isNode } from './util/is-node.js';
+import { Selector } from './selector.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 
 export type PseudoSelectorValue = {

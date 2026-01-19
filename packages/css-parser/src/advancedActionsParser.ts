@@ -9,7 +9,10 @@ import {
   // type OrMethodOpts
 } from 'chevrotain';
 
-import type { ParserMethodInternal } from 'chevrotain/src/parse/parser/types';
+// Chevrotain does not export this type publicly, and TS "bundler" resolution
+// disallows deep imports into package internals. This is the minimal shape we need.
+type ParserMethodInternal<ARGS extends any[] = any[], R = any> =
+  ((...args: ARGS) => R) & { ruleName: string };
 
 import {
   TreeContext,

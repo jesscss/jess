@@ -1,6 +1,6 @@
-import { defineType } from './node';
-import { Rules } from './rules';
-import { type PrintOptions, getPrintOptions } from './util/print';
+import { defineType } from './node.js';
+import { Rules } from './rules.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 /**
  * A rules container that emits its content verbatim inside braces,

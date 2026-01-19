@@ -1,5 +1,5 @@
 import type { CstChild } from '@jesscss/css-parser';
-import type { JessParser } from '../jessParser';
+import type { JessParser } from '../jessParser.js';
 
 export default function(this: JessParser, $: JessParser) {
   /** "color" in "color: red" */

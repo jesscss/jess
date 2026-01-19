@@ -17,7 +17,7 @@
   ],
   "scripts": {
     "build": "pnpm compile",
-    "compile": "tsc -b tsconfig.build.json && node ../../scripts/rewrite-relative-imports.cjs ./lib",
+    "compile": "tsc -b tsconfig.build.json",
     "dev": "tsc -b tsconfig.json -w",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"

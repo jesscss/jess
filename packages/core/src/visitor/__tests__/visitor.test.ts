@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { Visitor, TreeVisitor, ABORT } from '../index';
-import { ruleset, rules, decl, any } from '../../tree';
+import { Visitor, TreeVisitor, ABORT } from '../index.js';
+import { ruleset, rules, decl, any } from '../../tree/index.js';
 
 describe('Visitor Pattern', () => {
   describe('accept() method', () => {

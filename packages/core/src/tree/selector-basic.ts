@@ -1,6 +1,6 @@
-import type { Context } from '../context';
-import { defineType } from './node';
-import { SimpleSelector } from './selector-simple';
+import type { Context } from '../context.js';
+import { defineType } from './node.js';
+import { SimpleSelector } from './selector-simple.js';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 
 export interface BasicSelector extends SimpleSelector<string> {

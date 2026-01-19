@@ -1,11 +1,11 @@
-import isPlainObject from 'lodash-es/isPlainObject';
+import isPlainObject from 'lodash-es/isPlainObject.js';
 import { AbstractClass, Class, OmitIndexSignature } from 'type-fest';
-import { isNode } from './tree/util/is-node';
-import type { Context } from './context';
+import { isNode } from './tree/util/is-node.js';
+import type { Context } from './context.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import { List, Sequence, Operation, Num, Dimension } from './tree';
-import type { ConversionPlugin, PreprocessParams } from './conversions';
+import { List, Sequence, Operation, Num, Dimension } from './tree/index.js';
+import type { ConversionPlugin, PreprocessParams } from './conversions.js';
 
 export type PrimitiveType = 'string' | 'number' | 'boolean' | 'null' | 'undefined';
 export type ArgType = PrimitiveType | Class<any> | AbstractClass<any>;

@@ -1,15 +1,15 @@
-import { Node, defineType, type LocationInfo, type TreeContext, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC } from './node';
-import { type List } from './list';
-import { type Context } from '../context';
-import { isNode } from './util/is-node';
-import { cast } from './util/cast';
-import { callWithContext } from '../define-function';
-import { type PrintOptions, getPrintOptions } from './util/print';
-import { Paren } from './paren';
+import { Node, defineType, type LocationInfo, type TreeContext, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC } from './node.js';
+import { type List } from './list.js';
+import { type Context } from '../context.js';
+import { isNode } from './util/is-node.js';
+import { cast } from './util/cast.js';
+import { callWithContext } from '../define-function.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { Paren } from './paren.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
-import { getFunctionFromMixins, type Rules } from './rules';
-import { Any } from './any';
-import { freezeChildren } from './util/cloning';
+import { getFunctionFromMixins, type Rules } from './rules.js';
+import { Any } from './any.js';
+import { freezeChildren } from './util/cloning.js';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -17,7 +17,7 @@ const require = createRequire(import.meta.url);
 // Lazy getter for Rules to break circular dependency:
 // rules.ts → cast.ts → color.ts → call.ts → rules.ts
 function getRules() {
-  return require('./rules').Rules;
+  return require('./rules.js').Rules;
 }
 
 export type CallValue = {

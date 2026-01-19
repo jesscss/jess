@@ -5,7 +5,7 @@ import {
   type Context,
   defineFunction
 } from '@jesscss/core';
-import mix from './mix';
+import mix from './mix.js';
 
 const shade = defineFunction(
   'shade',

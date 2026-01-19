@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { getOptions } from '../src/options';
-import type { StylesConfig } from '../src/types';
+import { getOptions } from '../src/options.js';
+import type { StylesConfig } from '../src/types.js';
 
 describe('getOptions', () => {
   describe('language inference from input extension', () => {
