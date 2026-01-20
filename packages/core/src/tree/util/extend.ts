@@ -408,7 +408,16 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
   const processed = createProcessedSelector(extractedSelectors, true);
   const processedArray = isArray(processed) ? processed : [processed];
 
-  const result = SelectorList.create(processedArray);
+  // IMPORTANT: Avoid self-parenting cycles:
+  // If `inheritFrom` is also included as an item in the selector list, the constructor will adopt it,
+  // reparenting `inheritFrom` to the new SelectorList, and then `.inherit(inheritFrom)` will read
+  // `inheritFrom.parent` (now the new list) and set `result.parent` to itself.
+  // Always clone any element that is the same object as `inheritFrom`.
+  const safeArray = inheritFrom
+    ? processedArray.map((s) => (s === inheritFrom ? s.clone(true) : s))
+    : processedArray;
+
+  const result = SelectorList.create(safeArray);
   return inheritFrom ? result.inherit(inheritFrom) : result;
 }
 
@@ -1210,7 +1219,10 @@ function extendSelectorList(
     // rather than extracting them into comma-separated alternatives.
     const processed = createProcessedSelector(allSelectors, true);
     const processedArray = isArray(processed) ? processed : [processed];
-    return SelectorList.create(processedArray).inherit(target);
+    // See createExtendedSelectorList() for rationale: never include `target` as an adopted child
+    // when we also inherit from it.
+    const safeArray = processedArray.map((s) => (s === target ? s.clone(true) : s));
+    return SelectorList.create(safeArray).inherit(target);
   }
   return createExtendedSelectorList(allSelectors, target);
 }

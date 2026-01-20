@@ -33,6 +33,10 @@ const jsRules = {
   semi: 0,
   ...customized.rules,
 
+  // Disallow single-line blocks like: `if (x) { y(); }`
+  // so ESLint can auto-fix to a multiline block.
+  '@stylistic/brace-style': ['error', '1tbs', { allowSingleLine: false }],
+
   '@stylistic/space-before-function-paren': ['error', {
     anonymous: 'never',
     named: 'never',

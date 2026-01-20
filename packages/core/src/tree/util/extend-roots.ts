@@ -5,9 +5,120 @@ import type { Context } from '../../context.js';
 import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
 import type { Node } from '../node.js';
+import { SelectorList } from '../selector-list.js';
+import { ComplexSelector } from '../selector-complex.js';
+import { Combinator } from '../combinator.js';
+import { is as isSelectorPseudo } from '../selector-pseudo.js';
 import { tryExtendSelector, findChainedExtends } from './extend.js';
 import { WARN, toDiagnostic } from '../../jess-error.js';
 import { syncLog } from './__tests__/debug-log.js';
+
+function maybeHoistMixedNestingSelectorList(
+  ruleset: Ruleset,
+  selector: Selector,
+  partial: boolean
+): Selector {
+  // Only relevant for nested rulesets whose selector becomes a mixed selector list:
+  // e.g. inside `.header { .header-nav { ... } }`, after extend we might have:
+  // `.header-nav, .footer .footer-nav { ... }`
+  //
+  // Less/jess expectations for the Less test-data are to hoist to root and materialize the
+  // implicit parent on relative selectors, producing:
+  // `:is(.header .header-nav, .footer .footer-nav) { ... }`
+  const parentRules = (ruleset as any).parent as Node | undefined;
+  const parentRuleset = parentRules ? ((parentRules as any).parent as Node | undefined) : undefined;
+  if (!parentRuleset || !isNode(parentRuleset, 'Ruleset')) {
+    return selector;
+  }
+  if (!isNode(selector, 'SelectorList')) {
+    return selector;
+  }
+  const parentSel = (parentRuleset as any).selector as Selector;
+  if (!parentSel || isNode(parentSel, 'Nil') || isNode(parentSel, 'SelectorList')) {
+    return selector;
+  }
+
+  const items = (selector as SelectorList).value;
+  if (!Array.isArray(items) || items.length < 2) {
+    return selector;
+  }
+
+  // Heuristic: if we have a mix of "relative" selectors (no descendant combinator)
+  // and "absolute" selectors (has descendant combinator), hoist and materialize parent.
+  const hasDescendantCombinator = (s: Selector) =>
+    isNode(s, 'ComplexSelector') && (s as ComplexSelector).value.some((c) => isNode(c, 'Combinator') && c.value === ' ');
+  const anyAbsolute = items.some(hasDescendantCombinator);
+  const anyRelative = items.some((s) => !hasDescendantCombinator(s));
+  const parentPrefix = typeof (parentSel as any)?.valueOf === 'function' ? `${(parentSel as any).valueOf()} ` : '';
+  const anyPrefixedByParent = parentPrefix
+    ? items.some((s) => typeof (s as any)?.valueOf === 'function' && String((s as any).valueOf()).startsWith(parentPrefix))
+    : false;
+  const anyNotPrefixedByParent = parentPrefix
+    ? items.some((s) => typeof (s as any)?.valueOf === 'function' && !String((s as any).valueOf()).startsWith(parentPrefix))
+    : false;
+  // #region agent log
+  if (process.env.DEBUG_HOIST_HEADER === 'true') {
+    syncLog({
+      sessionId: 'debug-session',
+      runId: process.env.DEBUG_RUN_ID || 'post-fix',
+      hypothesisId: 'H16',
+      location: 'extend-roots.ts:maybeHoistMixedNestingSelectorList',
+      message: 'maybe-hoist-check',
+      data: {
+        partial,
+        parentSel: typeof (parentSel as any)?.valueOf === 'function' ? (parentSel as any).valueOf() : null,
+        selector: typeof (selector as any)?.valueOf === 'function' ? (selector as any).valueOf() : null,
+        anyAbsolute,
+        anyRelative,
+        itemTypes: items.map((s) => (s as any)?.type ?? null),
+        itemVals: items.map((s) => (typeof (s as any)?.valueOf === 'function' ? (s as any).valueOf() : null))
+      },
+      timestamp: Date.now()
+    });
+  }
+  // #endregion
+  // If the selector list mixes selectors that are under the parent prefix and selectors that are not,
+  // hoist to root so we don't serialize them inside the parent's frame (which would strip the prefix
+  // from the prefixed selectors, producing `.header-nav, .footer .footer-nav`).
+  if (anyPrefixedByParent && anyNotPrefixedByParent) {
+    const list = SelectorList.create(items.map((s) => s.clone(true)));
+    if (partial) {
+      const wrapper = isSelectorPseudo(list as any);
+      wrapper.generated = false;
+      (wrapper as any).hoistToRoot = true;
+      (ruleset as any).hoistToRoot = true;
+      return wrapper as any as Selector;
+    }
+    (list as any).hoistToRoot = true;
+    (ruleset as any).hoistToRoot = true;
+    return list as any as Selector;
+  }
+
+  if (!anyAbsolute || !anyRelative) {
+    return selector;
+  }
+
+  const rewritten = items.map((s) => {
+    if (hasDescendantCombinator(s)) {
+      return s;
+    }
+    // Prefix the nested parent selector.
+    const out = ComplexSelector.create([parentSel.copy(true) as any, Combinator.create(' '), s.copy(true) as any]).inherit(s);
+    return out as any as Selector;
+  });
+
+  const list = SelectorList.create(rewritten);
+  if (partial) {
+    const wrapper = isSelectorPseudo(list as any);
+    wrapper.generated = false;
+    (wrapper as any).hoistToRoot = true;
+    (ruleset as any).hoistToRoot = true;
+    return wrapper as any as Selector;
+  }
+  (list as any).hoistToRoot = true;
+  (ruleset as any).hoistToRoot = true;
+  return list as any as Selector;
+}
 
 /**
  * Extend Roots Registry
@@ -447,6 +558,25 @@ export function processExtends(context: Context): void {
     }
     processedExtends.add(extendKey);
 
+    // #region agent log
+    if (process.env.DEBUG_EXTEND_LOOP === 'true' && debugThisFile) {
+      syncLog({
+        sessionId: 'debug-session',
+        runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+        hypothesisId: 'H2',
+        location: 'extend-roots.ts:processExtend',
+        message: 'processExtend-enter',
+        data: {
+          depth,
+          partial,
+          target: target.valueOf(),
+          extendWith: selectorWithExtend.valueOf()
+        },
+        timestamp: Date.now()
+      });
+    }
+    // #endregion
+
     // Get accessible roots for this extend's root
     const accessibleRoots = context.extendRoots.getAccessibleRoots(extendRoot);
 
@@ -550,7 +680,45 @@ export function processExtends(context: Context): void {
 
           // Track object identity and structure to detect transformations
 
+          // #region agent log
+          if (process.env.DEBUG_EXTEND_LOOP === 'true' && debugThisFile) {
+            syncLog({
+              sessionId: 'debug-session',
+              runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+              hypothesisId: 'H3',
+              location: 'extend-roots.ts:processExtend',
+              message: 'tryExtendSelector-enter',
+              data: {
+                partial,
+                singleTarget: singleTarget.valueOf(),
+                extendWith: selectorWithExtend.valueOf(),
+                selector: originalSelector.valueOf()
+              },
+              timestamp: Date.now()
+            });
+          }
+          // #endregion
+
           let result = tryExtendSelector(originalSelector, singleTarget, selectorWithExtend, partial);
+
+          // #region agent log
+          if (process.env.DEBUG_EXTEND_LOOP === 'true' && debugThisFile) {
+            syncLog({
+              sessionId: 'debug-session',
+              runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+              hypothesisId: 'H3',
+              location: 'extend-roots.ts:processExtend',
+              message: 'tryExtendSelector-exit',
+              data: {
+                ok: !!result && !result.error,
+                changed: !!result && !result.error && result.value.valueOf() !== originalSelector.valueOf(),
+                out: result && !result.error ? result.value.valueOf() : null,
+                errType: result?.error?.type || null
+              },
+              timestamp: Date.now()
+            });
+          }
+          // #endregion
 
           if (result && !result.error) {
             const extendedSelector = result.value;
@@ -592,7 +760,7 @@ export function processExtends(context: Context): void {
               }
 
               // Update the ruleset's selector directly
-              ruleset.value.selector = clonedSelector;
+              ruleset.value.selector = maybeHoistMixedNestingSelectorList(ruleset, clonedSelector as any, partial) as any;
               ruleset.invalidateSelectorValueCache();
               if (clonedSelector.hoistToRoot) {
                 ruleset.hoistToRoot = true;
@@ -633,6 +801,19 @@ export function processExtends(context: Context): void {
 
   while (rulesetsToCheck.size > 0 && iteration < maxIterations) {
     iteration++;
+    // #region agent log
+    if (process.env.DEBUG_EXTEND_LOOP === 'true' && debugThisFile) {
+      syncLog({
+        sessionId: 'debug-session',
+        runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+        hypothesisId: 'H4',
+        location: 'extend-roots.ts:processExtends',
+        message: 'phase2-iteration-start',
+        data: { iteration, rulesetsToCheck: rulesetsToCheck.size },
+        timestamp: Date.now()
+      });
+    }
+    // #endregion
     const nextIteration = new Set<Ruleset>();
 
     // Initialize seen states for new rulesets
@@ -649,6 +830,19 @@ export function processExtends(context: Context): void {
 
       // Check if we've seen this selector state before (infinite loop detection)
       if (seenStates.has(currentSelectorValue)) {
+        // #region agent log
+        if (process.env.DEBUG_EXTEND_LOOP === 'true' && debugThisFile) {
+          syncLog({
+            sessionId: 'debug-session',
+            runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+            hypothesisId: 'H4',
+            location: 'extend-roots.ts:processExtends',
+            message: 'phase2-skip-seen-state',
+            data: { iteration, selector: currentSelectorValue },
+            timestamp: Date.now()
+          });
+        }
+        // #endregion
         continue; // Infinite loop detected - skip this ruleset
       }
       seenStates.add(currentSelectorValue);

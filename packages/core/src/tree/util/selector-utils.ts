@@ -5,6 +5,9 @@ import { Combinator } from '../combinator.js';
 import { ComplexSelector } from '../selector-complex.js';
 import { SelectorList } from '../selector-list.js';
 import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
+// #region agent log
+import { syncLog } from '../util/__tests__/debug-log.js';
+// #endregion
 
 /**
  * Adds an implicit ampersand to a selector if it doesn't already have one.
@@ -27,7 +30,52 @@ export function addImplicitAmpersand(
   // If parentSelector is provided, set it on the ampersand so it resolves correctly
   // This ensures the ampersand resolves to the parent selector when evaluated
   if (parentSelector) {
-    amp.value.selector = parentSelector;
+    // #region agent log
+    if (process.env.DEBUG_IMPLICIT_SELECTOR === 'true') {
+      const psParent = (parentSelector as any)?.parent as any;
+      syncLog({
+        sessionId: 'debug-session',
+        runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+        hypothesisId: 'H15',
+        location: 'selector-utils.ts:addImplicitAmpersand',
+        message: 'implicit-amp-set-parentSelector-enter',
+        data: {
+          selectorType: (selector as any)?.type ?? null,
+          selectorLoc: (selector as any)?.location ?? null,
+          parentSelectorType: (parentSelector as any)?.type ?? null,
+          parentSelectorLoc: (parentSelector as any)?.location ?? null,
+          parentSelectorIsSelfParent: psParent === parentSelector,
+          parentSelectorParentType: psParent?.type ?? null,
+          parentSelectorParentLoc: psParent?.location ?? null
+        },
+        timestamp: Date.now()
+      });
+    }
+    // #endregion
+    // IMPORTANT: do NOT attach the live parent selector into the ampersand value tree.
+    // The Node proxy will "adopt" it, reparenting the existing selector and potentially
+    // creating circular/self-parent chains when we later call .inherit() on newly created selectors.
+    // Always store a copy instead.
+    amp.value.selector = parentSelector.copy(true);
+    // #region agent log
+    if (process.env.DEBUG_IMPLICIT_SELECTOR === 'true') {
+      const psParent = (parentSelector as any)?.parent as any;
+      syncLog({
+        sessionId: 'debug-session',
+        runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+        hypothesisId: 'H15',
+        location: 'selector-utils.ts:addImplicitAmpersand',
+        message: 'implicit-amp-set-parentSelector-exit',
+        data: {
+          parentSelectorIsSelfParent: psParent === parentSelector,
+          parentSelectorParentType: psParent?.type ?? null,
+          parentSelectorParentLoc: psParent?.location ?? null,
+          parentSelectorParentIsAmp: psParent === amp
+        },
+        timestamp: Date.now()
+      });
+    }
+    // #endregion
   }
   // Mark as implicit so it can be excluded from visibleKeySet for indexing
   amp.addFlag(F_IMPLICIT_AMPERSAND);
@@ -40,12 +88,18 @@ export function addImplicitAmpersand(
   }
   if ((selector as any)?.type === 'ComplexSelector') {
     const complex = selector as unknown as ComplexSelector;
-    if ((complex.value[0] as any)?.type === 'Combinator') {
-      return ComplexSelector.create([amp, ...complex.value]).inherit(selector);
+    // Avoid moving live nodes from the existing selector into a new selector
+    // (which would reparent them). Work with a copy instead.
+    const complexCopy = complex.copy(true) as ComplexSelector;
+    if ((complexCopy.value[0] as any)?.type === 'Combinator') {
+      return ComplexSelector.create([amp, ...complexCopy.value]).inherit(selector);
     }
-    return ComplexSelector.create([amp, comb, ...complex.value]).inherit(selector);
+    return ComplexSelector.create([amp, comb, ...complexCopy.value]).inherit(selector);
   }
-  const returnVal = ComplexSelector.create([amp, comb, selector]).inherit(selector);
+  // Avoid self-parenting: if we include `selector` as a child and then call `.inherit(selector)`,
+  // the constructor will adopt `selector` first (setting selector.parent = newComplex),
+  // and then `.inherit()` would set newComplex.parent = selector.parent = newComplex.
+  const returnVal = ComplexSelector.create([amp, comb, selector.copy(true)]).inherit(selector);
   return returnVal;
 }
 

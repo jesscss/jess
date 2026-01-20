@@ -9,6 +9,7 @@ import { isNode } from './util/is-node.js';
 import { getImplicitSelector } from './util/selector-utils.js';
 import { Ruleset } from './ruleset.js';
 import { ComplexSelector } from './selector-complex.js';
+import { syncLog } from './util/__tests__/debug-log.js';
 
 export const enum ExtendFlag {
   /** Sass and Jess default */
@@ -40,6 +41,29 @@ export class Extend extends Node<ExtendValue> {
   type = 'Extend' as const;
   shortType = 'extend' as const;
   override state = 0b0000;
+
+  // #region agent log
+  private static __agentLogCount = 0;
+  private static agentLog(context: Context, location: string, message: string, data: Record<string, unknown>) {
+    if (process.env.DEBUG_EXTEND_BOOT !== 'true') return;
+    if (Extend.__agentLogCount++ > 40) return;
+    const filePath = context.treeContext?.file?.fullPath
+      || (context.treeContext?.file?.path && context.treeContext?.file?.name
+        ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
+        : context.treeContext?.file?.path)
+      || '';
+    if (typeof filePath === 'string' && !filePath.includes('tests-unit/extend-selector')) return;
+    syncLog({
+      sessionId: 'debug-session',
+      runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+      hypothesisId: 'H5',
+      location,
+      message,
+      data,
+      timestamp: Date.now()
+    });
+  }
+  // #endregion
 
   override valueOf() {
     return `$extend ${this.value.target.valueOf()}`;
@@ -76,6 +100,17 @@ export class Extend extends Node<ExtendValue> {
     
     const currentFrame = context.rulesetFrames.at(-1);
     
+    // #region agent log
+    Extend.agentLog(context, 'extend.ts:evalNode', 'extend-eval-enter', {
+      hasSelector: !!selector,
+      target: target.valueOf(),
+      flag: flag ?? null,
+      extendsCountBefore: context.extends.length,
+      hasExtendRoot: !!context.extendRoots.getCurrentExtendRoot(),
+      hasRulesetFrame: !!currentFrame
+    });
+    // #endregion
+
     // If selector is undefined, convert it to ampersand so it resolves to the ruleset's selector
     // If selector is already set to a non-ampersand (e.g., from a bubbled extend), keep it as-is
     // The parser sets the selector correctly when bubbling extends, so we should preserve it
@@ -110,6 +145,14 @@ export class Extend extends Node<ExtendValue> {
         }
         // Register extend to context with extend root reference and Extend node for error reporting
         context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this]);
+        // #region agent log
+        Extend.agentLog(context, 'extend.ts:evalNode', 'extend-registered', {
+          target: target.valueOf(),
+          resolvedSel: resolvedSel.valueOf(),
+          partial: flag === ExtendFlag.All,
+          extendsCountAfter: context.extends.length
+        });
+        // #endregion
         return new Nil();
       });
     }
@@ -126,6 +169,14 @@ export class Extend extends Node<ExtendValue> {
     }
     // Register extend to context with extend root reference and Extend node for error reporting
     context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this]);
+    // #region agent log
+    Extend.agentLog(context, 'extend.ts:evalNode', 'extend-registered', {
+      target: target.valueOf(),
+      resolvedSel: resolvedSel.valueOf(),
+      partial: flag === ExtendFlag.All,
+      extendsCountAfter: context.extends.length
+    });
+    // #endregion
     return new Nil();
   }
 }

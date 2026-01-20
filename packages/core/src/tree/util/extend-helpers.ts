@@ -6,11 +6,16 @@ import { CompoundSelector } from '../selector-compound.js';
 import { PseudoSelector } from '../selector-pseudo.js';
 import { Combinator } from '../combinator.js';
 import { isNode } from './is-node.js';
+import { syncLog } from './__tests__/debug-log.js';
 
 /**
  * Helper functions for extend operations that eliminate genuine code duplication
  * These preserve all original logic while extracting commonly repeated patterns
  */
+
+// #region agent log
+let __agentIsAppendLogCount = 0;
+// #endregion
 
 /**
  * Determines the extension type based on selector type and location context
@@ -1426,6 +1431,27 @@ function searchWithinPseudoSelector(
       // This enables extending :is(.a, .b) with .c to become :is(.a, .b, .c)
       const canExtendAsList = !argSelector.value.some(alt => isStructurallyEqual(alt, target));
       if (canExtendAsList) {
+        // #region agent log
+        if (process.env.DEBUG_EXTEND_IS_APPEND === 'true' && __agentIsAppendLogCount < 20) {
+          __agentIsAppendLogCount++;
+          // IMPORTANT: log only primitives (no nodes) to avoid circular refs.
+          syncLog({
+            sessionId: 'debug-session',
+            runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+            hypothesisId: 'H1',
+            location: 'extend-helpers.ts:searchWithinPseudoSelector',
+            message: 'is-append-location',
+            data: {
+              pseudoName: pseudo.value.name,
+              argType: 'SelectorList',
+              argLen: argSelector.value.length,
+              target: target.valueOf(),
+              pathLen: currentPath.length
+            },
+            timestamp: Date.now()
+          });
+        }
+        // #endregion
         locations.push({
           path: [...currentPath, 'arg'],
           matchedNode: argSelector,

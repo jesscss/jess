@@ -12,10 +12,20 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
 import type { Nil } from './nil.js';
+// #region agent log
+import { syncLog } from './util/__tests__/debug-log.js';
+// #endregion
 
 export type { TreeContext };
 
 const { isArray } = Array;
+// #region agent log
+let __agentRulesParentCallCount = 0;
+let __agentRulesParentStepCount = 0;
+// #endregion
+// #region agent log
+let __agentSelfParentLogCount = 0;
+// #endregion
 
 type AllNodeOptions = {
   /**
@@ -361,6 +371,58 @@ export abstract class Node<
   adopt(node: Node) {
     /** The only place we should do this */
     if (!node.frozen) {
+      // #region agent log
+      if (process.env.DEBUG_SELF_PARENT === 'true') {
+        // If a node ever adopts itself, that creates invalid AST structure.
+        // Capture a stack trace for the callsite.
+        if (node === this) {
+          __agentSelfParentLogCount++;
+          if (__agentSelfParentLogCount <= 20) {
+            const stack = new Error('self-parent adopt').stack || '';
+            syncLog({
+              sessionId: 'debug-session',
+              runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+              hypothesisId: 'H14',
+              location: 'node-base.ts:adopt',
+              message: 'adopt-self-parent-attempt',
+              data: {
+                parentType: this.type,
+                parentLoc: (this as any)?.location ?? null,
+                nodeType: node.type,
+                nodeLoc: (node as any)?.location ?? null,
+                stack: stack.split('\n').slice(0, 12).join('\n')
+              },
+              timestamp: Date.now()
+            });
+          }
+          if (process.env.DEBUG_SELF_PARENT_THROW === 'true') {
+            throw new Error('Node attempted to adopt itself (self-parenting). See debug.log for stack.');
+          }
+        }
+        // If we’re about to set a node whose current parent is itself, also log.
+        if (node.parent === node) {
+          __agentSelfParentLogCount++;
+          if (__agentSelfParentLogCount <= 20) {
+            const stack = new Error('node already self-parented').stack || '';
+            syncLog({
+              sessionId: 'debug-session',
+              runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+              hypothesisId: 'H14',
+              location: 'node-base.ts:adopt',
+              message: 'adopt-node-already-self-parented',
+              data: {
+                parentType: this.type,
+                parentLoc: (this as any)?.location ?? null,
+                nodeType: node.type,
+                nodeLoc: (node as any)?.location ?? null,
+                stack: stack.split('\n').slice(0, 12).join('\n')
+              },
+              timestamp: Date.now()
+            });
+          }
+        }
+      }
+      // #endregion
       (node as any).parent = this;
     }
     if (node.hasFlag(F_NON_STATIC)) {
@@ -452,7 +514,87 @@ export abstract class Node<
   }
 
   get rulesParent(): Rules | undefined {
+    // #region agent log
+    // WARNING: this getter is used widely; keep logs tightly gated.
+    // Enable with DEBUG_PARENT_CHAIN=true
+    const __agentRunId = process.env.DEBUG_RUN_ID || 'pre-fix';
+    const __agentParentChain = process.env.DEBUG_PARENT_CHAIN === 'true';
+    const __agentShouldLog = __agentParentChain;
+    __agentRulesParentCallCount++;
+    const __agentLogThisCall = __agentShouldLog && __agentRulesParentCallCount <= 20;
+    if (__agentLogThisCall) {
+      syncLog({
+        sessionId: 'debug-session',
+        runId: __agentRunId,
+        hypothesisId: 'H13',
+        location: 'node-base.ts:rulesParent',
+        message: 'rulesParent-enter',
+        data: { call: __agentRulesParentCallCount, selfType: this.type, selfLoc: (this as any)?.location ?? null },
+        timestamp: Date.now()
+      });
+    }
+    // #endregion
     let possibleRules: Node | undefined = this.parent;
+    // #region agent log
+    // Cycle-aware parent walk to avoid infinite hang during debugging.
+    if (__agentLogThisCall) {
+      const visited = new Set<Node>();
+      let steps = 0;
+      while (possibleRules && possibleRules.type !== 'Rules') {
+        steps++;
+        if (visited.has(possibleRules) || steps > 5000) {
+          syncLog({
+            sessionId: 'debug-session',
+            runId: __agentRunId,
+            hypothesisId: 'H13',
+            location: 'node-base.ts:rulesParent',
+            message: 'rulesParent-cycle-or-limit',
+            data: {
+              steps,
+              hitCycle: visited.has(possibleRules),
+              nodeType: possibleRules.type,
+              nodeLoc: (possibleRules as any)?.location ?? null,
+              parentType: (possibleRules.parent as any)?.type ?? null,
+              parentLoc: (possibleRules.parent as any)?.location ?? null
+            },
+            timestamp: Date.now()
+          });
+          return undefined;
+        }
+        visited.add(possibleRules);
+        __agentRulesParentStepCount++;
+        if (steps <= 30 || (__agentRulesParentStepCount <= 200 && steps % 10 === 0) || steps % 200 === 0) {
+          syncLog({
+            sessionId: 'debug-session',
+            runId: __agentRunId,
+            hypothesisId: 'H13',
+            location: 'node-base.ts:rulesParent',
+            message: 'rulesParent-step',
+            data: {
+              steps,
+              nodeType: possibleRules.type,
+              nodeLoc: (possibleRules as any)?.location ?? null,
+              parentType: (possibleRules.parent as any)?.type ?? null,
+              parentLoc: (possibleRules.parent as any)?.location ?? null
+            },
+            timestamp: Date.now()
+          });
+        }
+        possibleRules = possibleRules.parent;
+      }
+      syncLog({
+        sessionId: 'debug-session',
+        runId: __agentRunId,
+        hypothesisId: 'H13',
+        location: 'node-base.ts:rulesParent',
+        message: 'rulesParent-exit',
+        data: { steps, foundRules: possibleRules?.type === 'Rules' },
+        timestamp: Date.now()
+      });
+      return possibleRules as Rules;
+    }
+    // #endregion
+
     while (possibleRules && possibleRules.type !== 'Rules') {
       possibleRules = possibleRules.parent;
     }
@@ -827,6 +969,36 @@ export abstract class Node<
      * Frozen nodes inherit the parent only if they don't have a parent yet.
      */
     if (!this.frozen) {
+      // #region agent log
+      if (process.env.DEBUG_SELF_PARENT === 'true') {
+        if (node.parent === node) {
+          __agentSelfParentLogCount++;
+          if (__agentSelfParentLogCount <= 20) {
+            const stack = new Error('inherit from self-parented node').stack || '';
+            syncLog({
+              sessionId: 'debug-session',
+              runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+              hypothesisId: 'H14',
+              location: 'node-base.ts:inherit',
+              message: 'inherit-from-self-parented-node',
+              data: {
+                thisType: this.type,
+                thisLoc: (this as any)?.location ?? null,
+                fromType: node.type,
+                fromLoc: (node as any)?.location ?? null,
+                fromParentType: (node.parent as any)?.type ?? null,
+                fromParentLoc: (node.parent as any)?.location ?? null,
+                stack: stack.split('\n').slice(0, 12).join('\n')
+              },
+              timestamp: Date.now()
+            });
+          }
+          if (process.env.DEBUG_SELF_PARENT_THROW === 'true') {
+            throw new Error('inherit() saw a self-parented node. See debug.log for stack.');
+          }
+        }
+      }
+      // #endregion
       (this as any).parent = node.parent;
     } else {
       (this as any).parent ??= node.parent;

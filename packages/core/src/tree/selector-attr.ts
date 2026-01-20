@@ -8,6 +8,7 @@ import { Any } from './any.js';
 import { quoted } from './quoted.js';
 import { pipe, isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
+import { syncLog } from './util/__tests__/debug-log.js';
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */
@@ -30,10 +31,86 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   shortType = 'attr' as const;
 
   override evalNode(context: Context): MaybePromise<this> {
+    // #region agent log
+    const __agentDbg = process.env.DEBUG_EXTEND_BOOT === 'true';
+    const __agentFilePath = __agentDbg
+      ? (context.treeContext?.file?.fullPath
+        || (context.treeContext?.file?.path && context.treeContext?.file?.name
+          ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
+          : context.treeContext?.file?.path)
+        || '')
+      : '';
+    const __agentShouldLog = __agentDbg
+      && typeof __agentFilePath === 'string'
+      && __agentFilePath.includes('tests-unit/extend-selector')
+      && this.value.value instanceof Any
+      && typeof this.value.value.value === 'string'
+      && this.value.value.value.includes('@{');
+    if (__agentShouldLog) {
+      syncLog({
+        sessionId: 'debug-session',
+        runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+        hypothesisId: 'H11',
+        location: 'selector-attr.ts:evalNode',
+        message: 'attr-evalNode-enter',
+        data: {
+          attrName: typeof this.value.name === 'string' ? this.value.name : this.value.name.type,
+          op: this.value.op ?? null,
+          rawValue: this.value.value instanceof Any ? this.value.value.value : null
+        },
+        timestamp: Date.now()
+      });
+    }
+    // #endregion
     return pipe(
-      () => super.evalNode(context) as any,
       () => {
+        // #region agent log
+        if (__agentShouldLog) {
+          syncLog({
+            sessionId: 'debug-session',
+            runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+            hypothesisId: 'H11',
+            location: 'selector-attr.ts:evalNode',
+            message: 'attr-super-enter',
+            data: {},
+            timestamp: Date.now()
+          });
+        }
+        // #endregion
+        return super.evalNode(context) as any;
+      },
+      () => {
+        // #region agent log
+        if (__agentShouldLog) {
+          syncLog({
+            sessionId: 'debug-session',
+            runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+            hypothesisId: 'H11',
+            location: 'selector-attr.ts:evalNode',
+            message: 'attr-super-exit',
+            data: {},
+            timestamp: Date.now()
+          });
+        }
+        // #endregion
         const { value } = this.value;
+        // #region agent log
+        if (__agentShouldLog) {
+          syncLog({
+            sessionId: 'debug-session',
+            runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+            hypothesisId: 'H11',
+            location: 'selector-attr.ts:evalNode',
+            message: 'attr-after-super',
+            data: {
+              valueType: (value as any)?.type ?? null,
+              valueIsAny: value instanceof Any,
+              valueStr: value instanceof Any ? value.value : null
+            },
+            timestamp: Date.now()
+          });
+        }
+        // #endregion
         // Handle Less interpolation that the parser may have left as a raw token in selectors:
         //   [data=@{attr-data}]
         // In Less semantics this should resolve to the variable value and be serialized quoted.
@@ -42,14 +119,162 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
           const m = raw.match(/^@\{([^}]+)\}$/);
           if (m) {
             const key = m[1]!;
+            // #region agent log
+            if (__agentShouldLog) {
+              syncLog({
+                sessionId: 'debug-session',
+                runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+                hypothesisId: 'H11',
+                location: 'selector-attr.ts:evalNode',
+                message: 'attr-before-rulesParent',
+                data: { key },
+                timestamp: Date.now()
+              });
+            }
+            // #endregion
             const rules = this.rulesParent;
+            // #region agent log
+            if (__agentShouldLog) {
+              syncLog({
+                sessionId: 'debug-session',
+                runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+                hypothesisId: 'H11',
+                location: 'selector-attr.ts:evalNode',
+                message: 'attr-after-rulesParent',
+                data: { key, hasRules: !!rules },
+                timestamp: Date.now()
+              });
+            }
+            // #endregion
+            // #region agent log
+            if (process.env.DEBUG_EXTEND_BOOT === 'true') {
+              const filePath = context.treeContext?.file?.fullPath
+                || (context.treeContext?.file?.path && context.treeContext?.file?.name
+                  ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
+                  : context.treeContext?.file?.path)
+                || '';
+              if (typeof filePath === 'string' && filePath.includes('tests-unit/extend-selector')) {
+                syncLog({
+                  sessionId: 'debug-session',
+                  runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+                  hypothesisId: 'H11',
+                  location: 'selector-attr.ts:evalNode',
+                  message: 'attr-interp-enter',
+                  data: {
+                    attrName: typeof this.value.name === 'string' ? this.value.name : this.value.name.type,
+                    raw,
+                    key,
+                    hasRules: !!rules
+                  },
+                  timestamp: Date.now()
+                });
+              }
+            }
+            // #endregion
             if (rules) {
+              // #region agent log
+              if (__agentShouldLog) {
+                syncLog({
+                  sessionId: 'debug-session',
+                  runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+                  hypothesisId: 'H11',
+                  location: 'selector-attr.ts:evalNode',
+                  message: 'attr-find-enter',
+                  data: { key },
+                  timestamp: Date.now()
+                });
+              }
+              // #endregion
               const found = rules.find('declaration', key, 'VarDeclaration');
+              // #region agent log
+              if (__agentShouldLog) {
+                syncLog({
+                  sessionId: 'debug-session',
+                  runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+                  hypothesisId: 'H11',
+                  location: 'selector-attr.ts:evalNode',
+                  message: 'attr-find-exit',
+                  data: { key, found: !!found, foundIsArray: Array.isArray(found) },
+                  timestamp: Date.now()
+                });
+              }
+              // #endregion
               const decl = Array.isArray(found) ? found[0] : found;
               if (decl && isNode(decl, 'VarDeclaration')) {
+                // #region agent log
+                if (process.env.DEBUG_EXTEND_BOOT === 'true') {
+                  const filePath = context.treeContext?.file?.fullPath
+                    || (context.treeContext?.file?.path && context.treeContext?.file?.name
+                      ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
+                      : context.treeContext?.file?.path)
+                    || '';
+                  if (typeof filePath === 'string' && filePath.includes('tests-unit/extend-selector')) {
+                    syncLog({
+                      sessionId: 'debug-session',
+                      runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+                      hypothesisId: 'H11',
+                      location: 'selector-attr.ts:evalNode',
+                      message: 'attr-interp-found',
+                      data: {
+                        key,
+                        foundIsArray: Array.isArray(found),
+                        declType: decl.type,
+                        declValueType: (decl.value.value as any)?.type ?? null
+                      },
+                      timestamp: Date.now()
+                    });
+                  }
+                }
+                // #endregion
+                // #region agent log
+                if (__agentShouldLog) {
+                  syncLog({
+                    sessionId: 'debug-session',
+                    runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+                    hypothesisId: 'H11',
+                    location: 'selector-attr.ts:evalNode',
+                    message: 'attr-var-eval-enter',
+                    data: { key },
+                    timestamp: Date.now()
+                  });
+                }
+                // #endregion
                 const out = decl.value.value.eval(context);
                 if (isThenable(out)) {
                   return (out as Promise<Node>).then((evaluated) => {
+                    // #region agent log
+                    if (process.env.DEBUG_EXTEND_BOOT === 'true') {
+                      const filePath = context.treeContext?.file?.fullPath
+                        || (context.treeContext?.file?.path && context.treeContext?.file?.name
+                          ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
+                          : context.treeContext?.file?.path)
+                        || '';
+                      if (typeof filePath === 'string' && filePath.includes('tests-unit/extend-selector')) {
+                        syncLog({
+                          sessionId: 'debug-session',
+                          runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+                          hypothesisId: 'H11',
+                          location: 'selector-attr.ts:evalNode',
+                          message: 'attr-interp-eval-async',
+                          data: { key, out: String((evaluated as any)?.valueOf?.() ?? '') },
+                          timestamp: Date.now()
+                        });
+                      }
+                    }
+                    // #endregion
+                    // #region agent log
+                    if (__agentShouldLog) {
+                      syncLog({
+                        sessionId: 'debug-session',
+                        runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+                        hypothesisId: 'H11',
+                        location: 'selector-attr.ts:evalNode',
+                        message: 'attr-var-eval-exit-async',
+                        data: { key },
+                        timestamp: Date.now()
+                      });
+                    }
+                    // #endregion
                     this.value.value = quoted(String(evaluated.valueOf()));
                     this._valueOf = undefined;
                     this._keySet = undefined;
@@ -58,6 +283,39 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
                     return this;
                   });
                 }
+                // #region agent log
+                if (process.env.DEBUG_EXTEND_BOOT === 'true') {
+                  const filePath = context.treeContext?.file?.fullPath
+                    || (context.treeContext?.file?.path && context.treeContext?.file?.name
+                      ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
+                      : context.treeContext?.file?.path)
+                    || '';
+                  if (typeof filePath === 'string' && filePath.includes('tests-unit/extend-selector')) {
+                    syncLog({
+                      sessionId: 'debug-session',
+                      runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+                      hypothesisId: 'H11',
+                      location: 'selector-attr.ts:evalNode',
+                      message: 'attr-interp-eval-sync',
+                      data: { key, out: String(((out as Node) as any)?.valueOf?.() ?? '') },
+                      timestamp: Date.now()
+                    });
+                  }
+                }
+                // #endregion
+                // #region agent log
+                if (__agentShouldLog) {
+                  syncLog({
+                    sessionId: 'debug-session',
+                    runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+                    hypothesisId: 'H11',
+                    location: 'selector-attr.ts:evalNode',
+                    message: 'attr-var-eval-exit',
+                    data: { key },
+                    timestamp: Date.now()
+                  });
+                }
+                // #endregion
                 this.value.value = quoted(String((out as Node).valueOf()));
                 this._valueOf = undefined;
                 this._keySet = undefined;

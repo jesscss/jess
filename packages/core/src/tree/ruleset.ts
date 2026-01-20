@@ -16,6 +16,7 @@ import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
+import { syncLog } from './util/__tests__/debug-log.js';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -52,6 +53,29 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   override allowRoot = true;
   // Ruleset has preEval method but doesn't need to set flags - preEvaluated is tracked as boolean
   frames: (Ruleset | AtRule)[] | undefined;
+
+  // #region agent log
+  private static __agentLogCount = 0;
+  private static agentLog(context: Context, location: string, message: string, data: Record<string, unknown>) {
+    if (process.env.DEBUG_EXTEND_BOOT !== 'true') return;
+    if (Ruleset.__agentLogCount++ > 200) return;
+    const filePath = context.treeContext?.file?.fullPath
+      || (context.treeContext?.file?.path && context.treeContext?.file?.name
+        ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
+        : context.treeContext?.file?.path)
+      || '';
+    if (typeof filePath === 'string' && !filePath.includes('tests-unit/extend-selector')) return;
+    syncLog({
+      sessionId: 'debug-session',
+      runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+      hypothesisId: 'H8',
+      location,
+      message,
+      data,
+      timestamp: Date.now()
+    });
+  }
+  // #endregion
 
   get selector() {
     return this.value.selector;
@@ -142,9 +166,56 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
       // DO NOT evaluate guard here - guards are evaluated at call time in getFunctionFromMixins
       // Just evaluate the selector
+      // #region agent log
+      if (process.env.DEBUG_EXTEND_BOOT === 'true') {
+        const filePath = context.treeContext?.file?.fullPath
+          || (context.treeContext?.file?.path && context.treeContext?.file?.name
+            ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
+            : context.treeContext?.file?.path)
+          || '';
+        if (typeof filePath === 'string' && filePath.includes('tests-unit/extend-selector')) {
+          // Avoid stringifying selector pre-eval; just include location/type.
+          syncLog({
+            sessionId: 'debug-session',
+            runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+            hypothesisId: 'H10',
+            location: 'ruleset.ts:preEval',
+            message: 'selector-eval-enter',
+            data: {
+              selectorType: selector?.type ?? null,
+              rulesetLoc: node.location ?? null
+            },
+            timestamp: Date.now()
+          });
+        }
+      }
+      // #endregion
       return pipe(
         () => selector.eval(context),
         (sel) => {
+          // #region agent log
+          if (process.env.DEBUG_EXTEND_BOOT === 'true') {
+            const filePath = context.treeContext?.file?.fullPath
+              || (context.treeContext?.file?.path && context.treeContext?.file?.name
+                ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
+                : context.treeContext?.file?.path)
+              || '';
+            if (typeof filePath === 'string' && filePath.includes('tests-unit/extend-selector')) {
+              syncLog({
+                sessionId: 'debug-session',
+                runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+                hypothesisId: 'H10',
+                location: 'ruleset.ts:preEval',
+                message: 'selector-eval-exit',
+                data: {
+                  outType: (sel as any)?.type ?? null,
+                  outValue: (sel && (sel as any).valueOf) ? (sel as any).valueOf() : null
+                },
+                timestamp: Date.now()
+              });
+            }
+          }
+          // #endregion
           // Store the evaluated selector - this is what will be in the frame
           node.value.selector = sel as Selector | Nil;
           if (sel.hoistToRoot) {
@@ -186,6 +257,16 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     /** Should have been maybe cloned in preEval */
     this.evaluated = true;
     const collapseNesting = context.opts.collapseNesting;
+
+    // #region agent log
+    const __t0 = Date.now();
+    Ruleset.agentLog(context, 'ruleset.ts:evalNode', 'ruleset-eval-enter', {
+      selector: this.value.selector instanceof Nil ? null : this.value.selector.valueOf(),
+      hasGuard: !!this.value.guard && !(this.value.guard instanceof Nil),
+      rulesLen: Array.isArray(this.value.rules?.value) ? this.value.rules.value.length : null,
+      framesLen: Array.isArray(context.frames) ? context.frames.length : null
+    });
+    // #endregion
 
     // Store frames snapshot for collapseNesting serialization
     if (collapseNesting) {
@@ -304,6 +385,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         context.rulesetFrames.push(this as Ruleset);
         context.frames.push(this);
         pushedFrames = true;
+        // #region agent log
+        Ruleset.agentLog(context, 'ruleset.ts:evalNode', 'ruleset-eval-rules-enter', {
+          selector: this.value.selector instanceof Nil ? null : this.value.selector.valueOf()
+        });
+        // #endregion
         return this.value.rules.eval(context);
       },
       (evaluatedRules: Rules | Nil) => {
@@ -311,6 +397,13 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           context.rulesetFrames.pop();
           context.frames.pop();
         }
+        // #region agent log
+        Ruleset.agentLog(context, 'ruleset.ts:evalNode', 'ruleset-eval-exit', {
+          selector: this.value.selector instanceof Nil ? null : this.value.selector.valueOf(),
+          rulesNil: evaluatedRules instanceof Nil,
+          durationMs: Date.now() - __t0
+        });
+        // #endregion
         if (evaluatedRules instanceof Nil) {
           return evaluatedRules;
         }

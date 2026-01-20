@@ -22,6 +22,7 @@ import type { Condition } from './condition.js';
 import type { Bool } from './bool.js';
 import * as Registries from './util/registry-utils.js';
 import { processExtends } from './util/extend-roots.js';
+import { syncLog } from './util/__tests__/debug-log.js';
 import { type MaybePromise, pipe, isThenable, serialForEach, tryStep } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
@@ -31,6 +32,58 @@ import { indent, normalizeIndent } from './util/serialize-helper.js';
 import { freezeChildren } from './util/cloning.js';
 
 const { isArray } = Array;
+
+// #region agent log
+let __agentRulesLogCount = 0;
+function agentRulesLog(context: Context, location: string, message: string, data: Record<string, unknown>) {
+  if (process.env.DEBUG_EXTEND_BOOT !== 'true') return;
+  if (__agentRulesLogCount++ > 20) return;
+  const filePath = context.treeContext?.file?.fullPath
+    || (context.treeContext?.file?.path && context.treeContext?.file?.name
+      ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
+      : context.treeContext?.file?.path)
+    || '';
+  if (typeof filePath === 'string' && !filePath.includes('tests-unit/extend-selector')) return;
+  syncLog({
+    sessionId: 'debug-session',
+    runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+    hypothesisId: 'H6',
+    location,
+    message,
+    data,
+    timestamp: Date.now()
+  });
+}
+// #endregion
+
+// #region agent log
+let __agentBootLogCount = 0;
+function agentBootLog(context: Context, location: string, message: string, data: Record<string, unknown>) {
+  if (process.env.DEBUG_EXTEND_BOOT !== 'true') return;
+  if (__agentBootLogCount++ > 200) return;
+  const filePath = context.treeContext?.file?.fullPath
+    || (context.treeContext?.file?.path && context.treeContext?.file?.name
+      ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
+      : context.treeContext?.file?.path)
+    || '';
+  if (typeof filePath !== 'string' || !filePath.includes('tests-unit/extend-selector')) return;
+  const currentRuleset = context.rulesetFrames.at(-1);
+  const currentSel = currentRuleset && 'value' in currentRuleset && (currentRuleset as any).value?.selector
+    ? String((currentRuleset as any).value.selector.valueOf?.() ?? '')
+    : '';
+  // Only log for the suspected hang ruleset to keep noise down.
+  if (!currentSel.includes('.attributes')) return;
+  syncLog({
+    sessionId: 'debug-session',
+    runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+    hypothesisId: 'H9',
+    location,
+    message,
+    data: { ...data, currentSel },
+    timestamp: Date.now()
+  });
+}
+// #endregion
 
 export const enum Priority {
   None = 0,
@@ -590,6 +643,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   override preEval(context: Context) {
     if (!this.preEvaluated) {
+      // #region agent log
+      agentBootLog(context, 'rules.ts:preEval', 'rules-preEval-enter', {
+        len: Array.isArray(this.value) ? this.value.length : null,
+        preEvaluated: !!this.preEvaluated
+      });
+      // #endregion
       context.depth++;
       let rules = this.maybeClone(context);
       rules.preEvaluated = true;
@@ -628,7 +687,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
 
       // Multi-pass registration system for handling interpolated names
-      return this._multiPassPreEval(rules, context, saved);
+      // #region agent log
+      agentBootLog(context, 'rules.ts:preEval', 'rules-preEval-before-multipass', {
+        len: Array.isArray(rules.value) ? rules.value.length : null
+      });
+      // #endregion
+      const mp = this._multiPassPreEval(rules, context, saved);
+      // #region agent log
+      if (!isThenable(mp)) {
+        agentBootLog(context, 'rules.ts:preEval', 'rules-preEval-exit-sync', {});
+      }
+      // #endregion
+      return mp;
     }
     return this;
   }
@@ -640,9 +710,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // First pass: Only register nodes with static names
     const staticNodes: Node[] = [];
     const dynamicNodes: Node[] = [];
+    // #region agent log
+    agentBootLog(context, 'rules.ts:_multiPassPreEval', 'multipass-enter', {
+      total: Array.isArray(rules.value) ? rules.value.length : null
+    });
+    // #endregion
 
     // Process each node with static name, handling both sync and async preEval
     const processResult = serialForEach(rules.value, (node, index) => {
+      // #region agent log
+      agentBootLog(context, 'rules.ts:_multiPassPreEval', 'multipass-node', {
+        index,
+        type: node.type,
+        hasStaticName: this._hasStaticName(node)
+      });
+      // #endregion
       // Check if node has a static name (can be registered immediately)
       if (node.type === 'Any' && node.options.role === 'charset') {
         /** Special case where we register the charset node immediately */
@@ -652,6 +734,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (this._hasStaticName(node)) {
         // Pre-evaluate nodes with static names before registration
         // This ensures selectors are evaluated and keySets are available for rulesets
+        // #region agent log
+        agentBootLog(context, 'rules.ts:_multiPassPreEval', 'multipass-node-preEval-enter', {
+          index,
+          type: node.type
+        });
+        // #endregion
         const preEvald = node.preEval(context);
         if (isThenable(preEvald)) {
           return (preEvald as Promise<Node>).then((preEvaldNode) => {
@@ -663,8 +751,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             } else {
               dynamicNodes.push(preEvaldNode);
             }
+            // #region agent log
+            agentBootLog(context, 'rules.ts:_multiPassPreEval', 'multipass-node-preEval-exit-async', {
+              index,
+              type: preEvaldNode.type,
+              hasStaticName: this._hasStaticName(preEvaldNode)
+            });
+            // #endregion
           });
         }
+        // #region agent log
+        agentBootLog(context, 'rules.ts:_multiPassPreEval', 'multipass-node-preEval-exit', {
+          index,
+          type: (preEvald as Node).type
+        });
+        // #endregion
         rules.value[index] = preEvald as Node;
         const nodeToRegister = preEvald as Node;
         staticNodes.push(nodeToRegister);
@@ -675,6 +776,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     });
 
     const finish = () => {
+      // #region agent log
+      agentBootLog(context, 'rules.ts:_multiPassPreEval', 'multipass-finish', {
+        dynamicCount: dynamicNodes.length
+      });
+      // #endregion
       // If no dynamic nodes, we're done
       if (dynamicNodes.length === 0) {
         // Restore context after preEval is complete
@@ -771,6 +877,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     const attemptResolution = (): MaybePromise<this> => {
       resolutionAttempts++;
+      // #region agent log
+      agentBootLog(context, 'rules.ts:_resolveDynamicNodes', 'dynamic-attempt', {
+        attempt: resolutionAttempts,
+        unresolved: unresolvedNodes.length,
+        resolved: resolvedNodes.length
+      });
+      // #endregion
       if (resolutionAttempts > MAX_RESOLUTION_ATTEMPTS) {
         throw new Error(`Could not resolve node.`);
       }
@@ -961,12 +1074,49 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Track nodes that have been retried to avoid infinite loops
     const retriedNodes = new Set<Node>();
 
+    // #region agent log
+    let __agentQueueLogCount = 0;
+    const agentQueueLog = (message: string, data: Record<string, unknown>) => {
+      if (process.env.DEBUG_EXTEND_BOOT !== 'true') return;
+      if (__agentQueueLogCount++ > 250) return;
+      const filePath = context.treeContext?.file?.fullPath
+        || (context.treeContext?.file?.path && context.treeContext?.file?.name
+          ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
+          : context.treeContext?.file?.path)
+        || '';
+      if (typeof filePath === 'string' && !filePath.includes('tests-unit/extend-selector')) return;
+      syncLog({
+        sessionId: 'debug-session',
+        runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+        hypothesisId: 'H7',
+        location: 'rules.ts:_evaluateQueue',
+        message,
+        data,
+        timestamp: Date.now()
+      });
+    };
+    // #endregion
+
     const priorities: Priority[] = Array.from({ length: Priority.Highest + 1 }).map((_, i) => (Priority.Highest - i) as Priority);
     const phaseRun = serialForEach(priorities, (p: Priority) => {
       const queue = evalQueue.get(p);
       if (!queue) {
         return;
       }
+      // #region agent log
+      agentRulesLog(context, 'rules.ts:_evaluateQueue', 'priority-start', {
+        priority: p,
+        queueLen: queue.length,
+        retriedCount: retriedNodes.size
+      });
+      // #endregion
+      // #region agent log
+      agentQueueLog('priority-start', {
+        priority: p,
+        queueLen: queue.length,
+        retriedCount: retriedNodes.size
+      });
+      // #endregion
       const entries: Array<[number, [number, Node]]> = Array.from(queue.entries()) as any;
       const innerResultPromise = serialForEach(entries, ([q, item]: [number, [number, Node]]): MaybePromise<void | undefined> => {
         const [idx, rule] = item;
@@ -985,6 +1135,27 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (retriedNodes.has(rule) && p > Priority.None) {
           return;
         }
+
+        // #region agent log
+        agentRulesLog(context, 'rules.ts:_evaluateQueue', 'node-eval-enter', {
+          priority: p,
+          idx,
+          q,
+          type: rule.type,
+          retried: retriedNodes.has(rule)
+        });
+        // #endregion
+        // #region agent log
+        const t0 = Date.now();
+        agentQueueLog('node-eval-enter', {
+          priority: p,
+          idx,
+          q,
+          type: rule.type,
+          ctor: (rule as any)?.constructor?.name ?? null,
+          retried: retriedNodes.has(rule)
+        });
+        // #endregion
 
         const tryStepResult: () => MaybePromise<Node> =
         tryStep(() => rule.eval(context), {
@@ -1043,9 +1214,33 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             if (result.hoistToRoot) {
               rulesToHoist = true;
             }
+            // #region agent log
+            agentQueueLog('node-eval-exit', {
+              priority: p,
+              idx,
+              q,
+              type: rule.type,
+              durationMs: Date.now() - t0
+            });
+            // #endregion
             return;
           }
         );
+        // #region agent log
+        if (isThenable(stepResult)) {
+          return (stepResult as Promise<unknown>).catch((error) => {
+            agentQueueLog('node-eval-error', {
+              priority: p,
+              idx,
+              q,
+              type: rule.type,
+              durationMs: Date.now() - t0,
+              err: error ? String((error as any).message ?? error) : 'unknown'
+            });
+            throw error;
+          }) as any;
+        }
+        // #endregion
         // If stepResult is a thenable, propagate any errors
         if (isThenable(stepResult)) {
           return stepResult;
@@ -1084,6 +1279,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           return { rules, rulesToHoist: false };
         }
         const evalQueue = this._buildEvalQueue(rules);
+        // #region agent log
+        const qSizes: Record<string, number> = {};
+        for (const [p, q] of evalQueue.entries()) {
+          qSizes[String(p)] = q.length;
+        }
+        agentRulesLog(context, 'rules.ts:evalNode', 'queue-built', {
+          evaluated: !!rules.evaluated,
+          total: rules.value.length,
+          qSizes
+        });
+        // #endregion
         const maybeHoist = this._evaluateQueue(rules, evalQueue, context);
         if (isThenable(maybeHoist)) {
           return (maybeHoist as Promise<boolean>).then((rulesToHoist) => {
@@ -1140,8 +1346,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const isOutermost = rules === context.root;
 
         if (isOutermost) {
+          // #region agent log
+          agentRulesLog(context, 'rules.ts:eval', 'processExtends-enter', {
+            extendsCount: context.extends.length
+          });
+          // #endregion
           // Process all registered extends using the extend roots registry system
           processExtends(context);
+          // #region agent log
+          agentRulesLog(context, 'rules.ts:eval', 'processExtends-exit', {
+            extendsCount: context.extends.length
+          });
+          // #endregion
         }
         /** Restore contexts */
         context.rulesContext = saved.rulesContext;

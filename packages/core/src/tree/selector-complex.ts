@@ -14,6 +14,7 @@ import type { CompoundSelector } from './selector-compound.js';
 import { getEntries } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
+import { syncLog } from './util/__tests__/debug-log.js';
 
 // TODO - fix later
 export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand;
@@ -122,19 +123,99 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
    * @todo - Re-write and simplify, now that we have a distinct CompoundSelector
    */
   override evalNode(context: Context): MaybePromise<Selector | Nil> {
+    // #region agent log
+    const __agentDbg = process.env.DEBUG_EXTEND_BOOT === 'true';
+    const __agentFilePath = __agentDbg
+      ? (context.treeContext?.file?.fullPath
+        || (context.treeContext?.file?.path && context.treeContext?.file?.name
+          ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
+          : context.treeContext?.file?.path)
+        || '')
+      : '';
+    const __agentShouldLog = __agentDbg
+      && typeof __agentFilePath === 'string'
+      && __agentFilePath.includes('tests-unit/extend-selector')
+      && this.valueOf().includes('@{');
+    if (__agentShouldLog) {
+      syncLog({
+        sessionId: 'debug-session',
+        runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+        hypothesisId: 'H12',
+        location: 'selector-complex.ts:evalNode',
+        message: 'complex-eval-enter',
+        data: {
+          loc: this.location ?? null,
+          value: this.valueOf(),
+          len: this.value.length
+        },
+        timestamp: Date.now()
+      });
+    }
+    // #endregion
     return pipe(
       () => {
         const selector = this;
         let { value } = selector;
         const maybe = serialForEach(Array.from(getEntries(value)), ([sel, i]) => {
+          // #region agent log
+          if (__agentShouldLog) {
+            syncLog({
+              sessionId: 'debug-session',
+              runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+              hypothesisId: 'H12',
+              location: 'selector-complex.ts:evalNode',
+              message: 'complex-component-enter',
+              data: {
+                i,
+                type: (sel as any)?.type ?? null,
+                v: typeof (sel as any)?.valueOf === 'function' ? String((sel as any).valueOf()) : null
+              },
+              timestamp: Date.now()
+            });
+          }
+          // #endregion
           const out = sel.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Selector | Nil>).then((res) => {
               value[i] = res as ComplexSelectorComponent;
+              // #region agent log
+              if (__agentShouldLog) {
+                syncLog({
+                  sessionId: 'debug-session',
+                  runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+                  hypothesisId: 'H12',
+                  location: 'selector-complex.ts:evalNode',
+                  message: 'complex-component-exit-async',
+                  data: {
+                    i,
+                    outType: (res as any)?.type ?? null,
+                    outV: typeof (res as any)?.valueOf === 'function' ? String((res as any).valueOf()) : null
+                  },
+                  timestamp: Date.now()
+                });
+              }
+              // #endregion
               return undefined;
             });
           }
           value[i] = out as ComplexSelectorComponent;
+          // #region agent log
+          if (__agentShouldLog) {
+            syncLog({
+              sessionId: 'debug-session',
+              runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+              hypothesisId: 'H12',
+              location: 'selector-complex.ts:evalNode',
+              message: 'complex-component-exit',
+              data: {
+                i,
+                outType: (out as any)?.type ?? null,
+                outV: typeof (out as any)?.valueOf === 'function' ? String((out as any).valueOf()) : null
+              },
+              timestamp: Date.now()
+            });
+          }
+          // #endregion
           return undefined;
         });
         if (isThenable(maybe)) {
@@ -164,6 +245,19 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         if (value.length === 1) {
           return value[0]!.inherit(selector);
         }
+        // #region agent log
+        if (__agentShouldLog) {
+          syncLog({
+            sessionId: 'debug-session',
+            runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+            hypothesisId: 'H12',
+            location: 'selector-complex.ts:evalNode',
+            message: 'complex-eval-exit',
+            data: { value: selector.valueOf(), len: value.length },
+            timestamp: Date.now()
+          });
+        }
+        // #endregion
         return selector;
       }
     );
