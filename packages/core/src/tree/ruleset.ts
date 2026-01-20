@@ -11,6 +11,7 @@ import { Combinator } from './combinator.js';
 import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
 import type { CompoundSelector } from './selector-compound.js';
 import { SelectorList } from './selector-list.js';
+import { PseudoSelector } from './selector-pseudo.js';
 import { type PrintOptions, type FinalPrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
@@ -114,15 +115,19 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   */
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const w = options.writer;
-    let { selector } = this.value;
+    const { selector } = this.value;
     const idt = indent(options.depth);
 
-    if (withoutComments) {
-      selector = selector.copy(true) as Selector;
+    // Should never be called for Nil selectors (serializeRulesContainer guards this),
+    // but keep it safe for TypeScript and invariants.
+    if (selector instanceof Nil) {
+      return '';
     }
 
+    const renderSelector = withoutComments ? (selector.copy(true) as typeof selector) : selector;
+
     let out = withoutComments ? '' : w.capture(() => this.processPrePost('pre', undefined, options));
-    let selOut = w.capture(() => selector.toString(options));
+    let selOut = w.capture(() => renderSelector.toString(options));
     /** Normalize single spacing */
     out += selOut.replace(/[ \t]+/g, ' ');
     return normalizeIndent(selOut.replace(/\s+$/, '') + ' {', idt) + '\n';
@@ -208,8 +213,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
                 location: 'ruleset.ts:preEval',
                 message: 'selector-eval-exit',
                 data: {
-                  outType: (sel as any)?.type ?? null,
-                  outValue: (sel && (sel as any).valueOf) ? (sel as any).valueOf() : null
+                  outType: sel?.type ?? null,
+                  outValue: sel ? sel.valueOf() : null
                 },
                 timestamp: Date.now()
               });
@@ -249,7 +254,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return node;
   }
 
-  override evalNode(context: Context): MaybePromise<Ruleset | Nil> {
+  override evalNode(context: Context): MaybePromise<Ruleset | Rules | Nil> {
     if (this.evaluated) {
       return this;
     }
@@ -412,7 +417,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         // In that case, return it directly without wrapping back in Ruleset
         if (this.value.selector instanceof Nil) {
           // Selector was Nil, so we already returned Rules directly - just return it
-          return evaluatedRules as any;
+          return evaluatedRules;
         }
 
         this.value.rules = evaluatedRules;

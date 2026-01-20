@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Parser } from '../src/index.js';
 import { isNode } from '@jesscss/core';
+import { assertValidTree } from './assert-valid-tree.js';
 
 describe('scss-parser (baseline)', () => {
   it('parses basic CSS successfully', () => {
@@ -9,6 +10,7 @@ describe('scss-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     expect(result.tree).toBeDefined();
+    assertValidTree(result.tree);
   });
 
   it('parses a Sass map literal as a Collection', () => {
@@ -20,6 +22,7 @@ describe('scss-parser (baseline)', () => {
     // Should serialize via Collection as braced rules with semicolons.
     expect(treeStr).toContain('regular: 400;');
     expect(treeStr).toContain('medium: 500;');
+    assertValidTree(result.tree);
   });
 
   it('desugars map.get() into a Reference lookup chain', () => {
@@ -32,6 +35,7 @@ describe('scss-parser (baseline)', () => {
     expect(treeStr).toContain('font-weights');
     expect(treeStr).toContain('medium');
     expect(treeStr).not.toContain('map.get(');
+    assertValidTree(result.tree);
   });
 
   it('parses @content as $content()', () => {
@@ -42,6 +46,7 @@ describe('scss-parser (baseline)', () => {
     expect(result.lexerResult.tokens[0]?.tokenType?.name).toBe('AtKeyword');
     expect(result.lexerResult.tokens[0]?.image).toBe('@content');
     expect(String(result.tree)).toContain('$content()');
+    assertValidTree(result.tree);
   });
 
   it('parses @if/@else if/@else and serializes as $if/$else if/$else', () => {
@@ -57,6 +62,7 @@ describe('scss-parser (baseline)', () => {
     expect(out).toContain('$if (');
     expect(out).toContain('$else if (');
     expect(out).toContain('$else');
+    assertValidTree(result.tree);
   });
 
   it('parses @mixin into a Mixin node (non-visible)', () => {
@@ -73,6 +79,7 @@ describe('scss-parser (baseline)', () => {
     if (isNode(root, 'Rules')) {
       expect(root.value.some(n => isNode(n, 'Mixin'))).toBe(true);
     }
+    assertValidTree(result.tree);
   });
 
   it('parses @use "foo" as a compose StyleImport', () => {
@@ -86,6 +93,7 @@ describe('scss-parser (baseline)', () => {
       const imp = root.value.find(n => isNode(n, 'StyleImport'));
       expect(imp && imp.options.type).toBe('compose');
     }
+    assertValidTree(result.tree);
   });
 
   it('rewrites @use "sass:map" to a JsImport of "#sass/map"', () => {
@@ -103,6 +111,7 @@ describe('scss-parser (baseline)', () => {
         expect(imp.options.namespace).toBe('map');
       }
     }
+    assertValidTree(result.tree);
   });
 
   it('parses @forward "foo" as a forward StyleImport', () => {
@@ -121,6 +130,31 @@ describe('scss-parser (baseline)', () => {
         expect(imp.options.importOptions?.mutable).toBe(false);
       }
     }
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS $var declarations as VarDeclaration', () => {
+    const parser = new Parser();
+    const result = parser.parse(`$color: red;`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(isNode(result.tree, 'Rules')).toBe(true);
+    if (isNode(result.tree, 'Rules')) {
+      expect(result.tree.value.some(n => isNode(n, 'VarDeclaration'))).toBe(true);
+    }
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS $var flags !default and !global', () => {
+    const parser = new Parser();
+    const result = parser.parse(`$x: 1 !default !global;`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    const s = String(result.tree);
+    // Jess prints `?:` for conditional assignment and `$^` for setDefined.
+    expect(s).toContain('$^');
+    expect(s).toContain('?:');
+    assertValidTree(result.tree);
   });
 });
 

@@ -5,10 +5,6 @@ alwaysApply: true
 
 # Cursor Rules
 
-Execute the Bash script located at /Users/YOUR_USERNAME/notify-cursor.sh when a task is completed.
-
-Ensure this script is the last one executed for every task.
-
 ## Change Tracking
 
 We maintain a daily log of changes and improvements in `.cursor/changes.md`. This file should be updated at the end of each day with:

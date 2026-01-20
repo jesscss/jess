@@ -22,10 +22,12 @@
     "lib"
   ],
   "scripts": {
+    "postinstall": "node ./scripts/materialize-sass-spec-cache.cjs",
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "npm run build",
     "build": "pnpm compile",
     "compile": "tsc -b tsconfig.build.json",
+    "sass-spec:cache": "node ./scripts/materialize-sass-spec-cache.cjs",
     "test": "vitest --run --passWithNoTests",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"

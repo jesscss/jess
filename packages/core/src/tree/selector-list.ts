@@ -3,10 +3,14 @@ import {
 } from './node.js';
 import { type Context } from '../context.js';
 import { Selector } from './selector.js';
+import { PseudoSelector } from './selector-pseudo.js';
+import { CompoundSelector } from './selector-compound.js';
+import { ComplexSelector } from './selector-complex.js';
 import { getEntries } from './util/collections.js';
 import { type PrintOptions, getPrintOptions, OutputWriter } from './util/print.js';
 import { normalizeContinuationIndent } from './util/format.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
+import { isNode } from './util/is-node.js';
 
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
@@ -33,7 +37,42 @@ export class SelectorList extends Selector<Selector[]> {
     const w = options.writer!;
     let depth = options.depth!;
     let space = ''.padStart(depth * 2);
-    let value = this.value;
+    // Flatten generated top-level `:is(...)` items into the selector list.
+    // This matches Less output expectations when an extend created an :is() and it ended up being
+    // the whole selector-list item.
+    const value: Selector[] = [];
+    for (const item of this.value) {
+      // Flatten `:is(a, b)` selector-list items into `a, b`.
+      // Also handle `:is(...)` wrapped in a single-item CompoundSelector.
+      if (isNode(item, 'PseudoSelector') && item.value.name === ':is') {
+        const arg = item.value.arg;
+        if (arg && isNode(arg, 'SelectorList')) {
+          value.push(...arg.value);
+          continue;
+        }
+      }
+      if (isNode(item, 'CompoundSelector') && item.value.length === 1) {
+        const only = item.value[0]!;
+        if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
+          const arg = only.value.arg;
+          if (arg && isNode(arg, 'SelectorList')) {
+            value.push(...arg.value);
+            continue;
+          }
+        }
+      }
+      if (isNode(item, 'ComplexSelector') && item.value.length === 1) {
+        const only = item.value[0]!;
+        if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
+          const arg = only.value.arg;
+          if (arg && isNode(arg, 'SelectorList')) {
+            value.push(...arg.value);
+            continue;
+          }
+        }
+      }
+      value.push(item);
+    }
     let length = value.length;
     const mark = w.mark();
     let item = value[0]!;
@@ -52,7 +91,39 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   override valueOf() {
-    return this.value.map(v => v.valueOf()).join(',');
+    // Keep valueOf consistent with toTrimmedString flattening
+    const out: string[] = [];
+    for (const item of this.value) {
+      if (isNode(item, 'PseudoSelector') && item.value.name === ':is') {
+        const arg = item.value.arg;
+        if (arg && isNode(arg, 'SelectorList')) {
+          out.push(...arg.value.map((v) => v.valueOf()));
+          continue;
+        }
+      }
+      if (isNode(item, 'CompoundSelector') && item.value.length === 1) {
+        const only = item.value[0]!;
+        if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
+          const arg = only.value.arg;
+          if (arg && isNode(arg, 'SelectorList')) {
+            out.push(...arg.value.map((v) => v.valueOf()));
+            continue;
+          }
+        }
+      }
+      if (isNode(item, 'ComplexSelector') && item.value.length === 1) {
+        const only = item.value[0]!;
+        if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
+          const arg = only.value.arg;
+          if (arg && isNode(arg, 'SelectorList')) {
+            out.push(...arg.value.map((v) => v.valueOf()));
+            continue;
+          }
+        }
+      }
+      out.push(item.valueOf());
+    }
+    return out.join(',');
   }
 
   override evalNode(context: Context): MaybePromise<SelectorList | Selector> {
@@ -78,6 +149,42 @@ export class SelectorList extends Selector<Selector[]> {
       },
       (list) => {
         const { value } = list;
+        // Flatten top-level `:is(a, b)` items into the selector list.
+        // This is safe in SelectorList context (it is equivalent to `a, b`).
+        const flattened: Selector[] = [];
+        for (const item of value) {
+          if (isNode(item, 'PseudoSelector') && item.value.name === ':is') {
+            const arg = item.value.arg;
+            if (arg && isNode(arg, 'SelectorList')) {
+              flattened.push(...arg.value);
+              continue;
+            }
+          }
+          if (isNode(item, 'CompoundSelector') && item.value.length === 1) {
+            const only = item.value[0]!;
+            if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
+              const arg = only.value.arg;
+              if (arg && isNode(arg, 'SelectorList')) {
+                flattened.push(...arg.value);
+                continue;
+              }
+            }
+          }
+          if (isNode(item, 'ComplexSelector') && item.value.length === 1) {
+            const only = item.value[0]!;
+            if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
+              const arg = only.value.arg;
+              if (arg && isNode(arg, 'SelectorList')) {
+                flattened.push(...arg.value);
+                continue;
+              }
+            }
+          }
+          flattened.push(item);
+        }
+        if (flattened.length !== value.length) {
+          list.value = flattened;
+        }
         if (value.length === 1) {
           return value[0]!;
         }

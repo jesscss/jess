@@ -71,6 +71,22 @@ function $preBuildTokens() {
         categories: ['Selector']
       },
     ],
+    Important: [
+      /**
+       * Sass variable flags.
+       * Must come after `Important` so `!important` wins.
+       */
+      {
+        name: 'SassDefault',
+        pattern: '!(?:{{ws}}|{{comment}})*default',
+        categories: ['BlockMarker']
+      },
+      {
+        name: 'SassGlobal',
+        pattern: '!(?:{{ws}}|{{comment}})*global',
+        categories: ['BlockMarker']
+      }
+    ],
     /**
      * These need to be after any keywords, so that
      * keywords with a longer_alt of `PlainIdent`
@@ -141,7 +157,9 @@ export type ScssExtraTokenType =
   | 'Ellipsis'
   | 'DollarVariable'
   | 'PlaceholderSelector'
-  | 'NamespacedFunctionStart';
+  | 'NamespacedFunctionStart'
+  | 'SassDefault'
+  | 'SassGlobal';
 
 export type ScssTokenType = TokenNames<TokenModes[keyof TokenModes]> | ScssExtraTokenType;
 

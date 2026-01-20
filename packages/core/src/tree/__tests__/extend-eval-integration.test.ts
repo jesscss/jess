@@ -3,6 +3,7 @@ import { Context } from '../../context.js';
 import {
   any,
   amp,
+  attr,
   co,
   compound,
   decl,
@@ -10,6 +11,7 @@ import {
   ExtendFlag,
   extend,
   pseudo,
+  quoted,
   rules,
   ruleset,
   sel,
@@ -55,8 +57,10 @@ describe('extend integration (eval -> toString)', () => {
     const evald = await root.eval(context);
     const css = evald.toString({ context });
 
-    // Key assertion: the nested `.replace` selector list item is extended.
-    expect(css).toContain(':is(.replace, .rep_ace),');
+    // Key assertion: the nested `.replace` selector list item is extended and flattened
+    // into the selector list (no top-level `:is()` wrapper for the whole item).
+    expect(css).toContain('.replace,');
+    expect(css).toContain('.rep_ace,');
   });
 
   it('extends nested ruleset selector across parent boundary (header/footer)', async () => {
@@ -113,10 +117,49 @@ describe('extend integration (eval -> toString)', () => {
 
     // Key assertion: `.header .header-nav` gets extended with `.footer .footer-nav`,
     // and the nested `&:before` stays attached under the extended selector.
-    expect(css).toContain(':is(.header .header-nav, .footer .footer-nav)');
+    expect(css).toContain('.header .header-nav,\n.footer .footer-nav');
     expect(css).toContain('background: red');
     expect(css).toContain('&:before');
     expect(css).toContain('background: blue');
   });
-});
 
+  it('extends attribute selectors without duplicating implicit parent prefix (Less extend-selector attributes)', async () => {
+    // Represents:
+    // .attributes {
+    //   [data="test"] { extend: attributes; }
+    //   .attribute-test { &:extend([data="test"] all); }
+    // }
+    const dataTest = attr({ name: 'data', op: '=', value: quoted('test') });
+
+    const root = rules([
+      ruleset({
+        selector: el('.attributes'),
+        rules: rules([
+          ruleset({
+            selector: dataTest,
+            rules: rules([decl({ name: 'extend', value: any('attributes') })])
+          }),
+          ruleset({
+            selector: el('.attribute-test'),
+            rules: rules([
+              extend({ target: dataTest, flag: ExtendFlag.All })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const context = new Context({ collapseNesting: false });
+    const evald = await root.eval(context);
+    const css = evald.toString({ context });
+
+    // Key assertions:
+    // - we should NOT emit `.attributes :is([data...], .attributes .attribute-test)` (duplicates `.attributes`)
+    // - we should keep a single `.attributes { ... }` block with a selector list inside.
+    expect(css).not.toContain('.attributes :is(');
+    expect(css).toContain('.attributes');
+    expect(css).toContain('extend: attributes');
+    expect(css).toContain('.attribute-test');
+    expect(css).toContain('[data');
+  });
+});

@@ -7,6 +7,7 @@ import {
   Call,
   Collection,
   Declaration,
+  type AssignmentType,
   Each,
   Expression,
   For,
@@ -172,6 +173,23 @@ export function value(this: ScssActionsParser, T: ScssTokenMap, valueAlt?: AltCo
       return $.wrap(node);
     }
   };
+}
+
+/**
+ * Override CSS `main` to allow root-level SCSS variable declarations (`$x: ...;`).
+ */
+export function main(this: ScssActionsParser, T: ScssTokenMap, alt?: AltContext) {
+  const $ = this;
+  alt ??= (ctx: RuleContext = {}) => [
+    // Allow root-level SCSS variable declarations ($x: ...)
+    { ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE2($.qualifiedRule) },
+    { ALT: () => $.SUBRULE3($.atRule) },
+    // Allow stray semicolons at root.
+    { ALT: () => $.CONSUME2(T.Semi) }
+  ];
+
+  return cssProductions.main.call(this, T, alt as any);
 }
 
 /**
@@ -890,6 +908,54 @@ export function scssMixinParam(this: ScssActionsParser, T: ScssTokenMap) {
       $.endRule();
       return node!;
     }
+  };
+}
+
+export function declaration(this: ScssActionsParser, T: ScssTokenMap, alt?: AltContext) {
+  const $ = this;
+  const baseDecl = cssProductions.declaration.call(this, T);
+
+  return (ctx: RuleContext = {}) => {
+    // SCSS variable declaration: `$x: ... [!default] [!global]`
+    return $.OR5([
+      {
+        GATE: () => $.LA(1).tokenType === T.DollarVariable,
+        ALT: () => {
+          const RECORDING_PHASE = $.RECORDING_PHASE;
+          $.startRule();
+          const dv = $.CONSUME(T.DollarVariable);
+          const assign = $.CONSUME(T.Assign);
+          const value = $.SUBRULE($.valueList, { ARGS: [ctx] });
+
+          let sawDefault = false;
+          let sawGlobal = false;
+          $.MANY(() => {
+            $.OR([
+              { ALT: () => { $.CONSUME(T.SassDefault); sawDefault = true; } },
+              { ALT: () => { $.CONSUME(T.SassGlobal); sawGlobal = true; } },
+            ]);
+          });
+
+          if (!RECORDING_PHASE) {
+            const location = $.endRule();
+            const nameNode = $.wrap(
+              new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context),
+              true
+            );
+            return new VarDeclaration(
+              { name: nameNode, value: $.wrap(value, 'both') },
+              {
+                assign: (sawDefault ? '?:' : assign.image) as AssignmentType,
+                setDefined: sawGlobal,
+              },
+              location,
+              $.context
+            );
+          }
+        }
+      },
+      { ALT: () => baseDecl(ctx) }
+    ]);
   };
 }
 

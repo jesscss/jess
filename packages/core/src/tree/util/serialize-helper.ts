@@ -66,13 +66,19 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   // const isRuleset = isNode(node, 'Ruleset');
   const treeFrames = options.treeFrames!;
   if (hoisted) {
-    options.inFrames = inFrames = treeFrames?.filter(f => isNode(f, 'AtRule')) ?? [];
-    /** Make sure we still push to treeFrames */
-    treeFrames.push(node);
+    // When hoisting, we must reset the active frame stack to at-rules only.
+    // Otherwise, previously-rendered non-hoisted rulesets (e.g. `.header`) can remain
+    // in `treeFrames` and cause nested output like:
+    //   .header { :is(.header-nav, .footer .footer-nav) { ... } }
+    // even though the current node is hoisted to root.
+    const atRulesOnly = treeFrames?.filter(f => isNode(f, 'AtRule')) ?? [];
+    treeFrames.splice(0, treeFrames.length, ...atRulesOnly, node);
+    options.inFrames = inFrames = treeFrames;
   } else {
     options.inFrames = inFrames = treeFrames!;
+    inFrames.push(node);
   }
-  inFrames.push(node);
+  // Note: in the hoisted branch above, `node` is already included.
 
   let lastRenderedFrames = options.lastRenderedFrames;
 

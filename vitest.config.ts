@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'path';
 import circleDependency from 'vite-plugin-circular-dependency';
+import { TestTypeReporter } from './test/vitest-test-type-reporter';
 
 export default defineConfig({
   plugins: [
@@ -42,8 +43,8 @@ export default defineConfig({
     testTimeout: 30_000,
     // Reduce memory usage
     isolate: true,
-    // Verbose output - show all it() and test() lines regardless of nesting
-    reporters: ['verbose'],
+    // Keep output manageable; custom reporter prints per “test type” lines.
+    reporters: ['default', new TestTypeReporter()],
     // Enable globals for describe, test, etc.
     globals: true,
     // Include all test files from all packages - use absolute paths relative to config file

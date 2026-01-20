@@ -218,7 +218,7 @@ function wrapMatchInIs(
  * 2. Deduplicating selectors
  * 3. Discarding or flattening ampersands.
  */
-function createProcessedSelector(selectors: Selector | Selector[], root?: boolean): Selector | Selector[] {
+export function createProcessedSelector(selectors: Selector | Selector[], root?: boolean): Selector | Selector[] {
   let out: Selector[] = [];
   // Only deduplicate at root level (SelectorList context), not for compound selector components
   // Compound selectors can have duplicate components (e.g., .v.w.v), so we must preserve all
@@ -251,6 +251,13 @@ function createProcessedSelector(selectors: Selector | Selector[], root?: boolea
     }
     if (isNode(el, 'PseudoSelector')) {
       if (root && el.value.name === ':is' && el.generated) {
+        __agentExtendLog('extend.ts:createProcessedSelector', 'unwrap-generated-is-root', {
+          root: !!root,
+          generated: !!el.generated,
+          name: el.value.name,
+          argType: (el.value.arg as any)?.type ?? null,
+          argValueOf: (el.value.arg as any)?.valueOf?.() ?? null
+        });
         let result = createProcessedSelector(el.value.arg as Selector) as Selector;
         /**
          * Result will be a single selector, which we want to bubble
@@ -264,6 +271,15 @@ function createProcessedSelector(selectors: Selector | Selector[], root?: boolea
           push(result);
         }
       } else {
+        if (root && el.value.name === ':is' && !el.generated) {
+          __agentExtendLog('extend.ts:createProcessedSelector', 'keep-non-generated-is-root', {
+            root: !!root,
+            generated: !!el.generated,
+            name: el.value.name,
+            argType: (el.value.arg as any)?.type ?? null,
+            argValueOf: (el.value.arg as any)?.valueOf?.() ?? null
+          });
+        }
         if (el.value.arg) {
           let result = createProcessedSelector(el.value.arg as Selector, root);
           // If result is a SelectorList, check if it contains generated :is() wrappers to flatten
@@ -344,6 +360,113 @@ function createProcessedSelector(selectors: Selector | Selector[], root?: boolea
         }
       }
 
+      // If a generated :is() ends up as the sole selector after a combinator in a complex selector,
+      // distribute it into a selector list. This avoids emitting `:is(...)` where a plain selector
+      // list is equivalent (and matches Less output expectations).
+      //
+      // Example:
+      //   .attributes :is([data="test"], .attributes .attribute-test)
+      // becomes:
+      //   .attributes [data="test"], .attributes .attribute-test
+      if (result.length >= 3) {
+        const maybeCombinator = result[result.length - 2];
+        const maybeIs = result[result.length - 1];
+        if (isNode(maybeCombinator, 'Combinator')
+          && isNode(maybeIs, 'PseudoSelector')
+          && maybeIs.value.name === ':is'
+          && maybeIs.value.arg
+        ) {
+          // Only safe to flatten here when the combinator is the implicit (invisible) space
+          // from implicit `& ` nesting. In that case:
+          //   & :is(.a, .b)  ===  & .a, & .b
+          // and if `&` is also implicit/invisible, it further collapses naturally.
+          const prefix = result.slice(0, -2);
+          const first = prefix[0];
+          const originalFirst = components[0];
+          const originalSecond = components[1];
+          const canFlattenViaImplicitNesting =
+            // Either the processed prefix still begins with an ampersand...
+            (!!first
+              && isNode(first, 'Ampersand')
+              && (first.hasFlag(F_IMPLICIT_AMPERSAND) || first.generated)
+              && !first.hasFlag(F_VISIBLE)
+              && !maybeCombinator.hasFlag(F_VISIBLE))
+            // ...or the prefix is a generated `:is(...)` wrapper that came from implicit nesting
+            // materialization (e.g. when the parent selector is itself a selector list).
+            || (!!first
+              && isNode(first, 'PseudoSelector')
+              && first.value.name === ':is'
+              && (first as any).generated === true
+              && !maybeCombinator.hasFlag(F_VISIBLE))
+            // ...or we already resolved the invisible ampersand to a concrete selector in `result`,
+            // but the original components indicate this came from implicit `& ` nesting.
+            || (!!originalFirst
+              && isNode(originalFirst as any, 'Ampersand')
+              && ((originalFirst as any).hasFlag?.(F_IMPLICIT_AMPERSAND) || (originalFirst as any).generated)
+              && !(originalFirst as any).hasFlag?.(F_VISIBLE)
+              && !!originalSecond
+              && (originalSecond as any).type === 'Combinator'
+              && !(originalSecond as any).hasFlag?.(F_VISIBLE));
+
+          // Only flatten when we know this is the implicit `& ` nesting case.
+          // Do NOT flatten other combinators (e.g. `.ext6 > :is(...)`) — Less expects
+          // those to remain as :is() wrappers.
+          if (!canFlattenViaImplicitNesting) {
+            push(el);
+            continue;
+          }
+
+          const argSel = maybeIs.value.arg;
+          const argList: Selector[] = isNode(argSel, 'SelectorList') ? (argSel.value as Selector[]) : [argSel as Selector];
+          // If this came from implicit `& ` nesting (both ampersand and the space are invisible),
+          // then the prefix is already represented by the parent ruleset context and must not be
+          // duplicated in nested output. In that case we drop the prefix entirely.
+          const dropImplicitPrefix =
+            !!originalFirst
+            && isNode(originalFirst as any, 'Ampersand')
+            && ((originalFirst as any).hasFlag?.(F_IMPLICIT_AMPERSAND) || (originalFirst as any).generated)
+            && !(originalFirst as any).hasFlag?.(F_VISIBLE)
+            && !!originalSecond
+            && (originalSecond as any).type === 'Combinator'
+            && !(originalSecond as any).hasFlag?.(F_VISIBLE);
+          const dropImplicitPrefixViaGeneratedIs =
+            !!first
+            && isNode(first, 'PseudoSelector')
+            && first.value.name === ':is'
+            && (first as any).generated === true
+            && !maybeCombinator.hasFlag(F_VISIBLE);
+          const outputPrefix = (dropImplicitPrefix || dropImplicitPrefixViaGeneratedIs) ? [] : prefix;
+
+          for (const inner of argList) {
+            let innerSel = inner;
+            // If the inner selector redundantly starts with the same prefix selector we already have,
+            // strip that duplicated prefix so we don't emit `.attributes .attributes ...`.
+            if (prefix.length >= 1 && isNode(innerSel, 'ComplexSelector')) {
+              const innerParts = innerSel.value;
+              const innerFirst = innerParts[0];
+              // Compare against the *resolved* prefix selector (result[0]) when present.
+              const resolvedPrefixFirst = result[0];
+              const prefixFirstValue = resolvedPrefixFirst?.valueOf?.();
+              if (innerFirst && prefixFirstValue && innerFirst.valueOf() === prefixFirstValue) {
+                // Drop the matching first selector and an optional following combinator.
+                const dropCount = innerParts[1]?.type === 'Combinator' ? 2 : 1;
+                innerSel = ComplexSelector.create(innerParts.slice(dropCount) as any).inherit(innerSel);
+              }
+            }
+            const omitCombinator = outputPrefix.length === 0 && !maybeCombinator.hasFlag(F_VISIBLE);
+            if (outputPrefix.length === 0 && omitCombinator) {
+              // Implicit prefix + implicit combinator both dropped: just emit the inner selector(s).
+              push(innerSel.copy().inherit(el) as Selector);
+            } else {
+              const parts: any[] = [...outputPrefix, maybeCombinator.copy(), innerSel.copy()];
+              const next = ComplexSelector.create(parts as any).inherit(el);
+              push(next);
+            }
+          }
+          continue;
+        }
+      }
+
       push(el);
     } else if (isNode(el, 'Ampersand')) {
       // Only discard ampersands that were auto-inserted (implicit) during nesting resolution.
@@ -407,6 +530,15 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
   // createProcessedSelector may return a single selector if only one item, so ensure it's an array
   const processed = createProcessedSelector(extractedSelectors, true);
   const processedArray = isArray(processed) ? processed : [processed];
+  __agentExtendLog('extend.ts:createExtendedSelectorList', 'post-createProcessedSelector', {
+    count: processedArray.length,
+    items: processedArray.slice(0, 5).map((s) => ({
+      type: (s as any)?.type ?? null,
+      valueOf: (s as any)?.valueOf?.() ?? null,
+      isIs: isNode(s, 'PseudoSelector') ? (s as any).value?.name === ':is' : false,
+      generated: isNode(s, 'PseudoSelector') ? !!(s as any).generated : null
+    }))
+  });
 
   // IMPORTANT: Avoid self-parenting cycles:
   // If `inheritFrom` is also included as an item in the selector list, the constructor will adopt it,
@@ -671,6 +803,26 @@ export function extendSelector(
   // Select the best location from search results
   const location = selectBestLocation(searchResult, target, find, partial, hasMoreAfterIs, extendWith);
 
+  // General rule: if the only reason `find` matches `target` is because we treat an ampersand
+  // as its resolved selector (i.e. the match is "inside ampersand"), then do NOT extend here.
+  // The parent selector/ruleset should carry the extend; this selector should remain authored
+  // (e.g. `&:before` should stay `&:before`).
+  //
+  // This is intentionally selector-shape agnostic: we do not special-case Compound vs Complex.
+  for (const { ampersand } of findAmpersandsInSelector(target)) {
+    if (!ampersand.value.selector || isNode(ampersand.value.selector, 'Nil')) continue;
+    if (ampersand.value.selector.valueOf() !== find.valueOf()) continue;
+    const selectorWithoutAmpersand = replaceAmpersandWithEmpty(target, ampersand);
+    const nonAmpersandSearchResult = findExtendableLocations(selectorWithoutAmpersand, find);
+    if (!nonAmpersandSearchResult.hasMatches) {
+      throw new ExtendError(
+        'NOT_FOUND',
+        'Match found only within ampersand; parent selector should carry the extend',
+        { target, find, extendWith }
+      );
+    }
+  }
+
   // If the match is entirely inside an ampersand node (e.g. `&:before` matching `.header .header-nav`),
   // do NOT extend here. The parent selector/ruleset should carry the extension.
   if (
@@ -702,6 +854,7 @@ export function extendSelector(
       { target, find, extendWith }
     );
   }
+
   // If we matched an ampersand *component* within a larger compound selector (e.g. `&:before`),
   // do NOT extend that ampersand. The parent selector should have already been extended/hoisted.
   if (
@@ -1142,7 +1295,7 @@ function extendSelectorList(
   extendWith: Selector,
   partial: boolean,
   skipAmpersandCheck: boolean,
-  preferIsWrapperInPartialMode: boolean = true
+  preferIsWrapperInPartialMode: boolean = false
 ): Selector {
   // For SelectorLists, we need to extend each selector that contains the find target
   // Keep original selectors in place, collect new selectors to append at the end
@@ -1183,8 +1336,16 @@ function extendSelectorList(
             target,
             { target: selector, find, extendWith }
           );
-          // Keep this wrapper as a first-class selector list item (do not auto-flatten).
-          isWrapper.generated = false;
+          // Mark as generated by extend. Root-level normalization can unwrap/merge the :is()
+          // when it's the whole selector-list item.
+          isWrapper.generated = true;
+          __agentExtendLog('extend.ts:extendSelectorList', 'prefer-wrapper-in-partial-mode', {
+            partial: !!partial,
+            wrapperName: isWrapper.value.name,
+            wrapperGenerated: !!isWrapper.generated,
+            wrapperArgType: (isWrapper.value.arg as any)?.type ?? null,
+            wrapperArgValueOf: (isWrapper.value.arg as any)?.valueOf?.() ?? null
+          });
           originalSelectors.push(isWrapper);
           continue;
         }
@@ -1493,6 +1654,8 @@ function createIsWrapper(selectors: Selector[], inheritFrom: Selector): PseudoSe
     name: ':is',
     arg: selectorList
   }).inherit(copyForInheritance) as PseudoSelector;
+  // Ensure downstream normalization can unwrap/merge this wrapper when appropriate.
+  pseudoSelector.generated = true;
 
   return pseudoSelector;
 }
@@ -1529,7 +1692,12 @@ function createValidatedIsWrapperWithErrors(
     );
   }
 
-  return createIsWrapper(selectors, inheritFrom);
+  const wrapper = createIsWrapper(selectors, inheritFrom);
+  // This wrapper is created by extend processing (not authored by the user).
+  // Marking it generated allows downstream normalization to unwrap/merge it when it's the
+  // only simple selector in a selector list item (Less output expectations).
+  wrapper.generated = true;
+  return wrapper;
 }
 
 /**
@@ -1685,6 +1853,18 @@ function checkAmpersandCrossingDuringExtension(selector: Selector, target: Selec
     if (
       isNode(selector, 'CompoundSelector')
       && selector.value.length > 1
+      && ampersand.value.selector.valueOf() === target.valueOf()
+    ) {
+      continue;
+    }
+    // Same as above, but for the ComplexSelector form (e.g. `&:before` is often ComplexSelector).
+    // If the target matches entirely within the ampersand's resolved selector, do not treat this
+    // as boundary crossing; the parent ruleset should carry the extend.
+    if (
+      isNode(selector, 'ComplexSelector')
+      && selector.value.length > 1
+      && isNode(selector.value[0], 'Ampersand')
+      && selector.value[0] === ampersand
       && ampersand.value.selector.valueOf() === target.valueOf()
     ) {
       continue;
