@@ -1,0 +1,49 @@
+{
+  "name": "@jesscss/language-service",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./lib/index.js",
+      "types": "./lib/index.d.ts",
+      "source": "./src/index.ts"
+    },
+    "./server": {
+      "import": "./lib/server.js",
+      "types": "./lib/server.d.ts",
+      "source": "./src/server.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "dependencies": {
+    "@jesscss/core": "workspace:*",
+    "@jesscss/css-parser": "workspace:*",
+    "@jesscss/less-parser": "workspace:*",
+    "@jesscss/scss-parser": "workspace:*",
+    "@vscode/web-custom-data": "^0.6.2",
+    "known-css-properties": "~0.37.0",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.12",
+    "vscode-languageserver-types": "3.17.5"
+  },
+  "devDependencies": {
+    "@jesscss/shared": "workspace:*",
+    "@types/node": "^18.15.13",
+    "cross-env": "~7.0.3",
+    "typescript": "~5.8.2",
+    "vitest": "^3.2.3"
+  },
+  "scripts": {
+    "build": "pnpm compile",
+    "compile": "pnpm exec tsc -b tsconfig.build.json",
+    "dev": "pnpm exec tsc -b tsconfig.json -w",
+    "test": "vitest --watch=false"
+  }
+}
+

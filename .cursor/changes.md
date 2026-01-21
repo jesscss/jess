@@ -4,6 +4,16 @@ This file is updated daily with the most recent changes and improvements made to
 
 **Note**: Most recent changes are always at the top. Add new entries with the current date (e.g., `## 2025-Dec-9`) at the top of this file. Make sure we query a live date service to get current date.
 
+## 2026-Jan-21
+
+### Jess language service pivot (LSP + extension)
+
+- **Pivoted tracking from `vscode-css-languageservice` fork into this monorepo**: added `docs/language-service.md` and a new project tracker at `packages/language-service/TRACKER.md`.
+- **Created initial package placeholders** for the new architecture:
+  - `packages/language-service/` (engine + thin LSP wrapper)
+  - `packages/extension/` (VS Code/Cursor extension)
+  - `packages/language-service-tests/` (golden/parity test harness)
+
 ## 2026-Jan-18
 
 ### Catch-up (Jan 10–17)
