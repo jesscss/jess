@@ -24,9 +24,10 @@
   "scripts": {
     "postinstall": "node ./scripts/materialize-sass-spec-cache.cjs",
     "ci": "pnpm build && pnpm test",
-    "prepublishOnly": "npm run build",
+    "prepublishOnly": "pnpm build",
     "build": "pnpm compile",
-    "compile": "tsc -b tsconfig.build.json",
+    "compile": "pnpm -w exec tsc -p packages/scss-parser/tsconfig.build.json",
+    "dev": "pnpm -w exec tsc -p packages/scss-parser/tsconfig.build.json -w",
     "sass-spec:cache": "node ./scripts/materialize-sass-spec-cache.cjs",
     "test": "vitest --run --passWithNoTests",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",

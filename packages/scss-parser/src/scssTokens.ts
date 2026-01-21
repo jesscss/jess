@@ -44,6 +44,19 @@ function $preBuildTokens() {
 
   /** Keyed by what to insert after */
   const merges = {
+    HashName: [
+      /**
+       * SCSS interpolation start, used in selectors and other contexts.
+       *
+       * We only introduce a *start* token (`#{`) and reuse `RCurly` (`}`) as the terminator
+       * during parsing.
+       */
+      {
+        name: 'InterpolationStart',
+        pattern: /#\{/,
+        categories: ['BlockMarker']
+      }
+    ],
     PlainIdent: [
       {
         name: 'LineComment',
@@ -73,8 +86,17 @@ function $preBuildTokens() {
     ],
     Important: [
       /**
+       * SCSS != comparison operator.
+       * Must come before Important so != matches before !important.
+       */
+      {
+        name: 'NotEq',
+        pattern: /!=/,
+        categories: ['CompareOperator']
+      },
+      /**
        * Sass variable flags.
-       * Must come after `Important` so `!important` wins.
+       * Must come after `NotEq` so `!=` wins over `!default`/`!global`.
        */
       {
         name: 'SassDefault',
@@ -86,6 +108,12 @@ function $preBuildTokens() {
         pattern: '!(?:{{ws}}|{{comment}})*global',
         categories: ['BlockMarker']
       }
+    ],
+    /**
+     * Insert EqEq (==) before Eq (=) so == matches first.
+     */
+    Eq: [
+      { name: 'EqEq', pattern: /==/, categories: ['CompareOperator'] }
     ],
     /**
      * These need to be after any keywords, so that
@@ -138,6 +166,7 @@ function $preBuildTokens() {
       i += mergeLength;
     }
   }
+
   return tokens;
 }
 
@@ -159,7 +188,10 @@ export type ScssExtraTokenType =
   | 'PlaceholderSelector'
   | 'NamespacedFunctionStart'
   | 'SassDefault'
-  | 'SassGlobal';
+  | 'SassGlobal'
+  | 'InterpolationStart'
+  | 'EqEq'
+  | 'NotEq';
 
 export type ScssTokenType = TokenNames<TokenModes[keyof TokenModes]> | ScssExtraTokenType;
 

@@ -11,7 +11,7 @@ but updated for the new goal: **ship a Jess-first LSP + VS Code/Cursor extension
 ### Phase 1 — Engine primitives (CSS first)
 - [x] Document store: open/change/close + versioning.
 - [x] Parse cache: `{ lang, parseResult }` per document (CSS/Less/SCSS).
-- [ ] Index: `findNodeAtOffset` + node path + basic scope extraction.
+- [x] Index: `findNodeAtOffset` + node path + basic scope extraction.
 - [x] Diagnostics: map Jess diagnostics → LSP diagnostics (stable ranges).
 
 ### Phase 2 — Completion (visible parity)
@@ -19,12 +19,12 @@ but updated for the new goal: **ship a Jess-first LSP + VS Code/Cursor extension
 - [x] At-rule completion (`@media`, `@supports`, …) from web custom data.
 - [x] Property name completion from web custom data.
 - [x] Property value completion (descriptor/value aware).
-- [ ] Variables: Less `@var`, SCSS `$var`, CSS custom properties `--x` (where relevant).
+- [x] Variables: Less `@var` ✅, CSS custom properties `--x` ✅. SCSS `$var` ⚠️ (parser issues - Less/Jess have advantage).
 - [ ] Degrade gracefully when the doc is syntactically invalid (slice/local fallback).
 
 ### Phase 3 — Hover + navigation
-- [ ] Hover: properties/values/functions/vars (with docs from custom data).
-- [ ] Definitions/references/rename for vars (and later more symbols).
+- [x] Hover: properties/values/functions/vars (with docs from custom data).
+- [x] Definitions/references/rename for vars: Less ✅, SCSS ⚠️ (parser issues - Less/Jess have advantage).
 - [ ] Document symbols (rulesets, at-rules, vars, etc.).
 
 ### Phase 4 — Remaining editor features

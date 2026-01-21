@@ -1,3 +1,13 @@
-// MathMode and UnitMode are now defined in styles-config
-// Re-exported here for backward compatibility
-export type { MathMode, UnitMode } from 'styles-config';
+/**
+ * Math processing modes.
+ *
+ * Kept in `@jesscss/core` to avoid cyclic workspace dependencies with `styles-config`.
+ */
+export type MathMode = 'always' | 'parens-division' | 'parens' | 'strict';
+
+/**
+ * Unit conversion modes.
+ *
+ * Kept in `@jesscss/core` to avoid cyclic workspace dependencies with `styles-config`.
+ */
+export type UnitMode = 'loose' | 'strict';

@@ -8,7 +8,7 @@ import {
   TextDocumentChangeEvent
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { CompletionParams } from 'vscode-languageserver-types';
+import { CompletionParams, HoverParams, DefinitionParams, ReferenceParams } from 'vscode-languageserver-types';
 import { createEngine } from './engine.js';
 
 const connection = createConnection(ProposedFeatures.all);
@@ -21,7 +21,10 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
       textDocumentSync: TextDocumentSyncKind.Incremental,
       completionProvider: {
         triggerCharacters: ['@', '-', '$', ':', '{', ';', ' ']
-      }
+      },
+      hoverProvider: true,
+      definitionProvider: true,
+      referencesProvider: true
     }
   };
   return result;
@@ -44,6 +47,18 @@ documents.onDidClose((e: TextDocumentChangeEvent<TextDocument>) => {
 
 connection.onCompletion((params: CompletionParams) => {
   return engine.getCompletions(params.textDocument.uri, params.position);
+});
+
+connection.onHover((params: HoverParams) => {
+  return engine.getHover(params.textDocument.uri, params.position);
+});
+
+connection.onDefinition((params: DefinitionParams) => {
+  return engine.findDefinition(params.textDocument.uri, params.position);
+});
+
+connection.onReferences((params: ReferenceParams) => {
+  return engine.findReferences(params.textDocument.uri, params.position);
 });
 
 documents.listen(connection);

@@ -246,7 +246,7 @@ describe('@container - container query type functions', () => {
     expect(argList[0].value.length).toBe(3); // Paren, Any('and'), Paren
     expect(argList[0].value[0].type).toBe('Paren');
     expect(argList[0].value[0].value.type).toBe('Declaration');
-    expect(argList[0].value[1].type).toBe('Any');
+    expect(argList[0].value[1].type).toBe('Keyword');
     expect(argList[0].value[1].value).toBe('and');
     expect(argList[0].value[2].type).toBe('Paren');
     expect(argList[0].value[2].value.type).toBe('Declaration');
@@ -267,7 +267,7 @@ describe('@container - container query type functions', () => {
     const queryNode = prelude.value[0];
     expect(queryNode.type).toBe('QueryCondition');
     expect(queryNode.value.length).toBe(2);
-    expect(queryNode.value[0].type).toBe('Any');
+    expect(queryNode.value[0].type).toBe('Keyword');
     expect(queryNode.value[0].value).toBe('not');
     expect(queryNode.value[1].type).toBe('QueryCondition');
     expect(queryNode.value[1].value[0].type).toBe('Call');

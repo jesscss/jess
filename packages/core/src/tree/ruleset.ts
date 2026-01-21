@@ -178,7 +178,14 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
             ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
             : context.treeContext?.file?.path)
           || '';
-        if (typeof filePath === 'string' && filePath.includes('tests-unit/extend-selector')) {
+        if (typeof filePath === 'string'
+          && (
+            filePath.includes('tests-unit/extend-selector')
+            || filePath.includes('tests-unit/extend-exact')
+            || filePath.includes('tests-unit/extend-media')
+            || filePath.includes('tests-unit/extend-chaining')
+          )
+        ) {
           // Avoid stringifying selector pre-eval; just include location/type.
           syncLog({
             sessionId: 'debug-session',
@@ -205,7 +212,14 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
                 ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
                 : context.treeContext?.file?.path)
               || '';
-            if (typeof filePath === 'string' && filePath.includes('tests-unit/extend-selector')) {
+            if (typeof filePath === 'string'
+              && (
+                filePath.includes('tests-unit/extend-selector')
+                || filePath.includes('tests-unit/extend-exact')
+                || filePath.includes('tests-unit/extend-media')
+                || filePath.includes('tests-unit/extend-chaining')
+              )
+            ) {
               syncLog({
                 sessionId: 'debug-session',
                 runId: process.env.DEBUG_RUN_ID || 'pre-fix',

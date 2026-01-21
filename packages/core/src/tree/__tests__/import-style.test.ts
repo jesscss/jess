@@ -26,18 +26,21 @@ let context: Context;
 
 function getVarWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
   context.rulesContext = n;
+  opts.context ??= context;
   opts.searchParents = true;
   return n.find('declaration', key, 'VarDeclaration', opts);
 }
 
 function getMixinWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
   context.rulesContext = n;
+  opts.context ??= context;
   opts.searchParents = true;
   return n.find('mixin', key, 'Mixin', opts);
 }
 
 function getRulesetWithContext(context: Context, n: Rules, keys: string | string[], opts: FindOptions = {}) {
   context.rulesContext = n;
+  opts.context ??= context;
   opts.searchParents = true;
   const keySet = typeof keys === 'string' ? [keys] : keys;
   return n.find('ruleset', keySet, undefined, opts);
@@ -455,6 +458,43 @@ describe('Style import', () => {
       await expect(async () => {
         await node.eval(context);
       }).rejects.toThrowError('"importedVar" is readonly');
+    });
+  });
+
+  describe('forward behavior', () => {
+    it('forwarded members are not visible locally, but are visible downstream', async () => {
+      const forwardedPath = resolve(process.cwd(), 'forwarded.jess');
+      context.sourceTrees.set(forwardedPath, rules([
+        vardecl({ name: 'forwardedVar', value: any('ok') })
+      ]));
+
+      const forwarderPath = resolve(process.cwd(), 'forwarder.jess');
+      context.sourceTrees.set(forwarderPath, rules([
+        style(
+          { path: quoted(any('forwarded.jess')) },
+          { type: 'compose', namespace: '*', importOptions: { forward: true } }
+        ),
+        // Nothing else in this module.
+      ]));
+
+      // Evaluate forwarder module (as if compiling that file directly)
+      const evaldForwarder = await rules([
+        style({ path: quoted(any('forwarder.jess')) }, { type: 'import' })
+      ]).eval(context);
+
+      // Locally (inside the forwarder module), forwarded members should NOT be visible.
+      const forwarderRules = evaldForwarder.at(0) as Rules;
+      const localLookup = getVarWithContext(context, forwarderRules, 'forwardedVar');
+      expect(localLookup).toBeUndefined();
+
+      // Downstream (a consumer importing the forwarder), forwarded members SHOULD be visible.
+      const consumer = rules([
+        style({ path: quoted(any('forwarder.jess')) }, { type: 'import' })
+      ]);
+      const evaldConsumer = await consumer.eval(context);
+      const downstreamLookup = getVarWithContext(context, evaldConsumer, 'forwardedVar');
+      expect(downstreamLookup).toBeDefined();
+      expect(`${downstreamLookup}`).toBe('$forwardedVar: ok');
     });
   });
 

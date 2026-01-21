@@ -91,9 +91,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     options = getPrintOptions(options);
     const w = options.writer!;
     const { name, value, important } = this.value;
-    const { assign = ':' } = this.options;
+    const { assign = ':', setDefined } = this.options;
     const mark = w.mark();
-    let a = assign === ':' ? ':' : ` ${assign}`;
+    // setDefined uses `:=` (with default spacing rules) instead of the historical `$^` prefix.
+    const effAssign = (setDefined && assign === ':') ? ':=' : assign;
+    let a = effAssign === ':' ? ':' : ` ${effAssign}`;
     // Normalize property name by trimming trailing whitespace
     const normalizedName = String(name).replace(/\s+$/, '');
     w.add(`${normalizedName}${a}`, name);

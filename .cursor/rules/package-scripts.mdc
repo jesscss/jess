@@ -55,6 +55,20 @@ When running scripts (npm/pnpm scripts, ESLint, tests, builds, etc.) for a speci
 - Test configurations expect to run from the package directory
 - Module resolution and TypeScript project references work correctly from package root
 
+## Monorepo Build vs Test (Cross-Package Nuance)
+
+Tests for a package often run its **TypeScript sources directly**, but **imports from other workspace packages** frequently resolve to those packages’ built entrypoints (e.g. `lib/` via `exports.import` / `main`), not their `src/`.
+
+That means:
+
+- If you change package **A** and then run tests in package **B** that depends on **A**, you may need to **build A first** so B sees the updated code.
+- If you see “it works in A’s tests but not in B”, suspect **stale `lib/` output** in the dependency package.
+
+**Do this:**
+
+- Build the dependency package: `pnpm --filter @jesscss/css-parser build`
+- Or run the dependent package’s `ci` script if it builds first.
+
 ### Always:
 
 - Check which package you're working in

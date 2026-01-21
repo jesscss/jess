@@ -117,6 +117,13 @@ export abstract class Registry<
         // Otherwise, follow normal visibility rules
         // Only 'public' and 'optional' are visible (not 'private' or undefined)
         const isVisible = visibility === 'public' || visibility === 'optional';
+        /**
+         * Sass `@forward`:
+         * Forwarded Rules should not be visible to lookups within the current stylesheet scope
+         * (context.rulesContext === rules), but should remain visible to downstream consumers.
+         */
+        const isForwardNode = Boolean(n.node.options?.forward);
+        const skipForwardNode = isForwardNode && context?.rulesContext === rules;
         // Local nodes can only be searched once - if we've already passed through
         // a local boundary (local === true), we cannot search another local node
         // This prevents re-exporting local variables to parent's parent
@@ -135,6 +142,7 @@ export abstract class Registry<
         const isComparisonContext = firstValue && candidates.size > 0;
         return (findAll || !firstValue || isComparisonContext)
           && (start === undefined || n.node.index < start)
+          && !skipForwardNode
           && !skipLocalNode
           && isVisible;
       });

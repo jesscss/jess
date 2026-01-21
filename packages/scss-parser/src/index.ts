@@ -1,4 +1,4 @@
-import { type IToken, type CstNode, Lexer } from 'chevrotain';
+import { type IToken, type CstNode, Lexer, type ISyntacticContentAssistPath } from 'chevrotain';
 import { createLexerDefinition } from '@jesscss/css-parser';
 import type { ConditionalPick } from 'type-fest';
 import type { Rules, IParseResult } from '@jesscss/core';
@@ -13,6 +13,13 @@ export * from './scssTokens.js';
 const errorMessageProvider = new ScssErrorMessageProvider();
 
 export type ScssRules = keyof ConditionalPick<ScssActionsParser, () => CstNode>;
+
+export type SyntacticContentAssistSuggestion = {
+  nextTokenType: string;
+  nextTokenLabel?: string;
+  ruleStack: string[];
+  occurrenceStack: number[];
+};
 
 /**
  * Public convenience wrapper around the Chevrotain lexer + actions parser.
@@ -49,10 +56,37 @@ export class Parser {
     ...args: Parameters<ScssActionsParser[T]>
   ): IParseResult {
     const parser = this.parser;
+    // Clear parser errors from previous parse calls
+    parser.errors = [];
     const lexerResult = this.lexer.tokenize(text);
     const lexedTokens: IToken[] = lexerResult.tokens;
     parser.input = lexedTokens;
     const tree = parser[rule](...args);
     return { tree, lexerResult, errors: parser.errors, warnings: [] };
+  }
+
+  /**
+   * IDE helper: suggest next possible token types at `offset` using Chevrotain's
+   * syntactic content assist. This is syntactic-only (not semantic completion).
+   *
+   * Note: content assist is significantly slower than normal parsing, so it
+   * should be called on-demand (e.g. near the cursor).
+   */
+  suggest(text: string, init: { offset: number; rule?: ScssRules }): SyntacticContentAssistSuggestion[] {
+    const { offset, rule = 'stylesheet' } = init;
+    const prefix = text.slice(0, Math.max(0, offset));
+    const lexerResult = this.lexer.tokenize(prefix);
+    const tokens: IToken[] = lexerResult.tokens;
+    try {
+      const paths = (this.parser as any).computeContentAssist(rule, tokens) as ISyntacticContentAssistPath[];
+      return paths.map(p => ({
+        nextTokenType: p.nextTokenType.name,
+        nextTokenLabel: (p.nextTokenType as any).LABEL,
+        ruleStack: p.ruleStack,
+        occurrenceStack: p.occurrenceStack
+      }));
+    } catch {
+      return [];
+    }
   }
 }

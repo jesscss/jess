@@ -342,6 +342,24 @@ export function areComplexSelectorsEquivalent(a: ComplexSelector, b: ComplexSele
       // Both are selectors - check equivalence
       if (isNode(aComp, 'CompoundSelector') && isNode(bComp, 'CompoundSelector')) {
         if (!areCompoundSelectorsEquivalent(aComp, bComp)) return false;
+      } else if (isNode(aComp, 'PseudoSelector') && aComp.value.name === ':is' && aComp.value.arg && isSelector(aComp.value.arg)) {
+        // Allow `:is(.a, .b)` to match `.a` (or any selector in its arg list) for complex selector equivalence.
+        const arg = aComp.value.arg as Selector;
+        if (isNode(arg, 'SelectorList')) {
+          const matchesAny = arg.value.some(sel => sel.valueOf() === bComp.valueOf());
+          if (!matchesAny) return false;
+        } else {
+          if (arg.valueOf() !== bComp.valueOf()) return false;
+        }
+      } else if (isNode(bComp, 'PseudoSelector') && bComp.value.name === ':is' && bComp.value.arg && isSelector(bComp.value.arg)) {
+        // Symmetric case: allow `.a` to match `:is(.a, .b)`
+        const arg = bComp.value.arg as Selector;
+        if (isNode(arg, 'SelectorList')) {
+          const matchesAny = arg.value.some(sel => sel.valueOf() === aComp.valueOf());
+          if (!matchesAny) return false;
+        } else {
+          if (arg.valueOf() !== aComp.valueOf()) return false;
+        }
       } else if (aComp.valueOf() !== bComp.valueOf()) {
         return false;
       }
@@ -439,6 +457,7 @@ const EXACT_MATCH_CACHE = new WeakMap<Selector, ExtendLocation[]>();
 // General search result cache: WeakMap<target, Map<find, ExtendSearchResult>>
 const SEARCH_RESULT_CACHE = new WeakMap<Selector, Map<Selector, ExtendSearchResult>>();
 const EMPTY_LOCATIONS: ExtendLocation[] = [];
+let __agentIsMatchRejectCount = 0;
 
 /**
  * Enhanced selector matching with 7-layer optimization system from matchSelectors
@@ -453,6 +472,11 @@ export function findExtendableLocations(
   target: Selector,
   find: Selector
 ): ExtendSearchResult {
+  const __agentShouldLogIsMatch = (process.env.DEBUG_RUN_ID || '') === 'extend-exact-debug'
+    && __agentIsMatchRejectCount < 10
+    && target.valueOf().includes(':is(.replace.replace')
+    && find.valueOf() === '.replace.replace .replace';
+
   // Check general search result cache first
   let targetCache = SEARCH_RESULT_CACHE.get(target);
   if (targetCache) {
@@ -494,6 +518,18 @@ export function findExtendableLocations(
     && target.keySet.isDisjointFrom(find.keySet)
     && target.canFastReject && find.canFastReject) {
     metrics.fastRejections++;
+    if (__agentShouldLogIsMatch) {
+      __agentIsMatchRejectCount++;
+      syncLog({
+        sessionId: 'debug-session',
+        runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
+        hypothesisId: 'H17',
+        location: 'extend-helpers.ts:findExtendableLocations:fast-reject-disjoint',
+        message: 'KeySet disjoint fast reject',
+        data: { target: target.valueOf(), find: find.valueOf() },
+        timestamp: Date.now()
+      });
+    }
     const result = { locations: EMPTY_LOCATIONS, hasMatches: false, metrics };
     targetCache.set(find, result);
     return result;
@@ -503,6 +539,18 @@ export function findExtendableLocations(
   if (find.canFastReject && target.keySet && find.keySet
     && !find.keySet.isSubsetOf(target.keySet)) {
     metrics.fastRejections++;
+    if (__agentShouldLogIsMatch) {
+      __agentIsMatchRejectCount++;
+      syncLog({
+        sessionId: 'debug-session',
+        runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
+        hypothesisId: 'H17',
+        location: 'extend-helpers.ts:findExtendableLocations:fast-reject-not-subset',
+        message: 'KeySet subset fast reject',
+        data: { target: target.valueOf(), find: find.valueOf() },
+        timestamp: Date.now()
+      });
+    }
     const result = { locations: EMPTY_LOCATIONS, hasMatches: false, metrics };
     targetCache.set(find, result);
     return result;
@@ -537,6 +585,25 @@ export function findExtendableLocations(
 
   // Full recursive search with optimizations - only when fast path fails
   metrics.fullSearches++;
+  if (__agentShouldLogIsMatch) {
+    __agentIsMatchRejectCount++;
+    syncLog({
+      sessionId: 'debug-session',
+      runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
+      hypothesisId: 'H19',
+      location: 'extend-helpers.ts:findExtendableLocations:slow-path',
+      message: 'Entering slow recursive search',
+      data: {
+        target: target.valueOf(),
+        find: find.valueOf(),
+        targetType: (target as any).type,
+        findType: (find as any).type,
+        targetCanFastReject: !!(target as any).canFastReject,
+        findCanFastReject: !!(find as any).canFastReject
+      },
+      timestamp: Date.now()
+    });
+  }
   searchWithinSelector(target, find, [], locations);
 
   const result = {
@@ -662,12 +729,30 @@ function tryFastPathExtendMatch(
   // Fast path 7: Complex selector patterns with partial match support
   if (isNode(target, 'ComplexSelector') && target.value.length <= 7) {
     // First check for exact complex selector matches
-    if (isNode(find, 'ComplexSelector') && areComplexSelectorsEquivalent(target, find)) {
-      return [{
-        path: [...basePath],
-        matchedNode: target,
-        extensionType: determineExtensionType(target, basePath)
-      }];
+    if (isNode(find, 'ComplexSelector')) {
+      const __agentIsCase = (process.env.DEBUG_RUN_ID || '') === 'extend-exact-debug'
+        && target.valueOf().includes(':is(.replace.replace')
+        && find.valueOf() === '.replace.replace .replace';
+      const eq = areComplexSelectorsEquivalent(target, find);
+      if (__agentIsCase && __agentIsMatchRejectCount < 10) {
+        __agentIsMatchRejectCount++;
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
+          hypothesisId: 'H18',
+          location: 'extend-helpers.ts:tryFastPathExtendMatch:complex-eq',
+          message: 'Complex selector equivalence check',
+          data: { target: target.valueOf(), find: find.valueOf(), eq },
+          timestamp: Date.now()
+        });
+      }
+      if (eq) {
+        return [{
+          path: [...basePath],
+          matchedNode: target,
+          extensionType: determineExtensionType(target, basePath)
+        }];
+      }
     }
 
     // Try partial complex matching
@@ -1024,6 +1109,33 @@ function searchWithinComplexSelector(
   locations: ExtendLocation[]
 ): void {
   const initialLocationCount = locations.length;
+
+  // If we're searching for a ComplexSelector target, allow full structural equivalence (including `:is(...)`).
+  if (isNode(target, 'ComplexSelector')) {
+    const eq = areComplexSelectorsEquivalent(complex, target);
+    if ((process.env.DEBUG_RUN_ID || '') === 'extend-exact-debug'
+      && complex.valueOf().includes(':is(.replace.replace')
+      && target.valueOf() === '.replace.replace .replace'
+      && __agentIsMatchRejectCount < 10) {
+      __agentIsMatchRejectCount++;
+      syncLog({
+        sessionId: 'debug-session',
+        runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
+        hypothesisId: 'H20',
+        location: 'extend-helpers.ts:searchWithinComplexSelector:eq-check',
+        message: 'Slow-path complex equivalence check',
+        data: { current: complex.valueOf(), target: target.valueOf(), eq },
+        timestamp: Date.now()
+      });
+    }
+    if (eq) {
+      locations.push({
+        path: [...currentPath],
+        matchedNode: complex,
+        extensionType: determineExtensionType(complex, currentPath)
+      });
+    }
+  }
 
   complex.value.forEach((component, index) => {
     // Skip combinators, only search selector components

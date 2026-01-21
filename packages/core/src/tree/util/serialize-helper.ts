@@ -53,7 +53,9 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
 
   const rules = node.value.rules;
   if (!rules) {
-    w.add(node.getHeaderString(options, true));
+    // Leaf at-rules (no body) are not "frame headers". Always emit them with comments
+    // preserved; comment-stripping should only apply to repeated *frame* headers.
+    w.add(node.getHeaderString(options, false));
     return w.getSince(mark);
   }
 
@@ -65,13 +67,14 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   const hoisted = node.isHoisted(options);
   // const isRuleset = isNode(node, 'Ruleset');
   const treeFrames = options.treeFrames!;
+  const prevTreeFrames = hoisted ? treeFrames.slice() : undefined;
   if (hoisted) {
     // When hoisting, we must reset the active frame stack to at-rules only.
     // Otherwise, previously-rendered non-hoisted rulesets (e.g. `.header`) can remain
     // in `treeFrames` and cause nested output like:
     //   .header { :is(.header-nav, .footer .footer-nav) { ... } }
     // even though the current node is hoisted to root.
-    const atRulesOnly = treeFrames?.filter(f => isNode(f, 'AtRule')) ?? [];
+    const atRulesOnly = treeFrames.filter(f => isNode(f, 'AtRule'));
     treeFrames.splice(0, treeFrames.length, ...atRulesOnly, node);
     options.inFrames = inFrames = treeFrames;
   } else {
@@ -169,11 +172,11 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     // }
   }
 
-  if (hoisted) {
-    treeFrames.pop();
-  }
   inFrames.pop();
   frameHeaders.pop();
+  if (prevTreeFrames) {
+    treeFrames.splice(0, treeFrames.length, ...prevTreeFrames);
+  }
   let renderedLength = lastRenderedFrames.length;
   if (treeFrames.length < renderedLength) {
     w.add(indent(renderedLength - 1) + '}\n');

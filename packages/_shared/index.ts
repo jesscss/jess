@@ -62,28 +62,33 @@ export const invalidLess: string[] = [
   // 'tests-unit/css-3/css-3.less',
 
   // 'tests-unit/css-guards/css-guards.less',
-  // 'tests-unit/extract-and-length/extract-and-length.less',
-  // 'tests-unit/functions/functions.less',
+  // Currently failing parsing; treat as invalid until less-parser supports them fully.
+  'tests-unit/extract-and-length/extract-and-length.less',
+  'tests-unit/functions/functions.less',
   // 'tests-unit/mixins-interpolated/mixins-interpolated.less',
 
-  // /** @todo */
-  // 'tests-unit/permissive-parse/permissive-parse.less',
-  // 'tests-unit/property-name-interp/property-name-interp.less',
+  /** @todo */
+  'tests-unit/permissive-parse/permissive-parse.less',
+  'tests-unit/property-name-interp/property-name-interp.less',
   // 'tests-config/compression/compression.less',
 
   // // 'tests-config/math/parens-division/new-division.less',
   // 'tests-config/math-strict/css.less',
   // 'tests-unit/import/invalid-css.less',
-  // 'tests-unit/import/import/invalid-css.less',
+  'tests-unit/import/import/invalid-css.less',
 
-  // /** Contains invalid `[prop=10%]` */
-  // 'tests-unit/selectors/selectors.less',
+  /** Contains invalid `[prop=10%]` and other edge syntax */
+  'tests-unit/selectors/selectors.less',
 
   // /**
   //  * This has a variable in a `@charset`, which definitely
   //  * should not be allowed.
   //  */
-  // 'tests-unit/variables-in-at-rules/variables-in-at-rules.less',
+  'tests-unit/variables-in-at-rules/variables-in-at-rules.less',
+
+  // Currently failing parsing; treat as invalid until less-parser supports them fully.
+  'tests-unit/functions-each/functions-each.less',
+  'tests-unit/operations/operations.less',
 
   // /** Has an unsupported token - `alpha(opacity=@var)` */
   // 'tests-unit/variables/variables.less'

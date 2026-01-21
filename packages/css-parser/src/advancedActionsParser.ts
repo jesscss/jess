@@ -88,7 +88,6 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
   }
 
   /** Separate skipped tokens into a new map */
-  // @ts-expect-error - It's defined in Chevrotain as a data property
   set input(value: IToken[]) {
     const preSkippedTokenMap = this.preSkippedTokenMap = new Map<number, IToken[]>();
     const postSkippedTokenMap = this.postSkippedTokenMap = new Map<number, IToken[]>();
@@ -136,7 +135,6 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
     this.usedSkippedTokens = new Set();
     // removed diagnostics
     this.originalInput = value;
-    // @ts-expect-error
     super.input = inputTokens;
   }
 
@@ -151,7 +149,21 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
     let result = super.subruleInternal(ruleToCall, idx, options);
     let postLength = this.locationStack.length;
     if (postLength !== preLength) {
-      throw new Error(`Rule ${name} did not call endRule()`);
+      /**
+       * In recovery-enabled parses (linting / language services), a rule may
+       * throw before reaching its explicit `endRule()` call. That should be a
+       * parse error, not a fatal runtime error.
+       *
+       * Keep the invariant check in non-recovery mode (to catch authoring bugs),
+       * but unwind the stack in recovery mode so parsing can continue.
+       */
+      if ((this as any).recoveryEnabled) {
+        while (this.locationStack.length > preLength) {
+          this.locationStack.pop();
+        }
+      } else {
+        throw new Error(`Rule ${name} did not call endRule()`);
+      }
     }
     return result;
   }

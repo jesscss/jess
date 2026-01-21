@@ -28,7 +28,7 @@
     "prepublishOnly": "npm run build",
     "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
-    "compile": "tsc -b tsconfig.json",
+    "compile": "tsc -p tsconfig.build.json",
     "test": "vitest --run --passWithNoTests",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"

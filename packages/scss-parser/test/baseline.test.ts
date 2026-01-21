@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Parser } from '../src/index.js';
-import { isNode } from '@jesscss/core';
+import { isNode, serializeTypes, Condition } from '@jesscss/core';
 import { assertValidTree } from './assert-valid-tree.js';
 
 describe('scss-parser (baseline)', () => {
@@ -65,6 +65,64 @@ describe('scss-parser (baseline)', () => {
     assertValidTree(result.tree);
   });
 
+  it('parses @if comparisons using == as a Condition with =', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@if $a == $b { .x { y: 1; } }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    const out = String(result.tree);
+    expect(out).toContain('$if');
+    expect(out).toContain('=');
+    expect(out).not.toContain('==');
+    // Assert the condition is a real Condition node (not just a serialized '=')
+    const root = result.tree;
+    expect(isNode(root, 'Rules')).toBe(true);
+    if (isNode(root, 'Rules')) {
+      const ifNode = root.value.find(n => isNode(n, 'If'));
+      expect(ifNode && isNode(ifNode, 'If')).toBe(true);
+      if (ifNode && isNode(ifNode, 'If')) {
+        const cond = ifNode.value.branches[0]?.condition;
+        expect(cond && isNode(cond, 'Paren')).toBe(true);
+        if (cond && isNode(cond, 'Paren')) {
+          expect(cond.value instanceof Condition).toBe(true);
+          if (cond.value instanceof Condition) {
+            expect(cond.value.options?.negate).not.toBe(true);
+          }
+        }
+      }
+    }
+    assertValidTree(result.tree);
+  });
+
+  it('parses @if comparisons using != as a Condition with = and negate', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@if $a != $b { .x { y: 1; } }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    const out = String(result.tree);
+    expect(out).toContain('$if');
+    expect(out).toContain('not');
+    expect(out).toContain('=');
+    expect(out).not.toContain('!=');
+    const root = result.tree;
+    expect(isNode(root, 'Rules')).toBe(true);
+    if (isNode(root, 'Rules')) {
+      const ifNode = root.value.find(n => isNode(n, 'If'));
+      expect(ifNode && isNode(ifNode, 'If')).toBe(true);
+      if (ifNode && isNode(ifNode, 'If')) {
+        const cond = ifNode.value.branches[0]?.condition;
+        expect(cond && isNode(cond, 'Paren')).toBe(true);
+        if (cond && isNode(cond, 'Paren')) {
+          expect(cond.value instanceof Condition).toBe(true);
+          if (cond.value instanceof Condition) {
+            expect(cond.value.options?.negate).toBe(true);
+          }
+        }
+      }
+    }
+    assertValidTree(result.tree);
+  });
+
   it('parses @mixin into a Mixin node (non-visible)', () => {
     const parser = new Parser();
     const result = parser.parse(`
@@ -125,11 +183,80 @@ describe('scss-parser (baseline)', () => {
       const imp = root.value.find(n => isNode(n, 'StyleImport'));
       expect(imp).toBeDefined();
       if (imp && isNode(imp, 'StyleImport')) {
-        expect(imp.options.importOptions?.reference).toBe(true);
-        expect(imp.options.importOptions?.export).toBe(true);
-        expect(imp.options.importOptions?.mutable).toBe(false);
+        expect(imp.options.importOptions?.forward).toBe(true);
       }
     }
+    assertValidTree(result.tree);
+  });
+
+  it('parses @forward with(...) config values (incl interpolation)', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@forward "foo" with ($a: #{$b});`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.length).toBe(0);
+    expect(serializeTypes(result.tree)).toContainString('(StyleImport');
+    expect(serializeTypes(result.tree)).toContainString('(Interpolated');
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS @extend statements', () => {
+    const parser = new Parser();
+    const result = parser.parse(`.a { @extend .b; }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.length).toBe(0);
+    expect(serializeTypes(result.tree)).toContainString('(Extend');
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS @extend with interpolated selector', () => {
+    const parser = new Parser();
+    const result = parser.parse(`.a { @extend .b-#{$c}; }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.length).toBe(0);
+    expect(serializeTypes(result.tree)).toContainString('(Extend');
+    expect(serializeTypes(result.tree)).toContainString('(Interpolated');
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS module-member variable references (ns.$var)', () => {
+    const parser = new Parser();
+    const result = parser.parse(`.a { color: ns.$c; }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(Expression');
+    expect(serializeTypes(result.tree)).toContainString("(Reference");
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS module-qualified function calls (ns.fn(...))', () => {
+    const parser = new Parser();
+    const result = parser.parse(`.a { color: ns.fn($x); }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(Expression');
+    expect(serializeTypes(result.tree)).toContainString("(Call");
+    expect(serializeTypes(result.tree)).toContainString("(Reference");
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS module-qualified mixin calls in @include (ns.foo(...))', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@include ns.foo($x);`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(Call');
+    expect(serializeTypes(result.tree)).toContainString('(Reference');
+    assertValidTree(result.tree);
+  });
+
+  it('parses escaped SCSS module-qualified mixin-ruleset calls (ns.\\#foo(...))', () => {
+    const parser = new Parser();
+    const result = parser.parse(`.a { color: ns.\\#foo($x); }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(Expression');
+    expect(serializeTypes(result.tree)).toContainString('(Call');
+    expect(serializeTypes(result.tree)).toContainString('(Reference');
     assertValidTree(result.tree);
   });
 
@@ -145,15 +272,163 @@ describe('scss-parser (baseline)', () => {
     assertValidTree(result.tree);
   });
 
+  it('parses SCSS $var declarations with recoveryEnabled: true', () => {
+    const parser = new Parser({ recoveryEnabled: true });
+    const result = parser.parse(`$color: red;`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(isNode(result.tree, 'Rules')).toBe(true);
+    if (isNode(result.tree, 'Rules')) {
+      expect(result.tree.value.some(n => isNode(n, 'VarDeclaration'))).toBe(true);
+    }
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS $var followed by rule with recoveryEnabled: true', () => {
+    const parser = new Parser({ recoveryEnabled: true });
+    const result = parser.parse(`$primary: red;\na { color: $primary; }`);
+    if (result.errors.length > 0) {
+      console.log('Parse errors:', result.errors.map(e => e.message));
+    }
+    expect(isNode(result.tree, 'Rules')).toBe(true);
+    if (isNode(result.tree, 'Rules')) {
+      const varDecls = result.tree.value.filter(n => isNode(n, 'VarDeclaration'));
+      const rulesets = result.tree.value.filter(n => isNode(n, 'Ruleset'));
+      expect(varDecls.length).toBeGreaterThan(0);
+      expect(rulesets.length).toBeGreaterThan(0);
+    }
+  });
+
   it('parses SCSS $var flags !default and !global', () => {
     const parser = new Parser();
     const result = parser.parse(`$x: 1 !default !global;`);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    const s = String(result.tree);
-    // Jess prints `?:` for conditional assignment and `$^` for setDefined.
-    expect(s).toContain('$^');
-    expect(s).toContain('?:');
+    // Structural assertions: flags should map to VarDeclaration options.
+    expect(serializeTypes(result.tree, { showOptions: true })).toContainString(`
+      (VarDeclaration
+    `);
+    expect(serializeTypes(result.tree, { showOptions: true })).toContainString(`
+      assign: '?:'
+    `);
+    expect(serializeTypes(result.tree, { showOptions: true })).toContainString(`
+      setDefined: true
+    `);
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS interpolation inside strings', () => {
+    const parser = new Parser();
+    const result = parser.parse(`.a { content: "foo #{$bar} baz"; }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(Interpolated');
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS interpolation inside selectors', () => {
+    const parser = new Parser();
+    const result = parser.parse(`.foo-#{$bar} { color: red; }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(Interpolated');
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS interpolation inside declaration names', () => {
+    const parser = new Parser();
+    const result = parser.parse(`.a { #{$prop}: 1; }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(Interpolated');
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS interpolation inside custom property names', () => {
+    const parser = new Parser();
+    const result = parser.parse(`.a { --x-#{$y}: 1; }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(Interpolated');
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS interpolation inside @include mixin names', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@include foo-#{$bar}();`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(Interpolated');
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS interpolation inside @mixin names', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@mixin foo-#{$bar} { .a { color: red; } }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(Mixin');
+    expect(serializeTypes(result.tree)).toContainString('(Interpolated');
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS interpolation inside @media prelude', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@media #{$cond} { .a { color: red; } }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(AtRule');
+    expect(serializeTypes(result.tree)).toContainString('(Interpolated');
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS interpolation inside @supports prelude', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@supports #{$cond} { .a { color: red; } }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(AtRule');
+    expect(serializeTypes(result.tree)).toContainString('(Interpolated');
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS interpolation inside @container prelude', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@container #{$cond} { .a { color: red; } }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(AtRule');
+    expect(serializeTypes(result.tree)).toContainString('(Interpolated');
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS interpolation inside @scope prelude', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@scope #{$cond} { .a { color: red; } }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(AtRule');
+    expect(serializeTypes(result.tree)).toContainString('(Interpolated');
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS interpolation inside @layer names', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@layer foo-#{$bar} { .a { color: red; } }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(AtRule');
+    expect(serializeTypes(result.tree)).toContainString('(Interpolated');
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS interpolation inside @use with(...) config values', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@use "foo" with ($a: #{$b});`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(StyleImport');
+    expect(serializeTypes(result.tree)).toContainString('(Interpolated');
     assertValidTree(result.tree);
   });
 });

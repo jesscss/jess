@@ -151,6 +151,11 @@ export type RulesOptions = {
    * modules to get the same variables.
    */
   local?: boolean;
+  /**
+   * Sass `@forward` semantics: this Rules node exists as an export surface for downstream
+   * consumers, but should not be visible to lookups within the current stylesheet scope.
+   */
+  forward?: boolean;
 };
 
 export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
@@ -311,6 +316,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     const ctx = options.context;
     if (depth === 0) {
+      // Snapshot global emit-tracking so repeated `.toString()` calls remain stable.
+      const __prevCharsetEmitted = ctx?.charsetEmitted;
+      const __prevTopImports = ctx?.topImports ? [...ctx.topImports] : undefined;
       // @charset must be first
       if (ctx?.currentCharset && !ctx.charsetEmitted) {
         const charset = ctx.currentCharset;
@@ -318,6 +326,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const charsetStr = w.capture(() => charset.toTrimmedString(options));
         w.add(charsetStr, charset);
         w.add('\n');
+        // Do not permanently flip `charsetEmitted` here; restore at end.
         ctx.charsetEmitted = true;
       }
       // @import must come after @charset but before other rules
@@ -327,8 +336,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           w.add(normalizeIndent(importStr, ''), importRule);
           w.add('\n');
         }
-        // Clear after rendering to prevent duplicates
-        ctx.topImports = [];
+        // Do not permanently clear; restore at end.
+      }
+      // Restore global tracking (we only needed it during this print).
+      if (ctx) {
+        ctx.charsetEmitted = __prevCharsetEmitted;
+        if (__prevTopImports) {
+          ctx.topImports = __prevTopImports;
+        }
       }
     }
 

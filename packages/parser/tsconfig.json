@@ -4,6 +4,7 @@
     { "path" : "../css-parser" }
   ],
   "compilerOptions": {
+    "noEmit": true,
     "outDir": "./lib",
     "rootDir": "./src"
   },

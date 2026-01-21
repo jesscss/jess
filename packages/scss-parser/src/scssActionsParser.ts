@@ -38,9 +38,16 @@ export class ScssActionsParser extends CssActionsParser {
   declare T: TokenMap;
 
   // SCSS-specific rules (added via productions registration)
+  scssCondition!: Rule;
+  scssGuardOr!: Rule;
+  scssGuardAnd!: Rule;
+  scssGuardInParens!: Rule;
+  scssGuardInner!: Rule;
+  scssComparison!: Rule;
   scssMapLiteral!: Rule;
   scssUseAtRule!: Rule;
   scssForwardAtRule!: Rule;
+  scssExtendAtRule!: Rule;
   scssWithConfig!: Rule;
   scssContentAtRule!: Rule;
   scssIncludeAtRule!: Rule;
@@ -63,13 +70,18 @@ export class ScssActionsParser extends CssActionsParser {
     // SCSS extensions (overrides and additional rules).
     type ProductionFactory = (this: ScssActionsParser, T: TokenMap) => Rule;
     const entries = Object.entries(productions as Record<string, ProductionFactory>);
+    // Two-pass registration:
+    // 1) Register new SCSS-only rules first (so overrides can reference them reliably).
+    // 2) Then register overrides of CSS productions.
     for (const [key, value] of entries) {
+      if (key in cssProductions) continue;
       const rule = value.call(this, T);
-      if (key in cssProductions) {
-        this.OVERRIDE_RULE(key, rule);
-      } else {
-        this.RULE(key, rule);
-      }
+      this.RULE(key, rule);
+    }
+    for (const [key, value] of entries) {
+      if (!(key in cssProductions)) continue;
+      const rule = value.call(this, T);
+      this.OVERRIDE_RULE(key, rule);
     }
 
     if (this.constructor === ScssActionsParser) {

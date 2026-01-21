@@ -1,4 +1,4 @@
-import { type IToken, type CstNode, Lexer } from 'chevrotain';
+import { type IToken, type CstNode, Lexer, type ISyntacticContentAssistPath } from 'chevrotain';
 import { lessTokens, lessFragments } from './lessTokens.js';
 import { createLexerDefinition } from '@jesscss/css-parser';
 import { LessActionsParser, type LessParserConfig, type TokenMap } from './lessActionsParser.js';
@@ -12,6 +12,13 @@ export * from './lessTokens.js';
 const errorMessageProvider = new LessErrorMessageProvider();
 
 export type LessRules = keyof ConditionalPick<LessActionsParser, () => CstNode>;
+
+export type SyntacticContentAssistSuggestion = {
+  nextTokenType: string;
+  nextTokenLabel?: string;
+  ruleStack: string[];
+  occurrenceStack: number[];
+};
 
 export class Parser {
   lexer: Lexer;
@@ -58,5 +65,30 @@ export class Parser {
     const warnings = [...parser.warnings];
 
     return { tree, lexerResult, errors: parser.errors, warnings };
+  }
+
+  /**
+   * IDE helper: suggest next possible token types at `offset` using Chevrotain's
+   * syntactic content assist. This is syntactic-only (not semantic completion).
+   *
+   * Note: content assist is significantly slower than normal parsing, so it
+   * should be called on-demand (e.g. near the cursor).
+   */
+  suggest(text: string, init: { offset: number; rule?: LessRules }): SyntacticContentAssistSuggestion[] {
+    const { offset, rule = 'stylesheet' } = init;
+    const prefix = text.slice(0, Math.max(0, offset));
+    const lexerResult = this.lexer.tokenize(prefix);
+    const tokens: IToken[] = lexerResult.tokens;
+    try {
+      const paths = (this.parser as any).computeContentAssist(rule, tokens) as ISyntacticContentAssistPath[];
+      return paths.map(p => ({
+        nextTokenType: p.nextTokenType.name,
+        nextTokenLabel: (p.nextTokenType as any).LABEL,
+        ruleStack: p.ruleStack,
+        occurrenceStack: p.occurrenceStack
+      }));
+    } catch {
+      return [];
+    }
   }
 }

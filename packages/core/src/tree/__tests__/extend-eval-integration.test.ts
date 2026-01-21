@@ -19,6 +19,55 @@ import {
 } from '../index.js';
 
 describe('extend integration (eval -> toString)', () => {
+  it('exact extend matches a single OR-branch (does not require all branches)', async () => {
+    // Encodes the Less expectation:
+    // - Exact matching should succeed if ANY selector-list item can match the extend target by choosing
+    //   a single branch inside :is(...), rather than requiring all OR branches to match.
+    //
+    // Conceptually:
+    //   parent:  .replace.replace, .c.replace + .replace { ... }
+    //   nested:  & .replace, & .c { ... }
+    // materializes to:
+    //   :is(.replace.replace, .c.replace + .replace) .replace,
+    //   :is(.replace.replace, .c.replace + .replace) .c
+    //
+    // Exact extend:
+    //   .rep_ace:extend(.replace.replace .replace) {}
+    //
+    // should match the first item by selecting the `.replace.replace` branch from `:is(...)`.
+
+    const parentIs = pseudo({
+      name: ':is',
+      arg: sellist([
+        compound([el('.replace'), el('.replace')]),
+        sel([compound([el('.c'), el('.replace')]), co('+'), el('.replace')])
+      ])
+    });
+
+    const root = rules([
+      ruleset({
+        selector: sellist([sel([parentIs, co(' '), el('.replace')]), sel([parentIs.copy(true), co(' '), el('.c')])]),
+        rules: rules([decl({ name: 'prop', value: any('copy-paste-replace') })])
+      }),
+      ruleset({
+        selector: el('.rep_ace'),
+        rules: rules([
+          extend({
+            target: sel([compound([el('.replace'), el('.replace')]), co(' '), el('.replace')]),
+            flag: ExtendFlag.Exact
+          })
+        ])
+      })
+    ]);
+
+    const context = new Context({ collapseNesting: false });
+    const evald = await root.eval(context);
+    const css = evald.toString({ context });
+
+    // We expect the extend to apply (selector list should include `.rep_ace` at least once).
+    expect(css).toContain('.rep_ace');
+  });
+
   it('extends selectors inside nested rulesets (Less extend-selector replace case)', async () => {
     // Represents:
     // .replace.replace,

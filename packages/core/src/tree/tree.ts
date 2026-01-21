@@ -1,10 +1,11 @@
 import type { Ampersand } from './ampersand.js';
-import type { Any, Anonymous } from './any.js';
+import type { Any, Anonymous, Keyword } from './any.js';
 import type { AtRule } from './at-rule.js';
 import type { Call } from './call.js';
 import type { Declaration } from './declaration.js';
 import type { Dimension } from './dimension.js';
 import type { Expression } from './expression.js';
+import type { Operation } from './operation.js';
 import type { BasicSelector } from './selector-basic.js';
 import type { List } from './list.js';
 import type { Mixin } from './mixin.js';
@@ -39,11 +40,13 @@ export type Nodes = {
   Ampersand: typeof Ampersand;
   Any: typeof Any;
   Anonymous: typeof Anonymous;
+  Keyword: typeof Keyword;
   AtRule: typeof AtRule;
   Call: typeof Call;
   Comment: typeof Comment;
   Declaration: typeof Declaration;
   Expression: typeof Expression;
+  Operation: typeof Operation;
   VarDeclaration: typeof VarDeclaration;
   Dimension: typeof Dimension;
   Num: typeof Num;

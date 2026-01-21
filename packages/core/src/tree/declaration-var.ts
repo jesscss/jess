@@ -49,8 +49,8 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const rule = this.options?.setDefined ? '$^' : '$';
-    w.add(rule, this);
+    // Vars always print with `$` prefix; setDefined affects the assignment token.
+    w.add('$', this);
     const before = w.mark();
     const s = this.declTrimmedString(options);
     const emitted = w.getSince(before);

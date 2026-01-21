@@ -6,8 +6,10 @@ import { Nil } from './nil.js';
 import { Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
 import { getEntries } from './util/collections.js';
+import { isNode } from './util/is-node.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { PrintOptions } from './util/print.js';
+import { ComplexSelector } from './selector-complex.js';
 
 /**
  * @example
@@ -95,16 +97,48 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
       },
       (sel) => {
         let { value } = sel;
-        value = value
-          .filter(n => n && !(n instanceof Nil))
-          .sort((a, b) => {
-            let aIsElement = !nonElementRegex.test(a.valueOf());
-            let bIsElement = !nonElementRegex.test(b.valueOf());
-            if (aIsElement && bIsElement) {
-              return a.valueOf() < b.valueOf() ? -1 : 1;
+        value = value.filter(n => n && !(n instanceof Nil));
+        // If we ended up with a generated-looking `:is(<complex>)` as the first component
+        // of a compound selector (e.g. from `&` resolving to a complex selector) followed by
+        // additional simple selectors like attributes, merge those suffixes into the last
+        // component of the complex selector. This yields `* b[e]` instead of `:is(* b)[e]`.
+        //
+        // This is only safe to do in collapse-nesting mode, where we aggressively wrap complex
+        // selectors in `:is()` to keep selectors valid during evaluation.
+        if (context.opts.collapseNesting && value.length > 1) {
+          const first = value[0];
+          if (first && isNode(first as any, 'PseudoSelector') && (first as any).value?.name === ':is') {
+            const arg = (first as any).value?.arg;
+            if (arg && isNode(arg, 'ComplexSelector')) {
+              const suffix = value.slice(1);
+              // Clone to avoid mutating shared selector instances
+              const complex = (arg as ComplexSelector).copy(true) as ComplexSelector;
+              // Find last non-combinator component and attach suffix
+              for (let i = complex.value.length - 1; i >= 0; i--) {
+                const comp = complex.value[i]!;
+                if (isNode(comp as any, 'Combinator')) continue;
+                if (isNode(comp as any, 'CompoundSelector')) {
+                  (comp as any).value.push(...suffix.map(s => (s as any).copy(true)));
+                } else {
+                  // Wrap the last simple selector into a compound so suffix can attach
+                  complex.value[i] = (CompoundSelector as any).create([
+                    (comp as any).copy(true),
+                    ...suffix.map(s => (s as any).copy(true))
+                  ]);
+                }
+                return (complex as any).inherit(this) as Selector;
+              }
             }
-            return aIsElement ? -1 : bIsElement ? 1 : 0;
-          });
+          }
+        }
+        value = value.sort((a, b) => {
+          let aIsElement = !nonElementRegex.test(a.valueOf());
+          let bIsElement = !nonElementRegex.test(b.valueOf());
+          if (aIsElement && bIsElement) {
+            return a.valueOf() < b.valueOf() ? -1 : 1;
+          }
+          return aIsElement ? -1 : bIsElement ? 1 : 0;
+        });
         if (value.length === 0) {
           return (new Nil()).inherit(this);
         }

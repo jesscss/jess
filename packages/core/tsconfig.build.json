@@ -2,7 +2,9 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "rootDir": "./src",
-    "outDir": "./lib"
+    "outDir": "./lib",
+    "lib": ["esnext"],
+    "noEmit": false
   },
   "include": ["src/**/*.ts", "src/globals.d.ts"],
   "exclude": ["node_modules", "lib", "**/__tests__/**/*"]

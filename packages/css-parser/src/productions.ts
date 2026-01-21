@@ -1583,7 +1583,17 @@ export function atRuleBody(this: C, T: TokenMap) {
 // mediaAtRule
 //   : MEDIA_RULE WS* mediaQuery WS* LCURLY main RCURLY
 //   ;
-export function mediaAtRule(this: C, T: TokenMap) {
+type PreludeRule = unknown;
+
+function resolvePreludeRule($: any, preludeRule: PreludeRule): unknown {
+  if (typeof preludeRule === 'string') {
+    const rec = $ as unknown as Record<string, unknown>;
+    return rec[preludeRule];
+  }
+  return preludeRule;
+}
+
+export function mediaAtRule(this: C, T: TokenMap, preludeRule?: PreludeRule) {
   const $ = this;
 
   return (ctx: RuleContext = {}) => {
@@ -1591,7 +1601,10 @@ export function mediaAtRule(this: C, T: TokenMap) {
     $.startRule();
     let name = $.CONSUME(T.AtMedia);
     let rules: Rules;
-    let prelude: Node = $.SUBRULE($.mediaQueryList, { ARGS: [ctx] });
+    const resolvedPreludeRule = resolvePreludeRule($, preludeRule);
+    const prelude: Node = typeof resolvedPreludeRule === 'function'
+      ? $.SUBRULE(resolvedPreludeRule as any, { ARGS: [ctx] })
+      : $.SUBRULE($.mediaQueryList, { ARGS: [ctx] });
     $.CONSUME(T.LCurly);
     rules = $.SUBRULE($.atRuleBody, { ARGS: [ctx] });
     $.CONSUME(T.RCurly);
@@ -2333,42 +2346,50 @@ export function keyframesName(this: C, T: TokenMap) {
  *
  * @see https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@container
  */
-export function containerAtRule(this: C, T: TokenMap) {
+export function containerAtRule(this: C, T: TokenMap, preludeRule?: PreludeRule) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
     const name = $.CONSUME(T.AtContainer);
+    let prelude: Node | undefined;
     let containerName: Node | undefined;
     let queryList: Node | undefined;
 
-    $.OR([
-      {
-        GATE: () => {
-          const next = $.LA(1);
-          // If it's a FunctionStart (like `size(` or `style(`), it's a query function, not a container name
-          if (tokenMatcher(next, T.FunctionStart)) {
-            return false;
-          }
-          // If it's an Ident (not a query keyword), it could be a container name
-          return (next.tokenType === T.Ident || next.tokenType === T.PlainIdent)
-            && next.image.toLowerCase() !== 'not'
-            && next.image.toLowerCase() !== 'only'
-            && next.image.toLowerCase() !== 'and'
-            && next.image.toLowerCase() !== 'or';
-        },
-        ALT: () => {
-          containerName = $.SUBRULE($.containerName, { ARGS: [ctx] });
-          queryList = $.SUBRULE($.containerQueryList, { ARGS: [ctx] });
-        }
-      },
-      {
-        ALT: () => {
-          queryList = $.SUBRULE2($.containerQueryList, { ARGS: [ctx] });
-        }
+    if (preludeRule) {
+      const resolvedPreludeRule = resolvePreludeRule($, preludeRule);
+      if (typeof resolvedPreludeRule === 'function') {
+        prelude = $.SUBRULE(resolvedPreludeRule as any, { ARGS: [ctx] });
       }
-    ]);
+    } else {
+      $.OR([
+        {
+          GATE: () => {
+            const next = $.LA(1);
+            // If it's a FunctionStart (like `size(` or `style(`), it's a query function, not a container name
+            if (tokenMatcher(next, T.FunctionStart)) {
+              return false;
+            }
+            // If it's an Ident (not a query keyword), it could be a container name
+            return (next.tokenType === T.Ident || next.tokenType === T.PlainIdent)
+              && next.image.toLowerCase() !== 'not'
+              && next.image.toLowerCase() !== 'only'
+              && next.image.toLowerCase() !== 'and'
+              && next.image.toLowerCase() !== 'or';
+          },
+          ALT: () => {
+            containerName = $.SUBRULE($.containerName, { ARGS: [ctx] });
+            queryList = $.SUBRULE($.containerQueryList, { ARGS: [ctx] });
+          }
+        },
+        {
+          ALT: () => {
+            queryList = $.SUBRULE2($.containerQueryList, { ARGS: [ctx] });
+          }
+        }
+      ]);
 
-    queryList = queryList!;
+      queryList = queryList!;
+    }
 
     $.CONSUME(T.LCurly);
     const rules = $.SUBRULE($.atRuleBody, { ARGS: [ctx] });
@@ -2376,14 +2397,18 @@ export function containerAtRule(this: C, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       let preludeNodes: Node[] = [];
-      if (containerName) {
+      if (!prelude && containerName) {
         preludeNodes.push($.wrap(containerName, true));
       }
-      preludeNodes.push($.wrap(queryList, containerName ? true : 'both'));
-
+      if (!prelude) {
+        preludeNodes.push($.wrap(queryList!, containerName ? true : 'both'));
+        prelude = preludeNodes.length
+          ? $.wrap(new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context), 'both')
+          : undefined;
+      }
       return new AtRule({
         name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context), true),
-        prelude: preludeNodes.length ? $.wrap(new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context), 'both') : undefined,
+        prelude,
         rules
       }, { nestable: true }, $.endRule(), this.context);
     }
@@ -2873,20 +2898,33 @@ export function containerFeature(this: C, T: TokenMap, alt?: AltContext) {
 }
 
 // scopeAtRule: @scope <prelude>? { main }
-export function scopeAtRule(this: C, T: TokenMap) {
+export function scopeAtRule(this: C, T: TokenMap, preludeRule?: PreludeRule) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
     const name = $.CONSUME(T.AtScope);
-    const preludeNodes: Node[] = [];
-    $.MANY(() => preludeNodes.push($.wrap($.SUBRULE($.anyOuterValue, { ARGS: [ctx] }))));
+    let prelude: Node | undefined;
+    if (preludeRule) {
+      const resolvedPreludeRule = resolvePreludeRule($, preludeRule);
+      if (typeof resolvedPreludeRule === 'function') {
+        prelude = $.SUBRULE(resolvedPreludeRule as any, { ARGS: [ctx] });
+      }
+    } else {
+      const preludeNodes: Node[] = [];
+      $.MANY(() => preludeNodes.push($.wrap($.SUBRULE($.anyOuterValue, { ARGS: [ctx] }))));
+      if (!$.RECORDING_PHASE) {
+        prelude = preludeNodes.length
+          ? $.wrap(new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context), 'both')
+          : undefined;
+      }
+    }
     $.CONSUME(T.LCurly);
     const rules = $.SUBRULE($.atRuleBody, { ARGS: [ctx] });
     $.CONSUME(T.RCurly);
     if (!$.RECORDING_PHASE) {
       return new AtRule({
         name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context), true),
-        prelude: preludeNodes.length ? $.wrap(new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context), 'both') : undefined,
+        prelude,
         rules
       }, { nestable: true }, $.endRule(), this.context);
     }
@@ -3019,14 +3057,17 @@ export function layerName(this: C, T: TokenMap) {
 // supportsAtRule
 //   : SUPPORTS_RULE WS* supportsCondition WS* LCURLY main RCURLY
 //   ;
-export function supportsAtRule(this: C, T: TokenMap) {
+export function supportsAtRule(this: C, T: TokenMap, preludeRule?: any) {
   const $ = this;
 
   return (ctx: RuleContext = {}) => {
     $.startRule();
 
     let name = $.CONSUME(T.AtSupports);
-    let prelude = $.SUBRULE($.supportsCondition, { ARGS: [ctx] });
+    const resolvedPreludeRule = resolvePreludeRule($, preludeRule);
+    const prelude: Node = typeof resolvedPreludeRule === 'function'
+      ? $.SUBRULE(resolvedPreludeRule as any, { ARGS: [ctx] })
+      : $.SUBRULE($.supportsCondition, { ARGS: [ctx] });
     $.CONSUME(T.LCurly);
     let rules = $.SUBRULE($.atRuleBody, { ARGS: [ctx] });
     $.CONSUME(T.RCurly);

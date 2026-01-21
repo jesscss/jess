@@ -1,13 +1,13 @@
-import { Node, F_MAY_ASYNC, F_NON_STATIC, defineType } from './node.js';
+import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType } from './node.js';
 import { type Reference } from './reference.js';
-import { rules, Rules, type RulesOptions, type RulesVisibility } from './rules.js';
+import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
 import { Url } from './url.js';
 import { type Context } from '../context.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
-import { normalizeFilenameToNamespace } from './util/format.js';
 import type { Ruleset } from './ruleset.js';
+import type { Collection } from './collection.js';
 
 /**
  * This class is for Jess / Sass+ / Less-style imports,
@@ -41,8 +41,12 @@ export type ImportOptions = {
    * Default is false for @-compose (protected by default), true for @-import.
    */
   mutable?: boolean;
-  /** Variables and mixins are forwarded to a downstream stylesheet. */
-  export?: boolean;
+  /**
+   * Sass `@forward` semantics:
+   * - members are NOT visible to the current stylesheet scope
+   * - members ARE made available downstream when this stylesheet is imported
+   */
+  forward?: boolean;
   /** Variables can't be reassigned (default is true for `@-compose` and false for `@-import`). */
   readonly?: boolean;
   [key: string]: any;
@@ -77,7 +81,7 @@ export type StyleImportValue = {
 
   /** Values to inject */
   with?: {
-    node: Reference | Rules;
+    node: Reference | Collection;
     /**
      * For use / ref / include statements, will affect how this module is evaluated
      * every time. 'set' can be used once per module, 'with' can be used multiple.
@@ -115,7 +119,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   getFinalRules(evaluatedRules: Rules) {
     let { importOptions, type } = this.options;
     const reference = importOptions!.reference;
-    const isExport = importOptions!.export;
+    const isForward = importOptions!.forward === true;
     // For compose type, default is protected (not mutable). For import type, default is mutable.
     // mutable: false on @import explicitly makes it protected.
     const isProtected = type === 'compose'
@@ -153,13 +157,20 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
      */
     let out = evaluatedRules.clone();
     // Import type: variables are visible and re-exported (not local)
-    // Compose type: variables are visible to parent, but not re-exported unless export is set
-    const isLocal = type === 'compose' && !isExport;
+    // Compose type: variables are visible to parent but not transitive by default (`local: true`)
+    // Forward: not visible locally but *is* transitive (`local: false`)
+    const isLocal = type === 'compose' && !isForward;
     out.options = {
       rulesVisibility: { Ruleset, Declaration, Mixin, VarDeclaration },
       local: isLocal,
+      forward: isForward,
       readonly: importOptions!.readonly ?? (type === 'compose' ? true : false)
     };
+
+    // Forwarded modules should never render output at this scope.
+    if (isForward) {
+      out.removeFlag(F_VISIBLE);
+    }
     // Set sourceNode so variable lookups know they can cross import boundaries
     out.sourceNode = this;
     this.adopt(out);
@@ -214,8 +225,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         if (isNode(withRulesNode, 'Reference')) {
           // Evaluate the reference to get the actual Rules
           const evaluated = await withRulesNode.eval(context);
-          if (!isNode(evaluated, 'Rules')) {
-            throw new Error('with/set node must evaluate to Rules');
+          if (!isNode(evaluated, 'Collection')) {
+            throw new Error('with/set node must evaluate to a Collection');
           }
           withRulesNode = evaluated;
         }

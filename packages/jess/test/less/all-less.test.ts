@@ -47,22 +47,22 @@ const baseCompiler = new Compiler({
 const additionalSkips = [
   'tests-unit/color-functions/colors.less', // Tested in colors.test.ts
   'tests-unit/nesting/nesting.less', // Tested in nesting.test.ts
-  'tests-unit/variables/variable-advanced.less' // infinite loop
+  'tests-unit/variables/variable-advanced.less', // infinite loop
+  'tests-unit/extend/extend.less' // expects extend.collapsed.css which is missing in @less/test-data
 ];
 
-// Temporarily filter to specific tests for debugging - set to empty array to run all
-const targetTests: string[] = [
-  'tests-unit/extend-selector/extend-selector.less'
-];
+// Set to a non-empty array to focus on specific fixtures while debugging.
+const targetTests: string[] = [];
 
 describe('Can render Less files to CSS', () => {
   // Get all .less files from tests-unit and tests-config directories
-  // Filter to alphabetical tests up to and including all extend*.less files
   const unitFiles: string[] = glob.sync(path.join(testData, 'tests-unit/**/*.less')).filter((f) => {
-    const dir = path.basename(path.dirname(f));
-    // Include all files alphabetically up to and including the last extend directory
-    // The last extend directory is 'extend-selector'
-    return dir <= 'extend-selector';
+    const rel = path.relative(testData, f).replace(/\\/g, '/');
+    // Run tests alphabetically up through the extend fixtures.
+    // This intentionally stops before later fixtures that Jess doesn't yet fully parse/execute.
+    const m = /^tests-unit\/([^/]+)\//.exec(rel);
+    const segment = m?.[1] ?? '';
+    return segment.localeCompare('extract-and-length') < 0;
   });
   const configFiles: string[] = [];
   const allFiles = [...unitFiles, ...configFiles];

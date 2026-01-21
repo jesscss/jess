@@ -1,32 +1,20 @@
 import { Selector } from '../selector.js';
-import { Nil } from '../nil.js';
 import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
 import { ComplexSelector } from '../selector-complex.js';
 import { SelectorList } from '../selector-list.js';
+import { PseudoSelector } from '../selector-pseudo.js';
 import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import { isNode } from './is-node.js';
 // #region agent log
 import { syncLog } from '../util/__tests__/debug-log.js';
 // #endregion
 
+// Some build targets for core do not include Node typings; keep debug gating type-safe.
+declare const process: { env: Record<string, string | undefined> };
+
 // #region agent log
-function __agentAmpTrace(location: string, message: string, data: Record<string, unknown>) {
-  if (process.env.DEBUG_EXTEND_TRACE !== 'true') return;
-  fetch('http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sessionId: 'debug-session',
-      runId: process.env.DEBUG_RUN_ID || 'extend-trace',
-      hypothesisId: 'H-trace',
-      location,
-      message,
-      data,
-      timestamp: Date.now()
-    })
-  }).catch(() => {});
-}
+let __agentImplicitIsCount = 0;
 // #endregion
 
 /**
@@ -43,16 +31,6 @@ export function addImplicitAmpersand(
   collapseNesting: boolean = false,
   parentSelector?: Selector
 ): Selector {
-  // #region agent log
-  __agentAmpTrace('selector-utils.ts:addImplicitAmpersand', 'enter', {
-    selector: selector.valueOf(),
-    selectorType: selector.type,
-    collapseNesting,
-    hasAmpersandFlag: selector.hasFlag(F_AMPERSAND),
-    hasParentSelector: !!parentSelector,
-    parentSelector: parentSelector ? parentSelector.valueOf() : null
-  });
-  // #endregion
   if (selector.hasFlag(F_AMPERSAND)) {
     return selector;
   }
@@ -86,7 +64,40 @@ export function addImplicitAmpersand(
     // The Node proxy will "adopt" it, reparenting the existing selector and potentially
     // creating circular/self-parent chains when we later call .inherit() on newly created selectors.
     // Always store a copy instead.
-    amp.value.selector = parentSelector.copy(true);
+    // If the parent is a SelectorList and we are NOT collapsing nesting, store it as `:is(parentList)`
+    // so later extend matching can expand it into concrete branches.
+    //
+    // Runtime evidence: keeping a raw SelectorList here causes exact extend targets like
+    // `.replace.replace .replace` to fail to match a nested selector like
+    // `.replace.replace,.c.replace+.replace .replace` (because the parent list is embedded as a list).
+    // Wrapping as `:is(...)` allows normalization to expand the OR branches during matching.
+    const parentCopy = parentSelector.copy(true);
+    if (!collapseNesting && isNode(parentCopy, 'SelectorList')) {
+      const isWrapper = PseudoSelector.create({ name: ':is', arg: parentCopy });
+      isWrapper.generated = true;
+      amp.value.selector = isWrapper;
+      // #region agent log
+      if ((process.env.DEBUG_RUN_ID || '') === 'extend-exact-debug' && __agentImplicitIsCount++ < 25) {
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
+          hypothesisId: 'H16',
+          location: 'selector-utils.ts:addImplicitAmpersand',
+          message: 'wrapped-parent-selectorlist-into-is',
+          data: {
+            collapseNesting,
+            storedType: amp.value.selector.type,
+            storedValue: amp.value.selector.valueOf(),
+            parentType: parentCopy.type,
+            parentValue: parentCopy.valueOf()
+          },
+          timestamp: Date.now()
+        });
+      }
+      // #endregion
+    } else {
+      amp.value.selector = parentCopy;
+    }
     // #region agent log
     if (process.env.DEBUG_IMPLICIT_SELECTOR === 'true') {
       const psParent = parentSelector.parent;
@@ -129,15 +140,7 @@ export function addImplicitAmpersand(
   // Avoid self-parenting: if we include `selector` as a child and then call `.inherit(selector)`,
   // the constructor will adopt `selector` first (setting selector.parent = newComplex),
   // and then `.inherit()` would set newComplex.parent = selector.parent = newComplex.
-  const returnVal = ComplexSelector.create([amp, comb, selector.copy(true)]).inherit(selector);
-  // #region agent log
-  __agentAmpTrace('selector-utils.ts:addImplicitAmpersand', 'created', {
-    in: selector.valueOf(),
-    out: returnVal.valueOf(),
-    collapseNesting
-  });
-  // #endregion
-  return returnVal;
+  return ComplexSelector.create([amp, comb, selector.copy(true)]).inherit(selector);
 }
 
 /**

@@ -109,7 +109,7 @@ function isVariableReferenceChain(node: Reference): boolean {
     if (current.options?.type === 'variable') {
       return true;
     }
-    const target = current.value?.target;
+    const target: unknown = current.value?.target;
     if (isNode(target, 'Reference')) {
       current = target;
       continue;
@@ -118,6 +118,11 @@ function isVariableReferenceChain(node: Reference): boolean {
     return false;
   }
   return false;
+}
+
+function loc(node: Node): LocationInfo | undefined {
+  const location = node.location;
+  return location.length === 6 ? (location as LocationInfo) : undefined;
 }
 
 function wrapOuterExpressionIfNeeded(this: P, node: Node, ctx: RuleContext | undefined): Node {
@@ -136,14 +141,14 @@ function wrapOuterExpressionIfNeeded(this: P, node: Node, ctx: RuleContext | und
   if (isNode(node, 'Reference') && isVariableReferenceChain(node)) {
     // Reference expressions should be outer-wrapped, but not parenthesized.
     // e.g. `$obj.~prop`, NOT `$(obj.~prop)`
-    return new Expression(node, undefined, node.location, this.context);
+    return new Expression(node, undefined, loc(node), this.context);
   }
 
   // Outermost chained mixin/variable calls should be treated as expressions.
   if (isNode(node, 'Call') && shouldWrapCallAsExpression(node)) {
     // Call expressions should be outer-wrapped, but not parenthesized.
     // e.g. `$media()`, NOT `$(media())`
-    return new Expression(node, undefined, node.location, this.context);
+    return new Expression(node, undefined, loc(node), this.context);
   }
 
   // Math expressions: only wrap if this operation would actually be performed.
@@ -161,7 +166,7 @@ function wrapOuterExpressionIfNeeded(this: P, node: Node, ctx: RuleContext | und
       right
     );
     if (shouldOperate) {
-      return new Expression(node, { parens: true }, node.location, this.context);
+      return new Expression(node, { parens: true }, loc(node), this.context);
     }
   }
 

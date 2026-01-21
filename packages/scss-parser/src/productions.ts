@@ -1,12 +1,22 @@
 import { productions as cssProductions } from '@jesscss/css-parser';
 import type { AltContext, RuleContext } from '@jesscss/css-parser';
 import type { IToken } from 'chevrotain';
-import type { ScssActionsParser, TokenMap as ScssTokenMap } from './scssActionsParser.js';
+import { Lexer } from 'chevrotain';
+import { createLexerDefinition } from '@jesscss/css-parser';
+import { ScssActionsParser, type TokenMap as ScssTokenMap } from './scssActionsParser.js';
+import { scssFragments, scssTokens } from './scssTokens.js';
 import {
   Any,
+  AtRule,
   Call,
+  CompoundSelector,
   Collection,
+  Condition,
+  CustomDeclaration,
   Declaration,
+  Extend,
+  Interpolated,
+  INTERPOLATION_PLACEHOLDER,
   type AssignmentType,
   Each,
   Expression,
@@ -17,6 +27,7 @@ import {
   List,
   Mixin,
   Node as JessNode,
+  Paren,
   Quoted,
   Reference,
   Rest,
@@ -28,8 +39,96 @@ import {
   type Rules as RulesType,
   type LocationInfo,
   type Node,
+  type Selector,
+  type SimpleSelector,
   isNode
 } from '@jesscss/core';
+
+type InterpolationMatch = { start: number; end: number; content: string };
+
+function findScssInterpolations(value: string): InterpolationMatch[] {
+  const matches: InterpolationMatch[] = [];
+  let i = 0;
+  while (i < value.length) {
+    if (value[i] === '#' && value[i + 1] === '{') {
+      const start = i;
+      i += 2; // skip #{
+      let braceCount = 1;
+      const contentStart = i;
+      while (i < value.length && braceCount > 0) {
+        const ch = value[i]!;
+        if (ch === '{') braceCount++;
+        else if (ch === '}') braceCount--;
+        i++;
+      }
+      if (braceCount === 0) {
+        matches.push({ start, end: i, content: value.slice(contentStart, i - 1) });
+      }
+    } else {
+      i++;
+    }
+  }
+  return matches;
+}
+
+let interpolationParser:
+  | {
+      lexer: Lexer;
+      parser: ScssActionsParser;
+    }
+  | undefined;
+
+function getInterpolationParser(): { lexer: Lexer; parser: ScssActionsParser } {
+  if (interpolationParser) return interpolationParser;
+  const { lexer, T } = createLexerDefinition(scssFragments(), scssTokens());
+  const chevLexer = new Lexer(lexer, {
+    ensureOptimizations: true,
+    // Keep consistent with Parser wrapper defaults.
+    skipValidations: process.env.TEST !== 'true'
+  });
+  const parser = new ScssActionsParser(lexer, T as any, {
+    skipValidations: process.env.TEST !== 'true'
+  });
+  interpolationParser = { lexer: chevLexer, parser };
+  return interpolationParser;
+}
+
+function parseInterpolationExpression(expr: string): Node {
+  const { lexer, parser } = getInterpolationParser();
+  const lexed = lexer.tokenize(expr);
+  parser.input = lexed.tokens;
+  // Parse as a value sequence (expression-ish).
+  return parser.valueSequence({} as any) as unknown as Node;
+}
+
+function processScssStringInterpolation(
+  value: string,
+  location: LocationInfo,
+  context: any
+): Any | Interpolated {
+  const matches = findScssInterpolations(value);
+  if (matches.length === 0) {
+    return new Any(value, { role: 'any' }, location, context);
+  }
+
+  const replacements: Node[] = [];
+  let source = value;
+  let offset = 0;
+
+  for (const match of matches) {
+    const adjustedStart = match.start - offset;
+    const adjustedEnd = match.end - offset;
+    const before = source.slice(0, adjustedStart);
+    const after = source.slice(adjustedEnd);
+    source = before + INTERPOLATION_PLACEHOLDER + after;
+    offset += (match.end - match.start) - INTERPOLATION_PLACEHOLDER.length;
+
+    const parsed = parseInterpolationExpression(match.content.trim());
+    replacements.push(parsed);
+  }
+
+  return new Interpolated({ source, replacements }, { role: 'any' }, location, context);
+}
 
 /**
  * SCSS-specific production overrides.
@@ -108,6 +207,38 @@ function desugarMapLookup(
   return currentTarget;
 }
 
+function makeNamespacedReference(
+  parser: ScssActionsParser,
+  parts: string[],
+  finalType: 'variable' | 'function' | 'mixin' | 'mixin-ruleset'
+): Reference {
+  // Namespace root: treat like a variable.
+  let current: Reference = new Reference(parts[0]!, { type: 'variable' }, undefined, parser.context);
+  for (let i = 1; i < parts.length; i++) {
+    const isFinal = i === parts.length - 1;
+    const type = isFinal ? finalType : 'index';
+    current = new Reference(
+      { target: current, key: parts[i]! },
+      { type },
+      undefined,
+      parser.context
+    );
+  }
+  return current;
+}
+
+function desugarNamespacedCall(parser: ScssActionsParser, call: Call): Call {
+  const { name } = call.value;
+  if (typeof name !== 'string') return call;
+  if (!name.includes('.')) return call;
+  // Preserve special-casing for map.get() which has additional semantics elsewhere.
+  if (name === 'map.get') return call;
+  const parts = name.split('.').filter(Boolean);
+  if (parts.length < 2) return call;
+  const ref = makeNamespacedReference(parser, parts, 'function');
+  return new Call({ name: ref, args: call.value.args }, call.options, call.location, parser.context);
+}
+
 function looksLikeMapLiteral(la: (k: number) => IToken, T: ScssTokenMap): boolean {
   // Heuristic: scan until matching RParen (no nesting awareness yet) and look for a Colon.
   // This is conservative: it only claims "map" if there is an obvious "key: value".
@@ -130,6 +261,269 @@ function looksLikeMapLiteral(la: (k: number) => IToken, T: ScssTokenMap): boolea
   return false;
 }
 
+/**
+ * SCSS control-flow condition parsing (parse-only).
+ *
+ * Jess requires comparisons to be represented as a `Condition` node. Sass uses `==`,
+ * but Jess uses `=`. We normalize `==` to `=`.
+ *
+ * This rule is intentionally conservative: it only parses a single comparison of the form:
+ * `<valueSequence> (==|=|!=|>=|<=|>|<) <valueSequence>`
+ * and otherwise falls back to a single valueSequence wrapped in a Sequence.
+ */
+/**
+ * Top-level SCSS condition parser (similar to Less's guard).
+ * Returns a Paren(Condition(...)) node (or nested Conditions for and/or).
+ * The Sequence wrapper is added in scssIfAtRule/scssWhileAtRule.
+ */
+export function scssCondition(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    ctx.allowComma = true;
+    const guardNode = $.SUBRULE($.scssGuardOr, { ARGS: [ctx] }) as unknown as Node;
+    // The guardNode is already wrapped in Paren by scssGuardInParens
+    return guardNode;
+  };
+}
+
+function looksLikeScssComparison(la: (k: number) => IToken, T: ScssTokenMap): boolean {
+  // Heuristic: in a top-level guard segment, if we can see a comparison operator
+  // before a hard boundary, prefer parsing as `scssComparison` instead of a plain value.
+  for (let i = 1; i < 30; i++) {
+    const tok = la(i);
+    const tt = tok.tokenType;
+    if (
+      tt === T.LCurly
+      || tt === T.RCurly
+      || tt === T.RParen
+      || tt === T.And
+      || tt === T.Or
+      || tt === T.Comma
+      || tt === T.Semi
+      || tt.name === 'EOF'
+    ) {
+      return false;
+    }
+    if (
+      tt === T.NotEq
+      || tt === T.EqEq
+      || tt === T.Eq
+      || tt === T.Gt
+      || tt === T.GtEq
+      || tt === T.Lt
+      || tt === T.LtEq
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * 'or' expression (similar to Less's guardOr).
+ * Allows comma-separated conditions like historical media queries.
+ */
+export function scssGuardOr(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    let RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+
+    let left = $.SUBRULE($.scssGuardAnd, { ARGS: [ctx] }) as unknown as Node;
+    let right: Node | undefined;
+    $.MANY({
+      GATE: () => {
+        const next = $.LA(1).tokenType;
+        return (ctx.allowComma && next === T.Comma) || next === T.Or;
+      },
+      DEF: () => {
+        /**
+         * Nest expressions within expressions for correct
+         * order of operations.
+         */
+        $.OR([
+          { ALT: () => $.CONSUME(T.Comma) },
+          { ALT: () => $.CONSUME(T.Or) }
+        ]);
+        right = $.SUBRULE2($.scssGuardAnd, { ARGS: [ctx] }) as unknown as Node;
+        if (!RECORDING_PHASE) {
+          let location = $.endRule();
+          $.startRule();
+          left = new Condition(
+            [$.wrap(left, true), 'or', $.wrap(right!)],
+            undefined,
+            location,
+            this.context
+          );
+        }
+      }
+    });
+    if (!RECORDING_PHASE) {
+      $.endRule();
+    }
+    return left;
+  };
+}
+
+/**
+ * 'and' expression (similar to Less's guardAnd).
+ */
+export function scssGuardAnd(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    let left: Node | undefined;
+    let RECORDING_PHASE = $.RECORDING_PHASE;
+    $.MANY_SEP({
+      SEP: T.And,
+      DEF: () => {
+        let not: IToken | undefined;
+        $.OPTION(() => (not = $.CONSUME(T.Not)));
+        let allowComma = ctx.allowComma;
+        ctx.allowComma = false;
+        let right = $.SUBRULE($.scssGuardInParens, { ARGS: [ctx] }) as unknown as Node;
+        ctx.allowComma = allowComma;
+        if (!RECORDING_PHASE && not) {
+          let [,,, endOffset, endLine, endColumn] = right.location!;
+          let [startOffset, startLine, startColumn] = $.getLocationInfo(not);
+          right = new Condition(
+            [right],
+            { negate: true },
+            [startOffset, startLine, startColumn, endOffset, endLine, endColumn],
+            this.context
+          );
+        }
+        if (!left) {
+          left = right;
+          return;
+        }
+        if (!RECORDING_PHASE) {
+          left = new Condition(
+            [$.wrap(left, true), 'and', $.wrap(right)],
+            undefined,
+            $.getLocationFromNodes([left, right]),
+            this.context
+          );
+        }
+      }
+    });
+    return left!;
+  };
+}
+
+/**
+ * Guard in parentheses (similar to Less's guardInParens).
+ * Always wraps in Paren node for consistency with Less.
+ */
+export function scssGuardInParens(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext) => {
+    $.startRule();
+    // Like Less: handle parenthesized content, or fall through to comparison
+    // For non-parenthesized content, try comparison first (it will fail if there's no operator), then fall back to value
+    let node = $.OR([
+      {
+        ALT: () => {
+          $.CONSUME(T.LParen);
+          let innerNode = $.SUBRULE($.scssGuardInner, { ARGS: [ctx] }) as unknown as Node;
+          $.CONSUME(T.RParen);
+          return innerNode;
+        }
+      },
+      {
+        // Try comparison first - it requires an operator, so it will fail if there isn't one
+        GATE: () => looksLikeScssComparison((k) => $.LA(k), T),
+        ALT: () => {
+          return $.SUBRULE($.scssComparison, { ARGS: [ctx] });
+        }
+      },
+      {
+        // Fallback: just a value (no comparison operator)
+        ALT: () => {
+          return $.SUBRULE($.value, { ARGS: [ctx] });
+        }
+      }
+    ]);
+
+    if (!$.RECORDING_PHASE) {
+      node = $.wrap(node, 'both');
+      return new Paren(node, undefined, $.endRule(), this.context);
+    }
+  };
+}
+
+/**
+ * The inner content of a guard inside parentheses (similar to Less's guardInner).
+ */
+export function scssGuardInner(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) =>
+    $.OR([
+      { ALT: () => $.SUBRULE($.scssComparison, { ARGS: [ctx] }) },
+      {
+        GATE: () => {
+          let tokenType = $.LA(1).tokenType;
+          return tokenType !== T.Not;
+        },
+        ALT: () => $.SUBRULE($.value, { ARGS: [ctx] })
+      },
+      {
+        ALT: () => $.SUBRULE($.scssGuardOr, { ARGS: [ctx] })
+      }
+    ]);
+}
+
+/**
+ * Comparison expression (similar to Less's comparison).
+ * Parses comparisons like $a == $b, $a != $b, $a > 10, etc.
+ */
+export function scssComparison(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  let opAlt = [
+    { ALT: () => $.CONSUME(T.NotEq) }, // != (SCSS-specific token)
+    { ALT: () => $.CONSUME(T.EqEq) }, // == (SCSS-specific token, normalized to =)
+    { ALT: () => $.CONSUME(T.Eq) }, // =
+    { ALT: () => $.CONSUME(T.Gt) }, // >
+    { ALT: () => $.CONSUME(T.GtEq) }, // >=
+    { ALT: () => $.CONSUME(T.Lt) }, // <
+    { ALT: () => $.CONSUME(T.LtEq) } // <=
+  ];
+
+  return (ctx: RuleContext = {}) => {
+    // Use valueList like Less does - it should stop at comparison operators
+    // valueList naturally stops when value can't parse the next token (like == or !=)
+    let left = $.SUBRULE($.valueList, { ARGS: [ctx] }) as unknown as Node;
+    let op: IToken;
+    let right: Node;
+    let wasNotEqual = false;
+
+    // Parse comparison operator (always required, like Less)
+    op = $.OR(opAlt);
+    right = $.SUBRULE2($.valueList, { ARGS: [ctx] }) as unknown as Node;
+
+    if (!$.RECORDING_PHASE) {
+      let opStr = op.image;
+      // Check for != (tokenized as NotEq)
+      if (op.tokenType.name === 'NotEq') {
+        wasNotEqual = true;
+        opStr = '=';
+      } else if (opStr === '==') {
+        // Normalize == to =
+        opStr = '=';
+      }
+      const cond = new Condition(
+        [$.wrap(left, true), opStr as any, $.wrap(right)],
+        wasNotEqual ? { negate: true } : undefined,
+        $.getLocationFromNodes([left, right]),
+        this.context
+      );
+      return cond;
+    }
+    // During recording phase, we still need to consume all tokens
+    // Return a dummy value - Chevrotain will track the token consumption
+    return left;
+  };
+}
+
 export function value(this: ScssActionsParser, T: ScssTokenMap, valueAlt?: AltContext) {
   const $ = this;
 
@@ -137,6 +531,119 @@ export function value(this: ScssActionsParser, T: ScssTokenMap, valueAlt?: AltCo
     {
       GATE: () => $.LA(1).tokenType === T.LParen && looksLikeMapLiteral(i => $.LA(i), T),
       ALT: () => $.SUBRULE($.scssMapLiteral, { ARGS: [ctx] })
+    },
+    {
+      // SCSS interpolation in values: `#{$expr}`
+      GATE: () => $.LA(1).tokenType === T.InterpolationStart,
+      ALT: () => {
+        const RECORDING_PHASE = $.RECORDING_PHASE;
+        $.startRule();
+        $.CONSUME(T.InterpolationStart);
+        const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+        $.CONSUME2(T.RCurly);
+        if (!RECORDING_PHASE) {
+          const loc = $.endRule();
+          return new Interpolated(
+            { source: INTERPOLATION_PLACEHOLDER, replacements: [expr] },
+            { role: 'any' },
+            loc,
+            $.context
+          );
+        }
+      }
+    },
+    {
+      // Escaped SCSS module-qualified mixin "ruleset" call in value position:
+      // `ns.\#foo(...)` or `ns.\.foo(...)`
+      //
+      // Tokenizes as: (PlainIdent/Ident) + Unknown('.') + Unknown('\\') + (HashName | DotName) + LParen ...
+      GATE: () =>
+        ($.LA(1).tokenType === T.Ident || $.LA(1).tokenType === T.PlainIdent)
+        && $.LA(2).tokenType === T.Unknown
+        && $.LA(2).image === '.'
+        && $.LA(3).tokenType === T.Unknown
+        && $.LA(3).image === '\\'
+        && ($.LA(4).tokenType === T.HashName || $.LA(4).tokenType === T.DotName)
+        && $.LA(5).tokenType === T.LParen,
+      ALT: () => {
+        const RECORDING_PHASE = $.RECORDING_PHASE;
+        $.startRule();
+        const nsTok = $.OR4([
+          { GATE: () => $.LA(1).tokenType === T.Ident, ALT: () => $.CONSUME4(T.Ident) },
+          { ALT: () => $.CONSUME3(T.PlainIdent) }
+        ]) as unknown as IToken;
+        $.CONSUME2(T.Unknown); // '.'
+        $.CONSUME3(T.Unknown); // '\'
+        const member = $.OR5([
+          { GATE: () => $.LA(1).tokenType === T.HashName, ALT: () => $.CONSUME(T.HashName) },
+          { ALT: () => $.CONSUME2(T.DotName) }
+        ]) as unknown as IToken;
+        $.CONSUME2(T.LParen);
+        let args: List | undefined;
+        $.OPTION5(() => (args = $.SUBRULE2($.functionCallArgs, { ARGS: [ctx] })));
+        $.CONSUME2(T.RParen);
+        if (!RECORDING_PHASE) {
+          const loc = $.endRule();
+          const key = member.image.slice(1);
+          const ref = makeNamespacedReference($, [nsTok.image, key], 'mixin-ruleset');
+          const call = new Call({ name: ref, args }, undefined, loc, $.context);
+          return new Expression(call, undefined, loc, $.context);
+        }
+      }
+    },
+    {
+      // SCSS module-member variable: `ns.$var`
+      GATE: () =>
+        ($.LA(1).tokenType === T.Ident || $.LA(1).tokenType === T.PlainIdent)
+        && $.LA(2).tokenType === T.Unknown
+        && $.LA(2).image === '.'
+        && $.LA(3).tokenType === T.DollarVariable,
+      ALT: () => {
+        const RECORDING_PHASE = $.RECORDING_PHASE;
+        $.startRule();
+        const nsTok = $.OR2([
+          { GATE: () => $.LA(1).tokenType === T.Ident, ALT: () => $.CONSUME2(T.Ident) },
+          { ALT: () => $.CONSUME(T.PlainIdent) }
+        ]) as unknown as IToken;
+        $.CONSUME(T.Unknown); // '.'
+        const dv = $.CONSUME2(T.DollarVariable);
+        if (!RECORDING_PHASE) {
+          const loc = $.endRule();
+          const ns = nsTok.image;
+          const key = dv.image.slice(1);
+          const nsRef = new Reference(ns, { type: 'variable' }, loc, $.context);
+          const ref = new Reference({ target: nsRef, key }, { type: 'variable' }, loc, $.context);
+          return new Expression(ref, undefined, loc, $.context);
+        }
+      }
+    },
+    {
+      // SCSS module-qualified function call in value position: `ns.fn(...)`
+      // Tokenizes as: PlainIdent/Ident + DotName(".fn") + LParen ...
+      GATE: () =>
+        ($.LA(1).tokenType === T.Ident || $.LA(1).tokenType === T.PlainIdent)
+        && $.LA(2).tokenType === T.DotName
+        && $.LA(3).tokenType === T.LParen,
+      ALT: () => {
+        const RECORDING_PHASE = $.RECORDING_PHASE;
+        $.startRule();
+        const nsTok = $.OR3([
+          { GATE: () => $.LA(1).tokenType === T.Ident, ALT: () => $.CONSUME3(T.Ident) },
+          { ALT: () => $.CONSUME2(T.PlainIdent) }
+        ]) as unknown as IToken;
+        const dot = $.CONSUME(T.DotName); // ".fn"
+        $.CONSUME(T.LParen);
+        let args: List | undefined;
+        $.OPTION2(() => (args = $.SUBRULE($.functionCallArgs, { ARGS: [ctx] })));
+        $.CONSUME(T.RParen);
+        if (!RECORDING_PHASE) {
+          const loc = $.endRule();
+          const fnName = `${nsTok.image}.${dot.image.slice(1)}`;
+          const call = new Call({ name: fnName, args }, undefined, loc, $.context);
+          const maybe = desugarNamespacedCall($, call);
+          return new Expression(maybe, undefined, loc, $.context);
+        }
+      }
     },
     { ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] }) },
     { ALT: () => $.CONSUME(T.DollarVariable) },
@@ -176,6 +683,36 @@ export function value(this: ScssActionsParser, T: ScssTokenMap, valueAlt?: AltCo
 }
 
 /**
+ * Override CSS functionCall to desugar module-qualified calls like `ns.fn(...)`.
+ * We return an Expression(Call(Reference(ns.fn))) to match Less-style outer wrapping.
+ */
+export function functionCall(this: ScssActionsParser, T: ScssTokenMap, alt?: AltContext) {
+  const $ = this;
+  const base = cssProductions.functionCall.call(this, T, alt);
+  return (ctx: RuleContext = {}) => {
+    const node = base(ctx) as unknown as Call;
+    if ($.RECORDING_PHASE) return node;
+    if (!isNode(node, 'Call')) return node as unknown as any;
+
+    // First, keep existing Sass map.get() desugaring behavior.
+    const mapped = desugarMapLookup(this, node);
+    if (isNode(mapped, 'Reference')) {
+      return mapped as unknown as any;
+    }
+    const call = mapped as Call;
+
+    const maybe = desugarNamespacedCall(this, call);
+    if (maybe !== call) {
+      const loc: LocationInfo | undefined = Array.isArray(maybe.location) && maybe.location.length === 6
+        ? (maybe.location as LocationInfo)
+        : undefined;
+      return new Expression(maybe, undefined, loc, $.context);
+    }
+    return call;
+  };
+}
+
+/**
  * Override CSS `main` to allow root-level SCSS variable declarations (`$x: ...;`).
  */
 export function main(this: ScssActionsParser, T: ScssTokenMap, alt?: AltContext) {
@@ -190,6 +727,153 @@ export function main(this: ScssActionsParser, T: ScssTokenMap, alt?: AltContext)
   ];
 
   return cssProductions.main.call(this, T, alt as any);
+}
+
+/**
+ * Override CSS `compoundSelector` to support SCSS interpolation `#{ ... }` inside selectors.
+ *
+ * Example: `.foo-#{$bar}` becomes an `Interpolated` selector value.
+ */
+export function compoundSelector(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+
+    let selectors: SimpleSelector[] = [];
+    let source = '';
+    const replacements: Node[] = [];
+
+    const appendTokenSpan = (startTokenOffset: number, endTokenOffset: number) => {
+      const origTokens = ($ as any).originalInput as IToken[];
+      let out = '';
+      for (const tok of origTokens) {
+        if (tok.startOffset < startTokenOffset) continue;
+        if (tok.startOffset > endTokenOffset) break;
+        out += tok.image;
+      }
+      source += out;
+    };
+
+    // First atom is required.
+    $.OR([
+      {
+        GATE: () => $.LA(1).tokenType === T.InterpolationStart,
+        ALT: () => {
+          $.CONSUME(T.InterpolationStart);
+          const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+          $.CONSUME(T.RCurly);
+          if (!RECORDING_PHASE) {
+            source += INTERPOLATION_PLACEHOLDER;
+            replacements.push(expr);
+          }
+        }
+      },
+      {
+        ALT: () => {
+          let startTokenOffset = 0;
+          if (!RECORDING_PHASE) startTokenOffset = $.LA(1).startOffset;
+          const sel = $.SUBRULE2($.simpleSelector, { ARGS: [ctx] }) as unknown as SimpleSelector;
+          if (!RECORDING_PHASE) {
+            const endTokenOffset = $.LA(-1).startOffset;
+            selectors.push(sel);
+            appendTokenSpan(startTokenOffset, endTokenOffset);
+          }
+        }
+      }
+    ]);
+
+    // Additional atoms only when there's no whitespace.
+    $.MANY({
+      GATE: () => !$.hasWS(),
+      DEF: () => {
+        $.OR2([
+          {
+            GATE: () => $.LA(1).tokenType === T.InterpolationStart,
+            ALT: () => {
+              $.CONSUME2(T.InterpolationStart);
+              const expr = $.SUBRULE3($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+              $.CONSUME2(T.RCurly);
+              if (!RECORDING_PHASE) {
+                source += INTERPOLATION_PLACEHOLDER;
+                replacements.push(expr);
+              }
+            }
+          },
+          {
+            ALT: () => {
+              let startTokenOffset = 0;
+              if (!RECORDING_PHASE) startTokenOffset = $.LA(1).startOffset;
+              const sel = $.SUBRULE4($.simpleSelector, { ARGS: [ctx] }) as unknown as SimpleSelector;
+              if (!RECORDING_PHASE) {
+                const endTokenOffset = $.LA(-1).startOffset;
+                selectors.push(sel);
+                appendTokenSpan(startTokenOffset, endTokenOffset);
+              }
+            }
+          }
+        ]);
+      }
+    });
+
+    if (!RECORDING_PHASE) {
+      const location = $.endRule();
+      if (replacements.length > 0) {
+        return new Interpolated({ source, replacements }, { role: 'ident' }, location, $.context);
+      }
+      if (selectors.length === 1) return selectors[0]!;
+      return new CompoundSelector(selectors, undefined, location, $.context);
+    }
+  };
+}
+
+/**
+ * Override CSS `string` to support SCSS interpolation `#{ ... }` inside quoted strings.
+ */
+export function string(this: ScssActionsParser, T: ScssTokenMap, stringAlt?: AltContext) {
+  const $ = this;
+
+  stringAlt ??= (ctx: RuleContext = {}) => [
+    {
+      ALT: () => {
+        const RECORDING_PHASE = $.RECORDING_PHASE;
+        $.startRule();
+        const quote = $.CONSUME(T.SingleQuoteStart);
+
+        let contents: IToken | undefined;
+        $.OPTION(() => contents = $.CONSUME(T.SingleQuoteStringContents));
+
+        $.CONSUME(T.SingleQuoteEnd);
+        if (!RECORDING_PHASE) {
+          const location = $.endRule();
+          const raw = contents?.image ?? '';
+          const inner = processScssStringInterpolation(raw, location, $.context);
+          return new Quoted(inner as any, { quote: quote.image as '"' | '\'' }, location, $.context);
+        }
+      }
+    },
+    {
+      ALT: () => {
+        const RECORDING_PHASE = $.RECORDING_PHASE;
+        $.startRule();
+        const quote = $.CONSUME2(T.DoubleQuoteStart);
+
+        let contents: IToken | undefined;
+        $.OPTION2(() => contents = $.CONSUME2(T.DoubleQuoteStringContents));
+
+        $.CONSUME(T.DoubleQuoteEnd);
+        if (!RECORDING_PHASE) {
+          const location = $.endRule();
+          const raw = contents?.image ?? '';
+          const inner = processScssStringInterpolation(raw, location, $.context);
+          return new Quoted(inner as any, { quote: quote.image as '"' | '\'' }, location, $.context);
+        }
+      }
+    }
+  ];
+
+  return (ctx: RuleContext = {}) => $.OR(stringAlt!(ctx));
 }
 
 /**
@@ -239,50 +923,6 @@ export function scssMapLiteral(this: ScssActionsParser, T: ScssTokenMap) {
       return $.wrap(coll);
     }
   };
-}
-
-export function functionCall(this: ScssActionsParser, T: ScssTokenMap, alt?: AltContext) {
-  const $ = this;
-
-  alt ??= (ctx: RuleContext = {}) => [
-    {
-      GATE: () => {
-        const tokenType = $.LA(1).tokenType;
-        return tokenType === T.UrlStart
-          || tokenType === T.Var
-          || tokenType === T.Calc;
-      },
-      ALT: () => $.SUBRULE($.knownFunctions, { ARGS: [ctx] })
-    },
-    {
-      GATE: () => {
-        const tokenType = $.LA(1).tokenType;
-        return tokenType !== T.UrlStart
-          && tokenType !== T.Var
-          && tokenType !== T.Calc;
-      },
-      ALT: () => {
-        $.startRule();
-        const nameTok = $.CONSUME(T.FunctionStart);
-        let args: List | undefined;
-        $.OPTION(() => (args = $.SUBRULE($.functionCallArgs, { ARGS: [ctx] })));
-        $.CONSUME(T.RParen);
-
-        if (!$.RECORDING_PHASE) {
-          const location = $.endRule();
-          const call = new Call(
-            { name: nameTok.image.slice(0, -1), args },
-            undefined,
-            location,
-            $.context
-          );
-          return desugarMapLookup($, call);
-        }
-      }
-    }
-  ];
-
-  return (ctx: RuleContext = {}) => $.OR(alt!(ctx));
 }
 
 function isScriptUsePath(path: string): boolean {
@@ -340,12 +980,12 @@ export function scssUseAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     });
 
     // optional "with (...)"
-    let withRules: RulesType | undefined;
+    let withRules: Collection | undefined;
     $.OPTION2({
       GATE: () => $.LA(1).image === 'with',
       DEF: () => {
         $.CONSUME3(T.Ident);
-        withRules = $.SUBRULE($.scssWithConfig, { ARGS: [ctx] }) as unknown as RulesType;
+        withRules = $.SUBRULE($.scssWithConfig, { ARGS: [ctx] }) as unknown as Collection;
       }
     });
 
@@ -386,9 +1026,8 @@ export function scssUseAtRule(this: ScssActionsParser, T: ScssTokenMap) {
 
 /**
  * SCSS: `@forward` → `StyleImport(type='compose')` with `(forward)` semantics:
- * - reference: true
- * - export: true
- * - mutable: false (protected)
+ * - forward: true (not visible locally; available downstream)
+ * - (compose is protected by default unless `mutable: true`)
  *
  * Full show/hide/as parsing is deferred; we currently ignore extra prelude tokens.
  */
@@ -401,9 +1040,28 @@ export function scssForwardAtRule(this: ScssActionsParser, T: ScssTokenMap) {
 
     const pathNode = $.SUBRULE($.string, { ARGS: [ctx] }) as unknown as Quoted;
 
-    // Ignore any extra selectors (show/hide/as) for now.
+    const isWithConfigStart = () => $.LA(1).image === 'with' && $.LA(2).tokenType === T.LParen;
+
+    // optional "with (...)"
+    let withRules: Collection | undefined;
+    $.OPTION({
+      // Tight gate to avoid Chevrotain ambiguity warnings.
+      // Note: "with" may be tokenized as PlainIdent depending on mode/categories.
+      GATE: () => isWithConfigStart(),
+      DEF: () => {
+        // "with" may be Ident or PlainIdent depending on token mode.
+        $.OR([
+          { GATE: () => $.LA(1).tokenType === T.Ident, ALT: () => $.CONSUME(T.Ident) },
+          { ALT: () => $.CONSUME(T.PlainIdent) }
+        ]);
+        withRules = $.SUBRULE($.scssWithConfig, { ARGS: [ctx] }) as unknown as Collection;
+      }
+    });
+
+    // Ignore any remaining prelude (we don't support show/hide/as).
     $.MANY({
-      GATE: () => $.LA(1).tokenType !== T.Semi,
+      // Also exclude the `with (...)` prelude so the OPTION above is unambiguous.
+      GATE: () => $.LA(1).tokenType !== T.Semi && !isWithConfigStart(),
       DEF: () => {
         $.SUBRULE($.anyOuterValue, { ARGS: [ctx] });
       }
@@ -414,11 +1072,47 @@ export function scssForwardAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     if (!RECORDING_PHASE) {
       const loc = $.endRule();
       return new StyleImport(
-        { path: pathNode },
+        { path: pathNode, with: withRules ? { node: withRules, type: 'set' } : undefined },
         {
           type: 'compose',
-          importOptions: { reference: true, export: true, mutable: false }
+          importOptions: { forward: true }
         },
+        loc,
+        $.context
+      );
+    }
+  };
+}
+
+/**
+ * SCSS: `@extend <selector-list> [!optional];`
+ *
+ * We parse it into Jess `Extend` nodes (Sass default flag = All).
+ * `!optional` is accepted (so sass-spec parses) but ignored in evaluation.
+ */
+export function scssExtendAtRule(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    $.CONSUME(T.AtKeyword); // '@extend'
+
+    const target = $.SUBRULE($.selectorList, { ARGS: [ctx] }) as unknown as Node;
+
+    // Accept (but ignore) any trailing bits like `!optional`
+    $.MANY({
+      GATE: () => $.LA(1).tokenType !== T.Semi && $.LA(1).tokenType.name !== 'EOF',
+      DEF: () => {
+        $.SUBRULE($.anyOuterValue, { ARGS: [ctx] });
+      }
+    });
+
+    $.CONSUME(T.Semi);
+    if (!RECORDING_PHASE) {
+      const loc = $.endRule();
+      return new Extend(
+        { target: target as unknown as Selector, flag: 0 },
+        undefined,
         loc,
         $.context
       );
@@ -457,7 +1151,7 @@ export function scssWithConfig(this: ScssActionsParser, T: ScssTokenMap) {
     $.CONSUME(T.RParen);
     if (!RECORDING_PHASE) {
       const loc = $.endRule();
-      return new Rules(decls ?? [], undefined, loc, $.context) as unknown as RulesType;
+      return new Collection(decls ?? [], undefined, loc, $.context) as unknown as RulesType;
     }
   };
 }
@@ -501,7 +1195,107 @@ export function scssIncludeAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     const RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
     $.CONSUME(T.AtKeyword); // assumed '@include' (dispatched by unknownAtRule)
-    const ident = $.CONSUME(T.Ident);
+
+    let mixinKey: string | Interpolated | undefined;
+    let mixinNameRef: Reference | undefined;
+    $.OR([
+      {
+        // Interpolated mixin name: `@include #{$mixin}(...);` or `@include foo-#{$bar}(...);`
+        GATE: () => $.LA(1).tokenType === T.InterpolationStart || $.LA(2).tokenType === T.InterpolationStart,
+        ALT: () => {
+          let source = '';
+          const replacements: Node[] = [];
+          let startTok: IToken | undefined;
+
+          $.AT_LEAST_ONE({
+            DEF: () => {
+              $.OR2([
+                {
+                  GATE: () => $.LA(1).tokenType === T.InterpolationStart,
+                  ALT: () => {
+                    const istart = $.CONSUME(T.InterpolationStart);
+                    startTok ??= istart;
+                    const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+                    $.CONSUME2(T.RCurly);
+                    if (!RECORDING_PHASE) {
+                      source += INTERPOLATION_PLACEHOLDER;
+                      replacements.push(expr);
+                    }
+                  }
+                },
+                {
+                  ALT: () => {
+                    const ident = $.CONSUME(T.Ident);
+                    startTok ??= ident;
+                    if (!RECORDING_PHASE) {
+                      source += ident.image;
+                    }
+                  }
+                }
+              ]);
+            }
+          });
+
+          if (!RECORDING_PHASE) {
+            const loc = startTok ? $.getLocationInfo(startTok) : $.getLocationInfo($.LA(-1));
+            mixinKey = new Interpolated({ source, replacements }, { role: 'ident' }, loc, $.context);
+          }
+        }
+      },
+      {
+        // SCSS module-qualified mixin call: `@include ns.foo(...)`
+        // Tokenizes as: Ident + DotName(".foo")
+        GATE: () =>
+          ($.LA(1).tokenType === T.Ident || $.LA(1).tokenType === T.PlainIdent)
+          && $.LA(2).tokenType === T.DotName,
+        ALT: () => {
+          const ns = $.OR3([
+            { GATE: () => $.LA(1).tokenType === T.Ident, ALT: () => $.CONSUME2(T.Ident) },
+            { ALT: () => $.CONSUME5(T.PlainIdent) }
+          ]) as unknown as IToken;
+          const dot = $.CONSUME(T.DotName); // ".foo"
+          if (!RECORDING_PHASE) {
+            const key = dot.image.slice(1);
+            mixinNameRef = makeNamespacedReference($, [ns.image, key], 'mixin');
+          }
+        }
+      },
+      {
+        // Escaped module-qualified mixin "ruleset" reference: `@include ns.\#foo(...)` or `@include ns.\.foo(...)`
+        // Note: there is no standalone dot token; the '.' is tokenized as Unknown when not part of DotName.
+        GATE: () =>
+          ($.LA(1).tokenType === T.Ident || $.LA(1).tokenType === T.PlainIdent)
+          && $.LA(2).tokenType === T.Unknown
+          && $.LA(2).image === '.'
+          && $.LA(3).tokenType === T.Unknown
+          && $.LA(3).image === '\\'
+          && ($.LA(4).tokenType === T.HashName || $.LA(4).tokenType === T.DotName),
+        ALT: () => {
+          const ns = $.OR4([
+            { GATE: () => $.LA(1).tokenType === T.Ident, ALT: () => $.CONSUME3(T.Ident) },
+            { ALT: () => $.CONSUME6(T.PlainIdent) }
+          ]) as unknown as IToken;
+          $.CONSUME2(T.Unknown); // '.'
+          $.CONSUME3(T.Unknown); // '\'
+          const member = $.OR5([
+            { GATE: () => $.LA(1).tokenType === T.HashName, ALT: () => $.CONSUME(T.HashName) },
+            { ALT: () => $.CONSUME2(T.DotName) }
+          ]) as unknown as IToken;
+          if (!RECORDING_PHASE) {
+            const key = member.image.slice(1);
+            mixinNameRef = makeNamespacedReference($, [ns.image, key], 'mixin-ruleset');
+          }
+        }
+      },
+      {
+        ALT: () => {
+          const ident = $.CONSUME4(T.Ident);
+          if (!RECORDING_PHASE) {
+            mixinKey = ident.image;
+          }
+        }
+      }
+    ]);
 
     let args: List | undefined;
     $.OPTION(() => {
@@ -515,7 +1309,7 @@ export function scssIncludeAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     $.OPTION3(() => {
       $.CONSUME(T.LCurly);
       contentRules = $.SUBRULE($.declarationList, { ARGS: [{ ...ctx, inner: true }] }) as unknown as RulesType;
-      $.CONSUME(T.RCurly);
+      $.CONSUME3(T.RCurly);
     });
 
     // Require semicolon only when present (SCSS requires it if no block; we enforce later)
@@ -523,7 +1317,12 @@ export function scssIncludeAtRule(this: ScssActionsParser, T: ScssTokenMap) {
 
     if (!RECORDING_PHASE) {
       const loc = $.endRule();
-      const mixinRef = new Reference({ key: ident.image }, { type: 'mixin', resolution: 'call-time', role: 'name' }, loc, $.context);
+      const mixinRef = mixinNameRef ?? new Reference(
+        { key: mixinKey! },
+        { type: 'mixin', resolution: 'call-time', role: 'name' },
+        loc,
+        $.context
+      );
 
       // If we have a content block, attach it as a named arg `$content: <mixin()>`
       if (contentRules) {
@@ -565,18 +1364,8 @@ export function scssIfAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     $.startRule();
     $.CONSUME(T.AtKeyword); // assumed '@if' (dispatched by unknownAtRule)
 
-    let condNodes: Node[] | undefined;
-    if (!RECORDING_PHASE) condNodes = [];
-    $.MANY({
-      GATE: () => $.LA(1).tokenType !== T.LCurly && $.LA(1).tokenType.name !== 'EOF',
-      DEF: () => {
-        const n = $.SUBRULE($.anyOuterValue, { ARGS: [ctx] });
-        if (!RECORDING_PHASE) condNodes!.push($.wrap(n));
-      }
-    });
-    const cond = !RECORDING_PHASE && condNodes!.length
-      ? new Sequence(condNodes!, undefined, $.getLocationFromNodes(condNodes!), $.context)
-      : undefined;
+    // Parse the condition - returns Paren(Condition(...)) or nested Conditions
+    const cond = $.SUBRULE($.scssCondition, { ARGS: [ctx] }) as unknown as Node | undefined;
 
     $.CONSUME(T.LCurly);
     const rules = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
@@ -594,7 +1383,7 @@ export function scssIfAtRule(this: ScssActionsParser, T: ScssTokenMap) {
       DEF: () => {
         $.CONSUME2(T.AtKeyword); // @else
 
-        let elseCond: Sequence | undefined;
+        let elseCond: Node | undefined;
 
         // @else if ...
         $.OPTION4({
@@ -602,20 +1391,7 @@ export function scssIfAtRule(this: ScssActionsParser, T: ScssTokenMap) {
           DEF: () => {
             $.CONSUME3(T.Ident); // if (token category)
 
-            let elseCondNodes: Node[] | undefined;
-            if (!RECORDING_PHASE) elseCondNodes = [];
-
-            $.MANY3({
-              GATE: () => $.LA(1).tokenType !== T.LCurly && $.LA(1).tokenType.name !== 'EOF',
-              DEF: () => {
-                const n = $.SUBRULE2($.anyOuterValue, { ARGS: [ctx] });
-                if (!RECORDING_PHASE) elseCondNodes!.push($.wrap(n));
-              }
-            });
-
-            if (!RECORDING_PHASE && elseCondNodes!.length) {
-              elseCond = new Sequence(elseCondNodes!, undefined, $.getLocationFromNodes(elseCondNodes!), $.context);
-            }
+            elseCond = $.SUBRULE2($.scssCondition, { ARGS: [ctx] }) as unknown as Node;
           }
         });
 
@@ -705,18 +1481,7 @@ export function scssWhileAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     $.startRule();
     $.CONSUME(T.AtKeyword); // assumed '@while'
 
-    let condNodes: Node[] | undefined;
-    if (!RECORDING_PHASE) condNodes = [];
-    $.MANY({
-      GATE: () => $.LA(1).tokenType !== T.LCurly && $.LA(1).tokenType.name !== 'EOF',
-      DEF: () => {
-        const n = $.SUBRULE($.anyOuterValue, { ARGS: [ctx] });
-        if (!RECORDING_PHASE) condNodes!.push($.wrap(n));
-      }
-    });
-    const condition = !RECORDING_PHASE && condNodes!.length
-      ? new Sequence(condNodes!, undefined, $.getLocationFromNodes(condNodes!), $.context)
-      : undefined;
+    const condition = $.SUBRULE($.scssCondition, { ARGS: [ctx] }) as unknown as Node | undefined;
 
     $.CONSUME(T.LCurly);
     const rules = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
@@ -737,23 +1502,75 @@ export function scssMixinAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     $.startRule();
     $.CONSUME(T.AtKeyword); // assumed '@mixin' (dispatched by unknownAtRule)
     let nameTok: any;
+    let nameNode: Any<'name'> | Interpolated<'name'> | undefined;
     let hasParamsFromStart = false;
+
+    const looksLikeInterpolatedMixinName = () => {
+      for (let i = 1; i < 64; i++) {
+        const tok = $.LA(i);
+        if (tok.tokenType === T.LParen || tok.tokenType === T.LCurly || tok.tokenType.name === 'EOF') return false;
+        if (tok.tokenType === T.InterpolationStart) return true;
+      }
+      return false;
+    };
+
     $.OR([
+      {
+        // Interpolated mixin name: `@mixin foo-#{$bar} { ... }` or `@mixin #{$name}() { ... }`
+        GATE: () => looksLikeInterpolatedMixinName(),
+        ALT: () => {
+          let source = '';
+          const replacements: Node[] = [];
+          let startTok: IToken | undefined;
+
+          $.AT_LEAST_ONE({
+            DEF: () => {
+              $.OR3([
+                {
+                  GATE: () => $.LA(1).tokenType === T.InterpolationStart,
+                  ALT: () => {
+                    const istart = $.CONSUME(T.InterpolationStart);
+                    startTok ??= istart;
+                    const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+                    $.CONSUME2(T.RCurly);
+                    if (!RECORDING_PHASE) {
+                      source += INTERPOLATION_PLACEHOLDER;
+                      replacements.push(expr);
+                    }
+                  }
+                },
+                {
+                  ALT: () => {
+                    const ident = $.CONSUME(T.Ident);
+                    startTok ??= ident;
+                    if (!RECORDING_PHASE) source += ident.image;
+                  }
+                }
+              ]);
+            }
+          });
+
+          if (!RECORDING_PHASE) {
+            const loc = startTok ? $.getLocationInfo(startTok) : $.getLocationInfo($.LA(-1));
+            nameNode = new Interpolated({ source, replacements }, { role: 'name' }, loc, $.context);
+          }
+        }
+      },
       {
         GATE: () => $.LA(1).tokenType === T.FunctionStart,
         ALT: () => {
-          nameTok = $.CONSUME(T.FunctionStart);
+          nameTok = $.CONSUME2(T.FunctionStart);
           hasParamsFromStart = true;
         }
       },
       {
         GATE: () => $.LA(1).tokenType === T.GenericFunctionStart,
         ALT: () => {
-          nameTok = $.CONSUME(T.GenericFunctionStart);
+          nameTok = $.CONSUME3(T.GenericFunctionStart);
           hasParamsFromStart = true;
         }
       },
-      { ALT: () => nameTok = $.CONSUME(T.Ident) }
+      { ALT: () => nameTok = $.CONSUME4(T.Ident) }
     ]);
 
     let params: List | undefined;
@@ -784,16 +1601,16 @@ export function scssMixinAtRule(this: ScssActionsParser, T: ScssTokenMap) {
       rules.options.rulesVisibility.Mixin ??= 'private';
 
       const loc = $.endRule();
-      const mixinName = (nameTok.tokenType === T.FunctionStart || nameTok.tokenType === T.GenericFunctionStart)
-        ? String(nameTok.image).slice(0, -1)
-        : String(nameTok.image);
+
+      const finalNameNode = nameNode ?? (() => {
+        const mixinName = (nameTok.tokenType === T.FunctionStart || nameTok.tokenType === T.GenericFunctionStart)
+          ? String(nameTok.image).slice(0, -1)
+          : String(nameTok.image);
+        return new Any(mixinName, { role: 'name' }, $.getLocationInfo(nameTok), $.context);
+      })();
 
       return new Mixin(
-        {
-          name: new Any(mixinName, { role: 'name' }, $.getLocationInfo(nameTok), $.context),
-          params,
-          rules
-        },
+        { name: finalNameNode, params, rules },
         undefined,
         loc,
         $.context
@@ -913,49 +1730,507 @@ export function scssMixinParam(this: ScssActionsParser, T: ScssTokenMap) {
 
 export function declaration(this: ScssActionsParser, T: ScssTokenMap, alt?: AltContext) {
   const $ = this;
-  const baseDecl = cssProductions.declaration.call(this, T);
+
+  // Inline the CSS declaration production (rather than calling it) so we can
+  // add `$var: ...` without Chevrotain "numerical suffix" conflicts.
+  //
+  // Key point: all parsing DSL calls remain reachable during RECORDING_PHASE.
+
+  const looksLikeInterpolatedDeclName = () => {
+    // Look ahead until ':' and see if we encounter `#{`.
+    // This keeps the fast path for normal CSS declarations.
+    for (let i = 1; i < 64; i++) {
+      const tok = $.LA(i);
+      if (tok.tokenType === T.Assign || tok.tokenType.name === 'EOF') return false;
+      if (tok.tokenType === T.InterpolationStart) return true;
+    }
+    return false;
+  };
+
+  alt ??= (ctx: RuleContext = {}) => [
+    {
+      // SCSS variable declaration: `$x: ... [!default] [!global]`
+      GATE: () => $.LA(1).tokenType === T.DollarVariable,
+      ALT: () => {
+        const dv = $.CONSUME3(T.DollarVariable);
+        const assign = $.CONSUME3(T.Assign);
+        const value = $.SUBRULE3($.valueList, { ARGS: [ctx] });
+
+        let sawDefault = false;
+        let sawGlobal = false;
+        $.MANY2(() => {
+          $.OR3([
+            { ALT: () => { $.CONSUME(T.SassDefault); sawDefault = true; } },
+            { ALT: () => { $.CONSUME(T.SassGlobal); sawGlobal = true; } },
+          ]);
+        });
+
+        if (!$.RECORDING_PHASE) {
+          const nameNode = $.wrap(
+            new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context),
+            true
+          );
+          return [
+            'scss-var',
+            nameNode,
+            assign,
+            value,
+            sawDefault,
+            sawGlobal
+          ] as const;
+        }
+      }
+    },
+    {
+      // SCSS interpolated declaration name: `foo-#{$bar}: ...`, `#{$prop}: ...`, `--x-#{$y}: ...`
+      GATE: () => (
+        (
+          $.LA(1).tokenType === T.Ident ||
+          $.LA(1).tokenType === T.CustomProperty ||
+          ($.legacyMode && $.LA(1).tokenType === T.LegacyPropIdent) ||
+          $.LA(1).tokenType === T.InterpolationStart
+        ) && looksLikeInterpolatedDeclName()
+      ),
+      ALT: () => {
+        const RECORDING_PHASE = $.RECORDING_PHASE;
+        let source = '';
+        const replacements: Node[] = [];
+
+        $.AT_LEAST_ONE({
+          DEF: () => {
+            $.OR4([
+              {
+                GATE: () => $.LA(1).tokenType === T.InterpolationStart,
+                ALT: () => {
+                  $.CONSUME4(T.InterpolationStart);
+                  const expr = $.SUBRULE4($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+                  $.CONSUME4(T.RCurly);
+                  if (!RECORDING_PHASE) {
+                    source += INTERPOLATION_PLACEHOLDER;
+                    replacements.push(expr);
+                  }
+                }
+              },
+              {
+                ALT: () => {
+                  const tok = $.OR5([
+                    { ALT: () => $.CONSUME4(T.Ident) },
+                    { ALT: () => $.CONSUME4(T.CustomProperty) },
+                    {
+                      GATE: () => $.legacyMode,
+                      ALT: () => $.CONSUME4(T.LegacyPropIdent)
+                    }
+                  ]) as unknown as IToken;
+                  if (!RECORDING_PHASE) {
+                    source += tok.image;
+                  }
+                }
+              }
+            ]);
+          }
+        });
+
+        const assign = $.CONSUME4(T.Assign);
+        const value = $.SUBRULE5($.valueList, { ARGS: [ctx] });
+        let important: IToken | undefined;
+        $.OPTION2(() => {
+          important = $.CONSUME2(T.Important);
+        });
+
+        if (!RECORDING_PHASE) {
+          const nameNode = $.wrap(
+            new Interpolated({ source, replacements }, { role: 'property' }, $.getLocationFromNodes(replacements), $.context),
+            true
+          );
+          return [nameNode, assign, value, important] as const;
+        }
+      }
+    },
+    {
+      ALT: () => {
+        let name: IToken;
+        $.OR2([
+          { ALT: () => name = $.CONSUME(T.Ident) },
+          {
+            GATE: () => $.legacyMode,
+            ALT: () => name = $.CONSUME(T.LegacyPropIdent)
+          }
+        ]);
+        const assign = $.CONSUME(T.Assign);
+        const value = $.SUBRULE($.valueList, { ARGS: [ctx] });
+        let important: IToken | undefined;
+        $.OPTION(() => {
+          important = $.CONSUME(T.Important);
+        });
+        if (!$.RECORDING_PHASE) {
+          const nameNode = $.wrap(new Any(name!.image, { role: 'property' }, $.getLocationInfo(name!), $.context), true);
+          return [nameNode, assign, value, important] as const;
+        }
+      }
+    },
+    {
+      ALT: () => {
+        const RECORDING_PHASE = $.RECORDING_PHASE;
+        const name = $.CONSUME(T.CustomProperty);
+        const assign = $.CONSUME2(T.Assign);
+        let nodes: Node[];
+        if (!RECORDING_PHASE) {
+          nodes = [];
+        }
+        $.startRule();
+        $.MANY(() => {
+          const val = $.SUBRULE2($.customValue, { ARGS: [{ ...ctx, inCustomPropertyValue: true }] });
+          if (!RECORDING_PHASE) {
+            nodes!.push(val);
+          }
+        });
+        if (!RECORDING_PHASE) {
+          const location = $.endRule();
+          const nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context), true);
+          const value = new Sequence(nodes!, undefined, location, $.context);
+          return [nameNode, assign, value] as const;
+        }
+      }
+    }
+  ];
 
   return (ctx: RuleContext = {}) => {
-    // SCSS variable declaration: `$x: ... [!default] [!global]`
-    return $.OR5([
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    let name: Any<'property'> | Interpolated<'property'> | undefined;
+    let assign: IToken | undefined;
+    let value: Node | undefined;
+    let important: IToken | undefined;
+    let kind: 'scss-var' | 'css-decl' | 'css-custom' | undefined;
+    let sawDefault = false;
+    let sawGlobal = false;
+
+    const picked = $.OR(alt!(ctx) as any);
+
+    if (!RECORDING_PHASE) {
+      // scss var alt returns a tagged tuple
+      if (Array.isArray(picked) && picked[0] === 'scss-var') {
+        kind = 'scss-var';
+        [, name, assign, value, sawDefault, sawGlobal] = picked as any;
+      } else if (Array.isArray(picked)) {
+        // css decl or css custom decl tuple
+        if (picked.length === 3) {
+          kind = 'css-custom';
+          [name, assign, value] = picked as any;
+        } else {
+          kind = 'css-decl';
+          [name, assign, value, important] = picked as any;
+        }
+      }
+    }
+
+    if (!RECORDING_PHASE) {
+      const location = $.endRule();
+
+      if (kind === 'scss-var') {
+        // Semicolon is consumed by the main production (like Less), not here
+        return new VarDeclaration(
+          { name: name!, value: $.wrap(value!, 'both') },
+          {
+            assign: (sawDefault ? '?:' : assign!.image) as AssignmentType,
+            setDefined: sawGlobal
+          },
+          location,
+          $.context
+        );
+      }
+
+      // Match CSS parser behavior: return Declaration / CustomDeclaration.
+      const isCustom = String(name!.valueOf()).startsWith('--');
+      return new (isCustom ? CustomDeclaration : Declaration)({
+        name: name!,
+        value: $.wrap(value!, 'both'),
+        important: important ? $.wrap(new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), $.context), 'both') : undefined
+      }, { assign: assign!.image as AssignmentType }, location, $.context);
+    }
+  };
+}
+
+export function scssMediaPrelude(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    const nodes: Node[] = RECORDING_PHASE ? ([] as unknown as Node[]) : [];
+
+    $.MANY({
+      GATE: () => $.LA(1).tokenType !== T.LCurly && $.LA(1).tokenType.name !== 'EOF',
+      DEF: () => {
+        const n = $.OR([
+          {
+            GATE: () => $.LA(1).tokenType === T.InterpolationStart,
+            ALT: () => {
+              $.CONSUME(T.InterpolationStart);
+              const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+              $.CONSUME2(T.RCurly);
+              if (!RECORDING_PHASE) {
+                return new Interpolated(
+                  { source: INTERPOLATION_PLACEHOLDER, replacements: [expr] },
+                  { role: 'any' },
+                  $.getLocationFromNodes([expr]),
+                  $.context
+                );
+              }
+            }
+          },
+          { ALT: () => $.SUBRULE2($.anyOuterValue, { ARGS: [ctx] }) }
+        ]) as unknown as Node;
+
+        if (!RECORDING_PHASE) nodes.push($.wrap(n));
+      }
+    });
+
+    if (!RECORDING_PHASE) {
+      const loc = $.endRule();
+      if (nodes.length === 1) return nodes[0]!;
+      return new Sequence(nodes, undefined, loc, $.context);
+    }
+  };
+}
+
+export function mediaAtRule(this: ScssActionsParser, T: ScssTokenMap) {
+  // Use CSS implementation and inject only the prelude rule.
+  return cssProductions.mediaAtRule.call(this, T, 'scssMediaPrelude');
+}
+
+export function scssSupportsPrelude(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    const nodes: Node[] = RECORDING_PHASE ? ([] as unknown as Node[]) : [];
+
+    $.MANY({
+      GATE: () => $.LA(1).tokenType !== T.LCurly && $.LA(1).tokenType.name !== 'EOF',
+      DEF: () => {
+        const n = $.OR2([
+          {
+            GATE: () => $.LA(1).tokenType === T.InterpolationStart,
+            ALT: () => {
+              $.CONSUME(T.InterpolationStart);
+              const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+              $.CONSUME2(T.RCurly);
+              if (!RECORDING_PHASE) {
+                return new Interpolated(
+                  { source: INTERPOLATION_PLACEHOLDER, replacements: [expr] },
+                  { role: 'any' },
+                  $.getLocationFromNodes([expr]),
+                  $.context
+                );
+              }
+            }
+          },
+          { ALT: () => $.SUBRULE2($.anyOuterValue, { ARGS: [ctx] }) }
+        ]) as unknown as Node;
+
+        if (!RECORDING_PHASE) nodes.push($.wrap(n));
+      }
+    });
+
+    if (!RECORDING_PHASE) {
+      const loc = $.endRule();
+      if (nodes.length === 1) return nodes[0]!;
+      return new Sequence(nodes, undefined, loc, $.context);
+    }
+  };
+}
+
+export function supportsAtRule(this: ScssActionsParser, T: ScssTokenMap) {
+  // Use CSS implementation and inject only the prelude rule.
+  return cssProductions.supportsAtRule.call(this, T, 'scssSupportsPrelude');
+}
+
+export function scssContainerPrelude(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    const nodes: Node[] = RECORDING_PHASE ? ([] as unknown as Node[]) : [];
+
+    $.MANY({
+      GATE: () => $.LA(1).tokenType !== T.LCurly && $.LA(1).tokenType.name !== 'EOF',
+      DEF: () => {
+        const n = $.OR2([
+          {
+            GATE: () => $.LA(1).tokenType === T.InterpolationStart,
+            ALT: () => {
+              $.CONSUME(T.InterpolationStart);
+              const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+              $.CONSUME2(T.RCurly);
+              if (!RECORDING_PHASE) {
+                return new Interpolated(
+                  { source: INTERPOLATION_PLACEHOLDER, replacements: [expr] },
+                  { role: 'any' },
+                  $.getLocationFromNodes([expr]),
+                  $.context
+                );
+              }
+            }
+          },
+          { ALT: () => $.SUBRULE2($.anyOuterValue, { ARGS: [ctx] }) }
+        ]) as unknown as Node;
+
+        if (!RECORDING_PHASE) nodes.push($.wrap(n));
+      }
+    });
+
+    if (!RECORDING_PHASE) {
+      const loc = $.endRule();
+      if (nodes.length === 1) return nodes[0]!;
+      return new Sequence(nodes, undefined, loc, $.context);
+    }
+  };
+}
+
+export function containerAtRule(this: ScssActionsParser, T: ScssTokenMap) {
+  // Use CSS implementation and inject only the prelude rule.
+  return cssProductions.containerAtRule.call(this, T, 'scssContainerPrelude');
+}
+
+export function scssScopePrelude(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    const nodes: Node[] = RECORDING_PHASE ? ([] as unknown as Node[]) : [];
+
+    $.MANY({
+      GATE: () => $.LA(1).tokenType !== T.LCurly && $.LA(1).tokenType.name !== 'EOF',
+      DEF: () => {
+        const n = $.OR2([
+          {
+            GATE: () => $.LA(1).tokenType === T.InterpolationStart,
+            ALT: () => {
+              $.CONSUME(T.InterpolationStart);
+              const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+              $.CONSUME2(T.RCurly);
+              if (!RECORDING_PHASE) {
+                return new Interpolated(
+                  { source: INTERPOLATION_PLACEHOLDER, replacements: [expr] },
+                  { role: 'any' },
+                  $.getLocationFromNodes([expr]),
+                  $.context
+                );
+              }
+            }
+          },
+          { ALT: () => $.SUBRULE2($.anyOuterValue, { ARGS: [ctx] }) }
+        ]) as unknown as Node;
+
+        if (!RECORDING_PHASE) nodes.push($.wrap(n));
+      }
+    });
+
+    if (!RECORDING_PHASE) {
+      const loc = $.endRule();
+      if (nodes.length === 1) return nodes[0]!;
+      return new Sequence(nodes, undefined, loc, $.context);
+    }
+  };
+}
+
+export function scopeAtRule(this: ScssActionsParser, T: ScssTokenMap) {
+  // Use CSS implementation and inject only the prelude rule.
+  return cssProductions.scopeAtRule.call(this, T, 'scssScopePrelude');
+}
+
+/**
+ * SCSS: allow interpolation inside @layer names (block + statement forms).
+ *
+ * Example:
+ *   @layer foo-#{$bar} { ... }
+ *   @layer foo-#{$bar}, baz;
+ */
+export function layerName(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    let source: string | undefined;
+    let replacements: Node[] | undefined;
+
+    const takeIdent = (tok: IToken) => {
+      if (!RECORDING_PHASE) {
+        (source ??= '');
+        source += tok.image;
+      }
+    };
+
+    const takeInterpolation = (expr: Node) => {
+      if (!RECORDING_PHASE) {
+        (source ??= '');
+        (replacements ??= []);
+        source += INTERPOLATION_PLACEHOLDER;
+        replacements.push(expr);
+      }
+    };
+
+    // First segment
+    $.OR([
       {
-        GATE: () => $.LA(1).tokenType === T.DollarVariable,
+        GATE: () => $.LA(1).tokenType === T.InterpolationStart,
         ALT: () => {
-          const RECORDING_PHASE = $.RECORDING_PHASE;
-          $.startRule();
-          const dv = $.CONSUME(T.DollarVariable);
-          const assign = $.CONSUME(T.Assign);
-          const value = $.SUBRULE($.valueList, { ARGS: [ctx] });
-
-          let sawDefault = false;
-          let sawGlobal = false;
-          $.MANY(() => {
-            $.OR([
-              { ALT: () => { $.CONSUME(T.SassDefault); sawDefault = true; } },
-              { ALT: () => { $.CONSUME(T.SassGlobal); sawGlobal = true; } },
-            ]);
-          });
-
-          if (!RECORDING_PHASE) {
-            const location = $.endRule();
-            const nameNode = $.wrap(
-              new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context),
-              true
-            );
-            return new VarDeclaration(
-              { name: nameNode, value: $.wrap(value, 'both') },
-              {
-                assign: (sawDefault ? '?:' : assign.image) as AssignmentType,
-                setDefined: sawGlobal,
-              },
-              location,
-              $.context
-            );
-          }
+          $.CONSUME(T.InterpolationStart);
+          const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+          $.CONSUME2(T.RCurly);
+          takeInterpolation(expr);
         }
       },
-      { ALT: () => baseDecl(ctx) }
+      {
+        ALT: () => {
+          const tok = $.OR2([
+            { GATE: () => $.LA(1).tokenType === T.Ident, ALT: () => $.CONSUME(T.Ident) },
+            { ALT: () => $.CONSUME(T.PlainIdent) }
+          ]) as unknown as IToken;
+          takeIdent(tok);
+        }
+      }
     ]);
+
+    // Additional segments with no whitespace (e.g. `foo-#{$bar}`)
+    $.MANY({
+      GATE: () =>
+        !$.hasWS()
+        && $.LA(1).tokenType !== T.LCurly
+        && $.LA(1).tokenType !== T.Comma
+        && $.LA(1).tokenType !== T.Semi
+        && $.LA(1).tokenType.name !== 'EOF',
+      DEF: () => {
+        $.OR3([
+          {
+            GATE: () => $.LA(1).tokenType === T.InterpolationStart,
+            ALT: () => {
+              $.CONSUME3(T.InterpolationStart);
+              const expr = $.SUBRULE2($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+              $.CONSUME4(T.RCurly);
+              takeInterpolation(expr);
+            }
+          },
+          {
+            ALT: () => {
+              const tok = $.OR4([
+                { GATE: () => $.LA(1).tokenType === T.Ident, ALT: () => $.CONSUME2(T.Ident) },
+                { ALT: () => $.CONSUME2(T.PlainIdent) }
+              ]) as unknown as IToken;
+              takeIdent(tok);
+            }
+          }
+        ]);
+      }
+    });
+
+    if (!RECORDING_PHASE) {
+      const loc = $.endRule();
+      if (replacements?.length) {
+        return new Interpolated({ source: source ?? '', replacements }, { role: 'any' }, loc, $.context);
+      }
+      return new Any(source ?? '', { role: 'ident' }, loc, $.context);
+    }
   };
 }
 
@@ -974,6 +2249,7 @@ export function unknownAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     const img = $.LA(1).image;
     if (img === '@use') return $.SUBRULE($.scssUseAtRule, { ARGS: [ctx] });
     if (img === '@forward') return $.SUBRULE($.scssForwardAtRule, { ARGS: [ctx] });
+    if (img === '@extend') return $.SUBRULE($.scssExtendAtRule, { ARGS: [ctx] });
     if (img === '@content') return $.SUBRULE($.scssContentAtRule, { ARGS: [ctx] });
     if (img === '@if') return $.SUBRULE($.scssIfAtRule, { ARGS: [ctx] });
     if (img === '@for') return $.SUBRULE($.scssForAtRule, { ARGS: [ctx] });

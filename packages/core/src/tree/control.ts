@@ -6,7 +6,7 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export type IfBranch = {
   /** Undefined means "else" branch */
-  condition?: Sequence;
+  condition?: Node;
   rules: Rules;
 };
 
@@ -118,7 +118,7 @@ export class Each extends Node<LoopValue> {
 }
 
 export type WhileValue = {
-  condition: Sequence;
+  condition: Node;
   rules: Rules;
 };
 

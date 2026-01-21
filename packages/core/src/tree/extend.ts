@@ -11,7 +11,7 @@ import { Ruleset } from './ruleset.js';
 import { ComplexSelector } from './selector-complex.js';
 import { syncLog } from './util/__tests__/debug-log.js';
 
-export const enum ExtendFlag {
+export enum ExtendFlag {
   /** Sass and Jess default */
   All = 0,
   /** Less default - must not be a partial selector match */
@@ -52,7 +52,12 @@ export class Extend extends Node<ExtendValue> {
         ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
         : context.treeContext?.file?.path)
       || '';
-    if (typeof filePath === 'string' && !filePath.includes('tests-unit/extend-selector')) return;
+    if (typeof filePath === 'string'
+      && !filePath.includes('tests-unit/extend-selector')
+      && !filePath.includes('tests-unit/extend-exact')
+      && !filePath.includes('tests-unit/extend-media')
+      && !filePath.includes('tests-unit/extend-chaining')
+    ) return;
     syncLog({
       sessionId: 'debug-session',
       runId: process.env.DEBUG_RUN_ID || 'pre-fix',

@@ -488,7 +488,7 @@ describe('Rules', () => {
         // With registry-based setDefined, the Rules node stays at index 1 (no array changes)
         let inherited = node.at(1);
         expect(`${getVar(node, 'one')}`).toBe('$one: three');
-        expect(`${getVar(inherited as Rules, 'one')}`).toBe('$^one: three');
+        expect(`${getVar(inherited as Rules, 'one')}`).toBe('$one := three');
       });
 
       it.skip('demonstrates setDefined behavior like Sass !global', async () => {
