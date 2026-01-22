@@ -937,6 +937,37 @@ export function extendSelector(
 
   // Select the best location from search results
   const location = selectBestLocation(searchResult, target, find, partial, hasMoreAfterIs, extendWith);
+  // #region agent log
+  try {
+    if (process.env.DEBUG_EXTEND_EXACT_DEEP === 'true') {
+      const t = target.valueOf();
+      const f = find.valueOf();
+      if (f.includes('.replace.replace') || t.includes('.replace.replace')) {
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID || 'run',
+          hypothesisId: 'H33',
+          location: 'extend.ts:extendSelector',
+          message: 'selectBestLocation',
+          data: {
+            partial,
+            target: t,
+            find: f,
+            extensionType: (location as any).extensionType ?? null,
+            matchedNodeType: (location as any).matchedNode?.type ?? null,
+            parentNodeType: (location as any).parentNode?.type ?? null,
+            path: Array.isArray((location as any).path) ? (location as any).path.slice(0, 12) : null,
+            remaindersCount: Array.isArray((location as any).remainders) ? (location as any).remainders.length : null,
+            remainder0: Array.isArray((location as any).remainders) && (location as any).remainders[0]
+              ? ((location as any).remainders[0] as any).valueOf?.() ?? null
+              : null
+          },
+          timestamp: Date.now()
+        });
+      }
+    }
+  } catch {}
+  // #endregion
 
   // General rule: if the only reason `find` matches `target` is because we treat an ampersand
   // as its resolved selector (i.e. the match is "inside ampersand"), then do NOT extend here.
@@ -1589,7 +1620,85 @@ function extendSelectorList(
     const safeArray = processedArray.map(s => (s === target ? s.clone(true) : s));
     return SelectorList.create(safeArray).inherit(target);
   }
-  return createExtendedSelectorList(allSelectors, target);
+  // In full mode, try to factorize common `:is(parent) <child>` expansions back into
+  // `:is(parent) :is(childA, childB, ...)` to match Less output expectations.
+  //
+  // This specifically targets the pattern produced by implicit parent selector alternatives.
+  let finalSelectors = allSelectors;
+  try {
+    const candidates: { idx: number; sel: ComplexSelector }[] = [];
+    let sharedParent: string | null = null;
+    let sharedCombinator: string | null = null;
+    for (let i = 0; i < allSelectors.length; i++) {
+      const s = allSelectors[i]!;
+      if (!isNode(s, 'ComplexSelector')) continue;
+      const cs = s as ComplexSelector;
+      if (cs.value.length !== 3) continue;
+      const first = cs.value[0];
+      const second = cs.value[1];
+      const third = cs.value[2];
+      if (!(first instanceof Ampersand) || !first.hasFlag(F_IMPLICIT_AMPERSAND)) continue;
+      const parentSel = first.value.selector;
+      if (!parentSel || isNode(parentSel, 'Nil')) continue;
+      if (!isNode(parentSel, 'PseudoSelector') || (parentSel as PseudoSelector).value.name !== ':is') continue;
+      if (!isNode(second, 'Combinator')) continue;
+      if (!isNode(third, 'BasicSelector')) continue;
+      const parentStr = parentSel.valueOf();
+      const combStr = (second as Combinator).valueOf();
+      if (sharedParent === null) sharedParent = parentStr;
+      if (sharedCombinator === null) sharedCombinator = combStr;
+      if (parentStr !== sharedParent || combStr !== sharedCombinator) continue;
+      candidates.push({ idx: i, sel: cs });
+    }
+    if (candidates.length >= 2 && sharedParent && sharedCombinator) {
+      const insertionIdx = candidates[0]!.idx;
+      const template = candidates[0]!.sel;
+      const first = template.value[0] as Ampersand;
+      const second = template.value[1] as Combinator;
+      const childBasics = candidates.map(c => c.sel.value[2] as SimpleSelector).map(b => b.copy(true) as any);
+      const childList = SelectorList.create(childBasics).inherit(template);
+      const childIs = new PseudoSelector({ name: ':is', arg: childList }).inherit(template);
+      const combined = ComplexSelector.create([
+        first.copy(true),
+        second.copy(true),
+        childIs
+      ]).inherit(template);
+
+      const filtered: Selector[] = [];
+      const removeIdx = new Set(candidates.map(c => c.idx));
+      for (let i = 0; i < allSelectors.length; i++) {
+        if (i === insertionIdx) {
+          filtered.push(combined);
+        }
+        if (removeIdx.has(i)) continue;
+        filtered.push(allSelectors[i]!);
+      }
+      finalSelectors = filtered;
+
+      // #region agent log
+      if (process.env.DEBUG_EXTEND_EXACT_DEEP === 'true') {
+        try {
+          syncLog({
+            sessionId: 'debug-session',
+            runId: process.env.DEBUG_RUN_ID || 'run',
+            hypothesisId: 'H34',
+            location: 'extend.ts:extendSelectorList',
+            message: 'factorized-implicit-parent-child-is',
+            data: {
+              parent: sharedParent,
+              combinator: sharedCombinator,
+              count: candidates.length,
+              combined: combined.valueOf()
+            },
+            timestamp: Date.now()
+          });
+        } catch {}
+      }
+      // #endregion
+    }
+  } catch {}
+
+  return createExtendedSelectorList(finalSelectors, target);
 }
 
 /**

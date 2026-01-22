@@ -36,6 +36,7 @@ import {
   Node as JessNode,
   Paren,
   Quoted,
+  Range,
   Reference,
   Rest,
   Rules,
@@ -1678,17 +1679,83 @@ export function scssForAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     $.startRule();
     $.CONSUME(T.AtKeyword); // assumed '@for'
 
-    let headerNodes: Node[] | undefined;
-    if (!RECORDING_PHASE) headerNodes = [];
-    $.MANY({
-      GATE: () => $.LA(1).tokenType !== T.LCurly && $.LA(1).tokenType.name !== 'EOF',
+    // Sass: `@for $i from <start> (to|through) <end> { ... }`
+    // Normalize to Jess `$for` range header:
+    //   `$for ($i of <Range>) { ... }`
+    // Where Range serializes as:
+    // - `start to end` (through)
+    // - `start to <end` (to)
+    const dv = $.CONSUME(T.DollarVariable);
+
+    // consume `from` keyword (token type can vary by mode/categories)
+    if ($.LA(1).image !== 'from') {
+      // Trigger a useful parse error if we don't see `from`.
+      $.CONSUME3(T.PlainIdent);
+    } else if ($.LA(1).tokenType === T.PlainIdent) {
+      $.CONSUME3(T.PlainIdent);
+    } else {
+      $.CONSUME3(T.Ident);
+    }
+
+    // Parse start expression until we hit `to`/`through`
+    const startNodes: Node[] = RECORDING_PHASE ? ([] as unknown as Node[]) : [];
+    $.AT_LEAST_ONE({
+      GATE: () => {
+        const la = $.LA(1);
+        // Stop before `to`/`through` regardless of token type.
+        return !(la.image === 'to' || la.image === 'through');
+      },
       DEF: () => {
-        const n = $.SUBRULE($.anyOuterValue, { ARGS: [ctx] });
-        if (!RECORDING_PHASE) headerNodes!.push($.wrap(n));
+        const n = $.SUBRULE($.anyOuterValue, { ARGS: [ctx] }) as unknown as Node;
+        if (!RECORDING_PHASE) startNodes.push($.wrap(n, 'both'));
       }
     });
+
+    // consume `to` / `through`
+    let kw: IToken;
+    if ($.LA(1).image !== 'to' && $.LA(1).image !== 'through') {
+      // Trigger a useful parse error if we don't see `to|through`.
+      kw = $.CONSUME4(T.PlainIdent) as unknown as IToken;
+    } else if ($.LA(1).tokenType === T.PlainIdent) {
+      kw = $.CONSUME4(T.PlainIdent) as unknown as IToken;
+    } else {
+      kw = $.CONSUME4(T.Ident) as unknown as IToken;
+    }
+    const includeEnd = kw.image === 'through';
+
+    // Parse end expression until `{` (or EOF)
+    const endNodes: Node[] = RECORDING_PHASE ? ([] as unknown as Node[]) : [];
+    $.AT_LEAST_ONE2({
+      GATE: () => $.LA(1).tokenType !== T.LCurly && $.LA(1).tokenType.name !== 'EOF',
+      DEF: () => {
+        const n = $.SUBRULE2($.anyOuterValue, { ARGS: [ctx] }) as unknown as Node;
+        if (!RECORDING_PHASE) endNodes.push($.wrap(n, 'both'));
+      }
+    });
+
     const header = !RECORDING_PHASE
-      ? new Sequence(headerNodes ?? [], undefined, $.getLocationFromNodes(headerNodes ?? []), $.context)
+      ? (() => {
+        const name = new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context);
+        const varDecl = new VarDeclaration({ name, value: new Nil() }, { paramVar: true }, $.getLocationInfo(dv), $.context);
+
+        const startExpr = startNodes.length === 1
+          ? startNodes[0]!
+          : new Sequence(startNodes, undefined, $.getLocationFromNodes(startNodes), $.context);
+        const endExpr = endNodes.length === 1
+          ? endNodes[0]!
+          : new Sequence(endNodes, undefined, $.getLocationFromNodes(endNodes), $.context);
+
+        const rangeNode = new Range(
+          { start: startExpr, end: endExpr },
+          { includeStart: true, includeEnd },
+          $.getLocationFromNodes([startExpr, endExpr]),
+          $.context
+        );
+
+        const ofNode = new Any('of', { role: 'any' }, $.getLocationInfo(dv), $.context);
+        const inner = new Sequence([varDecl, ofNode, rangeNode], undefined, $.getLocationFromNodes([varDecl, rangeNode]), $.context);
+        return new Paren(inner, undefined, $.getLocationFromNodes([varDecl, rangeNode]), $.context);
+      })()
       : undefined;
 
     $.CONSUME(T.LCurly);

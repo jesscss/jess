@@ -8,8 +8,7 @@ import { Node, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import { SelectorList } from '../selector-list.js';
 import { ComplexSelector } from '../selector-complex.js';
 import { Combinator } from '../combinator.js';
-import { is as isSelectorPseudo } from '../selector-pseudo.js';
-import type { PseudoSelector } from '../selector-pseudo.js';
+import { PseudoSelector, is as isSelectorPseudo } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
 import { Nil } from '../nil.js';
 import type { Extend } from '../extend.js';
@@ -221,6 +220,78 @@ function maybeHoistMixedNestingSelectorList(
     //
     // This is not a true "mixed absolute/relative" list; it's an internal representation artifact.
     if (hasSimpleSelectors) {
+      // Special-case: factorize a cartesian-product expansion back into `:is(parentSel) :is(children)`
+      // so `extend-exact` matches Less output (avoid full distribution).
+      //
+      // Example items:
+      // - `.replace.replace .replace`
+      // - `.c.replace + .replace .replace`
+      // - `.replace.replace .c`
+      // - `.c.replace + .replace .c`
+      // plus an absolute `.rep_ace` selector.
+      try {
+        const complexItems = items.filter(s => isNode(s, 'ComplexSelector')) as ComplexSelector[];
+        if (complexItems.length >= 4) {
+          const parentAlts = (parentSel as SelectorList).value.map(v => v.valueOf());
+          const lastBasics: { node: Selector; v: string }[] = [];
+          const complexThatMatch: ComplexSelector[] = [];
+          for (const cs of complexItems) {
+            const last = cs.value[cs.value.length - 1];
+            if (!isNode(last as any, 'BasicSelector')) continue;
+            const v = (last as any).valueOf();
+            lastBasics.push({ node: last as any, v });
+            // Only consider if it starts with one of the parent alternatives.
+            const sV = cs.valueOf();
+            if (parentAlts.some(p => sV.startsWith(`${p} `))) {
+              complexThatMatch.push(cs);
+            }
+          }
+          const uniqLast = [...new Map(lastBasics.map(b => [b.v, b.node])).entries()].map(([, n]) => n);
+          // If we can explain the complex items as parentAlts x uniqLast (cartesian product), factorize.
+          if (uniqLast.length >= 2 && complexThatMatch.length >= parentAlts.length * uniqLast.length) {
+            const parentIs = new PseudoSelector({ name: ':is', arg: (parentSel as SelectorList).copy(true) }).inherit(parentSel);
+            const childIs = new PseudoSelector({
+              name: ':is',
+              arg: SelectorList.create(uniqLast.map(n => n.copy(true) as any)).inherit(parentSel)
+            }).inherit(parentSel);
+            const combined = ComplexSelector.create([
+              parentIs,
+              Combinator.create(' ').inherit(parentSel as any),
+              childIs
+            ]).inherit(parentSel);
+
+            const kept: Selector[] = [];
+            let inserted = false;
+            for (const it of items) {
+              if (!isNode(it, 'ComplexSelector')) {
+                if (!inserted) {
+                  kept.push(combined);
+                  inserted = true;
+                }
+                kept.push(it);
+                continue;
+              }
+              // Drop the distributed combinations.
+              const itV = (it as any).valueOf?.() ?? '';
+              if (parentAlts.some(p => itV.startsWith(`${p} `))) {
+                continue;
+              }
+              if (!inserted) {
+                kept.push(combined);
+                inserted = true;
+              }
+              kept.push(it);
+            }
+            const listOut = SelectorList.create(kept.map(s => s.clone(true))).inherit(list);
+            if (wrapper) {
+              wrapper.value.arg = listOut;
+              return wrapper;
+            }
+            return listOut;
+          }
+        }
+      } catch {}
+
       let changed = false;
       const normalized = items.map((s) => {
         if (!isNode(s, 'ComplexSelector')) return s;

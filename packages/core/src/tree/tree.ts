@@ -35,6 +35,7 @@ import type { Quoted } from './quoted.js';
 import type { Color } from './color.js';
 import type { Reference } from './reference.js';
 import type { Comment } from './comment.js';
+import type { Range } from './range.js';
 
 export type Nodes = {
   Ampersand: typeof Ampersand;
@@ -76,4 +77,5 @@ export type Nodes = {
   Quoted: typeof Quoted;
   Color: typeof Color;
   Reference: typeof Reference;
+  Range: typeof Range;
 };
