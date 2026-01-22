@@ -28,8 +28,7 @@ describe('extend integration (eval -> toString)', () => {
     //   parent:  .replace.replace, .c.replace + .replace { ... }
     //   nested:  & .replace, & .c { ... }
     // materializes to:
-    //   :is(.replace.replace, .c.replace + .replace) .replace,
-    //   :is(.replace.replace, .c.replace + .replace) .c
+    //   :is(.replace.replace, .c.replace + .replace) :is(.replace, .c)
     //
     // Exact extend:
     //   .rep_ace:extend(.replace.replace .replace) {}
@@ -64,22 +63,21 @@ describe('extend integration (eval -> toString)', () => {
     const evald = await root.eval(context);
     const css = evald.toString({ context });
 
-    // We expect the extend to apply (selector list should include `.rep_ace` at least once).
-    expect(css).toContain('.rep_ace');
+    expect(css).toBeString(`
+      :is(.replace.replace, .c.replace + .replace) .replace,
+      :is(.replace.replace, .c.replace + .replace, .rep_ace) .c,
+      .rep_ace {
+        prop: copy-paste-replace;
+      }
+    `);
   });
 
   it('extends selectors inside nested rulesets (Less extend-selector replace case)', async () => {
-    // Represents:
-    // .replace.replace,
-    // .c.replace + .replace {
-    //   .replace,
-    //   .c {
-    //     prop: copy-paste-replace;
-    //   }
-    // }
-    // .rep_ace:extend(.replace all) {}
+    // Progressive reproduction of the Less fixture:
+    // - Step 0: no extends → nested output
+    // - Step 1: add `.rep_ace:extend(.replace all)` → Less hoists/mixes using `:is(...)`
 
-    const root = rules([
+    const makeRoot = (includeRepAceExtend: boolean) => rules([
       ruleset({
         selector: sellist([
           compound([el('.replace'), el('.replace')]),
@@ -94,22 +92,51 @@ describe('extend integration (eval -> toString)', () => {
           })
         ])
       }),
-      ruleset({
-        selector: el('.rep_ace'),
-        rules: rules([
-          extend({ target: el('.replace'), flag: ExtendFlag.All })
-        ])
-      })
+      ...(includeRepAceExtend
+        ? [
+          ruleset({
+            selector: el('.rep_ace'),
+            rules: rules([
+              // Less `all` (partial=true)
+              extend({ target: el('.replace'), flag: ExtendFlag.All })
+            ])
+          })
+        ]
+        : [])
     ]);
 
-    const context = new Context({ collapseNesting: false });
-    const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    // Step 0
+    {
+      const context = new Context({ collapseNesting: false });
+      const evald = await makeRoot(false).eval(context);
+      const css = evald.toString({ context });
+      expect(css).toBeString(`
+        .replace.replace,
+        .c.replace + .replace {
+          .replace,
+          .c {
+            prop: copy-paste-replace;
+          }
+        }
+      `);
+    }
 
-    // Key assertion: the nested `.replace` selector list item is extended and flattened
-    // into the selector list (no top-level `:is()` wrapper for the whole item).
-    expect(css).toContain('.replace,');
-    expect(css).toContain('.rep_ace,');
+    // Step 1 (expected Less output, from `tests-unit/extend-selector/extend-selector.css`)
+    {
+      const context = new Context({ collapseNesting: false });
+      const evald = await makeRoot(true).eval(context);
+      const css = evald.toString({ context });
+      expect(css).toBeString(`
+        :is(.replace, .rep_ace):is(.replace, .rep_ace),
+        .c:is(.replace, .rep_ace) + :is(.replace, .rep_ace) {
+          .replace,
+          .rep_ace,
+          .c {
+            prop: copy-paste-replace;
+          }
+        }
+      `);
+    }
   });
 
   it('extends nested ruleset selector across parent boundary (header/footer)', async () => {
@@ -164,12 +191,15 @@ describe('extend integration (eval -> toString)', () => {
     const evald = await root.eval(context);
     const css = evald.toString({ context });
 
-    // Key assertion: `.header .header-nav` gets extended with `.footer .footer-nav`,
-    // and the nested `&:before` stays attached under the extended selector.
-    expect(css).toContain('.header .header-nav,\n.footer .footer-nav');
-    expect(css).toContain('background: red');
-    expect(css).toContain('&:before');
-    expect(css).toContain('background: blue');
+    expect(css).toBeString(`
+      .header .header-nav,
+      .footer .footer-nav {
+        background: red;
+        &:before {
+          background: blue;
+        }
+      }
+    `);
   });
 
   it('extends attribute selectors without duplicating implicit parent prefix (Less extend-selector attributes)', async () => {
@@ -202,13 +232,13 @@ describe('extend integration (eval -> toString)', () => {
     const evald = await root.eval(context);
     const css = evald.toString({ context });
 
-    // Key assertions:
-    // - we should NOT emit `.attributes :is([data...], .attributes .attribute-test)` (duplicates `.attributes`)
-    // - we should keep a single `.attributes { ... }` block with a selector list inside.
-    expect(css).not.toContain('.attributes :is(');
-    expect(css).toContain('.attributes');
-    expect(css).toContain('extend: attributes');
-    expect(css).toContain('.attribute-test');
-    expect(css).toContain('[data');
+    expect(css).toBeString(`
+      .attributes {
+        [data="test"],
+        .attribute-test {
+          extend: attributes;
+        }
+      }
+    `);
   });
 });

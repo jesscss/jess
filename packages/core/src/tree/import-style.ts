@@ -47,6 +47,21 @@ export type ImportOptions = {
    * - members ARE made available downstream when this stylesheet is imported
    */
   forward?: boolean;
+  /**
+   * Sass `@forward ... as <prefix>-*;` prefixing.
+   * Stores the prefix portion (e.g. `bar-` from `bar-*`).
+   */
+  forwardAsPrefix?: string;
+  /**
+   * Sass `@forward ... show ...;` list.
+   * We capture raw member names (e.g. `$a`, `mixin-b`, `fn-c`) without semantics yet.
+   */
+  forwardShow?: string[];
+  /**
+   * Sass `@forward ... hide ...;` list.
+   * We capture raw member names (e.g. `$a`, `mixin-b`, `fn-c`) without semantics yet.
+   */
+  forwardHide?: string[];
   /** Variables can't be reassigned (default is true for `@-compose` and false for `@-import`). */
   readonly?: boolean;
   [key: string]: any;
@@ -324,7 +339,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         const isComposeProtected = !importOptions!.mutable;
         context.extendRoots.registerRoot(rules, parentExtendRoot, {
           isProtected: isComposeProtected,
-          isCompose: true
+          isCompose: true,
+          namespace: node.options.namespace
         });
         context.extendRoots.pushExtendRoot(rules);
         pushedExtendRoot = true;
@@ -391,7 +407,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         // Import type is mutable by default (unless explicitly mutable: false)
         const isImportProtected = importOptions!.mutable === false;
         context.extendRoots.registerRoot(finalRules, currentParentExtendRoot, {
-          isProtected: isImportProtected
+          isProtected: isImportProtected,
+          namespace: node.options.namespace
         });
 
         // For protected imports, rulesets were registered in the original rules' registry

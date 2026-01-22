@@ -5,15 +5,40 @@ import {
   InitializeParams,
   InitializeResult,
   TextDocumentSyncKind,
-  TextDocumentChangeEvent
-} from 'vscode-languageserver/node';
+  TextDocumentChangeEvent,
+  SemanticTokensLegend,
+  type CompletionParams,
+  type HoverParams,
+  type DefinitionParams,
+  type ReferenceParams,
+  type DocumentSymbolParams,
+  type SemanticTokensParams
+} from 'vscode-languageserver/node.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { CompletionParams, HoverParams, DefinitionParams, ReferenceParams } from 'vscode-languageserver-types';
 import { createEngine } from './engine.js';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
 const engine = createEngine();
+
+const semanticTokensLegend: SemanticTokensLegend = {
+  tokenTypes: [
+    // Use common token types most themes color strongly.
+    'comment',
+    'string',
+    'keyword',
+    'enumMember',
+    'number',
+    'operator',
+    'function',
+    'variable',
+    'property',
+    'type',
+    'class',
+    'namespace'
+  ],
+  tokenModifiers: ['declaration']
+};
 
 connection.onInitialize((_params: InitializeParams): InitializeResult => {
   const result: InitializeResult = {
@@ -24,7 +49,14 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
       },
       hoverProvider: true,
       definitionProvider: true,
-      referencesProvider: true
+      referencesProvider: true,
+      documentSymbolProvider: true,
+      semanticTokensProvider: {
+        legend: semanticTokensLegend,
+        // Be explicit: VS Code has historically been stricter about the object form
+        // than the boolean shorthand.
+        full: { delta: false }
+      }
     }
   };
   return result;
@@ -59,6 +91,14 @@ connection.onDefinition((params: DefinitionParams) => {
 
 connection.onReferences((params: ReferenceParams) => {
   return engine.findReferences(params.textDocument.uri, params.position);
+});
+
+connection.onDocumentSymbol((params: DocumentSymbolParams) => {
+  return engine.getDocumentSymbols(params.textDocument.uri);
+});
+
+connection.languages.semanticTokens.on((params: SemanticTokensParams) => {
+  return engine.getSemanticTokens(params.textDocument.uri);
 });
 
 documents.listen(connection);

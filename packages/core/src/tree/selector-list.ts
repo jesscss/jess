@@ -97,7 +97,7 @@ export class SelectorList extends Selector<Selector[]> {
       if (isNode(item, 'PseudoSelector') && item.value.name === ':is') {
         const arg = item.value.arg;
         if (arg && isNode(arg, 'SelectorList')) {
-          out.push(...arg.value.map((v) => v.valueOf()));
+          out.push(...arg.value.map(v => v.valueOf()));
           continue;
         }
       }
@@ -106,7 +106,7 @@ export class SelectorList extends Selector<Selector[]> {
         if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
           const arg = only.value.arg;
           if (arg && isNode(arg, 'SelectorList')) {
-            out.push(...arg.value.map((v) => v.valueOf()));
+            out.push(...arg.value.map(v => v.valueOf()));
             continue;
           }
         }
@@ -116,7 +116,7 @@ export class SelectorList extends Selector<Selector[]> {
         if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
           const arg = only.value.arg;
           if (arg && isNode(arg, 'SelectorList')) {
-            out.push(...arg.value.map((v) => v.valueOf()));
+            out.push(...arg.value.map(v => v.valueOf()));
             continue;
           }
         }

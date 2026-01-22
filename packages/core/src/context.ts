@@ -571,7 +571,7 @@ export class Context {
       if (!this.root && isNode(parseResult.tree, 'Rules')) {
         this.root = parseResult.tree;
       }
-      
+
       this.sourceTrees.set(resolvedPath, parseResult.tree);
       return {
         node: parseResult.tree,
@@ -587,7 +587,7 @@ export class Context {
     }
     // Add error for unsupported file
     this.errors.push({
-      code: 'JESS0000',
+      code: 'parse/unsupported-file',
       phase: 'parse',
       message: notSupportedError.message,
       reason: `The file "${friendlyPath}" is not supported by any available plugin.`,

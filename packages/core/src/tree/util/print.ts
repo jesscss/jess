@@ -68,8 +68,13 @@ export class OutputWriter implements OutputWriter {
   /** Store segments from the most recent capture for merging when content is added back */
   private _capturedSegments: SourceSegment[] | null = null;
 
-  get line() { return this._line; }
-  get column() { return this._column; }
+  get line() {
+    return this._line;
+  }
+
+  get column() {
+    return this._column;
+  }
 
   add(text: string, originParam?: unknown): void {
     if (!text) {

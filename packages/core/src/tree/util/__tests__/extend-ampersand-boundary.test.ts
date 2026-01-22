@@ -92,4 +92,3 @@ describe('Extend ampersand boundary behavior', () => {
     expect(result.value.toString()).toBe('&:before');
   });
 });
-

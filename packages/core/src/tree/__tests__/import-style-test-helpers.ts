@@ -54,4 +54,3 @@ export function createTestContext(): Context {
   ctx.plugins.push(plugin);
   return ctx;
 }
-

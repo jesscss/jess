@@ -58,14 +58,20 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   // #region agent log
   private static __agentLogCount = 0;
   private static agentLog(context: Context, location: string, message: string, data: Record<string, unknown>) {
-    if (process.env.DEBUG_EXTEND_BOOT !== 'true') return;
-    if (Ruleset.__agentLogCount++ > 200) return;
+    if (process.env.DEBUG_EXTEND_BOOT !== 'true') {
+      return;
+    }
+    if (Ruleset.__agentLogCount++ > 200) {
+      return;
+    }
     const filePath = context.treeContext?.file?.fullPath
       || (context.treeContext?.file?.path && context.treeContext?.file?.name
         ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
         : context.treeContext?.file?.path)
       || '';
-    if (typeof filePath === 'string' && !filePath.includes('tests-unit/extend-selector')) return;
+    if (typeof filePath === 'string' && !filePath.includes('tests-unit/extend-selector')) {
+      return;
+    }
     syncLog({
       sessionId: 'debug-session',
       runId: process.env.DEBUG_RUN_ID || 'pre-fix',
@@ -140,12 +146,17 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       // Index should already be assigned by parent Rules
       node.sourceNode ??= this;
       let { selector, rules, guard } = node.value;
-      if (context.leakyRules) {
-        rules.options.rulesVisibility.Mixin = 'public';
-        rules.options.rulesVisibility.VarDeclaration = 'optional';
-      } else {
-        rules.options.rulesVisibility.Mixin = 'private';
-        rules.options.rulesVisibility.VarDeclaration = 'private';
+      // Generated wrapper rulesets (e.g. implicit `& { ... }` created by AtRule hoisting)
+      // should not force var visibility to `private`, otherwise sibling vars inside the wrapper
+      // (like Less `@base`) become inaccessible.
+      if (!node.options.generated) {
+        if (context.leakyRules) {
+          rules.options.rulesVisibility.Mixin = 'public';
+          rules.options.rulesVisibility.VarDeclaration = 'optional';
+        } else {
+          rules.options.rulesVisibility.Mixin = 'private';
+          rules.options.rulesVisibility.VarDeclaration = 'private';
+        }
       }
       // Check if there's a root-only at-rule between us and the parent ruleset
       // If so, don't inherit the parent selector (root-only at-rules like @keyframes

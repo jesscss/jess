@@ -83,7 +83,7 @@ describe('Static optimization', () => {
       ruleset({
         selector: sellist([sel([el('.a')])]),
         rules: rules([
-                      decl({ name: 'width', value: op([num(1), '+', num(2)]) })
+          decl({ name: 'width', value: op([num(1), '+', num(2)]) })
         ])
       })
     ]);
@@ -191,7 +191,7 @@ describe('Static optimization', () => {
         rules: rules([
           decl({ name: 'color', value: any('red') }),
           decl({ name: 'background', value: DEFAULT_VARIABLE }),
-                      decl({ name: 'width', value: op([num(10), '+', num(5)]) }),
+          decl({ name: 'width', value: op([num(10), '+', num(5)]) }),
           decl({ name: 'border', value: any('1px solid') })
         ])
       })

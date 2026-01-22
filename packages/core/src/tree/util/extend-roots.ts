@@ -12,10 +12,10 @@ import { is as isSelectorPseudo } from '../selector-pseudo.js';
 import type { PseudoSelector } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
 import { Nil } from '../nil.js';
+import type { Extend } from '../extend.js';
 import { tryExtendSelector, findChainedExtends, createProcessedSelector } from './extend.js';
 import { WARN, toDiagnostic } from '../../jess-error.js';
 import { syncLog } from './__tests__/debug-log.js';
-import { appendFileSync } from 'node:fs';
 
 // NOTE: extend tracing instrumentation removed (debug-only).
 
@@ -31,7 +31,9 @@ function __agentExtendTrace(_location: string, _message: string, _data: Record<s
 let __agentRootSeq = 0;
 const __agentRootIds = new WeakMap<object, number>();
 function __agentRootId(root: object | undefined): number | null {
-  if (!root) return null;
+  if (!root) {
+    return null;
+  }
   let id = __agentRootIds.get(root);
   if (id == null) {
     id = ++__agentRootSeq;
@@ -40,23 +42,9 @@ function __agentRootId(root: object | undefined): number | null {
   return id;
 }
 function __agentAccessLog(message: string, data: Record<string, unknown>) {
-  if (process.env.DEBUG_EXTEND_ACCESS !== 'true') return;
-  try {
-    appendFileSync(
-      '/Users/matthew/git/oss/jess/.cursor/debug.log',
-      JSON.stringify({
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'extend-access',
-        hypothesisId: 'H-access',
-        location: 'extend-roots.ts',
-        message,
-        data,
-        timestamp: Date.now()
-      }) + '\n'
-    );
-  } catch {
-    // ignore
-  }
+  void message;
+  void data;
+  // (debug log removed)
 }
 // #endregion
 
@@ -112,10 +100,10 @@ function maybeHoistMixedNestingSelectorList(
         second.addFlag(F_VISIBLE);
       }
       if (
-        first instanceof Ampersand &&
-        first.hasFlag(F_IMPLICIT_AMPERSAND) &&
-        first.value.selector &&
-        !(first.value.selector instanceof Nil)
+        first instanceof Ampersand
+        && first.hasFlag(F_IMPLICIT_AMPERSAND)
+        && first.value.selector
+        && !(first.value.selector instanceof Nil)
       ) {
         // Replace implicit ampersand with its concrete parent selector so
         // serialization at root doesn't drop it.
@@ -170,6 +158,33 @@ function maybeHoistMixedNestingSelectorList(
     return selector;
   }
 
+  // #region agent log
+  if (process.env.DEBUG_EXTEND_BOOT === 'true') {
+    const selV = (() => {
+      try { return (selector as any)?.valueOf?.() ?? null; } catch { return null; }
+    })();
+    if (typeof selV === 'string' && (selV.includes('rep_ace') || selV.includes('replace'))) {
+      syncLog({
+        sessionId: 'debug-session',
+        runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+        hypothesisId: 'H9',
+        location: 'extend-roots.ts:maybeHoistMixedNestingSelectorList',
+        message: 'hoist-check',
+        data: {
+          partial,
+          parentSelType: (parentSel as any)?.type ?? null,
+          parentSelV: (() => { try { return (parentSel as any)?.valueOf?.() ?? null; } catch { return null; } })(),
+          itemsV: items.slice(0, 6).map((s) => {
+            try { return (s as any)?.valueOf?.() ?? null; } catch { return null; }
+          }),
+          itemsType: items.slice(0, 6).map((s) => (s as any)?.type ?? null)
+        },
+        timestamp: Date.now()
+      });
+    }
+  }
+  // #endregion
+
   // Special-case: when the parent selector is a selector list, a nested selector list can become
   // "mixed" after extend (some items are relative via implicit `&`, some are absolute like `.rep_ace`).
   // If we serialize that nested, we would incorrectly apply the parent frame to the absolute items.
@@ -187,7 +202,7 @@ function maybeHoistMixedNestingSelectorList(
     const anyImplicit = items.some(startsWithImplicitParent);
     // An item is "absolute" if it's a ComplexSelector without implicit ampersand, or a simple selector
     // that doesn't match the nested pattern.
-    const hasComplexWithoutImplicit = items.some(s => {
+    const hasComplexWithoutImplicit = items.some((s) => {
       if (isNode(s, 'ComplexSelector')) {
         const first = (s as ComplexSelector).value[0];
         return !(first instanceof Ampersand && first.hasFlag(F_IMPLICIT_AMPERSAND));
@@ -195,13 +210,72 @@ function maybeHoistMixedNestingSelectorList(
       return false;
     });
     const hasSimpleSelectors = items.some(s => !isNode(s, 'ComplexSelector'));
+
+    // If we ended up with a selector-list where some items are plain selectors (e.g. `.replace`)
+    // but others are just the parent prefix materialized as `:is(parentSel) <child>` (e.g. `:is(parentSel) .c`),
+    // prefer normalizing back to plain nested selectors rather than hoisting/distributing.
+    //
+    // Runtime evidence (core-hoist-check):
+    // - parentSelV = `:is(.replace,.rep_ace):is(.replace,.rep_ace),.c:is(...)+:is(...)`
+    // - items = [`.replace`, `.rep_ace`, `:is(parentSelV) .c`]
+    //
+    // This is not a true "mixed absolute/relative" list; it's an internal representation artifact.
+    if (hasSimpleSelectors) {
+      let changed = false;
+      const normalized = items.map((s) => {
+        if (!isNode(s, 'ComplexSelector')) return s;
+        const cs = s as ComplexSelector;
+        const a = cs.value[0];
+        const b = cs.value[1];
+        const c = cs.value[2];
+        if (
+          isNode(a, 'PseudoSelector')
+          && (a as any).value?.name === ':is'
+          && isNode((a as any).value?.arg, 'SelectorList')
+          && ((a as any).value.arg as SelectorList).valueOf() === parentSel.valueOf()
+          && isNode(b, 'Combinator')
+          && (b as any).value === ' '
+          && isNode(c as any, 'BasicSelector')
+        ) {
+          changed = true;
+          return (c as any).copy(true) as Selector;
+        }
+        return s;
+      });
+      if (changed) {
+        const listOut = SelectorList.create(normalized.map(s => s.clone(true)));
+        if (wrapper) {
+          wrapper.value.arg = listOut;
+          return wrapper;
+        }
+        return listOut;
+      }
+    }
+
     // If we have both items with implicit parent (relative) and items without (absolute), hoist and materialize.
     // This covers:
     // - ComplexSelector with implicit ampersand + ComplexSelector without (mixed relative/absolute)
     // - ComplexSelector with implicit ampersand + simple selector (relative + absolute)
     // - Simple selectors (which are relative in nested context) + ComplexSelector without implicit (relative + absolute)
     if (anyImplicit && (hasComplexWithoutImplicit || hasSimpleSelectors)) {
-      const listOut = SelectorList.create(items.map((s) => materializeImplicitAmpersand(s).clone(true)));
+      // #region agent log
+      if (process.env.DEBUG_EXTEND_BOOT === 'true') {
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+          hypothesisId: 'H9',
+          location: 'extend-roots.ts:maybeHoistMixedNestingSelectorList',
+          message: 'hoist-triggered',
+          data: {
+            anyImplicit,
+            hasComplexWithoutImplicit,
+            hasSimpleSelectors
+          },
+          timestamp: Date.now()
+        });
+      }
+      // #endregion
+      const listOut = SelectorList.create(items.map(s => materializeImplicitAmpersand(s).clone(true)));
       if (partial) {
         if (!wrapper) {
           listOut.hoistToRoot = true;
@@ -220,7 +294,7 @@ function maybeHoistMixedNestingSelectorList(
     // Also hoist if we have simple selectors mixed with ComplexSelector items without implicit ampersand
     // (both could be absolute, but if parent is SelectorList and we're nested, simple selectors are relative)
     if (hasSimpleSelectors && hasComplexWithoutImplicit) {
-      const listOut = SelectorList.create(items.map((s) => materializeImplicitAmpersand(s).clone(true)));
+      const listOut = SelectorList.create(items.map(s => materializeImplicitAmpersand(s).clone(true)));
       if (partial) {
         if (!wrapper) {
           listOut.hoistToRoot = true;
@@ -241,21 +315,21 @@ function maybeHoistMixedNestingSelectorList(
   // Heuristic: if we have a mix of "relative" selectors (no descendant combinator)
   // and "absolute" selectors (has descendant combinator), hoist and materialize parent.
   const hasDescendantCombinator = (s: Selector) =>
-    isNode(s, 'ComplexSelector') && (s as ComplexSelector).value.some((c) => isNode(c, 'Combinator') && c.value === ' ');
+    isNode(s, 'ComplexSelector') && (s as ComplexSelector).value.some(c => isNode(c, 'Combinator') && c.value === ' ');
   const anyAbsolute = items.some(hasDescendantCombinator);
-  const anyRelative = items.some((s) => !hasDescendantCombinator(s));
+  const anyRelative = items.some(s => !hasDescendantCombinator(s));
   const parentPrefix = `${parentSel.valueOf()} `;
   const anyPrefixedByParent = parentPrefix
-    ? items.some((s) => String(s.valueOf()).startsWith(parentPrefix))
+    ? items.some(s => String(s.valueOf()).startsWith(parentPrefix))
     : false;
   const anyNotPrefixedByParent = parentPrefix
-    ? items.some((s) => !String(s.valueOf()).startsWith(parentPrefix))
+    ? items.some(s => !String(s.valueOf()).startsWith(parentPrefix))
     : false;
   // If the selector list mixes selectors that are under the parent prefix and selectors that are not,
   // hoist to root so we don't serialize them inside the parent's frame (which would strip the prefix
   // from the prefixed selectors, producing `.header-nav, .footer .footer-nav`).
   if (anyPrefixedByParent && anyNotPrefixedByParent) {
-    const listOut = SelectorList.create(items.map((s) => materializeImplicitAmpersand(s).clone(true)));
+    const listOut = SelectorList.create(items.map(s => materializeImplicitAmpersand(s).clone(true)));
     if (partial) {
       // If we were going to introduce a wrapper just for partial-mode output,
       // prefer returning a plain selector list. A top-level `:is(...)` wrapper
@@ -333,6 +407,9 @@ export class ExtendRootRegistry {
   // Map layer name -> Set of Rules with that name
   private rootsByLayerName = new Map<string, Set<Rules>>();
 
+  // Map namespace identifier -> Set of Rules registered under that namespace
+  private rootsByNamespace = new Map<string, Set<Rules>>();
+
   // Map AtRule node -> layer name (temporary storage from preEval to evalNode)
   // We use AtRule as the key since we have access to it in both preEval and evalNode
   private layerNames = new WeakMap<AtRule, string>();
@@ -356,7 +433,7 @@ export class ExtendRootRegistry {
   registerRoot(
     rules: Rules,
     parent?: Rules,
-    options?: { layerName?: string; isProtected?: boolean; isCompose?: boolean }
+    options?: { layerName?: string; isProtected?: boolean; isCompose?: boolean; namespace?: string }
   ): void {
     // #region agent log
     if (process.env.DEBUG_EXTEND_ACCESS === 'true') {
@@ -397,6 +474,16 @@ export class ExtendRootRegistry {
         this.rootsByLayerName.set(options.layerName, layerRoots);
       }
       layerRoots.add(rules);
+    }
+
+    // Set namespace if provided
+    if (options?.namespace) {
+      let nsRoots = this.rootsByNamespace.get(options.namespace);
+      if (!nsRoots) {
+        nsRoots = new Set<Rules>();
+        this.rootsByNamespace.set(options.namespace, nsRoots);
+      }
+      nsRoots.add(rules);
     }
 
     // Set protected flag if provided
@@ -596,6 +683,13 @@ export class ExtendRootRegistry {
   }
 
   /**
+   * Get roots registered for a given namespace identifier.
+   */
+  getByNamespace(namespace: string): Set<Rules> {
+    return this.rootsByNamespace.get(namespace) ?? new Set<Rules>();
+  }
+
+  /**
    * Extract layer name from AtRule prelude
    * Returns undefined for anonymous layers
    */
@@ -653,10 +747,23 @@ export function processExtends(context: Context): void {
       || debugFilePath.includes('tests-unit/extend-media/extend-media.less')
       || debugFilePath.includes('tests-unit/extend-chaining/extend-chaining.less')
     );
-  // Debug marker to confirm this code path is running in Jess tests.
-  if (process.env.DEBUG) {
-    syncLog({ kind: 'processExtends', file: debugFilePath || null, count: allExtends.length, debugThisFile });
+  // #region agent log
+  if (process.env.DEBUG_EXTEND_BOOT === 'true') {
+    syncLog({
+      sessionId: 'debug-session',
+      runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+      hypothesisId: 'H8',
+      location: 'extend-roots.ts:processExtends',
+      message: 'processExtends-context',
+      data: {
+        debugFilePath: debugFilePath || null,
+        debugThisFile,
+        extendsCount: allExtends.length
+      },
+      timestamp: Date.now()
+    });
   }
+  // #endregion
 
   /**
    * Helper to re-index a ruleset's registry after selector update
@@ -806,8 +913,17 @@ export function processExtends(context: Context): void {
     }
     // #endregion
 
-    // Get accessible roots for this extend's root
-    const accessibleRoots = context.extendRoots.getAccessibleRoots(extendRoot);
+    // Determine which roots to search for this extend.
+    // - If extend specifies a namespace:
+    //   - '*' searches all file roots
+    //   - otherwise search only roots registered for that namespace
+    // - Otherwise, use the accessibility model from the extend's own root.
+    const extendNamespace = (extendNode as Extend).type === 'Extend'
+      ? (extendNode as Extend).value.namespace
+      : undefined;
+    const accessibleRoots = extendNamespace
+      ? (extendNamespace === '*' ? context.extendRoots.getAlts() : context.extendRoots.getByNamespace(extendNamespace))
+      : context.extendRoots.getAccessibleRoots(extendRoot);
 
     // If target is a SelectorList (e.g., .aa, .bb), process each selector separately
     const targetSelectors: Selector[] = isNode(target, 'SelectorList')
@@ -931,6 +1047,38 @@ export function processExtends(context: Context): void {
           let result = tryExtendSelector(originalSelector, singleTarget, selectorWithExtend, partial);
 
           // #region agent log
+          if (
+            process.env.DEBUG_EXTEND_LOOP === 'true'
+            && debugThisFile
+            && (
+              singleTarget.valueOf().includes('replace.replace')
+              || singleTarget.valueOf() === '.replace'
+              || selectorWithExtend.valueOf().includes('rep_ace')
+            )
+          ) {
+            syncLog({
+              sessionId: 'debug-session',
+              runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+              hypothesisId: 'H7',
+              location: 'extend-roots.ts:processExtend',
+              message: 'tryExtendSelector-focus',
+              data: {
+                partial,
+                target: singleTarget.valueOf(),
+                extendWith: selectorWithExtend.valueOf(),
+                from: originalSelector.valueOf(),
+                ok: !!result && !result.error,
+                errType: result?.error?.type || null,
+                out: result && !result.error ? result.value.valueOf() : null,
+                outType: result && !result.error ? (result.value as any).type ?? null : null,
+                outHoistToRoot: result && !result.error ? !!(result.value as any).hoistToRoot : null
+              },
+              timestamp: Date.now()
+            });
+          }
+          // #endregion
+
+          // #region agent log
           if (process.env.DEBUG_EXTEND_LOOP === 'true' && debugThisFile) {
             syncLog({
               sessionId: 'debug-session',
@@ -1045,7 +1193,7 @@ export function processExtends(context: Context): void {
               const normalized = createProcessedSelector(hoisted, true);
               let normalizedSelector: Selector;
               if (Array.isArray(normalized)) {
-                normalizedSelector = SelectorList.create(normalized.map((s) => s.clone(true))).inherit(hoisted);
+                normalizedSelector = SelectorList.create(normalized.map(s => s.clone(true))).inherit(hoisted);
               } else {
                 normalizedSelector = normalized as Selector;
               }
@@ -1075,29 +1223,6 @@ export function processExtends(context: Context): void {
 
   // Phase 1: Process all original extends depth-first
   for (const [target, selectorWithExtend, partial, extendRoot, extendNode] of allExtends) {
-    // #region agent log
-    // Narrow logging for extend-clearfix ordering (source order vs applied order).
-    try {
-      const t = target?.valueOf?.() ?? '';
-      const w = selectorWithExtend?.valueOf?.() ?? '';
-      if (t.includes('.clearfix') && (w.includes('.foo') || w.includes('.bar'))) {
-        appendFileSync(
-          '/Users/matthew/git/oss/jess/.cursor/debug.log',
-          JSON.stringify({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID || 'extend-is-order',
-            hypothesisId: 'H-order',
-            location: 'extend-roots.ts:phase1-loop',
-            message: 'phase1 extend entry',
-            data: { target: t, selectorWithExtend: w, partial },
-            timestamp: Date.now()
-          }) + '\n'
-        );
-      }
-    } catch {
-      // ignore
-    }
-    // #endregion
     processExtend(target, selectorWithExtend, partial, extendRoot, extendNode);
   }
 
@@ -1249,59 +1374,22 @@ export function processExtends(context: Context): void {
           attemptedPhase2ExtendKeys.add(phase2ExtendKey);
           phase2ConsideredTargets++;
 
-            // Check if ruleset is accessible for this extend
-            const accessibleRoots = context.extendRoots.getAccessibleRoots(extendRoot);
-            let foundRuleset = false;
+          // Check if ruleset is accessible for this extend
+          const accessibleRoots = context.extendRoots.getAccessibleRoots(extendRoot);
+          let foundRuleset = false;
 
-            for (const searchRoot of accessibleRoots) {
-              const found = searchRoot.find('ruleset', singleTarget.keySet);
-              if (found && found.includes(ruleset)) {
-                foundRuleset = true;
-                break;
-              }
+          for (const searchRoot of accessibleRoots) {
+            const found = searchRoot.find('ruleset', singleTarget.keySet);
+            if (found && found.includes(ruleset)) {
+              foundRuleset = true;
+              break;
             }
+          }
 
-            if (!foundRuleset) {
-              phase2SkipInaccessible++;
-              // #region agent log
-              __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-skip-inaccessible', {
-                ctxId: __agentTraceContextId(context as unknown as object),
-                iteration,
-                partial,
-                extendKey: phase2ExtendKey,
-                from: currentSelectorValue
-              });
-              // #endregion
-              continue; // Ruleset not accessible for this extend
-            }
-
-            // Check if this extend has already transformed this ruleset's selector
-            const extendKey = `${singleTarget.valueOf()}:${selectorWithExtend.valueOf()}:${partial}`;
-            if (!transformedByExtend.has(ruleset)) {
-              transformedByExtend.set(ruleset, new Set());
-            }
-            const transformsForRuleset = transformedByExtend.get(ruleset)!;
-
-            // Skip if this extend has already transformed this ruleset
-            if (transformsForRuleset.has(extendKey)) {
-              phase2SkipAlreadyTransformed++;
-              // #region agent log
-              __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-skip-already-transformed', {
-                ctxId: __agentTraceContextId(context as unknown as object),
-                iteration,
-                partial,
-                extendKey: phase2ExtendKey,
-                from: currentSelectorValue
-              });
-              // #endregion
-              continue; // This extend already transformed this ruleset - skip
-            }
-
-            // Try to extend - tryExtendSelector will check for actual matches (including combinators)
-            // and return an error if there's no match
-            phase2TryExtendSelector++;
+          if (!foundRuleset) {
+            phase2SkipInaccessible++;
             // #region agent log
-            __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-tryExtendSelector', {
+            __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-skip-inaccessible', {
               ctxId: __agentTraceContextId(context as unknown as object),
               iteration,
               partial,
@@ -1309,102 +1397,139 @@ export function processExtends(context: Context): void {
               from: currentSelectorValue
             });
             // #endregion
-            const result = tryExtendSelector(currentSelector, singleTarget, selectorWithExtend, partial);
+            continue; // Ruleset not accessible for this extend
+          }
 
-            if (result && !result.error) {
-              const extendedSelector = result.value;
+          // Check if this extend has already transformed this ruleset's selector
+          const extendKey = `${singleTarget.valueOf()}:${selectorWithExtend.valueOf()}:${partial}`;
+          if (!transformedByExtend.has(ruleset)) {
+            transformedByExtend.set(ruleset, new Set());
+          }
+          const transformsForRuleset = transformedByExtend.get(ruleset)!;
 
-              // Only update if selector actually changed
-              if (extendedSelector.valueOf() !== currentSelectorValue) {
-                phase2SelectorChanged++;
-                // #region agent log
-                __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-extend-changed', {
-                  ctxId: __agentTraceContextId(context as unknown as object),
-                  iteration,
+          // Skip if this extend has already transformed this ruleset
+          if (transformsForRuleset.has(extendKey)) {
+            phase2SkipAlreadyTransformed++;
+            // #region agent log
+            __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-skip-already-transformed', {
+              ctxId: __agentTraceContextId(context as unknown as object),
+              iteration,
+              partial,
+              extendKey: phase2ExtendKey,
+              from: currentSelectorValue
+            });
+            // #endregion
+            continue; // This extend already transformed this ruleset - skip
+          }
+
+          // Try to extend - tryExtendSelector will check for actual matches (including combinators)
+          // and return an error if there's no match
+          phase2TryExtendSelector++;
+          // #region agent log
+          __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-tryExtendSelector', {
+            ctxId: __agentTraceContextId(context as unknown as object),
+            iteration,
+            partial,
+            extendKey: phase2ExtendKey,
+            from: currentSelectorValue
+          });
+          // #endregion
+          const result = tryExtendSelector(currentSelector, singleTarget, selectorWithExtend, partial);
+
+          if (result && !result.error) {
+            const extendedSelector = result.value;
+
+            // Only update if selector actually changed
+            if (extendedSelector.valueOf() !== currentSelectorValue) {
+              phase2SelectorChanged++;
+              // #region agent log
+              __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-extend-changed', {
+                ctxId: __agentTraceContextId(context as unknown as object),
+                iteration,
+                partial,
+                extendKey: phase2ExtendKey,
+                from: currentSelectorValue,
+                to: extendedSelector.valueOf(),
+                hoistToRoot: !!extendedSelector.hoistToRoot
+              });
+              // #endregion
+              if (debugThisFile) {
+                syncLog({
+                  kind: 'extend:apply',
+                  phase: 2,
+                  target: singleTarget.valueOf(),
+                  extendWith: selectorWithExtend.valueOf(),
                   partial,
-                  extendKey: phase2ExtendKey,
                   from: currentSelectorValue,
-                  to: extendedSelector.valueOf(),
-                  hoistToRoot: !!extendedSelector.hoistToRoot
+                  to: extendedSelector.valueOf()
                 });
-                // #endregion
-                if (debugThisFile) {
-                  syncLog({
-                    kind: 'extend:apply',
-                    phase: 2,
-                    target: singleTarget.valueOf(),
-                    extendWith: selectorWithExtend.valueOf(),
-                    partial,
-                    from: currentSelectorValue,
-                    to: extendedSelector.valueOf()
-                  });
-                }
-                // Mark that this extend has transformed this ruleset
-                transformsForRuleset.add(extendKey);
+              }
+              // Mark that this extend has transformed this ruleset
+              transformsForRuleset.add(extendKey);
 
-                const shouldHoist = !!extendedSelector.hoistToRoot;
-                // CRITICAL: Clone the selector to avoid object reference issues
-                const clonedSelector = extendedSelector.clone(true);
-                // #region agent log
-                __agentExtendTrace('extend-roots.ts:processExtends', 'clone-selector', {
-                  ctxId: __agentTraceContextId(context as unknown as object),
-                  reason: 'phase2-ruleset-selector-update',
-                  partial,
-                  from: extendedSelector.valueOf(),
-                  hoistToRoot: !!extendedSelector.hoistToRoot
-                });
-                // #endregion
-                if (shouldHoist) {
-                  // NOTE: Node.clone()/inherit() does not currently copy hoistToRoot.
-                  clonedSelector.hoistToRoot = true;
-                }
+              const shouldHoist = !!extendedSelector.hoistToRoot;
+              // CRITICAL: Clone the selector to avoid object reference issues
+              const clonedSelector = extendedSelector.clone(true);
+              // #region agent log
+              __agentExtendTrace('extend-roots.ts:processExtends', 'clone-selector', {
+                ctxId: __agentTraceContextId(context as unknown as object),
+                reason: 'phase2-ruleset-selector-update',
+                partial,
+                from: extendedSelector.valueOf(),
+                hoistToRoot: !!extendedSelector.hoistToRoot
+              });
+              // #endregion
+              if (shouldHoist) {
+                // NOTE: Node.clone()/inherit() does not currently copy hoistToRoot.
+                clonedSelector.hoistToRoot = true;
+              }
 
-                const sourceSelector = currentSelector.sourceNode;
-                if (sourceSelector instanceof Selector) {
-                  const sourceResult = tryExtendSelector(sourceSelector, singleTarget, selectorWithExtend, partial);
-                  if (sourceResult && !sourceResult.error) {
-                    const nextSource = sourceResult.value;
-                    if (nextSource.valueOf() !== sourceSelector.valueOf()) {
-                      clonedSelector.sourceNode = nextSource.clone(true);
-                      // #region agent log
-                      __agentExtendTrace('extend-roots.ts:processExtends', 'clone-selector', {
-                        ctxId: __agentTraceContextId(context as unknown as object),
-                        reason: 'phase2-ruleset-selector-sourceNode-update',
-                        partial,
-                        from: nextSource.valueOf(),
-                        hoistToRoot: !!nextSource.hoistToRoot
-                      });
-                      // #endregion
-                    }
+              const sourceSelector = currentSelector.sourceNode;
+              if (sourceSelector instanceof Selector) {
+                const sourceResult = tryExtendSelector(sourceSelector, singleTarget, selectorWithExtend, partial);
+                if (sourceResult && !sourceResult.error) {
+                  const nextSource = sourceResult.value;
+                  if (nextSource.valueOf() !== sourceSelector.valueOf()) {
+                    clonedSelector.sourceNode = nextSource.clone(true);
+                    // #region agent log
+                    __agentExtendTrace('extend-roots.ts:processExtends', 'clone-selector', {
+                      ctxId: __agentTraceContextId(context as unknown as object),
+                      reason: 'phase2-ruleset-selector-sourceNode-update',
+                      partial,
+                      from: nextSource.valueOf(),
+                      hoistToRoot: !!nextSource.hoistToRoot
+                    });
+                    // #endregion
                   }
                 }
-                // Normalize selectors after extend so generated :is() wrappers can be unwrapped/merged
-                // when they are the only simple selector in a selector-list item (Less expectations).
-                const normalized = createProcessedSelector(clonedSelector, true);
-                let normalizedSelector: Selector;
-                if (Array.isArray(normalized)) {
-                  normalizedSelector = SelectorList.create(normalized.map((s) => s.clone(true))).inherit(clonedSelector);
-                } else {
-                  normalizedSelector = normalized as Selector;
-                }
-                ruleset.value.selector = normalizedSelector;
-                ruleset.invalidateSelectorValueCache();
-                if (normalizedSelector.hoistToRoot) {
-                  ruleset.hoistToRoot = true;
-                }
-
-                reindexRuleset(ruleset);
-                nextIteration.add(ruleset); // Keep in next iteration
-                break; // Found a match, no need to check other targets
               }
+              // Normalize selectors after extend so generated :is() wrappers can be unwrapped/merged
+              // when they are the only simple selector in a selector-list item (Less expectations).
+              const normalized = createProcessedSelector(clonedSelector, true);
+              let normalizedSelector: Selector;
+              if (Array.isArray(normalized)) {
+                normalizedSelector = SelectorList.create(normalized.map(s => s.clone(true))).inherit(clonedSelector);
+              } else {
+                normalizedSelector = normalized as Selector;
+              }
+              ruleset.value.selector = normalizedSelector;
+              ruleset.invalidateSelectorValueCache();
+              if (normalizedSelector.hoistToRoot) {
+                ruleset.hoistToRoot = true;
+              }
+
+              reindexRuleset(ruleset);
+              nextIteration.add(ruleset); // Keep in next iteration
+              break; // Found a match, no need to check other targets
             }
           }
         }
+      }
 
-        // If we added to nextIteration, break out of outer loop
-        if (nextIteration.has(ruleset)) {
-          break;
-        }
+      // If we added to nextIteration, break out of outer loop
+      if (nextIteration.has(ruleset)) {
+        break;
+      }
 
       // #region agent log
       __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-ruleset-summary', {
@@ -1428,5 +1553,4 @@ export function processExtends(context: Context): void {
   if (iteration >= maxIterations) {
     throw new Error(`Extend chaining exceeded maximum iterations (${maxIterations}). Possible infinite loop.`);
   }
-
 }

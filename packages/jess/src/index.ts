@@ -125,6 +125,13 @@ export class Compiler {
       collapseNesting: lessOptions.collapseNesting ?? (Array.isArray(config.output) ? undefined : (config.output as any)?.collapseNesting)
     };
 
+    // Ensure output options are available on context.opts.output.
+    // Many serializer/hoisting behaviors (including Less extend materialization) consult output.collapseNesting.
+    (contextOptions as any).output = {
+      ...(typeof (config.output as any) === 'object' && !Array.isArray(config.output) ? (config.output as any) : {}),
+      collapseNesting: printOptions.collapseNesting
+    };
+
     return new Context(contextOptions, [...pluginMap.values()]);
   }
 
@@ -387,7 +394,7 @@ export class Compiler {
         }
       } else {
         errors.push({
-          code: 'JESS0000',
+          code: 'internal/unknown',
           phase: 'eval',
           message: err?.message || 'Unknown error',
           reason: err?.message || 'An unexpected error occurred during compilation.',
@@ -458,7 +465,7 @@ export class Compiler {
         }
       } else {
         errors.push({
-          code: 'JESS0000',
+          code: 'internal/unknown',
           phase: 'eval',
           message: err?.message || 'Unknown error',
           reason: err?.message || 'An unexpected error occurred during compilation.',
@@ -499,7 +506,7 @@ export class Compiler {
     } catch (err: any) {
       // This shouldn't happen in safe mode, but handle it just in case
       const errors: ErrorDiagnostic[] = [{
-        code: 'JESS0000',
+        code: 'internal/unknown',
         phase: 'eval',
         message: err?.message || 'Unknown error',
         reason: err?.message || 'An unexpected error occurred during rendering.',

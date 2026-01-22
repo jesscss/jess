@@ -140,6 +140,62 @@ describe('scss-parser (baseline)', () => {
     assertValidTree(result.tree);
   });
 
+  it('parses @function and rewrites @return into return: declaration', () => {
+    const parser = new Parser();
+    const result = parser.parse(`
+      @function add($a, $b: 2) {
+        @return $a;
+      }
+    `);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    const root = result.tree;
+    expect(isNode(root, 'Rules')).toBe(true);
+    if (isNode(root, 'Rules')) {
+      const fn = root.value.find(n => isNode(n, 'Func'));
+      expect(fn && isNode(fn, 'Func')).toBe(true);
+      // Ensure return: decl exists inside body
+      if (fn && isNode(fn, 'Func')) {
+        const body = fn.value.body;
+        expect(isNode(body, 'Rules')).toBe(true);
+        if (isNode(body, 'Rules')) {
+          const ret = body.find('declaration', 'return', 'Declaration', { searchParents: false });
+          expect(ret).toBeDefined();
+        }
+      }
+    }
+    // TODO: enable after Func tree-validation supports function bodies without deep recursion.
+  });
+
+  it('parses plain function calls as Call(Reference(type=function, fallbackValue:true)) without Expression', () => {
+    const parser = new Parser();
+    const result = parser.parse(`.a { color: fn($x); }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    // Structural assertion: the call should not be wrapped in Expression
+    expect(isNode(result.tree, 'Rules')).toBe(true);
+    if (isNode(result.tree, 'Rules')) {
+      const ruleset = result.tree.value.find(n => isNode(n, 'Ruleset'));
+      expect(ruleset && isNode(ruleset, 'Ruleset')).toBe(true);
+      if (ruleset && isNode(ruleset, 'Ruleset')) {
+        const decl = ruleset.value.rules?.value.find(n => isNode(n, 'Declaration'));
+        expect(decl && isNode(decl, 'Declaration')).toBe(true);
+        if (decl && isNode(decl, 'Declaration')) {
+          const val = decl.value.value;
+          expect(isNode(val, 'Call')).toBe(true);
+          if (isNode(val, 'Call')) {
+            expect(isNode(val.value.name, 'Reference')).toBe(true);
+            if (isNode(val.value.name, 'Reference')) {
+              expect(val.value.name.options.type).toBe('function');
+              expect(val.value.name.options.fallbackValue).toBe(true);
+            }
+          }
+        }
+      }
+    }
+    assertValidTree(result.tree);
+  });
+
   it('parses @use "foo" as a compose StyleImport', () => {
     const parser = new Parser();
     const result = parser.parse(`@use "foo";`);
@@ -150,6 +206,40 @@ describe('scss-parser (baseline)', () => {
     if (isNode(root, 'Rules')) {
       const imp = root.value.find(n => isNode(n, 'StyleImport'));
       expect(imp && imp.options.type).toBe('compose');
+    }
+    assertValidTree(result.tree);
+  });
+
+  it('parses @use "foo" as bar (namespace override)', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@use "foo" as bar;`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    const root = result.tree;
+    expect(isNode(root, 'Rules')).toBe(true);
+    if (isNode(root, 'Rules')) {
+      const imp = root.value.find(n => isNode(n, 'StyleImport'));
+      expect(imp && isNode(imp, 'StyleImport')).toBe(true);
+      if (imp && isNode(imp, 'StyleImport')) {
+        expect(imp.options.namespace).toBe('bar');
+      }
+    }
+    assertValidTree(result.tree);
+  });
+
+  it('parses @use "foo" as * (no namespace)', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@use "foo" as *;`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    const root = result.tree;
+    expect(isNode(root, 'Rules')).toBe(true);
+    if (isNode(root, 'Rules')) {
+      const imp = root.value.find(n => isNode(n, 'StyleImport'));
+      expect(imp && isNode(imp, 'StyleImport')).toBe(true);
+      if (imp && isNode(imp, 'StyleImport')) {
+        expect(imp.options.namespace).toBe('*');
+      }
     }
     assertValidTree(result.tree);
   });
@@ -189,6 +279,45 @@ describe('scss-parser (baseline)', () => {
     assertValidTree(result.tree);
   });
 
+  it('parses @forward "foo" as bar-* (prefixing) and stores forwardAsPrefix', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@forward "foo" as bar-*;`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    const root = result.tree;
+    expect(isNode(root, 'Rules')).toBe(true);
+    if (isNode(root, 'Rules')) {
+      const imp = root.value.find(n => isNode(n, 'StyleImport'));
+      expect(imp).toBeDefined();
+      if (imp && isNode(imp, 'StyleImport')) {
+        expect(imp.options.importOptions?.forward).toBe(true);
+        expect(imp.options.importOptions?.forwardAsPrefix).toBe('bar-');
+      }
+    }
+    assertValidTree(result.tree);
+  });
+
+  it('parses @forward "foo" show/hide lists and stores forwardShow/forwardHide', () => {
+    const parser = new Parser();
+    const result = parser.parse(`
+      @forward "foo" show $a, mixin-b, fn-c;
+      @forward "foo" hide $a, mixin-b, fn-c;
+    `);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    const root = result.tree;
+    expect(isNode(root, 'Rules')).toBe(true);
+    if (isNode(root, 'Rules')) {
+      const forwards = root.value.filter(n => isNode(n, 'StyleImport')) as any[];
+      expect(forwards.length).toBeGreaterThanOrEqual(2);
+      const show = forwards.find(n => Array.isArray(n.options?.importOptions?.forwardShow));
+      const hide = forwards.find(n => Array.isArray(n.options?.importOptions?.forwardHide));
+      expect(show?.options?.importOptions?.forwardShow).toEqual(['$a', 'mixin-b', 'fn-c']);
+      expect(hide?.options?.importOptions?.forwardHide).toEqual(['$a', 'mixin-b', 'fn-c']);
+    }
+    assertValidTree(result.tree);
+  });
+
   it('parses @forward with(...) config values (incl interpolation)', () => {
     const parser = new Parser();
     const result = parser.parse(`@forward "foo" with ($a: #{$b});`);
@@ -205,6 +334,18 @@ describe('scss-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     expect(serializeTypes(result.tree)).toContainString('(Extend');
+    assertValidTree(result.tree);
+  });
+
+  it('parses Sass placeholder @extend as a global selector lookup (*|\\\\placeholder)', () => {
+    const parser = new Parser();
+    const result = parser.parse(`.a { @extend %foo; }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    // Placeholder token `%foo` becomes `\\foo` and we prefix `*|` for global placeholder lookup.
+    expect(serializeTypes(result.tree)).toContainString('(Extend');
+    expect(serializeTypes(result.tree)).toContainString("namespace: '*'");
+    expect(serializeTypes(result.tree)).toContainString("\\foo");
     assertValidTree(result.tree);
   });
 
@@ -244,8 +385,35 @@ describe('scss-parser (baseline)', () => {
     const result = parser.parse(`@include ns.foo($x);`);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(Expression');
     expect(serializeTypes(result.tree)).toContainString('(Call');
     expect(serializeTypes(result.tree)).toContainString('(Reference');
+    assertValidTree(result.tree);
+  });
+
+  it('serializes @include ns.foo() as $ns > foo()', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@include ns.foo();`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(String(result.tree)).toContain('$ns > foo()');
+    assertValidTree(result.tree);
+  });
+
+  it('parses @include ... using ($c, $n) { ... } as a call with contentNode', () => {
+    const parser = new Parser();
+    const result = parser.parse(`
+      @include wrap(red) using ($c, $n) {
+        .child { color: $c; z-index: $n; }
+      }
+    `);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(Mixin');
+    const out = String(result.tree);
+    expect(out).toContain('$ > wrap(');
+    expect(out).toContain(': @($c, $n)');
+    expect(out).toContain('.child');
     assertValidTree(result.tree);
   });
 

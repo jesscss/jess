@@ -3,8 +3,8 @@
   <Metadata>
     <Identity Language="en-US" Id="jess-language-service" Version="0.0.0" Publisher="jesscss" />
     <DisplayName>Jess Language Service</DisplayName>
-    <Description xml:space="preserve">Jess-first language service for CSS/Less/SCSS.</Description>
-    <Tags>css,less,scss,language-service</Tags>
+    <Description xml:space="preserve">Stylesheet language service for CSS/Jess/Less/SCSS.</Description>
+    <Tags>css,less,scss,jess,language-service</Tags>
   </Metadata>
   <Installation>
     <InstallationTarget Id="Microsoft.VisualStudio.Code"/>

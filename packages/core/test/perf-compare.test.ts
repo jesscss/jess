@@ -15,10 +15,16 @@ function isPromiseLike(x: unknown): x is Promise<unknown> {
 function patchAllEvalAsync(treeModule: Record<string, any>): () => void {
   const originals: Array<{ proto: any; key: 'eval' | 'evalNode' | 'preEval'; fn: Function }> = [];
   const wrap = (proto: any, key: 'eval' | 'evalNode' | 'preEval') => {
-    if (!proto) return;
+    if (!proto) {
+      return;
+    }
     const orig = proto[key];
-    if (typeof orig !== 'function') return;
-    if ((orig as any).__wrappedAsync) return;
+    if (typeof orig !== 'function') {
+      return;
+    }
+    if ((orig as any).__wrappedAsync) {
+      return;
+    }
     const wrapped = function(this: any, ...args: any[]) {
       const out = orig.apply(this, args);
       return isPromiseLike(out) ? out : Promise.resolve(out);
@@ -70,7 +76,9 @@ async function runScenario(
       const mod: any = await importOriginal();
       const isThenable = (x: unknown): x is Promise<unknown> => !!x && (typeof x === 'object' || typeof x === 'function') && typeof (x as any).then === 'function';
       function asyncPipe(...args: any[]): any {
-        if (args.length === 0) return undefined as any;
+        if (args.length === 0) {
+          return undefined as any;
+        }
         const first = args[0];
         const fns = (typeof first === 'function' && typeof args[1] === 'function') ? (args as any[]) : args.slice(1);
         const hasInput = !(typeof first === 'function' && typeof args[1] === 'function');
@@ -162,7 +170,9 @@ async function runScenario(
       (ctx as any).evaldTrees = new Map();
     }
     const out = roots[i]!.eval(ctx);
-    if (isThenable(out)) await out;
+    if (isThenable(out)) {
+      await out;
+    }
   }
   const t0 = performance.now();
   for (let i = 0; i < repeats; i++) {
@@ -179,10 +189,14 @@ async function runScenario(
       (ctx as any).evaldTrees = new Map();
     }
     const out = roots[i]!.eval(ctx);
-    if (isThenable(out)) await out;
+    if (isThenable(out)) {
+      await out;
+    }
   }
   const t1 = performance.now();
-  if (restore) restore();
+  if (restore) {
+    restore();
+  }
   return t1 - t0;
 }
 

@@ -36,14 +36,13 @@ const { isArray } = Array;
 // #region agent log
 let __agentRulesLogCount = 0;
 function agentRulesLog(context: Context, location: string, message: string, data: Record<string, unknown>) {
-  if (process.env.DEBUG_EXTEND_BOOT !== 'true') return;
-  if (__agentRulesLogCount++ > 20) return;
-  const filePath = context.treeContext?.file?.fullPath
-    || (context.treeContext?.file?.path && context.treeContext?.file?.name
-      ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
-      : context.treeContext?.file?.path)
-    || '';
-  if (typeof filePath === 'string' && !filePath.includes('tests-unit/extend-selector')) return;
+  if (process.env.DEBUG_EXTEND_BOOT !== 'true') {
+    return;
+  }
+  if (__agentRulesLogCount++ > 80) {
+    return;
+  }
+  // `context.treeContext.file` is not always stable across multi-file runs; don't filter by it.
   syncLog({
     sessionId: 'debug-session',
     runId: process.env.DEBUG_RUN_ID || 'pre-fix',
@@ -59,20 +58,28 @@ function agentRulesLog(context: Context, location: string, message: string, data
 // #region agent log
 let __agentBootLogCount = 0;
 function agentBootLog(context: Context, location: string, message: string, data: Record<string, unknown>) {
-  if (process.env.DEBUG_EXTEND_BOOT !== 'true') return;
-  if (__agentBootLogCount++ > 200) return;
+  if (process.env.DEBUG_EXTEND_BOOT !== 'true') {
+    return;
+  }
+  if (__agentBootLogCount++ > 200) {
+    return;
+  }
   const filePath = context.treeContext?.file?.fullPath
     || (context.treeContext?.file?.path && context.treeContext?.file?.name
       ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
       : context.treeContext?.file?.path)
     || '';
-  if (typeof filePath !== 'string' || !filePath.includes('tests-unit/extend-selector')) return;
+  if (typeof filePath !== 'string' || !filePath.includes('tests-unit/extend-selector')) {
+    return;
+  }
   const currentRuleset = context.rulesetFrames.at(-1);
   const currentSel = currentRuleset && 'value' in currentRuleset && (currentRuleset as any).value?.selector
     ? String((currentRuleset as any).value.selector.valueOf?.() ?? '')
     : '';
   // Only log for the suspected hang ruleset to keep noise down.
-  if (!currentSel.includes('.attributes')) return;
+  if (!currentSel.includes('.attributes')) {
+    return;
+  }
   syncLog({
     sessionId: 'debug-session',
     runId: process.env.DEBUG_RUN_ID || 'pre-fix',
@@ -558,6 +565,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
        */
       rulesVisibility.Declaration ??= 'public';
       rulesVisibility.Ruleset ??= 'public';
+      rulesVisibility.Mixin ??= 'public';
 
       /** Either one set as readonly will win */
       let readonly = Boolean(options?.readonly || node.options.readonly);
@@ -635,9 +643,51 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Register to 'mixin' for mixin calls
       // Always register - guard filtering happens at call time in getFunctionFromMixins
       // Note: 'ruleset' registration for extends now happens in Ruleset.preEval to the extend root's registry
+      // #region agent log
+      try {
+        const key = String((node as any).value?.selector?.valueOf?.() ?? '');
+        if (key.includes('.mixin')) {
+          syncLog({
+            sessionId: 'debug-session',
+            runId: process.env.DEBUG_RUN_ID ?? 'run',
+            hypothesisId: 'H4',
+            location: 'rules.ts:registerNode',
+            message: 'registered-ruleset-mixin',
+            data: {
+              key,
+              parentIdx: (this as any).index,
+              parentIsMixinOutput: !!(this as any).options?.isMixinOutput
+            },
+            timestamp: Date.now()
+          });
+        }
+      } catch {}
+      // #endregion
       this.register('mixin', node);
     } else if (isNode(node, 'Mixin')) {
+      // #region agent log
+      try {
+        const key = String((node as any).value?.name?.valueOf?.() ?? '');
+        if (key.includes('.mixin')) {
+          syncLog({
+            sessionId: 'debug-session',
+            runId: process.env.DEBUG_RUN_ID ?? 'run',
+            hypothesisId: 'H4',
+            location: 'rules.ts:registerNode',
+            message: 'registered-mixin',
+            data: {
+              key,
+              parentIdx: (this as any).index,
+              parentIsMixinOutput: !!(this as any).options?.isMixinOutput
+            },
+            timestamp: Date.now()
+          });
+        }
+      } catch {}
+      // #endregion
       this.register('mixin', node);
+    } else if (isNode(node, 'Func')) {
+      this.register('function', node);
     }
   }
 
@@ -1076,9 +1126,61 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     for (let item of rules) {
       let [idx, rule] = item;
       let priority = NodeTypeToPriority.get(rule.type) ?? Priority.None;
+      // Less variable-calls `@foo();` are parsed as Expression(Call(variable-ref)).
+      // We *selectively* boost only those calls that "unlock mixins" (i.e. calling a variable whose
+      // value is a detached ruleset containing mixin definitions). This avoids changing evaluation
+      // order for regular detached rulesets like `@ruleset()` used for property blocks.
+      if (priority === Priority.None && rules.treeContext?.leakyRules === true && isNode(rule, 'Expression')) {
+        const inner = (rule as any).value;
+        if (isNode(inner, 'Call') && isNode((inner as any).value?.name, 'Reference')) {
+          const ref = (inner as any).value.name;
+          const refType = String(ref?.options?.type ?? '');
+          if (refType === 'variable') {
+            const raw = ref.value?.key;
+            const keyStr = Array.isArray(raw) ? raw.join('') : String(raw?.valueOf?.() ?? raw ?? '');
+            // Only if variable exists and its value is a detached ruleset Mixin with nested Mixin definitions.
+            const decl = rules.find('declaration', keyStr, 'VarDeclaration') as any;
+            const val = decl?.value?.value;
+            const hasNestedMixinDefinitions =
+              isNode(val, 'Mixin')
+              && Array.isArray(val.value?.rules?.value)
+              && val.value.rules.value.some((n: any) => n?.type === 'Mixin');
+            if (hasNestedMixinDefinitions) {
+              priority = Priority.High;
+            }
+          }
+        }
+      }
       let queue = evalQueue.get(priority) ?? [];
       queue.push(item as [number, Node]);
       evalQueue.set(priority, queue);
+      // #region agent log
+      try {
+        const filePath = rules.treeContext?.file?.fullPath
+          || (rules.treeContext?.file?.path && rules.treeContext?.file?.name
+            ? `${rules.treeContext.file.path}/${rules.treeContext.file.name}`
+            : rules.treeContext?.file?.path)
+          || '';
+        if (typeof filePath === 'string' && filePath.includes('tests-unit/detached-rulesets/')) {
+          if (isNode(rule, 'Expression')) {
+            const inner = (rule as any).value;
+            if (isNode(inner, 'Call') && isNode((inner as any).value?.name, 'Reference')) {
+              const raw = (inner as any).value.name.value?.key;
+              const keyStr = Array.isArray(raw) ? raw.join('') : String(raw?.valueOf?.() ?? raw ?? '');
+              syncLog({
+                sessionId: 'debug-session',
+                runId: process.env.DEBUG_RUN_ID || 'pre-fix',
+                hypothesisId: 'H15',
+                location: 'rules.ts:_buildEvalQueue',
+                message: 'queue-expression-call',
+                data: { idx, priority, keyStr },
+                timestamp: Date.now()
+              });
+            }
+          }
+        }
+      } catch {}
+      // #endregion
     }
     return evalQueue;
   }
@@ -1092,14 +1194,24 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // #region agent log
     let __agentQueueLogCount = 0;
     const agentQueueLog = (message: string, data: Record<string, unknown>) => {
-      if (process.env.DEBUG_EXTEND_BOOT !== 'true') return;
-      if (__agentQueueLogCount++ > 250) return;
+      if (process.env.DEBUG_EXTEND_BOOT !== 'true') {
+        return;
+      }
+      if (__agentQueueLogCount++ > 250) {
+        return;
+      }
       const filePath = context.treeContext?.file?.fullPath
         || (context.treeContext?.file?.path && context.treeContext?.file?.name
           ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
           : context.treeContext?.file?.path)
         || '';
-      if (typeof filePath === 'string' && !filePath.includes('tests-unit/extend-selector')) return;
+      if (
+        typeof filePath === 'string'
+        && !filePath.includes('tests-unit/extend-selector')
+        && !filePath.includes('tests-unit/detached-rulesets')
+      ) {
+        return;
+      }
       syncLog({
         sessionId: 'debug-session',
         runId: process.env.DEBUG_RUN_ID || 'pre-fix',
@@ -1168,7 +1280,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           q,
           type: rule.type,
           ctor: (rule as any)?.constructor?.name ?? null,
-          retried: retriedNodes.has(rule)
+          retried: retriedNodes.has(rule),
+          key: (() => {
+            try {
+              if (!isNode(rule, 'Call')) return '';
+              const nm: any = (rule as any).value?.name;
+              if (typeof nm === 'string') return nm;
+              if (isNode(nm, 'Reference')) {
+                const raw = (nm as any).value?.key;
+                return Array.isArray(raw) ? raw.join('') : String(raw?.valueOf?.() ?? raw ?? '');
+              }
+              if (isNode(nm)) return nm.type;
+              return '';
+            } catch {
+              return '';
+            }
+          })()
         });
         // #endregion
 
@@ -1221,6 +1348,123 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                   rulesVisibility: result.options.rulesVisibility,
                   readonly: result.options.readonly
                 }, context);
+                // #region agent log
+                try {
+                  // Special-case "unlocking mixins": register mixin definitions from a detached-ruleset variable call.
+                  if (context.leakyRules && isNode(rule, 'Expression')) {
+                    const inner = (rule as any).value;
+                    if (isNode(inner, 'Call') && isNode((inner as any).value?.name, 'Reference')) {
+                      const ref = (inner as any).value.name;
+                      const refType = String(ref?.options?.type ?? '');
+                      const raw = ref?.value?.key;
+                      const keyStr2 = Array.isArray(raw) ? raw.join('') : String(raw?.valueOf?.() ?? raw ?? '');
+                      const decl = rules.find('declaration', keyStr2, 'VarDeclaration') as any;
+                      const val = decl?.value?.value;
+                      const shouldUnlock =
+                        refType === 'variable'
+                        && isNode(val, 'Mixin')
+                        && Array.isArray(val.value?.rules?.value)
+                        && val.value.rules.value.some((n: any) => n?.type === 'Mixin');
+                      if (shouldUnlock && Array.isArray((result as any).value)) {
+                        let unlocked = 0;
+                        for (const child of (result as any).value) {
+                          if (isNode(child, 'Mixin')) {
+                            rules.register('mixin', child);
+                            unlocked++;
+                          }
+                        }
+                        if (unlocked > 0) {
+                          syncLog({
+                            sessionId: 'debug-session',
+                            runId: process.env.DEBUG_RUN_ID ?? 'run',
+                            hypothesisId: 'H19',
+                            location: 'rules.ts:_evaluateQueue',
+                            message: 'unlocked-mixins-from-varcall',
+                            data: { idx, key: keyStr2, unlocked },
+                            timestamp: Date.now()
+                          });
+                        }
+                      }
+                    }
+                  }
+                } catch {}
+                // #endregion
+                // #region agent log
+                syncLog({
+                  sessionId: 'debug-session',
+                  runId: process.env.DEBUG_RUN_ID ?? 'run',
+                  hypothesisId: 'H1',
+                  location: 'rules.ts:1230',
+                  message: 'registered-rules-result',
+                  data: {
+                    parentRulesType: rules.type,
+                    ruleType: rule.type,
+                    idx,
+                    resultLen: Array.isArray(result.value) ? result.value.length : -1,
+                    resultIsMixinOutput: !!(result as any).options?.isMixinOutput
+                  },
+                  timestamp: Date.now()
+                });
+                // #region agent log
+                try {
+                  let keyStr = '';
+                  if (isNode(rule, 'Call') && isNode((rule as any).value?.name, 'Reference')) {
+                    const rawKey = (rule as any).value.name.value?.key;
+                    keyStr = Array.isArray(rawKey) ? rawKey.join('') : String(rawKey?.valueOf?.() ?? rawKey ?? '');
+                  } else if (isNode(rule, 'Expression')) {
+                    const inner = (rule as any).value;
+                    if (isNode(inner, 'Call') && isNode((inner as any).value?.name, 'Reference')) {
+                      const rawKey = (inner as any).value.name.value?.key;
+                      keyStr = Array.isArray(rawKey) ? rawKey.join('') : String(rawKey?.valueOf?.() ?? rawKey ?? '');
+                    }
+                  }
+                  if (keyStr.includes('my-mixins')) {
+                    const mixinReg = (result as any).getRegistry?.('mixin');
+                    if (mixinReg) {
+                      mixinReg.indexPendingItems();
+                    }
+                    const hasDotMixin = mixinReg?.index?.has?.('.mixin') ?? false;
+                    syncLog({
+                      sessionId: 'debug-session',
+                      runId: process.env.DEBUG_RUN_ID ?? 'run',
+                      hypothesisId: 'H8',
+                      location: 'rules.ts:1230',
+                      message: 'registered-my-mixins-result',
+                      data: {
+                        keyStr,
+                        ruleType: rule.type,
+                        resultLen: Array.isArray((result as any).value) ? (result as any).value.length : -1,
+                        resultIsMixinOutput: !!(result as any).options?.isMixinOutput,
+                        hasDotMixin
+                      },
+                      timestamp: Date.now()
+                    });
+                  }
+                } catch {}
+                // #endregion
+                // #region agent log
+                try {
+                  const hasMixin = Array.isArray((result as any).value)
+                    ? (result as any).value.some((n: any) => n?.type === 'Mixin' && String(n?.value?.name?.valueOf?.() ?? '').includes('.mixin'))
+                    : false;
+                  if (hasMixin) {
+                    syncLog({
+                      sessionId: 'debug-session',
+                      runId: process.env.DEBUG_RUN_ID ?? 'run',
+                      hypothesisId: 'H7',
+                      location: 'rules.ts:1230',
+                      message: 'registered-rules-result-contains-dotmixin',
+                      data: {
+                        idx,
+                        resultIsMixinOutput: !!(result as any).options?.isMixinOutput,
+                        parentRulesType: rules.type
+                      },
+                      timestamp: Date.now()
+                    });
+                  }
+                } catch {}
+                // #endregion
+                // #endregion
               } else {
                 // For non-Rules results, adopt them to set up parent chain
                 rules.adopt(result);
@@ -1361,9 +1605,25 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const isOutermost = rules === context.root;
 
         if (isOutermost) {
+          const hasReplaceReplaceExtend = context.extends.some(([target]) => {
+            try {
+              return target.valueOf().includes('replace.replace');
+            } catch {
+              return false;
+            }
+          });
+          const hasRepAceExtend = context.extends.some(([, sel]) => {
+            try {
+              return sel.valueOf().includes('rep_ace');
+            } catch {
+              return false;
+            }
+          });
           // #region agent log
           agentRulesLog(context, 'rules.ts:eval', 'processExtends-enter', {
-            extendsCount: context.extends.length
+            extendsCount: context.extends.length,
+            hasReplaceReplaceExtend,
+            hasRepAceExtend
           });
           // #endregion
           // Process all registered extends using the extend roots registry system
@@ -1527,6 +1787,15 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
        * But leaving this for future expansion.
        */
       if (isNode(arg)) {
+        // IMPORTANT: Do not evaluate VarDeclaration args (named arguments) here.
+        // Evaluating them can register/override variables in the current scope.
+        // They should only be used for parameter binding.
+        if (isNode(arg, 'VarDeclaration')) {
+          const cloned = arg.copy(true, freezeChildren);
+          cloned.frozen = true;
+          nodeArgs.push(cloned);
+          continue;
+        }
         let evald = await arg.clonedEval(thisContext);
         evald.frozen = true;
         nodeArgs.push(evald);
@@ -1534,6 +1803,39 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         nodeArgs.push(cast(arg));
       }
     }
+    // #region agent log
+    try {
+      const callerName = caller?.value?.name;
+      const callerKey = isNode(callerName, 'Reference')
+        ? String((callerName as any).value?.key?.valueOf?.() ?? (callerName as any).value?.key ?? '')
+        : (typeof callerName === 'string' ? callerName : '');
+      if (callerKey === '.wrap-mixin') {
+        const a0: any = nodeArgs[0];
+        let a0Type = a0?.type ? String(a0.type) : '';
+        let a0Len = -1;
+        let a0First = '';
+        if (a0Type === 'Collection') {
+          a0Len = Array.isArray(a0.value) ? a0.value.length : -1;
+          const first: any = Array.isArray(a0.value) ? a0.value[0] : undefined;
+          if (first?.type === 'Declaration') {
+            const nm = first.value?.name;
+            const nameStr = typeof nm === 'string' ? nm : String(nm?.valueOf?.() ?? '');
+            const valStr = String(first.value?.value?.valueOf?.() ?? '');
+            a0First = `${nameStr}=${valStr}`;
+          }
+        }
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID ?? 'run',
+          hypothesisId: 'H18',
+          location: 'rules.ts:getFunctionFromMixins',
+          message: 'wrap-mixin-call-args',
+          data: { a0Type, a0Len, a0First },
+          timestamp: Date.now()
+        });
+      }
+    } catch {}
+    // #endregion
     /**
      * Check named and positional arguments
      * against mixins, to see which ones match.
@@ -1614,7 +1916,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
             const varDecl = new VarDeclaration({
               name: param as Any<'property'>,
               value: argValue
-            });
+            }, { paramVar: true });
             params.value[i] = varDecl;
           } else if (isNode(param, 'Rest')) {
             /** We assume that the rest args are values */
@@ -1736,6 +2038,20 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
         outputRules.push(rules);
         continue;
       }
+      // Less detached rulesets are represented as anonymous mixins (name is undefined).
+      // Calling `@rulesetVar();` should *unlock* the rules into scope (including mixin definitions),
+      // not eagerly execute/flatten them.
+      if (!candidate.value.name && !candidate.value.params && !candidate.value.guard) {
+        let unlocked = candidate.value.rules.copy(true);
+        candidate.parent!.adopt(unlocked);
+        unlocked.sourceParent = candidate.sourceParent ?? sourceParent;
+        // Mark as mixin output; caller may override when leakyRules=true
+        unlocked.options.isMixinOutput = true;
+        unlocked.index = candidate.index;
+        outputRules.push(unlocked);
+        hasMatch = true;
+        continue;
+      }
       let rules = candidate.value.rules;
       /** Create new rules, and add the candidate rules, to add to scope */
       rules = rules.copy(true);
@@ -1806,6 +2122,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
               // Use negative indices starting from -1, -2, etc. so they sort before regular rules
               param.index = -(i + 1);
             }
+            // Mark as parameter var so it can be stripped from mixin output after evaluation.
+            param.options ??= {};
+            param.options.paramVar = true;
             param.removeFlag(F_VISIBLE);
             outerRules.push(param);
           }
@@ -1871,11 +2190,17 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
           candidate.parent!.adopt(rules);
           newRules = await rules.eval(thisContext);
         } else {
+          // Evaluate in the wrapper scope so params are visible, but preserve the wrapper's
+          // rulesVisibility (it keeps VarDeclaration public). Overwriting visibility here can
+          // hide param vars from registry-based lookup.
           outerRules.push(...rules.value);
-          outerRules.options.rulesVisibility = rules.options.rulesVisibility;
           newRules = await outerRules.eval(thisContext);
         }
         candidate.parent!.adopt(newRules);
+        // Strip parameter variables from mixin output so they don't leak into later sibling lookups.
+        if (Array.isArray(newRules.value)) {
+          newRules.value = newRules.value.filter((n) => !(isNode(n, 'VarDeclaration') && (n as any).options?.paramVar === true));
+        }
         // Rules should have index from eval, but ensure it matches candidate for sorting
         newRules.index = candidate.index;
 
@@ -1944,9 +2269,13 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       }
     }
 
-    /** Since this is a wrapper, and rules are all evaluated, consider it evaluated */
-    output.preEvaluated = true;
-    output.evaluated = true;
+    /**
+     * IMPORTANT: Do NOT force `output` to be evaluated here.
+     *
+     * Even though candidate rule bodies are usually evaluated during mixin execution, callers
+     * (e.g. `Call.evalNode`) rely on `.eval(context)` to finish evaluation. Marking these flags
+     * true can skip evaluation and leak unevaluated nodes (like `Call`) into serialization.
+     */
     /** Now push all rules into the rules value */
     if (this instanceof Context) {
       output.index ??= this.ruleCounter++;

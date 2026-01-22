@@ -5,7 +5,6 @@ import type { Any, AnyRole } from './any.js';
 import type { Rules } from './rules.js';
 import { Interpolated } from './interpolated.js';
 import type { Context, TreeContext } from '../context.js';
-import type { Declaration } from './declaration.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 
@@ -44,9 +43,6 @@ export interface MixinValue<Name extends AnyRole = 'name'> {
 export type MixinOptions = {
   /** This is a flag that will set during parsing */
   hasDefault?: boolean;
-
-  /** If this is a function, specify what is returned  */
-  isFunctionWith?: 'rules' | 'expression';
 
   /**
    * Cannot be overloaded. Written as !my-mixin() in Jess.
@@ -106,10 +102,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    // Use options.depth if provided (set by parent), otherwise we're at root (depth 0)
-    const depth = options.depth ?? 0;
     let { name, rules, params, guard } = this.value;
-    let { isFunctionWith } = this.options;
     const mark = w.mark();
     w.add(name ? `${name}` : '@');
     if (name || params || guard) {
@@ -123,19 +116,11 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       w.add(' when ');
       w.add(`${guard}`);
     }
-    if (isFunctionWith) {
-      w.add(' >');
-    }
-    if (isFunctionWith === 'expression') {
+    if (name || params || guard) {
       w.add(' ');
-      (rules.at(0) as Declaration).value.value.toString(options);
-    } else {
-      if (name || params || guard) {
-        w.add(' ');
-      }
-      // Emit rules directly into shared writer; do not re-add return value
-      rules.toBraced(options);
     }
+    // Emit rules directly into shared writer; do not re-add return value
+    rules.toBraced(options);
     return w.getSince(mark);
   }
 
@@ -173,7 +158,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   }
 
   /** Since this is a mixin definition, it's not evaluated until it's called. */
-  override evalNode(context: Context) {
+  override evalNode() {
     return this;
   }
 

@@ -253,10 +253,10 @@ describe('Extend Roots Registry', () => {
       // Should not throw - extendNotAccessible is now a warning
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
-      
+
       // Should have collected a warning
       expect(context.warnings.length).toBeGreaterThan(0);
-      const warning = context.warnings.find(w => w.code === 'JESS3203');
+      const warning = context.warnings.find(w => w.code === 'extend/not-accessible');
       expect(warning).toBeDefined();
       expect(warning?.message).toContain('Extend target');
       expect(warning?.message).toContain('not accessible');
@@ -299,10 +299,10 @@ describe('Extend Roots Registry', () => {
       // Should not throw - extendNotAccessible is now a warning
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
-      
+
       // Should have collected a warning
       expect(context.warnings.length).toBeGreaterThan(0);
-      const warning = context.warnings.find(w => w.code === 'JESS3203');
+      const warning = context.warnings.find(w => w.code === 'extend/not-accessible');
       expect(warning).toBeDefined();
       expect(warning?.message).toContain('Extend target');
       expect(warning?.message).toContain('not accessible');
@@ -353,10 +353,10 @@ describe('Extend Roots Registry', () => {
       // Should not throw - extendNotAccessible is now a warning
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
-      
+
       // Should have collected a warning
       expect(context.warnings.length).toBeGreaterThan(0);
-      const warning = context.warnings.find(w => w.code === 'JESS3203');
+      const warning = context.warnings.find(w => w.code === 'extend/not-accessible');
       expect(warning).toBeDefined();
       expect(warning?.message).toContain('Extend target');
       expect(warning?.message).toContain('not accessible');
@@ -457,10 +457,10 @@ describe('Extend Roots Registry', () => {
       // Should not throw - extendNotFound is now a warning
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
-      
+
       // Should have collected a warning
       expect(context.warnings.length).toBeGreaterThan(0);
-      const warning = context.warnings.find(w => w.code === 'JESS3202');
+      const warning = context.warnings.find(w => w.code === 'extend/not-found');
       expect(warning).toBeDefined();
       expect(warning?.message).toContain('Extend target');
       expect(warning?.message).toContain('not found');
@@ -502,10 +502,10 @@ describe('Extend Roots Registry', () => {
       // Should not throw - extendNotAccessible is now a warning
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
-      
+
       // Should have collected a warning
       expect(context.warnings.length).toBeGreaterThan(0);
-      const warning = context.warnings.find(w => w.code === 'JESS3203');
+      const warning = context.warnings.find(w => w.code === 'extend/not-accessible');
       expect(warning).toBeDefined();
       expect(warning?.message).toContain('Extend target');
       expect(warning?.message).toContain('not accessible');
@@ -544,10 +544,10 @@ describe('Extend Roots Registry', () => {
       // Should not throw - extendNotAccessible is now a warning
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
-      
+
       // Should have collected a warning
       expect(context.warnings.length).toBeGreaterThan(0);
-      const warning = context.warnings.find(w => w.code === 'JESS3203');
+      const warning = context.warnings.find(w => w.code === 'extend/not-accessible');
       expect(warning).toBeDefined();
       expect(warning?.message).toContain('Extend target');
       expect(warning?.message).toContain('not accessible');
@@ -584,10 +584,10 @@ describe('Extend Roots Registry', () => {
       // Should not throw - extendNotAccessible is now a warning
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
-      
+
       // Should have collected a warning
       expect(context.warnings.length).toBeGreaterThan(0);
-      const warning = context.warnings.find(w => w.code === 'JESS3203');
+      const warning = context.warnings.find(w => w.code === 'extend/not-accessible');
       expect(warning).toBeDefined();
       expect(warning?.message).toContain('Extend target');
       expect(warning?.message).toContain('not accessible');
@@ -624,10 +624,10 @@ describe('Extend Roots Registry', () => {
       // Should not throw - extendNotAccessible is now a warning
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
-      
+
       // Should have collected a warning
       expect(context.warnings.length).toBeGreaterThan(0);
-      const warning = context.warnings.find(w => w.code === 'JESS3203');
+      const warning = context.warnings.find(w => w.code === 'extend/not-accessible');
       expect(warning).toBeDefined();
       expect(warning?.message).toContain('Extend target');
       expect(warning?.message).toContain('not accessible');
@@ -825,10 +825,10 @@ describe('Extend Roots Registry', () => {
       // Anonymous layers do not share extend roots, so extend should collect warning
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
-      
+
       // Should have collected a warning (either extendNotFound or extendNotAccessible)
       expect(context.warnings.length).toBeGreaterThan(0);
-      const warning = context.warnings.find(w => w.code === 'JESS3202' || w.code === 'JESS3203');
+      const warning = context.warnings.find(w => w.code === 'extend/not-found' || w.code === 'extend/not-accessible');
       expect(warning).toBeDefined();
     });
 

@@ -27,6 +27,3 @@ export function debugLog(message: string, node?: Node, data?: Record<string, any
     // Ignore errors
   }
 }
-
-
-

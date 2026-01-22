@@ -189,17 +189,20 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
         }
       }
 
-      // Wrap in :is() if the selector is a list (has commas) or a complex selector (has combinators)
-      // BUT: Only wrap SelectorList if collapseNesting is true OR hoistToRoot is true OR appendValue is defined
-      // If collapseNesting is false and we didn't cross a boundary, preserve the SelectorList structure
       let result: Selector | Nil;
       const shouldWrapSelectorList = isNode(selector, 'SelectorList') && (context.opts.collapseNesting || this.hoistToRoot || appendValue !== undefined);
       const shouldWrapComplexSelector = isNode(selector, 'ComplexSelector');
-      
+
       if (shouldWrapSelectorList || shouldWrapComplexSelector) {
         result = PseudoSelector.create({ name: ':is', arg: selector });
       } else {
         result = selector;
+      }
+
+      // If we're appending (e.g. `&-1`), we must hoist this selector out of its parent frames
+      // because it materially changes the inherited selector.
+      if (appendValue !== undefined) {
+        result.hoistToRoot = true;
       }
       // Only set hoistToRoot if we actually wrapped or if it was already set
       if (shouldWrapSelectorList || shouldWrapComplexSelector || this.hoistToRoot) {
@@ -221,7 +224,7 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
     const frameSelectorStr = frame?.selector?.toString();
     const storedSelectorStr = amp.value.selector?.toString();
     const originalStoredSelector = amp.value.selector;
-    
+
     // CRITICAL: Only set frame selector if there's no stored selector
     // The stored selector (from getImplicitSelector) should ALWAYS take precedence
     // This ensures extends inside nested rulesets get the correct parent selector

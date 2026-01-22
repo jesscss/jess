@@ -39,6 +39,11 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
    *
    */
   override valueOf() {
+    if (!Array.isArray(this.value)) {
+      // Attempt to repair a malformed ComplexSelector that holds a single component directly.
+      // We treat the current `value` as a single component.
+      (this as any).value = [(this as any).value];
+    }
     return (this._valueOf ??= this.value.map(n => n.valueOf()).join(''));
   }
 
@@ -227,6 +232,29 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       },
       (selector) => {
         const { value } = selector;
+        // #region agent log
+        {
+          const runId = process.env.DEBUG_RUN_ID || 'pre-fix';
+          if (runId.startsWith('at-rule')) {
+            const anyHoist = Array.isArray(value) && value.some((c: any) => !!c?.hoistToRoot);
+            syncLog({
+              sessionId: 'debug-session',
+              runId,
+              hypothesisId: 'H1',
+              location: 'selector-complex.ts:evalNode',
+              message: 'complex selector hoist propagation check',
+              data: {
+                selectorV: selector.valueOf(),
+                selectorHoist: !!selector.hoistToRoot,
+                anyComponentHoist: anyHoist,
+                componentTypes: Array.isArray(value) ? value.map((c: any) => c?.type ?? null) : null,
+                componentHoists: Array.isArray(value) ? value.map((c: any) => !!c?.hoistToRoot) : null
+              },
+              timestamp: Date.now()
+            });
+          }
+        }
+        // #endregion
         // Unwrap generated :is() PseudoSelectors that contain a single BasicSelector
         // This handles cases where ampersands are replaced with :is(selector) during mixin evaluation
         for (let i = 0; i < value.length; i++) {
@@ -239,11 +267,21 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
             && isNode(component.value.arg, 'BasicSelector')
           ) {
             // Unwrap :is(basicSelector) to just basicSelector
+            // Preserve hoist intent from the wrapper (e.g. `&-1` needs hoisting out of @media)
+            // by propagating `hoistToRoot` to both the ComplexSelector and the unwrapped arg.
+            if (component.hoistToRoot) {
+              selector.hoistToRoot = true;
+              (component.value.arg as any).hoistToRoot = true;
+            }
             value[i] = component.value.arg as ComplexSelectorComponent;
           }
         }
         if (value.length === 1) {
-          return value[0]!.inherit(selector);
+          const only = value[0]!.inherit(selector);
+          if (selector.hoistToRoot) {
+            (only as any).hoistToRoot = true;
+          }
+          return only;
         }
         // #region agent log
         if (__agentShouldLog) {

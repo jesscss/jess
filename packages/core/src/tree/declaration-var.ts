@@ -5,6 +5,7 @@ import {
 } from './declaration.js';
 import { Any, type AnyRole } from './any.js';
 import { defineType, F_VISIBLE, type LocationInfo, type Node, type TreeContext } from './node.js';
+import { Nil } from './nil.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export type VarDeclarationOptions = DeclarationOptions & {
@@ -50,6 +51,16 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     const w = options.writer!;
     const mark = w.mark();
     // Vars always print with `$` prefix; setDefined affects the assignment token.
+    //
+    // Special-case parameter vars (used in mixin signatures) that have no default value:
+    // print `$name` (no `: <value>`).
+    if (this.options?.paramVar && this.value.value instanceof Nil) {
+      w.add('$', this);
+      const normalizedName = String(this.value.name).replace(/\s+$/, '');
+      w.add(normalizedName, this.value.name);
+      return w.getSince(mark);
+    }
+
     w.add('$', this);
     const before = w.mark();
     const s = this.declTrimmedString(options);

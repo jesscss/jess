@@ -56,6 +56,8 @@ export class ScssActionsParser extends CssActionsParser {
   scssEachAtRule!: Rule;
   scssWhileAtRule!: Rule;
   scssMixinAtRule!: Rule;
+  scssFunctionAtRule!: Rule;
+  scssReturnAtRule!: Rule;
   scssMixinParams!: Rule;
   scssMixinParamsAfterFunctionStart!: Rule;
   scssMixinParam!: Rule;

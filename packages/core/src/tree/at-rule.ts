@@ -114,15 +114,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       (context.topImports ??= []).push(node);
       return new Nil();
     }
+    // Defer prelude evaluation to evalNode so variable lookups happen in the correct
+    // call-time scope (e.g. mixin parameters referenced from nested @media preludes).
     if (prelude) {
-      const out = prelude.eval(context);
-      if (isThenable(out)) {
-        return (out as Promise<Node>).then((n) => {
-          node.value.prelude = n;
-          return node;
-        });
-      }
-      node.value.prelude = out;
+      node.value.prelude = prelude;
     }
     return node;
   }
@@ -272,11 +267,36 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
     return pipe(
       () => {
-        // Prelude is already evaluated in preEval, so we can skip evaluation here
-        // Just ensure it's marked as evaluated if it was static
+        // Evaluate prelude in the correct scope (mixin params, vars, etc.).
         let { prelude } = node.value;
-        if (prelude && prelude.hasFlag(F_STATIC) && !prelude.evaluated) {
-          prelude.evaluated = true;
+        if (prelude) {
+          // Evaluate the prelude in the outer (enclosing) Rules scope, not the nested @media Rules scope.
+          // This matches Less behavior for mixin parameters referenced from nested @media preludes.
+          const savedRulesContext = context.rulesContext;
+          let liftedRulesContext = savedRulesContext;
+          // If our current rulesContext is a Rules whose parent is an AtRule, lift to the enclosing Rules.
+          if (liftedRulesContext && isNode(liftedRulesContext, 'Rules')) {
+            let cursor: any = liftedRulesContext;
+            let depth = 0;
+            while (cursor?.parent && depth++ < 10) {
+              if (isNode(cursor.parent, 'AtRule') && isNode(cursor.parent.parent, 'Rules')) {
+                cursor = cursor.parent.parent;
+                continue;
+              }
+              break;
+            }
+            liftedRulesContext = cursor;
+          }
+          context.rulesContext = liftedRulesContext;
+          const out = prelude.eval(context);
+          context.rulesContext = savedRulesContext;
+          if (isThenable(out)) {
+            return (out as Promise<Node>).then((n) => {
+              node.value.prelude = n;
+              return undefined;
+            });
+          }
+          node.value.prelude = out as Node;
         }
       },
       () => {
@@ -301,7 +321,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
               Ruleset.create({
                 selector: Ampersand.create(undefined),
                 rules: existingRules
-              })
+              }, { generated: true })
             ]).inherit(existingRules);
             node.adopt(rules);
           }

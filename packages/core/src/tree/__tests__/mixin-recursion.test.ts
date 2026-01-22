@@ -467,10 +467,15 @@ describe('Mixin Recursion Detection', () => {
       const evald = await root.eval(context);
       const css = evald.toString();
 
-      expect(css).toContain('.foo .bar');
-      expect(css).toContain('color: red');
-      expect(css).toContain('.foo .foo');
-      expect(css).toContain('color: blue');
+      expect(css).toBeString(`
+        .foo .bar {
+          color: blue;
+          color: red;
+        }
+        .foo .foo {
+          color: blue;
+        }
+      `);
     });
 
     it('should succeed when calling a mixin from a different ruleset (no recursion)', async () => {
@@ -500,8 +505,14 @@ describe('Mixin Recursion Detection', () => {
       const evald = await root.eval(context);
       const css = evald.toString();
 
-      expect(css).toContain('.foo');
-      expect(css).toContain('color: blue');
+      expect(css).toBeString(`
+        .foo {
+          color: blue;
+        }
+        .bar {
+          color: blue;
+        }
+      `);
     });
 
     it('should succeed when multiple .clearfix rulesets call .clearfix() mixin (no recursion)', async () => {

@@ -45,7 +45,7 @@ describe('Safe Parse - Error and Warning Collection', () => {
         return {
           tree: rules([]), // Return empty tree to avoid "File not supported" error
           errors: [{
-            code: 'JESS1001',
+            code: 'parse/unexpected-token',
             phase: 'parse' as const,
             message: 'Unexpected token',
             reason: 'Token "missing" is not valid here.',
@@ -70,7 +70,7 @@ describe('Safe Parse - Error and Warning Collection', () => {
       }
 
       expect(context.errors).toHaveLength(1);
-      expect(context.errors[0]?.code).toBe('JESS1001');
+      expect(context.errors[0]?.code).toBe('parse/unexpected-token');
       expect(context.errors[0]?.line).toBe(1);
       expect(context.errors[0]?.lines).toBeDefined();
       expect(context.errors[0]?.lines?.[1]).toBe('.invalid { color: red; } missing brace');
@@ -110,7 +110,7 @@ line 5`;
         return {
           tree: rules([]), // Return empty tree to avoid "File not supported" error
           errors: [{
-            code: 'JESS1001',
+            code: 'parse/unexpected-token',
             phase: 'parse' as const,
             message: 'Unexpected token',
             reason: 'Token "error" is not valid here.',
@@ -179,7 +179,7 @@ line 3`;
         return {
           tree: rules([]), // Return empty tree to avoid "File not supported" error
           errors: [{
-            code: 'JESS1001',
+            code: 'parse/unexpected-token',
             phase: 'parse' as const,
             message: 'Unexpected token',
             reason: 'Token "error" is not valid here.',
@@ -248,7 +248,7 @@ line 3`;
       // Note: This test may need adjustment based on actual extend warning generation
       if (context.warnings.length > 0) {
         const warning = context.warnings[0]!;
-        expect(warning.code).toBe('JESS3202');
+        expect(warning.code).toBe('extend/not-found');
         expect(warning.phase).toBe('extend');
       }
     });
@@ -329,7 +329,7 @@ line 5`;
         return {
           tree: rules([]), // Return empty tree to avoid "File not supported" error
           errors: [{
-            code: 'JESS1001',
+            code: 'parse/unexpected-token',
             phase: 'parse' as const,
             message: 'Unexpected token',
             reason: 'Token "invalid" is not valid here.',
@@ -342,7 +342,7 @@ line 5`;
             }
           }],
           warnings: [{
-            code: 'JESS4201',
+            code: 'resolve/unused-variable',
             phase: 'resolve' as const,
             message: 'Unused variable',
             reason: '"unused" is declared but its value is never used.',
@@ -367,8 +367,8 @@ line 5`;
 
       expect(context.errors).toHaveLength(1);
       expect(context.warnings).toHaveLength(1);
-      expect(context.errors[0]?.code).toBe('JESS1001');
-      expect(context.warnings[0]?.code).toBe('JESS4201');
+      expect(context.errors[0]?.code).toBe('parse/unexpected-token');
+      expect(context.warnings[0]?.code).toBe('resolve/unused-variable');
     });
   });
 });

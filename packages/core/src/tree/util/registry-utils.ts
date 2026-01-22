@@ -11,6 +11,7 @@ import type { Declaration } from '../declaration.js';
 import type { Context } from '../../context.js';
 import { atIndex } from './collections.js';
 import { comparePosition } from './compare.js';
+import { syncLog } from './__tests__/debug-log.js';
 
 const { isArray } = Array;
 
@@ -110,7 +111,31 @@ export abstract class Registry<
         const visibility = entryVisibility ?? nodeVisibility;
 
         const isMixinOutput = n.node.options?.isMixinOutput === true;
-        // If lookup has a target and Rules is mixin output, grant public access to all nodes
+        // #region agent log
+        try {
+          if (filterType === 'Mixin' && key === '.mixin') {
+            syncLog({
+              sessionId: 'debug-session',
+              runId: process.env.DEBUG_RUN_ID ?? 'run',
+              hypothesisId: 'H11',
+              location: 'registry-utils.ts:_searchRulesChildren',
+              message: 'ruleset-entry-visibility-check',
+              data: {
+                entryMixinVis: String(n.rulesVisibility?.Mixin ?? ''),
+                nodeMixinVis: String((n.node as any)?.options?.rulesVisibility?.Mixin ?? ''),
+                isMixinOutput,
+                leakyRules: !!context?.leakyRules,
+                hasTarget: !!options?.hasTarget,
+                nodeValueLen: Array.isArray((n.node as any)?.value) ? (n.node as any).value.length : -1
+              },
+              timestamp: Date.now()
+            });
+          }
+        } catch {}
+        // #endregion
+        // Mixin output Rules are only searchable when the lookup has an explicit target.
+        // NOTE: Do not use `leakyRules` to widen this; it causes parameter-scope variables to leak
+        // into later sibling lookups (see detached-rulesets fixtures).
         if (isMixinOutput && options?.hasTarget === true) {
           return true;
         }
@@ -283,7 +308,10 @@ export abstract class Registry<
       }
       if (candidates) {
         if (candidates instanceof Set) {
-          candidates = candidates.union(newSet);
+          // Avoid Set.prototype.union (not available in our TS lib target)
+          for (const v of newSet) {
+            candidates.add(v);
+          }
         } else {
           candidates = new Set([candidates, ...newSet]);
         }
@@ -384,7 +412,15 @@ export class RulesetRegistry extends Registry<Ruleset> {
       if (!sel || isNode(sel, 'Nil')) {
         continue;
       }
-      if (keySet.isSubsetOf(sel.keySet)) {
+      // Avoid Set.prototype.isSubsetOf (not available in our TS lib target)
+      let isSubset = true;
+      for (const k of keySet) {
+        if (!sel.keySet.has(k)) {
+          isSubset = false;
+          break;
+        }
+      }
+      if (isSubset) {
         (rulesets ??= []).push(c);
       }
     }
@@ -857,18 +893,26 @@ export class MixinRegistry extends Registry<
  * @todo Should the presence of `@-use` directives anywhere in the
  * stylesheet tree cause these global functions to be disabled?
  */
-export class FunctionRegistry extends Registry<JsFunction, JsFunction> {
-  index = new Map<string, JsFunction>();
+export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | Func> {
+  index = new Map<string, JsFunction | Func>();
 
   override indexPendingItems() {
     for (const item of this.pendingItems) {
-      this.index.set(item.name!, item);
+      if (item instanceof JsFunction) {
+        this.index.set(item.name!, item);
+        continue;
+      }
+      // Stylesheet-defined function node
+      const nameKey = (item as Func).nameKey;
+      if (nameKey) {
+        this.index.set(nameKey, item);
+      }
     }
     this.pendingItems.clear();
   }
 
-  override find(name: string, filterType?: string, options?: FindOptions): JsFunction | undefined {
-    let fn: JsFunction | undefined;
+  override find(name: string, filterType?: string, options?: FindOptions): JsFunction | Func | undefined {
+    let fn: JsFunction | Func | undefined;
     let rules: Rules | undefined = this.rules;
     let { searchParents = true } = options ?? {};
     let findRoot = false;
@@ -904,12 +948,15 @@ export class FunctionRegistry extends Registry<JsFunction, JsFunction> {
   /**
    * Override add() to support both Jess API (add(item)) and Less.js API (add(name, func))
    */
-  override add(item: JsFunction): void;
+  override add(item: JsFunction | Func): void;
   override add(name: string, func: JsFunction | ((...args: any[]) => any)): void;
-  override add(nameOrItem: string | JsFunction, func?: JsFunction | ((...args: any[]) => any)): void {
-    // If first argument is a JsFunction, use base class behavior
-    if (nameOrItem instanceof JsFunction) {
-      super.add(nameOrItem);
+  override add(
+    nameOrItem: string | JsFunction | Func,
+    func?: JsFunction | ((...args: any[]) => any)
+  ): void {
+    // If first argument is a JsFunction or Func, use base class behavior
+    if (nameOrItem instanceof JsFunction || (nameOrItem as any)?.type === 'Func') {
+      super.add(nameOrItem as any);
       return;
     }
 
@@ -952,7 +999,7 @@ export class FunctionRegistry extends Registry<JsFunction, JsFunction> {
    * @param name Function name (case-insensitive)
    * @returns The function if found, undefined otherwise
    */
-  get(name: string): JsFunction | undefined {
+  get(name: string): JsFunction | Func | undefined {
     // Convert to lowercase for case-insensitive lookup
     const lowerName = name.toLowerCase();
 
@@ -973,9 +1020,9 @@ export class FunctionRegistry extends Registry<JsFunction, JsFunction> {
    * Less.js-compatible API: Get all local functions (without parent chain)
    * @returns Object mapping function names to functions
    */
-  getLocalFunctions(): Record<string, JsFunction> {
+  getLocalFunctions(): Record<string, JsFunction | Func> {
     this.indexPendingItems();
-    const result: Record<string, JsFunction> = {};
+    const result: Record<string, JsFunction | Func> = {};
     for (const [name, func] of this.index.entries()) {
       result[name] = func;
     }
@@ -1009,7 +1056,7 @@ export class FunctionRegistry extends Registry<JsFunction, JsFunction> {
 
     // Override get() to check parent registry first
     const originalGet = childRegistry.get.bind(childRegistry);
-    childRegistry.get = function(this: FunctionRegistry, name: string): JsFunction | undefined {
+    childRegistry.get = function(this: FunctionRegistry, name: string): JsFunction | Func | undefined {
       // First check local registry
       this.indexPendingItems();
       const localFn = this.index.get(name.toLowerCase());

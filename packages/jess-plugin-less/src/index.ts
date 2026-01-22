@@ -115,7 +115,7 @@ export class LessPlugin extends AbstractPlugin {
           const line = warning.token?.startLine ?? 1;
           const column = warning.token?.startColumn ?? 1;
           warnings.push({
-            code: 'JESS4101',
+            code: 'parse/deprecated',
             phase: 'parse',
             message: warning.message,
             reason: warning.message,
@@ -175,7 +175,7 @@ export class LessPlugin extends AbstractPlugin {
         }
       } else {
         errors.push({
-          code: 'JESS0000',
+          code: 'internal/unknown',
           phase: 'parse',
           message: error?.message || 'Unknown parsing error',
           reason: error?.message || 'An unexpected error occurred during parsing.',

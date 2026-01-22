@@ -41,21 +41,29 @@ export function normalizeFilenameToNamespace(filePath: string): string {
  */
 export function normalizeContinuationIndent(text: string, baseIndent: string): string {
   const nl = text.indexOf('\n');
-  if (nl === -1) return text;
+  if (nl === -1) {
+    return text;
+  }
 
   const lines = text.split('\n');
   let min = Infinity;
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i]!;
-    if (line.length === 0) continue;
+    if (line.length === 0) {
+      continue;
+    }
     const m = line.match(/^[ \t]*/)!;
     const len = m[0].length;
     // Count only if the line has non-space content
     if (len < line.length) {
-      if (len < min) min = len;
+      if (len < min) {
+        min = len;
+      }
     }
   }
-  if (!isFinite(min)) min = 0;
+  if (!isFinite(min)) {
+    min = 0;
+  }
 
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i]!;

@@ -124,14 +124,22 @@ export function componentsMatch(a: Selector, b: Selector): boolean {
  * Extracted from find-extendable-locations.ts with preserved original logic
  */
 export function arePseudoSelectorsEquivalent(a: any, b: any): boolean {
-  if (!isNode(a, 'PseudoSelector') || !isNode(b, 'PseudoSelector')) return false;
-  if (a.value.name !== b.value.name) return false;
+  if (!isNode(a, 'PseudoSelector') || !isNode(b, 'PseudoSelector')) {
+    return false;
+  }
+  if (a.value.name !== b.value.name) {
+    return false;
+  }
 
   const aArg = a.value.arg;
   const bArg = b.value.arg;
 
-  if (!aArg && !bArg) return true;
-  if (!aArg || !bArg) return false;
+  if (!aArg && !bArg) {
+    return true;
+  }
+  if (!aArg || !bArg) {
+    return false;
+  }
 
   // If both have selector arguments, check equivalence
   if (isSelector(aArg) && isSelector(bArg)) {
@@ -149,7 +157,9 @@ export function arePseudoSelectorsEquivalent(a: any, b: any): boolean {
 export function areSelectorArgumentsEquivalent(a: Selector, b: Selector): boolean {
   // Handle selector lists (order-independent)
   if (isNode(a, 'SelectorList') && isNode(b, 'SelectorList')) {
-    if (a.value.length !== b.value.length) return false;
+    if (a.value.length !== b.value.length) {
+      return false;
+    }
 
     return a.value.every(aItem =>
       b.value.some(bItem => componentsMatch(aItem, bItem))
@@ -170,7 +180,9 @@ export function areSelectorArgumentsEquivalent(a: Selector, b: Selector): boolea
  * Preserves exact original algorithm from find-extendable-locations.ts
  */
 export function areCompoundSelectorsEquivalent(a: CompoundSelector, b: CompoundSelector): boolean {
-  if (a.value.length !== b.value.length) return false;
+  if (a.value.length !== b.value.length) {
+    return false;
+  }
 
   // Expand both compounds to handle :is() pseudo-selectors (preserving original expansion logic)
   const aExpanded = expandCompoundWithPseudoSelectors(a);
@@ -326,39 +338,55 @@ export function buildSelectorPath(
  * Preserves exact combinator and component matching logic from find-extendable-locations.ts
  */
 export function areComplexSelectorsEquivalent(a: ComplexSelector, b: ComplexSelector): boolean {
-  if (a.value.length !== b.value.length) return false;
+  if (a.value.length !== b.value.length) {
+    return false;
+  }
 
   // Check each component matches
   for (let i = 0; i < a.value.length; i++) {
     const aComp = a.value[i];
     const bComp = b.value[i];
 
-    if (!aComp || !bComp) return false;
+    if (!aComp || !bComp) {
+      return false;
+    }
 
     // Both must be same type
     if (isNode(aComp, 'Combinator') && isNode(bComp, 'Combinator')) {
-      if (aComp.value !== bComp.value) return false;
+      if (aComp.value !== bComp.value) {
+        return false;
+      }
     } else if (!isNode(aComp, 'Combinator') && !isNode(bComp, 'Combinator')) {
       // Both are selectors - check equivalence
       if (isNode(aComp, 'CompoundSelector') && isNode(bComp, 'CompoundSelector')) {
-        if (!areCompoundSelectorsEquivalent(aComp, bComp)) return false;
+        if (!areCompoundSelectorsEquivalent(aComp, bComp)) {
+          return false;
+        }
       } else if (isNode(aComp, 'PseudoSelector') && aComp.value.name === ':is' && aComp.value.arg && isSelector(aComp.value.arg)) {
         // Allow `:is(.a, .b)` to match `.a` (or any selector in its arg list) for complex selector equivalence.
         const arg = aComp.value.arg as Selector;
         if (isNode(arg, 'SelectorList')) {
           const matchesAny = arg.value.some(sel => sel.valueOf() === bComp.valueOf());
-          if (!matchesAny) return false;
+          if (!matchesAny) {
+            return false;
+          }
         } else {
-          if (arg.valueOf() !== bComp.valueOf()) return false;
+          if (arg.valueOf() !== bComp.valueOf()) {
+            return false;
+          }
         }
       } else if (isNode(bComp, 'PseudoSelector') && bComp.value.name === ':is' && bComp.value.arg && isSelector(bComp.value.arg)) {
         // Symmetric case: allow `.a` to match `:is(.a, .b)`
         const arg = bComp.value.arg as Selector;
         if (isNode(arg, 'SelectorList')) {
           const matchesAny = arg.value.some(sel => sel.valueOf() === aComp.valueOf());
-          if (!matchesAny) return false;
+          if (!matchesAny) {
+            return false;
+          }
         } else {
-          if (arg.valueOf() !== aComp.valueOf()) return false;
+          if (arg.valueOf() !== aComp.valueOf()) {
+            return false;
+          }
         }
       } else if (aComp.valueOf() !== bComp.valueOf()) {
         return false;
@@ -379,16 +407,22 @@ export function areComplexSelectorsEquivalent(a: ComplexSelector, b: ComplexSele
 export function isStructurallyEqual(a: Selector, b: Selector): boolean {
   // For pseudo-selectors, compare name and arguments first (before basic selector check)
   if (isNode(a, 'PseudoSelector') && isNode(b, 'PseudoSelector')) {
-    if (a.value.name !== b.value.name) return false;
+    if (a.value.name !== b.value.name) {
+      return false;
+    }
 
     const aArg = a.value.arg;
     const bArg = b.value.arg;
 
     // Both have no args
-    if (!aArg && !bArg) return true;
+    if (!aArg && !bArg) {
+      return true;
+    }
 
     // One has arg, other doesn't
-    if (!aArg || !bArg) return false;
+    if (!aArg || !bArg) {
+      return false;
+    }
 
     // Both have args - compare them recursively
     if (isSelector(aArg) && isSelector(bArg)) {
@@ -665,7 +699,9 @@ function tryFastPathExtendMatch(
   // Fast path 3: Compound selector containing simple target (.foo.bar contains .foo)
   if (isNode(target, 'CompoundSelector') && isNode(find, 'SimpleSelector') && target.value.length <= 4) {
     // Skip pseudo-selectors with Selector arguments
-    if (isNode(find, 'PseudoSelector') && find.value.arg && isSelector(find.value.arg)) return null;
+    if (isNode(find, 'PseudoSelector') && find.value.arg && isSelector(find.value.arg)) {
+      return null;
+    }
 
     const findVal = find.valueOf();
     const locations: ExtendLocation[] = [];
@@ -1299,7 +1335,9 @@ function trySequentialComplexMatch(
   const targetComponents = target.value;
   const findComponents = find.value;
 
-  if (findComponents.length === 0 || targetComponents.length < findComponents.length) return null;
+  if (findComponents.length === 0 || targetComponents.length < findComponents.length) {
+    return null;
+  }
 
   // Try to find a contiguous subsequence match that preserves combinator structure
   for (let startIdx = 0; startIdx <= targetComponents.length - findComponents.length; startIdx++) {
@@ -1407,7 +1445,9 @@ function tryBacktrackingComplexMatch(
   const targetComponents = target.value.filter(c => !isNode(c, 'Combinator'));
   const findComponents = find.value.filter(c => !isNode(c, 'Combinator'));
 
-  if (findComponents.length === 0) return null;
+  if (findComponents.length === 0) {
+    return null;
+  }
 
   // Special case: Check if target has a compound with :is() that can expand to match find
   for (let i = 0; i < targetComponents.length; i++) {
@@ -1516,7 +1556,9 @@ function searchWithinPseudoSelector(
   locations: ExtendLocation[]
 ): void {
   const arg = pseudo.value.arg;
-  if (!arg || !isSelector(arg)) return;
+  if (!arg || !isSelector(arg)) {
+    return;
+  }
 
   const argSelector = arg as Selector;
 

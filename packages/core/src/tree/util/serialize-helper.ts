@@ -3,6 +3,7 @@ import type { Ruleset } from '../ruleset.js';
 import type { FinalPrintOptions } from './print.js';
 import { isNode } from './is-node.js';
 import { Nil } from '../nil.js';
+import { syncLog } from './__tests__/debug-log.js';
 
 /**
  * Normalizes the indent of a multi-line string by replacing initial whitespace.
@@ -92,6 +93,40 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     if (!n.visible && !n.fullRender) {
       continue;
     }
+
+    // #region agent log
+    try {
+      const filePath = (node as any)?.treeContext?.file?.fullPath
+        || ((node as any)?.treeContext?.file?.path && (node as any)?.treeContext?.file?.name
+          ? `${(node as any).treeContext.file.path}/${(node as any).treeContext.file.name}`
+          : (node as any)?.treeContext?.file?.path)
+        || '';
+      if (typeof filePath === 'string' && filePath.includes('tests-unit/detached-rulesets/')) {
+        if (isNode(n, 'Call')) {
+          const nm = (n as any).value?.name;
+          const key = typeof nm === 'string'
+            ? nm
+            : (isNode(nm, 'Reference') ? String((nm as any).value?.key?.valueOf?.() ?? (nm as any).value?.key ?? '') : (isNode(nm) ? nm.type : 'unknown'));
+          syncLog({
+            sessionId: 'debug-session',
+            runId: process.env.DEBUG_RUN_ID ?? 'run',
+            hypothesisId: 'H17',
+            location: 'serialize-helper.ts:serializeRulesContainer',
+            message: 'serializing-call-node',
+            data: {
+              key,
+              callEvaluated: !!(n as any).evaluated,
+              callPreEvaluated: !!(n as any).preEvaluated,
+              parentType: String((n as any).parent?.type ?? ''),
+              parentPreEvaluated: !!(n as any).parent?.preEvaluated,
+              parentEvaluated: !!(n as any).parent?.evaluated
+            },
+            timestamp: Date.now()
+          });
+        }
+      }
+    } catch {}
+    // #endregion
 
     if (isNode(n, ['Ruleset', 'AtRule'])) {
       n.toTrimmedString(options);

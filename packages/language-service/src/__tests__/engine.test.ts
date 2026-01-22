@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { Position } from 'vscode-languageserver-types';
+import { Position, SymbolKind } from 'vscode-languageserver-types';
 import { createEngine } from '../engine.js';
 
 function createDocument(languageId: string, content: string): TextDocument {
@@ -140,6 +140,86 @@ describe('JessLanguageServiceEngine', () => {
 
       const diagnostics = engine.getDiagnostics(doc.uri);
       expect(diagnostics.length).toBeGreaterThan(0);
+    });
+
+    it('reports multiple parser errors (css/less/scss)', () => {
+      // Force multiple *parser* errors by inserting tokens that are structurally invalid as values.
+      const inputByLang: Record<'css' | 'less' | 'scss', string> = {
+        // CSS: this parser reports multiple errors for an unterminated comment.
+        css: 'a { /*',
+        // Less/SCSS: this reliably produces multiple recovery errors.
+        less: 'a { color: ) ; background: ) ; }',
+        scss: 'a { color: ) ; background: ) ; }'
+      };
+      for (const languageId of ['css', 'less', 'scss'] as const) {
+        const engine = createEngine();
+        const doc = createDocument(languageId, inputByLang[languageId]);
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diagnostics = engine.getDiagnostics(doc.uri);
+        const parserCount = diagnostics.filter(d => d.code === 'parse/parser').length;
+        expect(parserCount).toBeGreaterThan(1);
+      }
+    });
+
+    it('reports multiple diagnostics (recovery-friendly) on very broken input (css/less/scss)', () => {
+      // Some grammars may surface these as parser errors rather than lexer errors.
+      const input = 'a { /*';
+      for (const languageId of ['css', 'less', 'scss'] as const) {
+        const engine = createEngine();
+        const doc = createDocument(languageId, input);
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diagnostics = engine.getDiagnostics(doc.uri);
+        expect(diagnostics.length).toBeGreaterThan(1);
+        // Ensure ranges are not all identical (basic sanity).
+        const keys = new Set(diagnostics.map(d => `${d.range.start.line}:${d.range.start.character}:${d.range.end.line}:${d.range.end.character}`));
+        expect(keys.size).toBeGreaterThan(1);
+      }
+    });
+
+    it('returns no diagnostics for valid input (css/less/scss)', () => {
+      const input = '@breakpoint: 1024px;\n@media (min-width: @breakpoint) { .a { display: block; } }';
+      for (const languageId of ['less'] as const) {
+        const engine = createEngine();
+        const doc = createDocument(languageId, input);
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diagnostics = engine.getDiagnostics(doc.uri);
+        expect(diagnostics).toEqual([]);
+      }
+
+      const cssOk = 'a { display: block; }';
+      for (const languageId of ['css', 'scss'] as const) {
+        const engine = createEngine();
+        const doc = createDocument(languageId, cssOk);
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diagnostics = engine.getDiagnostics(doc.uri);
+        expect(diagnostics).toEqual([]);
+      }
+    });
+  });
+
+  describe('document symbols', () => {
+    it('returns symbols for at-rules, rulesets, and vars', () => {
+      const engine = createEngine();
+      const doc = createDocument(
+        'scss',
+        `
+          $primary: red;
+          @media screen { .a { color: $primary; } }
+        `
+      );
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const syms = engine.getDocumentSymbols(doc.uri);
+      const names = syms.map(s => s.name);
+      const kinds = syms.map(s => s.kind);
+
+      expect(kinds).toContain(SymbolKind.Variable);
+      expect(kinds).toContain(SymbolKind.Namespace);
+      expect(kinds).toContain(SymbolKind.Class);
+
+      expect(names.some(n => n.includes('@media'))).toBe(true);
+      expect(names.some(n => n.includes('.a'))).toBe(true);
+      expect(names.some(n => n.includes('$primary'))).toBe(true);
     });
   });
 });

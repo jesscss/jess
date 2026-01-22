@@ -8,7 +8,10 @@ import { scssFragments, scssTokens } from './scssTokens.js';
 import {
   Any,
   AtRule,
+  Ampersand,
+  BasicSelector,
   Call,
+  ComplexSelector,
   CompoundSelector,
   Collection,
   Condition,
@@ -20,12 +23,15 @@ import {
   type AssignmentType,
   Each,
   Expression,
+  Func,
+  F_VISIBLE,
   For,
   If,
   type IfBranch,
   JsImport,
   List,
   Mixin,
+  Nil,
   Node as JessNode,
   Paren,
   Quoted,
@@ -706,9 +712,71 @@ export function functionCall(this: ScssActionsParser, T: ScssTokenMap, alt?: Alt
       const loc: LocationInfo | undefined = Array.isArray(maybe.location) && maybe.location.length === 6
         ? (maybe.location as LocationInfo)
         : undefined;
+      // Namespaced call: emit as Expression so it serializes like `$ns.func(...)`.
       return new Expression(maybe, undefined, loc, $.context);
     }
+
+    // Plain Sass/Less-style function call: `foo(...)`
+    // Parse as Call(name: Reference(type='function', fallbackValue: true)) so evaluation tries function registry,
+    // but still serializes safely if unresolved.
+    if (typeof call.value.name === 'string') {
+      const loc: LocationInfo | undefined = Array.isArray(call.location) && call.location.length === 6
+        ? (call.location as LocationInfo)
+        : undefined;
+      const ref = new Reference(
+        { key: call.value.name },
+        { type: 'function', fallbackValue: true },
+        loc,
+        $.context
+      );
+      // Sass/Less plain function calls are not optional/silent-fail calls (no `?(` output).
+      // Keep other call options if present, but drop `silentFail` coming from CSS fallback behavior.
+      const { silentFail: silentFailIgnored, ...rest } = call.options ?? {};
+      void silentFailIgnored;
+      const nextOptions = Object.keys(rest).length > 0 ? rest : undefined;
+      return new Call({ name: ref, args: call.value.args }, nextOptions, loc, $.context);
+    }
     return call;
+  };
+}
+
+/**
+ * SCSS: extend selectors to support Sass placeholder selectors (`%foo`).
+ *
+ * We tokenize `%foo` as `PlaceholderSelector` and parse it as a basic selector `\\foo`
+ * (so it can't collide with normal `.foo` / `#foo` selectors).
+ */
+export function simpleSelector(this: ScssActionsParser, T: ScssTokenMap, selectorAlt?: AltContext) {
+  const $ = this;
+  selectorAlt ??= (ctx: RuleContext = {}) => [
+    { ALT: () => $.CONSUME(T.Ident) },
+    { GATE: () => !!ctx.inner, ALT: () => $.CONSUME(T.Ampersand) },
+    { ALT: () => $.SUBRULE($.classSelector, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.idSelector, { ARGS: [ctx] }) },
+    // Placeholder selector: `%foo`
+    { ALT: () => $.CONSUME(T.PlaceholderSelector) },
+    { ALT: () => $.CONSUME(T.Star) },
+    { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [ctx] }) },
+    { ALT: () => $.SUBRULE($.attributeSelector, { ARGS: [ctx] }) },
+    { ALT: () => $.CONSUME(T.DimensionInt) },
+    { ALT: () => $.CONSUME(T.DimensionNum) }
+  ];
+
+  return (ctx: RuleContext = {}) => {
+    const selector = $.OR(selectorAlt!(ctx));
+    if (!$.RECORDING_PHASE) {
+      if ($.isToken(selector)) {
+        if (selector.tokenType.name === 'Ampersand') {
+          return new Ampersand(undefined, undefined, $.getLocationInfo(selector), $.context);
+        }
+        if (selector.tokenType.name === 'PlaceholderSelector') {
+          const name = `\\${selector.image.slice(1)}`;
+          return new BasicSelector(name, undefined, $.getLocationInfo(selector), $.context);
+        }
+        return new BasicSelector(selector.image, undefined, $.getLocationInfo(selector), $.context);
+      }
+      return selector as unknown as JessNode;
+    }
   };
 }
 
@@ -1042,6 +1110,83 @@ export function scssForwardAtRule(this: ScssActionsParser, T: ScssTokenMap) {
 
     const isWithConfigStart = () => $.LA(1).image === 'with' && $.LA(2).tokenType === T.LParen;
 
+    // optional "as <prefix>-*"
+    let forwardAsPrefix: string | undefined;
+    $.OPTION2({
+      GATE: () => $.LA(1).image === 'as',
+      DEF: () => {
+        // "as" may be Ident or PlainIdent depending on token mode.
+        $.OR7([
+          { GATE: () => $.LA(1).tokenType === T.Ident, ALT: () => $.CONSUME2(T.Ident) },
+          { ALT: () => $.CONSUME2(T.PlainIdent) }
+        ]);
+        const tok = $.OR8([
+          { GATE: () => $.LA(1).tokenType === T.Ident, ALT: () => $.CONSUME3(T.Ident) },
+          { ALT: () => $.CONSUME3(T.PlainIdent) }
+        ]) as unknown as IToken;
+        if (!RECORDING_PHASE) {
+          // Most lexing paths will give us `bar-*` as a single token.
+          // If not, we still capture the prefix portion and ignore the `*`.
+          const raw = tok.image;
+          if (raw.endsWith('-*')) {
+            forwardAsPrefix = raw.slice(0, -1); // "bar-"
+          } else if (raw.endsWith('*')) {
+            forwardAsPrefix = raw.slice(0, -1);
+          } else {
+            forwardAsPrefix = raw;
+          }
+        }
+        // If the `*` was split into its own token, consume it (and optional '-' if present as Unknown).
+        $.OPTION3({
+          GATE: () =>
+            ($.LA(1).tokenType === T.Unknown && $.LA(1).image === '-' && $.LA(2).tokenType === T.Star)
+            || $.LA(1).tokenType === T.Star,
+          DEF: () => {
+            $.OPTION4({ GATE: () => $.LA(1).tokenType === T.Unknown && $.LA(1).image === '-', DEF: () => $.CONSUME(T.Unknown) });
+            $.CONSUME(T.Star);
+          }
+        });
+      }
+    });
+
+    // optional "show ..." or "hide ..."
+    let forwardShow: string[] | undefined;
+    let forwardHide: string[] | undefined;
+    const parseForwardList = (out: string[]) => {
+      $.AT_LEAST_ONE_SEP({
+        SEP: T.Comma,
+        DEF: () => {
+          const t = ($.LA(1).tokenType === T.DollarVariable)
+            ? ($.CONSUME6(T.DollarVariable) as unknown as IToken)
+            : (
+              // In this context (module system keywords), Sass member names are typically PlainIdent.
+              // Accept Ident as well for resilience.
+              ($.LA(1).tokenType === T.Ident
+                ? ($.CONSUME6(T.Ident) as unknown as IToken)
+                : ($.CONSUME6(T.PlainIdent) as unknown as IToken))
+            );
+          if (!RECORDING_PHASE) {
+            out.push(t.image);
+          }
+        }
+      });
+    };
+
+    $.OPTION5({
+      GATE: () => $.LA(1).image === 'show' || $.LA(1).image === 'hide',
+      DEF: () => {
+        const kw = $.OR6([
+          { GATE: () => $.LA(1).tokenType === T.Ident, ALT: () => $.CONSUME5(T.Ident) },
+          { ALT: () => $.CONSUME5(T.PlainIdent) }
+        ]) as unknown as IToken;
+        if (!RECORDING_PHASE) {
+          if (kw.image === 'show') forwardShow = [];
+          else forwardHide = [];
+        }
+        parseForwardList((kw.image === 'show' ? forwardShow : forwardHide) ?? []);
+      }
+    });
+
     // optional "with (...)"
     let withRules: Collection | undefined;
     $.OPTION({
@@ -1050,20 +1195,11 @@ export function scssForwardAtRule(this: ScssActionsParser, T: ScssTokenMap) {
       GATE: () => isWithConfigStart(),
       DEF: () => {
         // "with" may be Ident or PlainIdent depending on token mode.
-        $.OR([
+        $.OR1([
           { GATE: () => $.LA(1).tokenType === T.Ident, ALT: () => $.CONSUME(T.Ident) },
           { ALT: () => $.CONSUME(T.PlainIdent) }
         ]);
         withRules = $.SUBRULE($.scssWithConfig, { ARGS: [ctx] }) as unknown as Collection;
-      }
-    });
-
-    // Ignore any remaining prelude (we don't support show/hide/as).
-    $.MANY({
-      // Also exclude the `with (...)` prelude so the OPTION above is unambiguous.
-      GATE: () => $.LA(1).tokenType !== T.Semi && !isWithConfigStart(),
-      DEF: () => {
-        $.SUBRULE($.anyOuterValue, { ARGS: [ctx] });
       }
     });
 
@@ -1075,7 +1211,12 @@ export function scssForwardAtRule(this: ScssActionsParser, T: ScssTokenMap) {
         { path: pathNode, with: withRules ? { node: withRules, type: 'set' } : undefined },
         {
           type: 'compose',
-          importOptions: { forward: true }
+          importOptions: {
+            forward: true,
+            forwardAsPrefix,
+            forwardShow,
+            forwardHide
+          }
         },
         loc,
         $.context
@@ -1097,7 +1238,7 @@ export function scssExtendAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     $.startRule();
     $.CONSUME(T.AtKeyword); // '@extend'
 
-    const target = $.SUBRULE($.selectorList, { ARGS: [ctx] }) as unknown as Node;
+    let target = $.SUBRULE($.selectorList, { ARGS: [ctx] }) as unknown as Node;
 
     // Accept (but ignore) any trailing bits like `!optional`
     $.MANY({
@@ -1110,8 +1251,24 @@ export function scssExtendAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     $.CONSUME(T.Semi);
     if (!RECORDING_PHASE) {
       const loc = $.endRule();
+
+      // Sass module system: placeholders are not namespaced, but they can come from upstream modules.
+      // For placeholder targets (tokenized as `\\foo`), we set `allNamespaces: true` so extend lookup
+      // searches all file roots, regardless of namespace scoping.
+      const isPlaceholderTarget = (sel: Selector): boolean => {
+        if (sel instanceof BasicSelector && typeof sel.value === 'string') {
+          return sel.value.startsWith('\\');
+        }
+        if (sel instanceof ComplexSelector && sel.value.length === 1) {
+          const only = sel.value[0];
+          return only instanceof BasicSelector && typeof only.value === 'string' && only.value.startsWith('\\');
+        }
+        return false;
+      };
+      const namespace = isPlaceholderTarget(target as unknown as Selector) ? '*' : undefined;
+
       return new Extend(
-        { target: target as unknown as Selector, flag: 0 },
+        { target: target as unknown as Selector, flag: 0, namespace },
         undefined,
         loc,
         $.context
@@ -1198,6 +1355,7 @@ export function scssIncludeAtRule(this: ScssActionsParser, T: ScssTokenMap) {
 
     let mixinKey: string | Interpolated | undefined;
     let mixinNameRef: Reference | undefined;
+    let nameHasOpenParen = false;
     $.OR([
       {
         // Interpolated mixin name: `@include #{$mixin}(...);` or `@include foo-#{$bar}(...);`
@@ -1239,6 +1397,21 @@ export function scssIncludeAtRule(this: ScssActionsParser, T: ScssTokenMap) {
           if (!RECORDING_PHASE) {
             const loc = startTok ? $.getLocationInfo(startTok) : $.getLocationInfo($.LA(-1));
             mixinKey = new Interpolated({ source, replacements }, { role: 'ident' }, loc, $.context);
+          }
+        }
+      },
+      {
+        // Mixin call where lexer tokenizes `name(` as a single token.
+        // e.g. `@include wrap(red);` may arrive as FunctionStart("wrap(") + ...
+        GATE: () => $.LA(1).tokenType === T.FunctionStart || $.LA(1).tokenType === T.GenericFunctionStart,
+        ALT: () => {
+          const nameTok = $.OR7([
+            { GATE: () => $.LA(1).tokenType === T.FunctionStart, ALT: () => $.CONSUME9(T.FunctionStart) },
+            { ALT: () => $.CONSUME9(T.GenericFunctionStart) }
+          ]) as unknown as IToken;
+          if (!RECORDING_PHASE) {
+            mixinKey = nameTok.image.slice(0, -1);
+            nameHasOpenParen = true;
           }
         }
       },
@@ -1289,62 +1462,113 @@ export function scssIncludeAtRule(this: ScssActionsParser, T: ScssTokenMap) {
       },
       {
         ALT: () => {
-          const ident = $.CONSUME4(T.Ident);
+          const ident = $.OR6([
+            { GATE: () => $.LA(1).tokenType === T.Ident, ALT: () => $.CONSUME4(T.Ident) },
+            { ALT: () => $.CONSUME8(T.PlainIdent) }
+          ]) as unknown as IToken;
           if (!RECORDING_PHASE) {
-            mixinKey = ident.image;
+            // Some lexer paths produce `PlainIdent` tokens that can include an immediately-following `(`,
+            // e.g. "wrap(" rather than "wrap" + LParen. Normalize that here.
+            if (ident.image.endsWith('(')) {
+              mixinKey = ident.image.slice(0, -1);
+              nameHasOpenParen = true;
+            } else {
+              mixinKey = ident.image;
+            }
           }
         }
       }
     ]);
 
     let args: List | undefined;
-    $.OPTION(() => {
-      $.CONSUME(T.LParen);
+    if (nameHasOpenParen) {
+      // We already consumed the `(` as part of the name token (FunctionStart/GenericFunctionStart).
       $.OPTION2(() => (args = $.SUBRULE($.functionCallArgs, { ARGS: [ctx] })));
-      $.CONSUME(T.RParen);
-    });
+      $.CONSUME3(T.RParen);
+    } else {
+      $.OPTION(() => {
+        $.CONSUME(T.LParen);
+        $.OPTION2(() => (args = $.SUBRULE($.functionCallArgs, { ARGS: [ctx] })));
+        $.CONSUME(T.RParen);
+      });
+    }
 
     // Optional content block
     let contentRules: RulesType | undefined;
-    $.OPTION3(() => {
+    let usingParams: List | undefined;
+
+    // SCSS: `@include foo() using ($x, $y) { ... }`
+    $.OPTION3({
+      GATE: () => $.LA(1).image === 'using',
+      DEF: () => {
+        $.CONSUME7(T.Ident); // using
+        // Sass `using(...)` parameters are just variable names.
+        // Represent them as VarDeclaration(paramVar=true, value=Nil()) so they print as `$x`
+        // (no `: <default>`), matching Jess' `@($x, $y) { ... }` syntax.
+        $.CONSUME2(T.LParen);
+        let p: JessNode[] | undefined;
+        if (!RECORDING_PHASE) p = [];
+        $.OPTION7(() => {
+          $.AT_LEAST_ONE_SEP({
+            SEP: T.Comma,
+            DEF: () => {
+              const dv = $.CONSUME(T.DollarVariable);
+              if (!RECORDING_PHASE) {
+                const paramName = new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context);
+                p!.push(
+                  new VarDeclaration(
+                    { name: paramName, value: new Nil() },
+                    { paramVar: true },
+                    $.getLocationInfo(dv),
+                    $.context
+                  )
+                );
+              }
+            }
+          });
+        });
+        $.CONSUME2(T.RParen);
+        if (!RECORDING_PHASE) {
+          usingParams = new List(p ?? [], undefined, $.getLocationInfo($.LA(-1)), $.context);
+        }
+      }
+    });
+
+    $.OPTION5(() => {
       $.CONSUME(T.LCurly);
-      contentRules = $.SUBRULE($.declarationList, { ARGS: [{ ...ctx, inner: true }] }) as unknown as RulesType;
+      contentRules = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: true }] }) as unknown as RulesType;
       $.CONSUME3(T.RCurly);
     });
 
     // Require semicolon only when present (SCSS requires it if no block; we enforce later)
-    $.OPTION4({ GATE: () => $.LA(1).tokenType === T.Semi, DEF: () => $.CONSUME(T.Semi) });
+    $.OPTION6({ GATE: () => $.LA(1).tokenType === T.Semi, DEF: () => $.CONSUME(T.Semi) });
 
     if (!RECORDING_PHASE) {
       const loc = $.endRule();
       const mixinRef = mixinNameRef ?? new Reference(
         { key: mixinKey! },
-        { type: 'mixin', resolution: 'call-time', role: 'name' },
+        { type: 'mixin', role: 'name' },
         loc,
         $.context
       );
 
-      // If we have a content block, attach it as a named arg `$content: <mixin()>`
+      // If we have a content block, store it on the Call itself (for serialization and future semantics).
+      let contentNode: Node | undefined;
       if (contentRules) {
         const contentMixin = new Mixin(
-          { name: new Any('content', { role: 'name' }), rules: contentRules },
+          { rules: contentRules, params: usingParams },
           undefined,
           loc,
           $.context
         );
-        const contentName = new Any('content', { role: 'property' });
-        const contentDecl = new VarDeclaration(
-          { name: contentName, value: contentMixin },
-          undefined,
-          loc,
-          $.context
-        );
-        const nextArgs = args ? args.copy(true) : new List([]);
-        nextArgs.value.unshift(contentDecl);
-        args = nextArgs;
+        // This is an inline/anonymous mixin literal, so it must be visible when serialized.
+        contentMixin.addFlags(F_VISIBLE);
+        contentNode = contentMixin;
       }
 
-      return new Call({ name: mixinRef, args }, undefined, loc, $.context);
+      const call = new Call({ name: mixinRef, args, contentNode }, undefined, loc, $.context);
+      // SCSS `@include` is a statement; serialize as Jess mixin injection using `$ > ...`.
+      return new Expression(call, undefined, loc, $.context);
     }
   };
 }
@@ -2257,7 +2481,113 @@ export function unknownAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     if (img === '@while') return $.SUBRULE($.scssWhileAtRule, { ARGS: [ctx] });
     if (img === '@include') return $.SUBRULE($.scssIncludeAtRule, { ARGS: [ctx] });
     if (img === '@mixin') return $.SUBRULE($.scssMixinAtRule, { ARGS: [ctx] });
+    if (img === '@function') return $.SUBRULE($.scssFunctionAtRule, { ARGS: [ctx] });
+    if (img === '@return') return $.SUBRULE($.scssReturnAtRule, { ARGS: [ctx] });
     return baseUnknown(ctx);
+  };
+}
+
+/**
+ * SCSS: `@return <value>;` → `return: <value>;`
+ */
+export function scssReturnAtRule(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    $.CONSUME(T.AtKeyword); // '@return'
+    // Use valueList to allow expressions like `$a + $b` (Sass return values commonly include operations).
+    const value = $.SUBRULE($.valueList, { ARGS: [ctx] }) as unknown as Node;
+    $.CONSUME(T.Semi);
+    if (!RECORDING_PHASE) {
+      const loc = $.endRule();
+      const name = new Any('return', { role: 'property' }, loc, $.context);
+      return new Declaration({ name, value: $.wrap(value) }, undefined, loc, $.context);
+    }
+  };
+}
+
+/**
+ * SCSS: `@function name($a, $b: 1) { ... }`
+ *
+ * Parsed as a `Func` node with a `body` (Rules) and `params` list, and registered in the function registry.
+ * Return value is represented by a `return: <value>;` declaration (see `@return`).
+ */
+export function scssFunctionAtRule(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    $.CONSUME(T.AtKeyword); // '@function'
+
+    let nameTok: IToken | undefined;
+    let params: List | undefined;
+    let hasParamsFromStart = false;
+
+    $.OR([
+      {
+        // function name may be tokenized as a FunctionStart / GenericFunctionStart (`name(`)
+        GATE: () => $.LA(1).tokenType === T.FunctionStart,
+        ALT: () => {
+          nameTok = $.CONSUME(T.FunctionStart) as unknown as IToken;
+          hasParamsFromStart = true;
+        }
+      },
+      {
+        GATE: () => $.LA(1).tokenType === T.GenericFunctionStart,
+        ALT: () => {
+          nameTok = $.CONSUME(T.GenericFunctionStart) as unknown as IToken;
+          hasParamsFromStart = true;
+        }
+      },
+      {
+        ALT: () => {
+          nameTok = $.OR2([
+            { GATE: () => $.LA(1).tokenType === T.Ident, ALT: () => $.CONSUME2(T.Ident) },
+            { ALT: () => $.CONSUME(T.PlainIdent) }
+          ]) as unknown as IToken;
+        }
+      }
+    ]);
+
+    $.OR3([
+      {
+        GATE: () => hasParamsFromStart,
+        ALT: () => {
+          params = $.SUBRULE($.scssMixinParamsAfterFunctionStart, { ARGS: [ctx] }) as unknown as List;
+        }
+      },
+      {
+        GATE: () => $.LA(1).tokenType === T.LParen,
+        ALT: () => {
+          params = $.SUBRULE2($.scssMixinParams, { ARGS: [ctx] }) as unknown as List;
+        }
+      },
+      { ALT: () => {} }
+    ]);
+
+    $.CONSUME(T.LCurly);
+    const bodyRules = $.SUBRULE($.declarationList, { ARGS: [{ ...ctx, inner: true }] }) as unknown as Rules;
+    $.CONSUME(T.RCurly);
+
+    if (!RECORDING_PHASE) {
+      // Keep function body "private-ish" by default, like Sass.
+      bodyRules.options.rulesVisibility ??= {};
+      bodyRules.options.rulesVisibility.VarDeclaration ??= 'private';
+      bodyRules.options.rulesVisibility.Mixin ??= 'private';
+      bodyRules.options.rulesVisibility.Ruleset ??= 'private';
+
+      const loc = $.endRule();
+      const tok = nameTok ?? $.LA(-1);
+      const rawName = hasParamsFromStart ? String(tok.image).slice(0, -1) : String(tok.image);
+      const fnName = new Any(rawName, { role: 'name' }, $.getLocationInfo(tok), $.context);
+      return new Func(
+        { name: fnName, params, body: bodyRules },
+        undefined,
+        loc,
+        $.context
+      );
+    }
   };
 }
 

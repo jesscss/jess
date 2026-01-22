@@ -133,87 +133,87 @@ type Template = { summary: string; reason: string; fix: string };
 
 const TEMPLATES = {
   // Parse/Lex
-  JESS1001: {
+  'parse/unexpected-token': {
     summary: 'Unexpected token',
     reason: 'Token "${token}" is not valid here.',
     fix: 'Check for a missing quote/comma or wrong operator.'
   },
-  JESS1002: {
+  'parse/unterminated-string': {
     summary: 'Unterminated string',
     reason: 'Missing closing quote.',
     fix: 'Close the string, e.g. url("hero.jpg").'
   },
-  JESS1003: {
+  'parse/unexpected-syntax': {
     summary: 'Unexpected syntax',
     reason: 'Expected ${expected}, got ${got}.',
     fix: 'Add the expected token or remove the unexpected one.'
   },
-  JESS1000: {
+  'parse/syntax-error': {
     summary: 'Syntax error',
     reason: '${message}',
     fix: 'Check surrounding tokens near this location.'
   },
 
   // Resolve/Import
-  JESS2101: {
+  'resolve/name-not-found': {
     summary: 'Name not found',
     reason: 'Symbol "${symbol}" is undefined in this scope.',
     fix: 'Define "${symbol}" or import a file that provides it.'
   },
-  JESS2202: {
+  'import/circular-compose': {
     summary: 'Circular @-compose detected',
     reason: '${chain}',
     fix: 'Break the cycle (extract shared bits and compose that).'
   },
 
   // Eval
-  JESS3103: {
+  'eval/bad-call-arity': {
     summary: 'Bad call: wrong arity',
     reason: '${callee} expects ${expectedCount} args, got ${gotCount}.',
     fix: 'Add/remove arguments to match the signature.'
   },
-  JESS3104: {
+  'eval/type-mismatch': {
     summary: 'Type mismatch',
     reason: '${callee} expects ${expected}, got ${got}.',
     fix: 'Pass a ${expected}; convert or choose a compatible value.'
   },
 
   // Extend
-  JESS3201: {
+  'extend/protected-boundary': {
     summary: 'Extend blocked by protected boundary',
     reason: '"${target}" is defined behind a protected compose boundary.',
     fix: 'Move "${target}" to a shared file or create a local shim.'
   },
-  JESS3202: {
+  'extend/not-found': {
     summary: 'Extend target "${target}" not found',
     reason: 'No ruleset found matching "${target}" in accessible extend roots.',
     fix: 'Ensure "${target}" exists and is accessible from the current extend root.'
   },
-  JESS3203: {
+  'extend/not-accessible': {
     summary: 'Extend target "${target}" not accessible',
     reason: '"${target}" exists but is not accessible from the current extend root (blocked by at-rule or compose boundary).',
     fix: 'Move the extend or the target to a shared extend root, or use a different approach.'
   },
 
   // Plugin
-  JESS5102: {
+  'plugin/unsupported-feature': {
     summary: 'Unsupported feature',
     reason: 'Plugin "${plugin}" does not implement ${feature}.',
     fix: 'Use a supported alternative or enable a fallback.'
   },
 
   // ---------- Warnings (examples you can expand) ----------
-  JESS4101: {
+  'eval/deprecated': {
     summary: 'Deprecated feature',
     reason: '"${what}" is deprecated.',
     fix: 'Use "${use}" instead.'
   },
-  JESS4201: {
+  'resolve/unused-variable': {
     summary: 'Unused variable',
     reason: '"${symbol}" is declared but its value is never used.',
     fix: 'Remove it or prefix with "_" to silence.'
   },
-  JESS4202: {
+  'selector/duplicate': {
     summary: 'Duplicate selector',
     reason: 'Selector "${selector}" is defined multiple times.',
     fix: 'Consolidate rules or remove the duplicate.'
@@ -381,7 +381,7 @@ function codeFrameFromFile(file: JessFile, line = 1, col = 1): string {
 
 export class JessError extends Error {
   severity: Severity = 'error';
-  code: keyof typeof TEMPLATES = 'JESS1000';
+  code: keyof typeof TEMPLATES = 'parse/syntax-error';
   phase: Phase = 'parse';
 
   // Resolved source context (fileObj preferred; filePath is legacy)
@@ -408,7 +408,7 @@ export class JessError extends Error {
     const source = fileObj?.source ?? init.source;
 
     const meta = init.meta ?? {};
-    const t = TEMPLATES[init.code] ?? TEMPLATES.JESS1000;
+    const t = TEMPLATES[init.code] ?? TEMPLATES['parse/syntax-error'];
 
     const summary = init.summary ?? interpolate(t.summary, meta);
     const reason = init.reason ?? interpolate(t.reason, meta);
@@ -551,47 +551,47 @@ type Common = {
 export const ERR = {
   // Parse/Lex
   unexpectedToken(args: Common & { meta: { token: string } }) {
-    return makeJessError({ code: 'JESS1001', phase: 'parse', ...args });
+    return makeJessError({ code: 'parse/unexpected-token', phase: 'parse', ...args });
   },
 
   unterminatedString(args: Common = {}) {
-    return makeJessError({ code: 'JESS1002', phase: 'parse', ...args });
+    return makeJessError({ code: 'parse/unterminated-string', phase: 'parse', ...args });
   },
 
   // Resolve/Import
   nameNotFound(args: Common & { meta: { symbol: string } }) {
-    return makeJessError({ code: 'JESS2101', phase: 'resolve', ...args });
+    return makeJessError({ code: 'resolve/name-not-found', phase: 'resolve', ...args });
   },
 
   circularCompose(args: Common & { meta: { chain: string } }) {
-    return makeJessError({ code: 'JESS2202', phase: 'import', ...args });
+    return makeJessError({ code: 'import/circular-compose', phase: 'import', ...args });
   },
 
   // Eval
   arity(args: Common & { meta: { callee: string; expectedCount: number; gotCount: number } }) {
-    return makeJessError({ code: 'JESS3103', phase: 'eval', ...args });
+    return makeJessError({ code: 'eval/bad-call-arity', phase: 'eval', ...args });
   },
 
   typeMismatch(args: Common & { meta: { callee: string; expected: string; got: string } }) {
-    return makeJessError({ code: 'JESS3104', phase: 'eval', ...args });
+    return makeJessError({ code: 'eval/type-mismatch', phase: 'eval', ...args });
   },
 
   // Extend
   extendBoundary(args: Common & { meta: { target: string } }) {
-    return makeJessError({ code: 'JESS3201', phase: 'extend', ...args });
+    return makeJessError({ code: 'extend/protected-boundary', phase: 'extend', ...args });
   },
 
   extendNotFound(args: Common & { meta: { target: string } }) {
-    return makeJessError({ code: 'JESS3202', phase: 'extend', ...args });
+    return makeJessError({ code: 'extend/not-found', phase: 'extend', ...args });
   },
 
   extendNotAccessible(args: Common & { meta: { target: string } }) {
-    return makeJessError({ code: 'JESS3203', phase: 'extend', ...args });
+    return makeJessError({ code: 'extend/not-accessible', phase: 'extend', ...args });
   },
 
   // Plugin
   pluginUnsupported(args: Common & { meta: { plugin: string; feature: string } }) {
-    return makeJessError({ code: 'JESS5102', phase: 'plugin', ...args });
+    return makeJessError({ code: 'plugin/unsupported-feature', phase: 'plugin', ...args });
   }
 };
 
@@ -602,23 +602,23 @@ export const ERR = {
  */
 export const WARN = {
   deprecated(args: Common & { meta: { what: string; use: string; deprecation?: Deprecation } }) {
-    return makeJessError({ severity: 'warn', code: 'JESS4101', phase: 'eval', ...args });
+    return makeJessError({ severity: 'warn', code: 'eval/deprecated', phase: 'eval', ...args });
   },
 
   unusedVar(args: Common & { meta: { symbol: string } }) {
-    return makeJessError({ severity: 'warn', code: 'JESS4201', phase: 'resolve', ...args });
+    return makeJessError({ severity: 'warn', code: 'resolve/unused-variable', phase: 'resolve', ...args });
   },
 
   duplicateSelector(args: Common & { meta: { selector: string } }) {
-    return makeJessError({ severity: 'warn', code: 'JESS4202', phase: 'extend', ...args });
+    return makeJessError({ severity: 'warn', code: 'selector/duplicate', phase: 'extend', ...args });
   },
 
   extendNotFound(args: Common & { meta: { target: string } }) {
-    return makeJessError({ severity: 'warn', code: 'JESS3202', phase: 'extend', ...args });
+    return makeJessError({ severity: 'warn', code: 'extend/not-found', phase: 'extend', ...args });
   },
 
   extendNotAccessible(args: Common & { meta: { target: string } }) {
-    return makeJessError({ severity: 'warn', code: 'JESS3203', phase: 'extend', ...args });
+    return makeJessError({ severity: 'warn', code: 'extend/not-accessible', phase: 'extend', ...args });
   }
 };
 
@@ -645,7 +645,7 @@ export function getErrorFromParser(
 ): JessError {
   const error = lexerErrors?.[0] ?? errors[0];
   if (!error) {
-    return new JessError({ code: 'JESS1000', phase: 'parse', filePath, source, ctx });
+    return new JessError({ code: 'parse/syntax-error', phase: 'parse', filePath, source, ctx });
   }
 
   const isLex =
@@ -664,16 +664,16 @@ export function getErrorFromParser(
 
   const message = (error as any).message || '';
 
-  let code: keyof typeof TEMPLATES = 'JESS1000';
+  let code: keyof typeof TEMPLATES = 'parse/syntax-error';
   let meta: Record<string, unknown> = {};
 
   if (isLex) {
-    code = 'JESS1001';
+    code = 'parse/unexpected-token';
     meta = { token: (error as any).char ?? '/' };
   } else if (/unterminated|string not closed/i.test(message)) {
-    code = 'JESS1002';
+    code = 'parse/unterminated-string';
   } else if (/expecting/i.test(message)) {
-    code = 'JESS1003';
+    code = 'parse/unexpected-syntax';
     const m = message.match(/expecting\s+([^,]+).*?but found\s+'?([^']+)'?/i);
     meta = m ? { expected: m[1], got: m[2] } : { expected: 'token', got: 'other' };
   }

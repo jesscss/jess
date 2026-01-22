@@ -47,7 +47,7 @@ describe('Diagnostic Output', () => {
 
   it('should format diagnostics correctly', () => {
     const error: ErrorDiagnostic = {
-      code: 'JESS1001',
+      code: 'parse/unexpected-token',
       phase: 'parse',
       message: 'Test error',
       reason: 'This is a test',

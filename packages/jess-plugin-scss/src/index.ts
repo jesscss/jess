@@ -125,7 +125,7 @@ export class ScssPlugin extends AbstractPlugin {
       } else {
         const message = error instanceof Error ? error.message : 'Unknown parsing error';
         errors.push({
-          code: 'JESS0000',
+          code: 'internal/unknown',
           phase: 'parse',
           message,
           reason: message,

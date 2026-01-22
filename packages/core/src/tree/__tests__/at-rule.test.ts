@@ -253,7 +253,7 @@ describe('AtRule', () => {
       const mixinDef = mixin({
         name: any('.mediaMixin'),
         params: list([
-          vardecl({ name: any('fallback', { role: 'property' }), value: dimension([200, 'px']) })
+          vardecl({ name: 'fallback', value: dimension([200, 'px']) }, { paramVar: true })
         ]),
         rules: rules([
           decl({ name: 'background', value: color({ node: 'black', format: 0, rgb: [0, 0, 0], alpha: 1 }) }),
@@ -1772,7 +1772,7 @@ describe('AtRule', () => {
           .b {
             background: white;
           }
-          @media (max-width: 100px) {
+          @media (max-width: 200px) {
             .b {
               background: red;
             }

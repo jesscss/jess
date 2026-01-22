@@ -209,10 +209,10 @@ describe('Style import extend behavior', () => {
       // Should not throw - extendNotAccessible is now a warning
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
-      
+
       // Should have collected a warning
       expect(context.warnings.length).toBeGreaterThan(0);
-      const warning = context.warnings.find(w => w.code === 'JESS3203');
+      const warning = context.warnings.find(w => w.code === 'extend/not-accessible');
       expect(warning).toBeDefined();
       expect(warning?.message).toContain('Extend target');
       expect(warning?.message).toContain('not accessible');
@@ -252,10 +252,10 @@ describe('Style import extend behavior', () => {
       // Should not throw - extendNotAccessible is now a warning
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
-      
+
       // Should have collected a warning
       expect(context.warnings.length).toBeGreaterThan(0);
-      const warning = context.warnings.find(w => w.code === 'JESS3203');
+      const warning = context.warnings.find(w => w.code === 'extend/not-accessible');
       expect(warning).toBeDefined();
       expect(warning?.message).toContain('Extend target');
       expect(warning?.message).toContain('not accessible');
@@ -293,10 +293,10 @@ describe('Style import extend behavior', () => {
       // Should not throw - extendNotAccessible is now a warning
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
-      
+
       // Should have collected a warning
       expect(context.warnings.length).toBeGreaterThan(0);
-      const warning = context.warnings.find(w => w.code === 'JESS3203');
+      const warning = context.warnings.find(w => w.code === 'extend/not-accessible');
       expect(warning).toBeDefined();
       expect(warning?.message).toContain('Extend target');
       expect(warning?.message).toContain('not accessible');

@@ -12,7 +12,7 @@ import {
 import { type WritableDeep } from 'type-fest';
 
 // TODO: get rid of xRegExp dep
-import { build as XRegExpBuild } from 'xregexp';
+import XRegExp from 'xregexp';
 
 export enum LexerType {
   NA,
@@ -44,7 +44,7 @@ export interface ILexer {
 export function buildFragments(rawFragments: ReadonlyArray<Readonly<[string, string]>>) {
   const fragments: Record<string, RegExp> = {};
   for (const fragment of rawFragments) {
-    fragments[fragment[0]!] = XRegExpBuild(fragment[1]!, fragments);
+    fragments[fragment[0]!] = XRegExp.build(fragment[1]!, fragments);
   };
   return fragments;
 };
@@ -107,9 +107,9 @@ export function createLexerDefinition(
         if (pattern instanceof RegExp) {
           regExpPattern = pattern;
         } else if (Array.isArray(pattern)) {
-          regExpPattern = pattern[1].bind(XRegExpBuild(pattern[0], fragments, 'yi'));
+          regExpPattern = pattern[1].bind(XRegExp.build(pattern[0], fragments, 'yi'));
         } else {
-          regExpPattern = XRegExpBuild(pattern as string, fragments, 'i');
+          regExpPattern = XRegExp.build(pattern as string, fragments, 'i');
         }
       } else {
         regExpPattern = Lexer.NA;

@@ -29,7 +29,7 @@ export function outputDiagnostics(
   for (const warning of warnings) {
     // For extend warnings and similar parameterized messages, group by code + filePath + line
     // This merges "Extend target .a not accessible" and "Extend target .b not accessible" into one group
-    const isParameterized = warning.code === 'JESS3202' || warning.code === 'JESS3203';
+    const isParameterized = warning.code === 'extend/not-found' || warning.code === 'extend/not-accessible';
     const groupKey = isParameterized
       ? `${warning.code}:${warning.filePath ?? ''}:${warning.line}`
       : `${warning.code}:${warning.message}:${warning.filePath ?? ''}:${warning.line}`;

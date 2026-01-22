@@ -116,7 +116,9 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
               // Find last non-combinator component and attach suffix
               for (let i = complex.value.length - 1; i >= 0; i--) {
                 const comp = complex.value[i]!;
-                if (isNode(comp as any, 'Combinator')) continue;
+                if (isNode(comp as any, 'Combinator')) {
+                  continue;
+                }
                 if (isNode(comp as any, 'CompoundSelector')) {
                   (comp as any).value.push(...suffix.map(s => (s as any).copy(true)));
                 } else {

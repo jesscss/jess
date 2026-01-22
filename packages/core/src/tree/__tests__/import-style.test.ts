@@ -473,7 +473,7 @@ describe('Style import', () => {
         style(
           { path: quoted(any('forwarded.jess')) },
           { type: 'compose', namespace: '*', importOptions: { forward: true } }
-        ),
+        )
         // Nothing else in this module.
       ]));
 

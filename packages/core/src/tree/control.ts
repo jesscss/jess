@@ -152,4 +152,3 @@ export const ifNode = defineType(If, 'If', 'if');
 export const forNode = defineType(For, 'For', 'for');
 export const eachNode = defineType(Each, 'Each', 'each');
 export const whileNode = defineType(While, 'While', 'while');
-

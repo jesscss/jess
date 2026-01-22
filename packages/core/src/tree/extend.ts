@@ -4,11 +4,8 @@ import { Selector } from './selector.js';
 import { Ampersand } from './ampersand.js';
 import { Nil } from './nil.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
-import { getImplicitSelector } from './util/selector-utils.js';
-import { Ruleset } from './ruleset.js';
-import { ComplexSelector } from './selector-complex.js';
 import { syncLog } from './util/__tests__/debug-log.js';
 
 export enum ExtendFlag {
@@ -23,6 +20,13 @@ export type ExtendValue = {
   selector?: Selector;
   /** The target to extend */
   target: Selector;
+  /**
+   * Optional namespace scoping for extend targets.
+   *
+   * - `namespace: '*'` means "search all extend roots in this file (ignore namespace scoping)".
+   * - `namespace: 'ns'` means "search the extend root(s) assigned to namespace `ns`".
+   */
+  namespace?: string;
   flag?: ExtendFlag;
 };
 /**
@@ -45,19 +49,22 @@ export class Extend extends Node<ExtendValue> {
   // #region agent log
   private static __agentLogCount = 0;
   private static agentLog(context: Context, location: string, message: string, data: Record<string, unknown>) {
-    if (process.env.DEBUG_EXTEND_BOOT !== 'true') return;
-    if (Extend.__agentLogCount++ > 40) return;
+    if (process.env.DEBUG_EXTEND_BOOT !== 'true') {
+      return;
+    }
+    if (Extend.__agentLogCount++ > 400) {
+      return;
+    }
     const filePath = context.treeContext?.file?.fullPath
       || (context.treeContext?.file?.path && context.treeContext?.file?.name
         ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
         : context.treeContext?.file?.path)
       || '';
     if (typeof filePath === 'string'
-      && !filePath.includes('tests-unit/extend-selector')
       && !filePath.includes('tests-unit/extend-exact')
-      && !filePath.includes('tests-unit/extend-media')
-      && !filePath.includes('tests-unit/extend-chaining')
-    ) return;
+    ) {
+      return;
+    }
     syncLog({
       sessionId: 'debug-session',
       runId: process.env.DEBUG_RUN_ID || 'pre-fix',
@@ -74,11 +81,10 @@ export class Extend extends Node<ExtendValue> {
     return `$extend ${this.value.target.valueOf()}`;
   }
 
-
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { target, selector, flag } = this.value;
+    let { target, selector, flag, namespace } = this.value;
     const mark = w.mark();
     w.add('$extend');
     if (selector) {
@@ -89,6 +95,9 @@ export class Extend extends Node<ExtendValue> {
     }
     let out = w.capture(() => target.toString(options)).trim();
     w.add(' ');
+    if (namespace) {
+      w.add(`${namespace}|`);
+    }
     w.add(out, target);
     if (flag === ExtendFlag.Exact) {
       w.add(' !exact');
@@ -102,9 +111,9 @@ export class Extend extends Node<ExtendValue> {
 
   override evalNode(context: Context): MaybePromise<Nil> {
     let { selector, target, flag } = this.value;
-    
+
     const currentFrame = context.rulesetFrames.at(-1);
-    
+
     // #region agent log
     Extend.agentLog(context, 'extend.ts:evalNode', 'extend-eval-enter', {
       hasSelector: !!selector,

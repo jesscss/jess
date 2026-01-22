@@ -18,6 +18,19 @@ import {
   type AltContext
 } from '@jesscss/css-parser';
 
+// #region agent log
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+function __agentSyncLog(data: object) {
+  try {
+    // Monorepo root relative to this package dir: ../../
+    const logDir = join(process.cwd(), '..', '..', '.cursor');
+    mkdirSync(logDir, { recursive: true });
+    appendFileSync(join(logDir, 'debug.log'), JSON.stringify(data) + '\n');
+  } catch {}
+}
+// #endregion
+
 import {
   type TreeContext,
   Node,
@@ -401,6 +414,30 @@ export function declarationList(this: P, T: TokenMap) {
           return next === T.DotName || next === T.HashName || next === T.ColorIdentStart;
         },
         ALT: () => {
+          // #region agent log
+          try {
+            const t1: any = $.LA(1);
+            const t2: any = $.LA(2);
+            const img = String(t1?.image ?? '');
+            if (img.startsWith('.mixin')) {
+              __agentSyncLog({
+                sessionId: 'debug-session',
+                runId: process.env.DEBUG_RUN_ID ?? 'run',
+                hypothesisId: 'H5',
+                location: 'productions.ts:declarationList',
+                message: 'dotname-branch-enter',
+                data: {
+                  la1: String(t1?.tokenType?.name ?? ''),
+                  la1img: img,
+                  la2: String(t2?.tokenType?.name ?? ''),
+                  la2img: String(t2?.image ?? ''),
+                  inner: !!(ctx as any).inner
+                },
+                timestamp: Date.now()
+              });
+            }
+          } catch {}
+          // #endregion
           return $.SUBRULE($.mixinOrQualifiedRule, { ARGS: [{ ...ctx, inner: true }] });
         }
       },
@@ -981,6 +1018,29 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
           if (next === T.LCurly || next === T.When) {
             isPossibleMixinCall = false;
           }
+          // #region agent log
+          try {
+            const selStr = String((selector as any)?.valueOf?.() ?? '');
+            if (selStr.startsWith('.mixin')) {
+              const t1: any = $.LA(1);
+              __agentSyncLog({
+                sessionId: 'debug-session',
+                runId: process.env.DEBUG_RUN_ID ?? 'run',
+                hypothesisId: 'H5',
+                location: 'productions.ts:mixinOrQualifiedRule',
+                message: 'after-mixinArgs',
+                data: {
+                  selector: selStr,
+                  isPossibleMixinDefinition,
+                  isPossibleMixinCall,
+                  next: String(t1?.tokenType?.name ?? ''),
+                  nextImg: String(t1?.image ?? '')
+                },
+                timestamp: Date.now()
+              });
+            }
+          } catch {}
+          // #endregion
           return $.OR3([
             {
               GATE: () => isPossibleMixinDefinition,
@@ -998,6 +1058,26 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                   convertArgsForDefinition(args);
                   const node = new Mixin({ name: selector.valueOf(), params: args, rules, guard }, undefined, $.endRule(), this.context);
 
+                  // #region agent log
+                  try {
+                    const selStr = String((selector as any)?.valueOf?.() ?? '');
+                    if (selStr.startsWith('.mixin')) {
+                      __agentSyncLog({
+                        sessionId: 'debug-session',
+                        runId: process.env.DEBUG_RUN_ID ?? 'run',
+                        hypothesisId: 'H5',
+                        location: 'productions.ts:mixinOrQualifiedRule',
+                        message: 'mixin-definition-return',
+                        data: {
+                          selector: selStr,
+                          nodeType: node.type,
+                          rulesLen: Array.isArray((rules as any)?.value) ? (rules as any).value.length : -1
+                        },
+                        timestamp: Date.now()
+                      });
+                    }
+                  } catch {}
+                  // #endregion
                   return node;
                 }
               }
@@ -1501,6 +1581,31 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
         /** To Less, this is a "detached ruleset" */
         // Check if this should be parsed as Collection or Rules
         const shouldBeCollection = (() => {
+          // #region agent log
+          try {
+            const types = Array.isArray((rules as any)?.value)
+              ? (rules as any).value.slice(0, 5).map((n: any) => String(n?.type ?? '')).join(',')
+              : '';
+            const hasMixin = Array.isArray((rules as any)?.value)
+              ? (rules as any).value.some((n: any) => n?.type === 'Mixin')
+              : false;
+            if (hasMixin || types.includes('Mixin')) {
+              __agentSyncLog({
+                sessionId: 'debug-session',
+                runId: process.env.DEBUG_RUN_ID ?? 'run',
+                hypothesisId: 'H6',
+                location: 'productions.ts:anonymousMixinDefinition',
+                message: 'detached-ruleset-contents',
+                data: {
+                  len: Array.isArray((rules as any)?.value) ? (rules as any).value.length : -1,
+                  types,
+                  leakyRules: !!(this as any).leakyRules
+                },
+                timestamp: Date.now()
+              });
+            }
+          } catch {}
+          // #endregion
           let properties: Declaration[] = [];
           for (const node of rules.value) {
             if (node.type === 'Declaration') {
@@ -1750,6 +1855,22 @@ export function varDeclarationOrCall(this: P, T: TokenMap) {
         }
         // Variable calls are expressions at the outermost level (but not parenthesized).
         // e.g. `$media()`, NOT `$(media())`
+        // #region agent log
+        try {
+          const nm = String((nameNode as any)?.valueOf?.() ?? nameNode ?? '');
+          if (nm.includes('my-mixins')) {
+            __agentSyncLog({
+              sessionId: 'debug-session',
+              runId: process.env.DEBUG_RUN_ID ?? 'run',
+              hypothesisId: 'H12',
+              location: 'productions.ts:varDeclarationOrCall',
+              message: 'built-variable-call-expression',
+              data: { name: nm },
+              timestamp: Date.now()
+            });
+          }
+        } catch {}
+        // #endregion
         return new Expression(callNode, undefined, location, this.context);
       }
 

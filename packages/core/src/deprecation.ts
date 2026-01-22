@@ -1,6 +1,6 @@
 /**
  * A deprecated feature in the language.
- * 
+ *
  * Each deprecation has:
  * - `id`: Unique kebab-case identifier
  * - `description`: Human-readable description (optional)
@@ -8,7 +8,7 @@
 export class Deprecation {
   /** Unique ID for this deprecation in kebab case */
   readonly id: string;
-  
+
   /** Human-readable description */
   readonly description: string | null;
 
@@ -55,7 +55,7 @@ export class Deprecation {
     }),
     new Deprecation('property-in-unknown-value', {
       description: '$[ident] in custom property values is treated as literal text, not a property reference. Use ${[ident]} if you want it to be evaluated.'
-    }),
+    })
   ];
 
   /**

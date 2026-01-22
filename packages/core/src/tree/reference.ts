@@ -15,6 +15,7 @@ import { getFunctionFromMixins } from './rules.js';
 import type { MixinEntry, Rules } from './rules.js';
 import type { Interpolated } from './interpolated.js';
 import { freezeChildren } from './util/cloning.js';
+import { syncLog } from './util/__tests__/debug-log.js';
 
 /**
  * The type is determined by syntax
@@ -71,10 +72,6 @@ export type ReferenceOptions = {
   filter?: (node: Node) => boolean;
   role?: AnyRole;
 };
-
-type NodeType = typeof Node<ReferenceValue, ReferenceOptions>;
-type ReferenceParams = ConstructorParameters<NodeType>;
-
 const { isArray } = Array;
 
 /**
@@ -148,7 +145,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         emitKey(key);
         break;
       case 'mixin':
-        w.add('|');
+        // If this mixin reference has a target (e.g. `ns.foo`), render it as a scoped lookup:
+        // `ns > foo`. The `$` prefix is the responsibility of the parent `Expression`.
+        w.add(' > ');
         emitKey(key);
         break;
       case 'ruleset':
@@ -176,7 +175,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     let { type, fallbackValue, filter: originalFilter } = this.options;
     // Track reference chain for clearing remainders at outermost level
     context.pushReference();
-    let resolvedTarget = target ? target.eval(context) : this.rulesParent ?? context.rulesContext;
+    // Prefer the *current* evaluation rules context (mixin call-time scope) over the lexical rulesParent.
+    // This is critical for mixin parameters (e.g. `@fallback`) which are registered onto the call-time
+    // wrapper `Rules` and should be visible inside nested at-rule preludes.
+    let resolvedTarget = target ? target.eval(context) : context.rulesContext ?? this.rulesParent;
     const result = pipe(
       () => {
         if (isThenable(resolvedTarget)) {
@@ -361,7 +363,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               }
             }
           }
-
           switch (type) {
             case 'index':
               if (typeof valueKey === 'number') {
@@ -388,7 +389,21 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             case 'function':
               if (isNode(targetRules, 'Rules')) {
                 const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
-                return targetRules.find('function', `${keyStr}`, undefined, opts);
+                const inCall = isNode(this.parent, 'Call');
+                // When called (e.g. `ns.func(...)`), prefer function lookup first, then fall back to a declaration.
+                // When not called, parsers should generally use `index`/`variable` references for `ns.func` so
+                // declarations win; but if we are here, keep behavior predictable.
+                if (inCall) {
+                  return (
+                    targetRules.find('function', `${keyStr}`, undefined, opts)
+                    ?? targetRules.find('declaration', `${keyStr}`, undefined, opts)
+                  );
+                }
+                // Not in call: prefer declaration first, then function.
+                return (
+                  targetRules.find('declaration', `${keyStr}`, undefined, opts)
+                  ?? targetRules.find('function', `${keyStr}`, undefined, opts)
+                );
               }
               break;
             case 'property':
@@ -421,24 +436,152 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           return undefined;
         };
 
-        // If leakyRules is true, try two-pass resolution: definition scope first, then caller scope
+        // Lookup is driven by the resolved target scope.
+        // In mixin/at-rule nesting cases, `this.rulesParent` can point at a narrower scope (e.g. the
+        // nested @media Rules) while the variable lives on an ancestor Rules (e.g. mixin param wrapper).
         let returnVal: any;
         if (isNode(resolvedTarget, 'Rules')) {
-          if (context.leakyRules) {
+          returnVal = performLookup(resolvedTarget);
+
+          // For variable and mixin lookups, allow walking up the parent Rules chain to find
+          // definitions in ancestor scopes.
+          //
+          // Less mixins are lexically scoped and should be callable from nested rulesets.
+          if (returnVal === undefined && (type === 'variable' || type === 'mixin' || type === 'mixin-ruleset')) {
+            let cursor: any = resolvedTarget.parent;
+            let depth = 0;
+            while (cursor && depth++ < 20) {
+              // Skip non-Rules nodes (e.g. AtRule/Ruleset wrappers) while walking upwards.
+              if (!isNode(cursor, 'Rules')) {
+                cursor = cursor.parent;
+                continue;
+              }
+              // #region agent log
+              try {
+                if (type === 'mixin-ruleset' && (Array.isArray(valueKey) ? valueKey.join('') : String(valueKey)) === '.mixin') {
+                  syncLog({
+                    sessionId: 'debug-session',
+                    runId: process.env.DEBUG_RUN_ID ?? 'run',
+                    hypothesisId: 'H10',
+                    location: 'reference.ts:parent-walk',
+                    message: 'mixin-parent-walk-check',
+                    data: {
+                      depth,
+                      cursorIndex: (cursor as any)?.index,
+                      cursorRulesSetLen: Array.isArray((cursor as any)?.rulesSet) ? (cursor as any).rulesSet.length : -1
+                    },
+                    timestamp: Date.now()
+                  });
+                }
+              } catch {}
+              // #endregion
+              returnVal = performLookup(cursor);
+              if (returnVal !== undefined) {
+                break;
+              }
+              cursor = cursor.parent;
+            }
+          }
+
+          // If leakyRules is true, try caller scope as a secondary pass (historical behavior).
+          if (returnVal === undefined && context.leakyRules) {
             returnVal = performLookup(this.rulesParent);
             if (returnVal === undefined) {
               returnVal = performLookup(this.sourceRulesParent);
             }
-          } else {
-            returnVal = performLookup(this.rulesParent);
           }
         }
 
+        // #region agent log
+        try {
+          if (type === 'variable') {
+            const keyStr = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
+            if (keyStr === 'ruleset' || keyStr.includes('mixins')) {
+              let foundNodeType = '';
+              let valueType = '';
+              let collLen = -1;
+              let firstDecl = '';
+              try {
+                if (returnVal && typeof returnVal === 'object' && 'type' in (returnVal as any)) {
+                  foundNodeType = String((returnVal as any).type ?? '');
+                  const vv = (returnVal as any).value?.value;
+                  if (vv && typeof vv === 'object' && 'type' in vv) {
+                    valueType = String((vv as any).type ?? '');
+                    if (valueType === 'Collection') {
+                      collLen = Array.isArray((vv as any).value) ? (vv as any).value.length : -1;
+                      const first: any = Array.isArray((vv as any).value) ? (vv as any).value[0] : undefined;
+                      if (first?.type === 'Declaration') {
+                        const nm = first.value?.name;
+                        const nameStr = typeof nm === 'string' ? nm : String(nm?.valueOf?.() ?? '');
+                        const valStr = String(first.value?.value?.valueOf?.() ?? '');
+                        firstDecl = `${nameStr}=${valStr}`;
+                      }
+                    }
+                  }
+                }
+              } catch {}
+              syncLog({
+                sessionId: 'debug-session',
+                runId: process.env.DEBUG_RUN_ID ?? 'run',
+                hypothesisId: 'H16',
+                location: 'reference.ts:lookup',
+                message: 'variable-lookup-result',
+                data: {
+                  key: keyStr,
+                  foundNodeType,
+                  valueType,
+                  collLen,
+                  firstDecl
+                },
+                timestamp: Date.now()
+              });
+            }
+          }
+        } catch {}
+        // #endregion
         return { returnVal, valueKey };
       },
       ({ returnVal, valueKey }) => {
         if (returnVal === undefined) {
           const valueKeyStr2 = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
+          // #region agent log
+          syncLog({
+            sessionId: 'debug-session',
+            runId: process.env.DEBUG_RUN_ID ?? 'run',
+            hypothesisId: 'H3',
+            location: 'reference.ts:489',
+            message: 'lookup-miss',
+            data: {
+              type,
+              key: valueKeyStr2,
+              hasTarget: !!this.value.target,
+              leakyRules: !!context.leakyRules,
+              rulesParentType: (this.rulesParent as any)?.type,
+              sourceRulesParentType: (this.sourceRulesParent as any)?.type,
+              resolvedTargetType: (resolvedTarget as any)?.type,
+              resolvedTargetIndex: (resolvedTarget as any)?.index,
+              resolvedTargetValueLen: Array.isArray((resolvedTarget as any)?.value) ? (resolvedTarget as any).value.length : -1,
+              resolvedTargetRulesSetLen: Array.isArray((resolvedTarget as any)?.rulesSet) ? (resolvedTarget as any).rulesSet.length : -1,
+              ancestorRulesSetLens: (() => {
+                try {
+                  const lens: number[] = [];
+                  let cur: any = (resolvedTarget as any)?.parent;
+                  let depth = 0;
+                  while (cur && depth++ < 6) {
+                    if (isNode(cur, 'Rules')) {
+                      lens.push(Array.isArray(cur.rulesSet) ? cur.rulesSet.length : -1);
+                    }
+                    cur = cur.parent;
+                  }
+                  return lens.join(',');
+                } catch {
+                  return '';
+                }
+              })()
+            },
+            timestamp: Date.now()
+          });
+          // #endregion
           if (!fallbackValue) {
             switch (type) {
               case 'mixin':

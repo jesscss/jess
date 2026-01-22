@@ -44,8 +44,13 @@ export class Nil extends Node<''> {
     this.fullRender = false;
   }
 
-  override toTrimmedString() { return ''; }
-  override toString() { return ''; }
+  override toTrimmedString() {
+    return '';
+  }
+
+  override toString() {
+    return '';
+  }
 }
 
 export const nil = defineType(Nil, 'Nil');

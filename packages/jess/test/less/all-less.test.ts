@@ -20,7 +20,7 @@ const __agentDebugEnabled = process.env.DEBUG_EXTEND_BOOT === 'true';
 let __agentLogCount = 0;
 function agentLog(location: string, message: string, data: Record<string, unknown>) {
   if (!__agentDebugEnabled) return;
-  if (__agentLogCount++ > 50) return;
+  if (__agentLogCount++ > 500) return;
   // IMPORTANT: keep data primitive-ish (no nodes/arrays) to avoid circular refs.
   syncLog({
     sessionId: 'debug-session',
@@ -85,6 +85,9 @@ describe('Can render Less files to CSS', () => {
 
           it(`${testName}${configSuffix}`, async () => {
             const expectedCss = readFileSync(testCase.expectedFile, 'utf8');
+            const __agentInteresting =
+              testName.includes('tests-unit/extend-')
+              || testName.includes('tests-unit/detached-rulesets/');
 
             // Merge test case config with base compiler config
             // Default: collapseNesting: true (from baseCompiler)
@@ -103,17 +106,21 @@ describe('Can render Less files to CSS', () => {
             let node: Rules;
             try {
               // #region agent log
-              agentLog('all-less.test.ts:before-getTree', 'getTree-enter', {
-                file: testName,
-                lessPath,
-                expectedFile: testCase.expectedFile
-              });
+              if (__agentInteresting) {
+                agentLog('all-less.test.ts:before-getTree', 'getTree-enter', {
+                  file: testName,
+                  lessPath,
+                  expectedFile: testCase.expectedFile
+                });
+              }
               // #endregion
               ({ node } = await context.getTree(lessPath));
               // #region agent log
-              agentLog('all-less.test.ts:after-getTree', 'getTree-exit', {
-                file: testName
-              });
+              if (__agentInteresting) {
+                agentLog('all-less.test.ts:after-getTree', 'getTree-exit', {
+                  file: testName
+                });
+              }
               // #endregion
             } catch (error: any) {
               // Output diagnostics if available
@@ -127,16 +134,27 @@ describe('Can render Less files to CSS', () => {
             }
             try {
               // #region agent log
-              agentLog('all-less.test.ts:before-eval', 'eval-enter', {
-                file: testName
-              });
+              if (__agentInteresting) {
+                agentLog('all-less.test.ts:before-eval', 'eval-enter', {
+                  file: testName,
+                  collapseNestingFromCompiler: Boolean((testCompiler as any)?.opts?.output?.collapseNesting),
+                  collapseNestingFromContext: Boolean((context as any)?.opts?.output?.collapseNesting),
+                  collapseNestingFromContextRoot: Boolean((context as any)?.opts?.collapseNesting)
+                });
+              }
               // #endregion
               const evald = await node.eval(context);
               // #region agent log
-              agentLog('all-less.test.ts:after-eval', 'eval-exit', {
-                file: testName,
-                cssLen: typeof evald?.toString === 'function' ? evald.toString({ context }).length : null
-              });
+              if (__agentInteresting) {
+                agentLog('all-less.test.ts:after-eval', 'eval-exit', {
+                  file: testName,
+                  cssLen: typeof evald?.toString === 'function' ? evald.toString({ context }).length : null,
+                  cssHead: typeof evald?.toString === 'function'
+                    ? evald.toString({ context }).slice(0, 400)
+                    : null,
+                  expectedHead: expectedCss.slice(0, 400)
+                });
+              }
               // #endregion
               expect(evald.toString({ context })).toBe(expectedCss);
             } catch (error: any) {

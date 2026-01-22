@@ -41,9 +41,9 @@ describe('Detached Rulesets - Variable Lookups', () => {
       ]);
 
       await node.eval(context);
-      
+
       const found = getVar(context, inherited, 'foo');
-      
+
       expect(found).toBeDefined();
       expect(`${found}`).toBe('$foo: bar');
     });
@@ -65,18 +65,18 @@ describe('Detached Rulesets - Variable Lookups', () => {
           VarDeclaration: 'private'
         }
       });
-      
+
       const node = rules([
         vardecl({ name: 'private-var', value: any('public-value') }),
         privateRules
       ]);
 
       await node.eval(context);
-      
+
       // When searching from within the private Rules, should NOT find the private variable
       // and should continue up to find the public one
       const found = getVar(context, privateRules, 'private-var');
-      
+
       // Should find the public one from parent, not the private one
       expect(found).toBeDefined();
       expect(`${found}`).toBe('$private-var: public-value');
@@ -96,16 +96,16 @@ describe('Detached Rulesets - Variable Lookups', () => {
           VarDeclaration: 'private'
         }
       });
-      
+
       const node = rules([
         privateRules
       ]);
 
       await node.eval(context);
-      
+
       // When searching from outside (parent), should NOT find the private variable
       const found = getVar(context, node, 'private-var');
-      
+
       // Should NOT find the private variable from child
       expect(found).toBeUndefined();
     });
@@ -120,16 +120,16 @@ describe('Detached Rulesets - Variable Lookups', () => {
           VarDeclaration: 'optional'
         }
       });
-      
+
       const node = rules([
         vardecl({ name: 'var', value: any('public-value') }),
         optionalRules
       ]);
 
       await node.eval(context);
-      
+
       const found = getVar(context, optionalRules, 'var');
-      
+
       // Should find the public one (optional ones are only returned if no public ones exist)
       expect(found).toBeDefined();
       expect(`${found}`).toBe('$var: public-value');
@@ -143,16 +143,16 @@ describe('Detached Rulesets - Variable Lookups', () => {
           VarDeclaration: 'private'
         }
       });
-      
+
       const node = rules([
         vardecl({ name: 'var', value: any('public-value') }),
         privateRules
       ]);
 
       await node.eval(context);
-      
+
       const found = getVar(context, privateRules, 'var');
-      
+
       // Should find the public one (private one should be skipped entirely)
       expect(found).toBeDefined();
       expect(`${found}`).toBe('$var: public-value');
@@ -166,15 +166,15 @@ describe('Detached Rulesets - Variable Lookups', () => {
           VarDeclaration: 'optional'
         }
       });
-      
+
       const node = rules([
         optionalRules
       ]);
 
       await node.eval(context);
-      
+
       const found = getVar(context, optionalRules, 'var');
-      
+
       // Should return the optional one since no public one exists
       expect(found).toBeDefined();
       expect(`${found}`).toBe('$var: optional-value');
@@ -190,21 +190,21 @@ describe('Detached Rulesets - Variable Lookups', () => {
         // Just a reference to test lookup
         decl({ name: 'test', value: ref('a', { type: 'variable' }) })
       ]);
-      
+
       const middleRules = rules([
         vardecl({ name: 'a', value: any('middle-value') }),
         innerRules
       ]);
-      
+
       const node = rules([
         vardecl({ name: 'a', value: any('root-value') }),
         middleRules
       ]);
 
       await node.eval(context);
-      
+
       const found = getVar(context, innerRules, 'a');
-      
+
       // Should find the middle one (closest in parent chain)
       expect(found).toBeDefined();
       expect(`${found}`).toBe('$a: middle-value');

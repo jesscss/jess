@@ -1,0 +1,215 @@
+{
+  "name": "@jesscss/vscode-extension",
+  "version": "0.0.0",
+  "private": true,
+  "main": "dist/extension.js",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "activationEvents": [
+    "onLanguage:css",
+    "onLanguage:less",
+    "onLanguage:scss",
+    "onLanguage:jess"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "css",
+        "aliases": ["CSS", "css"],
+        "extensions": [".css"],
+        "configuration": "./language-configuration/css.json"
+      },
+      {
+        "id": "less",
+        "aliases": ["Less", "less"],
+        "extensions": [".less"],
+        "configuration": "./language-configuration/less.json"
+      },
+      {
+        "id": "scss",
+        "aliases": ["SCSS", "scss"],
+        "extensions": [".scss"],
+        "configuration": "./language-configuration/scss.json"
+      },
+      {
+        "id": "jess",
+        "aliases": ["Jess", "jess"],
+        "extensions": [".jess"],
+        "configuration": "./language-configuration/jess.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "css",
+        "scopeName": "source.css",
+        "path": "./syntaxes/css.tmLanguage.json"
+      },
+      {
+        "language": "less",
+        "scopeName": "source.less",
+        "path": "./syntaxes/less.tmLanguage.json"
+      },
+      {
+        "language": "scss",
+        "scopeName": "source.scss",
+        "path": "./syntaxes/scss.tmLanguage.json"
+      },
+      {
+        "language": "jess",
+        "scopeName": "source.jess",
+        "path": "./syntaxes/jess.tmLanguage.json"
+      }
+    ],
+    "semanticTokenScopes": [
+      {
+        "language": "css",
+        "scopes": {
+          "comment": ["comment.block.css"],
+          "string": ["string.quoted.css", "string.quoted.double.css", "string.quoted.single.css"],
+          "keyword": ["keyword.control.css"],
+          "enumMember": ["constant.language.css", "support.constant.css", "constant.other.css"],
+          "namespace": ["keyword.control.at-rule.css"],
+          "number": ["constant.numeric.css"],
+          "operator": ["keyword.operator.css"],
+          "function": ["support.function.css"],
+          "variable": ["variable.other.css"],
+          "property": [
+            "support.type.property-name",
+            "support.type.property-name.css"
+          ],
+          "type": [
+            "constant.other.unit",
+            "keyword.other.unit",
+            "entity.name.tag.css"
+          ],
+          "class": ["entity.other.attribute-name.class.css"]
+        }
+      },
+      {
+        "language": "less",
+        "scopes": {
+          "comment": ["comment.block.less", "comment.line.double-slash.less"],
+          "string": ["string.quoted.less", "string.quoted.double.less", "string.quoted.single.less"],
+          "keyword": ["keyword.control.less"],
+          "enumMember": ["constant.language.less", "support.constant.less", "constant.other.less"],
+          "namespace": ["keyword.control.at-rule.less"],
+          "number": ["constant.numeric.less"],
+          "operator": ["keyword.operator.less"],
+          "function": ["support.function.less"],
+          "variable.declaration": [
+            "variable.other.constant",
+            "entity.name.variable",
+            "variable.other.less"
+          ],
+          "variable": [
+            "variable.other.readwrite",
+            "variable.other.constant",
+            "variable.other.less"
+          ],
+          "property": [
+            "support.type.property-name",
+            "support.type.property-name.less"
+          ],
+          "type": [
+            "keyword.other.unit",
+            "constant.other.unit",
+            "entity.name.tag.less"
+          ],
+          "class": ["entity.other.attribute-name.class.less"]
+        }
+      },
+      {
+        "language": "scss",
+        "scopes": {
+          "comment": ["comment.block.scss", "comment.line.double-slash.scss"],
+          "string": ["string.quoted.scss", "string.quoted.double.scss", "string.quoted.single.scss"],
+          "keyword": ["keyword.control.scss"],
+          "enumMember": ["constant.language.scss", "support.constant.scss", "constant.other.scss"],
+          "namespace": ["keyword.control.at-rule.scss"],
+          "number": ["constant.numeric.scss"],
+          "operator": ["keyword.operator.scss"],
+          "function": ["support.function.scss"],
+          "variable.declaration": [
+            "variable.other.constant",
+            "entity.name.variable",
+            "variable.other.scss"
+          ],
+          "variable": [
+            "variable.other.constant",
+            "variable.other.readwrite",
+            "variable.other.scss"
+          ],
+          "property": [
+            "support.type.property-name",
+            "support.type.property-name.scss"
+          ],
+          "type": [
+            "constant.other.unit",
+            "keyword.other.unit",
+            "entity.name.tag.scss"
+          ],
+          "class": ["entity.other.attribute-name.class.scss"]
+        }
+      },
+      {
+        "language": "jess",
+        "scopes": {
+          "comment": ["comment.block.jess", "comment.line.double-slash.jess"],
+          "string": ["string.quoted.jess", "string.quoted.double.jess", "string.quoted.single.jess"],
+          "keyword": ["keyword.control.jess"],
+          "enumMember": ["constant.language.jess", "support.constant.jess", "constant.other.jess"],
+          "namespace": ["keyword.control.at-rule.jess"],
+          "number": ["constant.numeric.jess"],
+          "operator": ["keyword.operator.jess"],
+          "function": ["support.function.jess"],
+          "variable.declaration": [
+            "variable.other.constant",
+            "entity.name.variable",
+            "variable.other.jess"
+          ],
+          "variable": [
+            "variable.other.readwrite",
+            "variable.other.constant",
+            "variable.other.jess"
+          ],
+          "property": [
+            "support.type.property-name",
+            "support.type.property-name.jess"
+          ],
+          "type": [
+            "constant.other.unit",
+            "keyword.other.unit",
+            "entity.name.tag.jess"
+          ],
+          "class": ["entity.other.attribute-name.class.jess"]
+        }
+      }
+    ],
+    "configuration": {
+      "title": "Jess Language Service",
+      "properties": {
+        "jess.languageService.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the Jess language service (CSS/Jess/Less/SCSS)."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@jesscss/language-service": "workspace:*",
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^18.15.13",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.25.0",
+    "typescript": "~5.8.2"
+  },
+  "scripts": {
+    "build": "node ./scripts/build.mjs",
+    "watch": "node ./scripts/build.mjs --watch"
+  }
+}
+

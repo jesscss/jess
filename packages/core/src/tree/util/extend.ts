@@ -105,10 +105,6 @@ import { Combinator } from '../combinator.js';
 import { isNode } from './is-node.js';
 import { findExtendableLocations, type ExtendLocation } from './extend-helpers.js';
 import { F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
-// #region agent log
-import { appendFileSync } from 'node:fs';
-import { syncLog } from './__tests__/debug-log.js';
-// #endregion
 
 const { isArray } = Array;
 
@@ -117,40 +113,14 @@ function __agentExtendLog(_location: string, _message: string, _data: Record<str
   // noop
 }
 
-// #region agent log
-const __AGENT_EXTEND_LOG_ENDPOINT =
-  'http://127.0.0.1:7246/ingest/5495253d-8cd1-42e7-9850-458424cd0fb8';
-function __agentExtendDbg(location: string, message: string, data: Record<string, unknown>) {
-  if (process.env.DEBUG_EXTEND_IS_ORDER !== 'true') return;
-  const payload = {
-    sessionId: 'debug-session',
-    runId: process.env.DEBUG_RUN_ID || 'extend-is-order',
-    hypothesisId: 'H-order',
-    location,
-    message,
-    data,
-    timestamp: Date.now()
-  };
-  const __f = (globalThis as any).fetch;
-  if (typeof __f === 'function') {
-    __f(__AGENT_EXTEND_LOG_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    }).catch(() => {});
-  }
-  try {
-    appendFileSync('/Users/matthew/git/oss/jess/.cursor/debug.log', JSON.stringify(payload) + '\n');
-  } catch {
-    // ignore
-  }
+// NOTE: older debug helpers are now disabled (no-ops).
+// They remain only to avoid runtime ReferenceErrors from stale call sites.
+function __agentExtendDbg(_location: string, _message: string, _data: Record<string, unknown>) {
+  // noop
 }
-function __agentIsOrderInteresting(items: string[]): boolean {
-  // Only log the clearfix ordering repro (substring based because items may be nested).
-  const joined = items.join('|');
-  return joined.includes('.clearfix') && joined.includes('.foo') && joined.includes('.bar');
+function __agentIsOrderInteresting(_items: string[]): boolean {
+  return false;
 }
-// #endregion
 
 function isSelectorNode(value: unknown): value is Selector {
   return !!value && typeof value === 'object' && (value as any).isSelector === true;
@@ -619,7 +589,7 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
   const processedArray = isArray(processed) ? processed : [processed];
   __agentExtendLog('extend.ts:createExtendedSelectorList', 'post-createProcessedSelector', {
     count: processedArray.length,
-    items: processedArray.slice(0, 5).map((s) => ({
+    items: processedArray.slice(0, 5).map(s => ({
       type: (s as any)?.type ?? null,
       valueOf: (s as any)?.valueOf?.() ?? null,
       isIs: isNode(s, 'PseudoSelector') ? (s as any).value?.name === ':is' : false,
@@ -645,7 +615,7 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
   // `inheritFrom.parent` (now the new list) and set `result.parent` to itself.
   // Always clone any element that is the same object as `inheritFrom`.
   const safeArray = inheritFrom
-    ? processedArray.map((s) => (s === inheritFrom ? s.clone(true) : s))
+    ? processedArray.map(s => (s === inheritFrom ? s.clone(true) : s))
     : processedArray;
 
   const result = SelectorList.create(safeArray);
@@ -868,44 +838,8 @@ export function extendSelector(
   skipAmpersandCheck: boolean = false,
   hasMoreAfterIs: boolean = false
 ): Selector {
-  // #region agent log
-  const targetStr = target.valueOf();
-  const findStr = find.valueOf();
-  const extendWithStr = extendWith.valueOf();
-  const isTargetList = isNode(target, 'SelectorList');
-  syncLog({
-    sessionId: 'debug-session',
-    runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
-    hypothesisId: 'E',
-    location: 'extend.ts:extendSelector:entry',
-    message: 'extendSelector called',
-    data: {
-      target: targetStr,
-      find: findStr,
-      extendWith: extendWithStr,
-      partial,
-      skipAmpersandCheck,
-      isTargetList,
-      targetType: isTargetList ? 'SelectorList' : 'other'
-    },
-    timestamp: Date.now()
-  });
-  // #endregion
-
   // Use the unified ExtendLocation API for all selector matching
   const searchResult = findExtendableLocations(target, find);
-
-  // #region agent log
-  syncLog({
-    sessionId: 'debug-session',
-    runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
-    hypothesisId: 'E',
-    location: 'extend.ts:extendSelector:after-find-extendable',
-    message: 'After findExtendableLocations',
-    data: { target: targetStr, find: findStr, hasMatches: searchResult.hasMatches },
-    timestamp: Date.now()
-  });
-  // #endregion
 
   if (!searchResult.hasMatches) {
     throw new ExtendError(
@@ -918,50 +852,9 @@ export function extendSelector(
   // Check for ampersand boundary crossing during extension (unless skipped)
   // For non-SelectorList targets, check after findExtendableLocations
   if (!skipAmpersandCheck) {
-    // #region agent log
-    syncLog({
-      sessionId: 'debug-session',
-      runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
-      hypothesisId: 'A',
-      location: 'extend.ts:extendSelector:before-boundary-check',
-      message: 'About to check boundary crossing',
-      data: { target: targetStr, find: findStr },
-      timestamp: Date.now()
-    });
-    // #endregion
-
     const ampersandCrossingInfo = checkAmpersandCrossingDuringExtension(target, find);
 
-    // #region agent log
-    syncLog({
-      sessionId: 'debug-session',
-      runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
-      hypothesisId: 'A',
-      location: 'extend.ts:extendSelector:after-boundary-check',
-      message: 'Boundary crossing check result',
-      data: {
-        crossed: ampersandCrossingInfo.crossed,
-        hasAmpersandNode: !!ampersandCrossingInfo.ampersandNode,
-        target: targetStr,
-        find: findStr
-      },
-      timestamp: Date.now()
-    });
-    // #endregion
-
     if (ampersandCrossingInfo.crossed) {
-      // #region agent log
-      syncLog({
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
-        hypothesisId: 'B',
-        location: 'extend.ts:extendSelector:boundary-crossed',
-        message: 'Boundary crossing detected, calling handleAmpersandBoundaryCrossing',
-        data: { target: targetStr, find: findStr, extendWith: extendWithStr },
-        timestamp: Date.now()
-      });
-      // #endregion
-
       // Convert ExtendLocation to MatchResult for compatibility with ampersand handling
       const location = searchResult.locations[0]!;
       const fallbackMatchResult = {
@@ -979,36 +872,12 @@ export function extendSelector(
         fallbackMatchResult
       );
 
-      // #region agent log
-      syncLog({
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
-        hypothesisId: 'B',
-        location: 'extend.ts:extendSelector:after-handle-boundary',
-        message: 'handleAmpersandBoundaryCrossing returned',
-        data: { result: result.valueOf(), resultType: isNode(result, 'SelectorList') ? 'SelectorList' : 'other' },
-        timestamp: Date.now()
-      });
-      // #endregion
-
       return result;
     }
   }
 
   // Special handling for SelectorList targets - extend each matching selector in the list
   if (isNode(target, 'SelectorList')) {
-    // #region agent log
-    syncLog({
-      sessionId: 'debug-session',
-      runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
-      hypothesisId: 'E',
-      location: 'extend.ts:extendSelector:selector-list-path',
-      message: 'Taking SelectorList path (extendSelectorList)',
-      data: { target: targetStr, find: findStr, extendWith: extendWithStr },
-      timestamp: Date.now()
-    });
-    // #endregion
-
     return extendSelectorList(target, find, extendWith, partial, skipAmpersandCheck);
   }
 
@@ -1022,8 +891,12 @@ export function extendSelector(
   //
   // This is intentionally selector-shape agnostic: we do not special-case Compound vs Complex.
   for (const { ampersand } of findAmpersandsInSelector(target)) {
-    if (!ampersand.value.selector || isNode(ampersand.value.selector, 'Nil')) continue;
-    if (ampersand.value.selector.valueOf() !== find.valueOf()) continue;
+    if (!ampersand.value.selector || isNode(ampersand.value.selector, 'Nil')) {
+      continue;
+    }
+    if (ampersand.value.selector.valueOf() !== find.valueOf()) {
+      continue;
+    }
     const selectorWithoutAmpersand = replaceAmpersandWithEmpty(target, ampersand);
     const nonAmpersandSearchResult = findExtendableLocations(selectorWithoutAmpersand, find);
     if (!nonAmpersandSearchResult.hasMatches) {
@@ -1226,7 +1099,9 @@ export function extendSelector(
         // component/compoundInner matches above. In Less `all` mode we still need to
         // extend occurrences inside the arg (including duplicates like `.replace.replace`).
         const argMatches = searchResult.locations.filter((loc: ExtendLocation) => {
-          if (!loc.path.includes('arg')) return false;
+          if (!loc.path.includes('arg')) {
+            return false;
+          }
           // Ignore "append opportunity" locations which end in 'arg' (no concrete match),
           // and keep only actual matches within the argument.
           return typeof loc.path[loc.path.length - 1] === 'number';
@@ -1250,9 +1125,13 @@ export function extendSelector(
             }
             for (const idx of indices) {
               const component = newComponents[idx];
-              if (!component || !isNode(component, 'PseudoSelector')) continue;
+              if (!component || !isNode(component, 'PseudoSelector')) {
+                continue;
+              }
               const arg = component.value.arg as unknown;
-              if (!isSelectorNode(arg)) continue;
+              if (!isSelectorNode(arg)) {
+                continue;
+              }
               // Extend the arg selector itself; this reuses existing SelectorList/Compound logic
               // (including "wrap all occurrences" for `.replace.replace`).
               const extendedArg = isNode(arg, 'SelectorList')
@@ -1428,30 +1307,6 @@ export function extendSelector(
         const newComponents = [...target.value];
         // If extendWith is a :is() selector, extract its selectors to avoid nesting
         const extendWithSelectors = extractSelectorsFromIs(extendWith);
-        // #region agent log
-        {
-          const payload = {
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID || 'extend-is-order',
-            hypothesisId: 'H-order',
-            location: 'extend.ts:fullmode-complex-first-component',
-            message: 'about to create :is() for complex[0]',
-            data: {
-              target: target.valueOf(),
-              find: find.valueOf(),
-              extendWith: extendWith.valueOf(),
-              matchedComponent: (matchedComponent as any).valueOf?.() ?? null,
-              extendWithSelectors: extendWithSelectors.map(s => s.valueOf())
-            },
-            timestamp: Date.now()
-          };
-          try {
-            appendFileSync('/Users/matthew/git/oss/jess/.cursor/debug.log', JSON.stringify(payload) + '\n');
-          } catch {
-            // ignore
-          }
-        }
-        // #endregion
         const isWrapper = createValidatedIsWrapperWithErrors([matchedComponent, ...extendWithSelectors], matchedComponent, target, { target, find, extendWith });
 
         newComponents[componentIndex] = isWrapper as any;
@@ -1518,11 +1373,7 @@ export function extendSelector(
             },
             timestamp: Date.now()
           };
-          try {
-            appendFileSync('/Users/matthew/git/oss/jess/.cursor/debug.log', JSON.stringify(payload) + '\n');
-          } catch {
-            // ignore
-          }
+          // (debug log removed)
         }
         // #endregion
         const isWrapper = createValidatedIsWrapperWithErrors([matchedComponent, ...extendWithSelectors], matchedComponent, target, { target, find, extendWith });
@@ -1557,6 +1408,38 @@ function extendSelectorList(
   skipAmpersandCheck: boolean,
   preferIsWrapperInPartialMode: boolean = false
 ): Selector {
+  const maybePrefixNewSelectorWithImplicitParent = (template: Selector, s: Selector): Selector => {
+    // If we're extending inside a nested selector that already starts with an implicit `&`,
+    // ensure any newly-added selector alternatives also start with the same implicit `&`.
+    //
+    // Without this, we can create a "mixed" selector list under a SelectorList parent:
+    // - `& .replace` (relative via implicit parent)
+    // - `.rep_ace` (absolute)
+    //
+    // That triggers `maybeHoistMixedNestingSelectorList()` and produces the unwanted
+    // `:is(:is(...), ...) .rep_ace` distribution.
+    if (!partial) return s;
+    if (!isNode(template, 'ComplexSelector')) return s;
+    const t = template as ComplexSelector;
+    const first = t.value[0];
+    const second = t.value[1];
+    if (!(first instanceof Ampersand) || !first.hasFlag(F_IMPLICIT_AMPERSAND)) return s;
+    // If the selector already starts with an implicit `&`, keep it.
+    if (isNode(s, 'ComplexSelector')) {
+      const sf = (s as ComplexSelector).value[0];
+      if (sf instanceof Ampersand && sf.hasFlag(F_IMPLICIT_AMPERSAND)) {
+        return s;
+      }
+    }
+    // Prefix with the same implicit `&` + combinator shape from the template.
+    const prefixed = ComplexSelector.create([
+      (first as Ampersand).copy(true),
+      isNode(second, 'Combinator') ? (second as Combinator).copy(true) : Combinator.create(' ').inherit(second as any),
+      s.copy(true)
+    ]).inherit(s);
+    return prefixed;
+  };
+
   // For SelectorLists, we need to extend each selector that contains the find target
   // Keep original selectors in place, collect new selectors to append at the end
   const originalSelectors: Selector[] = [];
@@ -1619,7 +1502,14 @@ function extendSelectorList(
           originalSelectors.push(selector);
         } else {
           originalSelectors.push(extended.value[0]!.clone(true));
-          newSelectors.push(...extended.value.slice(1).map(s => s.clone(true)));
+          // Ensure new alternatives preserve the nested implicit `&` when appropriate.
+          const template = extended.value[0] ?? selector;
+          newSelectors.push(
+            ...extended.value
+              .slice(1)
+              .map(s => maybePrefixNewSelectorWithImplicitParent(template as Selector, s as Selector))
+              .map(s => s.clone(true))
+          );
         }
       } else {
         // CRITICAL: Clone the extended selector
@@ -1642,7 +1532,7 @@ function extendSelectorList(
     const processedArray = isArray(processed) ? processed : [processed];
     // See createExtendedSelectorList() for rationale: never include `target` as an adopted child
     // when we also inherit from it.
-    const safeArray = processedArray.map((s) => (s === target ? s.clone(true) : s));
+    const safeArray = processedArray.map(s => (s === target ? s.clone(true) : s));
     return SelectorList.create(safeArray).inherit(target);
   }
   return createExtendedSelectorList(allSelectors, target);
@@ -1965,7 +1855,7 @@ function createValidatedIsWrapperWithErrors(
         timestamp: Date.now()
       };
       try {
-        appendFileSync('/Users/matthew/git/oss/jess/.cursor/debug.log', JSON.stringify(payload) + '\n');
+        // (debug log removed)
       } catch {
         // ignore
       }
@@ -2180,57 +2070,14 @@ function checkAmpersandCrossingDuringExtension(selector: Selector, target: Selec
     const selectorWithoutAmpersand = replaceAmpersandWithEmpty(selector, ampersand);
     const nonAmpersandSearchResult = findExtendableLocations(selectorWithoutAmpersand, target);
 
-    // #region agent log
-    syncLog({
-      sessionId: 'debug-session',
-      runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
-      hypothesisId: 'A',
-      location: 'extend.ts:checkAmpersandCrossingDuringExtension:checking-ampersand',
-      message: 'Checking ampersand for boundary crossing',
-      data: {
-        selector: selector.valueOf(),
-        target: target.valueOf(),
-        resolvedMatches: resolvedSearchResult.hasMatches,
-        nonAmpersandMatches: nonAmpersandSearchResult.hasMatches,
-        resolvedSelector: resolvedSelector.valueOf(),
-        selectorWithoutAmpersand: selectorWithoutAmpersand.valueOf()
-      },
-      timestamp: Date.now()
-    });
-    // #endregion
-
     if (resolvedSearchResult.hasMatches && !nonAmpersandSearchResult.hasMatches) {
       // Target only matches when ampersand is resolved = boundary crossing
-      // #region agent log
-      syncLog({
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
-        hypothesisId: 'A',
-        location: 'extend.ts:checkAmpersandCrossingDuringExtension:boundary-detected',
-        message: 'Boundary crossing DETECTED',
-        data: { selector: selector.valueOf(), target: target.valueOf() },
-        timestamp: Date.now()
-      });
-      // #endregion
-
       return {
         crossed: true,
         ampersandNode: ampersand
       };
     }
   }
-
-  // #region agent log
-  syncLog({
-    sessionId: 'debug-session',
-    runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
-    hypothesisId: 'A',
-    location: 'extend.ts:checkAmpersandCrossingDuringExtension:no-crossing',
-    message: 'No boundary crossing detected',
-    data: { selector: selector.valueOf(), target: target.valueOf() },
-    timestamp: Date.now()
-  });
-  // #endregion
 
   return { crossed: false };
 }
@@ -2267,7 +2114,7 @@ function replaceAmpersandWithItsValue(selector: Selector, ampersand: Ampersand):
   // Create a copy of the selector
   const selectorCopy = selector.copy();
   let resolvedSelector: Selector = ampersand.value.selector.copy();
-  
+
   // If the resolved selector is a SelectorList, wrap it in :is() so it can be used as a single
   // selector component. This prevents invalid structures and matches Less output expectations.
   // Example: & .replace, & .c with parent .a, .b becomes :is(.a, .b) :is(.replace, .c)
@@ -2288,7 +2135,7 @@ function replaceAmpersandWithItsValue(selector: Selector, ampersand: Ampersand):
       }
     }
   }
-  
+
   // Replace all matching ampersands
   for (const { node, parent } of nodesToReplace) {
     replaceNodeInParent(parent, node, resolvedSelector.inherit(ampersand));
@@ -2349,29 +2196,6 @@ function handleAmpersandBoundaryCrossing(
   ampersandNode: Ampersand,
   _matchResult: any
 ): Selector {
-  // #region agent log
-  const selectorStr = selector.valueOf();
-  const targetStr = target.valueOf();
-  const extendWithStr = extendWith.valueOf();
-  const isSelectorList = isNode(selector, 'SelectorList');
-  syncLog({
-    sessionId: 'debug-session',
-    runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
-    hypothesisId: 'C',
-    location: 'extend.ts:handleAmpersandBoundaryCrossing:entry',
-    message: 'handleAmpersandBoundaryCrossing called',
-    data: {
-      selector: selectorStr,
-      target: targetStr,
-      extendWith: extendWithStr,
-      isSelectorList,
-      hasAmpersandSelector: !!ampersandNode?.value.selector && !isNode(ampersandNode.value.selector, 'Nil'),
-      ampersandSelector: ampersandNode?.value.selector?.valueOf()
-    },
-    timestamp: Date.now()
-  });
-  // #endregion
-
   if (!ampersandNode?.value.selector || isNode(ampersandNode.value.selector, 'Nil')) {
     throw new Error('Ampersand boundary crossing detected but ampersand has no resolved selector');
   }
@@ -2381,29 +2205,13 @@ function handleAmpersandBoundaryCrossing(
   // Example: & .replace, & .c with parent .a, .b should become :is(.a, .b) :is(.replace, .c)
   // not :is(.a, .b) .replace, :is(.a, .b) .c
   if (isNode(selector, 'SelectorList')) {
-    // #region agent log
-    syncLog({
-      sessionId: 'debug-session',
-      runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
-      hypothesisId: 'C',
-      location: 'extend.ts:handleAmpersandBoundaryCrossing:selector-list-branch',
-      message: 'Taking SelectorList branch in handleAmpersandBoundaryCrossing',
-      data: {
-        selector: selectorStr,
-        target: targetStr,
-        extendWith: extendWithStr,
-        selectorListLength: selector.value.length
-      },
-      timestamp: Date.now()
-    });
-    // #endregion
     const parentSelector = ampersandNode.value.selector;
     let parentWrapped: Selector = parentSelector.copy();
     if (isNode(parentWrapped, 'SelectorList')) {
       parentWrapped = isSelectorPseudo(parentWrapped);
       parentWrapped.generated = true;
     }
-    
+
     // Extract the nested selector items from the target structure
     // The target is a ComplexSelector like ".replace.replace .replace"
     // The nested selector was originally "& .replace, & .c", which should become ".replace, .c"
@@ -2413,7 +2221,7 @@ function handleAmpersandBoundaryCrossing(
     // For the second parent item (".c.replace+.replace"), we need to infer the nested part (".c")
     // Since we don't have the resolved nested selector, we'll extract from the target structure
     let nestedItems: Selector[] = [];
-    
+
     if (isNode(target, 'ComplexSelector') && target.value.length > 1) {
       // Extract the nested selector from the target by removing the parent prefix
       // Target: ".replace.replace .replace" -> nested: ".replace"
@@ -2427,7 +2235,7 @@ function handleAmpersandBoundaryCrossing(
         }
         remainingParts.push(part);
       }
-      
+
       if (remainingParts.length > 0) {
         // Find the first Selector in the remaining parts (skip Combinators)
         let firstNestedSelector: Selector | null = null;
@@ -2437,7 +2245,7 @@ function handleAmpersandBoundaryCrossing(
             break;
           }
         }
-        
+
         if (firstNestedSelector) {
           // The nested selector items should be simple selectors
           // Extract the first simple selector from the nested selector
@@ -2454,9 +2262,9 @@ function handleAmpersandBoundaryCrossing(
           } else {
             firstNestedItem = firstNestedSelector;
           }
-          
+
           nestedItems.push(firstNestedItem);
-          
+
           // For additional parent items, we need to infer the nested parts
           // The nested selector was originally a SelectorList like "& .replace, & .c"
           // which corresponds to the parent items ".replace.replace" and ".c.replace+.replace"
@@ -2479,75 +2287,29 @@ function handleAmpersandBoundaryCrossing(
       // Fallback: use the original SelectorList items
       nestedItems.push(...selector.value.map(item => item.copy()));
     }
-    
+
     // Ensure we have at least one nested item
     if (nestedItems.length === 0) {
       nestedItems = selector.value.map(item => item.copy());
     }
-    
+
     // Wrap the inner SelectorList in :is() to match Less expectations
     const innerList = SelectorList.create(nestedItems);
     const innerWrapped = isSelectorPseudo(innerList);
     innerWrapped.generated = true;
-    
+
     // Create the combined selector: :is(parent) :is(inner)
     const combined = ComplexSelector.create([
       parentWrapped,
       Combinator.create(' '),
       innerWrapped
     ]).inherit(selector);
-    
-    // Step 2: Extend the combined selector (skip ampersand check to prevent recursion)
-    // #region agent log
-    syncLog({
-      sessionId: 'debug-session',
-      runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
-      hypothesisId: 'C',
-      location: 'extend.ts:handleAmpersandBoundaryCrossing:before-extend-combined',
-      message: 'About to extend combined selector',
-      data: {
-        combined: combined.valueOf(),
-        target: targetStr,
-        extendWith: extendWithStr
-      },
-      timestamp: Date.now()
-    });
-    // #endregion
 
+    // Step 2: Extend the combined selector (skip ampersand check to prevent recursion)
     const extendedSelector = extendSelector(combined, target, extendWith, false, true);
-    
-    // #region agent log
-    syncLog({
-      sessionId: 'debug-session',
-      runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
-      hypothesisId: 'C',
-      location: 'extend.ts:handleAmpersandBoundaryCrossing:after-extend-combined',
-      message: 'Extended combined selector',
-      data: {
-        extendedSelector: extendedSelector.valueOf(),
-        extendedSelectorType: isNode(extendedSelector, 'SelectorList') ? 'SelectorList' : 'other'
-      },
-      timestamp: Date.now()
-    });
-    // #endregion
 
     // Step 3: Mark for hoisting to root
     const hoisted = markSelectorForHoisting(extendedSelector);
-
-    // #region agent log
-    syncLog({
-      sessionId: 'debug-session',
-      runId: process.env.DEBUG_RUN_ID || 'extend-exact-debug',
-      hypothesisId: 'D',
-      location: 'extend.ts:handleAmpersandBoundaryCrossing:after-hoist',
-      message: 'After markSelectorForHoisting',
-      data: {
-        hoisted: hoisted.valueOf(),
-        hoistedType: isNode(hoisted, 'SelectorList') ? 'SelectorList' : 'other'
-      },
-      timestamp: Date.now()
-    });
-    // #endregion
 
     return hoisted;
   }
@@ -2740,35 +2502,7 @@ export function findChainedExtends(
 ): Array<[Selector, Selector, boolean, any, any]> {
   const chained: Array<[Selector, Selector, boolean, any, any]> = [];
 
-  // #region agent log
-  // Always trace chaining for a small set of core tests.
-  try {
-    const ct = currentTarget?.valueOf?.() ?? '';
-    const cw = currentSelectorWithExtend?.valueOf?.() ?? '';
-    if (ct === '.f' || ct === '.e' || ct === '.a' || ct === '.b' || ct === '.l') {
-      appendFileSync(
-        '/Users/matthew/git/oss/jess/.cursor/debug.log',
-        JSON.stringify({
-          sessionId: 'debug-session',
-          runId: 'extend-chain',
-          hypothesisId: 'H-chain',
-          location: 'extend.ts:findChainedExtends',
-          message: 'enter',
-          data: {
-            currentTarget: ct,
-            currentSelectorWithExtend: cw,
-            extendedSelectorType: (extendedSelector as any)?.type ?? null,
-            extendedSelectorV: extendedSelector?.valueOf?.() ?? null,
-            originalSelectorV: originalSelector?.valueOf?.() ?? null
-          },
-          timestamp: Date.now()
-        }) + '\n'
-      );
-    }
-  } catch {
-    // ignore
-  }
-  // #endregion
+  // (debug log removed)
 
   // Only check SelectorList results (when we get .foo, .ext3 from extending .foo with .ext3)
   if (!isNode(extendedSelector, 'SelectorList')) {
@@ -2813,32 +2547,7 @@ export function findChainedExtends(
           // CRITICAL: Pass the individual selector that matched, not the entire extendedSelector
           // This ensures processExtend extracts the correct target (the one that matched)
           chained.push([selectorInList, otherSelectorWithExtend, otherPartial, otherExtendRoot, otherExtendNode]);
-          // #region agent log
-          try {
-            const ct = currentTarget?.valueOf?.() ?? '';
-            if (ct === '.f' || ct === '.e' || ct === '.a' || ct === '.b' || ct === '.l') {
-              appendFileSync(
-                '/Users/matthew/git/oss/jess/.cursor/debug.log',
-                JSON.stringify({
-                  sessionId: 'debug-session',
-                  runId: 'extend-chain',
-                  hypothesisId: 'H-chain',
-                  location: 'extend.ts:findChainedExtends',
-                  message: 'chain-hit',
-                  data: {
-                    selectorInList: selectorInList.valueOf(),
-                    otherTarget: otherSingleTarget.valueOf(),
-                    otherSelectorWithExtend: otherSelectorWithExtend.valueOf(),
-                    otherPartial
-                  },
-                  timestamp: Date.now()
-                }) + '\n'
-              );
-            }
-          } catch {
-            // ignore
-          }
-          // #endregion
+          // (debug log removed)
           break; // Only add once per otherTarget
         }
       }

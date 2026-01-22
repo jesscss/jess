@@ -6,9 +6,9 @@
       "type": "extensionHost",
       "request": "launch",
       "runtimeExecutable": "${execPath}",
-      "args": ["--extensionDevelopmentPath=${workspaceFolder}/packages/extension"],
-      "outFiles": ["${workspaceFolder}/packages/extension/dist/**/*.js"],
-      "preLaunchTask": "build-extension"
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/packages/vscode"],
+      "outFiles": ["${workspaceFolder}/packages/vscode/dist/**/*.js"],
+      "preLaunchTask": "build-vscode-extension"
     }
   ]
 }

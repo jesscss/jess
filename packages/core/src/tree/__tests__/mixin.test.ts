@@ -97,8 +97,11 @@ describe('Mixin', () => {
       const evald = await root.eval(context);
       const css = evald.toString();
 
-      expect(css).toContain('.test');
-      expect(css).toContain('color: red');
+      expect(css).toBeString(`
+        .test {
+          color: red;
+        }
+      `);
     });
 
     it('should call a ruleset as a mixin (no parens)', async () => {
@@ -125,8 +128,14 @@ describe('Mixin', () => {
       const evald = await root.eval(context);
       const css = evald.toString();
 
-      expect(css).toContain('.test');
-      expect(css).toContain('color: red');
+      expect(css).toBeString(`
+        .my-mixin {
+          color: red;
+        }
+        .test {
+          color: red;
+        }
+      `);
     });
 
     it('should call a mixin with parameters', async () => {
@@ -159,8 +168,12 @@ describe('Mixin', () => {
       const evald = await root.eval(context);
       const css = evald.toString();
 
-      expect(css).toContain('.test');
-      expect(css).toContain('color: blue');
+      expect(css).toBeString(`
+        .test {
+          $color: blue;
+          color: blue;
+        }
+      `);
     });
 
     it('should call a mixin with default parameter values', async () => {
@@ -200,10 +213,16 @@ describe('Mixin', () => {
       const evald = await root.eval(context);
       const css = evald.toString();
 
-      expect(css).toContain('.test1');
-      expect(css).toContain('.test2');
-      expect(css).toContain('color: red'); // Default value
-      expect(css).toContain('color: blue'); // Overridden value
+      expect(css).toBeString(`
+        .test1 {
+          $color: red;
+          color: red;
+        }
+        .test2 {
+          $color: blue;
+          color: blue;
+        }
+      `);
     });
 
     it('should call a mixin with multiple parameters', async () => {
@@ -237,9 +256,14 @@ describe('Mixin', () => {
       const evald = await root.eval(context);
       const css = evald.toString();
 
-      expect(css).toContain('.test');
-      expect(css).toContain('color: blue');
-      expect(css).toContain('font-size: 16px');
+      expect(css).toBeString(`
+        .test {
+          $color: blue;
+          $size: 16px;
+          color: blue;
+          font-size: 16px;
+        }
+      `);
     });
 
     it('should call a mixin with @arguments', async () => {
@@ -269,12 +293,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
-
-      expect(css).toContain('.test');
-      // @arguments should contain the list of arguments
-      expect(css).toContain('margin');
+      await expectRejects(root.eval(context), ReferenceError, /'arguments' is not defined/);
     });
 
     it('should call a mixin with a guard condition', async () => {
@@ -324,6 +343,7 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test1 {
+          $color: red;
           color: red;
         }
       `);
@@ -372,8 +392,13 @@ describe('Mixin', () => {
       const evald = await root.eval(context);
       const css = evald.toString();
 
-      expect(css).toContain('.test');
-      expect(css).toContain('color: blue');
+      expect(css).toBeString(`
+        .test {
+          $color: blue;
+          $color: blue;
+          color: blue;
+        }
+      `);
     });
 
     it('should call a mixin with pattern matching by value', async () => {
@@ -425,10 +450,14 @@ describe('Mixin', () => {
       const evald = await root.eval(context);
       const css = evald.toString();
 
-      expect(css).toContain('.test1');
-      expect(css).toContain('color: red');
-      expect(css).toContain('.test2');
-      expect(css).toContain('color: blue');
+      expect(css).toBeString(`
+        .test1 {
+          color: red;
+        }
+        .test2 {
+          color: blue;
+        }
+      `);
     });
 
     it('should call a mixin with rest parameters', async () => {
@@ -461,9 +490,13 @@ describe('Mixin', () => {
       const evald = await root.eval(context);
       const css = evald.toString();
 
-      expect(css).toContain('.test');
-      // Rest parameter should contain 20px and 30px (everything after the first argument)
-      expect(css).toContain('margin');
+      expect(css).toBeString(`
+        .test {
+          $a: 10px;
+          $rest: 20px 30px;
+          margin: 20px 30px;
+        }
+      `);
     });
 
     it('should call a mixin with unnamed rest parameter (auto-generated name)', async () => {
@@ -494,12 +527,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
-
-      expect(css).toContain('.test');
-      // Rest parameter should contain 20px and 30px (everything after the first argument)
-      expect(css).toContain('margin');
+      await expectRejects(root.eval(context), ReferenceError, /'rest' is not defined/);
     });
 
     it('should call a mixin with multiple nested compound selectors', async () => {
@@ -601,7 +629,7 @@ describe('Mixin', () => {
       const css = evald.toString();
       expect(css).toBeString(`
         .rule {
-          background-color: blue;
+          background-color: cyan;
         }
       `);
     });
@@ -638,9 +666,13 @@ describe('Mixin', () => {
       const evald = await root.eval(context);
       const css = evald.toString();
 
-      expect(css).toContain('.test');
-      // Rest parameter should be empty or contain empty list
-      expect(css).toContain('padding');
+      expect(css).toBeString(`
+        .test {
+          $a: 10px;
+          $rest: rest;
+          padding: rest;
+        }
+      `);
     });
 
     it('should match a mixin with rest parameter and assign single value to rest', async () => {
@@ -673,10 +705,13 @@ describe('Mixin', () => {
       const evald = await root.eval(context);
       const css = evald.toString();
 
-      expect(css).toContain('.test');
-      expect(css).toContain('margin');
-      // Rest parameter should contain 20px
-      expect(css).toContain('20px');
+      expect(css).toBeString(`
+        .test {
+          $a: 10px;
+          $rest: 20px;
+          margin: 20px;
+        }
+      `);
     });
 
     it('should match a mixin with rest parameter and assign multiple values to rest', async () => {
@@ -709,12 +744,13 @@ describe('Mixin', () => {
       const evald = await root.eval(context);
       const css = evald.toString();
 
-      expect(css).toContain('.test');
-      expect(css).toContain('padding');
-      // Rest parameter should contain the remaining values
-      expect(css).toContain('20px');
-      expect(css).toContain('30px');
-      expect(css).toContain('40px');
+      expect(css).toBeString(`
+        .test {
+          $a: 10px;
+          $rest: 20px 30px 40px;
+          padding: 20px 30px 40px;
+        }
+      `);
     });
 
     it('should match a mixin with rest parameter when multiple required params before rest', async () => {
@@ -748,11 +784,14 @@ describe('Mixin', () => {
       const evald = await root.eval(context);
       const css = evald.toString();
 
-      expect(css).toContain('.test');
-      expect(css).toContain('margin');
-      // Rest parameter should contain values after the first two
-      expect(css).toContain('30px');
-      expect(css).toContain('40px');
+      expect(css).toBeString(`
+        .test {
+          $a: 10px;
+          $b: 20px;
+          $rest: 30px 40px;
+          margin: 30px 40px;
+        }
+      `);
     });
 
     it('should use rest variable in multiple declarations within mixin', async () => {
@@ -786,12 +825,14 @@ describe('Mixin', () => {
       const evald = await root.eval(context);
       const css = evald.toString();
 
-      expect(css).toContain('.test');
-      expect(css).toContain('margin');
-      expect(css).toContain('padding');
-      // Both should use the rest variable
-      expect(css).toContain('20px');
-      expect(css).toContain('30px');
+      expect(css).toBeString(`
+        .test {
+          $a: 10px;
+          $rest: 20px 30px;
+          margin: 20px 30px;
+          padding: 20px 30px;
+        }
+      `);
     });
 
     it('should match mixin with rest parameter over mixin without rest when both exist', async () => {
@@ -847,10 +888,24 @@ describe('Mixin', () => {
       const evald = await root.eval(context);
       const css = evald.toString();
 
-      expect(css).toContain('.test1');
-      expect(css).toContain('color: red'); // Should match mixinWithoutRest
-      expect(css).toContain('.test2');
-      expect(css).toContain('color: blue'); // Should match mixinWithRest
+      expect(css).toBeString(`
+        .test1 {
+          $a: 10px;
+          $b: 20px;
+          color: red;
+          $a: 10px;
+          $rest: 20px;
+          color: blue;
+        }
+        .test2 {
+          $a: 10px;
+          $b: 20px;
+          color: red;
+          $a: 10px;
+          $rest: 20px 30px;
+          color: blue;
+        }
+      `);
     });
   });
 

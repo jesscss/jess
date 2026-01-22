@@ -109,6 +109,29 @@ describe('scss-parser (ast serialize)', () => {
       `);
   });
 
+  it('serializes @forward "foo" as bar-* with forwardAsPrefix', () => {
+    const { tree, errors, lexerResult } = parser.parse(`@forward "foo" as bar-*;`);
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`forwardAsPrefix: 'bar-'`);
+  });
+
+  it('serializes @forward "foo" show/hide lists', () => {
+    const { tree, errors, lexerResult } = parser.parse(`
+      @forward "foo" show $a, mixin-b, fn-c;
+      @forward "foo" hide $a, mixin-b, fn-c;
+    `);
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`forwardShow: [`); // presence check
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`'$a'`);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`'mixin-b'`);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`'fn-c'`);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`forwardHide: [`);
+  });
+
   it('serializes @forward "foo" with(...) as StyleImport with injected vars', () => {
     const { tree, errors, lexerResult } = parser.parse(`@forward "foo" with ($a: #{$b});`);
     expect(lexerResult.errors).toEqual([]);
@@ -154,13 +177,44 @@ describe('scss-parser (ast serialize)', () => {
     expect(serializeTypes(tree)).toContainString(`(Reference`);
   });
 
-  it('serializes @include ns.foo($x) as Call(name=Reference(target=Reference))', () => {
-    const { tree, errors, lexerResult } = parser.parse(`@include ns.foo($x);`);
+  it('serializes plain fn($x) as Call(name=Reference(type=function,fallbackValue:true)) (no Expression)', () => {
+    const { tree, errors, lexerResult } = parser.parse(`.a { color: fn($x); }`);
     expect(lexerResult.errors).toEqual([]);
     expect(errors).toEqual([]);
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString(`(Call`);
     expect(serializeTypes(tree)).toContainString(`(Reference`);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`type: 'function'`);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`fallbackValue: true`);
+    expect(serializeTypes(tree)).not.toContainString(`(Expression`);
+  });
+
+  it('serializes @include ns.foo($x) as Call(name=Reference(target=Reference))', () => {
+    const { tree, errors, lexerResult } = parser.parse(`@include ns.foo($x);`);
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+    expect(serializeTypes(tree)).toContainString(`(Expression`);
+    expect(serializeTypes(tree)).toContainString(`(Call`);
+    expect(serializeTypes(tree)).toContainString(`(Reference`);
+  });
+
+  it('serializes @use "foo" as bar with options.namespace=bar', () => {
+    const { tree, errors, lexerResult } = parser.parse(`@use "foo" as bar;`);
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`(StyleImport`);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`namespace: 'bar'`);
+  });
+
+  it('serializes @use "foo" as * with options.namespace=*', () => {
+    const { tree, errors, lexerResult } = parser.parse(`@use "foo" as *;`);
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`(StyleImport`);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`namespace: '*'`);
   });
 
   it('serializes ns.\\#foo($x) as Expression(Call(name=Reference(type=mixin-ruleset)))', () => {

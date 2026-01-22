@@ -23,7 +23,9 @@ export function buildSourceMap(writer: OutputWriter, opts: BuildSourceMapOptions
         original: { line: s.origLine + 1, column: s.origColumn }
       });
       const content = opts.sourcesContent?.get(s.source);
-      if (content !== undefined) setSourceContent(map, s.source, content);
+      if (content !== undefined) {
+        setSourceContent(map, s.source, content);
+      }
     } else {
       addMapping(map, {
         generated: { line: s.genLine + 1, column: s.genColumn }

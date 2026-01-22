@@ -2,9 +2,9 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "build-extension",
+      "label": "build-vscode-extension",
       "type": "shell",
-      "command": "pnpm --dir packages/extension build",
+      "command": "pnpm --dir packages/vscode build",
       "problemMatcher": []
     }
   ]
