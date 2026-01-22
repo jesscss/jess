@@ -229,24 +229,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     const newRules = super.clone(deep, cloneFn);
 
-    // Preserve registries across clones by reusing the registry instances but
-    // rebinding them to the cloned Rules node.
-    if (this.declarationRegistry) {
-      (this.declarationRegistry as any).rules = newRules;
-      (newRules as any).declarationRegistry = this.declarationRegistry;
-    }
-    if (this.mixinRegistry) {
-      (this.mixinRegistry as any).rules = newRules;
-      (newRules as any).mixinRegistry = this.mixinRegistry;
-    }
+    // Only preserve *function* registry across clones.
+    // This supports Less plugin compat, where plugins can inject functions into the registry
+    // without creating AST nodes that would be re-registered on clone.
+    //
+    // Do NOT reuse declaration/mixin/ruleset registries across clones; those should always
+    // be rebuilt from AST nodes via lazy indexing.
     if (this.functionRegistry) {
-      (this.functionRegistry as any).rules = newRules;
-      (newRules as any).functionRegistry = this.functionRegistry;
+      newRules.functionRegistry = this.functionRegistry.cloneForRules(newRules);
     }
-    if (this.rulesetRegistry) {
-      (this.rulesetRegistry as any).rules = newRules;
-      (newRules as any).rulesetRegistry = this.rulesetRegistry;
-    }
+
+    // IMPORTANT: cloned Rules must re-index their own registries.
+    // Otherwise, a clone can inherit `rulesIndexed` from the source Rules (often == value.length),
+    // while having an empty/incorrect registry state, causing lookup misses (e.g. @c in detached-rulesets).
+    newRules.rulesIndexed = 0;
+    newRules._indexing = false;
+    newRules._rulesSet = undefined;
 
     return newRules;
   }
@@ -287,6 +285,25 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       registry = new RegistryClass(this);
       (this as any)[`${type}Registry`] = registry;
     }
+    // #region agent log
+    try {
+      const filePath = (this as any)?.treeContext?.file?.fullPath ?? '';
+      if (typeof filePath === 'string' && filePath.includes('detached-rulesets')) {
+        const bound = (registry as any).rules;
+        if (bound && bound !== this) {
+          syncLog({
+            sessionId: 'debug-session',
+            runId: process.env.DEBUG_RUN_ID ?? 'run',
+            hypothesisId: 'H21',
+            location: 'rules.ts:getRegistry',
+            message: 'registry-bound-to-different-rules',
+            data: { type, boundType: String((bound as any).type ?? ''), boundIdx: (bound as any).index },
+            timestamp: Date.now()
+          });
+        }
+      }
+    } catch {}
+    // #endregion
     if (this.rulesIndexed < this.value.length) {
       this._indexRules();
     }
@@ -583,6 +600,39 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
        * declaration and inserts a new declaration at the same rules level as the
        * found variable, but before the current nested node.
        */
+      // #region agent log
+      try {
+        const filePath = (context as any)?.treeContext?.file?.fullPath
+          || (this as any)?.treeContext?.file?.fullPath
+          || (node as any)?.treeContext?.file?.fullPath
+          || '';
+        if (isNode(node, 'VarDeclaration')) {
+          const nm: any = (node as any).value?.name;
+          const keyStr = typeof nm === 'string' ? nm : String(nm?.valueOf?.() ?? '');
+          if (keyStr === 'ruleset' && typeof filePath === 'string' && filePath.includes('detached-rulesets')) {
+            const vv: any = (node as any).value?.value;
+            const vvType = vv?.type ? String(vv.type) : '';
+            syncLog({
+              sessionId: 'debug-session',
+              runId: process.env.DEBUG_RUN_ID ?? 'run',
+              hypothesisId: 'H20',
+              location: 'rules.ts:registerNode',
+              message: 'register-vardecl-ruleset',
+              data: {
+                key: keyStr,
+                valueType: vvType,
+                paramVar: !!(node as any).options?.paramVar,
+                nodeParentType: String((node as any).parent?.type ?? ''),
+                inRulesIsMixinOutput: !!(this as any).options?.isMixinOutput,
+                nodeIndex: (node as any).index,
+                inValueArray: Array.isArray((this as any).value) ? (this as any).value.includes(node as any) : false
+              },
+              timestamp: Date.now()
+            });
+          }
+        }
+      } catch {}
+      // #endregion
       if (node.options?.setDefined) {
         // Skip setDefined logic if we're currently indexing to avoid recursive calls
         if (this._indexing) {

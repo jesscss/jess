@@ -842,4 +842,56 @@ describe('Style import', () => {
       expect(evald.value.length).toBe(2);
     });
   });
+
+  describe('compose caching', () => {
+    it('caches evaluated compose modules and de-dupes output unless multiple=true', async () => {
+      context.sourceTrees.set('library-dedupe.jess', rules([
+        ruleset({
+          selector: sellist([sel([el('.imported')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({ path: quoted(any('library-dedupe.jess')) }, { type: 'compose', namespace: '*' }),
+        style({ path: quoted(any('library-dedupe.jess')) }, { type: 'compose', namespace: '*' })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = evald.toString();
+      // Should only render `.imported` once (second compose is reference mode by default).
+      expect(css.split('.imported').length - 1).toBe(1);
+    });
+
+    it('still allows per-import visibility differences via shallow clone', async () => {
+      context.sourceTrees.set('library-vis.jess', rules([
+        ruleset({
+          selector: sellist([sel([el('.imported')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style(
+          { path: quoted(any('library-vis.jess')) },
+          { type: 'compose', namespace: '*', importOptions: { mutable: true } }
+        ),
+        style(
+          { path: quoted(any('library-vis.jess')) },
+          { type: 'compose', namespace: '*', importOptions: { mutable: false, multiple: true } }
+        )
+      ]);
+
+      const evald = await node.eval(context);
+      expect(evald.value.length).toBe(2);
+      const first = evald.at(0) as Rules;
+      const second = evald.at(1) as Rules;
+      expect(first.options.rulesVisibility.Ruleset).toBe('public');
+      expect(second.options.rulesVisibility.Ruleset).toBe('private');
+    });
+  });
 });

@@ -599,5 +599,18 @@ describe('scss-parser (baseline)', () => {
     expect(serializeTypes(result.tree)).toContainString('(Interpolated');
     assertValidTree(result.tree);
   });
+
+  it('parses @use with(...) config var flags (!default, !global)', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@use "foo" with ($a: 1 !default, $b: 2 !global);`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    // Smoke: ensure both vars were parsed as VarDeclaration nodes.
+    expect(serializeTypes(result.tree)).toContainString('(VarDeclaration');
+    // Flags should be preserved on the VarDeclaration options.
+    expect(serializeTypes(result.tree, { showOptions: true })).toContainString("assign: '?:'");
+    expect(serializeTypes(result.tree, { showOptions: true })).toContainString('setDefined: true');
+    assertValidTree(result.tree);
+  });
 });
 

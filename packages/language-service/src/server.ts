@@ -7,6 +7,11 @@ import {
   TextDocumentSyncKind,
   TextDocumentChangeEvent,
   SemanticTokensLegend,
+  type CodeActionParams,
+  type DocumentLinkParams,
+  type DocumentFormattingParams,
+  type FoldingRangeParams,
+  type SelectionRangeParams,
   type CompletionParams,
   type HoverParams,
   type DefinitionParams,
@@ -20,6 +25,7 @@ import { createEngine } from './engine.js';
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
 const engine = createEngine();
+let clientSettings: unknown = {};
 
 const semanticTokensLegend: SemanticTokensLegend = {
   tokenTypes: [
@@ -51,6 +57,13 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
       definitionProvider: true,
       referencesProvider: true,
       documentSymbolProvider: true,
+      foldingRangeProvider: true,
+      selectionRangeProvider: true,
+      codeActionProvider: true,
+      documentFormattingProvider: true,
+      documentLinkProvider: {
+        resolveProvider: false
+      },
       semanticTokensProvider: {
         legend: semanticTokensLegend,
         // Be explicit: VS Code has historically been stricter about the object form
@@ -62,8 +75,18 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
   return result;
 });
 
+connection.onDidChangeConfiguration((change) => {
+  clientSettings = change.settings;
+  engine.configure(clientSettings);
+  // Re-publish diagnostics under new severity settings.
+  for (const doc of documents.all()) {
+    connection.sendDiagnostics({ uri: doc.uri, diagnostics: engine.getDiagnostics(doc.uri) });
+  }
+});
+
 documents.onDidOpen((e: TextDocumentChangeEvent<TextDocument>) => {
   engine.open(e.document.uri, e.document.languageId, e.document.version, e.document.getText());
+  engine.configure(clientSettings);
   connection.sendDiagnostics({ uri: e.document.uri, diagnostics: engine.getDiagnostics(e.document.uri) });
 });
 
@@ -95,6 +118,26 @@ connection.onReferences((params: ReferenceParams) => {
 
 connection.onDocumentSymbol((params: DocumentSymbolParams) => {
   return engine.getDocumentSymbols(params.textDocument.uri);
+});
+
+connection.onFoldingRanges((params: FoldingRangeParams) => {
+  return engine.getFoldingRanges(params.textDocument.uri);
+});
+
+connection.onSelectionRanges((params: SelectionRangeParams) => {
+  return engine.getSelectionRanges(params.textDocument.uri, params.positions);
+});
+
+connection.onCodeAction((params: CodeActionParams) => {
+  return engine.getCodeActions(params.textDocument.uri, params.range, params.context);
+});
+
+connection.onDocumentFormatting((params: DocumentFormattingParams) => {
+  return engine.formatDocument(params.textDocument.uri);
+});
+
+connection.onDocumentLinks((params: DocumentLinkParams) => {
+  return engine.getDocumentLinks(params.textDocument.uri);
 });
 
 connection.languages.semanticTokens.on((params: SemanticTokensParams) => {

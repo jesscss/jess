@@ -1111,79 +1111,91 @@ export function scssForwardAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     const isWithConfigStart = () => $.LA(1).image === 'with' && $.LA(2).tokenType === T.LParen;
 
     // optional "as <prefix>-*"
+    // NOTE: this is parsed inside the prelude loop below (instead of OPTION),
+    // to avoid Chevrotain ambiguous-alternative warnings (take vs skip).
     let forwardAsPrefix: string | undefined;
-    $.OPTION2({
-      GATE: () => $.LA(1).image === 'as',
-      DEF: () => {
-        // "as" may be Ident or PlainIdent depending on token mode.
-        $.OR7([
-          { GATE: () => $.LA(1).tokenType === T.Ident, ALT: () => $.CONSUME2(T.Ident) },
-          { ALT: () => $.CONSUME2(T.PlainIdent) }
-        ]);
-        const tok = $.OR8([
-          { GATE: () => $.LA(1).tokenType === T.Ident, ALT: () => $.CONSUME3(T.Ident) },
-          { ALT: () => $.CONSUME3(T.PlainIdent) }
-        ]) as unknown as IToken;
-        if (!RECORDING_PHASE) {
-          // Most lexing paths will give us `bar-*` as a single token.
-          // If not, we still capture the prefix portion and ignore the `*`.
-          const raw = tok.image;
-          if (raw.endsWith('-*')) {
-            forwardAsPrefix = raw.slice(0, -1); // "bar-"
-          } else if (raw.endsWith('*')) {
-            forwardAsPrefix = raw.slice(0, -1);
-          } else {
-            forwardAsPrefix = raw;
-          }
-        }
-        // If the `*` was split into its own token, consume it (and optional '-' if present as Unknown).
-        $.OPTION3({
-          GATE: () =>
-            ($.LA(1).tokenType === T.Unknown && $.LA(1).image === '-' && $.LA(2).tokenType === T.Star)
-            || $.LA(1).tokenType === T.Star,
-          DEF: () => {
-            $.OPTION4({ GATE: () => $.LA(1).tokenType === T.Unknown && $.LA(1).image === '-', DEF: () => $.CONSUME(T.Unknown) });
-            $.CONSUME(T.Star);
-          }
-        });
-      }
-    });
 
-    // optional "show ..." or "hide ..."
+    // optional "show ..." or "hide ..." (parse-only; store raw list)
     let forwardShow: string[] | undefined;
     let forwardHide: string[] | undefined;
-    const parseForwardList = (out: string[]) => {
-      $.AT_LEAST_ONE_SEP({
-        SEP: T.Comma,
-        DEF: () => {
+    let forwardListMode: 'show' | 'hide' | undefined;
+    $.MANY2({
+      // Stop before `with (...)` so the OPTION below stays unambiguous.
+      GATE: () => $.LA(1).tokenType !== T.Semi && !isWithConfigStart(),
+      DEF: () => {
+        const la = $.LA(1);
+        // optional "as <prefix>-*"
+        if ((la.tokenType === T.Ident || la.tokenType === T.PlainIdent) && la.image === 'as') {
+          // "as" may be Ident or PlainIdent depending on token mode.
+          if ($.LA(1).tokenType === T.Ident) {
+            $.CONSUME2(T.Ident);
+          } else {
+            $.CONSUME2(T.PlainIdent);
+          }
+
+          // The prefix is typically tokenized as a single ident/plainident (often including the trailing '-').
+          const tok = ($.LA(1).tokenType === T.Ident)
+            ? ($.CONSUME3(T.Ident) as unknown as IToken)
+            : ($.CONSUME3(T.PlainIdent) as unknown as IToken);
+
+          // If the `*` was split into its own token, consume it (and optional '-' if present as Unknown).
+          if (
+            ($.LA(1).tokenType === T.Unknown && $.LA(1).image === '-' && $.LA(2).tokenType === T.Star)
+            || $.LA(1).tokenType === T.Star
+          ) {
+            if ($.LA(1).tokenType === T.Unknown && $.LA(1).image === '-') {
+              $.CONSUME(T.Unknown);
+            }
+            $.CONSUME(T.Star);
+          }
+
+          if (!RECORDING_PHASE) {
+            // Most lexing paths will give us `bar-*` as a single token.
+            // If not, we still capture the prefix portion and ignore the `*`.
+            const raw = tok.image;
+            if (raw.endsWith('-*')) {
+              forwardAsPrefix = raw.slice(0, -1); // "bar-"
+            } else if (raw.endsWith('*')) {
+              forwardAsPrefix = raw.slice(0, -1);
+            } else {
+              forwardAsPrefix = raw;
+            }
+          }
+          return;
+        }
+        // Skip commas inside lists.
+        if (la.tokenType === T.Comma) {
+          $.CONSUME(T.Comma);
+          return;
+        }
+        // Start of a show/hide list.
+        if ((la.tokenType === T.Ident || la.tokenType === T.PlainIdent) && (la.image === 'show' || la.image === 'hide')) {
+          const kw = ($.LA(1).tokenType === T.Ident)
+            ? ($.CONSUME5(T.Ident) as unknown as IToken)
+            : ($.CONSUME5(T.PlainIdent) as unknown as IToken);
+          forwardListMode = kw.image === 'hide' ? 'hide' : 'show';
+          if (!RECORDING_PHASE) {
+            if (forwardListMode === 'show') forwardShow = [];
+            else forwardHide = [];
+          }
+          return;
+        }
+        // Consume list members when we're in a show/hide list.
+        if (forwardListMode) {
           const t = ($.LA(1).tokenType === T.DollarVariable)
             ? ($.CONSUME6(T.DollarVariable) as unknown as IToken)
             : (
-              // In this context (module system keywords), Sass member names are typically PlainIdent.
-              // Accept Ident as well for resilience.
-              ($.LA(1).tokenType === T.Ident
+              $.LA(1).tokenType === T.Ident
                 ? ($.CONSUME6(T.Ident) as unknown as IToken)
-                : ($.CONSUME6(T.PlainIdent) as unknown as IToken))
+                : ($.CONSUME6(T.PlainIdent) as unknown as IToken)
             );
           if (!RECORDING_PHASE) {
-            out.push(t.image);
+            (forwardListMode === 'show' ? forwardShow : forwardHide)!.push(t.image);
           }
+          return;
         }
-      });
-    };
-
-    $.OPTION5({
-      GATE: () => $.LA(1).image === 'show' || $.LA(1).image === 'hide',
-      DEF: () => {
-        const kw = $.OR6([
-          { GATE: () => $.LA(1).tokenType === T.Ident, ALT: () => $.CONSUME5(T.Ident) },
-          { ALT: () => $.CONSUME5(T.PlainIdent) }
-        ]) as unknown as IToken;
-        if (!RECORDING_PHASE) {
-          if (kw.image === 'show') forwardShow = [];
-          else forwardHide = [];
-        }
-        parseForwardList((kw.image === 'show' ? forwardShow : forwardHide) ?? []);
+        // Otherwise, consume generic prelude tokens we don't handle yet.
+        $.SUBRULE($.anyOuterValue, { ARGS: [ctx] });
       }
     });
 
@@ -1297,9 +1309,31 @@ export function scssWithConfig(this: ScssActionsParser, T: ScssTokenMap) {
           const dv = $.CONSUME(T.DollarVariable);
           $.CONSUME(T.Assign);
           const value = $.SUBRULE($.valueSequence, { ARGS: [ctx] });
+          // Sass config vars can include flags like `!default` and `!global`.
+          // Mirror SCSS variable declaration behavior so these semantics survive into core.
+          let sawDefault = false;
+          let sawGlobal = false;
+          $.MANY(() => {
+            $.OR([
+              { ALT: () => { $.CONSUME(T.SassDefault); sawDefault = true; } },
+              { ALT: () => { $.CONSUME(T.SassGlobal); sawGlobal = true; } }
+            ]);
+          });
           if (!RECORDING_PHASE) {
             const name = new Any(dv.image.slice(1), { role: 'property' });
-            decls!.push(new VarDeclaration({ name, value }, undefined, $.getLocationInfo(dv), $.context));
+            decls!.push(
+              new VarDeclaration(
+                { name, value },
+                {
+                  // In Jess, `?:` is the "default assignment" operator (SCSS `!default`).
+                  assign: (sawDefault ? '?:' : ':') as AssignmentType,
+                  // In core, `setDefined` models SCSS `!global` / Jess `^$var:`
+                  setDefined: sawGlobal
+                },
+                $.getLocationInfo(dv),
+                $.context
+              )
+            );
           }
         }
       });

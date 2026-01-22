@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { Position, SymbolKind } from 'vscode-languageserver-types';
+import { CodeActionKind, Position, SymbolKind } from 'vscode-languageserver-types';
 import { createEngine } from '../engine.js';
 
 function createDocument(languageId: string, content: string): TextDocument {
@@ -195,6 +195,24 @@ describe('JessLanguageServiceEngine', () => {
         expect(diagnostics).toEqual([]);
       }
     });
+
+    it('reports undefined Less variable references (semantic)', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', 'a { color: @missing; }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const codes = diagnostics.map(d => d.code);
+      expect(codes).toContain('var/undefined');
+    });
+
+    it('reports undefined Less mixin calls (semantic)', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', '.a { .missing(); }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const codes = diagnostics.map(d => d.code);
+      expect(codes).toContain('mixin/undefined');
+    });
   });
 
   describe('document symbols', () => {
@@ -220,6 +238,114 @@ describe('JessLanguageServiceEngine', () => {
       expect(names.some(n => n.includes('@media'))).toBe(true);
       expect(names.some(n => n.includes('.a'))).toBe(true);
       expect(names.some(n => n.includes('$primary'))).toBe(true);
+    });
+  });
+
+  describe('folding + selection ranges', () => {
+    it('provides folding ranges for multi-line blocks', () => {
+      const engine = createEngine();
+      const doc = createDocument(
+        'css',
+        `
+          @media screen {
+            a {
+              color: red;
+            }
+          }
+        `
+      );
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const folds = engine.getFoldingRanges(doc.uri);
+      expect(folds.length).toBeGreaterThan(0);
+      expect(folds.some(f => f.startLine < f.endLine)).toBe(true);
+    });
+
+    it('provides nested selection ranges at a position', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', '.a { color: red; }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const pos = Position.create(0, 5); // inside selector block
+      const ranges = engine.getSelectionRanges(doc.uri, [pos]);
+      expect(ranges.length).toBe(1);
+
+      // Ensure there is at least one parent range.
+      expect(ranges[0]?.parent).toBeDefined();
+    });
+  });
+
+  describe('code actions', () => {
+    it('offers a quick fix to create an undefined Less variable', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', 'a { color: @missing; }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const diags = engine.getDiagnostics(doc.uri);
+      const target = diags.find(d => d.code === 'var/undefined');
+      expect(target).toBeDefined();
+
+      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] } as any);
+      expect(actions.some(a => a.kind === CodeActionKind.QuickFix)).toBe(true);
+      expect(actions.some(a => a.title.includes('Create variable'))).toBe(true);
+    });
+
+    it('offers a quick fix to create an undefined Less mixin', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', '.a { .missing(); }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const diags = engine.getDiagnostics(doc.uri);
+      const target = diags.find(d => d.code === 'mixin/undefined');
+      expect(target).toBeDefined();
+
+      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] } as any);
+      expect(actions.some(a => a.kind === CodeActionKind.QuickFix)).toBe(true);
+      expect(actions.some(a => a.title.includes('Create mixin'))).toBe(true);
+    });
+  });
+
+  describe('formatting', () => {
+    it('formats a simple CSS snippet deterministically', () => {
+      const engine = createEngine();
+      const doc = createDocument('css', 'a{color:red;}');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const edits1 = engine.formatDocument(doc.uri);
+      const edits2 = engine.formatDocument(doc.uri);
+
+      expect(edits1).toEqual(edits2);
+      expect(edits1.length).toBeGreaterThan(0);
+      expect(edits1[0]!.newText).toContain('color');
+    });
+  });
+
+  describe('document links', () => {
+    it('finds url() and @import links', () => {
+      const engine = createEngine();
+      const doc = createDocument('css', '@import "foo.css";\na { background: url("https://example.com/a.png"); }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const links = engine.getDocumentLinks(doc.uri);
+      const targets = links.map(l => l.target);
+      expect(targets.some(t => String(t).includes('foo.css'))).toBe(true);
+      expect(targets).toContain('https://example.com/a.png');
+    });
+
+    it('handles Less @import options and repeated imports', () => {
+      const engine = createEngine();
+      const doc = createDocument(
+        'less',
+        [
+          '@import "import/import-once-test-c";',
+          '@import "import/import-once-test-c";',
+          '@import "import/import-once-test-c.less";',
+          '@import "import/deeper/import-once-test-a";',
+          '@import (multiple) "import/import-test-f.less";',
+          '@import (multiple) "import/import-test-f.less";'
+        ].join('\n')
+      );
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const links = engine.getDocumentLinks(doc.uri);
+      const targets = links.map(l => l.target);
+      expect(targets.some(t => String(t).includes('import/import-once-test-c'))).toBe(true);
+      expect(targets.some(t => String(t).includes('import/import-test-f.less'))).toBe(true);
     });
   });
 });

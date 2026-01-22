@@ -4,6 +4,10 @@ import { Parser as ScssParser } from '@jesscss/scss-parser';
 import type { IParseResult, Rules, Node } from '@jesscss/core';
 import { getErrorFromParser, toDiagnostic, getValues, isNode } from '@jesscss/core';
 import { createRequire } from 'node:module';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { extractImports, resolveImport } from '@jesscss/style-resolver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import {
   CompletionItem,
@@ -12,12 +16,20 @@ import {
   Diagnostic,
   DiagnosticSeverity,
   DocumentSymbol,
+  FoldingRange,
+  FoldingRangeKind,
   Hover,
   Location,
   MarkupContent,
   MarkupKind,
   Position,
   Range,
+  CodeAction,
+  CodeActionContext,
+  CodeActionKind,
+  DocumentLink,
+  WorkspaceEdit,
+  SelectionRange,
   SemanticTokens,
   SymbolKind,
   TextEdit
@@ -263,6 +275,7 @@ for (const prop of webCssData.properties ?? []) {
 }
 
 export type JessLanguageServiceEngine = {
+  configure(config: unknown): void;
   open(uri: string, languageId: string, version: number, text: string): void;
   change(uri: string, version: number, text: string): void;
   close(uri: string): void;
@@ -273,6 +286,11 @@ export type JessLanguageServiceEngine = {
   findReferences(uri: string, position: Position): Location[];
   getDocumentSymbols(uri: string): DocumentSymbol[];
   getDiagnostics(uri: string): Diagnostic[];
+  getFoldingRanges(uri: string): FoldingRange[];
+  getSelectionRanges(uri: string, positions: Position[]): SelectionRange[];
+  getCodeActions(uri: string, range: Range, context: CodeActionContext): CodeAction[];
+  formatDocument(uri: string): TextEdit[];
+  getDocumentLinks(uri: string): DocumentLink[];
   getSemanticTokens(uri: string): SemanticTokens;
 };
 
@@ -395,6 +413,27 @@ function formatVarName(lang: JessLang, rawName: string): string {
 
 export function createEngine(): JessLanguageServiceEngine {
   const docs = new Map<string, TrackedDoc>();
+  let semanticDiagnosticSeverities: Record<string, DiagnosticSeverity> = {
+    'var/undefined': DiagnosticSeverity.Warning,
+    'mixin/undefined': DiagnosticSeverity.Warning
+  };
+
+  function parseSeverity(value: unknown): DiagnosticSeverity | null {
+    switch (value) {
+      case 'error':
+        return DiagnosticSeverity.Error;
+      case 'warning':
+        return DiagnosticSeverity.Warning;
+      case 'information':
+        return DiagnosticSeverity.Information;
+      case 'hint':
+        return DiagnosticSeverity.Hint;
+      case 'off':
+        return null;
+      default:
+        return null;
+    }
+  }
 
   function ensure(uri: string): TrackedDoc {
     const doc = docs.get(uri);
@@ -422,6 +461,28 @@ export function createEngine(): JessLanguageServiceEngine {
   }
 
   return {
+    configure(config) {
+      // Expected shape (from client settings): { diagnostics?: { severity?: Record<string, string> } }
+      // Example: { diagnostics: { severity: { "var/undefined": "error" } } }
+      const severity = (config as any)?.diagnostics?.severity;
+      if (severity && typeof severity === 'object') {
+        const next: Record<string, DiagnosticSeverity> = { ...semanticDiagnosticSeverities };
+        for (const [k, v] of Object.entries(severity as Record<string, unknown>)) {
+          const parsed = parseSeverity(v);
+          if (parsed === null) {
+            // off or invalid: delete to fall back to default behavior (or skip if off explicitly)
+            if (v === 'off') {
+              // Mark as off by deleting and remembering absence; handled at lookup-time by parseSeverity.
+              delete next[k];
+            }
+            continue;
+          }
+          next[k] = parsed;
+        }
+        semanticDiagnosticSeverities = next;
+      }
+    },
+
     open(uri, languageId, version, text) {
       const lang = getJessLangFromLanguageId(languageId);
       const document = TextDocument.create(uri, languageId, version, text);
@@ -842,9 +903,6 @@ export function createEngine(): JessLanguageServiceEngine {
 
       const parseErrors = Array.isArray(parse.errors) ? parse.errors : [];
       const lexErrors = Array.isArray(parse.lexerResult?.errors) ? (parse.lexerResult?.errors ?? []) : [];
-      if (parseErrors.length === 0 && lexErrors.length === 0) {
-        return [];
-      }
 
       const diagnostics: Diagnostic[] = [];
 
@@ -915,6 +973,108 @@ export function createEngine(): JessLanguageServiceEngine {
         });
       }
 
+      // Semantic diagnostics (only when syntax is clean to avoid noisy false-positives).
+      if (parseErrors.length === 0 && lexErrors.length === 0 && parse.tree) {
+        const declVars = new Set<string>();
+        const declMixins = new Set<string>();
+        const refsVar: Array<{ name: string; node: Node }> = [];
+        const refsMixin: Array<{ name: string; node: Node }> = [];
+
+        const normalizeVar = (raw: string) => raw.trim().replace(/^[$@]/, '').toLowerCase();
+
+        // Traverse full tree (do not rely on `tracked.index.nodes`, since some nodes (e.g. Reference)
+        // may not have a location span, but their children do).
+        const stack: Node[] = [parse.tree as unknown as Node];
+        const seen = new Set<Node>();
+        while (stack.length) {
+          const node = stack.pop()!;
+          if (!node || seen.has(node)) continue;
+          seen.add(node);
+
+          const n: any = node;
+          if (n.type === 'VarDeclaration') {
+            const nameNode = n.value?.name;
+            const nameStr = typeof nameNode === 'string' ? nameNode : String(nameNode?.valueOf?.() ?? nameNode?.value ?? '');
+            const norm = normalizeVar(nameStr);
+            if (norm) declVars.add(norm);
+          } else if (n.type === 'Mixin') {
+            const nameNode = n.value?.name;
+            const nameStr = typeof nameNode === 'string' ? nameNode : String(nameNode?.valueOf?.() ?? nameNode?.value ?? '');
+            const norm = nameStr.trim();
+            if (norm) declMixins.add(norm);
+          } else if (n.type === 'Reference' && n.options?.type === 'variable') {
+            const key = n.value?.key;
+            const raw = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : String(key?.valueOf?.() ?? '');
+            const norm = normalizeVar(raw);
+            if (norm) refsVar.push({ name: norm, node });
+          } else if (n.type === 'Reference' && (n.options?.type === 'mixin' || n.options?.type === 'mixin-ruleset')) {
+            const key = n.value?.key;
+            const raw = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : String(key?.valueOf?.() ?? '');
+            const nameStr = raw.trim();
+            if (nameStr) refsMixin.push({ name: nameStr, node });
+          }
+
+          const value = (node as any).value;
+          for (const child of getValues(value)) {
+            if (isNode(child)) {
+              stack.push(child as Node);
+            }
+          }
+        }
+
+        const severityFor = (code: string): DiagnosticSeverity | null => {
+          const s = semanticDiagnosticSeverities[code];
+          return typeof s === 'number' ? s : null;
+        };
+
+        const spanFor = (n: any): { start: number; end: number } | null => {
+          const span = getSpan(n as Node);
+          if (span) return span;
+          // Fallback: use span of reference key (common for Less mixin-ruleset refs).
+          const key = n?.value?.key;
+          if (isNode(key)) {
+            return getSpan(key as Node);
+          }
+          return null;
+        };
+
+        for (const r of refsVar) {
+          if (!declVars.has(r.name)) {
+            const sev = severityFor('var/undefined');
+            if (sev !== null) {
+              const span = spanFor(r.node);
+              if (span) {
+                diagnostics.push({
+                  code: 'var/undefined',
+                  source: 'jess',
+                  message: `Undefined variable ${formatVarName(tracked.lang, r.name)}`,
+                  severity: sev,
+                  range: toRange(doc, span.start, span.end)
+                });
+              }
+            }
+          }
+        }
+
+        for (const r of refsMixin) {
+          if (!declMixins.has(r.name)) {
+            const sev = severityFor('mixin/undefined');
+            if (sev !== null) {
+              const span = spanFor(r.node);
+              if (span) {
+                diagnostics.push({
+                  code: 'mixin/undefined',
+                  source: 'jess',
+                  message: `Undefined mixin ${r.name}`,
+                  severity: sev,
+                  range: toRange(doc, span.start, span.end)
+                });
+              }
+            }
+          }
+        }
+      }
+
       // Sort, dedupe, cap.
       diagnostics.sort((a, b) => {
         if (a.range.start.line !== b.range.start.line) return a.range.start.line - b.range.start.line;
@@ -934,6 +1094,330 @@ export function createEngine(): JessLanguageServiceEngine {
     }
 
     ,
+
+    getFoldingRanges(uri) {
+      const tracked = ensure(uri);
+      const doc = tracked.document;
+      const index = tracked.index;
+      if (!index) {
+        return [];
+      }
+
+      const out: FoldingRange[] = [];
+      const seen = new Set<string>();
+
+      for (const entry of index.nodes) {
+        const n: any = entry.node;
+        // Only fold structural blocks.
+        const foldable =
+          n?.type === 'Ruleset'
+          || n?.type === 'AtRule'
+          || n?.type === 'Mixin'
+          || n?.type === 'Func';
+        if (!foldable) continue;
+
+        const span = getSpan(entry.node);
+        if (!span) continue;
+
+        const start = doc.positionAt(span.start);
+        const end = doc.positionAt(span.end);
+        if (end.line <= start.line) continue;
+
+        const key = `${start.line}:${end.line}:${n.type}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        out.push({
+          startLine: start.line,
+          endLine: end.line,
+          kind: FoldingRangeKind.Region
+        });
+
+        if (out.length >= 2000) break;
+      }
+
+      out.sort((a, b) => (a.startLine - b.startLine) || (a.endLine - b.endLine));
+      return out;
+    },
+
+    getSelectionRanges(uri, positions) {
+      const tracked = ensure(uri);
+      const doc = tracked.document;
+      const index = tracked.index;
+      if (!index) {
+        return positions.map((p) => ({ range: { start: p, end: p } as Range }));
+      }
+
+      const rangesForOffset = (offset: number): Range[] => {
+        const containing: Array<{ start: number; end: number }> = [];
+        for (const entry of index.nodes) {
+          if (entry.start <= offset && offset <= entry.end) {
+            containing.push({ start: entry.start, end: entry.end });
+          }
+        }
+        containing.sort((a, b) => (a.end - a.start) - (b.end - b.start));
+        const out: Range[] = [];
+        const seen = new Set<string>();
+        for (const c of containing) {
+          const r = { start: doc.positionAt(c.start), end: doc.positionAt(c.end) } as Range;
+          const key = `${r.start.line}:${r.start.character}:${r.end.line}:${r.end.character}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push(r);
+          if (out.length >= 50) break;
+        }
+        return out;
+      };
+
+      const toSelectionChain = (ranges: Range[]): SelectionRange => {
+        if (ranges.length === 0) {
+          const zero = Position.create(0, 0);
+          return { range: { start: zero, end: zero } as Range };
+        }
+        const last = ranges[ranges.length - 1]!;
+        let current: SelectionRange = { range: last };
+        for (let i = ranges.length - 2; i >= 0; i--) {
+          current = { range: ranges[i]!, parent: current };
+        }
+        return current;
+      };
+
+      return positions.map((pos) => {
+        const offset = doc.offsetAt(pos);
+        const ranges = rangesForOffset(offset);
+        return toSelectionChain(ranges);
+      });
+    },
+
+    getCodeActions(uri, range, context) {
+      const tracked = ensure(uri);
+      const doc = tracked.document;
+      const actions: CodeAction[] = [];
+
+      const diagnostics = Array.isArray(context?.diagnostics) ? context.diagnostics : [];
+      const findNodeAt = (pos: Position) => tracked.index?.findNodeAtOffset(doc.offsetAt(pos)) ?? null;
+
+      for (const diag of diagnostics as any[]) {
+        const code = String(diag?.code ?? '');
+        if (code === 'var/undefined') {
+          // Try to recover variable name from AST at diagnostic range.
+          const node: any = findNodeAt(diag.range?.start ?? range.start);
+          let raw = '';
+          if (node?.type === 'Reference' && node.options?.type === 'variable') {
+            const key = node.value?.key;
+            raw = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : String(key?.valueOf?.() ?? '');
+          } else {
+            raw = String(diag?.message ?? '').match(/Undefined variable\s+(.+)$/)?.[1] ?? '';
+          }
+          const name = raw.trim() || 'var';
+
+          const insertText = tracked.lang === 'scss'
+            ? `$${name.replace(/^[$@]/, '')}: ;\n`
+            : tracked.lang === 'less'
+              ? `@${name.replace(/^[$@]/, '')}: ;\n`
+              : `--${name.replace(/^[$@]/, '')}: ;\n`;
+
+          const edit: WorkspaceEdit = {
+            changes: {
+              [uri]: [
+                TextEdit.insert(Position.create(0, 0), insertText)
+              ]
+            }
+          };
+
+          actions.push({
+            title: `Create variable ${name}`,
+            kind: CodeActionKind.QuickFix,
+            diagnostics: [diag],
+            edit
+          });
+        }
+
+        if (code === 'mixin/undefined') {
+          const node: any = findNodeAt(diag.range?.start ?? range.start);
+          let name = '';
+          if (node?.type === 'Reference' && (node.options?.type === 'mixin' || node.options?.type === 'mixin-ruleset')) {
+            const key = node.value?.key;
+            name = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : String(key?.valueOf?.() ?? '');
+          } else {
+            name = String(diag?.message ?? '').match(/Undefined mixin\s+(.+)$/)?.[1] ?? '';
+          }
+          name = name.trim() || '.mixin';
+
+          const insertText = `${name}() {\n  \n}\n\n`;
+          const endPos = doc.positionAt(doc.getText().length);
+          const edit: WorkspaceEdit = {
+            changes: {
+              [uri]: [
+                TextEdit.insert(endPos, (endPos.character === 0 ? '' : '\n') + insertText)
+              ]
+            }
+          };
+
+          actions.push({
+            title: `Create mixin ${name}()`,
+            kind: CodeActionKind.QuickFix,
+            diagnostics: [diag],
+            edit
+          });
+        }
+      }
+
+      return actions;
+    },
+
+    formatDocument(uri) {
+      const tracked = ensure(uri);
+      const doc = tracked.document;
+      const parse = tracked.parse;
+      const tree: any = parse?.tree as any;
+      if (!tree || typeof tree.toTrimmedString !== 'function') {
+        return [];
+      }
+
+      // Basic formatting: rely on core printer. This is intentionally conservative.
+      const options = {
+        compress: false,
+        collapseNesting: false
+      };
+      let formatted = String(tree.toTrimmedString(options) ?? '');
+      if (!formatted.endsWith('\n')) {
+        formatted += '\n';
+      }
+
+      const fullRange: Range = {
+        start: Position.create(0, 0),
+        end: doc.positionAt(doc.getText().length)
+      };
+
+      // Avoid no-op edits.
+      if (formatted === doc.getText() || formatted === doc.getText() + '\n') {
+        return [];
+      }
+
+      return [TextEdit.replace(fullRange, formatted)];
+    },
+
+    getDocumentLinks(uri) {
+      const tracked = ensure(uri);
+      const doc = tracked.document;
+      const text = doc.getText();
+
+      const links: DocumentLink[] = [];
+      const tryResolveFileTarget = (rawTarget: string): string => {
+        const t = rawTarget.trim();
+        if (!t) return t;
+        if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(t) || t.startsWith('file:')) {
+          return t;
+        }
+
+        // Resolve relative paths for file:// documents.
+        let basePath: string | null = null;
+        try {
+          if (doc.uri.startsWith('file:')) {
+            basePath = path.dirname(fileURLToPath(doc.uri));
+          }
+        } catch {
+          basePath = null;
+        }
+
+        // If we can't resolve, still return raw.
+        if (!basePath) return t;
+
+        // Strip query/hash for filesystem checks, but preserve for final URL.
+        const m = t.match(/^([^?#]+)([?#].*)?$/);
+        const filePart = m?.[1] ?? t;
+        const suffix = m?.[2] ?? '';
+
+        const resolvedBase = path.resolve(basePath, filePart);
+        const ext = path.extname(filePart);
+        const candidates: string[] = [resolvedBase];
+
+        if (!ext) {
+          if (tracked.lang === 'less') {
+            candidates.push(`${resolvedBase}.less`, `${resolvedBase}.css`);
+          } else if (tracked.lang === 'scss') {
+            candidates.push(`${resolvedBase}.scss`, `${resolvedBase}.sass`, `${resolvedBase}.css`);
+          } else {
+            candidates.push(`${resolvedBase}.css`);
+          }
+        }
+
+        const found = candidates.find(p => fs.existsSync(p));
+        const finalPath = (found ?? candidates[0]!) + suffix;
+        return String(pathToFileURL(finalPath));
+      };
+
+      const pushLink = (startOffset: number, endOffset: number, target: string) => {
+        if (!target) return;
+        const start = doc.positionAt(startOffset);
+        const end = doc.positionAt(endOffset);
+        if (start.line > end.line || (start.line === end.line && start.character >= end.character)) return;
+        links.push({
+          range: { start, end } as Range,
+          target: tryResolveFileTarget(target)
+        });
+      };
+
+      // 1) url(...) links (quoted or unquoted)
+      // We keep this regex conservative to avoid false positives.
+      const urlRe = /url\(\s*(?:'([^']+)'|"([^"]+)"|([^) \t\r\n]+))\s*\)/g;
+      for (let m: RegExpExecArray | null; (m = urlRe.exec(text)); ) {
+        const raw = m[1] ?? m[2] ?? m[3] ?? '';
+        if (!raw) continue;
+        const rawStartInMatch =
+          m[1] != null ? m[0].indexOf(m[1]) : m[2] != null ? m[0].indexOf(m[2]) : m[0].indexOf(m[3] ?? '');
+        const start = m.index + rawStartInMatch;
+        const end = start + raw.length;
+        pushLink(start, end, raw);
+      }
+
+      // 2) @import/@use links (tolerant extraction + real resolution).
+      const fromFilePath = (() => {
+        try {
+          return doc.uri.startsWith('file:') ? fileURLToPath(doc.uri) : null;
+        } catch {
+          return null;
+        }
+      })();
+      for (const imp of extractImports(text, tracked.lang === 'jess' ? 'css' : tracked.lang)) {
+        const raw = imp.specifier;
+        const start = imp.specifierRange.startOffset;
+        const end = imp.specifierRange.endOffset;
+        if (fromFilePath) {
+          const resolved = resolveImport(
+            { exists: (p: string) => fs.existsSync(p) },
+            { lang: tracked.lang === 'jess' ? 'css' : tracked.lang, fromFilePath, specifier: raw }
+          );
+          if (resolved) {
+            const targetUrl = String(pathToFileURL(resolved.filePath));
+            pushLink(start, end, targetUrl);
+            continue;
+          }
+        }
+        pushLink(start, end, raw);
+      }
+
+      // 3) bare http(s):// links inside strings (common in docs/comments)
+      const httpRe = /(https?:\/\/[^\s"'<>]+)\b/g;
+      for (let m: RegExpExecArray | null; (m = httpRe.exec(text)); ) {
+        const raw = m[1] ?? '';
+        if (!raw) continue;
+        pushLink(m.index, m.index + raw.length, raw);
+      }
+
+      // Dedupe by range+target.
+      const seen = new Set<string>();
+      const out: DocumentLink[] = [];
+      for (const l of links) {
+        const k = `${l.range.start.line}:${l.range.start.character}:${l.range.end.line}:${l.range.end.character}:${l.target ?? ''}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        out.push(l);
+        if (out.length >= 1000) break;
+      }
+      return out;
+    },
 
     getSemanticTokens(uri) {
       const tracked = ensure(uri);

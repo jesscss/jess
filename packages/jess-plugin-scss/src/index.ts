@@ -13,6 +13,7 @@ import {
 } from '@jesscss/core';
 import { Parser } from '@jesscss/scss-parser';
 import path from 'node:path';
+import { expandScssImportCandidates } from '@jesscss/style-resolver';
 
 export type ScssPluginOptions = {
   /**
@@ -33,40 +34,8 @@ export class ScssPlugin extends AbstractPlugin {
   }
 
   expandImport(importPath: string) {
-    const ext = path.extname(importPath);
-    const base = ext ? importPath.slice(0, -ext.length) : importPath;
-
-    // Sass resolution rules (minimal subset):
-    // - Try explicit path first (if extension provided)
-    // - Otherwise try:
-    //   - foo.scss / _foo.scss
-    //   - foo/index.scss / foo/_index.scss
-    // Note: we do not implement .sass indented syntax here.
-    const candidates: string[] = [];
-
-    const pushUnique = (p: string) => {
-      if (!candidates.includes(p)) candidates.push(p);
-    };
-
-    const withExt = (p: string) => (p.endsWith('.scss') ? p : `${p}.scss`);
-
-    if (ext) {
-      pushUnique(importPath);
-      // underscore partial variant, if the last segment isn't already underscored
-      const dir = path.dirname(importPath);
-      const file = path.basename(importPath);
-      if (!file.startsWith('_')) {
-        pushUnique(path.join(dir, `_${file}`));
-      }
-      return candidates;
-    }
-
-    pushUnique(withExt(base));
-    pushUnique(withExt(path.join(path.dirname(base), `_${path.basename(base)}`)));
-    pushUnique(withExt(path.join(base, 'index')));
-    pushUnique(withExt(path.join(base, '_index')));
-
-    return candidates;
+    // Keep import expansion in sync with the language service.
+    return expandScssImportCandidates(importPath);
   }
 
   safeParse(filePath: string, source: string): ISafeParseResult {

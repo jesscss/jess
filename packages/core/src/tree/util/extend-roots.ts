@@ -733,6 +733,7 @@ export function processExtends(context: Context): void {
   // Each extend can only transform a particular ruleset's selector once
   const transformedByExtend = new Map<Ruleset, Set<string>>();
   const allRoots = context.extendRoots.getAlts();
+  const allRootsArr = Array.isArray(allRoots) ? allRoots : [...allRoots];
   const file = context.treeContext?.file;
   const debugFilePath =
     file?.fullPath
@@ -773,7 +774,7 @@ export function processExtends(context: Context): void {
    */
   const reindexRuleset = (ruleset: Ruleset): void => {
     // Find which extend root this ruleset is registered to and add it back
-    for (const root of allRoots) {
+    for (const root of allRootsArr) {
       const registry = root.getRegistry('ruleset');
       // Check if ruleset is already indexed in this registry
       for (const rulesetSet of registry.index.values()) {
@@ -810,6 +811,23 @@ export function processExtends(context: Context): void {
           return false;
         };
         if (findNode(rules)) {
+          // #region agent log
+          if (process.env.DEBUG_EXTEND_SKIP === 'true' && debugThisFile) {
+            try {
+              syncLog({
+                sessionId: 'debug-session',
+                runId: process.env.DEBUG_RUN_ID || 'run',
+                hypothesisId: 'H25',
+                location: 'extend-roots.ts:shouldSkipRuleset',
+                message: 'skip-ruleset-extend-is-child',
+                data: {
+                  selector: (ruleset.selector as any)?.valueOf?.() ?? null
+                },
+                timestamp: Date.now()
+              });
+            } catch {}
+          }
+          // #endregion
           return true; // Extend is a child - skip this ruleset
         }
       }
@@ -835,6 +853,23 @@ export function processExtends(context: Context): void {
 
           // If we find the extend node, it's prepended
           if (sibling === extendNode) {
+            // #region agent log
+            if (process.env.DEBUG_EXTEND_SKIP === 'true' && debugThisFile) {
+              try {
+                syncLog({
+                  sessionId: 'debug-session',
+                  runId: process.env.DEBUG_RUN_ID || 'run',
+                  hypothesisId: 'H25',
+                  location: 'extend-roots.ts:shouldSkipRuleset',
+                  message: 'skip-ruleset-extend-is-prepended-sibling',
+                  data: {
+                    selector: (ruleset.selector as any)?.valueOf?.() ?? null
+                  },
+                  timestamp: Date.now()
+                });
+              } catch {}
+            }
+            // #endregion
             return true;
           }
 
@@ -854,6 +889,23 @@ export function processExtends(context: Context): void {
               return false;
             };
             if (findInRules(sibling)) {
+              // #region agent log
+              if (process.env.DEBUG_EXTEND_SKIP === 'true' && debugThisFile) {
+                try {
+                  syncLog({
+                    sessionId: 'debug-session',
+                    runId: process.env.DEBUG_RUN_ID || 'run',
+                    hypothesisId: 'H25',
+                    location: 'extend-roots.ts:shouldSkipRuleset',
+                    message: 'skip-ruleset-extend-is-prepended-in-rules-sibling',
+                    data: {
+                      selector: (ruleset.selector as any)?.valueOf?.() ?? null
+                    },
+                    timestamp: Date.now()
+                  });
+                } catch {}
+              }
+              // #endregion
               return true; // Extend is prepended - skip this ruleset
             }
           }
@@ -959,18 +1011,46 @@ export function processExtends(context: Context): void {
           foundCount: rulesetSet?.length ?? 0
         });
       }
+      // #region agent log
+      if (process.env.DEBUG_EXTEND_BOOT === 'true' && debugThisFile) {
+        try {
+          const t = singleTarget.valueOf();
+          if (t === '.ma' || t === '.mb' || t === '.mc' || t === '.x' || t === '.y' || t === '.z') {
+            syncLog({
+              sessionId: 'debug-session',
+              runId: process.env.DEBUG_RUN_ID || 'run',
+              hypothesisId: 'H22',
+              location: 'extend-roots.ts:processExtends',
+              message: 'extend-chaining-target-lookup',
+              data: {
+                depth,
+                target: t,
+                extendWith: selectorWithExtend.valueOf(),
+                partial,
+                foundCount: rulesetSet?.length ?? 0,
+                accessibleRootsCount: accessibleRoots.size,
+                allRootsCount: allRootsArr.length
+              },
+              timestamp: Date.now()
+            });
+          }
+        } catch {}
+      }
+      // #endregion
 
       // Handle warnings for Less compatibility (only on first processing)
       if (!rulesetSet || rulesetSet.length === 0) {
         // Check if target exists anywhere (not just in accessible roots)
         const allRootsForWarning = context.extendRoots.getAlts();
         let targetExistsElsewhere = false;
+        let existsCount = 0;
 
         for (const searchRoot of allRootsForWarning) {
           if (!accessibleRoots.has(searchRoot)) {
             const found = searchRoot.find('ruleset', singleTarget.keySet);
             if (found && found.length > 0) {
               targetExistsElsewhere = true;
+              existsCount += found.length;
               break;
             }
           }
@@ -979,6 +1059,24 @@ export function processExtends(context: Context): void {
         // Collect warnings (only on first processing)
         if (depth === 0) {
           if (targetExistsElsewhere) {
+            // #region agent log
+            if (process.env.DEBUG_EXTEND_BOOT === 'true' && debugThisFile) {
+              try {
+                const t = singleTarget.valueOf();
+                if (t === '.mb' || t === '.mc' || t === '.ma' || t === '.x' || t === '.y' || t === '.z') {
+                  syncLog({
+                    sessionId: 'debug-session',
+                    runId: process.env.DEBUG_RUN_ID || 'run',
+                    hypothesisId: 'H22',
+                    location: 'extend-roots.ts:processExtends',
+                    message: 'extend-target-exists-but-not-accessible',
+                    data: { target: t, existsCount },
+                    timestamp: Date.now()
+                  });
+                }
+              } catch {}
+            }
+            // #endregion
             const warning = WARN.extendNotAccessible({
               ctx: context.treeContext?.file ? { file: context.treeContext.file } : undefined,
               node: extendNode.location && extendNode.location.length === 6 ? { location: extendNode.location } : undefined,
@@ -1234,6 +1332,33 @@ export function processExtends(context: Context): void {
 
   while (rulesetsToCheck.size > 0 && iteration < maxIterations) {
     iteration++;
+    let __agentPhase2LogCount = 0;
+    let __agentPhase2DeepYzCount = 0;
+    let __agentPhase2RulesetLoopCount = 0;
+    // #region agent log
+    if (process.env.DEBUG_EXTEND_PHASE2_RULESETS === 'true' && debugThisFile) {
+      try {
+        if (iteration <= 2) {
+          const selectors: (string | null)[] = [];
+          let i = 0;
+          for (const rs of rulesetsToCheck) {
+            if (i++ >= 50) break;
+            const sel: any = (rs as any).selector;
+            selectors.push(typeof sel?.valueOf === 'function' ? sel.valueOf() : null);
+          }
+          syncLog({
+            sessionId: 'debug-session',
+            runId: process.env.DEBUG_RUN_ID || 'run',
+            hypothesisId: 'H27',
+            location: 'extend-roots.ts:phase2',
+            message: 'phase2-rulesetsToCheck-snapshot',
+            data: { iteration, size: rulesetsToCheck.size, selectors },
+            timestamp: Date.now()
+          });
+        }
+      } catch {}
+    }
+    // #endregion
     // #region agent log
     __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-iteration-start', {
       ctxId: __agentTraceContextId(context as unknown as object),
@@ -1264,6 +1389,7 @@ export function processExtends(context: Context): void {
     }
 
     for (const ruleset of rulesetsToCheck) {
+      __agentPhase2RulesetLoopCount++;
       const currentSelector = ruleset.selector as Selector;
       const currentSelectorValue = currentSelector.valueOf();
       const seenStates = seenSelectorStates.get(ruleset)!;
@@ -1273,6 +1399,25 @@ export function processExtends(context: Context): void {
       let phase2SkipAlreadyTransformed = 0;
       let phase2TryExtendSelector = 0;
       let phase2SelectorChanged = 0;
+      // #region agent log
+      if (process.env.DEBUG_EXTEND_PHASE2_RULESETS === 'true' && debugThisFile) {
+        try {
+          const cap = 60;
+          if (__agentPhase2LogCount < cap) {
+            __agentPhase2LogCount++;
+            syncLog({
+              sessionId: 'debug-session',
+              runId: process.env.DEBUG_RUN_ID || 'run',
+              hypothesisId: 'H26',
+              location: 'extend-roots.ts:phase2',
+              message: 'phase2-ruleset-candidate',
+              data: { iteration, selector: currentSelectorValue },
+              timestamp: Date.now()
+            });
+          }
+        } catch {}
+      }
+      // #endregion
       // #region agent log
       __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-ruleset-check', {
         ctxId: __agentTraceContextId(context as unknown as object),
@@ -1334,6 +1479,26 @@ export function processExtends(context: Context): void {
 
         for (const singleTarget of targetSelectors) {
           const phase2ExtendKey = `${singleTarget.valueOf()}:${selectorWithExtend.valueOf()}:${partial}`;
+          // #region agent log
+          if (process.env.DEBUG_EXTEND_PHASE2_DEEP === 'true' && debugThisFile) {
+            try {
+              if (iteration === 1 && currentSelectorValue === '.y,.z') {
+                if (__agentPhase2DeepYzCount < 12) {
+                  __agentPhase2DeepYzCount++;
+                  syncLog({
+                    sessionId: 'debug-session',
+                    runId: process.env.DEBUG_RUN_ID || 'run',
+                    hypothesisId: 'H29',
+                    location: 'extend-roots.ts:phase2',
+                    message: 'phase2-yz-consider',
+                    data: { iteration, from: currentSelectorValue, phase2ExtendKey },
+                    timestamp: Date.now()
+                  });
+                }
+              }
+            } catch {}
+          }
+          // #endregion
           if (attemptedPhase2ExtendKeys.has(phase2ExtendKey)) {
             // #region agent log
             __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-skip-duplicate-attempt', {
@@ -1355,9 +1520,81 @@ export function processExtends(context: Context): void {
               ? targetKeySet.isSubsetOf(currentSelKeySet)
               : targetKeySet.size === currentSelKeySet.size && targetKeySet.isSubsetOf(currentSelKeySet);
           });
+          // #region agent log
+          if (process.env.DEBUG_EXTEND_PHASE2_FOCUS === 'true' && debugThisFile) {
+            try {
+              if (phase2ExtendKey === '.z:.x:false') {
+                const selCount = currentSelectors.length;
+                let anyHasZ = false;
+                let minSize: number | null = null;
+                let maxSize: number | null = null;
+                for (const s of currentSelectors) {
+                  const ks = s.keySet;
+                  anyHasZ ||= ks.has('.z');
+                  const sz = ks.size;
+                  minSize = minSize === null ? sz : Math.min(minSize, sz);
+                  maxSize = maxSize === null ? sz : Math.max(maxSize, sz);
+                }
+                syncLog({
+                  sessionId: 'debug-session',
+                  runId: process.env.DEBUG_RUN_ID || 'run',
+                  hypothesisId: 'H24',
+                  location: 'extend-roots.ts:phase2',
+                  message: 'phase2-keyset-overlaps-check',
+                  data: {
+                    iteration,
+                    from: currentSelectorValue,
+                    selCount,
+                    anyHasZ,
+                    minKeySetSize: minSize,
+                    maxKeySetSize: maxSize,
+                    keySetOverlaps
+                  },
+                  timestamp: Date.now()
+                });
+              }
+              if (
+                process.env.DEBUG_EXTEND_PHASE2_DEEP === 'true'
+                && (currentSelectorValue === '.y,.z' || currentSelectorValue === '.md,.ma')
+                && (phase2ExtendKey === '.z:.x:false' || phase2ExtendKey === '.ma:.mb:false' || phase2ExtendKey === '.mb:.mc:false')
+              ) {
+                syncLog({
+                  sessionId: 'debug-session',
+                  runId: process.env.DEBUG_RUN_ID || 'run',
+                  hypothesisId: 'H28',
+                  location: 'extend-roots.ts:phase2',
+                  message: 'phase2-gate-keyset',
+                  data: { iteration, from: currentSelectorValue, phase2ExtendKey, keySetOverlaps },
+                  timestamp: Date.now()
+                });
+              }
+            } catch {}
+          }
+          // #endregion
 
           if (!keySetOverlaps) {
             phase2SkipKeySet++;
+            // #region agent log
+            if (process.env.DEBUG_EXTEND_PHASE2_FOCUS === 'true' && debugThisFile) {
+              try {
+                if (
+                  phase2ExtendKey.startsWith('.z:')
+                  || phase2ExtendKey.startsWith('.mb:')
+                  || phase2ExtendKey.startsWith('.ma:')
+                ) {
+                  syncLog({
+                    sessionId: 'debug-session',
+                    runId: process.env.DEBUG_RUN_ID || 'run',
+                    hypothesisId: 'H23',
+                    location: 'extend-roots.ts:phase2',
+                    message: 'phase2-skip-keyset',
+                    data: { iteration, from: currentSelectorValue, phase2ExtendKey },
+                    timestamp: Date.now()
+                  });
+                }
+              } catch {}
+            }
+            // #endregion
             // #region agent log
             __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-skip-keyset', {
               ctxId: __agentTraceContextId(context as unknown as object),
@@ -1385,9 +1622,50 @@ export function processExtends(context: Context): void {
               break;
             }
           }
+          // #region agent log
+          if (
+            process.env.DEBUG_EXTEND_PHASE2_DEEP === 'true'
+            && debugThisFile
+            && (currentSelectorValue === '.y,.z' || currentSelectorValue === '.md,.ma')
+            && (phase2ExtendKey === '.z:.x:false' || phase2ExtendKey === '.ma:.mb:false' || phase2ExtendKey === '.mb:.mc:false')
+          ) {
+            try {
+              syncLog({
+                sessionId: 'debug-session',
+                runId: process.env.DEBUG_RUN_ID || 'run',
+                hypothesisId: 'H28',
+                location: 'extend-roots.ts:phase2',
+                message: 'phase2-gate-accessible',
+                data: { iteration, from: currentSelectorValue, phase2ExtendKey, foundRuleset, accessibleRootsCount: accessibleRoots.size },
+                timestamp: Date.now()
+              });
+            } catch {}
+          }
+          // #endregion
 
           if (!foundRuleset) {
             phase2SkipInaccessible++;
+            // #region agent log
+            if (process.env.DEBUG_EXTEND_PHASE2_FOCUS === 'true' && debugThisFile) {
+              try {
+                if (
+                  phase2ExtendKey.startsWith('.z:')
+                  || phase2ExtendKey.startsWith('.mb:')
+                  || phase2ExtendKey.startsWith('.ma:')
+                ) {
+                  syncLog({
+                    sessionId: 'debug-session',
+                    runId: process.env.DEBUG_RUN_ID || 'run',
+                    hypothesisId: 'H23',
+                    location: 'extend-roots.ts:phase2',
+                    message: 'phase2-skip-inaccessible',
+                    data: { iteration, from: currentSelectorValue, phase2ExtendKey },
+                    timestamp: Date.now()
+                  });
+                }
+              } catch {}
+            }
+            // #endregion
             // #region agent log
             __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-skip-inaccessible', {
               ctxId: __agentTraceContextId(context as unknown as object),
@@ -1426,6 +1704,27 @@ export function processExtends(context: Context): void {
           // and return an error if there's no match
           phase2TryExtendSelector++;
           // #region agent log
+          if (process.env.DEBUG_EXTEND_PHASE2_FOCUS === 'true' && debugThisFile) {
+            try {
+              if (
+                phase2ExtendKey.startsWith('.z:')
+                || phase2ExtendKey.startsWith('.mb:')
+                || phase2ExtendKey.startsWith('.ma:')
+              ) {
+                syncLog({
+                  sessionId: 'debug-session',
+                  runId: process.env.DEBUG_RUN_ID || 'run',
+                  hypothesisId: 'H23',
+                  location: 'extend-roots.ts:phase2',
+                  message: 'phase2-tryExtendSelector',
+                  data: { iteration, from: currentSelectorValue, phase2ExtendKey },
+                  timestamp: Date.now()
+                });
+              }
+            } catch {}
+          }
+          // #endregion
+          // #region agent log
           __agentExtendTrace('extend-roots.ts:processExtends', 'phase2-tryExtendSelector', {
             ctxId: __agentTraceContextId(context as unknown as object),
             iteration,
@@ -1435,6 +1734,62 @@ export function processExtends(context: Context): void {
           });
           // #endregion
           const result = tryExtendSelector(currentSelector, singleTarget, selectorWithExtend, partial);
+          // #region agent log
+          if (process.env.DEBUG_EXTEND_PHASE2_FOCUS === 'true' && debugThisFile) {
+            try {
+              if (
+                phase2ExtendKey.startsWith('.z:')
+                || phase2ExtendKey.startsWith('.mb:')
+                || phase2ExtendKey.startsWith('.ma:')
+              ) {
+                syncLog({
+                  sessionId: 'debug-session',
+                  runId: process.env.DEBUG_RUN_ID || 'run',
+                  hypothesisId: 'H23',
+                  location: 'extend-roots.ts:phase2',
+                  message: 'phase2-tryExtendSelector-result',
+                  data: {
+                    iteration,
+                    from: currentSelectorValue,
+                    phase2ExtendKey,
+                    ok: !!result && !result.error,
+                    changed: !!result && !result.error && result.value.valueOf() !== currentSelectorValue,
+                    errType: result?.error?.type ?? null
+                  },
+                  timestamp: Date.now()
+                });
+              }
+            } catch {}
+          }
+          // #endregion
+          // #region agent log
+          if (
+            process.env.DEBUG_EXTEND_PHASE2_DEEP === 'true'
+            && debugThisFile
+            && (currentSelectorValue === '.y,.z' || currentSelectorValue === '.md,.ma')
+            && (phase2ExtendKey === '.z:.x:false' || phase2ExtendKey === '.ma:.mb:false' || phase2ExtendKey === '.mb:.mc:false')
+          ) {
+            try {
+              syncLog({
+                sessionId: 'debug-session',
+                runId: process.env.DEBUG_RUN_ID || 'run',
+                hypothesisId: 'H28',
+                location: 'extend-roots.ts:phase2',
+                message: 'phase2-result-deep',
+                data: {
+                  iteration,
+                  from: currentSelectorValue,
+                  phase2ExtendKey,
+                  ok: !!result && !result.error,
+                  changed: !!result && !result.error && result.value.valueOf() !== currentSelectorValue,
+                  errType: result?.error?.type ?? null,
+                  out: result && !result.error ? result.value.valueOf() : null
+                },
+                timestamp: Date.now()
+              });
+            } catch {}
+          }
+          // #endregion
 
           if (result && !result.error) {
             const extendedSelector = result.value;
@@ -1528,7 +1883,7 @@ export function processExtends(context: Context): void {
 
       // If we added to nextIteration, break out of outer loop
       if (nextIteration.has(ruleset)) {
-        break;
+        continue;
       }
 
       // #region agent log
@@ -1548,6 +1903,25 @@ export function processExtends(context: Context): void {
     }
 
     rulesetsToCheck = nextIteration;
+    // #region agent log
+    if (process.env.DEBUG_EXTEND_PHASE2_RULESETS === 'true' && debugThisFile) {
+      try {
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID || 'run',
+          hypothesisId: 'H30',
+          location: 'extend-roots.ts:phase2',
+          message: 'phase2-iteration-end',
+          data: {
+            iteration,
+            processedRulesets: __agentPhase2RulesetLoopCount,
+            nextIterationSize: nextIteration.size
+          },
+          timestamp: Date.now()
+        });
+      } catch {}
+    }
+    // #endregion
   }
 
   if (iteration >= maxIterations) {

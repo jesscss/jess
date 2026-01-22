@@ -34,7 +34,8 @@
   },
   "dependencies": {
     "@jesscss/core": "workspace:*",
-    "@jesscss/scss-parser": "workspace:*"
+    "@jesscss/scss-parser": "workspace:*",
+    "@jesscss/style-resolver": "workspace:*"
   },
   "devDependencies": {},
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",

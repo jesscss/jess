@@ -193,6 +193,14 @@
           "type": "boolean",
           "default": true,
           "description": "Enable the Jess language service (CSS/Jess/Less/SCSS)."
+        },
+        "jess.diagnostics.severity": {
+          "type": "object",
+          "default": {
+            "var/undefined": "warning",
+            "mixin/undefined": "warning"
+          },
+          "description": "Override severities for Jess semantic diagnostics. Values: 'error' | 'warning' | 'information' | 'hint' | 'off'. Keys are rule IDs like 'var/undefined'."
         }
       }
     }

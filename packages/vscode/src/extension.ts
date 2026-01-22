@@ -33,7 +33,9 @@ export async function activate(context: vscode.ExtensionContext) {
     ],
     outputChannel,
     // Keep it simple for now; we can add config sync later.
-    synchronize: {}
+    synchronize: {
+      configurationSection: 'jess'
+    }
   };
 
   client = new LanguageClient('jessLanguageService', 'Jess Language Service', serverOptions, clientOptions);

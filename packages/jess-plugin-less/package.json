@@ -36,6 +36,7 @@
     "@jesscss/core": "workspace:*",
     "@jesscss/fns": "workspace:*",
     "@jesscss/less-parser": "workspace:*",
+    "@jesscss/style-resolver": "workspace:*",
     "styles-config": "workspace:*"
   },
   "devDependencies": {},

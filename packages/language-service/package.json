@@ -26,6 +26,7 @@
     "@jesscss/css-parser": "workspace:*",
     "@jesscss/less-parser": "workspace:*",
     "@jesscss/scss-parser": "workspace:*",
+    "@jesscss/style-resolver": "workspace:*",
     "@vscode/web-custom-data": "^0.6.2",
     "known-css-properties": "~0.37.0",
     "vscode-languageserver": "^9.0.1",

@@ -18,6 +18,7 @@ import type { MathMode, UnitMode, LessOptions } from 'styles-config';
 import * as lessFunctions from '@jesscss/fns';
 import { Parser } from '@jesscss/less-parser';
 import path from 'node:path';
+import { expandLessImportCandidates } from '@jesscss/style-resolver';
 
 export class LessPlugin extends AbstractPlugin {
   name = 'less';
@@ -78,11 +79,9 @@ export class LessPlugin extends AbstractPlugin {
   }
 
   expandImport(importPath: string, currentDir: string) {
-    const ext = path.extname(importPath);
-    if (ext !== '.less') {
-      return [`${importPath}.less`, `${importPath}`];
-    }
-    return [importPath];
+    void currentDir;
+    // Keep import expansion in sync with the language service.
+    return expandLessImportCandidates(importPath);
   }
 
   safeParse(filePath: string, source: string): ISafeParseResult {

@@ -148,6 +148,16 @@ describe('scss-parser (ast serialize)', () => {
     expect(serializeTypes(tree)).toContainString(`(Interpolated`);
   });
 
+  it('serializes @use with(...) config var flags (!default, !global)', () => {
+    const { tree, errors, lexerResult } = parser.parse(`@use "foo" with ($a: 1 !default, $b: 2 !global);`);
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+    // Ensure both flags are captured on VarDeclarations inside the config Collection.
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`assign: '?:'`);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`setDefined: true`);
+  });
+
   it('serializes @extend .b inside a ruleset as an Extend node', () => {
     const { tree, errors, lexerResult } = parser.parse(`.a { @extend .b; }`);
     expect(lexerResult.errors).toEqual([]);

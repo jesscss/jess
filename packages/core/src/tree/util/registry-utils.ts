@@ -133,11 +133,11 @@ export abstract class Registry<
           }
         } catch {}
         // #endregion
-        // Mixin output Rules are only searchable when the lookup has an explicit target.
-        // NOTE: Do not use `leakyRules` to widen this; it causes parameter-scope variables to leak
-        // into later sibling lookups (see detached-rulesets fixtures).
-        if (isMixinOutput && options?.hasTarget === true) {
-          return true;
+        // Mixin output Rules should never participate in untargeted lookups.
+        // They are only searchable when the lookup has an explicit target.
+        // (This prevents mixin-call frame variables—including parameter bindings—from leaking.)
+        if (isMixinOutput) {
+          return options?.hasTarget === true;
         }
         // Otherwise, follow normal visibility rules
         // Only 'public' and 'optional' are visible (not 'private' or undefined)
@@ -896,6 +896,14 @@ export class MixinRegistry extends Registry<
 export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | Func> {
   index = new Map<string, JsFunction | Func>();
 
+  cloneForRules(rules: Rules): FunctionRegistry {
+    const next = new FunctionRegistry(rules);
+    // Preserve any functions injected directly into the registry (Less plugin style).
+    next.index = new Map(this.index);
+    next.pendingItems = new Set(this.pendingItems);
+    return next;
+  }
+
   override indexPendingItems() {
     for (const item of this.pendingItems) {
       if (item instanceof JsFunction) {
@@ -1164,18 +1172,17 @@ export class DeclarationRegistry extends Registry<Declaration> {
         let result = rules.getRegistry('declaration')._findClosestByStart(list, start);
         if (result) {
           newReadonly ||= result.options.readonly;
-          // Check if the current Rules has private visibility
+          // Check if the current Rules has private visibility.
           const currentRulesVisibility = rules.options.rulesVisibility?.[filterType] ?? '';
-          // Private variables: when searching FROM WITHIN a Rules with private visibility,
-          // variables declared in that Rules should be SKIPPED entirely (not found at all),
-          // allowing the lookup to continue up the parent chain
-          if (currentRulesVisibility === 'private') {
-            // Skip this variable entirely - don't add to candidates, just continue searching
-            // This allows lookups to continue up to find public variables
+          // Private vars should still be visible to lookups *within the same Rules*.
+          // They should only be hidden when searching "into" that Rules from outside
+          // (handled in child-search logic and by checking ancestors here).
+          const isLocalScope = rules === this.rules;
+          if (currentRulesVisibility === 'private' && !isLocalScope) {
+            // Skip private vars from ancestor Rules.
           } else {
             // When climbing UP the parent chain, we're looking at our own ancestor scopes.
             // Optionality only applies when "looking in" from outside (handled in _searchRulesChildren).
-            // So here we just add to candidates and mark as public.
             declCandidate.add(result);
             isPublic = true;
           }

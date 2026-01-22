@@ -266,28 +266,6 @@ importers:
         specifier: ~19.1.10
         version: 19.1.17
 
-  packages/extension:
-    dependencies:
-      '@jesscss/language-service':
-        specifier: workspace:*
-        version: link:../language-service
-      vscode-languageclient:
-        specifier: ^9.0.1
-        version: 9.0.1
-    devDependencies:
-      '@types/node':
-        specifier: ^18.15.13
-        version: 18.19.130
-      '@types/vscode':
-        specifier: ^1.85.0
-        version: 1.108.1
-      esbuild:
-        specifier: ^0.25.0
-        version: 0.25.12
-      typescript:
-        specifier: ~5.8.2
-        version: 5.8.3
-
   packages/fns:
     dependencies:
       '@jesscss/awaitable-pipe':
@@ -376,6 +354,9 @@ importers:
       '@jesscss/less-parser':
         specifier: workspace:*
         version: link:../less-parser
+      '@jesscss/style-resolver':
+        specifier: workspace:*
+        version: link:../style-resolver
       styles-config:
         specifier: workspace:*
         version: link:../config
@@ -423,6 +404,9 @@ importers:
       '@jesscss/scss-parser':
         specifier: workspace:*
         version: link:../scss-parser
+      '@jesscss/style-resolver':
+        specifier: workspace:*
+        version: link:../style-resolver
 
   packages/language-service:
     dependencies:
@@ -438,6 +422,9 @@ importers:
       '@jesscss/scss-parser':
         specifier: workspace:*
         version: link:../scss-parser
+      '@jesscss/style-resolver':
+        specifier: workspace:*
+        version: link:../style-resolver
       '@vscode/web-custom-data':
         specifier: ^0.6.2
         version: 0.6.2
@@ -531,6 +518,37 @@ importers:
       sass-spec:
         specifier: github:sass/sass-spec
         version: github.com/sass/sass-spec/f282e3844db9889a0747b810898f67571272e8e5(@babel/core@7.28.6)
+
+  packages/style-resolver:
+    devDependencies:
+      typescript:
+        specifier: ~5.8.2
+        version: 5.8.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@18.19.130)
+
+  packages/vscode:
+    dependencies:
+      '@jesscss/language-service':
+        specifier: workspace:*
+        version: link:../language-service
+      vscode-languageclient:
+        specifier: ^9.0.1
+        version: 9.0.1
+    devDependencies:
+      '@types/node':
+        specifier: ^18.15.13
+        version: 18.19.130
+      '@types/vscode':
+        specifier: ^1.85.0
+        version: 1.108.1
+      esbuild:
+        specifier: ^0.25.0
+        version: 0.25.12
+      typescript:
+        specifier: ~5.8.2
+        version: 5.8.3
 
 packages:
 

@@ -186,6 +186,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (isForward) {
       out.removeFlag(F_VISIBLE);
     }
+    // Compose re-imports default to reference mode (deduping output). In that case, the module’s
+    // rulesets/at-rules should not render again, but the rules must remain searchable for lookups.
+    if (type === 'compose' && reference && !isForward) {
+      out.removeFlag(F_VISIBLE);
+    }
     // Set sourceNode so variable lookups know they can cross import boundaries
     out.sourceNode = this;
     this.adopt(out);
@@ -229,7 +234,28 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       // and registerNode can detect this is an imported Rules
       rules.sourceNode = node;
       let evaldRules = context.evaldTrees.get(resolvedPath);
+
+      // Compose caching semantics:
+      // - The first time a module is composed, we evaluate and cache the evaluated Rules.
+      // - Subsequent compose imports reuse the cached evaluated Rules (so re-imports don't re-run evaluation).
+      // - Subsequent compose imports default to "reference" mode unless `multiple: true` is set,
+      //   so rulesets / at-rules are not output again.
+      if (type === 'compose' && evaldRules) {
+        if (withValues) {
+          // Sass-style: once configured, cannot be configured again.
+          // (We keep parsing show/hide/prefix metadata elsewhere; this is for with/set configs.)
+          throw new Error('Cannot configure a stylesheet more than once.');
+        }
+        // Reuse cached evaluated rules tree.
+        rules = evaldRules;
+        // Default: de-dupe output for compose re-imports unless explicitly multiple.
+        if (!importOptions!.multiple) {
+          importOptions!.reference = true;
+        }
+      }
+
       if (withValues) {
+        // Once configured, cannot be configured again (handled above for compose+cache).
         if (withValues.type === 'set' && evaldRules) {
           throw new Error('Cannot configure a stylesheet more than once.');
         }
@@ -376,7 +402,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           context.extendRoots.popExtendRoot();
         }
 
-        if (withValues?.type === 'set') {
+        // Cache compose modules (and configured modules) after first evaluation.
+        if (type === 'compose' || withValues?.type === 'set') {
           context.evaldTrees.set(resolvedPath, rules);
         }
       } else {
