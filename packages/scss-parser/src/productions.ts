@@ -10,6 +10,7 @@ import {
   AtRule,
   Ampersand,
   BasicSelector,
+  Block,
   Call,
   ComplexSelector,
   CompoundSelector,
@@ -1708,17 +1709,61 @@ export function scssEachAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     $.startRule();
     $.CONSUME(T.AtKeyword); // assumed '@each'
 
-    let headerNodes: Node[] | undefined;
-    if (!RECORDING_PHASE) headerNodes = [];
-    $.MANY({
-      GATE: () => $.LA(1).tokenType !== T.LCurly && $.LA(1).tokenType.name !== 'EOF',
-      DEF: () => {
-        const n = $.SUBRULE($.anyOuterValue, { ARGS: [ctx] });
-        if (!RECORDING_PHASE) headerNodes!.push($.wrap(n));
+    // Sass: `@each $a[, $b ...] in <expr> { ... }`
+    // Normalize to Jess `$for` shape (JS-like):
+    // - single var: `($item of <expr>)`
+    // - destructure: `([$one, $two] of <expr>)`
+    const vars: VarDeclaration[] = RECORDING_PHASE ? ([] as unknown as VarDeclaration[]) : [];
+
+    // One or more `$var` separated by commas.
+    do {
+      const dv = vars.length === 0 ? $.CONSUME(T.DollarVariable) : $.CONSUME2(T.DollarVariable);
+      if (!RECORDING_PHASE) {
+        const name = new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context);
+        // Param-like var decl (prints `$name` with no `: <value>`).
+        vars.push(new VarDeclaration({ name, value: new Nil() }, { paramVar: true }, $.getLocationInfo(dv), $.context));
       }
-    });
+      if ($.LA(1).tokenType === T.Comma) {
+        $.CONSUME(T.Comma);
+      } else {
+        break;
+      }
+    } while (true);
+
+    // consume `in` keyword (Ident or PlainIdent depending on token mode)
+    if ($.LA(1).tokenType === T.Ident) {
+      $.CONSUME(T.Ident);
+    } else {
+      $.CONSUME(T.PlainIdent);
+    }
+
+    // Parse the iterable expression as a value sequence (stops before `{` naturally).
+    const rawExpr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+
     const header = !RECORDING_PHASE
-      ? new Sequence(headerNodes ?? [], undefined, $.getLocationFromNodes(headerNodes ?? []), $.context)
+      ? (() => {
+        const pattern: Node =
+          vars.length > 1
+            ? new Block(
+              new List(vars, { sep: ',' }, $.getLocationFromNodes(vars), $.context),
+              { type: 'square' },
+              $.getLocationFromNodes(vars),
+              $.context
+            )
+            : vars[0]!;
+
+        const expr = isNode(rawExpr, 'Expression')
+          ? rawExpr
+          : (() => {
+            const innerExpr = $.wrap(rawExpr, 'both');
+            // Prevent `$` + leading-space output like `$ list`.
+            innerExpr.pre = 0;
+            return new Expression(innerExpr, undefined, $.getLocationFromNodes([rawExpr]), $.context);
+          })();
+        const ofNode = new Any('of', { role: 'any' }, $.getLocationFromNodes([pattern]), $.context);
+        const inner = new Sequence([pattern, ofNode, expr], undefined, $.getLocationFromNodes([pattern, rawExpr]), $.context);
+        return new Paren(inner, undefined, $.getLocationFromNodes([pattern, rawExpr]), $.context);
+      })()
       : undefined;
 
     $.CONSUME(T.LCurly);
@@ -1727,7 +1772,7 @@ export function scssEachAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     if (!RECORDING_PHASE) {
       makePublicDirectiveRules(rules);
       const loc = $.endRule();
-      return new Each({ header: header!, rules }, undefined, loc, $.context);
+      return new For({ header: header!, rules }, undefined, loc, $.context);
     }
   };
 }

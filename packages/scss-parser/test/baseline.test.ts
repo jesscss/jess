@@ -417,6 +417,33 @@ describe('scss-parser (baseline)', () => {
     assertValidTree(result.tree);
   });
 
+  it('parses @each $a in $list and serializes as $for ($a of $list)', () => {
+    const parser = new Parser();
+    const result = parser.parse(`
+      @each $a in $list {
+        .x { y: $a; }
+      }
+    `);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    const out = String(result.tree);
+    expect(out).toContain('$for ($a of $list)');
+    assertValidTree(result.tree);
+  });
+
+  it('parses @each destructuring ($a, $b in $list) and normalizes to $for ([$a, $b] of $list)', () => {
+    const parser = new Parser();
+    const result = parser.parse(`
+      @each $a, $b in $list {
+        .x { y: $a; z: $b; }
+      }
+    `);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(String(result.tree)).toContain('$for ([$a, $b] of $list)');
+    assertValidTree(result.tree);
+  });
+
   it('parses escaped SCSS module-qualified mixin-ruleset calls (ns.\\#foo(...))', () => {
     const parser = new Parser();
     const result = parser.parse(`.a { color: ns.\\#foo($x); }`);

@@ -4,6 +4,7 @@ import { SelectorList } from '../selector-list.js';
 import { ComplexSelector } from '../selector-complex.js';
 import { CompoundSelector } from '../selector-compound.js';
 import { PseudoSelector } from '../selector-pseudo.js';
+import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
 import { isNode } from './is-node.js';
 import { syncLog } from './__tests__/debug-log.js';
@@ -275,6 +276,28 @@ export function expandComplexSelectorWithIs(complexSelector: ComplexSelector): S
   let hasIsSelector = false;
   let isIndex = -1;
   let isArg: Selector | null = null;
+  let isFromBareIsCompound = false;
+  let isFromAmpersandSelector = false;
+
+  // #region agent log
+  try {
+    if (process.env.DEBUG_EXTEND_EXACT_DEEP === 'true') {
+      const s = complexSelector.valueOf();
+      if (s.includes(':is(') && (s.includes('.replace') || s.includes('.rep_ace'))) {
+        const types = complexSelector.value.map((c) => (c as any)?.type ?? typeof c).slice(0, 12);
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID || 'run',
+          hypothesisId: 'H32',
+          location: 'extend-helpers.ts:expandComplexSelectorWithIs',
+          message: 'expandComplexSelectorWithIs-enter',
+          data: { selector: s, componentTypes: types },
+          timestamp: Date.now()
+        });
+      }
+    }
+  } catch {}
+  // #endregion
 
   for (let i = 0; i < complexSelector.value.length; i++) {
     const component = complexSelector.value[i];
@@ -283,6 +306,40 @@ export function expandComplexSelectorWithIs(complexSelector: ComplexSelector): S
       isIndex = i;
       isArg = component.value.arg as Selector;
       break; // Handle first :is() found for now
+    }
+    // Also support the common case where `:is(...)` is wrapped in a single-item CompoundSelector
+    // (e.g. `:is(.a, .b) .c`) so matching can expand alternatives.
+    if (isNode(component, 'CompoundSelector') && component.value.length === 1) {
+      const only = component.value[0]!;
+      if (isNode(only, 'PseudoSelector') && only.value.name === ':is' && only.value.arg && isSelector(only.value.arg)) {
+        hasIsSelector = true;
+        isIndex = i;
+        isArg = only.value.arg as Selector;
+        isFromBareIsCompound = true;
+        break; // Handle first :is() found for now
+      }
+    }
+    // Also support the case where `:is(...)` is carried inside an implicit ampersand's resolved selector.
+    // This shows up as a ComplexSelector beginning with Ampersand(selector=:is(...)).
+    if (isNode(component, 'Ampersand')) {
+      const sel = component.value.selector;
+      if (sel && isNode(sel, 'PseudoSelector') && sel.value.name === ':is' && sel.value.arg && isSelector(sel.value.arg)) {
+        hasIsSelector = true;
+        isIndex = i;
+        isArg = sel.value.arg as Selector;
+        isFromAmpersandSelector = true;
+        break;
+      }
+      if (sel && isNode(sel, 'CompoundSelector') && sel.value.length === 1) {
+        const only = sel.value[0]!;
+        if (isNode(only, 'PseudoSelector') && only.value.name === ':is' && only.value.arg && isSelector(only.value.arg)) {
+          hasIsSelector = true;
+          isIndex = i;
+          isArg = only.value.arg as Selector;
+          isFromAmpersandSelector = true;
+          break;
+        }
+      }
     }
   }
 
@@ -298,7 +355,22 @@ export function expandComplexSelectorWithIs(complexSelector: ComplexSelector): S
   // For each alternative, create a new complex selector
   alternatives.forEach((alternative) => {
     const newComponents = [...complexSelector.value];
-    newComponents[isIndex] = alternative as any; // Replace :is() with the alternative
+    if (isFromAmpersandSelector) {
+      const oldAmp = newComponents[isIndex] as Ampersand;
+      // Create a new implicit ampersand whose resolved selector is the alternative branch.
+      const nextAmp = new Ampersand({ appendValue: oldAmp.value.appendValue, selector: alternative }).inherit(oldAmp);
+      newComponents[isIndex] = nextAmp as any;
+    } else if (isFromBareIsCompound) {
+      // The original `:is(...)` lived inside a CompoundSelector position. Replace that slot with the
+      // alternative selector's components where possible.
+      if (isNode(alternative, 'ComplexSelector')) {
+        newComponents.splice(isIndex, 1, ...alternative.value);
+      } else {
+        newComponents[isIndex] = alternative as any;
+      }
+    } else {
+      newComponents[isIndex] = alternative as any; // Replace :is() with the alternative
+    }
     results.push(new ComplexSelector(newComponents).inherit(complexSelector));
   });
 

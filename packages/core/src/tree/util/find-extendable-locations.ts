@@ -91,6 +91,11 @@ function normalizeSelector(selector: Selector): Selector {
   return selector;
 }
 
+// Exported for extend pipeline normalization (kept as single source of truth).
+export function normalizeSelectorForExtend(selector: Selector): Selector {
+  return normalizeSelector(selector);
+}
+
 // ============================================================================
 // Legacy API Compatibility
 // ============================================================================

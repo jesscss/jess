@@ -236,5 +236,23 @@ describe('scss-parser (ast serialize)', () => {
     expect(serializeTypes(tree)).toContainString(`(Call`);
     expect(serializeTypes(tree)).toContainString(`(Reference`);
   });
+
+  it('serializes @each destructuring as For(header=Paren(Sequence(Block[square](List(VarDeclaration...)), "of", expr)))', () => {
+    const { tree, errors, lexerResult } = parser.parse(`
+      @each $a, $b in $list {
+        .x { y: $a; z: $b; }
+      }
+    `);
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+    expect(serializeTypes(tree)).toContainString(`(For`);
+    expect(serializeTypes(tree)).toContainString(`(Paren`);
+    expect(serializeTypes(tree)).toContainString(`(Sequence`);
+    expect(serializeTypes(tree)).toContainString(`(Block`);
+    expect(serializeTypes(tree)).toContainString(`(List`);
+    expect(serializeTypes(tree)).toContainString(`(VarDeclaration`);
+    expect(String(tree)).toContain('$for ([$a, $b] of $list)');
+  });
 });
 

@@ -104,6 +104,8 @@ import { Nil } from '../nil.js';
 import { Combinator } from '../combinator.js';
 import { isNode } from './is-node.js';
 import { findExtendableLocations, type ExtendLocation } from './extend-helpers.js';
+import { normalizeSelectorForExtend } from './find-extendable-locations.js';
+import { syncLog } from './__tests__/debug-log.js';
 import { F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 
 const { isArray } = Array;
@@ -838,10 +840,61 @@ export function extendSelector(
   skipAmpersandCheck: boolean = false,
   hasMoreAfterIs: boolean = false
 ): Selector {
-  // Use the unified ExtendLocation API for all selector matching
-  const searchResult = findExtendableLocations(target, find);
+  // Use the unified ExtendLocation API for all selector matching.
+  //
+  // IMPORTANT: normalize :is(...) equivalences for matching. In Less output we often materialize
+  // parent selector alternatives via `:is(...)`, and exact extends must match any single branch.
+  const originalTarget = target;
+  const originalFind = find;
+  let searchResult = findExtendableLocations(target, find);
+  if (!searchResult.hasMatches) {
+    const normalizedTarget = normalizeSelectorForExtend(target);
+    const normalizedFind = normalizeSelectorForExtend(find);
+    if (normalizedTarget.valueOf() !== target.valueOf() || normalizedFind.valueOf() !== find.valueOf()) {
+      const normalizedSearch = findExtendableLocations(normalizedTarget, normalizedFind);
+      if (normalizedSearch.hasMatches) {
+        target = normalizedTarget;
+        find = normalizedFind;
+        searchResult = normalizedSearch;
+      }
+    }
+  }
 
   if (!searchResult.hasMatches) {
+    // #region agent log
+    // Debug: see if :is()-normalization would have found a match (extend-exact focus)
+    try {
+      const t = target.valueOf();
+      const f = find.valueOf();
+      if (
+        (process.env.DEBUG_EXTEND_LOOP === 'true' || process.env.DEBUG_EXTEND_BOOT === 'true')
+        && (
+          f.includes('.replace.replace')
+          || t.includes(':is(')
+        )
+      ) {
+        const nt = normalizeSelectorForExtend(target);
+        const nf = normalizeSelectorForExtend(find);
+        const normalizedSearch = findExtendableLocations(nt, nf);
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID || 'run',
+          hypothesisId: 'H31',
+          location: 'extend.ts:extendSelector',
+          message: 'extend-not-found-normalization-check',
+          data: {
+            partial,
+            rawTarget: t,
+            rawFind: f,
+            normTarget: nt.valueOf(),
+            normFind: nf.valueOf(),
+            normHasMatches: normalizedSearch.hasMatches
+          },
+          timestamp: Date.now()
+        });
+      }
+    } catch {}
+    // #endregion
     throw new ExtendError(
       'NOT_FOUND',
       'No match found for target selector',
@@ -852,7 +905,8 @@ export function extendSelector(
   // Check for ampersand boundary crossing during extension (unless skipped)
   // For non-SelectorList targets, check after findExtendableLocations
   if (!skipAmpersandCheck) {
-    const ampersandCrossingInfo = checkAmpersandCrossingDuringExtension(target, find);
+    // Ampersand crossing should be checked against the original selector shape.
+    const ampersandCrossingInfo = checkAmpersandCrossingDuringExtension(originalTarget, originalFind);
 
     if (ampersandCrossingInfo.crossed) {
       // Convert ExtendLocation to MatchResult for compatibility with ampersand handling

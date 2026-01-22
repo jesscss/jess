@@ -1,29 +1,29 @@
-import foo from "something.jess";
-import * as foo from "something.jess";
-import foo, { named } from "something.jess";
-import foo, { named, zecond } from "something.jess";
-import foo, { named as other } from "something.jess";
+@-from "./something.ts" import foo;
+@-from "./something.ts" import * as foo;
+@-from "./something.ts" import foo, (named);
+@-from "./something.ts" import foo, (named, zecond);
+@-from "./something.ts" import foo, (named as other);
 
-import 'something.less';
-import 'mixins.scss';
-import { rgb } from 'jess/fns'
-import 'uses-rgb.less';
+@-compose './something.less';
+@-compose './mixins.scss';
+@-from '#jess/fns' import (rgb);
+@-compose './uses-rgb.less';
 
-@mixin my-mixin((unit: keyword, keyword), foo) {
-  @var foo: bar;
-  ~(#less-mixin.thing($unit));
+my-mixin($unit: ~(keyword, keyword), $foo) {
+  $foo: bar;
+  $something > #less-mixin > .thing($unit);
 
-  foo: ~(if($foo = bar, one, two));
+  foo: $if ($foo = bar) { one } $else { two };
 
-  @if () {
-    @let foo: ~(if($foo 1));
+  $if (true) {
+    $foo: $(foo + 1);
   }
   color: black;
   color: $color;
-  color: ~($red + 1);
+  color: $(red + 1);
 }
 
-@import url("someurl.css");
+@-compose url("someurl.css");
 @import "someurl.css";
 
 .rule {
