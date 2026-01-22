@@ -10,6 +10,9 @@ import { isNode } from './util/is-node.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { PrintOptions } from './util/print.js';
 import { ComplexSelector } from './selector-complex.js';
+// #region agent log
+import { syncLog } from './util/__tests__/debug-log.js';
+// #endregion
 
 /**
  * @example
@@ -70,7 +73,13 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    // Call base implementation which calls toString() on each component
+    // Components in a compound selector are joined without spaces.
+    // However, parser/copy/extend pipelines can preserve `post=1` (single space) on components,
+    // which would serialize `.e.e` as `.e .e`. Normalize here as a final guard.
+    const value = this.value;
+    for (let i = 0; i < value.length - 1; i++) {
+      (value[i] as any).post = undefined;
+    }
     return super.toTrimmedString(options);
   }
 
@@ -153,6 +162,33 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
           (value[i] as any).post = undefined;
         }
         sel.value = value;
+        // #region agent log
+        try {
+          if (process.env.DEBUG_EXTEND_BOOT === 'true') {
+            const v = sel.valueOf();
+            if (v.includes('.e.e') || (value.length === 2 && value[0]?.valueOf?.() === '.e' && value[1]?.valueOf?.() === '.e')) {
+              syncLog({
+                sessionId: 'debug-session',
+                runId: process.env.DEBUG_RUN_ID || 'run',
+                hypothesisId: 'H39',
+                location: 'selector-compound.ts:evalNode',
+                message: 'compound-eval-exit-components',
+                data: {
+                  valueOf: v,
+                  len: value.length,
+                  comps: value.map((c: any) => ({
+                    type: c?.type ?? null,
+                    v: typeof c?.valueOf === 'function' ? c.valueOf() : null,
+                    pre: c?.pre ?? null,
+                    post: c?.post ?? null
+                  }))
+                },
+                timestamp: Date.now()
+              });
+            }
+          }
+        } catch {}
+        // #endregion
         return sel;
       }
     );

@@ -104,7 +104,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   private _preEvalPrelude(node: AtRule, context: Context): MaybePromise<AtRule | Nil> {
-    const { prelude } = node.value;
+    const { prelude, rules } = node.value;
     // Preserve @import prelude as-authored (including comments). Evaluation here can
     // normalize/strip comment tokens inside the prelude, but less.js expects them preserved.
     if (node.value.name.value === '@import') {
@@ -118,6 +118,18 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     // call-time scope (e.g. mixin parameters referenced from nested @media preludes).
     if (prelude) {
       node.value.prelude = prelude;
+    }
+    // Depth-first: preEval child rules immediately so all nested rulesets/extends
+    // are registered in source order before we process extends.
+    if (rules && !rules.preEvaluated) {
+      const preEvaldRules = rules.preEval(context);
+      if (isThenable(preEvaldRules)) {
+        return (preEvaldRules as Promise<Rules>).then((evaldRules) => {
+          node.value.rules = evaldRules;
+          return node;
+        });
+      }
+      node.value.rules = preEvaldRules as Rules;
     }
     return node;
   }

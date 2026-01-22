@@ -12,7 +12,7 @@ import { PseudoSelector, is as isSelectorPseudo } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
 import { Nil } from '../nil.js';
 import type { Extend } from '../extend.js';
-import { tryExtendSelector, findChainedExtends, createProcessedSelector } from './extend.js';
+import { tryExtendSelector, findChainedExtends, createProcessedSelector, setExtendOrderMap } from './extend.js';
 import { WARN, toDiagnostic } from '../../jess-error.js';
 import { syncLog } from './__tests__/debug-log.js';
 
@@ -158,6 +158,46 @@ function maybeHoistMixedNestingSelectorList(
   }
 
   // #region agent log
+  try {
+    if (process.env.DEBUG_EXTEND_EXACT_DEEP === 'true') {
+      const selV = (selector as any)?.valueOf?.() ?? '';
+      if (typeof selV === 'string' && (selV.includes('rep_ace') || selV.includes('replace'))) {
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID || 'run',
+          hypothesisId: 'H36',
+          location: 'extend-roots.ts:maybeHoistMixedNestingSelectorList',
+          message: 'hoist-enter',
+          data: {
+            partial,
+            selectorV: selV,
+            selectorType: (selector as any)?.type ?? null,
+            listV: (list as any)?.valueOf?.() ?? null,
+            parentSelType: (parentSel as any)?.type ?? null,
+            parentSelV: (() => { try { return (parentSel as any)?.valueOf?.() ?? null; } catch { return null; } })(),
+            anyImplicit: items.some((s) => {
+              try {
+                if (isNode(s, 'ComplexSelector')) {
+                  const first = (s as ComplexSelector).value[0];
+                  return first instanceof Ampersand && first.hasFlag(F_IMPLICIT_AMPERSAND);
+                }
+                return false;
+              } catch {
+                return false;
+              }
+            }),
+            hasSimple: items.some(s => !isNode(s, 'ComplexSelector')),
+            item0: (() => { try { return items[0]?.valueOf?.() ?? null; } catch { return null; } })(),
+            itemLast: (() => { try { return items[items.length - 1]?.valueOf?.() ?? null; } catch { return null; } })()
+          },
+          timestamp: Date.now()
+        });
+      }
+    }
+  } catch {}
+  // #endregion
+
+  // #region agent log
   if (process.env.DEBUG_EXTEND_BOOT === 'true') {
     const selV = (() => {
       try { return (selector as any)?.valueOf?.() ?? null; } catch { return null; }
@@ -283,8 +323,33 @@ function maybeHoistMixedNestingSelectorList(
               kept.push(it);
             }
             const listOut = SelectorList.create(kept.map(s => s.clone(true))).inherit(list);
+            // We created selectors that already materialize the parent selector list via `:is(parentSel) ...`.
+            // If we keep this nested, serialization will incorrectly treat them as relative to the parent frame.
+            // Hoist to root.
+            listOut.hoistToRoot = true;
+            ruleset.hoistToRoot = true;
+            // #region agent log
+            try {
+              if (process.env.DEBUG_EXTEND_EXACT_DEEP === 'true') {
+                syncLog({
+                  sessionId: 'debug-session',
+                  runId: process.env.DEBUG_RUN_ID || 'run',
+                  hypothesisId: 'H36',
+                  location: 'extend-roots.ts:maybeHoistMixedNestingSelectorList',
+                  message: 'factorized-cartesian',
+                  data: {
+                    parentAlts,
+                    childCount: uniqLast.length,
+                    out: (listOut as any)?.valueOf?.() ?? null
+                  },
+                  timestamp: Date.now()
+                });
+              }
+            } catch {}
+            // #endregion
             if (wrapper) {
               wrapper.value.arg = listOut;
+              wrapper.hoistToRoot = true;
               return wrapper;
             }
             return listOut;
@@ -573,13 +638,51 @@ export class ExtendRootRegistry {
    */
   pushExtendRoot(rules: Rules): void {
     this.extendRootStack.push(rules);
+    // #region agent log
+    if (process.env.DEBUG_EXTEND_BOOT === 'true') {
+      try {
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID || 'run',
+          hypothesisId: 'H42',
+          location: 'extend-roots.ts:pushExtendRoot',
+          message: 'extend-root-pushed',
+          data: {
+            rulesId: String(rules),
+            stackDepth: this.extendRootStack.length,
+            previousRoot: this.extendRootStack.length > 1 ? String(this.extendRootStack[this.extendRootStack.length - 2]) : null
+          },
+          timestamp: Date.now()
+        });
+      } catch {}
+    }
+    // #endregion
   }
 
   /**
    * Pop extend root from stack
    */
   popExtendRoot(): void {
-    this.extendRootStack.pop();
+    const popped = this.extendRootStack.pop();
+    // #region agent log
+    if (process.env.DEBUG_EXTEND_BOOT === 'true') {
+      try {
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID || 'run',
+          hypothesisId: 'H42',
+          location: 'extend-roots.ts:popExtendRoot',
+          message: 'extend-root-popped',
+          data: {
+            poppedId: popped ? String(popped) : null,
+            stackDepth: this.extendRootStack.length,
+            newCurrentRoot: this.extendRootStack.length > 0 ? String(this.extendRootStack[this.extendRootStack.length - 1]) : null
+          },
+          timestamp: Date.now()
+        });
+      } catch {}
+    }
+    // #endregion
   }
 
   /**
@@ -603,6 +706,9 @@ export class ExtendRootRegistry {
    * should be able to extend selectors INSIDE media queries (in child roots).
    * But extends registered INSIDE media queries should NOT extend selectors
    * OUTSIDE (in parent roots).
+   * 
+   * NOTE: The ordering fix (extendOrderMap) only affects the order of selectors
+   * within :is() pseudo-classes, not which rulesets get extended.
    */
   getAccessibleRoots(root: Rules): Set<Rules> {
     const accessible = new Set<Rules>();
@@ -800,6 +906,17 @@ export function processExtends(context: Context): void {
   // De-duping happens per-ruleset via `transformedByExtend`.
   const processedExtends = new Set<string>(); // Track in-flight recursion only (used as a stack guard)
   const extendedRulesets = new Set<Ruleset>(); // Track rulesets that were extended
+  
+  // Track extend order for source-order preservation when merging into :is()
+  // Maps extendWith selector -> extend index in allExtends (which should be source order with depth-first preEval)
+  const extendOrderMap = new WeakMap<Selector, number>();
+  for (let i = 0; i < allExtends.length; i++) {
+    const [, selectorWithExtend] = allExtends[i]!;
+    extendOrderMap.set(selectorWithExtend, i);
+  }
+  
+  // Set the extend order map in extend.ts module for use during merging
+  setExtendOrderMap(extendOrderMap);
   // Track which extends have already transformed which rulesets: Map<rulesetId, Set<extendKey>>
   // Each extend can only transform a particular ruleset's selector once
   const transformedByExtend = new Map<Ruleset, Set<string>>();
@@ -1366,6 +1483,10 @@ export function processExtends(context: Context): void {
               } else {
                 normalizedSelector = normalized as Selector;
               }
+              // NOTE: Node.clone()/inherit() does not currently copy hoistToRoot.
+              if (hoisted.hoistToRoot) {
+                normalizedSelector.hoistToRoot = true;
+              }
               ruleset.value.selector = normalizedSelector;
               ruleset.invalidateSelectorValueCache();
               if (normalizedSelector.hoistToRoot) {
@@ -1391,6 +1512,33 @@ export function processExtends(context: Context): void {
   };
 
   // Phase 1: Process all original extends depth-first
+  // #region agent log
+  if (process.env.DEBUG_EXTEND_BOOT === 'true') {
+    try {
+      const filePath = context.treeContext?.file?.fullPath ?? '';
+      if (typeof filePath === 'string' && filePath.includes('extend-media')) {
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID || 'run',
+          hypothesisId: 'H43',
+          location: 'extend-roots.ts:processExtends',
+          message: 'allExtends-order',
+          data: {
+            count: allExtends.length,
+            extends: allExtends.map(([target, extendWith, partial, root], idx) => ({
+              index: idx,
+              target: target.valueOf(),
+              extendWith: extendWith.valueOf(),
+              partial,
+              rootId: root ? String(root) : null
+            }))
+          },
+          timestamp: Date.now()
+        });
+      }
+    } catch {}
+  }
+  // #endregion
   for (const [target, selectorWithExtend, partial, extendRoot, extendNode] of allExtends) {
     processExtend(target, selectorWithExtend, partial, extendRoot, extendNode);
   }
@@ -1998,4 +2146,7 @@ export function processExtends(context: Context): void {
   if (iteration >= maxIterations) {
     throw new Error(`Extend chaining exceeded maximum iterations (${maxIterations}). Possible infinite loop.`);
   }
+  
+  // Clear the extend order map after processing
+  setExtendOrderMap(null);
 }

@@ -160,6 +160,26 @@ export class Extend extends Node<ExtendValue> {
         // Register extend to context with extend root reference and Extend node for error reporting
         context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this]);
         // #region agent log
+        const filePath = context.treeContext?.file?.fullPath ?? '';
+        if (typeof filePath === 'string' && filePath.includes('extend-media')) {
+          syncLog({
+            sessionId: 'debug-session',
+            runId: process.env.DEBUG_RUN_ID || 'run',
+            hypothesisId: 'H41',
+            location: 'extend.ts:evalNode',
+            message: 'extend-registered-async',
+            data: {
+              target: target.valueOf(),
+              extendWith: resolvedSel.valueOf(),
+              partial: flag === ExtendFlag.All,
+              extendRootId: extendRoot ? String(extendRoot) : null,
+              currentExtendRoot: context.extendRoots.getCurrentExtendRoot() ? String(context.extendRoots.getCurrentExtendRoot()) : null,
+              extendsCountAfter: context.extends.length,
+              extendsIndex: context.extends.length - 1
+            },
+            timestamp: Date.now()
+          });
+        }
         Extend.agentLog(context, 'extend.ts:evalNode', 'extend-registered', {
           target: target.valueOf(),
           resolvedSel: resolvedSel.valueOf(),
@@ -184,6 +204,26 @@ export class Extend extends Node<ExtendValue> {
     // Register extend to context with extend root reference and Extend node for error reporting
     context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this]);
     // #region agent log
+    const filePath = context.treeContext?.file?.fullPath ?? '';
+    if (typeof filePath === 'string' && filePath.includes('extend-media')) {
+      syncLog({
+        sessionId: 'debug-session',
+        runId: process.env.DEBUG_RUN_ID || 'run',
+        hypothesisId: 'H41',
+        location: 'extend.ts:evalNode',
+        message: 'extend-registered-sync',
+        data: {
+          target: target.valueOf(),
+          extendWith: resolvedSel.valueOf(),
+          partial: flag === ExtendFlag.All,
+          extendRootId: extendRoot ? String(extendRoot) : null,
+          currentExtendRoot: context.extendRoots.getCurrentExtendRoot() ? String(context.extendRoots.getCurrentExtendRoot()) : null,
+          extendsCountAfter: context.extends.length,
+          extendsIndex: context.extends.length - 1
+        },
+        timestamp: Date.now()
+      });
+    }
     Extend.agentLog(context, 'extend.ts:evalNode', 'extend-registered', {
       target: target.valueOf(),
       resolvedSel: resolvedSel.valueOf(),

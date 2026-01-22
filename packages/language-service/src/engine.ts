@@ -413,6 +413,10 @@ function formatVarName(lang: JessLang, rawName: string): string {
 
 export function createEngine(): JessLanguageServiceEngine {
   const docs = new Map<string, TrackedDoc>();
+  // Import graph: maps URI -> Set of imported URIs
+  const importGraph = new Map<string, Set<string>>();
+  // Cached imported documents (loaded from disk)
+  const importedDocs = new Map<string, TrackedDoc>();
   let semanticDiagnosticSeverities: Record<string, DiagnosticSeverity> = {
     'var/undefined': DiagnosticSeverity.Warning,
     'mixin/undefined': DiagnosticSeverity.Warning
@@ -460,6 +464,298 @@ export function createEngine(): JessLanguageServiceEngine {
     }
   }
 
+  // Load and parse an imported file from disk
+  function loadImportedFile(importedUri: string, lang: JessLang, visited: Set<string>): TrackedDoc | null {
+    // Check cache first
+    const cached = importedDocs.get(importedUri);
+    if (cached) {
+      return cached;
+    }
+
+    // Try to read from disk
+    let filePath: string;
+    try {
+      if (!importedUri.startsWith('file:')) {
+        return null;
+      }
+      filePath = fileURLToPath(importedUri);
+    } catch {
+      return null;
+    }
+
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+
+    let text: string;
+    try {
+      text = fs.readFileSync(filePath, 'utf-8');
+    } catch {
+      return null;
+    }
+
+    // Infer language from file extension if not provided
+    let inferredLang = lang;
+    if (lang === 'css' || lang === 'jess') {
+      const ext = path.extname(filePath).toLowerCase();
+      if (ext === '.less') {
+        inferredLang = 'less';
+      } else if (ext === '.scss') {
+        inferredLang = 'scss';
+      }
+    }
+
+    const document = TextDocument.create(importedUri, inferredLang, 0, text);
+    const tracked: TrackedDoc = { document, lang: inferredLang, parse: null, index: null };
+    reparse(tracked);
+    importedDocs.set(importedUri, tracked);
+    return tracked;
+  }
+
+  // Build import graph for a document (with cycle detection)
+  function updateImportGraph(uri: string, tracked: TrackedDoc, visited: Set<string> = new Set()) {
+    if (visited.has(uri)) {
+      return; // Cycle detected
+    }
+    visited.add(uri);
+
+    const imports = new Set<string>();
+    const text = tracked.document.getText();
+    const fromFilePath = (() => {
+      try {
+        return uri.startsWith('file:') ? fileURLToPath(uri) : null;
+      } catch {
+        return null;
+      }
+    })();
+
+    if (fromFilePath) {
+      for (const imp of extractImports(text, tracked.lang === 'jess' ? 'css' : tracked.lang)) {
+        const resolved = resolveImport(
+          { exists: (p: string) => fs.existsSync(p) },
+          { lang: tracked.lang === 'jess' ? 'css' : tracked.lang, fromFilePath, specifier: imp.specifier }
+        );
+        if (resolved) {
+          const importedUri = String(pathToFileURL(resolved.filePath));
+          imports.add(importedUri);
+          // Recursively load imported file (with cycle detection)
+          // If file is already in docs, we still want to track it in the import graph
+          // but we don't need to load it again
+          if (!importedDocs.has(importedUri) && !visited.has(importedUri)) {
+            // Check if file is already in docs - if so, use that instead of loading from disk
+            const existingDoc = docs.get(importedUri);
+            if (existingDoc) {
+              importedDocs.set(importedUri, existingDoc);
+              // Still build import graph for it
+              updateImportGraph(importedUri, existingDoc, visited);
+            } else {
+              const loaded = loadImportedFile(importedUri, tracked.lang, visited);
+              if (loaded) {
+                // Recursively build import graph for imported file
+                updateImportGraph(importedUri, loaded, visited);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    importGraph.set(uri, imports);
+  }
+
+  // Helper: find variable definition across documents
+  function findVarDefinitionAcrossDocs(targetUri: string, normalizedName: string, visited: Set<string>): Location | null {
+    if (visited.has(targetUri)) {
+      return null; // Cycle detection
+    }
+    visited.add(targetUri);
+
+    // Check current document
+    const tracked = docs.get(targetUri) ?? importedDocs.get(targetUri);
+    if (!tracked?.index) {
+      return null;
+    }
+
+    for (const entry of tracked.index.nodes) {
+      const n: any = entry.node;
+      if (n.type === 'VarDeclaration') {
+        const nameNode = n.value?.name;
+        const declNameStr = asStringName(nameNode);
+        const declName = declNameStr.replace(/^[$@]/, '');
+        if (declName === normalizedName) {
+          const span = getSpan(n);
+          if (span) {
+            return {
+              uri: targetUri,
+              range: toRange(tracked.document, span.start, span.end)
+            };
+          }
+        }
+      }
+    }
+
+    // Search imported files
+    const imports = importGraph.get(targetUri);
+    if (imports) {
+      for (const importedUri of imports) {
+        const result = findVarDefinitionAcrossDocs(importedUri, normalizedName, visited);
+        if (result) {
+          return result;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  // Helper: find mixin definition across documents
+  function findMixinDefinitionAcrossDocs(targetUri: string, mixinName: string, visited: Set<string>): Location | null {
+    if (visited.has(targetUri)) {
+      return null; // Cycle detection
+    }
+    visited.add(targetUri);
+
+    // Check current document
+    const tracked = docs.get(targetUri) ?? importedDocs.get(targetUri);
+    if (!tracked?.index) {
+      return null;
+    }
+
+    for (const entry of tracked.index.nodes) {
+      const n: any = entry.node;
+      if (n.type === 'Mixin') {
+        const nameNode = n.value?.name;
+        const declNameStr = asStringName(nameNode);
+        let declName = declNameStr.trim();
+        // Normalize mixin name: remove parentheses if present
+        if (declName.endsWith('()')) {
+          declName = declName.slice(0, -2);
+        }
+        if (declName === mixinName) {
+          const span = getSpan(n);
+          if (span) {
+            return {
+              uri: targetUri,
+              range: toRange(tracked.document, span.start, span.end)
+            };
+          }
+        }
+      }
+    }
+
+    // Search imported files
+    const imports = importGraph.get(targetUri);
+    if (imports) {
+      for (const importedUri of imports) {
+        const result = findMixinDefinitionAcrossDocs(importedUri, mixinName, visited);
+        if (result) {
+          return result;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  // Helper: find all variable references in a single document
+  function findVarReferencesAcrossDocs(targetUri: string, normalizedName: string, visited: Set<string>, results: Location[]): void {
+    if (visited.has(targetUri)) {
+      return; // Already processed
+    }
+    visited.add(targetUri);
+
+    // Check current document
+    const tracked = docs.get(targetUri) ?? importedDocs.get(targetUri);
+    if (!tracked?.index) {
+      return;
+    }
+
+    for (const entry of tracked.index.nodes) {
+      const n: any = entry.node;
+      const span = getSpan(n);
+      if (!span) {
+        continue;
+      }
+
+      // Collect references
+      if (n.type === 'Reference' && n.options?.type === 'variable') {
+        const k = n.value?.key;
+        const refName = typeof k === 'string' ? k : Array.isArray(k) ? k.join('') : null;
+        if (refName && refName.replace(/^[$@]/, '') === normalizedName) {
+          results.push({
+            uri: targetUri,
+            range: toRange(tracked.document, span.start, span.end)
+          });
+        }
+      }
+
+      // Collect the declaration itself
+      if (n.type === 'VarDeclaration') {
+        const nameNode = n.value?.name;
+        const declNameStr = asStringName(nameNode);
+        const declName = declNameStr.replace(/^[$@]/, '');
+        if (declName === normalizedName) {
+          results.push({
+            uri: targetUri,
+            range: toRange(tracked.document, span.start, span.end)
+          });
+        }
+      }
+    }
+  }
+
+  // Helper: find all mixin references in a single document
+  function findMixinReferencesAcrossDocs(targetUri: string, mixinName: string, visited: Set<string>, results: Location[]): void {
+    if (visited.has(targetUri)) {
+      return; // Already processed
+    }
+    visited.add(targetUri);
+
+    // Check current document
+    const tracked = docs.get(targetUri) ?? importedDocs.get(targetUri);
+    if (!tracked?.index) {
+      return;
+    }
+
+    for (const entry of tracked.index.nodes) {
+      const n: any = entry.node;
+      const span = getSpan(n);
+      if (!span) {
+        continue;
+      }
+
+      // Collect references
+      if (n.type === 'Reference' && (n.options?.type === 'mixin' || n.options?.type === 'mixin-ruleset')) {
+        const k = n.value?.key;
+        const refName = typeof k === 'string' ? k : Array.isArray(k) ? k.join('') : null;
+        let refNameStr = refName ? refName.trim() : '';
+        // Normalize mixin name: remove parentheses if present
+        if (refNameStr.endsWith('()')) {
+          refNameStr = refNameStr.slice(0, -2);
+        }
+        if (refNameStr === mixinName) {
+          results.push({
+            uri: targetUri,
+            range: toRange(tracked.document, span.start, span.end)
+          });
+        }
+      }
+
+      // Collect the declaration itself
+      if (n.type === 'Mixin') {
+        const nameNode = n.value?.name;
+        const declNameStr = asStringName(nameNode);
+        const declName = declNameStr.trim();
+        if (declName === mixinName) {
+          results.push({
+            uri: targetUri,
+            range: toRange(tracked.document, span.start, span.end)
+          });
+        }
+      }
+    }
+  }
+
   return {
     configure(config) {
       // Expected shape (from client settings): { diagnostics?: { severity?: Record<string, string> } }
@@ -489,14 +785,18 @@ export function createEngine(): JessLanguageServiceEngine {
       const tracked: TrackedDoc = { document, lang, parse: null, index: null };
       docs.set(uri, tracked);
       reparse(tracked);
+      updateImportGraph(uri, tracked);
     },
     change(uri, version, text) {
       const tracked = ensure(uri);
       tracked.document = TextDocument.update(tracked.document, [{ text }], version);
       reparse(tracked);
+      updateImportGraph(uri, tracked);
     },
     close(uri) {
       docs.delete(uri);
+      importGraph.delete(uri);
+      // Note: We keep importedDocs in cache even after close, as they may be referenced by other files
     },
 
     getCompletions(uri, position) {
@@ -703,10 +1003,27 @@ export function createEngine(): JessLanguageServiceEngine {
       }
 
       const offset = document.offsetAt(position);
-      const node = index.findNodeAtOffset(offset);
+      let node = index.findNodeAtOffset(offset);
       if (!node) {
         return null;
       }
+
+      // Walk up the tree to find Reference or Mixin if the node at position isn't one
+      let targetNode: any = node;
+      const maxDepth = 10; // Prevent infinite loops
+      let depth = 0;
+      while (depth < maxDepth && targetNode) {
+        const n: any = targetNode;
+        if (n.type === 'Reference' || n.type === 'Mixin') {
+          break;
+        }
+        targetNode = (targetNode as any).parent;
+        depth++;
+      }
+      if (!targetNode) {
+        return null;
+      }
+      node = targetNode;
 
       // Variable definition lookup: find VarDeclaration for a Reference(type=variable).
       if ((node as any).type === 'Reference' && (node as any).options?.type === 'variable') {
@@ -719,20 +1036,12 @@ export function createEngine(): JessLanguageServiceEngine {
         // Normalize name (strip prefix for comparison).
         const normalizedName = name.replace(/^[$@]/, '');
 
+        // First search current document
         for (const entry of index.nodes) {
           const n: any = entry.node;
           if (n.type === 'VarDeclaration') {
             const nameNode = n.value?.name;
-            let declNameStr: string;
-            if (typeof nameNode === 'string') {
-              declNameStr = nameNode;
-            } else if (nameNode && typeof nameNode.valueOf === 'function') {
-              declNameStr = String(nameNode.valueOf());
-            } else if (nameNode && typeof nameNode.value === 'string') {
-              declNameStr = nameNode.value;
-            } else {
-              declNameStr = String(nameNode ?? '');
-            }
+            const declNameStr = asStringName(nameNode);
             const declName = declNameStr.replace(/^[$@]/, '');
             if (declName === normalizedName) {
               const span = getSpan(n);
@@ -745,6 +1054,50 @@ export function createEngine(): JessLanguageServiceEngine {
             }
           }
         }
+
+        // Then search imported files
+        return findVarDefinitionAcrossDocs(uri, normalizedName, new Set());
+      }
+
+      // Mixin definition lookup: find Mixin for a Reference(type=mixin or mixin-ruleset).
+      if ((node as any).type === 'Reference' && ((node as any).options?.type === 'mixin' || (node as any).options?.type === 'mixin-ruleset')) {
+        const key = (node as any).value?.key;
+        const name = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : null;
+        if (!name) {
+          return null;
+        }
+
+        // Normalize mixin name: remove parentheses if present (e.g., ".button()" -> ".button")
+        let mixinName = name.trim();
+        if (mixinName.endsWith('()')) {
+          mixinName = mixinName.slice(0, -2);
+        }
+
+        // First search current document
+        for (const entry of index.nodes) {
+          const n: any = entry.node;
+          if (n.type === 'Mixin') {
+            const nameNode = n.value?.name;
+            const declNameStr = asStringName(nameNode);
+            let declName = declNameStr.trim();
+            // Normalize mixin name: remove parentheses if present
+            if (declName.endsWith('()')) {
+              declName = declName.slice(0, -2);
+            }
+            if (declName === mixinName) {
+              const span = getSpan(n);
+              if (span) {
+                return {
+                  uri,
+                  range: toRange(document, span.start, span.end)
+                };
+              }
+            }
+          }
+        }
+
+        // Then search imported files
+        return findMixinDefinitionAcrossDocs(uri, mixinName, new Set());
       }
 
       return null;
@@ -759,76 +1112,73 @@ export function createEngine(): JessLanguageServiceEngine {
       }
 
       const offset = document.offsetAt(position);
-      const node = index.findNodeAtOffset(offset);
+      let node = index.findNodeAtOffset(offset);
       if (!node) {
         return [];
       }
 
+      // Walk up the tree to find VarDeclaration, Reference, or Mixin if the node at position isn't one
+      let targetNode: any = node;
+      const maxDepth = 10; // Prevent infinite loops
+      let depth = 0;
+      while (depth < maxDepth && targetNode) {
+        const n: any = targetNode;
+        if (n.type === 'VarDeclaration' || n.type === 'Mixin' || 
+            (n.type === 'Reference' && (n.options?.type === 'variable' || n.options?.type === 'mixin' || n.options?.type === 'mixin-ruleset'))) {
+          break;
+        }
+        targetNode = (targetNode as any).parent;
+        depth++;
+      }
+      if (!targetNode) {
+        return [];
+      }
+      node = targetNode;
+
       // Find variable name from either a Reference or VarDeclaration.
       let targetName: string | null = null;
+      let isVariable = false;
+      let isMixin = false;
 
       if ((node as any).type === 'Reference' && (node as any).options?.type === 'variable') {
         const key = (node as any).value?.key;
         targetName = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : null;
+        isVariable = true;
       } else if ((node as any).type === 'VarDeclaration') {
         const nameNode = (node as any).value?.name;
-        if (typeof nameNode === 'string') {
-          targetName = nameNode;
-        } else if (nameNode && typeof nameNode.valueOf === 'function') {
-          targetName = String(nameNode.valueOf());
-        } else if (nameNode && typeof nameNode.value === 'string') {
-          targetName = nameNode.value;
-        } else {
-          targetName = String(nameNode ?? '');
-        }
+        targetName = asStringName(nameNode);
+        isVariable = true;
+      } else if ((node as any).type === 'Reference' && ((node as any).options?.type === 'mixin' || (node as any).options?.type === 'mixin-ruleset')) {
+        const key = (node as any).value?.key;
+        targetName = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : null;
+        isMixin = true;
+      } else if ((node as any).type === 'Mixin') {
+        const nameNode = (node as any).value?.name;
+        targetName = asStringName(nameNode);
+        isMixin = true;
       }
 
       if (!targetName) {
         return [];
       }
 
-      const normalizedTarget = targetName.replace(/^[$@]/, '');
       const out: Location[] = [];
 
-      for (const entry of index.nodes) {
-        const n: any = entry.node;
-        const span = getSpan(n);
-        if (!span) {
-          continue;
+      if (isVariable) {
+        const normalizedTarget = targetName.replace(/^[$@]/, '');
+        // Search all documents (current + imported + all open docs) with a shared visited set
+        const visited = new Set<string>();
+        const allDocs = new Set([...docs.keys(), ...importedDocs.keys()]);
+        for (const docUri of allDocs) {
+          findVarReferencesAcrossDocs(docUri, normalizedTarget, visited, out);
         }
-
-        // Collect references.
-        if (n.type === 'Reference' && n.options?.type === 'variable') {
-          const k = n.value?.key;
-          const refName = typeof k === 'string' ? k : Array.isArray(k) ? k.join('') : null;
-          if (refName && refName.replace(/^[$@]/, '') === normalizedTarget) {
-            out.push({
-              uri,
-              range: toRange(document, span.start, span.end)
-            });
-          }
-        }
-
-        // Collect the declaration itself.
-        if (n.type === 'VarDeclaration') {
-          const nameNode = n.value?.name;
-          let declNameStr: string;
-          if (typeof nameNode === 'string') {
-            declNameStr = nameNode;
-          } else if (nameNode && typeof nameNode.valueOf === 'function') {
-            declNameStr = String(nameNode.valueOf());
-          } else if (nameNode && typeof nameNode.value === 'string') {
-            declNameStr = nameNode.value;
-          } else {
-            declNameStr = String(nameNode ?? '');
-          }
-          const declName = declNameStr.replace(/^[$@]/, '');
-          if (declName === normalizedTarget) {
-            out.push({
-              uri,
-              range: toRange(document, span.start, span.end)
-            });
-          }
+      } else if (isMixin) {
+        const mixinName = targetName.trim();
+        // Search all documents (current + imported + all open docs) with a shared visited set
+        const visited = new Set<string>();
+        const allDocs = new Set([...docs.keys(), ...importedDocs.keys()]);
+        for (const docUri of allDocs) {
+          findMixinReferencesAcrossDocs(docUri, mixinName, visited, out);
         }
       }
 
@@ -979,6 +1329,17 @@ export function createEngine(): JessLanguageServiceEngine {
         const declMixins = new Set<string>();
         const refsVar: Array<{ name: string; node: Node }> = [];
         const refsMixin: Array<{ name: string; node: Node }> = [];
+        
+        // Detect modern features by checking source text (more reliable than AST for at-rules)
+        const text = doc.getText();
+        let hasModernFeatures = false;
+        if (tracked.lang === 'scss') {
+          // Check for @use in SCSS
+          hasModernFeatures = /@use\s+/.test(text);
+        } else if (tracked.lang === 'less') {
+          // Check for @from or @compose in Less
+          hasModernFeatures = /@(from|compose)\s+/.test(text);
+        }
 
         const normalizeVar = (raw: string) => raw.trim().replace(/^[$@]/, '').toLowerCase();
 
@@ -1040,8 +1401,13 @@ export function createEngine(): JessLanguageServiceEngine {
 
         for (const r of refsVar) {
           if (!declVars.has(r.name)) {
-            const sev = severityFor('var/undefined');
+            // Determine severity: error if modern features are present, otherwise use configured severity
+            let sev = severityFor('var/undefined');
             if (sev !== null) {
+              // Override to error if modern features are detected
+              if (hasModernFeatures) {
+                sev = DiagnosticSeverity.Error;
+              }
               const span = spanFor(r.node);
               if (span) {
                 diagnostics.push({
@@ -1434,6 +1800,7 @@ export function createEngine(): JessLanguageServiceEngine {
 
       // Chevrotain uses 1-based line/column.
       const tokens = parse.lexerResult.tokens as ChevTok[];
+      const index = tracked.index;
 
       const nonWs = (t: ChevTok | undefined) => t && t.tokenType?.name !== 'WS' && t.tokenType?.name !== 'Newline';
       const prevNonWsIdx = (i: number) => {
@@ -1454,7 +1821,34 @@ export function createEngine(): JessLanguageServiceEngine {
 
       for (let i = 0; i < tokens.length; i++) {
         const tok = tokens[i]!;
-        const type = tokenTypeFromChevrotain(tok, tracked.lang);
+        let type = tokenTypeFromChevrotain(tok, tracked.lang);
+        
+        // Override classification for variable references using AST
+        // This ensures @bar in Less and $foo in SCSS are correctly colored as variables
+        // Check both the start and middle of the token to catch cases where the token
+        // is part of a larger variable reference node
+        if (index) {
+          const tokStartLine = (tok.startLine ?? 1) - 1;
+          const tokStartChar = (tok.startColumn ?? 1) - 1;
+          const tokEndChar = (tok.endColumn ?? tokStartChar);
+          const tokStartOffset = doc.offsetAt(Position.create(tokStartLine, tokStartChar));
+          const tokMidOffset = doc.offsetAt(Position.create(tokStartLine, Math.floor((tokStartChar + tokEndChar) / 2)));
+          
+          // Check if this token is part of a variable reference node
+          const nodeAtStart = index.findNodeAtOffset(tokStartOffset);
+          const nodeAtMid = index.findNodeAtOffset(tokMidOffset);
+          const varRefNode = (nodeAtStart && (nodeAtStart as any).type === 'Reference' && (nodeAtStart as any).options?.type === 'variable')
+            ? nodeAtStart
+            : (nodeAtMid && (nodeAtMid as any).type === 'Reference' && (nodeAtMid as any).options?.type === 'variable')
+              ? nodeAtMid
+              : null;
+          
+          if (varRefNode) {
+            // This token is part of a variable reference, force it to be 'variable'
+            type = 'variable';
+          }
+        }
+        
         if (!type) continue;
 
         const prevIdx = prevNonWsIdx(i);

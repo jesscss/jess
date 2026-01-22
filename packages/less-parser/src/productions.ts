@@ -15,6 +15,7 @@ import {
   knownFunctions as cssKnownFunctions,
   mathValue as cssMathValue,
   innerAtRule as cssInnerAtRule,
+  productions as cssProductions,
   type AltContext
 } from '@jesscss/css-parser';
 
@@ -3780,5 +3781,86 @@ export function callArgument(this: P, T: TokenMap) {
         ALT: () => $.SUBRULE($.valueList, { ARGS: [ctx] })
       }
     ]);
+  };
+}
+
+/**
+ * Override unknownAtRule to handle @-export for stylesheet forwarding.
+ * @-export is like @-compose but with forward semantics and no `with` support.
+ */
+export function unknownAtRule(this: P, T: TokenMap) {
+  const $ = this;
+  const baseUnknown = cssProductions.unknownAtRule.call(this, T);
+
+  return (ctx: RuleContext = {}) => {
+    const img = $.LA(1).image;
+    if (img === '@-export') {
+      return $.SUBRULE($.exportAtRule, { ARGS: [ctx] });
+    }
+    return baseUnknown(ctx);
+  };
+}
+
+/**
+ * Parse @-export './foo.jess' [as <namespace>]
+ * 
+ * Creates a StyleImport with forward semantics (members not visible locally but transitive).
+ * Does NOT support `with` (unlike @-compose).
+ * Participates in evaldTrees caching like @-compose.
+ */
+export function exportAtRule(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    $.CONSUME(T.AtKeyword); // '@-export'
+
+    // Parse the path (string or url)
+    const pathNode: Quoted | Url = $.OR([
+      { ALT: () => $.SUBRULE($.urlFunction, { ARGS: [ctx] }) },
+      { ALT: () => $.SUBRULE($.string, { ARGS: [ctx] }) }
+    ]);
+
+    // Optional "as <namespace>"
+    let namespace: string | undefined;
+    $.OPTION({
+      GATE: () => {
+        const la = $.LA(1);
+        return (la.tokenType === T.PlainIdent || la.tokenType === T.Ident) && la.image === 'as';
+      },
+      DEF: () => {
+        // Consume "as"
+        if ($.LA(1).tokenType === T.Ident) {
+          $.CONSUME(T.Ident);
+        } else {
+          $.CONSUME(T.PlainIdent);
+        }
+        // Consume namespace identifier
+        const nsTok = ($.LA(1).tokenType === T.Ident)
+          ? ($.CONSUME2(T.Ident) as unknown as IToken)
+          : ($.CONSUME2(T.PlainIdent) as unknown as IToken);
+        if (!RECORDING_PHASE) {
+          namespace = nsTok.image;
+        }
+      }
+    });
+
+    $.CONSUME(T.Semi);
+
+    if (!RECORDING_PHASE) {
+      const loc = $.endRule();
+      return new StyleImport(
+        { path: pathNode },
+        {
+          type: 'compose',
+          namespace,
+          importOptions: {
+            forward: true
+          }
+        },
+        loc,
+        $.context
+      );
+    }
   };
 }

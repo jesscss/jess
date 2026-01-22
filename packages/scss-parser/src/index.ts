@@ -56,13 +56,14 @@ export class Parser {
     ...args: Parameters<ScssActionsParser[T]>
   ): IParseResult {
     const parser = this.parser;
-    // Clear parser errors from previous parse calls
+    // Clear parser errors and warnings from previous parse calls
     parser.errors = [];
+    parser.warnings = [];
     const lexerResult = this.lexer.tokenize(text);
     const lexedTokens: IToken[] = lexerResult.tokens;
     parser.input = lexedTokens;
     const tree = parser[rule](...args);
-    return { tree, lexerResult, errors: parser.errors, warnings: [] };
+    return { tree, lexerResult, errors: parser.errors, warnings: parser.warnings };
   }
 
   /**

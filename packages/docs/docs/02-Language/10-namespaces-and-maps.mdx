@@ -37,10 +37,10 @@ export const sizes = {
 ```
 
 ```less
-@-use "./tokens.js";
+@-from "./tokens.js" import (sizes);
 
 .box {
-  padding: $tokens.sizes.small;
+  padding: $sizes.small;
 }
 ```
 
@@ -120,8 +120,8 @@ You may never need to use it, but Jess also allows numeric indexed access to val
 // Might be useful to access two values with the same key,
 // since `$|.mixin().color` would return the final value.
 .box {
-  color-1: $|.mixin[0]; // #06c
-  color-2: $|.mixin[1]; // #e00
+  color-1: $ > .mixin[0]; // #06c
+  color-2: $ > .mixin[1]; // #e00
 }
 ```
 

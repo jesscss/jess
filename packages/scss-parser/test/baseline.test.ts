@@ -665,5 +665,44 @@ describe('scss-parser (baseline)', () => {
     expect(serializeTypes(result.tree, { showOptions: true })).toContainString('setDefined: true');
     assertValidTree(result.tree);
   });
+
+  it('parses @debug, @warn, @error diagnostic at-rules', () => {
+    const parser = new Parser();
+    const result = parser.parse(`
+      @debug "Debug message";
+      @warn "Warning message";
+      @error "Error message";
+    `);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    // Diagnostic at-rules should be parsed as Log nodes in the AST
+    expect(serializeTypes(result.tree)).toContainString('(Log');
+    // They should serialize to empty strings (not supported in Jess syntax)
+    const out = String(result.tree);
+    expect(out).not.toContain('@debug');
+    expect(out).not.toContain('@warn');
+    expect(out).not.toContain('@error');
+    assertValidTree(result.tree);
+  });
+
+  it('parses @at-root and emits a warning', () => {
+    const parser = new Parser();
+    const result = parser.parse(`
+      @at-root {
+        .root-class { color: red; }
+      }
+    `);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    // Should parse successfully
+    expect(serializeTypes(result.tree)).toContainString('(AtRule');
+    // Should emit a warning
+    expect(result.warnings).toBeDefined();
+    expect(result.warnings?.length).toBeGreaterThan(0);
+    expect(result.warnings?.[0]?.message).toContain('@at-root');
+    expect(result.warnings?.[0]?.message).toContain('not supported');
+    expect(result.warnings?.[0]?.message).toContain('will never be');
+    assertValidTree(result.tree);
+  });
 });
 

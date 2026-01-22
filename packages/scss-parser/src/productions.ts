@@ -31,6 +31,7 @@ import {
   type IfBranch,
   JsImport,
   List,
+  Log,
   Mixin,
   Nil,
   Node as JessNode,
@@ -65,8 +66,8 @@ function findScssInterpolations(value: string): InterpolationMatch[] {
       const contentStart = i;
       while (i < value.length && braceCount > 0) {
         const ch = value[i]!;
-        if (ch === '{') braceCount++;
-        else if (ch === '}') braceCount--;
+        if (ch === '{') {braceCount++;}
+        else if (ch === '}') {braceCount--;}
         i++;
       }
       if (braceCount === 0) {
@@ -81,13 +82,13 @@ function findScssInterpolations(value: string): InterpolationMatch[] {
 
 let interpolationParser:
   | {
-      lexer: Lexer;
-      parser: ScssActionsParser;
-    }
-  | undefined;
+    lexer: Lexer;
+    parser: ScssActionsParser;
+  }
+    | undefined;
 
 function getInterpolationParser(): { lexer: Lexer; parser: ScssActionsParser } {
-  if (interpolationParser) return interpolationParser;
+  if (interpolationParser) {return interpolationParser;}
   const { lexer, T } = createLexerDefinition(scssFragments(), scssTokens());
   const chevLexer = new Lexer(lexer, {
     ensureOptimizations: true,
@@ -186,8 +187,10 @@ function desugarMapLookup(
 
   // Reference.target only supports Reference or Call today; keep conservative.
   const initialTarget: Reference | Call | undefined =
-    isNode(mapExpr, 'Reference') ? (mapExpr as Reference)
-      : isNode(mapExpr, 'Call') ? (mapExpr as Call)
+    isNode(mapExpr, 'Reference')
+? (mapExpr as Reference)
+      : isNode(mapExpr, 'Call')
+? (mapExpr as Call)
         : undefined;
 
   if (!initialTarget) {
@@ -237,12 +240,12 @@ function makeNamespacedReference(
 
 function desugarNamespacedCall(parser: ScssActionsParser, call: Call): Call {
   const { name } = call.value;
-  if (typeof name !== 'string') return call;
-  if (!name.includes('.')) return call;
+  if (typeof name !== 'string') {return call;}
+  if (!name.includes('.')) {return call;}
   // Preserve special-casing for map.get() which has additional semantics elsewhere.
-  if (name === 'map.get') return call;
+  if (name === 'map.get') {return call;}
   const parts = name.split('.').filter(Boolean);
-  if (parts.length < 2) return call;
+  if (parts.length < 2) {return call;}
   const ref = makeNamespacedReference(parser, parts, 'function');
   return new Call({ name: ref, args: call.value.args }, call.options, call.location, parser.context);
 }
@@ -253,11 +256,11 @@ function looksLikeMapLiteral(la: (k: number) => IToken, T: ScssTokenMap): boolea
   let depth = 0;
   for (let i = 1; i < 50; i++) {
     const tok = la(i);
-    if (tok.tokenType === T.LParen) depth++;
+    if (tok.tokenType === T.LParen) {depth++;}
     if (tok.tokenType === T.RParen) {
-      if (depth === 0) return false;
+      if (depth === 0) {return false;}
       depth--;
-      if (depth === 0) return false;
+      if (depth === 0) {return false;}
     }
     if (tok.tokenType === T.Colon && depth === 1) {
       return true;
@@ -439,7 +442,7 @@ export function scssGuardInParens(this: ScssActionsParser, T: ScssTokenMap) {
       },
       {
         // Try comparison first - it requires an operator, so it will fail if there isn't one
-        GATE: () => looksLikeScssComparison((k) => $.LA(k), T),
+        GATE: () => looksLikeScssComparison(k => $.LA(k), T),
         ALT: () => {
           return $.SUBRULE($.scssComparison, { ARGS: [ctx] });
         }
@@ -699,8 +702,8 @@ export function functionCall(this: ScssActionsParser, T: ScssTokenMap, alt?: Alt
   const base = cssProductions.functionCall.call(this, T, alt);
   return (ctx: RuleContext = {}) => {
     const node = base(ctx) as unknown as Call;
-    if ($.RECORDING_PHASE) return node;
-    if (!isNode(node, 'Call')) return node as unknown as any;
+    if ($.RECORDING_PHASE) {return node;}
+    if (!isNode(node, 'Call')) {return node as unknown as any;}
 
     // First, keep existing Sass map.get() desugaring behavior.
     const mapped = desugarMapLookup(this, node);
@@ -819,8 +822,8 @@ export function compoundSelector(this: ScssActionsParser, T: ScssTokenMap) {
       const origTokens = ($ as any).originalInput as IToken[];
       let out = '';
       for (const tok of origTokens) {
-        if (tok.startOffset < startTokenOffset) continue;
-        if (tok.startOffset > endTokenOffset) break;
+        if (tok.startOffset < startTokenOffset) {continue;}
+        if (tok.startOffset > endTokenOffset) {break;}
         out += tok.image;
       }
       source += out;
@@ -843,7 +846,7 @@ export function compoundSelector(this: ScssActionsParser, T: ScssTokenMap) {
       {
         ALT: () => {
           let startTokenOffset = 0;
-          if (!RECORDING_PHASE) startTokenOffset = $.LA(1).startOffset;
+          if (!RECORDING_PHASE) {startTokenOffset = $.LA(1).startOffset;}
           const sel = $.SUBRULE2($.simpleSelector, { ARGS: [ctx] }) as unknown as SimpleSelector;
           if (!RECORDING_PHASE) {
             const endTokenOffset = $.LA(-1).startOffset;
@@ -874,7 +877,7 @@ export function compoundSelector(this: ScssActionsParser, T: ScssTokenMap) {
           {
             ALT: () => {
               let startTokenOffset = 0;
-              if (!RECORDING_PHASE) startTokenOffset = $.LA(1).startOffset;
+              if (!RECORDING_PHASE) {startTokenOffset = $.LA(1).startOffset;}
               const sel = $.SUBRULE4($.simpleSelector, { ARGS: [ctx] }) as unknown as SimpleSelector;
               if (!RECORDING_PHASE) {
                 const endTokenOffset = $.LA(-1).startOffset;
@@ -892,7 +895,7 @@ export function compoundSelector(this: ScssActionsParser, T: ScssTokenMap) {
       if (replacements.length > 0) {
         return new Interpolated({ source, replacements }, { role: 'ident' }, location, $.context);
       }
-      if (selectors.length === 1) return selectors[0]!;
+      if (selectors.length === 1) {return selectors[0]!;}
       return new CompoundSelector(selectors, undefined, location, $.context);
     }
   };
@@ -1015,7 +1018,7 @@ function defaultNamespaceFromPath(path: string): string | undefined {
     return name.split('/').filter(Boolean).pop();
   }
   const base = path.split('/').filter(Boolean).pop();
-  if (!base) return undefined;
+  if (!base) {return undefined;}
   const noExt = base.replace(/\.(scss|sass|css|jess|js|ts|json)$/i, '');
   return noExt || undefined;
 }
@@ -1044,7 +1047,9 @@ export function scssUseAtRule(this: ScssActionsParser, T: ScssTokenMap) {
         $.CONSUME(T.Ident);
         $.OR([
           { ALT: () => (namespace = $.CONSUME2(T.Ident).image) },
-          { ALT: () => { $.CONSUME(T.Star); namespace = '*'; } }
+          { ALT: () => {
+ $.CONSUME(T.Star); namespace = '*'; 
+} }
         ]);
       }
     });
@@ -1106,7 +1111,7 @@ export function scssForwardAtRule(this: ScssActionsParser, T: ScssTokenMap) {
   return (ctx: RuleContext = {}) => {
     const RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
-    $.CONSUME(T.AtKeyword); // '@forward'
+    const atKeyword = $.CONSUME(T.AtKeyword) as unknown as IToken; // '@forward'
 
     const pathNode = $.SUBRULE($.string, { ARGS: [ctx] }) as unknown as Quoted;
 
@@ -1177,8 +1182,8 @@ export function scssForwardAtRule(this: ScssActionsParser, T: ScssTokenMap) {
             : ($.CONSUME5(T.PlainIdent) as unknown as IToken);
           forwardListMode = kw.image === 'hide' ? 'hide' : 'show';
           if (!RECORDING_PHASE) {
-            if (forwardListMode === 'show') forwardShow = [];
-            else forwardHide = [];
+            if (forwardListMode === 'show') {forwardShow = [];}
+            else {forwardHide = [];}
           }
           return;
         }
@@ -1187,10 +1192,10 @@ export function scssForwardAtRule(this: ScssActionsParser, T: ScssTokenMap) {
           const t = ($.LA(1).tokenType === T.DollarVariable)
             ? ($.CONSUME6(T.DollarVariable) as unknown as IToken)
             : (
-              $.LA(1).tokenType === T.Ident
-                ? ($.CONSUME6(T.Ident) as unknown as IToken)
-                : ($.CONSUME6(T.PlainIdent) as unknown as IToken)
-            );
+                $.LA(1).tokenType === T.Ident
+                  ? ($.CONSUME6(T.Ident) as unknown as IToken)
+                  : ($.CONSUME6(T.PlainIdent) as unknown as IToken)
+              );
           if (!RECORDING_PHASE) {
             (forwardListMode === 'show' ? forwardShow : forwardHide)!.push(t.image);
           }
@@ -1221,6 +1226,23 @@ export function scssForwardAtRule(this: ScssActionsParser, T: ScssTokenMap) {
 
     if (!RECORDING_PHASE) {
       const loc = $.endRule();
+
+      // Emit warnings for unsupported @forward features
+      if (forwardAsPrefix) {
+        $.warnings.push({
+          message: '@forward with "as <prefix>-*" prefixing is not supported in Jess and will never be. Use explicit namespacing instead (e.g., @-compose "theme" as theme; then access as $theme.colors).',
+          token: atKeyword,
+          deprecation: undefined
+        });
+      }
+      if (forwardShow || forwardHide) {
+        $.warnings.push({
+          message: '@forward with "show"/"hide" lists is not supported in Jess and will never be. Visibility control is the module\'s responsibility, not the forwarding module\'s. Use rulesVisibility options within the module itself.',
+          token: atKeyword,
+          deprecation: undefined
+        });
+      }
+
       return new StyleImport(
         { path: pathNode, with: withRules ? { node: withRules, type: 'set' } : undefined },
         {
@@ -1302,7 +1324,7 @@ export function scssWithConfig(this: ScssActionsParser, T: ScssTokenMap) {
     $.CONSUME(T.LParen);
 
     let decls: VarDeclaration[] | undefined;
-    if (!RECORDING_PHASE) decls = [];
+    if (!RECORDING_PHASE) {decls = [];}
 
     $.OPTION(() => {
       $.AT_LEAST_ONE_SEP({
@@ -1317,8 +1339,12 @@ export function scssWithConfig(this: ScssActionsParser, T: ScssTokenMap) {
           let sawGlobal = false;
           $.MANY(() => {
             $.OR([
-              { ALT: () => { $.CONSUME(T.SassDefault); sawDefault = true; } },
-              { ALT: () => { $.CONSUME(T.SassGlobal); sawGlobal = true; } }
+              { ALT: () => {
+ $.CONSUME(T.SassDefault); sawDefault = true; 
+} },
+              { ALT: () => {
+ $.CONSUME(T.SassGlobal); sawGlobal = true; 
+} }
             ]);
           });
           if (!RECORDING_PHASE) {
@@ -1543,7 +1569,7 @@ export function scssIncludeAtRule(this: ScssActionsParser, T: ScssTokenMap) {
         // (no `: <default>`), matching Jess' `@($x, $y) { ... }` syntax.
         $.CONSUME2(T.LParen);
         let p: JessNode[] | undefined;
-        if (!RECORDING_PHASE) p = [];
+        if (!RECORDING_PHASE) {p = [];}
         $.OPTION7(() => {
           $.AT_LEAST_ONE_SEP({
             SEP: T.Comma,
@@ -1707,7 +1733,7 @@ export function scssForAtRule(this: ScssActionsParser, T: ScssTokenMap) {
       },
       DEF: () => {
         const n = $.SUBRULE($.anyOuterValue, { ARGS: [ctx] }) as unknown as Node;
-        if (!RECORDING_PHASE) startNodes.push($.wrap(n, 'both'));
+        if (!RECORDING_PHASE) {startNodes.push($.wrap(n, 'both'));}
       }
     });
 
@@ -1729,33 +1755,34 @@ export function scssForAtRule(this: ScssActionsParser, T: ScssTokenMap) {
       GATE: () => $.LA(1).tokenType !== T.LCurly && $.LA(1).tokenType.name !== 'EOF',
       DEF: () => {
         const n = $.SUBRULE2($.anyOuterValue, { ARGS: [ctx] }) as unknown as Node;
-        if (!RECORDING_PHASE) endNodes.push($.wrap(n, 'both'));
+        if (!RECORDING_PHASE) {endNodes.push($.wrap(n, 'both'));}
       }
     });
 
     const header = !RECORDING_PHASE
       ? (() => {
-        const name = new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context);
-        const varDecl = new VarDeclaration({ name, value: new Nil() }, { paramVar: true }, $.getLocationInfo(dv), $.context);
+          const name = new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context);
+          const varDecl = new VarDeclaration({ name, value: new Nil() }, { paramVar: true }, $.getLocationInfo(dv), $.context);
 
-        const startExpr = startNodes.length === 1
-          ? startNodes[0]!
-          : new Sequence(startNodes, undefined, $.getLocationFromNodes(startNodes), $.context);
-        const endExpr = endNodes.length === 1
-          ? endNodes[0]!
-          : new Sequence(endNodes, undefined, $.getLocationFromNodes(endNodes), $.context);
+          const startExpr = startNodes.length === 1
+            ? startNodes[0]!
+            : new Sequence(startNodes, undefined, $.getLocationFromNodes(startNodes), $.context);
+          const endExpr = endNodes.length === 1
+            ? endNodes[0]!
+            : new Sequence(endNodes, undefined, $.getLocationFromNodes(endNodes), $.context);
 
-        const rangeNode = new Range(
-          { start: startExpr, end: endExpr },
-          { includeStart: true, includeEnd },
-          $.getLocationFromNodes([startExpr, endExpr]),
-          $.context
-        );
+          const rangeNode = new Range(
+            { start: startExpr, end: endExpr },
+            { includeStart: true, includeEnd },
+            $.getLocationFromNodes([startExpr, endExpr]),
+            $.context
+          );
 
-        const ofNode = new Any('of', { role: 'any' }, $.getLocationInfo(dv), $.context);
-        const inner = new Sequence([varDecl, ofNode, rangeNode], undefined, $.getLocationFromNodes([varDecl, rangeNode]), $.context);
-        return new Paren(inner, undefined, $.getLocationFromNodes([varDecl, rangeNode]), $.context);
-      })()
+          const ofNode = new Any('of', { role: 'any' }, $.getLocationInfo(dv), $.context);
+          const inner = new Sequence([varDecl, ofNode, rangeNode], undefined, $.getLocationFromNodes([varDecl, rangeNode]), $.context);
+          const paren = new Paren(inner, undefined, $.getLocationFromNodes([varDecl, rangeNode]), $.context);
+          return new Sequence([paren], undefined, $.getLocationFromNodes([paren]), $.context);
+        })()
       : undefined;
 
     $.CONSUME(T.LCurly);
@@ -1809,7 +1836,7 @@ export function scssEachAtRule(this: ScssActionsParser, T: ScssTokenMap) {
 
     const header = !RECORDING_PHASE
       ? (() => {
-        const pattern: Node =
+          const pattern: Node =
           vars.length > 1
             ? new Block(
               new List(vars, { sep: ',' }, $.getLocationFromNodes(vars), $.context),
@@ -1819,18 +1846,19 @@ export function scssEachAtRule(this: ScssActionsParser, T: ScssTokenMap) {
             )
             : vars[0]!;
 
-        const expr = isNode(rawExpr, 'Expression')
-          ? rawExpr
-          : (() => {
-            const innerExpr = $.wrap(rawExpr, 'both');
-            // Prevent `$` + leading-space output like `$ list`.
-            innerExpr.pre = 0;
-            return new Expression(innerExpr, undefined, $.getLocationFromNodes([rawExpr]), $.context);
-          })();
-        const ofNode = new Any('of', { role: 'any' }, $.getLocationFromNodes([pattern]), $.context);
-        const inner = new Sequence([pattern, ofNode, expr], undefined, $.getLocationFromNodes([pattern, rawExpr]), $.context);
-        return new Paren(inner, undefined, $.getLocationFromNodes([pattern, rawExpr]), $.context);
-      })()
+          const expr = isNode(rawExpr, 'Expression')
+            ? rawExpr
+            : (() => {
+                const innerExpr = $.wrap(rawExpr, 'both');
+                // Prevent `$` + leading-space output like `$ list`.
+                innerExpr.pre = 0;
+                return new Expression(innerExpr, undefined, $.getLocationFromNodes([rawExpr]), $.context);
+              })();
+          const ofNode = new Any('of', { role: 'any' }, $.getLocationFromNodes([pattern]), $.context);
+          const inner = new Sequence([pattern, ofNode, expr], undefined, $.getLocationFromNodes([pattern, rawExpr]), $.context);
+          const paren = new Paren(inner, undefined, $.getLocationFromNodes([pattern, rawExpr]), $.context);
+          return new Sequence([paren], undefined, $.getLocationFromNodes([paren]), $.context);
+        })()
       : undefined;
 
     $.CONSUME(T.LCurly);
@@ -1878,8 +1906,8 @@ export function scssMixinAtRule(this: ScssActionsParser, T: ScssTokenMap) {
     const looksLikeInterpolatedMixinName = () => {
       for (let i = 1; i < 64; i++) {
         const tok = $.LA(i);
-        if (tok.tokenType === T.LParen || tok.tokenType === T.LCurly || tok.tokenType.name === 'EOF') return false;
-        if (tok.tokenType === T.InterpolationStart) return true;
+        if (tok.tokenType === T.LParen || tok.tokenType === T.LCurly || tok.tokenType.name === 'EOF') {return false;}
+        if (tok.tokenType === T.InterpolationStart) {return true;}
       }
       return false;
     };
@@ -1913,7 +1941,7 @@ export function scssMixinAtRule(this: ScssActionsParser, T: ScssTokenMap) {
                   ALT: () => {
                     const ident = $.CONSUME(T.Ident);
                     startTok ??= ident;
-                    if (!RECORDING_PHASE) source += ident.image;
+                    if (!RECORDING_PHASE) {source += ident.image;}
                   }
                 }
               ]);
@@ -1996,7 +2024,7 @@ export function scssMixinParams(this: ScssActionsParser, T: ScssTokenMap) {
     $.startRule();
     $.CONSUME(T.LParen);
     let params: Node[] | undefined;
-    if (!RECORDING_PHASE) params = [];
+    if (!RECORDING_PHASE) {params = [];}
 
     $.OPTION(() => {
       $.AT_LEAST_ONE_SEP({
@@ -2024,7 +2052,7 @@ export function scssMixinParamsAfterFunctionStart(this: ScssActionsParser, T: Sc
     const RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
     let params: Node[] | undefined;
-    if (!RECORDING_PHASE) params = [];
+    if (!RECORDING_PHASE) {params = [];}
 
     $.OPTION(() => {
       $.AT_LEAST_ONE_SEP({
@@ -2111,8 +2139,8 @@ export function declaration(this: ScssActionsParser, T: ScssTokenMap, alt?: AltC
     // This keeps the fast path for normal CSS declarations.
     for (let i = 1; i < 64; i++) {
       const tok = $.LA(i);
-      if (tok.tokenType === T.Assign || tok.tokenType.name === 'EOF') return false;
-      if (tok.tokenType === T.InterpolationStart) return true;
+      if (tok.tokenType === T.Assign || tok.tokenType.name === 'EOF') {return false;}
+      if (tok.tokenType === T.InterpolationStart) {return true;}
     }
     return false;
   };
@@ -2130,8 +2158,12 @@ export function declaration(this: ScssActionsParser, T: ScssTokenMap, alt?: AltC
         let sawGlobal = false;
         $.MANY2(() => {
           $.OR3([
-            { ALT: () => { $.CONSUME(T.SassDefault); sawDefault = true; } },
-            { ALT: () => { $.CONSUME(T.SassGlobal); sawGlobal = true; } },
+            { ALT: () => {
+ $.CONSUME(T.SassDefault); sawDefault = true; 
+} },
+            { ALT: () => {
+ $.CONSUME(T.SassGlobal); sawGlobal = true; 
+} }
           ]);
         });
 
@@ -2155,10 +2187,10 @@ export function declaration(this: ScssActionsParser, T: ScssTokenMap, alt?: AltC
       // SCSS interpolated declaration name: `foo-#{$bar}: ...`, `#{$prop}: ...`, `--x-#{$y}: ...`
       GATE: () => (
         (
-          $.LA(1).tokenType === T.Ident ||
-          $.LA(1).tokenType === T.CustomProperty ||
-          ($.legacyMode && $.LA(1).tokenType === T.LegacyPropIdent) ||
-          $.LA(1).tokenType === T.InterpolationStart
+          $.LA(1).tokenType === T.Ident
+          || $.LA(1).tokenType === T.CustomProperty
+          || ($.legacyMode && $.LA(1).tokenType === T.LegacyPropIdent)
+          || $.LA(1).tokenType === T.InterpolationStart
         ) && looksLikeInterpolatedDeclName()
       ),
       ALT: () => {
@@ -2351,13 +2383,13 @@ export function scssMediaPrelude(this: ScssActionsParser, T: ScssTokenMap) {
           { ALT: () => $.SUBRULE2($.anyOuterValue, { ARGS: [ctx] }) }
         ]) as unknown as Node;
 
-        if (!RECORDING_PHASE) nodes.push($.wrap(n));
+        if (!RECORDING_PHASE) {nodes.push($.wrap(n));}
       }
     });
 
     if (!RECORDING_PHASE) {
       const loc = $.endRule();
-      if (nodes.length === 1) return nodes[0]!;
+      if (nodes.length === 1) {return nodes[0]!;}
       return new Sequence(nodes, undefined, loc, $.context);
     }
   };
@@ -2398,13 +2430,13 @@ export function scssSupportsPrelude(this: ScssActionsParser, T: ScssTokenMap) {
           { ALT: () => $.SUBRULE2($.anyOuterValue, { ARGS: [ctx] }) }
         ]) as unknown as Node;
 
-        if (!RECORDING_PHASE) nodes.push($.wrap(n));
+        if (!RECORDING_PHASE) {nodes.push($.wrap(n));}
       }
     });
 
     if (!RECORDING_PHASE) {
       const loc = $.endRule();
-      if (nodes.length === 1) return nodes[0]!;
+      if (nodes.length === 1) {return nodes[0]!;}
       return new Sequence(nodes, undefined, loc, $.context);
     }
   };
@@ -2445,13 +2477,13 @@ export function scssContainerPrelude(this: ScssActionsParser, T: ScssTokenMap) {
           { ALT: () => $.SUBRULE2($.anyOuterValue, { ARGS: [ctx] }) }
         ]) as unknown as Node;
 
-        if (!RECORDING_PHASE) nodes.push($.wrap(n));
+        if (!RECORDING_PHASE) {nodes.push($.wrap(n));}
       }
     });
 
     if (!RECORDING_PHASE) {
       const loc = $.endRule();
-      if (nodes.length === 1) return nodes[0]!;
+      if (nodes.length === 1) {return nodes[0]!;}
       return new Sequence(nodes, undefined, loc, $.context);
     }
   };
@@ -2492,13 +2524,13 @@ export function scssScopePrelude(this: ScssActionsParser, T: ScssTokenMap) {
           { ALT: () => $.SUBRULE2($.anyOuterValue, { ARGS: [ctx] }) }
         ]) as unknown as Node;
 
-        if (!RECORDING_PHASE) nodes.push($.wrap(n));
+        if (!RECORDING_PHASE) {nodes.push($.wrap(n));}
       }
     });
 
     if (!RECORDING_PHASE) {
       const loc = $.endRule();
-      if (nodes.length === 1) return nodes[0]!;
+      if (nodes.length === 1) {return nodes[0]!;}
       return new Sequence(nodes, undefined, loc, $.context);
     }
   };
@@ -2617,18 +2649,20 @@ export function unknownAtRule(this: ScssActionsParser, T: ScssTokenMap) {
 
   return (ctx: RuleContext = {}) => {
     const img = $.LA(1).image;
-    if (img === '@use') return $.SUBRULE($.scssUseAtRule, { ARGS: [ctx] });
-    if (img === '@forward') return $.SUBRULE($.scssForwardAtRule, { ARGS: [ctx] });
-    if (img === '@extend') return $.SUBRULE($.scssExtendAtRule, { ARGS: [ctx] });
-    if (img === '@content') return $.SUBRULE($.scssContentAtRule, { ARGS: [ctx] });
-    if (img === '@if') return $.SUBRULE($.scssIfAtRule, { ARGS: [ctx] });
-    if (img === '@for') return $.SUBRULE($.scssForAtRule, { ARGS: [ctx] });
-    if (img === '@each') return $.SUBRULE($.scssEachAtRule, { ARGS: [ctx] });
-    if (img === '@while') return $.SUBRULE($.scssWhileAtRule, { ARGS: [ctx] });
-    if (img === '@include') return $.SUBRULE($.scssIncludeAtRule, { ARGS: [ctx] });
-    if (img === '@mixin') return $.SUBRULE($.scssMixinAtRule, { ARGS: [ctx] });
-    if (img === '@function') return $.SUBRULE($.scssFunctionAtRule, { ARGS: [ctx] });
-    if (img === '@return') return $.SUBRULE($.scssReturnAtRule, { ARGS: [ctx] });
+    if (img === '@use') {return $.SUBRULE($.scssUseAtRule, { ARGS: [ctx] });}
+    if (img === '@forward') {return $.SUBRULE($.scssForwardAtRule, { ARGS: [ctx] });}
+    if (img === '@extend') {return $.SUBRULE($.scssExtendAtRule, { ARGS: [ctx] });}
+    if (img === '@content') {return $.SUBRULE($.scssContentAtRule, { ARGS: [ctx] });}
+    if (img === '@if') {return $.SUBRULE($.scssIfAtRule, { ARGS: [ctx] });}
+    if (img === '@for') {return $.SUBRULE($.scssForAtRule, { ARGS: [ctx] });}
+    if (img === '@each') {return $.SUBRULE($.scssEachAtRule, { ARGS: [ctx] });}
+    if (img === '@while') {return $.SUBRULE($.scssWhileAtRule, { ARGS: [ctx] });}
+    if (img === '@include') {return $.SUBRULE($.scssIncludeAtRule, { ARGS: [ctx] });}
+    if (img === '@mixin') {return $.SUBRULE($.scssMixinAtRule, { ARGS: [ctx] });}
+    if (img === '@function') {return $.SUBRULE($.scssFunctionAtRule, { ARGS: [ctx] });}
+    if (img === '@return') {return $.SUBRULE($.scssReturnAtRule, { ARGS: [ctx] });}
+    if (img === '@debug' || img === '@warn' || img === '@error') {return $.SUBRULE($.scssDiagnosticAtRule, { ARGS: [ctx] });}
+    if (img === '@at-root') {return $.SUBRULE($.scssAtRootAtRule, { ARGS: [ctx] });}
     return baseUnknown(ctx);
   };
 }
@@ -2737,3 +2771,95 @@ export function scssFunctionAtRule(this: ScssActionsParser, T: ScssTokenMap) {
   };
 }
 
+/**
+ * SCSS: `@debug <expr>;`, `@warn <expr>;`, `@error <expr>;`
+ *
+ * Parsed as `Log` nodes. These are diagnostic at-rules that output messages during compilation.
+ * They serialize to empty strings since they're not supported in Jess syntax.
+ */
+export function scssDiagnosticAtRule(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    const atKeyword = $.CONSUME(T.AtKeyword) as unknown as IToken; // '@debug', '@warn', or '@error'
+    // Parse the diagnostic message as a value sequence (stops at `;` naturally).
+    const message = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+    $.CONSUME(T.Semi);
+    if (!RECORDING_PHASE) {
+      const loc = $.endRule();
+      const keywordImage = atKeyword.image;
+      // Extract level from @debug, @warn, or @error
+      const level = keywordImage.slice(1) as 'debug' | 'warn' | 'error';
+      return new Log(
+        { level, message: $.wrap(message, 'both') },
+        undefined,
+        loc,
+        $.context
+      );
+    }
+  };
+}
+
+/**
+ * SCSS: `@at-root [selector] { ... }` or `@at-root (without: media) { ... }`
+ *
+ * Parsed as `AtRule` nodes. This feature is currently unsupported in Jess.
+ * A warning is emitted when this directive is encountered.
+ */
+export function scssAtRootAtRule(this: ScssActionsParser, T: ScssTokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+    const atKeyword = $.CONSUME(T.AtKeyword) as unknown as IToken; // '@at-root'
+
+    // Parse optional selector or control arguments
+    let prelude: Node | undefined;
+    $.OR([
+      {
+        // @at-root (without: media) or @at-root (with: rule)
+        GATE: () => $.LA(1).tokenType === T.LParen,
+        ALT: () => {
+          prelude = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+        }
+      },
+      {
+        // @at-root .selector { ... }
+        GATE: () => {
+          const next = $.LA(1);
+          return next.tokenType === T.Ident || next.tokenType === T.PlainIdent 
+                 || next.tokenType === T.Dot || next.tokenType === T.Hash
+                 || next.tokenType === T.Colon || next.tokenType === T.LBracket;
+        },
+        ALT: () => {
+          // Parse as a selector list (CSS parser method)
+          prelude = $.SUBRULE($.selectorList, { ARGS: [ctx] }) as unknown as Node;
+        }
+      },
+      {
+        // @at-root { ... } (no prelude)
+        ALT: () => {}
+      }
+    ]);
+
+    $.CONSUME(T.LCurly);
+    const rules = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
+    $.CONSUME(T.RCurly);
+
+    if (!RECORDING_PHASE) {
+      const loc = $.endRule();
+      const name = new Any(atKeyword.image, { role: 'atkeyword' }, $.getLocationInfo(atKeyword), $.context);
+      const atRule = new AtRule({ name, prelude: prelude ? $.wrap(prelude, 'both') : undefined, rules }, undefined, loc, $.context);
+
+      // Emit warning that @at-root is unsupported (and will never be)
+      $.warnings.push({
+        message: '@at-root is not supported in Jess and will never be. Write utilities at the top level or use separate files/modules instead. See docs for alternatives.',
+        token: atKeyword,
+        deprecation: undefined
+      });
+
+      return atRule;
+    }
+  };
+}

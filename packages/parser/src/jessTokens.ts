@@ -1,127 +1,181 @@
-import type { rawTokenConfig } from '@jesscss/css-parser';
 import {
-  Fragments as CSSFragments,
-  Tokens as CSSTokens,
+  rawCssFragments,
+  rawCssTokens,
   LexerType,
-  groupCapture
+  type RawModeConfig,
+  type RawTokenConfig,
+  type RawToken,
+  type TokenNames,
+  type CssTokenType,
+  SKIPPED_LABEL
 } from '@jesscss/css-parser';
+import type { WritableDeep } from 'type-fest';
 
-type IMerges = Record<string, rawTokenConfig[]>;
+type IMerges = Partial<Record<CssTokenType, RawTokenConfig>>;
 
-export const Fragments = [...CSSFragments];
-export let Tokens = [...CSSTokens];
+function $preBuildFragments() {
+  const fragments = rawCssFragments() as unknown as string[][];
+  // Jess line comment
+  fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*']);
+  // Jess interpolation: $(expr)
+  fragments.push(['interpolated', '\\$\\{(?:[^}]*)\\}']);
 
-Fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*']);
-// Fragments.push(['jsident', '[_a-zA-Z]\\w*'])
-/** Not sure we need all these back-slashes for ` marks */
-Fragments.push(['string3', '\\`(\\\\`|[^\\n\\r\\f\\`]|{{newline}}|{{escape}})*\\`']);
-
-Fragments.forEach((fragment) => {
-  if (fragment[0].indexOf('wsorcomment') !== -1) {
-    fragment[1] = '(?:({{ws}})|({{comment}})|({{lineComment}}))';
-  }
-});
-
-/** Keyed by what to insert after */
-const merges: IMerges = {
-  Assign: [
-    { name: 'Ampersand', pattern: /&/, categories: ['Selector'] },
-    { name: 'Ellipsis', pattern: /\.\.\./ }
-  ],
-  AtImport: [
-    {
-      name: 'AtMixin',
-      pattern: /@mixin/,
-      longer_alt: 'AtKeyword',
-      categories: ['BlockMarker', 'AtName']
-    },
-    {
-      name: 'AtLet',
-      pattern: /@let/,
-      longer_alt: 'AtKeyword',
-      categories: ['BlockMarker', 'AtName']
-    },
-    {
-      name: 'AtInclude',
-      pattern: /@include/,
-      longer_alt: 'AtKeyword',
-      categories: ['BlockMarker', 'AtName']
-    }
-  ],
-  PlainFunction: [
-    {
-      name: 'From',
-      pattern: /from/,
-      longer_alt: 'PlainIdent',
-      categories: ['Ident']
-    },
-    {
-      name: 'As',
-      pattern: /as/,
-      longer_alt: 'PlainIdent',
-      categories: ['Ident']
-    }
-  ],
-  Tilde: [
-    {
-      name: 'JsStart',
-      pattern: /\$/,
-      categories: ['BlockMarker']
-    }
-  ],
-  HashName: [
-    /** We'll have to change class name parsing */
-    {
-      name: 'Dot',
-      pattern: /\./,
-      longer_alt: 'Ellipsis'
-    },
-    {
-      name: 'NotMark',
-      pattern: /!/,
-      longer_alt: 'Important'
-    }
-  ]
-  /**
-   * @todo - allow JS expressions within string literals
-   * Result will be a CSS string literal with a J.call() in it
-  */
-  // Uri: [
-  //   {
-  //     name: 'JSStringLiteral',
-  //     pattern: '{{string3}}',
-  //     line_breaks: true
-  //   }
-  // ]
-};
-
-let tokenLength = Tokens.length;
-for (let i = 0; i < tokenLength; i++) {
-  let token = Tokens[i];
-  let { name, categories } = token;
-  const copyToken = () => {
-    token = { ...token };
-    categories = categories ? categories.slice(0) : [];
-  };
-  let alterations = true;
-
-  switch (name) {
-    case 'StringLiteral':
-      copyToken();
-      token.pattern = '~?(?:{{string1}}|{{string2}}|{{string3}})';
-      break;
-    default:
-      alterations = false;
-  }
-  if (alterations) {
-    Tokens[i] = token;
-  }
-  const merge = merges[name];
-  if (merge) {
-    /** Insert after current token */
-    Tokens = Tokens.slice(0, i + 1).concat(merge, Tokens.slice(i + 1));
-    const mergeLength = merge.length;
-    tokenLength += mergeLength;
-    i += mergeLength;
-  }
+  return fragments;
 }
+
+type CssTokenModes = ReturnType<typeof rawCssTokens>['modes'];
+
+function $preBuildTokens() {
+  /**
+   * Creates a type from the CSS mode and adds Jess tokens
+   */
+  type Modes<
+    T extends CssTokenModes = CssTokenModes,
+    U extends typeof merges = typeof merges,
+    J extends keyof U = keyof U
+  > = {
+    [K in keyof T]: K extends 'Default' ? T[K] | U[J] : T[K]
+  };
+
+  type InferMergeTypes = {
+    modes: Modes;
+    defaultMode: 'Default';
+  };
+
+  const tokens = rawCssTokens() as unknown as InferMergeTypes;
+
+  /** Keyed by what to insert after */
+  const merges = {
+    HashName: [
+      /**
+       * Jess interpolation start in selectors: $(expr)
+       */
+      {
+        name: 'InterpolationStart',
+        pattern: /\$\(/,
+        categories: ['BlockMarker']
+      }
+    ],
+    PlainIdent: [
+      {
+        name: 'LineComment',
+        pattern: '{{lineComment}}',
+        label: SKIPPED_LABEL
+      },
+      { name: 'Ellipsis', pattern: /\.\.\./ },
+      /**
+       * Jess control flow keywords (must come before Dollar token so they match first):
+       * $if, $else, $while, $for
+       */
+      {
+        name: 'IfKeyword',
+        pattern: /\$if/,
+        longer_alt: 'PlainIdent'
+      },
+      {
+        name: 'ElseKeyword',
+        pattern: /\$else/,
+        longer_alt: 'PlainIdent'
+      },
+      {
+        name: 'WhileKeyword',
+        pattern: /\$while/,
+        longer_alt: 'PlainIdent'
+      },
+      {
+        name: 'ForKeyword',
+        pattern: /\$for/,
+        longer_alt: 'PlainIdent'
+      },
+      // Note: import and as keywords are handled in productions, not as separate tokens
+      // They're just regular PlainIdent tokens that we check for in the parser
+    ],
+    /**
+     * Insert Dollar token ($) - this is a separate token in Jess.
+     * $var is parsed as $ + var (two tokens), except for keywords like $if.
+     */
+    Tilde: [
+      {
+        name: 'Dollar',
+        pattern: /\$/,
+        categories: ['BlockMarker']
+      }
+    ],
+    /**
+     * Jess at-rules: @-compose, @-from, @-export
+     */
+    AtImport: [
+      {
+        name: 'AtCompose',
+        pattern: /@-compose/,
+        longer_alt: 'AtKeyword',
+        categories: ['BlockMarker', 'AtName']
+      },
+      {
+        name: 'AtFrom',
+        pattern: /@-from/,
+        longer_alt: 'AtKeyword',
+        categories: ['BlockMarker', 'AtName']
+      },
+      {
+        name: 'AtExport',
+        pattern: /@-export/,
+        longer_alt: 'AtKeyword',
+        categories: ['BlockMarker', 'AtName']
+      }
+    ]
+  } as const satisfies IMerges;
+
+  const mutableTokens = tokens as unknown as {
+    modes: Record<string, WritableDeep<RawToken[]>>;
+  };
+
+  let defaultTokens = mutableTokens.modes.Default!;
+
+  let tokenLength = defaultTokens.length;
+  for (let i = 0; i < tokenLength; i++) {
+    const token: WritableDeep<RawToken> = defaultTokens[i]!;
+
+    const { name } = token;
+
+    const mergesByName = merges as unknown as Record<string, ReadonlyArray<WritableDeep<RawToken>>>;
+    const merge = mergesByName[name];
+    if (merge) {
+      /** Insert after current token */
+      defaultTokens = defaultTokens.slice(0, i + 1).concat(merge, defaultTokens.slice(i + 1))
+      mutableTokens.modes.Default = defaultTokens;
+      const mergeLength = merge.length;
+      tokenLength += mergeLength;
+      i += mergeLength;
+    }
+  }
+
+  return tokens;
+}
+
+export const Fragments = $preBuildFragments!();
+export const Tokens = $preBuildTokens!();
+
+type ReturnTokens = ReturnType<typeof $preBuildTokens>;
+type TokenModes = ReturnTokens['modes'];
+
+/**
+ * Token names introduced by Jess merges.
+ */
+export type JessExtraTokenType =
+  | 'LineComment'
+  | 'Ellipsis'
+  | 'Dollar'
+  | 'InterpolationStart'
+  | 'IfKeyword'
+  | 'ElseKeyword'
+  | 'WhileKeyword'
+  | 'ForKeyword'
+  | 'AtCompose'
+  | 'AtFrom'
+  | 'AtExport';
+
+export type JessTokenType = TokenNames<TokenModes[keyof TokenModes]> | JessExtraTokenType;
+
+export const jessFragments = () => Fragments as unknown as ReadonlyArray<Readonly<[string, string]>>;
+export const jessTokens = () => Tokens as unknown as RawModeConfig;

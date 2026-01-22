@@ -24,16 +24,21 @@ but updated for the new goal: **ship a Jess-first LSP + VS Code/Cursor extension
 
 ### Phase 3 — Hover + navigation
 - [x] Hover: properties/values/functions/vars (with docs from custom data).
-- [x] Definitions/references/rename for vars: Less ✅, SCSS ⚠️ (parser issues - Less/Jess have advantage).
-- [ ] Document symbols (rulesets, at-rules, vars, etc.).
+- [x] Definitions/references for vars: Less ✅, SCSS ✅ (cross-file support added).
+- [x] Cross-file navigation: go-to-definition and find-references for variables and mixins across imported files.
+- [x] Import graph: built using `@jesscss/style-resolver` with cycle detection and cached parsed documents.
+- [x] Document symbols (rulesets, at-rules, vars, mixins, functions) - flat list ✅.
+- [ ] Document symbols: hierarchical structure (at-rules → rulesets → vars/mixins) - **parity feature**.
 
 ### Phase 4 — Remaining editor features
-- [ ] Document links (imports/urls/module resolution).
-- [ ] Code actions (quick-fixes from recovery metadata, unknown prop/at-rule suggestions).
-- [ ] Colors.
-- [ ] Folding ranges.
-- [ ] Selection ranges.
-- [ ] Formatting strategy (keep existing formatter? Jess formatter? decide per language).
+- [x] Document links (imports/urls/module resolution) with proper file resolution via `@jesscss/style-resolver`.
+- [x] Code actions (quick-fixes: create variable, create mixin for undefined references).
+- [ ] Colors (color picker support).
+- [x] Folding ranges (structural blocks: rulesets, at-rules, mixins, functions).
+- [x] Selection ranges (nested AST spans for smart selection).
+- [x] Formatting (uses core AST `toTrimmedString` for consistent indentation).
+- [x] Semantic tokens (parser-driven highlighting with AST-based variable reference detection).
+- [x] Dynamic diagnostic severity: undefined variables are errors when `@use` (SCSS) or `@from`/`@compose` (Less) present, warnings otherwise.
 
 ### Phase 5 — Test harness (guiding star: `vscode-css-languageservice`)
 - [ ] Port/adapt a minimal subset of completion/hover/diagnostics tests as golden cases.

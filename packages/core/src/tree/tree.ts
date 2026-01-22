@@ -36,6 +36,7 @@ import type { Color } from './color.js';
 import type { Reference } from './reference.js';
 import type { Comment } from './comment.js';
 import type { Range } from './range.js';
+import type { Log } from './log.js';
 
 export type Nodes = {
   Ampersand: typeof Ampersand;
@@ -78,4 +79,5 @@ export type Nodes = {
   Color: typeof Color;
   Reference: typeof Reference;
   Range: typeof Range;
+  Log: typeof Log;
 };

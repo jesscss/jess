@@ -38,6 +38,7 @@ export * from './number.js';
 export * from './expression.js';
 export * from './extend.js';
 export * from './list.js';
+export * from './log.js';
 export * from './mixin.js';
 export * from './negative.js';
 export * from './function.js';

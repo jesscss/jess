@@ -197,6 +197,8 @@ export class LessActionsParser extends CssActionsParser {
   guardWithCondition!: Rule;
   guardWithConditionValue!: Rule;
 
+  exportAtRule!: Rule;
+
   /** See `LessParserConfig.mathMode` */
   mathMode: MathMode;
   /** See `LessParserConfig.wrapOuterExpressions` */

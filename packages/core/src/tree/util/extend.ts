@@ -568,6 +568,14 @@ function extractSelectorsFromIs(selector: Selector): Selector[] {
  * @param inheritFrom - Optional selector to inherit from
  * @returns A new SelectorList with deduplicated and flattened selectors
  */
+// Module-level WeakMap to track extend order for source-order preservation
+// Set during processExtends and used when merging selectors into :is()
+let extendOrderMap: WeakMap<Selector, number> | null = null;
+
+export function setExtendOrderMap(map: WeakMap<Selector, number> | null): void {
+  extendOrderMap = map;
+}
+
 function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selector): SelectorList {
   // #region agent log
   {
@@ -584,6 +592,32 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
   const extractedSelectors: Selector[] = [];
   for (const selector of selectors) {
     extractedSelectors.push(...extractSelectorsFromIs(selector));
+  }
+
+  // Sort by extend order if available (preserves source order when merging into :is())
+  // Only sort selectors that have extend order (extendWith selectors); maintain relative order for others
+  // This ensures that when multiple extends target the same selector, their extending selectors
+  // are merged into :is() in source order (based on when they were registered during preEval)
+  if (extendOrderMap && extractedSelectors.length > 1) {
+    // Separate selectors with order (extendWith) from those without (original selectors)
+    const withOrder: Array<{ selector: Selector; order: number }> = [];
+    const withoutOrder: Selector[] = [];
+    
+    for (const selector of extractedSelectors) {
+      const order = extendOrderMap.get(selector);
+      if (order !== undefined) {
+        withOrder.push({ selector, order });
+      } else {
+        withoutOrder.push(selector);
+      }
+    }
+    
+    // Sort extendWith selectors by their order
+    withOrder.sort((a, b) => a.order - b.order);
+    
+    // Reconstruct: original selectors first (maintain their order), then sorted extendWith selectors
+    extractedSelectors.length = 0;
+    extractedSelectors.push(...withoutOrder, ...withOrder.map(item => item.selector));
   }
 
   // createProcessedSelector may return a single selector if only one item, so ensure it's an array
@@ -1290,6 +1324,41 @@ export function extendSelector(
       return target;
     }
 
+    // Less semantics: without `all`, `:extend(.x)` should only apply when `.x` is a complete selector
+    // match (i.e. the entire selector / selector-list item), not when `.x` appears as a component
+    // inside a larger selector like `.a .b .c`.
+    //
+    // Runtime evidence: in `extend-exact.less`, `.effected { &:extend(.a); ... }` should NOT affect
+    // `.a .b .c`, but it currently does because the matcher can report a non-partial location for a
+    // component match.
+    if (!partial && isNode(find, 'SimpleSelector')) {
+      const findV = find.valueOf();
+      if (!isNonAllWholeSelectorItemMatch(target, findV)) {
+        // #region agent log
+        try {
+          if (process.env.DEBUG_EXTEND_EXACT_DEEP === 'true') {
+            syncLog({
+              sessionId: 'debug-session',
+              runId: process.env.DEBUG_RUN_ID || 'run',
+              hypothesisId: 'H37',
+              location: 'extend.ts:extendSelector',
+              message: 'full-mode-simple-selector-reject-non-whole-selector',
+              data: {
+                target: target.valueOf(),
+                find: findV,
+                extensionType: (location as any)?.extensionType ?? null,
+                isPartialMatch: !!(location as any)?.isPartialMatch,
+                path: Array.isArray((location as any)?.path) ? (location as any).path.slice(0, 12) : null
+              },
+              timestamp: Date.now()
+            });
+          }
+        } catch {}
+        // #endregion
+        return target;
+      }
+    }
+
     // Check for boundary-crossing matches in compound selectors FIRST
     // This handles cases like :is(.a, .b).c matching .b.c where the match crosses the :is() boundary
     // This must be checked before handleFullExtend because it requires special flattening logic
@@ -1723,7 +1792,94 @@ function selectBestLocation(
   // The "append to list" locations have paths ending in 'arg', while actual matches have
   // more specific paths like [index, 'arg', altIndex]
   // For full extends (partial: false), prefer valid full matches
-  let location = searchResult.locations[0]!;
+  // Prefer an actual matched-node replacement/wrap over "append to :is() list" locations.
+  // This matters for cases like:
+  //   target: `:is(parent) :is(.replace,.c)`
+  //   find: `.c`
+  // where the matcher reports both:
+  // - a real `.c` match inside the child :is() arg (replace/wrap)
+  // - an "append" location for the parent :is() arg
+  // In full mode we should extend the `.c` occurrence, not mutate the parent list.
+  const locations: any[] = Array.isArray(searchResult.locations) ? searchResult.locations : [];
+  const findV = find.valueOf();
+  const preferNonAppend = !partial && locations.length > 0;
+  if (preferNonAppend) {
+    const actualMatches = locations.filter((l: any) => {
+      try {
+        const mv = l?.matchedNode?.valueOf?.();
+        return typeof mv === 'string' && mv === findV;
+      } catch {
+        return false;
+      }
+    });
+    // Keep "append" locations that target the matched node itself (e.g. appending into a child :is() arg),
+    // but drop "append" locations that mutate an enclosing SelectorList (these incorrectly add to the parent list).
+    const filtered = actualMatches.filter((l: any) => {
+      if (l?.extensionType !== 'append') return true;
+      const mt = l?.matchedNode?.type ?? null;
+      if (mt === 'SelectorList') return false;
+      // Also drop the common parent-arg append shape: [..., 'arg'] with no index following.
+      if (Array.isArray(l?.path) && l.path.length >= 2) {
+        const last = l.path[l.path.length - 1];
+        const prev = l.path[l.path.length - 2];
+        if (last === 'arg' && typeof prev === 'number') {
+          return false;
+        }
+      }
+      return true;
+    });
+    if (filtered.length > 0) {
+      // Prefer appending into the exact matched node (keeps `:is(.a,.b,.effected)` shape)
+      const appendBasic = filtered.find((l: any) => l?.extensionType === 'append' && l?.matchedNode?.type === 'BasicSelector');
+      if (appendBasic) {
+        searchResult.locations = [appendBasic];
+      } else {
+        // Otherwise prefer replace over wrap if both exist.
+        const replace = filtered.find((l: any) => l?.extensionType === 'replace');
+        searchResult.locations = replace ? [replace] : filtered;
+      }
+    }
+  }
+
+  let location = (searchResult.locations ?? locations)[0]!;
+
+  // #region agent log
+  try {
+    if (process.env.DEBUG_EXTEND_EXACT_DEEP === 'true') {
+      const t = target.valueOf();
+      const f = find.valueOf();
+      if (
+        (t.includes(':is(.replace.replace') && (f === '.c' || f === '.b' || f === '.a'))
+        || (f.includes('.replace.replace') && t.includes(':is(.replace.replace'))
+      ) {
+        const locs = Array.isArray(searchResult.locations) ? searchResult.locations.slice(0, 8) : [];
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID || 'run',
+          hypothesisId: 'H35',
+          location: 'extend.ts:selectBestLocation',
+          message: 'candidate-locations',
+          data: {
+            partial,
+            hasMoreAfterIs,
+            target: t,
+            find: f,
+            extendWith: extendWith.valueOf(),
+            candidates: locs.map((l: any) => ({
+              extensionType: l?.extensionType ?? null,
+              isPartialMatch: !!l?.isPartialMatch,
+              matchedNodeType: l?.matchedNode?.type ?? null,
+              matchedNodeValue: (() => { try { return l?.matchedNode?.valueOf?.() ?? null; } catch { return null; } })(),
+              parentNodeType: l?.parentNode?.type ?? null,
+              path: Array.isArray(l?.path) ? l.path.slice(0, 12) : null
+            }))
+          },
+          timestamp: Date.now()
+        });
+      }
+    }
+  } catch {}
+  // #endregion
 
   // Exception: When partial: false and we're inside an :is() with more components after it,
   // even if we've matched the entire find (full match of item in :is()), it's still a partial match
@@ -1796,6 +1952,34 @@ function selectBestLocation(
   }
 
   return location;
+}
+
+function isNonAllWholeSelectorItemMatch(target: Selector, findValue: string): boolean {
+  // Exact whole-selector match (single selector item).
+  if (target.valueOf() === findValue) return true;
+
+  // SelectorList item match.
+  if (isNode(target, 'SelectorList')) {
+    return target.value.some(s => {
+      try { return (s as any)?.valueOf?.() === findValue; } catch { return false; }
+    });
+  }
+
+  // OR-path match: if the *entire selector item* is a selector-arg pseudo like :is(...)
+  // and one alternative equals the find selector, that's a valid whole-item match.
+  if (isNode(target, 'PseudoSelector')) {
+    const arg: any = (target as any).value?.arg;
+    if (arg && isNode(arg, 'SelectorList')) {
+      return arg.value.some((s: any) => {
+        try { return s?.valueOf?.() === findValue; } catch { return false; }
+      });
+    }
+    if (arg && typeof arg === 'object' && typeof arg.valueOf === 'function') {
+      try { return arg.valueOf() === findValue; } catch { return false; }
+    }
+  }
+
+  return false;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { serializeTypes, isNode, Condition } from '@jesscss/core';
+import { serializeTypes, isNode, Condition, Log } from '@jesscss/core';
 import { Parser } from '../src/index.js';
 import { assertValidTree } from './assert-valid-tree.js';
 
@@ -253,6 +253,30 @@ describe('scss-parser (ast serialize)', () => {
     expect(serializeTypes(tree)).toContainString(`(List`);
     expect(serializeTypes(tree)).toContainString(`(VarDeclaration`);
     expect(String(tree)).toContain('$for ([$a, $b] of $list)');
+  });
+
+  it('serializes @debug, @warn, @error as Log nodes with correct level', () => {
+    const { tree, errors, lexerResult } = parser.parse(`
+      @debug "Debug message";
+      @warn "Warning message";
+      @error "Error message";
+    `);
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+    expect(serializeTypes(tree)).toContainString(`(Log`);
+    // Verify Log nodes exist with correct structure
+    const rules = isNode(tree, 'Rules') ? tree : null;
+    expect(rules).not.toBeNull();
+    const logNodes = rules!.value.filter((node: any) => isNode(node, 'Log'));
+    expect(logNodes.length).toBe(3);
+    expect(logNodes[0].value.level).toBe('debug');
+    expect(logNodes[1].value.level).toBe('warn');
+    expect(logNodes[2].value.level).toBe('error');
+    // Verify they serialize to empty strings
+    expect(String(tree)).not.toContain('@debug');
+    expect(String(tree)).not.toContain('@warn');
+    expect(String(tree)).not.toContain('@error');
   });
 });
 

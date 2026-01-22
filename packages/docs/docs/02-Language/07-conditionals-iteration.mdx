@@ -4,7 +4,7 @@ title: Conditionals and iteration
 
 Similar to JavaScript, reserves a few `$` keywords to use for conditional evaluation and recursive iterations (loops).
 
-## $if, $else, $elseif
+## $if, $else, $else if
 
 These conditionals evaluate pretty much how you would expect. Note that even though control flow names start with `$`, they are not expressions, and expressions after them must be started with `$`.
 
@@ -36,15 +36,15 @@ $if ($theme = "dark") {
 
 ```less
 // An NPM module that gives us a season method
-@-use "some-date-fns" as date; 
+@-from "some-date-fns" import * as date; 
 
 $season: $date.getSeason($date.now()); // e.g., returns "spring", "summer", etc.
 
 $if ($season = "spring") {
   body { background: #d8f5d1; }
-} $elseif ($season = "summer") {
+} $else if ($season = "summer") {
   body { background: #ffe066; }
-} $elseif ($season = "autumn") {
+} $else if ($season = "autumn") {
   body { background: #ffbe76; }
 } $else {
   // winter (or whatever else you want to handle)
@@ -69,7 +69,7 @@ Unlike rulesets and at-rules, conditionals and iteration blocks do not create a 
 ```less
 .box {
   $my-color: red;
-  $if true {
+  $if (true) {
     $my-color: blue;
   }
   color: $my-color; // blue
@@ -84,9 +84,38 @@ The `$for` syntax in Jess should also be familiar to developers.
 ```less
 $sections: header, sidebar, footer;
 
-$for ($section, $i) of $sections {
+$for ($section, $i of $sections) {
   .box-$(section) {
     padding-left: $(i * 20px);
+  }
+}
+```
+
+You can also iterate over a range of numbers:
+```less
+$for ($i of 1 to 3) {
+  .box-$(i) {
+    value: $i;
+  }
+}
+```
+
+A range is inclusive of the start and end values. To exclude the end value, you can use this familiar syntax from other programming languages:
+```less
+$for ($i of 1 to <3) {
+  .box-$(i) {
+    value: $i;
+  }
+}
+```
+
+
+You can also destructure values from a list:
+
+```less
+$for ([$key, $value] of $list) {
+  .box-$(key) {
+    value: $value;
   }
 }
 ```

@@ -132,6 +132,59 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
     const renderSelector = withoutComments ? (selector.copy(true) as typeof selector) : selector;
 
+    // #region agent log
+    try {
+      if (process.env.DEBUG_EXTEND_BOOT === 'true') {
+          const filePath = options.context?.treeContext?.file?.fullPath ?? '';
+        if (typeof filePath === 'string' && filePath.includes('tests-unit/extend-exact')) {
+          const v = (renderSelector as any)?.valueOf?.() ?? '';
+          if (typeof v === 'string' && v.includes('.e')) {
+            const type = (renderSelector as any)?.type ?? null;
+            let complex: any = null;
+            let list0: any = null;
+            if (type === 'ComplexSelector') {
+              complex = {
+                len: (renderSelector as any).value?.length ?? null,
+                comps: Array.isArray((renderSelector as any).value)
+                  ? (renderSelector as any).value.slice(0, 8).map((c: any) => ({
+                    type: c?.type ?? null,
+                    v: typeof c?.valueOf === 'function' ? c.valueOf() : null
+                  }))
+                  : null
+              };
+            }
+            if (type === 'SelectorList') {
+              const first = (renderSelector as any).value?.[0];
+              if (first) {
+                list0 = {
+                  type: first?.type ?? null,
+                  valueOf: typeof first?.valueOf === 'function' ? first.valueOf() : null,
+                  comps: Array.isArray(first?.value)
+                    ? first.value.slice(0, 6).map((c: any) => ({
+                      type: c?.type ?? null,
+                      v: typeof c?.valueOf === 'function' ? c.valueOf() : null,
+                      pre: c?.pre ?? null,
+                      post: c?.post ?? null
+                    }))
+                    : null
+                };
+              }
+            }
+            syncLog({
+              sessionId: 'debug-session',
+              runId: process.env.DEBUG_RUN_ID || 'run',
+              hypothesisId: 'H40',
+              location: 'ruleset.ts:getHeaderString',
+              message: 'render-selector-shape',
+              data: { type, valueOf: v, complex, list0 },
+              timestamp: Date.now()
+            });
+          }
+        }
+      }
+    } catch {}
+    // #endregion
+
     let out = withoutComments ? '' : w.capture(() => this.processPrePost('pre', undefined, options));
     let selOut = w.capture(() => renderSelector.toString(options));
     /** Normalize single spacing */
@@ -255,6 +308,19 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           const extendRoot = context.extendRoots.getCurrentExtendRoot();
           if (extendRoot) {
             extendRoot.getRegistry('ruleset').add(node as Ruleset);
+          }
+          // Depth-first: preEval child rules immediately so all nested rulesets/extends
+          // are registered in source order before we process extends.
+          const childRules = node.value.rules;
+          if (childRules && !childRules.preEvaluated) {
+            const preEvaldRules = childRules.preEval(context);
+            if (isThenable(preEvaldRules)) {
+              return (preEvaldRules as Promise<Rules>).then((rules) => {
+                node.value.rules = rules;
+                return node;
+              });
+            }
+            node.value.rules = preEvaldRules as Rules;
           }
           return node;
         }

@@ -75,3 +75,20 @@ describe('mfValue', () => {
   });
 });
 
+describe('exportAtRule', () => {
+  it('should parse @-export with path', () => {
+    const { errors } = parse('@-export "./theme.jess";', 'stylesheet');
+    expect(errors.length).toBe(0);
+  });
+
+  it('should parse @-export with namespace', () => {
+    const { errors } = parse('@-export "./theme.jess" as theme;', 'stylesheet');
+    expect(errors.length).toBe(0);
+  });
+
+  it('should parse @-export with url()', () => {
+    const { errors } = parse('@-export url("./theme.jess");', 'stylesheet');
+    expect(errors.length).toBe(0);
+  });
+});
+

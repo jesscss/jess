@@ -36,6 +36,7 @@ export type TokenMap = CombinedTokenMap & Record<ScssTokenType, TokenType>;
  */
 export class ScssActionsParser extends CssActionsParser {
   declare T: TokenMap;
+  warnings: Array<{ message: string; token?: IToken; deprecation?: string }> = [];
 
   // SCSS-specific rules (added via productions registration)
   scssCondition!: Rule;
@@ -58,6 +59,8 @@ export class ScssActionsParser extends CssActionsParser {
   scssMixinAtRule!: Rule;
   scssFunctionAtRule!: Rule;
   scssReturnAtRule!: Rule;
+  scssDiagnosticAtRule!: Rule;
+  scssAtRootAtRule!: Rule;
   scssMixinParams!: Rule;
   scssMixinParamsAfterFunctionStart!: Rule;
   scssMixinParam!: Rule;

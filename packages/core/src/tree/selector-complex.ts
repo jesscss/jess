@@ -139,13 +139,16 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       : '';
     const __agentShouldLog = __agentDbg
       && typeof __agentFilePath === 'string'
-      && __agentFilePath.includes('tests-unit/extend-selector')
-      && this.valueOf().includes('@{');
+      && (
+        __agentFilePath.includes('tests-unit/extend-selector')
+        || __agentFilePath.includes('tests-unit/extend-exact')
+      )
+      && (this.valueOf().includes('@{') || this.valueOf().includes('&&') || this.valueOf().includes('.e'));
     if (__agentShouldLog) {
       syncLog({
         sessionId: 'debug-session',
         runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-        hypothesisId: 'H12',
+        hypothesisId: 'H38',
         location: 'selector-complex.ts:evalNode',
         message: 'complex-eval-enter',
         data: {

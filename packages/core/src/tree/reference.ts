@@ -490,7 +490,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               returnVal = performLookup(this.sourceRulesParent);
             }
           }
-
         }
 
         // #region agent log
@@ -506,7 +505,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 if (returnVal && typeof returnVal === 'object' && 'type' in (returnVal as any)) {
                   foundNodeType = String((returnVal as any).type ?? '');
                   const vv = (returnVal as any).value?.value;
-                      if (vv && typeof vv === 'object' && 'type' in vv) {
+                  if (vv && typeof vv === 'object' && 'type' in vv) {
                     valueType = String((vv as any).type ?? '');
                     if (valueType === 'Collection') {
                       collLen = Array.isArray((vv as any).value) ? (vv as any).value.length : -1;
@@ -517,17 +516,17 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                         const valStr = String(first.value?.value?.valueOf?.() ?? '');
                         firstDecl = `${nameStr}=${valStr}`;
                       }
-                        } else if (valueType === 'Mixin') {
-                          // For detached ruleset-as-mixin, grab first declaration from its rules body if present.
-                          const body: any = (vv as any).value?.rules;
-                          const arr: any[] | undefined = Array.isArray(body?.value) ? body.value : undefined;
-                          const first: any = arr ? arr[0] : undefined;
-                          if (first?.type === 'Declaration') {
-                            const nm = first.value?.name;
-                            const nameStr = typeof nm === 'string' ? nm : String(nm?.valueOf?.() ?? '');
-                            const valStr = String(first.value?.value?.valueOf?.() ?? '');
-                            firstDecl = `${nameStr}=${valStr}`;
-                          }
+                    } else if (valueType === 'Mixin') {
+                      // For detached ruleset-as-mixin, grab first declaration from its rules body if present.
+                      const body: any = (vv as any).value?.rules;
+                      const arr: any[] | undefined = Array.isArray(body?.value) ? body.value : undefined;
+                      const first: any = arr ? arr[0] : undefined;
+                      if (first?.type === 'Declaration') {
+                        const nm = first.value?.name;
+                        const nameStr = typeof nm === 'string' ? nm : String(nm?.valueOf?.() ?? '');
+                        const valStr = String(first.value?.value?.valueOf?.() ?? '');
+                        firstDecl = `${nameStr}=${valStr}`;
+                      }
                     }
                   }
                 }
@@ -577,9 +576,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               resolvedTargetChild0: (() => {
                 try {
                   const first: any = Array.isArray((resolvedTarget as any)?.value) ? (resolvedTarget as any).value[0] : undefined;
-                  if (!first) return '';
-                  if (first.type === 'Ruleset') return `Ruleset:${String(first.value?.selector?.valueOf?.() ?? '')}`;
-                  if (first.type === 'Mixin') return `Mixin:${String(first.value?.name?.valueOf?.() ?? '')}`;
+                  if (!first) {return '';}
+                  if (first.type === 'Ruleset') {return `Ruleset:${String(first.value?.selector?.valueOf?.() ?? '')}`;}
+                  if (first.type === 'Mixin') {return `Mixin:${String(first.value?.name?.valueOf?.() ?? '')}`;}
                   if (first.type === 'Declaration' || first.type === 'VarDeclaration') {
                     const nm = first.value?.name;
                     return `${first.type}:${typeof nm === 'string' ? nm : String(nm?.valueOf?.() ?? '')}`;

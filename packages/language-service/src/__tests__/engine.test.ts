@@ -1,4 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { CodeActionKind, Position, SymbolKind } from 'vscode-languageserver-types';
 import { createEngine } from '../engine.js';
@@ -130,6 +133,119 @@ describe('JessLanguageServiceEngine', () => {
       expect(def).not.toBeNull();
       expect(def?.uri).toBe(doc.uri);
     });
+
+    describe('cross-file navigation', () => {
+      let tempDir: string;
+
+      afterEach(() => {
+        if (tempDir && fs.existsSync(tempDir)) {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+      });
+
+      it('finds Less variable definition across files', () => {
+        tempDir = fs.mkdtempSync(path.join(process.cwd(), 'test-'));
+        const varsFile = path.join(tempDir, 'vars.less');
+        const mainFile = path.join(tempDir, 'main.less');
+
+        fs.writeFileSync(varsFile, '@primary: red;\n@secondary: blue;');
+        fs.writeFileSync(mainFile, '@import "vars";\n.a { color: @primary; }');
+
+        const engine = createEngine();
+        const mainUri = String(pathToFileURL(mainFile));
+        engine.open(mainUri, 'less', 1, fs.readFileSync(mainFile, 'utf-8'));
+
+        // Position at @primary reference in main.less
+        const def = engine.findDefinition(mainUri, Position.create(1, 14));
+        expect(def).not.toBeNull();
+        expect(def?.uri).toBe(String(pathToFileURL(varsFile)));
+        expect(def?.range.start.line).toBe(0);
+      });
+
+      it('finds Less variable references across files', () => {
+        tempDir = fs.mkdtempSync(path.join(process.cwd(), 'test-'));
+        const varsFile = path.join(tempDir, 'vars.less');
+        const mainFile = path.join(tempDir, 'main.less');
+
+        fs.writeFileSync(varsFile, '@primary: red;');
+        fs.writeFileSync(mainFile, '@import "vars";\n.a { color: @primary; }\n.b { background: @primary; }');
+
+        const engine = createEngine();
+        const varsUri = String(pathToFileURL(varsFile));
+        engine.open(varsUri, 'less', 1, fs.readFileSync(varsFile, 'utf-8'));
+        const mainUri = String(pathToFileURL(mainFile));
+        engine.open(mainUri, 'less', 1, fs.readFileSync(mainFile, 'utf-8'));
+
+        // Position at @primary declaration in vars.less (on the variable name, not the @)
+        const refs = engine.findReferences(varsUri, Position.create(0, 2));
+        expect(refs.length).toBeGreaterThanOrEqual(3); // declaration + 2 references in main.less
+        const mainRefs = refs.filter(r => r.uri === mainUri);
+        expect(mainRefs.length).toBe(2);
+      });
+
+      it('finds SCSS variable definition across files', () => {
+        tempDir = fs.mkdtempSync(path.join(process.cwd(), 'test-'));
+        const varsFile = path.join(tempDir, '_vars.scss');
+        const mainFile = path.join(tempDir, 'main.scss');
+
+        fs.writeFileSync(varsFile, '$primary: red;\n$secondary: blue;');
+        fs.writeFileSync(mainFile, '@import "vars";\n.a { color: $primary; }');
+
+        const engine = createEngine();
+        const mainUri = String(pathToFileURL(mainFile));
+        engine.open(mainUri, 'scss', 1, fs.readFileSync(mainFile, 'utf-8'));
+
+        // Position at $primary reference in main.scss
+        const def = engine.findDefinition(mainUri, Position.create(1, 14));
+        expect(def).not.toBeNull();
+        expect(def?.uri).toBe(String(pathToFileURL(varsFile)));
+        expect(def?.range.start.line).toBe(0);
+      });
+
+      it('finds SCSS variable references across files', () => {
+        tempDir = fs.mkdtempSync(path.join(process.cwd(), 'test-'));
+        const varsFile = path.join(tempDir, '_vars.scss');
+        const mainFile = path.join(tempDir, 'main.scss');
+
+        fs.writeFileSync(varsFile, '$primary: red;');
+        fs.writeFileSync(mainFile, '@import "vars";\n.a { color: $primary; }\n.b { background: $primary; }');
+
+        const engine = createEngine();
+        const varsUri = String(pathToFileURL(varsFile));
+        engine.open(varsUri, 'scss', 1, fs.readFileSync(varsFile, 'utf-8'));
+        const mainUri = String(pathToFileURL(mainFile));
+        engine.open(mainUri, 'scss', 1, fs.readFileSync(mainFile, 'utf-8'));
+
+        // Position at $primary declaration in _vars.scss (on the variable name, not the $)
+        const refs = engine.findReferences(varsUri, Position.create(0, 2));
+        expect(refs.length).toBeGreaterThanOrEqual(3); // declaration + 2 references in main.scss
+        const mainRefs = refs.filter(r => r.uri === mainUri);
+        expect(mainRefs.length).toBe(2);
+      });
+
+      it.skip('finds Less mixin definition across files', () => {
+        tempDir = fs.mkdtempSync(path.join(process.cwd(), 'test-'));
+        const mixinsFile = path.join(tempDir, 'mixins.less');
+        const mainFile = path.join(tempDir, 'main.less');
+
+        fs.writeFileSync(mixinsFile, '.button() { color: red; }');
+        fs.writeFileSync(mainFile, '@import "mixins";\n.a { .button(); }');
+
+        const engine = createEngine();
+        const mixinsUri = String(pathToFileURL(mixinsFile));
+        const mainUri = String(pathToFileURL(mainFile));
+        // Open both files to ensure import graph is built
+        engine.open(mixinsUri, 'less', 1, fs.readFileSync(mixinsFile, 'utf-8'));
+        engine.open(mainUri, 'less', 1, fs.readFileSync(mainFile, 'utf-8'));
+
+        // Position at .button() reference in main.less
+        // Line 1 is ".a { .button(); }", try position on "button" (column 7)
+        const def = engine.findDefinition(mainUri, Position.create(1, 7));
+        expect(def).not.toBeNull();
+        expect(def?.uri).toBe(mixinsUri);
+        expect(def?.range.start.line).toBe(0);
+      });
+    });
   });
 
   describe('diagnostics', () => {
@@ -203,6 +319,56 @@ describe('JessLanguageServiceEngine', () => {
       const diagnostics = engine.getDiagnostics(doc.uri);
       const codes = diagnostics.map(d => d.code);
       expect(codes).toContain('var/undefined');
+    });
+
+    it('reports undefined SCSS variable as warning when @use is not present', () => {
+      const engine = createEngine();
+      const doc = createDocument('scss', 'a { color: $missing; }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const varDiag = diagnostics.find(d => d.code === 'var/undefined');
+      expect(varDiag).toBeDefined();
+      expect(varDiag?.severity).toBe(2); // DiagnosticSeverity.Warning
+    });
+
+    it('reports undefined SCSS variable as error when @use is present', () => {
+      const engine = createEngine();
+      const doc = createDocument('scss', '@use "sass:math";\na { color: $missing; }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const varDiag = diagnostics.find(d => d.code === 'var/undefined');
+      expect(varDiag).toBeDefined();
+      expect(varDiag?.severity).toBe(1); // DiagnosticSeverity.Error
+    });
+
+    it('reports undefined Less variable as warning when @from/@compose are not present', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', 'a { color: @missing; }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const varDiag = diagnostics.find(d => d.code === 'var/undefined');
+      expect(varDiag).toBeDefined();
+      expect(varDiag?.severity).toBe(2); // DiagnosticSeverity.Warning
+    });
+
+    it('reports undefined Less variable as error when @from is present', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', '@from "vars";\na { color: @missing; }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const varDiag = diagnostics.find(d => d.code === 'var/undefined');
+      expect(varDiag).toBeDefined();
+      expect(varDiag?.severity).toBe(1); // DiagnosticSeverity.Error
+    });
+
+    it('reports undefined Less variable as error when @compose is present', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', '@compose "button";\na { color: @missing; }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const varDiag = diagnostics.find(d => d.code === 'var/undefined');
+      expect(varDiag).toBeDefined();
+      expect(varDiag?.severity).toBe(1); // DiagnosticSeverity.Error
     });
 
     it('reports undefined Less mixin calls (semantic)', () => {

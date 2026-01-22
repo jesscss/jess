@@ -36,7 +36,10 @@
   "author": "Matthew Dean",
   "license": "MIT",
   "dependencies": {
+    "@jesscss/core": "workspace:*",
     "@jesscss/css-parser": "workspace:*",
-    "chevrotain": "^10.5.0"
+    "@jesscss/less-parser": "workspace:*",
+    "@jesscss/scss-parser": "workspace:*",
+    "chevrotain": "^11.0.3"
   }
 }

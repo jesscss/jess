@@ -382,6 +382,51 @@ test('@import "file.less" parsed as StyleImport', () => {
     `);
 });
 
+test('@-export "./theme.jess" parsed as StyleImport with forward', () => {
+  const { errors, tree } = parser.parse('@-export "./theme.jess";');
+  expect(errors.length).toBe(0);
+  expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      (StyleImport
+        type: 'compose'
+        importOptions: {
+          forward: true
+        }
+        path: 
+          (Quoted
+            quote: '"'
+            escaped: false
+          (Any [role=any]
+            role: 'any'
+            './theme.jess'
+          )
+        )
+      )
+    `);
+});
+
+test('@-export "./theme.jess" as theme parsed with namespace', () => {
+  const { errors, tree } = parser.parse('@-export "./theme.jess" as theme;');
+  expect(errors.length).toBe(0);
+  expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      (StyleImport
+        type: 'compose'
+        namespace: 'theme'
+        importOptions: {
+          forward: true
+        }
+        path: 
+          (Quoted
+            quote: '"'
+            escaped: false
+          (Any [role=any]
+            role: 'any'
+            './theme.jess'
+          )
+        )
+      )
+    `);
+});
+
 test('@import "file.css" parsed as import AtRule', () => {
   const { errors, tree } = parser.parse('@import "file.css";');
   expect(errors.length).toBe(0);
